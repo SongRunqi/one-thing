@@ -35,7 +35,7 @@
       {{ error }}
     </div>
 
-    <div class="tasks-layout">
+    <div class="tasks-layout" :class="{ 'detail-active': taskDetailActive }">
       <section class="task-list">
         <div class="task-list-title">
           <span>All Tasks</span>
@@ -88,6 +88,18 @@
         v-if="selectedTask"
         class="task-detail"
       >
+        <div class="detail-header-nav">
+          <button
+            class="back-btn icon-btn"
+            type="button"
+            title="Back to list"
+            @click="taskDetailActive = false"
+          >
+            <ArrowLeft :size="16" />
+          </button>
+          <span class="detail-nav-title">Task Details</span>
+        </div>
+
         <section class="task-overview">
           <div class="overview-main">
             <span class="overview-kicker">{{ selectedTask.kind === 'agent' ? 'Agent task' : 'Plugin task' }}{{ selectedTask.readonly ? ' · Read only' : '' }}</span>
@@ -221,28 +233,34 @@
               >
                 Loading run history...
               </div>
-              <button
-                v-for="run in runs"
-                :key="run.runId || `${run.taskId}-${run.startedAt}`"
-                class="run-row"
-                :class="[{ active: selectedRun?.runId === run.runId }, run.status]"
-                type="button"
-                @click="selectedRun = selectedRun?.runId === run.runId ? null : run"
-              >
-                <span>
-                  <strong>{{ run.status }}</strong>
-                  <small :title="formatMaybeDate(run.startedAt)">{{ formatShortDate(run.startedAt) }} · {{ formatDuration(run.durationMs) }}</small>
-                </span>
-                <span
-                  class="status-dot"
-                  :class="run.status"
-                />
-              </button>
-              <div
-                v-if="!runsLoading && runs.length === 0"
-                class="notice"
-              >
+              <div v-else-if="runs.length === 0" class="notice">
                 No run history yet.
+              </div>
+              <div v-else class="runs-timeline">
+                <div
+                  v-for="(run, idx) in runs"
+                  :key="run.runId || `${run.taskId}-${run.startedAt}`"
+                  class="timeline-run-item"
+                  :class="{ active: selectedRun?.runId === run.runId }"
+                >
+                  <div class="timeline-trail">
+                    <span class="timeline-node-dot" :class="run.status" />
+                    <div v-if="idx < runs.length - 1" class="timeline-node-line" />
+                  </div>
+                  <button
+                    class="timeline-run-card run-row"
+                    type="button"
+                    @click="selectedRun = selectedRun?.runId === run.runId ? null : run"
+                  >
+                    <div class="run-card-header">
+                      <span class="run-status-pill" :class="run.status">{{ run.status }}</span>
+                      <span class="run-card-duration">{{ formatDuration(run.durationMs) }}</span>
+                    </div>
+                    <div class="run-card-meta">
+                      <span :title="formatMaybeDate(run.startedAt)">{{ formatShortDate(run.startedAt) }}</span>
+                    </div>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -323,8 +341,34 @@
             </button>
           </div>
 
+          <!-- Tabbed Configuration Header -->
+          <div class="config-tabs segmented">
+            <button
+              :class="{ active: configTab === 'trigger' }"
+              type="button"
+              @click="configTab = 'trigger'"
+            >
+              Trigger & Model
+            </button>
+            <button
+              :class="{ active: configTab === 'limits' }"
+              type="button"
+              @click="configTab = 'limits'"
+            >
+              Constraints
+            </button>
+            <button
+              :class="{ active: configTab === 'scoring' }"
+              type="button"
+              @click="configTab = 'scoring'"
+            >
+              Relevance
+            </button>
+          </div>
+
           <div class="config-stack">
-            <section class="config-group">
+            <!-- TRIGGER & MODEL CONFIGURATION -->
+            <section v-show="configTab === 'trigger'" class="config-group">
               <div class="config-section-head">
                 <h5>Basic</h5>
               </div>
@@ -332,7 +376,12 @@
               <div class="config-body">
                 <div class="config-rows">
                   <label class="config-row">
-                    <span>Cron</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Cron</span>
+                      <span class="tooltip-wrapper" title="Cron expression detailing the dreaming run schedule.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model="dreamingForm.frequency"
                       class="field"
@@ -343,7 +392,12 @@
                   </label>
 
                   <label class="config-row">
-                    <span>Timezone</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Timezone</span>
+                      <span class="tooltip-wrapper" title="Target timezone for evaluating the cron expression.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model="dreamingForm.timezone"
                       class="field"
@@ -354,7 +408,12 @@
                   </label>
 
                   <label class="config-row">
-                    <span>Model</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Model</span>
+                      <span class="tooltip-wrapper" title="The AI model used for extracting and merging memory details.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model="dreamingForm.model"
                       class="field"
@@ -367,7 +426,8 @@
               </div>
             </section>
 
-            <section class="config-group">
+            <!-- SOURCES CONFIGURATION -->
+            <section v-show="configTab === 'scoring'" class="config-group">
               <div class="config-section-head">
                 <h5>Sources</h5>
               </div>
@@ -390,7 +450,8 @@
               </div>
             </section>
 
-            <section class="config-group">
+            <!-- LIMITS CONFIGURATION -->
+            <section v-show="configTab === 'limits'" class="config-group">
               <div class="config-section-head">
                 <h5>Limits</h5>
               </div>
@@ -398,7 +459,12 @@
               <div class="config-body">
                 <div class="config-grid">
                   <label class="config-field">
-                    <span>Lookback days</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Lookback days</span>
+                      <span class="tooltip-wrapper" title="How many days of history to scan when dreaming.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.lookbackDays"
                       class="field"
@@ -410,7 +476,12 @@
                   </label>
 
                   <label class="config-field">
-                    <span>Source files</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Source files</span>
+                      <span class="tooltip-wrapper" title="Maximum number of note files to process in a single dreaming cycle.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.maxSourceFiles"
                       class="field"
@@ -422,7 +493,12 @@
                   </label>
 
                   <label class="config-field">
-                    <span>Sessions</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Sessions</span>
+                      <span class="tooltip-wrapper" title="Maximum chat sessions to retrieve for memory consolidation.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.maxSessions"
                       class="field"
@@ -434,7 +510,12 @@
                   </label>
 
                   <label class="config-field">
-                    <span>Messages/session</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Messages/session</span>
+                      <span class="tooltip-wrapper" title="Limit on message count parsed from each session to protect context limits.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.maxMessagesPerSession"
                       class="field"
@@ -446,7 +527,12 @@
                   </label>
 
                   <label class="config-field">
-                    <span>Input chars</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Input chars</span>
+                      <span class="tooltip-wrapper" title="Maximum characters to process in prompt context inputs.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.maxInputChars"
                       class="field"
@@ -458,7 +544,12 @@
                   </label>
 
                   <label class="config-field">
-                    <span>Timeout ms</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Timeout ms</span>
+                      <span class="tooltip-wrapper" title="Execution timeout duration in milliseconds.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.timeoutMs"
                       class="field"
@@ -472,7 +563,8 @@
               </div>
             </section>
 
-            <section class="config-group">
+            <!-- SCORING CONFIGURATION -->
+            <section v-show="configTab === 'scoring'" class="config-group">
               <div class="config-section-head">
                 <h5>Scoring</h5>
               </div>
@@ -480,7 +572,12 @@
               <div class="config-body">
                 <div class="config-grid">
                   <label class="config-field">
-                    <span>Max promotions</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Max promotions</span>
+                      <span class="tooltip-wrapper" title="Limit on promoted durable profile facts per run.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.maxPromotions"
                       class="field"
@@ -492,7 +589,12 @@
                   </label>
 
                   <label class="config-field">
-                    <span>Min score</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Min score</span>
+                      <span class="tooltip-wrapper" title="Minimum recall relevance score required to qualify facts.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.minScore"
                       class="field"
@@ -505,7 +607,12 @@
                   </label>
 
                   <label class="config-field">
-                    <span>Min recalls</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Min recalls</span>
+                      <span class="tooltip-wrapper" title="Minimum duplicate recall cycles before fact promotion.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.minRecallCount"
                       class="field"
@@ -517,7 +624,12 @@
                   </label>
 
                   <label class="config-field">
-                    <span>Unique sources</span>
+                    <span class="setting-label-with-tooltip">
+                      <span>Unique sources</span>
+                      <span class="tooltip-wrapper" title="Minimum number of distinct sources required to corroborate a fact.">
+                        <Info :size="13" class="info-tooltip-icon" />
+                      </span>
+                    </span>
                     <input
                       v-model.number="dreamingForm.minUniqueSources"
                       class="field"
@@ -767,6 +879,8 @@ import {
   Sparkles,
   Trash2,
   X,
+  ArrowLeft,
+  Info,
 } from 'lucide-vue-next'
 
 const agentsStore = useAgentsStore()
@@ -796,6 +910,9 @@ const dreamSourceOptions: Array<{ value: DreamingSource; label: string }> = [
   { value: 'short-term', label: 'Short-term notes' },
   { value: 'recall', label: 'Recall index' },
 ]
+
+const taskDetailActive = ref(false)
+const configTab = ref<'trigger' | 'limits' | 'scoring'>('trigger')
 
 const form = ref({
   name: '',
@@ -897,6 +1014,7 @@ function startCreate(): void {
   editing.value = true
   historyOpen.value = false
   selectedRun.value = null
+  taskDetailActive.value = true
 }
 
 function startEdit(task: SchedulerTaskSnapshotDTO): void {
@@ -1074,6 +1192,7 @@ async function selectTask(taskId: string): Promise<void> {
   historyOpen.value = false
   selectedRun.value = null
   runs.value = []
+  taskDetailActive.value = true
 }
 
 async function toggleHistory(): Promise<void> {
@@ -1287,11 +1406,43 @@ onMounted(async () => {
   overflow-x: hidden;
   overflow-y: auto;
   color: var(--ui-text-primary-fg, var(--text));
+  scrollbar-width: thin;
 }
 
 .tasks-panel,
 .tasks-panel * {
   box-sizing: border-box;
+}
+
+/* Custom Scrollbars */
+.tasks-panel::-webkit-scrollbar,
+.task-list::-webkit-scrollbar,
+.task-detail::-webkit-scrollbar,
+.task-editor-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.tasks-panel::-webkit-scrollbar-track,
+.task-list::-webkit-scrollbar-track,
+.task-detail::-webkit-scrollbar-track,
+.task-editor-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tasks-panel::-webkit-scrollbar-thumb,
+.task-list::-webkit-scrollbar-thumb,
+.task-detail::-webkit-scrollbar-thumb,
+.task-editor-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 18%, transparent);
+  border-radius: 3px;
+}
+
+.tasks-panel::-webkit-scrollbar-thumb:hover,
+.task-list::-webkit-scrollbar-thumb:hover,
+.task-detail::-webkit-scrollbar-thumb:hover,
+.task-editor-body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 32%, transparent);
 }
 
 .tasks-header,
@@ -1356,31 +1507,29 @@ label span {
 .text-btn {
   color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
+  outline: none;
 }
 
 .icon-btn {
   width: 32px;
   height: 32px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    opacity 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.icon-btn:hover:not(:disabled),
-.secondary-btn:hover:not(:disabled) {
+.icon-btn:hover:not(:disabled) {
   background: var(--ui-state-hover-bg, var(--hover));
+  border-color: var(--ui-border-subtle-border, var(--border-subtle));
+  transform: translateY(-1px);
 }
 
-.primary-btn:hover:not(:disabled) {
-  background: var(--ui-action-primary-hover-bg, var(--ui-action-primary-bg, var(--accent)));
-  box-shadow: var(--ui-action-primary-hover-shadow, var(--ui-action-primary-shadow, none));
+.icon-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .icon-btn:disabled,
@@ -1388,37 +1537,67 @@ label span {
 .secondary-btn:disabled,
 .text-btn:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  opacity: 0.45;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
 .icon-btn.danger {
   color: var(--ui-status-danger-fg, var(--color-danger));
+}
+.icon-btn.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 20%, transparent);
 }
 
 .primary-btn,
 .secondary-btn {
   min-height: 32px;
   border-radius: 7px;
-  padding: 0 11px;
+  padding: 0 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   font-size: 13px;
   font-weight: 650;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .primary-btn {
   border: 1px solid var(--ui-action-primary-border, var(--ui-border-selected-border, var(--border)));
   background: var(--ui-action-primary-bg, var(--accent));
   color: var(--ui-action-primary-fg, var(--ui-text-inverse-fg, var(--text)));
-  box-shadow: var(--ui-action-primary-shadow, none);
+  box-shadow: var(--ui-action-primary-shadow, 0 1px 2px rgba(0, 0, 0, 0.05));
+}
+
+.primary-btn:hover:not(:disabled) {
+  background: var(--ui-action-primary-hover-bg, var(--ui-action-primary-bg, var(--accent)));
+  border-color: var(--ui-action-primary-hover-border, var(--ui-action-primary-border, var(--border)));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--ui-action-primary-bg, var(--accent)) 25%, transparent), 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.primary-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .secondary-btn {
-  border: 0;
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
   background: var(--ui-action-secondary-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));
   color: var(--ui-action-secondary-fg, var(--ui-text-primary-fg, var(--text)));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.secondary-btn:hover:not(:disabled) {
+  background: var(--ui-state-hover-bg, var(--hover));
+  border-color: var(--ui-border-default-border, var(--border));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.secondary-btn:active:not(:disabled) {
+  transform: translateY(0);
 }
 
 .primary-btn.compact {
@@ -1429,40 +1608,109 @@ label span {
   border: 0;
   background: transparent;
   color: var(--ui-accent-primary-fg, var(--accent));
-  padding: 4px 2px;
+  padding: 4px 6px;
   font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+.text-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
+}
+
+.tasks-panel .detail-header-nav {
+  display: none; /* Hidden on split views */
+}
+
+.detail-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--ui-border-subtle-border);
+  padding: 10px 14px;
+  flex-shrink: 0;
+  background: var(--ui-surface-panel-bg);
+}
+
+.detail-nav-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ui-text-primary-fg);
+}
+
+/* Configuration Tabs */
+.config-tabs.segmented {
+  display: flex;
+  background: var(--ui-state-hover-bg);
+  border: 1px solid var(--ui-border-subtle-border);
+  padding: 3px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.config-tabs.segmented button {
+  flex: 1;
+  min-height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--ui-text-muted-fg);
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s ease;
+}
+
+.config-tabs.segmented button.active {
+  background: var(--ui-surface-panel-bg);
+  color: var(--ui-accent-primary-fg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.config-tabs.segmented button:hover:not(.active) {
+  color: var(--ui-text-primary-fg);
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
+}
+
+/* Tooltip and Setting Label spacing */
+.setting-label-with-tooltip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.info-tooltip-icon {
+  opacity: 0.45;
+  color: var(--ui-text-muted-fg);
+  cursor: help;
+  transition: all 0.2s ease;
+}
+
+.info-tooltip-icon:hover {
+  opacity: 1;
+  color: var(--ui-accent-primary-fg);
 }
 
 .tasks-layout {
+  flex: 1;
   min-height: 0;
-  min-width: 0;
   display: grid;
-  gap: 18px;
-}
-
-@media (min-width: 900px) {
-  .tasks-layout {
-    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .task-list {
-    position: sticky;
-    top: 0;
-  }
-}
-
-.task-list,
-.task-detail {
-  min-width: 0;
-  max-width: 100%;
+  grid-template-columns: minmax(210px, 290px) minmax(0, 1fr);
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
 }
 
 .task-list {
-  display: grid;
-  gap: 2px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-divider-border, var(--border)) 64%, transparent);
+  min-width: 0;
+  overflow-y: auto;
+  padding: 16px;
+  border-right: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 58%, transparent);
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .task-list-title {
@@ -1474,6 +1722,19 @@ label span {
   color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 11px;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.task-detail {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px 24px 24px;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
 }
 
 .task-row {
@@ -1482,27 +1743,28 @@ label span {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: start;
-  gap: 9px;
-  border: 0;
+  gap: 10px;
+  border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
-  padding: 9px 8px;
+  padding: 10px 12px;
   text-align: left;
   cursor: pointer;
-  box-shadow: inset 0 0 0 0 transparent;
-  transition:
-    background 0.15s ease,
-    box-shadow 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  margin-bottom: 4px;
 }
 
 .task-row:hover {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
+  background: var(--ui-state-hover-bg, var(--hover));
+  border-color: var(--ui-border-subtle-border, var(--border-subtle));
+  transform: translateX(2px);
 }
 
 .task-row.active {
-  background: var(--ui-state-active-bg, var(--active));
-  box-shadow: inset 3px 0 0 var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, var(--ui-surface-elevated-bg, var(--bg-elevated)));
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .task-icon {
@@ -1514,6 +1776,7 @@ label span {
   justify-content: center;
   color: var(--ui-text-muted-fg, var(--text-muted));
   background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
+  transition: all 0.2s ease;
 }
 
 .task-row.active .task-icon {
@@ -1640,10 +1903,12 @@ label span {
 }
 
 .managed-section {
-  gap: 22px;
-  margin-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-divider-border, var(--border)) 76%, transparent);
-  padding: 28px 0 0;
+  gap: 16px;
+  margin-top: 16px;
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  border-radius: 8px;
+  padding: 18px;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
 }
 
 .task-detail {
@@ -1731,8 +1996,10 @@ label span {
 .runtime-section {
   display: grid;
   gap: 12px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-divider-border, var(--border)) 50%, transparent);
-  padding: 18px 2px 0;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  border-radius: 8px;
+  padding: 14px;
 }
 
 .section-block-heading {
@@ -1805,21 +2072,49 @@ label {
   gap: 6px;
 }
 
+.task-editor-body label > span,
+.config-row .setting-label-with-tooltip,
+.config-field .setting-label-with-tooltip {
+  font-weight: 600;
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
+}
+
 .field {
   min-width: 0;
   width: 100%;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: var(--ui-surface-input-bg, var(--ui-surface-app-bg, var(--bg)));
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  border-radius: 8px;
+  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
   color: var(--ui-text-primary-fg, var(--text));
-  padding: 8px 9px;
+  padding: 8px 12px;
   font-size: 13px;
+  box-shadow: inset 0 1px 2.5px rgba(0, 0, 0, 0.04);
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.field:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .field:focus {
   outline: none;
-  border-color: var(--ui-border-focus-border, var(--ui-border-selected-border, var(--border)));
-  background: var(--ui-surface-input-focus-bg, var(--ui-surface-input-bg, var(--bg)));
+  border-color: var(--ui-accent-primary-fg, var(--accent)) !important;
+  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent), inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+}
+
+select.field {
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  padding-right: 32px;
+  cursor: pointer;
+}
+
+[data-theme='light'] select.field {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23555555' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
 }
 
 .textarea {
@@ -1903,7 +2198,7 @@ label {
   align-content: start;
   gap: 14px;
   padding: 18px;
-  overflow: auto;
+  overflow-y: auto;
 }
 
 .task-editor-footer {
@@ -1918,6 +2213,7 @@ label {
   align-items: start;
   justify-content: space-between;
   gap: 16px;
+  margin-bottom: 14px;
 }
 
 .managed-head h4,
@@ -1944,7 +2240,7 @@ label {
 }
 
 .config-stack {
-  gap: 28px;
+  gap: 20px;
 }
 
 .config-group {
@@ -2039,6 +2335,7 @@ label {
   padding: 2px 0;
   color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
+  cursor: pointer;
 }
 
 .config-savebar {
@@ -2049,8 +2346,9 @@ label {
   justify-content: space-between;
   gap: 12px;
   border-top: 1px solid color-mix(in srgb, var(--ui-border-divider-border, var(--border)) 58%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))) 94%, transparent);
-  padding: 10px 0 0;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  padding: 14px 0 0;
+  z-index: 10;
 }
 
 .config-savebar > span {
@@ -2118,8 +2416,10 @@ input[type="checkbox"]:focus-visible {
 .history-section {
   display: grid;
   gap: 9px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-divider-border, var(--border)) 50%, transparent);
-  padding: 18px 2px 0;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  border-radius: 8px;
+  padding: 14px;
 }
 
 .history-toggle {
@@ -2301,82 +2601,158 @@ input[type="checkbox"]:focus-visible {
   animation: spin 0.8s linear infinite;
 }
 
-@media (max-width: 760px) {
-  .tasks-panel {
-    padding: 16px 14px 22px;
-  }
-
-  .task-overview {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .status-action-panel {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .overview-actions {
-    justify-content: flex-start;
-  }
-
-  .runtime-grid,
-  .config-grid,
-  .source-list {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .section-block-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 5px;
-  }
-
-  .section-block-heading strong {
-    text-align: left;
-  }
-
-  .config-row,
-  .config-field {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 6px;
-  }
-
-  .config-row > .field,
-  .config-field > .field {
-    max-width: none;
-  }
+/* Run History Timeline Styles */
+.runs-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 4px;
+  max-height: 320px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
-@media (max-width: 520px) {
-  .tasks-header {
-    align-items: flex-start;
-  }
+.runs-timeline::-webkit-scrollbar {
+  width: 6px;
+}
 
-  .header-actions,
-  .overview-actions {
-    gap: 6px;
-  }
+.runs-timeline::-webkit-scrollbar-track {
+  background: transparent;
+}
 
-  .task-row {
-    grid-template-columns: 28px minmax(0, 1fr);
-  }
+.runs-timeline::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 18%, transparent);
+  border-radius: 3px;
+}
 
-  .task-row > .status-badge {
-    grid-column: 2;
-  }
+.runs-timeline::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 32%, transparent);
+}
 
-  .secondary-btn span,
-  .primary-btn.compact span {
-    display: none;
-  }
+.timeline-run-item {
+  display: flex;
+  gap: 12px;
+  position: relative;
+}
 
-  .status-focus {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.timeline-trail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 14px;
+  flex-shrink: 0;
+}
 
-  .config-savebar {
-    align-items: stretch;
-    flex-direction: column;
-  }
+.timeline-node-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ui-text-muted-fg);
+  margin-top: 14px;
+  z-index: 2;
+  transition: all 0.2s ease;
+}
+
+.timeline-node-dot.succeeded {
+  background: var(--ui-status-success-fg, #10b981);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--ui-status-success-fg, #10b981) 40%, transparent);
+}
+
+.timeline-node-dot.failed,
+.timeline-node-dot.blocked {
+  background: var(--ui-status-danger-fg, #ef4444);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 40%, transparent);
+}
+
+.timeline-node-dot.running {
+  background: var(--ui-status-warning-fg, #f59e0b);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 40%, transparent);
+  animation: pulse-glow 1s infinite alternate;
+}
+
+.timeline-node-line {
+  width: 2px;
+  flex: 1;
+  background: color-mix(in srgb, var(--ui-border-default-border) 40%, transparent);
+  margin-top: 4px;
+  margin-bottom: -14px;
+  z-index: 1;
+}
+
+.timeline-run-card {
+  flex: 1;
+  border: 1px solid var(--ui-border-subtle-border);
+  border-radius: 8px;
+  background: var(--ui-surface-panel-bg);
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-bottom: 6px;
+}
+
+.timeline-run-card:hover {
+  background: var(--ui-state-hover-bg);
+  border-color: var(--ui-border-default-border);
+  transform: translateY(-1px);
+}
+
+.timeline-run-card:active {
+  transform: translateY(0);
+}
+
+.timeline-run-item.active .timeline-run-card {
+  border-color: var(--ui-accent-primary-fg);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 4%, var(--ui-surface-panel-bg));
+}
+
+.run-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.run-status-pill {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.run-status-pill.succeeded {
+  background: color-mix(in srgb, var(--ui-status-success-fg, #10b981) 12%, transparent);
+  color: var(--ui-status-success-fg, #10b981);
+}
+
+.run-status-pill.failed,
+.run-status-pill.blocked {
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 12%, transparent);
+  color: var(--ui-status-danger-fg, #ef4444);
+}
+
+.run-status-pill.running {
+  background: color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 12%, transparent);
+  color: var(--ui-status-warning-fg, #f59e0b);
+}
+
+.run-card-duration {
+  font-size: 11px;
+  color: var(--ui-text-muted-fg);
+}
+
+.run-card-meta {
+  font-size: 11px;
+  color: var(--ui-text-secondary-fg);
+}
+
+@keyframes pulse-glow {
+  from { opacity: 0.5; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1.1); }
 }
 
 @keyframes spin {
@@ -2384,4 +2760,105 @@ input[type="checkbox"]:focus-visible {
     transform: rotate(360deg);
   }
 }
+
+/* Side Mode Stacking Layout */
+.mode-side .tasks-layout,
+.media-panel-content.mode-side .tasks-layout {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.mode-side .task-list,
+.media-panel-content.mode-side .task-list {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(0);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1;
+  border-right: none;
+}
+
+.mode-side .task-detail,
+.media-panel-content.mode-side .task-detail {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+}
+
+/* Slide stacked transitions */
+.mode-side .detail-active .task-list,
+.media-panel-content.mode-side .detail-active .task-list {
+  transform: translateX(-20%);
+}
+
+.mode-side .detail-active .task-detail,
+.media-panel-content.mode-side .detail-active .task-detail {
+  transform: translateX(0);
+}
+
+.mode-side .tasks-panel .detail-header-nav,
+.media-panel-content.mode-side .tasks-panel .detail-header-nav {
+  display: flex;
+}
+
+@media (max-width: 768px) {
+  .tasks-layout {
+    display: block;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .task-list {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateX(0);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 1;
+    border-right: none;
+  }
+
+  .task-detail {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 2;
+    background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  }
+
+  .detail-active .task-list {
+    transform: translateX(-20%);
+  }
+
+  .detail-active .task-detail {
+    transform: translateX(0);
+  }
+
+  .detail-header-nav {
+    display: flex !important;
+  }
+}
+
+
 </style>
+

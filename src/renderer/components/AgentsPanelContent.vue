@@ -24,7 +24,7 @@
       </button>
     </header>
 
-    <div class="agents-layout">
+    <div class="agents-layout" :class="{ 'detail-active': agentDetailActive }">
       <aside class="agents-list">
         <div
           v-if="agentsStore.isLoading"
@@ -63,6 +63,14 @@
 
       <section class="agent-editor">
         <div class="agent-editor-header">
+          <button
+            class="back-btn icon-btn"
+            type="button"
+            title="Back to list"
+            @click="agentDetailActive = false"
+          >
+            <ArrowLeft :size="16" />
+          </button>
           <div class="agent-editor-title">
             <h3>{{ isCreating ? 'New Agent' : selectedAgent?.name || 'Agent' }}</h3>
             <span>{{ isCreating ? 'Draft' : selectedAgent?.isDefault ? 'Default agent' : 'Custom agent' }}</span>
@@ -82,39 +90,64 @@
           </button>
         </div>
 
-        <label class="agent-field">
-          <span>Name</span>
-          <input
-            v-model="formName"
-            class="agent-input"
-            type="text"
-            autocomplete="off"
-            spellcheck="false"
+        <div class="agent-editor-scroll">
+          <label class="agent-field">
+            <span>Name</span>
+            <input
+              v-model="formName"
+              class="agent-input"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+            >
+          </label>
+
+          <div class="agent-field">
+            <div class="agent-prompt-header">
+              <span>System Prompt</span>
+              <div class="prompt-counters">
+                <span class="prompt-counter-badge">{{ formPrompt.length }} chars</span>
+                <span class="prompt-counter-badge">{{ wordCount(formPrompt) }} words</span>
+              </div>
+            </div>
+
+            <div class="prompt-templates-panel">
+              <span class="templates-label">Quick Templates:</span>
+              <div class="templates-list">
+                <button
+                  v-for="tpl in promptTemplates"
+                  :key="tpl.name"
+                  class="template-chip"
+                  type="button"
+                  @click="applyTemplate(tpl.prompt)"
+                >
+                  {{ tpl.name }}
+                </button>
+              </div>
+            </div>
+
+            <textarea
+              v-model="formPrompt"
+              class="agent-textarea monospace"
+              rows="14"
+              spellcheck="true"
+              placeholder="Instruct the AI on how it should behave..."
+            />
+          </div>
+
+          <p
+            v-if="formError"
+            class="agent-feedback error"
           >
-        </label>
-
-        <label class="agent-field">
-          <span>System Prompt</span>
-          <textarea
-            v-model="formPrompt"
-            class="agent-textarea"
-            rows="14"
-            spellcheck="true"
-          />
-        </label>
-
-        <p
-          v-if="formError"
-          class="agent-feedback error"
-        >
-          {{ formError }}
-        </p>
-        <p
-          v-else-if="formFeedback"
-          class="agent-feedback"
-        >
-          {{ formFeedback }}
-        </p>
+            {{ formError }}
+          </p>
+          <p
+            v-else-if="formFeedback"
+            class="agent-feedback"
+          >
+            {{ formFeedback }}
+          </p>
+        </div>
 
         <div class="agent-editor-actions">
           <button
@@ -149,7 +182,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Bot, Check, Plus, Save, Trash2, X } from 'lucide-vue-next'
+import { Bot, Check, Plus, Save, Trash2, X, ArrowLeft } from 'lucide-vue-next'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 
 const agentsStore = useAgentsStore()
@@ -180,12 +213,45 @@ function syncFormFromSelected() {
   formPrompt.value = agent?.systemPrompt || ''
 }
 
+const agentDetailActive = ref(false)
+
+const promptTemplates = [
+  {
+    name: 'Developer',
+    prompt: 'You are an expert software developer. Provide clean, well-documented, and performant code in TypeScript/JavaScript following industry best practices. Explain design decisions briefly and clearly.'
+  },
+  {
+    name: 'Writer',
+    prompt: 'You are a creative writer and copy editor. Focus on engaging, vivid prose with excellent structure and tone. Adapt your style based on the user\'s requests, maintaining high readability and style.'
+  },
+  {
+    name: 'Analyst',
+    prompt: 'You are a detail-oriented data analyst. Provide structured insights, markdown tables, and clear explanations. Focus on extracting quantitative patterns and validating claims with rigorous logic.'
+  },
+  {
+    name: 'Concise AI',
+    prompt: 'You are a helpful assistant. Keep all responses brief, direct, and focused. Avoid introductory and concluding conversational filler. Answer in bullet points whenever possible.'
+  }
+]
+
+function applyTemplate(templatePrompt: string) {
+  if (!formPrompt.value.trim() || confirm('Overwrite current system prompt with this template?')) {
+    formPrompt.value = templatePrompt
+  }
+}
+
+function wordCount(str: string): number {
+  if (!str) return 0
+  return str.trim().split(/\s+/).filter(Boolean).length
+}
+
 function selectAgent(agentId: string) {
   isCreating.value = false
   activeAgentId.value = agentId
   syncFormFromSelected()
   formError.value = ''
   formFeedback.value = ''
+  agentDetailActive.value = true
 }
 
 function startCreate() {
@@ -195,6 +261,7 @@ function startCreate() {
   formPrompt.value = ''
   formError.value = ''
   formFeedback.value = ''
+  agentDetailActive.value = true
 }
 
 function resetForm() {
@@ -205,6 +272,7 @@ function resetForm() {
   syncFormFromSelected()
   formError.value = ''
   formFeedback.value = ''
+  agentDetailActive.value = false
 }
 
 async function saveAgent() {
@@ -292,7 +360,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-surface-app-bg, var(--bg));
+  background: transparent;
 }
 
 .agents-header {
@@ -302,7 +370,7 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 16px;
   padding: 18px 22px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 58%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 45%, transparent);
 }
 
 .agents-title {
@@ -314,19 +382,19 @@ onMounted(async () => {
 
 .agents-title svg {
   flex: 0 0 auto;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .agents-title h2,
 .agent-editor-title h3 {
   margin: 0;
   line-height: 1.2;
-  letter-spacing: 0;
+  letter-spacing: -0.2px;
 }
 
 .agents-title h2 {
   font-size: 20px;
-  font-weight: 720;
+  font-weight: 750;
 }
 
 .agents-title p,
@@ -340,46 +408,82 @@ onMounted(async () => {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(190px, 270px) minmax(0, 1fr);
+  grid-template-columns: minmax(200px, 290px) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 22px 22px;
+  position: relative;
+  overflow: hidden;
 }
 
+/* Custom Scrollbars */
+.agents-list::-webkit-scrollbar,
+.agent-editor-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.agents-list::-webkit-scrollbar-track,
+.agent-editor-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.agents-list::-webkit-scrollbar-thumb,
+.agent-editor-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 18%, transparent);
+  border-radius: 3px;
+}
+
+.agents-list::-webkit-scrollbar-thumb:hover,
+.agent-editor-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 32%, transparent);
+}
+
+/* List Column styling */
 .agents-list {
-  min-width: 0;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border-radius: var(--radius-md);
+  border: 1px solid var(--ui-border-default-border, var(--border));
   padding: 12px;
-  border-right: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 58%, transparent);
+  transition: all 0.2s ease;
 }
 
 .agent-item {
-  width: 100%;
-  min-height: 54px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 9px 10px;
+  width: 100%;
+  padding: 11px 13px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
   text-align: left;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.agent-item:hover,
-.agent-item.active {
+.agent-item:hover {
   background: var(--ui-state-hover-bg, var(--hover));
-  border-color: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 72%, transparent);
+  border-color: var(--ui-border-subtle-border, var(--border-subtle));
+  transform: translateX(2px);
 }
 
 .agent-item.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, var(--ui-state-hover-bg, var(--hover)));
+  background: var(--ui-state-selected-bg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, var(--ui-surface-panel-bg))) !important;
+  color: var(--ui-state-selected-fg, var(--ui-text-primary-fg, var(--text)));
+  border-color: var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  transform: translateX(2px);
 }
 
 .agent-item-main {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 2px;
 }
 
 .agent-item-name {
@@ -387,7 +491,7 @@ onMounted(async () => {
   overflow-wrap: anywhere;
   font-size: 13px;
   font-weight: 650;
-  line-height: 1.25;
+  line-height: 1.3;
 }
 
 .agent-item-meta {
@@ -396,9 +500,10 @@ onMounted(async () => {
 }
 
 .agents-state {
-  padding: 10px;
+  padding: 14px;
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
+  text-align: center;
 }
 
 .agents-state.error,
@@ -406,14 +511,17 @@ onMounted(async () => {
   color: var(--ui-status-danger-fg, #ef4444);
 }
 
+/* Premium Form Editor styling */
 .agent-editor {
   min-width: 0;
   min-height: 0;
-  overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 18px 22px 22px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
 }
 
 .agent-editor-header {
@@ -421,6 +529,13 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--ui-border-subtle-border);
+  background: color-mix(in srgb, var(--ui-surface-panel-bg) 98%, transparent);
+}
+
+.agent-editor .back-btn {
+  display: none; /* Hidden on split views */
 }
 
 .agent-editor-title {
@@ -429,19 +544,32 @@ onMounted(async () => {
 
 .agent-editor-title h3 {
   overflow-wrap: anywhere;
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 720;
+}
+
+.agent-editor-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .agent-field {
-  display: grid;
-  gap: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.agent-field span {
+.agent-field > span,
+.agent-prompt-header > span {
   color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .agent-input,
@@ -453,40 +581,62 @@ onMounted(async () => {
   background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
   color: var(--ui-text-primary-fg, var(--text));
   font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease;
 }
 
 .agent-input {
-  height: 36px;
-  padding: 0 10px;
+  height: 38px;
+  padding: 0 12px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .agent-textarea {
+  min-height: 220px;
   flex: 1;
-  min-height: 260px;
   resize: vertical;
-  padding: 10px;
-  line-height: 1.48;
+  padding: 12px;
+  line-height: 1.5;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.agent-input:hover:not(:disabled),
+.agent-textarea:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .agent-input:focus,
 .agent-textarea:focus {
-  outline: none;
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 48%, var(--ui-border-default-border, var(--border)));
+  border-color: var(--ui-accent-primary-fg, var(--accent)) !important;
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent), inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+}
+
+.agent-textarea.monospace {
+  font-family: var(--font-mono, monospace);
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
 .agent-feedback {
   min-height: 17px;
   margin: 0;
-  color: var(--ui-status-success-fg, var(--text-success, var(--text)));
+  color: var(--ui-status-success-fg, #10b981);
   font-size: 12px;
+  font-weight: 550;
 }
 
 .agent-editor-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--ui-border-subtle-border);
+  background: color-mix(in srgb, var(--ui-surface-panel-bg) 96%, transparent);
 }
 
+/* Buttons and Controls */
 .agents-primary-action,
 .agent-secondary-action,
 .agent-icon-button {
@@ -494,78 +644,244 @@ onMounted(async () => {
   border-radius: 8px;
   cursor: pointer;
   font: inherit;
-}
-
-.agents-primary-action,
-.agent-secondary-action {
-  height: 32px;
+  font-size: 13px;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 0 11px;
-  font-size: 13px;
-  font-weight: 650;
-  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
 }
 
 .agents-primary-action {
-  background: var(--ui-action-primary-bg, var(--accent));
-  color: var(--ui-action-primary-fg, var(--text-btn-primary));
-}
-
-.agent-secondary-action {
-  background: var(--ui-action-ghost-bg, var(--hover));
-  color: var(--ui-action-ghost-fg, var(--muted));
-  border-color: var(--ui-border-default-border, var(--border));
-}
-
-.agent-icon-button {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  height: 34px;
+  padding: 0 14px;
+  background: var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--ui-action-primary-fg, #ffffff) !important;
+  border-color: var(--ui-action-primary-border, transparent);
+  box-shadow: var(--ui-action-primary-shadow, 0 1px 2px rgba(0, 0, 0, 0.04));
 }
 
 .agents-primary-action:hover:not(:disabled) {
-  background: var(--ui-action-primary-hover-bg, var(--bg-btn-primary-hover));
+  background: var(--ui-action-primary-hover-bg, var(--ui-action-primary-bg, var(--accent)));
+  transform: translateY(-1px);
+  box-shadow: var(--ui-action-primary-hover-shadow, 0 3px 8px rgba(0, 0, 0, 0.08));
 }
 
-.agent-secondary-action:hover:not(:disabled),
+.agents-primary-action:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.agent-secondary-action {
+  height: 34px;
+  padding: 0 14px;
+  background: var(--ui-action-secondary-bg, var(--ui-state-hover-bg, var(--hover)));
+  color: var(--ui-action-secondary-fg, var(--ui-text-primary-fg, var(--text)));
+  border-color: var(--ui-border-default-border, var(--border));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.agent-secondary-action:hover:not(:disabled) {
+  background: var(--ui-state-hover-bg, var(--hover));
+  border-color: var(--ui-border-default-border, var(--border));
+  transform: translateY(-1px);
+}
+
+.agent-secondary-action:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.agent-icon-button {
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  color: var(--ui-text-muted-fg, var(--muted));
+  border: 1px solid transparent;
+}
+
 .agent-icon-button:hover:not(:disabled) {
   background: var(--ui-state-hover-bg, var(--hover));
   color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--ui-border-subtle-border, var(--border-subtle));
+  transform: translateY(-1px);
 }
 
 .agent-icon-button.danger:hover:not(:disabled) {
   color: var(--ui-status-danger-fg, #ef4444);
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 12%, transparent);
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 30%, transparent);
 }
 
 .agents-primary-action:disabled,
 .agent-secondary-action:disabled,
 .agent-icon-button:disabled {
-  opacity: 0.55;
+  opacity: 0.45;
   cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
 }
 
-@media (max-width: 760px) {
-  .agents-header {
-    align-items: flex-start;
-    flex-direction: column;
-  }
+/* Prompt Editor Enhancements */
+.agent-prompt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
 
+.prompt-counters {
+  display: flex;
+  gap: 6px;
+}
+
+.prompt-counter-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ui-text-muted-fg);
+  background: var(--ui-state-hover-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--ui-border-subtle-border);
+}
+
+.prompt-templates-panel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: var(--ui-surface-panel-bg);
+  border-radius: 6px;
+  border: 1px solid var(--ui-border-subtle-border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.prompt-templates-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.templates-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ui-text-secondary-fg);
+  white-space: nowrap;
+}
+
+.templates-list {
+  display: flex;
+  gap: 6px;
+}
+
+.template-chip {
+  background: var(--ui-surface-elevated-bg);
+  border: 1px solid var(--ui-border-default-border);
+  border-radius: var(--radius-full, 9999px);
+  color: var(--ui-text-primary-fg);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.template-chip:hover {
+  background: var(--ui-state-hover-bg);
+  border-color: var(--ui-accent-primary-fg);
+  color: var(--ui-accent-primary-fg);
+}
+
+
+
+/* Slide stacked styling for side mode */
+.mode-side .agents-layout {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  padding: 8px 12px 12px;
+}
+
+.mode-side .agents-list {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(0);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1;
+}
+
+.mode-side .agent-editor {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
+}
+
+.mode-side .detail-active .agents-list {
+  transform: translateX(-20%);
+}
+
+.mode-side .detail-active .agent-editor {
+  transform: translateX(0);
+}
+
+.mode-side .agent-editor .back-btn {
+  display: inline-flex;
+}
+
+@media (max-width: 768px) {
   .agents-layout {
-    grid-template-columns: 1fr;
+    display: block;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    padding: 8px 12px 12px;
   }
 
   .agents-list {
-    max-height: 220px;
-    border-right: 0;
-    border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 58%, transparent);
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateX(0);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 1;
+  }
+
+  .agent-editor {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 2;
+  }
+
+  .detail-active .agents-list {
+    transform: translateX(-20%);
+  }
+
+  .detail-active .agent-editor {
+    transform: translateX(0);
+  }
+
+  .agent-editor .back-btn {
+    display: inline-flex;
   }
 }
 </style>
+

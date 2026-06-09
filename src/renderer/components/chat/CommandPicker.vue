@@ -28,8 +28,8 @@
     >
       <div
         v-for="(item, index) in items"
-        :key="item.id"
         :id="getOptionId(item, index)"
+        :key="item.id"
         :class="['composer-extension-row', { selected: index === selectedIndex }]"
         :data-command-index="index"
         role="option"

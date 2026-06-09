@@ -221,7 +221,7 @@ export const WriteTool = Tool.define<typeof WriteParameters, WriteMetadata>('wri
       const policyOriginalHash = policyEffect?.metadata?.originalContentHash
       const policyDiff = ctx.approvedAnalysis?.preview?.diff
 
-      let approvedPlan = buildWritePlan(
+      const approvedPlan = buildWritePlan(
         resolvedPath,
         content,
         bytesWritten,

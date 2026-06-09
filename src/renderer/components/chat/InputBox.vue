@@ -104,228 +104,228 @@
         }"
         @click="focusEditor"
       >
-      <div
-        v-if="quotedText || commandFeedback"
-        class="composer-context-stack"
-        @click.stop
-      >
-        <Transition name="fade">
-          <div
-            v-if="commandFeedback"
-            :class="['command-feedback', commandFeedback.type]"
-          >
-            <Check
-              v-if="commandFeedback.type === 'success'"
-              :size="14"
-              :stroke-width="2.5"
-            />
-            <X
-              v-else
-              :size="14"
-              :stroke-width="2.5"
-            />
-            <span>{{ commandFeedback.message }}</span>
-          </div>
-        </Transition>
-
-        <QuotedContext
-          :text="quotedText"
-          @clear="clearQuotedText"
-        />
-      </div>
-
-      <!-- Input area -->
-      <div class="input-area">
-        <TextEditor
-          ref="editorRef"
-          v-model="messageInput"
-          class="composer-input"
-          profile="composer"
-          language="markdown"
-          :placeholder="composerPlaceholder"
-          :settings="editorSettings"
-          :prompt-refs="promptsStore.prompts"
-          :skill-refs="enabledSkills"
-          :command-refs="commandRefs"
-          :min-height="42"
-          :max-height="composerMaxHeight"
-          @keydown="handleKeyDown"
-          @paste="handlePasteAttachments"
-          @focus="isFocused = true"
-          @blur="isFocused = false"
-          @height-change="handleEditorHeightChange"
-          @selection-change="handleEditorSelectionChange"
-          @transaction="handleEditorTransaction"
-          @compositionstart="isComposing = true"
-          @compositionend="isComposing = false"
-        />
-      </div>
-
-      <div
-        v-if="voiceCaptureVisible"
-        class="voice-capture-bar"
-        :class="{ recording: isVoiceRecordingActive, transcribing: isVoiceTranscribingActive }"
-        :title="voiceCaptureHint"
-        aria-live="polite"
-        @click.stop
-      >
-        <span class="voice-capture-visual">
-          <Loader2
-            v-if="isVoiceTranscribingActive"
-            class="voice-spinner"
-            :size="14"
-            :stroke-width="2"
-          />
-          <span
-            v-else
-            class="voice-wave"
-            aria-hidden="true"
-          >
-            <span />
-            <span />
-            <span />
-            <span />
-            <span />
-          </span>
-        </span>
-        <span class="voice-capture-main">
-          <span class="voice-capture-title">{{ voiceCaptureTitle }}</span>
-          <span class="voice-capture-detail">{{ voiceCaptureDetail }}</span>
-        </span>
-        <button
-          v-if="isVoiceRecordingActive"
-          class="voice-capture-stop"
-          type="button"
-          title="Stop recording and transcribe"
-          @click="handleVoiceButton"
-        >
-          <Square
-            :size="12"
-            :stroke-width="2.4"
-          />
-          <span>Stop</span>
-        </button>
-      </div>
-
-      <div
-        v-if="attachedFiles.length > 0 || isProcessingAttachments"
-        class="attachment-tray"
-        @click.stop
-      >
         <div
-          v-for="file in attachedFiles"
-          :key="file.id"
-          class="attachment-chip"
-          :class="{ 'is-image': file.mediaType === 'image' }"
-          :title="`${file.fileName} (${formatFileSize(file.size)})`"
-        >
-          <img
-            v-if="file.mediaType === 'image' && file.preview"
-            class="attachment-thumb"
-            :src="file.preview"
-            :alt="file.fileName"
-          >
-          <span
-            v-else
-            class="attachment-file-icon"
-          >
-            <FileText :size="15" />
-          </span>
-          <span class="attachment-info">
-            <span class="attachment-name">{{ file.fileName }}</span>
-            <span class="attachment-size">{{ formatFileSize(file.size) }}</span>
-          </span>
-          <button
-            class="attachment-remove"
-            type="button"
-            :title="`Remove ${file.fileName}`"
-            @click.stop="removeAttachment(file.id)"
-          >
-            <X :size="14" />
-          </button>
-        </div>
-        <div
-          v-if="isProcessingAttachments"
-          class="attachment-chip is-loading"
-        >
-          <Loader2
-            class="attachment-spinner"
-            :size="15"
-          />
-          <span>Reading files...</span>
-        </div>
-      </div>
-
-      <!-- Bottom toolbar -->
-      <div class="composer-toolbar">
-        <div class="toolbar-left">
-          <ModelSelector :session-id="props.sessionId" />
-          <ThinkToggle :session-id="props.sessionId" />
-          <button
-            class="permission-mode-btn"
-            type="button"
-            :class="`mode-${permissionMode}`"
-            :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
-            @click.stop="cyclePermissionMode"
-          >
-            {{ permissionModeLabel }}
-          </button>
-        </div>
-
-        <div
-          class="toolbar-right"
+          v-if="quotedText || commandFeedback"
+          class="composer-context-stack"
           @click.stop
         >
+          <Transition name="fade">
+            <div
+              v-if="commandFeedback"
+              :class="['command-feedback', commandFeedback.type]"
+            >
+              <Check
+                v-if="commandFeedback.type === 'success'"
+                :size="14"
+                :stroke-width="2.5"
+              />
+              <X
+                v-else
+                :size="14"
+                :stroke-width="2.5"
+              />
+              <span>{{ commandFeedback.message }}</span>
+            </div>
+          </Transition>
+
+          <QuotedContext
+            :text="quotedText"
+            @clear="clearQuotedText"
+          />
+        </div>
+
+        <!-- Input area -->
+        <div class="input-area">
+          <TextEditor
+            ref="editorRef"
+            v-model="messageInput"
+            class="composer-input"
+            profile="composer"
+            language="markdown"
+            :placeholder="composerPlaceholder"
+            :settings="editorSettings"
+            :prompt-refs="promptsStore.prompts"
+            :skill-refs="enabledSkills"
+            :command-refs="commandRefs"
+            :min-height="42"
+            :max-height="composerMaxHeight"
+            @keydown="handleKeyDown"
+            @paste="handlePasteAttachments"
+            @focus="isFocused = true"
+            @blur="isFocused = false"
+            @height-change="handleEditorHeightChange"
+            @selection-change="handleEditorSelectionChange"
+            @transaction="handleEditorTransaction"
+            @compositionstart="isComposing = true"
+            @compositionend="isComposing = false"
+          />
+        </div>
+
+        <div
+          v-if="voiceCaptureVisible"
+          class="voice-capture-bar"
+          :class="{ recording: isVoiceRecordingActive, transcribing: isVoiceTranscribingActive }"
+          :title="voiceCaptureHint"
+          aria-live="polite"
+          @click.stop
+        >
+          <span class="voice-capture-visual">
+            <Loader2
+              v-if="isVoiceTranscribingActive"
+              class="voice-spinner"
+              :size="14"
+              :stroke-width="2"
+            />
+            <span
+              v-else
+              class="voice-wave"
+              aria-hidden="true"
+            >
+              <span />
+              <span />
+              <span />
+              <span />
+              <span />
+            </span>
+          </span>
+          <span class="voice-capture-main">
+            <span class="voice-capture-title">{{ voiceCaptureTitle }}</span>
+            <span class="voice-capture-detail">{{ voiceCaptureDetail }}</span>
+          </span>
           <button
-            class="voice-btn"
-            :class="{
-              active: isVoiceRecordingActive,
-              transcribing: isVoiceTranscribingActive,
-              'needs-setup': !!voiceConfigurationError && !voiceStore.isRecording,
-            }"
+            v-if="isVoiceRecordingActive"
+            class="voice-capture-stop"
             type="button"
-            :title="voiceButtonTitle"
+            title="Stop recording and transcribe"
             @click="handleVoiceButton"
           >
             <Square
-              v-if="isVoiceRecordingActive"
-              :size="14"
+              :size="12"
               :stroke-width="2.4"
             />
-            <Loader2
-              v-else-if="isVoiceTranscribingActive"
-              class="voice-spinner"
-              :size="16"
-              :stroke-width="2"
-            />
-            <Mic
-              v-else
-              :size="17"
-              :stroke-width="2"
-            />
-          </button>
-          <button
-            class="send-btn"
-            :class="{ 'stop-btn': shouldShowStopAction }"
-            :disabled="isPrimaryActionDisabled"
-            :title="primaryActionTitle"
-            @click="handlePrimaryAction"
-          >
-            <Send
-              v-if="!shouldShowStopAction"
-              :size="18"
-              :stroke-width="2"
-            />
-            <Square
-              v-else
-              :size="16"
-              fill="currentColor"
-              :stroke-width="0"
-            />
+            <span>Stop</span>
           </button>
         </div>
+
+        <div
+          v-if="attachedFiles.length > 0 || isProcessingAttachments"
+          class="attachment-tray"
+          @click.stop
+        >
+          <div
+            v-for="file in attachedFiles"
+            :key="file.id"
+            class="attachment-chip"
+            :class="{ 'is-image': file.mediaType === 'image' }"
+            :title="`${file.fileName} (${formatFileSize(file.size)})`"
+          >
+            <img
+              v-if="file.mediaType === 'image' && file.preview"
+              class="attachment-thumb"
+              :src="file.preview"
+              :alt="file.fileName"
+            >
+            <span
+              v-else
+              class="attachment-file-icon"
+            >
+              <FileText :size="15" />
+            </span>
+            <span class="attachment-info">
+              <span class="attachment-name">{{ file.fileName }}</span>
+              <span class="attachment-size">{{ formatFileSize(file.size) }}</span>
+            </span>
+            <button
+              class="attachment-remove"
+              type="button"
+              :title="`Remove ${file.fileName}`"
+              @click.stop="removeAttachment(file.id)"
+            >
+              <X :size="14" />
+            </button>
+          </div>
+          <div
+            v-if="isProcessingAttachments"
+            class="attachment-chip is-loading"
+          >
+            <Loader2
+              class="attachment-spinner"
+              :size="15"
+            />
+            <span>Reading files...</span>
+          </div>
+        </div>
+
+        <!-- Bottom toolbar -->
+        <div class="composer-toolbar">
+          <div class="toolbar-left">
+            <ModelSelector :session-id="props.sessionId" />
+            <ThinkToggle :session-id="props.sessionId" />
+            <button
+              class="permission-mode-btn"
+              type="button"
+              :class="`mode-${permissionMode}`"
+              :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
+              @click.stop="cyclePermissionMode"
+            >
+              {{ permissionModeLabel }}
+            </button>
+          </div>
+
+          <div
+            class="toolbar-right"
+            @click.stop
+          >
+            <button
+              class="voice-btn"
+              :class="{
+                active: isVoiceRecordingActive,
+                transcribing: isVoiceTranscribingActive,
+                'needs-setup': !!voiceConfigurationError && !voiceStore.isRecording,
+              }"
+              type="button"
+              :title="voiceButtonTitle"
+              @click="handleVoiceButton"
+            >
+              <Square
+                v-if="isVoiceRecordingActive"
+                :size="14"
+                :stroke-width="2.4"
+              />
+              <Loader2
+                v-else-if="isVoiceTranscribingActive"
+                class="voice-spinner"
+                :size="16"
+                :stroke-width="2"
+              />
+              <Mic
+                v-else
+                :size="17"
+                :stroke-width="2"
+              />
+            </button>
+            <button
+              class="send-btn"
+              :class="{ 'stop-btn': shouldShowStopAction }"
+              :disabled="isPrimaryActionDisabled"
+              :title="primaryActionTitle"
+              @click="handlePrimaryAction"
+            >
+              <Send
+                v-if="!shouldShowStopAction"
+                :size="18"
+                :stroke-width="2"
+              />
+              <Square
+                v-else
+                :size="16"
+                fill="currentColor"
+                :stroke-width="0"
+              />
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
     </div>
   </div>
 </template>

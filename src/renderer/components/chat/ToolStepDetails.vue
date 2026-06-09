@@ -14,9 +14,19 @@
       class="detail-note-row"
       :class="{ failed: view.status === 'failed' || view.status === 'rejected' }"
     >
-      <Check v-if="view.status !== 'failed' && view.status !== 'rejected'" :size="13" class="detail-note-icon" />
-      <X v-else :size="13" class="detail-note-icon" />
-      <div class="detail-note">{{ successNote }}</div>
+      <Check
+        v-if="view.status !== 'failed' && view.status !== 'rejected'"
+        :size="13"
+        class="detail-note-icon"
+      />
+      <X
+        v-else
+        :size="13"
+        class="detail-note-icon"
+      />
+      <div class="detail-note">
+        {{ successNote }}
+      </div>
     </div>
 
     <div
@@ -66,8 +76,13 @@
       v-if="view.resultText && !view.step.partialResult && activeDiff"
       class="detail-note-row"
     >
-      <Check :size="13" class="detail-note-icon" />
-      <div class="detail-note">{{ successNote || compactOutput(view.resultText) }}</div>
+      <Check
+        :size="13"
+        class="detail-note-icon"
+      />
+      <div class="detail-note">
+        {{ successNote || compactOutput(view.resultText) }}
+      </div>
     </div>
 
     <div
@@ -95,7 +110,9 @@
       <div class="detail-label">
         {{ view.status === 'rejected' ? 'Rejected' : 'Error' }}
       </div>
-      <div class="error-summary">{{ errorSummary }}</div>
+      <div class="error-summary">
+        {{ errorSummary }}
+      </div>
       <pre
         v-if="failureParametersJson"
         class="error-params"

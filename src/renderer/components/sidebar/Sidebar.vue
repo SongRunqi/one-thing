@@ -427,28 +427,38 @@ onUnmounted(() => {
   text-align: left;
   cursor: pointer;
   -webkit-app-region: no-drag;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .workspace-action:hover {
-  background: color-mix(in srgb, var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover))) 58%, transparent);
-  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
+  transform: translateX(2px);
+}
+
+.workspace-action:hover .workspace-action-icon {
+  color: var(--ui-accent-primary-fg, var(--accent));
+  transform: scale(1.1);
+  opacity: 1;
 }
 
 .workspace-action.active {
-  background: color-mix(in srgb, var(--ui-sidebar-item-active-bg, color-mix(in srgb, var(--ui-accent-subtle-fg, var(--accent-sub, var(--accent-light))) 38%, transparent)) 56%, transparent);
-  color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
-  font-weight: 500;
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-sidebar-item-active-border, var(--ui-accent-primary-fg, var(--accent))) 50%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
+  font-weight: 600;
+  transform: translateX(2px);
 }
 
 .workspace-action-icon {
   flex: 0 0 auto;
   color: currentColor;
-  opacity: 0.88;
+  opacity: 0.82;
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.25s ease, opacity 0.25s ease;
 }
 
 .workspace-action.active .workspace-action-icon {
+  color: var(--ui-accent-primary-fg, var(--accent));
+  transform: scale(1.1);
   opacity: 1;
 }
 

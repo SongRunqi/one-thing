@@ -23,8 +23,8 @@
     />
 
     <div
-      v-memo="[isGenerating, effectiveSessionId, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction]"
       ref="composerContainerRef"
+      v-memo="[isGenerating, effectiveSessionId, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction]"
       class="composer-container"
     >
       <BackgroundJobsStatusBar />

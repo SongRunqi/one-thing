@@ -1,52 +1,52 @@
 <template>
-  <div class="memory-panel-content">
-    <div class="memory-header">
-      <div class="memory-commandbar">
-        <div class="memory-title-block">
-          <div class="memory-title">
-            <Brain
-              :size="18"
-              :stroke-width="1.7"
-            />
-            <span>Memory</span>
-          </div>
-          <div class="memory-state-line">
-            <span :class="['state-indicator', { off: overview?.enabled === false }]">
-              <span class="state-dot" />
-              {{ overview?.enabled === false ? 'Off' : 'On' }}
-            </span>
-            <span>{{ indexStateLabel }}</span>
-          </div>
+  <PageShell :no-padding="activeTab === 'profile' || activeTab === 'notes'">
+    <template #header>
+      <div class="memory-title-block">
+        <div class="memory-title">
+          <Brain
+            :size="18"
+            :stroke-width="1.7"
+          />
+          <span>Memory</span>
         </div>
-        <div class="memory-actions">
-          <button
-            class="icon-btn"
-            type="button"
-            title="Reveal directory"
-            :disabled="!overview"
-            @click="revealMemoryRoot"
-          >
-            <FolderOpen
-              :size="16"
-              :stroke-width="1.8"
-            />
-          </button>
-          <button
-            class="icon-btn"
-            type="button"
-            title="Refresh"
-            :disabled="loading"
-            @click="loadOverview()"
-          >
-            <RefreshCw
-              :size="16"
-              :stroke-width="1.8"
-              :class="{ spinning: loading }"
-            />
-          </button>
+        <div class="memory-state-line">
+          <span :class="['state-indicator', { off: overview?.enabled === false }]">
+            <span class="state-dot" />
+            {{ overview?.enabled === false ? 'Off' : 'On' }}
+          </span>
+          <span>{{ indexStateLabel }}</span>
         </div>
       </div>
+      <div class="memory-actions">
+        <button
+          class="icon-btn"
+          type="button"
+          title="Reveal directory"
+          :disabled="!overview"
+          @click="revealMemoryRoot"
+        >
+          <FolderOpen
+            :size="16"
+            :stroke-width="1.8"
+          />
+        </button>
+        <button
+          class="icon-btn"
+          type="button"
+          title="Refresh"
+          :disabled="loading"
+          @click="loadOverview()"
+        >
+          <RefreshCw
+            :size="16"
+            :stroke-width="1.8"
+            :class="{ spinning: loading }"
+          />
+        </button>
+      </div>
+    </template>
 
+    <template #tabs>
       <div
         class="memory-tabs"
         role="tablist"
@@ -64,950 +64,785 @@
           <span>{{ tab.label }}</span>
         </button>
       </div>
+    </template>
+
+    <div
+      v-if="error"
+      class="notice error"
+    >
+      {{ error }}
     </div>
 
-    <div class="memory-body">
-      <div
-        v-if="error"
-        class="notice error"
-      >
-        {{ error }}
-      </div>
+    <div
+      v-if="loading && !overview"
+      class="loading-state"
+    >
+      <Loader2
+        :size="26"
+        :stroke-width="1.8"
+        class="spinning"
+      />
+      <span>Loading memory...</span>
+    </div>
 
-      <div
-        v-if="loading && !overview"
-        class="loading-state"
-      >
-        <Loader2
-          :size="26"
-          :stroke-width="1.8"
-          class="spinning"
-        />
-        <span>Loading memory...</span>
-      </div>
-
-      <template v-else-if="activeTab === 'overview'">
-        <div class="overview-stack">
+    <template v-else-if="activeTab === 'overview'">
+      <div class="overview-stack">
+          <!-- Premium Hero Section -->
           <section class="memory-hero">
             <div class="memory-hero-main">
               <span class="section-kicker">What AI knows</span>
               <strong>{{ memoryHeroTitle }}</strong>
               <span>{{ memoryHeroSubtitle }}</span>
             </div>
+            
+            <!-- Elevated Stats Cards Grid -->
             <div
               class="memory-hero-stats"
-              aria-label="Memory summary"
+              aria-label="Memory summary stats"
             >
               <div
                 v-for="stat in memoryHeroStats"
                 :key="stat.id"
+                class="stat-dashboard-card"
               >
-                <strong>{{ stat.value }}</strong>
-                <span>{{ stat.label }}</span>
+                <div class="stat-card-glow" />
+                <span class="stat-card-number">{{ stat.value }}</span>
+                <span class="stat-card-label">{{ stat.label }}</span>
               </div>
             </div>
-            <div class="memory-hero-highlights">
-              <div
-                v-for="highlight in memoryHeroHighlights"
-                :key="highlight.id"
-                class="memory-highlight"
-              >
-                <span>{{ highlight.label }}</span>
-                <strong>{{ highlight.title }}</strong>
-                <p>{{ highlight.body }}</p>
+
+            <!-- Highlights Grid -->
+            <div class="memory-highlights-section">
+              <div class="section-subheader">
+                <span class="section-kicker">Key Insights</span>
+                <strong>Pinned memory elements</strong>
+              </div>
+              <div class="memory-hero-highlights">
+                <div
+                  v-for="highlight in memoryHeroHighlights"
+                  :key="highlight.id"
+                  class="memory-highlight-card"
+                >
+                  <span class="highlight-tag">{{ highlight.label }}</span>
+                  <strong class="highlight-title">{{ highlight.title }}</strong>
+                  <p class="highlight-body">{{ highlight.body }}</p>
+                </div>
               </div>
             </div>
           </section>
 
+          <!-- Chronological Activity Timeline Feed -->
           <section
-            class="memory-activity"
+            class="memory-activity-section memory-activity"
             aria-labelledby="memory-activity-title"
           >
-            <div class="overview-domain-head">
-              <span class="section-kicker">Activity</span>
+            <div class="section-subheader padding-x">
+              <span class="section-kicker">Updates Feed</span>
               <strong id="memory-activity-title">What AI learned recently</strong>
             </div>
-            <div class="recent-memory-list">
+            
+            <div class="activity-timeline">
               <div
-                v-for="activity in recentMemoryActivity"
+                v-for="(activity, idx) in recentMemoryActivity"
                 :key="activity.id"
-                class="recent-memory-row"
+                class="timeline-item-row"
               >
-                <span>
-                  <strong>{{ activity.title }}</strong>
-                  <small>{{ activity.meta }}</small>
-                </span>
-                <p>{{ activity.body }}</p>
+                <div class="timeline-trail">
+                  <div class="timeline-dot" />
+                  <div v-if="idx < recentMemoryActivity.length - 1" class="timeline-line" />
+                </div>
+                <div class="timeline-card">
+                  <div class="timeline-card-header">
+                    <strong class="timeline-card-title">{{ activity.title }}</strong>
+                    <span class="timeline-card-time">{{ activity.meta }}</span>
+                  </div>
+                  <p class="timeline-card-body">{{ activity.body }}</p>
+                </div>
               </div>
             </div>
           </section>
 
-          <details
-            :class="['diagnostics-panel', 'diagnostics-domain', diagnosticsTone]"
-          >
-            <summary>
-              <span>
-                <strong>Diagnostics</strong>
-                <small>How memory is operating</small>
-              </span>
-              <em>{{ diagnosticsSummary }}</em>
-            </summary>
-            <div class="diagnostics-content">
+          <!-- Themed Collapsible Diagnostics Panel Card -->
+          <div :class="['diagnostics-card', 'memory-surface', diagnosticsTone]">
+            <div class="diagnostics-toggle-header" @click="diagnosticsOpen = !diagnosticsOpen">
+              <div class="diagnostics-summary-info diagnostics-domain">
+                <Info :size="16" class="diagnostics-icon" />
+                <span>Diagnostics</span>
+                <small>How memory is operating & database paths</small>
+              </div>
+              <div class="diagnostics-state-pill">
+                <span class="state-pill-text">{{ diagnosticsSummary }}</span>
+                <ChevronDown :size="16" :class="['chevron-icon', { rotated: diagnosticsOpen }]" />
+              </div>
+            </div>
+            
+            <div v-show="diagnosticsOpen" class="diagnostics-expanded-body">
               <div class="health-cards">
                 <div
                   v-for="card in healthCards"
                   :key="card.id"
-                  :class="['health-card', card.tone]"
+                  :class="['health-card-widget', card.tone]"
                 >
-                  <span class="health-card-dot" />
-                  <span>
-                    <strong>{{ card.title }}</strong>
-                    <small>{{ card.detail }}</small>
-                  </span>
-                  <em>{{ card.status }}</em>
+                  <span class="health-indicator-dot" />
+                  <div class="health-card-main">
+                    <span class="health-card-title">{{ card.title }}</span>
+                    <span class="health-card-detail">{{ card.detail }}</span>
+                  </div>
+                  <em class="health-card-status">{{ card.status }}</em>
                 </div>
               </div>
 
+              <!-- Inline Errors -->
               <div
                 v-if="hasMemoryErrors"
-                class="diagnostic-errors"
+                class="diagnostic-errors-block"
               >
-                <div
-                  v-if="overview?.status.lastError"
-                  class="inline-error"
-                >
-                  Index: {{ overview.status.lastError }}
+                <div v-if="overview?.status.lastError" class="inline-error-badge">
+                  <span>Index Error:</span> {{ overview.status.lastError }}
                 </div>
-                <div
-                  v-if="overview?.status.lastCaptureError"
-                  class="inline-error"
-                >
-                  Capture: {{ overview.status.lastCaptureError }}
+                <div v-if="overview?.status.lastCaptureError" class="inline-error-badge">
+                  <span>Capture Error:</span> {{ overview.status.lastCaptureError }}
                 </div>
-                <div
-                  v-if="overview?.status.lastFlushError"
-                  class="inline-error"
-                >
-                  Flush: {{ overview.status.lastFlushError }}
+                <div v-if="overview?.status.lastFlushError" class="inline-error-badge">
+                  <span>Flush Error:</span> {{ overview.status.lastFlushError }}
                 </div>
-                <div
-                  v-if="overview?.dreaming.lastError"
-                  class="inline-error"
-                >
-                  Dreaming: {{ overview.dreaming.lastError }}
+                <div v-if="overview?.dreaming.lastError" class="inline-error-badge">
+                  <span>Dreaming Error:</span> {{ overview.dreaming.lastError }}
                 </div>
               </div>
 
-              <div class="path-grid">
-                <span>Root</span>
-                <code>{{ overview?.root || '...' }}</code>
-                <span>Memory dir</span>
-                <code>{{ overview?.memoryDir || '...' }}</code>
-                <span>Profile</span>
-                <code>{{ overview?.soulPath || '...' }}</code>
-                <span>AI notes</span>
-                <code>{{ overview?.memoryPath || '...' }}</code>
-                <span>Dreams</span>
-                <code>{{ overview?.dreamsPath || '...' }}</code>
-                <span>Today</span>
-                <code>{{ overview?.todayPath || '...' }}</code>
-                <span>Index DB</span>
-                <code>{{ overview?.dbPath || '...' }}</code>
+              <!-- Truncated Paths Grid with Tooltips and Quick Action buttons -->
+              <div class="path-grid-container">
+                <div v-for="path in pathsInfo" :key="path.label" class="path-info-row">
+                  <span class="path-info-label">{{ path.label }}</span>
+                  <div class="path-info-value-block">
+                    <code class="path-code-display" :title="path.value">{{ path.truncatedValue }}</code>
+                    <button
+                      class="path-copy-button"
+                      type="button"
+                      title="Copy full path"
+                      @click="copyText(path.value)"
+                    >
+                      <Copy :size="12" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </details>
+          </div>
         </div>
       </template>
 
       <template v-else-if="activeTab === 'profile'">
         <div class="memory-tab-page profile-page">
-          <section class="memory-tab-intro profile-intro">
-            <div class="tab-intro-main">
-              <span class="section-kicker">Profile</span>
-              <strong>Shape what AI knows about you</strong>
-              <span>Review durable facts, entities, and relationships before they steer future conversations.</span>
-            </div>
-            <div class="tab-intro-stats">
-              <span>
-                <strong>{{ activeGraphFactCount }}</strong>
-                <small>Active facts</small>
-              </span>
-              <span>
-                <strong>{{ graphEntities.length }}</strong>
-                <small>Entities</small>
-              </span>
-              <span>
-                <strong>{{ graphRelations.length }}</strong>
-                <small>Connections</small>
-              </span>
-            </div>
-            <div class="tab-intro-actions">
-              <form
-                class="search-row"
-                @submit.prevent="loadGraph"
-              >
-                <input
-                  v-model="graphSearch"
-                  class="memory-input"
-                  type="text"
-                  placeholder="Search profile..."
-                  spellcheck="false"
-                >
-                <button
-                  class="primary-btn"
-                  type="submit"
-                  :disabled="profileLoading"
-                >
-                  <Search
-                    :size="15"
-                    :stroke-width="1.8"
-                  />
-                  <span>Search</span>
-                </button>
-              </form>
-              <div class="toolbar-actions">
-                <button
-                  class="secondary-action inline"
-                  type="button"
-                  @click="newGraphRecord"
-                >
-                  {{ graphView === 'entities' ? 'New entity' : graphView === 'relations' ? 'New connection' : 'New fact' }}
-                </button>
-                <button
-                  class="secondary-action inline"
-                  type="button"
-                  :disabled="profileLoading"
-                  @click="loadGraph"
-                >
-                  Refresh
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <div class="segmented graph-tabs">
-            <button
-              :class="{ active: graphView === 'observations' }"
-              type="button"
-              @click="graphView = 'observations'"
-            >
-              Facts {{ graphObservations.length }}
-            </button>
-            <button
-              :class="{ active: graphView === 'relations' }"
-              type="button"
-              @click="graphView = 'relations'"
-            >
-              Connections {{ graphRelations.length }}
-            </button>
-            <button
-              :class="{ active: graphView === 'entities' }"
-              type="button"
-              @click="graphView = 'entities'"
-            >
-              Entities {{ graphEntities.length }}
-            </button>
-            <button
-              :class="{ active: graphView === 'duplicates' }"
-              type="button"
-              @click="graphView = 'duplicates'"
-            >
-              Duplicates {{ graphDuplicates.length }}
-            </button>
-          </div>
-
-          <div class="profile-layout graph-layout memory-workspace">
+          <div class="profile-layout graph-layout memory-workspace" :class="{ 'detail-active': profileDetailActive }">
             <section class="profile-list-surface memory-surface">
               <div class="workspace-head">
-                <span>
-                  <strong>{{ profileListTitle }}</strong>
-                  <small>{{ profileListSubtitle }}</small>
-                </span>
-                <em>{{ graphCurrentListCount }} items</em>
-              </div>
-              <div class="profile-list">
-            <template v-if="graphView === 'observations'">
-              <button
-                v-for="memory in graphObservations"
-                :key="memory.id"
-                :class="['profile-row', { active: graphObservationForm.id === memory.id }]"
-                type="button"
-                @click="selectGraphObservation(memory)"
-              >
-                <span class="profile-row-top">
-                  <code :title="`${memory.entityDisplayName || memory.entityId} / ${memory.slot}`">{{ observationActivityTitle(memory) }}</code>
-                  <span>{{ memory.confidence.toFixed(2) }}</span>
-                </span>
-                <strong>{{ memory.text }}</strong>
-                <span>{{ memory.kind }} · {{ memory.status }} · {{ formatMaybeDate(memory.updatedAt) }}</span>
-                <span
-                  v-if="graphObservationForm.id === memory.id"
-                  class="profile-expanded"
-                >
-                  <span class="profile-detail-grid">
-                    <span class="profile-detail-item">
-                      <span>Entity</span>
-                      <code>{{ memory.entityDisplayName || memory.entityId }}</code>
-                    </span>
-                    <span class="profile-detail-item">
-                      <span>Slot</span>
-                      <code>{{ memory.slot }}</code>
-                    </span>
-                    <span class="profile-detail-item">
-                      <span>Confidence</span>
-                      <strong>{{ memory.confidence.toFixed(2) }}</strong>
-                    </span>
-                    <span class="profile-detail-item">
-                      <span>Source</span>
-                      <code>{{ memory.source }}</code>
-                    </span>
-                  </span>
-                  <span class="profile-detail-text">
-                    <span>Value</span>
-                    <strong>{{ memory.value }}</strong>
-                  </span>
-                  <span class="profile-detail-text">
-                    <span>Text</span>
-                    <strong>{{ memory.text }}</strong>
-                  </span>
-                  <span
-                    v-if="memory.evidence"
-                    class="profile-detail-text"
-                  >
-                    <span>Evidence</span>
-                    <strong>{{ memory.evidence }}</strong>
-                  </span>
-                </span>
-              </button>
-            </template>
-            <template v-else-if="graphView === 'relations'">
-              <button
-                v-for="relation in graphRelations"
-                :key="relation.id"
-                :class="['profile-row', { active: graphRelationForm.id === relation.id }]"
-                type="button"
-                @click="selectGraphRelation(relation)"
-              >
-                <span class="profile-row-top">
-                  <code :title="`${relation.fromDisplayName || relation.fromEntityId} → ${relation.toDisplayName || relation.toEntityId}`">{{ relation.fromDisplayName || relation.fromEntityId }} → {{ relation.toDisplayName || relation.toEntityId }}</code>
-                  <span>{{ relation.confidence.toFixed(2) }}</span>
-                </span>
-                <strong>{{ relation.relationType }}</strong>
-                <span>{{ relation.text }}</span>
-                <span
-                  v-if="graphRelationForm.id === relation.id"
-                  class="profile-expanded"
-                >
-                  <span class="profile-detail-grid">
-                    <span class="profile-detail-item">
-                      <span>From</span>
-                      <code>{{ relation.fromDisplayName || relation.fromEntityId }}</code>
-                    </span>
-                    <span class="profile-detail-item">
-                      <span>Relation</span>
-                      <code>{{ relation.relationType }}</code>
-                    </span>
-                    <span class="profile-detail-item">
-                      <span>To</span>
-                      <code>{{ relation.toDisplayName || relation.toEntityId }}</code>
-                    </span>
-                    <span class="profile-detail-item">
-                      <span>Confidence</span>
-                      <strong>{{ relation.confidence.toFixed(2) }}</strong>
-                    </span>
-                  </span>
-                  <span class="profile-detail-text">
-                    <span>Text</span>
-                    <strong>{{ relation.text }}</strong>
-                  </span>
-                  <span
-                    v-if="relation.evidence"
-                    class="profile-detail-text"
-                  >
-                    <span>Evidence</span>
-                    <strong>{{ relation.evidence }}</strong>
-                  </span>
-                </span>
-              </button>
-            </template>
-            <template v-else-if="graphView === 'entities'">
-              <button
-                v-for="entity in graphEntities"
-                :key="entity.id"
-                :class="['profile-row', { active: graphEntityForm.id === entity.id }]"
-                type="button"
-                @click="selectGraphEntity(entity)"
-              >
-                <span class="profile-row-top">
-                  <code :title="entity.id">{{ entity.id }}</code>
-                  <span>{{ entity.confidence.toFixed(2) }}</span>
-                </span>
-                <strong>{{ entity.displayName }}</strong>
-                <span>{{ entity.entityType }} · {{ formatMaybeDate(entity.updatedAt) }}</span>
-                <span
-                  v-if="graphEntityForm.id === entity.id"
-                  class="profile-expanded"
-                >
-                  <span class="profile-detail-grid">
-                    <span class="profile-detail-item">
-                      <span>Entity id</span>
-                      <code>{{ entity.id }}</code>
-                    </span>
-                    <span class="profile-detail-item">
-                      <span>Type</span>
-                      <code>{{ entity.entityType }}</code>
-                    </span>
-                    <span class="profile-detail-item">
-                      <span>Confidence</span>
-                      <strong>{{ entity.confidence.toFixed(2) }}</strong>
-                    </span>
-                    <span class="profile-detail-item">
-                      <span>Source</span>
-                      <code>{{ entity.source }}</code>
-                    </span>
-                  </span>
-                  <span
-                    v-if="entity.aliases.length"
-                    class="profile-detail-text"
-                  >
-                    <span>Aliases</span>
-                    <strong>{{ entity.aliases.join(', ') }}</strong>
-                  </span>
-                  <span
-                    v-if="entity.evidence"
-                    class="profile-detail-text"
-                  >
-                    <span>Evidence</span>
-                    <strong>{{ entity.evidence }}</strong>
-                  </span>
-                </span>
-              </button>
-            </template>
-            <template v-else-if="graphView === 'duplicates'">
-              <div
-                v-for="duplicate in graphDuplicates"
-                :key="duplicate.id"
-                class="profile-row duplicate-row"
-              >
-                <span class="profile-row-top">
-                  <code>{{ duplicate.kind }}</code>
-                  <span>{{ duplicate.score.toFixed(2) }}</span>
-                </span>
-                <strong>{{ duplicate.sourceId }} → {{ duplicate.targetId }}</strong>
-                <span>{{ duplicate.reason }}</span>
-                <div class="action-row">
+                <div class="workspace-head-title-select">
+                  <select v-model="graphView" class="view-select">
+                    <option value="observations">Facts ({{ graphObservations.length }})</option>
+                    <option value="relations">Connections ({{ graphRelations.length }})</option>
+                    <option value="entities">Entities ({{ graphEntities.length }})</option>
+                    <option value="duplicates">Duplicates ({{ graphDuplicates.length }})</option>
+                  </select>
+                </div>
+                <div class="toolbar-actions">
                   <button
-                    class="secondary-action inline"
+                    class="toolbar-action-btn"
                     type="button"
-                    @click="mergeGraphDuplicate(duplicate.id)"
+                    title="Create new record"
+                    @click="newGraphRecord"
                   >
-                    Merge
+                    <Plus :size="15" />
                   </button>
                   <button
-                    class="secondary-action inline"
+                    class="toolbar-action-btn"
                     type="button"
-                    @click="ignoreGraphDuplicate(duplicate.id)"
+                    title="Refresh"
+                    :disabled="profileLoading"
+                    @click="loadGraph"
                   >
-                    Ignore
+                    <RefreshCw :size="14" :class="{ spinning: profileLoading }" />
                   </button>
                 </div>
               </div>
-            </template>
-            <template v-else>
-              <div class="notice compact">
-                Possible duplicates are review-only. Merge or ignore them from the list.
+              <div class="list-search-bar">
+                <Search :size="14" class="search-bar-icon" />
+                <input
+                  v-model="graphSearch"
+                  class="search-bar-input"
+                  type="text"
+                  placeholder="Search profile..."
+                  spellcheck="false"
+                  @keydown.enter="loadGraph"
+                >
               </div>
-            </template>
-            <div
-              v-if="!profileLoading && graphCurrentListCount === 0"
-              class="notice compact"
-            >
-              No profile rows yet.
-            </div>
+              <div class="profile-list">
+                <template v-if="graphView === 'observations'">
+                  <button
+                    v-for="memory in graphObservations"
+                    :key="memory.id"
+                    :class="['profile-row', { active: graphObservationForm.id === memory.id }]"
+                    type="button"
+                    @click="selectGraphObservation(memory)"
+                  >
+                    <span class="profile-row-top">
+                      <code :title="`${memory.entityDisplayName || memory.entityId} / ${memory.slot}`">{{ observationActivityTitle(memory) }}</code>
+                      <span class="confidence-badge">{{ memory.confidence.toFixed(2) }}</span>
+                    </span>
+                    <strong>{{ memory.text }}</strong>
+                    <span class="profile-row-foot">{{ memory.kind }} · {{ memory.status }} · {{ formatMaybeDate(memory.updatedAt) }}</span>
+                  </button>
+                </template>
+                <template v-else-if="graphView === 'relations'">
+                  <button
+                    v-for="relation in graphRelations"
+                    :key="relation.id"
+                    :class="['profile-row', { active: graphRelationForm.id === relation.id }]"
+                    type="button"
+                    @click="selectGraphRelation(relation)"
+                  >
+                    <span class="profile-row-top">
+                      <code :title="`${relation.fromDisplayName || relation.fromEntityId} → ${relation.toDisplayName || relation.toEntityId}`">{{ relation.fromDisplayName || relation.fromEntityId }} → {{ relation.toDisplayName || relation.toEntityId }}</code>
+                      <span class="confidence-badge">{{ relation.confidence.toFixed(2) }}</span>
+                    </span>
+                    <strong>{{ relation.relationType }}</strong>
+                    <span class="profile-row-foot">{{ relation.text }}</span>
+                  </button>
+                </template>
+                <template v-else-if="graphView === 'entities'">
+                  <button
+                    v-for="entity in graphEntities"
+                    :key="entity.id"
+                    :class="['profile-row', { active: graphEntityForm.id === entity.id }]"
+                    type="button"
+                    @click="selectGraphEntity(entity)"
+                  >
+                    <span class="profile-row-top">
+                      <code :title="entity.id">{{ entity.id }}</code>
+                      <span class="confidence-badge">{{ entity.confidence.toFixed(2) }}</span>
+                    </span>
+                    <strong>{{ entity.displayName }}</strong>
+                    <span class="profile-row-foot">{{ entity.entityType }} · {{ formatMaybeDate(entity.updatedAt) }}</span>
+                  </button>
+                </template>
+                <template v-else-if="graphView === 'duplicates'">
+                  <div
+                    v-for="duplicate in graphDuplicates"
+                    :key="duplicate.id"
+                    class="profile-row duplicate-row"
+                  >
+                    <span class="profile-row-top">
+                      <code>{{ duplicate.kind }}</code>
+                      <span class="confidence-badge">{{ duplicate.score.toFixed(2) }}</span>
+                    </span>
+                    <strong>{{ duplicate.sourceId }} → {{ duplicate.targetId }}</strong>
+                    <span>{{ duplicate.reason }}</span>
+                    <div class="action-row">
+                      <button
+                        class="secondary-action inline"
+                        type="button"
+                        @click="mergeGraphDuplicate(duplicate.id)"
+                      >
+                        Merge
+                      </button>
+                      <button
+                        class="secondary-action inline"
+                        type="button"
+                        @click="ignoreGraphDuplicate(duplicate.id)"
+                      >
+                        Ignore
+                      </button>
+                    </div>
+                  </div>
+                </template>
+                <template v-else>
+                  <div class="notice compact">
+                    Possible duplicates are review-only. Merge or ignore them from the list.
+                  </div>
+                </template>
+                <div
+                  v-if="!profileLoading && graphCurrentListCount === 0"
+                  class="notice compact"
+                >
+                  No profile rows yet.
+                </div>
               </div>
             </section>
 
             <section class="profile-editor memory-surface">
               <div class="workspace-head">
+                <button
+                  class="back-btn icon-btn"
+                  type="button"
+                  title="Back to list"
+                  @click="profileDetailActive = false"
+                >
+                  <ArrowLeft :size="16" />
+                </button>
                 <span>
                   <strong>{{ profileEditorTitle }}</strong>
                   <small>{{ profileEditorSubtitle }}</small>
                 </span>
               </div>
-            <template v-if="graphView === 'entities'">
-              <div class="profile-grid">
-                <label>
-                  <span class="setting-label">Type</span>
-                  <select
-                    v-model="graphEntityForm.entityType"
-                    class="memory-select"
-                  >
-                    <option
-                      v-for="type in graphEntityTypes"
-                      :key="type"
-                      :value="type"
-                    >
-                      {{ type }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span class="setting-label">Name</span>
-                  <input
-                    v-model="graphEntityForm.name"
-                    class="memory-input"
-                    type="text"
-                    spellcheck="false"
-                  >
-                </label>
-              </div>
-              <label>
-                <span class="setting-label">Display name</span>
-                <input
-                  v-model="graphEntityForm.displayName"
-                  class="memory-input"
-                  type="text"
-                  spellcheck="true"
-                >
-              </label>
-              <label>
-                <span class="setting-label">Aliases</span>
-                <input
-                  v-model="graphEntityAliases"
-                  class="memory-input"
-                  type="text"
-                  placeholder="comma separated"
-                  spellcheck="false"
-                >
-              </label>
-              <details class="profile-advanced">
-                <summary>Advanced</summary>
-                <label>
-                  <span class="setting-label">Entity id</span>
-                  <input
-                    v-model="graphEntityForm.id"
-                    class="memory-input"
-                    type="text"
-                    placeholder="project:onething"
-                    spellcheck="false"
-                  >
-                </label>
-                <div class="profile-grid">
+              <template v-if="graphView === 'entities'">
+                <div class="editor-scroll-container">
+                  <div class="profile-grid">
+                    <label>
+                      <span class="setting-label">Type</span>
+                      <select
+                        v-model="graphEntityForm.entityType"
+                        class="memory-select"
+                      >
+                        <option
+                          v-for="type in graphEntityTypes"
+                          :key="type"
+                          :value="type"
+                        >
+                          {{ type }}
+                        </option>
+                      </select>
+                    </label>
+                    <label>
+                      <span class="setting-label">Name</span>
+                      <input
+                        v-model="graphEntityForm.name"
+                        class="memory-input"
+                        type="text"
+                        spellcheck="false"
+                      >
+                    </label>
+                  </div>
                   <label>
-                    <span class="setting-label">Confidence</span>
+                    <span class="setting-label">Display name</span>
                     <input
-                      v-model.number="graphEntityForm.confidence"
+                      v-model="graphEntityForm.displayName"
                       class="memory-input"
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.01"
+                      type="text"
+                      spellcheck="true"
                     >
                   </label>
                   <label>
-                    <span class="setting-label">Sensitivity</span>
-                    <select
-                      v-model="graphEntityForm.sensitivity"
-                      class="memory-select"
-                    >
-                      <option value="normal">
-                        Normal
-                      </option>
-                      <option value="sensitive">
-                        Sensitive
-                      </option>
-                      <option value="secret">
-                        Secret
-                      </option>
-                    </select>
-                  </label>
-                </div>
-                <label>
-                  <span class="setting-label">Evidence</span>
-                  <textarea
-                    v-model="graphEntityForm.evidence"
-                    class="memory-textarea compact-area"
-                    spellcheck="true"
-                  />
-                </label>
-              </details>
-              <div class="action-row">
-                <button
-                  class="primary-btn"
-                  type="button"
-                  :disabled="profileSaving || !graphEntityForm.name.trim()"
-                  @click="saveGraphEntity"
-                >
-                  Save
-                </button>
-                <button
-                  class="secondary-action inline danger"
-                  type="button"
-                  :disabled="profileSaving || !graphEntityForm.id || graphEntityForm.id === 'user:self'"
-                  @click="deleteGraphEntity"
-                >
-                  Delete
-                </button>
-              </div>
-            </template>
-
-            <template v-else-if="graphView === 'relations'">
-              <div class="profile-grid">
-                <label>
-                  <span class="setting-label">From</span>
-                  <select
-                    v-model="graphRelationForm.fromEntityId"
-                    class="memory-select"
-                  >
-                    <option
-                      v-for="entity in graphEntities"
-                      :key="entity.id"
-                      :value="entity.id"
-                    >
-                      {{ entity.displayName }} · {{ entity.id }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span class="setting-label">Relation</span>
-                  <input
-                    v-model="graphRelationForm.relationType"
-                    class="memory-input"
-                    type="text"
-                    placeholder="works_on"
-                    spellcheck="false"
-                  >
-                </label>
-                <label>
-                  <span class="setting-label">To</span>
-                  <select
-                    v-model="graphRelationForm.toEntityId"
-                    class="memory-select"
-                  >
-                    <option
-                      v-for="entity in graphEntities"
-                      :key="entity.id"
-                      :value="entity.id"
-                    >
-                      {{ entity.displayName }} · {{ entity.id }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span class="setting-label">Text</span>
-                  <input
-                    v-model="graphRelationForm.text"
-                    class="memory-input"
-                    type="text"
-                    spellcheck="true"
-                  >
-                </label>
-              </div>
-              <details class="profile-advanced">
-                <summary>Advanced</summary>
-                <div
-                  v-if="graphRelationForm.id"
-                  class="profile-id-row"
-                >
-                  <span>ID</span>
-                  <code>{{ graphRelationForm.id }}</code>
-                </div>
-                <div class="profile-grid">
-                  <label>
-                    <span class="setting-label">Confidence</span>
+                    <span class="setting-label">Aliases</span>
                     <input
-                      v-model.number="graphRelationForm.confidence"
+                      v-model="graphEntityAliases"
                       class="memory-input"
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.01"
+                      type="text"
+                      placeholder="comma separated"
+                      spellcheck="false"
                     >
                   </label>
-                  <label>
-                    <span class="setting-label">Status</span>
-                    <select
-                      v-model="graphRelationForm.status"
-                      class="memory-select"
+                  <details class="profile-advanced">
+                    <summary>Advanced</summary>
+                    <div class="advanced-wrapper">
+                      <label>
+                        <span class="setting-label">Entity id</span>
+                        <input
+                          v-model="graphEntityForm.id"
+                          class="memory-input"
+                          type="text"
+                          placeholder="project:onething"
+                          spellcheck="false"
+                        >
+                      </label>
+                      <div class="profile-grid">
+                        <label>
+                          <span class="setting-label">Confidence</span>
+                          <input
+                            v-model.number="graphEntityForm.confidence"
+                            class="memory-input"
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                          >
+                        </label>
+                        <label>
+                          <span class="setting-label">Sensitivity</span>
+                          <select
+                            v-model="graphEntityForm.sensitivity"
+                            class="memory-select"
+                          >
+                            <option value="normal">
+                              Normal
+                            </option>
+                            <option value="sensitive">
+                              Sensitive
+                            </option>
+                            <option value="secret">
+                              Secret
+                            </option>
+                          </select>
+                        </label>
+                      </div>
+                      <label>
+                        <span class="setting-label">Evidence</span>
+                        <textarea
+                          v-model="graphEntityForm.evidence"
+                          class="memory-textarea compact-area"
+                          spellcheck="true"
+                        />
+                      </label>
+                    </div>
+                  </details>
+                  <div class="action-row">
+                    <button
+                      class="primary-btn"
+                      type="button"
+                      :disabled="profileSaving || !graphEntityForm.name.trim()"
+                      @click="saveGraphEntity"
                     >
-                      <option value="active">
-                        Active
-                      </option>
-                      <option value="superseded">
-                        Superseded
-                      </option>
-                      <option value="conflict">
-                        Conflict
-                      </option>
-                      <option value="deleted">
-                        Deleted
-                      </option>
-                    </select>
-                  </label>
-                  <label>
-                    <span class="setting-label">Sensitivity</span>
-                    <select
-                      v-model="graphRelationForm.sensitivity"
-                      class="memory-select"
+                      Save
+                    </button>
+                    <button
+                      class="secondary-action inline danger"
+                      type="button"
+                      :disabled="profileSaving || !graphEntityForm.id || graphEntityForm.id === 'user:self'"
+                      @click="deleteGraphEntity"
                     >
-                      <option value="normal">
-                        Normal
-                      </option>
-                      <option value="sensitive">
-                        Sensitive
-                      </option>
-                      <option value="secret">
-                        Secret
-                      </option>
-                    </select>
-                  </label>
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <label>
-                  <span class="setting-label">Evidence</span>
-                  <textarea
-                    v-model="graphRelationForm.evidence"
-                    class="memory-textarea compact-area"
-                    spellcheck="true"
-                  />
-                </label>
-              </details>
-              <div class="action-row">
-                <button
-                  class="primary-btn"
-                  type="button"
-                  :disabled="profileSaving || !graphRelationForm.fromEntityId || !graphRelationForm.relationType.trim() || !graphRelationForm.toEntityId"
-                  @click="saveGraphRelation"
-                >
-                  Save
-                </button>
-                <button
-                  class="secondary-action inline danger"
-                  type="button"
-                  :disabled="profileSaving || !graphRelationForm.id"
-                  @click="deleteGraphRelation"
-                >
-                  Delete
-                </button>
-              </div>
-            </template>
+              </template>
 
-            <template v-else-if="graphView === 'duplicates'">
-              <div class="review-empty">
-                <strong>Possible duplicates are review-only here.</strong>
-                <span>Use Merge or Ignore from the review list. New facts are created from the Facts tab.</span>
-              </div>
-            </template>
+              <template v-else-if="graphView === 'relations'">
+                <div class="editor-scroll-container">
+                  <div class="profile-grid">
+                    <label>
+                      <span class="setting-label">From</span>
+                      <select
+                        v-model="graphRelationForm.fromEntityId"
+                        class="memory-select"
+                      >
+                        <option
+                          v-for="entity in graphEntities"
+                          :key="entity.id"
+                          :value="entity.id"
+                        >
+                          {{ entity.displayName }} · {{ entity.id }}
+                        </option>
+                      </select>
+                    </label>
+                    <label>
+                      <span class="setting-label">Relation</span>
+                      <input
+                        v-model="graphRelationForm.relationType"
+                        class="memory-input"
+                        type="text"
+                        placeholder="works_on"
+                        spellcheck="false"
+                      >
+                    </label>
+                    <label>
+                      <span class="setting-label">To</span>
+                      <select
+                        v-model="graphRelationForm.toEntityId"
+                        class="memory-select"
+                      >
+                        <option
+                          v-for="entity in graphEntities"
+                          :key="entity.id"
+                          :value="entity.id"
+                        >
+                          {{ entity.displayName }} · {{ entity.id }}
+                        </option>
+                      </select>
+                    </label>
+                    <label>
+                      <span class="setting-label">Text</span>
+                      <input
+                        v-model="graphRelationForm.text"
+                        class="memory-input"
+                        type="text"
+                        spellcheck="true"
+                      >
+                    </label>
+                  </div>
+                  <details class="profile-advanced">
+                    <summary>Advanced</summary>
+                    <div class="advanced-wrapper">
+                      <div
+                        v-if="graphRelationForm.id"
+                        class="profile-id-row"
+                      >
+                        <span>ID</span>
+                        <code>{{ graphRelationForm.id }}</code>
+                      </div>
+                      <div class="profile-grid">
+                        <label>
+                          <span class="setting-label">Confidence</span>
+                          <input
+                            v-model.number="graphRelationForm.confidence"
+                            class="memory-input"
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                          >
+                        </label>
+                        <label>
+                          <span class="setting-label">Status</span>
+                          <select
+                            v-model="graphRelationForm.status"
+                            class="memory-select"
+                          >
+                            <option value="active">
+                              Active
+                            </option>
+                            <option value="superseded">
+                              Superseded
+                            </option>
+                            <option value="conflict">
+                              Conflict
+                            </option>
+                            <option value="deleted">
+                              Deleted
+                            </option>
+                          </select>
+                        </label>
+                        <label>
+                          <span class="setting-label">Sensitivity</span>
+                          <select
+                            v-model="graphRelationForm.sensitivity"
+                            class="memory-select"
+                          >
+                            <option value="normal">
+                              Normal
+                            </option>
+                            <option value="sensitive">
+                              Sensitive
+                            </option>
+                            <option value="secret">
+                              Secret
+                            </option>
+                          </select>
+                        </label>
+                      </div>
+                      <label>
+                        <span class="setting-label">Evidence</span>
+                        <textarea
+                          v-model="graphRelationForm.evidence"
+                          class="memory-textarea compact-area"
+                          spellcheck="true"
+                        />
+                      </label>
+                    </div>
+                  </details>
+                  <div class="action-row">
+                    <button
+                      class="primary-btn"
+                      type="button"
+                      :disabled="profileSaving || !graphRelationForm.fromEntityId || !graphRelationForm.relationType.trim() || !graphRelationForm.toEntityId"
+                      @click="saveGraphRelation"
+                    >
+                      Save
+                    </button>
+                    <button
+                      class="secondary-action inline danger"
+                      type="button"
+                      :disabled="profileSaving || !graphRelationForm.id"
+                      @click="deleteGraphRelation"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </template>
 
-            <template v-else>
-              <div class="profile-grid">
-                <label>
-                  <span class="setting-label">Entity</span>
-                  <select
-                    v-model="graphObservationForm.entityId"
-                    class="memory-select"
-                  >
-                    <option
-                      v-for="entity in graphEntities"
-                      :key="entity.id"
-                      :value="entity.id"
+              <template v-else-if="graphView === 'duplicates'">
+                <div class="editor-scroll-container">
+                  <div class="review-empty">
+                    <strong>Possible duplicates are review-only here.</strong>
+                    <span>Use Merge or Ignore from the review list. New facts are created from the Facts tab.</span>
+                  </div>
+                </div>
+              </template>
+
+              <template v-else>
+                <div class="editor-scroll-container">
+                  <div class="profile-grid">
+                    <label>
+                      <span class="setting-label">Entity</span>
+                      <select
+                        v-model="graphObservationForm.entityId"
+                        class="memory-select"
+                      >
+                        <option
+                          v-for="entity in graphEntities"
+                          :key="entity.id"
+                          :value="entity.id"
+                        >
+                          {{ entity.displayName }} · {{ entity.id }}
+                        </option>
+                      </select>
+                    </label>
+                    <label>
+                      <span class="setting-label">Kind</span>
+                      <select
+                        v-model="graphObservationForm.kind"
+                        class="memory-select"
+                      >
+                        <option
+                          v-for="kind in graphObservationKinds"
+                          :key="kind"
+                          :value="kind"
+                        >
+                          {{ kind }}
+                        </option>
+                      </select>
+                    </label>
+                    <label>
+                      <span class="setting-label">Slot</span>
+                      <input
+                        v-model="graphObservationForm.slot"
+                        class="memory-input"
+                        type="text"
+                        placeholder="name"
+                        spellcheck="false"
+                      >
+                    </label>
+                    <label>
+                      <span class="setting-label">Value</span>
+                      <input
+                        v-model="graphObservationForm.value"
+                        class="memory-input"
+                        type="text"
+                        spellcheck="true"
+                      >
+                    </label>
+                  </div>
+                  <label>
+                    <span class="setting-label">Text</span>
+                    <textarea
+                      v-model="graphObservationForm.text"
+                      class="memory-textarea"
+                      spellcheck="true"
+                    />
+                  </label>
+                  <details class="profile-advanced">
+                    <summary>Advanced</summary>
+                    <div class="advanced-wrapper">
+                      <div
+                        v-if="graphObservationForm.id"
+                        class="profile-id-row"
+                      >
+                        <span>ID</span>
+                        <code>{{ graphObservationForm.id }}</code>
+                      </div>
+                      <div class="profile-grid">
+                        <label>
+                          <span class="setting-label">Confidence</span>
+                          <input
+                            v-model.number="graphObservationForm.confidence"
+                            class="memory-input"
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                          >
+                        </label>
+                        <label>
+                          <span class="setting-label">Status</span>
+                          <select
+                            v-model="graphObservationForm.status"
+                            class="memory-select"
+                          >
+                            <option value="active">
+                              Active
+                            </option>
+                            <option value="superseded">
+                              Superseded
+                            </option>
+                            <option value="conflict">
+                              Conflict
+                            </option>
+                            <option value="deleted">
+                              Deleted
+                            </option>
+                          </select>
+                        </label>
+                        <label>
+                          <span class="setting-label">Sensitivity</span>
+                          <select
+                            v-model="graphObservationForm.sensitivity"
+                            class="memory-select"
+                          >
+                            <option value="normal">
+                              Normal
+                            </option>
+                            <option value="sensitive">
+                              Sensitive
+                            </option>
+                            <option value="secret">
+                              Secret
+                            </option>
+                          </select>
+                        </label>
+                      </div>
+                      <label>
+                        <span class="setting-label">Evidence</span>
+                        <textarea
+                          v-model="graphObservationForm.evidence"
+                          class="memory-textarea compact-area"
+                          spellcheck="true"
+                        />
+                      </label>
+                    </div>
+                  </details>
+                  <div class="action-row">
+                    <button
+                      class="primary-btn"
+                      type="button"
+                      :disabled="profileSaving || !graphObservationForm.entityId || !graphObservationForm.slot.trim() || !graphObservationForm.value.trim()"
+                      @click="saveGraphObservation"
                     >
-                      {{ entity.displayName }} · {{ entity.id }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span class="setting-label">Kind</span>
-                  <select
-                    v-model="graphObservationForm.kind"
-                    class="memory-select"
-                  >
-                    <option
-                      v-for="kind in graphObservationKinds"
-                      :key="kind"
-                      :value="kind"
+                      Save
+                    </button>
+                    <button
+                      class="secondary-action inline danger"
+                      type="button"
+                      :disabled="profileSaving || !graphObservationForm.id"
+                      @click="deleteGraphObservation"
                     >
-                      {{ kind }}
-                    </option>
-                  </select>
-                </label>
-                <label>
-                  <span class="setting-label">Slot</span>
-                  <input
-                    v-model="graphObservationForm.slot"
-                    class="memory-input"
-                    type="text"
-                    placeholder="name"
-                    spellcheck="false"
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </template>
+              <div
+                v-if="graphAudit.length"
+                class="audit-list profile-advanced"
+              >
+                <details>
+                  <summary>Audit</summary>
+                  <div
+                    v-for="event in graphAudit"
+                    :key="event.id"
+                    class="audit-row"
                   >
-                </label>
-                <label>
-                  <span class="setting-label">Value</span>
-                  <input
-                    v-model="graphObservationForm.value"
-                    class="memory-input"
-                    type="text"
-                    spellcheck="true"
-                  >
-                </label>
+                    <span>{{ event.action }}</span>
+                    <span>{{ formatMaybeDate(event.createdAt) }}</span>
+                  </div>
+                </details>
               </div>
-              <label>
-                <span class="setting-label">Text</span>
-                <textarea
-                  v-model="graphObservationForm.text"
-                  class="memory-textarea"
-                  spellcheck="true"
-                />
-              </label>
-              <details class="profile-advanced">
-                <summary>Advanced</summary>
-                <div
-                  v-if="graphObservationForm.id"
-                  class="profile-id-row"
-                >
-                  <span>ID</span>
-                  <code>{{ graphObservationForm.id }}</code>
-                </div>
-                <div class="profile-grid">
-                  <label>
-                    <span class="setting-label">Confidence</span>
-                    <input
-                      v-model.number="graphObservationForm.confidence"
-                      class="memory-input"
-                      type="number"
-                      min="0"
-                      max="1"
-                      step="0.01"
-                    >
-                  </label>
-                  <label>
-                    <span class="setting-label">Status</span>
-                    <select
-                      v-model="graphObservationForm.status"
-                      class="memory-select"
-                    >
-                      <option value="active">
-                        Active
-                      </option>
-                      <option value="superseded">
-                        Superseded
-                      </option>
-                      <option value="conflict">
-                        Conflict
-                      </option>
-                      <option value="deleted">
-                        Deleted
-                      </option>
-                    </select>
-                  </label>
-                  <label>
-                    <span class="setting-label">Sensitivity</span>
-                    <select
-                      v-model="graphObservationForm.sensitivity"
-                      class="memory-select"
-                    >
-                      <option value="normal">
-                        Normal
-                      </option>
-                      <option value="sensitive">
-                        Sensitive
-                      </option>
-                      <option value="secret">
-                        Secret
-                      </option>
-                    </select>
-                  </label>
-                </div>
-                <label>
-                  <span class="setting-label">Evidence</span>
-                  <textarea
-                    v-model="graphObservationForm.evidence"
-                    class="memory-textarea compact-area"
-                    spellcheck="true"
-                  />
-                </label>
-              </details>
-              <div class="action-row">
-                <button
-                  class="primary-btn"
-                  type="button"
-                  :disabled="profileSaving || !graphObservationForm.entityId || !graphObservationForm.slot.trim() || !graphObservationForm.value.trim()"
-                  @click="saveGraphObservation"
-                >
-                  Save
-                </button>
-                <button
-                  class="secondary-action inline danger"
-                  type="button"
-                  :disabled="profileSaving || !graphObservationForm.id"
-                  @click="deleteGraphObservation"
-                >
-                  Delete
-                </button>
-              </div>
-            </template>
-            <div
-              v-if="graphAudit.length"
-              class="audit-list profile-advanced"
-            >
-              <details>
-                <summary>Audit</summary>
-                <div
-                  v-for="event in graphAudit"
-                  :key="event.id"
-                  class="audit-row"
-                >
-                  <span>{{ event.action }}</span>
-                  <span>{{ formatMaybeDate(event.createdAt) }}</span>
-                </div>
-              </details>
-            </div>
-          </section>
-        </div>
+            </section>
+          </div>
         </div>
       </template>
-
       <template v-else-if="activeTab === 'notes'">
         <div class="memory-tab-page notes-page">
-          <section class="memory-tab-intro notes-intro">
-            <div class="tab-intro-main">
-              <span class="section-kicker">Notes</span>
-              <strong>Review raw memory notes</strong>
-              <span>Use notes as source evidence; keep the user-facing profile clean and the raw capture editable.</span>
-            </div>
-            <div class="tab-intro-stats">
-              <span>
-                <strong>{{ noteCount('ai') }}</strong>
-                <small>AI notes</small>
-              </span>
-              <span>
-                <strong>{{ noteCount('daily') }}</strong>
-                <small>Daily captures</small>
-              </span>
-              <span>
-                <strong>{{ noteCount('dreams') }}</strong>
-                <small>Reflections</small>
-              </span>
-            </div>
-            <div class="segmented notes-tabs">
-              <button
-                v-for="filter in noteFilters"
-                :key="filter.id"
-                :class="{ active: noteFilter === filter.id }"
-                type="button"
-                @click="noteFilter = filter.id"
-              >
-                {{ filter.label }} {{ noteCount(filter.id) }}
-              </button>
-            </div>
-          </section>
-
-          <div class="notes-workspace memory-workspace">
+          <div class="notes-workspace memory-workspace" :class="{ 'detail-active': notesDetailActive }">
             <section class="notes-list-surface memory-surface">
               <div class="workspace-head">
-                <span>
-                  <strong>Memory notes</strong>
-                  <small>{{ visibleFiles.length }} visible notes</small>
-                </span>
+                <div class="workspace-head-title-select">
+                  <select v-model="noteFilter" class="view-select">
+                    <option value="all">All notes ({{ noteCount('all') }})</option>
+                    <option value="ai">AI notes ({{ noteCount('ai') }})</option>
+                    <option value="daily">Daily captures ({{ noteCount('daily') }})</option>
+                    <option value="dreams">Reflection reports ({{ noteCount('dreams') }})</option>
+                  </select>
+                </div>
               </div>
               <div class="file-list">
                 <button
@@ -1037,106 +872,124 @@
               </div>
             </section>
 
-          <div
-            v-if="selectedFile"
-            class="viewer memory-surface"
-          >
-            <div class="viewer-header">
-              <span>
-                <strong>{{ selectedFileDisplayTitle }}</strong>
-                <small>{{ selectedFile.relativePath }}:{{ selectedFile.startLine }}-{{ selectedFile.endLine }}</small>
-              </span>
-              <em :class="['save-state', { dirty: selectedFileIsDirty }]">{{ selectedFileStatus }}</em>
-              <button
-                class="text-btn"
-                type="button"
-                :disabled="savingFile || !selectedFileIsDirty"
-                @click="saveSelectedFile"
-              >
-                Save
-              </button>
-              <button
-                class="text-btn"
-                type="button"
-                @click="readSelectedFile(undefined, true)"
-              >
-                Reload
-              </button>
-              <button
-                class="text-btn"
-                type="button"
-                @click="openSelectedPath"
-              >
-                Open
-              </button>
-            </div>
-            <textarea
-              v-model="selectedFileText"
-              class="memory-editor"
-              spellcheck="true"
-            />
             <div
-              v-if="selectedFile.truncated"
-              class="notice compact"
+              v-if="selectedFile"
+              class="viewer memory-surface"
             >
-              File is truncated in the editor.
+              <div class="viewer-header">
+                <button
+                  class="back-btn icon-btn"
+                  type="button"
+                  title="Back to list"
+                  @click="notesDetailActive = false"
+                >
+                  <ArrowLeft :size="16" />
+                </button>
+                <span>
+                  <strong>{{ selectedFileDisplayTitle }}</strong>
+                  <small>{{ selectedFile.relativePath }}:{{ selectedFile.startLine }}-{{ selectedFile.endLine }}</small>
+                </span>
+                
+                <div class="save-status-indicator">
+                  <span :class="['status-dot', selectedFileIsDirty ? 'dirty' : 'saved', { pulsing: savingFile }]" />
+                  <span>{{ selectedFileStatus }}</span>
+                </div>
+
+                <div class="notes-editor-tabs segmented">
+                  <button
+                    :class="{ active: notesMode === 'edit' }"
+                    type="button"
+                    @click="notesMode = 'edit'"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    :class="{ active: notesMode === 'preview' }"
+                    type="button"
+                    @click="notesMode = 'preview'"
+                  >
+                    Preview
+                  </button>
+                </div>
+
+                <button
+                  class="text-btn"
+                  type="button"
+                  :disabled="savingFile || !selectedFileIsDirty"
+                  @click="saveSelectedFile"
+                >
+                  Save
+                </button>
+                <button
+                  class="text-btn"
+                  type="button"
+                  @click="readSelectedFile(undefined, true)"
+                >
+                  Reload
+                </button>
+                <button
+                  class="text-btn"
+                  type="button"
+                  @click="openSelectedPath"
+                >
+                  Open
+                </button>
+              </div>
+
+              <!-- Toggleable Editor / Preview Mode -->
+              <div class="notes-viewer-body">
+                <textarea
+                  v-if="notesMode === 'edit'"
+                  v-model="selectedFileText"
+                  class="memory-editor"
+                  spellcheck="true"
+                  placeholder="Start typing memory notes..."
+                />
+                <div
+                  v-else
+                  class="memory-preview-container md-body"
+                >
+                  <StaticMarkdown :content="selectedFileText" />
+                </div>
+              </div>
+
+              <div
+                v-if="selectedFile.truncated"
+                class="notice compact"
+              >
+                File is truncated in the editor.
+              </div>
             </div>
           </div>
         </div>
-        </div>
       </template>
-
       <template v-else-if="activeTab === 'search'">
         <div class="memory-tab-page search-page">
-          <section class="memory-tab-intro search-intro">
-            <div class="tab-intro-main">
-              <span class="section-kicker">Recall and capture</span>
-              <strong>Find or add memory</strong>
-              <span>Search what AI can recall, capture a fresh note, then review the evidence before jumping into Profile or Notes.</span>
-            </div>
-          </section>
-
           <div class="search-workspace memory-workspace">
             <section class="task-surface search-surface memory-surface">
-              <div class="section-head">
-                <div>
-                  <span class="section-kicker">Recall</span>
-                  <strong>Recall memory</strong>
-                  <small>Search facts, profile records, and raw notes.</small>
-                </div>
+              <div class="workspace-head borderless">
+                <span class="workspace-head-title">Recall memory</span>
               </div>
               <form
-                class="search-row"
+                class="search-bar-form"
                 @submit.prevent="runSearch"
               >
-                <input
-                  v-model="searchQuery"
-                  class="memory-input"
-                  type="text"
-                  placeholder="Search memory..."
-                  spellcheck="false"
-                >
-                <button
-                  class="primary-btn"
-                  type="submit"
-                  :disabled="searching || !searchQuery.trim()"
-                >
-                  <Search
-                    :size="15"
-                    :stroke-width="1.8"
-                  />
-                  <span>Search</span>
-                </button>
+                <div class="search-bar-container">
+                  <Search :size="14" class="search-bar-icon" />
+                  <input
+                    v-model="searchQuery"
+                    class="search-bar-input"
+                    type="text"
+                    placeholder="Search memory..."
+                    spellcheck="false"
+                  >
+                </div>
               </form>
             </section>
 
             <section class="task-surface capture-surface memory-surface">
-              <div class="section-head">
-                <div>
-                  <span class="section-kicker">Capture</span>
-                  <strong>Append note</strong>
-                  <small>Save a quick observation to today&apos;s memory note.</small>
-                </div>
+              <div class="workspace-head borderless">
+                <span class="workspace-head-title">Append note</span>
               </div>
               <div class="append-box">
                 <div class="append-top">
@@ -1183,13 +1036,10 @@
               </div>
             </section>
           </div>
-
           <section class="task-surface results-surface memory-surface">
-            <div class="section-head">
-              <div>
-                <span class="section-kicker">Review</span>
-                <strong>{{ searchStatusLabel }}</strong>
-                <small>Open graph matches in Profile and note matches in Notes.</small>
+            <div class="workspace-head borderless">
+              <div class="workspace-head-title-select">
+                <span class="workspace-head-title">Review: {{ searchStatusLabel }}</span>
               </div>
             </div>
             <div
@@ -1223,7 +1073,9 @@
                 @click="openSearchHit(hit)"
               >
                 <span class="result-path">{{ searchHitTitle(hit) }}</span>
-                <span class="result-score">{{ hit.score.toFixed(3) }}</span>
+                <span :class="['strength-badge', searchHitStrength(hit.score).tone]">
+                  {{ searchHitStrength(hit.score).label }}
+                </span>
                 <span class="result-meta">{{ searchHitMeta(hit) }}</span>
                 <span class="result-content">{{ hit.content }}</span>
               </button>
@@ -1231,12 +1083,11 @@
           </section>
         </div>
       </template>
-
-    </div>
-  </div>
+  </PageShell>
 </template>
 
 <script setup lang="ts">
+import PageShell from '../common/PageShell.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import {
   BookOpen,
@@ -1248,7 +1099,14 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  ArrowLeft,
+  Copy,
+  Check,
+  ExternalLink,
+  ChevronDown,
+  Info
 } from 'lucide-vue-next'
+import StaticMarkdown from '../chat/message/StaticMarkdown.vue'
 import { useSessionsStore } from '@/stores/sessions'
 import type {
   MemoryGraphAuditEvent,
@@ -1299,6 +1157,11 @@ interface HealthCard {
 
 const sessionsStore = useSessionsStore()
 const activeAgentId = computed(() => sessionsStore.currentSession?.agentId || 'default')
+
+const profileDetailActive = ref(false)
+const notesDetailActive = ref(false)
+const notesMode = ref<'edit' | 'preview'>('edit')
+const autoSaveTimer = ref<NodeJS.Timeout | null>(null)
 
 const overview = ref<MemoryOverview | null>(null)
 const loading = ref(false)
@@ -1685,6 +1548,13 @@ watch(
 )
 
 watch(
+  () => graphView.value,
+  () => {
+    profileDetailActive.value = false
+  }
+)
+
+watch(
   () => noteFilter.value,
   async () => {
     if (activeTab.value === 'notes' && overview.value) {
@@ -1700,6 +1570,59 @@ watch(
   },
 )
 
+function scheduleAutoSave() {
+  if (autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+  }
+  autoSaveTimer.value = setTimeout(async () => {
+    if (selectedFileIsDirty.value && !savingFile.value) {
+      await saveSelectedFile()
+    }
+  }, 1500)
+}
+
+watch(
+  () => selectedFileText.value,
+  (newText) => {
+    if (selectedFile.value && newText !== selectedFile.value.text) {
+      scheduleAutoSave()
+    }
+  }
+)
+
+const diagnosticsOpen = ref(false)
+
+const pathsInfo = computed(() => {
+  const items = [
+    { label: 'Root', value: overview.value?.root },
+    { label: 'Memory Dir', value: overview.value?.memoryDir },
+    { label: 'Profile', value: overview.value?.soulPath },
+    { label: 'AI Notes', value: overview.value?.memoryPath },
+    { label: 'Dreams', value: overview.value?.dreamsPath },
+    { label: 'Today', value: overview.value?.todayPath },
+    { label: 'Index DB', value: overview.value?.dbPath }
+  ]
+  return items.map(item => {
+    const val = item.value || '...'
+    const truncatedValue = val.length > 35 
+      ? val.slice(0, 15) + '...' + val.slice(-20)
+      : val
+    return {
+      label: item.label,
+      value: val,
+      truncatedValue
+    }
+  })
+})
+
+async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (err) {
+    console.error('Failed to copy text: ', err)
+  }
+}
+
 onMounted(async () => {
   await loadOverview()
 })
@@ -1708,6 +1631,10 @@ onBeforeUnmount(() => {
   if (dreamingPollTimer) {
     window.clearTimeout(dreamingPollTimer)
     dreamingPollTimer = null
+  }
+  if (autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+    autoSaveTimer.value = null
   }
 })
 
@@ -1776,6 +1703,7 @@ async function selectFile(file: MemoryManagedFile): Promise<void> {
   if (file.relativePath !== selectedPath.value && !confirmDiscardSelectedFileChanges()) return
   selectedPath.value = file.relativePath
   await readSelectedFile(undefined, true)
+  notesDetailActive.value = true
 }
 
 function confirmDiscardSelectedFileChanges(): boolean {
@@ -1867,6 +1795,7 @@ async function loadGraphAudit(id: string): Promise<void> {
 }
 
 function selectGraphEntity(entity: MemoryGraphEntity): void {
+  profileDetailActive.value = true
   graphAudit.value = []
   graphEntityForm.value = {
     id: entity.id,
@@ -1898,6 +1827,7 @@ function resetGraphEntityForm(): void {
 }
 
 function selectGraphObservation(memory: MemoryGraphObservation): void {
+  profileDetailActive.value = true
   graphAudit.value = []
   graphObservationForm.value = {
     id: memory.id,
@@ -1931,6 +1861,7 @@ function resetGraphObservationForm(): void {
 }
 
 function selectGraphRelation(relation: MemoryGraphRelation): void {
+  profileDetailActive.value = true
   graphAudit.value = []
   graphRelationForm.value = {
     id: relation.id,
@@ -1962,6 +1893,7 @@ function resetGraphRelationForm(): void {
 }
 
 function newGraphRecord(): void {
+  profileDetailActive.value = true
   if (graphView.value === 'entities') {
     resetGraphEntityForm()
   } else if (graphView.value === 'relations') {
@@ -2396,47 +2328,19 @@ function formatMaybeDate(ms?: number): string {
   if (!ms) return 'none'
   return new Date(ms).toLocaleString()
 }
+
+function searchHitStrength(score: number): { label: string; tone: string } {
+  if (score > 0.8) return { label: 'Strong Match', tone: 'strong' }
+  if (score > 0.5) return { label: 'Good Match', tone: 'good' }
+  return { label: 'Match', tone: 'weak' }
+}
 </script>
 
 <style scoped>
-.memory-panel-content {
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  color: var(--ui-text-primary-fg, var(--text));
-  overflow: hidden;
-}
-
-.memory-header {
-  min-width: 0;
-  flex-shrink: 0;
-  padding: 10px 4px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.memory-commandbar,
-.memory-actions,
-.memory-tabs,
-.append-top,
-.inline-field {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-.memory-commandbar {
-  justify-content: space-between;
-  gap: 14px;
-}
-
 .memory-title-block {
   min-width: 0;
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .memory-title {
@@ -2445,22 +2349,15 @@ function formatMaybeDate(ms?: number): string {
   gap: 8px;
   min-width: 0;
   color: var(--ui-text-primary-fg, var(--text));
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.memory-title span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: -0.2px;
 }
 
 .memory-state-line {
   min-width: 0;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 6px;
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
@@ -2469,9 +2366,9 @@ function formatMaybeDate(ms?: number): string {
 .state-indicator {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  color: var(--ui-status-success-fg, #16a34a);
-  font-weight: 700;
+  gap: 4px;
+  color: var(--ui-status-success-fg, #10b981);
+  font-weight: 600;
 }
 
 .state-indicator.off {
@@ -2479,20 +2376,21 @@ function formatMaybeDate(ms?: number): string {
 }
 
 .state-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   background: currentColor;
 }
 
 .memory-actions {
-  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
   gap: 6px;
 }
 
 .icon-btn {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2501,6 +2399,7 @@ function formatMaybeDate(ms?: number): string {
   background: transparent;
   color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .icon-btn:hover:not(:disabled) {
@@ -2508,854 +2407,1112 @@ function formatMaybeDate(ms?: number): string {
   color: var(--ui-text-primary-fg, var(--text));
 }
 
-.icon-btn.bordered {
-  flex-shrink: 0;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-}
-
 .icon-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: default;
 }
 
+/* Beautiful Rounded Capsule Segments */
 .memory-tabs {
-  display: flex;
-  gap: 18px;
-  padding: 0 1px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 58%, transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--ui-state-hover-bg, var(--hover));
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  width: fit-content;
+  align-self: flex-start;
+  margin-top: 4px;
 }
 
 .memory-tab {
-  position: relative;
-  min-width: 0;
-  width: auto;
-  min-height: 27px;
+  min-height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 0;
-  padding: 0 0 7px;
+  border-radius: 6px;
+  padding: 0 14px;
   background: transparent;
   color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-  font-weight: 650;
+  font-size: 11.5px;
+  font-weight: 550;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.memory-tab span {
-  min-width: 0;
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-  text-align: center;
+.memory-tab:hover:not(.active) {
+  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
 }
 
 .memory-tab.active {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: transparent;
+  color: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 4px 8px rgba(0, 0, 0, 0.02);
 }
 
-.memory-tab.active::after {
-  content: '';
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 2px;
-  border-radius: 999px;
-  background: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.memory-body {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0 4px 12px;
-}
-
-.loading-state,
-.notice {
-  min-height: 72px;
+/* Dropdown Selector styling */
+.workspace-head-title-select {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
+}
+
+.view-select {
+  font-size: 13.5px;
+  font-weight: 750;
+  color: var(--ui-text-primary-fg, var(--text));
+  background: transparent;
+  border: none;
+  padding-right: 20px;
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+  background-repeat: no-repeat;
+  background-position: right center;
+  background-size: 11px;
+}
+
+.view-select:hover {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.workspace-head-title {
+  font-size: 13.5px;
+  font-weight: 750;
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.workspace-head.borderless {
+  border-bottom: none;
+  padding-bottom: 4px;
+}
+
+/* Embedded List Search Bar */
+.list-search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+}
+
+.search-bar-icon {
+  position: absolute;
+  left: 20px;
   color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 13px;
+  pointer-events: none;
 }
 
-.notice.error {
-  min-height: auto;
-  justify-content: flex-start;
-  margin-bottom: 10px;
-  padding: 9px 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 45%, var(--ui-border-default-border, var(--border)));
+.search-bar-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px 0 28px;
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  border-radius: 6px;
+  background: var(--ui-surface-input-bg, var(--bg-input));
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 11.5px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.search-bar-input:focus {
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+}
+
+/* Embedded Search Bar in Search Tab */
+.search-bar-form {
+  width: 100%;
+}
+
+.search-bar-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.search-bar-container .search-bar-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  pointer-events: none;
+}
+
+.search-bar-container .search-bar-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 12px 0 32px;
+  border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  color: var(--ui-status-danger-fg, #ef4444);
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 8%, transparent);
+  background: var(--ui-surface-input-bg, var(--bg-input));
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 13px;
+  outline: none;
+  transition: all 0.2s ease;
 }
 
-.notice.compact {
-  min-height: 40px;
-  justify-content: flex-start;
-  padding: 8px 10px;
+.search-bar-container .search-bar-input:focus {
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+}
+
+/* Toolbar buttons */
+.toolbar-action-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toolbar-action-btn:hover:not(:disabled) {
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-state-hover-bg, var(--hover));
+}
+
+.toolbar-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.loading-state {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  gap: 12px;
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .spinning {
   animation: spin 0.8s linear infinite;
 }
 
-	@keyframes spin {
-	  to { transform: rotate(360deg); }
-	}
-
-	@keyframes memoryRiseIn {
-	  from {
-	    opacity: 0;
-	    transform: translateY(6px);
-	  }
-	  to {
-	    opacity: 1;
-	    transform: translateY(0);
-	  }
-	}
-
-	.file-list,
-	.search-results,
-	.overview-stack,
-	.memory-tab-page {
-	  min-width: 0;
-	  display: flex;
-	  flex-direction: column;
-	  gap: 8px;
-	}
-
-	.memory-tab-page {
-	  gap: 14px;
-	  animation: memoryRiseIn 0.18s ease-out;
-	}
-
-	.memory-tab-intro,
-	.memory-surface {
-	  min-width: 0;
-	  border-radius: 8px;
-	  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3.5%, transparent);
-	}
-
-	.memory-tab-intro {
-	  display: grid;
-	  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.52fr);
-	  gap: 12px;
-	  align-items: end;
-	  padding: 14px;
-	}
-
-	.tab-intro-main,
-	.workspace-head > span,
-	.section-head > div {
-	  min-width: 0;
-	  display: grid;
-	  gap: 3px;
-	}
-
-	.tab-intro-main strong {
-	  color: var(--ui-text-primary-fg, var(--text));
-	  font-size: 18px;
-	  font-weight: 760;
-	  line-height: 1.2;
-	  overflow-wrap: anywhere;
-	}
-
-	.tab-intro-main > span:last-child,
-	.workspace-head small,
-	.section-head small {
-	  color: var(--ui-text-muted-fg, var(--muted));
-	  font-size: 12px;
-	  line-height: 1.4;
-	  overflow-wrap: anywhere;
-	}
-
-	.tab-intro-stats {
-	  min-width: 0;
-	  display: grid;
-	  grid-template-columns: repeat(3, minmax(0, 1fr));
-	  gap: 8px;
-	}
-
-	.tab-intro-stats span {
-	  min-width: 0;
-	  display: grid;
-	  gap: 2px;
-	  padding: 9px;
-	  border-radius: 8px;
-	  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 68%, transparent);
-	}
-
-	.tab-intro-stats strong {
-	  color: var(--ui-text-primary-fg, var(--text));
-	  font-size: 16px;
-	  line-height: 1.1;
-	}
-
-	.tab-intro-stats small {
-	  color: var(--ui-text-muted-fg, var(--muted));
-	  font-size: 11px;
-	  line-height: 1.25;
-	}
-
-	.tab-intro-actions {
-	  min-width: 0;
-	  grid-column: 1 / -1;
-	  display: grid;
-	  grid-template-columns: minmax(0, 1fr) auto;
-	  gap: 8px;
-	  align-items: center;
-	}
-
-	.memory-workspace {
-	  min-width: 0;
-	}
-
-	.workspace-head {
-	  min-width: 0;
-	  display: flex;
-	  align-items: start;
-	  justify-content: space-between;
-	  gap: 12px;
-	  margin-bottom: 8px;
-	}
-
-	.workspace-head strong {
-	  color: var(--ui-text-primary-fg, var(--text));
-	  font-size: 13px;
-	  line-height: 1.25;
-	}
-
-	.workspace-head em {
-	  color: var(--ui-text-muted-fg, var(--muted));
-	  font-size: 11px;
-	  font-style: normal;
-	  font-weight: 700;
-	  white-space: nowrap;
-	}
-
-	.file-list.compact {
-	  gap: 0;
-	}
-
-.notes-workspace {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(260px, 0.42fr) minmax(0, 1fr);
-  align-items: start;
-  gap: 14px;
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
-	.notes-workspace .file-list {
-	  gap: 2px;
-	  min-height: 0;
-	}
-
-	.notes-list-surface,
-	.profile-list-surface,
-	.profile-editor,
-	.viewer,
-	.task-surface {
-	  padding: 10px;
-	  animation: memoryRiseIn 0.18s ease-out;
-	}
-
-	.file-row,
-	.result-row {
-  width: 100%;
-  min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-  padding: 8px;
-  cursor: pointer;
-  text-align: left;
-  transition:
-    background 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-	.file-row:hover,
-	.result-row:hover,
-	.file-row.active {
-	  background: var(--ui-state-active-bg, var(--active));
-	  transform: translateY(-1px);
-	}
-
-.file-row.active,
-.result-row:hover {
-  box-shadow: inset 3px 0 0 var(--ui-accent-primary-fg, var(--accent));
-}
-
-.file-icon {
-  flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.file-row.active .file-icon {
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.file-main {
-  min-width: 0;
-  flex: 1;
+/* Overview Stack Layout */
+.overview-stack {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 20px;
 }
 
-.file-name,
-.result-path {
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 13px;
-  font-weight: 620;
-  overflow-wrap: anywhere;
-}
-
-.file-meta,
-.file-date,
-.result-score,
-.setting-meta {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-}
-
-.file-preview,
-.result-content {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.file-date,
-.result-score {
-  flex-shrink: 0;
-}
-
-	.viewer {
-	  min-width: 0;
-	  margin-top: 0;
-	  border: 0;
-	  border-radius: 8px;
-	  overflow: hidden;
-	}
-
-.viewer-header {
-  min-width: 0;
-  min-height: 36px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-}
-
-	.viewer-header span {
-	  min-width: 0;
-	  display: grid;
-	  gap: 2px;
-	  margin-right: auto;
-	  overflow-wrap: anywhere;
-	}
-
-	.viewer-header strong {
-	  color: var(--ui-text-primary-fg, var(--text));
-	  font-size: 12px;
-	  line-height: 1.25;
-	}
-
-	.viewer-header small,
-	.save-state {
-	  color: var(--ui-text-muted-fg, var(--muted));
-	  font-size: 11px;
-	  line-height: 1.25;
-	}
-
-	.save-state {
-	  font-style: normal;
-	  font-weight: 700;
-	  white-space: nowrap;
-	}
-
-	.save-state.dirty,
-	.inline-feedback {
-	  color: var(--ui-accent-primary-fg, var(--accent));
-	}
-
-.memory-editor {
-  width: 100%;
-  max-width: 100%;
-  min-height: 420px;
-  margin: 0;
-  padding: 12px;
-  border: 0;
-  resize: vertical;
-  outline: none;
-  background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 12px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.viewer pre {
-  max-height: 360px;
-  margin: 0;
-  padding: 12px;
-  overflow: auto;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size: 12px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.text-btn,
-.primary-btn,
-.secondary-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.text-btn {
-  border: 0;
-  background: transparent;
-  color: var(--ui-accent-primary-fg, var(--accent));
-  font-size: 12px;
-}
-
-.text-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.memory-hero,
-.task-surface {
-  min-width: 0;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
-}
-
-.overview-stack {
-  gap: 14px;
-}
-
+/* Premium Dashboard Widgets */
 .memory-hero {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
-  padding: 18px;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent), transparent 52%),
-    color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 5%, transparent);
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
 }
 
-.memory-hero-main,
-.section-head > div,
-.health-card,
-.recent-memory-row > span,
-.overview-domain-head,
-.diagnostics-panel summary > span {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.memory-hero-main strong {
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 24px;
-  font-weight: 760;
-  line-height: 1.15;
-  overflow-wrap: anywhere;
-}
-
-.memory-hero-main > span:last-child,
-.memory-highlight p,
-.recent-memory-row p,
-.recent-memory-row small,
-.health-card small,
-.diagnostics-panel small {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.memory-hero-stats {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.memory-hero-stats div {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-  padding: 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 78%, transparent);
-}
-
-.memory-hero-stats strong {
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 18px;
-  line-height: 1.1;
-}
-
-.memory-hero-stats span {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1.25;
-}
-
-.memory-hero-highlights {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.memory-highlight {
-  min-width: 0;
-  display: grid;
+.memory-hero-main {
+  display: flex;
+  flex-direction: column;
   gap: 4px;
-  align-content: start;
-  min-height: 108px;
-  padding: 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 72%, transparent);
-}
-
-.memory-highlight span,
-.overview-domain-head .section-kicker {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-  font-weight: 720;
-  line-height: 1.2;
-}
-
-.memory-highlight strong,
-.recent-memory-row strong,
-.section-head strong,
-.overview-domain-head strong,
-.diagnostics-panel summary strong,
-.health-card strong {
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 13px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
 }
 
 .section-kicker {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
+  color: var(--ui-accent-primary-fg, var(--accent));
+  font-size: 10px;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.memory-hero-main strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--ui-text-primary-fg, var(--text));
   line-height: 1.2;
 }
 
-.section-head,
-.overview-domain-head {
-  min-width: 0;
+.memory-hero-main span {
+  font-size: 12px;
+  color: var(--ui-text-secondary-fg, var(--muted));
+  line-height: 1.45;
+}
+
+/* Stat Cards Grid */
+.memory-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.stat-dashboard-card {
+  position: relative;
   display: flex;
-  align-items: start;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
+
+.stat-card-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: transparent;
+  transition: background-color 0.25s ease;
+}
+
+.stat-dashboard-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+}
+
+.stat-dashboard-card:hover .stat-card-glow {
+  background: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.stat-card-number {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--ui-accent-primary-fg, var(--accent));
+  line-height: 1.1;
+}
+
+.stat-card-label {
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--ui-text-secondary-fg, var(--muted));
+}
+
+/* Highlights Section */
+.memory-highlights-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.section-subheader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.section-subheader strong {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-text-primary-fg);
+}
+
+.memory-hero-highlights {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.memory-highlight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  min-height: 120px;
+}
+
+.memory-highlight-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.04);
+}
+
+.highlight-tag {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ui-accent-primary-fg, var(--accent));
+  letter-spacing: 0.5px;
+}
+
+.highlight-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ui-text-primary-fg);
+}
+
+.highlight-body {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ui-text-muted-fg, var(--muted));
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Activity Feed Timeline */
+.memory-activity-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 12px;
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+}
+
+.padding-x {
+  padding: 0 4px;
+}
+
+.activity-timeline {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.timeline-item-row {
+  display: flex;
+  gap: 16px;
+}
+
+.timeline-trail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  position: relative;
+  width: 12px;
+}
+
+.timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ui-accent-primary-fg, var(--accent));
+  margin-top: 18px;
+  z-index: 2;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+}
+
+.timeline-line {
+  flex: 1;
+  width: 2px;
+  background: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 60%, transparent);
+  z-index: 1;
+}
+
+.timeline-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  margin-bottom: 12px;
+  transition: all 0.2s ease;
+}
+
+.timeline-card:hover {
+  border-color: var(--ui-border-default-border);
+}
+
+.timeline-card-header {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 10px 8px;
 }
 
-.overview-domain-head {
-  display: grid;
-  justify-content: stretch;
-  padding: 0;
-}
-
-.memory-activity {
-  min-width: 0;
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3%, transparent);
-}
-
-.recent-memory-list {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.recent-memory-row,
-.health-card {
-  min-width: 0;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.health-card em {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.recent-memory-row {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  min-height: 112px;
-  padding: 12px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 70%, transparent);
-}
-
-.memory-highlight p,
-.recent-memory-row p {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.health-cards {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.health-card {
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
-  gap: 7px 8px;
-  padding: 8px;
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2%, transparent);
-}
-
-.health-card em {
-  grid-column: 2;
-}
-
-.health-card-dot {
-  width: 7px;
-  height: 7px;
-  margin-top: 4px;
-  border-radius: 999px;
-  background: var(--ui-text-muted-fg, var(--muted));
-}
-
-.health-card.healthy .health-card-dot {
-  background: var(--ui-status-success-fg, #16a34a);
-}
-
-.health-card.warning .health-card-dot {
-  background: var(--ui-status-warning-fg, #f59e0b);
-}
-
-.health-card.danger .health-card-dot {
-  background: var(--ui-status-danger-fg, #ef4444);
-}
-
-.diagnostics-panel {
-  min-width: 0;
-  border-radius: 8px;
-  background: transparent;
-}
-
-.diagnostics-domain[open] {
-  padding: 0 10px 10px;
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.5%, transparent);
-}
-
-.diagnostics-panel summary {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  padding: 8px 2px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  cursor: pointer;
+.timeline-card-title {
   font-size: 12px;
+  font-weight: 650;
+  color: var(--ui-text-primary-fg);
 }
 
-.diagnostics-domain[open] summary {
-  padding: 10px 0;
+.timeline-card-time {
+  font-size: 10px;
+  color: var(--ui-text-muted-fg);
 }
 
-.diagnostics-panel summary em {
-  color: var(--ui-text-muted-fg, var(--muted));
+.timeline-card-body {
   font-size: 11px;
-  font-style: normal;
+  line-height: 1.45;
+  color: var(--ui-text-secondary-fg, var(--muted));
+  margin: 0;
+}
+
+/* Collapsible Diagnostics Card */
+.diagnostics-card {
+  border-radius: 12px;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.diagnostics-card.danger {
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 30%, var(--ui-border-default-border));
+}
+
+.diagnostics-toggle-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.diagnostics-toggle-header:hover {
+  background: color-mix(in srgb, var(--ui-text-primary-fg) 2%, transparent);
+}
+
+.diagnostics-summary-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diagnostics-summary-info span {
+  font-size: 13px;
   font-weight: 700;
-  white-space: nowrap;
-}
-
-.diagnostics-panel.danger summary em {
-  color: var(--ui-status-danger-fg, #ef4444);
-}
-
-.diagnostics-content {
-  min-width: 0;
-  display: grid;
-  gap: 10px;
-}
-
-.diagnostic-errors {
-  min-width: 0;
-  display: grid;
+  color: var(--ui-text-primary-fg);
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
 }
 
-.diagnostics-panel .path-grid,
-.diagnostic-errors {
-  padding: 10px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 55%, transparent);
+.diagnostics-icon {
+  color: var(--ui-text-muted-fg);
 }
 
-.path-grid {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 8px 12px;
-  align-items: start;
+.diagnostics-summary-info small {
+  font-size: 11px;
+  color: var(--ui-text-muted-fg);
 }
 
-.path-grid span {
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.path-grid code {
-  min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
-.status-line {
-  display: inline-flex;
+.diagnostics-state-pill {
+  display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
 }
 
-.status-line.running {
-  color: var(--ui-accent-primary-fg, var(--accent));
+.state-pill-text {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent);
+  color: var(--ui-text-muted-fg);
 }
 
-.status-line.success {
-  color: var(--ui-status-success-fg, #16a34a);
-}
-
-.status-line.error {
+.danger .state-pill-text {
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 12%, transparent);
   color: var(--ui-status-danger-fg, #ef4444);
 }
 
-.status-line.muted {
+.chevron-icon {
+  color: var(--ui-text-muted-fg);
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chevron-icon.rotated {
+  transform: rotate(180deg);
+}
+
+.diagnostics-expanded-body {
+  padding: 16px 18px;
+  border-top: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Health Cards Widgets */
+.health-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.health-card-widget {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  font-size: 11px;
+}
+
+.health-indicator-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ui-text-muted-fg);
+  margin-top: 4px;
+}
+
+.healthy .health-indicator-dot { background: var(--ui-status-success-fg, #10b981); }
+.warning .health-indicator-dot { background: var(--ui-status-warning-fg, #f59e0b); }
+.danger .health-indicator-dot { background: var(--ui-status-danger-fg, #ef4444); }
+
+.health-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.health-card-title {
+  font-weight: 700;
+  color: var(--ui-text-primary-fg);
+}
+
+.health-card-detail {
+  color: var(--ui-text-muted-fg);
+  font-size: 10px;
+}
+
+.health-card-status {
+  font-style: normal;
+  font-weight: 600;
+  font-size: 10px;
+  color: var(--ui-text-secondary-fg);
+}
+
+/* Errors Area */
+.diagnostic-errors-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inline-error-badge {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 18%, transparent);
+  color: var(--ui-status-danger-fg, #ef4444);
+  font-size: 11px;
+}
+
+.inline-error-badge span {
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* Truncated Path Layout */
+.path-grid-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ui-surface-panel-bg);
+  border: 1px solid var(--ui-border-subtle-border);
+}
+
+.path-info-row {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+.path-info-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ui-text-secondary-fg);
+}
+
+.path-info-value-block {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg) 60%, transparent);
+  border: 1px solid var(--ui-border-subtle-border);
+  padding: 3px 8px;
+  border-radius: 6px;
+  min-width: 0;
+}
+
+.path-code-display {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--ui-text-primary-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.path-copy-button {
+  border: none;
+  background: transparent;
+  color: var(--ui-text-muted-fg);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.path-copy-button:hover {
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
+}
+
+/* Shared Adaptiveness Workspace (Profile & Notes) */
+.profile-layout,
+.notes-workspace {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  gap: 0;
+}
+
+.notes-list-surface,
+.profile-list-surface {
+  flex: 0 0 35%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 250px;
+  overflow: hidden;
+  background: transparent;
+  border-right: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+}
+
+.profile-editor,
+.viewer {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+.editor-scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.editor-scroll-container label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.editor-scroll-container label .setting-label {
   color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.profile-advanced {
+  border: 1px solid var(--ui-border-default-border);
+  border-radius: 8px;
+  background: var(--ui-surface-elevated-bg);
+  overflow: hidden;
+  margin: 8px 0;
+  transition: all 0.2s ease;
+}
+
+.profile-advanced summary {
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ui-text-primary-fg);
+  background: color-mix(in srgb, var(--ui-surface-panel-bg) 96%, transparent);
+  cursor: pointer;
+  outline: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid transparent;
+}
+
+.profile-advanced summary::-webkit-details-marker {
+  display: none;
+}
+
+.profile-advanced summary::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='9 18 15 12 9 6'></polyline></svg>");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  transition: transform 0.2s ease;
+}
+
+.profile-advanced[open] summary::after {
+  transform: rotate(90deg);
+}
+
+.profile-advanced[open] summary {
+  border-bottom-color: var(--ui-border-subtle-border);
+}
+
+.advanced-wrapper {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.profile-id-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--ui-state-hover-bg);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.profile-id-row code {
+  color: var(--ui-accent-primary-fg);
+  font-family: var(--font-mono);
 }
 
 .action-row {
-  min-width: 0;
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.workspace-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 0;
-  border-top: 0;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ui-border-subtle-border);
+  flex-shrink: 0;
 }
 
-.action-row > * {
-  max-width: 100%;
+.workspace-head .back-btn {
+  display: none; /* Hidden on wide splits */
 }
 
-.inline-error {
-  padding: 8px 10px;
-  color: var(--ui-status-danger-fg, #ef4444);
-  font-size: 12px;
-  line-height: 1.4;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  overflow-wrap: anywhere;
+/* Narrow Stacked layouts for Sidebars (Specifically targeting mode-side class) */
+.mode-side :deep(.profile-layout),
+.mode-side :deep(.notes-workspace) {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
-.inline-error:last-child {
-  border-bottom: 0;
+.mode-side :deep(.notes-list-surface),
+.mode-side :deep(.profile-list-surface) {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(0);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1;
 }
 
-.search-row {
-  min-width: 0;
+.mode-side :deep(.profile-editor),
+.mode-side :deep(.viewer) {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 2;
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+}
+
+/* Active slide-in states */
+.mode-side :deep(.detail-active .notes-list-surface),
+.mode-side :deep(.detail-active .profile-list-surface) {
+  transform: translateX(-20%);
+}
+
+.mode-side :deep(.detail-active .profile-editor),
+.mode-side :deep(.detail-active .viewer) {
+  transform: translateX(0);
+}
+
+/* Show Back button in stacked details drawer */
+.mode-side :deep(.workspace-head .back-btn),
+.mode-side :deep(.viewer-header .back-btn) {
+  display: inline-flex;
+  margin-right: 8px;
+}
+
+.viewer-header .back-btn {
+  display: none;
+}
+
+/* File and Profile List Rows Styling */
+.profile-list,
+.file-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 10px;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.search-row .memory-input {
-  flex: 1 1 180px;
+.file-row,
+.profile-row {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--ui-text-primary-fg);
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.file-row:hover,
+.profile-row:hover {
+  background: var(--ui-state-hover-bg, var(--hover));
+  border-color: var(--ui-border-subtle-border, var(--border-subtle));
+}
+
+.file-row.active,
+.profile-row.active {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 6%, var(--ui-surface-elevated-bg));
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.confidence-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  color: var(--ui-accent-primary-fg);
+}
+
+.profile-row-foot {
+  font-size: 10px;
+  color: var(--ui-text-muted-fg);
+}
+
+/* Notes Editor tab toggle bar */
+.notes-editor-tabs {
+  margin: 0 8px;
+}
+
+/* Rich Preview for Markdown notes */
+.notes-viewer-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ui-surface-panel-bg);
+}
+
+.memory-editor {
+  flex: 1;
+  width: 100%;
+  padding: 16px;
+  border: 0;
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: var(--ui-text-primary-fg);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.memory-preview-container {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+  line-height: 1.6;
+  font-size: 13px;
+  color: var(--ui-text-primary-fg);
+}
+
+/* Auto-save pulse visual states */
+.save-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--ui-text-muted-fg);
+  margin-left: auto;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ui-text-muted-fg);
+}
+
+.status-dot.saved {
+  background: var(--ui-status-success-fg, #10b981);
+}
+
+.status-dot.dirty {
+  background: var(--ui-status-warning-fg, #f59e0b);
+}
+
+.status-dot.pulsing {
+  animation: pulse-opacity 1s infinite alternate;
+}
+
+@keyframes pulse-opacity {
+  from { opacity: 0.3; }
+  to { opacity: 1; }
+}
+
+/* Search Tab Improvements */
+.search-workspace {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.search-surface,
+.capture-surface {
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--ui-surface-panel-bg);
+  border: 1px solid var(--ui-border-default-border);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.search-surface:hover,
+.capture-surface:hover {
+  border-color: var(--ui-border-default-border);
+}
+
+.search-surface {
+  flex: 1;
+}
+
+.capture-surface {
+  flex: 1;
+}
+
+.section-head {
+  margin-bottom: 12px;
+}
+
+.strength-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.strength-badge.strong {
+  background: color-mix(in srgb, var(--ui-status-success-fg, #10b981) 12%, transparent);
+  color: var(--ui-status-success-fg, #10b981);
+}
+
+.strength-badge.good {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.strength-badge.weak {
+  background: color-mix(in srgb, var(--ui-text-muted-fg) 12%, transparent);
+  color: var(--ui-text-muted-fg);
 }
 
 .memory-input,
 .memory-select,
 .memory-textarea {
   width: 100%;
-  min-width: 0;
   border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-surface-input-bg, var(--bg-input));
+  color: var(--ui-text-primary-fg);
   font-size: 13px;
   outline: none;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.memory-input,
+.memory-input {
+  height: 36px;
+  padding: 0 12px;
+}
+
 .memory-select {
-  min-height: 34px;
-  padding: 7px 10px;
-}
-
-.memory-input.compact {
-  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'></polyline></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+  padding-right: 32px;
+  cursor: pointer;
 }
 
 .memory-textarea {
-  min-height: 84px;
+  min-height: 80px;
+  padding: 10px 12px;
   resize: vertical;
-  padding: 9px 10px;
-  line-height: 1.45;
 }
 
 .memory-input:focus,
@@ -3365,662 +3522,218 @@ function formatMaybeDate(ms?: number): string {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
 }
 
-.primary-btn,
-.secondary-action {
-  max-width: 100%;
-  min-width: 0;
-  min-height: 34px;
-  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, var(--ui-border-default-border, var(--border)));
-  background: var(--ui-accent-primary-fg, var(--accent));
-  color: white;
-  padding: 0 12px;
-  font-size: 12px;
-  flex-shrink: 0;
-  line-height: 1.25;
-  text-align: center;
-  white-space: normal;
+.primary-btn {
+  height: 36px;
+  border-radius: 8px;
+  background: var(--ui-action-primary-bg, var(--accent));
+  color: var(--ui-action-primary-fg, white);
+  border: none;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.primary-btn span,
-.secondary-action span {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.primary-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
 }
 
 .secondary-action {
-  width: 100%;
-  margin-top: 8px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-border-default-border, var(--border));
+  height: 36px;
+  border-radius: 8px;
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
+  border: 1px solid var(--ui-border-default-border);
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.secondary-action:hover:not(:disabled) {
+  background: var(--ui-state-active-bg);
 }
 
 .secondary-action.inline {
   width: auto;
-  min-width: 84px;
-  margin-top: 0;
 }
 
 .secondary-action.danger {
   color: var(--ui-status-danger-fg, #ef4444);
-  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 38%, var(--ui-border-default-border, var(--border)));
 }
 
-.primary-btn:disabled,
-.secondary-action:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.primary-btn:not(:disabled),
-.secondary-action:not(:disabled),
-.memory-tab,
-.segmented button,
-.text-btn:not(:disabled),
-.icon-btn:not(:disabled) {
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    color 0.15s ease,
-    transform 0.15s ease;
-}
-
-.primary-btn:hover:not(:disabled),
-.secondary-action:hover:not(:disabled),
-.text-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-
-.append-box {
-  display: grid;
-  gap: 8px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.append-top {
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.append-top .memory-select {
-  width: 118px;
-  flex-shrink: 0;
-}
-
-.append-top .memory-input {
-  flex: 1 1 160px;
-}
-
-.result-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px 8px;
-}
-
-.result-content {
-  grid-column: 1 / -1;
-  -webkit-line-clamp: 4;
-}
-
-.result-meta {
-  grid-column: 1 / -1;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-
-.search-empty-state,
-.review-empty {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-  padding: 16px;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 55%, transparent);
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.search-empty-state strong,
-.review-empty strong {
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 13px;
-  line-height: 1.25;
-}
-
-.inline-feedback {
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.35;
-}
-
-.panel-toolbar,
-.profile-toolbar {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.toolbar-actions {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.profile-toolbar .search-row {
-  margin-bottom: 0;
-}
-
-.task-surface {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-
-.task-surface .section-head {
-  padding: 0 0 2px;
-}
-
-.task-surface .search-row {
-  margin-bottom: 0;
-}
-
-.search-workspace {
-  min-width: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.search-surface {
-  flex: 1 1 58%;
-  align-self: start;
-  height: max-content;
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 24%, transparent);
-}
-
-.capture-surface {
-  flex: 0 1 42%;
-  align-self: start;
-  height: max-content;
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.5%, transparent);
-}
-
-.search-workspace .memory-textarea {
-  min-height: 72px;
-}
-
-.results-surface {
-  min-width: 0;
-}
-
-.results-surface .search-results {
-  gap: 2px;
-}
-
-.profile-layout {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  gap: 14px;
-}
-
-.graph-layout {
-  align-items: start;
-}
-
-.profile-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  max-height: 420px;
-  overflow: auto;
-}
-
-.profile-row {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  border: 0;
-  border-radius: 8px;
-  padding: 8px;
-  background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    box-shadow 0.15s ease,
-    transform 0.15s ease;
-}
-
-.profile-row:hover,
-.profile-row.active {
-  background: var(--ui-state-active-bg, var(--active));
-}
-
-.profile-row:hover {
-  transform: translateY(-1px);
-}
-
-.profile-row.active {
-  box-shadow: inset 3px 0 0 var(--ui-accent-primary-fg, var(--accent));
-}
-
-.profile-row-top,
-.audit-row {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-}
-
-.profile-row-top code,
-.audit-row code {
-  flex: 1 1 140px;
-}
-
-.profile-row-top code {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.profile-row-top span,
-.audit-row span {
-  flex: 0 0 auto;
-}
-
-.profile-row code {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.profile-row strong {
-  font-size: 12px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.profile-row > span:last-child {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.profile-expanded {
-  display: block;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-  text-align: left;
-  cursor: default;
-  animation: memoryRiseIn 0.16s ease-out;
-}
-
-.profile-detail-grid {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
-  gap: 8px;
-}
-
-.profile-detail-item,
-.profile-detail-text {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.profile-detail-item > span,
-.profile-detail-text > span {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 10px;
-  font-weight: 650;
-}
-
-.profile-detail-item strong,
-.profile-detail-text strong {
-  display: block;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 11px;
-  line-height: 1.45;
-  overflow: visible;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.profile-detail-text {
-  max-height: 180px;
-  margin-top: 8px;
-  padding: 8px;
-  overflow: auto;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-state-hover-bg, var(--hover));
-}
-
-.profile-editor {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.profile-editor .action-row {
-  margin-top: 2px;
+.secondary-action.danger:hover {
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 12%, transparent);
+  border-color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .profile-grid {
-  min-width: 0;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
-
-.profile-advanced {
-  min-width: 0;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3%, transparent);
-  padding: 8px;
-}
-
-.profile-advanced > summary,
-.profile-advanced summary {
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.35;
-}
-
-.profile-advanced[open],
-.profile-advanced details[open] {
-  display: grid;
-  gap: 9px;
-}
-
-.profile-id-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 8px;
-  align-items: center;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  font-size: 12px;
-}
-
-.profile-id-row code {
-  min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
-  overflow-wrap: anywhere;
-}
-
-.compact-area {
-  min-height: 76px;
-}
-
-.export-area {
-  min-height: 140px;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-}
-
-.audit-list {
-  display: block;
-}
-
-.memory-section {
-  min-width: 0;
-  max-width: 100%;
-  border: 0;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
-  overflow: hidden;
-}
-
-.setting-row,
-.field {
-  min-width: 0;
-  padding: 10px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.setting-row:last-child,
-.field:last-child {
-  border-bottom: 0;
-}
-
-.toggle-row {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.toggle-row > span {
-  min-width: 0;
-}
-
-.toggle-row input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.setting-title,
-.setting-meta {
-  display: block;
-}
-
-.setting-title,
-.setting-label,
-.range-label,
-.field span {
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 12px;
-  font-weight: 620;
-  overflow-wrap: anywhere;
-}
-
-.setting-label,
-.range-label,
-.field span {
-  margin-bottom: 7px;
-}
-
-.setting-meta {
-  overflow-wrap: anywhere;
-}
-
-.memory-select {
-  text-overflow: ellipsis;
-}
-
-.range-label {
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 8px;
-  justify-content: space-between;
-}
-
-.range-label strong {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  font-size: 12px;
-}
-
 .segmented {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
+  display: flex;
   background: var(--ui-state-hover-bg, var(--hover));
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  padding: 2px;
+  border-radius: 6px;
+  width: fit-content;
 }
 
 .segmented button {
-  min-width: 0;
-  min-height: 30px;
-  border: 0;
-  border-radius: 6px;
+  min-height: 24px;
+  padding: 0 10px;
+  border: none;
   background: transparent;
   color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
+  font-weight: 600;
+  border-radius: 4px;
   cursor: pointer;
-}
-
-.segmented.graph-tabs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 8px;
-}
-
-.segmented.graph-tabs button,
-.segmented.notes-tabs button {
-  min-height: 28px;
-  padding: 0 4px;
-}
-
-.segmented.notes-tabs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.notes-intro .notes-tabs,
-.search-intro .tab-intro-main {
-  grid-column: 1 / -1;
+  font-size: 11px;
+  transition: all 0.2s ease;
 }
 
 .segmented button.active {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.text-btn {
+  height: 28px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  border: 1px solid transparent;
+  padding: 0 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.text-btn:hover:not(:disabled) {
+  background: var(--ui-state-hover-bg, var(--hover));
   color: var(--ui-text-primary-fg, var(--text));
 }
 
-.inline-field {
-  gap: 8px;
-  margin-top: 8px;
+.text-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
-.memory-range {
-  width: 100%;
-  accent-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.grid-two {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.mini-toggle {
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-}
-
-.mini-toggle span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.mini-toggle input {
-  accent-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.field {
+.file-main {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
-@media (max-width: 720px) {
-  .profile-layout,
-  .notes-workspace,
-  .search-workspace,
-  .memory-tab-intro,
-  .tab-intro-actions {
-    grid-template-columns: 1fr;
-  }
+.file-name {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--ui-text-primary-fg, var(--text));
+  line-height: 1.4;
+}
 
-  .memory-hero-highlights,
+.file-meta {
+  font-size: 10.5px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  margin: 2px 0 4px;
+}
+
+.file-preview {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-date {
+  font-size: 10px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+/* Adaptiveness overrides for wide vs narrow viewports */
+@media (max-width: 1024px) {
   .memory-hero-stats,
-  .tab-intro-stats,
-  .recent-memory-list,
-  .health-cards {
+  .memory-hero-highlights {
     grid-template-columns: 1fr;
   }
+  .health-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+}
 
+@media (max-width: 768px) {
   .search-workspace {
     flex-direction: column;
   }
-
-  .search-surface,
-  .capture-surface {
-    width: 100%;
-    flex-basis: auto;
-  }
-}
-
-@media (max-width: 640px) {
-  .grid-two,
-  .profile-grid {
+  .health-cards {
     grid-template-columns: 1fr;
   }
-
-  .segmented.notes-tabs,
-  .segmented.graph-tabs {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 520px) {
-  .memory-tabs {
-    gap: 12px;
-    overflow-x: auto;
-  }
-
-  .search-row {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .primary-btn {
+  .profile-layout,
+  .notes-workspace {
+    display: block;
+    position: relative;
     width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  .notes-list-surface,
+  .profile-list-surface {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateX(0);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 1;
+  }
+  .profile-editor,
+  .viewer {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform: translateX(100%);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 2;
+    background: var(--ui-surface-panel-bg, var(--bg-panel));
+  }
+  .detail-active .notes-list-surface,
+  .detail-active .profile-list-surface {
+    transform: translateX(-20%);
+  }
+  .detail-active .profile-editor,
+  .detail-active .viewer {
+    transform: translateX(0);
+  }
+  .workspace-head .back-btn,
+  .viewer-header .back-btn {
+    display: inline-flex;
+    margin-right: 8px;
   }
 }
 
@@ -4034,4 +3747,5 @@ function formatMaybeDate(ms?: number): string {
     transition-duration: 0.001ms !important;
   }
 }
+
 </style>

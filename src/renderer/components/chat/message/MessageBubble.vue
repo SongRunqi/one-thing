@@ -106,10 +106,10 @@
             name="text-fade"
             :css="false"
           >
-	            <div
-	              v-if="firstTextPart"
-	              class="content md-code-block-scope md-inline-code-scope"
-	            >
+            <div
+              v-if="firstTextPart"
+              class="content md-code-block-scope md-inline-code-scope"
+            >
               <StreamingMarkdown
                 v-if="shouldUseStreamingMarkdown(role === 'user')"
                 :content="firstTextPart.content"
@@ -166,10 +166,10 @@
                 :description="part.description"
               />
               <!-- Additional text parts (after the first one) -->
-	              <div
-	                v-else-if="part.type === 'text'"
-	                class="content md-code-block-scope md-inline-code-scope"
-	              >
+              <div
+                v-else-if="part.type === 'text'"
+                class="content md-code-block-scope md-inline-code-scope"
+              >
                 <StreamingMarkdown
                   v-if="shouldUseStreamingMarkdown(role === 'user')"
                   :content="part.content"
@@ -269,10 +269,10 @@
              empty edge cases). Assistant messages always have contentParts
              populated by rebuildContentParts before reaching here, so no
              tool-call rendering is needed in this branch. -->
-	        <div
-	          v-else
-	          class="content md-code-block-scope md-inline-code-scope"
-	        >
+        <div
+          v-else
+          class="content md-code-block-scope md-inline-code-scope"
+        >
           <StreamingMarkdown
             v-if="shouldUseStreamingMarkdown(role === 'user')"
             :content="content"

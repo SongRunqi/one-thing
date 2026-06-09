@@ -203,7 +203,6 @@ function cancelRename() {
 
 .session-item.active {
   background: color-mix(in srgb, var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight))) 54%, transparent);
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-sidebar-item-active-border, var(--ui-accent-primary-fg, var(--accent))) 52%, transparent);
 }
 
 .session-item.hidden {

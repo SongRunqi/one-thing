@@ -40,10 +40,10 @@
       </svg>
     </div>
     <div class="system-bubble">
-	      <div
-	        class="system-content md-inline-code-scope"
-	        v-html="renderedContent"
-	      />
+      <div
+        class="system-content md-inline-code-scope"
+        v-html="renderedContent"
+      />
       <div class="system-footer">
         <span class="system-time">{{ formattedTime }}</span>
       </div>

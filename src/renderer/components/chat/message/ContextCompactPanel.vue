@@ -51,11 +51,11 @@
     </div>
 
     <Transition name="summary">
-	      <div
-	        v-if="canExpand && isExpanded"
-	        class="summary-content md-inline-code-scope"
-	        v-html="renderedSummary"
-	      />
+      <div
+        v-if="canExpand && isExpanded"
+        class="summary-content md-inline-code-scope"
+        v-html="renderedSummary"
+      />
     </Transition>
   </div>
 </template>

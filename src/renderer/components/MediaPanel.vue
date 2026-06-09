@@ -243,7 +243,118 @@
               </p>
             </div>
           </div>
-        </template>
+
+          <!-- Inline Media Inspector Drawer -->
+          <Transition name="drawer">
+            <div v-if="selectedAsset" class="inspector-drawer">
+              <div class="drawer-header">
+                <span class="drawer-title">Media Details</span>
+                <button class="drawer-close-btn" type="button" @click="selectedAsset = null">
+                  <X :size="16" />
+                </button>
+              </div>
+
+              <div class="drawer-scroll-body">
+                <div class="drawer-preview-box">
+                  <img
+                    v-if="selectedAsset.kind === 'image'"
+                    :src="mediaStore.getImageUrl(selectedAsset)"
+                    :alt="selectedAsset.fileName"
+                    class="drawer-preview-img"
+                    @click="launchGallery(selectedAsset)"
+                    title="Click to view full image"
+                  />
+                  <div v-else class="drawer-preview-fallback">
+                    <component :is="kindIcon(selectedAsset.kind)" :size="48" />
+                  </div>
+                </div>
+
+                <div class="drawer-section">
+                  <h4 class="section-heading">File Information</h4>
+                  <div class="specs-list">
+                    <div class="spec-row">
+                      <span class="spec-label">Name</span>
+                      <span class="spec-val truncate" :title="selectedAsset.fileName">{{ selectedAsset.fileName }}</span>
+                    </div>
+                    <div class="spec-row">
+                      <span class="spec-label">Format</span>
+                      <span class="spec-val">{{ selectedAsset.mimeType }}</span>
+                    </div>
+                    <div v-if="selectedAsset.width && selectedAsset.height" class="spec-row">
+                      <span class="spec-label">Resolution</span>
+                      <span class="spec-val">{{ selectedAsset.width }} × {{ selectedAsset.height }}</span>
+                    </div>
+                    <div class="spec-row">
+                      <span class="spec-label">Size</span>
+                      <span class="spec-val">{{ formatBytes(selectedAsset.size) }}</span>
+                    </div>
+                    <div class="spec-row">
+                      <span class="spec-label">Created</span>
+                      <span class="spec-val">{{ new Date(selectedAsset.createdAt).toLocaleString() }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Prompt Details (if AI Generated) -->
+                <div v-if="selectedAsset.metadata?.prompt" class="drawer-section">
+                  <div class="section-title-with-action">
+                    <h4 class="section-heading">AI Generation Prompt</h4>
+                    <button class="copy-text-btn" type="button" @click="copyPromptText(selectedAsset.metadata.prompt)" title="Copy prompt">
+                      <component :is="copiedPrompt ? Check : Copy" :size="13" />
+                      <span>{{ copiedPrompt ? 'Copied' : 'Copy' }}</span>
+                    </button>
+                  </div>
+                  <div class="prompt-text-card">
+                    {{ selectedAsset.metadata.prompt }}
+                  </div>
+                </div>
+
+                <div v-if="selectedAsset.metadata?.revisedPrompt" class="drawer-section">
+                  <div class="section-title-with-action">
+                    <h4 class="section-heading">Revised Prompt</h4>
+                    <button class="copy-text-btn" type="button" @click="copyRevisedPromptText(selectedAsset.metadata.revisedPrompt)" title="Copy revised prompt">
+                      <component :is="copiedRevisedPrompt ? Check : Copy" :size="13" />
+                      <span>{{ copiedRevisedPrompt ? 'Copied' : 'Copy' }}</span>
+                    </button>
+                  </div>
+                  <div class="prompt-text-card">
+                    {{ selectedAsset.metadata.revisedPrompt }}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Drawer Footer Actions -->
+              <div class="drawer-footer">
+                <button
+                  v-if="selectedAsset.filePath"
+                  class="drawer-action-btn secondary"
+                  type="button"
+                  @click="openFileExternally(selectedAsset)"
+                >
+                  <ExternalLink :size="14" />
+                  <span>Open Externally</span>
+                </button>
+                <button
+                  v-if="selectedAsset.filePath"
+                  class="drawer-action-btn secondary"
+                  type="button"
+                  @click="copyFilePath(selectedAsset.filePath)"
+                >
+                  <component :is="copiedPath ? Check : Copy" :size="14" />
+                  <span>Copy Path</span>
+                </button>
+                <button
+                  class="drawer-action-btn danger"
+                  type="button"
+                  @click="deleteAssetFromDrawer(selectedAsset)"
+                >
+                  <Trash2 :size="14" />
+                  <span>Delete</span>
+                </button>
+              </div>
+            </div>
+          </Transition>
+      </template>
 
         <MemoryPanelContent v-else-if="activeNav === 'memory'" />
         <AgentsPanelContent v-else-if="activeNav === 'agents'" />
@@ -271,6 +382,11 @@ import {
   Images,
   Music,
   Video,
+  X,
+  Copy,
+  ExternalLink,
+  Trash2,
+  Check,
 } from 'lucide-vue-next'
 
 const props = withDefaults(defineProps<{
@@ -396,13 +512,56 @@ function assetSubtitle(asset: MediaAsset): string {
   return `${label} · ${date}`
 }
 
+const selectedAsset = ref<MediaAsset | null>(null)
+const copiedPrompt = ref(false)
+const copiedRevisedPrompt = ref(false)
+const copiedPath = ref(false)
+
+function formatBytes(bytes?: number): string {
+  if (bytes === undefined || bytes === null || isNaN(bytes)) return 'Unknown size'
+  if (bytes === 0) return '0 Bytes'
+  const k = 1024
+  const sizes = ['Bytes', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
+}
+
+function copyPromptText(text: string) {
+  navigator.clipboard.writeText(text)
+  copiedPrompt.value = true
+  setTimeout(() => copiedPrompt.value = false, 1500)
+}
+
+function copyRevisedPromptText(text: string) {
+  navigator.clipboard.writeText(text)
+  copiedRevisedPrompt.value = true
+  setTimeout(() => copiedRevisedPrompt.value = false, 1500)
+}
+
+function copyFilePath(path: string) {
+  navigator.clipboard.writeText(path)
+  copiedPath.value = true
+  setTimeout(() => copiedPath.value = false, 1500)
+}
+
 function openAsset(asset: MediaAsset) {
-  if (asset.kind === 'image') {
-    window.electronAPI.openImageGallery(asset.id)
-    return
-  }
+  selectedAsset.value = asset
+}
+
+function launchGallery(asset: MediaAsset) {
+  window.electronAPI.openImageGallery(asset.id)
+}
+
+function openFileExternally(asset: MediaAsset) {
   if (asset.filePath) {
     window.electronAPI.openPath(asset.filePath)
+  }
+}
+
+async function deleteAssetFromDrawer(asset: MediaAsset) {
+  if (confirm('Remove this item from the library? The original chat message will stay unchanged.')) {
+    selectedAsset.value = null
+    await mediaStore.removeMedia(asset.id)
   }
 }
 
@@ -411,6 +570,24 @@ async function removeAsset(id: string) {
     await mediaStore.removeMedia(id)
   }
 }
+
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    selectedAsset.value = null
+  }
+}
+
+watch(selectedAsset, (newVal) => {
+  if (newVal) {
+    window.addEventListener('keydown', handleKeyDown)
+  } else {
+    window.removeEventListener('keydown', handleKeyDown)
+  }
+})
+
+watch([activeNav, activeKind, activeSource], () => {
+  selectedAsset.value = null
+})
 
 async function refreshMedia(rebuild = false) {
   await mediaStore.loadMedia({ rebuild })
@@ -579,6 +756,7 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   overflow: hidden;
   padding: 12px;
   padding-top: 0;
+  position: relative;
 }
 
 .mode-main .media-content {
@@ -631,26 +809,28 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 }
 
 .content-header {
-  padding: 16px 4px 10px;
+  padding: 16px 4px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .search-input {
   width: 100%;
-  padding: 10px 14px;
-  font-size: 14px;
+  padding: 9px 12px;
+  font-size: 13px;
   color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
   border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .search-input:focus {
   outline: none;
   border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03), 0 0 0 1px var(--ui-accent-primary-fg, var(--accent));
 }
 
 .search-input::placeholder {
@@ -661,7 +841,12 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 .source-tabs {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  background: var(--ui-state-hover-bg, var(--hover));
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  width: fit-content;
 }
 
 .kind-tab,
@@ -669,36 +854,45 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 30px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  min-height: 28px;
+  padding: 0 12px;
+  border: none;
   background: transparent;
   color: var(--ui-text-muted-fg, var(--muted));
-  border-radius: 8px;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 11.5px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-.kind-tab {
-  padding: 0 9px;
-  font-size: 12px;
-}
-
-.source-tab {
-  padding: 0 10px;
-  font-size: 12px;
+.kind-tab:hover,
+.source-tab:hover {
+  color: var(--ui-text-primary-fg, var(--text));
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
 }
 
 .kind-tab.active,
 .source-tab.active {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-active-bg, var(--active));
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, var(--ui-border-default-border, var(--border)));
+  color: var(--ui-accent-primary-fg, var(--accent));
+  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
 .tab-count,
 .source-tab span {
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 12%, transparent);
   color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.kind-tab.active .tab-count,
+.source-tab.active span {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .content-body {
@@ -754,9 +948,251 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 
 .media-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 12px;
   padding-bottom: 16px;
+}
+
+/* Inline Media Inspector Drawer Styling */
+.inspector-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 330px;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border-left: 1px solid var(--ui-border-default-border, var(--border));
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ui-border-subtle-border);
+  background: var(--ui-surface-panel-bg);
+}
+
+.drawer-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ui-text-primary-fg);
+}
+
+.drawer-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--ui-text-muted-fg);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.drawer-close-btn:hover {
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
+}
+
+.drawer-scroll-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.drawer-preview-box {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  background: var(--ui-surface-panel-bg);
+  border-radius: 8px;
+  border: 1px solid var(--ui-border-subtle-border);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.drawer-preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: zoom-in;
+  transition: filter 0.2s ease;
+}
+
+.drawer-preview-img:hover {
+  filter: brightness(0.95);
+}
+
+.drawer-preview-fallback {
+  color: var(--ui-text-muted-fg);
+}
+
+.drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.section-heading {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ui-text-muted-fg);
+  margin: 0;
+}
+
+.section-title-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.copy-text-btn {
+  background: transparent;
+  border: none;
+  color: var(--ui-accent-primary-fg);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.copy-text-btn:hover {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+}
+
+.specs-list {
+  background: var(--ui-surface-panel-bg);
+  border: 1px solid var(--ui-border-subtle-border);
+  border-radius: 8px;
+  padding: 4px 12px;
+}
+
+.spec-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 40%, transparent);
+}
+
+.spec-row:last-child {
+  border-bottom: none;
+}
+
+.spec-label {
+  color: var(--ui-text-secondary-fg);
+  font-weight: 500;
+}
+
+.spec-val {
+  color: var(--ui-text-primary-fg);
+  font-weight: 600;
+  min-width: 0;
+  text-align: right;
+}
+
+.spec-val.truncate {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-text-card {
+  background: var(--ui-surface-panel-bg);
+  border: 1px solid var(--ui-border-subtle-border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ui-text-primary-fg);
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.drawer-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--ui-border-subtle-border);
+  background: var(--ui-surface-panel-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drawer-action-btn {
+  height: 34px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-action-btn.secondary {
+  background: var(--ui-state-hover-bg);
+  color: var(--ui-text-primary-fg);
+  border-color: var(--ui-border-default-border);
+}
+
+.drawer-action-btn.secondary:hover {
+  background: var(--ui-state-active-bg);
+}
+
+.drawer-action-btn.danger {
+  background: transparent;
+  color: var(--ui-status-danger-fg, #ef4444);
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 30%, transparent);
+}
+
+.drawer-action-btn.danger:hover {
+  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
+  border-color: var(--ui-status-danger-fg, #ef4444);
+}
+
+/* Animations for Drawer */
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.drawer-enter-from,
+.drawer-leave-to {
+  transform: translateX(100%);
+}
+
+/* Adaptive styles for Drawer in Sidebar mode */
+.mode-side .inspector-drawer {
+  width: 100%;
 }
 
 .media-item {
@@ -861,13 +1297,20 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   gap: 10px;
   width: 100%;
   min-height: 56px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   text-align: left;
   color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
   border-radius: 8px;
   cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.asset-row:hover {
+  background: var(--ui-state-hover-bg, var(--hover));
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
 .asset-row-icon {
@@ -934,4 +1377,31 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   width: auto;
   opacity: 0;
 }
+
+/* Clean up duplicate headers inside embedded workspace content */
+.media-panel :deep(.tasks-header) {
+  min-height: auto !important;
+  padding: 10px 14px 10px !important;
+  border-bottom: none !important;
+}
+.media-panel :deep(.tasks-header .header-copy) {
+  display: none !important;
+}
+
+.media-panel :deep(.agents-header) {
+  min-height: auto !important;
+  padding: 10px 14px 10px !important;
+  border-bottom: none !important;
+}
+.media-panel :deep(.agents-header .agents-title) {
+  display: none !important;
+}
+
+.media-panel :deep(.memory-header) {
+  padding: 10px 14px 8px !important;
+}
+.media-panel :deep(.memory-header .memory-title) {
+  display: none !important;
+}
+
 </style>
