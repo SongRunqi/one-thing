@@ -6,7 +6,6 @@
 import type { ChatMessage } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
 import { getAIToolName } from '../../providers/tool-name-alias.js'
-import { buildSystemPrompt } from '../prompt/index.js'
 import { toolFailureResultForAI } from '../../tools/core/tool-result.js'
 import { logMessageBodyShape } from './chat-logger.js'
 
@@ -398,6 +397,3 @@ export function getTextFromContent(content: AIMessageContent): string {
   }
   return ''
 }
-
-// Re-export buildSystemPrompt from prompt service for backward compatibility
-export { buildSystemPrompt }

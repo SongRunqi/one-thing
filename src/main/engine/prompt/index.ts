@@ -11,12 +11,8 @@ export type {
 } from './types.js'
 
 export {
-  buildSystemPrompt,
-  buildSkillsAwarenessPrompt,
-  buildSkillsDirectPrompt,
-  buildSkillsToolPrompt,
   buildContextCompactPrompt,
-} from './builders.js'
+} from './compact.js'
 
 export {
   buildPrompt,
