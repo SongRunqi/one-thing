@@ -38,7 +38,7 @@ import { getTextFromContent } from './message-helpers.js'
 import { buildPrompt } from '../prompt/index.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { ToolOrchestrator } from './tool-orchestrator.js'
-import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages, logMessageBodyShape } from './chat-logger.js'
+import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages, logMessageBodyShape, dumpAssembledPrompt } from './chat-logger.js'
 import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import { type PendingMessageQueue, type PendingMessage } from './message-queue.js'
@@ -852,6 +852,8 @@ export async function runStream(
       hasSummary: Boolean(store.getSession(ctx.sessionId)?.summary),
       summaryUpToMessageId: store.getSession(ctx.sessionId)?.summaryUpToMessageId,
     })
+
+    dumpAssembledPrompt({ sessionId: ctx.sessionId, providerId: ctx.providerId, model, systemPrompt })
 
     const stream = streamChatResponseWithTools(
       ctx.providerId,

@@ -3,8 +3,37 @@
  * Provides structured, detailed logging for chat requests and responses
  */
 
+import fs from 'node:fs'
+import path from 'node:path'
 import type { SkillDefinition } from '../../../shared/ipc.js'
 import type { AIMessageContent } from '../../providers/index.js'
+import { getStorePath } from '../../stores/paths.js'
+
+/**
+ * Dump the fully assembled system prompt to a debug file so the exact text sent
+ * to the provider is always inspectable without per-source tracking. Overwrites
+ * each request; the header records which session/provider produced it.
+ */
+export function dumpAssembledPrompt(ctx: {
+  sessionId: string
+  providerId: string
+  model: string
+  systemPrompt: string
+}): void {
+  try {
+    const dir = path.join(getStorePath(), 'debug')
+    fs.mkdirSync(dir, { recursive: true })
+    const header = [
+      `# ${new Date().toISOString()} | ${ctx.providerId} | ${ctx.model} | session ${ctx.sessionId}`,
+      `# ${ctx.systemPrompt.length} chars`,
+      '',
+      '',
+    ].join('\n')
+    fs.writeFileSync(path.join(dir, 'last-system-prompt.txt'), header + ctx.systemPrompt, 'utf-8')
+  } catch (err) {
+    console.warn('[Chat] dumpAssembledPrompt failed:', err)
+  }
+}
 
 // Separator lines for visual clarity
 const DOUBLE_LINE = '═══════════════════════════════════════════════════════════════'
