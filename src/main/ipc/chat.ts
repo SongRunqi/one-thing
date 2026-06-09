@@ -828,7 +828,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       mcpToolNames: Object.keys(mcpTools),
       historyMessages: [],
     })
-    const { systemPrompt, systemPromptSegments } = requestMessages
+    const { systemPrompt } = requestMessages
 
     conversationMessages.push(...(requestMessages.messages as ToolChatMessage[]))
 
@@ -914,7 +914,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
         console.log('[Chat] Messages:', JSON.stringify(formatMessagesForLog(conversationMessages), null, 2))
 
         // Continue the stream (resume after tool confirmation)
-        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, [], processor, enabledSkills, undefined, undefined, systemPromptSegments)
+        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, [], processor, enabledSkills, undefined, undefined)
 
         // Log request end
         const requestEndTime = Date.now()

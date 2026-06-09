@@ -369,62 +369,18 @@
                           </template>
                         </small>
                       </div>
-                      <template v-if="m.sourceSegments?.length">
-                        <div
-                          v-for="(seg, segIdx) in m.sourceSegments"
-                          :key="segIdx"
-                          class="prompt-segment"
-                        >
-                          <button
-                            class="prompt-segment-source"
-                            type="button"
-                            :title="seg.absolutePath || seg.source"
-                            :disabled="!seg.absolutePath"
-                            @click="openPromptSource(seg)"
-                          >
-                            <FileText :size="11" />
-                            <code>{{ seg.source }}</code>
-                          </button>
-                          <small
-                            v-if="seg.role || seg.marker || seg.reason || seg.emittedThisTurn"
-                            class="segment-meta"
-                          >
-                            <span v-if="seg.role">{{ seg.role }}</span>
-                            <span v-if="seg.marker"> · {{ seg.marker.name }}</span>
-                            <span v-if="seg.reason"> · {{ seg.reason }}</span>
-                            <span
-                              v-if="seg.emittedThisTurn"
-                              class="segment-badge"
-                            >new this turn</span>
-                          </small>
-                          <pre
-                            v-if="seg.content"
-                            :class="{ expanded: isSegmentExpanded(idx, segIdx) }"
-                          >{{ segmentText(seg, isSegmentExpanded(idx, segIdx)) }}</pre>
-                          <button
-                            v-if="isLongSegment(seg)"
-                            class="message-expand"
-                            type="button"
-                            @click="toggleSegmentExpanded(idx, segIdx)"
-                          >
-                            {{ isSegmentExpanded(idx, segIdx) ? 'Show less' : 'Show more' }}
-                          </button>
-                        </div>
-                      </template>
-                      <template v-else>
-                        <pre
-                          v-if="messageText(m)"
-                          :class="{ expanded: isMessageExpanded(idx) }"
-                        >{{ messageText(m, isMessageExpanded(idx)) }}</pre>
-                        <button
-                          v-if="isLongMessage(m)"
-                          class="message-expand"
-                          type="button"
-                          @click="toggleMessageExpanded(idx)"
-                        >
-                          {{ isMessageExpanded(idx) ? 'Show less' : 'Show more' }}
-                        </button>
-                      </template>
+                      <pre
+                        v-if="messageText(m)"
+                        :class="{ expanded: isMessageExpanded(idx) }"
+                      >{{ messageText(m, isMessageExpanded(idx)) }}</pre>
+                      <button
+                        v-if="isLongMessage(m)"
+                        class="message-expand"
+                        type="button"
+                        @click="toggleMessageExpanded(idx)"
+                      >
+                        {{ isMessageExpanded(idx) ? 'Show less' : 'Show more' }}
+                      </button>
                       <div
                         v-if="m.toolCalls?.length"
                         class="tool-tags"
@@ -539,7 +495,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Box, Check, ChevronDown, ChevronRight, Database, FileText, Pencil, Plus, Radar, Sparkles, TerminalSquare, X } from 'lucide-vue-next'
+import { Box, Check, ChevronDown, ChevronRight, Database, Pencil, Plus, Radar, Sparkles, TerminalSquare, X } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
@@ -699,25 +655,10 @@ const variableEditor = ref({
   saving: false,
   error: '',
 })
-interface PromptSourceSegmentView {
-  source: string
-  content: string
-  absolutePath?: string
-  role?: 'base' | 'developer' | 'user'
-  marker?: {
-    name: string
-    start: string
-    end: string
-  }
-  hash?: string
-  reason?: 'initial' | 'changed' | 'removed'
-  emittedThisTurn?: boolean
-}
 interface RequestMessageView {
   content?: string
   contentPreview?: string
   contentLength: number
-  sourceSegments?: PromptSourceSegmentView[]
 }
 
 function messageText(message: RequestMessageView, expanded = false): string {
@@ -745,37 +686,6 @@ function toggleMessageExpanded(index: string | number) {
   if (next.has(key)) next.delete(key)
   else next.add(key)
   expandedMessages.value = next
-}
-
-const expandedSegments = ref<Set<string>>(new Set())
-function segmentKey(messageIdx: number | string, segIdx: number | string): string {
-  return `${messageIdx}:${segIdx}`
-}
-function isSegmentExpanded(messageIdx: number | string, segIdx: number | string): boolean {
-  return expandedSegments.value.has(segmentKey(messageIdx, segIdx))
-}
-function toggleSegmentExpanded(messageIdx: number | string, segIdx: number | string) {
-  const key = segmentKey(messageIdx, segIdx)
-  const next = new Set(expandedSegments.value)
-  if (next.has(key)) next.delete(key)
-  else next.add(key)
-  expandedSegments.value = next
-}
-const SEGMENT_PREVIEW_CHARS = 320
-function segmentText(seg: PromptSourceSegmentView, expanded = false): string {
-  if (expanded || seg.content.length <= SEGMENT_PREVIEW_CHARS) return seg.content
-  return `${seg.content.slice(0, SEGMENT_PREVIEW_CHARS)}...`
-}
-function isLongSegment(seg: PromptSourceSegmentView): boolean {
-  return seg.content.length > SEGMENT_PREVIEW_CHARS || seg.content.split('\n').length > 5
-}
-async function openPromptSource(seg: PromptSourceSegmentView) {
-  if (!seg.absolutePath) return
-  try {
-    await window.electronAPI?.openPath(seg.absolutePath)
-  } catch (err) {
-    console.error('[Inspector] open template failed:', err)
-  }
 }
 
 function compactVariableValue(value: string | undefined): string {
@@ -1893,70 +1803,6 @@ textarea.variable-value-input {
 
 .message-expand:hover {
   color: var(--ui-text-primary-fg, var(--text));
-}
-
-.prompt-segment {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 30%, transparent);
-}
-
-.prompt-segment:first-of-type {
-  margin-top: 4px;
-  padding-top: 0;
-  border-top: none;
-}
-
-.prompt-segment-source {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 4px;
-  padding: 2px 6px;
-  border: 1px solid color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 28%, transparent);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
-  cursor: pointer;
-  font-size: 10.5px;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-.prompt-segment-source:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 60%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
-}
-
-.prompt-segment-source:disabled {
-  cursor: default;
-  opacity: 0.7;
-}
-
-.prompt-segment-source code {
-  font-size: 10.5px;
-  background: transparent;
-  padding: 0;
-}
-
-.segment-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  align-self: flex-start;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 10.5px;
-}
-
-.segment-badge {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
-  font-weight: 700;
 }
 
 .tool-tags {

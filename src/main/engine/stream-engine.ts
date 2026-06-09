@@ -579,7 +579,7 @@ export class StreamEngine {
         speakMode: voiceConversation,
         historyMessages: [],
       })
-      const { systemPrompt, systemPromptSegments } = requestMessages
+      const { systemPrompt } = requestMessages
 
       const conversationMessages = [...requestMessages.messages] as ToolChatMessage[]
 
@@ -641,7 +641,7 @@ export class StreamEngine {
         console.log('[StreamEngine] Resuming tool loop after confirmation')
         const requestStartTime = Date.now()
 
-        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, [], processor, enabledSkills, ctx.steeringQueue, ctx.followUpQueue, systemPromptSegments)
+        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, [], processor, enabledSkills, ctx.steeringQueue, ctx.followUpQueue)
 
         const requestDuration = (Date.now() - requestStartTime) / 1000
         console.log(`[StreamEngine] Resume completed in ${requestDuration.toFixed(2)}s`)

@@ -7,7 +7,6 @@
 export type {
   OSType,
   TemplateSkill,
-  PromptSegment,
 } from './types.js'
 
 export {
@@ -16,14 +15,15 @@ export {
 
 export {
   buildPrompt,
+  buildSystemPrompt,
   loadAgentsMdInstructions,
-} from './context.js'
+} from './system-prompt.js'
 export type {
   BuildPromptContextOptions,
   BuildPromptOptions,
   BuildPromptResult,
   PromptRequestMessage,
-} from './context.js'
+} from './system-prompt.js'
 
 export {
   registerPromptContextProvider,

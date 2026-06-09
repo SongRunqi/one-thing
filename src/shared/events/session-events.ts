@@ -144,24 +144,6 @@ export interface StreamParamsResolvingEvent {
 
 // ── Request inspector ───────────────────────────
 
-/** One slice of a system prompt, attributed to a prompt source. */
-export interface PromptSourceSegment {
-  /** Stable prompt source id. */
-  source: string
-  content: string
-  /** Optional absolute on-disk path for source inspection. */
-  absolutePath?: string
-  role?: 'base' | 'developer' | 'user'
-  marker?: {
-    name: string
-    start: string
-    end: string
-  }
-  hash?: string
-  reason?: 'initial' | 'changed' | 'removed'
-  emittedThisTurn?: boolean
-}
-
 export interface RequestMessageSnapshot {
   role: 'system' | 'developer' | 'user' | 'assistant' | 'tool'
   /** First N chars of the text content, escaped, for quick preview. */
@@ -169,8 +151,6 @@ export interface RequestMessageSnapshot {
   /** Full text content for expanded inspection in the renderer. */
   content: string
   contentLength: number
-  /** System only: per-template breakdown of the rendered prompt. */
-  sourceSegments?: PromptSourceSegment[]
   /** Assistant only: whether reasoning_content is attached to this turn. */
   hasReasoning: boolean
   reasoningLength?: number

@@ -36,7 +36,6 @@ import { buildHistoryMessages, sanitizeToolResultForAI, type HistoryMessage } fr
 import { toolFailureResultForAI } from '../../tools/core/tool-result.js'
 import { getTextFromContent } from './message-helpers.js'
 import { buildPrompt } from '../prompt/index.js'
-import type { PromptSegment } from '../prompt/types.js'
 import { getProviderApiType } from './provider-helpers.js'
 import { ToolOrchestrator } from './tool-orchestrator.js'
 import { logRequestStart, logRequestEnd, logTurnStart, logTurnEnd, logContinuationMessages, logMessageBodyShape } from './chat-logger.js'
@@ -386,10 +385,10 @@ async function rebuildConversationMessagesFromSession(options: {
   toolsForAI: Record<string, any>
   codexNativeTools: string[]
   enabledSkills: SkillDefinition[]
-}): Promise<{ systemPrompt: string; systemPromptSegments: PromptSegment[] }> {
+}): Promise<{ systemPrompt: string }> {
   const session = store.getSession(options.ctx.sessionId)
   if (!session) {
-    return { systemPrompt: '', systemPromptSegments: [] }
+    return { systemPrompt: '' }
   }
 
   const historyMessages = buildHistoryMessages(session.messages, session)
@@ -424,14 +423,12 @@ async function rebuildConversationMessagesFromSession(options: {
 
   return {
     systemPrompt: requestMessages.systemPrompt,
-    systemPromptSegments: requestMessages.systemPromptSegments,
   }
 }
 
 async function maybeCompactToolLoopContext(options: ToolLoopCompactOptions): Promise<{
   compacted: boolean
   systemPrompt?: string
-  systemPromptSegments?: PromptSegment[]
   blockedError?: string
 }> {
   if (options.ctx.settings.chat?.contextCompactEnabled === false) return { compacted: false }
@@ -560,7 +557,6 @@ async function maybeCompactToolLoopContext(options: ToolLoopCompactOptions): Pro
   return {
     compacted: true,
     systemPrompt: rebuilt.systemPrompt,
-    systemPromptSegments: rebuilt.systemPromptSegments,
   }
 }
 
@@ -593,7 +589,6 @@ export async function runStream(
   enabledSkills: SkillDefinition[],
   steeringQueue?: PendingMessageQueue,
   followUpQueue?: PendingMessageQueue,
-  systemPromptSegments?: PromptSegment[],
   onWriterChanged?: (writer: { ctx: StreamContext; processor: StreamProcessor; emitter: IPCEmitter }) => void,
 ): Promise<StreamResult> {
   const MAX_TOOL_TURNS = 100
@@ -787,11 +782,6 @@ export async function runStream(
           contentPreview: text.slice(0, 200),
           content: text,
           contentLength: text.length,
-          sourceSegments:
-            (m as any).sourceSegments ??
-            (m.role === 'system' && systemPromptSegments
-              ? systemPromptSegments
-              : undefined),
           hasReasoning: m.role === 'assistant' && !!(m as any).reasoningContent,
           reasoningLength:
             m.role === 'assistant' && (m as any).reasoningContent
@@ -1205,7 +1195,6 @@ export async function runStream(
         throw new Error(compacted.blockedError)
       } else if (compacted.compacted) {
         if (compacted.systemPrompt !== undefined) systemPrompt = compacted.systemPrompt
-        if (compacted.systemPromptSegments !== undefined) systemPromptSegments = compacted.systemPromptSegments
         needsAssistantAfterCompact = true
         appendedContinuation = true
         lastTurnInConversation = true
@@ -1450,7 +1439,7 @@ export async function executeStreamGeneration(
       emitter.sendContentPart({ type: 'waiting' })
     }
 
-    const { systemPrompt, systemPromptSegments } = requestMessages
+    const { systemPrompt } = requestMessages
 
     // Log request start with structured format
     // logRequestStart({
@@ -1478,7 +1467,6 @@ export async function executeStreamGeneration(
       enabledSkills,
       ctx.steeringQueue,
       ctx.followUpQueue,
-      systemPromptSegments,
       (writer) => {
         activeCtx = writer.ctx
         activeProcessor = writer.processor

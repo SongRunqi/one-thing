@@ -1195,12 +1195,10 @@ export type ToolChatMessage =
 	| {
 			role: "user" | "system" | "developer";
 			content: AIMessageContent;
-			sourceSegments?: any[];
 	  }
 	| {
 			role: "assistant";
 			content: AIMessageContent;
-			sourceSegments?: any[];
 			toolCalls?: Array<{
 				toolCallId: string;
 				toolName: string;

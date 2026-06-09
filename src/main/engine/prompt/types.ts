@@ -6,24 +6,6 @@
 
 export type OSType = 'macos' | 'windows' | 'linux'
 
-/**
- * One slice of a rendered prompt, attributed to a stable prompt source id.
- */
-export interface PromptSegment {
-  source: string
-  content: string
-  absolutePath?: string
-  role?: 'base' | 'developer' | 'user'
-  marker?: {
-    name: string
-    start: string
-    end: string
-  }
-  hash?: string
-  reason?: 'initial' | 'changed' | 'removed'
-  emittedThisTurn?: boolean
-}
-
 export interface TemplateSkill {
   name: string
   description: string

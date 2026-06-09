@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BuildPromptContextOptions } from '../context.js'
+import type { BuildPromptContextOptions } from '../system-prompt.js'
 import {
   buildPrompt,
   loadAgentsMdInstructions,
@@ -76,7 +76,6 @@ describe('Pi-style prompt builder', () => {
     expect(result.systemPrompt).toContain('Current date:')
     expect(result.messages[0].role).toBe('system')
     expect(result.messages[result.messages.length - 1]).toEqual({ role: 'user', content: 'hello' })
-    expect(result.debugSections.some(section => section.source === 'core/system-prompt')).toBe(true)
   })
 
   it('does not inject todo autonomy or tool usage guidance', async () => {
@@ -145,7 +144,6 @@ describe('Pi-style prompt builder', () => {
     unregister()
 
     expect(result.messages.some(message => String(message.content).includes('Plugin memory context'))).toBe(true)
-    expect(result.debugSections.some(section => section.source === 'plugins/test-plugin/memory')).toBe(true)
   })
 
   it('normalizes plugin user-role context to developer so only real history is user', async () => {
@@ -163,8 +161,6 @@ describe('Pi-style prompt builder', () => {
 
     expect(result.messages.filter(message => message.role === 'user')).toEqual([{ role: 'user', content: 'real user message' }])
     expect(result.messages.some(message => message.role === 'developer' && String(message.content).includes('Graph memory context'))).toBe(true)
-    const debug = result.debugSections.find(section => section.source === 'plugins/soul-memory/graph-profile')
-    expect(debug?.role).toBe('developer')
   })
 
   it('loads AGENTS instructions from project root to work directory with override priority', () => {
@@ -223,7 +219,6 @@ describe('Pi-style prompt builder', () => {
     expect(result.messages.some(message => message.role === 'developer')).toBe(false)
     expect(result.messages[0].role).toBe('system')
     expect(String(result.messages[0].content)).toContain('Permission Context')
-    expect(result.systemPromptSegments.some(segment => segment.role === 'developer')).toBe(true)
     expect(result.messages[result.messages.length - 1]).toEqual({ role: 'user', content: 'hello' })
   })
 })
