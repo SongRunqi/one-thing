@@ -422,6 +422,11 @@ async function loadTools() {
   }
 }
 
+function refreshToolsWhenVisible() {
+  if (activeTab.value !== 'tools') return
+  void loadTools()
+}
+
 // Load settings
 async function loadSettings() {
   try {
@@ -471,6 +476,9 @@ function handleSkillsSettingsUpdate(skillsSettings: any) {
 
 async function selectNavItem(tabId: string) {
   activeTab.value = tabId
+  if (tabId === 'tools') {
+    void loadTools()
+  }
   await nextTick()
   document.querySelector('.content-body')?.scrollTo({ top: 0, behavior: 'smooth' })
 }
@@ -495,6 +503,9 @@ function toggleNavExpanded(tabId: string) {
 
 async function selectNavSection(tabId: string, sectionLabel: string) {
   activeTab.value = tabId
+  if (tabId === 'tools') {
+    void loadTools()
+  }
   setNavExpanded(tabId, true)
   await nextTick()
 
@@ -525,6 +536,12 @@ watch(localSettings, (newSettings) => {
     originalSettings.value = JSON.stringify(newSettings)
   }, 500)
 }, { deep: true })
+
+watch(activeTab, (tabId) => {
+  if (tabId === 'tools') {
+    void loadTools()
+  }
+})
 
 // Custom provider management
 function editCustomProvider(providerId: string) {
@@ -656,11 +673,15 @@ async function openSettingsJson() {
 onMounted(async () => {
   await loadSettings()
   window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('focus', refreshToolsWhenVisible)
+  document.addEventListener('visibilitychange', refreshToolsWhenVisible)
   document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('focus', refreshToolsWhenVisible)
+  document.removeEventListener('visibilitychange', refreshToolsWhenVisible)
   document.removeEventListener('keydown', handleKeydown)
 })
 </script>

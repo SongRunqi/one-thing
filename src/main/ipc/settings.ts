@@ -6,6 +6,7 @@ import { invalidateProviderCache } from '../providers/registry.js'
 import { applyNetworkProxySettings, testProxy } from '../network/proxy.js'
 import { registerGlobalWindowShortcuts } from '../shortcuts/global-shortcuts.js'
 import { getVoiceServiceSafe } from '../voice/service.js'
+import { MCPManager, registerMCPTools } from '../mcp/index.js'
 
 export function registerSettingsHandlers() {
   // Open settings window
@@ -46,6 +47,8 @@ export function registerSettingsHandlers() {
     await applyNetworkProxySettings(settings.network?.proxy)
     registerGlobalWindowShortcuts()
     getVoiceServiceSafe()?.applySettings(settings)
+    await MCPManager.updateSettings(settings.mcp || { enabled: true, servers: [] })
+    await registerMCPTools()
 
     // Get the sender's webContents ID to exclude from broadcast
     const senderWebContentsId = event.sender.id

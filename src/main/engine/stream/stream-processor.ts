@@ -11,7 +11,6 @@ import type { ReasoningPlacement } from '../../../shared/events/index.js'
 import { createToolCall } from '../../tools/index.js'
 import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from '../../mcp/index.js'
 import { resolveAIToolName } from '../../providers/tool-name-alias.js'
-import { type IPCEmitter } from './ipc-emitter.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import type { PendingMessageQueue } from './message-queue.js'
 
@@ -38,7 +37,7 @@ export function cleanupActiveStreams(): void {
  * Resolved tool identity with display name and ID information
  */
 export interface ResolvedTool {
-  toolId: string      // Full tool ID for execution (e.g., "mcp_context7_get-library-docs")
+  toolId: string      // Full tool ID for execution (e.g., "mcp_search")
   displayName: string // Human-readable display name
   isMcp: boolean      // Whether this is an MCP tool
 }
@@ -46,8 +45,8 @@ export interface ResolvedTool {
 /**
  * Resolve tool identity from a tool name
  *
- * AI models may return short names like "get-library-docs" instead of
- * full IDs like "mcp_serverId_get-library-docs". This function resolves
+ * AI models usually call the single MCP router tool (`mcp_search`), but
+ * persisted/legacy calls may still contain old MCP ids. This function resolves
  * the full ID and provides a display name.
  *
  * @param toolName The tool name from the AI model
@@ -75,6 +74,10 @@ export function resolveToolIdentity(toolName: string, args: Record<string, any> 
 
   // For MCP tools, use the server's display name
   if (isMcp) {
+    if (toolId === 'mcp_search' || toolId === 'tool_function') {
+      displayName = toolId
+      return { toolId, displayName, isMcp }
+    }
     const parsed = parseMCPToolId(toolId)
     if (parsed) {
       const serverState = MCPManager.getServerState(parsed.serverId)

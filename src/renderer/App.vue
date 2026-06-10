@@ -167,7 +167,10 @@ const voiceStore = useVoiceStore()
 const appReady = ref(false)
 const showSettings = ref(false)
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
-const inspectorOpen = ref(false)
+const inspectorOpen = computed({
+  get: () => chatStore.inspectorOpen,
+  set: (val) => { chatStore.inspectorOpen = val }
+})
 
 // Sidebar width (persisted)
 const sidebarWidth = ref(parseInt(localStorage.getItem('sidebarWidth') || '300', 10))

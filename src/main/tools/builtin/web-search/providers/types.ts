@@ -7,6 +7,9 @@ export interface SearchResult {
   url: string
   snippet: string
   publishedDate?: string
+  source?: string
+  language?: string
+  extraSnippets?: string[]
 }
 
 export interface SearchResponse {

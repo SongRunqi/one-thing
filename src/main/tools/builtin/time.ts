@@ -507,7 +507,6 @@ Timezone rules:
   permissionGuard: 'safe',
   executionMode: 'parallel',
   renderKind: 'text',
-  promptSnippet: 'Get, convert, diff, or add timezone-aware times',
 
   parameters: TimeParameters,
 

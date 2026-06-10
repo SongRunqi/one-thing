@@ -174,7 +174,6 @@ To change the work directory for bash and file tools, use variable { action: "se
   permissionGuard: 'internal-check',
   executionMode: 'sequential',
   renderKind: 'bash',
-  promptSnippet: 'Execute bash commands (ls, grep, find, etc.)',
 
   parameters: BashParameters,
 

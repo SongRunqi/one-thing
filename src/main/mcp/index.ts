@@ -29,6 +29,7 @@ export { MCPManager } from './manager.js'
 // Export bridge functions
 export {
   mcpToolToToolDefinition,
+  getMCPRouterToolDefinition,
   mcpInputSchemaToZod,
   getMCPToolsForAI,
   registerMCPTools,

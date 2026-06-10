@@ -18,14 +18,6 @@ export {
   getEnvSkillsPath,
 } from './loader.js'
 
-// Prompt building utilities
-export {
-  buildSkillsAwarenessPrompt,
-  buildSkillsDirectPrompt,
-  buildSkillToolPrompt,
-  formatSkillsList,
-} from './prompt-builder.js'
-
 // Re-export types from shared
 export type {
   SkillDefinition,

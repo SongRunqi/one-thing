@@ -350,7 +350,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, toRaw, onMounted, computed } from 'vue'
+import { ref, toRaw, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import type { AppSettings, AIProvider, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
@@ -563,6 +563,11 @@ async function loadAvailableTools() {
   }
 }
 
+function refreshToolsWhenVisible() {
+  if (activeTab.value !== 'tools') return
+  void loadAvailableTools()
+}
+
 // Custom provider dialog functions
 function openAddCustomProvider() {
   editingCustomProvider.value = null
@@ -732,8 +737,21 @@ async function saveAndClose() {
   emit('close')
 }
 
+watch(activeTab, (tabId) => {
+  if (tabId === 'tools') {
+    void loadAvailableTools()
+  }
+})
+
 onMounted(async () => {
   await loadAvailableTools()
+  window.addEventListener('focus', refreshToolsWhenVisible)
+  document.addEventListener('visibilitychange', refreshToolsWhenVisible)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('focus', refreshToolsWhenVisible)
+  document.removeEventListener('visibilitychange', refreshToolsWhenVisible)
 })
 </script>
 

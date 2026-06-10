@@ -67,8 +67,6 @@ export {
   createToolCall,
   canAutoExecute,
   getToolExecutionMode,
-  getToolPromptSnippet,
-  getToolPromptGuidelines,
   initializeToolRegistry,
   isInitialized,
   // Async tool support

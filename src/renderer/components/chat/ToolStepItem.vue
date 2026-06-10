@@ -81,106 +81,19 @@
         class="error-tag"
         :class="{ rejected: view.status === 'rejected' }"
       >{{ view.errorPreview }}</span>
-
-      <!-- Diff header controls (single fixed header for the expanded diff) -->
-      <div
-        v-if="showDiffMeta"
-        class="diff-meta"
-        @click.stop
-      >
-        <span class="diff-meta-stats">
-          <span class="additions">+{{ activeDiff?.additions || 0 }}</span>
-          <span class="deletions">-{{ activeDiff?.deletions || 0 }}</span>
-        </span>
-        <span
-          v-if="view.status === 'executing'"
-          class="diff-meta-badge applying"
-        >Applying</span>
-        <span
-          v-else-if="view.status === 'completed'"
-          class="diff-meta-badge"
-        >Applied</span>
-        <button
-          class="diff-meta-btn"
-          :class="{ active: wrap }"
-          type="button"
-          :title="wrap ? 'Disable soft wrap' : 'Wrap long lines'"
-          :aria-pressed="wrap"
-          @click="wrap = !wrap"
-        >
-          <WrapText
-            :size="13"
-            :stroke-width="2"
-          />
-        </button>
-        <button
-          v-if="canRollback"
-          class="diff-meta-btn rollback-btn"
-          :class="{ done: rollbackState === 'done', failed: rollbackState === 'failed' }"
-          type="button"
-          :disabled="rollbackState === 'running' || rollbackState === 'done'"
-          :title="rollbackTitle"
-          @click="rollbackDiff"
-        >
-          <RotateCcw
-            :size="13"
-            :stroke-width="2"
-          />
-        </button>
-        <span
-          v-if="rollbackState === 'done'"
-          class="rollback-status done"
-        >Rolled back</span>
-        <span
-          v-else-if="rollbackState === 'failed'"
-          class="rollback-status failed"
-        >{{ rollbackError }}</span>
-        <button
-          class="diff-meta-btn"
-          type="button"
-          :title="copied ? 'Copied!' : 'Copy diff'"
-          @click="copyDiff"
-        >
-          <Check
-            v-if="copied"
-            :size="13"
-            :stroke-width="2"
-          />
-          <Copy
-            v-else
-            :size="13"
-            :stroke-width="2"
-          />
-        </button>
-      </div>
-
-      <ChevronDown
-        :class="['expand-icon', { rotated: expanded, placeholder: view.isAwaitingConfirmation || !view.hasDetails }]"
-        :size="14"
-        :stroke-width="2"
-        :aria-hidden="view.isAwaitingConfirmation || !view.hasDetails"
-      />
-    </div>
-
-    <div
-      v-show="expanded"
-      class="tool-step-details"
-    >
-      <ToolStepDetails
-        :view="view"
-        :wrap="wrap"
-      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { AlertTriangle, Ban, Check, ChevronDown, Circle, Copy, Minus, RotateCcw, WrapText, X } from 'lucide-vue-next'
+import { computed } from 'vue'
+import { AlertTriangle, Ban, Check, Circle, Minus, X } from 'lucide-vue-next'
 import type { ToolCall } from '@/types'
 import type { ToolStepView } from '@/stores/helpers/tool-step-view'
-import { copyTextToClipboard } from '@/utils/clipboard'
-import ToolStepDetails from './ToolStepDetails.vue'
+import { getActivePinia } from 'pinia'
+import { useChatStore } from '@/stores/chat'
+
+import { getFileToolCategory } from '@/stores/helpers/tool-display'
 
 const props = defineProps<{
   view: ToolStepView
@@ -194,70 +107,25 @@ const emit = defineEmits<{
   'toggle-expand': []
 }>()
 
+const chatStore = getActivePinia() ? useChatStore() : null
+
 const canOpenFile = computed(() =>
-  !!props.view.filePath && ['read', 'write', 'edit'].includes(props.view.toolName),
+  !!props.view.filePath && getFileToolCategory(props.view.toolName) !== null,
 )
-
-// Diff header lives on this outer row when expanded (single fixed header for
-// the diff). The expanded diff card below only renders content.
-const wrap = ref(false)
-const copied = ref(false)
-const rollbackState = ref<'idle' | 'running' | 'done' | 'failed'>('idle')
-const rollbackError = ref('')
-let copiedTimer: ReturnType<typeof setTimeout> | null = null
-let rollbackTimer: ReturnType<typeof setTimeout> | null = null
-
-const activeDiff = computed(() => props.view.diff || props.view.streamingDiff)
-const activeDiffLines = computed(() =>
-  props.view.diff ? props.view.diffLines : props.view.streamingDiffLines,
-)
-const showDiffMeta = computed(() => props.expanded && !!activeDiff.value)
-const canRollback = computed(() =>
-  props.view.status === 'completed' &&
-  !!props.view.diff?.auditPath &&
-  ['edit', 'write'].includes(props.view.toolName),
-)
-const rollbackTitle = computed(() => {
-  if (rollbackState.value === 'running') return 'Rolling back...'
-  if (rollbackState.value === 'done') return 'Rolled back'
-  if (rollbackState.value === 'failed') return rollbackError.value || 'Rollback failed'
-  return 'Rollback this file change'
-})
-
-async function rollbackDiff() {
-  const auditPath = props.view.diff?.auditPath
-  if (!auditPath || rollbackState.value === 'running' || rollbackState.value === 'done') return
-  const fileName = props.view.filePath || 'this file'
-  const confirmed = window.confirm(`Rollback changes to ${fileName}? This only succeeds if the file still matches the audited post-change content.`)
-  if (!confirmed) return
-
-  rollbackState.value = 'running'
-  rollbackError.value = ''
-  if (rollbackTimer) clearTimeout(rollbackTimer)
-  try {
-    const result = await window.electronAPI.rollbackFile({ auditPath })
-    if (!result.success) throw new Error(result.error || 'Rollback failed')
-    rollbackState.value = 'done'
-  } catch (error: any) {
-    rollbackError.value = error?.message || 'Rollback failed'
-    rollbackState.value = 'failed'
-  }
-}
-
-async function copyDiff() {
-  const text = activeDiffLines.value
-    .filter(line => line.class !== 'diff-hunk')
-    .map(line => `${line.prefix}${line.content}`)
-    .join('\n')
-  if (!text) return
-  if (!(await copyTextToClipboard(text))) return
-  copied.value = true
-  if (copiedTimer) clearTimeout(copiedTimer)
-  copiedTimer = setTimeout(() => { copied.value = false }, 2000)
-}
 
 function onMainClick() {
-  if (props.view.hasDetails) emit('toggle-expand')
+  const name = props.view.toolName.toLowerCase()
+  let tab: 'context' | 'request' | 'browser' | 'diff' | 'console' = 'console'
+  if (['web_search', 'web-search', 'websearch', 'web_open', 'web-open', 'webopen', 'web_find', 'web-find', 'webfind'].includes(name)) {
+    tab = 'browser'
+  } else if (['edit', 'write'].includes(name)) {
+    tab = 'diff'
+  } else {
+    tab = (name === 'read') ? 'diff' : 'console'
+  }
+  if (chatStore) {
+    chatStore.openInspectorToTab(tab, props.view.id)
+  }
 }
 
 const statusTitle = computed(() => {
@@ -277,46 +145,95 @@ const statusTitle = computed(() => {
 
 <style scoped>
 .tool-step {
-  --tool-step-surface: color-mix(in srgb, var(--ui-tool-surface-bg, var(--bg-tool-call)) 78%, transparent);
-  --tool-step-surface-hover: color-mix(in srgb, var(--ui-tool-surface-hover-bg, var(--bg-tool-call-hover)) 72%, transparent);
-  --tool-step-border: color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 72%, transparent);
-  --tool-step-shadow: 0 1px 0 color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 52%, transparent);
+  --tool-step-surface: color-mix(in srgb, var(--ui-tool-surface-bg, var(--bg-tool-call)) 60%, transparent);
+  --tool-step-surface-hover: color-mix(in srgb, var(--ui-tool-surface-hover-bg, var(--bg-tool-call-hover)) 75%, transparent);
+  --tool-step-border: color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 45%, transparent);
+  --tool-step-shadow: 0 4px 12px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.02);
   position: relative;
   font-size: var(--type-label-size, 13px);
   border: 1px solid transparent;
-  border-radius: var(--radius-sm, 8px);
+  border-radius: var(--radius-md, 12px);
   background: transparent;
-  margin: 3px 0;
+  margin: 6px 0;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   transition:
     background var(--duration-fast, 0.15s) var(--ease-default, ease),
     border-color var(--duration-fast, 0.15s) var(--ease-default, ease),
-    box-shadow var(--duration-fast, 0.15s) var(--ease-default, ease);
+    box-shadow var(--duration-fast, 0.15s) var(--ease-default, ease),
+    transform var(--duration-fast, 0.15s) var(--ease-default, ease);
 }
 
-.tool-step:hover,
+.tool-step:hover {
+  background: var(--tool-step-surface-hover);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 30%, var(--tool-step-border));
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.05), 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg) 15%, transparent);
+  transform: translateY(-0.5px);
+}
+
 .tool-step.expanded {
   background: var(--tool-step-surface);
   border-color: var(--tool-step-border);
   box-shadow: var(--tool-step-shadow);
+  transform: none;
 }
 
 .tool-step.needs-confirm {
   background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 8%, transparent);
-  border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 26%, transparent);
+  border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 35%, transparent);
+  animation: tool-warning-pulse 2s infinite ease-in-out;
 }
 
 .tool-step.needs-confirm:hover,
 .tool-step.needs-confirm.expanded {
   background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 11%, transparent);
-  border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 34%, transparent);
+}
+
+@keyframes tool-warning-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 10%, transparent);
+    border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 30%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 16px color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 25%, transparent);
+    border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 60%, transparent);
+  }
+}
+
+.tool-step.render-executing,
+.tool-step.render-streaming-input {
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 50%, transparent);
+  background: color-mix(in srgb, var(--ui-accent-primary-fg) 2%, var(--tool-step-surface));
+  animation: tool-pulse-glow 2s infinite ease-in-out;
+}
+
+@keyframes tool-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+    border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 16px color-mix(in srgb, var(--ui-accent-primary-fg) 25%, transparent);
+    border-color: color-mix(in srgb, var(--ui-accent-primary-fg) 70%, transparent);
+  }
+}
+
+.tool-step.render-failed {
+  background: color-mix(in srgb, var(--ui-status-danger-fg) 4%, transparent);
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg) 22%, transparent);
+}
+
+.tool-step.render-failed:hover {
+  border-color: color-mix(in srgb, var(--ui-status-danger-fg) 45%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--ui-status-danger-fg) 15%, transparent);
 }
 
 .tool-step-main {
   display: flex;
   align-items: center;
   gap: var(--space-2, 8px);
-  padding: 5px 8px;
-  min-height: 34px;
+  padding: 6px 12px;
+  min-height: 36px;
   overflow: hidden;
   user-select: none;
 }
@@ -326,40 +243,41 @@ const statusTitle = computed(() => {
 }
 
 .status-icon {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   border-radius: var(--radius-full, 999px);
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 66%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 78%, transparent);
+  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 60%, transparent);
+  transition: all 0.2s ease;
 }
 
 .status-icon.completed {
   color: var(--ui-status-success-fg, var(--text-success));
-  background: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 12%, transparent);
-  border-color: color-mix(in srgb, var(--ui-status-success-border, var(--border-success)) 26%, transparent);
+  background: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 14%, transparent);
+  border-color: color-mix(in srgb, var(--ui-status-success-border, var(--border-success)) 30%, transparent);
 }
 
 .status-icon.failed {
   color: var(--ui-status-danger-fg, var(--text-error));
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 12%, transparent);
-  border-color: color-mix(in srgb, var(--ui-status-danger-border, var(--border-error)) 26%, transparent);
+  background: color-mix(in srgb, var(--ui-status-danger-fg) 14%, transparent);
+  border-color: color-mix(in srgb, var(--ui-status-danger-border, var(--border-error)) 30%, transparent);
 }
 
 .status-icon.rejected {
   color: var(--ui-status-warning-fg, var(--text-warning));
-  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 12%, transparent);
-  border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 26%, transparent);
+  background: color-mix(in srgb, var(--ui-status-warning-fg) 14%, transparent);
+  border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 30%, transparent);
 }
 
 .status-icon.executing,
 .status-icon.streaming-input {
-  color: var(--ui-tool-accent-fg, var(--accent));
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--accent)) 12%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--accent)) 26%, transparent);
+  color: var(--ui-tool-accent-fg, var(--ui-accent-primary-fg));
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--ui-accent-primary-fg)) 14%, transparent);
+  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--ui-accent-primary-fg)) 30%, transparent);
 }
 
 .status-icon.cancelled {
@@ -369,8 +287,8 @@ const statusTitle = computed(() => {
 
 .status-icon.awaiting-confirmation {
   color: var(--ui-status-warning-fg, var(--text-warning));
-  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 13%, transparent);
-  border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 30%, transparent);
+  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 15%, transparent);
+  border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 34%, transparent);
 }
 
 .status-icon.pending,
@@ -379,12 +297,12 @@ const statusTitle = computed(() => {
 }
 
 .spinner {
-  width: 11px;
-  height: 11px;
-  border: 1.7px solid currentColor;
+  width: 12px;
+  height: 12px;
+  border: 1.8px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  animation: spin 0.8s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite;
 }
 
 @keyframes spin {
@@ -393,7 +311,7 @@ const statusTitle = computed(() => {
 
 .tool-copy {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--space-2, 8px);
   min-width: 0;
   flex: 1 1 auto;
@@ -403,9 +321,13 @@ const statusTitle = computed(() => {
   color: var(--ui-tool-text-fg, var(--text-tool-name));
   flex: 0 0 auto;
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs, 11px);
-  font-weight: var(--font-weight-semibold, 600);
-  letter-spacing: 0;
+  font-size: 10px;
+  font-weight: var(--font-weight-bold, 700);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, var(--ui-tool-text-fg) 8%, transparent);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs, 4px);
 }
 
 .tool-preview {
@@ -416,7 +338,8 @@ const statusTitle = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.9;
+  opacity: 0.85;
+  padding-left: 4px;
 }
 
 button.tool-preview {
@@ -451,7 +374,7 @@ button.tool-preview:hover {
 .error-tag {
   font-size: var(--font-size-xs, 11px);
   color: var(--ui-status-danger-fg, var(--text-error));
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-status-danger-fg) 10%, transparent);
   border: 1px solid color-mix(in srgb, var(--ui-status-danger-border, var(--border-error)) 18%, transparent);
   padding: 2px 7px;
   border-radius: var(--radius-xs, 4px);
@@ -464,7 +387,7 @@ button.tool-preview:hover {
 
 .error-tag.rejected {
   color: var(--ui-status-warning-fg, var(--text-warning));
-  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-status-warning-fg) 10%, transparent);
   border-color: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 20%, transparent);
 }
 
@@ -503,9 +426,9 @@ button.tool-preview:hover {
 }
 
 .diff-meta-badge.applying {
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--accent)) 12%, transparent);
-  color: var(--ui-tool-accent-fg, var(--accent));
-  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--accent)) 20%, transparent);
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--ui-accent-primary-fg)) 12%, transparent);
+  color: var(--ui-tool-accent-fg, var(--ui-accent-primary-fg));
+  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--ui-accent-primary-fg)) 20%, transparent);
 }
 
 .diff-meta-btn {
@@ -583,7 +506,7 @@ button.tool-preview:hover {
   font-weight: var(--font-weight-medium, 500);
   cursor: pointer;
   border: 1px solid color-mix(in srgb, var(--ui-status-danger-border, var(--border-error)) 18%, transparent);
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 5%, transparent);
+  background: color-mix(in srgb, var(--ui-status-danger-fg) 5%, transparent);
   color: var(--ui-text-muted-fg, var(--text-muted));
   transition: all var(--duration-fast, 0.15s) var(--ease-default, ease);
   white-space: nowrap;
@@ -591,7 +514,7 @@ button.tool-preview:hover {
 
 .btn-reject:hover {
   color: var(--ui-status-danger-fg, var(--text-error));
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 10%, transparent);
+  background: color-mix(in srgb, var(--ui-status-danger-fg) 10%, transparent);
   border-color: color-mix(in srgb, var(--ui-status-danger-border, var(--border-error)) 28%, transparent);
 }
 
@@ -617,5 +540,19 @@ button.tool-preview:hover {
 
 .tool-step-details {
   padding: 0 8px 8px 38px;
+}
+
+/* Height Transition for Expanded details */
+.expand-enter-active,
+.expand-leave-active {
+  transition: max-height 0.28s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.2s ease;
+  max-height: 1200px;
+  overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  max-height: 0;
+  opacity: 0;
 }
 </style>

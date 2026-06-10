@@ -20,10 +20,55 @@ if (!existsSync(nodeGyp)) {
   throw new Error('node-gyp is not installed; run npm install or bun install first')
 }
 
+function unique(values) {
+  return [...new Set(values.filter(Boolean))]
+}
+
+function canRunNodeGypPython(python) {
+  try {
+    execFileSync(python, ['-c', 'import socket, sys; print(sys.executable)'], {
+      cwd: root,
+      stdio: 'ignore',
+      timeout: 5000,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function findNodeGypPython() {
+  const candidates = unique([
+    process.env.NODE_GYP_FORCE_PYTHON,
+    process.env.npm_config_python,
+    process.env.PYTHON,
+    '/opt/homebrew/bin/python3',
+    '/usr/bin/python3',
+    '/usr/local/bin/python3',
+    'python3',
+    'python',
+  ])
+
+  for (const python of candidates) {
+    if (python.includes('/') && !existsSync(python)) continue
+    if (canRunNodeGypPython(python)) return python
+  }
+
+  throw new Error('No usable Python found for node-gyp. Install Homebrew Python or fix the system Python installation.')
+}
+
+const python = findNodeGypPython()
+console.log(`[native] using Python for node-gyp: ${python}`)
+
 rmSync(join(nativeDir, 'build'), { recursive: true, force: true })
-execFileSync(process.execPath, [nodeGyp, 'rebuild', '--directory', nativeDir], {
+execFileSync(process.execPath, [nodeGyp, 'rebuild', '--directory', nativeDir, '--python', python], {
   cwd: root,
   stdio: 'inherit',
+  env: {
+    ...process.env,
+    NODE_GYP_FORCE_PYTHON: python,
+    PYTHON: python,
+  },
 })
 
 mkdirSync(outputDir, { recursive: true })

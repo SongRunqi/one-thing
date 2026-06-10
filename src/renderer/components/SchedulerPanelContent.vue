@@ -35,7 +35,10 @@
       {{ error }}
     </div>
 
-    <div class="tasks-layout" :class="{ 'detail-active': taskDetailActive }">
+    <div
+      class="tasks-layout"
+      :class="{ 'detail-active': taskDetailActive }"
+    >
       <section class="task-list">
         <div class="task-list-title">
           <span>All Tasks</span>
@@ -233,10 +236,16 @@
               >
                 Loading run history...
               </div>
-              <div v-else-if="runs.length === 0" class="notice">
+              <div
+                v-else-if="runs.length === 0"
+                class="notice"
+              >
                 No run history yet.
               </div>
-              <div v-else class="runs-timeline">
+              <div
+                v-else
+                class="runs-timeline"
+              >
                 <div
                   v-for="(run, idx) in runs"
                   :key="run.runId || `${run.taskId}-${run.startedAt}`"
@@ -244,8 +253,14 @@
                   :class="{ active: selectedRun?.runId === run.runId }"
                 >
                   <div class="timeline-trail">
-                    <span class="timeline-node-dot" :class="run.status" />
-                    <div v-if="idx < runs.length - 1" class="timeline-node-line" />
+                    <span
+                      class="timeline-node-dot"
+                      :class="run.status"
+                    />
+                    <div
+                      v-if="idx < runs.length - 1"
+                      class="timeline-node-line"
+                    />
                   </div>
                   <button
                     class="timeline-run-card run-row"
@@ -253,7 +268,10 @@
                     @click="selectedRun = selectedRun?.runId === run.runId ? null : run"
                   >
                     <div class="run-card-header">
-                      <span class="run-status-pill" :class="run.status">{{ run.status }}</span>
+                      <span
+                        class="run-status-pill"
+                        :class="run.status"
+                      >{{ run.status }}</span>
                       <span class="run-card-duration">{{ formatDuration(run.durationMs) }}</span>
                     </div>
                     <div class="run-card-meta">
@@ -368,7 +386,10 @@
 
           <div class="config-stack">
             <!-- TRIGGER & MODEL CONFIGURATION -->
-            <section v-show="configTab === 'trigger'" class="config-group">
+            <section
+              v-show="configTab === 'trigger'"
+              class="config-group"
+            >
               <div class="config-section-head">
                 <h5>Basic</h5>
               </div>
@@ -378,8 +399,14 @@
                   <label class="config-row">
                     <span class="setting-label-with-tooltip">
                       <span>Cron</span>
-                      <span class="tooltip-wrapper" title="Cron expression detailing the dreaming run schedule.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Cron expression detailing the dreaming run schedule."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -394,8 +421,14 @@
                   <label class="config-row">
                     <span class="setting-label-with-tooltip">
                       <span>Timezone</span>
-                      <span class="tooltip-wrapper" title="Target timezone for evaluating the cron expression.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Target timezone for evaluating the cron expression."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -410,8 +443,14 @@
                   <label class="config-row">
                     <span class="setting-label-with-tooltip">
                       <span>Model</span>
-                      <span class="tooltip-wrapper" title="The AI model used for extracting and merging memory details.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="The AI model used for extracting and merging memory details."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -427,7 +466,10 @@
             </section>
 
             <!-- SOURCES CONFIGURATION -->
-            <section v-show="configTab === 'scoring'" class="config-group">
+            <section
+              v-show="configTab === 'scoring'"
+              class="config-group"
+            >
               <div class="config-section-head">
                 <h5>Sources</h5>
               </div>
@@ -451,7 +493,10 @@
             </section>
 
             <!-- LIMITS CONFIGURATION -->
-            <section v-show="configTab === 'limits'" class="config-group">
+            <section
+              v-show="configTab === 'limits'"
+              class="config-group"
+            >
               <div class="config-section-head">
                 <h5>Limits</h5>
               </div>
@@ -461,8 +506,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Lookback days</span>
-                      <span class="tooltip-wrapper" title="How many days of history to scan when dreaming.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="How many days of history to scan when dreaming."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -478,8 +529,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Source files</span>
-                      <span class="tooltip-wrapper" title="Maximum number of note files to process in a single dreaming cycle.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Maximum number of note files to process in a single dreaming cycle."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -495,8 +552,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Sessions</span>
-                      <span class="tooltip-wrapper" title="Maximum chat sessions to retrieve for memory consolidation.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Maximum chat sessions to retrieve for memory consolidation."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -512,8 +575,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Messages/session</span>
-                      <span class="tooltip-wrapper" title="Limit on message count parsed from each session to protect context limits.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Limit on message count parsed from each session to protect context limits."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -529,8 +598,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Input chars</span>
-                      <span class="tooltip-wrapper" title="Maximum characters to process in prompt context inputs.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Maximum characters to process in prompt context inputs."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -546,8 +621,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Timeout ms</span>
-                      <span class="tooltip-wrapper" title="Execution timeout duration in milliseconds.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Execution timeout duration in milliseconds."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -564,7 +645,10 @@
             </section>
 
             <!-- SCORING CONFIGURATION -->
-            <section v-show="configTab === 'scoring'" class="config-group">
+            <section
+              v-show="configTab === 'scoring'"
+              class="config-group"
+            >
               <div class="config-section-head">
                 <h5>Scoring</h5>
               </div>
@@ -574,8 +658,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Max promotions</span>
-                      <span class="tooltip-wrapper" title="Limit on promoted durable profile facts per run.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Limit on promoted durable profile facts per run."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -591,8 +681,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Min score</span>
-                      <span class="tooltip-wrapper" title="Minimum recall relevance score required to qualify facts.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Minimum recall relevance score required to qualify facts."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -609,8 +705,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Min recalls</span>
-                      <span class="tooltip-wrapper" title="Minimum duplicate recall cycles before fact promotion.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Minimum duplicate recall cycles before fact promotion."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input
@@ -626,8 +728,14 @@
                   <label class="config-field">
                     <span class="setting-label-with-tooltip">
                       <span>Unique sources</span>
-                      <span class="tooltip-wrapper" title="Minimum number of distinct sources required to corroborate a fact.">
-                        <Info :size="13" class="info-tooltip-icon" />
+                      <span
+                        class="tooltip-wrapper"
+                        title="Minimum number of distinct sources required to corroborate a fact."
+                      >
+                        <Info
+                          :size="13"
+                          class="info-tooltip-icon"
+                        />
                       </span>
                     </span>
                     <input

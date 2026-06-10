@@ -18,7 +18,6 @@ import path from 'node:path'
 import type { SkillDefinition, AppSettings } from '../../../shared/ipc.js'
 import { getMacOSAutomationDocsPath } from '../../stores/paths.js'
 import { getAgent } from '../../agents/index.js'
-import { getToolPromptGuidelines, getToolPromptSnippet } from '../../tools/registry.js'
 import { collectPluginPromptContext } from './plugin-context.js'
 import type { PromptActiveProject, PromptKnownProjects } from './types.js'
 
@@ -79,7 +78,7 @@ export async function buildSystemPrompt(
   const plugins = await collectPlugins(ctx)
 
   return {
-    system: core(ctx),
+    system: core(),
     developer: compact([
       agent.systemPrompt.trim() && agentPrompt(agent.name, agent.systemPrompt),
       (ctx.speakMode ?? ctx.voiceConversation) && VOICE_SPEAK_MODE,
@@ -88,9 +87,6 @@ export async function buildSystemPrompt(
       ctx.knownProjects?.hasAny && knownProjects(ctx.knownProjects),
       ctx.contextVariables?.trim() && `# Context Variables\n${ctx.contextVariables.trim()}`,
       os_(),
-      ctx.hasTools && permissions(ctx),
-      skills(ctx.skills),
-      ctx.hasTools && toolCatalog(ctx),
       loadAgentsMdInstructions(ctx.workingDirectory),
       ...plugins,
     ]),
@@ -124,12 +120,7 @@ export async function buildPrompt(options: BuildPromptOptions): Promise<BuildPro
 // Sections — static constants and dynamic render functions
 // ────────────────────────────────────────────────────────────────────────────
 
-function core(ctx: BuildPromptContextOptions): string {
-  const promptCwd = ctx.workingDirectory?.replace(/\\/g, '/')
-  const additionalRoots = (ctx.workingDirectoryRoots ?? [])
-    .filter(root => root && root !== ctx.workingDirectory)
-    .map(root => root.replace(/\\/g, '/'))
-
+function core(): string {
   const guidelines = [
     'Use write for new files or complete rewrites.',
     'Follow the Tool Workspace Rules when choosing file paths or command directories.',
@@ -137,42 +128,16 @@ function core(ctx: BuildPromptContextOptions): string {
     'When changing code, run an appropriate check when practical, then summarize changed paths clearly.',
     'Be concise in your responses.',
     'Show file paths clearly when working with files.',
-    ...getToolPromptGuidelines(ctx.toolNames ?? []),
   ]
 
-  const parts = [
+  return [
     'You are onething, an expert coding assistant created by songyitian. You help users by reading files, executing commands, editing code, and writing new files.',
     '',
-    'Available tools:',
-    ctx.hasTools ? availableTools(ctx.toolNames, ctx.mcpToolNames) : '(none)',
-    '',
-    'Guidelines:',
+    'Tool Guidelines:',
     ...guidelines.map(item => `- ${item}`),
-  ]
-
-  if (promptCwd) parts.push('', `Current work directory: ${promptCwd}`)
-  if (additionalRoots.length > 0) {
-    parts.push('', 'Additional work directories:', ...additionalRoots.map(root => `- ${root}`))
-  }
-  parts.push('', `Current date: ${formatDate()}`)
-
-  return parts.join('\n')
-}
-
-function availableTools(toolNames: string[] | undefined, mcpToolNames: string[] | undefined): string {
-  const lines: string[] = []
-  const seen = new Set<string>()
-  for (const name of toolNames ?? []) {
-    if (seen.has(name)) continue
-    seen.add(name)
-    lines.push(`- ${name}: ${getToolPromptSnippet(name) ?? 'Available built-in tool.'}`)
-  }
-  for (const name of mcpToolNames ?? []) {
-    if (seen.has(name)) continue
-    seen.add(name)
-    lines.push(`- ${name}: Available MCP tool.`)
-  }
-  return lines.length > 0 ? lines.join('\n') : '(none)'
+    '',
+    `Current date: ${formatDate()}`,
+  ].join('\n')
 }
 
 function agentPrompt(name: string, systemPrompt: string): string {
@@ -238,47 +203,6 @@ function os_(): string {
     default:
       return 'You are running on Linux.\nWhen executing shell commands, use Unix/Bash-compatible syntax.\nUse forward slashes (/) for file paths.'
   }
-}
-
-function permissions(ctx: BuildPromptContextOptions): string {
-  const lines = [
-    '## Permission Context',
-    '',
-    'Tool execution may require user approval before side effects. Approval can be granted for one action, the current session, or the current work directory.',
-  ]
-  if (ctx.workingDirectory) lines.push('', `Current work directory boundary: ${ctx.workingDirectory}`)
-  if (ctx.workingDirectoryRoots?.length) {
-    lines.push('Additional work directory boundaries:')
-    for (const root of ctx.workingDirectoryRoots) lines.push(`- ${root}`)
-  }
-  return lines.join('\n')
-}
-
-function skills(skillDefs: SkillDefinition[]): string | undefined {
-  if (skillDefs.length === 0) return undefined
-  const lines = [
-    '## Available Skills',
-    'You have access to the following skills. When a task involves using a skill, read its SKILL.md file first to understand how to use it properly.',
-    '',
-  ]
-  for (const skill of skillDefs) {
-    lines.push(`- **${skill.name}**: ${skill.description}`)
-    if (skill.directoryPath) lines.push(`  - SKILL.md location: \`${skill.directoryPath}/SKILL.md\``)
-    else if (skill.path) lines.push(`  - SKILL.md location: \`${skill.path}\``)
-  }
-  lines.push('', '**How to use skills:**', '1. If the skill directory is outside the current work directory list, use the `variable` tool with action=append, name=workdir, value=<skill-directory> before reading or editing it. Append the specific skill directory, not `~`.', '2. Use read tool to read the skill documentation', '3. Follow the instructions in SKILL.md to execute the skill', '4. Skills may have scripts or specific commands to run')
-  return lines.join('\n')
-}
-
-function toolCatalog(ctx: BuildPromptContextOptions): string | undefined {
-  const toolNames = [...(ctx.toolNames ?? [])].sort()
-  const mcpToolNames = [...(ctx.mcpToolNames ?? [])].sort()
-  if (toolNames.length === 0 && mcpToolNames.length === 0) return undefined
-  return [
-    '## Enabled Tool Names',
-    toolNames.length > 0 ? `Built-in tools: ${toolNames.join(', ')}` : '',
-    mcpToolNames.length > 0 ? `MCP tools: ${mcpToolNames.join(', ')}` : '',
-  ].filter(Boolean).join('\n')
 }
 
 // ────────────────────────────────────────────────────────────────────────────

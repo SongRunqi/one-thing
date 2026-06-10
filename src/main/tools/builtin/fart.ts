@@ -590,7 +590,6 @@ export const FartTool = Tool.define('fart', {
   permissionGuard: 'safe',
   executionMode: 'parallel',
   renderKind: 'text',
-  promptSnippet: 'Summon a whimsical ASCII buddy',
 
   parameters: FartParameters,
 

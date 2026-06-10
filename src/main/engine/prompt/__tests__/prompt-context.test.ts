@@ -70,8 +70,8 @@ describe('Pi-style prompt builder', () => {
     })
 
     expect(result.systemPrompt).toContain('You are onething')
-    expect(result.systemPrompt).toContain('Available tools:')
-    expect(result.systemPrompt).toContain('- read:')
+    expect(result.systemPrompt).not.toContain('Available tools:')
+    expect(result.systemPrompt).not.toContain('- read:')
     expect(result.systemPrompt).toContain('Current work directory: /repo')
     expect(result.systemPrompt).toContain('Current date:')
     expect(result.messages[0].role).toBe('system')
@@ -218,7 +218,7 @@ describe('Pi-style prompt builder', () => {
 
     expect(result.messages.some(message => message.role === 'developer')).toBe(false)
     expect(result.messages[0].role).toBe('system')
-    expect(String(result.messages[0].content)).toContain('Permission Context')
+    expect(String(result.messages[0].content)).not.toContain('Permission Context')
     expect(result.messages[result.messages.length - 1]).toEqual({ role: 'user', content: 'hello' })
   })
 })

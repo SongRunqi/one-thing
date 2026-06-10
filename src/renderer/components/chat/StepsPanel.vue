@@ -1,157 +1,244 @@
 <template>
   <div
-    v-if="activities.length > 0"
+    v-if="stepGroups.length > 0"
     class="tool-activity-timeline"
     :data-depth="depth"
   >
     <template
-      v-for="activity in activities"
-      :key="activity.id"
+      v-for="group in stepGroups"
+      :key="group.id"
     >
       <FartCallItem
-        v-if="activity.isFart"
-        :tool-call="activity.toolCall"
+        v-if="group.category === 'fart'"
+        :tool-call="group.activities[0].toolCall"
       />
 
-      <section
-        v-else
-        class="tool-activity"
-        :class="[
-          `status-${activity.status}`,
-          `tool-${activity.toolName}`,
-          {
-            expanded: isExpanded(activity),
-            awaiting: activity.isAwaitingConfirmation,
-            interactive: activity.hasDetails,
-          },
-        ]"
+      <div
+        v-else-if="group.activities.length === 1"
+        class="single-activity-container activity-group single-operation"
+        :class="[group.category, group.status, { expanded: isActivityExpanded(group.activities[0]), collapsed: !isActivityExpanded(group.activities[0]) }]"
         data-tool-activity-row
       >
-        <div
-          class="activity-main"
-          :role="activity.hasDetails ? 'button' : undefined"
-          :tabindex="activity.hasDetails ? 0 : undefined"
-          :aria-expanded="activity.hasDetails ? isExpanded(activity) : undefined"
-          @click="toggleActivity(activity)"
-          @keydown.enter.prevent="toggleActivity(activity)"
-          @keydown.space.prevent="toggleActivity(activity)"
-        >
-          <span
-            class="status-mark"
-            :title="statusTitle(activity.status)"
+        <div class="operation-list single group-timeline-tree">
+          <div
+            v-for="activity in group.activities"
+            :key="activity.id"
+            class="operation-block"
           >
-            <Loader2
-              v-if="isLive(activity.status)"
-              class="spin"
-              :size="14"
-              :stroke-width="2.2"
-            />
-            <Check
-              v-else-if="activity.status === 'completed'"
-              :size="14"
-              :stroke-width="2.4"
-            />
-            <Ban
-              v-else-if="activity.status === 'rejected'"
-              :size="14"
-              :stroke-width="2.2"
-            />
-            <X
-              v-else-if="activity.status === 'failed'"
-              :size="14"
-              :stroke-width="2.4"
-            />
-            <Minus
-              v-else-if="activity.status === 'cancelled'"
-              :size="14"
-              :stroke-width="2.4"
-            />
-            <AlertTriangle
-              v-else-if="activity.status === 'awaiting-confirmation'"
-              :size="14"
-              :stroke-width="2.2"
-            />
-            <Circle
-              v-else
-              :size="10"
-              :stroke-width="2.4"
-            />
-          </span>
-
-          <span class="activity-copy">
-            <span class="activity-verb">{{ activity.verb }}</span>
-            <button
-              v-if="activity.canOpenFile"
-              class="activity-target link"
-              type="button"
-              :title="activity.filePath"
-              @click.stop="emit('open-file', activity.filePath)"
-              @keydown.stop
+            <div
+              class="operation-row single-activity-row"
+              :class="[activity.status, `status-${activity.status}`, { 'is-expanded': isActivityExpanded(activity), 'file-tool-row': activity.canOpenFile, 'has-details': activity.hasDetails }]"
+              role="button"
+              :tabindex="activity.hasDetails ? 0 : -1"
+              @click="toggleActivityExpanded(activity)"
+              @keydown.enter.prevent="toggleActivityExpanded(activity)"
+              @keydown.space.prevent="toggleActivityExpanded(activity)"
             >
-              {{ activity.target }}
-            </button>
+              <span
+                class="group-type-icon"
+                :class="group.category"
+                :title="getGroupTypeLabel(group)"
+              >
+                <component
+                  :is="getGroupIcon(group)"
+                  :size="13"
+                />
+              </span>
+
+              <div class="operation-copy">
+                <div class="operation-primary">
+                  <span
+                    class="node-target operation-target"
+                    :title="activity.filePath || activity.target"
+                    @click.stop="toggleActivityExpanded(activity)"
+                  >
+                    <span class="node-action">{{ `${getSingleActivityVerb(group, activity)} ` }}</span><span
+                      class="node-target-name"
+                      :class="{ 'file-link': activity.canOpenFile }"
+                    >{{ getActivityTargetText(activity) }}</span>
+                  </span>
+                </div>
+                <div
+                  v-if="getActivityMetaText(activity)"
+                  class="operation-secondary"
+                >
+                  <span
+                    class="node-meta"
+                  >{{ getActivityMetaText(activity) }}</span>
+                </div>
+              </div>
+
+              <ChevronDown
+                v-if="activity.hasDetails"
+                class="operation-chevron"
+                :class="{ open: isActivityExpanded(activity) }"
+                :size="13"
+              />
+            </div>
+
+            <div
+              v-if="activity.errorSummary"
+              class="operation-failure"
+            >
+              <span class="failure-title">{{ activity.errorSummary }}</span>
+              <span
+                v-if="activity.nextAction"
+                class="failure-next"
+              >{{ activity.nextAction }}</span>
+            </div>
+
+            <transition name="expand">
+              <div
+                v-if="isActivityExpanded(activity)"
+                class="activity-inline-details flat"
+              >
+                <div class="details-content-wrapper">
+                  <ToolStepDetails
+                    :view="buildDetailedToolStepView(activity)"
+                    :wrap="true"
+                  />
+                </div>
+              </div>
+            </transition>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-else
+        class="workflow-group activity-group"
+        :class="[group.category, group.status, { collapsed: !isGroupExpanded(group), expanded: isGroupExpanded(group) }]"
+        data-tool-activity-row
+      >
+        <div class="group-header-anchor">
+          <div
+            class="group-header"
+            role="button"
+            tabindex="0"
+            @click="setGroupExpanded(group, !isGroupExpanded(group))"
+            @keydown.enter.prevent="setGroupExpanded(group, !isGroupExpanded(group))"
+            @keydown.space.prevent="setGroupExpanded(group, !isGroupExpanded(group))"
+          >
             <span
-              v-else
-              class="activity-target"
-            >{{ activity.target }}</span>
-            <span
-              v-if="activity.targetMeta"
-              class="activity-target-meta"
-            >{{ activity.targetMeta }}</span>
-          </span>
-
-          <span class="activity-spacer" />
-
-          <span
-            v-if="activity.stats && activity.status !== 'failed' && activity.status !== 'rejected'"
-            class="activity-meta stats"
-          >{{ activity.stats }}</span>
-          <span
-            v-if="activity.duration"
-            class="activity-meta duration"
-          >{{ activity.duration }}</span>
-          <span
-            v-if="activity.status === 'awaiting-confirmation'"
-            class="activity-badge warning"
-          >Confirm</span>
-          <span
-            v-else-if="activity.status === 'rejected'"
-            class="activity-badge rejected"
-          >Rejected</span>
-          <span
-            v-else-if="activity.status === 'failed'"
-            class="activity-badge danger"
-          >Failed</span>
-          <span
-            v-else-if="activity.status === 'queued'"
-            class="activity-badge"
-          >Queued</span>
-
-          <ChevronDown
-            class="expand-icon"
-            :class="{ open: isExpanded(activity), placeholder: !activity.hasDetails }"
-            :size="15"
-            :stroke-width="2"
-            :aria-hidden="!activity.hasDetails"
-          />
+              class="group-type-icon"
+              :class="group.category"
+              :title="getGroupTypeLabel(group)"
+            >
+              <component
+                :is="getGroupIcon(group)"
+                :size="13"
+              />
+            </span>
+            <div class="group-copy">
+              <span class="group-summary-text">{{ getGroupSummaryText(group) }}</span>
+              <span
+                v-if="getGroupMetaText(group)"
+                class="group-meta"
+              >{{ getGroupMetaText(group) }}</span>
+            </div>
+            <ChevronDown
+              class="group-chevron"
+              :class="{ open: isGroupExpanded(group) }"
+              :size="13"
+            />
+          </div>
         </div>
 
         <div
-          v-if="activity.hasDetails && isExpanded(activity)"
-          class="activity-details"
+          v-if="isGroupExpanded(group)"
+          class="operation-list group-timeline-tree"
         >
-          <ToolStepDetails
-            :view="detailedView(activity)"
-          />
+          <div
+            v-for="activity in group.activities"
+            :key="activity.id"
+            class="operation-block"
+          >
+            <div
+              class="operation-row tree-node-row"
+              :class="[activity.status, `status-${activity.status}`, { 'is-expanded': isGroupActivityExpanded(activity), 'file-tool-row': activity.canOpenFile, 'has-details': activity.hasDetails }]"
+              role="button"
+              :tabindex="activity.hasDetails ? 0 : -1"
+              @click="toggleGroupActivityExpanded(activity)"
+              @keydown.enter.prevent="toggleGroupActivityExpanded(activity)"
+              @keydown.space.prevent="toggleGroupActivityExpanded(activity)"
+            >
+              <span
+                class="operation-indent"
+                aria-hidden="true"
+              />
+
+              <div class="operation-copy tree-node-content">
+                <div class="operation-primary">
+                  <span
+                    class="node-target operation-target"
+                    :title="activity.filePath || activity.target"
+                    @click.stop="toggleGroupActivityExpanded(activity)"
+                  >
+                    <span class="node-action">{{ `${getOperationVerb(activity)} ` }}</span><span
+                      class="node-target-name"
+                      :class="{ 'file-link': activity.canOpenFile }"
+                    >{{ getActivityTargetText(activity) }}</span>
+                  </span>
+                </div>
+                <div
+                  v-if="getActivityMetaText(activity)"
+                  class="operation-secondary"
+                >
+                  <span class="node-meta">{{ getActivityMetaText(activity) }}</span>
+                </div>
+              </div>
+
+              <ChevronDown
+                v-if="activity.hasDetails"
+                class="operation-chevron"
+                :class="{ open: isGroupActivityExpanded(activity) }"
+                :size="13"
+              />
+            </div>
+
+            <div
+              v-if="activity.errorSummary && isGroupActivityExpanded(activity)"
+              class="operation-failure"
+            >
+              <span class="failure-title">{{ activity.errorSummary }}</span>
+              <span
+                v-if="activity.nextAction"
+                class="failure-next"
+              >{{ activity.nextAction }}</span>
+            </div>
+
+            <transition name="expand">
+              <div
+                v-if="isGroupActivityExpanded(activity)"
+                class="activity-inline-details"
+              >
+                <div class="details-content-wrapper">
+                  <ToolStepDetails
+                    :view="buildDetailedToolStepView(activity)"
+                    :wrap="true"
+                  />
+                </div>
+              </div>
+            </transition>
+          </div>
         </div>
-      </section>
+
+      </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { AlertTriangle, Ban, Check, ChevronDown, Circle, Loader2, Minus, X } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
+import {
+  ChevronDown,
+  FilePlus2,
+  FileText,
+  Pencil,
+  Search,
+  Terminal,
+  Wrench,
+} from 'lucide-vue-next'
 import type { Step, ToolCall } from '@/types'
 import {
   buildDetailedToolStepView,
@@ -159,7 +246,6 @@ import {
   type ToolActivityView,
 } from '@/stores/helpers/tool-activity-view'
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
-import type { ToolStepView } from '@/stores/helpers/tool-step-view'
 import FartCallItem from './FartCallItem.vue'
 import ToolStepDetails from './ToolStepDetails.vue'
 
@@ -174,108 +260,321 @@ const props = withDefaults(defineProps<{
   sessionId: '',
 })
 
-const emit = defineEmits<{
+defineEmits<{
   confirm: [toolCall: ToolCall, response: 'once']
   reject: [toolCall: ToolCall]
   'open-file': [filePath: string]
 }>()
 
-const userExpanded = ref<Set<string>>(new Set())
-const userCollapsed = ref<Set<string>>(new Set())
-const stickyExpanded = ref<Set<string>>(new Set())
-const detailCache = new Map<string, { fingerprint: string; view: ToolStepView }>()
+const durationNow = ref(Date.now())
 
-const activities = computed(() => buildToolActivityViews(props.steps))
+const activities = computed(() => buildToolActivityViews(props.steps, durationNow.value))
 
-watch(activities, (nextActivities) => {
-  const nextIds = new Set(nextActivities.map(activity => activity.id))
-  const sticky = new Set(stickyExpanded.value)
-  for (const id of sticky) {
-    if (!nextIds.has(id)) sticky.delete(id)
-  }
-  for (const activity of nextActivities) {
-    if (activity.isAwaitingConfirmation || activity.status === 'failed' || activity.status === 'rejected') {
-      sticky.add(activity.id)
-    }
-  }
-  stickyExpanded.value = sticky
-}, { immediate: true })
-
-watch(() => props.parentCollapsed, (collapsed) => {
-  if (!collapsed) return
-  userExpanded.value = new Set()
-  userCollapsed.value = new Set()
-  stickyExpanded.value = new Set()
-  detailCache.clear()
-})
-
-function isLive(status: ToolRenderStatus): boolean {
-  return status === 'pending' || status === 'streaming-input' || status === 'executing'
+interface StepGroup {
+  id: string
+  category: 'search' | 'edit' | 'write' | 'console' | 'read' | 'tool' | 'fart'
+  activities: ToolActivityView[]
+  status: ToolRenderStatus
 }
 
-function statusTitle(status: ToolRenderStatus): string {
+function getToolCategory(toolName: string): StepGroup['category'] {
+  const name = toolName.toLowerCase()
+  if (name === 'fart') return 'fart'
+  if (['web_search', 'web-search', 'websearch', 'web_open', 'web-open', 'webopen', 'web_find', 'web-find', 'webfind'].includes(name)) {
+    return 'search'
+  }
+  if (['edit', 'edit_file', 'edit-file', 'editfile', 'replace_file_content', 'multi_replace_file_content'].includes(name)) return 'edit'
+  if (['write', 'write_file', 'write-file', 'writefile', 'write_to_file', 'write-to-file', 'writetofile', 'create_file', 'create-file', 'createfile'].includes(name)) return 'write'
+  if (name === 'bash') return 'console'
+  if (['read', 'read_file', 'read-file', 'readfile', 'view_file', 'view-file', 'viewfile'].includes(name)) return 'read'
+  return 'tool'
+}
+
+const stepGroups = computed<StepGroup[]>(() => {
+  const groups: StepGroup[] = []
+  let currentGroup: StepGroup | null = null
+
+  for (const activity of activities.value) {
+    if (activity.isFart) {
+      if (currentGroup) {
+        groups.push(currentGroup)
+        currentGroup = null
+      }
+      groups.push({
+        id: activity.id,
+        category: 'fart',
+        activities: [activity],
+        status: activity.status,
+      })
+      continue
+    }
+
+    const category = getToolCategory(activity.toolName || '')
+    if (currentGroup && currentGroup.category === category) {
+      currentGroup.activities.push(activity)
+      currentGroup.status = mergeStatuses(currentGroup.status, activity.status)
+    } else {
+      if (currentGroup) groups.push(currentGroup)
+      currentGroup = {
+        id: activity.id,
+        category,
+        activities: [activity],
+        status: activity.status,
+      }
+    }
+  }
+
+  if (currentGroup) groups.push(currentGroup)
+  return groups
+})
+
+const groupExpandedMap = ref<Record<string, boolean>>({})
+const expandedActivitiesMap = ref<Record<string, boolean>>({})
+const expandedGroupActivitiesMap = ref<Record<string, boolean>>({})
+
+function mergeStatuses(current: ToolRenderStatus, next: ToolRenderStatus): ToolRenderStatus {
+  const precedence: ToolRenderStatus[] = [
+    'failed',
+    'rejected',
+    'awaiting-confirmation',
+    'executing',
+    'streaming-input',
+    'pending',
+    'queued',
+    'cancelled',
+    'completed',
+  ]
+  return precedence.find(status => current === status || next === status) || next
+}
+
+function isGroupExpanded(group: StepGroup): boolean {
+  if (groupExpandedMap.value[group.id] === undefined) {
+    return group.status !== 'completed' && group.status !== 'cancelled'
+  }
+  return groupExpandedMap.value[group.id]
+}
+
+function setGroupExpanded(group: StepGroup, val: boolean) {
+  groupExpandedMap.value[group.id] = val
+  if (val) {
+    collapseGroupActivities(group)
+  }
+}
+
+function isActivityExpanded(activity: ToolActivityView): boolean {
+  const saved = expandedActivitiesMap.value[activity.id]
+  return saved === undefined ? activity.defaultExpanded : saved
+}
+
+function isGroupActivityExpanded(activity: ToolActivityView): boolean {
+  return expandedGroupActivitiesMap.value[activity.id] === true
+}
+
+function toggleActivityExpanded(activity: ToolActivityView) {
+  if (!activity.hasDetails) return
+  expandedActivitiesMap.value[activity.id] = !isActivityExpanded(activity)
+}
+
+function toggleGroupActivityExpanded(activity: ToolActivityView) {
+  if (!activity.hasDetails) return
+  expandedGroupActivitiesMap.value[activity.id] = !isGroupActivityExpanded(activity)
+}
+
+function collapseGroupActivities(group: StepGroup) {
+  for (const activity of group.activities) {
+    expandedGroupActivitiesMap.value[activity.id] = false
+  }
+}
+
+function getStatusLabel(status: ToolRenderStatus): string {
   switch (status) {
     case 'queued': return 'Queued'
-    case 'streaming-input': return 'Reading tool input'
+    case 'pending': return 'Pending'
+    case 'streaming-input': return 'Preparing'
     case 'executing': return 'Running'
-    case 'awaiting-confirmation': return 'Needs confirmation'
-    case 'completed': return 'Completed'
-    case 'rejected': return 'User rejected'
+    case 'awaiting-confirmation': return 'Needs approval'
+    case 'completed': return 'Done'
     case 'failed': return 'Failed'
+    case 'rejected': return 'Rejected'
     case 'cancelled': return 'Cancelled'
     default: return 'Pending'
   }
 }
 
-function isExpanded(activity: ToolActivityView): boolean {
-  if (userCollapsed.value.has(activity.id)) return false
-  if (userExpanded.value.has(activity.id)) return true
-  if (stickyExpanded.value.has(activity.id)) return true
-  return activity.defaultExpanded
+function getGroupIcon(group: StepGroup) {
+  switch (group.category) {
+    case 'search': return Search
+    case 'console': return Terminal
+    case 'edit': return Pencil
+    case 'write': return FilePlus2
+    case 'read': return FileText
+    default: return Wrench
+  }
 }
 
-function toggleActivity(activity: ToolActivityView) {
-  if (!activity.hasDetails) return
-  const currentlyExpanded = isExpanded(activity)
-  const expanded = new Set(userExpanded.value)
-  const collapsed = new Set(userCollapsed.value)
+function getGroupTypeLabel(group: StepGroup): string {
+  switch (group.category) {
+    case 'search': return 'Search'
+    case 'console': return 'Command'
+    case 'edit': return 'Edit'
+    case 'write': return 'Write'
+    case 'read': return 'Read'
+    default: return 'Tool'
+  }
+}
 
-  if (currentlyExpanded) {
-    expanded.delete(activity.id)
-    collapsed.add(activity.id)
-    const sticky = new Set(stickyExpanded.value)
-    sticky.delete(activity.id)
-    stickyExpanded.value = sticky
-  } else {
-    collapsed.delete(activity.id)
-    expanded.add(activity.id)
+function getGroupSummaryText(group: StepGroup): string {
+  const count = group.activities.length
+  if (count === 1) return getSingleActivityText(group, group.activities[0])
+
+  const failed = group.activities.filter(activity => activity.status === 'failed' || activity.status === 'rejected').length
+  const succeeded = group.activities.filter(activity => activity.status === 'completed').length
+  if (failed > 0 && succeeded > 0) {
+    return `${getCompletedGroupVerb(group)} ${succeeded} ${getGroupNoun(group, succeeded)}, ${failed} failed`
+  }
+  if (failed > 0) return `${getBaseGroupVerb(group)} failed`
+
+  const verb = getGroupVerb(group)
+  return `${verb} ${count} ${getGroupNoun(group, count)}`
+}
+
+function getGroupMetaText(group: StepGroup): string {
+  const parts = [
+    getGroupStats(group),
+    getGroupDuration(group),
+    group.status !== 'completed' ? getStatusLabel(group.status) : '',
+  ].filter(Boolean)
+
+  return parts.join(' · ')
+}
+
+function getActivityMetaText(activity: ToolActivityView): string {
+  const parts = [
+    activity.stats,
+    isDuplicateDiffMeta(activity.targetMeta, activity.stats) ? '' : activity.targetMeta,
+    activity.duration,
+    activity.statusLabel !== 'Done' ? activity.statusLabel : '',
+  ].filter(Boolean)
+  return parts.join(' · ')
+}
+
+function isDuplicateDiffMeta(meta: string, stats: string): boolean {
+  if (!meta || !stats) return false
+  const normalize = (value: string) => value.replace(/[()\s]/g, '')
+  return normalize(meta) === normalize(stats)
+}
+
+function getSingleActivityText(group: StepGroup, activity: ToolActivityView): string {
+  return `${getSingleActivityVerb(group, activity)} ${getActivityTargetText(activity)}`
+}
+
+function getSingleActivityVerb(group: StepGroup, activity: ToolActivityView): string {
+  if (activity.status === 'failed') return `${getBaseGroupVerb(group)} failed:`
+  if (activity.status === 'rejected') return `${getBaseGroupVerb(group)} rejected:`
+  if (activity.status === 'awaiting-confirmation') return `${getBaseGroupVerb(group)} needs approval:`
+  return activity.verb
+}
+
+function getOperationText(activity: ToolActivityView): string {
+  return `${getOperationVerb(activity)} ${getActivityTargetText(activity)}`
+}
+
+function getOperationVerb(activity: ToolActivityView): string {
+  const category = getToolCategory(activity.toolName || '')
+  if (activity.status === 'failed') return `${getBaseGroupVerb({ category } as StepGroup)} failed:`
+  if (activity.status === 'rejected') return `${getBaseGroupVerb({ category } as StepGroup)} rejected:`
+  return getBaseGroupVerb({ category } as StepGroup)
+}
+
+function getActivityTargetText(activity: ToolActivityView): string {
+  return activity.target || activity.toolName || 'tool'
+}
+
+function getGroupVerb(group: StepGroup): string {
+  if (group.status === 'streaming-input' || group.status === 'executing' || group.status === 'pending') {
+    switch (group.category) {
+      case 'search': return 'Searching'
+      case 'console': return 'Running'
+      case 'edit': return 'Editing'
+      case 'write': return 'Writing'
+      case 'read': return 'Reading'
+      default: return 'Calling'
+    }
+  }
+  if (group.status === 'awaiting-confirmation') return getBaseGroupVerb(group)
+  if (group.status === 'cancelled') return `Cancelled ${getBaseGroupVerb(group).toLowerCase()}`
+  return getCompletedGroupVerb(group)
+}
+
+function getCompletedGroupVerb(group: StepGroup): string {
+  switch (group.category) {
+    case 'search': return 'Searched'
+    case 'console': return 'Ran'
+    case 'edit': return 'Edited'
+    case 'write': return 'Wrote'
+    case 'read': return 'Read'
+    default: return 'Called'
+  }
+}
+
+function getBaseGroupVerb(group: Pick<StepGroup, 'category'>): string {
+  switch (group.category) {
+    case 'search': return 'Search'
+    case 'console': return 'Run'
+    case 'edit': return 'Edit'
+    case 'write': return 'Write'
+    case 'read': return 'Read'
+    default: return 'Call'
+  }
+}
+
+function getGroupNoun(group: StepGroup, count: number): string {
+  const plural = count !== 1
+  switch (group.category) {
+    case 'search': return plural ? 'searches' : 'search'
+    case 'console': return plural ? 'commands' : 'command'
+    case 'edit':
+    case 'write':
+    case 'read':
+      return plural ? 'files' : 'file'
+    default:
+      return plural ? 'tools' : 'tool'
+  }
+}
+
+function getGroupStats(group: StepGroup): string {
+  let additions = 0
+  let deletions = 0
+
+  for (const activity of group.activities) {
+    const match = activity.stats.match(/\+(\d+)\s+-?(\d+)/)
+    if (!match) continue
+    additions += Number(match[1] || 0)
+    deletions += Number(match[2] || 0)
   }
 
-  userExpanded.value = expanded
-  userCollapsed.value = collapsed
+  return additions || deletions ? `+${additions} -${deletions}` : ''
 }
 
-function detailFingerprint(activity: ToolActivityView): string {
-  const toolCall = activity.toolCall
-  const changes = toolCall.changes
-  return [
-    activity.status,
-    toolCall.streamingArgs?.length ?? 0,
-    typeof activity.step.result === 'string' ? activity.step.result.length : 0,
-    activity.step.error?.length ?? 0,
-    changes?.diff?.length ?? 0,
-    changes?.additions ?? 0,
-    changes?.deletions ?? 0,
-  ].join(':')
+function getGroupDuration(group: StepGroup): string {
+  const durations = group.activities
+    .map(activity => getActivityDurationMs(activity))
+    .filter((duration): duration is number => duration !== null)
+  if (durations.length === 0) return ''
+
+  const total = durations.reduce((sum, duration) => sum + duration, 0)
+  return formatDuration(total)
 }
 
-function detailedView(activity: ToolActivityView): ToolStepView {
-  const fingerprint = detailFingerprint(activity)
-  const cached = detailCache.get(activity.id)
-  if (cached?.fingerprint === fingerprint) return cached.view
-  const view = buildDetailedToolStepView(activity)
-  detailCache.set(activity.id, { fingerprint, view })
-  return view
+function getActivityDurationMs(activity: ToolActivityView): number | null {
+  const { startTime, endTime } = activity.toolCall
+  if (!startTime || !endTime) return null
+  return Math.max(0, endTime - startTime)
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 }
 </script>
 
@@ -283,265 +582,354 @@ function detailedView(activity: ToolActivityView): ToolStepView {
 .tool-activity-timeline {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 3px;
   margin: 4px 0 6px;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-sans);
 }
 
-.tool-activity {
-  position: relative;
-  overflow: hidden;
-  border: 0.5px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 72%, var(--ui-tool-text-fg, var(--tool-ink)) 28%);
-  border-radius: var(--tool-radius);
-  background: var(--ui-tool-surface-bg, var(--tool-surface));
-  transition:
-    background var(--duration-fast, 0.15s) var(--ease-default, ease),
-    border-color var(--duration-fast, 0.15s) var(--ease-default, ease);
+.activity-group {
+  --activity-header-max-width: min(440px, calc(100vw - 72px));
+  --activity-body-width: min(560px, calc(100vw - 72px));
+  --activity-title-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 82%, transparent);
+  --activity-row-fg: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 68%, var(--ui-text-muted-fg, var(--muted)) 32%);
+  --activity-link-fg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 74%, var(--ui-text-muted-fg, var(--muted)) 26%);
+  display: inline-grid;
+  grid-template-columns: minmax(0, auto);
+  justify-items: start;
+  width: fit-content;
+  max-width: 100%;
+  overflow: visible;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ui-tool-surface-bg, var(--tool-surface)) 0%, transparent);
 }
 
-.tool-activity.expanded,
-.tool-activity:hover {
-  background: var(--ui-tool-surface-bg, var(--tool-surface));
-  border-color: color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 58%, var(--ui-tool-text-fg, var(--tool-ink)) 42%);
+.activity-group.completed {
+  background: transparent;
 }
 
-.tool-activity.awaiting {
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 7%, var(--ui-tool-surface-bg, var(--tool-surface)));
-  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 30%, var(--ui-tool-border-border, var(--tool-border)));
+.activity-group.failed,
+.activity-group.rejected {
+  background: transparent;
+  box-shadow: none;
 }
 
-.activity-main {
-  display: flex;
+.activity-group.awaiting-confirmation {
+  background: transparent;
+  box-shadow: none;
+}
+
+.group-header-anchor {
+  display: inline-block;
+  justify-self: start;
+  width: max-content;
+  max-width: var(--activity-header-max-width);
+}
+
+.group-header {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 14px;
   align-items: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 7px 10px;
-  overflow: hidden;
-  border-radius: inherit;
-}
-
-.tool-activity.interactive .activity-main {
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: 26px;
+  padding: 3px 5px;
+  border-radius: 5px;
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
-.activity-main:focus-visible {
+.group-header:focus,
+.operation-row:focus {
   outline: none;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 64%, var(--ui-tool-text-fg, var(--tool-ink)) 36%);
 }
 
-.status-mark {
-  width: 20px;
-  height: 20px;
+.group-type-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 18px;
+  color: var(--activity-title-fg);
+}
+
+.activity-group.failed .group-type-icon,
+.activity-group.rejected .group-type-icon {
+  color: var(--activity-title-fg);
+}
+
+.group-copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.group-summary-text {
+  overflow: hidden;
+  color: var(--activity-title-fg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-meta {
   flex: 0 0 auto;
-  border-radius: 999px;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
-  background: color-mix(in srgb, var(--ui-tool-text-fg, var(--tool-ink)) 7%, transparent);
-  border: 0.5px solid var(--ui-tool-border-border, var(--tool-border));
+  overflow: hidden;
+  color: color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 86%, transparent);
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.status-completed .status-mark {
-  color: var(--ui-tool-success-text-fg, var(--tool-ok));
-  background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 18%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 28%, transparent);
+.group-chevron,
+.operation-chevron {
+  color: var(--activity-title-fg);
+  transition: transform 0.16s ease, color 0.16s ease;
+  transform: rotate(-90deg);
 }
 
-.status-failed .status-mark {
-  color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
-  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 12%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 24%, transparent);
+.group-header:hover .group-chevron,
+.group-header:hover .group-type-icon,
+.operation-row.has-details:hover .operation-chevron {
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
-.tool-activity.status-failed {
-  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 5%, var(--ui-tool-surface-bg, var(--tool-surface)));
-  box-shadow: inset 3px 0 0 var(--ui-tool-danger-text-fg, var(--tool-del-bar));
+.group-header:hover .group-summary-text {
+  color: var(--ui-text-primary-fg, var(--text));
+  font-weight: 560;
 }
 
-.status-rejected .status-mark,
-.status-awaiting-confirmation .status-mark {
-  color: var(--ui-tool-accent-fg, var(--tool-accent));
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 13%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 28%, transparent);
+.group-header:hover .group-meta {
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
-.status-streaming-input .status-mark,
-.status-executing .status-mark,
-.status-pending .status-mark {
-  color: var(--ui-tool-accent-fg, var(--tool-accent));
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 11%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 24%, transparent);
+.group-chevron.open,
+.operation-chevron.open {
+  transform: rotate(0deg);
 }
 
-.spin {
-  animation: spin 0.85s linear infinite;
+.operation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: var(--activity-body-width);
+  min-width: min(360px, calc(100vw - 72px));
+  max-width: var(--activity-body-width);
+  padding: 1px 0 3px;
+  border-top: 0;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.operation-list.single {
+  width: fit-content;
+  min-width: 0;
+  max-width: min(560px, 100%);
+  padding: 0;
+  border-top: 0;
 }
 
-.activity-copy {
-  display: inline-flex;
+.operation-list.single .operation-row {
+  width: max-content;
+  max-width: var(--activity-header-max-width);
+  grid-template-columns: 18px minmax(0, 1fr) 14px;
+}
+
+.operation-block {
+  width: 100%;
+  min-width: 0;
+}
+
+.operation-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 24px;
+  padding: 2px 5px;
+  border-radius: 5px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.operation-row.has-details {
+  cursor: pointer;
+}
+
+.operation-row.failed,
+.operation-row.rejected {
+  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--text-error)) 4%, transparent);
+}
+
+.operation-indent {
+  width: 18px;
+  height: 1px;
+}
+
+.operation-copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.operation-primary,
+.operation-secondary {
+  min-width: 0;
+  display: flex;
   align-items: baseline;
   gap: 7px;
-  min-width: 0;
-  flex: 1 1 auto;
 }
 
-.activity-verb {
-  color: var(--ui-tool-text-fg, var(--tool-ink));
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-title);
+.operation-secondary {
+  color: color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 88%, transparent);
+}
+
+.node-target {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--activity-row-fg);
+  font-size: 12px;
   font-weight: 500;
-  white-space: nowrap;
-}
-
-.activity-target {
-  min-width: 0;
-  overflow: hidden;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--hg-syntax-string-fg, var(--syntax-string));
-  font-family: var(--tool-font-mono);
-  font-size: var(--tool-font-size-title);
-  font-weight: 400;
 }
 
-.activity-target-meta {
-  min-width: 0;
+.node-action,
+.node-target-name {
+  color: var(--activity-row-fg);
+}
+
+.node-target-name.file-link {
+  color: var(--activity-link-fg);
+}
+
+.operation-row.has-details:hover .node-action,
+.operation-row.has-details:hover .node-target-name {
+  color: var(--ui-text-primary-fg, var(--text));
+  font-weight: 560;
+}
+
+.operation-row.has-details:hover .node-target-name.file-link {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.diff-stats-inline {
+  flex: 0 0 auto;
+  color: var(--ui-text-faint-fg, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.node-verb,
+.node-meta,
+.node-duration {
+  flex: 0 0 auto;
   overflow: hidden;
+  color: var(--ui-text-faint-fg, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  font-family: var(--tool-font-mono);
-  font-size: var(--tool-font-size-body);
 }
 
-button.activity-target {
-  border: 0;
-  padding: 0;
+.node-verb {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-weight: 500;
+}
+
+.operation-failure {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 5px 5px 29px;
+  padding: 5px 7px;
+  border-left: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--text-error)) 5%, transparent);
+}
+
+.failure-title {
+  color: var(--ui-tool-danger-text-fg, var(--text-error));
+  font-size: 11px;
+  font-weight: 560;
+  line-height: 1.35;
+}
+
+.failure-next {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.activity-inline-details {
+  box-sizing: border-box;
+  width: calc(100% - 34px);
+  max-width: calc(100% - 34px);
+  min-width: 0;
+  margin: 0 5px 7px 29px;
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 26%, transparent);
   background: transparent;
-  text-align: left;
-  cursor: pointer;
 }
 
-.activity-target.link {
-  color: var(--hg-syntax-string-fg, var(--syntax-string));
+.activity-inline-details.flat {
+  margin-left: 29px;
 }
 
-.activity-target.link:hover {
-  text-decoration: underline;
+.details-content-wrapper {
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.tool-bash .activity-target,
-.tool-bash .activity-target.link {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+.activity-inline-details :deep(.tool-step-details) {
+  padding: 4px 0 0;
 }
 
-.activity-spacer {
-  flex: 0 0 8px;
+.activity-inline-details :deep(.detail-section) {
+  padding: 6px 0;
 }
 
-.activity-meta,
-.activity-badge {
-  flex: 0 0 auto;
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-meta);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+.activity-inline-details :deep(.args-toggle) {
+  min-height: 26px;
+  padding: 5px 0;
 }
 
-.activity-meta.duration {
-  padding: 2px 8px;
-  border-radius: calc(var(--tool-radius) - 3px);
-  background: color-mix(in srgb, var(--ui-tool-text-faint-fg, var(--tool-faint)) 16%, transparent);
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+.activity-inline-details :deep(.terminal-card) {
+  margin: 3px 0 8px;
 }
 
-.activity-meta.stats {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+.activity-inline-details :deep(.detail-note-row) {
+  padding: 6px 0 7px;
 }
 
-.activity-badge {
-  padding: 2px 7px;
-  border-radius: 999px;
-  border: 0.5px solid transparent;
+.activity-inline-details :deep(.diff-preview) {
+  margin: 4px 0 8px;
 }
 
-.activity-badge.warning {
-  color: var(--ui-tool-accent-fg, var(--tool-accent));
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 11%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 24%, transparent);
+.expand-enter-active,
+.expand-leave-active {
+  max-height: 900px;
+  overflow: hidden;
+  transition: max-height 0.22s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.16s ease;
 }
 
-.activity-badge.rejected {
-  color: var(--ui-tool-accent-fg, var(--tool-accent));
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 10%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 22%, transparent);
-}
-
-.activity-badge.danger {
-  color: var(--ui-tool-accent-on-fg, var(--tool-accent-on));
-  background: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
-  border-color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
-}
-
-.confirm-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-}
-
-.btn-reject {
-  height: 24px;
-  padding: 0 10px;
-  border-radius: var(--tool-radius);
-  border: 0.5px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 20%, transparent);
-  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 5%, transparent);
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-meta);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.btn-reject:hover {
-  color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
-  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 10%, transparent);
-}
-
-.expand-icon {
-  flex: 0 0 auto;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
-  transition: transform 0.16s ease;
-}
-
-.expand-icon.open {
-  transform: rotate(180deg);
-}
-
-.expand-icon.placeholder {
+.expand-enter-from,
+.expand-leave-to {
+  max-height: 0;
   opacity: 0;
-}
-
-.activity-details {
-  margin: 0;
-  border-top: 0.5px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 70%, var(--ui-tool-text-fg, var(--tool-ink)) 30%);
-  padding: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .spin {
-    animation: none;
-  }
-
-  .expand-icon {
-    transition: none;
-  }
 }
 </style>

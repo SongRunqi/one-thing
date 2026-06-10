@@ -8,53 +8,105 @@
     }"
   >
     <TransitionGroup
+      v-if="queuedMessages.length > 0"
       name="queued-message"
       tag="div"
       class="queued-messages"
+      :class="{ 'has-file-changes': !!queuedFileChanges }"
     >
+      <div
+        v-if="queuedFileChanges"
+        key="queued-file-changes"
+        class="queued-file-changes-row"
+      >
+        <div class="queued-file-changes-summary">
+          <span>{{ changedFilesLabel(queuedFileChanges.fileCount) }}</span>
+          <span class="queued-file-additions">+{{ queuedFileChanges.additions }}</span>
+          <span class="queued-file-deletions">-{{ queuedFileChanges.deletions }}</span>
+        </div>
+        <button
+          class="queued-review-btn"
+          type="button"
+          title="Review file changes"
+          @click.stop="reviewQueuedFileChanges"
+        >
+          Review
+        </button>
+      </div>
+
       <div
         v-for="item in queuedMessages"
         :key="item.id"
         class="queued-message-card"
+        :class="{ 'has-files': !!item.attachments?.length || hasQueuedFileChanges(item) }"
       >
-        <CornerDownRight
-          class="queued-message-icon"
-          :size="16"
-          :stroke-width="2"
-        />
-        <div class="queued-message-text">
-          {{ item.content || attachmentSummary(item.attachments) }}
-          <span
-            v-if="item.content && item.attachments?.length"
-            class="queued-message-attachments"
-          >
-            {{ attachmentSummary(item.attachments) }}
-          </span>
-        </div>
-        <button
-          class="queued-message-action"
-          type="button"
-          :disabled="!!item.attachments?.length"
-          :title="item.attachments?.length ? 'File messages will send after the current response' : 'Steer the current tool loop with this message'"
-          @click.stop="steerQueuedMessage(item.id)"
+        <span
+          class="queued-message-marker"
+          aria-hidden="true"
         >
           <CornerDownRight
+            class="queued-message-icon"
             :size="15"
             :stroke-width="2"
           />
-          <span>Steer</span>
-        </button>
-        <button
-          class="queued-message-icon-btn"
-          type="button"
-          title="Remove from queue"
-          @click.stop="removeQueuedMessage(item.id)"
-        >
-          <Trash2
-            :size="16"
-            :stroke-width="2"
-          />
-        </button>
+        </span>
+
+        <div class="queued-message-body">
+          <span class="queued-message-label">Insert message</span>
+          <span class="queued-message-separator">·</span>
+          <span
+            class="queued-message-text"
+            :class="{ empty: !item.content }"
+          >
+            {{ queuedMessagePreview(item) }}
+          </span>
+          <span
+            v-if="queuedFileSummary(item)"
+            class="queued-file-summary"
+            :class="{ 'is-diff': hasQueuedFileChanges(item) }"
+            :title="queuedFileSummaryTitle(item)"
+          >
+            <span class="queued-message-separator">·</span>
+            <GitCompare
+              v-if="hasQueuedFileChanges(item)"
+              :size="13"
+              :stroke-width="2"
+            />
+            <FileText
+              v-else
+              :size="13"
+              :stroke-width="2"
+            />
+            <span>{{ queuedFileSummary(item) }}</span>
+          </span>
+        </div>
+
+        <div class="queued-message-actions">
+          <button
+            class="queued-message-action"
+            type="button"
+            :disabled="!!item.attachments?.length"
+            :title="item.attachments?.length ? 'File messages will send after the current response' : 'Steer the current tool loop with this message'"
+            @click.stop="steerQueuedMessage(item.id)"
+          >
+            <CornerDownRight
+              :size="15"
+              :stroke-width="2"
+            />
+            <span>Steer</span>
+          </button>
+          <button
+            class="queued-message-icon-btn"
+            type="button"
+            title="Remove from queue"
+            @click.stop="removeQueuedMessage(item.id)"
+          >
+            <Trash2
+              :size="16"
+              :stroke-width="2"
+            />
+          </button>
+        </div>
       </div>
     </TransitionGroup>
 
@@ -344,12 +396,13 @@ import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
-import { X, Square, Send, Check, CornerDownRight, Trash2, FileText, Loader2, Mic } from 'lucide-vue-next'
+import { X, Square, Send, Check, CornerDownRight, Trash2, FileText, Loader2, Mic, GitCompare } from 'lucide-vue-next'
 import { findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
 import type { MessageAttachment, PermissionMode } from '@/types'
 import { DEFAULT_VOICE_SETTINGS } from '@shared/defaults/settings'
+import { getDiffFromStep } from '@/stores/helpers/tool-step-view'
 
 // Composables
 import { useInputHistory } from '@/composables/useInputHistory'
@@ -373,6 +426,7 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
   isLoading: false,
   maxChars: 4000,
+  sessionId: undefined,
 })
 
 const emit = defineEmits<Emits>()
@@ -413,6 +467,13 @@ interface QueuedMessage {
   id: string
   content: string
   attachments?: MessageAttachment[]
+}
+
+interface QueuedFileChangeSummary {
+  fileCount: number
+  additions: number
+  deletions: number
+  selectedStepId?: string
 }
 
 const queuedMessages = ref<QueuedMessage[]>([])
@@ -523,6 +584,11 @@ const canSend = computed(() => {
 
 const shouldShowStopAction = computed(() => {
   return hasActiveGeneration.value && !hasMessageContent.value && !hasAttachments.value
+})
+
+const queuedFileChanges = computed<QueuedFileChangeSummary | null>(() => {
+  if (queuedMessages.value.length === 0) return null
+  return latestSessionFileChanges() || queuedPatchAttachmentChanges()
 })
 
 const isPrimaryActionDisabled = computed(() => {
@@ -686,10 +752,139 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-function attachmentSummary(attachments?: MessageAttachment[]) {
-  const count = attachments?.length ?? 0
-  if (count === 0) return ''
-  return count === 1 ? '1 file attached' : `${count} files attached`
+function isPatchLikeFile(file: MessageAttachment): boolean {
+  return /\.(diff|patch)$/i.test(file.fileName) || /(?:x-)?(?:diff|patch)/i.test(file.mimeType)
+}
+
+function hasDiffLikeContent(content: string): boolean {
+  return /^(diff --git|@@\s|[-+]{3}\s[ab]\/)/m.test(content)
+}
+
+function hasQueuedFileChanges(item: QueuedMessage): boolean {
+  return hasDiffLikeContent(item.content) || !!item.attachments?.some(isPatchLikeFile)
+}
+
+function changedFilesLabel(fileCount: number): string {
+  return fileCount === 1 ? '1 file changed' : `${fileCount} files changed`
+}
+
+function parseDiffStats(diff: string): { additions: number; deletions: number; fileCount: number } {
+  if (!diff) return { additions: 0, deletions: 0, fileCount: 0 }
+  let additions = 0
+  let deletions = 0
+  let fileCount = 0
+
+  for (const line of diff.split('\n')) {
+    if (line.startsWith('diff --git ')) fileCount += 1
+    if (line.startsWith('+') && !line.startsWith('+++')) additions += 1
+    if (line.startsWith('-') && !line.startsWith('---')) deletions += 1
+  }
+
+  return {
+    additions,
+    deletions,
+    fileCount: fileCount || (additions || deletions ? 1 : 0),
+  }
+}
+
+function decodeAttachmentText(file: MessageAttachment): string {
+  if (!file.base64Data) return ''
+  try {
+    return globalThis.atob(file.base64Data)
+  } catch {
+    return ''
+  }
+}
+
+function latestSessionFileChanges(): QueuedFileChangeSummary | null {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return null
+  const messages = chatStore.sessionMessages?.get(sessionId) ?? []
+
+  for (const message of [...messages].reverse()) {
+    const diffEntries = (message.steps ?? [])
+      .map(step => ({ step, diff: getDiffFromStep(step) }))
+      .filter(entry => !!entry.diff)
+
+    if (diffEntries.length === 0) continue
+
+    let additions = 0
+    let deletions = 0
+    const fileKeys = new Set<string>()
+    for (const entry of diffEntries) {
+      const diff = entry.diff!
+      additions += diff.additions || 0
+      deletions += diff.deletions || 0
+      fileKeys.add(diff.filePath || entry.step.id || entry.step.toolCallId || `${fileKeys.size}`)
+    }
+
+    const selected = diffEntries[diffEntries.length - 1]?.step
+    return {
+      fileCount: fileKeys.size,
+      additions,
+      deletions,
+      selectedStepId: selected?.id || selected?.toolCallId,
+    }
+  }
+
+  return null
+}
+
+function queuedPatchAttachmentChanges(): QueuedFileChangeSummary | null {
+  let additions = 0
+  let deletions = 0
+  let fileCount = 0
+
+  for (const item of queuedMessages.value) {
+    if (hasDiffLikeContent(item.content)) {
+      const stats = parseDiffStats(item.content)
+      additions += stats.additions
+      deletions += stats.deletions
+      fileCount += stats.fileCount
+    }
+
+    for (const file of item.attachments ?? []) {
+      if (!isPatchLikeFile(file)) continue
+      const stats = parseDiffStats(decodeAttachmentText(file))
+      additions += stats.additions
+      deletions += stats.deletions
+      fileCount += stats.fileCount || 1
+    }
+  }
+
+  if (fileCount === 0) return null
+  return { fileCount, additions, deletions }
+}
+
+function reviewQueuedFileChanges() {
+  chatStore.openInspectorToTab?.('diff', queuedFileChanges.value?.selectedStepId || '')
+}
+
+function queuedMessagePreview(item: QueuedMessage): string {
+  const text = item.content.trim().replace(/\s+/g, ' ')
+  if (text) return text
+  if (item.attachments?.length) return 'Files only'
+  return 'Queued'
+}
+
+function queuedFileSummary(item: QueuedMessage): string {
+  const attachments = item.attachments ?? []
+  if (hasQueuedFileChanges(item)) {
+    if (attachments.length === 0) return 'File changes'
+    if (attachments.length === 1) return `File changes · ${attachments[0].fileName}`
+    return `${attachments.length} files changed`
+  }
+  if (attachments.length === 0) return ''
+  if (attachments.length === 1) return `1 file attached · ${attachments[0].fileName}`
+  return `${attachments.length} files attached`
+}
+
+function queuedFileSummaryTitle(item: QueuedMessage): string {
+  const attachments = item.attachments ?? []
+  if (attachments.length === 0) return queuedFileSummary(item)
+  return attachments
+    .map(file => `${file.fileName} (${formatFileSize(file.size)})`)
+    .join('\n')
 }
 
 function showAttachmentResult(accepted: AttachedFile[], rejected: { message: string }[]) {
@@ -913,7 +1108,6 @@ async function sendMessage() {
       content: fullMessage,
       attachments,
     })
-    showCommandFeedback('success', 'Message queued')
   } else {
     emit('sendMessage', fullMessage, 'send', attachments)
   }
@@ -1192,95 +1386,223 @@ defineExpose({
 }
 
 .queued-messages {
+  --queued-row-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel, var(--bg)))) 30%, transparent);
+  --queued-row-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 38%, transparent);
+  --queued-row-fg: var(--ui-text-primary-fg, var(--text));
+  --queued-row-muted: var(--ui-text-muted-fg, var(--muted));
+  --queued-row-faint: var(--ui-text-faint-fg, var(--muted));
+  --queued-row-accent: var(--ui-accent-primary-fg, var(--accent));
+  --queued-row-hover: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 54%, transparent);
+
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  width: calc(100% - 48px);
-  margin: 0 auto -8px;
+  gap: 0;
+  width: calc(100% - 96px);
+  margin: 0 auto 6px;
   position: relative;
-  z-index: 2;
+  z-index: 1;
   pointer-events: none;
 }
 
+.queued-messages:empty {
+  display: none;
+  margin: 0;
+}
+
+.queued-file-changes-row,
 .queued-message-card {
+  border: 0.5px solid var(--queued-row-border);
+  border-bottom: 0;
+  background: var(--queued-row-bg);
+}
+
+.queued-messages > :first-child {
+  border-top-left-radius: var(--radius-md, 12px);
+  border-top-right-radius: var(--radius-md, 12px);
+}
+
+.queued-messages > :last-child {
+  border-bottom: 0.5px solid var(--queued-row-border);
+  border-bottom-right-radius: var(--radius-md, 12px);
+  border-bottom-left-radius: var(--radius-md, 12px);
+}
+
+.queued-file-changes-row {
   min-height: 42px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   padding: 7px 14px;
-  border: 0.5px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 72%, transparent);
-  border-radius: 12px 12px 7px 7px;
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))) 88%, transparent);
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  box-shadow: var(--ui-surface-composer-queue-shadow, 0 -1px 6px rgba(0, 0, 0, 0.035));
-  backdrop-filter: blur(8px) saturate(1.02);
-  -webkit-backdrop-filter: blur(8px) saturate(1.02);
+  color: var(--queued-row-muted);
   pointer-events: auto;
 }
 
+.queued-file-changes-summary {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.queued-file-additions {
+  color: var(--diff-add-text, var(--ui-status-success-fg, var(--text-success)));
+}
+
+.queued-file-deletions {
+  color: var(--diff-del-text, var(--ui-status-danger-fg, var(--text-error)));
+}
+
+.queued-review-btn {
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm, 8px);
+  background: transparent;
+  color: var(--queued-row-fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 520;
+  cursor: pointer;
+}
+
+.queued-review-btn:hover {
+  background: var(--queued-row-hover);
+}
+
+.queued-message-card {
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px 5px 14px;
+  color: var(--queued-row-muted);
+  pointer-events: auto;
+}
+
+.queued-message-marker {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs, 4px);
+  color: color-mix(in srgb, var(--queued-row-accent) 76%, var(--queued-row-muted));
+}
+
 .queued-message-icon {
-  color: var(--ui-text-muted-fg, var(--muted));
   flex-shrink: 0;
+}
+
+.queued-message-body {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.25;
+}
+
+.queued-message-label {
+  flex: 0 0 auto;
+  color: var(--queued-row-fg);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.queued-message-separator {
+  flex: 0 0 auto;
+  color: var(--queued-row-faint);
+  font-size: 12px;
+  line-height: 1.25;
 }
 
 .queued-message-text {
   min-width: 0;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+  color: var(--queued-row-muted);
   font-size: 13px;
-  line-height: 1.45;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queued-message-text.empty {
+  color: var(--queued-row-faint);
+  font-style: italic;
+}
+
+.queued-file-summary {
+  flex: 0 10000 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--queued-row-faint);
+  font-size: 11px;
+  font-weight: 560;
+  line-height: 1.25;
+}
+
+.queued-file-summary.is-diff {
+  color: color-mix(in srgb, var(--diff-add-text, var(--ui-status-success-fg, var(--text-success))) 70%, var(--queued-row-muted));
+}
+
+.queued-file-summary span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .queued-message-action,
 .queued-message-icon-btn {
   border: 0;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--queued-row-muted);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-xs, 4px);
   transition: background 0.16s ease, color 0.16s ease;
+}
+
+.queued-message-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
 }
 
 .queued-message-action {
   gap: 5px;
-  height: 28px;
-  padding: 0 7px;
+  height: 26px;
+  padding: 0 6px;
   font: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   white-space: nowrap;
 }
 
 .queued-message-icon-btn {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
 }
 
 .queued-message-action:hover,
 .queued-message-icon-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--queued-row-hover);
+  color: var(--queued-row-fg);
 }
 
 .queued-message-action:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   transform: none;
-}
-
-.queued-message-attachments {
-  display: inline-block;
-  margin-left: 8px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 .queued-message-enter-active,
@@ -1823,6 +2145,20 @@ defineExpose({
 
 @media (max-width: 480px) {
   .composer { border-radius: 10px; }
+  .queued-messages {
+    width: calc(100% - 24px);
+    max-width: calc(100% - 24px);
+    margin: 0 auto 6px;
+  }
+  .queued-message-card {
+    grid-template-columns: 20px minmax(0, 1fr) auto;
+  }
+  .queued-file-summary {
+    display: none;
+  }
+  .queued-message-action span {
+    display: none;
+  }
   .input-area { padding: 8px 10px 0; }
   .composer-toolbar { padding: 5px 7px; }
   .composer-input { font-size: 15px; }

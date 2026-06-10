@@ -27,6 +27,8 @@ import { ProjectDirsTool } from '../../project-dirs/index.js'
 
 // Web search
 import { WebSearchTool } from './web-search/index.js'
+import { WebOpenTool } from './web-search/open.js'
+import { WebFindTool } from './web-search/find.js'
 
 // All built-in tools (Tool.define() format)
 // Note: SkillTool is async and needs separate initialization
@@ -46,6 +48,8 @@ const builtinTools = [
   FartTool,
   // Web tools
   WebSearchTool,
+  WebOpenTool,
+  WebFindTool,
 ]
 
 // Async tools that need initialization with context

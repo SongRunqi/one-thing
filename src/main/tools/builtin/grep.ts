@@ -73,8 +73,6 @@ export const GrepTool = Tool.define<typeof GrepParameters, GrepMetadata>('grep',
   permissionGuard: 'sandboxed',
   executionMode: 'parallel',
   renderKind: 'search',
-  promptSnippet: 'Search file contents for patterns (respects .gitignore)',
-  promptGuidelines: ['Use grep to search file contents when you know the text or regex pattern to find.'],
 
   parameters: GrepParameters,
 

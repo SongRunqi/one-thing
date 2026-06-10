@@ -70,6 +70,44 @@ describe('tool activity view', () => {
     }
   })
 
+  it('formats read targets with filename and line metadata', () => {
+    const activity = buildToolActivityView(step({
+      status: 'completed',
+      toolCall: tc({
+        toolId: 'read',
+        toolName: 'read',
+        status: 'completed',
+        arguments: {
+          filePath: '/Users/me/project/src/foo.ts',
+          offset: 10,
+          limit: 20,
+        },
+      }),
+    }))
+
+    expect(activity.target).toBe('foo.ts')
+    expect(activity.targetMeta).toBe(':10-29')
+    expect(activity.filePath).toBe('/Users/me/project/src/foo.ts')
+  })
+
+  it('formats read ranges without a path as line metadata instead of a bare suffix', () => {
+    const activity = buildToolActivityView(step({
+      status: 'completed',
+      toolCall: tc({
+        toolId: 'read',
+        toolName: 'read',
+        status: 'completed',
+        arguments: {
+          offset: 206,
+          limit: 10,
+        },
+      }),
+    }))
+
+    expect(activity.target).toBe('Lines 206-215')
+    expect(activity.targetMeta).toBe('')
+  })
+
   it('keeps diff stats for editing tools', () => {
     const activity = buildToolActivityView(step({
       status: 'completed',
@@ -107,6 +145,27 @@ describe('tool activity view', () => {
     expect(failed.defaultExpanded).toBe(true)
   })
 
+  it('surfaces failed edit filename, reason, and next action', () => {
+    const failedEdit = buildToolActivityView(step({
+      status: 'failed',
+      error: 'No matching text found in file',
+      toolCall: tc({
+        toolId: 'edit',
+        toolName: 'edit',
+        status: 'failed',
+        arguments: {
+          path: '/Users/me/project/src/app.ts',
+          edits: [{ oldText: 'old', newText: 'new' }],
+        },
+      }),
+    }))
+
+    expect(failedEdit.target).toBe('app.ts')
+    expect(failedEdit.errorSummary).toContain('app.ts')
+    expect(failedEdit.errorSummary).toContain('No matching text found')
+    expect(failedEdit.nextAction).toContain('adjust the edit')
+  })
+
   it('labels permission rejection distinctly from execution failure', () => {
     const rejected = buildToolActivityView(step({
       status: 'failed',
@@ -121,7 +180,7 @@ describe('tool activity view', () => {
     }))
 
     expect(rejected.status).toBe('rejected')
-    expect(rejected.verb).toBe('Rejected')
+    expect(rejected.verb).toBe('Rejected run')
     expect(rejected.defaultExpanded).toBe(true)
   })
 

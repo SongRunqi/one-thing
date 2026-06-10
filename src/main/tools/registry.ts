@@ -131,33 +131,9 @@ export function hasTool(toolId: string): boolean {
   return toolRegistry.has(toolId) || toolRegistryAsync.has(toolId)
 }
 
-export function getToolPromptSnippet(toolId: string): string | undefined {
-  const staticTool = toolRegistry.get(toolId)
-  if (staticTool?.promptSnippet) return staticTool.promptSnippet
-
-  const asyncTool = toolRegistryAsync.get(toolId)
-  return asyncTool?._initialized?.promptSnippet ?? asyncTool?.promptSnippet
-}
-
-export function getToolPromptGuidelines(toolIds: string[]): string[] {
-  const lines: string[] = []
-  const seen = new Set<string>()
-  for (const toolId of toolIds) {
-    const staticTool = toolRegistry.get(toolId)
-    const asyncTool = toolRegistryAsync.get(toolId)
-    const guidelines = staticTool?.promptGuidelines ?? asyncTool?._initialized?.promptGuidelines ?? asyncTool?.promptGuidelines ?? []
-    for (const guideline of guidelines) {
-      if (seen.has(guideline)) continue
-      seen.add(guideline)
-      lines.push(guideline)
-    }
-  }
-  return lines
-}
-
 export function getToolExecutionMode(toolId: string): ToolExecutionMode {
   const normalized = toolId.toLowerCase()
-  if (normalized.startsWith('mcp:') || normalized.startsWith('mcp_')) return 'sequential'
+  if (normalized === 'tool_function' || normalized.startsWith('mcp:') || normalized.startsWith('mcp_')) return 'sequential'
 
   const staticTool = toolRegistry.get(toolId)
   if (staticTool?.executionMode) return staticTool.executionMode
@@ -209,8 +185,6 @@ function toolInfoToDefinition(tool: ToolInfo): ToolDefinition {
     executionMode: tool.executionMode,
     renderKind: tool.renderKind,
     renderShell: tool.renderShell,
-    promptSnippet: tool.promptSnippet,
-    promptGuidelines: tool.promptGuidelines,
     category: tool.category === 'mcp' ? 'custom' : tool.category,
   }
 }
@@ -253,8 +227,6 @@ function asyncToolToDefinition(tool: ToolInfoAsync): ToolDefinition | null {
     executionMode: initResult.executionMode ?? tool.executionMode,
     renderKind: initResult.renderKind ?? tool.renderKind,
     renderShell: initResult.renderShell ?? tool.renderShell,
-    promptSnippet: initResult.promptSnippet ?? tool.promptSnippet,
-    promptGuidelines: initResult.promptGuidelines ?? tool.promptGuidelines,
     category: tool.category === 'mcp' ? 'custom' : tool.category,
   }
 }

@@ -54,8 +54,6 @@ export const FindTool = Tool.define<typeof FindParameters, FindMetadata>('find',
   permissionGuard: 'sandboxed',
   executionMode: 'parallel',
   renderKind: 'search',
-  promptSnippet: 'Find files by glob pattern (respects .gitignore)',
-  promptGuidelines: ['Use find when you need to discover files by name or glob pattern.'],
 
   parameters: FindParameters,
 

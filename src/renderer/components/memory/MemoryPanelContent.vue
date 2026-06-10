@@ -87,1002 +87,1077 @@
 
     <template v-else-if="activeTab === 'overview'">
       <div class="overview-stack">
-          <!-- Premium Hero Section -->
-          <section class="memory-hero">
-            <div class="memory-hero-main">
-              <span class="section-kicker">What AI knows</span>
-              <strong>{{ memoryHeroTitle }}</strong>
-              <span>{{ memoryHeroSubtitle }}</span>
-            </div>
+        <!-- Premium Hero Section -->
+        <section class="memory-hero">
+          <div class="memory-hero-main">
+            <span class="section-kicker">What AI knows</span>
+            <strong>{{ memoryHeroTitle }}</strong>
+            <span>{{ memoryHeroSubtitle }}</span>
+          </div>
             
-            <!-- Elevated Stats Cards Grid -->
+          <!-- Elevated Stats Cards Grid -->
+          <div
+            class="memory-hero-stats"
+            aria-label="Memory summary stats"
+          >
             <div
-              class="memory-hero-stats"
-              aria-label="Memory summary stats"
+              v-for="stat in memoryHeroStats"
+              :key="stat.id"
+              class="stat-dashboard-card"
+            >
+              <div class="stat-card-glow" />
+              <span class="stat-card-number">{{ stat.value }}</span>
+              <span class="stat-card-label">{{ stat.label }}</span>
+            </div>
+          </div>
+
+          <!-- Highlights Grid -->
+          <div class="memory-highlights-section">
+            <div class="section-subheader">
+              <span class="section-kicker">Key Insights</span>
+              <strong>Pinned memory elements</strong>
+            </div>
+            <div class="memory-hero-highlights">
+              <div
+                v-for="highlight in memoryHeroHighlights"
+                :key="highlight.id"
+                class="memory-highlight-card"
+              >
+                <span class="highlight-tag">{{ highlight.label }}</span>
+                <strong class="highlight-title">{{ highlight.title }}</strong>
+                <p class="highlight-body">
+                  {{ highlight.body }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Chronological Activity Timeline Feed -->
+        <section
+          class="memory-activity-section memory-activity"
+          aria-labelledby="memory-activity-title"
+        >
+          <div class="section-subheader padding-x">
+            <span class="section-kicker">Updates Feed</span>
+            <strong id="memory-activity-title">What AI learned recently</strong>
+          </div>
+            
+          <div class="activity-timeline">
+            <div
+              v-for="(activity, idx) in recentMemoryActivity"
+              :key="activity.id"
+              class="timeline-item-row"
+            >
+              <div class="timeline-trail">
+                <div class="timeline-dot" />
+                <div
+                  v-if="idx < recentMemoryActivity.length - 1"
+                  class="timeline-line"
+                />
+              </div>
+              <div class="timeline-card">
+                <div class="timeline-card-header">
+                  <strong class="timeline-card-title">{{ activity.title }}</strong>
+                  <span class="timeline-card-time">{{ activity.meta }}</span>
+                </div>
+                <p class="timeline-card-body">
+                  {{ activity.body }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Themed Collapsible Diagnostics Panel Card -->
+        <div :class="['diagnostics-card', 'memory-surface', diagnosticsTone]">
+          <div
+            class="diagnostics-toggle-header"
+            @click="diagnosticsOpen = !diagnosticsOpen"
+          >
+            <div class="diagnostics-summary-info diagnostics-domain">
+              <Info
+                :size="16"
+                class="diagnostics-icon"
+              />
+              <span>Diagnostics</span>
+              <small>How memory is operating & database paths</small>
+            </div>
+            <div class="diagnostics-state-pill">
+              <span class="state-pill-text">{{ diagnosticsSummary }}</span>
+              <ChevronDown
+                :size="16"
+                :class="['chevron-icon', { rotated: diagnosticsOpen }]"
+              />
+            </div>
+          </div>
+            
+          <div
+            v-show="diagnosticsOpen"
+            class="diagnostics-expanded-body"
+          >
+            <div class="health-cards">
+              <div
+                v-for="card in healthCards"
+                :key="card.id"
+                :class="['health-card-widget', card.tone]"
+              >
+                <span class="health-indicator-dot" />
+                <div class="health-card-main">
+                  <span class="health-card-title">{{ card.title }}</span>
+                  <span class="health-card-detail">{{ card.detail }}</span>
+                </div>
+                <em class="health-card-status">{{ card.status }}</em>
+              </div>
+            </div>
+
+            <!-- Inline Errors -->
+            <div
+              v-if="hasMemoryErrors"
+              class="diagnostic-errors-block"
             >
               <div
-                v-for="stat in memoryHeroStats"
-                :key="stat.id"
-                class="stat-dashboard-card"
+                v-if="overview?.status.lastError"
+                class="inline-error-badge"
               >
-                <div class="stat-card-glow" />
-                <span class="stat-card-number">{{ stat.value }}</span>
-                <span class="stat-card-label">{{ stat.label }}</span>
+                <span>Index Error:</span> {{ overview.status.lastError }}
               </div>
-            </div>
-
-            <!-- Highlights Grid -->
-            <div class="memory-highlights-section">
-              <div class="section-subheader">
-                <span class="section-kicker">Key Insights</span>
-                <strong>Pinned memory elements</strong>
-              </div>
-              <div class="memory-hero-highlights">
-                <div
-                  v-for="highlight in memoryHeroHighlights"
-                  :key="highlight.id"
-                  class="memory-highlight-card"
-                >
-                  <span class="highlight-tag">{{ highlight.label }}</span>
-                  <strong class="highlight-title">{{ highlight.title }}</strong>
-                  <p class="highlight-body">{{ highlight.body }}</p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- Chronological Activity Timeline Feed -->
-          <section
-            class="memory-activity-section memory-activity"
-            aria-labelledby="memory-activity-title"
-          >
-            <div class="section-subheader padding-x">
-              <span class="section-kicker">Updates Feed</span>
-              <strong id="memory-activity-title">What AI learned recently</strong>
-            </div>
-            
-            <div class="activity-timeline">
               <div
-                v-for="(activity, idx) in recentMemoryActivity"
-                :key="activity.id"
-                class="timeline-item-row"
+                v-if="overview?.status.lastCaptureError"
+                class="inline-error-badge"
               >
-                <div class="timeline-trail">
-                  <div class="timeline-dot" />
-                  <div v-if="idx < recentMemoryActivity.length - 1" class="timeline-line" />
-                </div>
-                <div class="timeline-card">
-                  <div class="timeline-card-header">
-                    <strong class="timeline-card-title">{{ activity.title }}</strong>
-                    <span class="timeline-card-time">{{ activity.meta }}</span>
-                  </div>
-                  <p class="timeline-card-body">{{ activity.body }}</p>
-                </div>
+                <span>Capture Error:</span> {{ overview.status.lastCaptureError }}
               </div>
-            </div>
-          </section>
-
-          <!-- Themed Collapsible Diagnostics Panel Card -->
-          <div :class="['diagnostics-card', 'memory-surface', diagnosticsTone]">
-            <div class="diagnostics-toggle-header" @click="diagnosticsOpen = !diagnosticsOpen">
-              <div class="diagnostics-summary-info diagnostics-domain">
-                <Info :size="16" class="diagnostics-icon" />
-                <span>Diagnostics</span>
-                <small>How memory is operating & database paths</small>
-              </div>
-              <div class="diagnostics-state-pill">
-                <span class="state-pill-text">{{ diagnosticsSummary }}</span>
-                <ChevronDown :size="16" :class="['chevron-icon', { rotated: diagnosticsOpen }]" />
-              </div>
-            </div>
-            
-            <div v-show="diagnosticsOpen" class="diagnostics-expanded-body">
-              <div class="health-cards">
-                <div
-                  v-for="card in healthCards"
-                  :key="card.id"
-                  :class="['health-card-widget', card.tone]"
-                >
-                  <span class="health-indicator-dot" />
-                  <div class="health-card-main">
-                    <span class="health-card-title">{{ card.title }}</span>
-                    <span class="health-card-detail">{{ card.detail }}</span>
-                  </div>
-                  <em class="health-card-status">{{ card.status }}</em>
-                </div>
-              </div>
-
-              <!-- Inline Errors -->
               <div
-                v-if="hasMemoryErrors"
-                class="diagnostic-errors-block"
+                v-if="overview?.status.lastFlushError"
+                class="inline-error-badge"
               >
-                <div v-if="overview?.status.lastError" class="inline-error-badge">
-                  <span>Index Error:</span> {{ overview.status.lastError }}
-                </div>
-                <div v-if="overview?.status.lastCaptureError" class="inline-error-badge">
-                  <span>Capture Error:</span> {{ overview.status.lastCaptureError }}
-                </div>
-                <div v-if="overview?.status.lastFlushError" class="inline-error-badge">
-                  <span>Flush Error:</span> {{ overview.status.lastFlushError }}
-                </div>
-                <div v-if="overview?.dreaming.lastError" class="inline-error-badge">
-                  <span>Dreaming Error:</span> {{ overview.dreaming.lastError }}
-                </div>
+                <span>Flush Error:</span> {{ overview.status.lastFlushError }}
               </div>
+              <div
+                v-if="overview?.dreaming.lastError"
+                class="inline-error-badge"
+              >
+                <span>Dreaming Error:</span> {{ overview.dreaming.lastError }}
+              </div>
+            </div>
 
-              <!-- Truncated Paths Grid with Tooltips and Quick Action buttons -->
-              <div class="path-grid-container">
-                <div v-for="path in pathsInfo" :key="path.label" class="path-info-row">
-                  <span class="path-info-label">{{ path.label }}</span>
-                  <div class="path-info-value-block">
-                    <code class="path-code-display" :title="path.value">{{ path.truncatedValue }}</code>
-                    <button
-                      class="path-copy-button"
-                      type="button"
-                      title="Copy full path"
-                      @click="copyText(path.value)"
-                    >
-                      <Copy :size="12" />
-                    </button>
-                  </div>
+            <!-- Truncated Paths Grid with Tooltips and Quick Action buttons -->
+            <div class="path-grid-container">
+              <div
+                v-for="path in pathsInfo"
+                :key="path.label"
+                class="path-info-row"
+              >
+                <span class="path-info-label">{{ path.label }}</span>
+                <div class="path-info-value-block">
+                  <code
+                    class="path-code-display"
+                    :title="path.value"
+                  >{{ path.truncatedValue }}</code>
+                  <button
+                    class="path-copy-button"
+                    type="button"
+                    title="Copy full path"
+                    @click="copyText(path.value)"
+                  >
+                    <Copy :size="12" />
+                  </button>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </template>
+      </div>
+    </template>
 
-      <template v-else-if="activeTab === 'profile'">
-        <div class="memory-tab-page profile-page">
-          <div class="profile-layout graph-layout memory-workspace" :class="{ 'detail-active': profileDetailActive }">
-            <section class="profile-list-surface memory-surface">
-              <div class="workspace-head">
-                <div class="workspace-head-title-select">
-                  <select v-model="graphView" class="view-select">
-                    <option value="observations">Facts ({{ graphObservations.length }})</option>
-                    <option value="relations">Connections ({{ graphRelations.length }})</option>
-                    <option value="entities">Entities ({{ graphEntities.length }})</option>
-                    <option value="duplicates">Duplicates ({{ graphDuplicates.length }})</option>
-                  </select>
-                </div>
-                <div class="toolbar-actions">
-                  <button
-                    class="toolbar-action-btn"
-                    type="button"
-                    title="Create new record"
-                    @click="newGraphRecord"
-                  >
-                    <Plus :size="15" />
-                  </button>
-                  <button
-                    class="toolbar-action-btn"
-                    type="button"
-                    title="Refresh"
-                    :disabled="profileLoading"
-                    @click="loadGraph"
-                  >
-                    <RefreshCw :size="14" :class="{ spinning: profileLoading }" />
-                  </button>
-                </div>
-              </div>
-              <div class="list-search-bar">
-                <Search :size="14" class="search-bar-icon" />
-                <input
-                  v-model="graphSearch"
-                  class="search-bar-input"
-                  type="text"
-                  placeholder="Search profile..."
-                  spellcheck="false"
-                  @keydown.enter="loadGraph"
+    <template v-else-if="activeTab === 'profile'">
+      <div class="memory-tab-page profile-page">
+        <div
+          class="profile-layout graph-layout memory-workspace"
+          :class="{ 'detail-active': profileDetailActive }"
+        >
+          <section class="profile-list-surface memory-surface">
+            <div class="workspace-head">
+              <div class="workspace-head-title-select">
+                <select
+                  v-model="graphView"
+                  class="view-select"
                 >
+                  <option value="observations">
+                    Facts ({{ graphObservations.length }})
+                  </option>
+                  <option value="relations">
+                    Connections ({{ graphRelations.length }})
+                  </option>
+                  <option value="entities">
+                    Entities ({{ graphEntities.length }})
+                  </option>
+                  <option value="duplicates">
+                    Duplicates ({{ graphDuplicates.length }})
+                  </option>
+                </select>
               </div>
-              <div class="profile-list">
-                <template v-if="graphView === 'observations'">
-                  <button
-                    v-for="memory in graphObservations"
-                    :key="memory.id"
-                    :class="['profile-row', { active: graphObservationForm.id === memory.id }]"
-                    type="button"
-                    @click="selectGraphObservation(memory)"
-                  >
-                    <span class="profile-row-top">
-                      <code :title="`${memory.entityDisplayName || memory.entityId} / ${memory.slot}`">{{ observationActivityTitle(memory) }}</code>
-                      <span class="confidence-badge">{{ memory.confidence.toFixed(2) }}</span>
-                    </span>
-                    <strong>{{ memory.text }}</strong>
-                    <span class="profile-row-foot">{{ memory.kind }} · {{ memory.status }} · {{ formatMaybeDate(memory.updatedAt) }}</span>
-                  </button>
-                </template>
-                <template v-else-if="graphView === 'relations'">
-                  <button
-                    v-for="relation in graphRelations"
-                    :key="relation.id"
-                    :class="['profile-row', { active: graphRelationForm.id === relation.id }]"
-                    type="button"
-                    @click="selectGraphRelation(relation)"
-                  >
-                    <span class="profile-row-top">
-                      <code :title="`${relation.fromDisplayName || relation.fromEntityId} → ${relation.toDisplayName || relation.toEntityId}`">{{ relation.fromDisplayName || relation.fromEntityId }} → {{ relation.toDisplayName || relation.toEntityId }}</code>
-                      <span class="confidence-badge">{{ relation.confidence.toFixed(2) }}</span>
-                    </span>
-                    <strong>{{ relation.relationType }}</strong>
-                    <span class="profile-row-foot">{{ relation.text }}</span>
-                  </button>
-                </template>
-                <template v-else-if="graphView === 'entities'">
-                  <button
-                    v-for="entity in graphEntities"
-                    :key="entity.id"
-                    :class="['profile-row', { active: graphEntityForm.id === entity.id }]"
-                    type="button"
-                    @click="selectGraphEntity(entity)"
-                  >
-                    <span class="profile-row-top">
-                      <code :title="entity.id">{{ entity.id }}</code>
-                      <span class="confidence-badge">{{ entity.confidence.toFixed(2) }}</span>
-                    </span>
-                    <strong>{{ entity.displayName }}</strong>
-                    <span class="profile-row-foot">{{ entity.entityType }} · {{ formatMaybeDate(entity.updatedAt) }}</span>
-                  </button>
-                </template>
-                <template v-else-if="graphView === 'duplicates'">
-                  <div
-                    v-for="duplicate in graphDuplicates"
-                    :key="duplicate.id"
-                    class="profile-row duplicate-row"
-                  >
-                    <span class="profile-row-top">
-                      <code>{{ duplicate.kind }}</code>
-                      <span class="confidence-badge">{{ duplicate.score.toFixed(2) }}</span>
-                    </span>
-                    <strong>{{ duplicate.sourceId }} → {{ duplicate.targetId }}</strong>
-                    <span>{{ duplicate.reason }}</span>
-                    <div class="action-row">
-                      <button
-                        class="secondary-action inline"
-                        type="button"
-                        @click="mergeGraphDuplicate(duplicate.id)"
-                      >
-                        Merge
-                      </button>
-                      <button
-                        class="secondary-action inline"
-                        type="button"
-                        @click="ignoreGraphDuplicate(duplicate.id)"
-                      >
-                        Ignore
-                      </button>
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
-                  <div class="notice compact">
-                    Possible duplicates are review-only. Merge or ignore them from the list.
-                  </div>
-                </template>
-                <div
-                  v-if="!profileLoading && graphCurrentListCount === 0"
-                  class="notice compact"
-                >
-                  No profile rows yet.
-                </div>
-              </div>
-            </section>
-
-            <section class="profile-editor memory-surface">
-              <div class="workspace-head">
+              <div class="toolbar-actions">
                 <button
-                  class="back-btn icon-btn"
+                  class="toolbar-action-btn"
                   type="button"
-                  title="Back to list"
-                  @click="profileDetailActive = false"
+                  title="Create new record"
+                  @click="newGraphRecord"
                 >
-                  <ArrowLeft :size="16" />
+                  <Plus :size="15" />
                 </button>
-                <span>
-                  <strong>{{ profileEditorTitle }}</strong>
-                  <small>{{ profileEditorSubtitle }}</small>
-                </span>
+                <button
+                  class="toolbar-action-btn"
+                  type="button"
+                  title="Refresh"
+                  :disabled="profileLoading"
+                  @click="loadGraph"
+                >
+                  <RefreshCw
+                    :size="14"
+                    :class="{ spinning: profileLoading }"
+                  />
+                </button>
               </div>
-              <template v-if="graphView === 'entities'">
-                <div class="editor-scroll-container">
-                  <div class="profile-grid">
-                    <label>
-                      <span class="setting-label">Type</span>
-                      <select
-                        v-model="graphEntityForm.entityType"
-                        class="memory-select"
-                      >
-                        <option
-                          v-for="type in graphEntityTypes"
-                          :key="type"
-                          :value="type"
-                        >
-                          {{ type }}
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      <span class="setting-label">Name</span>
-                      <input
-                        v-model="graphEntityForm.name"
-                        class="memory-input"
-                        type="text"
-                        spellcheck="false"
-                      >
-                    </label>
-                  </div>
-                  <label>
-                    <span class="setting-label">Display name</span>
-                    <input
-                      v-model="graphEntityForm.displayName"
-                      class="memory-input"
-                      type="text"
-                      spellcheck="true"
+            </div>
+            <div class="list-search-bar">
+              <Search
+                :size="14"
+                class="search-bar-icon"
+              />
+              <input
+                v-model="graphSearch"
+                class="search-bar-input"
+                type="text"
+                placeholder="Search profile..."
+                spellcheck="false"
+                @keydown.enter="loadGraph"
+              >
+            </div>
+            <div class="profile-list">
+              <template v-if="graphView === 'observations'">
+                <button
+                  v-for="memory in graphObservations"
+                  :key="memory.id"
+                  :class="['profile-row', { active: graphObservationForm.id === memory.id }]"
+                  type="button"
+                  @click="selectGraphObservation(memory)"
+                >
+                  <span class="profile-row-top">
+                    <code :title="`${memory.entityDisplayName || memory.entityId} / ${memory.slot}`">{{ observationActivityTitle(memory) }}</code>
+                    <span class="confidence-badge">{{ memory.confidence.toFixed(2) }}</span>
+                  </span>
+                  <strong>{{ memory.text }}</strong>
+                  <span class="profile-row-foot">{{ memory.kind }} · {{ memory.status }} · {{ formatMaybeDate(memory.updatedAt) }}</span>
+                </button>
+              </template>
+              <template v-else-if="graphView === 'relations'">
+                <button
+                  v-for="relation in graphRelations"
+                  :key="relation.id"
+                  :class="['profile-row', { active: graphRelationForm.id === relation.id }]"
+                  type="button"
+                  @click="selectGraphRelation(relation)"
+                >
+                  <span class="profile-row-top">
+                    <code :title="`${relation.fromDisplayName || relation.fromEntityId} → ${relation.toDisplayName || relation.toEntityId}`">{{ relation.fromDisplayName || relation.fromEntityId }} → {{ relation.toDisplayName || relation.toEntityId }}</code>
+                    <span class="confidence-badge">{{ relation.confidence.toFixed(2) }}</span>
+                  </span>
+                  <strong>{{ relation.relationType }}</strong>
+                  <span class="profile-row-foot">{{ relation.text }}</span>
+                </button>
+              </template>
+              <template v-else-if="graphView === 'entities'">
+                <button
+                  v-for="entity in graphEntities"
+                  :key="entity.id"
+                  :class="['profile-row', { active: graphEntityForm.id === entity.id }]"
+                  type="button"
+                  @click="selectGraphEntity(entity)"
+                >
+                  <span class="profile-row-top">
+                    <code :title="entity.id">{{ entity.id }}</code>
+                    <span class="confidence-badge">{{ entity.confidence.toFixed(2) }}</span>
+                  </span>
+                  <strong>{{ entity.displayName }}</strong>
+                  <span class="profile-row-foot">{{ entity.entityType }} · {{ formatMaybeDate(entity.updatedAt) }}</span>
+                </button>
+              </template>
+              <template v-else-if="graphView === 'duplicates'">
+                <div
+                  v-for="duplicate in graphDuplicates"
+                  :key="duplicate.id"
+                  class="profile-row duplicate-row"
+                >
+                  <span class="profile-row-top">
+                    <code>{{ duplicate.kind }}</code>
+                    <span class="confidence-badge">{{ duplicate.score.toFixed(2) }}</span>
+                  </span>
+                  <strong>{{ duplicate.sourceId }} → {{ duplicate.targetId }}</strong>
+                  <span>{{ duplicate.reason }}</span>
+                  <div class="action-row">
+                    <button
+                      class="secondary-action inline"
+                      type="button"
+                      @click="mergeGraphDuplicate(duplicate.id)"
                     >
+                      Merge
+                    </button>
+                    <button
+                      class="secondary-action inline"
+                      type="button"
+                      @click="ignoreGraphDuplicate(duplicate.id)"
+                    >
+                      Ignore
+                    </button>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <div class="notice compact">
+                  Possible duplicates are review-only. Merge or ignore them from the list.
+                </div>
+              </template>
+              <div
+                v-if="!profileLoading && graphCurrentListCount === 0"
+                class="notice compact"
+              >
+                No profile rows yet.
+              </div>
+            </div>
+          </section>
+
+          <section class="profile-editor memory-surface">
+            <div class="workspace-head">
+              <button
+                class="back-btn icon-btn"
+                type="button"
+                title="Back to list"
+                @click="profileDetailActive = false"
+              >
+                <ArrowLeft :size="16" />
+              </button>
+              <span>
+                <strong>{{ profileEditorTitle }}</strong>
+                <small>{{ profileEditorSubtitle }}</small>
+              </span>
+            </div>
+            <template v-if="graphView === 'entities'">
+              <div class="editor-scroll-container">
+                <div class="profile-grid">
+                  <label>
+                    <span class="setting-label">Type</span>
+                    <select
+                      v-model="graphEntityForm.entityType"
+                      class="memory-select"
+                    >
+                      <option
+                        v-for="type in graphEntityTypes"
+                        :key="type"
+                        :value="type"
+                      >
+                        {{ type }}
+                      </option>
+                    </select>
                   </label>
                   <label>
-                    <span class="setting-label">Aliases</span>
+                    <span class="setting-label">Name</span>
                     <input
-                      v-model="graphEntityAliases"
+                      v-model="graphEntityForm.name"
                       class="memory-input"
                       type="text"
-                      placeholder="comma separated"
                       spellcheck="false"
                     >
                   </label>
-                  <details class="profile-advanced">
-                    <summary>Advanced</summary>
-                    <div class="advanced-wrapper">
-                      <label>
-                        <span class="setting-label">Entity id</span>
-                        <input
-                          v-model="graphEntityForm.id"
-                          class="memory-input"
-                          type="text"
-                          placeholder="project:onething"
-                          spellcheck="false"
-                        >
-                      </label>
-                      <div class="profile-grid">
-                        <label>
-                          <span class="setting-label">Confidence</span>
-                          <input
-                            v-model.number="graphEntityForm.confidence"
-                            class="memory-input"
-                            type="number"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                          >
-                        </label>
-                        <label>
-                          <span class="setting-label">Sensitivity</span>
-                          <select
-                            v-model="graphEntityForm.sensitivity"
-                            class="memory-select"
-                          >
-                            <option value="normal">
-                              Normal
-                            </option>
-                            <option value="sensitive">
-                              Sensitive
-                            </option>
-                            <option value="secret">
-                              Secret
-                            </option>
-                          </select>
-                        </label>
-                      </div>
-                      <label>
-                        <span class="setting-label">Evidence</span>
-                        <textarea
-                          v-model="graphEntityForm.evidence"
-                          class="memory-textarea compact-area"
-                          spellcheck="true"
-                        />
-                      </label>
-                    </div>
-                  </details>
-                  <div class="action-row">
-                    <button
-                      class="primary-btn"
-                      type="button"
-                      :disabled="profileSaving || !graphEntityForm.name.trim()"
-                      @click="saveGraphEntity"
-                    >
-                      Save
-                    </button>
-                    <button
-                      class="secondary-action inline danger"
-                      type="button"
-                      :disabled="profileSaving || !graphEntityForm.id || graphEntityForm.id === 'user:self'"
-                      @click="deleteGraphEntity"
-                    >
-                      Delete
-                    </button>
-                  </div>
                 </div>
-              </template>
-
-              <template v-else-if="graphView === 'relations'">
-                <div class="editor-scroll-container">
-                  <div class="profile-grid">
-                    <label>
-                      <span class="setting-label">From</span>
-                      <select
-                        v-model="graphRelationForm.fromEntityId"
-                        class="memory-select"
-                      >
-                        <option
-                          v-for="entity in graphEntities"
-                          :key="entity.id"
-                          :value="entity.id"
-                        >
-                          {{ entity.displayName }} · {{ entity.id }}
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      <span class="setting-label">Relation</span>
-                      <input
-                        v-model="graphRelationForm.relationType"
-                        class="memory-input"
-                        type="text"
-                        placeholder="works_on"
-                        spellcheck="false"
-                      >
-                    </label>
-                    <label>
-                      <span class="setting-label">To</span>
-                      <select
-                        v-model="graphRelationForm.toEntityId"
-                        class="memory-select"
-                      >
-                        <option
-                          v-for="entity in graphEntities"
-                          :key="entity.id"
-                          :value="entity.id"
-                        >
-                          {{ entity.displayName }} · {{ entity.id }}
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      <span class="setting-label">Text</span>
-                      <input
-                        v-model="graphRelationForm.text"
-                        class="memory-input"
-                        type="text"
-                        spellcheck="true"
-                      >
-                    </label>
-                  </div>
-                  <details class="profile-advanced">
-                    <summary>Advanced</summary>
-                    <div class="advanced-wrapper">
-                      <div
-                        v-if="graphRelationForm.id"
-                        class="profile-id-row"
-                      >
-                        <span>ID</span>
-                        <code>{{ graphRelationForm.id }}</code>
-                      </div>
-                      <div class="profile-grid">
-                        <label>
-                          <span class="setting-label">Confidence</span>
-                          <input
-                            v-model.number="graphRelationForm.confidence"
-                            class="memory-input"
-                            type="number"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                          >
-                        </label>
-                        <label>
-                          <span class="setting-label">Status</span>
-                          <select
-                            v-model="graphRelationForm.status"
-                            class="memory-select"
-                          >
-                            <option value="active">
-                              Active
-                            </option>
-                            <option value="superseded">
-                              Superseded
-                            </option>
-                            <option value="conflict">
-                              Conflict
-                            </option>
-                            <option value="deleted">
-                              Deleted
-                            </option>
-                          </select>
-                        </label>
-                        <label>
-                          <span class="setting-label">Sensitivity</span>
-                          <select
-                            v-model="graphRelationForm.sensitivity"
-                            class="memory-select"
-                          >
-                            <option value="normal">
-                              Normal
-                            </option>
-                            <option value="sensitive">
-                              Sensitive
-                            </option>
-                            <option value="secret">
-                              Secret
-                            </option>
-                          </select>
-                        </label>
-                      </div>
-                      <label>
-                        <span class="setting-label">Evidence</span>
-                        <textarea
-                          v-model="graphRelationForm.evidence"
-                          class="memory-textarea compact-area"
-                          spellcheck="true"
-                        />
-                      </label>
-                    </div>
-                  </details>
-                  <div class="action-row">
-                    <button
-                      class="primary-btn"
-                      type="button"
-                      :disabled="profileSaving || !graphRelationForm.fromEntityId || !graphRelationForm.relationType.trim() || !graphRelationForm.toEntityId"
-                      @click="saveGraphRelation"
-                    >
-                      Save
-                    </button>
-                    <button
-                      class="secondary-action inline danger"
-                      type="button"
-                      :disabled="profileSaving || !graphRelationForm.id"
-                      @click="deleteGraphRelation"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </template>
-
-              <template v-else-if="graphView === 'duplicates'">
-                <div class="editor-scroll-container">
-                  <div class="review-empty">
-                    <strong>Possible duplicates are review-only here.</strong>
-                    <span>Use Merge or Ignore from the review list. New facts are created from the Facts tab.</span>
-                  </div>
-                </div>
-              </template>
-
-              <template v-else>
-                <div class="editor-scroll-container">
-                  <div class="profile-grid">
-                    <label>
-                      <span class="setting-label">Entity</span>
-                      <select
-                        v-model="graphObservationForm.entityId"
-                        class="memory-select"
-                      >
-                        <option
-                          v-for="entity in graphEntities"
-                          :key="entity.id"
-                          :value="entity.id"
-                        >
-                          {{ entity.displayName }} · {{ entity.id }}
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      <span class="setting-label">Kind</span>
-                      <select
-                        v-model="graphObservationForm.kind"
-                        class="memory-select"
-                      >
-                        <option
-                          v-for="kind in graphObservationKinds"
-                          :key="kind"
-                          :value="kind"
-                        >
-                          {{ kind }}
-                        </option>
-                      </select>
-                    </label>
-                    <label>
-                      <span class="setting-label">Slot</span>
-                      <input
-                        v-model="graphObservationForm.slot"
-                        class="memory-input"
-                        type="text"
-                        placeholder="name"
-                        spellcheck="false"
-                      >
-                    </label>
-                    <label>
-                      <span class="setting-label">Value</span>
-                      <input
-                        v-model="graphObservationForm.value"
-                        class="memory-input"
-                        type="text"
-                        spellcheck="true"
-                      >
-                    </label>
-                  </div>
-                  <label>
-                    <span class="setting-label">Text</span>
-                    <textarea
-                      v-model="graphObservationForm.text"
-                      class="memory-textarea"
-                      spellcheck="true"
-                    />
-                  </label>
-                  <details class="profile-advanced">
-                    <summary>Advanced</summary>
-                    <div class="advanced-wrapper">
-                      <div
-                        v-if="graphObservationForm.id"
-                        class="profile-id-row"
-                      >
-                        <span>ID</span>
-                        <code>{{ graphObservationForm.id }}</code>
-                      </div>
-                      <div class="profile-grid">
-                        <label>
-                          <span class="setting-label">Confidence</span>
-                          <input
-                            v-model.number="graphObservationForm.confidence"
-                            class="memory-input"
-                            type="number"
-                            min="0"
-                            max="1"
-                            step="0.01"
-                          >
-                        </label>
-                        <label>
-                          <span class="setting-label">Status</span>
-                          <select
-                            v-model="graphObservationForm.status"
-                            class="memory-select"
-                          >
-                            <option value="active">
-                              Active
-                            </option>
-                            <option value="superseded">
-                              Superseded
-                            </option>
-                            <option value="conflict">
-                              Conflict
-                            </option>
-                            <option value="deleted">
-                              Deleted
-                            </option>
-                          </select>
-                        </label>
-                        <label>
-                          <span class="setting-label">Sensitivity</span>
-                          <select
-                            v-model="graphObservationForm.sensitivity"
-                            class="memory-select"
-                          >
-                            <option value="normal">
-                              Normal
-                            </option>
-                            <option value="sensitive">
-                              Sensitive
-                            </option>
-                            <option value="secret">
-                              Secret
-                            </option>
-                          </select>
-                        </label>
-                      </div>
-                      <label>
-                        <span class="setting-label">Evidence</span>
-                        <textarea
-                          v-model="graphObservationForm.evidence"
-                          class="memory-textarea compact-area"
-                          spellcheck="true"
-                        />
-                      </label>
-                    </div>
-                  </details>
-                  <div class="action-row">
-                    <button
-                      class="primary-btn"
-                      type="button"
-                      :disabled="profileSaving || !graphObservationForm.entityId || !graphObservationForm.slot.trim() || !graphObservationForm.value.trim()"
-                      @click="saveGraphObservation"
-                    >
-                      Save
-                    </button>
-                    <button
-                      class="secondary-action inline danger"
-                      type="button"
-                      :disabled="profileSaving || !graphObservationForm.id"
-                      @click="deleteGraphObservation"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </template>
-              <div
-                v-if="graphAudit.length"
-                class="audit-list profile-advanced"
-              >
-                <details>
-                  <summary>Audit</summary>
-                  <div
-                    v-for="event in graphAudit"
-                    :key="event.id"
-                    class="audit-row"
+                <label>
+                  <span class="setting-label">Display name</span>
+                  <input
+                    v-model="graphEntityForm.displayName"
+                    class="memory-input"
+                    type="text"
+                    spellcheck="true"
                   >
-                    <span>{{ event.action }}</span>
-                    <span>{{ formatMaybeDate(event.createdAt) }}</span>
+                </label>
+                <label>
+                  <span class="setting-label">Aliases</span>
+                  <input
+                    v-model="graphEntityAliases"
+                    class="memory-input"
+                    type="text"
+                    placeholder="comma separated"
+                    spellcheck="false"
+                  >
+                </label>
+                <details class="profile-advanced">
+                  <summary>Advanced</summary>
+                  <div class="advanced-wrapper">
+                    <label>
+                      <span class="setting-label">Entity id</span>
+                      <input
+                        v-model="graphEntityForm.id"
+                        class="memory-input"
+                        type="text"
+                        placeholder="project:onething"
+                        spellcheck="false"
+                      >
+                    </label>
+                    <div class="profile-grid">
+                      <label>
+                        <span class="setting-label">Confidence</span>
+                        <input
+                          v-model.number="graphEntityForm.confidence"
+                          class="memory-input"
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                        >
+                      </label>
+                      <label>
+                        <span class="setting-label">Sensitivity</span>
+                        <select
+                          v-model="graphEntityForm.sensitivity"
+                          class="memory-select"
+                        >
+                          <option value="normal">
+                            Normal
+                          </option>
+                          <option value="sensitive">
+                            Sensitive
+                          </option>
+                          <option value="secret">
+                            Secret
+                          </option>
+                        </select>
+                      </label>
+                    </div>
+                    <label>
+                      <span class="setting-label">Evidence</span>
+                      <textarea
+                        v-model="graphEntityForm.evidence"
+                        class="memory-textarea compact-area"
+                        spellcheck="true"
+                      />
+                    </label>
                   </div>
                 </details>
-              </div>
-            </section>
-          </div>
-        </div>
-      </template>
-      <template v-else-if="activeTab === 'notes'">
-        <div class="memory-tab-page notes-page">
-          <div class="notes-workspace memory-workspace" :class="{ 'detail-active': notesDetailActive }">
-            <section class="notes-list-surface memory-surface">
-              <div class="workspace-head">
-                <div class="workspace-head-title-select">
-                  <select v-model="noteFilter" class="view-select">
-                    <option value="all">All notes ({{ noteCount('all') }})</option>
-                    <option value="ai">AI notes ({{ noteCount('ai') }})</option>
-                    <option value="daily">Daily captures ({{ noteCount('daily') }})</option>
-                    <option value="dreams">Reflection reports ({{ noteCount('dreams') }})</option>
-                  </select>
+                <div class="action-row">
+                  <button
+                    class="primary-btn"
+                    type="button"
+                    :disabled="profileSaving || !graphEntityForm.name.trim()"
+                    @click="saveGraphEntity"
+                  >
+                    Save
+                  </button>
+                  <button
+                    class="secondary-action inline danger"
+                    type="button"
+                    :disabled="profileSaving || !graphEntityForm.id || graphEntityForm.id === 'user:self'"
+                    @click="deleteGraphEntity"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
-              <div class="file-list">
-                <button
-                  v-for="file in visibleFiles"
-                  :key="file.relativePath"
-                  :class="['file-row', { active: selectedPath === file.relativePath }]"
-                  type="button"
-                  :title="file.relativePath"
-                  @click="selectFile(file)"
-                >
-                  <component
-                    :is="kindIcon(file.kind)"
-                    :size="17"
-                    :stroke-width="1.8"
-                    class="file-icon"
+            </template>
+
+            <template v-else-if="graphView === 'relations'">
+              <div class="editor-scroll-container">
+                <div class="profile-grid">
+                  <label>
+                    <span class="setting-label">From</span>
+                    <select
+                      v-model="graphRelationForm.fromEntityId"
+                      class="memory-select"
+                    >
+                      <option
+                        v-for="entity in graphEntities"
+                        :key="entity.id"
+                        :value="entity.id"
+                      >
+                        {{ entity.displayName }} · {{ entity.id }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span class="setting-label">Relation</span>
+                    <input
+                      v-model="graphRelationForm.relationType"
+                      class="memory-input"
+                      type="text"
+                      placeholder="works_on"
+                      spellcheck="false"
+                    >
+                  </label>
+                  <label>
+                    <span class="setting-label">To</span>
+                    <select
+                      v-model="graphRelationForm.toEntityId"
+                      class="memory-select"
+                    >
+                      <option
+                        v-for="entity in graphEntities"
+                        :key="entity.id"
+                        :value="entity.id"
+                      >
+                        {{ entity.displayName }} · {{ entity.id }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span class="setting-label">Text</span>
+                    <input
+                      v-model="graphRelationForm.text"
+                      class="memory-input"
+                      type="text"
+                      spellcheck="true"
+                    >
+                  </label>
+                </div>
+                <details class="profile-advanced">
+                  <summary>Advanced</summary>
+                  <div class="advanced-wrapper">
+                    <div
+                      v-if="graphRelationForm.id"
+                      class="profile-id-row"
+                    >
+                      <span>ID</span>
+                      <code>{{ graphRelationForm.id }}</code>
+                    </div>
+                    <div class="profile-grid">
+                      <label>
+                        <span class="setting-label">Confidence</span>
+                        <input
+                          v-model.number="graphRelationForm.confidence"
+                          class="memory-input"
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                        >
+                      </label>
+                      <label>
+                        <span class="setting-label">Status</span>
+                        <select
+                          v-model="graphRelationForm.status"
+                          class="memory-select"
+                        >
+                          <option value="active">
+                            Active
+                          </option>
+                          <option value="superseded">
+                            Superseded
+                          </option>
+                          <option value="conflict">
+                            Conflict
+                          </option>
+                          <option value="deleted">
+                            Deleted
+                          </option>
+                        </select>
+                      </label>
+                      <label>
+                        <span class="setting-label">Sensitivity</span>
+                        <select
+                          v-model="graphRelationForm.sensitivity"
+                          class="memory-select"
+                        >
+                          <option value="normal">
+                            Normal
+                          </option>
+                          <option value="sensitive">
+                            Sensitive
+                          </option>
+                          <option value="secret">
+                            Secret
+                          </option>
+                        </select>
+                      </label>
+                    </div>
+                    <label>
+                      <span class="setting-label">Evidence</span>
+                      <textarea
+                        v-model="graphRelationForm.evidence"
+                        class="memory-textarea compact-area"
+                        spellcheck="true"
+                      />
+                    </label>
+                  </div>
+                </details>
+                <div class="action-row">
+                  <button
+                    class="primary-btn"
+                    type="button"
+                    :disabled="profileSaving || !graphRelationForm.fromEntityId || !graphRelationForm.relationType.trim() || !graphRelationForm.toEntityId"
+                    @click="saveGraphRelation"
+                  >
+                    Save
+                  </button>
+                  <button
+                    class="secondary-action inline danger"
+                    type="button"
+                    :disabled="profileSaving || !graphRelationForm.id"
+                    @click="deleteGraphRelation"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </template>
+
+            <template v-else-if="graphView === 'duplicates'">
+              <div class="editor-scroll-container">
+                <div class="review-empty">
+                  <strong>Possible duplicates are review-only here.</strong>
+                  <span>Use Merge or Ignore from the review list. New facts are created from the Facts tab.</span>
+                </div>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="editor-scroll-container">
+                <div class="profile-grid">
+                  <label>
+                    <span class="setting-label">Entity</span>
+                    <select
+                      v-model="graphObservationForm.entityId"
+                      class="memory-select"
+                    >
+                      <option
+                        v-for="entity in graphEntities"
+                        :key="entity.id"
+                        :value="entity.id"
+                      >
+                        {{ entity.displayName }} · {{ entity.id }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span class="setting-label">Kind</span>
+                    <select
+                      v-model="graphObservationForm.kind"
+                      class="memory-select"
+                    >
+                      <option
+                        v-for="kind in graphObservationKinds"
+                        :key="kind"
+                        :value="kind"
+                      >
+                        {{ kind }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span class="setting-label">Slot</span>
+                    <input
+                      v-model="graphObservationForm.slot"
+                      class="memory-input"
+                      type="text"
+                      placeholder="name"
+                      spellcheck="false"
+                    >
+                  </label>
+                  <label>
+                    <span class="setting-label">Value</span>
+                    <input
+                      v-model="graphObservationForm.value"
+                      class="memory-input"
+                      type="text"
+                      spellcheck="true"
+                    >
+                  </label>
+                </div>
+                <label>
+                  <span class="setting-label">Text</span>
+                  <textarea
+                    v-model="graphObservationForm.text"
+                    class="memory-textarea"
+                    spellcheck="true"
                   />
-                  <span class="file-main">
-                    <span class="file-name">{{ memoryFileDisplayName(file) }}</span>
-                    <span class="file-meta">{{ memoryFileMeta(file) }}</span>
-                    <span
-                      v-if="file.preview"
-                      class="file-preview"
-                    >{{ cleanMemoryPreview(file.preview, 120) }}</span>
-                  </span>
-                  <span class="file-date">{{ formatShortDate(file.mtimeMs) }}</span>
-                </button>
+                </label>
+                <details class="profile-advanced">
+                  <summary>Advanced</summary>
+                  <div class="advanced-wrapper">
+                    <div
+                      v-if="graphObservationForm.id"
+                      class="profile-id-row"
+                    >
+                      <span>ID</span>
+                      <code>{{ graphObservationForm.id }}</code>
+                    </div>
+                    <div class="profile-grid">
+                      <label>
+                        <span class="setting-label">Confidence</span>
+                        <input
+                          v-model.number="graphObservationForm.confidence"
+                          class="memory-input"
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                        >
+                      </label>
+                      <label>
+                        <span class="setting-label">Status</span>
+                        <select
+                          v-model="graphObservationForm.status"
+                          class="memory-select"
+                        >
+                          <option value="active">
+                            Active
+                          </option>
+                          <option value="superseded">
+                            Superseded
+                          </option>
+                          <option value="conflict">
+                            Conflict
+                          </option>
+                          <option value="deleted">
+                            Deleted
+                          </option>
+                        </select>
+                      </label>
+                      <label>
+                        <span class="setting-label">Sensitivity</span>
+                        <select
+                          v-model="graphObservationForm.sensitivity"
+                          class="memory-select"
+                        >
+                          <option value="normal">
+                            Normal
+                          </option>
+                          <option value="sensitive">
+                            Sensitive
+                          </option>
+                          <option value="secret">
+                            Secret
+                          </option>
+                        </select>
+                      </label>
+                    </div>
+                    <label>
+                      <span class="setting-label">Evidence</span>
+                      <textarea
+                        v-model="graphObservationForm.evidence"
+                        class="memory-textarea compact-area"
+                        spellcheck="true"
+                      />
+                    </label>
+                  </div>
+                </details>
+                <div class="action-row">
+                  <button
+                    class="primary-btn"
+                    type="button"
+                    :disabled="profileSaving || !graphObservationForm.entityId || !graphObservationForm.slot.trim() || !graphObservationForm.value.trim()"
+                    @click="saveGraphObservation"
+                  >
+                    Save
+                  </button>
+                  <button
+                    class="secondary-action inline danger"
+                    type="button"
+                    :disabled="profileSaving || !graphObservationForm.id"
+                    @click="deleteGraphObservation"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
-            </section>
-
+            </template>
             <div
-              v-if="selectedFile"
-              class="viewer memory-surface"
+              v-if="graphAudit.length"
+              class="audit-list profile-advanced"
             >
-              <div class="viewer-header">
-                <button
-                  class="back-btn icon-btn"
-                  type="button"
-                  title="Back to list"
-                  @click="notesDetailActive = false"
-                >
-                  <ArrowLeft :size="16" />
-                </button>
-                <span>
-                  <strong>{{ selectedFileDisplayTitle }}</strong>
-                  <small>{{ selectedFile.relativePath }}:{{ selectedFile.startLine }}-{{ selectedFile.endLine }}</small>
-                </span>
-                
-                <div class="save-status-indicator">
-                  <span :class="['status-dot', selectedFileIsDirty ? 'dirty' : 'saved', { pulsing: savingFile }]" />
-                  <span>{{ selectedFileStatus }}</span>
-                </div>
-
-                <div class="notes-editor-tabs segmented">
-                  <button
-                    :class="{ active: notesMode === 'edit' }"
-                    type="button"
-                    @click="notesMode = 'edit'"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    :class="{ active: notesMode === 'preview' }"
-                    type="button"
-                    @click="notesMode = 'preview'"
-                  >
-                    Preview
-                  </button>
-                </div>
-
-                <button
-                  class="text-btn"
-                  type="button"
-                  :disabled="savingFile || !selectedFileIsDirty"
-                  @click="saveSelectedFile"
-                >
-                  Save
-                </button>
-                <button
-                  class="text-btn"
-                  type="button"
-                  @click="readSelectedFile(undefined, true)"
-                >
-                  Reload
-                </button>
-                <button
-                  class="text-btn"
-                  type="button"
-                  @click="openSelectedPath"
-                >
-                  Open
-                </button>
-              </div>
-
-              <!-- Toggleable Editor / Preview Mode -->
-              <div class="notes-viewer-body">
-                <textarea
-                  v-if="notesMode === 'edit'"
-                  v-model="selectedFileText"
-                  class="memory-editor"
-                  spellcheck="true"
-                  placeholder="Start typing memory notes..."
-                />
+              <details>
+                <summary>Audit</summary>
                 <div
-                  v-else
-                  class="memory-preview-container md-body"
+                  v-for="event in graphAudit"
+                  :key="event.id"
+                  class="audit-row"
                 >
-                  <StaticMarkdown :content="selectedFileText" />
+                  <span>{{ event.action }}</span>
+                  <span>{{ formatMaybeDate(event.createdAt) }}</span>
                 </div>
-              </div>
-
-              <div
-                v-if="selectedFile.truncated"
-                class="notice compact"
-              >
-                File is truncated in the editor.
-              </div>
-            </div>
-          </div>
-        </div>
-      </template>
-      <template v-else-if="activeTab === 'search'">
-        <div class="memory-tab-page search-page">
-          <div class="search-workspace memory-workspace">
-            <section class="task-surface search-surface memory-surface">
-              <div class="workspace-head borderless">
-                <span class="workspace-head-title">Recall memory</span>
-              </div>
-              <form
-                class="search-bar-form"
-                @submit.prevent="runSearch"
-              >
-                <div class="search-bar-container">
-                  <Search :size="14" class="search-bar-icon" />
-                  <input
-                    v-model="searchQuery"
-                    class="search-bar-input"
-                    type="text"
-                    placeholder="Search memory..."
-                    spellcheck="false"
-                  >
-                </div>
-              </form>
-            </section>
-
-            <section class="task-surface capture-surface memory-surface">
-              <div class="workspace-head borderless">
-                <span class="workspace-head-title">Append note</span>
-              </div>
-              <div class="append-box">
-                <div class="append-top">
-                  <select
-                    v-model="appendTarget"
-                    class="memory-select"
-                  >
-                    <option value="daily">
-                      Daily note
-                    </option>
-                  </select>
-                  <input
-                    v-model="appendHeading"
-                    class="memory-input compact"
-                    type="text"
-                    placeholder="Heading"
-                    spellcheck="false"
-                  >
-                </div>
-                <textarea
-                  v-model="appendContent"
-                  class="memory-textarea"
-                  placeholder="Append memory..."
-                  spellcheck="true"
-                />
-                <button
-                  class="secondary-action"
-                  type="button"
-                  :disabled="appending || !appendContent.trim()"
-                  @click="appendMemory"
-                >
-                  <Plus
-                    :size="15"
-                    :stroke-width="1.8"
-                  />
-                  <span>Append</span>
-                </button>
-                <span
-                  v-if="appendFeedback"
-                  class="inline-feedback"
-                >
-                  {{ appendFeedback }}
-                </span>
-              </div>
-            </section>
-          </div>
-          <section class="task-surface results-surface memory-surface">
-            <div class="workspace-head borderless">
-              <div class="workspace-head-title-select">
-                <span class="workspace-head-title">Review: {{ searchStatusLabel }}</span>
-              </div>
-            </div>
-            <div
-              v-if="searching"
-              class="notice"
-            >
-              Searching...
-            </div>
-            <div
-              v-else-if="searchResults.length === 0 && searched"
-              class="notice"
-            >
-              No matches.
-            </div>
-            <div
-              v-else-if="!searched"
-              class="search-empty-state"
-            >
-              <strong>Ready to recall</strong>
-              <span>Try a project, preference, decision, or phrase from a recent conversation.</span>
-            </div>
-            <div
-              v-else
-              class="search-results"
-            >
-              <button
-                v-for="hit in searchResults"
-                :key="hit.id"
-                class="result-row"
-                type="button"
-                @click="openSearchHit(hit)"
-              >
-                <span class="result-path">{{ searchHitTitle(hit) }}</span>
-                <span :class="['strength-badge', searchHitStrength(hit.score).tone]">
-                  {{ searchHitStrength(hit.score).label }}
-                </span>
-                <span class="result-meta">{{ searchHitMeta(hit) }}</span>
-                <span class="result-content">{{ hit.content }}</span>
-              </button>
+              </details>
             </div>
           </section>
         </div>
-      </template>
+      </div>
+    </template>
+    <template v-else-if="activeTab === 'notes'">
+      <div class="memory-tab-page notes-page">
+        <div
+          class="notes-workspace memory-workspace"
+          :class="{ 'detail-active': notesDetailActive }"
+        >
+          <section class="notes-list-surface memory-surface">
+            <div class="workspace-head">
+              <div class="workspace-head-title-select">
+                <select
+                  v-model="noteFilter"
+                  class="view-select"
+                >
+                  <option value="all">
+                    All notes ({{ noteCount('all') }})
+                  </option>
+                  <option value="ai">
+                    AI notes ({{ noteCount('ai') }})
+                  </option>
+                  <option value="daily">
+                    Daily captures ({{ noteCount('daily') }})
+                  </option>
+                  <option value="dreams">
+                    Reflection reports ({{ noteCount('dreams') }})
+                  </option>
+                </select>
+              </div>
+            </div>
+            <div class="file-list">
+              <button
+                v-for="file in visibleFiles"
+                :key="file.relativePath"
+                :class="['file-row', { active: selectedPath === file.relativePath }]"
+                type="button"
+                :title="file.relativePath"
+                @click="selectFile(file)"
+              >
+                <component
+                  :is="kindIcon(file.kind)"
+                  :size="17"
+                  :stroke-width="1.8"
+                  class="file-icon"
+                />
+                <span class="file-main">
+                  <span class="file-name">{{ memoryFileDisplayName(file) }}</span>
+                  <span class="file-meta">{{ memoryFileMeta(file) }}</span>
+                  <span
+                    v-if="file.preview"
+                    class="file-preview"
+                  >{{ cleanMemoryPreview(file.preview, 120) }}</span>
+                </span>
+                <span class="file-date">{{ formatShortDate(file.mtimeMs) }}</span>
+              </button>
+            </div>
+          </section>
+
+          <div
+            v-if="selectedFile"
+            class="viewer memory-surface"
+          >
+            <div class="viewer-header">
+              <button
+                class="back-btn icon-btn"
+                type="button"
+                title="Back to list"
+                @click="notesDetailActive = false"
+              >
+                <ArrowLeft :size="16" />
+              </button>
+              <span>
+                <strong>{{ selectedFileDisplayTitle }}</strong>
+                <small>{{ selectedFile.relativePath }}:{{ selectedFile.startLine }}-{{ selectedFile.endLine }}</small>
+              </span>
+                
+              <div class="save-status-indicator">
+                <span :class="['status-dot', selectedFileIsDirty ? 'dirty' : 'saved', { pulsing: savingFile }]" />
+                <span>{{ selectedFileStatus }}</span>
+              </div>
+
+              <div class="notes-editor-tabs segmented">
+                <button
+                  :class="{ active: notesMode === 'edit' }"
+                  type="button"
+                  @click="notesMode = 'edit'"
+                >
+                  Edit
+                </button>
+                <button
+                  :class="{ active: notesMode === 'preview' }"
+                  type="button"
+                  @click="notesMode = 'preview'"
+                >
+                  Preview
+                </button>
+              </div>
+
+              <button
+                class="text-btn"
+                type="button"
+                :disabled="savingFile || !selectedFileIsDirty"
+                @click="saveSelectedFile"
+              >
+                Save
+              </button>
+              <button
+                class="text-btn"
+                type="button"
+                @click="readSelectedFile(undefined, true)"
+              >
+                Reload
+              </button>
+              <button
+                class="text-btn"
+                type="button"
+                @click="openSelectedPath"
+              >
+                Open
+              </button>
+            </div>
+
+            <!-- Toggleable Editor / Preview Mode -->
+            <div class="notes-viewer-body">
+              <textarea
+                v-if="notesMode === 'edit'"
+                v-model="selectedFileText"
+                class="memory-editor"
+                spellcheck="true"
+                placeholder="Start typing memory notes..."
+              />
+              <div
+                v-else
+                class="memory-preview-container md-body"
+              >
+                <StaticMarkdown :content="selectedFileText" />
+              </div>
+            </div>
+
+            <div
+              v-if="selectedFile.truncated"
+              class="notice compact"
+            >
+              File is truncated in the editor.
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+    <template v-else-if="activeTab === 'search'">
+      <div class="memory-tab-page search-page">
+        <div class="search-workspace memory-workspace">
+          <section class="task-surface search-surface memory-surface">
+            <div class="workspace-head borderless">
+              <span class="workspace-head-title">Recall memory</span>
+            </div>
+            <form
+              class="search-bar-form"
+              @submit.prevent="runSearch"
+            >
+              <div class="search-bar-container">
+                <Search
+                  :size="14"
+                  class="search-bar-icon"
+                />
+                <input
+                  v-model="searchQuery"
+                  class="search-bar-input"
+                  type="text"
+                  placeholder="Search memory..."
+                  spellcheck="false"
+                >
+              </div>
+            </form>
+          </section>
+
+          <section class="task-surface capture-surface memory-surface">
+            <div class="workspace-head borderless">
+              <span class="workspace-head-title">Append note</span>
+            </div>
+            <div class="append-box">
+              <div class="append-top">
+                <select
+                  v-model="appendTarget"
+                  class="memory-select"
+                >
+                  <option value="daily">
+                    Daily note
+                  </option>
+                </select>
+                <input
+                  v-model="appendHeading"
+                  class="memory-input compact"
+                  type="text"
+                  placeholder="Heading"
+                  spellcheck="false"
+                >
+              </div>
+              <textarea
+                v-model="appendContent"
+                class="memory-textarea"
+                placeholder="Append memory..."
+                spellcheck="true"
+              />
+              <button
+                class="secondary-action"
+                type="button"
+                :disabled="appending || !appendContent.trim()"
+                @click="appendMemory"
+              >
+                <Plus
+                  :size="15"
+                  :stroke-width="1.8"
+                />
+                <span>Append</span>
+              </button>
+              <span
+                v-if="appendFeedback"
+                class="inline-feedback"
+              >
+                {{ appendFeedback }}
+              </span>
+            </div>
+          </section>
+        </div>
+        <section class="task-surface results-surface memory-surface">
+          <div class="workspace-head borderless">
+            <div class="workspace-head-title-select">
+              <span class="workspace-head-title">Review: {{ searchStatusLabel }}</span>
+            </div>
+          </div>
+          <div
+            v-if="searching"
+            class="notice"
+          >
+            Searching...
+          </div>
+          <div
+            v-else-if="searchResults.length === 0 && searched"
+            class="notice"
+          >
+            No matches.
+          </div>
+          <div
+            v-else-if="!searched"
+            class="search-empty-state"
+          >
+            <strong>Ready to recall</strong>
+            <span>Try a project, preference, decision, or phrase from a recent conversation.</span>
+          </div>
+          <div
+            v-else
+            class="search-results"
+          >
+            <button
+              v-for="hit in searchResults"
+              :key="hit.id"
+              class="result-row"
+              type="button"
+              @click="openSearchHit(hit)"
+            >
+              <span class="result-path">{{ searchHitTitle(hit) }}</span>
+              <span :class="['strength-badge', searchHitStrength(hit.score).tone]">
+                {{ searchHitStrength(hit.score).label }}
+              </span>
+              <span class="result-meta">{{ searchHitMeta(hit) }}</span>
+              <span class="result-content">{{ hit.content }}</span>
+            </button>
+          </div>
+        </section>
+      </div>
+    </template>
   </PageShell>
 </template>
 

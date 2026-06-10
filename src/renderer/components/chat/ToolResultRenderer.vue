@@ -51,6 +51,31 @@
       </div>
     </template>
 
+    <template v-else-if="isReadTextResult">
+      <div class="read-output">
+        <pre>{{ visibleReadText }}</pre>
+        <button
+          v-if="hasMoreReadLines"
+          class="more-button"
+          type="button"
+          @click="showMoreReadLines"
+        >
+          <ChevronDown
+            :size="13"
+            :stroke-width="2"
+          />
+          <span>more</span>
+        </button>
+      </div>
+    </template>
+
+    <template v-else-if="isWebSearchResult && result">
+      <WebSearchResultRenderer
+        :result="result"
+        :is-partial="isPartial"
+      />
+    </template>
+
     <template v-else-if="textContent">
       <pre>{{ textContent }}</pre>
     </template>
@@ -69,9 +94,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Zap } from 'lucide-vue-next'
+import { computed, ref, watch } from 'vue'
+import { ChevronDown, Zap } from 'lucide-vue-next'
 import type { ToolPartialResult, ToolRenderKind } from '@/types'
+import WebSearchResultRenderer from './WebSearchResultRenderer.vue'
 
 interface VariableDetail {
   name?: string
@@ -86,6 +112,8 @@ interface BashLine {
   text: string
   kind: 'command' | 'done' | 'result' | 'blank'
 }
+
+const READ_LINES_PER_PAGE = 8
 
 const props = withDefaults(defineProps<{
   result?: ToolPartialResult | null
@@ -139,6 +167,23 @@ const isVariableResult = computed(() =>
 )
 
 const isBashResult = computed(() => props.renderKind === 'bash' && !!textContent.value)
+const isReadTextResult = computed(() => props.toolName === 'read' && !!textContent.value)
+const isWebSearchResult = computed(() =>
+  ['web_search', 'web-search', 'websearch', 'web_open', 'web-open', 'webopen', 'web_find', 'web-find', 'webfind'].includes(props.toolName) &&
+  !!props.result?.details &&
+  (
+    Array.isArray((props.result.details as any).searches) ||
+    Array.isArray((props.result.details as any).results) ||
+    Array.isArray((props.result.details as any).pages) ||
+    typeof (props.result.details as any).phase === 'string'
+  ),
+)
+const visibleReadLineCount = ref(READ_LINES_PER_PAGE)
+const readLines = computed(() => textContent.value.split('\n'))
+const visibleReadText = computed(() =>
+  readLines.value.slice(0, visibleReadLineCount.value).join('\n'),
+)
+const hasMoreReadLines = computed(() => visibleReadLineCount.value < readLines.value.length)
 const bashLines = computed<BashLine[]>(() => {
   const source = textContent.value.replace(/\r\n/g, '\n')
   const rows: BashLine[] = []
@@ -166,13 +211,37 @@ const bashLines = computed<BashLine[]>(() => {
   if (rows[rows.length - 1]?.kind === 'blank') rows.pop()
   return rows
 })
+
+function showMoreReadLines() {
+  visibleReadLineCount.value += READ_LINES_PER_PAGE
+}
+
+watch(
+  () => [props.toolName, textContent.value],
+  () => {
+    visibleReadLineCount.value = READ_LINES_PER_PAGE
+  },
+)
 </script>
 
 <style scoped>
 .tool-result-renderer {
+  --tool-result-max-height: min(240px, 34vh);
   min-width: 0;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-sans);
+}
+
+.tool-result-renderer.partial {
+  --tool-result-max-height: clamp(132px, 28vh, 220px);
+}
+
+.tool-result-renderer:has(.variable-row),
+.tool-result-renderer:has(.read-output),
+.tool-result-renderer:has(.tool-result-file) {
+  max-height: var(--tool-result-max-height);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .variable-row {
@@ -229,10 +298,13 @@ const bashLines = computed<BashLine[]>(() => {
 
 .tool-result-renderer pre {
   margin: 0;
+  max-height: var(--tool-result-max-height);
   overflow: auto;
-  padding: 8px 10px;
-  border-radius: calc(var(--tool-radius) - 3px);
-  background: var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub));
+  overscroll-behavior: contain;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 24%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 34%, transparent);
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
@@ -246,9 +318,12 @@ const bashLines = computed<BashLine[]>(() => {
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 16px 10px 16px 34px;
-  border-left: 3px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 74%, transparent);
-  background: var(--ui-tool-surface-bg, var(--tool-surface));
+  max-height: var(--tool-result-max-height);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 10px 10px 10px 14px;
+  border-left: 2px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 54%, transparent);
+  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 40%, transparent);
   color: var(--ui-tool-text-fg, var(--tool-ink));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-title);
@@ -291,6 +366,44 @@ const bashLines = computed<BashLine[]>(() => {
 
 .bash-line-text {
   min-width: 0;
+}
+
+.read-output {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+
+.read-output pre {
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 4px 0;
+}
+
+.more-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  height: 24px;
+  border: 0;
+  border-top: 0.5px solid var(--ui-tool-border-border, var(--tool-border));
+  background: transparent;
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  font-family: var(--tool-font-sans);
+  font-size: var(--tool-font-size-meta);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.more-button:hover {
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 10%, transparent);
+  color: var(--ui-tool-text-fg, var(--tool-ink));
 }
 
 .tool-result-file {

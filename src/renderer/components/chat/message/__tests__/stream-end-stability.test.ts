@@ -209,155 +209,344 @@ describe('stream end visual stability', () => {
     expect(after[1]).toBe(before[1])
   })
 
-  it('keeps tool details expanded when an awaited tool completes', async () => {
+  it('groups consecutive steps of the same tool type correctly', async () => {
     const wrapper = mount(StepsPanel, {
       props: {
-        steps: [step()],
+        steps: [
+          step({ id: 'step1', title: 'edit', toolCall: toolCall({ id: 'tc1', toolName: 'edit' }) }),
+          step({ id: 'step2', title: 'edit', toolCall: toolCall({ id: 'tc2', toolName: 'edit' }) }),
+        ],
       },
       global: {
         stubs: {
-          AllowSplitButton: { template: '<button />' },
-          ToolStepDetails: { template: '<div class="tool-details" />' },
           FartCallItem: { template: '<div />' },
         },
       },
     })
     await nextTick()
 
-    expect(wrapper.findAll('[data-tool-activity-row]')).toHaveLength(1)
-    expect(wrapper.find('.tool-details').exists()).toBe(true)
-
-    await wrapper.setProps({
-      steps: [step({
-        status: 'completed',
-        toolCall: toolCall({ status: 'completed', requiresConfirmation: false }),
-      })],
-    })
-    await nextTick()
-
-    expect(wrapper.findAll('[data-tool-activity-row]')).toHaveLength(1)
-    expect(wrapper.find('.tool-details').exists()).toBe(true)
+    const groups = wrapper.findAll('.workflow-group')
+    expect(groups).toHaveLength(1)
+    expect(groups[0].classes()).toContain('edit')
+    expect(groups[0].find('.group-header-anchor > .group-header').exists()).toBe(true)
+    expect(wrapper.find('.group-type-icon').exists()).toBe(true)
+    expect(wrapper.find('.operation-status-icon').exists()).toBe(false)
+    expect(wrapper.find('.group-final-result').exists()).toBe(false)
   })
 
-  it('allows auto-expanded failed and rejected tool rows to be collapsed', async () => {
-    const failedStep = step({
-      status: 'failed',
-      error: 'Command failed',
-      toolCall: toolCall({ status: 'failed', requiresConfirmation: false }),
-    })
-    const rejectedStep = step({
-      id: 'step2',
-      status: 'failed',
-      error: 'The user rejected permission for this tool.',
-      rejected: true,
-      toolCall: toolCall({
-        id: 'tc2',
-        status: 'failed',
-        requiresConfirmation: false,
-        rejected: true,
-        error: 'The user rejected permission for this tool.',
-      }),
-      toolCallId: 'tc2',
-    })
-
-    for (const toolStep of [failedStep, rejectedStep]) {
-      const wrapper = mount(StepsPanel, {
-        props: {
-          steps: [toolStep],
-        },
-        global: {
-          stubs: {
-            AllowSplitButton: { template: '<button />' },
-            ToolStepDetails: { template: '<div class="tool-details" />' },
-            FartCallItem: { template: '<div />' },
-          },
-        },
-      })
-      await nextTick()
-
-      expect(wrapper.find('.tool-details').exists()).toBe(true)
-
-      await wrapper.find('.activity-main').trigger('click')
-      await nextTick()
-
-      expect(wrapper.find('.tool-details').exists()).toBe(false)
-    }
-  })
-
-  it('keeps expanded write previews mounted when streaming input becomes finalized arguments', async () => {
-    const content = 'alpha\nbeta\ngamma'
+  it('does not repeat diff stats in expanded operation metadata', async () => {
     const wrapper = mount(StepsPanel, {
       props: {
-        steps: [writeStep({}, {
-          streamingArgs: JSON.stringify({ path: '/tmp/generated.ts', content }),
-        })],
+        steps: [
+          step({
+            id: 'step1',
+            status: 'completed',
+            toolCall: toolCall({ id: 'tc1', toolName: 'edit', status: 'completed', requiresConfirmation: false }),
+          }),
+          step({
+            id: 'step2',
+            status: 'completed',
+            toolCall: toolCall({ id: 'tc2', toolName: 'edit', status: 'completed', requiresConfirmation: false }),
+          }),
+        ],
       },
       global: {
         stubs: {
-          AllowSplitButton: { template: '<button />' },
           FartCallItem: { template: '<div />' },
         },
       },
     })
     await nextTick()
 
-    await wrapper.find('.activity-main').trigger('click')
+    await wrapper.find('.group-header').trigger('click')
     await nextTick()
 
-    const previewBefore = wrapper.find('.diff-preview').element
-    const lineBefore = wrapper.find('[data-diff-line]').element
-    expect(wrapper.findAll('[data-diff-line]')).toHaveLength(3)
-
-    await wrapper.setProps({
-      steps: [writeStep({}, {
-        status: 'executing',
-        arguments: { path: '/tmp/generated.ts', content },
-      })],
-    })
-    await nextTick()
-
-    expect(wrapper.find('.diff-preview').element).toBe(previewBefore)
-    expect(wrapper.find('[data-diff-line]').element).toBe(lineBefore)
-    expect(wrapper.findAll('[data-diff-line]')).toHaveLength(3)
+    const meta = wrapper.find('.tree-node-row .node-meta').text()
+    expect(meta).toBe('+1 -1')
+    expect(meta).not.toContain('(+1 -1)')
   })
 
-  it('keeps the tool row expand slot stable as details become available', async () => {
+  it('toggles collapsed and expanded states on click', async () => {
     const wrapper = mount(StepsPanel, {
       props: {
-        steps: [writeStep({}, {
-          id: 'bash1',
-          toolId: 'bash',
-          toolName: 'bash',
-          status: 'input-streaming',
-          streamingArgs: '{"command":"',
-        })],
+        steps: [
+          step({
+            id: 'step1',
+            status: 'completed',
+            toolCall: toolCall({ id: 'tc1', status: 'completed', requiresConfirmation: false }),
+          }),
+          step({
+            id: 'step2',
+            status: 'completed',
+            toolCall: toolCall({ id: 'tc2', status: 'completed', requiresConfirmation: false }),
+          }),
+        ],
       },
       global: {
         stubs: {
-          AllowSplitButton: { template: '<button />' },
           FartCallItem: { template: '<div />' },
-          ToolStepDetails: { template: '<div />' },
         },
       },
     })
     await nextTick()
 
-    const iconBefore = wrapper.find('.expand-icon').element
-    expect(wrapper.find('.expand-icon').classes()).toContain('placeholder')
+    expect(wrapper.find('.workflow-group').classes()).toContain('collapsed')
+    expect(wrapper.find('.group-timeline-tree').exists()).toBe(false)
 
-    await wrapper.setProps({
-      steps: [writeStep({}, {
-        id: 'bash1',
-        toolId: 'bash',
-        toolName: 'bash',
-        status: 'executing',
-        arguments: { command: 'git status' },
-      })],
+    await wrapper.find('.group-header').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('.workflow-group').classes()).toContain('expanded')
+    expect(wrapper.find('.group-timeline-tree').exists()).toBe(true)
+
+    await wrapper.find('.group-header').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('.workflow-group').classes()).toContain('collapsed')
+    expect(wrapper.find('.group-timeline-tree').exists()).toBe(false)
+  })
+
+  it('renders vertical timeline checklist with node content when expanded', async () => {
+    const wrapper = mount(StepsPanel, {
+      props: {
+        steps: [
+          step({
+            id: 'step1',
+            status: 'completed',
+            toolCall: toolCall({ id: 'tc1', toolName: 'write', status: 'completed', requiresConfirmation: false }),
+          }),
+          step({
+            id: 'step2',
+            status: 'completed',
+            toolCall: toolCall({ id: 'tc2', toolName: 'write', status: 'completed', requiresConfirmation: false }),
+          }),
+        ],
+      },
+      global: {
+        stubs: {
+          FartCallItem: { template: '<div />' },
+        },
+      },
     })
     await nextTick()
 
-    expect(wrapper.find('.expand-icon').element).toBe(iconBefore)
-    expect(wrapper.find('.expand-icon').classes()).not.toContain('placeholder')
+    await wrapper.find('.group-header').trigger('click')
+    await nextTick()
+
+    const nodes = wrapper.findAll('.tree-node-row')
+    expect(nodes).toHaveLength(2)
+    expect(nodes[0].find('.node-target').text()).toBe('Write a.ts')
+    expect(nodes[0].find('.node-action').text().trim()).toBe('Write')
+    expect(nodes[0].find('.node-target-name').text()).toBe('a.ts')
+    expect(nodes[0].find('.node-target-name').classes()).toContain('file-link')
+  })
+
+  it('expands inline details when a step node is clicked', async () => {
+    const wrapper = mount(StepsPanel, {
+      props: {
+        steps: [
+          step({
+            id: 'step1',
+            status: 'completed',
+            toolCall: toolCall({ id: 'tc1', toolName: 'write', status: 'completed', requiresConfirmation: false }),
+          }),
+          step({
+            id: 'step2',
+            status: 'completed',
+            toolCall: toolCall({ id: 'tc2', toolName: 'write', status: 'completed', requiresConfirmation: false }),
+          }),
+        ],
+      },
+      global: {
+        stubs: {
+          FartCallItem: { template: '<div />' },
+        },
+      },
+    })
+    await nextTick()
+
+    await wrapper.find('.group-header').trigger('click')
+    await nextTick()
+
+    await wrapper.find('.tree-node-row .node-target').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
+  })
+
+  it('keeps tool calls inside an expanded failed group collapsed by default', async () => {
+    const wrapper = mount(StepsPanel, {
+      props: {
+        steps: [
+          step({
+            id: 'failed-edit-1',
+            status: 'failed',
+            error: 'No matching text found in file',
+            toolCall: toolCall({
+              id: 'tc-failed-edit-1',
+              toolName: 'edit',
+              status: 'failed',
+              requiresConfirmation: false,
+              changes: undefined,
+              arguments: { path: '/tmp/project/src/app.ts' },
+            }),
+          }),
+          step({
+            id: 'failed-edit-2',
+            status: 'failed',
+            error: 'No matching text found in file',
+            toolCall: toolCall({
+              id: 'tc-failed-edit-2',
+              toolName: 'edit',
+              status: 'failed',
+              requiresConfirmation: false,
+              changes: undefined,
+              arguments: { path: '/tmp/project/src/other.ts' },
+            }),
+          }),
+        ],
+      },
+      global: {
+        stubs: {
+          FartCallItem: { template: '<div />' },
+        },
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.find('.workflow-group').classes()).toContain('expanded')
+    expect(wrapper.findAll('.tree-node-row')).toHaveLength(2)
+    expect(wrapper.find('.operation-failure').exists()).toBe(false)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
+
+    await wrapper.find('.tree-node-row .node-target').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('.operation-failure').text()).toContain('app.ts')
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
+  })
+
+  it('collapses expanded tool calls when reopening a group', async () => {
+    const wrapper = mount(StepsPanel, {
+      props: {
+        steps: [
+          step({
+            id: 'failed-edit-1',
+            status: 'failed',
+            error: 'No matching text found in file',
+            toolCall: toolCall({
+              id: 'tc-failed-edit-1',
+              toolName: 'edit',
+              status: 'failed',
+              requiresConfirmation: false,
+              changes: undefined,
+              arguments: { path: '/tmp/project/src/app.ts' },
+            }),
+          }),
+          step({
+            id: 'failed-edit-2',
+            status: 'failed',
+            error: 'No matching text found in file',
+            toolCall: toolCall({
+              id: 'tc-failed-edit-2',
+              toolName: 'edit',
+              status: 'failed',
+              requiresConfirmation: false,
+              changes: undefined,
+              arguments: { path: '/tmp/project/src/other.ts' },
+            }),
+          }),
+        ],
+      },
+      global: {
+        stubs: {
+          FartCallItem: { template: '<div />' },
+        },
+      },
+    })
+    await nextTick()
+
+    await wrapper.find('.tree-node-row .node-target').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
+
+    await wrapper.find('.group-header').trigger('click')
+    await nextTick()
+    await wrapper.find('.group-header').trigger('click')
+    await nextTick()
+
+    expect(wrapper.findAll('.tree-node-row')).toHaveLength(2)
+    expect(wrapper.find('.operation-failure').exists()).toBe(false)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
+  })
+
+  it('renders as a single flat row when there is only one tool call and expands it inline', async () => {
+    const wrapper = mount(StepsPanel, {
+      props: {
+        steps: [
+          step({
+            id: 'step1',
+            status: 'completed',
+            toolCall: toolCall({ id: 'tc1', toolName: 'write', status: 'completed', requiresConfirmation: false }),
+          }),
+        ],
+      },
+      global: {
+        stubs: {
+          FartCallItem: { template: '<div />' },
+        },
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.find('.single-activity-row').exists()).toBe(true)
+    expect(wrapper.find('.workflow-group').exists()).toBe(false)
+    expect(wrapper.find('.single-activity-row .node-target').text()).toBe('Wrote a.ts')
+    expect(wrapper.find('.single-activity-row .node-action').text().trim()).toBe('Wrote')
+    expect(wrapper.find('.single-activity-row .node-target-name').text()).toBe('a.ts')
+
+    await wrapper.find('.single-activity-row .node-target').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
+  })
+
+  it('renders failed edit rows with filename, reason, and next action', async () => {
+    const wrapper = mount(StepsPanel, {
+      props: {
+        steps: [
+          step({
+            id: 'failed-edit',
+            status: 'failed',
+            error: 'No matching text found in file',
+            toolCall: toolCall({
+              id: 'tc-failed-edit',
+              status: 'failed',
+              requiresConfirmation: false,
+              changes: undefined,
+              arguments: {
+                path: '/tmp/project/src/app.ts',
+                edits: [{ oldText: 'missing', newText: 'replacement' }],
+              },
+            }),
+          }),
+        ],
+      },
+      global: {
+        stubs: {
+          FartCallItem: { template: '<div />' },
+        },
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.find('.single-activity-row .node-target').text()).toBe('Edit failed: app.ts')
+    expect(wrapper.find('.operation-failure').text()).toContain('app.ts')
+    expect(wrapper.find('.operation-failure').text()).toContain('No matching text found')
+    expect(wrapper.find('.operation-failure').text()).toContain('adjust the edit')
+    expect(wrapper.find('.group-final-result').exists()).toBe(false)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
   })
 
   it('opens image attachments from base64 data and stops click bubbling', async () => {

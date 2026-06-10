@@ -71,7 +71,6 @@ Setting the work directory via the variable tool automatically records/touches p
   permissionGuard: 'safe',
   executionMode: 'parallel',
   renderKind: 'text',
-  promptSnippet: 'Inspect remembered project directories without changing workdir',
 
   parameters: ProjectDirsParameters,
 

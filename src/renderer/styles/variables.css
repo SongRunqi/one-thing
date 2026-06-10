@@ -170,6 +170,15 @@
      and early startup on the same semantic contract.
      ============================================ */
 	--ui-accent-primary-fg: var(--accent);
+	--ui-terminal-bg: #181818;
+	--ui-terminal-border: #2e2e2e;
+	--ui-terminal-header-bg: #222;
+	--ui-terminal-dot-close: #ff5f56;
+	--ui-terminal-dot-minimize: #ffbd2e;
+	--ui-terminal-dot-expand: #27c93f;
+	--ui-terminal-title: #888;
+	--ui-terminal-text: #e3e3e3;
+	--ui-terminal-command: #38bdf8;
 	--ui-accent-subtle-fg: var(--accent-sub);
 	--ui-surface-app-bg: var(--bg-app);
 	--ui-surface-sidebar-bg: var(--bg-sidebar);

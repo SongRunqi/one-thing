@@ -427,66 +427,125 @@
         </section>
 
         <section
-          v-else
-          class="lens-pane"
+          v-else-if="activeTab === 'browser'"
+          class="lens-pane browser-pane"
         >
           <div
-            v-if="allToolCalls.length === 0"
+            v-if="!activeWebSearchStep"
             class="empty-state"
           >
-            No tool calls in this session.
+            No web search results in this session.
           </div>
-          <ul
+          <WebSearchResultRenderer
             v-else
-            class="tool-call-list"
+            :result="activeWebSearchStep.result"
+            :is-partial="activeWebSearchStep.isPartial"
+          />
+        </section>
+
+        <section
+          v-else-if="activeTab === 'diff'"
+          class="lens-pane diff-pane"
+        >
+          <div
+            v-if="!activeDiffStep"
+            class="empty-state"
           >
-            <li
-              v-for="entry in allToolCalls"
-              :key="entry.id"
-              class="tool-call-card"
-            >
-              <button
-                class="tool-call-summary"
-                type="button"
-                @click="toggleExpanded(entry.id)"
-              >
-                <span :class="['status-dot', statusTone(entry.status)]" />
-                <code>{{ entry.toolName }}</code>
-                <span class="status-label">{{ entry.status }}</span>
-                <span
-                  v-if="entry.duration !== undefined"
-                  class="duration"
-                >{{ formatDuration(entry.duration) }}</span>
-                <ChevronDown
-                  :size="14"
-                  :class="['chevron', { open: expanded.has(entry.id) }]"
-                />
-              </button>
-              <div
-                v-if="expanded.has(entry.id)"
-                class="tool-call-detail"
-              >
-                <div class="detail-block">
-                  <span>args</span>
-                  <pre>{{ formatJson(entry.args) }}</pre>
-                </div>
-                <div
-                  v-if="entry.result !== undefined"
-                  class="detail-block"
-                >
-                  <span>result</span>
-                  <pre>{{ truncate(formatJson(entry.result), 1500) }}</pre>
-                </div>
-                <div
-                  v-if="entry.error"
-                  class="detail-block error"
-                >
-                  <span>error</span>
-                  <pre>{{ entry.error }}</pre>
-                </div>
+            No code diffs in this session.
+          </div>
+          <template v-else>
+            <!-- Diff header controls -->
+            <div class="diff-panel-header">
+              <div class="diff-file-info">
+                <span class="file-path">{{ activeDiffStep.fileName }}</span>
+                <span class="diff-stats">
+                  <span class="additions">+{{ activeDiffStep.diff?.additions || activeDiffStep.streamingDiff?.additions || 0 }}</span>
+                  <span class="deletions">-{{ activeDiffStep.diff?.deletions || activeDiffStep.streamingDiff?.deletions || 0 }}</span>
+                </span>
               </div>
-            </li>
-          </ul>
+              <div class="diff-actions">
+                <button
+                  class="diff-btn"
+                  :class="{ active: wrap }"
+                  type="button"
+                  title="Wrap lines"
+                  @click="wrap = !wrap"
+                >
+                  <WrapText :size="13" />
+                </button>
+                <button
+                  v-if="canRollback"
+                  class="diff-btn rollback-btn"
+                  :class="{ done: rollbackState === 'done', failed: rollbackState === 'failed' }"
+                  type="button"
+                  :disabled="rollbackState === 'running' || rollbackState === 'done'"
+                  :title="rollbackTitle"
+                  @click="rollbackDiff"
+                >
+                  <RotateCcw :size="13" />
+                </button>
+                <button
+                  class="diff-btn"
+                  type="button"
+                  :title="copied ? 'Copied!' : 'Copy diff'"
+                  @click="copyDiff"
+                >
+                  <Check
+                    v-if="copied"
+                    :size="13"
+                  />
+                  <Copy
+                    v-else
+                    :size="13"
+                  />
+                </button>
+              </div>
+            </div>
+
+            <!-- Diff preview itself -->
+            <ToolDiffPreview
+              :diff="activeDiffStep.diff || activeDiffStep.streamingDiff"
+              :lines="activeDiffStep.diff ? activeDiffStep.diffLines : activeDiffStep.streamingDiffLines"
+              :status="activeDiffStep.status"
+              :wrap="wrap"
+            />
+          </template>
+        </section>
+
+        <section
+          v-else-if="activeTab === 'console'"
+          class="lens-pane console-pane"
+        >
+          <div
+            v-if="!activeConsoleStep"
+            class="empty-state"
+          >
+            No terminal/inspect executions in this session.
+          </div>
+          <div
+            v-else
+            class="terminal-mock"
+          >
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="dot close" />
+                <span class="dot minimize" />
+                <span class="dot expand" />
+              </div>
+              <span class="terminal-title">bash</span>
+            </div>
+            <div class="terminal-body">
+              <div class="terminal-command">
+                $ {{ consoleCommandText }}
+              </div>
+              <ToolResultRenderer
+                :result="activeConsoleStep.step.partialResult || { content: [{ type: 'text', text: activeConsoleStep.resultText || '' }] }"
+                :is-partial="activeConsoleStep.status === 'executing' || activeConsoleStep.status === 'streaming-input'"
+                render-kind="bash"
+                tool-name="bash"
+              />
+            </div>
+          </div>
         </section>
       </div>
     </section>
@@ -495,11 +554,17 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { Box, Check, ChevronDown, ChevronRight, Database, Pencil, Plus, Radar, Sparkles, TerminalSquare, X } from 'lucide-vue-next'
+import { Box, Check, ChevronDown, ChevronRight, Database, Pencil, Plus, Radar, Sparkles, TerminalSquare, X, Globe, GitCompare, Terminal, WrapText, RotateCcw, Copy } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import type { ContextVariable } from '@shared/ipc/chat'
+import { buildToolStepView } from '@/stores/helpers/tool-step-view'
+import { copyTextToClipboard } from '@/utils/clipboard'
+import ToolDiffPreview from './ToolDiffPreview.vue'
+import WebSearchResultRenderer from './WebSearchResultRenderer.vue'
+import ToolResultRenderer from './ToolResultRenderer.vue'
+import type { Step } from '@/types'
 
 interface Props {
   sessionId: string
@@ -512,13 +577,19 @@ const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
 
-type TabId = 'context' | 'request' | 'tools'
+type TabId = 'context' | 'request' | 'browser' | 'diff' | 'console'
 const tabs = [
-  { id: 'context', label: 'Context', title: 'Context', icon: Database },
+  { id: 'context', label: 'Context', title: 'Context variables', icon: Database },
   { id: 'request', label: 'Request', title: 'Request payload', icon: Box },
-  { id: 'tools', label: 'Tools', title: 'Tool calls', icon: TerminalSquare },
+  { id: 'browser', label: 'Browser', title: 'Web search & reader', icon: Globe },
+  { id: 'diff', label: 'Diff', title: 'Code changes', icon: GitCompare },
+  { id: 'console', label: 'Console', title: 'Console outputs', icon: Terminal },
 ] satisfies Array<{ id: TabId; label: string; title: string; icon: unknown }>
-const activeTab = ref<TabId>('context')
+
+const activeTab = computed({
+  get: () => chatStore.activeInspectorTab,
+  set: (val) => { chatStore.activeInspectorTab = val }
+})
 
 const session = computed(() =>
   sessionsStore.sessions.find((s) => s.id === props.sessionId) || null,
@@ -844,6 +915,222 @@ function truncate(s: string, max: number): string {
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(2)}s`
+}
+
+const rollbackState = ref<'idle' | 'running' | 'done' | 'failed'>('idle')
+const rollbackError = ref('')
+const copied = ref(false)
+const wrap = ref(false)
+
+const activeWebSearchStep = computed(() => {
+  const selectedId = chatStore.selectedToolCallId
+  let foundStep: Step | null = null
+  let isPartial = false
+
+  const isSearchName = (name?: string) => {
+    if (!name) return false
+    return ['web_search', 'web-search', 'websearch', 'web_open', 'web-open', 'webopen', 'web_find', 'web-find', 'webfind'].includes(name.toLowerCase())
+  }
+
+  if (selectedId) {
+    for (const m of messages.value) {
+      if (m.role !== 'assistant') continue
+      if (m.steps) {
+        const s = m.steps.find(x => x.id === selectedId || x.toolCallId === selectedId)
+        if (s && isSearchName(s.toolCall?.toolName || s.title)) {
+          foundStep = s
+          isPartial = s.status === 'running'
+          break
+        }
+      }
+    }
+  }
+
+  if (!foundStep) {
+    for (const m of [...messages.value].reverse()) {
+      if (m.role !== 'assistant') continue
+      if (m.steps) {
+        const s = [...m.steps].reverse().find(x => isSearchName(x.toolCall?.toolName || x.title))
+        if (s) {
+          foundStep = s
+          isPartial = s.status === 'running'
+          break
+        }
+      }
+    }
+  }
+
+  if (!foundStep) return null
+
+  let partialResult: any = foundStep.partialResult
+  if (!partialResult) {
+    let details: any = null
+    if (foundStep.result) {
+      try {
+        details = JSON.parse(foundStep.result)
+      } catch {
+        details = foundStep.toolCall?.result
+      }
+    } else {
+      details = foundStep.toolCall?.result
+    }
+
+    if (details && typeof details === 'object') {
+      if (details.details) {
+        partialResult = details
+      } else {
+        partialResult = {
+          content: [{ type: 'text', text: foundStep.result || '' }],
+          details: details
+        }
+      }
+    }
+  }
+
+  return {
+    step: foundStep,
+    result: partialResult || { content: [] },
+    isPartial
+  }
+})
+
+const activeDiffStep = computed(() => {
+  const selectedId = chatStore.selectedToolCallId
+  let foundStep: Step | null = null
+
+  const isDiffName = (name?: string) => {
+    if (!name) return false
+    return ['edit', 'write'].includes(name.toLowerCase())
+  }
+
+  if (selectedId) {
+    for (const m of messages.value) {
+      if (m.role !== 'assistant') continue
+      if (m.steps) {
+        const s = m.steps.find(x => x.id === selectedId || x.toolCallId === selectedId)
+        if (s && isDiffName(s.toolCall?.toolName || s.title)) {
+          foundStep = s
+          break
+        }
+      }
+    }
+  }
+
+  if (!foundStep) {
+    for (const m of [...messages.value].reverse()) {
+      if (m.role !== 'assistant') continue
+      if (m.steps) {
+        const s = [...m.steps].reverse().find(x => isDiffName(x.toolCall?.toolName || x.title))
+        if (s) {
+          foundStep = s
+          break
+        }
+      }
+    }
+  }
+
+  if (!foundStep) return null
+  return buildToolStepView(foundStep)
+})
+
+const activeConsoleStep = computed(() => {
+  const selectedId = chatStore.selectedToolCallId
+  let foundStep: Step | null = null
+
+  const isConsoleName = (name?: string) => {
+    if (!name) return false
+    return ['bash', 'read', 'glob', 'grep', 'variable'].includes(name.toLowerCase())
+  }
+
+  if (selectedId) {
+    for (const m of messages.value) {
+      if (m.role !== 'assistant') continue
+      if (m.steps) {
+        const s = m.steps.find(x => x.id === selectedId || x.toolCallId === selectedId)
+        if (s && isConsoleName(s.toolCall?.toolName || s.title)) {
+          foundStep = s
+          break
+        }
+      }
+    }
+  }
+
+  if (!foundStep) {
+    for (const m of [...messages.value].reverse()) {
+      if (m.role !== 'assistant') continue
+      if (m.steps) {
+        const s = [...m.steps].reverse().find(x => isConsoleName(x.toolCall?.toolName || x.title))
+        if (s) {
+          foundStep = s
+          break
+        }
+      }
+    }
+  }
+
+  if (!foundStep) return null
+  return buildToolStepView(foundStep)
+})
+
+const consoleCommandText = computed(() => {
+  const stepView = activeConsoleStep.value
+  if (!stepView) return ''
+  if (stepView.toolName === 'bash') {
+    return stepView.argsJson || ''
+  }
+  return `${stepView.toolName} ${stepView.filePath || ''}`
+})
+
+const canRollback = computed(() => {
+  const stepView = activeDiffStep.value
+  return (
+    stepView &&
+    stepView.status === 'completed' &&
+    !!stepView.diff?.auditPath &&
+    ['edit', 'write'].includes(stepView.toolName)
+  )
+})
+
+const rollbackTitle = computed(() => {
+  if (rollbackState.value === 'running') return 'Rolling back...'
+  if (rollbackState.value === 'done') return 'Rolled back'
+  if (rollbackState.value === 'failed') return rollbackError.value || 'Rollback failed'
+  return 'Rollback this file change'
+})
+
+async function rollbackDiff() {
+  const stepView = activeDiffStep.value
+  if (!stepView) return
+  const auditPath = stepView.diff?.auditPath
+  if (!auditPath || rollbackState.value === 'running' || rollbackState.value === 'done') return
+  const fileName = stepView.filePath || 'this file'
+  const confirmed = window.confirm(`Rollback changes to ${fileName}? This only succeeds if the file still matches the audited post-change content.`)
+  if (!confirmed) return
+
+  rollbackState.value = 'running'
+  rollbackError.value = ''
+  try {
+    const result = await window.electronAPI.rollbackFile({ auditPath })
+    if (!result.success) throw new Error(result.error || 'Rollback failed')
+    rollbackState.value = 'done'
+  } catch (error: any) {
+    rollbackError.value = error?.message || 'Rollback failed'
+    rollbackState.value = 'failed'
+  }
+}
+
+async function copyDiff() {
+  const stepView = activeDiffStep.value
+  if (!stepView) return
+  const activeDiffLines = stepView.diff ? stepView.diffLines : stepView.streamingDiffLines
+  const text = activeDiffLines
+    .filter(line => line.class !== 'diff-hunk')
+    .map(line => `${line.prefix}${line.content}`)
+    .join('\n')
+  if (!text) return
+  if (!(await copyTextToClipboard(text))) return
+  copied.value = true
+  setTimeout(() => { copied.value = false }, 2000)
 }
 </script>
 
@@ -1946,5 +2233,135 @@ textarea.variable-value-input {
   .session-lens-sidebar {
     width: min(340px, 48vw);
   }
+}
+
+/* Diff Pane Header styling inside Inspector Panel */
+.diff-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 40%, transparent);
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+
+.diff-file-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.diff-file-info .file-path {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--ui-text-primary-fg, var(--text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-stats {
+  display: flex;
+  gap: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
+.diff-stats .additions {
+  color: var(--ui-status-success-fg, #34d399);
+}
+
+.diff-stats .deletions {
+  color: var(--ui-status-danger-fg, #ef4444);
+}
+
+.diff-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.diff-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text-muted-fg, var(--muted));
+  cursor: pointer;
+}
+
+.diff-btn:hover {
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.diff-btn.active {
+  background: var(--ui-state-selected-bg, var(--hover));
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+/* Console Pane terminal mock */
+.console-pane {
+  padding: 8px 10px 12px;
+}
+
+.terminal-mock {
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-terminal-bg);
+  border: 1px solid var(--ui-terminal-border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--ui-terminal-header-bg);
+  border-bottom: 1px solid var(--ui-terminal-border);
+}
+
+.terminal-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.terminal-dots .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.terminal-dots .dot.close { background: var(--ui-terminal-dot-close); }
+.terminal-dots .dot.minimize { background: var(--ui-terminal-dot-minimize); }
+.terminal-dots .dot.expand { background: var(--ui-terminal-dot-expand); }
+
+.terminal-title {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--ui-terminal-title);
+}
+
+.terminal-body {
+  padding: 12px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--ui-terminal-text);
+  overflow-y: auto;
+}
+
+.terminal-command {
+  color: var(--ui-terminal-command);
+  margin-bottom: 8px;
+  font-weight: 500;
 }
 </style>

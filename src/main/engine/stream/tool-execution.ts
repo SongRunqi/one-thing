@@ -83,6 +83,24 @@ export function generateStepTitle(toolName: string, args: Record<string, any>, s
     return `Run: ${command}`
   }
 
+  const lowerName = toolName.toLowerCase()
+  const isFile = [
+    'read', 'view_file', 'read_file', 'view-file', 'read-file',
+    'write', 'write_to_file', 'write_file', 'write-file',
+    'edit', 'replace_file_content', 'multi_replace_file_content'
+  ].includes(lowerName)
+
+  if (isFile) {
+    const rawPath = args.path || args.AbsolutePath || args.TargetFile || args.filePath || ''
+    if (rawPath) {
+      const normalized = String(rawPath).replace(/\\/g, '/').replace(/\/+$/, '')
+      const filename = normalized.split('/').filter(Boolean).pop() || normalized
+      if (filename) {
+        return `Tool: ${toolName}: ${filename}`
+      }
+    }
+  }
+
   // For MCP tools, show a cleaner name
   if (toolName.includes(':')) {
     const parts = toolName.split(':')
@@ -132,23 +150,37 @@ export async function executeToolDirectly(
       if (context.abortSignal?.aborted) {
         return { success: false, error: 'Execution cancelled by user', aborted: true }
       }
-      const effects: ToolEffect[] = [{
-        kind: 'mcp',
-        resources: [toolName],
-        barrier: true,
-        metadata: { toolName, arguments: args },
-      }]
-      await enforcePermissionPolicy({
-        sessionId: context.sessionId,
-        messageId: context.messageId,
-        toolCallId: context.toolCallId,
-        toolName,
-        effects,
-        preview: { title: `Run MCP tool: ${toolName}`, metadata: { toolName, arguments: args } },
-        workspaceRoot: context.workingDirectory,
+      const isMCPRouter = toolName === 'mcp_search' || toolName === 'tool_function'
+      const isRouterReadOnly = isMCPRouter && args.action !== 'call'
+      if (!isRouterReadOnly) {
+        const resourceName = isMCPRouter && (typeof args.tool === 'string' || typeof args.function === 'string')
+          ? (args.tool || args.function)
+          : toolName
+        const effects: ToolEffect[] = [{
+          kind: 'mcp',
+          resources: [resourceName],
+          barrier: true,
+          metadata: { toolName, arguments: args },
+        }]
+        await enforcePermissionPolicy({
+          sessionId: context.sessionId,
+          messageId: context.messageId,
+          toolCallId: context.toolCallId,
+          toolName,
+          effects,
+          preview: { title: `Call MCP tool: ${resourceName}`, metadata: { toolName, arguments: args } },
+          workspaceRoot: context.workingDirectory,
+        })
+        await context.beforeSideEffect?.()
+      }
+      const result = await executeMCPTool(toolName, args, {
+        onPartialResult: (text, phase) => {
+          context.onPartialResult?.({
+            content: [{ type: 'text', text }],
+            details: { phase, toolName, functionName: args.function },
+          })
+        },
       })
-      await context.beforeSideEffect?.()
-      const result = await executeMCPTool(toolName, args)
       // Check abort after MCP call in case it was triggered during execution
       if (context.abortSignal?.aborted) {
         return { success: false, error: 'Execution cancelled by user', aborted: true }

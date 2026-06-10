@@ -195,8 +195,6 @@ export const ReadTool = Tool.define<typeof ReadParameters, ReadMetadata>('read',
   permissionGuard: 'sandboxed',
   executionMode: 'parallel',
   renderKind: 'file',
-  promptSnippet: 'Read file contents',
-  promptGuidelines: ['Use read to examine files instead of cat or sed.'],
 
   parameters: ReadParameters,
 

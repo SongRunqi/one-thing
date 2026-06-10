@@ -1,17 +1,29 @@
 <template>
   <div class="page-shell">
     <!-- Header area -->
-    <header v-if="$slots.header || $slots.tabs" class="page-shell-header">
-      <div v-if="$slots.header" class="page-shell-header-main">
+    <header
+      v-if="$slots.header || $slots.tabs"
+      class="page-shell-header"
+    >
+      <div
+        v-if="$slots.header"
+        class="page-shell-header-main"
+      >
         <slot name="header" />
       </div>
-      <div v-if="$slots.tabs" class="page-shell-tabs">
+      <div
+        v-if="$slots.tabs"
+        class="page-shell-tabs"
+      >
         <slot name="tabs" />
       </div>
     </header>
 
     <!-- Body area -->
-    <div :class="['page-shell-body', { 'no-padding': noPadding }]" :style="bodyStyle">
+    <div
+      :class="['page-shell-body', { 'no-padding': noPadding }]"
+      :style="bodyStyle"
+    >
       <slot />
     </div>
   </div>

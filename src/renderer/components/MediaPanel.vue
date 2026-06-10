@@ -246,10 +246,17 @@
 
           <!-- Inline Media Inspector Drawer -->
           <Transition name="drawer">
-            <div v-if="selectedAsset" class="inspector-drawer">
+            <div
+              v-if="selectedAsset"
+              class="inspector-drawer"
+            >
               <div class="drawer-header">
                 <span class="drawer-title">Media Details</span>
-                <button class="drawer-close-btn" type="button" @click="selectedAsset = null">
+                <button
+                  class="drawer-close-btn"
+                  type="button"
+                  @click="selectedAsset = null"
+                >
                   <X :size="16" />
                 </button>
               </div>
@@ -261,26 +268,40 @@
                     :src="mediaStore.getImageUrl(selectedAsset)"
                     :alt="selectedAsset.fileName"
                     class="drawer-preview-img"
-                    @click="launchGallery(selectedAsset)"
                     title="Click to view full image"
-                  />
-                  <div v-else class="drawer-preview-fallback">
-                    <component :is="kindIcon(selectedAsset.kind)" :size="48" />
+                    @click="launchGallery(selectedAsset)"
+                  >
+                  <div
+                    v-else
+                    class="drawer-preview-fallback"
+                  >
+                    <component
+                      :is="kindIcon(selectedAsset.kind)"
+                      :size="48"
+                    />
                   </div>
                 </div>
 
                 <div class="drawer-section">
-                  <h4 class="section-heading">File Information</h4>
+                  <h4 class="section-heading">
+                    File Information
+                  </h4>
                   <div class="specs-list">
                     <div class="spec-row">
                       <span class="spec-label">Name</span>
-                      <span class="spec-val truncate" :title="selectedAsset.fileName">{{ selectedAsset.fileName }}</span>
+                      <span
+                        class="spec-val truncate"
+                        :title="selectedAsset.fileName"
+                      >{{ selectedAsset.fileName }}</span>
                     </div>
                     <div class="spec-row">
                       <span class="spec-label">Format</span>
                       <span class="spec-val">{{ selectedAsset.mimeType }}</span>
                     </div>
-                    <div v-if="selectedAsset.width && selectedAsset.height" class="spec-row">
+                    <div
+                      v-if="selectedAsset.width && selectedAsset.height"
+                      class="spec-row"
+                    >
                       <span class="spec-label">Resolution</span>
                       <span class="spec-val">{{ selectedAsset.width }} × {{ selectedAsset.height }}</span>
                     </div>
@@ -296,11 +317,24 @@
                 </div>
 
                 <!-- Prompt Details (if AI Generated) -->
-                <div v-if="selectedAsset.metadata?.prompt" class="drawer-section">
+                <div
+                  v-if="selectedAsset.metadata?.prompt"
+                  class="drawer-section"
+                >
                   <div class="section-title-with-action">
-                    <h4 class="section-heading">AI Generation Prompt</h4>
-                    <button class="copy-text-btn" type="button" @click="copyPromptText(selectedAsset.metadata.prompt)" title="Copy prompt">
-                      <component :is="copiedPrompt ? Check : Copy" :size="13" />
+                    <h4 class="section-heading">
+                      AI Generation Prompt
+                    </h4>
+                    <button
+                      class="copy-text-btn"
+                      type="button"
+                      title="Copy prompt"
+                      @click="copyPromptText(selectedAsset.metadata.prompt)"
+                    >
+                      <component
+                        :is="copiedPrompt ? Check : Copy"
+                        :size="13"
+                      />
                       <span>{{ copiedPrompt ? 'Copied' : 'Copy' }}</span>
                     </button>
                   </div>
@@ -309,11 +343,24 @@
                   </div>
                 </div>
 
-                <div v-if="selectedAsset.metadata?.revisedPrompt" class="drawer-section">
+                <div
+                  v-if="selectedAsset.metadata?.revisedPrompt"
+                  class="drawer-section"
+                >
                   <div class="section-title-with-action">
-                    <h4 class="section-heading">Revised Prompt</h4>
-                    <button class="copy-text-btn" type="button" @click="copyRevisedPromptText(selectedAsset.metadata.revisedPrompt)" title="Copy revised prompt">
-                      <component :is="copiedRevisedPrompt ? Check : Copy" :size="13" />
+                    <h4 class="section-heading">
+                      Revised Prompt
+                    </h4>
+                    <button
+                      class="copy-text-btn"
+                      type="button"
+                      title="Copy revised prompt"
+                      @click="copyRevisedPromptText(selectedAsset.metadata.revisedPrompt)"
+                    >
+                      <component
+                        :is="copiedRevisedPrompt ? Check : Copy"
+                        :size="13"
+                      />
                       <span>{{ copiedRevisedPrompt ? 'Copied' : 'Copy' }}</span>
                     </button>
                   </div>
@@ -340,7 +387,10 @@
                   type="button"
                   @click="copyFilePath(selectedAsset.filePath)"
                 >
-                  <component :is="copiedPath ? Check : Copy" :size="14" />
+                  <component
+                    :is="copiedPath ? Check : Copy"
+                    :size="14"
+                  />
                   <span>Copy Path</span>
                 </button>
                 <button
@@ -354,7 +404,7 @@
               </div>
             </div>
           </Transition>
-      </template>
+        </template>
 
         <MemoryPanelContent v-else-if="activeNav === 'memory'" />
         <AgentsPanelContent v-else-if="activeNav === 'agents'" />

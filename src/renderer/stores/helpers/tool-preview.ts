@@ -13,8 +13,9 @@ const PATTERN_PREVIEW_MAX = 20
 /** Shorten a file path to its last 1-2 segments when it exceeds maxLen. */
 export function shortenPath(path: string, maxLen: number = 45): string {
   if (!path) return ''
-  if (path.length <= maxLen) return path
-  const parts = path.split('/')
+  const normalized = path.replace(/\\/g, '/')
+  if (normalized.length <= maxLen) return normalized
+  const parts = normalized.split('/')
   if (parts.length >= 2) {
     const short = '.../' + parts.slice(-2).join('/')
     if (short.length <= maxLen) return short
@@ -37,7 +38,12 @@ function truncate(s: string, max: number): string {
 
 /** Pull the `path` value out of partially-streamed JSON args. */
 function extractStreamingPath(streamingArgs: string): string | null {
-  const match = streamingArgs.match(/"path"\s*:\s*"/)
+  const keys = ['path', 'filePath', 'filepath', 'file_path', 'AbsolutePath', 'TargetFile', 'SearchPath', 'FilePath']
+  let match: RegExpMatchArray | null = null
+  for (const key of keys) {
+    match = streamingArgs.match(new RegExp(`"${key}"\\s*:\\s*"`))
+    if (match?.index !== undefined) break
+  }
   if (!match || match.index === undefined) return null
 
   let value = ''
@@ -59,6 +65,18 @@ function extractStreamingPath(streamingArgs: string): string | null {
   return value || null
 }
 
+function pathArg(args: Record<string, unknown>): string {
+  const value = args.path ||
+    args.filePath ||
+    args.filepath ||
+    args.file_path ||
+    args.AbsolutePath ||
+    args.TargetFile ||
+    args.SearchPath ||
+    args.FilePath
+  return value === undefined || value === null ? '' : String(value)
+}
+
 /**
  * Per-tool argument summary for finalized tool calls. Returns a single-line
  * string suitable for the tool-row preview slot.
@@ -70,33 +88,33 @@ function formatArgsSummary(toolCall: ToolCall): string {
 
   switch (toolName) {
     case 'read': {
-      const path = basename(String(args.path || ''))
-      const offset = args.offset as number | undefined
-      const limit = args.limit as number | undefined
+      const path = basename(pathArg(args))
+      const offset = (args.offset ?? args.StartLine) as number | undefined
+      const limit = (args.limit ?? (args.EndLine && offset ? (args.EndLine as number) - (offset as number) + 1 : undefined)) as number | undefined
       if (offset || limit) {
         const start = offset || 1
         const end = limit ? start + limit - 1 : '...'
-        return `${path}:${start}-${end}`
+        return path ? `${path}:${start}-${end}` : `Lines ${start}-${end}`
       }
       return path
     }
 
     case 'grep': {
-      const pattern = String(args.pattern || '')
-      const glob = (args.glob || args.type) as string | undefined
+      const pattern = String(args.pattern || args.Query || '')
+      const glob = (args.glob || args.type || args.Includes) as string | undefined
       const truncPattern = truncate(pattern, PATTERN_PREVIEW_MAX)
-      if (glob) return `"${truncPattern}" in ${glob}`
+      if (glob) return `"${truncPattern}" in ${shortenPathsInText(glob)}`
       return pattern ? `"${truncPattern}"` : ''
     }
 
     case 'bash': {
-      const cmd = String(args.command || '')
-      return truncate(cmd, BASH_PREVIEW_MAX)
+      const cmd = String(args.command || args.CommandLine || '')
+      return truncate(shortenPathsInText(cmd), BASH_PREVIEW_MAX)
     }
 
     case 'edit': {
       const changes = toolCall.changes
-      const path = basename(String(args.path || changes?.filePath || ''))
+      const path = basename(pathArg(args) || changes?.filePath || '')
       if (!path) return ''
       const additions = typeof changes?.additions === 'number' ? changes.additions : null
       const deletions = typeof changes?.deletions === 'number' ? changes.deletions : null
@@ -107,8 +125,8 @@ function formatArgsSummary(toolCall: ToolCall): string {
     }
 
     case 'write': {
-      const path = basename(String(args.path || ''))
-      const content = args.content as string | undefined
+      const path = basename(pathArg(args))
+      const content = (args.content || args.CodeContent) as string | undefined
       if (content) return `${path} (${content.length} chars)`
       return path
     }
@@ -120,23 +138,94 @@ function formatArgsSummary(toolCall: ToolCall): string {
       return pattern
     }
 
+    case 'find': {
+      const pattern = String(args.pattern || '')
+      const path = args.path as string | undefined
+      if (path) return `${pattern} in ${shortenPath(path, 25)}`
+      return pattern
+    }
+
+    case 'ls': {
+      const path = args.path as string | undefined
+      return path ? shortenPath(path, 45) : 'current directory'
+    }
+
     case 'variable': {
       return formatVariablePreview(args)
     }
 
+    case 'todo_plan': {
+      const action = String(args.action || '')
+      const target = String(args.title || args.id || args.scope || 'todos')
+      return action ? `${action} ${target}` : target
+    }
+
+    case 'time': {
+      const action = String(args.action || 'now')
+      const zone = String(args.timezone || args.fromTimezone || args.toTimezone || '')
+      return zone ? `${action} ${zone}` : action
+    }
+
+    case 'project_dirs': {
+      const action = String(args.action || 'list')
+      const path = args.path as string | undefined
+      return path ? `${action} ${shortenPath(path, 42)}` : action
+    }
+
+    case 'skill': {
+      const action = String(args.action || 'list')
+      const name = String(args.name || args.query || '')
+      return name ? `${action} ${name}` : action
+    }
+
+    case 'mcp_search':
+    case 'tool_function': {
+      const action = String(args.action || 'list')
+      const fn = String(args.tool || args.function || args.query || '')
+      return fn ? `${action} ${fn}` : action
+    }
+
     case 'web-search':
+    case 'web_search':
     case 'websearch': {
       const query = args.query as string | undefined
       return query ? `"${query}"` : ''
     }
 
+    case 'web-open':
+    case 'web_open':
+    case 'webopen': {
+      const title = args.title as string | undefined
+      const url = args.url as string | undefined
+      return title || hostFor(url || '')
+    }
+
+    case 'web-find':
+    case 'web_find':
+    case 'webfind': {
+      const pattern = args.pattern as string | undefined
+      const url = args.url as string | undefined
+      const host = hostFor(url || '')
+      if (pattern && host) return `"${truncate(pattern, 28)}" in ${host}`
+      return pattern ? `"${truncate(pattern, 40)}"` : host
+    }
+
+    case 'calculator': {
+      return String(args.expression || '')
+    }
+
+    case 'get_current_time': {
+      return String(args.timezone || args.format || 'current time')
+    }
+
     default: {
       // Generic fallback: prefer file path > pattern > command > first value
-      if (args.path) {
-        return basename(String(args.path))
+      const rawPath = pathArg(args)
+      if (rawPath) {
+        return basename(String(rawPath))
       }
       if (args.pattern) return `"${args.pattern}"`
-      if (args.command) return truncate(String(args.command), BASH_PREVIEW_MAX)
+      if (args.command || args.CommandLine) return truncate(shortenPathsInText(String(args.command || args.CommandLine)), BASH_PREVIEW_MAX)
       const firstVal = Object.values(args)[0]
       return firstVal !== undefined ? String(firstVal) : ''
     }
@@ -170,6 +259,15 @@ function formatVariablePreview(args: Record<string, unknown>): string {
   return name
 }
 
+function hostFor(value: string): string {
+  if (!value) return ''
+  try {
+    return new URL(value).hostname.replace(/^www\./, '')
+  } catch {
+    return truncate(value, 45)
+  }
+}
+
 /**
  * Format a single-line preview for a tool call row.
  *
@@ -192,4 +290,18 @@ export function formatToolCallPreview(toolCall: ToolCall | undefined): string {
   }
 
   return formatArgsSummary(toolCall)
+}
+
+/** Detect absolute paths in a text block and shorten them to their base segments. */
+export function shortenPathsInText(text: string): string {
+  if (!text) return ''
+  // Unix absolute path regex: matches / followed by segments, checking it looks like a path (at least 2 slashes)
+  let result = text.replace(/(?:\/[a-zA-Z0-9_\-\.\+]+){2,}/g, (match) => {
+    return shortenPath(match, 35)
+  })
+  // Windows absolute path regex: matches C:\... or similar
+  result = result.replace(/(?:[a-zA-Z]:\\(?:[a-zA-Z0-9_\-\.\+]+\\)*[a-zA-Z0-9_\-\.\+]+)/g, (match) => {
+    return shortenPath(match, 35)
+  })
+  return result
 }

@@ -150,6 +150,16 @@ interface PermissionRequestData {
 export const useChatStore = defineStore('chat', () => {
   // ============ Per-session 状态 ============
 
+  const inspectorOpen = ref(false)
+  const activeInspectorTab = ref<'context' | 'request' | 'browser' | 'diff' | 'console'>('context')
+  const selectedToolCallId = ref('')
+
+  function openInspectorToTab(tab: 'context' | 'request' | 'browser' | 'diff' | 'console', toolCallId = '') {
+    activeInspectorTab.value = tab
+    selectedToolCallId.value = toolCallId
+    inspectorOpen.value = true
+  }
+
   // Messages per session
   const sessionMessages = ref<Map<string, ChatMessage[]>>(new Map())
 
@@ -1683,5 +1693,11 @@ export const useChatStore = defineStore('chat', () => {
     saveSnapshot,
     getSnapshot,
     deleteSnapshot,
+
+    // Global Inspector State
+    inspectorOpen,
+    activeInspectorTab,
+    selectedToolCallId,
+    openInspectorToTab,
   }
 })

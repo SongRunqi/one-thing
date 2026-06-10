@@ -9,8 +9,9 @@ import * as fs from 'fs'
 import { MCPManager } from './manager.js'
 import type { MCPToolInfo, MCPToolCallResult } from './types.js'
 import type { ToolDefinition, ToolParameter } from '../tools/types.js'
-import { registerTool, unregisterTool, getAllTools } from '../tools/registry.js'
+import { unregisterTool, getAllTools } from '../tools/registry.js'
 import { getMCPToolsCatalogPath } from '../stores/paths.js'
+import { fuzzyFilter } from '../utils/fuzzy.js'
 import { z } from 'zod'
 
 /**
@@ -25,10 +26,31 @@ let toolsCatalogGenerated = false
  */
 const sanitizedToOriginalMap = new Map<string, { serverId: string; toolName: string }>()
 
+const MCP_ROUTER_TOOL_ID = 'mcp_search'
+const LEGACY_MCP_ROUTER_TOOL_ID = 'tool_function'
+
+function isMCPRouterToolId(toolId: string): boolean {
+  return toolId === MCP_ROUTER_TOOL_ID || toolId === LEGACY_MCP_ROUTER_TOOL_ID
+}
+
 type ModelFacingToolDefinition = {
   description: string
   parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }>
-  parameterSchema?: Record<string, unknown>
+  parameterSchema?: {
+    type?: string
+    properties?: Record<string, any>
+    required?: string[]
+    [key: string]: unknown
+  }
+}
+
+type MCPFunctionRef = {
+  id: string
+  serverId: string
+  serverName: string
+  toolName: string
+  description?: string
+  inputSchema: MCPToolInfo['inputSchema']
 }
 
 /**
@@ -37,6 +59,182 @@ type ModelFacingToolDefinition = {
  */
 function sanitizeForToolName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, '-')
+}
+
+function getServerToolNamePrefix(serverId: string): string {
+  const serverName = MCPManager.getServerState(serverId)?.config.name?.trim()
+  const sanitizedName = serverName ? sanitizeForToolName(serverName) : ''
+  return sanitizedName || sanitizeForToolName(serverId)
+}
+
+function getMCPToolIds(mcpTools: MCPToolInfo[]): Map<MCPToolInfo, string> {
+  const baseIds = new Map<MCPToolInfo, string>()
+  const counts = new Map<string, number>()
+
+  for (const tool of mcpTools) {
+    const serverPrefix = getServerToolNamePrefix(tool.serverId)
+    const toolName = sanitizeForToolName(tool.name)
+    const baseId = `mcp_${serverPrefix}_${toolName}`
+    baseIds.set(tool, baseId)
+    counts.set(baseId, (counts.get(baseId) || 0) + 1)
+  }
+
+  const ids = new Map<MCPToolInfo, string>()
+  for (const tool of mcpTools) {
+    const baseId = baseIds.get(tool)!
+    if ((counts.get(baseId) || 0) <= 1) {
+      ids.set(tool, baseId)
+      continue
+    }
+
+    const serverPrefix = getServerToolNamePrefix(tool.serverId)
+    const serverId = sanitizeForToolName(tool.serverId)
+    const toolName = sanitizeForToolName(tool.name)
+    ids.set(tool, `mcp_${serverPrefix}_${serverId}_${toolName}`)
+  }
+
+  return ids
+}
+
+function getMCPToolId(mcpTool: MCPToolInfo): string {
+  return getMCPToolIds([mcpTool]).get(mcpTool)!
+}
+
+function getServerDisplayName(serverId: string): string {
+  return MCPManager.getServerState(serverId)?.config.name?.trim() || serverId
+}
+
+function getMCPFunctionRefs(mcpTools: MCPToolInfo[] = MCPManager.getAllTools()): MCPFunctionRef[] {
+  const counts = new Map<string, number>()
+  for (const tool of mcpTools) {
+    counts.set(tool.name, (counts.get(tool.name) || 0) + 1)
+  }
+
+  return mcpTools.map(tool => {
+    const serverName = getServerDisplayName(tool.serverId)
+    return {
+      id: (counts.get(tool.name) || 0) > 1 ? `${serverName}/${tool.name}` : tool.name,
+      serverId: tool.serverId,
+      serverName,
+      toolName: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    }
+  })
+}
+
+function findMCPFunctionRef(input?: { function?: string; server?: string }): MCPFunctionRef | null {
+  const functionName = input?.function?.trim()
+  if (!functionName) return null
+
+  const server = input?.server?.trim().toLowerCase()
+  const refs = getMCPFunctionRefs()
+  const matches = refs.filter(ref => {
+    const functionMatches = ref.id === functionName || ref.toolName === functionName
+    if (!functionMatches) return false
+    if (!server) return true
+    return ref.serverId.toLowerCase() === server || ref.serverName.toLowerCase() === server
+  })
+
+  if (matches.length === 1) return matches[0]
+  return matches.find(ref => ref.id === functionName) || null
+}
+
+function listMCPFunctions(query?: string): string {
+  const normalizedQuery = query?.trim()
+  const allRefs = getMCPFunctionRefs()
+  const refs = normalizedQuery
+    ? fuzzyFilter(
+        allRefs.map(ref => ({
+          item: ref,
+          text: `${ref.id} ${ref.toolName} ${ref.serverName} ${ref.description || ''}`,
+        })),
+        normalizedQuery,
+      ).map(result => result.item)
+    : allRefs.sort((a, b) => a.id.localeCompare(b.id))
+
+  if (refs.length === 0) {
+    return normalizedQuery
+      ? `No MCP tools matched query "${query}".`
+      : 'No MCP tools are currently available.'
+  }
+
+  return refs.map(ref => {
+    const summary = ref.description ? ` — ${truncateDescription(ref.description, 120)}` : ''
+    const server = ref.id === ref.toolName ? '' : ` (${ref.serverName})`
+    return `- ${ref.id}${server}${summary}`
+  }).join('\n')
+}
+
+function describeMCPFunction(ref: MCPFunctionRef): string {
+  const lines = [
+    `MCP tool: ${ref.id}`,
+    `Server: ${ref.serverName}`,
+    `Original tool name: ${ref.toolName}`,
+    `Description: ${ref.description || 'No description available'}`,
+    '',
+    'Input schema:',
+    JSON.stringify(ref.inputSchema, null, 2),
+  ]
+  return lines.join('\n')
+}
+
+function mcpContentToString(content: MCPToolCallResult['content']): string {
+  if (Array.isArray(content)) {
+    return content
+      .map(item => {
+        if (item.type === 'text') return item.text ?? ''
+        return JSON.stringify(item)
+      })
+      .join('\n')
+  }
+  return content === undefined ? '' : JSON.stringify(content)
+}
+
+function getMCPRouterDefinition(): ModelFacingToolDefinition {
+  return {
+    description: 'Search available MCP tools, inspect a tool schema, or call a selected MCP tool. Use action="search" or action="find" with query text when choosing a tool.',
+    parameters: [
+      { name: 'action', type: 'string', description: 'One of: search, find, list, describe, call.', required: true, enum: ['search', 'find', 'list', 'describe', 'call'] },
+      { name: 'tool', type: 'string', description: 'MCP tool identifier returned by action=search/find/list. Required for describe and call.' },
+      { name: 'function', type: 'string', description: 'Legacy alias for tool. Supported for older calls.' },
+      { name: 'arguments', type: 'object', description: 'Arguments object for action=call.' },
+      { name: 'server', type: 'string', description: 'Optional server name or id to disambiguate duplicate function names.' },
+      { name: 'query', type: 'string', description: 'Search text for action=search or action=find. Optional for action=list.' },
+    ],
+    parameterSchema: {
+      type: 'object',
+      properties: {
+        action: {
+          type: 'string',
+          enum: ['search', 'find', 'list', 'describe', 'call'],
+          description: 'Use "search" or "find" to fuzzy-search MCP tools, "list" to show available tools, "describe" to inspect one tool schema, or "call" to execute one tool.',
+        },
+        function: {
+          type: 'string',
+          description: 'Legacy alias for tool. Supported for older calls.',
+        },
+        tool: {
+          type: 'string',
+          description: 'MCP tool identifier returned by action=search/find/list. Required for describe and call.',
+        },
+        arguments: {
+          type: 'object',
+          description: 'Arguments object for action=call.',
+          additionalProperties: true,
+        },
+        server: {
+          type: 'string',
+          description: 'Optional server name or id to disambiguate duplicate function names.',
+        },
+        query: {
+          type: 'string',
+          description: 'Fuzzy search text for action=search or action=find. Optional for action=list.',
+        },
+      },
+      required: ['action'],
+    },
+  }
 }
 
 /**
@@ -73,6 +271,35 @@ export function mcpToolToToolDefinition(mcpTool: MCPToolInfo): ToolDefinition {
     permissionGuard: 'permission-gated',
     category: 'custom', // MCP tools are treated as custom tools
     icon: 'mcp',
+  }
+}
+
+export function getMCPRouterToolDefinition(): ToolDefinition | null {
+  if (!MCPManager.isEnabled || MCPManager.getAllTools().length === 0) {
+    return null
+  }
+
+  const router = getMCPRouterDefinition()
+  return {
+    id: MCP_ROUTER_TOOL_ID,
+    name: 'MCP Search',
+    description: router.description,
+    parameters: router.parameters.map(param => ({
+      name: param.name,
+      type: mapJsonSchemaType(param.type),
+      description: param.description,
+      required: param.required,
+      enum: param.enum,
+    })),
+    parameterSchema: router.parameterSchema,
+    enabled: true,
+    autoExecute: false,
+    permissionGuard: 'permission-gated',
+    executionMode: 'sequential',
+    renderKind: 'text',
+    category: 'custom',
+    icon: 'mcp',
+    source: 'mcp',
   }
 }
 
@@ -205,11 +432,13 @@ export function generateToolsCatalog(): void {
     `> Total tools: ${mcpTools.length}`,
     '',
     'This catalog contains detailed documentation for all available MCP tools.',
-    'Use the tool ID (e.g., `mcp_serverId_toolName`) when calling tools.',
+    'Use the `mcp_search` tool with action=`search`, action=`find`, action=`list`, action=`describe`, or action=`call`.',
     '',
     '---',
     '',
   ]
+
+  const functionRefs = new Map(getMCPFunctionRefs(mcpTools).map(ref => [`${ref.serverId}:${ref.toolName}`, ref]))
 
   // Group tools by server
   const toolsByServer = new Map<string, MCPToolInfo[]>()
@@ -220,17 +449,17 @@ export function generateToolsCatalog(): void {
   }
 
   for (const [serverId, tools] of toolsByServer.entries()) {
-    lines.push(`## Server: ${serverId}`)
+    const serverName = MCPManager.getServerState(serverId)?.config.name
+    const title = serverName ? `${serverName} (${serverId})` : serverId
+    lines.push(`## Server: ${title}`)
     lines.push('')
 
     for (const tool of tools) {
-      const sanitizedServerId = sanitizeForToolName(serverId)
-      const sanitizedToolName = sanitizeForToolName(tool.name)
-      const toolId = `mcp_${sanitizedServerId}_${sanitizedToolName}`
+      const functionId = functionRefs.get(`${tool.serverId}:${tool.name}`)?.id || tool.name
 
       lines.push(`### ${tool.name}`)
       lines.push('')
-      lines.push(`**Tool ID:** \`${toolId}\``)
+      lines.push(`**Function:** \`${functionId}\``)
       lines.push('')
       lines.push(`**Description:** ${tool.description || 'No description available'}`)
       lines.push('')
@@ -304,6 +533,7 @@ export function getMCPToolsForAI(
   toolsSettings?: Record<string, { enabled: boolean; autoExecute: boolean }>,
   useCondensed: boolean = toolsCatalogGenerated
 ): Record<string, ModelFacingToolDefinition> {
+  void useCondensed
   const result: Record<string, ModelFacingToolDefinition> = {}
 
   if (!MCPManager.isEnabled) {
@@ -314,79 +544,23 @@ export function getMCPToolsForAI(
   sanitizedToOriginalMap.clear()
 
   const mcpTools = MCPManager.getAllTools()
+  if (mcpTools.length === 0) return result
 
-  for (const mcpTool of mcpTools) {
-    // Sanitize serverId and toolName to match API pattern ^[a-zA-Z0-9_-]+
-    const sanitizedServerId = sanitizeForToolName(mcpTool.serverId)
-    const sanitizedToolName = sanitizeForToolName(mcpTool.name)
-    const toolId = `mcp_${sanitizedServerId}_${sanitizedToolName}`
-    // Also check with colon format: mcp:serverId:toolName
-    const colonToolId = `mcp:${mcpTool.serverId}:${mcpTool.name}`
-
-    // Store mapping from sanitized ID to original values
-    sanitizedToOriginalMap.set(toolId, {
-      serverId: mcpTool.serverId,
-      toolName: mcpTool.name,
-    })
-
-    // Check if this tool is disabled in settings
-    // Settings can use either underscore format (mcp_*) or colon format (mcp:*)
-    if (toolsSettings) {
-      const toolSetting = toolsSettings[toolId] || toolsSettings[colonToolId]
-      if (toolSetting && !toolSetting.enabled) {
-        console.log(`[MCPBridge] Skipping disabled MCP tool: ${toolId}`)
-        continue
-      }
-    }
-
-    // Convert JSON Schema properties to parameter array format
-    const parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }> = []
-
-    if (mcpTool.inputSchema.properties) {
-      const required = mcpTool.inputSchema.required || []
-
-      for (const [name, prop] of Object.entries(mcpTool.inputSchema.properties)) {
-        const propSchema = prop as any
-
-        if (useCondensed) {
-          // Condensed mode: only include required params with short descriptions
-          if (required.includes(name)) {
-            parameters.push({
-              name,
-              type: mapJsonSchemaType(propSchema.type) as string,
-              description: truncateDescription(propSchema.description || '', 60),
-              required: true,
-            })
-          }
-        } else {
-          // Full mode: include all parameters with full descriptions
-          parameters.push({
-            name,
-            type: mapJsonSchemaType(propSchema.type) as string,
-            description: propSchema.description || '',
-            required: required.includes(name),
-            enum: propSchema.enum,
-          })
-        }
-      }
-    }
-
-    // Build description based on mode
-    let description: string
-    if (useCondensed) {
-      // Condensed: short description only
-      description = truncateDescription(mcpTool.description || `MCP tool: ${mcpTool.name}`, 120)
-    } else {
-      // Full: complete description
-      description = mcpTool.description || `MCP tool: ${mcpTool.name}`
-    }
-
-    result[toolId] = {
-      description,
-      parameters,
-      parameterSchema: mcpTool.inputSchema,
-    }
+  const routerSetting = toolsSettings?.[MCP_ROUTER_TOOL_ID]
+  if (routerSetting && !routerSetting.enabled) {
+    console.log(`[MCPBridge] Skipping disabled MCP router tool: ${MCP_ROUTER_TOOL_ID}`)
+    return result
   }
+
+  const toolIds = getMCPToolIds(mcpTools)
+  for (const [tool, toolId] of toolIds) {
+    sanitizedToOriginalMap.set(toolId, {
+      serverId: tool.serverId,
+      toolName: tool.name,
+    })
+  }
+
+  result[MCP_ROUTER_TOOL_ID] = getMCPRouterDefinition()
 
   return result
 }
@@ -410,49 +584,10 @@ export async function registerMCPTools(): Promise<void> {
 
   const mcpTools = MCPManager.getAllTools()
 
-  for (const mcpTool of mcpTools) {
-    const toolId = `mcp:${mcpTool.serverId}:${mcpTool.name}`
-
-    // Create a ToolInfo-compatible object for the registry
-    const toolInfo = {
-      id: toolId,
-      name: mcpTool.name,
-      description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
-      parameters: z.record(z.string(), z.any()),  // MCP handles its own validation
-      enabled: true,
-      autoExecute: false,
-      permissionGuard: 'permission-gated' as const,
-      category: 'custom' as const,
-      async execute(args: Record<string, any>) {
-        const result = await MCPManager.callTool(mcpTool.serverId, mcpTool.name, args)
-
-        if (!result.success) {
-          throw new Error(result.error || 'MCP tool call failed')
-        }
-
-        let output: string = ''
-        if (Array.isArray(result.content)) {
-          output = result.content
-            .map((c: any) => {
-              if (c.type === 'text') return c.text
-              return JSON.stringify(c)
-            })
-            .join('\n')
-        } else {
-          output = typeof result.content === 'string' ? result.content : JSON.stringify(result.content)
-        }
-
-        return { title: mcpTool.name, output, metadata: {} }
-      },
-    }
-
-    registerTool(toolInfo as any)
-  }
-
   // Generate the tools catalog file for AI reference
   generateToolsCatalog()
 
-  console.log(`[MCPBridge] Registered ${mcpTools.length} MCP tools`)
+  console.log(`[MCPBridge] MCP router ready (${mcpTools.length} functions)`)
 }
 
 /**
@@ -460,19 +595,34 @@ export async function registerMCPTools(): Promise<void> {
  * Uses the sanitized-to-original mapping when available
  */
 export function parseMCPToolId(toolId: string): { serverId: string; toolName: string } | null {
+  if (isMCPRouterToolId(toolId)) return null
+
   // First, check the sanitized-to-original mapping
   const mapped = sanitizedToOriginalMap.get(toolId)
   if (mapped) {
     return mapped
   }
 
-  // Handle both formats: "mcp:serverId:toolName" and "mcp_serverId_toolName"
+  // Handle both formats: "mcp:serverId:toolName" and "mcp_serverName_toolName".
   if (toolId.startsWith('mcp:')) {
     const parts = toolId.slice(4).split(':')
     if (parts.length >= 2) {
       return {
         serverId: parts[0],
         toolName: parts.slice(1).join(':'),
+      }
+    }
+  }
+
+  if (toolId.startsWith('mcp_')) {
+    const mcpTools = MCPManager.getAllTools()
+    const toolIds = getMCPToolIds(mcpTools)
+    for (const tool of mcpTools) {
+      if (toolIds.get(tool) === toolId) {
+        return {
+          serverId: tool.serverId,
+          toolName: tool.name,
+        }
       }
     }
   }
@@ -494,7 +644,7 @@ export function parseMCPToolId(toolId: string): { serverId: string; toolName: st
  * Check if a tool ID is an MCP tool
  */
 export function isMCPTool(toolId: string): boolean {
-  return toolId.startsWith('mcp:') || toolId.startsWith('mcp_')
+  return isMCPRouterToolId(toolId) || toolId.startsWith('mcp:') || toolId.startsWith('mcp_')
 }
 
 /**
@@ -565,9 +715,14 @@ export function findMCPToolIdByShortName(
         const matchingTool = findToolByParameters(state.tools, args)
         if (matchingTool) {
           // Return the full tool ID
-          const sanitizedServerId = sanitizeForToolName(state.config.id)
-          const sanitizedToolName = sanitizeForToolName(matchingTool.name)
-          return `mcp_${sanitizedServerId}_${sanitizedToolName}`
+          const mcpTools = MCPManager.getAllTools()
+          const toolIds = getMCPToolIds(mcpTools)
+          const matchingMCPTool = mcpTools.find(tool =>
+            tool.serverId === matchingTool.serverId && tool.name === matchingTool.name
+          )
+          if (matchingMCPTool) {
+            return toolIds.get(matchingMCPTool) || getMCPToolId(matchingMCPTool)
+          }
         }
       }
     }
@@ -579,7 +734,73 @@ export function findMCPToolIdByShortName(
 /**
  * Execute an MCP tool by its full tool ID
  */
-export async function executeMCPTool(toolId: string, args: Record<string, any>): Promise<MCPToolCallResult> {
+export async function executeMCPTool(
+  toolId: string,
+  args: Record<string, any>,
+  options: { onPartialResult?: (text: string, phase: string) => void } = {},
+): Promise<MCPToolCallResult> {
+  if (isMCPRouterToolId(toolId)) {
+    const action = typeof args.action === 'string' ? args.action : ''
+
+    if (action === 'search' || action === 'find' || action === 'list') {
+      const query = typeof args.query === 'string' ? args.query : undefined
+      options.onPartialResult?.(query ? 'Searching MCP tools...' : 'Listing MCP tools...', query ? 'searching' : 'listing')
+      const text = listMCPFunctions(typeof args.query === 'string' ? args.query : undefined)
+      options.onPartialResult?.(text, 'ready')
+      return {
+        success: true,
+        content: [{ type: 'text', text }],
+      }
+    }
+
+    options.onPartialResult?.('Resolving MCP tool...', 'resolving')
+    const ref = findMCPFunctionRef({
+      function: typeof args.tool === 'string'
+        ? args.tool
+        : typeof args.function === 'string'
+          ? args.function
+          : undefined,
+      server: typeof args.server === 'string' ? args.server : undefined,
+    })
+
+    if (!ref) {
+      return {
+        success: false,
+        error: 'MCP tool not found or ambiguous. Use action "search" or "find" to get tool identifiers, then retry with the exact tool value.',
+      }
+    }
+
+    if (action === 'describe') {
+      const text = describeMCPFunction(ref)
+      options.onPartialResult?.(text, 'ready')
+      return {
+        success: true,
+        content: [{ type: 'text', text }],
+      }
+    }
+
+    if (action === 'call') {
+      const callArgs = args.arguments && typeof args.arguments === 'object' && !Array.isArray(args.arguments)
+        ? args.arguments as Record<string, any>
+        : {}
+      options.onPartialResult?.(`Calling MCP tool: ${ref.id}...`, 'calling')
+      const result = await MCPManager.callTool(ref.serverId, ref.toolName, callArgs)
+      if (!result.success) return result
+      const text = mcpContentToString(result.content)
+      options.onPartialResult?.(text, 'ready')
+      return {
+        success: true,
+        content: [{ type: 'text', text }],
+        isError: result.isError,
+      }
+    }
+
+    return {
+      success: false,
+      error: 'Invalid action. Use one of: search, find, list, describe, call.',
+    }
+  }
+
   const parsed = parseMCPToolId(toolId)
 
   if (!parsed) {

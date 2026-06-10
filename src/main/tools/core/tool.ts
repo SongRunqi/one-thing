@@ -148,10 +148,6 @@ export interface ToolInfo<
   autoExecute?: boolean
   /** Analyze call effects before execution. Used by the Orchestrator permission-policy migration. */
   analyze?(args: z.infer<P>, ctx: ToolContext<M>): Promise<{ effects: ToolEffect[]; preview?: ToolPreview }> | { effects: ToolEffect[]; preview?: ToolPreview }
-  /** Optional one-line snippet for prompt available-tools sections. */
-  promptSnippet?: string
-  /** Optional guideline bullets appended when this tool is active. */
-  promptGuidelines?: string[]
   /** Per-tool execution scheduling mode. Sequential tools act as scheduler barriers. */
   executionMode?: ToolExecutionMode
   /** Whether the renderer should use the default result shell or a self-framed renderer. */
@@ -194,8 +190,6 @@ export interface ToolInitResult<
   parameters: P
   /** Analyze call effects before execution. Used by the Orchestrator permission-policy migration. */
   analyze?(args: z.infer<P>, ctx: ToolContext<M>): Promise<{ effects: ToolEffect[]; preview?: ToolPreview }> | { effects: ToolEffect[]; preview?: ToolPreview }
-  promptSnippet?: string
-  promptGuidelines?: string[]
   executionMode?: ToolExecutionMode
   renderShell?: ToolRenderShell
   renderKind?: ToolRenderKind
@@ -224,8 +218,6 @@ export interface ToolInfoAsync<
   autoExecute?: boolean
   /** Permission safety model used before injecting/auto-executing tools. */
   permissionGuard?: ToolInfo['permissionGuard']
-  promptSnippet?: string
-  promptGuidelines?: string[]
   executionMode?: ToolExecutionMode
   renderShell?: ToolRenderShell
   renderKind?: ToolRenderKind
@@ -273,8 +265,6 @@ export namespace Tool {
     enabled?: boolean
     autoExecute?: boolean
     permissionGuard?: ToolInfo['permissionGuard']
-    promptSnippet?: string
-    promptGuidelines?: string[]
     executionMode?: ToolExecutionMode
     renderShell?: ToolRenderShell
     renderKind?: ToolRenderKind
@@ -354,8 +344,6 @@ export namespace Tool {
         enabled: config.enabled ?? true,
         autoExecute: config.autoExecute ?? false,
         permissionGuard: config.permissionGuard,
-        promptSnippet: config.promptSnippet,
-        promptGuidelines: config.promptGuidelines,
         executionMode: config.executionMode,
         renderShell: config.renderShell,
         renderKind: config.renderKind,

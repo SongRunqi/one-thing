@@ -197,7 +197,9 @@ describe("InputBox paste attachments", () => {
 		});
 		const composerDrafts = new Map<string, any>();
 		mocks.chatStore = reactive({
+			sessionMessages: new Map(),
 			isSessionGenerating: vi.fn(() => false),
+			openInspectorToTab: vi.fn(),
 			setComposerDraft: vi.fn((sessionId: string, draft: any) => {
 				if (
 					!draft.messageInput?.trim() &&
@@ -276,6 +278,12 @@ describe("InputBox paste attachments", () => {
 		vi.unstubAllGlobals();
 		vi.restoreAllMocks();
 		document.body.textContent = "";
+	});
+
+	it("does not render an empty queued activity stack", () => {
+		const wrapper = mountInputBox();
+
+		expect(wrapper.find(".queued-messages").exists()).toBe(false);
 	});
 
 	it("restores composer text when switching back to a draft session", async () => {
@@ -390,6 +398,56 @@ describe("InputBox paste attachments", () => {
 		expect(emitted?.[0]).toBe("");
 		expect(emitted?.[1]).toBe("send");
 		expect(emitted?.[2]).toMatchObject([{ fileName: "queued.txt" }]);
+		await waitFor(() => !wrapper.find(".queued-messages").exists());
+	});
+
+	it("queues text messages without showing a duplicate queued toast", async () => {
+		const wrapper = mountInputBox({ isLoading: true });
+
+		await setComposerValue(wrapper, "hi");
+		await wrapper.find(".send-btn").trigger("click");
+		await settle();
+
+		expect(wrapper.emitted("sendMessage")).toBeUndefined();
+		expect(wrapper.find(".queued-message-card").text()).toContain("Insert message");
+		expect(wrapper.find(".queued-message-card").text()).toContain("hi");
+		expect(wrapper.text()).not.toContain("Message queued");
+	});
+
+	it("shows a file changes summary above queued insert messages", async () => {
+		mocks.chatStore.sessionMessages.set("session-1", [
+			{
+				id: "assistant-1",
+				role: "assistant",
+				content: "",
+				timestamp: Date.now(),
+				steps: [
+					{
+						id: "diff-step-1",
+						toolCall: {
+							changes: {
+								diff: "diff --git a/a.ts b/a.ts\n+added\n-removed",
+								filePath: "/repo/a.ts",
+								additions: 88,
+								deletions: 656,
+							},
+						},
+					},
+				],
+			},
+		]);
+		const wrapper = mountInputBox({ isLoading: true });
+
+		await setComposerValue(wrapper, "hi");
+		await wrapper.find(".send-btn").trigger("click");
+		await settle();
+
+		expect(wrapper.find(".queued-file-changes-row").text()).toContain("1 file changed");
+		expect(wrapper.find(".queued-file-changes-row").text()).toContain("+88");
+		expect(wrapper.find(".queued-file-changes-row").text()).toContain("-656");
+		expect(wrapper.find(".queued-review-btn").text()).toBe("Review");
+		await wrapper.find(".queued-review-btn").trigger("click");
+		expect(mocks.chatStore.openInspectorToTab).toHaveBeenCalledWith("diff", "diff-step-1");
 	});
 
 	it("keeps Enter inside the active palette instead of sending the draft", async () => {

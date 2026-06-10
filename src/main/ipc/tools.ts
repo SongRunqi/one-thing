@@ -17,6 +17,7 @@ import {
 	setInitContext,
 	initializeAsyncTools,
 } from "../tools/index.js";
+import { getMCPRouterToolDefinition } from "../mcp/index.js";
 import type { ToolExecutionContext } from "../tools/index.js";
 import {
 	listBackgroundJobs,
@@ -33,8 +34,8 @@ export function registerToolHandlers() {
 		initializeToolRegistry();
 	}
 
-	// Get builtin tools only (MCP tools are managed in MCP settings page)
-	// Uses async version to include tools with dynamic descriptions
+	// Get settings-visible tools. Uses async version to include tools with
+	// dynamic descriptions, plus the MCP router tool when MCP functions exist.
 	ipcMain.handle(IPC_CHANNELS.GET_TOOLS, async () => {
 		try {
 			// Set init context for async tools (like SkillTool)
@@ -52,14 +53,21 @@ export function registerToolHandlers() {
 				workingDirectoryRoots,
 			} as any);
 
-			// Get all tools (static + async) and filter out MCP tools
+			// Get all tools (static + async) and filter out legacy per-MCP-tool IDs.
 			const allTools = await getAllToolsAsync();
 			const builtinTools: ToolDefinition[] = allTools
 				.filter((t) => !t.id.startsWith("mcp:"))
 				.map((t) => ({
 					...t,
-					source: "builtin" as const,
+					source: t.id.startsWith("plugin:") ? "plugin" as const : "builtin" as const,
 				}));
+			const mcpRouterTool = getMCPRouterToolDefinition();
+			if (mcpRouterTool && !builtinTools.some((tool) => tool.id === mcpRouterTool.id)) {
+				builtinTools.push({
+					...mcpRouterTool,
+					source: "mcp" as const,
+				});
+			}
 
 			return {
 				success: true,

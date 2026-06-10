@@ -116,8 +116,6 @@ export const WriteTool = Tool.define<typeof WriteParameters, WriteMetadata>('wri
   permissionGuard: 'permission-gated',
   executionMode: 'sequential',
   renderKind: 'diff',
-  promptSnippet: 'Create or overwrite files',
-  promptGuidelines: ['Use write only for new files or complete rewrites.'],
 
   parameters: WriteParameters,
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { basename, formatToolCallPreview, shortenPath } from '../helpers/tool-preview'
+import { basename, formatToolCallPreview, shortenPath, shortenPathsInText } from '../helpers/tool-preview'
 import type { ToolCall } from '@/types'
 
 function tc(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -61,6 +61,14 @@ describe('formatToolCallPreview', () => {
       }))).toBe('foo.ts')
     })
 
+    it('extracts filePath aliases from streaming args', () => {
+      expect(formatToolCallPreview(tc({
+        toolName: 'read',
+        status: 'input-streaming',
+        streamingArgs: '{"filePath":"/Users/me/project/src/foo.ts","offset":10',
+      }))).toBe('foo.ts')
+    })
+
     it('does not use streamed edit content as a filename', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'edit',
@@ -117,6 +125,14 @@ describe('formatToolCallPreview', () => {
         toolName: 'read',
         arguments: { path: '/Users/me/project/src/foo.ts', offset: 10, limit: 20 },
       }))).toBe('foo.ts:10-29')
+      expect(formatToolCallPreview(tc({
+        toolName: 'read',
+        arguments: { filePath: '/Users/me/project/src/foo.ts', offset: 10, limit: 20 },
+      }))).toBe('foo.ts:10-29')
+      expect(formatToolCallPreview(tc({
+        toolName: 'read',
+        arguments: { offset: 206, limit: 10 },
+      }))).toBe('Lines 206-215')
     })
 
     it('grep: shows quoted pattern with optional glob', () => {
@@ -163,5 +179,23 @@ describe('formatToolCallPreview', () => {
     it('returns empty string when args is empty', () => {
       expect(formatToolCallPreview(tc({ toolName: 'unknown', arguments: {} }))).toBe('')
     })
+  })
+})
+
+describe('shortenPathsInText', () => {
+  it('shortens Unix absolute paths in text', () => {
+    const text = "grep -n 'function Refer\\b' /Users/yitiansong/data/work/lenovo-scripts/nlp_test.lua | head -n 10"
+    const result = shortenPathsInText(text)
+    expect(result).toBe("grep -n 'function Refer\\b' .../lenovo-scripts/nlp_test.lua | head -n 10")
+  })
+
+  it('shortens Windows absolute paths in text', () => {
+    const text = "grep -n 'function Refer\\b' C:\\Users\\yitiansong\\data\\work\\lenovo-scripts\\nlp_test.lua"
+    const result = shortenPathsInText(text)
+    expect(result).toBe("grep -n 'function Refer\\b' .../lenovo-scripts/nlp_test.lua")
+  })
+
+  it('returns empty string for empty input', () => {
+    expect(shortenPathsInText('')).toBe('')
   })
 })

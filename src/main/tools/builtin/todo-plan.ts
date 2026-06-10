@@ -47,7 +47,6 @@ All documents are markdown and render live in the todo/plan card and detached wi
   permissionGuard: 'safe',
   executionMode: 'sequential',
   renderKind: 'text',
-  promptSnippet: 'Read or update todo/plan notes',
   parameters: TodoPlanParameters,
 
   async execute(args, ctx) {

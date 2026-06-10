@@ -59,7 +59,6 @@ Use this tool when you need to find files by name patterns.`,
   permissionGuard: 'sandboxed',
   executionMode: 'parallel',
   renderKind: 'search',
-  promptSnippet: 'Find files by glob pattern',
 
   parameters: GlobParameters,
 

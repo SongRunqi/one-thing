@@ -1,6 +1,7 @@
 import type { Step, ToolCall } from '@/types'
 import { basename, formatToolCallPreview } from './tool-preview'
 import { getToolRenderStatus, type ToolRenderStatus } from './tool-status'
+import { getFileToolCategory } from './tool-display'
 
 export interface ToolDiffData {
   diff: string
@@ -59,7 +60,6 @@ export interface BuildToolStepViewOptions {
   includeDetails?: boolean
 }
 
-const DETAILS_ARGS_EXCLUDED_TOOLS = new Set(['edit', 'read', 'write'])
 const STREAMING_CONTENT_CACHE_LIMIT = 80
 const STREAMING_PREVIEW_HEAD_LINES = 80
 const STREAMING_PREVIEW_TAIL_LINES = 80
@@ -74,12 +74,57 @@ interface ToolContentSource {
 }
 
 export function buildSyntheticToolCall(step: Step): ToolCall {
-  const name = step.title?.split(':')[0] || 'tool'
+  const title = step.title || ''
+  let name = 'tool'
+  const args: Record<string, any> = {}
+
+  if (title.includes(':')) {
+    const parts = title.split(':')
+    const first = parts[0].trim()
+    if (first.toLowerCase() === 'tool' && parts.length > 1) {
+      name = parts[1].trim()
+      const path = parts.slice(2).join(':').trim()
+      if (path) args.path = path
+    } else {
+      name = first
+      const path = parts.slice(1).join(':').trim()
+      if (path) {
+        const rangeMatch = path.match(/:(\d+)-(\d+)$/)
+        if (rangeMatch) {
+          args.path = path.slice(0, -rangeMatch[0].length)
+          args.offset = parseInt(rangeMatch[1], 10)
+          args.limit = parseInt(rangeMatch[2], 10) - args.offset + 1
+        } else {
+          args.path = path
+        }
+      }
+    }
+  } else {
+    const lowerTitle = title.toLowerCase()
+    if (lowerTitle.startsWith('read ') || lowerTitle.startsWith('reading ')) {
+      name = 'read'
+      args.path = title.slice(lowerTitle.startsWith('read ') ? 5 : 8).trim()
+    } else if (lowerTitle.startsWith('edit ') || lowerTitle.startsWith('editing ')) {
+      name = 'edit'
+      args.path = title.slice(lowerTitle.startsWith('edit ') ? 5 : 8).trim()
+    } else if (lowerTitle.startsWith('write ') || lowerTitle.startsWith('writing ')) {
+      name = 'write'
+      args.path = title.slice(lowerTitle.startsWith('write ') ? 6 : 8).trim()
+    } else if (lowerTitle.startsWith('run ') || lowerTitle.startsWith('running ')) {
+      name = 'bash'
+      args.command = title.slice(lowerTitle.startsWith('run ') ? 4 : 8).trim()
+    } else {
+      name = title.trim() || 'tool'
+    }
+  }
+
+  name = name.toLowerCase()
+
   return {
     id: step.toolCallId || step.id,
     toolId: name,
     toolName: name,
-    arguments: {},
+    arguments: args,
     status: 'pending',
     timestamp: step.timestamp,
   }
@@ -94,7 +139,7 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
   const diff = getDiffFromStep(step)
   const streamingContent = includeDetails ? getCachedStreamingContent(step, diff, status) : null
   const streamingDiff = includeDetails ? getStreamingDiff(streamingContent) : null
-  const filePath = getToolFilePath(toolCall, diff, streamingContent)
+  const filePath = getToolFilePath(toolCall, diff, streamingContent, step)
   const argsJson = includeDetails ? getArgsJson(step) : null
   const resultText = includeDetails ? getResultText(step) : null
   const liveOutput = includeDetails && step.status === 'running'
@@ -145,7 +190,8 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
 }
 
 function hasPotentialStreamingDetails(step: Step, toolName: string): boolean {
-  if (toolName !== 'write' && toolName !== 'edit') return false
+  const cat = getFileToolCategory(toolName)
+  if (cat !== 'write' && cat !== 'edit') return false
   return Boolean(
     step.toolCall?.streamingArgs ||
     step.toolCall?.changes ||
@@ -161,8 +207,7 @@ function hasPotentialDetails(step: Step, toolName: string, diff: ToolDiffData | 
   const args = step.toolCall?.arguments
   return Boolean(
     args &&
-    Object.keys(args).length > 0 &&
-    !DETAILS_ARGS_EXCLUDED_TOOLS.has(toolName),
+    Object.keys(args).length > 0,
   )
 }
 
@@ -170,16 +215,64 @@ export function getToolFilePath(
   toolCall: ToolCall | undefined,
   diff: ToolDiffData | null = null,
   streamingContent: StreamingToolContent | null = null,
+  step?: Step | null,
 ): string {
   const args = toolCall?.arguments || {}
   if (diff?.filePath) return diff.filePath
   if (streamingContent?.filePath) return streamingContent.filePath
   if (typeof toolCall?.changes?.filePath === 'string') return toolCall.changes.filePath
-  if (typeof args.path === 'string') return args.path
+  const argPath = getPathArgument(args)
+  if (argPath) return argPath
+
+  const partialPath = getPathFromDetails(step?.partialResult?.details)
+  if (partialPath) return partialPath
+
+  // Parse path from step result JSON output if available
+  if (step?.result) {
+    try {
+      const parsed = JSON.parse(step.result)
+      if (parsed && typeof parsed === 'object') {
+        if (typeof parsed.path === 'string') return parsed.path
+        if (typeof parsed.filePath === 'string') return parsed.filePath
+        if (typeof parsed.metadata?.path === 'string') return parsed.metadata.path
+      }
+    } catch {}
+  }
+
   if (toolCall?.status === 'input-streaming' && toolCall.streamingArgs) {
-    return extractStreamingStringValue(toolCall.streamingArgs, 'path') || ''
+    return (
+      extractStreamingStringValue(toolCall.streamingArgs, 'path') ||
+      extractStreamingStringValue(toolCall.streamingArgs, 'filePath') ||
+      extractStreamingStringValue(toolCall.streamingArgs, 'filepath') ||
+      extractStreamingStringValue(toolCall.streamingArgs, 'file_path') ||
+      extractStreamingStringValue(toolCall.streamingArgs, 'AbsolutePath') ||
+      extractStreamingStringValue(toolCall.streamingArgs, 'TargetFile') ||
+      extractStreamingStringValue(toolCall.streamingArgs, 'SearchPath') ||
+      extractStreamingStringValue(toolCall.streamingArgs, 'FilePath') ||
+      ''
+    )
   }
   return ''
+}
+
+function getPathArgument(args: Record<string, any>): string {
+  const value = args.path ||
+    args.filePath ||
+    args.filepath ||
+    args.file_path ||
+    args.AbsolutePath ||
+    args.TargetFile ||
+    args.SearchPath ||
+    args.FilePath
+  return typeof value === 'string' ? value : ''
+}
+
+function getPathFromDetails(details: unknown): string {
+  if (!details || typeof details !== 'object') return ''
+  const value = (details as Record<string, unknown>).path ||
+    (details as Record<string, unknown>).filePath ||
+    (details as Record<string, unknown>).file_path
+  return typeof value === 'string' ? value : ''
 }
 
 function getStreamingDiff(streamingContent: StreamingToolContent | null): ToolDiffData | null {
@@ -222,10 +315,13 @@ export function getResultText(step: Step): string | null {
 function getArgsJson(step: Step): string | null {
   const args = step.toolCall?.arguments
   const toolName = step.toolCall?.toolName?.toLowerCase() || ''
-  if (!args || Object.keys(args).length === 0 || DETAILS_ARGS_EXCLUDED_TOOLS.has(toolName)) {
-    return null
+  if (args && Object.keys(args).length > 0) {
+    return formatArgsJson(args, toolName)
   }
-  return formatArgsJson(args, toolName)
+  if (step.toolCall?.streamingArgs) {
+    return formatStreamingArgs(step.toolCall.streamingArgs, toolName)
+  }
+  return null
 }
 
 function getLiveOutput(step: Step): string | null {
@@ -269,17 +365,56 @@ function truncateError(error: string, maxLen: number): string {
 }
 
 function formatArgsJson(args: Record<string, any>, toolName: string): string {
-  const displayArgs = { ...args }
-  for (const [key, value] of Object.entries(displayArgs)) {
-    if (typeof value === 'string' && value.length > 500) {
-      displayArgs[key] = value.slice(0, 500) + `... (${value.length} chars total)`
-    }
-  }
+  const displayArgs = truncateDisplayValue(args)
 
   if (toolName === 'bash') {
-    return String(displayArgs.command || '')
+    return String((displayArgs as Record<string, any>).command || '')
   }
   return JSON.stringify(displayArgs, null, 2)
+}
+
+function formatStreamingArgs(streamingArgs: string, toolName: string): string {
+  try {
+    const parsed = JSON.parse(streamingArgs)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return formatArgsJson(parsed as Record<string, any>, toolName)
+    }
+  } catch {
+    // Incomplete JSON while the model is streaming; show a bounded preview.
+  }
+  return truncateString(streamingArgs, 1200)
+}
+
+function truncateDisplayValue(value: any, depth = 0): any {
+  if (typeof value === 'string') {
+    return truncateString(value, depth === 0 ? 500 : 300)
+  }
+  if (Array.isArray(value)) {
+    const maxItems = depth >= 2 ? 8 : 24
+    const items = value.slice(0, maxItems).map(item => truncateDisplayValue(item, depth + 1))
+    if (value.length > maxItems) {
+      items.push(`... (${value.length - maxItems} more items)`)
+    }
+    return items
+  }
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value)
+    const maxEntries = depth >= 2 ? 12 : 40
+    const result: Record<string, any> = {}
+    for (const [key, item] of entries.slice(0, maxEntries)) {
+      result[key] = truncateDisplayValue(item, depth + 1)
+    }
+    if (entries.length > maxEntries) {
+      result.__truncated = `${entries.length - maxEntries} more keys`
+    }
+    return result
+  }
+  return value
+}
+
+function truncateString(value: string, max: number): string {
+  if (value.length <= max) return value
+  return `${value.slice(0, max)}... (${value.length} chars total)`
 }
 
 function formatResult(result: string): string {
@@ -330,8 +465,9 @@ function getCachedStreamingContent(
 
 function getToolContentSource(step: Step): ToolContentSource | null {
   const toolCall = step.toolCall
-  const toolName = toolCall?.toolName?.toLowerCase()
-  if (!toolCall || (toolName !== 'write' && toolName !== 'edit')) return null
+  const toolName = toolCall?.toolName?.toLowerCase() || ''
+  const cat = getFileToolCategory(toolName)
+  if (!toolCall || (cat !== 'write' && cat !== 'edit')) return null
 
   if (toolCall.streamingArgs) {
     return getStreamingContentSource(toolName, toolCall.streamingArgs)
@@ -345,7 +481,8 @@ function getStreamingContentSource(toolName: string, args: string): ToolContentS
 
   try {
     const parsed = JSON.parse(args)
-    const parsedContent = toolName === 'write'
+    const cat = getFileToolCategory(toolName)
+    const parsedContent = cat === 'write'
       ? parsed.content
       : extractEditReplacementContent(parsed)
     const content = typeof parsedContent === 'string' ? parsedContent : ''
@@ -364,7 +501,8 @@ function getStreamingContentSource(toolName: string, args: string): ToolContentS
 
   result.filePath = extractStreamingStringValue(args, 'path') || ''
 
-  const contentKey = toolName === 'write' ? 'content' : 'newText'
+  const cat = getFileToolCategory(toolName)
+  const contentKey = cat === 'write' ? 'content' : 'newText'
   const contentMatch = args.match(new RegExp(`"${contentKey}"\\s*:\\s*"`))
   if (contentMatch) {
     const startIdx = contentMatch.index! + contentMatch[0].length
@@ -400,7 +538,8 @@ function getFinalizedContentSource(toolCall: ToolCall | undefined, toolName: str
   const args = toolCall?.arguments
   if (!args) return null
 
-  const parsedContent = toolName === 'write' ? args.content : extractEditReplacementContent(args)
+  const cat = getFileToolCategory(toolName)
+  const parsedContent = cat === 'write' ? args.content : extractEditReplacementContent(args)
   if (typeof parsedContent !== 'string') return null
 
   const filePath = typeof args.path === 'string' ? args.path : ''

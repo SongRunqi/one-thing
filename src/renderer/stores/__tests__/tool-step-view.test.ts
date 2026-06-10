@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildToolStepView, parseDiffWithLineNumbers } from '../helpers/tool-step-view'
+import { buildToolStepView, buildSyntheticToolCall, parseDiffWithLineNumbers } from '../helpers/tool-step-view'
 import type { Step, ToolCall } from '@/types'
 
 function tc(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -172,6 +172,49 @@ describe('buildToolStepView', () => {
     expect(view.streamingContent?.omittedLines).toBe(60)
     expect(view.streamingDiffLines.some(line => line.content.includes('lines omitted'))).toBe(true)
     expect(view.streamingDiffLines.length).toBeLessThan(220)
+  })
+
+  it('extracts filePath from step.result payload if args.path is missing', () => {
+    const view = buildToolStepView(step({
+      result: JSON.stringify({ path: '/Users/me/project/src/resolved.ts', content: 'hello' }),
+      toolCall: tc({
+        toolName: 'read',
+        arguments: {},
+      }),
+    }))
+
+    expect(view.filePath).toBe('/Users/me/project/src/resolved.ts')
+    expect(view.fileName).toBe('resolved.ts')
+  })
+})
+
+describe('buildSyntheticToolCall', () => {
+  it('parses read with line ranges', () => {
+    const call = buildSyntheticToolCall(step({
+      title: 'read:src/main.ts:768-807',
+      toolCall: undefined,
+    }))
+    expect(call.toolName).toBe('read')
+    expect(call.arguments.path).toBe('src/main.ts')
+    expect(call.arguments.offset).toBe(768)
+    expect(call.arguments.limit).toBe(40)
+  })
+
+  it('parses Tool prefix', () => {
+    const call = buildSyntheticToolCall(step({
+      title: 'Tool: edit',
+      toolCall: undefined,
+    }))
+    expect(call.toolName).toBe('edit')
+  })
+
+  it('parses Read human title', () => {
+    const call = buildSyntheticToolCall(step({
+      title: 'Read IVARouter.lua',
+      toolCall: undefined,
+    }))
+    expect(call.toolName).toBe('read')
+    expect(call.arguments.path).toBe('IVARouter.lua')
   })
 })
 

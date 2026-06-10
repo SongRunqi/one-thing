@@ -1,5 +1,5 @@
 <template>
-  <div class="diff-preview">
+  <div class="diff-preview tool-diff-preview">
     <div
       ref="diffContentRef"
       class="diff-content"
@@ -17,7 +17,7 @@
           >
             <span class="line-gutter">
               <span
-                v-if="diff.deletions"
+                v-if="diff?.deletions"
                 class="line-number old"
               >{{ entry.line.oldNum || '' }}</span>
               <span class="line-number new">{{ entry.line.newNum || '' }}</span>
@@ -43,7 +43,7 @@ import type { ToolDiffData, ToolDiffLine } from '@/stores/helpers/tool-step-view
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
 
 const props = defineProps<{
-  diff: ToolDiffData
+  diff?: ToolDiffData | null
   lines: ToolDiffLine[]
   status: ToolRenderStatus
   /** Soft-wrap long lines instead of horizontal scrolling */
@@ -156,7 +156,7 @@ function scrollToBottom() {
 }
 
 watch(
-  () => [lineCount.value, props.diff.additions, props.diff.deletions, props.status],
+  () => [lineCount.value, props.diff?.additions, props.diff?.deletions, props.status],
   async () => {
     if (!isLive.value) return
     await nextTick()
@@ -173,13 +173,17 @@ defineExpose({
 <style scoped>
 .diff-preview {
   margin: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 38%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 58%, transparent);
 }
 
 .diff-content {
-  background: var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub));
+  background: transparent;
   border: 0;
-  border-radius: 0;
-  max-height: 260px;
+  border-radius: inherit;
+  max-height: 220px;
   overflow: auto;
   overscroll-behavior: contain;
   color: var(--ui-tool-text-fg, var(--tool-ink));
@@ -195,8 +199,8 @@ defineExpose({
 }
 
 .diff-content.fixed {
-  height: clamp(168px, 28vh, 260px);
-  max-height: clamp(168px, 28vh, 260px);
+  height: clamp(148px, 24vh, 220px);
+  max-height: clamp(148px, 24vh, 220px);
 }
 
 /* Inner track sized to the widest line so every row can fill the full scroll
@@ -274,12 +278,13 @@ defineExpose({
 .diff-content.wrap .line-content {
   min-width: 0;
   white-space: pre-wrap;
-  word-break: break-all;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 /* ── Added lines: green gutter is the primary signal, fill is auxiliary ── */
 .diff-add {
-  --row-bg: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-add-bar)) 28%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
+  --row-bg: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-add-bar)) 16%, transparent);
   color: var(--ui-tool-text-fg, var(--tool-ink));
 }
 
@@ -298,7 +303,7 @@ defineExpose({
 
 /* ── Deleted lines: red gutter is the primary signal, fill is auxiliary ── */
 .diff-del {
-  --row-bg: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 22%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
+  --row-bg: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 14%, transparent);
   color: var(--ui-tool-text-fg, var(--tool-ink));
 }
 
@@ -316,7 +321,7 @@ defineExpose({
 }
 
 .diff-hunk {
-  --row-bg: color-mix(in srgb, var(--ui-tool-text-fg, var(--tool-ink)) 6%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
+  --row-bg: color-mix(in srgb, var(--ui-tool-text-fg, var(--tool-ink)) 4%, transparent);
   color: var(--ui-tool-text-faint-fg, var(--tool-faint));
   padding: 4px 0;
   justify-content: center;

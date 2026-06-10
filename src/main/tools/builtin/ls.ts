@@ -46,8 +46,6 @@ export const LsTool = Tool.define<typeof LsParameters, LsMetadata>('ls', {
   permissionGuard: 'sandboxed',
   executionMode: 'parallel',
   renderKind: 'file',
-  promptSnippet: 'List directory contents',
-  promptGuidelines: ['Use ls to inspect directory contents before choosing files to read.'],
 
   parameters: LsParameters,
 

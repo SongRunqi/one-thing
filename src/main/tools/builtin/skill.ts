@@ -11,6 +11,7 @@ import { z } from 'zod'
 import fs from 'fs'
 import { Tool, type InitContext, type ToolContext, type ToolResult } from '../core/tool.js'
 import type { SkillDefinition } from '../../../shared/ipc.js'
+import { fuzzyFilter } from '../../utils/fuzzy.js'
 
 /**
  * Skill tool metadata for UI display
@@ -22,28 +23,38 @@ interface SkillMetadata {
 }
 
 /**
- * Build dynamic description based on available skills
+ * Build a compact, stable description. The available skill list is returned by
+ * action=list instead of being embedded in the model-facing tool schema.
  */
-function buildDescription(skills: SkillDefinition[]): string {
-  if (skills.length === 0) {
-    return `Load a skill to get specialized instructions. No skills are currently available.`
+function buildDescription(): string {
+  return [
+    'Search, find, list, or load installed skills on demand.',
+    'Use action="search" or action="find" with query text to fuzzy-search relevant skills, then action="load" with a skill name when the user asks for a skill or after search identifies a relevant skill.',
+    'The tool returns full instructions only for the requested skill.',
+  ].join(' ')
+}
+
+function formatSkillList(skills: SkillDefinition[], query?: string): string {
+  const normalizedQuery = query?.trim()
+  const filtered = normalizedQuery
+    ? fuzzyFilter(
+        skills.map(skill => ({
+          item: skill,
+          text: `${skill.name} ${skill.description}`,
+        })),
+        normalizedQuery,
+      ).map(result => result.item)
+    : skills
+
+  if (filtered.length === 0) {
+    return normalizedQuery
+      ? `No skills matched query "${query}".`
+      : 'No skills are currently available.'
   }
 
-  const skillList = skills
-    .map(s => `- ${s.name}: ${s.description}`)
+  return filtered
+    .map(skill => `- ${skill.name}: ${skill.description}`)
     .join('\n')
-
-  return `Load a skill to get specialized instructions for a specific task.
-
-Available skills:
-${skillList}
-
-Use this tool when:
-- The user asks you to use a specific skill (e.g., "use the code-review skill")
-- The user mentions a skill by name (e.g., "/commit", "commit skill")
-- The task matches a skill's description
-
-The tool returns the full skill instructions that you should follow.`
 }
 
 /**
@@ -58,52 +69,79 @@ export const SkillTool = Tool.define(
     permissionGuard: 'safe',
     executionMode: 'parallel',
     renderKind: 'text',
-    promptSnippet: 'Load an installed skill instruction file',
   },
   async (ctx?: InitContext) => {
     const skills = (ctx?.skills ?? []) as SkillDefinition[]
     const skillNames = skills.map(s => s.name)
 
     const parameters = z.object({
-      name: skillNames.length > 0
-        ? z.enum(skillNames as [string, ...string[]]).describe('Name of the skill to load')
-        : z.string().describe('Name of the skill to load'),
+      action: z.enum(['search', 'find', 'list', 'load']).describe('Use "search" or "find" to fuzzy-search skills, "list" to show available skills, or "load" to read one skill instruction file.'),
+      name: z.string().optional().describe('Skill name to load. Required when action is "load".'),
+      query: z.string().optional().describe('Fuzzy search text for action "search" or "find". Optional for action "list".'),
     })
 
     return {
-      description: buildDescription(skills),
+      description: buildDescription(),
       parameters,
       executionMode: 'parallel',
       renderKind: 'text',
-      promptSnippet: 'Load an installed skill instruction file',
 
       async execute(
-        args: { name: string },
+        args: { action: 'search' | 'find' | 'list' | 'load'; name?: string; query?: string },
         toolCtx: ToolContext<SkillMetadata>
       ): Promise<ToolResult<SkillMetadata>> {
-        const { name } = args
+        const { action, name, query } = args
+
+        if (action === 'search' || action === 'find' || action === 'list') {
+          const output = formatSkillList(skills, query)
+          toolCtx.updateResult?.({
+            content: [{ type: 'text', text: output }],
+            details: { phase: 'ready', skillName: query || 'all' },
+          })
+          return {
+            title: query ? `Skills matching: ${query}` : 'Available skills',
+            output,
+            metadata: {
+              skillName: query || 'all',
+              skillSource: 'list',
+            },
+          }
+        }
+
+        if (!name?.trim()) {
+          return {
+            title: 'Skill name required',
+            output: 'Error: action "load" requires a skill name. Use action "search" or "find" first if you need to discover available skills.',
+            metadata: {
+              skillName: '',
+              skillSource: 'unknown',
+            },
+          }
+        }
+
+        const skillName = name.trim()
 
         toolCtx.updateResult?.({
-          content: [{ type: 'text', text: `Loading skill: ${name}...` }],
-          details: { phase: 'loading', skillName: name },
+          content: [{ type: 'text', text: `Loading skill: ${skillName}...` }],
+          details: { phase: 'loading', skillName },
         })
 
-        const skill = skills.find(s => s.name === name)
+        const skill = skills.find(s => s.name === skillName)
         if (!skill) {
           return {
-            title: `Skill not found: ${name}`,
-            output: `Error: Skill "${name}" not found. Available skills: ${skillNames.join(', ') || 'none'}`,
+            title: `Skill not found: ${skillName}`,
+            output: `Error: Skill "${skillName}" not found. Use action "search" or "find" to discover available skills.${skillNames.length > 0 ? ` Available skill names: ${skillNames.join(', ')}` : ''}`,
             metadata: {
-              skillName: name,
+              skillName,
               skillSource: 'unknown',
             },
           }
         }
 
         toolCtx.metadata({
-          title: `Loading skill: ${name}`,
+          title: `Loading skill: ${skillName}`,
           metadata: {
-            skillName: name,
+            skillName,
             skillSource: skill.source,
           },
         })
@@ -113,22 +151,22 @@ export const SkillTool = Tool.define(
           const content = fs.readFileSync(skill.path, 'utf-8')
           toolCtx.updateResult?.({
             content: [{ type: 'text', text: content }],
-            details: { phase: 'ready', skillName: name, skillSource: skill.source },
+            details: { phase: 'ready', skillName, skillSource: skill.source },
           })
           return {
-            title: `Loaded skill: ${name}`,
+            title: `Loaded skill: ${skillName}`,
             output: content,
             metadata: {
-              skillName: name,
+              skillName,
               skillSource: skill.source,
             },
           }
         } catch (error: any) {
           return {
-            title: `Failed to load skill: ${name}`,
+            title: `Failed to load skill: ${skillName}`,
             output: `Error reading skill file: ${error.message}`,
             metadata: {
-              skillName: name,
+              skillName,
               skillSource: skill.source,
             },
           }

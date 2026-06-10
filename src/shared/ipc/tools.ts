@@ -48,14 +48,12 @@ export interface ToolDefinition {
   executionMode?: ToolExecutionMode
   renderKind?: ToolRenderKind
   renderShell?: ToolRenderShell
-  promptSnippet?: string
-  promptGuidelines?: string[]
   // Tool category for grouping in UI
   category: 'builtin' | 'custom'
   // Icon for UI display
   icon?: string
   // Tool source for UI display
-  source?: 'builtin' | 'mcp'  // Where the tool comes from
+  source?: 'builtin' | 'plugin' | 'mcp'  // Where the tool comes from
   serverId?: string           // MCP server ID (only for MCP tools)
   serverName?: string         // MCP server name (only for MCP tools)
 }

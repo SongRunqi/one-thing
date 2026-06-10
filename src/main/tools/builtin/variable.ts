@@ -97,7 +97,6 @@ Project directories (the "project_dirs" list) are managed by a separate tool —
   permissionGuard: 'safe',
   executionMode: 'sequential',
   renderKind: 'text',
-  promptSnippet: 'Manage session variables such as workdir',
 
   parameters: VariableParameters,
 

@@ -24,7 +24,10 @@
       </button>
     </header>
 
-    <div class="agents-layout" :class="{ 'detail-active': agentDetailActive }">
+    <div
+      class="agents-layout"
+      :class="{ 'detail-active': agentDetailActive }"
+    >
       <aside class="agents-list">
         <div
           v-if="agentsStore.isLoading"

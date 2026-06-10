@@ -139,6 +139,7 @@ import InputBox from './InputBox.vue'
 import TodoPlanPanel from './TodoPlanPanel.vue'
 import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
 import type { MessageAttachment, ToolCall } from '@/types'
+import { buildToolPermissionTitle } from '@/stores/helpers/tool-display'
 
 const props = defineProps<{
   sessionId?: string
@@ -326,11 +327,7 @@ function observeComposerHeight() {
 }
 
 function permissionTitle(toolCall: ToolCall): string {
-  const name = (toolCall.toolName || toolCall.toolId || 'tool').toLowerCase()
-  if (name === 'bash') return `Run ${String(toolCall.arguments?.command || '').slice(0, 96)}`
-  if (name === 'edit') return `Edit ${String(toolCall.changes?.filePath || toolCall.arguments?.path || '')}`
-  if (name === 'write') return `Write ${String(toolCall.arguments?.path || '')}`
-  return `Use ${toolCall.toolName || toolCall.toolId}`
+  return buildToolPermissionTitle(toolCall)
 }
 
 function permissionPreview(toolCall: ToolCall): string {
