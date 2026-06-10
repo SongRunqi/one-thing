@@ -246,6 +246,12 @@ import {
   type ToolActivityView,
 } from '@/stores/helpers/tool-activity-view'
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
+import {
+  getCategoryVerbs,
+  getStatusLabel,
+  getToolUiCategory,
+  type ToolUiCategory,
+} from '@/stores/helpers/tool-ui-registry'
 import FartCallItem from './FartCallItem.vue'
 import ToolStepDetails from './ToolStepDetails.vue'
 
@@ -272,22 +278,9 @@ const activities = computed(() => buildToolActivityViews(props.steps, durationNo
 
 interface StepGroup {
   id: string
-  category: 'search' | 'edit' | 'write' | 'console' | 'read' | 'tool' | 'fart'
+  category: ToolUiCategory
   activities: ToolActivityView[]
   status: ToolRenderStatus
-}
-
-function getToolCategory(toolName: string): StepGroup['category'] {
-  const name = toolName.toLowerCase()
-  if (name === 'fart') return 'fart'
-  if (['web_search', 'web-search', 'websearch', 'web_open', 'web-open', 'webopen', 'web_find', 'web-find', 'webfind'].includes(name)) {
-    return 'search'
-  }
-  if (['edit', 'edit_file', 'edit-file', 'editfile', 'replace_file_content', 'multi_replace_file_content'].includes(name)) return 'edit'
-  if (['write', 'write_file', 'write-file', 'writefile', 'write_to_file', 'write-to-file', 'writetofile', 'create_file', 'create-file', 'createfile'].includes(name)) return 'write'
-  if (name === 'bash') return 'console'
-  if (['read', 'read_file', 'read-file', 'readfile', 'view_file', 'view-file', 'viewfile'].includes(name)) return 'read'
-  return 'tool'
 }
 
 const stepGroups = computed<StepGroup[]>(() => {
@@ -309,7 +302,7 @@ const stepGroups = computed<StepGroup[]>(() => {
       continue
     }
 
-    const category = getToolCategory(activity.toolName || '')
+    const category = getToolUiCategory(activity.toolName || '')
     if (currentGroup && currentGroup.category === category) {
       currentGroup.activities.push(activity)
       currentGroup.status = mergeStatuses(currentGroup.status, activity.status)
@@ -386,21 +379,6 @@ function collapseGroupActivities(group: StepGroup) {
   }
 }
 
-function getStatusLabel(status: ToolRenderStatus): string {
-  switch (status) {
-    case 'queued': return 'Queued'
-    case 'pending': return 'Pending'
-    case 'streaming-input': return 'Preparing'
-    case 'executing': return 'Running'
-    case 'awaiting-confirmation': return 'Needs approval'
-    case 'completed': return 'Done'
-    case 'failed': return 'Failed'
-    case 'rejected': return 'Rejected'
-    case 'cancelled': return 'Cancelled'
-    default: return 'Pending'
-  }
-}
-
 function getGroupIcon(group: StepGroup) {
   switch (group.category) {
     case 'search': return Search
@@ -432,7 +410,7 @@ function getGroupSummaryText(group: StepGroup): string {
   if (failed > 0 && succeeded > 0) {
     return `${getCompletedGroupVerb(group)} ${succeeded} ${getGroupNoun(group, succeeded)}, ${failed} failed`
   }
-  if (failed > 0) return `${getBaseGroupVerb(group)} failed`
+  if (failed > 0) return `${getBaseGroupVerb(group.category)} failed`
 
   const verb = getGroupVerb(group)
   return `${verb} ${count} ${getGroupNoun(group, count)}`
@@ -469,21 +447,17 @@ function getSingleActivityText(group: StepGroup, activity: ToolActivityView): st
 }
 
 function getSingleActivityVerb(group: StepGroup, activity: ToolActivityView): string {
-  if (activity.status === 'failed') return `${getBaseGroupVerb(group)} failed:`
-  if (activity.status === 'rejected') return `${getBaseGroupVerb(group)} rejected:`
-  if (activity.status === 'awaiting-confirmation') return `${getBaseGroupVerb(group)} needs approval:`
+  if (activity.status === 'failed') return `${getBaseGroupVerb(group.category)} failed:`
+  if (activity.status === 'rejected') return `${getBaseGroupVerb(group.category)} rejected:`
+  if (activity.status === 'awaiting-confirmation') return `${getBaseGroupVerb(group.category)} needs approval:`
   return activity.verb
 }
 
-function getOperationText(activity: ToolActivityView): string {
-  return `${getOperationVerb(activity)} ${getActivityTargetText(activity)}`
-}
-
 function getOperationVerb(activity: ToolActivityView): string {
-  const category = getToolCategory(activity.toolName || '')
-  if (activity.status === 'failed') return `${getBaseGroupVerb({ category } as StepGroup)} failed:`
-  if (activity.status === 'rejected') return `${getBaseGroupVerb({ category } as StepGroup)} rejected:`
-  return getBaseGroupVerb({ category } as StepGroup)
+  const category = getToolUiCategory(activity.toolName || '')
+  if (activity.status === 'failed') return `${getBaseGroupVerb(category)} failed:`
+  if (activity.status === 'rejected') return `${getBaseGroupVerb(category)} rejected:`
+  return getBaseGroupVerb(category)
 }
 
 function getActivityTargetText(activity: ToolActivityView): string {
@@ -492,40 +466,19 @@ function getActivityTargetText(activity: ToolActivityView): string {
 
 function getGroupVerb(group: StepGroup): string {
   if (group.status === 'streaming-input' || group.status === 'executing' || group.status === 'pending') {
-    switch (group.category) {
-      case 'search': return 'Searching'
-      case 'console': return 'Running'
-      case 'edit': return 'Editing'
-      case 'write': return 'Writing'
-      case 'read': return 'Reading'
-      default: return 'Calling'
-    }
+    return getCategoryVerbs(group.category).run
   }
-  if (group.status === 'awaiting-confirmation') return getBaseGroupVerb(group)
-  if (group.status === 'cancelled') return `Cancelled ${getBaseGroupVerb(group).toLowerCase()}`
+  if (group.status === 'awaiting-confirmation') return getBaseGroupVerb(group.category)
+  if (group.status === 'cancelled') return `Cancelled ${getBaseGroupVerb(group.category).toLowerCase()}`
   return getCompletedGroupVerb(group)
 }
 
 function getCompletedGroupVerb(group: StepGroup): string {
-  switch (group.category) {
-    case 'search': return 'Searched'
-    case 'console': return 'Ran'
-    case 'edit': return 'Edited'
-    case 'write': return 'Wrote'
-    case 'read': return 'Read'
-    default: return 'Called'
-  }
+  return getCategoryVerbs(group.category).done
 }
 
-function getBaseGroupVerb(group: Pick<StepGroup, 'category'>): string {
-  switch (group.category) {
-    case 'search': return 'Search'
-    case 'console': return 'Run'
-    case 'edit': return 'Edit'
-    case 'write': return 'Write'
-    case 'read': return 'Read'
-    default: return 'Call'
-  }
+function getBaseGroupVerb(category: ToolUiCategory): string {
+  return getCategoryVerbs(category).base
 }
 
 function getGroupNoun(group: StepGroup, count: number): string {

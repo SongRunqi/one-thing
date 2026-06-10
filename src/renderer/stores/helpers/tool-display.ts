@@ -1,6 +1,7 @@
 import type { ToolCall } from '@/types'
 import { shortenPath } from './tool-preview'
 import type { ToolRenderStatus } from './tool-status'
+import { getFileToolCategory } from './tool-ui-registry'
 
 interface ToolVerbSet {
   wait: string
@@ -114,14 +115,7 @@ function isMcpSearchTool(toolName: string): boolean {
   return toolName === 'mcp_search' || toolName === 'tool_function'
 }
 
-export function getFileToolCategory(toolName: string | undefined): 'read' | 'write' | 'edit' | null {
-  if (!toolName) return null
-  const name = toolName.toLowerCase()
-  if (['read', 'read_file', 'read-file', 'readfile', 'view_file', 'view-file', 'viewfile'].includes(name)) return 'read'
-  if (['write', 'write_file', 'write-file', 'writefile', 'write_to_file', 'write-to-file', 'writetofile', 'create_file', 'create-file', 'createfile'].includes(name)) return 'write'
-  if (['edit', 'edit_file', 'edit-file', 'editfile', 'replace_file_content', 'multi_replace_file_content'].includes(name)) return 'edit'
-  return null
-}
+export { getFileToolCategory }
 
 function verbsForTool(toolName: string, toolCall?: ToolCall): ToolVerbSet {
   if (toolName === 'variable') return VARIABLE_VERBS[actionOf(toolCall)] || { wait: 'Change', run: 'Changing', done: 'Changed' }
