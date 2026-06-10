@@ -1,7 +1,7 @@
 import type { Step, ToolCall } from '@/types'
 import { basename, formatToolCallPreview } from './tool-preview'
 import { getToolRenderStatus, type ToolRenderStatus } from './tool-status'
-import { getFileToolCategory } from './tool-display'
+import { getFileToolCategory } from './tool-ui-registry'
 
 export interface ToolDiffData {
   diff: string
@@ -71,6 +71,35 @@ interface ToolContentSource {
   filePath: string
   content: string
   cacheKey: string
+}
+
+export function clearStreamingContentCache(): void {
+  streamingContentCache.clear()
+}
+
+/** Wrap a bare ToolCall as a Step so the unified timeline can render it. */
+export function stepFromToolCall(toolCall: ToolCall): Step {
+  return {
+    id: toolCall.id,
+    type: toolCall.toolName?.toLowerCase() === 'bash' ? 'command' : 'tool-call',
+    title: toolCall.toolName || 'tool',
+    status: toolCall.status === 'completed'
+      ? 'completed'
+      : toolCall.status === 'failed'
+        ? 'failed'
+        : toolCall.status === 'cancelled'
+          ? 'cancelled'
+          : 'running',
+    timestamp: toolCall.timestamp,
+    toolCallId: toolCall.id,
+    toolCall,
+    result: typeof toolCall.result === 'string'
+      ? toolCall.result
+      : toolCall.result === undefined
+        ? undefined
+        : JSON.stringify(toolCall.result),
+    error: toolCall.error,
+  }
 }
 
 export function buildSyntheticToolCall(step: Step): ToolCall {

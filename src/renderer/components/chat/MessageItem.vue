@@ -70,8 +70,6 @@
           @open-image="handleOpenImage"
           @text-selection="handleTextSelection"
           @execute-tool="handleToolExecute"
-          @confirm-tool="handleToolConfirm"
-          @reject-tool="handleToolReject"
           @open-file="(filePath) => emit('openFile', filePath)"
         />
 
@@ -115,8 +113,6 @@
           v-if="message.role === 'assistant' && message.steps && message.steps.length > 0 && (!message.contentParts || !message.contentParts.some(p => p.type === 'data-steps'))"
           :steps="message.steps"
           :session-id="message.sessionId"
-          @confirm="handleToolConfirm"
-          @reject="handleToolReject"
           @open-file="(filePath) => emit('openFile', filePath)"
         />
 
@@ -192,8 +188,6 @@ const emit = defineEmits<{
   goToBranch: [sessionId: string]
   quote: [quotedText: string]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once']
-  rejectTool: [toolCall: ToolCall]
   openFile: [filePath: string]
   updateThinkingTime: [messageId: string, thinkingTime: number]
 }>()
@@ -297,14 +291,6 @@ function handleSelectionBranch(text: string) {
 // Tool handlers
 function handleToolExecute(toolCall: ToolCall) {
   emit('executeTool', toolCall)
-}
-
-function handleToolConfirm(toolCall: ToolCall, response: 'once') {
-  emit('confirmTool', toolCall, response)
-}
-
-function handleToolReject(toolCall: ToolCall) {
-  emit('rejectTool', toolCall)
 }
 
 // Thinking time handler

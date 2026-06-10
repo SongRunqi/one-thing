@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest'
-import { buildToolStepView, buildSyntheticToolCall, parseDiffWithLineNumbers } from '../helpers/tool-step-view'
+import { beforeEach, describe, expect, it } from 'vitest'
+import {
+  buildToolStepView,
+  buildSyntheticToolCall,
+  clearStreamingContentCache,
+  parseDiffWithLineNumbers,
+  stepFromToolCall,
+} from '../helpers/tool-step-view'
 import type { Step, ToolCall } from '@/types'
 
 function tc(overrides: Partial<ToolCall> = {}): ToolCall {
@@ -26,6 +32,10 @@ function step(overrides: Partial<Step> = {}): Step {
     ...overrides,
   }
 }
+
+beforeEach(() => {
+  clearStreamingContentCache()
+})
 
 describe('buildToolStepView', () => {
   it('keeps write streaming details available but collapsed by default', () => {
@@ -185,6 +195,48 @@ describe('buildToolStepView', () => {
 
     expect(view.filePath).toBe('/Users/me/project/src/resolved.ts')
     expect(view.fileName).toBe('resolved.ts')
+  })
+})
+
+describe('stepFromToolCall', () => {
+  it('wraps a streaming tool call as a renderable step', () => {
+    const toolCall: ToolCall = {
+      id: 'tc1',
+      toolId: 'edit',
+      toolName: 'edit',
+      arguments: {},
+      status: 'input-streaming',
+      streamingArgs: '{"path": "/a.ts"',
+      timestamp: 1,
+    }
+
+    const wrappedStep = stepFromToolCall(toolCall)
+
+    expect(wrappedStep.id).toBe('tc1')
+    expect(wrappedStep.toolCall).toBe(toolCall)
+    expect(wrappedStep.status).toBe('running')
+  })
+
+  it('maps terminal tool call statuses to step statuses', () => {
+    const done = stepFromToolCall({
+      id: 'a',
+      toolId: 'bash',
+      toolName: 'bash',
+      arguments: {},
+      status: 'completed',
+      timestamp: 1,
+    })
+    const failed = stepFromToolCall({
+      id: 'b',
+      toolId: 'bash',
+      toolName: 'bash',
+      arguments: {},
+      status: 'failed',
+      timestamp: 1,
+    })
+
+    expect(done.status).toBe('completed')
+    expect(failed.status).toBe('failed')
   })
 })
 

@@ -125,6 +125,26 @@ describe('tool activity view', () => {
     expect(activity.stats).toBe('+3 -1')
   })
 
+  it('exposes numeric additions/deletions for group aggregation', () => {
+    const activity = buildToolActivityView(step({
+      status: 'completed',
+      toolCall: tc({
+        toolName: 'edit',
+        status: 'completed',
+        changes: {
+          filePath: '/a.ts',
+          diff: 'x',
+          additions: 3,
+          deletions: 1,
+        },
+      }),
+    }))
+
+    expect(activity.additions).toBe(3)
+    expect(activity.deletions).toBe(1)
+    expect(activity.stats).toBe('+3 -1')
+  })
+
   it('auto-expands permission and failed states', () => {
     const awaiting = buildToolActivityView(step({
       status: 'awaiting-confirmation',

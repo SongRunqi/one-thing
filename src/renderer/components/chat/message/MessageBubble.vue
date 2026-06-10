@@ -228,37 +228,17 @@
                 </div>
               </div>
               <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
-              <template v-else-if="part.type === 'tool-call' && (!hasSteps || hasInputStreamingToolCalls(part.toolCalls))">
-                <template v-if="!hasSteps">
-                  <!-- No steps at all, show all tool calls -->
-                  <ToolCallItem
-                    v-for="tc in part.toolCalls"
-                    :key="tc.id"
-                    :tool-call="tc"
-                    @confirm="(toolCall, r) => emit('confirmTool', toolCall, r)"
-                    @reject="(toolCall) => emit('rejectTool', toolCall)"
-                    @open-file="(filePath) => emit('openFile', filePath)"
-                  />
-                </template>
-                <template v-else>
-                  <!-- Has steps, only show streaming tool calls without corresponding step -->
-                  <ToolCallItem
-                    v-for="tc in getToolCallsWithoutSteps(part.toolCalls)"
-                    :key="tc.id"
-                    :tool-call="tc"
-                    @confirm="(toolCall, r) => emit('confirmTool', toolCall, r)"
-                    @reject="(toolCall) => emit('rejectTool', toolCall)"
-                    @open-file="(filePath) => emit('openFile', filePath)"
-                  />
-                </template>
-              </template>
+              <StepsPanel
+                v-else-if="part.type === 'tool-call' && streamingOnlySteps(part.toolCalls).length > 0"
+                :steps="streamingOnlySteps(part.toolCalls)"
+                :session-id="sessionId"
+                @open-file="(filePath) => emit('openFile', filePath)"
+              />
               <!-- Steps panel - rendered inline -->
               <StepsPanel
                 v-else-if="part.type === 'data-steps' && steps && steps.length > 0"
                 :steps="getStepsForTurn(part.turnIndex)"
                 :session-id="sessionId"
-                @confirm="(tc, r) => emit('confirmTool', tc, r)"
-                @reject="(tc) => emit('rejectTool', tc)"
                 @open-file="(filePath) => emit('openFile', filePath)"
               />
             </template>
@@ -314,12 +294,12 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import ToolCallItem from '../ToolCallItem.vue'
 import StepsPanel from '../StepsPanel.vue'
 import PromptReferenceCard from '@/components/common/PromptReferenceCard.vue'
 import StreamingMarkdown from './StreamingMarkdown.vue'
 import StaticMarkdown from './StaticMarkdown.vue'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
+import { stepFromToolCall } from '@/stores/helpers/tool-step-view'
 import { cleanReasoningContent } from '@/composables/useMarkdownRenderer'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
@@ -348,8 +328,6 @@ const emit = defineEmits<{
   contentClick: [event: MouseEvent]
   textSelection: [text: string, position: { top: number; left: number }]
   executeTool: [toolCall: ToolCall]
-  confirmTool: [toolCall: ToolCall, response: 'once']
-  rejectTool: [toolCall: ToolCall]
   openFile: [filePath: string]
 }>()
 
@@ -474,17 +452,6 @@ function toggleInlineReasoning(part: Extract<ContentPart, { type: 'reasoning' }>
 // Computed
 const hasSteps = computed(() => props.steps && props.steps.length > 0)
 
-// Check if any tool calls are currently streaming input (and don't have a corresponding step yet)
-function hasInputStreamingToolCalls(toolCalls: ToolCall[]): boolean {
-  return toolCalls.some(tc => {
-    // Only show if streaming AND no corresponding step exists
-    if (tc.status !== 'input-streaming') return false
-    // Check if a step already exists for this tool call
-    const hasStep = props.steps?.some(s => s.toolCallId === tc.id)
-    return !hasStep
-  })
-}
-
 // Filter tool calls to only show those without corresponding steps
 function getToolCallsWithoutSteps(toolCalls: ToolCall[]): ToolCall[] {
   if (!props.steps || props.steps.length === 0) return toolCalls
@@ -492,6 +459,11 @@ function getToolCallsWithoutSteps(toolCalls: ToolCall[]): ToolCall[] {
     // Only show if streaming input AND no step exists
     return tc.status === 'input-streaming' && !props.steps?.some(s => s.toolCallId === tc.id)
   })
+}
+
+function streamingOnlySteps(toolCalls: ToolCall[]): Step[] {
+  const source = hasSteps.value ? getToolCallsWithoutSteps(toolCalls) : toolCalls
+  return source.map(stepFromToolCall)
 }
 
 const hasVisibleContent = computed(() => {

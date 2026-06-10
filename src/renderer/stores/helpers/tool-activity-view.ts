@@ -3,11 +3,13 @@ import {
   buildToolStepView,
   getDiffFromStep,
   getToolFilePath,
+  type ToolDiffData,
   type ToolStepView,
 } from './tool-step-view'
 import { buildToolActivityTarget, buildToolVerb, getFileToolCategory } from './tool-display'
 import { basename, shortenPath } from './tool-preview'
 import type { ToolRenderStatus } from './tool-status'
+import { getStatusLabel } from './tool-ui-registry'
 
 export interface ToolActivityView {
   id: string
@@ -20,6 +22,8 @@ export interface ToolActivityView {
   targetMeta: string
   filePath: string
   canOpenFile: boolean
+  additions: number
+  deletions: number
   stats: string
   duration: string
   statusLabel: string
@@ -79,7 +83,9 @@ export function buildToolActivityView(step: Step, nowMs = Date.now()): ToolActiv
   const view = buildToolStepView(step, { includeDetails: false })
   const toolCall = view.toolCall
   const toolName = view.toolName
-  const filePath = getToolFilePath(toolCall, getDiffFromStep(step), null, step)
+  const diff = getDiffFromStep(step)
+  const filePath = getToolFilePath(toolCall, diff, null, step)
+  const stats = buildStats(diff, toolCall)
 
   let target = ''
   let targetMeta = ''
@@ -104,9 +110,11 @@ export function buildToolActivityView(step: Step, nowMs = Date.now()): ToolActiv
     targetMeta,
     filePath,
     canOpenFile: !!filePath && getFileToolCategory(toolName) !== null,
-    stats: buildStats(step, toolCall),
+    additions: stats.additions,
+    deletions: stats.deletions,
+    stats: stats.text,
     duration: buildDuration(toolCall, nowMs),
-    statusLabel: buildStatusLabel(view.status),
+    statusLabel: getStatusLabel(view.status),
     errorSummary: buildErrorSummary(step, toolCall, toolName, filePath, view.status),
     nextAction: buildNextAction(toolName, view.status),
     isAwaitingConfirmation: view.isAwaitingConfirmation,
@@ -154,42 +162,42 @@ function buildTargetMeta(view: ToolStepView): string {
   return ''
 }
 
-function buildStats(step: Step, toolCall: ToolCall): string {
-  const diff = getDiffFromStep(step)
-  if (diff) return `+${diff.additions} -${diff.deletions}`
+interface ActivityStats {
+  additions: number
+  deletions: number
+  text: string
+}
+
+function buildStats(diff: ToolDiffData | null, toolCall: ToolCall): ActivityStats {
+  if (diff) {
+    return {
+      additions: diff.additions,
+      deletions: diff.deletions,
+      text: `+${diff.additions} -${diff.deletions}`,
+    }
+  }
   if (toolCall.changes) {
     const additions = toolCall.changes.additions ?? 0
     const deletions = toolCall.changes.deletions ?? 0
-    if (additions || deletions) return `+${additions} -${deletions}`
+    return {
+      additions,
+      deletions,
+      text: additions || deletions ? `+${additions} -${deletions}` : '',
+    }
   }
-  return ''
+  return { additions: 0, deletions: 0, text: '' }
 }
 
 function buildDuration(toolCall: ToolCall, nowMs = Date.now()): string {
   if (!toolCall.startTime) return ''
-  const end = toolCall.endTime ?? (toolCall.status === 'executing' ? nowMs : 0)
+  const end = toolCall.endTime ?? (toolCall.status === 'executing' || toolCall.status === 'input-streaming' ? nowMs : 0)
   if (!end) return ''
   const ms = Math.max(0, end - toolCall.startTime)
   if (ms < 1000) return `${ms}ms`
   return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 }
 
-function buildStatusLabel(status: ToolRenderStatus): string {
-  switch (status) {
-    case 'queued': return 'Queued'
-    case 'pending': return 'Pending'
-    case 'streaming-input': return 'Preparing'
-    case 'executing': return 'Running'
-    case 'awaiting-confirmation': return 'Needs approval'
-    case 'completed': return 'Done'
-    case 'failed': return 'Failed'
-    case 'rejected': return 'Rejected'
-    case 'cancelled': return 'Cancelled'
-    default: return 'Pending'
-  }
-}
-
-function buildErrorSummary(
+export function buildErrorSummary(
   step: Step,
   toolCall: ToolCall,
   toolName: string,
@@ -214,7 +222,7 @@ function buildErrorSummary(
   return reason || 'Tool failed.'
 }
 
-function buildNextAction(toolName: string, status: ToolRenderStatus): string {
+export function buildNextAction(toolName: string, status: ToolRenderStatus): string {
   if (status === 'rejected') return 'Approve the request or rerun with a different permission choice.'
   if (status !== 'failed') return ''
 

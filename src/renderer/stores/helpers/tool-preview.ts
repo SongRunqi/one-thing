@@ -1,7 +1,7 @@
 /**
- * Single-line preview text for a tool call row. Used by both
- * `ToolCallItem` (inline streaming entry) and `StepsPanel` (step row),
- * so the visible summary stays consistent across the two render paths.
+ * Single-line preview text for a tool call row. Used by `StepsPanel`
+ * for both Step-backed calls and streaming calls that have not produced
+ * a Step yet.
  */
 
 import type { ToolCall } from '@/types'

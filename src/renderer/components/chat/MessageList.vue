@@ -46,8 +46,6 @@
             @quote="handleQuote"
             @regenerate="handleRegenerate"
             @execute-tool="handleExecuteTool"
-            @confirm-tool="handleConfirmTool"
-            @reject-tool="handleRejectTool"
             @open-file="(filePath) => emit('openFile', filePath)"
             @update-thinking-time="handleUpdateThinkingTime"
           />

@@ -7,6 +7,7 @@ import StreamingCodeBlock from '../StreamingCodeBlock.vue'
 import StreamingMarkdown from '../StreamingMarkdown.vue'
 import StepsPanel from '../../StepsPanel.vue'
 import type { ChatMessage, ContentPart, MessageAttachment, Step, ToolCall } from '@/types'
+import { clearStreamingContentCache } from '@/stores/helpers/tool-step-view'
 
 function installRaf() {
   vi.useFakeTimers()
@@ -32,7 +33,6 @@ const markdownStubs = {
     props: ['content', 'isUser'],
     template: '<div data-renderer="static">{{ content }}</div>',
   },
-  ToolCallItem: { template: '<div />' },
   StepsPanel: { template: '<div />' },
   TextEditor: { template: '<textarea />' },
 }
@@ -118,6 +118,7 @@ function fileAttachment(overrides: Partial<MessageAttachment> = {}): MessageAtta
 describe('stream end visual stability', () => {
   beforeEach(() => {
     installRaf()
+    clearStreamingContentCache()
   })
 
   afterEach(() => {
@@ -374,7 +375,7 @@ describe('stream end visual stability', () => {
     expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
   })
 
-  it('keeps tool calls inside an expanded failed group collapsed by default', async () => {
+  it('auto-expands failed tool calls and shows failure summaries in groups', async () => {
     const wrapper = mount(StepsPanel, {
       props: {
         steps: [
@@ -416,44 +417,33 @@ describe('stream end visual stability', () => {
 
     expect(wrapper.find('.workflow-group').classes()).toContain('expanded')
     expect(wrapper.findAll('.tree-node-row')).toHaveLength(2)
-    expect(wrapper.find('.operation-failure').exists()).toBe(false)
-    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
-
-    await wrapper.find('.tree-node-row .node-target').trigger('click')
-    await nextTick()
-
+    expect(wrapper.findAll('.operation-failure')).toHaveLength(2)
     expect(wrapper.find('.operation-failure').text()).toContain('app.ts')
-    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
+    expect(wrapper.findAll('.activity-inline-details')).toHaveLength(2)
   })
 
-  it('collapses expanded tool calls when reopening a group', async () => {
+  it('keeps expanded tool calls when reopening a group', async () => {
     const wrapper = mount(StepsPanel, {
       props: {
         steps: [
           step({
-            id: 'failed-edit-1',
-            status: 'failed',
-            error: 'No matching text found in file',
+            id: 'write-1',
+            status: 'completed',
             toolCall: toolCall({
-              id: 'tc-failed-edit-1',
-              toolName: 'edit',
-              status: 'failed',
+              id: 'tc-write-1',
+              toolName: 'write',
+              status: 'completed',
               requiresConfirmation: false,
-              changes: undefined,
-              arguments: { path: '/tmp/project/src/app.ts' },
             }),
           }),
           step({
-            id: 'failed-edit-2',
-            status: 'failed',
-            error: 'No matching text found in file',
+            id: 'write-2',
+            status: 'completed',
             toolCall: toolCall({
-              id: 'tc-failed-edit-2',
-              toolName: 'edit',
-              status: 'failed',
+              id: 'tc-write-2',
+              toolName: 'write',
+              status: 'completed',
               requiresConfirmation: false,
-              changes: undefined,
-              arguments: { path: '/tmp/project/src/other.ts' },
             }),
           }),
         ],
@@ -466,6 +456,8 @@ describe('stream end visual stability', () => {
     })
     await nextTick()
 
+    await wrapper.find('.group-header').trigger('click')
+    await nextTick()
     await wrapper.find('.tree-node-row .node-target').trigger('click')
     await nextTick()
 
@@ -477,8 +469,7 @@ describe('stream end visual stability', () => {
     await nextTick()
 
     expect(wrapper.findAll('.tree-node-row')).toHaveLength(2)
-    expect(wrapper.find('.operation-failure').exists()).toBe(false)
-    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
   })
 
   it('renders as a single flat row when there is only one tool call and expands it inline', async () => {

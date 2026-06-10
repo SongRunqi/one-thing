@@ -149,6 +149,7 @@ import { Check, ChevronRight, Code2, X } from 'lucide-vue-next'
 import { summarizeToolFailureParameters } from '@shared/tool-failure-params'
 import type { ToolPartialResult } from '@/types'
 import type { ToolStepView } from '@/stores/helpers/tool-step-view'
+import { buildErrorSummary, buildNextAction } from '@/stores/helpers/tool-activity-view'
 import ToolDiffPreview from './ToolDiffPreview.vue'
 import ToolResultRenderer from './ToolResultRenderer.vue'
 
@@ -191,38 +192,14 @@ const failureParameterSummary = computed(() => summarizeToolFailureParameters(
   props.view.toolName,
   props.view.toolCall.arguments,
 ))
-const failureReason = computed(() => firstErrorLine(props.view.step.error || props.view.toolCall.error || ''))
-const errorFileName = computed(() => {
-  const parameterPath = failureParameterSummary.value?.parameters.path
-  return shortDisplayPath(props.view.filePath || (typeof parameterPath === 'string' ? parameterPath : ''))
-})
-const errorSummary = computed(() => {
-  if (props.view.status === 'rejected') {
-    return errorFileName.value
-      ? `${errorFileName.value}: permission was rejected.`
-      : 'Permission was rejected.'
-  }
-
-  const reason = failureReason.value || 'Tool failed.'
-  if (props.view.toolName === 'edit') {
-    return errorFileName.value
-      ? `Failed to edit ${errorFileName.value}: ${reason}`
-      : `Failed to edit file: ${reason}`
-  }
-  if (props.view.toolName === 'write') {
-    return errorFileName.value
-      ? `Failed to write ${errorFileName.value}: ${reason}`
-      : `Failed to write file: ${reason}`
-  }
-  return reason
-})
-const errorNextAction = computed(() => {
-  if (props.view.status === 'rejected') return 'Approve the request or rerun with a different permission choice.'
-  if (props.view.toolName === 'edit') return 'Open the arguments below, adjust the target text or replacement, then retry the edit.'
-  if (props.view.toolName === 'write') return 'Check the path and generated content, then retry the write.'
-  if (props.view.toolName === 'bash') return 'Inspect the command output and rerun after correcting the command or environment.'
-  return 'Inspect the details below and retry with corrected input.'
-})
+const errorSummary = computed(() => buildErrorSummary(
+  props.view.step,
+  props.view.toolCall,
+  props.view.toolName,
+  props.view.filePath,
+  props.view.status,
+))
+const errorNextAction = computed(() => buildNextAction(props.view.toolName, props.view.status))
 const failureParametersJson = computed(() => {
   const parameters = failureParameterSummary.value?.parameters
   return parameters ? JSON.stringify(parameters, null, 2) : ''
@@ -230,10 +207,6 @@ const failureParametersJson = computed(() => {
 
 function compactOutput(value: string): string {
   return value.replace(/\n{3,}/g, '\n\n').trimEnd()
-}
-
-function firstErrorLine(value: string): string {
-  return compactOutput(value).split('\n').find(line => line.trim())?.trim() || 'Tool error'
 }
 
 function compactErrorText(value: string): string {

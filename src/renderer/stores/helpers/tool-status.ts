@@ -4,8 +4,8 @@
  * `ToolCall.status` and `Step.status` use different vocabularies for
  * overlapping concepts (`executing` vs `running`, `requiresConfirmation`
  * vs `awaiting-confirmation`, etc.). This module collapses them into a
- * single set of UI states so both `ToolCallItem` and `StepsPanel` can
- * derive their visuals from the same source of truth.
+ * single set of UI states so `StepsPanel` can derive timeline visuals
+ * from the same source of truth for both Step-backed and streaming calls.
  */
 
 import type { Step, ToolCall } from '@/types'

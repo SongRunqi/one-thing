@@ -50,11 +50,11 @@
                   <span
                     class="node-target operation-target"
                     :title="activity.filePath || activity.target"
-                    @click.stop="toggleActivityExpanded(activity)"
                   >
                     <span class="node-action">{{ `${getSingleActivityVerb(group, activity)} ` }}</span><span
                       class="node-target-name"
                       :class="{ 'file-link': activity.canOpenFile }"
+                      @click.stop="handleTargetClick(activity)"
                     >{{ getActivityTargetText(activity) }}</span>
                   </span>
                 </div>
@@ -68,12 +68,22 @@
                 </div>
               </div>
 
-              <ChevronDown
-                v-if="activity.hasDetails"
-                class="operation-chevron"
-                :class="{ open: isActivityExpanded(activity) }"
-                :size="13"
-              />
+              <div class="operation-actions">
+                <button
+                  v-if="activity.isAwaitingConfirmation"
+                  class="row-review-btn"
+                  type="button"
+                  @click.stop="scrollToPermissionPanel"
+                >
+                  Review
+                </button>
+                <ChevronDown
+                  v-if="activity.hasDetails"
+                  class="operation-chevron"
+                  :class="{ open: isActivityExpanded(activity) }"
+                  :size="13"
+                />
+              </div>
             </div>
 
             <div
@@ -93,10 +103,7 @@
                 class="activity-inline-details flat"
               >
                 <div class="details-content-wrapper">
-                  <ToolStepDetails
-                    :view="buildDetailedToolStepView(activity)"
-                    :wrap="true"
-                  />
+                  <ToolActivityDetails :activity="activity" />
                 </div>
               </div>
             </transition>
@@ -155,12 +162,12 @@
           >
             <div
               class="operation-row tree-node-row"
-              :class="[activity.status, `status-${activity.status}`, { 'is-expanded': isGroupActivityExpanded(activity), 'file-tool-row': activity.canOpenFile, 'has-details': activity.hasDetails }]"
+              :class="[activity.status, `status-${activity.status}`, { 'is-expanded': isActivityExpanded(activity), 'file-tool-row': activity.canOpenFile, 'has-details': activity.hasDetails }]"
               role="button"
               :tabindex="activity.hasDetails ? 0 : -1"
-              @click="toggleGroupActivityExpanded(activity)"
-              @keydown.enter.prevent="toggleGroupActivityExpanded(activity)"
-              @keydown.space.prevent="toggleGroupActivityExpanded(activity)"
+              @click="toggleActivityExpanded(activity)"
+              @keydown.enter.prevent="toggleActivityExpanded(activity)"
+              @keydown.space.prevent="toggleActivityExpanded(activity)"
             >
               <span
                 class="operation-indent"
@@ -172,11 +179,11 @@
                   <span
                     class="node-target operation-target"
                     :title="activity.filePath || activity.target"
-                    @click.stop="toggleGroupActivityExpanded(activity)"
                   >
                     <span class="node-action">{{ `${getOperationVerb(activity)} ` }}</span><span
                       class="node-target-name"
                       :class="{ 'file-link': activity.canOpenFile }"
+                      @click.stop="handleTargetClick(activity)"
                     >{{ getActivityTargetText(activity) }}</span>
                   </span>
                 </div>
@@ -188,16 +195,26 @@
                 </div>
               </div>
 
-              <ChevronDown
-                v-if="activity.hasDetails"
-                class="operation-chevron"
-                :class="{ open: isGroupActivityExpanded(activity) }"
-                :size="13"
-              />
+              <div class="operation-actions">
+                <button
+                  v-if="activity.isAwaitingConfirmation"
+                  class="row-review-btn"
+                  type="button"
+                  @click.stop="scrollToPermissionPanel"
+                >
+                  Review
+                </button>
+                <ChevronDown
+                  v-if="activity.hasDetails"
+                  class="operation-chevron"
+                  :class="{ open: isActivityExpanded(activity) }"
+                  :size="13"
+                />
+              </div>
             </div>
 
             <div
-              v-if="activity.errorSummary && isGroupActivityExpanded(activity)"
+              v-if="activity.errorSummary"
               class="operation-failure"
             >
               <span class="failure-title">{{ activity.errorSummary }}</span>
@@ -209,14 +226,11 @@
 
             <transition name="expand">
               <div
-                v-if="isGroupActivityExpanded(activity)"
+                v-if="isActivityExpanded(activity)"
                 class="activity-inline-details"
               >
                 <div class="details-content-wrapper">
-                  <ToolStepDetails
-                    :view="buildDetailedToolStepView(activity)"
-                    :wrap="true"
-                  />
+                  <ToolActivityDetails :activity="activity" />
                 </div>
               </div>
             </transition>
@@ -229,7 +243,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import {
   ChevronDown,
   FilePlus2,
@@ -239,9 +253,8 @@ import {
   Terminal,
   Wrench,
 } from 'lucide-vue-next'
-import type { Step, ToolCall } from '@/types'
+import type { Step } from '@/types'
 import {
-  buildDetailedToolStepView,
   buildToolActivityViews,
   type ToolActivityView,
 } from '@/stores/helpers/tool-activity-view'
@@ -253,7 +266,7 @@ import {
   type ToolUiCategory,
 } from '@/stores/helpers/tool-ui-registry'
 import FartCallItem from './FartCallItem.vue'
-import ToolStepDetails from './ToolStepDetails.vue'
+import ToolActivityDetails from './ToolActivityDetails.vue'
 
 const props = withDefaults(defineProps<{
   steps: Step[]
@@ -266,9 +279,7 @@ const props = withDefaults(defineProps<{
   sessionId: '',
 })
 
-defineEmits<{
-  confirm: [toolCall: ToolCall, response: 'once']
-  reject: [toolCall: ToolCall]
+const emit = defineEmits<{
   'open-file': [filePath: string]
 }>()
 
@@ -322,8 +333,31 @@ const stepGroups = computed<StepGroup[]>(() => {
 })
 
 const groupExpandedMap = ref<Record<string, boolean>>({})
-const expandedActivitiesMap = ref<Record<string, boolean>>({})
-const expandedGroupActivitiesMap = ref<Record<string, boolean>>({})
+const expandedMap = ref<Record<string, boolean>>({})
+
+const hasRunning = computed(() =>
+  activities.value.some(activity => activity.status === 'executing' || activity.status === 'streaming-input'),
+)
+
+let durationTimer: ReturnType<typeof setInterval> | null = null
+
+watch(hasRunning, (running) => {
+  if (running && !durationTimer) {
+    durationTimer = setInterval(() => {
+      durationNow.value = Date.now()
+    }, 1000)
+  } else if (!running && durationTimer) {
+    clearInterval(durationTimer)
+    durationTimer = null
+  }
+}, { immediate: true })
+
+onUnmounted(() => {
+  if (durationTimer) {
+    clearInterval(durationTimer)
+    durationTimer = null
+  }
+})
 
 function mergeStatuses(current: ToolRenderStatus, next: ToolRenderStatus): ToolRenderStatus {
   const precedence: ToolRenderStatus[] = [
@@ -342,41 +376,38 @@ function mergeStatuses(current: ToolRenderStatus, next: ToolRenderStatus): ToolR
 
 function isGroupExpanded(group: StepGroup): boolean {
   if (groupExpandedMap.value[group.id] === undefined) {
-    return group.status !== 'completed' && group.status !== 'cancelled'
+    return group.activities.some(activity => isActivityExpanded(activity)) ||
+      (group.status !== 'completed' && group.status !== 'cancelled')
   }
   return groupExpandedMap.value[group.id]
 }
 
 function setGroupExpanded(group: StepGroup, val: boolean) {
   groupExpandedMap.value[group.id] = val
-  if (val) {
-    collapseGroupActivities(group)
-  }
 }
 
 function isActivityExpanded(activity: ToolActivityView): boolean {
-  const saved = expandedActivitiesMap.value[activity.id]
+  const saved = expandedMap.value[activity.id]
   return saved === undefined ? activity.defaultExpanded : saved
-}
-
-function isGroupActivityExpanded(activity: ToolActivityView): boolean {
-  return expandedGroupActivitiesMap.value[activity.id] === true
 }
 
 function toggleActivityExpanded(activity: ToolActivityView) {
   if (!activity.hasDetails) return
-  expandedActivitiesMap.value[activity.id] = !isActivityExpanded(activity)
+  expandedMap.value[activity.id] = !isActivityExpanded(activity)
 }
 
-function toggleGroupActivityExpanded(activity: ToolActivityView) {
-  if (!activity.hasDetails) return
-  expandedGroupActivitiesMap.value[activity.id] = !isGroupActivityExpanded(activity)
-}
-
-function collapseGroupActivities(group: StepGroup) {
-  for (const activity of group.activities) {
-    expandedGroupActivitiesMap.value[activity.id] = false
+function handleTargetClick(activity: ToolActivityView) {
+  if (activity.canOpenFile) {
+    emit('open-file', activity.filePath)
+    return
   }
+  toggleActivityExpanded(activity)
+}
+
+function scrollToPermissionPanel() {
+  document
+    .querySelector('.session-permission-panel')
+    ?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
 }
 
 function getGroupIcon(group: StepGroup) {
@@ -500,10 +531,8 @@ function getGroupStats(group: StepGroup): string {
   let deletions = 0
 
   for (const activity of group.activities) {
-    const match = activity.stats.match(/\+(\d+)\s+-?(\d+)/)
-    if (!match) continue
-    additions += Number(match[1] || 0)
-    deletions += Number(match[2] || 0)
+    additions += activity.additions
+    deletions += activity.deletions
   }
 
   return additions || deletions ? `+${additions} -${deletions}` : ''
@@ -521,8 +550,10 @@ function getGroupDuration(group: StepGroup): string {
 
 function getActivityDurationMs(activity: ToolActivityView): number | null {
   const { startTime, endTime } = activity.toolCall
-  if (!startTime || !endTime) return null
-  return Math.max(0, endTime - startTime)
+  if (!startTime) return null
+  const end = endTime ?? (activity.status === 'executing' || activity.status === 'streaming-input' ? durationNow.value : 0)
+  if (!end) return null
+  return Math.max(0, end - startTime)
 }
 
 function formatDuration(ms: number): string {
@@ -692,7 +723,7 @@ function formatDuration(ms: number): string {
 .operation-list.single .operation-row {
   width: max-content;
   max-width: var(--activity-header-max-width);
-  grid-template-columns: 18px minmax(0, 1fr) 14px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
 }
 
 .operation-block {
@@ -702,7 +733,7 @@ function formatDuration(ms: number): string {
 
 .operation-row {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 14px;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   box-sizing: border-box;
@@ -721,6 +752,35 @@ function formatDuration(ms: number): string {
 .operation-row.failed,
 .operation-row.rejected {
   background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--text-error)) 4%, transparent);
+}
+
+.operation-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 14px;
+}
+
+.row-review-btn {
+  flex: 0 0 auto;
+  min-height: 20px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 56%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 7%, transparent);
+  color: var(--ui-status-warning-fg, var(--text-warning));
+  font: inherit;
+  font-size: 11px;
+  font-weight: 560;
+  line-height: 1.25;
+  cursor: pointer;
+}
+
+.row-review-btn:hover,
+.row-review-btn:focus-visible {
+  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 13%, transparent);
+  outline: none;
 }
 
 .operation-indent {
