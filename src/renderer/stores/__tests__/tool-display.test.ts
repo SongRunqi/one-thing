@@ -75,6 +75,15 @@ describe('tool display mappings', () => {
     expect(buildToolVerb('project_dirs', 'executing', tc('project_dirs', { action: 'remove', path: '/tmp/project' }))).toBe('Removing')
   })
 
+  it('uses base verbs until a tool is actively running', () => {
+    const editTool = tc('edit', { path: 'src/app.ts' })
+    expect(buildToolVerb('edit', 'queued', editTool)).toBe('Edit')
+    expect(buildToolVerb('edit', 'pending', editTool)).toBe('Edit')
+    expect(buildToolVerb('edit', 'awaiting-confirmation', editTool)).toBe('Edit')
+    expect(buildToolVerb('edit', 'streaming-input', editTool)).toBe('Editing')
+    expect(buildToolVerb('edit', 'executing', editTool)).toBe('Editing')
+  })
+
   it('falls back to call labels for unknown dynamic tools', () => {
     const dynamicTool = tc('custom_runtime_tool')
     expect(buildToolVerb(dynamicTool.toolName, 'executing', dynamicTool)).toBe('Calling')

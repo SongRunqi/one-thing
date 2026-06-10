@@ -51,7 +51,7 @@ describe('tool activity view', () => {
     expect(activity.filePath).toBe('/Users/me/project/src/large.ts')
     expect(activity.stats).toBe('')
     expect(activity.hasDetails).toBe(true)
-    expect(activity.defaultExpanded).toBe(false)
+    expect(activity.defaultExpanded).toBe(true)
   })
 
   it('does not show character-count stats for completed tool output', () => {
@@ -85,8 +85,8 @@ describe('tool activity view', () => {
       }),
     }))
 
-    expect(activity.target).toBe('foo.ts')
-    expect(activity.targetMeta).toBe(':10-29')
+    expect(activity.target).toBe('foo.ts:10-29')
+    expect(activity.targetMeta).toBe('')
     expect(activity.filePath).toBe('/Users/me/project/src/foo.ts')
   })
 
@@ -145,7 +145,7 @@ describe('tool activity view', () => {
     expect(activity.stats).toBe('+3 -1')
   })
 
-  it('auto-expands permission and failed states', () => {
+  it('marks permission rows but only auto-expands failed states', () => {
     const awaiting = buildToolActivityView(step({
       status: 'awaiting-confirmation',
       toolCall: tc({
@@ -160,15 +160,15 @@ describe('tool activity view', () => {
     }))
 
     expect(awaiting.isAwaitingConfirmation).toBe(true)
-    expect(awaiting.defaultExpanded).toBe(true)
+    expect(awaiting.defaultExpanded).toBe(false)
     expect(failed.status).toBe('failed')
     expect(failed.defaultExpanded).toBe(true)
   })
 
-  it('surfaces failed edit filename, reason, and next action', () => {
+  it('surfaces failed edit target while keeping the failure reason compact', () => {
     const failedEdit = buildToolActivityView(step({
       status: 'failed',
-      error: 'No matching text found in file',
+      error: 'Failed to edit /Users/me/project/src/app.ts: oldString not found in content',
       toolCall: tc({
         toolId: 'edit',
         toolName: 'edit',
@@ -181,9 +181,8 @@ describe('tool activity view', () => {
     }))
 
     expect(failedEdit.target).toBe('app.ts')
-    expect(failedEdit.errorSummary).toContain('app.ts')
-    expect(failedEdit.errorSummary).toContain('No matching text found')
-    expect(failedEdit.nextAction).toContain('adjust the edit')
+    expect(failedEdit.errorSummary).toBe('oldString not found in content')
+    expect(failedEdit.errorSummary).not.toContain('/Users/me/project/src/app.ts')
   })
 
   it('labels permission rejection distinctly from execution failure', () => {

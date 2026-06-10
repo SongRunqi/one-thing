@@ -186,7 +186,6 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
     streamingContent ||
     diff ||
     step.thinking ||
-    argsJson ||
     resultText ||
     step.summary ||
     step.error
@@ -213,9 +212,18 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
     resultText,
     liveOutput,
     hasDetails,
-    defaultExpanded: status === 'awaiting-confirmation' || status === 'failed' || status === 'rejected',
+    defaultExpanded: shouldDefaultExpand(toolName, status),
     isAwaitingConfirmation: status === 'awaiting-confirmation',
   }
+}
+
+function shouldDefaultExpand(toolName: string, status: ToolRenderStatus): boolean {
+  if (status === 'failed' || status === 'rejected') return true
+  if (status === 'streaming-input') {
+    const cat = getFileToolCategory(toolName)
+    return cat === 'write' || cat === 'edit'
+  }
+  return false
 }
 
 function hasPotentialStreamingDetails(step: Step, toolName: string): boolean {
@@ -231,13 +239,7 @@ function hasPotentialStreamingDetails(step: Step, toolName: string): boolean {
 function hasPotentialDetails(step: Step, toolName: string, diff: ToolDiffData | null): boolean {
   if (hasPotentialStreamingDetails(step, toolName)) return true
   if (diff || step.thinking || step.summary || step.error) return true
-  if (step.result) return true
-
-  const args = step.toolCall?.arguments
-  return Boolean(
-    args &&
-    Object.keys(args).length > 0,
-  )
+  return Boolean(step.result || step.partialResult)
 }
 
 export function getToolFilePath(
@@ -344,6 +346,7 @@ export function getResultText(step: Step): string | null {
 function getArgsJson(step: Step): string | null {
   const args = step.toolCall?.arguments
   const toolName = step.toolCall?.toolName?.toLowerCase() || ''
+  if (toolName === 'read') return null
   if (args && Object.keys(args).length > 0) {
     return formatArgsJson(args, toolName)
   }

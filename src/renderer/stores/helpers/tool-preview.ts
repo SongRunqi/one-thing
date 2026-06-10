@@ -115,19 +115,11 @@ function formatArgsSummary(toolCall: ToolCall): string {
     case 'edit': {
       const changes = toolCall.changes
       const path = basename(pathArg(args) || changes?.filePath || '')
-      if (!path) return ''
-      const additions = typeof changes?.additions === 'number' ? changes.additions : null
-      const deletions = typeof changes?.deletions === 'number' ? changes.deletions : null
-      if (additions !== null || deletions !== null) {
-        return `${path} (+${additions ?? 0} -${deletions ?? 0})`
-      }
       return path
     }
 
     case 'write': {
       const path = basename(pathArg(args))
-      const content = (args.content || args.CodeContent) as string | undefined
-      if (content) return `${path} (${content.length} chars)`
       return path
     }
 

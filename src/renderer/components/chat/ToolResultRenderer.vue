@@ -226,14 +226,14 @@ watch(
 
 <style scoped>
 .tool-result-renderer {
-  --tool-result-max-height: min(240px, 34vh);
+  --tool-result-max-height: var(--tool-pane-max, clamp(148px, 28vh, 240px));
   min-width: 0;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-sans);
 }
 
 .tool-result-renderer.partial {
-  --tool-result-max-height: clamp(132px, 28vh, 220px);
+  --tool-result-max-height: var(--tool-pane-max, clamp(148px, 28vh, 240px));
 }
 
 .tool-result-renderer:has(.variable-row),
@@ -302,7 +302,7 @@ watch(
   overflow: auto;
   overscroll-behavior: contain;
   padding: 7px 9px;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 24%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
   border-radius: 5px;
   background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 34%, transparent);
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
@@ -321,9 +321,10 @@ watch(
   max-height: var(--tool-result-max-height);
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 10px 10px 10px 14px;
-  border-left: 2px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 54%, transparent);
-  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 40%, transparent);
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 42%, transparent);
   color: var(--ui-tool-text-fg, var(--tool-ink));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-title);
@@ -334,6 +335,7 @@ watch(
 .bash-line {
   display: flex;
   align-items: baseline;
+  flex-shrink: 0;
   min-height: calc(var(--tool-font-size-title) * var(--tool-code-line-height));
   white-space: pre-wrap;
   word-break: break-word;
@@ -369,10 +371,12 @@ watch(
 }
 
 .read-output {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  overflow: visible;
+  max-height: var(--tool-result-max-height);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 42%, transparent);
 }
 
 .read-output pre {
@@ -381,7 +385,9 @@ watch(
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 4px 0;
+  padding: 8px 10px;
+  white-space: pre;
+  word-break: normal;
 }
 
 .more-button {

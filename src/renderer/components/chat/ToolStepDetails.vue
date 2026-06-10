@@ -1,35 +1,17 @@
 <template>
   <div class="tool-step-details">
     <div
-      v-if="view.argsJson"
-      class="detail-section args-section"
+      v-if="failedEditOldTexts.length"
+      class="detail-section failed-edit-section"
     >
-      <button
-        class="args-toggle"
-        type="button"
-        :aria-expanded="argsExpanded"
-        @click="argsExpanded = !argsExpanded"
-      >
-        <ChevronRight
-          :class="['args-toggle-icon', { open: argsExpanded }]"
-          :size="13"
-          :stroke-width="2.2"
-        />
-        <Code2 :size="13" />
-        <span>{{ view.toolName === 'bash' ? 'Command' : 'Arguments' }}</span>
-      </button>
-      <div
-        v-if="argsExpanded"
-        class="terminal-card"
-      >
-        <div class="terminal-header">
-          <span class="terminal-title">{{ view.toolName === 'bash' ? 'bash' : 'arguments.json' }}</span>
-        </div>
-        <pre
-          class="code-block"
-          :class="{ 'command-block': view.toolName === 'bash' }"
-        >{{ view.argsJson }}</pre>
+      <div class="detail-label">
+        Text not found in file
       </div>
+      <pre
+        v-for="(text, index) in failedEditOldTexts"
+        :key="index"
+        class="failed-edit-snippet"
+      >{{ text }}</pre>
     </div>
 
     <ToolDiffPreview
@@ -76,9 +58,14 @@
 
       <div
         v-else-if="view.liveOutput"
-        class="detail-section"
+        class="detail-section result-section"
       >
-        <pre>{{ compactOutput(view.liveOutput) }}</pre>
+        <ToolResultRenderer
+          :result="liveResultForRenderer"
+          :is-partial="true"
+          :render-kind="resultRenderKind"
+          :tool-name="view.toolName"
+        />
       </div>
 
       <div
@@ -114,28 +101,17 @@
     </div>
 
     <div
-      v-if="view.step.error"
+      v-if="showErrorSection"
       class="detail-section error-section"
       :class="view.status === 'rejected' ? 'rejection' : 'error'"
     >
       <div class="detail-label">
         {{ view.status === 'rejected' ? 'Rejected' : 'Error' }}
       </div>
-      <div class="error-summary">
-        {{ errorSummary }}
-      </div>
-      <div
-        v-if="errorNextAction"
-        class="error-next-action"
+      <details
+        v-if="showErrorDetails"
+        class="error-details"
       >
-        <span>Next</span>
-        <p>{{ errorNextAction }}</p>
-      </div>
-      <pre
-        v-if="failureParametersJson"
-        class="error-params"
-      >{{ failureParametersJson }}</pre>
-      <details class="error-details">
         <summary>Details</summary>
         <pre :class="view.status === 'rejected' ? 'rejection-text' : 'error-text'">{{ compactError }}</pre>
       </details>
@@ -145,11 +121,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Check, ChevronRight, Code2, X } from 'lucide-vue-next'
-import { summarizeToolFailureParameters } from '@shared/tool-failure-params'
+import { Check, X } from 'lucide-vue-next'
 import type { ToolPartialResult } from '@/types'
 import type { ToolStepView } from '@/stores/helpers/tool-step-view'
-import { buildErrorSummary, buildNextAction } from '@/stores/helpers/tool-activity-view'
 import ToolDiffPreview from './ToolDiffPreview.vue'
 import ToolResultRenderer from './ToolResultRenderer.vue'
 
@@ -160,15 +134,29 @@ const props = defineProps<{
 }>()
 
 const streamingPreviewRef = ref<InstanceType<typeof ToolDiffPreview> | null>(null)
-const argsExpanded = ref(false)
 
 const activeDiff = computed(() => props.view.diff || props.view.streamingDiff)
 const activeDiffLines = computed(() => props.view.diff ? props.view.diffLines : props.view.streamingDiffLines)
 const isFailedEdit = computed(() => props.view.toolName === 'edit' && (props.view.status === 'failed' || props.view.status === 'rejected'))
+const failedEditOldTexts = computed<string[]>(() => {
+  if (props.view.toolName !== 'edit' || props.view.status !== 'failed') return []
+  const edits = props.view.toolCall.arguments?.edits
+  if (!Array.isArray(edits)) return []
+  return edits
+    .map((edit: unknown) => {
+      const oldText = (edit as { oldText?: unknown } | null)?.oldText
+      return typeof oldText === 'string' ? oldText : ''
+    })
+    .filter(Boolean)
+})
 const resultRenderKind = computed(() => props.view.toolName === 'bash' ? 'bash' : 'text')
 const resultForRenderer = computed<ToolPartialResult | null>(() => {
   if (!props.view.resultText) return null
   return { content: [{ type: 'text', text: props.view.resultText }] }
+})
+const liveResultForRenderer = computed<ToolPartialResult | null>(() => {
+  if (!props.view.liveOutput) return null
+  return { content: [{ type: 'text', text: props.view.liveOutput }] }
 })
 const partialResultText = computed(() => compactOutput(props.view.step.partialResult?.content
   ?.filter(part => part.type === 'text')
@@ -177,33 +165,32 @@ const partialResultText = computed(() => compactOutput(props.view.step.partialRe
   .join('\n') || ''))
 const successNote = computed(() => {
   if (!activeDiff.value) return ''
+  if (props.view.status !== 'failed' && props.view.status !== 'rejected') return ''
   const fallback = partialResultText.value || compactOutput(props.view.resultText || '')
   const path = shortDisplayPath(activeDiff.value.filePath || props.view.filePath)
   const count = replacementCount()
   if (path) {
-    const verb = props.view.status === 'failed' || props.view.status === 'rejected' ? 'Attempted edit' : 'Edited'
-    return `${verb} ${path} · ${count} ${count === 1 ? 'replacement' : 'replacements'}`
+    if (props.view.toolName === 'edit') {
+      return `Attempted edit ${path} · ${count} ${count === 1 ? 'replacement' : 'replacements'}`
+    }
+    if (props.view.toolName === 'write') {
+      return `Attempted write ${path}`
+    }
   }
   return fallback.replace(/^Successfully\s+/i, '')
 })
 
 const compactError = computed(() => compactErrorText(props.view.step.error || ''))
-const failureParameterSummary = computed(() => summarizeToolFailureParameters(
-  props.view.toolName,
-  props.view.toolCall.arguments,
-))
-const errorSummary = computed(() => buildErrorSummary(
-  props.view.step,
-  props.view.toolCall,
-  props.view.toolName,
-  props.view.filePath,
-  props.view.status,
-))
-const errorNextAction = computed(() => buildNextAction(props.view.toolName, props.view.status))
-const failureParametersJson = computed(() => {
-  const parameters = failureParameterSummary.value?.parameters
-  return parameters ? JSON.stringify(parameters, null, 2) : ''
+const compactErrorReason = computed(() => compactToolFailureReason(compactError.value))
+const showErrorDetails = computed(() => {
+  const error = compactError.value.trim()
+  if (!error) return false
+  const reason = compactErrorReason.value
+  if (!reason) return error.includes('\n')
+  if (normalizeErrorText(error) === normalizeErrorText(reason)) return false
+  return error.split('\n').filter(line => line.trim()).length > 1
 })
+const showErrorSection = computed(() => !!props.view.step.error && showErrorDetails.value)
 
 function compactOutput(value: string): string {
   return value.replace(/\n{3,}/g, '\n\n').trimEnd()
@@ -217,6 +204,30 @@ function compactErrorText(value: string): string {
       seenPaths.add(path)
       return path
     })
+}
+
+function compactToolFailureReason(value: string): string {
+  let reason = value
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map(line => line.trim())
+    .find(Boolean) || ''
+
+  for (let index = 0; index < 3; index++) {
+    const stripped = reason
+      .replace(/^error:\s*/i, '')
+      .replace(/^failed:\s*/i, '')
+      .replace(/^failed to\s+\w+\s+[^:]+:\s*/i, '')
+      .replace(/^\w+\s+failed:\s*[^:]+:\s*/i, '')
+    if (stripped === reason) break
+    reason = stripped
+  }
+
+  return reason
+}
+
+function normalizeErrorText(value: string): string {
+  return compactToolFailureReason(value).replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
 function shortDisplayPath(path: string): string {
@@ -244,16 +255,18 @@ watch(
 
 <style scoped>
 .tool-step-details {
+  --tool-pane-max: clamp(148px, 28vh, 240px);
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 8px;
+  padding: 4px 0 0;
   font-family: var(--tool-font-sans);
 }
 
 .detail-section {
   min-width: 0;
-  padding: 10px 24px;
-  border-top: 0.5px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 60%, transparent);
+  padding: 0;
+  border-top: 0;
 }
 
 .detail-section:has(.bash-output) {
@@ -280,19 +293,19 @@ watch(
   color: var(--ui-tool-text-faint-fg, var(--tool-faint));
   font-family: var(--tool-font-sans);
   font-size: var(--tool-font-size-meta);
-  font-weight: var(--font-weight-semibold, 600);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
 pre {
   margin: 0;
-  max-height: 280px;
+  max-height: var(--tool-pane-max);
   overflow: auto;
-  padding: 10px 12px;
-  border: 0;
-  border-radius: var(--radius-sm, 8px);
-  background: var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub));
+  overscroll-behavior: contain;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 42%, transparent);
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
@@ -305,13 +318,13 @@ pre {
 .thinking {
   background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
   border-left: 3px solid color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 30%, transparent);
-  border-radius: var(--radius-xs, 4px);
+  border-radius: 6px;
 }
 
 .summary {
   background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
   border-left: 3px solid color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 35%, transparent);
-  border-radius: var(--radius-xs, 4px);
+  border-radius: 6px;
 }
 
 .error-text {
@@ -320,7 +333,7 @@ pre {
   border-left: 3px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 30%, transparent);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
-  border-radius: var(--radius-xs, 4px);
+  border-radius: 6px;
 }
 
 .rejection-text {
@@ -329,61 +342,12 @@ pre {
   border-left: 3px solid color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 30%, transparent);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
-  border-radius: var(--radius-xs, 4px);
+  border-radius: 6px;
 }
 
 .error-section {
   padding-top: 12px;
   padding-bottom: 12px;
-}
-
-.error-summary {
-  max-width: 62ch;
-  color: var(--ui-tool-text-fg, var(--tool-ink));
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-body);
-  font-weight: 500;
-  line-height: var(--tool-line-height);
-}
-
-.error-next-action {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  max-width: 72ch;
-  margin-top: 8px;
-  padding: 7px 9px;
-  border-left: 2px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 46%, transparent);
-  border-radius: var(--radius-xs, 4px);
-  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 5%, transparent);
-}
-
-.error-next-action span {
-  color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
-  font-family: var(--tool-font-sans);
-  font-size: 10px;
-  font-weight: 650;
-  line-height: var(--tool-line-height);
-  text-transform: uppercase;
-}
-
-.error-next-action p {
-  margin: 0;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-meta);
-  line-height: var(--tool-line-height);
-}
-
-.error-params {
-  max-width: 72ch;
-  max-height: 220px;
-  margin-top: 8px;
-  padding: 7px 9px;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  background: var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub));
-  font-size: var(--tool-font-size-meta);
-  line-height: var(--tool-line-height);
 }
 
 .error-details {
@@ -401,79 +365,23 @@ pre {
 
 .error-details pre {
   margin-top: 6px;
-  max-height: 140px;
+  max-height: calc(var(--tool-pane-max) * 0.6);
   padding: 7px 9px;
 }
 
-.args-section {
-  padding: 0;
+.failed-edit-section {
+  padding-top: 2px;
 }
 
-.args-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  min-height: 34px;
-  padding: 8px 24px;
-  border: 0;
-  background: transparent;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-meta);
-  font-weight: var(--font-weight-semibold, 600);
-  letter-spacing: 0.04em;
-  text-align: left;
-  text-transform: uppercase;
-  cursor: pointer;
+.failed-edit-snippet {
+  max-width: 72ch;
+  max-height: calc(var(--tool-pane-max) * 0.6);
+  border-left: 3px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 30%, transparent);
+  font-size: var(--tool-font-size-line, 11.5px);
 }
 
-.args-toggle:hover {
-  background: color-mix(in srgb, var(--ui-tool-text-fg, var(--tool-ink)) 4%, transparent);
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-}
-
-.args-toggle-icon {
-  flex: 0 0 auto;
-  transition: transform 0.14s ease;
-}
-
-.args-toggle-icon.open {
-  transform: rotate(90deg);
-}
-
-/* macOS Terminal Console styling for JSON arguments */
-.terminal-card {
-  margin: 4px 24px 12px;
-  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 64%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 42%, transparent);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.terminal-header {
-  display: flex;
-  align-items: center;
-  padding: 5px 10px;
-  background: transparent;
-  border-bottom: 0.5px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 34%, transparent);
-}
-
-.terminal-title {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--ui-tool-text-muted-fg);
-}
-
-.terminal-card .code-block {
-  margin: 0 !important;
-  border-radius: 0 !important;
-  background: transparent !important;
-  border: 0 !important;
-  padding: 10px 14px !important;
-  font-size: var(--tool-font-size-line, 11.5px) !important;
-  line-height: var(--tool-code-line-height, 1.7) !important;
+.failed-edit-snippet + .failed-edit-snippet {
+  margin-top: 6px;
 }
 
 .detail-note-row {
@@ -481,7 +389,7 @@ pre {
   align-items: baseline;
   gap: 7px;
   max-width: calc(62ch + 28px);
-  padding: 6px 10px 7px 12px;
+  padding: 6px 0 7px;
   border-top: 0.5px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 60%, transparent);
 }
 

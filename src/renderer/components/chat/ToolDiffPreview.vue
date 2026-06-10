@@ -174,7 +174,7 @@ defineExpose({
 .diff-preview {
   margin: 0;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 38%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
   border-radius: 6px;
   background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 58%, transparent);
 }
@@ -237,7 +237,7 @@ defineExpose({
   left: 0;
   z-index: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-shrink: 0;
   background: var(--row-bg);
   border-left: 3px solid transparent;
@@ -246,6 +246,7 @@ defineExpose({
 .line-number {
   width: 34px;
   text-align: right;
+  padding-top: 1px;
   padding-right: 8px;
   color: var(--ui-tool-text-faint-fg, var(--tool-faint));
   user-select: none;
@@ -264,7 +265,8 @@ defineExpose({
   user-select: none;
   flex-shrink: 0;
   font-weight: 500;
-  align-self: center;
+  align-self: flex-start;
+  padding-top: 1px;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
 }
 

@@ -28,7 +28,6 @@ export interface ToolActivityView {
   duration: string
   statusLabel: string
   errorSummary: string
-  nextAction: string
   isAwaitingConfirmation: boolean
   hasDetails: boolean
   defaultExpanded: boolean
@@ -44,7 +43,7 @@ function getFileTargetAndMeta(view: ToolStepView, filePath: string): { target: s
   const preview = view.preview || ''
 
   if (preview.startsWith(':') && fileName) {
-    return { target: fileName, meta: preview }
+    return { target: `${fileName}${preview}`, meta: '' }
   }
 
   if (preview.startsWith(':')) {
@@ -57,6 +56,9 @@ function getFileTargetAndMeta(view: ToolStepView, filePath: string): { target: s
 
   if (fileName && preview.startsWith(fileName)) {
     const meta = preview.slice(fileName.length).trim()
+    if (meta.startsWith(':')) {
+      return { target: `${fileName}${meta}`, meta: '' }
+    }
     return { target: fileName, meta }
   }
 
@@ -116,7 +118,6 @@ export function buildToolActivityView(step: Step, nowMs = Date.now()): ToolActiv
     duration: buildDuration(toolCall, nowMs),
     statusLabel: getStatusLabel(view.status),
     errorSummary: buildErrorSummary(step, toolCall, toolName, filePath, view.status),
-    nextAction: buildNextAction(toolName, view.status),
     isAwaitingConfirmation: view.isAwaitingConfirmation,
     hasDetails: view.hasDetails,
     defaultExpanded: view.defaultExpanded,
@@ -215,22 +216,10 @@ export function buildErrorSummary(
 
   const fileCategory = getFileToolCategory(toolName)
   if (fileCategory === 'edit' || fileCategory === 'write') {
-    const fileName = filePath ? basename(filePath) : 'file'
-    return reason ? `${fileName}: ${reason}` : `${fileName}: tool failed.`
+    return reason || 'Tool failed.'
   }
 
   return reason || 'Tool failed.'
-}
-
-export function buildNextAction(toolName: string, status: ToolRenderStatus): string {
-  if (status === 'rejected') return 'Approve the request or rerun with a different permission choice.'
-  if (status !== 'failed') return ''
-
-  const fileCategory = getFileToolCategory(toolName)
-  if (fileCategory === 'edit') return 'Open details, adjust the edit target or replacement, then retry.'
-  if (fileCategory === 'write') return 'Open details, check the path and content, then retry.'
-  if (toolName === 'bash') return 'Open details to inspect the command output, then rerun if needed.'
-  return 'Open details to inspect the tool output, then retry if needed.'
 }
 
 function getRawToolError(step: Step, toolCall: ToolCall): string {
@@ -257,9 +246,18 @@ function compactFailureReason(value: string): string {
     .map(line => line.trim())
     .find(Boolean) || ''
 
-  return firstLine
+  let reason = firstLine
     .replace(/^error:\s*/i, '')
     .replace(/^failed:\s*/i, '')
     .replace(/^the user rejected permission for this tool\.?$/i, 'Permission was rejected.')
-    .slice(0, 180)
+
+  for (let index = 0; index < 3; index++) {
+    const stripped = reason
+      .replace(/^failed to\s+\w+\s+[^:]+:\s*/i, '')
+      .replace(/^\w+\s+failed:\s*[^:]+:\s*/i, '')
+    if (stripped === reason) break
+    reason = stripped
+  }
+
+  return reason.slice(0, 180)
 }

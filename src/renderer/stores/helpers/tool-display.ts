@@ -139,13 +139,12 @@ export function buildToolVerb(toolNameInput: string | undefined, status: ToolRen
   const verbs = verbsForTool(toolName, toolCall)
 
   if (status === 'rejected') return `Rejected ${verbs.wait.toLowerCase()}`
-  if (status === 'queued') return `Queued ${verbs.wait.toLowerCase()}`
   if (status === 'failed') return `Failed ${verbs.wait.toLowerCase()}`
   if (status === 'cancelled') return `Cancelled ${verbs.wait.toLowerCase()}`
 
-  const running = status === 'pending' || status === 'streaming-input' || status === 'executing'
+  const running = status === 'streaming-input' || status === 'executing'
 
-  if (status === 'awaiting-confirmation') return verbs.wait
+  if (status === 'queued' || status === 'pending' || status === 'awaiting-confirmation') return verbs.wait
   return running ? verbs.run : verbs.done
 }
 

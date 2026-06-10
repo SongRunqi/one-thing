@@ -230,8 +230,9 @@ describe('stream end visual stability', () => {
     expect(groups).toHaveLength(1)
     expect(groups[0].classes()).toContain('edit')
     expect(groups[0].find('.group-header-anchor > .group-header').exists()).toBe(true)
-    expect(wrapper.find('.group-type-icon').exists()).toBe(true)
-    expect(wrapper.find('.operation-status-icon').exists()).toBe(false)
+    expect(wrapper.find('.group-summary-text').text()).toBe('2 edits')
+    expect(wrapper.find('.operation-status-icon').exists()).toBe(true)
+    expect(wrapper.find('.group-type-icon').exists()).toBe(false)
     expect(wrapper.find('.group-final-result').exists()).toBe(false)
   })
 
@@ -336,8 +337,8 @@ describe('stream end visual stability', () => {
 
     const nodes = wrapper.findAll('.tree-node-row')
     expect(nodes).toHaveLength(2)
-    expect(nodes[0].find('.node-target').text()).toBe('Write a.ts')
-    expect(nodes[0].find('.node-action').text().trim()).toBe('Write')
+    expect(nodes[0].find('.node-target').text()).toBe('Wrote a.ts')
+    expect(nodes[0].find('.node-action').text().trim()).toBe('Wrote')
     expect(nodes[0].find('.node-target-name').text()).toBe('a.ts')
     expect(nodes[0].find('.node-target-name').classes()).toContain('file-link')
   })
@@ -418,7 +419,7 @@ describe('stream end visual stability', () => {
     expect(wrapper.find('.workflow-group').classes()).toContain('expanded')
     expect(wrapper.findAll('.tree-node-row')).toHaveLength(2)
     expect(wrapper.findAll('.operation-failure')).toHaveLength(2)
-    expect(wrapper.find('.operation-failure').text()).toContain('app.ts')
+    expect(wrapper.find('.operation-failure').text()).toContain('No matching text found')
     expect(wrapper.findAll('.activity-inline-details')).toHaveLength(2)
   })
 
@@ -491,19 +492,19 @@ describe('stream end visual stability', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('.single-activity-row').exists()).toBe(true)
+    expect(wrapper.find('.operation-row').exists()).toBe(true)
     expect(wrapper.find('.workflow-group').exists()).toBe(false)
-    expect(wrapper.find('.single-activity-row .node-target').text()).toBe('Wrote a.ts')
-    expect(wrapper.find('.single-activity-row .node-action').text().trim()).toBe('Wrote')
-    expect(wrapper.find('.single-activity-row .node-target-name').text()).toBe('a.ts')
+    expect(wrapper.find('.operation-row .node-target').text()).toBe('Wrote a.ts')
+    expect(wrapper.find('.operation-row .node-action').text().trim()).toBe('Wrote')
+    expect(wrapper.find('.operation-row .node-target-name').text()).toBe('a.ts')
 
-    await wrapper.find('.single-activity-row .node-target').trigger('click')
+    await wrapper.find('.operation-row .node-target').trigger('click')
     await nextTick()
 
     expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
   })
 
-  it('renders failed edit rows with filename, reason, and next action', async () => {
+  it('renders failed edit rows with filename and compact reason', async () => {
     const wrapper = mount(StepsPanel, {
       props: {
         steps: [
@@ -532,10 +533,8 @@ describe('stream end visual stability', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('.single-activity-row .node-target').text()).toBe('Edit failed: app.ts')
-    expect(wrapper.find('.operation-failure').text()).toContain('app.ts')
+    expect(wrapper.find('.operation-row .node-target').text()).toBe('Edit failed: app.ts')
     expect(wrapper.find('.operation-failure').text()).toContain('No matching text found')
-    expect(wrapper.find('.operation-failure').text()).toContain('adjust the edit')
     expect(wrapper.find('.group-final-result').exists()).toBe(false)
     expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
   })

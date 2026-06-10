@@ -146,19 +146,19 @@ describe('formatToolCallPreview', () => {
       }))).toBe('"TODO" in *.ts')
     })
 
-    it('edit: shows path with diff stats when present', () => {
+    it('edit: shows only the target path and leaves diff stats to metadata', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'edit',
         arguments: { path: '/Users/me/project/src/foo.ts' },
         changes: { diff: '...', filePath: '/Users/me/project/src/foo.ts', additions: 3, deletions: 1 },
-      }))).toBe('foo.ts (+3 -1)')
+      }))).toBe('foo.ts')
     })
 
-    it('write: shows path with content size', () => {
+    it('write: shows only the target path and leaves content size out of the row target', () => {
       expect(formatToolCallPreview(tc({
         toolName: 'write',
         arguments: { path: '/Users/me/project/src/foo.ts', content: 'hello world' },
-      }))).toBe('foo.ts (11 chars)')
+      }))).toBe('foo.ts')
     })
 
     it('default: falls back to first arg or path/pattern', () => {

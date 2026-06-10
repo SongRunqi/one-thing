@@ -353,7 +353,7 @@
 	--ui-tool-surface-hover-bg: var(--bg-tool-call-hover);
 	--ui-tool-surface-subtle-bg: color-mix(
 		in srgb,
-		var(--ui-tool-text-fg, var(--text-primary)) 6%,
+		var(--ui-tool-text-fg, var(--text-primary)) 3%,
 		var(--ui-tool-surface-bg, var(--bg-tool-call))
 	);
 	--ui-tool-result-bg: var(--bg-tool-result);

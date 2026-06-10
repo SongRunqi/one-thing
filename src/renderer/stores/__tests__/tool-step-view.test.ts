@@ -38,7 +38,7 @@ beforeEach(() => {
 })
 
 describe('buildToolStepView', () => {
-  it('keeps write streaming details available but collapsed by default', () => {
+  it('keeps write streaming details available and expanded by default', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         status: 'input-streaming',
@@ -52,7 +52,7 @@ describe('buildToolStepView', () => {
     expect(view.fileName).toBe('a.ts')
     expect(view.streamingContent?.content).toBe('hello\nworld')
     expect(view.hasDetails).toBe(true)
-    expect(view.defaultExpanded).toBe(false)
+    expect(view.defaultExpanded).toBe(true)
   })
 
   it('can build a lightweight row without parsing heavy details', () => {
@@ -71,7 +71,7 @@ describe('buildToolStepView', () => {
     expect(view.argsJson).toBeNull()
     expect(view.resultText).toBeNull()
     expect(view.hasDetails).toBe(true)
-    expect(view.defaultExpanded).toBe(false)
+    expect(view.defaultExpanded).toBe(true)
   })
 
   it('uses diff as the authoritative write detail once available', () => {
@@ -96,10 +96,10 @@ describe('buildToolStepView', () => {
     expect(view.filePath).toBe('/Users/me/project/src/a.ts')
     expect(view.fileName).toBe('a.ts')
     expect(view.isAwaitingConfirmation).toBe(true)
-    expect(view.defaultExpanded).toBe(true)
+    expect(view.defaultExpanded).toBe(false)
   })
 
-  it('marks ordinary bash args as details but leaves them collapsed by default', () => {
+  it('does not treat bare arguments as expandable details (raw args live in the Inspector)', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         toolId: 'bash',
@@ -110,9 +110,27 @@ describe('buildToolStepView', () => {
     }))
 
     expect(view.toolName).toBe('bash')
-    expect(view.argsJson).toBe('git status')
-    expect(view.hasDetails).toBe(true)
+    expect(view.hasDetails).toBe(false)
     expect(view.defaultExpanded).toBe(false)
+  })
+
+  it('hides read arguments because the row target already carries the file range', () => {
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        toolId: 'read',
+        toolName: 'read',
+        status: 'completed',
+        arguments: {
+          filePath: '/Users/me/project/src/app.ts',
+          offset: 768,
+          limit: 40,
+        },
+      }),
+    }))
+
+    expect(view.toolName).toBe('read')
+    expect(view.argsJson).toBeNull()
+    expect(view.hasDetails).toBe(false)
   })
 
   it('exposes running bash partial output as live output for details UI', () => {
