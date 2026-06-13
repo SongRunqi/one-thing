@@ -46,7 +46,7 @@ export interface UseFollowScrollOptions {
   scroller: Ref<HTMLElement | null>
   content: Ref<HTMLElement | null>
   count: ComputedRef<number>
-  maintainOnLayout?: boolean
+  maintainOnLayout?: boolean | { readonly value: boolean } | (() => boolean)
 }
 
 export function useFollowScroll(opts: UseFollowScrollOptions) {
@@ -62,6 +62,13 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
 
   function getMaxScrollTop(el: HTMLElement): number {
     return Math.max(0, el.scrollHeight - el.clientHeight)
+  }
+
+  function shouldMaintainOnLayout(): boolean {
+    const option = opts.maintainOnLayout
+    if (typeof option === 'function') return option()
+    if (option && typeof option === 'object' && 'value' in option) return option.value
+    return option !== false
   }
 
   function traceScroll(
@@ -103,25 +110,28 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
     writeScrollTop(el, target, source, 'write:natural-bottom')
   }
 
-  function schedulePinToBottom(source = 'schedulePinToBottom') {
+  function schedulePinToBottom(source = 'schedulePinToBottom', requireLayoutMaintenance = false) {
+    if (requireLayoutMaintenance && !shouldMaintainOnLayout()) return
     if (followFrame !== null) return
     followFrame = raf(() => {
       followFrame = null
+      if (requireLayoutMaintenance && !shouldMaintainOnLayout()) return
       pinToBottom(source)
       if (followBurstFrames > 0) {
         followBurstFrames--
-        schedulePinToBottom(`${source}:burst`)
+        schedulePinToBottom(`${source}:burst`, requireLayoutMaintenance)
       }
     })
   }
 
   function pinToBottomThroughLayout(source = 'pinToBottomThroughLayout') {
+    if (!shouldMaintainOnLayout()) return
     // ResizeObserver fires after layout and before paint. Pinning immediately
     // here avoids the single visible frame where content has grown but the
     // scroll position still points at the old bottom.
     pinToBottom(source)
     if (followBurstFrames < 2) followBurstFrames = 2
-    schedulePinToBottom(`${source}:settle`)
+    schedulePinToBottom(`${source}:settle`, true)
   }
 
   function pinToBottomAfterMutation(source = 'MutationObserver:content') {
@@ -130,6 +140,7 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
     const scrollHeight = el.scrollHeight
     if (scrollHeight === lastObservedScrollHeight) return
     lastObservedScrollHeight = scrollHeight
+    if (!shouldMaintainOnLayout()) return
     pinToBottomThroughLayout(source)
   }
 
@@ -167,9 +178,9 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
 
     const distance = getNaturalBottomDistance(el)
     if (isFollowing.value) {
-      if (opts.maintainOnLayout === false) return
+      if (!shouldMaintainOnLayout()) return
       if (distance > BOTTOM_EPSILON_PX && !suppressed) {
-        schedulePinToBottom('scroll:follow-drift')
+        schedulePinToBottom('scroll:follow-drift', true)
       }
       return
     }
@@ -182,8 +193,8 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
     if (canAutoReattach) {
       isFollowing.value = true
       reattachLockedUntil = 0
-      if (opts.maintainOnLayout === false) return
-      schedulePinToBottom('scroll:reattach-natural-bottom')
+      if (!shouldMaintainOnLayout()) return
+      schedulePinToBottom('scroll:reattach-natural-bottom', true)
     }
   }
 
@@ -208,7 +219,6 @@ export function useFollowScroll(opts: UseFollowScrollOptions) {
       contentResizeObserver = null
       contentMutationObserver?.disconnect()
       contentMutationObserver = null
-      if (opts.maintainOnLayout === false) return
       if (!el || typeof ResizeObserver === 'undefined') return
       lastObservedScrollHeight = opts.scroller.value?.scrollHeight ?? 0
       contentResizeObserver = new ResizeObserver(() => pinToBottomThroughLayout('ResizeObserver:content'))

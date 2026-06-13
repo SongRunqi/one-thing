@@ -1,65 +1,97 @@
 <template>
-  <main class="chat">
-    <!-- Tab Bar (replaces ChatHeader) -->
-    <TabBar
-      :tabs="tabsWithDirty"
-      :active-tab-id="activeTabId"
-      :session-id="effectiveSessionId"
-      :session-name="currentSession?.name || 'New Chat'"
-      :is-branch-session="isBranchSession"
-      :show-sidebar-toggle="showSidebarToggle"
-      :show-split-button="canClose !== undefined"
-      :can-close="!!canClose"
-      :is-inspector-open="isInspectorOpen"
-      :media-panel-open="mediaPanelOpen"
-      :reserve-sidebar-actions="reserveSidebarActions"
-      @select-tab="activateTab"
-      @close-tab="handleCloseTab"
-      @move-tab="tabState.moveTab"
-      @toggle-sidebar="emit('toggleSidebar')"
-      @open-search="emit('openSearch')"
-      @create-new-chat="emit('createNewChat')"
-      @go-to-parent="goToParentSession"
-      @split="emit('split')"
-      @equalize="emit('equalize')"
-      @close="emit('close')"
-      @toggle-inspector="emit('toggleInspector')"
-    />
+  <BorderBox
+    as="main"
+    class="chat"
+    border-style="solid"
+    radius-value="9px"
+    :border-color="chatBorderColor"
+    background="var(--chat-surface)"
+    :shadow-value="chatPanelShadowValue"
+  >
+    <Container
+      as="section"
+      main-as="section"
+      body-class="chat-body"
+      main-class="chat-main-region"
+      footer-class="chat-footer-region"
+      full-height
+      :main-flex="'1 1 0'"
+      overflow="hidden"
+      main-overflow="hidden"
+    >
+      <!-- Tab Bar (replaces ChatHeader) -->
+      <template #header>
+        <TabBar
+          :tabs="tabsWithDirty"
+          :active-tab-id="activeTabId"
+          :session-id="effectiveSessionId"
+          :session-name="currentSession?.name || 'New Chat'"
+          :is-branch-session="isBranchSession"
+          :show-sidebar-toggle="showSidebarToggle"
+          :show-split-button="canClose !== undefined"
+          :can-close="!!canClose"
+          :is-inspector-open="isInspectorOpen"
+          :media-panel-open="mediaPanelOpen"
+          :reserve-sidebar-actions="reserveSidebarActions"
+          @select-tab="activateTab"
+          @close-tab="handleCloseTab"
+          @move-tab="tabState.moveTab"
+          @toggle-sidebar="emit('toggleSidebar')"
+          @open-search="emit('openSearch')"
+          @create-new-chat="emit('createNewChat')"
+          @go-to-parent="goToParentSession"
+          @split="emit('split')"
+          @equalize="emit('equalize')"
+          @close="emit('close')"
+          @toggle-inspector="emit('toggleInspector')"
+        />
+      </template>
 
-    <!-- Tab Content -->
-    <div class="tab-content">
-      <ChatPanel
-        v-show="activeTab?.type === 'chat'"
-        ref="chatPanelRef"
-        :session-id="effectiveSessionId"
-        @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
-        @open-file="addFileTab"
-      />
-      <FilePanel
-        v-if="isWorkbenchLikeTab(activeTab)"
-        :file-path="activeWorkbenchFilePath"
-        :workspace-root="activeWorkbenchRoot"
-        :max-size-kb="maxFilePreviewKB"
-        :active="true"
-      />
-    </div>
+      <!-- Tab Content -->
+      <div class="tab-content">
+        <ChatPanel
+          v-show="activeTab?.type === 'chat'"
+          ref="chatPanelRef"
+          :session-id="effectiveSessionId"
+          :active="activeTab?.type === 'chat'"
+          :footer-target="chatFooterRef"
+          :layout-transitioning="layoutTransitioning"
+          @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
+          @open-file="addFileTab"
+        />
+        <FilePanel
+          v-if="isWorkbenchLikeTab(activeTab)"
+          :file-path="activeWorkbenchFilePath"
+          :workspace-root="activeWorkbenchRoot"
+          :max-size-kb="maxFilePreviewKB"
+          :active="true"
+        />
+      </div>
 
-    <FileUnsavedDialog
-      :visible="!!pendingCloseWorkbench"
-      :file-path="pendingCloseWorkbenchPath"
-      @save="saveAndClosePendingWorkbench"
-      @discard="discardAndClosePendingWorkbench"
-      @cancel="pendingCloseWorkbench = null"
-    />
-
-    <!-- Settings Panel overlay -->
-    <Transition name="settings-fade">
-      <SettingsPanel
-        v-if="showSettings"
-        @close="emit('closeSettings')"
+      <FileUnsavedDialog
+        :visible="!!pendingCloseWorkbench"
+        :file-path="pendingCloseWorkbenchPath"
+        @save="saveAndClosePendingWorkbench"
+        @discard="discardAndClosePendingWorkbench"
+        @cancel="pendingCloseWorkbench = null"
       />
-    </Transition>
-  </main>
+
+      <!-- Settings Panel overlay -->
+      <Transition name="settings-fade">
+        <SettingsPanel
+          v-if="showSettings"
+          @close="emit('closeSettings')"
+        />
+      </Transition>
+
+      <template #footer>
+        <div
+          ref="chatFooterRef"
+          class="chat-footer"
+        />
+      </template>
+    </Container>
+  </BorderBox>
 </template>
 
 <script setup lang="ts">
@@ -72,6 +104,8 @@ import TabBar from './TabBar.vue'
 import ChatPanel from './ChatPanel.vue'
 import FilePanel from './FilePanel.vue'
 import FileUnsavedDialog from './FileUnsavedDialog.vue'
+import Container from '@/components/common/Container.vue'
+import BorderBox from '@/components/common/BorderBox.vue'
 import SettingsPanel from '../SettingsPanel.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import type { FileTab, Tab, WorkbenchTab } from '@/types/tabs'
@@ -84,6 +118,7 @@ interface Props {
   mediaPanelOpen?: boolean
   isInspectorOpen?: boolean
   reserveSidebarActions?: boolean
+  layoutTransitioning?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -91,6 +126,14 @@ const props = withDefaults(defineProps<Props>(), {
   showSidebarToggle: false,
   mediaPanelOpen: false,
 })
+
+const chatBorderColor = 'color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 52%, transparent)'
+const chatPanelShadowFallback = [
+  '0 10px 28px rgba(0, 0, 0, 0.11)',
+  '0 1px 5px rgba(0, 0, 0, 0.055)',
+  'inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.8%, transparent)',
+].join(', ')
+const chatPanelShadowValue = `var(--ui-surface-chat-panel-shadow, ${chatPanelShadowFallback})`
 
 const emit = defineEmits<{
   closeSettings: []
@@ -103,6 +146,7 @@ const emit = defineEmits<{
   openSearch: []
   createNewChat: []
   toggleInspector: []
+  openFile: [filePath: string]
 }>()
 
 const sessionsStore = useSessionsStore()
@@ -182,8 +226,9 @@ const pendingCloseWorkbenchPath = computed(() => {
 onMounted(async () => {
   try {
     const appState = await window.electronAPI.getAppState()
-    if (appState.openTabs && appState.openTabs.length > 0) {
-      tabState.restore(appState.openTabs as any, appState.activeTabIndex)
+    const chatTabs = appState.openTabs?.filter((tab: any) => tab.type === 'chat') || []
+    if (chatTabs.length > 0) {
+      tabState.restore(chatTabs as any, 0)
     }
   } catch (err) {
     console.warn('[ChatWindow] Failed to restore tabs:', err)
@@ -220,6 +265,7 @@ async function goToParentSession() {
 
 // ChatPanel ref for focusInput
 const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null)
+const chatFooterRef = ref<HTMLElement | null>(null)
 let tabActivationRun = 0
 
 function focusInput() {
@@ -256,11 +302,7 @@ async function activateTab(id: string) {
 }
 
 function addFileTab(filePath: string) {
-  // Keep unsaved buffers safe. Max-tab enforcement can become a close-confirm
-  // flow later; opening a file must never evict a dirty tab implicitly.
-  tabActivationRun += 1
-  saveChatSnapshotBeforeLeaving('workbench')
-  tabState.addWorkbenchTab(filePath, resolveWorkspaceRoot(filePath), Number.MAX_SAFE_INTEGER)
+  emit('openFile', filePath)
 }
 
 async function removeTabAndRelease(tab: Tab) {
@@ -275,18 +317,6 @@ async function removeTabAndRelease(tab: Tab) {
   if (wasActive && activeTab.value?.type === 'chat') {
     await restoreChatSnapshotAfterActivation(run)
   }
-}
-
-function resolveWorkspaceRoot(filePath: string) {
-  const current = activeTab.value
-  if (current?.type === 'workbench' && isPathInsideRoot(filePath, current.workspaceRoot)) {
-    return current.workspaceRoot
-  }
-  const sessionRoot = currentSession.value?.workingDirectory
-  if (sessionRoot && isPathInsideRoot(filePath, sessionRoot)) {
-    return normalizePath(sessionRoot)
-  }
-  return parentDir(filePath)
 }
 
 function handleCloseTab(id: string) {
@@ -339,28 +369,47 @@ defineExpose({
 .chat {
   --chat-surface: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
 
-  display: flex;
-  flex-direction: column;
   flex: 1;
+  height: 100%;
   min-width: 0;
-  background: var(--chat-surface);
   position: relative;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 52%, transparent);
-  border-radius: 9px;
-  box-shadow: var(
-    --ui-surface-chat-panel-shadow,
-    0 10px 28px rgba(0, 0, 0, 0.11),
-    0 1px 5px rgba(0, 0, 0, 0.055),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.8%, transparent)
-  );
   contain: layout style;
+}
+
+.chat :deep(.chat-body) {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat :deep(.chat-main-region) {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat :deep(.chat-footer-region) {
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
+.chat-footer {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .tab-content {
   display: flex;
   flex-direction: column;
   flex: 1;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;

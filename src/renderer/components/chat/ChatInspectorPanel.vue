@@ -7,15 +7,32 @@
     >
       <header class="lens-header">
         <div class="lens-header-top">
-          <div class="lens-title">
-            <Sparkles
-              :size="16"
-              :stroke-width="1.9"
-            />
-            <span>Session Lens</span>
+          <div
+            role="tablist"
+            class="lens-tabs"
+          >
+            <Button
+              v-for="tab in tabs"
+              :key="tab.id"
+              unstyled
+              native-type="button"
+              role="tab"
+              :title="tab.title"
+              :aria-selected="activeTab === tab.id"
+              :class="['lens-tab', { active: activeTab === tab.id }]"
+              @click="activeTab = tab.id"
+            >
+              <component
+                :is="tab.icon"
+                :size="14"
+                :stroke-width="1.9"
+              />
+              <span>{{ tab.label }}</span>
+            </Button>
           </div>
 
-          <button
+          <Button
+            unstyled
             class="icon-btn lens-toggle-btn"
             title="Close session lens"
             @click="$emit('close')"
@@ -24,42 +41,9 @@
               :size="14"
               :stroke-width="2"
             />
-          </button>
-        </div>
-
-        <div
-          role="tablist"
-          class="lens-tabs"
-        >
-          <button
-            v-for="tab in tabs"
-            :key="tab.id"
-            type="button"
-            role="tab"
-            :title="tab.title"
-            :aria-selected="activeTab === tab.id"
-            :class="['lens-tab', { active: activeTab === tab.id }]"
-            @click="activeTab = tab.id"
-          >
-            <component
-              :is="tab.icon"
-              :size="14"
-              :stroke-width="1.9"
-            />
-            <span>{{ tab.label }}</span>
-          </button>
+          </Button>
         </div>
       </header>
-
-      <div class="lens-summary">
-        <code>{{ activeModel || 'Unknown model' }}</code>
-        <span class="summary-dot" />
-        <span>context {{ pct(lastTurnInput, modelContextLength) }}%</span>
-        <span class="summary-dot" />
-        <span>{{ assistantTurns }} turns</span>
-        <span class="summary-dot" />
-        <span>{{ allToolCalls.length }} tools</span>
-      </div>
 
       <div class="lens-body">
         <section
@@ -98,9 +82,10 @@
               <span>Variables</span>
               <div class="section-actions">
                 <small>{{ contextVariables.length }}</small>
-                <button
+                <Button
+                  unstyled
                   class="inline-action"
-                  type="button"
+                  native-type="button"
                   title="Add variable"
                   @click="startAddVariable"
                 >
@@ -109,7 +94,7 @@
                     :stroke-width="2"
                   />
                   <span>New</span>
-                </button>
+                </Button>
               </div>
             </div>
             <form
@@ -146,9 +131,10 @@
                 {{ variableEditor.error }}
               </p>
               <div class="editor-actions">
-                <button
+                <Button
+                  unstyled
                   class="editor-icon"
-                  type="button"
+                  native-type="button"
                   title="Cancel"
                   @click="closeVariableEditor"
                 >
@@ -156,10 +142,11 @@
                     :size="13"
                     :stroke-width="2"
                   />
-                </button>
-                <button
+                </Button>
+                <Button
+                  unstyled
                   class="editor-icon primary"
-                  type="submit"
+                  native-type="submit"
                   title="Save variable"
                   :disabled="variableEditor.saving"
                 >
@@ -167,7 +154,7 @@
                     :size="13"
                     :stroke-width="2"
                   />
-                </button>
+                </Button>
               </div>
             </form>
             <div
@@ -208,18 +195,19 @@
                     />
                     <code class="variable-name">{{ variable.name }}</code>
                     <span class="variable-preview">{{ compactVariableValue(variable.value) }}</span>
-                    <button
+                    <Button
                       v-if="!variable.readonly"
+                      unstyled
                       class="variable-row-action"
                       title="Edit variable"
-                      type="button"
+                      native-type="button"
                       @click.stop="startEditVariable(variable)"
                     >
                       <Pencil
                         :size="13"
                         :stroke-width="2"
                       />
-                    </button>
+                    </Button>
                     <span
                       v-if="variable.readonly"
                       class="variable-badge"
@@ -266,9 +254,10 @@
                         {{ variableEditor.error }}
                       </p>
                       <div class="editor-actions">
-                        <button
+                        <Button
+                          unstyled
                           class="editor-icon"
-                          type="button"
+                          native-type="button"
                           title="Cancel"
                           @click="closeVariableEditor"
                         >
@@ -276,10 +265,11 @@
                             :size="13"
                             :stroke-width="2"
                           />
-                        </button>
-                        <button
+                        </Button>
+                        <Button
+                          unstyled
                           class="editor-icon primary"
-                          type="submit"
+                          native-type="submit"
                           title="Save variable"
                           :disabled="variableEditor.saving"
                         >
@@ -287,7 +277,7 @@
                             :size="13"
                             :stroke-width="2"
                           />
-                        </button>
+                        </Button>
                       </div>
                     </form>
                     <template v-else>
@@ -317,16 +307,17 @@
           </div>
           <template v-else>
             <div class="snapshot-strip">
-              <button
+              <Button
                 v-for="(snap, i) in snapshots"
                 :key="snap.timestamp"
+                unstyled
                 :class="['snapshot-chip', { active: i === selectedSnapshotIndex }]"
-                type="button"
+                native-type="button"
                 @click="selectedSnapshotIndex = i"
               >
                 <span>T{{ snap.turn }}</span>
                 <small>{{ formatTime(snap.timestamp) }}</small>
-              </button>
+              </Button>
             </div>
 
             <div
@@ -373,14 +364,15 @@
                         v-if="messageText(m)"
                         :class="{ expanded: isMessageExpanded(idx) }"
                       >{{ messageText(m, isMessageExpanded(idx)) }}</pre>
-                      <button
+                      <Button
                         v-if="isLongMessage(m)"
+                        unstyled
                         class="message-expand"
-                        type="button"
+                        native-type="button"
                         @click="toggleMessageExpanded(idx)"
                       >
                         {{ isMessageExpanded(idx) ? 'Show less' : 'Show more' }}
-                      </button>
+                      </Button>
                       <div
                         v-if="m.toolCalls?.length"
                         class="tool-tags"
@@ -395,9 +387,10 @@
                 </section>
 
                 <template v-if="selectedSnapshot.tools.length > 0">
-                  <button
+                  <Button
+                    unstyled
                     class="tools-disclosure"
-                    type="button"
+                    native-type="button"
                     @click="showRequestTools = !showRequestTools"
                   >
                     <span>Available tools</span>
@@ -406,7 +399,7 @@
                       :size="14"
                       :class="{ open: showRequestTools }"
                     />
-                  </button>
+                  </Button>
                   <div
                     v-if="showRequestTools"
                     class="tool-grid"
@@ -464,29 +457,32 @@
                 </span>
               </div>
               <div class="diff-actions">
-                <button
+                <Button
+                  unstyled
                   class="diff-btn"
                   :class="{ active: wrap }"
-                  type="button"
+                  native-type="button"
                   title="Wrap lines"
                   @click="wrap = !wrap"
                 >
                   <WrapText :size="13" />
-                </button>
-                <button
+                </Button>
+                <Button
                   v-if="canRollback"
+                  unstyled
                   class="diff-btn rollback-btn"
                   :class="{ done: rollbackState === 'done', failed: rollbackState === 'failed' }"
-                  type="button"
+                  native-type="button"
                   :disabled="rollbackState === 'running' || rollbackState === 'done'"
                   :title="rollbackTitle"
                   @click="rollbackDiff"
                 >
                   <RotateCcw :size="13" />
-                </button>
-                <button
+                </Button>
+                <Button
+                  unstyled
                   class="diff-btn"
-                  type="button"
+                  native-type="button"
                   :title="copied ? 'Copied!' : 'Copy diff'"
                   @click="copyDiff"
                 >
@@ -498,7 +494,7 @@
                     v-else
                     :size="13"
                   />
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -553,8 +549,9 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, onMounted, ref, watch } from 'vue'
-import { Box, Check, ChevronDown, ChevronRight, Database, Pencil, Plus, Radar, Sparkles, TerminalSquare, X, Globe, GitCompare, Terminal, WrapText, RotateCcw, Copy } from 'lucide-vue-next'
+import { Box, Check, ChevronDown, ChevronRight, Database, Pencil, Plus, Radar, X, Globe, GitCompare, Terminal, WrapText, RotateCcw, Copy } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
@@ -628,10 +625,6 @@ const accumulatedOutput = computed(
 )
 
 const messages = computed(() => chatStore.sessionMessages.get(props.sessionId) ?? [])
-const assistantTurns = computed(
-  () => messages.value.filter((m: any) => m.role === 'assistant').length,
-)
-
 const contextVariables = computed(() => {
   return sessionsStore.sessionVariables.get(props.sessionId) ?? []
 })
@@ -662,50 +655,6 @@ const selectedSnapshot = computed(
   () => snapshots.value[selectedSnapshotIndex.value] ?? null,
 )
 const showRequestTools = ref(false)
-
-interface ToolCallLogEntry {
-  id: string
-  toolName: string
-  status: string
-  args: unknown
-  result?: unknown
-  error?: string
-  duration?: number
-}
-
-const allToolCalls = computed<ToolCallLogEntry[]>(() => {
-  const out: ToolCallLogEntry[] = []
-  for (const m of messages.value as any[]) {
-    if (m.role !== 'assistant') continue
-    if (Array.isArray(m.steps)) {
-      for (const step of m.steps) {
-        if (!step.toolCallId) continue
-        const tc = step.toolCall
-        out.push({
-          id: step.id,
-          toolName: tc?.toolName || step.title || 'tool',
-          status: step.status || tc?.status || 'unknown',
-          args: tc?.arguments,
-          result: tc?.result ?? step.result,
-          error: tc?.error || step.error,
-          duration: step.duration,
-        })
-      }
-    } else if (Array.isArray(m.toolCalls)) {
-      for (const tc of m.toolCalls) {
-        out.push({
-          id: tc.id,
-          toolName: tc.toolName,
-          status: tc.status || 'unknown',
-          args: tc.arguments,
-          result: tc.result,
-          error: tc.error,
-        })
-      }
-    }
-  }
-  return out
-})
 
 const expanded = ref<Set<string>>(new Set())
 function toggleExpanded(id: string) {
@@ -1138,9 +1087,12 @@ async function copyDiff() {
 .session-lens-sidebar {
   display: flex;
   flex-direction: column;
-  width: 340px;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
   background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated, var(--bg-chat)))) 94%, var(--ui-status-info-fg) 6%);
 }
 
@@ -1151,7 +1103,9 @@ html[data-theme='light'] .session-lens-sidebar {
 .session-lens {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   width: 100%;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   background: transparent;
@@ -1162,18 +1116,17 @@ html[data-theme='light'] .session-lens-sidebar {
   display: flex;
   flex-direction: column;
   gap: 0;
-  padding: 0 14px 8px;
+  padding: 8px 12px;
 }
 
 .lens-header-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 44px;
-  padding-right: 2px;
+  gap: 8px;
+  min-height: 30px;
 }
 
-.lens-title,
 .lens-tabs,
 .lens-tab,
 .icon-btn,
@@ -1183,20 +1136,9 @@ html[data-theme='light'] .session-lens-sidebar {
   align-items: center;
 }
 
-.lens-title {
-  gap: 8px;
-  min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.lens-title svg {
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
 .lens-tabs {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: 4px;
   padding: 2px;
   border-radius: 6px;
@@ -1252,40 +1194,11 @@ html[data-theme='light'] .session-lens-sidebar {
   flex-shrink: 0;
 }
 
-.lens-summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 30px;
-  margin: 4px 10px 8px;
-  padding: 0 2px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11.5px;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
 .message-card,
 .tool-card,
 .tool-call-card {
   border-radius: 7px;
   background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 46%, transparent);
-}
-
-.lens-summary code {
-  min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 11.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.summary-dot {
-  width: 3px;
-  height: 3px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 55%, transparent);
 }
 
 code {
@@ -1314,7 +1227,11 @@ code {
 .status-dot.neutral { background: var(--ui-text-muted-fg, var(--muted)); }
 
 .lens-body {
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -1322,7 +1239,10 @@ code {
 .lens-pane {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
   height: 100%;
+  min-width: 0;
   min-height: 0;
   padding: 8px 10px 12px;
   overflow-y: auto;
@@ -1621,9 +1541,14 @@ textarea.variable-value-input {
 .variable-list {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
   gap: 1px;
   margin: 0;
+  min-width: 0;
+  min-height: 0;
   padding: 0;
+  overflow-y: auto;
   list-style: none;
   font-family: var(--font-mono, 'SF Mono', Monaco, 'Cascadia Code', monospace);
 }
@@ -1669,7 +1594,7 @@ textarea.variable-value-input {
 
 .variable-row {
   display: grid;
-  grid-template-columns: 14px minmax(92px, 0.78fr) minmax(0, 1fr) 22px auto;
+  grid-template-columns: 14px minmax(72px, max-content) minmax(0, 1fr) 22px auto;
   align-items: center;
   gap: 6px;
   width: 100%;
@@ -1705,6 +1630,7 @@ textarea.variable-value-input {
 }
 
 .variable-name {
+  max-width: 150px;
   color: var(--ui-text-primary-fg, var(--text));
   font-size: 11.5px;
   font-weight: 600;
@@ -1718,9 +1644,9 @@ textarea.variable-value-input {
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
   line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .variable-badge {
@@ -2231,7 +2157,7 @@ textarea.variable-value-input {
 
 @media (max-width: 760px) {
   .session-lens-sidebar {
-    width: min(340px, 48vw);
+    width: 100%;
   }
 }
 

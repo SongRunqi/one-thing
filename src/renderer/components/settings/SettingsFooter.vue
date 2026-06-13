@@ -33,20 +33,22 @@
       <span>Unsaved changes</span>
     </div>
     <div class="footer-actions">
-      <button
+      <Button
+        unstyled
         class="btn secondary"
         @click="$emit('cancel')"
       >
         Cancel
-      </button>
-      <button
+      </Button>
+      <Button
+        unstyled
         :class="['btn', hasUnsavedChanges ? 'primary highlight' : 'primary']"
         :disabled="isSaving"
         @click="$emit('save')"
       >
         <span v-if="isSaving">Saving...</span>
         <span v-else>{{ hasUnsavedChanges ? 'Save Changes' : 'Save' }}</span>
-      </button>
+      </Button>
     </div>
   </footer>
 
@@ -73,6 +75,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 defineProps<{
   hasUnsavedChanges: boolean
   isSaving: boolean

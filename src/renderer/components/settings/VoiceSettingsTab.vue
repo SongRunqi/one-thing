@@ -101,24 +101,26 @@
             class="provider-note"
           >
             <span>Advanced OpenAI transcription is active.</span>
-            <button
-              type="button"
+            <Button
+              unstyled
+              native-type="button"
               @click="useRecommendedTranscription"
             >
               Use streaming ASR
-            </button>
+            </Button>
           </div>
           <div
             v-else-if="voice.asr.provider === 'funasr-server'"
             class="provider-note"
           >
             <span>Advanced FunASR transcription is active.</span>
-            <button
-              type="button"
+            <Button
+              unstyled
+              native-type="button"
               @click="useRecommendedTranscription"
             >
               Use streaming ASR
-            </button>
+            </Button>
           </div>
           <div
             v-else-if="voice.asr.provider === 'funasr-stream'"
@@ -323,8 +325,9 @@
               v-if="voice.tts.provider === 'openrouter-tts'"
               class="model-actions"
             >
-              <button
-                type="button"
+              <Button
+                unstyled
+                native-type="button"
                 class="secondary-button compact-button"
                 :disabled="ttsModelsStatus === 'loading'"
                 @click="loadOpenRouterTTSModels(true)"
@@ -339,7 +342,7 @@
                   :size="14"
                 />
                 <span>{{ ttsModels.length ? 'Refresh TTS models' : 'Load TTS models' }}</span>
-              </button>
+              </Button>
               <span
                 v-if="ttsModelsMessage"
                 class="model-status"
@@ -408,16 +411,18 @@
         </SettingRow>
 
         <div class="setup-actions">
-          <button
-            type="button"
+          <Button
+            unstyled
+            native-type="button"
             class="secondary-button"
             @click="useRecommendedDefaults"
           >
             <RefreshCw :size="15" />
             <span>Reset to recommended</span>
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            unstyled
+            native-type="button"
             class="secondary-button"
             :disabled="isTestingTTS"
             @click="testSystemVoice"
@@ -432,9 +437,10 @@
               :size="15"
             />
             <span>{{ ttsTestButtonLabel }}</span>
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            unstyled
+            native-type="button"
             class="secondary-button"
             :disabled="isTestingASR"
             @click="testSpeechToText"
@@ -449,7 +455,7 @@
               :size="15"
             />
             <span>{{ asrTestButtonLabel }}</span>
-          </button>
+          </Button>
           <p
             v-if="asrTestMessage"
             class="setup-status"
@@ -468,13 +474,14 @@
       </SettingsGroup>
     </SettingsSection>
 
-    <button
-      type="button"
+    <Button
+      unstyled
+      native-type="button"
       class="advanced-toggle"
       @click="showAdvanced = !showAdvanced"
     >
       {{ showAdvanced ? 'Hide advanced settings' : 'Advanced settings' }}
-    </button>
+    </Button>
 
     <SettingsSection
       v-if="showAdvanced"
@@ -619,6 +626,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { Loader2, Mic, RefreshCw, Volume2 } from 'lucide-vue-next'
 import type { AgentDefinition, AppSettings, VoiceEndpointingMode, VoiceSettings, VoiceTTSModel } from '@/types'

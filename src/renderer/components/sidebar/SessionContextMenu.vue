@@ -7,55 +7,35 @@
         :style="{ top: y + 'px', left: x + 'px' }"
         @click.stop
       >
-        <button
+        <Button
+          text
+          size="small"
+          :icon="Pencil"
           class="context-item"
           @click="handleRename"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-          </svg>
           Rename
-        </button>
-        <button
+        </Button>
+        <Button
+          text
+          size="small"
+          :icon="Pin"
           class="context-item"
           @click="handlePin"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
-          </svg>
           {{ session?.isPinned ? 'Unpin' : 'Pin' }}
-        </button>
+        </Button>
         <div class="context-divider" />
-        <button
+        <Button
+          text
+          size="small"
+          type="danger"
+          :icon="X"
           class="context-item danger"
           @click="handleDelete"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
           Close
-        </button>
+        </Button>
       </div>
     </Transition>
     <div
@@ -67,6 +47,8 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
+import { Pencil, Pin, X } from 'lucide-vue-next'
 import type { SessionWithBranches } from './useSessionOrganizer'
 
 interface Props {
@@ -116,8 +98,19 @@ function handleDelete() {
 }
 
 .context-item {
+  --app-button-height: auto;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 0;
+  --app-button-gap: 10px;
+  --app-button-font-size: 13px;
+  --app-button-hover-fill: var(--ui-surface-menu-hover-bg);
+  --app-button-hover-fg: var(--ui-text-primary-fg);
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 10px;
   width: 100%;
   padding: 8px 12px;

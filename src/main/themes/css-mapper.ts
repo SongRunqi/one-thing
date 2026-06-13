@@ -5,8 +5,12 @@
  */
 
 import type { SemanticHighlightToken, SemanticUIToken } from '../../shared/ipc/themes.js'
-import { SEMANTIC_HIGHLIGHT_TOKENS, SEMANTIC_UI_TOKENS } from './resolver.js'
-import type { ResolvedHighlightStyle, ResolvedUIStyle } from './resolver.js'
+import {
+  SEMANTIC_HIGHLIGHT_TOKENS,
+  SEMANTIC_UI_TOKENS,
+  THEME_NEUTRAL_COLOR_TOKENS,
+} from './resolver.js'
+import type { ResolvedHighlightStyle, ResolvedUIStyle, ThemeNeutralColorToken } from './resolver.js'
 
 /**
  * Maps theme property paths to CSS variable names
@@ -16,6 +20,7 @@ export const CSS_VAR_MAP: Record<string, string[]> = {
   // ============================================
   // Accent Colors
   // ============================================
+  'primary': ['--color-primary', '--primary'],
   'accent': ['--accent', '--accent-main'],
   'accentMain': ['--accent-main'],
   'accentSub': ['--accent-sub'],
@@ -227,6 +232,34 @@ export const CSS_VAR_MAP: Record<string, string[]> = {
   'color.successLight': ['--color-success-light'],
   'color.info': ['--color-info'],
   'color.infoLight': ['--color-info-light'],
+
+  // ============================================
+  // Neutral Color Semantics
+  // ============================================
+  'neutral.primaryText': ['--color-neutral-primary-text', '--neutral-primary-text', '--text-color-primary'],
+  'neutral.regularText': ['--color-neutral-regular-text', '--neutral-regular-text', '--text-color-regular'],
+  'neutral.secondaryText': ['--color-neutral-secondary-text', '--neutral-secondary-text', '--text-color-secondary'],
+  'neutral.placeholderText': ['--color-neutral-placeholder-text', '--neutral-placeholder-text', '--text-color-placeholder'],
+  'neutral.disabledText': ['--color-neutral-disabled-text', '--neutral-disabled-text', '--text-color-disabled'],
+  'neutral.darkerBorder': ['--color-neutral-darker-border', '--neutral-darker-border', '--border-color-darker'],
+  'neutral.darkBorder': ['--color-neutral-dark-border', '--neutral-dark-border', '--border-color-dark'],
+  'neutral.baseBorder': ['--color-neutral-base-border', '--neutral-base-border', '--border-color-base'],
+  'neutral.lightBorder': ['--color-neutral-light-border', '--neutral-light-border', '--border-color-light'],
+  'neutral.lighterBorder': ['--color-neutral-lighter-border', '--neutral-lighter-border', '--border-color-lighter'],
+  'neutral.extraLightBorder': ['--color-neutral-extra-light-border', '--neutral-extra-light-border', '--border-color-extra-light'],
+  'neutral.darkerFill': ['--color-neutral-darker-fill', '--neutral-darker-fill', '--fill-color-darker'],
+  'neutral.darkFill': ['--color-neutral-dark-fill', '--neutral-dark-fill', '--fill-color-dark'],
+  'neutral.baseFill': ['--color-neutral-base-fill', '--neutral-base-fill', '--fill-color-base'],
+  'neutral.lightFill': ['--color-neutral-light-fill', '--neutral-light-fill', '--fill-color-light'],
+  'neutral.lighterFill': ['--color-neutral-lighter-fill', '--neutral-lighter-fill', '--fill-color-lighter'],
+  'neutral.extraLightFill': ['--color-neutral-extra-light-fill', '--neutral-extra-light-fill', '--fill-color-extra-light'],
+  'neutral.blankFill': ['--color-neutral-blank-fill', '--neutral-blank-fill', '--fill-color-blank'],
+  'neutral.basicBlack': ['--color-neutral-basic-black', '--neutral-basic-black', '--color-black'],
+  'neutral.basicWhite': ['--color-neutral-basic-white', '--neutral-basic-white', '--color-white'],
+  'neutral.transparent': ['--color-neutral-transparent', '--neutral-transparent', '--color-transparent'],
+  'neutral.pageBackground': ['--color-neutral-page-background', '--neutral-page-background', '--bg-color-page'],
+  'neutral.baseBackground': ['--color-neutral-base-background', '--neutral-base-background', '--bg-color-base'],
+  'neutral.overlayBackground': ['--color-neutral-overlay-background', '--neutral-overlay-background', '--bg-color-overlay'],
 
   // ============================================
   // Diff Colors (for code diff views)
@@ -585,8 +618,16 @@ function highlightVarName(token: SemanticHighlightToken, suffix: string): string
   return `--hg-${token.replace(/\./g, '-')}-${suffix}`
 }
 
+function camelToKebab(value: string): string {
+  return value.replace(/[A-Z]/g, match => `-${match.toLowerCase()}`)
+}
+
 function uiVarName(token: SemanticUIToken, suffix: UIStyleField): string {
-  return `--${token.replace(/[A-Z]/g, match => `-${match.toLowerCase()}`).replace(/\./g, '-')}-${suffix}`
+  return `--${camelToKebab(token).replace(/\./g, '-')}-${suffix}`
+}
+
+function neutralRgbVarName(token: ThemeNeutralColorToken): string {
+  return `--color-neutral-${camelToKebab(token)}-rgb`
 }
 
 function getFontStyleParts(fontStyle: string | undefined): {
@@ -723,6 +764,8 @@ export function generateCSSVariables(
   // Generate RGB triplets for semantic colors (danger, warning, success, info)
   // These enable rgba(var(--color-*-rgb), opacity) patterns in components
   const semanticColorPaths: [string, string][] = [
+    ['primary', '--color-primary-rgb'],
+    ['primary', '--primary-rgb'],
     ['color.danger', '--color-danger-rgb'],
     ['color.warning', '--color-warning-rgb'],
     ['color.success', '--color-success-rgb'],
@@ -738,6 +781,14 @@ export function generateCSSVariables(
       const rgb = hexToRgbTriplet(color)
       if (rgb) result[cssVar] = rgb
     }
+  }
+
+  for (const token of THEME_NEUTRAL_COLOR_TOKENS) {
+    const color = resolvedTheme[`neutral.${token}`]
+    if (!color) continue
+
+    const rgb = hexToRgbTriplet(color)
+    if (rgb) result[neutralRgbVarName(token)] = rgb
   }
 
   return result
@@ -780,6 +831,11 @@ export function getAllCSSVariableNames(): string[] {
         allVars.add(varName)
       }
     }
+  }
+  allVars.add('--color-primary-rgb')
+  allVars.add('--primary-rgb')
+  for (const token of THEME_NEUTRAL_COLOR_TOKENS) {
+    allVars.add(neutralRgbVarName(token))
   }
   return Array.from(allVars)
 }

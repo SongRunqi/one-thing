@@ -86,6 +86,7 @@ export async function buildSystemPrompt(
       ctx.activeProject?.hasActive && activeProject(ctx.activeProject),
       ctx.knownProjects?.hasAny && knownProjects(ctx.knownProjects),
       ctx.contextVariables?.trim() && `# Context Variables\n${ctx.contextVariables.trim()}`,
+      skills_(ctx),
       os_(),
       loadAgentsMdInstructions(ctx.workingDirectory),
       ...plugins,
@@ -187,6 +188,43 @@ function knownProjects(known: PromptKnownProjects): string {
   }
   lines.push('', 'If a request clearly belongs to one of these directories and it is not already the current work directory, first call `variable` with action="set", name="workdir", value=<path>. Use `project_dirs get path=<path>` only to inspect remembered metadata; it does not change the work directory.')
   return lines.join('\n')
+}
+
+function skills_(ctx: BuildPromptContextOptions): string | undefined {
+  const toolHint = getSkillToolHint(ctx.toolNames)
+  if (!ctx.hasTools || !ctx.skills.length || !toolHint) return undefined
+  const skills = ctx.skills
+    .filter(skill => skill.enabled !== false)
+    .slice()
+    .sort((a, b) => `${a.category ?? ''}/${a.name}`.localeCompare(`${b.category ?? ''}/${b.name}`))
+  if (skills.length === 0) return undefined
+
+  const lines = [
+    '# Skills',
+    `Installed Hermes Agent skills are available on demand. If a skill is relevant to the user request, first load it with ${toolHint.load}, then follow the loaded instructions. ${toolHint.file} If no skill is relevant, proceed normally.`,
+    '',
+    '<available_skills>',
+  ]
+  for (const skill of skills) {
+    const category = skill.category ? ` [${skill.category}]` : ''
+    const tags = skill.tags?.length ? `tags=${skill.tags.join(',')}` : ''
+    lines.push(`- ${skill.name}${category}: ${skill.description}${tags ? ` (${tags})` : ''}`)
+  }
+  lines.push('</available_skills>')
+  return lines.join('\n')
+}
+
+function getSkillToolHint(toolNames?: string[]): { load: string; file: string } | undefined {
+  if (!toolNames?.length) {
+    return { load: '`skill_view(name)`', file: 'Use `skill_view(name, file_path)` to read supporting files listed by the skill.' }
+  }
+  if (toolNames.includes('skill_view')) {
+    return { load: '`skill_view(name)`', file: 'Use `skill_view(name, file_path)` to read supporting files listed by the skill.' }
+  }
+  if (toolNames.includes('skill')) {
+    return { load: '`skill` action="load"', file: 'Use action="view" with filePath to read supporting files listed by the skill.' }
+  }
+  return undefined
 }
 
 function os_(): string {

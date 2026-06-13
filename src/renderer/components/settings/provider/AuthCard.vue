@@ -19,23 +19,25 @@
           {{ subtitle }}
         </div>
       </div>
-      <button
+      <Button
         v-if="oauthStatus.isLoggedIn"
+        unstyled
         class="auth-button secondary"
-        type="button"
+        native-type="button"
         @click="$emit('logout')"
       >
         Disconnect
-      </button>
-      <button
+      </Button>
+      <Button
         v-else
+        unstyled
         class="auth-button"
-        type="button"
+        native-type="button"
         :disabled="isLoading"
         @click="$emit('start-login')"
       >
         {{ isLoading ? 'Connecting...' : `Login with ${providerName}` }}
-      </button>
+      </Button>
     </div>
 
     <div
@@ -68,14 +70,15 @@
           @input="$emit('update:manualCode', ($event.target as HTMLInputElement).value)"
           @keydown.enter="$emit('submit-code')"
         >
-        <button
+        <Button
+          unstyled
           class="auth-button"
-          type="button"
+          native-type="button"
           :disabled="!manualCode.trim() || isSubmittingCode"
           @click="$emit('submit-code')"
         >
           {{ isSubmittingCode ? 'Verifying...' : 'Submit' }}
-        </button>
+        </Button>
       </div>
       <span
         v-if="codeEntryError"
@@ -95,6 +98,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import ProviderIcon from '../ProviderIcon.vue'
 import type { OAuthStatus, DeviceFlowInfo, CodeEntryInfo } from './useProviderAuth'

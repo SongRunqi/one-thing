@@ -18,15 +18,16 @@
         class="user-nav-mode-tabs"
         aria-label="Navigation mode"
       >
-        <button
-          type="button"
+        <Button
+          unstyled
+          native-type="button"
           class="user-nav-mode-tab"
           aria-label="Show AI outline"
           title="AI outline"
           @click.stop="emit('switchMode')"
         >
           Outline
-        </button>
+        </Button>
         <span
           class="user-nav-mode-tab active"
           aria-current="true"
@@ -34,9 +35,10 @@
           Trail
         </span>
       </div>
-      <button
+      <Button
         v-if="panelAvailable && effectiveOpen"
-        type="button"
+        unstyled
+        native-type="button"
         class="user-nav-close"
         :class="{ 'can-pin': isAutoPanelDismissed }"
         :aria-label="isAutoPanelDismissed ? 'Pin navigation panel' : 'Close navigation panel'"
@@ -55,7 +57,7 @@
           :stroke-width="2.2"
           aria-hidden="true"
         />
-      </button>
+      </Button>
       <div
         class="user-nav-scroll"
         role="listbox"
@@ -70,10 +72,11 @@
             :key="pageStartIndex"
             class="user-nav-page"
           >
-            <button
+            <Button
               v-for="marker in visibleMarkers"
               :key="marker.messageId"
-              type="button"
+              unstyled
+              native-type="button"
               class="user-nav-row"
               :class="{ active: marker.navIndex === currentIndex }"
               :aria-label="marker.label"
@@ -86,7 +89,7 @@
             >
               <span class="user-nav-label">{{ marker.preview || marker.label }}</span>
               <span class="user-nav-marker" />
-            </button>
+            </Button>
           </div>
         </Transition>
       </div>
@@ -96,31 +99,34 @@
         :style="scrollThumbStyle"
         aria-hidden="true"
       />
-      <button
+      <Button
         v-if="hasPreviousPage"
-        type="button"
+        unstyled
+        native-type="button"
         class="user-nav-page-cue user-nav-page-cue-top"
         aria-label="Previous navigation page"
         title="Previous page"
         @click.stop="goToPreviousPage"
       >
         <span class="user-nav-page-cue-icon" />
-      </button>
-      <button
+      </Button>
+      <Button
         v-if="hasNextPage"
-        type="button"
+        unstyled
+        native-type="button"
         class="user-nav-page-cue user-nav-page-cue-bottom"
         aria-label="Next navigation page"
         title="Next page"
         @click.stop="goToNextPage"
       >
         <span class="user-nav-page-cue-icon" />
-      </button>
+      </Button>
     </div>
   </nav>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { Pin, X } from 'lucide-vue-next'
 import { computed, onUnmounted, ref, watch } from 'vue'
 

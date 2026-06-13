@@ -63,6 +63,8 @@ export interface StreamResult {
   pausedForConfirmation: boolean  // Stream paused waiting for tool confirmation
   ctx?: StreamContext
   processor?: StreamProcessor
+  toolIterations: number
+  skillManageCalled: boolean
 }
 
 /**
@@ -594,6 +596,8 @@ export async function runStream(
   const MAX_TOOL_TURNS = 100
   let currentTurn = 0
   let assistantTurn = 0
+  let toolIterations = 0
+  let skillManageCalled = false
   const apiType = getProviderApiType(ctx.settings, ctx.providerId)
   const activeCodexNativeTools = codexNativeTools.length > 0
     ? codexNativeTools
@@ -1141,11 +1145,17 @@ export async function runStream(
 
     lastSettledTurn = turn
     lastTurnInConversation = false
+    if (turn.toolCalls.length > 0) {
+      toolIterations += 1
+      if (turn.toolCalls.some(tc => tc.toolId === 'skill_manage' || tc.toolName === 'skill_manage')) {
+        skillManageCalled = true
+      }
+    }
 
     // If any tool requires confirmation, stop the loop and signal pause
     if (turn.toolCalls.some(tc => tc.requiresConfirmation)) {
       console.log(`[Backend] Tool requires user confirmation, pausing loop`)
-      return { pausedForConfirmation: true, ctx, processor }
+      return { pausedForConfirmation: true, ctx, processor, toolIterations, skillManageCalled }
     }
 
     let appendedContinuation = false
@@ -1235,7 +1245,7 @@ export async function runStream(
   } // end outer while
 
 
-  return { pausedForConfirmation: false, ctx, processor }
+  return { pausedForConfirmation: false, ctx, processor, toolIterations, skillManageCalled }
 }
 
 /**
@@ -1340,8 +1350,15 @@ export async function executeStreamGeneration(
           name: s.name,
           description: s.description,
           source: s.source,
+          category: s.category,
+          tags: s.tags,
+          relatedSkills: s.relatedSkills,
+          conditions: s.conditions,
+          platforms: s.platforms,
           path: s.path,
           directoryPath: s.directoryPath,
+          rootPath: s.rootPath,
+          relativePath: s.relativePath,
           enabled: s.enabled,
           instructions: s.instructions,
           files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
@@ -1528,6 +1545,10 @@ export async function executeStreamGeneration(
             lastAssistantMessage: finalProcessor.accumulatedContent,
             providerId: finalCtx.providerId,
             providerConfig: finalCtx.providerConfig,
+            settings: finalCtx.settings,
+            toolIterations: result.toolIterations,
+            skillManageCalled: result.skillManageCalled,
+            enabledToolNames: Object.keys(toolsForAI),
           }
 
           // Run triggers asynchronously - don't await

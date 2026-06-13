@@ -7,67 +7,70 @@
       ref="listRef"
       class="sessions-list"
       :data-suppress-anim="suppressAnim ? '' : null"
-      role="list"
       @scroll="checkOverflow"
     >
-      <slot name="before" />
-
-      <!-- Temporal groups -->
-      <div
-        v-for="group in groups"
-        :key="group.key"
-        class="session-group"
+      <AppMenu
+        class="sidebar-menu"
+        :model-value="activeIndex"
+        :default-openeds="expandedGroupMenuIndexes"
+        :ellipsis="false"
+        menu-trigger="click"
+        @select="handleMenuSelect"
+        @open="handleMenuOpen"
+        @close="handleMenuClose"
       >
-        <button
-          class="session-group-header"
-          @click="toggleGroup(group.key)"
-        >
-          <svg
-            class="group-chevron"
-            :class="{ collapsed: isGroupCollapsed(group.key) }"
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-          <span class="group-label">{{ group.label }}</span>
-          <span
-            v-if="isGroupCollapsed(group.key)"
-            class="group-count"
-          >{{ rootCount(group) }}</span>
-        </button>
+        <slot name="before" />
 
-        <template v-if="!isGroupCollapsed(group.key)">
-          <SessionItem
-            v-for="session in visibleSessions(group)"
-            :key="session.id"
-            :session="session"
-            :is-active="session.id === currentSessionId"
-            :is-generating="isSessionGenerating(session.id)"
-            :is-editing="editingSessionId === session.id"
-            :editing-name="editingName"
-            @click="(e) => handleSessionClick(e, session)"
-            @context-menu="(e) => $emit('context-menu', e, session)"
-            @toggle-collapse="$emit('toggle-collapse', session.id)"
-            @start-rename="$emit('start-rename', session)"
-            @confirm-rename="(name) => $emit('confirm-rename', session.id, name)"
-            @cancel-rename="$emit('cancel-rename')"
-          />
-          <button
-            v-if="hasMore(group)"
-            class="load-more-btn"
-            @click="loadMore(group.key)"
-          >
-            显示更多
-          </button>
-        </template>
-      </div>
+        <SubMenu
+          v-for="(group, groupIndex) in groups"
+          :key="group.key"
+          :index="groupMenuIndex(group.key)"
+          class="session-group"
+          :class="{ 'is-first-group': groupIndex === 0 }"
+        >
+          <template #title>
+            <span class="group-label">{{ group.label }}</span>
+            <span
+              v-if="collapsedGroups.has(group.key)"
+              class="group-count"
+            >{{ rootCount(group) }}</span>
+          </template>
+
+          <div class="session-group-items">
+            <MenuItem
+              v-for="session in visibleSessions(group)"
+              :key="session.id"
+              :index="sessionMenuIndex(session.id)"
+              item-as="div"
+              raw
+              class="session-menu-item"
+              @click="(_, event) => handleSessionMenuClick(event, session)"
+            >
+              <SessionItem
+                :session="session"
+                :is-active="activeIndex === sessionMenuIndex(session.id)"
+                :is-generating="isSessionGenerating(session.id)"
+                :is-editing="editingSessionId === session.id"
+                :editing-name="editingName"
+                @context-menu="(e) => $emit('context-menu', e, session)"
+                @toggle-collapse="$emit('toggle-collapse', session.id)"
+                @start-rename="$emit('start-rename', session)"
+                @confirm-rename="(name) => $emit('confirm-rename', session.id, name)"
+                @cancel-rename="$emit('cancel-rename')"
+              />
+            </MenuItem>
+            <Button
+              v-if="hasMore(group)"
+              text
+              size="small"
+              class="load-more-btn"
+              @click.stop="loadMore(group.key)"
+            >
+              显示更多
+            </Button>
+          </div>
+        </SubMenu>
+      </AppMenu>
 
       <div
         v-if="groups.length === 0"
@@ -80,12 +83,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import Button from '@/components/common/Button.vue'
+import AppMenu from '@/components/common/Menu.vue'
+import MenuItem from '@/components/common/MenuItem.vue'
+import SubMenu from '@/components/common/SubMenu.vue'
+import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import SessionItem from './SessionItem.vue'
 import type { SessionWithBranches, SessionGroup } from './useSessionOrganizer'
 
 interface Props {
   groups: SessionGroup[]
+  activeIndex: string
   currentSessionId: string | null
   isSessionGenerating: (sessionId: string) => boolean
   editingSessionId: string | null
@@ -93,7 +101,7 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'session-click', event: MouseEvent, session: SessionWithBranches): void
+  (e: 'menu-select', index: string): void
   (e: 'context-menu', event: MouseEvent, session: SessionWithBranches): void
   (e: 'toggle-collapse', sessionId: string): void
   (e: 'start-rename', session: SessionWithBranches): void
@@ -102,7 +110,9 @@ interface Emits {
   (e: 'overflow-change', isOverflowing: boolean, hasContentBelow: boolean): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  activeIndex: '',
+})
 const emit = defineEmits<Emits>()
 
 const listRef = ref<HTMLElement | null>(null)
@@ -114,6 +124,11 @@ const DEFAULT_VISIBLE = 5   // root sessions shown per group by default
 const LOAD_STEP = 10        // additional roots revealed per "show more" click
 const collapsedGroups = ref<Set<string>>(new Set(['older']))
 const groupLimits = ref<Record<string, number>>({})
+const expandedGroupMenuIndexes = computed(() =>
+  props.groups
+    .filter(group => !collapsedGroups.value.has(group.key))
+    .map(group => groupMenuIndex(group.key))
+)
 
 // Count top-level (root) sessions in a group; branches ride along with their root
 function rootCount(group: SessionGroup): number {
@@ -149,14 +164,38 @@ function loadMore(key: string) {
   groupLimits.value = { ...groupLimits.value, [key]: limitFor(key) + LOAD_STEP }
 }
 
-function isGroupCollapsed(key: string): boolean {
-  return collapsedGroups.value.has(key)
+function sessionMenuIndex(sessionId: string): string {
+  return `session:${sessionId}`
 }
 
-function toggleGroup(key: string) {
+function groupMenuIndex(groupKey: string): string {
+  return `group:${groupKey}`
+}
+
+function groupKeyFromMenuIndex(index: string): string | null {
+  if (!index.startsWith('group:')) return null
+  return index.slice('group:'.length)
+}
+
+function handleMenuSelect(index: string) {
+  emit('menu-select', index)
+}
+
+function handleMenuOpen(index: string) {
+  const key = groupKeyFromMenuIndex(index)
+  if (!key) return
   const next = new Set(collapsedGroups.value)
-  if (next.has(key)) next.delete(key)
-  else next.add(key)
+  next.delete(key)
+  collapsedGroups.value = next
+}
+
+function handleMenuClose(index: string) {
+  const key = groupKeyFromMenuIndex(index)
+  if (!key) return
+  const currentGroupKeys = new Set(props.groups.map(group => group.key))
+  if (!currentGroupKeys.has(key)) return
+  const next = new Set(collapsedGroups.value)
+  next.add(key)
   collapsedGroups.value = next
 }
 
@@ -197,24 +236,24 @@ const lastClickInfo = ref<{ sessionId: string; time: number } | null>(null)
 const DOUBLE_CLICK_THRESHOLD = 400
 
 function checkOverflow() {
-  if (listRef.value) {
-    const el = listRef.value
-    // Top separator: show only when content is actually scrolled above (not at top)
-    isOverflowing.value = el.scrollTop > 0
-    // Bottom separator: show only when there's more content below the visible area
-    const hasMore = el.scrollHeight > el.clientHeight &&
-                    el.scrollHeight > Math.ceil(el.scrollTop + el.clientHeight) + 2
-    hasContentBelow.value = hasMore
+  const el = listRef.value
+  if (!el) return
 
-    emit('overflow-change', isOverflowing.value, hasContentBelow.value)
-  }
+  // Top separator: show only when content is actually scrolled above (not at top)
+  isOverflowing.value = el.scrollTop > 0
+  // Bottom separator: show only when there's more content below the visible area
+  const hasMore = el.scrollHeight > el.clientHeight &&
+                  el.scrollHeight > Math.ceil(el.scrollTop + el.clientHeight) + 2
+  hasContentBelow.value = hasMore
+
+  emit('overflow-change', isOverflowing.value, hasContentBelow.value)
 }
 
 function checkOverflowDelayed() {
   setTimeout(checkOverflow, 350)
 }
 
-function handleSessionClick(event: MouseEvent, session: SessionWithBranches) {
+function handleSessionMenuClick(event: MouseEvent, session: SessionWithBranches) {
   const now = Date.now()
   const lastClick = lastClickInfo.value
 
@@ -236,9 +275,8 @@ function handleSessionClick(event: MouseEvent, session: SessionWithBranches) {
     return
   }
 
-  // Single click - record it and emit
+  // Single click - record it. The actual selection is emitted by AppMenu.
   lastClickInfo.value = { sessionId: session.id, time: now }
-  emit('session-click', event, session)
 }
 
 // Watch total session count to recheck overflow
@@ -269,12 +307,14 @@ watch(
 )
 
 onMounted(() => {
-  if (listRef.value) {
+  const listElement = listRef.value
+
+  if (listElement) {
     // MutationObserver for content changes
     mutationObserver = new MutationObserver(() => {
       checkOverflow()
     })
-    mutationObserver.observe(listRef.value, {
+    mutationObserver.observe(listElement, {
       childList: true,
       subtree: true,
       attributes: true,
@@ -285,7 +325,7 @@ onMounted(() => {
     resizeObserver = new ResizeObserver(() => {
       checkOverflow()
     })
-    resizeObserver.observe(listRef.value)
+    resizeObserver.observe(listElement)
 
     // Initial check
     checkOverflowDelayed()
@@ -363,58 +403,92 @@ onUnmounted(() => {
   min-height: 0;
   min-width: 0;
   padding: 3px 10px 64px 12px;
-  scrollbar-gutter: stable;
   contain: strict;
   content-visibility: auto;
 }
 
-/* Each temporal section: sticky header + its rows */
+.sidebar-menu {
+  --app-menu-bg: transparent;
+  --app-menu-border: transparent;
+  --app-menu-width: 100%;
+  --app-menu-padding: 0;
+  --app-menu-item-height: 34px;
+  --app-menu-item-radius: 8px;
+  --app-menu-item-fg: var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item)));
+  --app-menu-item-hover-bg: color-mix(in srgb, var(--ui-sidebar-item-hover-bg, var(--ui-state-hover-bg, var(--hover))) 54%, transparent);
+  --app-menu-item-hover-fg: var(--ui-sidebar-item-hover-fg, var(--ui-text-primary-fg, var(--text-sidebar-item-hover)));
+  --app-menu-active-bg: color-mix(in srgb, var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight))) 54%, transparent);
+  --app-menu-active-fg: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text-primary)));
+
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .session-group {
   display: flex;
   flex-direction: column;
+  overflow: visible;
 }
 
-/* Temporal group header — chunking cue, clickable to collapse, sticks while scrolling */
-.session-group-header {
+.session-group :deep(.app-sub-menu-title) {
   position: sticky;
   top: 0;
   z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  min-height: 0;
+  height: auto;
   margin-right: 6px;
-  padding: 16px 8px 6px;
-  border: none;
+  padding: 11px 8px 4px;
+  border-radius: 0;
   background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
+  color: var(--sidebar-list-meta-fg);
   font-size: 11px;
   font-weight: 430;
   line-height: 1.35;
   letter-spacing: 0;
-  color: var(--sidebar-list-meta-fg);
-  text-align: left;
-  cursor: pointer;
-  user-select: none;
   transition: color 0.15s ease;
 }
 
-.session-group-header:hover {
+.session-group.is-first-group :deep(.app-sub-menu-title) {
+  padding-top: 3px;
+}
+
+.session-group :deep(.app-sub-menu-title:hover),
+.session-group :deep(.app-sub-menu-title:focus-visible) {
+  background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
   color: var(--ui-sidebar-item-hover-fg, var(--ui-text-primary-fg, var(--text-primary)));
+  box-shadow: none;
 }
 
-/* First section header sits flush at the top */
-.session-group:first-child .session-group-header {
-  padding-top: 5px;
-}
-
-.group-chevron {
-  flex-shrink: 0;
+.session-group :deep(.app-sub-menu-chevron) {
+  order: -1;
+  width: 12px;
+  height: 16px;
   color: currentColor;
   opacity: 1;
-  transition: transform 0.18s ease;
 }
 
-.group-chevron.collapsed {
-  transform: rotate(-90deg);
+.session-group :deep(.app-sub-menu-label) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+}
+
+.session-group :deep(.app-sub-menu-panel) {
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.session-group-items {
+  width: 100%;
+}
+
+.session-menu-item :deep(.app-menu-item) {
+  outline-offset: -2px;
 }
 
 .group-label {
@@ -433,6 +507,16 @@ onUnmounted(() => {
 
 /* Show-more affordance per section */
 .load-more-btn {
+  --app-button-height: auto;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 0;
+  --app-button-font-size: 11px;
+  --app-button-hover-fill: color-mix(in srgb, var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover))) 76%, transparent);
+  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
+  justify-content: flex-start;
   margin: 4px 4px 6px;
   padding: 5px 10px;
   border: none;

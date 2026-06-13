@@ -8,6 +8,7 @@
       :messages="panelMessages"
       :is-loading="isLoading"
       :session-id="effectiveSessionId"
+      :layout-transitioning="props.layoutTransitioning"
       @set-quoted-text="handleSetQuotedText"
       @set-input-text="handleSetInputText"
       @regenerate="handleRegenerate"
@@ -22,113 +23,126 @@
       :working-directory="currentSession?.workingDirectory || ''"
     />
 
-    <div
-      ref="composerContainerRef"
-      v-memo="[isGenerating, effectiveSessionId, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction]"
-      class="composer-container"
+    <Teleport
+      :to="props.footerTarget ?? 'body'"
+      :disabled="!props.footerTarget"
     >
-      <BackgroundJobsStatusBar />
-
       <div
-        v-if="currentPendingPermission"
-        class="session-permission-panel"
+        v-show="props.active"
+        ref="composerContainerRef"
+        v-memo="[props.active, isGenerating, effectiveSessionId, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction]"
+        class="composer-container"
       >
-        <div class="permission-main">
-          <div class="permission-label">
-            Permission required
-          </div>
-          <div class="permission-title">
-            {{ permissionTitle(currentPendingPermission.toolCall) }}
-          </div>
-          <div
-            v-if="permissionPreview(currentPendingPermission.toolCall)"
-            class="permission-preview"
-          >
-            {{ permissionPreview(currentPendingPermission.toolCall) }}
-          </div>
-          <div
-            v-if="queuedBehindPermission.length > 0"
-            class="permission-queue"
-          >
-            {{ queuedBehindPermission.length }} queued behind this permission
-          </div>
-        </div>
-        <div class="permission-actions">
-          <div class="permission-allow-group">
-            <button
-              class="permission-btn allow"
-              type="button"
-              title="Allow once"
-              @click="approveCurrentPermission('once')"
-            >
-              Allow
-            </button>
-            <button
-              class="permission-btn allow-scope"
-              type="button"
-              title="Allow for this session"
-              @click="approveCurrentPermission('session')"
-            >
-              Session
-            </button>
-            <button
-              v-if="canAllowWorkspace(currentPendingPermission.toolCall)"
-              class="permission-btn allow-scope"
-              type="button"
-              title="Allow in this workspace"
-              @click="approveCurrentPermission('workdir')"
-            >
-              Workspace
-            </button>
-          </div>
-          <button
-            class="permission-btn reject"
-            type="button"
-            @click="rejectCurrentPermission"
-          >
-            Reject
-          </button>
-          <button
-            class="permission-btn instruct"
-            type="button"
-            @click="showRejectInstruction = !showRejectInstruction"
-          >
-            Reject with instruction
-          </button>
-        </div>
-        <div
-          v-if="showRejectInstruction"
-          class="permission-instruction"
-        >
-          <textarea
-            v-model="rejectInstruction"
-            class="permission-instruction-input"
-            placeholder="Tell the assistant what to do instead..."
-            rows="2"
-            @keydown.stop
-          />
-          <button
-            class="permission-btn reject"
-            type="button"
-            @click="rejectCurrentPermissionWithInstruction"
-          >
-            Send rejection
-          </button>
-        </div>
-      </div>
+        <BackgroundJobsStatusBar />
 
-      <InputBox
-        ref="inputBoxRef"
-        :is-loading="isGenerating"
-        :session-id="effectiveSessionId"
-        @send-message="handleSendMessage"
-        @stop-generation="handleStopGeneration"
-      />
-    </div>
+        <div
+          v-if="currentPendingPermission"
+          class="session-permission-panel"
+        >
+          <div class="permission-main">
+            <div class="permission-label">
+              Permission required
+            </div>
+            <div class="permission-title">
+              {{ permissionTitle(currentPendingPermission.toolCall) }}
+            </div>
+            <div
+              v-if="permissionPreview(currentPendingPermission.toolCall)"
+              class="permission-preview"
+            >
+              {{ permissionPreview(currentPendingPermission.toolCall) }}
+            </div>
+            <div
+              v-if="queuedBehindPermission.length > 0"
+              class="permission-queue"
+            >
+              {{ queuedBehindPermission.length }} queued behind this permission
+            </div>
+          </div>
+          <div class="permission-actions">
+            <div class="permission-allow-group">
+              <Button
+                unstyled
+                class="permission-btn allow"
+                native-type="button"
+                title="Allow once"
+                @click="approveCurrentPermission('once')"
+              >
+                Allow
+              </Button>
+              <Button
+                unstyled
+                class="permission-btn allow-scope"
+                native-type="button"
+                title="Allow for this session"
+                @click="approveCurrentPermission('session')"
+              >
+                Session
+              </Button>
+              <Button
+                v-if="canAllowWorkspace(currentPendingPermission.toolCall)"
+                unstyled
+                class="permission-btn allow-scope"
+                native-type="button"
+                title="Allow in this workspace"
+                @click="approveCurrentPermission('workdir')"
+              >
+                Workspace
+              </Button>
+            </div>
+            <Button
+              unstyled
+              class="permission-btn reject"
+              native-type="button"
+              @click="rejectCurrentPermission"
+            >
+              Reject
+            </Button>
+            <Button
+              unstyled
+              class="permission-btn instruct"
+              native-type="button"
+              @click="showRejectInstruction = !showRejectInstruction"
+            >
+              Reject with instruction
+            </Button>
+          </div>
+          <div
+            v-if="showRejectInstruction"
+            class="permission-instruction"
+          >
+            <textarea
+              v-model="rejectInstruction"
+              class="permission-instruction-input"
+              placeholder="Tell the assistant what to do instead..."
+              rows="2"
+              @keydown.stop
+            />
+            <Button
+              unstyled
+              class="permission-btn reject"
+              native-type="button"
+              @click="rejectCurrentPermissionWithInstruction"
+            >
+              Send rejection
+            </Button>
+          </div>
+        </div>
+
+        <InputBox
+          ref="inputBoxRef"
+          :is-loading="isGenerating"
+          :session-id="effectiveSessionId"
+          @send-message="handleSendMessage"
+          @stop-generation="handleStopGeneration"
+        />
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
@@ -141,9 +155,16 @@ import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
 import type { MessageAttachment, ToolCall } from '@/types'
 import { buildToolPermissionTitle } from '@/stores/helpers/tool-display'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   sessionId?: string
-}>()
+  active?: boolean
+  footerTarget?: HTMLElement | null
+  layoutTransitioning?: boolean
+}>(), {
+  active: true,
+  footerTarget: null,
+  layoutTransitioning: false,
+})
 
 const emit = defineEmits<{
   splitWithBranch: [sessionId: string]
@@ -222,6 +243,10 @@ let composerMeasureFrame: number | null = null
 let lastMeasuredComposerHeight = -1
 let contentColumnResizeObserver: ResizeObserver | null = null
 let contentColumnMeasureFrame: number | null = null
+let deferredComposerMeasure = false
+let deferredContentColumnMeasure = false
+let deferredLayoutMeasureTimer: ReturnType<typeof setTimeout> | null = null
+let pendingComposerResizeHeight: number | null = null
 
 const CONTENT_COLUMN_VAR_NAMES = [
   '--chat-composer-width',
@@ -238,11 +263,15 @@ function getContentColumnElement(): HTMLElement | null {
   return chatPanelRef.value?.querySelector<HTMLElement>('.message-list-content') ?? null
 }
 
+function getLayoutVariableTargets(): HTMLElement[] {
+  return [composerContainerRef.value].filter((element): element is HTMLElement => Boolean(element))
+}
+
 function clearContentColumnVariables() {
-  const panel = chatPanelRef.value
-  if (!panel) return
-  for (const name of CONTENT_COLUMN_VAR_NAMES) {
-    panel.style.removeProperty(name)
+  for (const target of getLayoutVariableTargets()) {
+    for (const name of CONTENT_COLUMN_VAR_NAMES) {
+      target.style.removeProperty(name)
+    }
   }
 }
 
@@ -250,8 +279,25 @@ function cssPx(value: number): string {
   return `${Math.max(0, value).toFixed(2)}px`
 }
 
+function getResizeEntryBlockSize(entry: ResizeObserverEntry): number {
+  const borderBox = entry.borderBoxSize
+  const firstBorderBox = Array.isArray(borderBox) ? borderBox[0] : borderBox
+  return firstBorderBox?.blockSize ?? entry.contentRect.height
+}
+
+function deferChatPanelMeasurementDuringTransition(kind: 'composer' | 'content-column'): boolean {
+  if (!props.layoutTransitioning) return false
+  if (kind === 'composer') {
+    deferredComposerMeasure = true
+  } else {
+    deferredContentColumnMeasure = true
+  }
+  return true
+}
+
 function measureContentColumn() {
   contentColumnMeasureFrame = null
+  if (deferChatPanelMeasurementDuringTransition('content-column')) return
 
   const panel = chatPanelRef.value
   const column = getContentColumnElement()
@@ -267,13 +313,22 @@ function measureContentColumn() {
   const width = columnRect.width
   const center = left + width / 2
 
-  panel.style.setProperty('--chat-composer-width', cssPx(width))
-  panel.style.setProperty('--chat-content-column-left', cssPx(left))
-  panel.style.setProperty('--chat-content-column-right', cssPx(right))
-  panel.style.setProperty('--chat-content-column-center', cssPx(center))
+  const values = {
+    '--chat-composer-width': cssPx(width),
+    '--chat-content-column-left': cssPx(left),
+    '--chat-content-column-right': cssPx(right),
+    '--chat-content-column-center': cssPx(center),
+  }
+
+  for (const target of getLayoutVariableTargets()) {
+    for (const [name, value] of Object.entries(values)) {
+      target.style.setProperty(name, value)
+    }
+  }
 }
 
 function scheduleContentColumnMeasure() {
+  if (deferChatPanelMeasurementDuringTransition('content-column')) return
   if (contentColumnMeasureFrame !== null) return
   contentColumnMeasureFrame = requestAnimationFrame(measureContentColumn)
 }
@@ -299,17 +354,30 @@ function setComposerHeightVariable(height: number) {
   const measuredHeight = Math.max(0, Math.ceil(height))
   if (measuredHeight === lastMeasuredComposerHeight) return
   lastMeasuredComposerHeight = measuredHeight
-  chatPanelRef.value?.style.setProperty('--chat-composer-height', `${measuredHeight}px`)
+  for (const target of getLayoutVariableTargets()) {
+    target.style.setProperty('--chat-composer-height', `${measuredHeight}px`)
+  }
   messageListRef.value?.notifyLayoutChange?.()
+}
+
+function applyPendingComposerResizeHeight(): boolean {
+  if (pendingComposerResizeHeight === null) return false
+  const height = pendingComposerResizeHeight
+  pendingComposerResizeHeight = null
+  setComposerHeightVariable(height)
+  return true
 }
 
 function measureComposerHeight() {
   composerMeasureFrame = null
+  if (deferChatPanelMeasurementDuringTransition('composer')) return
+  if (applyPendingComposerResizeHeight()) return
   const composer = composerContainerRef.value
   setComposerHeightVariable(composer?.getBoundingClientRect().height ?? 0)
 }
 
 function scheduleComposerMeasure() {
+  if (deferChatPanelMeasurementDuringTransition('composer')) return
   if (composerMeasureFrame !== null) return
   composerMeasureFrame = requestAnimationFrame(measureComposerHeight)
 }
@@ -322,8 +390,17 @@ function observeComposerHeight() {
   const composer = composerContainerRef.value
   if (!composer || typeof ResizeObserver === 'undefined') return
 
-  composerResizeObserver = new ResizeObserver(scheduleComposerMeasure)
-  composerResizeObserver.observe(composer)
+  composerResizeObserver = new ResizeObserver((entries) => {
+    const entry = entries.find(item => item.target === composerContainerRef.value) ?? entries[0]
+    if (!entry) return
+    pendingComposerResizeHeight = getResizeEntryBlockSize(entry)
+    if (props.layoutTransitioning) {
+      deferredComposerMeasure = true
+      return
+    }
+    applyPendingComposerResizeHeight()
+  })
+  composerResizeObserver.observe(composer, { box: 'border-box' })
 }
 
 function permissionTitle(toolCall: ToolCall): string {
@@ -449,12 +526,66 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(contentColumnMeasureFrame)
     contentColumnMeasureFrame = null
   }
+  if (deferredLayoutMeasureTimer) {
+    clearTimeout(deferredLayoutMeasureTimer)
+    deferredLayoutMeasureTimer = null
+  }
 
   const sessionId = effectiveSessionId.value
   if (sessionId) {
     saveCurrentSnapshot(sessionId)
   }
 })
+
+watch(
+  () => [props.footerTarget, props.active] as const,
+  () => {
+    nextTick(() => {
+      observeComposerHeight()
+      scheduleContentColumnMeasure()
+      messageListRef.value?.notifyLayoutChange?.()
+    })
+  },
+  { flush: 'post' },
+)
+
+watch(
+  () => props.layoutTransitioning,
+  (isTransitioning, wasTransitioning) => {
+    if (isTransitioning) {
+      if (composerMeasureFrame !== null) {
+        cancelAnimationFrame(composerMeasureFrame)
+        composerMeasureFrame = null
+        deferredComposerMeasure = true
+      }
+      if (contentColumnMeasureFrame !== null) {
+        cancelAnimationFrame(contentColumnMeasureFrame)
+        contentColumnMeasureFrame = null
+        deferredContentColumnMeasure = true
+      }
+      if (deferredLayoutMeasureTimer) {
+        clearTimeout(deferredLayoutMeasureTimer)
+        deferredLayoutMeasureTimer = null
+      }
+      return
+    }
+
+    const shouldMeasureComposer = deferredComposerMeasure
+    const shouldMeasureContentColumn = deferredContentColumnMeasure
+    if (!wasTransitioning || (!shouldMeasureComposer && !shouldMeasureContentColumn)) return
+
+    deferredComposerMeasure = false
+    deferredContentColumnMeasure = false
+    if (deferredLayoutMeasureTimer) {
+      clearTimeout(deferredLayoutMeasureTimer)
+    }
+    deferredLayoutMeasureTimer = setTimeout(() => {
+      deferredLayoutMeasureTimer = null
+      if (shouldMeasureContentColumn) scheduleContentColumnMeasure()
+      if (shouldMeasureComposer) applyPendingComposerResizeHeight()
+    }, 480)
+  },
+)
 
 // Session switch: save/restore scroll position and input state
 watch(effectiveSessionId, async (newId, oldId) => {

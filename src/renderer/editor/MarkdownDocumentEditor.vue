@@ -10,36 +10,40 @@
       class="markdown-document-toolbar"
       aria-label="Markdown formatting"
     >
-      <button
+      <Button
         v-for="item in toolbarItems"
         :key="item.command"
+        text
         class="markdown-command-button"
-        type="button"
+        native-type="button"
         :title="item.title"
         :aria-label="item.title"
-        @click="runCommand(item.command)"
+        @mousedown.prevent
+        @click.stop="runCommand(item.command)"
       >
         <component
           :is="item.icon"
           :size="15"
         />
-      </button>
+      </Button>
     </div>
 
-    <button
+    <Button
       v-if="sourceToggle"
+      text
       class="markdown-source-toggle"
-      type="button"
+      native-type="button"
       :title="sourceMode ? 'Show live preview' : 'Show Markdown source'"
       :aria-label="sourceMode ? 'Show live preview' : 'Show Markdown source'"
       :aria-pressed="sourceMode ? 'true' : 'false'"
-      @click="toggleSourceMode"
+      @mousedown.prevent
+      @click.stop="toggleSourceMode"
     >
       <component
         :is="sourceMode ? Eye : Code2"
         :size="14"
       />
-    </button>
+    </Button>
 
     <TextEditor
       ref="editorRef"
@@ -68,6 +72,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   Bold,
@@ -191,10 +196,12 @@ function runCommand(command: MarkdownCommand) {
   const editor = editorRef.value
   if (!editor) return
   const result = applyMarkdownCommand(editor.getValue(), editor.getSelection(), command)
-  editor.setValue(result.content)
-  nextTick(() => {
-    editor.setSelection(result.selection.from, result.selection.to)
-    editor.focus()
+  queueMicrotask(() => {
+    editor.setValue(result.content)
+    nextTick(() => {
+      editor.setSelection(result.selection.from, result.selection.to)
+      editor.focus()
+    })
   })
   emit('command', command)
 }
@@ -369,6 +376,16 @@ defineExpose<MarkdownDocumentEditorHandle>({
 }
 
 .markdown-command-button {
+  --app-button-height: 28px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 0;
+  --app-button-gap: 0;
+  --app-button-tone: var(--ui-text-muted-fg, var(--text-muted));
+  --app-button-hover-fill: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 72%, transparent);
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   width: 28px;
   height: 28px;
   padding: 0;
@@ -383,13 +400,38 @@ defineExpose<MarkdownDocumentEditorHandle>({
   cursor: pointer;
 }
 
+.markdown-command-button :deep(.app-button-content),
+.markdown-source-toggle :deep(.app-button-content) {
+  justify-content: center;
+}
+
+.markdown-command-button :deep(.app-button-label),
+.markdown-source-toggle :deep(.app-button-label) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
 .markdown-command-button:hover {
+  --app-button-tone: var(--ui-text-primary-fg, var(--text));
+
   color: var(--ui-text-primary-fg, var(--text));
   border-color: var(--ui-border-default-border, var(--border));
   background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 72%, transparent);
 }
 
 .markdown-source-toggle {
+  --app-button-height: 28px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 0;
+  --app-button-gap: 0;
+  --app-button-tone: var(--ui-text-muted-fg, var(--text-muted));
+  --app-button-hover-fill: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))));
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  --app-button-hover-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+
   position: absolute;
   top: 4px;
   right: 4px;

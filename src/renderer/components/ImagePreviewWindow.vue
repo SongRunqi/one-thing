@@ -80,7 +80,8 @@
         <div class="controls-center">
           <!-- Navigation for gallery mode -->
           <template v-if="isGalleryMode">
-            <button
+            <Button
+              unstyled
               class="control-btn"
               :disabled="currentIndex === 0"
               title="Previous (←)"
@@ -96,9 +97,10 @@
               >
                 <polyline points="15 18 9 12 15 6" />
               </svg>
-            </button>
+            </Button>
             <span class="nav-info">{{ currentIndex + 1 }} / {{ images.length }}</span>
-            <button
+            <Button
+              unstyled
               class="control-btn"
               :disabled="currentIndex >= images.length - 1"
               title="Next (→)"
@@ -114,10 +116,11 @@
               >
                 <polyline points="9 18 15 12 9 6" />
               </svg>
-            </button>
+            </Button>
             <div class="divider" />
           </template>
-          <button
+          <Button
+            unstyled
             class="control-btn"
             title="Zoom out (-)"
             @click="zoomOut"
@@ -148,9 +151,10 @@
                 y2="11"
               />
             </svg>
-          </button>
+          </Button>
           <span class="zoom-level">{{ Math.round(scale * 100) }}%</span>
-          <button
+          <Button
+            unstyled
             class="control-btn"
             title="Zoom in (+)"
             @click="zoomIn"
@@ -187,8 +191,9 @@
                 y2="11"
               />
             </svg>
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             class="control-btn"
             title="Reset (0)"
             @click="resetView"
@@ -204,9 +209,10 @@
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
               <path d="M3 3v5h5" />
             </svg>
-          </button>
+          </Button>
           <div class="divider" />
-          <button
+          <Button
+            unstyled
             class="control-btn"
             title="Fit to window"
             @click="fitToWindow"
@@ -231,8 +237,9 @@
               <path d="M3 9h18" />
               <path d="M3 15h18" />
             </svg>
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             class="control-btn"
             title="Actual size (1)"
             @click="actualSize"
@@ -261,10 +268,11 @@
                 stroke="none"
               >1:1</text>
             </svg>
-          </button>
+          </Button>
         </div>
         <div class="controls-right">
-          <button
+          <Button
+            unstyled
             class="control-btn"
             title="Download"
             @click="downloadImage"
@@ -286,7 +294,7 @@
                 y2="3"
               />
             </svg>
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -294,6 +302,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { matchShortcut } from '@/composables/useShortcuts'

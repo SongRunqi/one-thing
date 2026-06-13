@@ -3,19 +3,21 @@
     v-if="enabledCommands.length > 0"
     class="quick-command-bar"
   >
-    <button
+    <Button
       v-for="cmd in enabledCommands"
       :key="cmd.id"
+      unstyled
       class="quick-cmd-btn"
       :title="cmd.description"
       @click="executeQuickCommand(cmd.id)"
     >
       <span class="cmd-name">{{ cmd.id }}</span>
-    </button>
+    </Button>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { getCommands, executeCommand } from '@/services/commands'

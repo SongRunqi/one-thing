@@ -1,8 +1,9 @@
 <template>
   <div class="editor-tab-strip">
-    <button
+    <Button
       v-for="path in openEditors"
       :key="path"
+      unstyled
       :class="['editor-tab', { active: path === activePath }]"
       @click="$emit('select', path)"
       @mousedown.middle.prevent="$emit('close', path)"
@@ -17,11 +18,12 @@
         class="tab-close"
         @click.stop="$emit('close', path)"
       />
-    </button>
+    </Button>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { X } from 'lucide-vue-next'
 import type { EditorBuffer } from '@/composables/useEditorWorkspace'
 

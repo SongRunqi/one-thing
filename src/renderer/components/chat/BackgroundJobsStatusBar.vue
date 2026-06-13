@@ -25,30 +25,33 @@
         >
           :{{ job.ports.join(', :') }}
         </span>
-        <button
+        <Button
+          unstyled
           class="job-stop"
-          type="button"
+          native-type="button"
           title="Stop background service"
           @click.stop="stopJob(job.id)"
         >
           Stop
-        </button>
+        </Button>
       </div>
     </div>
 
-    <button
+    <Button
+      unstyled
       class="refresh-btn"
-      type="button"
+      native-type="button"
       title="Refresh background services"
       :disabled="loading"
       @click.stop="loadJobs"
     >
       Refresh
-    </button>
+    </Button>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 interface BackgroundJobView {

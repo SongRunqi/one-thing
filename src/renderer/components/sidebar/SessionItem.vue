@@ -58,14 +58,16 @@
     </Tooltip>
 
     <!-- Branch Badge：圆形数字，点击展开/收起 -->
-    <button
+    <Button
       v-if="session.hasBranches"
+      text
+      size="small"
       class="branch-badge"
       :title="session.isCollapsed ? `展开 ${session.branchCount} 个分支` : `收起 ${session.branchCount} 个分支`"
       @click.stop="$emit('toggle-collapse')"
     >
       {{ session.branchCount }}
-    </button>
+    </Button>
 
     <!-- 右侧状态区域：相对时间 + generating dot，hover 时隐藏让位给 ⋯ -->
     <div class="status-area">
@@ -79,40 +81,22 @@
     </div>
 
     <!-- Hover action: progressive disclosure menu -->
-    <button
+    <Button
+      text
+      circle
       class="more-btn"
       title="More"
+      aria-label="More"
+      :icon="MoreHorizontal"
       @click.stop="$emit('context-menu', $event)"
-    >
-      <svg
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        stroke="none"
-      >
-        <circle
-          cx="5"
-          cy="12"
-          r="1.6"
-        />
-        <circle
-          cx="12"
-          cy="12"
-          r="1.6"
-        />
-        <circle
-          cx="19"
-          cy="12"
-          r="1.6"
-        />
-      </svg>
-    </button>
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, watch, nextTick } from 'vue'
+import { MoreHorizontal } from 'lucide-vue-next'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { formatRelativeTime, type SessionWithBranches } from './useSessionOrganizer'
 
@@ -315,6 +299,16 @@ function cancelRename() {
 
 /* Branch Badge：圆形数字 */
 .branch-badge {
+  --app-button-height: 18px;
+  --app-button-min-width: 18px;
+  --app-button-padding-x: 5px;
+  --app-button-gap: 0;
+  --app-button-font-size: var(--type-caption-size);
+  --app-button-hover-fill: var(--ui-accent-primary-fg, var(--ui-action-primary-bg, var(--accent)));
+  --app-button-hover-fg: var(--ui-text-inverse-fg, var(--ui-action-primary-fg, var(--text-btn-primary)));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
@@ -323,6 +317,7 @@ function cancelRename() {
   color: var(--ui-accent-primary-fg, var(--accent));
   font-size: var(--type-caption-size);
   font-weight: var(--font-weight-semibold);
+  line-height: var(--type-caption-line-height);
   border: none;
   cursor: pointer;
   flex-shrink: 0;
@@ -353,11 +348,12 @@ function cancelRename() {
 .session-time {
   display: block;
   width: 100%;
-  font-size: 11.5px;
-  line-height: 1;
+  font-size: var(--type-caption-muted-size);
+  font-weight: var(--type-caption-muted-weight);
+  line-height: var(--type-caption-muted-line-height);
   color: var(
     --sidebar-list-meta-fg,
-    color-mix(in srgb, var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 88%, transparent)
+    color-mix(in srgb, var(--type-caption-muted-color, var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)))) 88%, transparent)
   );
   opacity: 1;
   text-align: right;
@@ -370,7 +366,7 @@ function cancelRename() {
 .session-item.active .session-time {
   color: var(
     --sidebar-list-meta-fg-strong,
-    color-mix(in srgb, var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 96%, transparent)
+    color-mix(in srgb, var(--type-meta-color, var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)))) 96%, transparent)
   );
   opacity: 1;
 }
@@ -390,9 +386,9 @@ function cancelRename() {
 .session-name {
   flex: 1;
   min-width: 0;
-  font-size: 13.5px;
+  font-size: var(--type-size-500);
   font-weight: var(--type-body-weight);
-  line-height: 20px;
+  line-height: var(--type-chat-compact-line-height-px);
   letter-spacing: 0;
   color: var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item)));
   white-space: nowrap;
@@ -406,7 +402,7 @@ function cancelRename() {
 }
 
 .session-item.active .session-name {
-  font-weight: 520;
+  font-weight: var(--type-label-weight);
   color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
@@ -417,15 +413,23 @@ function cancelRename() {
   margin: 0;
   border: none;
   background: transparent;
-  font-size: 13.5px;
+  font-size: var(--type-size-500);
   font-weight: var(--type-body-weight);
-  line-height: 20px;
+  line-height: var(--type-chat-compact-line-height-px);
   color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text)));
   outline: none;
 }
 
 /* Hover action: progressive disclosure (⋯ → context menu) */
 .more-btn {
+  --app-button-height: 23px;
+  --app-button-min-width: 23px;
+  --app-button-padding-x: 0;
+  --app-button-hover-fill: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--bg-hover)));
+  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text-primary)));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   position: absolute;
   right: 7px;
   top: 50%;

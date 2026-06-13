@@ -18,8 +18,9 @@
       v-else
       class="recording-hint"
     >Press keys...</span>
-    <button
+    <Button
       v-if="hasShortcut && !isRecording"
+      unstyled
       class="clear-btn"
       title="Clear shortcut"
       @click.stop="clearShortcut"
@@ -45,11 +46,12 @@
           y2="18"
         />
       </svg>
-    </button>
+    </Button>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed } from 'vue'
 import type { KeyboardShortcut } from '../../../shared/ipc'
 

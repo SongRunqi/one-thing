@@ -44,12 +44,13 @@
           </div>
 
           <div class="results-grid">
-            <button
+            <Button
               v-for="item in search.results"
               :key="item.id"
+              unstyled
               class="result-row card-item"
               :class="{ active: item.id === selectedResultId }"
-              type="button"
+              native-type="button"
               @click="selectResult(item.id)"
             >
               <div class="card-header-row">
@@ -82,7 +83,7 @@
                   <span class="status-text">{{ pageStatusLabel(item) }}</span>
                 </span>
               </div>
-            </button>
+            </Button>
           </div>
         </section>
       </div>
@@ -124,9 +125,10 @@
                   :stroke-width="2.2"
                 />
               </a>
-              <button
+              <Button
+                unstyled
                 class="close-reader-btn"
-                type="button"
+                native-type="button"
                 title="Close reader"
                 @click="isReaderOpen = false"
               >
@@ -134,7 +136,7 @@
                   :size="14"
                   :stroke-width="2.2"
                 />
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -220,6 +222,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { AlertCircle, ExternalLink, FileText, Loader2, Search, X } from 'lucide-vue-next'
 import type { ToolPartialResult } from '@/types'

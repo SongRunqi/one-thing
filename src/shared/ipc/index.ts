@@ -239,6 +239,7 @@ export type {
 export type {
   SkillSource,
   SkillDefinition,
+  SkillConditions,
   SkillReferenceSnapshot,
   SkillFile,
   SkillSettings,
@@ -366,6 +367,7 @@ export type {
 export type {
   ColorTheme,
   MessageListDensity,
+  TypographyDensity,
   BaseTheme,
   KeyboardShortcut,
   ShortcutSettings,
@@ -377,6 +379,7 @@ export type {
   SoulMemoryLogLevel,
   SoulMemoryLoggingSettings,
   SoulMemoryCaptureSettings,
+  SoulMemoryReviewSettings,
   SoulMemoryCanonicalSettings,
   SoulMemoryDreamingSettings,
   SoulMemoryDailyContextSettings,
@@ -403,6 +406,7 @@ export type {
   ThemeBorderColors,
   ThemeShadows,
   ThemeEffects,
+  ThemeNeutralColors,
   SemanticHighlightToken,
   HighlightFontStyle,
   HighlightStyle,

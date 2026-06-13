@@ -11,19 +11,21 @@ import type {
   SoulMemoryFlushSettings,
   SoulMemoryLoggingSettings,
   SoulMemoryReadSettings,
+  SoulMemoryReviewSettings,
   SoulMemorySearchSettings,
   SoulMemorySettings,
 } from '../../shared/ipc.js'
 
 export type ResolvedSoulMemorySettings = Omit<
   Required<SoulMemorySettings>,
-  'activeMemory' | 'search' | 'embeddings' | 'memoryFlush' | 'capture' | 'dreaming' | 'dailyContext' | 'read' | 'logging'
+  'activeMemory' | 'search' | 'embeddings' | 'memoryFlush' | 'capture' | 'review' | 'dreaming' | 'dailyContext' | 'read' | 'logging'
 > & {
   activeMemory: Required<SoulMemoryActiveSettings>
   search: Required<SoulMemorySearchSettings>
   embeddings: Required<SoulMemoryEmbeddingSettings>
   memoryFlush: Required<SoulMemoryFlushSettings>
   capture: Required<SoulMemoryCaptureSettings>
+  review: Required<SoulMemoryReviewSettings>
   canonicalMemory: Required<SoulMemoryCanonicalSettings>
   dreaming: Required<SoulMemoryDreamingSettings>
   dailyContext: Required<SoulMemoryDailyContextSettings>
@@ -37,6 +39,7 @@ export interface MemoryWorkspace {
   root: string
   memoryDir: string
   soulPath: string
+  userPath: string
   memoryPath: string
   dreamsPath: string
   todayPath: string
@@ -226,6 +229,11 @@ export interface IndexStatus {
   lastCaptureAt?: number
   lastCaptureError?: string
   lastCaptureStatus?: string
+  lastReviewAt?: number
+  lastReviewError?: string
+  lastReviewStatus?: string
+  lastReviewTurn?: number
+  lastReviewApplied?: number
   lastDreamingAt?: number
   lastDreamingError?: string
   lastDreamingApplied?: number

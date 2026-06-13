@@ -19,9 +19,10 @@
         role="toolbar"
         aria-label="Search filters"
       >
-        <button
+        <Button
           v-for="(tab, index) in tabs"
           :key="tab.id"
+          unstyled
           :class="[
             'scope-tab',
             {
@@ -29,14 +30,14 @@
               'default-scope': tab.id === 'all',
             },
           ]"
-          type="button"
+          native-type="button"
           :aria-pressed="activeTab === tab.id"
           :title="`${tab.label} · ⌘${index + 1}`"
           @click="activeTab = tab.id"
         >
           <span>{{ tab.label }}</span>
           <kbd>{{ index + 1 }}</kbd>
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -87,13 +88,14 @@
       >
         <header class="prompt-dialog-header">
           <h2>Create Prompt</h2>
-          <button
-            type="button"
+          <Button
+            unstyled
+            native-type="button"
             class="prompt-dialog-close"
             @click="closePromptCreate"
           >
             ×
-          </button>
+          </Button>
         </header>
         <label>
           <span>Name</span>
@@ -125,16 +127,20 @@
           {{ promptFormError }}
         </div>
         <footer>
-          <button
-            type="button"
+          <Button
+            unstyled
+            native-type="button"
             class="secondary"
             @click="closePromptCreate"
           >
             Cancel
-          </button>
-          <button type="submit">
+          </Button>
+          <Button
+            unstyled
+            native-type="submit"
+          >
             Save
-          </button>
+          </Button>
         </footer>
       </form>
     </div>
@@ -164,6 +170,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { Search } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/themes'
@@ -458,8 +465,8 @@ onUnmounted(() => {
   background: none;
   border: none;
   outline: none;
-  font-size: 16px;
-  line-height: 24px;
+  font-size: var(--type-headline-size);
+  line-height: var(--type-headline-line-height);
   color: var(--ui-text-primary-fg, var(--text));
   font-family: inherit;
 }
@@ -502,9 +509,9 @@ onUnmounted(() => {
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 48%, transparent);
   cursor: pointer;
   font: inherit;
-  font-size: 9.75px;
+  font-size: var(--type-micro-size);
   font-weight: 500;
-  line-height: 1;
+  line-height: var(--type-micro-line-height);
   white-space: nowrap;
   opacity: 0;
   pointer-events: none;
@@ -572,7 +579,7 @@ onUnmounted(() => {
 .scope-tab kbd {
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 62%, transparent);
   font: inherit;
-  font-size: 9px;
+  font-size: var(--type-micro-size);
   opacity: 0;
   width: 0;
   overflow: hidden;
@@ -622,8 +629,8 @@ onUnmounted(() => {
   padding: 16px 18px 0 32px;
   text-align: left;
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 58%, transparent);
-  font-size: 11.5px;
-  line-height: 1.3;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line-height);
 }
 
 .search-state.error {
@@ -665,8 +672,9 @@ onUnmounted(() => {
 
 .prompt-dialog h2 {
   margin: 0;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--type-title-sm-size);
+  font-weight: var(--type-title-sm-weight);
+  line-height: var(--type-title-sm-line-height);
 }
 
 .prompt-dialog-close {
@@ -682,7 +690,8 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 4px;
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 78%, transparent);
-  font-size: 11.5px;
+  font-size: var(--type-caption-size);
+  line-height: var(--type-caption-line-height);
 }
 
 .prompt-dialog input,
@@ -694,8 +703,8 @@ onUnmounted(() => {
   background: var(--ui-surface-app-bg, var(--bg));
   color: var(--ui-text-primary-fg, var(--text));
   font: inherit;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
   outline: none;
   padding: 7px 8px;
   resize: vertical;
@@ -709,7 +718,8 @@ onUnmounted(() => {
   color: white;
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--type-label-size);
+  line-height: var(--type-label-line-height);
   padding: 6px 10px;
 }
 
@@ -720,7 +730,8 @@ onUnmounted(() => {
 
 .prompt-dialog-error {
   color: var(--ui-status-danger-fg, var(--danger, #d14));
-  font-size: 12px;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
 }
 
 @media (max-width: 620px) {

@@ -16,8 +16,9 @@
         class="enabled-indicator"
         title="Enabled in chat"
       />
-      <button
+      <Button
         v-if="isUserCustomProvider(provider.id)"
+        unstyled
         class="provider-edit-btn"
         title="Edit provider"
         @click.stop="$emit('edit', provider.id)"
@@ -33,11 +34,12 @@
           <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
           <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
         </svg>
-      </button>
+      </Button>
     </div>
 
     <div class="provider-list-divider" />
-    <button
+    <Button
+      unstyled
       class="add-provider-btn"
       @click="$emit('add')"
     >
@@ -52,11 +54,12 @@
         <path d="M12 5v14M5 12h14" />
       </svg>
       <span>Add Custom</span>
-    </button>
+    </Button>
   </aside>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import type { ProviderInfo } from '@/types'
 import ProviderIcon from '../ProviderIcon.vue'
 

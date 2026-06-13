@@ -5,9 +5,10 @@
       <h3 class="section-label">
         Models <span class="count-badge">{{ selectedCount }} selected</span>
       </h3>
-      <button
+      <Button
+        unstyled
         class="refresh-btn"
-        type="button"
+        native-type="button"
         :disabled="isLoading"
         @click="$emit('refresh')"
       >
@@ -16,7 +17,7 @@
           :size="12"
         />
         {{ isLoading ? 'Loading...' : models.length === 0 ? 'Fetch Models' : 'Refresh' }}
-      </button>
+      </Button>
     </div>
 
     <div
@@ -41,15 +42,16 @@
             placeholder="Search models"
             @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
           >
-          <button
+          <Button
             v-if="searchQuery"
+            unstyled
             class="search-clear"
-            type="button"
+            native-type="button"
             title="Clear search"
             @click="$emit('update:searchQuery', '')"
           >
             <X :size="12" />
-          </button>
+          </Button>
         </label>
 
         <div class="add-model-row">
@@ -62,15 +64,16 @@
             @input="$emit('update:newModelInput', ($event.target as HTMLInputElement).value)"
             @keydown.enter.prevent="submitCustomModel"
           >
-          <button
+          <Button
+            unstyled
             class="add-model-btn"
-            type="button"
+            native-type="button"
             :disabled="!newModelInput.trim()"
             @click="submitCustomModel"
           >
             <Plus :size="13" />
             Add
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -229,24 +232,26 @@
                     @click.stop
                     @update:model-value="onMaxOutStep(model.id, $event)"
                   />
-                  <button
+                  <Button
                     v-if="maxOutputs[model.id] != null"
+                    unstyled
                     class="model-out-clear"
-                    type="button"
+                    native-type="button"
                     title="Reset to default (half of model limit)"
                     @click.stop="emit('update-max-output', model.id, null)"
-                  >×</button>
+                  >×</Button>
                 </span>
               </Tooltip>
-              <button
+              <Button
+                unstyled
                 class="model-caps-edit"
                 :class="{ 'has-override': hasCapabilityOverride(model.id) }"
                 :title="capabilityEditTitle(model.id)"
-                type="button"
+                native-type="button"
                 @click.stop="(e) => toggleCapabilityEditor(model.id, e.currentTarget as HTMLElement)"
               >
                 <SlidersHorizontal :size="13" />
-              </button>
+              </Button>
               <Teleport
                 v-if="capabilityEditorOpenFor === model.id"
                 to="body"
@@ -259,14 +264,15 @@
                 >
                   <div class="model-caps-popover-head">
                     <span>Edit model</span>
-                    <button
-                      type="button"
+                    <Button
+                      unstyled
+                      native-type="button"
                       class="model-caps-close"
                       title="Close"
                       @click="closeCapabilityEditor"
                     >
                       ×
-                    </button>
+                    </Button>
                   </div>
 
                   <label class="model-caps-id-label">Model ID</label>
@@ -281,14 +287,15 @@
                       @keydown.enter.prevent="commitRename(model.id)"
                       @keydown.esc.prevent="closeCapabilityEditor"
                     >
-                    <button
-                      type="button"
+                    <Button
+                      unstyled
+                      native-type="button"
                       class="model-caps-id-save"
                       :disabled="!modelIdDraft || modelIdDraft === model.id"
                       @click="commitRename(model.id)"
                     >
                       Save
-                    </button>
+                    </Button>
                   </div>
                   <p
                     v-if="renameError"
@@ -299,14 +306,15 @@
 
                   <div class="model-caps-section-label">
                     <span>Capabilities</span>
-                    <button
+                    <Button
                       v-if="hasCapabilityOverride(model.id)"
-                      type="button"
+                      unstyled
+                      native-type="button"
                       class="model-caps-reset"
                       @click="onResetCapabilities(model.id)"
                     >
                       Reset
-                    </button>
+                    </Button>
                   </div>
                   <div
                     v-for="cap in CAPABILITY_KEYS"
@@ -321,16 +329,17 @@
                       {{ cap.label }}
                     </span>
                     <div class="model-caps-tristate">
-                      <button
+                      <Button
                         v-for="opt in TRISTATE_OPTIONS"
                         :key="opt.value === undefined ? 'auto' : String(opt.value)"
-                        type="button"
+                        unstyled
+                        native-type="button"
                         :class="['tristate-btn', { active: getCapabilityState(model.id, cap.key) === opt.value }]"
                         :title="opt.title"
                         @click="onUpdateCapability(model.id, cap.key, opt.value)"
                       >
                         {{ opt.label }}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   <p class="model-caps-popover-hint">
@@ -355,6 +364,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { Eye, Image, Wrench, Brain, ArrowDownToLine, ArrowUpFromLine, SlidersHorizontal, AudioLines, RefreshCw, Search, X, Plus, Check } from 'lucide-vue-next'
 import type { OpenRouterModel, ModelCapabilityOverride } from '@/types'

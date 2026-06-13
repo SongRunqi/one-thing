@@ -4,18 +4,21 @@
     class="model-selector"
     :class="{ compact: isCompact }"
   >
-    <button
+    <Button
+      text
       class="model-selector-btn"
+      native-type="button"
       :title="displayName || 'Select model'"
-      @click="openPanel"
+      @mousedown.prevent
+      @click.stop="openPanel"
     >
       <!-- Provider icon -->
-      <span class="provider-icon">
+      <template #icon>
         <ProviderIcon
           :provider="currentProvider"
           :size="18"
         />
-      </span>
+      </template>
       <!-- Model name (hidden in compact mode) -->
       <span class="model-text">{{ displayName }}</span>
       <!-- Chevron -->
@@ -30,7 +33,7 @@
       >
         <polyline points="6 9 12 15 18 9" />
       </svg>
-    </button>
+    </Button>
 
     <!-- New two-column panel -->
     <ModelSelectorPanel
@@ -44,6 +47,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
@@ -217,8 +221,19 @@ async function handleSelect(provider: string, model: string) {
 }
 
 .model-selector-btn {
+  --app-button-height: 32px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 8px;
+  --app-button-gap: 6px;
+  --app-button-font-size: 13px;
+  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 6px;
   padding: 0 8px;
   border: none;
@@ -229,6 +244,13 @@ async function handleSelect(provider: string, model: string) {
   color: var(--ui-text-muted-fg, var(--muted));
   transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   height: 32px;
+}
+
+.model-selector-btn :deep(.app-button-label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .model-selector-btn:hover {
@@ -245,7 +267,7 @@ html[data-theme='light'] .model-selector-btn:hover {
   background: rgba(0, 0, 0, 0.05);
 }
 
-.provider-icon {
+.model-selector-btn :deep(.app-button-icon) {
   display: flex;
   align-items: center;
   justify-content: center;

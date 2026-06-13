@@ -11,9 +11,10 @@
           <p>{{ agentsStore.agents.length }} configured</p>
         </div>
       </div>
-      <button
+      <Button
+        unstyled
         class="agents-primary-action"
-        type="button"
+        native-type="button"
         @click="startCreate"
       >
         <Plus
@@ -21,7 +22,7 @@
           :stroke-width="2"
         />
         <span>New Agent</span>
-      </button>
+      </Button>
     </header>
 
     <div
@@ -42,12 +43,13 @@
           {{ agentsStore.error }}
         </div>
 
-        <button
+        <Button
           v-for="agent in agentsStore.agents"
           :key="agent.id"
+          unstyled
           class="agent-item"
           :class="{ active: !isCreating && agent.id === activeAgentId }"
-          type="button"
+          native-type="button"
           @click="selectAgent(agent.id)"
         >
           <span class="agent-item-main">
@@ -61,27 +63,29 @@
             :size="15"
             :stroke-width="2.2"
           />
-        </button>
+        </Button>
       </aside>
 
       <section class="agent-editor">
         <div class="agent-editor-header">
-          <button
+          <Button
+            unstyled
             class="back-btn icon-btn"
-            type="button"
+            native-type="button"
             title="Back to list"
             @click="agentDetailActive = false"
           >
             <ArrowLeft :size="16" />
-          </button>
+          </Button>
           <div class="agent-editor-title">
             <h3>{{ isCreating ? 'New Agent' : selectedAgent?.name || 'Agent' }}</h3>
             <span>{{ isCreating ? 'Draft' : selectedAgent?.isDefault ? 'Default agent' : 'Custom agent' }}</span>
           </div>
-          <button
+          <Button
             v-if="canDelete"
+            unstyled
             class="agent-icon-button danger"
-            type="button"
+            native-type="button"
             title="Delete agent"
             :disabled="saving"
             @click="deleteSelectedAgent"
@@ -90,7 +94,7 @@
               :size="15"
               :stroke-width="2"
             />
-          </button>
+          </Button>
         </div>
 
         <div class="agent-editor-scroll">
@@ -117,15 +121,16 @@
             <div class="prompt-templates-panel">
               <span class="templates-label">Quick Templates:</span>
               <div class="templates-list">
-                <button
+                <Button
                   v-for="tpl in promptTemplates"
                   :key="tpl.name"
+                  unstyled
                   class="template-chip"
-                  type="button"
+                  native-type="button"
                   @click="applyTemplate(tpl.prompt)"
                 >
                   {{ tpl.name }}
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -153,9 +158,10 @@
         </div>
 
         <div class="agent-editor-actions">
-          <button
+          <Button
+            unstyled
             class="agent-secondary-action"
-            type="button"
+            native-type="button"
             :disabled="saving"
             @click="resetForm"
           >
@@ -164,10 +170,11 @@
               :stroke-width="2"
             />
             <span>Cancel</span>
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             class="agents-primary-action"
-            type="button"
+            native-type="button"
             :disabled="saving"
             @click="saveAgent"
           >
@@ -176,7 +183,7 @@
               :stroke-width="2"
             />
             <span>{{ saving ? 'Saving' : 'Save' }}</span>
-          </button>
+          </Button>
         </div>
       </section>
     </div>
@@ -184,6 +191,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { Bot, Check, Plus, Save, Trash2, X, ArrowLeft } from 'lucide-vue-next'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'

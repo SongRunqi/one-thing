@@ -539,7 +539,10 @@ export class StreamEngine {
         setInitContext({
           skills: enabledSkills.map(s => ({
             id: s.id, name: s.name, description: s.description,
-            source: s.source, path: s.path, directoryPath: s.directoryPath,
+            source: s.source, category: s.category, tags: s.tags, relatedSkills: s.relatedSkills,
+            conditions: s.conditions,
+            platforms: s.platforms, path: s.path, directoryPath: s.directoryPath,
+            rootPath: s.rootPath, relativePath: s.relativePath,
             enabled: s.enabled, instructions: s.instructions,
             files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
           })),

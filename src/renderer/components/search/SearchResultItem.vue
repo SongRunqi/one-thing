@@ -162,9 +162,9 @@ const kindLabel = computed(() => {
   flex: 0 1 auto;
   min-width: 0;
   max-width: 60%;
-  font-size: 13px;
+  font-size: var(--type-label-size);
   font-weight: 590;
-  line-height: 1.16;
+  line-height: var(--type-label-line-height);
   color: var(--ui-text-primary-fg, var(--text));
   white-space: nowrap;
   overflow: hidden;
@@ -183,8 +183,8 @@ const kindLabel = computed(() => {
   align-items: baseline;
   gap: 3px;
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 72%, transparent);
-  font-size: 12px;
-  line-height: 1.16;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -232,9 +232,9 @@ const kindLabel = computed(() => {
   padding: 2px 6px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel))) 34%, transparent);
-  font-size: 10px;
+  font-size: var(--type-micro-size);
   font-weight: 540;
-  line-height: 1;
+  line-height: var(--type-micro-line-height);
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 62%, transparent);
   white-space: nowrap;
   overflow: hidden;

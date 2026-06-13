@@ -23,6 +23,43 @@ describe('compact settings defaults', () => {
   })
 })
 
+describe('typography density defaults', () => {
+  it('uses compact interface typography by default while preserving comfortable chat density', () => {
+    const settings = createDefaultSettings()
+
+    expect(settings.general.typographyDensity).toBe('compact')
+    expect(settings.general.messageListDensity).toBe('comfortable')
+  })
+
+  it('backfills typography density for older settings files', () => {
+    const settings = mergeWithDefaults({
+      general: {} as any,
+    })
+
+    expect(settings.general.typographyDensity).toBe('compact')
+  })
+
+  it('preserves explicit comfortable typography density', () => {
+    const settings = mergeWithDefaults({
+      general: {
+        typographyDensity: 'comfortable',
+      } as any,
+    })
+
+    expect(settings.general.typographyDensity).toBe('comfortable')
+  })
+
+  it('normalizes invalid typography density values', () => {
+    const settings = mergeWithDefaults({
+      general: {
+        typographyDensity: 'roomy',
+      } as any,
+    })
+
+    expect(settings.general.typographyDensity).toBe('compact')
+  })
+})
+
 describe('tool call model settings defaults', () => {
   it('uses chat defaults until a provider/model is selected', () => {
     const settings = createDefaultSettings()
@@ -110,6 +147,8 @@ describe('soul memory settings defaults', () => {
     expect(settings.general.soulMemory?.embeddings?.providerId).toBe('auto')
     expect(settings.general.soulMemory?.embeddings?.apiKey).toBe('')
     expect(settings.general.soulMemory?.memoryFlush?.enabled).toBe(true)
+    expect(settings.general.soulMemory?.review?.enabled).toBe(true)
+    expect(settings.general.soulMemory?.review?.interval).toBe(10)
     expect(settings.general.soulMemory?.dreaming?.enabled).toBe(false)
     expect(settings.general.soulMemory?.dreaming?.frequency).toBe('0 3 * * *')
     expect(settings.general.soulMemory?.dreaming?.lookbackDays).toBe(30)
@@ -137,6 +176,13 @@ describe('soul memory settings defaults', () => {
           },
           memoryFlush: {
             maxInputChars: 1,
+          },
+          review: {
+            interval: 999,
+            maxInputChars: 1,
+            timeoutMs: 1,
+            maxCandidates: 999,
+            minConfidence: 2,
           },
           dreaming: {
             frequency: '*/15 * * * *',
@@ -168,6 +214,11 @@ describe('soul memory settings defaults', () => {
     expect(settings.general.soulMemory?.search?.chunkOverlap).toBe(119)
     expect(settings.general.soulMemory?.search?.maxResults).toBe(20)
     expect(settings.general.soulMemory?.memoryFlush?.maxInputChars).toBe(2000)
+    expect(settings.general.soulMemory?.review?.interval).toBe(200)
+    expect(settings.general.soulMemory?.review?.maxInputChars).toBe(4000)
+    expect(settings.general.soulMemory?.review?.timeoutMs).toBe(1000)
+    expect(settings.general.soulMemory?.review?.maxCandidates).toBe(20)
+    expect(settings.general.soulMemory?.review?.minConfidence).toBe(1)
     expect(settings.general.soulMemory?.dreaming?.frequency).toBe('*/15 * * * *')
     expect(settings.general.soulMemory?.dreaming?.lookbackDays).toBe(365)
     expect(settings.general.soulMemory?.dreaming?.maxSourceFiles).toBe(1)

@@ -2,7 +2,8 @@
   <div :class="['actions', role === 'user' ? 'user-actions' : '', { visible }]">
     <!-- Copy button -->
     <Tooltip :text="copied ? 'Copied!' : 'Copy'">
-      <button
+      <Button
+        unstyled
         class="action-btn copy-btn"
         @click="handleCopy"
       >
@@ -16,7 +17,7 @@
           :size="15"
           :stroke-width="1.5"
         />
-      </button>
+      </Button>
     </Tooltip>
 
     <!-- Edit button for user messages -->
@@ -24,7 +25,8 @@
       v-if="role === 'user'"
       text="Edit"
     >
-      <button
+      <Button
+        unstyled
         class="action-btn edit-btn"
         @click.stop="emit('edit')"
       >
@@ -32,7 +34,7 @@
           :size="15"
           :stroke-width="1.5"
         />
-      </button>
+      </Button>
     </Tooltip>
 
     <!-- Regenerate button (for assistant messages) -->
@@ -40,7 +42,8 @@
       v-if="role === 'assistant'"
       text="Regenerate"
     >
-      <button
+      <Button
+        unstyled
         class="action-btn regenerate-btn"
         @click="emit('regenerate')"
       >
@@ -48,7 +51,7 @@
           :size="15"
           :stroke-width="2"
         />
-      </button>
+      </Button>
     </Tooltip>
 
     <!-- Speak button (for assistant messages with TTS support) -->
@@ -56,7 +59,8 @@
       v-if="role === 'assistant' && ttsSupported"
       :text="isCurrentlySpeaking ? 'Stop' : 'Speak'"
     >
-      <button
+      <Button
+        unstyled
         class="action-btn speak-btn"
         :class="{ speaking: isCurrentlySpeaking }"
         @click="handleSpeak"
@@ -71,7 +75,7 @@
           :size="15"
           :stroke-width="2"
         />
-      </button>
+      </Button>
     </Tooltip>
 
     <!-- Branch button (for assistant messages) -->
@@ -83,7 +87,8 @@
         ref="branchBtnRef"
         class="branch-btn-wrapper"
       >
-        <button
+        <Button
+          unstyled
           class="action-btn"
           :class="{ 'has-branches': hasBranches }"
           @click="hasBranches ? toggleBranchMenu() : emit('branch')"
@@ -96,7 +101,7 @@
             v-if="hasBranches"
             class="branch-count-badge"
           >{{ branchCount }}</span>
-        </button>
+        </Button>
         <!-- Branch dropdown menu -->
         <div
           v-if="showBranchMenu && hasBranches"
@@ -104,9 +109,10 @@
           :style="branchMenuStyle"
         >
           <div class="branch-menu-list">
-            <button
+            <Button
               v-for="branch in branches"
               :key="branch.id"
+              unstyled
               class="branch-menu-item"
               @click="handleGoToBranch(branch.id)"
             >
@@ -115,10 +121,11 @@
                 :size="12"
                 :stroke-width="2"
               />
-            </button>
+            </Button>
           </div>
           <div class="branch-menu-footer">
-            <button
+            <Button
+              unstyled
               class="branch-menu-new"
               @click="handleNewBranch"
             >
@@ -127,7 +134,7 @@
                 :stroke-width="2"
               />
               <span>New branch</span>
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -138,7 +145,8 @@
       v-if="role === 'user'"
       text="Regenerate response"
     >
-      <button
+      <Button
+        unstyled
         class="action-btn regenerate-btn"
         @click="emit('regenerate')"
       >
@@ -146,7 +154,7 @@
           :size="15"
           :stroke-width="2"
         />
-      </button>
+      </Button>
     </Tooltip>
 
     <!-- More menu button (for assistant messages) -->
@@ -156,7 +164,8 @@
       class="more-btn-wrapper"
     >
       <Tooltip text="More">
-        <button
+        <Button
+          unstyled
           class="action-btn more-btn"
           @click.stop="toggleMoreMenu"
         >
@@ -164,7 +173,7 @@
             :size="15"
             :stroke-width="2"
           />
-        </button>
+        </Button>
       </Tooltip>
       <!-- More menu dropdown -->
       <Teleport to="body">
@@ -176,7 +185,8 @@
         >
           <!-- Action items -->
           <div class="more-menu-actions">
-            <button
+            <Button
+              unstyled
               class="more-menu-item"
               @click="handleViewTokenUsage"
             >
@@ -189,7 +199,7 @@
                 v-if="usage"
                 class="more-menu-item-badge"
               >{{ formatCompact(usage.totalTokens) }}</span>
-            </button>
+            </Button>
             <!-- Add more action items here in the future -->
           </div>
 
@@ -228,6 +238,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { useTTS } from '@/composables/useTTS'

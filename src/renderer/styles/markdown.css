@@ -161,8 +161,8 @@ html[data-theme="light"] .md-body img:hover {
 	--md-code-header-padding: 0 8px 0 10px;
 	--md-code-header-bg: color-mix(in srgb, var(--ui-surface-code-header-bg, var(--bg-code-header)) 28%, var(--ui-surface-code-block-bg, var(--bg-code-block)) 72%);
 	--md-code-header-border: 1px solid color-mix(in srgb, var(--ui-surface-code-block-border, var(--border-code, var(--border))) 20%, transparent);
-	--md-code-lang-font-size: 11px;
-	--md-code-lang-line-height: 20px;
+	--md-code-lang-font-size: var(--type-caption-size);
+	--md-code-lang-line-height: var(--type-code-line-height-px);
 	--md-code-lang-fg: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary)) 56%, transparent);
 	--md-code-copy-width: auto;
 	--md-code-copy-height: auto;
@@ -188,8 +188,8 @@ html[data-theme="light"] .md-body img:hover {
 	--md-code-scrollbar-thumb-hover-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 36%, transparent);
 	--md-code-scrollbar-thumb-border: 2px solid transparent;
 	--md-code-font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
-	--md-code-font-size: 13px;
-	--md-code-line-height: 1.5;
+	--md-code-font-size: var(--type-code-size);
+	--md-code-line-height: var(--type-code-line-height);
 	--md-code-plain-fg: var(--hg-syntax-plain-fg, var(--ui-text-primary-fg, var(--text-code-block)));
 }
 
@@ -226,7 +226,7 @@ html[data-theme="light"] .md-body img:hover {
 	width: var(--md-code-copy-width);
 	height: var(--md-code-copy-height);
 	gap: var(--md-code-copy-gap);
-	font-size: var(--md-code-copy-font-size, 12px);
+	font-size: var(--md-code-copy-font-size, var(--type-meta-size));
 	padding: var(--md-code-copy-padding);
 	border-radius: var(--md-code-copy-radius);
 	background: var(--md-code-copy-bg);

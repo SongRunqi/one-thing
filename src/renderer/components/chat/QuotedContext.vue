@@ -8,7 +8,8 @@
       <div class="quoted-text">
         {{ text }}
       </div>
-      <button
+      <Button
+        unstyled
         class="remove-quote-btn"
         title="Remove"
         @click="emit('clear')"
@@ -17,12 +18,13 @@
           :size="16"
           :stroke-width="2.5"
         />
-      </button>
+      </Button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { X } from 'lucide-vue-next'
 
 defineProps<{

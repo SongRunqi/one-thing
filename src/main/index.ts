@@ -8,8 +8,9 @@ import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
 import { initializeToolRegistry } from './tools/index.js'
 import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine, getStreamEngineSafe } from './engine/index.js'
+import { registerBuiltinTriggers } from './engine/triggers/index.js'
 import { getMediaImagesDir } from './stores/paths.js'
-import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge } from './events/index.js'
+import { initializeEventSystem, shutdownEventSystem, initializeIPCBridge, shutdownIPCBridge, getEventBus } from './events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
 import { Permission } from './permission/index.js'
 import { bootstrapVariableSystem } from './variables/index.js'
@@ -83,10 +84,11 @@ app.on('ready', async () => {
   initializeEventSystem()
   initializeSessionLayer()
   initializeStreamEngine()
+  registerBuiltinTriggers()
 
   // Initialize Permission system with EventBus and channel resolver
   Permission.initialize(
-    (await import('./events/index.js')).getEventBus(),
+    getEventBus(),
     (sessionId) => getStreamEngine().getChannel(sessionId),
     (sessionId) => getStreamEngine().getPermissionMode(sessionId),
   )
@@ -106,15 +108,6 @@ app.on('ready', async () => {
 
   // Initialize tool registry
   await initializeToolRegistry()
-
-  // Bootstrap plugin system (after EventBus + StreamEngine + ToolRegistry)
-  const { bootstrapPluginSystem } = await import('./plugins/index.js')
-  const { getEventBus } = await import('./events/index.js')
-  bootstrapPluginSystem(getEventBus(), getStreamEngine()).catch(err => {
-    console.error('[Plugins] Bootstrap failed (non-blocking):', err)
-  })
-  const { initializeUserSchedulerTasks } = await import('./scheduler/user-tasks.js')
-  initializeUserSchedulerTasks()
 
   // Initialize IPC handlers
   initializeIPC()
@@ -162,6 +155,24 @@ app.on('ready', async () => {
     })
   }, 1600)
 
+  startPostWindowServices()
+
+})
+
+function startPostWindowServices(): void {
+  const pluginsReady = (async () => {
+    const { bootstrapPluginSystem } = await import('./plugins/index.js')
+    await bootstrapPluginSystem(getEventBus(), getStreamEngine())
+  })().catch(err => {
+    console.error('[Plugins] Bootstrap failed (non-blocking):', err)
+  })
+
+  import('./scheduler/user-tasks.js')
+    .then(({ initializeUserSchedulerTasks }) => initializeUserSchedulerTasks())
+    .catch(err => {
+      console.error('[Scheduler] User task initialization failed (non-blocking):', err)
+    })
+
   // Initialize MCP system asynchronously (don't block startup)
   initializeMCP().catch(err => {
     console.error('[MCP] Initialization failed (non-blocking):', err)
@@ -172,12 +183,14 @@ app.on('ready', async () => {
     console.error('[Models] First-startup refresh failed (non-blocking):', err)
   })
 
-  // Initialize skills system asynchronously
-  initializeSkills().catch(err => {
-    console.error('[Skills] Initialization failed (non-blocking):', err)
+  // Plugin roots can contribute skills, so load skills after plugin bootstrap
+  // has had a chance to register its roots.
+  pluginsReady.finally(() => {
+    initializeSkills().catch(err => {
+      console.error('[Skills] Initialization failed (non-blocking):', err)
+    })
   })
-
-})
+}
 
 app.on('window-all-closed', () => {
   if (getVoiceService().getState().enabled) {

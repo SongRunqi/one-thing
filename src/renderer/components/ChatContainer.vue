@@ -1,5 +1,5 @@
 <template>
-  <div :class="['chat-container-wrapper', { 'sidebar-collapsed': sidebarCollapsed }]">
+  <div class="chat-container-wrapper">
     <!-- Hover trigger for floating sidebar -->
     <div
       v-if="showHoverTrigger"
@@ -27,7 +27,8 @@
           </svg>
           <h3>No Active Chat</h3>
           <p>Start a new conversation to begin</p>
-          <button
+          <Button
+            unstyled
             class="new-chat-btn"
             @click="createNewSession"
           >
@@ -42,25 +43,31 @@
               <path d="M12 5v14M5 12h14" />
             </svg>
             New Chat
-          </button>
+          </Button>
         </div>
       </div>
       <!-- Chat panels when session exists -->
-      <template v-if="sessionsStore.currentSessionId">
-        <template
+      <Splitter
+        v-if="sessionsStore.currentSessionId"
+        class="chat-panels-splitter"
+        :gap="8"
+      >
+        <SplitterPanel
           v-for="(panel, index) in panels"
           :key="panel.id"
+          v-model:size="panel.size"
+          :min="12"
         >
           <ChatWindow
             :ref="el => setPanelRef(panel.id, el)"
             :session-id="panel.sessionId"
             :can-close="panels.length > 1"
-            :style="{ flex: panel.flex }"
             :show-settings="index === 0 && showSettings"
             :show-sidebar-toggle="sidebarCollapsed && !sidebarFloating"
             :media-panel-open="mediaPanelOpen"
             :is-inspector-open="isInspectorOpen"
             :reserve-sidebar-actions="reserveSidebarActions"
+            :layout-transitioning="layoutTransitioning"
             @close="closePanel(panel.id)"
             @split="openSessionPicker(panel.id)"
             @equalize="equalizeAllPanels"
@@ -71,17 +78,10 @@
             @open-search="$emit('open-search')"
             @create-new-chat="$emit('create-new-chat')"
             @toggle-inspector="$emit('toggle-inspector')"
+            @open-file="$emit('open-file', $event)"
           />
-        </template>
-      </template>
-      <!-- Panel resizer -->
-      <div
-        v-for="(panel, index) in panels.slice(0, -1)"
-        :key="'resizer-' + panel.id"
-        class="panel-resizer"
-        :style="{ left: getResizerPosition(index) }"
-        @mousedown="startResize($event, index)"
-      />
+        </SplitterPanel>
+      </Splitter>
 
       <!-- Diff Overlay -->
       <DiffOverlay
@@ -104,7 +104,8 @@
         <div class="session-picker-dialog">
           <div class="session-picker-header">
             <h3>Select Session for Split View</h3>
-            <button
+            <Button
+              unstyled
               class="close-btn"
               @click="closeSessionPicker"
             >
@@ -118,7 +119,7 @@
               >
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
-            </button>
+            </Button>
           </div>
           <div class="session-picker-search">
             <svg
@@ -146,8 +147,9 @@
           </div>
           <div class="session-picker-list">
             <!-- New Chat option (only show when not searching) -->
-            <button
+            <Button
               v-if="!sessionSearchQuery.trim()"
+              unstyled
               class="session-picker-item new-chat-item"
               @click="createNewChatForSplit"
             >
@@ -163,12 +165,13 @@
               </svg>
               <span class="session-name">New Chat</span>
               <span class="new-badge">Create</span>
-            </button>
+            </Button>
 
             <!-- Existing sessions -->
-            <button
+            <Button
               v-for="session in filteredSessions"
               :key="session.id"
+              unstyled
               class="session-picker-item"
               :class="{ current: session.id === sessionsStore.currentSessionId }"
               @click="selectSessionForSplit(session.id)"
@@ -188,7 +191,7 @@
                 v-if="session.id === sessionsStore.currentSessionId"
                 class="current-badge"
               >Current</span>
-            </button>
+            </Button>
             <div
               v-if="filteredSessions.length === 0"
               class="no-sessions"
@@ -203,11 +206,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import Button from '@/components/common/Button.vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
 import DiffOverlay from '@/components/chat/DiffOverlay.vue'
+import Splitter from '@/components/common/Splitter.vue'
+import SplitterPanel from '@/components/common/SplitterPanel.vue'
 
 // Type for diff overlay data
 interface DiffOverlayData {
@@ -220,10 +226,10 @@ interface DiffOverlayData {
 interface Panel {
   id: string
   sessionId: string
-  flex: number
+  size: number
 }
 
-const props = defineProps<{
+defineProps<{
   showSettings?: boolean
   sidebarCollapsed?: boolean
   sidebarFloating?: boolean
@@ -233,6 +239,7 @@ const props = defineProps<{
   diffOverlayData?: DiffOverlayData | null
   isInspectorOpen?: boolean
   reserveSidebarActions?: boolean
+  layoutTransitioning?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -245,6 +252,7 @@ const emit = defineEmits<{
   'hide-floating-sidebar': []
   'close-diff-overlay': []
   'toggle-inspector': []
+  'open-file': [filePath: string]
 }>()
 
 const sessionsStore = useSessionsStore()
@@ -262,7 +270,7 @@ const panels = ref<Panel[]>([
   {
     id: 'main',
     sessionId: '',
-    flex: 1
+    size: 100
   }
 ])
 
@@ -336,14 +344,15 @@ function splitPanel(panelId: string, sessionId: string) {
   const index = panels.value.findIndex(p => p.id === panelId)
   if (index === -1) return
 
-  // Halve the flex of current panel
-  panels.value[index].flex = panels.value[index].flex / 2
+  // Halve the size of current panel
+  const currentSize = panels.value[index].size || 100 / Math.max(1, panels.value.length)
+  panels.value[index].size = currentSize / 2
 
   // Insert new panel after current
   const newPanel: Panel = {
     id: `panel-${Date.now()}`,
     sessionId: sessionId,
-    flex: panels.value[index].flex
+    size: panels.value[index].size
   }
   panels.value.splice(index + 1, 0, newPanel)
 }
@@ -355,82 +364,21 @@ function closePanel(panelId: string) {
   const index = panels.value.findIndex(p => p.id === panelId)
   if (index === -1) return
 
-  // Give flex to adjacent panel
-  const removedFlex = panels.value[index].flex
+  // Give size to adjacent panel
+  const removedSize = panels.value[index].size
   const targetIndex = index === 0 ? 1 : index - 1
-  panels.value[targetIndex].flex += removedFlex
+  panels.value[targetIndex].size += removedSize
 
   panels.value.splice(index, 1)
 }
 
-// Resizing state
-const isResizing = ref(false)
-const resizeIndex = ref(-1)
-const startX = ref(0)
-const startFlexes = ref<number[]>([])
-
-function getResizerPosition(index: number): string {
-  let totalFlex = 0
-  for (let i = 0; i <= index; i++) {
-    totalFlex += panels.value[i].flex
-  }
-  const totalFlexAll = panels.value.reduce((sum, p) => sum + p.flex, 0)
-  return `calc(${(totalFlex / totalFlexAll) * 100}% - 2px)`
-}
-
-function startResize(event: MouseEvent, index: number) {
-  isResizing.value = true
-  resizeIndex.value = index
-  startX.value = event.clientX
-  startFlexes.value = panels.value.map(p => p.flex)
-
-  document.addEventListener('mousemove', handleResize)
-  document.addEventListener('mouseup', stopResize)
-  document.body.style.cursor = 'col-resize'
-  document.body.style.userSelect = 'none'
-}
-
-function handleResize(event: MouseEvent) {
-  if (!isResizing.value || resizeIndex.value === -1) return
-
-  const container = document.querySelector('.chat-panels')
-  if (!container) return
-
-  const containerWidth = container.clientWidth
-  const deltaX = event.clientX - startX.value
-  const deltaFlex = (deltaX / containerWidth) * startFlexes.value.reduce((a, b) => a + b, 0)
-
-  const leftPanel = panels.value[resizeIndex.value]
-  const rightPanel = panels.value[resizeIndex.value + 1]
-
-  const newLeftFlex = startFlexes.value[resizeIndex.value] + deltaFlex
-  const newRightFlex = startFlexes.value[resizeIndex.value + 1] - deltaFlex
-
-  // Minimum flex value
-  const minFlex = 0.2
-
-  if (newLeftFlex >= minFlex && newRightFlex >= minFlex) {
-    leftPanel.flex = newLeftFlex
-    rightPanel.flex = newRightFlex
-  }
-}
-
-function stopResize() {
-  isResizing.value = false
-  resizeIndex.value = -1
-  document.removeEventListener('mousemove', handleResize)
-  document.removeEventListener('mouseup', stopResize)
-  document.body.style.cursor = ''
-  document.body.style.userSelect = ''
-}
-
-// Equalize all panels - set equal flex values
+// Equalize all panels - set equal size values
 function equalizeAllPanels() {
   if (panels.value.length <= 1) return
 
-  const equalFlex = 1 / panels.value.length
+  const equalSize = 100 / panels.value.length
   panels.value.forEach(panel => {
-    panel.flex = equalFlex
+    panel.size = equalSize
   })
 }
 
@@ -454,12 +402,9 @@ function insertPromptReference(promptId: string) {
   }
 }
 
-// Open a file in a new tab in the first panel
+// Open a file in the app-level right workbench.
 function openFileTab(filePath: string) {
-  const firstPanel = panels.value[0]
-  if (firstPanel && panelRefs.value[firstPanel.id]) {
-    panelRefs.value[firstPanel.id]?.addFileTab(filePath)
-  }
+  emit('open-file', filePath)
 }
 
 async function jumpToMessage(sessionId: string, messageId: string) {
@@ -495,26 +440,19 @@ defineExpose({
   openFileTab,
   jumpToMessage,
 })
-
-onUnmounted(() => {
-  document.removeEventListener('mousemove', handleResize)
-  document.removeEventListener('mouseup', stopResize)
-})
 </script>
 
 <style scoped>
 .chat-container-wrapper {
   flex: 1;
+  height: 100%;
   padding: 0;
   background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
   min-width: 0;
+  min-height: 0;
   display: flex;
   position: relative;
-  transition: padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.chat-container-wrapper.sidebar-collapsed {
-  padding-left: 0;
+  overflow: hidden;
 }
 
 /* Hover trigger for floating sidebar */
@@ -533,25 +471,17 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   height: 100%;
-  gap: 8px;
   position: relative;
   overflow: hidden;
 }
 
-.panel-resizer {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: transparent;
-  cursor: col-resize;
-  z-index: 10;
-  transition: background 0.15s ease;
-}
-
-.panel-resizer:hover,
-.panel-resizer:active {
-  background: var(--ui-accent-primary-fg, var(--accent));
+.chat-panels-splitter {
+  display: flex;
+  flex: 1;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 /* Session Picker Dialog */

@@ -9,7 +9,8 @@
           <span>Running Services</span>
         </template>
         <div class="jobs-actions">
-          <button
+          <Button
+            unstyled
             class="btn secondary"
             :disabled="loading"
             @click="loadJobs"
@@ -19,7 +20,7 @@
               :size="13"
             />
             <span>{{ loading ? 'Refreshing...' : 'Refresh' }}</span>
-          </button>
+          </Button>
         </div>
       </SettingRow>
 
@@ -51,19 +52,21 @@
             log: {{ job.logPath }}
           </div>
         </div>
-        <button
+        <Button
+          unstyled
           class="btn danger"
           :disabled="job.status !== 'running'"
           @click="stopJob(job.id)"
         >
           Stop
-        </button>
+        </Button>
       </div>
     </SettingsGroup>
   </SettingsSection>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { onMounted, ref } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import {

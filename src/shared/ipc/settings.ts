@@ -15,6 +15,9 @@ export type ColorTheme = 'blue' | 'purple' | 'green' | 'orange' | 'pink' | 'cyan
 // Message list density mode
 export type MessageListDensity = 'compact' | 'comfortable' | 'spacious'
 
+// Global typography density mode
+export type TypographyDensity = 'compact' | 'comfortable'
+
 // Base theme controls the overall look (backgrounds, text colors, etc.)
 export type BaseTheme =
   | 'obsidian' | 'ocean' | 'forest' | 'rose' | 'ember'  // Original themes
@@ -123,6 +126,15 @@ export interface SoulMemoryCaptureSettings {
   dailyMinConfidence?: number
 }
 
+export interface SoulMemoryReviewSettings {
+  enabled?: boolean
+  interval?: number
+  maxInputChars?: number
+  timeoutMs?: number
+  maxCandidates?: number
+  minConfidence?: number
+}
+
 export interface SoulMemoryCanonicalSettings {
   enabled?: boolean
   store?: 'sqlite'
@@ -180,6 +192,7 @@ export interface SoulMemorySettings {
   embeddings?: SoulMemoryEmbeddingSettings
   memoryFlush?: SoulMemoryFlushSettings
   capture?: SoulMemoryCaptureSettings
+  review?: SoulMemoryReviewSettings
   canonicalMemory?: SoulMemoryCanonicalSettings
   dreaming?: SoulMemoryDreamingSettings
   dailyContext?: SoulMemoryDailyContextSettings
@@ -196,6 +209,7 @@ export interface GeneralSettings {
   darkThemeId?: string    // Theme ID for dark mode (e.g., 'dracula', 'nord')
   lightThemeId?: string   // Theme ID for light mode (e.g., 'flexoki')
   shortcuts?: ShortcutSettings  // Custom keyboard shortcuts
+  typographyDensity?: TypographyDensity  // Global typography density, default 'compact'
   messageListDensity?: MessageListDensity  // Message list display density, default 'comfortable'
   messageLineHeight?: number  // Message line height, 1.2-2.2, default 1.6
   quickCommands?: QuickCommandConfig[]  // Quick command buttons shown above InputBox

@@ -1,6 +1,6 @@
 import type { SoulMemorySettings } from './settings.js'
 
-export type MemoryManagedFileKind = 'soul' | 'memory' | 'dreams' | 'daily'
+export type MemoryManagedFileKind = 'soul' | 'user' | 'memory' | 'dreams' | 'daily'
 export type CanonicalMemoryKind = 'identity' | 'preference' | 'decision' | 'project' | 'constraint' | 'fact'
 export type MemoryGraphEntityType = 'user' | 'project' | 'tech' | 'component' | 'decision' | 'concept' | 'person' | 'organization'
 export type MemoryGraphObservationKind = CanonicalMemoryKind | 'summary' | 'episodic'
@@ -16,6 +16,7 @@ export type MemoryDiagnosticSubsystem =
   | 'daily'
   | 'active-memory'
   | 'flush'
+  | 'review'
   | 'dreaming'
   | 'scheduler'
   | 'ipc'
@@ -102,6 +103,11 @@ export interface MemoryIndexStatus {
   lastCaptureAt?: number
   lastCaptureError?: string
   lastCaptureStatus?: string
+  lastReviewAt?: number
+  lastReviewError?: string
+  lastReviewStatus?: string
+  lastReviewTurn?: number
+  lastReviewApplied?: number
   lastDreamingAt?: number
   lastDreamingError?: string
   lastDreamingApplied?: number
@@ -160,6 +166,7 @@ export interface MemoryOverview {
   root: string
   memoryDir: string
   soulPath: string
+  userPath: string
   memoryPath: string
   dreamsPath: string
   todayPath: string

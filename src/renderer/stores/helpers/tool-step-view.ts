@@ -218,7 +218,7 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
 }
 
 function shouldDefaultExpand(toolName: string, status: ToolRenderStatus): boolean {
-  if (status === 'failed' || status === 'rejected') return true
+  if (status === 'failed' || status === 'rejected') return false
   if (status === 'streaming-input') {
     const cat = getFileToolCategory(toolName)
     return cat === 'write' || cat === 'edit'
@@ -267,7 +267,9 @@ export function getToolFilePath(
         if (typeof parsed.filePath === 'string') return parsed.filePath
         if (typeof parsed.metadata?.path === 'string') return parsed.metadata.path
       }
-    } catch {}
+    } catch {
+      // Non-JSON results cannot provide structured file metadata.
+    }
   }
 
   if (toolCall?.status === 'input-streaming' && toolCall.streamingArgs) {

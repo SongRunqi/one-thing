@@ -1,6 +1,7 @@
 import { copyTextToClipboard } from '@/utils/clipboard'
 import { perfMark, perfMeasure } from '@/utils/perf'
 import { replaceEmojiShortcodes } from '@/editor/markdown-emoji'
+import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
 import type { MarkdownRenderOptions } from '@/editor/markdown-document'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
@@ -13,6 +14,7 @@ interface MarkdownRendererConfig {
 
 const markdownRendererCache = new Map<string, MarkdownIt>()
 let codeCopyHandlerInstalled = false
+let codeCopyObserver: MutationObserver | null = null
 
 function createMarkdownRenderer(config: MarkdownRendererConfig) {
   const instance = new MarkdownIt({
@@ -53,10 +55,7 @@ function createMarkdownRenderer(config: MarkdownRendererConfig) {
     return `<div class="code-block-container">
     <div class="code-block-header">
       <div class="code-block-lang">${langLabel}</div>
-      <button class="code-block-copy" type="button" data-code="${escapeHtmlAttribute(encodeURIComponent(code))}" title="Copy" aria-label="Copy code">
-        <svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        <svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-      </button>
+      <span class="code-block-copy-host" data-code="${escapeHtmlAttribute(encodeURIComponent(code))}"></span>
     </div>
     <pre><code class="hljs language-${lang}">${highlighted}</code></pre>
   </div>`
@@ -95,6 +94,22 @@ function escapeHtmlAttribute(value: string): string {
 function ensureCodeCopyHandler(): void {
   if (codeCopyHandlerInstalled || typeof document === 'undefined') return
   codeCopyHandlerInstalled = true
+  mountCodeCopyButtons(document)
+
+  if (typeof MutationObserver !== 'undefined') {
+    codeCopyObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        record.addedNodes.forEach((node) => {
+          if (node instanceof Element) mountCodeCopyButtons(node)
+        })
+        record.removedNodes.forEach((node) => {
+          if (node instanceof Element) unmountDomButtons(node)
+        })
+      }
+    })
+    codeCopyObserver.observe(document.body, { childList: true, subtree: true })
+  }
+
   document.addEventListener('click', async (event) => {
     const target = event.target as Element | null
     const button = target?.closest?.('.code-block-copy[data-code]') as HTMLButtonElement | null
@@ -109,6 +124,31 @@ function ensureCodeCopyHandler(): void {
     button.classList.add('copied')
     window.setTimeout(() => button.classList.remove('copied'), 1500)
   })
+}
+
+function mountCodeCopyButtons(root: ParentNode): void {
+  root.querySelectorAll<HTMLElement>('.code-block-copy-host[data-code]').forEach((host) => {
+    if (host.dataset.mountedCodeCopy === 'true') return
+    const encoded = host.getAttribute('data-code') || ''
+    const mounted = createDomButton({
+      className: 'code-block-copy',
+      title: 'Copy',
+      ariaLabel: 'Copy code',
+      attrs: {
+        'data-code': encoded,
+      },
+    })
+    mounted.button.innerHTML = codeCopyIconMarkup()
+    host.dataset.mountedCodeCopy = 'true'
+    host.append(mounted.host)
+  })
+}
+
+function codeCopyIconMarkup(): string {
+  return [
+    '<svg class="copy-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+    '<svg class="check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>',
+  ].join('')
 }
 
 /**

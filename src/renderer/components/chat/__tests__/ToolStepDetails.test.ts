@@ -34,7 +34,7 @@ function mountDetails(step: Step) {
 }
 
 describe('ToolStepDetails inline content', () => {
-  it('renders failed edit oldText as code quotes instead of raw JSON arguments', () => {
+  it('renders failed edit parameters with old and new strings instead of raw JSON arguments', () => {
     const wrapper = mountDetails(makeStep(
       {
         status: 'failed',
@@ -49,10 +49,18 @@ describe('ToolStepDetails inline content', () => {
       { status: 'failed', error: 'No matching text found for oldText.' },
     ))
 
-    const snippets = wrapper.findAll('.failed-edit-snippet')
-    expect(snippets).toHaveLength(2)
-    expect(snippets[0].text()).toBe('<OldToolCard />')
-    expect(snippets[1].text()).toBe('const legacy = true')
+    const oldSnippets = wrapper.findAll('.failed-edit-snippet:not(.replacement)')
+    const newSnippets = wrapper.findAll('.failed-edit-snippet.replacement')
+    expect(wrapper.find('.failed-edit-param-list').text()).toContain('/repo/src/App.vue')
+    expect(wrapper.find('.failed-edit-param-list').text()).toContain('2')
+    expect(oldSnippets).toHaveLength(2)
+    expect(newSnippets).toHaveLength(2)
+    expect(oldSnippets[0].text()).toBe('<OldToolCard />')
+    expect(oldSnippets[1].text()).toBe('const legacy = true')
+    expect(newSnippets[0].text()).toBe('<StepsPanel />')
+    expect(newSnippets[1].text()).toBe('(empty string)')
+    expect(wrapper.text()).toContain('Old string')
+    expect(wrapper.text()).toContain('New string')
     expect(wrapper.text()).not.toContain('oldText')
     expect(wrapper.find('.args-toggle').exists()).toBe(false)
   })

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import MemoryPanelContent from '../memory/MemoryPanelContent.vue'
 import { createDefaultSettings, normalizeSoulMemorySettings } from '../../../shared/defaults/settings'
 import type { MemoryOverview } from '../../../shared/ipc'
@@ -16,6 +16,10 @@ vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => sessionsStore,
 }))
 
+afterEach(() => {
+  document.body.innerHTML = ''
+})
+
 function memoryOverview(): MemoryOverview {
   const settings = createDefaultSettings()
   const now = Date.now()
@@ -25,6 +29,7 @@ function memoryOverview(): MemoryOverview {
     root: '/tmp/onething-memory',
     memoryDir: '/tmp/onething-memory',
     soulPath: '/tmp/onething-memory/SOUL.md',
+    userPath: '/tmp/onething-memory/USER.md',
     memoryPath: '/tmp/onething-memory/MEMORY.md',
     dreamsPath: '/tmp/onething-memory/DREAMS.md',
     todayPath: '/tmp/onething-memory/daily/2026-06-07.md',
@@ -65,6 +70,15 @@ function memoryOverview(): MemoryOverview {
         mtimeMs: now,
         lineCount: 8,
         preview: 'Profile notes',
+      },
+      {
+        absolutePath: '/tmp/onething-memory/USER.md',
+        relativePath: 'USER.md',
+        kind: 'user',
+        size: 90,
+        mtimeMs: now,
+        lineCount: 5,
+        preview: 'User preferences',
       },
       {
         absolutePath: '/tmp/onething-memory/MEMORY.md',
@@ -117,7 +131,7 @@ describe('MemoryPanelContent', () => {
           },
         }),
         saveMemoryFile: vi.fn().mockResolvedValue({ success: true }),
-        searchMemory: vi.fn().mockResolvedValue({ success: true, results: [] }),
+        searchMemory: vi.fn().mockResolvedValue({ success: true, hits: [] }),
         appendMemory: vi.fn().mockResolvedValue({ success: true }),
         revealPath: vi.fn(),
         openPath: vi.fn(),
@@ -169,71 +183,238 @@ describe('MemoryPanelContent', () => {
     })
   })
 
-  it('keeps Memory panel focused on overview, profile, notes, and search', async () => {
+  it('renders a unified memory page with search, profile, and notes', async () => {
     const wrapper = mount(MemoryPanelContent)
     await vi.waitFor(() => {
       expect(window.electronAPI.getMemoryOverview).toHaveBeenCalledWith('default')
-      expect(wrapper.text()).toContain('/tmp/onething-memory')
+      expect(wrapper.text()).toContain('User is in Asia/Shanghai.')
     })
 
-    const labels = wrapper.findAll('.memory-tab').map(tab => tab.text())
-    expect(labels).toEqual(['Overview', 'Profile', 'Notes', 'Search'])
-    expect(labels).not.toContain('Settings')
-    expect(labels).not.toContain('Logs')
-    expect(wrapper.find('.memory-snapshot').exists()).toBe(false)
-    expect(wrapper.find('.memory-hero').text()).toContain('What AI knows')
-    expect(wrapper.find('.memory-hero').text()).toContain('Memory has learned')
-    expect(wrapper.find('.memory-hero-stats').text()).toContain('Durable facts')
-    expect(wrapper.find('.memory-activity').text()).toContain('What AI learned recently')
-    expect(wrapper.find('.memory-activity').text()).toContain('User: Timezone')
-    expect(wrapper.find('.memory-activity').text()).not.toContain('daily/2026-06-07.md')
-    expect(wrapper.find('.diagnostics-domain').text()).toContain('How memory is operating')
-    expect(wrapper.find('.memory-map-block').exists()).toBe(false)
-    expect(wrapper.find('.health-card-block').exists()).toBe(false)
-    expect(wrapper.find('.root-path').exists()).toBe(false)
+    expect(wrapper.find('.memory-tab').exists()).toBe(false)
+    expect(wrapper.find('.memory-hero').exists()).toBe(false)
+    expect(wrapper.find('.diagnostics-card').exists()).toBe(false)
+    expect(wrapper.find('.diagnostics-domain').exists()).toBe(false)
+    expect(wrapper.find('.memory-state-line').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('files indexed')
+    expect(wrapper.find('.memory-search-strip').exists()).toBe(false)
+    expect(wrapper.find('.memory-top-search').exists()).toBe(false)
+    expect(wrapper.find('.profile-section .profile-search-input .filter-search-input').exists()).toBe(true)
+    expect(wrapper.find('.profile-section .memory-profile-table.app-table').exists()).toBe(true)
+    expect(wrapper.find('.profile-section .memory-profile-table.app-table').classes()).not.toContain('is-striped')
+    expect(wrapper.find('.profile-section .memory-profile-table .app-table-scrollbar').attributes('style')).toContain('height: var(--memory-table-height)')
+    const memoryContent = wrapper.find('.profile-section .collapse-panel-content.simple-profile-list')
+    expect(memoryContent.exists()).toBe(true)
+    expect(memoryContent.element.firstElementChild?.classList.contains('memory-profile-table')).toBe(true)
+    expect(wrapper.find('.profile-section').text()).toContain('Memory')
+    expect(wrapper.find('.profile-section').text()).toContain('User is in Asia/Shanghai.')
+    expect(wrapper.find('.profile-section').text()).toContain('Fact')
+    expect(wrapper.find('.profile-section').text()).toContain('Kind')
+    expect(wrapper.find('.memory-panel-title span').exists()).toBe(false)
+    expect(wrapper.find('.profile-section').text()).not.toContain('User: Timezone')
+    expect(wrapper.text()).not.toContain('Create fact')
+    expect(wrapper.find('.notes-section').exists()).toBe(true)
+    expect(wrapper.find('.notes-header').text()).toContain('Notes')
+    expect(wrapper.find('.notes-header').text()).not.toContain('Memory notes')
+    expect(wrapper.find('.notes-header .view-select').exists()).toBe(true)
+    expect(wrapper.find('.notes-header .notes-editor-tabs').text()).toContain('Preview')
+    expect(wrapper.find('.notes-header').text()).toContain('Save')
+    expect(wrapper.find('.notes-header').text()).toContain('Reload')
+    expect(wrapper.find('.notes-header').text()).toContain('Open')
+    expect(wrapper.find('.notes-workspace').exists()).toBe(true)
+    expect(wrapper.find('.notes-header').text()).toContain('Saved')
   })
 
-  it('keeps readable Profile CRUD entry points available', async () => {
+  it('uses themed loading spinner while memory overview is loading', async () => {
+    window.electronAPI.getMemoryOverview = vi.fn(() => new Promise(() => {})) as any
+
     const wrapper = mount(MemoryPanelContent)
-    await vi.waitFor(() => {
-      expect(wrapper.text()).toContain('/tmp/onething-memory')
-    })
+    await wrapper.vm.$nextTick()
 
-    await wrapper.findAll('.memory-tab').find(tab => tab.text().includes('Profile'))!.trigger('click')
-    await vi.waitFor(() => {
-      expect(window.electronAPI.listMemoryGraphEntities).toHaveBeenCalled()
-      expect(wrapper.text()).toContain('Facts (1)')
-    })
-
-    expect(wrapper.text()).toContain('Connections (0)')
-    expect(wrapper.text()).toContain('Entities (1)')
-    expect(wrapper.text()).toContain('Duplicates (0)')
-    expect(wrapper.find('.profile-page').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Create fact')
-    expect(wrapper.find('input[placeholder="Search profile..."]').exists()).toBe(true)
-    expect(wrapper.find('.toolbar-actions').exists()).toBe(true)
+    expect(wrapper.find('.loading-spinner-root').exists()).toBe(true)
+    expect(wrapper.find('.loading-spinner-ring').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Loading memory...')
   })
 
-  it('separates notes and search into task-oriented workspaces', async () => {
+  it('filters the scrollable memory list', async () => {
     const wrapper = mount(MemoryPanelContent)
     await vi.waitFor(() => {
-      expect(wrapper.text()).toContain('/tmp/onething-memory')
+      expect(wrapper.text()).toContain('User is in Asia/Shanghai.')
     })
 
-    await wrapper.findAll('.memory-tab').find(tab => tab.text().includes('Notes'))!.trigger('click')
+    const profileInput = wrapper.find('.profile-search-input .filter-search-input')
+    expect(profileInput.exists()).toBe(true)
+    expect(wrapper.find('.simple-profile-list').exists()).toBe(true)
+    expect(wrapper.find('.simple-profile-list').text()).toContain('User is in Asia/Shanghai.')
+    expect(wrapper.find('.toolbar-actions').exists()).toBe(false)
+
+    await profileInput.setValue('missing')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.simple-profile-list').text()).toContain('No profile rows yet.')
+
+    await profileInput.setValue('Asia')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('.simple-profile-list').text()).toContain('User is in Asia/Shanghai.')
+  })
+
+  it('closes the kind filter menu after choosing a filter', async () => {
+    const wrapper = mount(MemoryPanelContent)
     await vi.waitFor(() => {
-      expect(window.electronAPI.readMemoryFile).toHaveBeenCalled()
+      expect(wrapper.text()).toContain('User is in Asia/Shanghai.')
+    })
+
+    await wrapper.find('.memory-profile-table .app-table-filter-button').trigger('click')
+    expect(document.body.querySelector('.app-table-filter-menu')).not.toBeNull()
+
+    const factOption = Array
+      .from(document.body.querySelectorAll('.app-table-filter-option'))
+      .find(option => option.textContent?.includes('Fact')) as HTMLElement | undefined
+    expect(factOption).toBeTruthy()
+
+    factOption!.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+
+    expect(document.body.querySelector('.app-table-filter-menu')).toBeNull()
+    expect(wrapper.find('.simple-profile-list').text()).toContain('User is in Asia/Shanghai.')
+  })
+
+  it('collapses the memory list while keeping header search available', async () => {
+    const wrapper = mount(MemoryPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('User is in Asia/Shanghai.')
+    })
+
+    const collapseTrigger = wrapper.find('.profile-section .collapse-panel-header')
+    expect(collapseTrigger.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('.profile-section .profile-search-input .filter-search-input').exists()).toBe(true)
+
+    await collapseTrigger.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(collapseTrigger.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('.simple-profile-list').exists()).toBe(false)
+    expect(wrapper.find('.profile-section .profile-search-input .filter-search-input').exists()).toBe(true)
+
+    await collapseTrigger.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(collapseTrigger.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('.simple-profile-list').exists()).toBe(true)
+  })
+
+  it('renders expanded memory details as a responsive grid instead of a nested collapse panel', async () => {
+    const wrapper = mount(MemoryPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('User is in Asia/Shanghai.')
+    })
+
+    await wrapper.find('.memory-profile-table .app-table-expand-button').trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.memory-row-detail-panel').exists()).toBe(false)
+    expect(wrapper.find('.memory-detail-layout').exists()).toBe(true)
+    expect(wrapper.find('.memory-detail-grid').exists()).toBe(true)
+    expect(wrapper.find('.memory-detail-value').text()).toContain('Asia/Shanghai')
+    expect(wrapper.find('.memory-detail-grid').text()).toContain('Confidence')
+    expect(wrapper.find('.memory-detail-grid').text()).toContain('90%')
+    expect(wrapper.find('.memory-detail-evidence').exists()).toBe(false)
+  })
+
+  it('edits a memory row inline', async () => {
+    const wrapper = mount(MemoryPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.find('.memory-row-edit').exists()).toBe(true)
+    })
+
+    await wrapper.find('.memory-row-edit').trigger('click')
+    const textarea = wrapper.find('.memory-edit-textarea')
+    expect(textarea.exists()).toBe(true)
+
+    await textarea.setValue('Updated memory text.')
+    await wrapper.find('.memory-edit-form').trigger('submit')
+
+    await vi.waitFor(() => {
+      expect(window.electronAPI.upsertMemoryGraphObservation).toHaveBeenCalledWith(expect.objectContaining({
+        agentId: 'default',
+        id: 'obs-1',
+        entityId: 'user:self',
+        kind: 'fact',
+        slot: 'timezone',
+        value: 'Asia/Shanghai',
+        text: 'Updated memory text.',
+      }))
+    })
+    expect(wrapper.find('.simple-profile-list').text()).toContain('Updated memory text.')
+    expect(wrapper.find('.memory-edit-textarea').exists()).toBe(false)
+  })
+
+  it('deletes a memory row after confirmation', async () => {
+    const originalConfirm = window.confirm
+    const confirmMock = vi.fn(() => true)
+    Object.defineProperty(window, 'confirm', {
+      configurable: true,
+      writable: true,
+      value: confirmMock,
+    })
+    const wrapper = mount(MemoryPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.find('.memory-row-delete').exists()).toBe(true)
+    })
+
+    await wrapper.find('.memory-row-delete').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(window.electronAPI.deleteMemoryGraphObservation).toHaveBeenCalledWith({
+        agentId: 'default',
+        id: 'obs-1',
+      })
+    })
+    expect(confirmMock).toHaveBeenCalledWith('Delete this memory?')
+    expect(wrapper.find('.simple-profile-list').text()).toContain('No profile rows yet.')
+    Object.defineProperty(window, 'confirm', {
+      configurable: true,
+      writable: true,
+      value: originalConfirm,
+    })
+  })
+
+  it('keeps notes visible while the memory facts search filters', async () => {
+    const wrapper = mount(MemoryPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.find('.notes-header').text()).toContain('Saved')
     })
     expect(wrapper.find('.notes-workspace').exists()).toBe(true)
     expect(wrapper.find('.notes-page').exists()).toBe(true)
     expect(wrapper.find('.viewer').exists()).toBe(true)
-    expect(wrapper.find('.viewer').text()).toContain('Saved')
 
-    await wrapper.findAll('.memory-tab').find(tab => tab.text().includes('Search'))!.trigger('click')
-    expect(wrapper.find('.search-page').exists()).toBe(true)
-    expect(wrapper.find('.search-workspace').text()).toContain('Recall memory')
-    expect(wrapper.find('.search-workspace').text()).toContain('Append note')
-    expect(wrapper.find('.results-surface').text()).toContain('Review')
-    expect(wrapper.find('.results-surface').text()).toContain('Ready to recall')
+    expect(wrapper.find('.memory-top-search').exists()).toBe(false)
+
+    await wrapper.find('.profile-search-input .filter-search-input').setValue('missing')
+    await wrapper.vm.$nextTick()
+
+    expect(window.electronAPI.searchMemory).not.toHaveBeenCalled()
+    expect(wrapper.find('.simple-profile-list').text()).toContain('No profile rows yet.')
+    expect(wrapper.find('.notes-workspace').exists()).toBe(true)
+  })
+
+  it('renders fixed-height note rows with category badges instead of size metadata', async () => {
+    const wrapper = mount(MemoryPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('.file-row').length).toBeGreaterThan(0)
+    })
+
+    const rows = wrapper.findAll('.file-row')
+    const firstRow = rows[0]
+    expect(firstRow.find('.file-icon').exists()).toBe(true)
+    expect(firstRow.find('.file-title-row .file-name').exists()).toBe(true)
+    expect(firstRow.find('.file-title-row .badge').exists()).toBe(true)
+    expect(firstRow.find('.file-path').exists()).toBe(false)
+    expect(firstRow.find('.file-meta').exists()).toBe(false)
+    expect(firstRow.find('.file-date').exists()).toBe(true)
+    expect(firstRow.find('.file-preview').exists()).toBe(true)
+    expect(firstRow.text()).not.toContain('lines')
+    expect(firstRow.text()).not.toContain('120 B')
+
+    const dailyRow = rows.find(row => row.text().includes('Daily capture'))
+    expect(dailyRow?.find('.badge').text()).toBe('Daily')
   })
 })

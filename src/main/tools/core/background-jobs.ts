@@ -21,6 +21,7 @@ export interface BackgroundJob {
 
 const jobs = new Map<string, BackgroundJob>()
 let nextId = 1
+const BACKGROUND_LOG_FILENAME = /^background-\d+-[a-z0-9]+\.log$/
 
 function run(command: string, args: string[]): string {
   const result = spawnSync(command, args, { encoding: 'utf-8', timeout: 3000 })
@@ -74,9 +75,47 @@ export function getListeningPortsForPids(pids: number[]): number[] {
 }
 
 export function createBackgroundLogPath(): string {
-  const dir = path.join(getToolOutputsDir(), 'background-jobs')
+  const dir = getBackgroundJobsLogDir()
   fs.mkdirSync(dir, { recursive: true })
   return path.join(dir, `background-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.log`)
+}
+
+export function getBackgroundJobsLogDir(): string {
+  return path.join(getToolOutputsDir(), 'background-jobs')
+}
+
+export function cleanupBackgroundJobLogs(): number {
+  const dir = getBackgroundJobsLogDir()
+  if (!fs.existsSync(dir)) return 0
+
+  const retainedPaths = new Set(
+    [...jobs.values()]
+      .map(job => job.logPath)
+      .filter((logPath): logPath is string => Boolean(logPath))
+      .map(logPath => path.resolve(logPath)),
+  )
+
+  let removed = 0
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isFile()) continue
+      if (!BACKGROUND_LOG_FILENAME.test(entry.name)) continue
+
+      const fullPath = path.join(dir, entry.name)
+      if (retainedPaths.has(path.resolve(fullPath))) continue
+
+      try {
+        fs.unlinkSync(fullPath)
+        removed += 1
+      } catch {
+        // Ignore cleanup failures; stale logs are non-critical generated artifacts.
+      }
+    }
+  } catch {
+    return removed
+  }
+
+  return removed
 }
 
 export function registerBackgroundJob(input: {
@@ -122,6 +161,7 @@ export function refreshBackgroundJob(id: string): BackgroundJob | undefined {
 
 export function listBackgroundJobs(options: { includeInactive?: boolean } = {}): BackgroundJob[] {
   for (const id of jobs.keys()) refreshBackgroundJob(id)
+  cleanupBackgroundJobLogs()
   return [...jobs.values()]
     .filter(job => options.includeInactive || job.status === 'running')
     .map(job => ({ ...job, childPids: [...job.childPids], ports: [...(job.ports ?? [])] }))

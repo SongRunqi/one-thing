@@ -8,6 +8,10 @@ import { ref, computed } from 'vue'
 import type { ThemeMeta, Theme, GetThemesResponse, ApplyThemeResponse, GeneralSettings } from '../../shared/ipc'
 import { useSettingsStore } from './settings'
 
+function isThemeDebugEnabled(): boolean {
+  return import.meta.env.DEV && localStorage.getItem('onething:debug-theme') === '1'
+}
+
 export const useThemeStore = defineStore('themes', () => {
   // ============= State =============
 
@@ -81,7 +85,9 @@ export const useThemeStore = defineStore('themes', () => {
 
       if (response.success && response.themes) {
         availableThemes.value = response.themes
-        console.log('[ThemeStore] Loaded', response.themes.length, 'themes')
+        if (isThemeDebugEnabled()) {
+          console.log('[ThemeStore] Loaded', response.themes.length, 'themes')
+        }
       } else {
         error.value = response.error || 'Failed to load themes'
         console.error('[ThemeStore] Failed to load themes:', response.error)
@@ -153,7 +159,9 @@ export const useThemeStore = defineStore('themes', () => {
       return await applyCurrentTheme()
     }
 
-    console.log('[ThemeStore] Set theme for mode:', mode, '=', themeId)
+    if (isThemeDebugEnabled()) {
+      console.log('[ThemeStore] Set theme for mode:', mode, '=', themeId)
+    }
     return true
   }
 
@@ -177,7 +185,9 @@ export const useThemeStore = defineStore('themes', () => {
         localStorage.setItem('cached-dark-theme-id', darkThemeId.value)
         localStorage.setItem('cached-light-theme-id', lightThemeId.value)
 
-        console.log('[ThemeStore] Applied theme:', themeId, 'mode:', mode)
+        if (isThemeDebugEnabled()) {
+          console.log('[ThemeStore] Applied theme:', themeId, 'mode:', mode)
+        }
         return true
       }
 
@@ -239,15 +249,17 @@ export const useThemeStore = defineStore('themes', () => {
       console.warn('[ThemeStore] Failed to cache CSS variables:', e)
     }
 
-    // Debug: Check if code syntax highlighting variables are generated
-    const hljsVars = Object.keys(variables).filter(k =>
-      k.startsWith('--hg-') ||
-      k.startsWith('--hljs-') ||
-      k.startsWith('--bg-code') ||
-      k.startsWith('--text-code')
-    )
-    console.log('[ThemeStore] Applied', Object.keys(variables).length, 'CSS variables')
-    console.log('[ThemeStore] Code highlighting vars:', hljsVars.length > 0 ? hljsVars : 'NONE - check theme definition')
+    if (isThemeDebugEnabled()) {
+      const variableKeys = Object.keys(variables)
+      const hljsVars = variableKeys.filter(k =>
+        k.startsWith('--hg-') ||
+        k.startsWith('--hljs-') ||
+        k.startsWith('--bg-code') ||
+        k.startsWith('--text-code')
+      )
+      console.log('[ThemeStore] Applied', variableKeys.length, 'CSS variables')
+      console.log('[ThemeStore] Code highlighting vars:', hljsVars.length > 0 ? hljsVars : 'NONE - check theme definition')
+    }
   }
 
   /**
@@ -271,7 +283,9 @@ export const useThemeStore = defineStore('themes', () => {
       if (response.success && response.cssVariables) {
         applyThemeVariables(response.cssVariables)
         previewThemeId.value = themeId
-        console.log('[ThemeStore] Preview started:', themeId)
+        if (isThemeDebugEnabled()) {
+          console.log('[ThemeStore] Preview started:', themeId)
+        }
       }
     } catch (err: any) {
       console.error('[ThemeStore] Error previewing theme:', themeId, err)
@@ -290,7 +304,9 @@ export const useThemeStore = defineStore('themes', () => {
 
     // Restore original theme
     await setTheme(originalId)
-    console.log('[ThemeStore] Preview cancelled, restored:', originalId)
+    if (isThemeDebugEnabled()) {
+      console.log('[ThemeStore] Preview cancelled, restored:', originalId)
+    }
   }
 
   /**
@@ -329,7 +345,9 @@ export const useThemeStore = defineStore('themes', () => {
     }
     await settingsStore.saveSettings(newSettings)
 
-    console.log('[ThemeStore] Preview confirmed and saved:', previewedId, 'for mode:', mode)
+    if (isThemeDebugEnabled()) {
+      console.log('[ThemeStore] Preview confirmed and saved:', previewedId, 'for mode:', mode)
+    }
   }
 
   /**
@@ -346,7 +364,9 @@ export const useThemeStore = defineStore('themes', () => {
         availableThemes.value = response.themes
         // Clear cache to pick up any theme file changes
         themeCache.value.clear()
-        console.log('[ThemeStore] Refreshed themes:', response.themes.length)
+        if (isThemeDebugEnabled()) {
+          console.log('[ThemeStore] Refreshed themes:', response.themes.length)
+        }
       } else {
         error.value = response.error || 'Failed to refresh themes'
       }
@@ -398,7 +418,9 @@ export const useThemeStore = defineStore('themes', () => {
       lightThemeId.value = cachedLight || cachedLegacy || 'flexoki'
     }
 
-    console.log('[ThemeStore] Initialized with darkThemeId:', darkThemeId.value, 'lightThemeId:', lightThemeId.value)
+    if (isThemeDebugEnabled()) {
+      console.log('[ThemeStore] Initialized with darkThemeId:', darkThemeId.value, 'lightThemeId:', lightThemeId.value)
+    }
 
     // Load available themes
     await loadThemes()

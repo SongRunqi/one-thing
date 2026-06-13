@@ -14,6 +14,13 @@ import type { SkillDefinition } from '../../../shared/ipc.js'
 
 let tmpDir: string
 
+function formatExpectedSkill(skill: SkillDefinition): string {
+  return formatSkillForModel(skill.name, skill.source, skill.description, skill.instructions, {
+    path: skill.path,
+    directoryPath: skill.directoryPath,
+  })
+}
+
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'prompt-resolver-'))
   setPromptsPathForTests(path.join(tmpDir, 'prompts.json'))
@@ -108,7 +115,9 @@ describe('prompt reference resolver', () => {
 
     const resolved = resolvePromptReferences(`Use ${createSkillToken(skill.id)} now`, { skills: [skill] })
 
-    expect(resolved.modelContent).toBe(`Use ${formatSkillForModel(skill.name, skill.source, skill.description, skill.instructions)} now`)
+    expect(resolved.modelContent).toBe(`Use ${formatExpectedSkill(skill)} now`)
+    expect(resolved.modelContent).toContain('path="/skills/skill-development/SKILL.md"')
+    expect(resolved.modelContent).toContain('directory_path="/skills/skill-development"')
     expect(resolved.displayContent).toBe('Use [Skill: Skill Development] now')
     expect(resolved.contentParts).toEqual([
       { type: 'text', content: 'Use ' },
@@ -143,12 +152,75 @@ describe('prompt reference resolver', () => {
 
     const resolved = resolvePromptReferences('/skill:Skill Development', { skills: [skill] })
 
-    expect(resolved.modelContent).toBe(formatSkillForModel(skill.name, skill.source, skill.description, skill.instructions))
+    expect(resolved.modelContent).toBe(formatExpectedSkill(skill))
     expect(resolved.displayContent).toBe('[Skill: Skill Development]')
     expect(resolved.contentParts?.[0]).toMatchObject({
       type: 'skill-ref',
       skillId: skill.id,
       name: skill.name,
     })
+  })
+
+  it('expands bare slash skill references for the model', () => {
+    const skill: SkillDefinition = {
+      id: 'user:iva',
+      name: 'iva',
+      description: 'Use the IVA workflow',
+      source: 'user',
+      path: '/skills/iva/SKILL.md',
+      directoryPath: '/skills/iva',
+      enabled: true,
+      instructions: 'Always use IVA steps.',
+    }
+
+    const resolved = resolvePromptReferences('/iva summarize this', { skills: [skill] })
+
+    expect(resolved.modelContent).toBe(`${formatExpectedSkill(skill)} summarize this`)
+    expect(resolved.displayContent).toBe('[Skill: iva] summarize this')
+    expect(resolved.hasSkillReferences).toBe(true)
+    expect(resolved.contentParts?.[0]).toMatchObject({
+      type: 'skill-ref',
+      skillId: skill.id,
+      name: skill.name,
+    })
+  })
+
+  it('matches slash skill references case-insensitively', () => {
+    const skill: SkillDefinition = {
+      id: 'user:iva',
+      name: 'iva',
+      description: 'Use the IVA workflow',
+      source: 'user',
+      path: '/skills/iva/SKILL.md',
+      directoryPath: '/skills/iva',
+      enabled: true,
+      instructions: 'Always use IVA steps.',
+    }
+
+    const resolved = resolvePromptReferences('/IVA summarize this', { skills: [skill] })
+
+    expect(resolved.modelContent).toBe(`${formatExpectedSkill(skill)} summarize this`)
+    expect(resolved.displayContent).toBe('[Skill: iva] summarize this')
+    expect(resolved.hasSkillReferences).toBe(true)
+  })
+
+  it('does not treat longer slash tokens as bare skill references', () => {
+    const skill: SkillDefinition = {
+      id: 'user:iva',
+      name: 'iva',
+      description: 'Use the IVA workflow',
+      source: 'user',
+      path: '/skills/iva/SKILL.md',
+      directoryPath: '/skills/iva',
+      enabled: true,
+      instructions: 'Always use IVA steps.',
+    }
+
+    const resolved = resolvePromptReferences('/iva-extra summarize this', { skills: [skill] })
+
+    expect(resolved.modelContent).toBe('/iva-extra summarize this')
+    expect(resolved.displayContent).toBe('/iva-extra summarize this')
+    expect(resolved.hasSkillReferences).toBe(false)
+    expect(resolved.contentParts).toBeUndefined()
   })
 })

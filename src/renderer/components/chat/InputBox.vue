@@ -24,14 +24,16 @@
           <span class="queued-file-additions">+{{ queuedFileChanges.additions }}</span>
           <span class="queued-file-deletions">-{{ queuedFileChanges.deletions }}</span>
         </div>
-        <button
+        <Button
+          text
+          size="small"
           class="queued-review-btn"
-          type="button"
+          native-type="button"
           title="Review file changes"
           @click.stop="reviewQueuedFileChanges"
         >
           Review
-        </button>
+        </Button>
       </div>
 
       <div
@@ -82,30 +84,33 @@
         </div>
 
         <div class="queued-message-actions">
-          <button
+          <Button
+            text
+            size="small"
             class="queued-message-action"
-            type="button"
+            native-type="button"
             :disabled="!!item.attachments?.length"
             :title="item.attachments?.length ? 'File messages will send after the current response' : 'Steer the current tool loop with this message'"
             @click.stop="steerQueuedMessage(item.id)"
           >
-            <CornerDownRight
-              :size="15"
-              :stroke-width="2"
-            />
-            <span>Steer</span>
-          </button>
-          <button
+            <template #icon>
+              <CornerDownRight
+                :size="15"
+                :stroke-width="2"
+              />
+            </template>
+            Steer
+          </Button>
+          <Button
+            text
+            circle
             class="queued-message-icon-btn"
-            type="button"
+            native-type="button"
             title="Remove from queue"
+            aria-label="Remove from queue"
+            :icon="Trash2"
             @click.stop="removeQueuedMessage(item.id)"
-          >
-            <Trash2
-              :size="16"
-              :stroke-width="2"
-            />
-          </button>
+          />
         </div>
       </div>
     </TransitionGroup>
@@ -244,19 +249,25 @@
             <span class="voice-capture-title">{{ voiceCaptureTitle }}</span>
             <span class="voice-capture-detail">{{ voiceCaptureDetail }}</span>
           </span>
-          <button
+          <Button
             v-if="isVoiceRecordingActive"
+            text
+            size="small"
+            type="danger"
             class="voice-capture-stop"
-            type="button"
+            native-type="button"
             title="Stop recording and transcribe"
-            @click="handleVoiceButton"
+            @mousedown.prevent
+            @click.stop="handleVoiceButton"
           >
-            <Square
-              :size="12"
-              :stroke-width="2.4"
-            />
-            <span>Stop</span>
-          </button>
+            <template #icon>
+              <Square
+                :size="12"
+                :stroke-width="2.4"
+              />
+            </template>
+            Stop
+          </Button>
         </div>
 
         <div
@@ -287,14 +298,17 @@
               <span class="attachment-name">{{ file.fileName }}</span>
               <span class="attachment-size">{{ formatFileSize(file.size) }}</span>
             </span>
-            <button
+            <Button
+              text
+              circle
               class="attachment-remove"
-              type="button"
+              native-type="button"
               :title="`Remove ${file.fileName}`"
+              :aria-label="`Remove ${file.fileName}`"
+              :icon="X"
+              @mousedown.prevent
               @click.stop="removeAttachment(file.id)"
-            >
-              <X :size="14" />
-            </button>
+            />
           </div>
           <div
             v-if="isProcessingAttachments"
@@ -313,68 +327,80 @@
           <div class="toolbar-left">
             <ModelSelector :session-id="props.sessionId" />
             <ThinkToggle :session-id="props.sessionId" />
-            <button
+            <Button
+              text
+              round
+              size="small"
               class="permission-mode-btn"
-              type="button"
+              native-type="button"
               :class="`mode-${permissionMode}`"
               :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
+              @mousedown.prevent
               @click.stop="cyclePermissionMode"
             >
               {{ permissionModeLabel }}
-            </button>
+            </Button>
           </div>
 
           <div
             class="toolbar-right"
             @click.stop
           >
-            <button
+            <Button
+              size="small"
               class="voice-btn"
               :class="{
                 active: isVoiceRecordingActive,
                 transcribing: isVoiceTranscribingActive,
                 'needs-setup': !!voiceConfigurationError && !voiceStore.isRecording,
               }"
-              type="button"
+              native-type="button"
               :title="voiceButtonTitle"
-              @click="handleVoiceButton"
+              @mousedown.prevent
+              @click.stop="handleVoiceButton"
             >
-              <Square
-                v-if="isVoiceRecordingActive"
-                :size="14"
-                :stroke-width="2.4"
-              />
-              <Loader2
-                v-else-if="isVoiceTranscribingActive"
-                class="voice-spinner"
-                :size="16"
-                :stroke-width="2"
-              />
-              <Mic
-                v-else
-                :size="17"
-                :stroke-width="2"
-              />
-            </button>
-            <button
+              <template #icon>
+                <Square
+                  v-if="isVoiceRecordingActive"
+                  :size="14"
+                  :stroke-width="2.4"
+                />
+                <Loader2
+                  v-else-if="isVoiceTranscribingActive"
+                  class="voice-spinner"
+                  :size="16"
+                  :stroke-width="2"
+                />
+                <Mic
+                  v-else
+                  :size="17"
+                  :stroke-width="2"
+                />
+              </template>
+            </Button>
+            <Button
+              type="primary"
               class="send-btn"
               :class="{ 'stop-btn': shouldShowStopAction }"
               :disabled="isPrimaryActionDisabled"
               :title="primaryActionTitle"
-              @click="handlePrimaryAction"
+              @mousedown.prevent
+              @click.stop="handlePrimaryAction"
             >
-              <Send
-                v-if="!shouldShowStopAction"
-                :size="18"
-                :stroke-width="2"
-              />
-              <Square
-                v-else
-                :size="16"
-                fill="currentColor"
-                :stroke-width="0"
-              />
-            </button>
+              <template #icon>
+                <Send
+                  v-if="!shouldShowStopAction"
+                  :size="18"
+                  :stroke-width="2"
+                />
+                <Square
+                  v-else
+                  :size="16"
+                  fill="currentColor"
+                  :stroke-width="0"
+                />
+              </template>
+            </Button>
           </div>
         </div>
       </div>
@@ -383,6 +409,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
@@ -1458,6 +1485,15 @@ defineExpose({
 }
 
 .queued-review-btn {
+  --app-button-height: 28px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 8px;
+  --app-button-font-size: 14px;
+  --app-button-hover-fill: var(--queued-row-hover);
+  --app-button-hover-fg: var(--queued-row-fg);
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   height: 28px;
   padding: 0 8px;
   border: 0;
@@ -1562,6 +1598,16 @@ defineExpose({
 
 .queued-message-action,
 .queued-message-icon-btn {
+  --app-button-height: 26px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 6px;
+  --app-button-gap: 5px;
+  --app-button-font-size: 12.5px;
+  --app-button-hover-fill: var(--queued-row-hover);
+  --app-button-hover-fg: var(--queued-row-fg);
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   border: 0;
   background: transparent;
   color: var(--queued-row-muted);
@@ -1589,6 +1635,9 @@ defineExpose({
 }
 
 .queued-message-icon-btn {
+  --app-button-min-width: 26px;
+  --app-button-padding-x: 0;
+
   width: 26px;
   height: 26px;
 }
@@ -1797,6 +1846,14 @@ defineExpose({
 }
 
 .attachment-remove {
+  --app-button-height: 22px;
+  --app-button-min-width: 22px;
+  --app-button-padding-x: 0;
+  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   width: 22px;
   height: 22px;
   border: 0;
@@ -1898,6 +1955,16 @@ defineExpose({
 }
 
 .voice-capture-stop {
+  --app-button-height: 26px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 8px;
+  --app-button-gap: 5px;
+  --app-button-font-size: 12px;
+  --app-button-hover-fill: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 15%, transparent);
+  --app-button-hover-fg: var(--ui-status-danger-fg, #ef4444);
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   height: 26px;
   display: inline-flex;
   align-items: center;
@@ -1954,6 +2021,14 @@ defineExpose({
 }
 
 .permission-mode-btn {
+  --app-button-height: 26px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 8px;
+  --app-button-font-size: 11px;
+  --app-button-hover-fill: var(--permission-mode-bg);
+  --app-button-hover-fg: var(--permission-mode-fg-hover);
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
   --permission-mode-fg: var(--ui-text-muted-fg, var(--muted));
   --permission-mode-fg-hover: var(--ui-text-primary-fg, var(--text));
   --permission-mode-border: var(--ui-border-default-border, var(--border));
@@ -2022,6 +2097,18 @@ defineExpose({
 }
 
 .voice-btn {
+  --app-button-height: 29px;
+  --app-button-min-width: 29px;
+  --app-button-padding-x: 0;
+  --app-button-fill: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 48%, transparent);
+  --app-button-fg: var(--ui-text-muted-fg, var(--muted));
+  --app-button-border: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
+  --app-button-hover-fill: var(--ui-state-active-bg, var(--active));
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-hover-border: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   width: 29px;
   height: 29px;
   border-radius: 8px;
@@ -2077,6 +2164,14 @@ defineExpose({
 
 /* Send button */
 .send-btn {
+  --app-button-height: 33px;
+  --app-button-min-width: 33px;
+  --app-button-padding-x: 0;
+  --app-button-hover-fill: var(--ui-action-primary-hover-bg, var(--bg-btn-primary-hover));
+  --app-button-hover-fg: var(--ui-action-primary-fg, var(--text-btn-primary));
+  --app-button-shadow: var(--ui-action-primary-shadow, 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 22%, transparent));
+  --app-button-hover-shadow: var(--ui-action-primary-hover-shadow, 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 24%, transparent));
+
   width: 33px;
   height: 33px;
   border-radius: 10px;
@@ -2156,8 +2251,13 @@ defineExpose({
   .queued-file-summary {
     display: none;
   }
-  .queued-message-action span {
+  .queued-message-action :deep(.app-button-label) {
     display: none;
+  }
+  .queued-message-action {
+    --app-button-padding-x: 0;
+
+    width: 26px;
   }
   .input-area { padding: 8px 10px 0; }
   .composer-toolbar { padding: 5px 7px; }

@@ -12,7 +12,8 @@
             class="staged-badge"
           >Staged</span>
         </div>
-        <button
+        <Button
+          unstyled
           class="close-btn"
           title="Close (Esc)"
           @click="$emit('close')"
@@ -21,7 +22,7 @@
             :size="18"
             :stroke-width="1.5"
           />
-        </button>
+        </Button>
       </div>
       <div class="diff-overlay-content">
         <div
@@ -61,6 +62,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { X } from 'lucide-vue-next'
 import DiffView from '@/components/chat/message/DiffView.vue'

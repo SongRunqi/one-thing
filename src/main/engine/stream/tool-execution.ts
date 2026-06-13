@@ -30,11 +30,11 @@ export function detectSkillUsage(toolName: string, args: Record<string, any>): s
   const command = args.command as string
   if (!command) return null
 
-  // Match patterns like: cat ~/.claude/skills/agent-plan/SKILL.md
-  // or: cat /Users/xxx/.claude/skills/agent-plan/SKILL.md
-  const skillPathMatch = command.match(/(?:cat|less|head|tail|more)\s+.*[/~]\.claude\/skills\/([^/]+)\/SKILL\.md/)
+  // Match patterns like:
+  // cat ~/.onething/skills/writing/docs/SKILL.md
+  const skillPathMatch = command.match(/(?:cat|less|head|tail|more)\s+.*[/~]\.onething\/skills\/(.+?)\/SKILL\.md/)
   if (skillPathMatch) {
-    return skillPathMatch[1]  // Return skill name (e.g., "agent-plan")
+    return skillPathMatch[1].split('/').pop() || skillPathMatch[1]
   }
 
   return null

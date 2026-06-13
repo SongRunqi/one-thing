@@ -36,12 +36,13 @@
           placeholder="Leave empty to use current project directory"
           @input="updateSetting('defaultWorkingDirectory', ($event.target as HTMLInputElement).value)"
         >
-        <button
+        <Button
+          unstyled
           class="browse-btn"
           @click="browseDirectory('default')"
         >
           Browse
-        </button>
+        </Button>
       </div>
       <p class="form-hint">
         Commands will execute in this directory by default
@@ -68,7 +69,8 @@
           class="directory-item"
         >
           <span class="directory-path">{{ dir }}</span>
-          <button
+          <Button
+            unstyled
             class="remove-btn"
             title="Remove"
             @click="removeDirectory(index)"
@@ -94,17 +96,18 @@
                 y2="18"
               />
             </svg>
-          </button>
+          </Button>
         </div>
       </div>
       <div
         v-else
         class="empty-hint"
       >
-        Using default directories: project folder, ~/.claude, /tmp, ~/Downloads
+        Using default directories: project folder, ~/.onething, /tmp, ~/Downloads
       </div>
 
-      <button
+      <Button
+        unstyled
         class="add-btn"
         @click="browseDirectory('add')"
       >
@@ -130,7 +133,7 @@
           />
         </svg>
         Add Directory
-      </button>
+      </Button>
     </div>
 
     <!-- Confirm Dangerous Commands -->
@@ -172,6 +175,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import type { AppSettings, BashToolSettings } from '@/types'
 

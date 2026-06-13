@@ -4,11 +4,12 @@
       <div class="code-block-lang">
         {{ displayLang }}
       </div>
-      <button
+      <Button
+        unstyled
         class="code-block-copy"
         :class="{ copied }"
         :title="complete ? 'Copy' : 'Copy (streaming)'"
-        type="button"
+        native-type="button"
         @click="handleCopy"
       >
         <svg
@@ -41,7 +42,7 @@
         >
           <path d="M20 6L9 17l-5-5" />
         </svg>
-      </button>
+      </Button>
     </div>
     <pre class="code-block-pre"><code
       ref="codeEl"
@@ -51,6 +52,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { renderTokenSpans } from '@/composables/codeTokenizer'
 import { copyTextToClipboard } from '@/utils/clipboard'
@@ -74,9 +76,11 @@ interface LineState {
   el: HTMLSpanElement
 }
 
+type AnimationFrameCallback = (time: number) => void
+
 const raf = typeof requestAnimationFrame === 'function'
   ? requestAnimationFrame
-  : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16) as unknown as number
+  : (cb: AnimationFrameCallback) => setTimeout(() => cb(performance.now()), 16) as unknown as number
 const caf = typeof cancelAnimationFrame === 'function'
   ? cancelAnimationFrame
   : (id: number) => clearTimeout(id)

@@ -103,4 +103,31 @@ describe('system prompt baseline', () => {
     })
     expect(result.systemPrompt).toMatchSnapshot('agent-systemPrompt')
   })
+
+  it('includes compact skill index when the skill tool is available', async () => {
+    const result = await buildPrompt({
+      ...baseOptions({
+        toolNames: ['read', 'skill'],
+        skills: [{
+          id: 'user:writing/docs',
+          name: 'docs-polish',
+          description: 'Improve documentation writing',
+          source: 'user',
+          category: 'writing',
+          tags: ['docs'],
+          path: '/skills/writing/docs/SKILL.md',
+          directoryPath: '/skills/writing/docs',
+          enabled: true,
+          instructions: 'Write clearly.',
+          files: [],
+        } as never],
+      }),
+      providerId: 'openai',
+      historyMessages: [],
+    })
+
+    expect(result.systemPrompt).toContain('# Skills')
+    expect(result.systemPrompt).toContain('docs-polish [writing]: Improve documentation writing (tags=docs)')
+    expect(result.systemPrompt).toContain('action="load"')
+  })
 })

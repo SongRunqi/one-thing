@@ -3,24 +3,27 @@
     <div class="explorer-header">
       <span>Explorer</span>
       <div class="explorer-actions">
-        <button
+        <Button
+          unstyled
           title="New file"
           @click="openNameDialog('create-file', root)"
         >
           <FilePlus :size="13" />
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           title="New folder"
           @click="openNameDialog('create-directory', root)"
         >
           <FolderPlus :size="13" />
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           title="Refresh"
           @click="loadDirectory(root)"
         >
           <RefreshCw :size="13" />
-        </button>
+        </Button>
       </div>
     </div>
     <div
@@ -37,7 +40,7 @@
         :dir-path="root"
         :depth="0"
         :active-path="activePath"
-        @open-file="openFile"
+        @open-file="emit('openFile', $event)"
         @create-file="path => openNameDialog('create-file', path)"
         @create-directory="path => openNameDialog('create-directory', path)"
         @rename-path="path => openNameDialog('rename', path)"
@@ -52,35 +55,44 @@
       :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
       @click.stop
     >
-      <button
+      <Button
         v-if="contextMenu.type === 'directory'"
+        unstyled
         @click="selectContextAction('create-file')"
       >
         <FilePlus :size="13" />
         <span>New File</span>
-      </button>
-      <button
+      </Button>
+      <Button
         v-if="contextMenu.type === 'directory'"
+        unstyled
         @click="selectContextAction('create-directory')"
       >
         <FolderPlus :size="13" />
         <span>New Folder</span>
-      </button>
-      <button @click="selectContextAction('rename')">
+      </Button>
+      <Button
+        unstyled
+        @click="selectContextAction('rename')"
+      >
         <Pencil :size="13" />
         <span>Rename</span>
-      </button>
-      <button @click="selectContextAction('reveal')">
+      </Button>
+      <Button
+        unstyled
+        @click="selectContextAction('reveal')"
+      >
         <ExternalLink :size="13" />
         <span>Reveal in Finder</span>
-      </button>
-      <button
+      </Button>
+      <Button
+        unstyled
         class="danger"
         @click="selectContextAction('delete')"
       >
         <Trash2 :size="13" />
         <span>Delete</span>
-      </button>
+      </Button>
     </div>
 
     <div
@@ -108,15 +120,19 @@
           {{ dialogError }}
         </div>
         <div class="dialog-actions">
-          <button
-            type="button"
+          <Button
+            unstyled
+            native-type="button"
             @click="closeNameDialog"
           >
             Cancel
-          </button>
-          <button type="submit">
+          </Button>
+          <Button
+            unstyled
+            native-type="submit"
+          >
             {{ nameDialog.action === 'rename' ? 'Rename' : 'Create' }}
-          </button>
+          </Button>
         </div>
       </form>
     </div>
@@ -136,19 +152,21 @@
           {{ dialogError }}
         </div>
         <div class="dialog-actions">
-          <button
-            type="button"
+          <Button
+            unstyled
+            native-type="button"
             @click="deleteDialog.path = ''"
           >
             Cancel
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            unstyled
+            native-type="button"
             class="danger"
             @click="submitDeleteDialog"
           >
             Delete
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -156,6 +174,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 import { ExternalLink, FilePlus, FolderPlus, Pencil, RefreshCw, Trash2 } from 'lucide-vue-next'
 import TreeDirectory, { type TreeContextMenuPayload } from './TreeDirectory.vue'
@@ -166,8 +185,12 @@ defineProps<{
   activePath: string
 }>()
 
+const emit = defineEmits<{
+  openFile: [path: string]
+}>()
+
 const editorWorkspace = useEditorWorkspace()
-const { loadDirectory, openFile, createFile, createDirectory, renamePath, deletePath, revealPath } = editorWorkspace
+const { loadDirectory, createFile, createDirectory, renamePath, deletePath, revealPath } = editorWorkspace
 type NameDialogAction = 'create-file' | 'create-directory' | 'rename'
 type ContextAction = NameDialogAction | 'delete' | 'reveal'
 
@@ -294,7 +317,7 @@ onBeforeUnmount(() => {
   max-width: 320px;
   height: 100%;
   border-right: 1px solid var(--ui-border-default-border, var(--border));
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 72%, transparent);
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -315,6 +338,7 @@ onBeforeUnmount(() => {
   color: var(--ui-text-muted-fg, var(--muted));
   text-transform: uppercase;
   border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  background: transparent;
 }
 
 .explorer-actions {

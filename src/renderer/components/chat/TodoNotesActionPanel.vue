@@ -28,15 +28,17 @@
           <div
             :class="['action-section', { first: groupIndex === 0 }]"
           >
-            <button
+            <Button
               v-for="item in group.items"
               :key="item.action.id"
+              text
               :class="['action-row', { selected: item.index === selectedIndex, disabled: item.action.enabled === false }]"
               :data-action-index="item.index"
-              type="button"
+              native-type="button"
               :disabled="item.action.enabled === false"
               @mouseenter="selectedIndex = item.index"
-              @click="selectAction(item.action)"
+              @mousedown.prevent
+              @click.stop="selectAction(item.action)"
             >
               <span class="action-icon">
                 <component
@@ -59,7 +61,7 @@
                   class="shortcut-keycap"
                 >{{ part }}</kbd>
               </span>
-            </button>
+            </Button>
           </div>
         </template>
 
@@ -75,6 +77,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Search } from 'lucide-vue-next'
 import {
@@ -239,6 +242,17 @@ onBeforeUnmount(() => {
 }
 
 .action-row {
+  --app-button-height: auto;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 0;
+  --app-button-gap: 0;
+  --app-button-font-size: inherit;
+  --app-button-tone: var(--todo-text);
+  --app-button-hover-fill: color-mix(in srgb, var(--todo-text) 10%, transparent);
+  --app-button-hover-fg: var(--todo-text);
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   width: 100%;
   min-height: var(--todo-action-row-min-height, 52px);
   padding: 8px 10px;
@@ -253,6 +267,11 @@ onBeforeUnmount(() => {
   text-align: left;
   cursor: pointer;
   font: inherit;
+}
+
+.action-row :deep(.app-button-content),
+.action-row :deep(.app-button-label) {
+  display: contents;
 }
 
 .action-row.selected,

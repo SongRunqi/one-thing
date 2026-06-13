@@ -5,22 +5,28 @@
     class="thinking-control"
   >
     <Tooltip :text="tooltipText">
-      <button
+      <Button
         ref="selectorRef"
+        plain
+        round
+        size="small"
         :class="['think-select', { active: selectionActive, open: panelOpen }]"
-        type="button"
+        native-type="button"
         aria-haspopup="listbox"
         :aria-expanded="panelOpen"
+        @mousedown.prevent
         @click.stop="togglePanel"
         @keydown="handleSelectorKeydown"
       >
-        <Brain :size="14" />
+        <template #icon>
+          <Brain :size="14" />
+        </template>
         <span class="think-value">{{ currentSelectionLabel }}</span>
         <ChevronDown
           class="think-chevron"
           :size="13"
         />
-      </button>
+      </Button>
     </Tooltip>
 
     <Teleport to="body">
@@ -41,13 +47,16 @@
           <div class="think-section-label">
             {{ group.label }}
           </div>
-          <button
+          <Button
             v-for="option in group.options"
             :key="optionKey(option)"
+            text
+            size="small"
             :class="['think-option', { selected: isOptionSelected(option), active: isOptionActive(option) }]"
-            type="button"
+            native-type="button"
             role="option"
             :aria-selected="isOptionSelected(option)"
+            @mousedown.prevent
             @click.stop="selectOption(option)"
           >
             <span class="think-option-text">{{ option.label }}</span>
@@ -55,7 +64,7 @@
               v-if="isOptionSelected(option)"
               :size="13"
             />
-          </button>
+          </Button>
         </div>
       </div>
     </Teleport>
@@ -63,6 +72,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Brain, Check, ChevronDown } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
@@ -665,6 +675,17 @@ onBeforeUnmount(() => {
 }
 
 .think-select {
+  --app-button-height: 28px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 10px;
+  --app-button-gap: 5px;
+  --app-button-font-size: 12px;
+  --app-button-fill: transparent;
+  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -683,6 +704,13 @@ onBeforeUnmount(() => {
     color 0.15s ease,
     border-color 0.15s ease,
     transform 0.15s ease;
+}
+
+.think-select :deep(.app-button-label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
 }
 
 .think-select:hover {
@@ -753,6 +781,15 @@ onBeforeUnmount(() => {
 }
 
 .think-option {
+  --app-button-height: 30px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 8px;
+  --app-button-font-size: 12px;
+  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -767,6 +804,15 @@ onBeforeUnmount(() => {
   font-weight: 500;
   text-align: left;
   cursor: pointer;
+}
+
+.think-option :deep(.app-button-label) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
 }
 
 .think-option-text {

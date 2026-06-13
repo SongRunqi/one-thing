@@ -5,9 +5,12 @@
   >
     <header>
       <span>Problems</span>
-      <button @click="$emit('close')">
+      <Button
+        unstyled
+        @click="$emit('close')"
+      >
         <X :size="13" />
-      </button>
+      </Button>
     </header>
     <div
       v-if="problems.length === 0"
@@ -15,20 +18,22 @@
     >
       No problems
     </div>
-    <button
+    <Button
       v-for="(problem, index) in problems"
       :key="`${problem.filePath}-${index}`"
+      unstyled
       class="problem-row"
       @click="$emit('openProblem', problem.filePath, problem.line || 1)"
     >
       <span :class="['severity', problem.severity]" />
       <span class="message">{{ problem.message }}</span>
       <span class="location">{{ problem.filePath }}{{ problem.line ? `:${problem.line}` : '' }}</span>
-    </button>
+    </Button>
   </section>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { X } from 'lucide-vue-next'
 
 defineProps<{

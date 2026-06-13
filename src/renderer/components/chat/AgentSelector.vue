@@ -3,10 +3,11 @@
     ref="rootRef"
     class="agent-selector"
   >
-    <button
+    <Button
       ref="chipRef"
+      unstyled
       class="agent-chip"
-      type="button"
+      native-type="button"
       :disabled="isDisabled"
       :title="isDisabled ? 'Agent can be changed after the current response finishes' : 'Change agent for this chat'"
       @click.stop="toggleOpen"
@@ -14,7 +15,7 @@
       <Bot :size="14" />
       <span>{{ currentAgent?.name || 'Default Agent' }}</span>
       <ChevronDown :size="13" />
-    </button>
+    </Button>
 
     <Teleport to="body">
       <div
@@ -25,11 +26,12 @@
         @click.stop
       >
         <div class="agent-list">
-          <button
+          <Button
             v-for="agent in agentsStore.agents"
             :key="agent.id"
+            unstyled
             :class="['agent-row', { active: agent.id === currentAgentId }]"
-            type="button"
+            native-type="button"
             :title="agent.name"
             @click="selectAgent(agent.id)"
           >
@@ -53,7 +55,7 @@
                 :stroke-width="2.2"
               />
             </span>
-          </button>
+          </Button>
         </div>
 
         <p
@@ -68,6 +70,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Bot, Check, ChevronDown } from 'lucide-vue-next'
 import { useAgentsStore, DEFAULT_AGENT_ID } from '@/stores/agents'

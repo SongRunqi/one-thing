@@ -64,8 +64,9 @@
         :session-id="sessionId"
       />
 
-      <button
+      <Button
         v-if="isBranchSession"
+        unstyled
         class="header-btn back-btn"
         title="Back to parent chat"
         @click="$emit('goToParent')"
@@ -74,10 +75,11 @@
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
 
-      <button
+      <Button
         v-if="showSplitButton"
+        unstyled
         class="header-btn"
         title="Split view"
         @click="$emit('split')"
@@ -86,10 +88,11 @@
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
 
-      <button
+      <Button
         v-if="canClose"
+        unstyled
         class="header-btn"
         title="Equalize panels"
         @click="$emit('equalize')"
@@ -98,21 +101,23 @@
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
 
-      <button
+      <Button
+        unstyled
         :class="['header-btn', 'inspector-toggle', { hidden: isInspectorOpen }]"
-        title="Show session lens"
+        title="Show workbench"
         @click="$emit('toggleInspector')"
       >
-        <Radar
+        <PanelRightOpen
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
 
-      <button
+      <Button
         v-if="canClose"
+        unstyled
         class="header-btn close-btn"
         title="Close panel"
         @click="$emit('close')"
@@ -121,14 +126,15 @@
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed } from 'vue'
-import { ArrowLeft, Columns2, Equal, X, Radar } from 'lucide-vue-next'
+import { ArrowLeft, Columns2, Equal, X, PanelRightOpen } from 'lucide-vue-next'
 import TabItem from './TabItem.vue'
 import AgentSelector from './AgentSelector.vue'
 import type { Tab } from '@/types/tabs'
@@ -205,8 +211,9 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 
 /*
   Layout-bound sidebar action reservation.
-  This slot is always mounted and animates width, so Chat/Project/File tabs
-  reflow with the main panel instead of being translated or covered.
+  This slot is always mounted so Chat/Project/File tabs reserve titlebar action
+  space after the app layout has settled. Width changes stay discrete to avoid
+  relayouting the message list on every sidebar toggle frame.
   Expanded sidebar: slot width 0, panel is pushed by sidebar width.
   Collapsed sidebar: slot reserves titlebar/traffic-light + action-group space.
 */
@@ -218,9 +225,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   overflow: hidden;
   padding-left: 0;
   -webkit-app-region: no-drag;
-  transition:
-    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    padding-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: none;
 }
 
 .topbar-sidebar-actions-slot.reserved {

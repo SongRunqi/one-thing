@@ -3,12 +3,13 @@
     <div class="settings-modal">
       <div class="settings-header">
         <h3>Settings</h3>
-        <button
+        <Button
+          unstyled
           class="close-button"
           @click="$emit('close')"
         >
           ✕
-        </button>
+        </Button>
       </div>
 
       <div class="settings-content">
@@ -95,24 +96,27 @@
       </div>
 
       <div class="settings-footer">
-        <button
+        <Button
+          unstyled
           class="cancel-button"
           @click="$emit('close')"
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="save-button"
           @click="saveSettings"
         >
           Save Settings
-        </button>
+        </Button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, toRaw } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import type { AppSettings } from '@/types'

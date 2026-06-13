@@ -27,22 +27,76 @@
 		--font-sans
 	); /* Body / Label / Caption — Public Sans + 思源黑体 */
 
-	/* --- Typography Scale --- */
-	--font-size-xs: 11px;
-	--font-size-sm: 12px;
-	--font-size-base: 13px;
-	--font-size-md: 14px;
-	--font-size-lg: 16px;
-	--font-size-xl: 18px;
-	--font-size-2xl: 20px;
+	/* --- Typography Primitive Scale --- */
+	--type-size-100: 10px;
+	--type-size-200: 11px;
+	--type-size-300: 12px;
+	--type-size-400: 13px;
+	--type-size-500: 14px;
+	--type-size-600: 15px;
+	--type-size-700: 16px;
+	--type-size-800: 18px;
+	--type-size-900: 20px;
+	--type-size-1000: 22px;
+
+	/* --- Typography Density Defaults (compact) --- */
+	--type-display-size: var(--type-size-900); /* 20px */
+	--type-display-line-height: 1.3; /* 26px */
+	--type-headline-size: var(--type-size-700); /* 16px */
+	--type-headline-line-height: 1.3125; /* 21px */
+	--type-title-size: var(--type-size-500); /* 14px */
+	--type-title-line-height: 1.2857; /* 18px */
+	--type-body-size: var(--type-size-500); /* 14px */
+	--type-body-line-height: 1.5; /* 21px */
+	--type-label-size: var(--type-size-400); /* 13px */
+	--type-label-line-height: 1.3077; /* 17px */
+	--type-meta-size: var(--type-size-300); /* 12px */
+	--type-meta-line-height: 1.4167; /* 17px */
+	--type-caption-size: var(--type-size-200); /* 11px */
+	--type-caption-line-height: 1.3636; /* 15px */
+	--type-micro-size: var(--type-size-100); /* 10px */
+	--type-micro-line-height: 1.2; /* 12px */
+	--type-chat-size: var(--type-size-500); /* 14px */
+	--type-chat-line-height: 1.4286; /* 20px */
+	--type-chat-line-height-px: 20px;
+	--type-chat-compact-size: var(--type-size-500); /* 14px */
+	--type-chat-compact-line-height: 1.4286; /* 20px */
+	--type-chat-compact-line-height-px: 20px;
+	--type-chat-comfortable-size: var(--type-size-600); /* 15px */
+	--type-chat-comfortable-line-height: 1.6; /* 24px */
+	--type-chat-comfortable-line-height-px: 24px;
+	--type-chat-spacious-size: var(--type-size-700); /* 16px */
+	--type-chat-spacious-line-height: 1.8125; /* 29px */
+	--type-chat-spacious-line-height-px: 29px;
+	--type-code-size: var(--type-size-400); /* 13px */
+	--type-code-line-height: 1.5385; /* 20px */
+	--type-code-line-height-px: 20px;
+
+	/* --- Line Height Tokens --- */
+	--type-leading-none: 1;
+	--type-leading-control: var(--type-label-line-height);
+	--type-leading-title: var(--type-title-line-height);
+	--type-leading-meta: var(--type-meta-line-height);
+	--type-leading-body: var(--type-body-line-height);
+	--type-leading-reading: var(--type-chat-line-height);
+	--type-leading-code: var(--type-code-line-height);
+
+	/* --- Legacy Typography Scale Aliases --- */
+	--font-size-xs: var(--type-caption-size);
+	--font-size-sm: var(--type-meta-size);
+	--font-size-base: var(--type-label-size);
+	--font-size-md: var(--type-body-size);
+	--font-size-lg: var(--type-headline-size);
+	--font-size-xl: var(--type-size-800);
+	--font-size-2xl: var(--type-display-size);
 
 	/* --- Tool Card Typography Scale --- */
-	--tool-font-size-title: 13px;
-	--tool-font-size-body: 12.5px;
-	--tool-font-size-line: 11.5px;
-	--tool-font-size-meta: 11px;
-	--tool-line-height: 1.55;
-	--tool-code-line-height: 1.7;
+	--tool-font-size-title: var(--type-label-size);
+	--tool-font-size-body: var(--type-meta-size);
+	--tool-font-size-line: var(--type-caption-size);
+	--tool-font-size-meta: var(--type-caption-size);
+	--tool-line-height: var(--type-leading-body);
+	--tool-code-line-height: var(--type-leading-code);
 
 	/* --- Font Weight --- */
 	--font-weight-normal: 400;
@@ -50,10 +104,10 @@
 	--font-weight-semibold: 600;
 	--font-weight-bold: 700;
 
-	/* --- Line Height --- */
-	--line-height-tight: 1.3;
-	--line-height-normal: 1.5;
-	--line-height-relaxed: 1.6;
+	/* --- Legacy Line Height Aliases --- */
+	--line-height-tight: var(--type-leading-title);
+	--line-height-normal: var(--type-leading-body);
+	--line-height-relaxed: var(--type-leading-reading);
 
 	/* ============================================
      Typography Semantic Presets
@@ -63,33 +117,49 @@
 
 	/* Display — page-level hero titles, empty state headings */
 	--type-display-font: var(--font-display);
-	--type-display-size: var(--font-size-2xl); /* 20px */
 	--type-display-weight: var(--font-weight-semibold); /* 600 */
-	--type-display-line-height: var(--line-height-tight); /* 1.3 */
 
 	/* Headline — section titles, dialog headers, settings page titles */
 	--type-headline-font: var(--font-display);
-	--type-headline-size: var(--font-size-lg); /* 16px */
 	--type-headline-weight: var(--font-weight-semibold); /* 600 */
-	--type-headline-line-height: var(--line-height-tight); /* 1.3 */
 
 	/* Body — chat messages, descriptions, main readable content */
 	--type-body-font: var(--font-body);
-	--type-body-size: var(--font-size-md); /* 14px */
 	--type-body-weight: var(--font-weight-normal); /* 400 */
-	--type-body-line-height: var(--line-height-normal); /* 1.5 */
 
 	/* Label — buttons, form labels, nav items, settings entries */
 	--type-label-font: var(--font-body);
-	--type-label-size: var(--font-size-base); /* 13px */
 	--type-label-weight: var(--font-weight-medium); /* 500 */
-	--type-label-line-height: var(--line-height-normal); /* 1.5 */
 
 	/* Caption — timestamps, badges, hints, helper text */
 	--type-caption-font: var(--font-body);
-	--type-caption-size: var(--font-size-xs); /* 11px */
 	--type-caption-weight: var(--font-weight-medium); /* 500 */
-	--type-caption-line-height: var(--line-height-normal); /* 1.5 */
+
+	/* Title Small — compact panel and list item titles */
+	--type-title-sm-font: var(--font-body);
+	--type-title-sm-size: var(--type-title-size);
+	--type-title-sm-weight: var(--font-weight-semibold); /* 600 */
+	--type-title-sm-line-height: var(--type-title-line-height);
+	--type-title-sm-color: var(--ui-text-primary-fg, var(--text-primary));
+
+	/* Body Strong — emphasized body rows without becoming a heading */
+	--type-body-strong-font: var(--font-body);
+	--type-body-strong-size: var(--type-title-size);
+	--type-body-strong-weight: var(--font-weight-semibold); /* 600 */
+	--type-body-strong-line-height: var(--type-body-line-height);
+	--type-body-strong-color: var(--ui-text-primary-fg, var(--text-primary));
+
+	/* Meta — supporting metadata, descriptions, and inline values */
+	--type-meta-font: var(--font-body);
+	--type-meta-weight: var(--font-weight-medium); /* 500 */
+	--type-meta-color: var(--ui-text-muted-fg, var(--text-muted));
+
+	/* Caption Muted — lowest-emphasis labels and timestamps */
+	--type-caption-muted-font: var(--font-body);
+	--type-caption-muted-size: var(--type-caption-size);
+	--type-caption-muted-weight: var(--font-weight-medium); /* 500 */
+	--type-caption-muted-line-height: var(--type-caption-line-height);
+	--type-caption-muted-color: var(--ui-text-faint-fg, var(--text-faint));
 
 	/* ============================================
      Z-Index Layer System
@@ -148,9 +218,13 @@
 	--accent-sub: var(--fx-blue-100);
 	--accent-light: var(--fx-blue-100); /* Used by buttons and gradients */
 	--accent-rgb: 67, 133, 190;
+	--color-primary: var(--accent);
+	--primary: var(--color-primary);
+	--color-primary-rgb: var(--accent-rgb);
+	--primary-rgb: var(--color-primary-rgb);
 
 	/* ============================================
-     Semantic Colors - Danger/Warning/Success
+     Semantic Colors - Primary/Success/Warning/Danger/Info
      ============================================ */
 	--color-danger: var(--fx-red);
 	--color-danger-light: var(--fx-red-light);
@@ -160,6 +234,82 @@
 	--color-success-light: var(--fx-green-light);
 	--color-info: var(--fx-cyan);
 	--color-info-light: var(--fx-cyan-light);
+
+	/* ============================================
+     Neutral Color Semantics
+     ============================================ */
+	--color-neutral-primary-text: var(--text-primary);
+	--neutral-primary-text: var(--color-neutral-primary-text);
+	--text-color-primary: var(--color-neutral-primary-text);
+	--color-neutral-regular-text: var(--text-secondary);
+	--neutral-regular-text: var(--color-neutral-regular-text);
+	--text-color-regular: var(--color-neutral-regular-text);
+	--color-neutral-secondary-text: var(--text-muted);
+	--neutral-secondary-text: var(--color-neutral-secondary-text);
+	--text-color-secondary: var(--color-neutral-secondary-text);
+	--color-neutral-placeholder-text: var(--text-input-placeholder);
+	--neutral-placeholder-text: var(--color-neutral-placeholder-text);
+	--text-color-placeholder: var(--color-neutral-placeholder-text);
+	--color-neutral-disabled-text: var(--text-input-disabled, var(--text-faint));
+	--neutral-disabled-text: var(--color-neutral-disabled-text);
+	--text-color-disabled: var(--color-neutral-disabled-text);
+	--color-neutral-darker-border: var(--border-strong);
+	--neutral-darker-border: var(--color-neutral-darker-border);
+	--border-color-darker: var(--color-neutral-darker-border);
+	--color-neutral-dark-border: var(--border-strong);
+	--neutral-dark-border: var(--color-neutral-dark-border);
+	--border-color-dark: var(--color-neutral-dark-border);
+	--color-neutral-base-border: var(--border-default);
+	--neutral-base-border: var(--color-neutral-base-border);
+	--border-color-base: var(--color-neutral-base-border);
+	--color-neutral-light-border: var(--border-subtle);
+	--neutral-light-border: var(--color-neutral-light-border);
+	--border-color-light: var(--color-neutral-light-border);
+	--color-neutral-lighter-border: var(--border-divider, var(--border-subtle));
+	--neutral-lighter-border: var(--color-neutral-lighter-border);
+	--border-color-lighter: var(--color-neutral-lighter-border);
+	--color-neutral-extra-light-border: var(--border-divider, var(--border-subtle));
+	--neutral-extra-light-border: var(--color-neutral-extra-light-border);
+	--border-color-extra-light: var(--color-neutral-extra-light-border);
+	--color-neutral-darker-fill: var(--bg-floating);
+	--neutral-darker-fill: var(--color-neutral-darker-fill);
+	--fill-color-darker: var(--color-neutral-darker-fill);
+	--color-neutral-dark-fill: var(--bg-elevated);
+	--neutral-dark-fill: var(--color-neutral-dark-fill);
+	--fill-color-dark: var(--color-neutral-dark-fill);
+	--color-neutral-base-fill: var(--bg-panel);
+	--neutral-base-fill: var(--color-neutral-base-fill);
+	--fill-color-base: var(--color-neutral-base-fill);
+	--color-neutral-light-fill: var(--bg-chat);
+	--neutral-light-fill: var(--color-neutral-light-fill);
+	--fill-color-light: var(--color-neutral-light-fill);
+	--color-neutral-lighter-fill: var(--bg-input);
+	--neutral-lighter-fill: var(--color-neutral-lighter-fill);
+	--fill-color-lighter: var(--color-neutral-lighter-fill);
+	--color-neutral-extra-light-fill: var(--bg-app);
+	--neutral-extra-light-fill: var(--color-neutral-extra-light-fill);
+	--fill-color-extra-light: var(--color-neutral-extra-light-fill);
+	--color-neutral-blank-fill: transparent;
+	--neutral-blank-fill: var(--color-neutral-blank-fill);
+	--fill-color-blank: var(--color-neutral-blank-fill);
+	--color-neutral-basic-black: #000000;
+	--neutral-basic-black: var(--color-neutral-basic-black);
+	--color-black: var(--color-neutral-basic-black);
+	--color-neutral-basic-white: #ffffff;
+	--neutral-basic-white: var(--color-neutral-basic-white);
+	--color-white: var(--color-neutral-basic-white);
+	--color-neutral-transparent: transparent;
+	--neutral-transparent: var(--color-neutral-transparent);
+	--color-transparent: var(--color-neutral-transparent);
+	--color-neutral-page-background: var(--bg-app);
+	--neutral-page-background: var(--color-neutral-page-background);
+	--bg-color-page: var(--color-neutral-page-background);
+	--color-neutral-base-background: var(--bg-chat);
+	--neutral-base-background: var(--color-neutral-base-background);
+	--bg-color-base: var(--color-neutral-base-background);
+	--color-neutral-overlay-background: var(--bg-modal, var(--bg-floating));
+	--neutral-overlay-background: var(--color-neutral-overlay-background);
+	--bg-color-overlay: var(--color-neutral-overlay-background);
 
 	/* Editor caret follows input text for contrast; full JSON themes override via text.input. */
 	--editor-caret: var(--text-input, var(--text-primary, var(--text)));
@@ -378,6 +528,31 @@
 	--ui-editor-selection-bg: var(--bg-selected);
 }
 
+html[data-typography-density="comfortable"] {
+	--type-display-size: var(--type-size-1000); /* 22px */
+	--type-display-line-height: 1.3182; /* 29px */
+	--type-headline-size: var(--type-size-800); /* 18px */
+	--type-headline-line-height: 1.3333; /* 24px */
+	--type-title-size: var(--type-size-700); /* 16px */
+	--type-title-line-height: 1.375; /* 22px */
+	--type-body-size: var(--type-size-600); /* 15px */
+	--type-body-line-height: 1.6; /* 24px */
+	--type-label-size: var(--type-size-500); /* 14px */
+	--type-label-line-height: 1.2857; /* 18px */
+	--type-meta-size: var(--type-size-400); /* 13px */
+	--type-meta-line-height: 1.3846; /* 18px */
+	--type-caption-size: var(--type-size-300); /* 12px */
+	--type-caption-line-height: 1.3333; /* 16px */
+	--type-micro-size: var(--type-size-200); /* 11px */
+	--type-micro-line-height: 1.1818; /* 13px */
+	--type-chat-size: var(--type-size-600); /* 15px */
+	--type-chat-line-height: 1.6; /* 24px */
+	--type-chat-line-height-px: 24px;
+	--type-code-size: var(--type-size-500); /* 14px */
+	--type-code-line-height: 1.5714; /* 22px */
+	--type-code-line-height-px: 22px;
+}
+
 /* ============================================
    DARK THEME - Using Flexoki palette
    NOTE: In dark mode, Flexoki INVERTS the scale:
@@ -477,8 +652,8 @@
 	/* --- Primary Text --- */
 	--text-primary: var(--fx-base-950); /* #F2F0E5 */
 	--text-secondary: var(--fx-base-900); /* #E6E4D9 */
-	--text-muted: var(--fx-base-800); /* #CECDC3 */
-	--text-faint: var(--fx-base-700); /* #B7B5AC */
+	--text-muted: var(--fx-base-700); /* #B7B5AC */
+	--text-faint: var(--fx-base-600); /* #9F9D96 */
 
 	/* --- Message Text --- */
 	--text-user-primary: var(--fx-base-950);
@@ -632,9 +807,12 @@
 	--diff-hunk-text: var(--text-muted);
 
 	/* RGB triplets for transparency patterns */
+	--color-primary-rgb: var(--accent-rgb);
+	--primary-rgb: var(--color-primary-rgb);
 	--color-success-rgb: 135, 154, 57;
 	--color-danger-rgb: 209, 77, 65;
 	--color-warning-rgb: 218, 112, 44;
+	--color-info-rgb: 58, 169, 159;
 
 	/* ============================================
      Legacy Compatibility Variables
@@ -902,9 +1080,12 @@
 	--diff-hunk-text: var(--text-muted);
 
 	/* RGB triplets for transparency patterns */
+	--color-primary-rgb: var(--accent-rgb);
+	--primary-rgb: var(--color-primary-rgb);
 	--color-success-rgb: 102, 128, 11;
 	--color-danger-rgb: 175, 48, 41;
 	--color-warning-rgb: 188, 82, 21;
+	--color-info-rgb: 36, 131, 123;
 
 	/* ============================================
      Legacy Compatibility Variables - Light

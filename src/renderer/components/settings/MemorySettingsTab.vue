@@ -25,20 +25,22 @@
         >
           <div class="memory-directory-control">
             <div class="segmented-control">
-              <button
+              <Button
+                unstyled
                 :class="['segment-btn', { active: memory.directoryMode === 'ai-note-dir' }]"
-                type="button"
+                native-type="button"
                 @click="updateMemory({ directoryMode: 'ai-note-dir' })"
               >
                 AI note dir
-              </button>
-              <button
+              </Button>
+              <Button
+                unstyled
                 :class="['segment-btn', { active: memory.directoryMode === 'custom' }]"
-                type="button"
+                native-type="button"
                 @click="updateMemory({ directoryMode: 'custom' })"
               >
                 Custom
-              </button>
+              </Button>
             </div>
             <div
               v-if="memory.directoryMode === 'custom'"
@@ -51,13 +53,14 @@
                 spellcheck="false"
                 @input="updateMemory({ customDirectory: ($event.target as HTMLInputElement).value })"
               >
-              <button
+              <Button
+                unstyled
                 class="secondary-btn"
-                type="button"
+                native-type="button"
                 @click="chooseMemoryDirectory"
               >
                 Choose
-              </button>
+              </Button>
             </div>
           </div>
         </SettingRow>
@@ -953,6 +956,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import type { AppSettings } from '@/types'
 import type {

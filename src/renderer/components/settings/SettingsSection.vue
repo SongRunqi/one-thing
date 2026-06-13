@@ -61,19 +61,19 @@ defineProps<{
 
 .settings-section-title {
   margin: 0;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.25;
+  color: var(--settings-ink-2, var(--type-title-sm-color, var(--ui-text-primary-fg, var(--text-primary))));
+  font-size: var(--type-title-sm-size);
+  font-weight: var(--type-title-sm-weight);
+  line-height: var(--type-title-sm-line-height);
   letter-spacing: 0;
 }
 
 .settings-section-description {
   max-width: 620px;
   margin: 3px 0 0;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
-  font-size: 12px;
-  line-height: 1.45;
+  color: var(--settings-ink-4, var(--type-meta-color, var(--ui-text-muted-fg, var(--text-muted))));
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
 }
 
 .settings-section-actions {

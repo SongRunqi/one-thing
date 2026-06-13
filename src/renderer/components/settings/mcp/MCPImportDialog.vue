@@ -8,7 +8,8 @@
       <div class="dialog import-dialog">
         <div class="dialog-header">
           <h3>Import MCP Servers</h3>
-          <button
+          <Button
+            unstyled
             class="close-btn"
             @click="$emit('close')"
           >
@@ -22,13 +23,14 @@
             >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         <div class="dialog-content import-content">
           <!-- Tab selector -->
           <div class="import-tabs">
-            <button
+            <Button
+              unstyled
               :class="['import-tab', { active: activeTab === 'file' }]"
               @click="switchTab('file')"
             >
@@ -44,8 +46,9 @@
                 <polyline points="13 2 13 9 20 9" />
               </svg>
               From File
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               :class="['import-tab', { active: activeTab === 'paste' }]"
               @click="switchTab('paste')"
             >
@@ -68,8 +71,9 @@
                 />
               </svg>
               Quick Paste
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               :class="['import-tab', { active: activeTab === 'presets' }]"
               @click="switchTab('presets')"
             >
@@ -84,7 +88,7 @@
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
               Presets
-            </button>
+            </Button>
           </div>
 
           <!-- File Import Tab -->
@@ -95,7 +99,8 @@
             <p class="import-description">
               Import MCP configurations from a JSON file. Supports Claude Desktop format.
             </p>
-            <button
+            <Button
+              unstyled
               class="select-file-btn"
               @click="selectImportFile"
             >
@@ -110,7 +115,7 @@
                 <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
               </svg>
               Select JSON File
-            </button>
+            </Button>
             <div
               v-if="fileInfo"
               class="file-info"
@@ -207,14 +212,15 @@ npx -y @modelcontextprotocol/server-filesystem /path"
 
             <!-- Category filter -->
             <div class="preset-categories">
-              <button
+              <Button
                 v-for="cat in presetCategories"
                 :key="cat.id"
+                unstyled
                 :class="['category-btn', { active: selectedCategory === cat.id }]"
                 @click="selectedCategory = cat.id"
               >
                 {{ cat.name }}
-              </button>
+              </Button>
             </div>
 
             <!-- Presets grid -->
@@ -276,12 +282,13 @@ npx -y @modelcontextprotocol/server-filesystem /path"
                     :placeholder="param.placeholder"
                     @input="updatePresetServer"
                   >
-                  <button
+                  <Button
+                    unstyled
                     class="browse-btn"
                     @click="browseForPath(param.key)"
                   >
                     Browse
-                  </button>
+                  </Button>
                 </div>
                 <input
                   v-else
@@ -330,19 +337,21 @@ npx -y @modelcontextprotocol/server-filesystem /path"
         </div>
 
         <div class="dialog-footer">
-          <button
+          <Button
+            unstyled
             class="btn secondary"
             @click="$emit('close')"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             class="btn primary"
             :disabled="selectedServers.size === 0 || isImporting"
             @click="handleImport"
           >
             {{ isImporting ? 'Importing...' : `Import ${selectedServers.size} Server(s)` }}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -350,6 +359,7 @@ npx -y @modelcontextprotocol/server-filesystem /path"
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, watch, h } from 'vue'
 import type { MCPServerConfig } from '@/types'
 import { MCP_PRESETS, PRESET_CATEGORIES, type MCPPreset, type PresetCategory } from '@/data/mcpPresets'

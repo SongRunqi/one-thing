@@ -16,20 +16,58 @@
 
   <!-- Main App Mode -->
   <ErrorBoundary v-else-if="appReady">
-    <div class="app-shell">
-      <!-- Main Content - No Header -->
-      <div class="app-content">
-        <!-- Floating sidebar overlay backdrop -->
-        <!--      <div-->
-        <!--        v-if="sidebarFloating"-->
-        <!--        :class="['sidebar-floating-backdrop', { closing: sidebarFloatingClosing }]"-->
-        <!--        @click="closeFloatingSidebar"-->
-        <!--      ></div>-->
+    <div
+      v-if="sidebarFloating || sidebarFloatingClosing"
+      class="app-floating-sidebar-host"
+    >
+      <!-- Floating sidebar overlay backdrop -->
+      <!--      <div-->
+      <!--        v-if="sidebarFloating"-->
+      <!--        :class="['sidebar-floating-backdrop', { closing: sidebarFloatingClosing }]"-->
+      <!--        @click="closeFloatingSidebar"-->
+      <!--      ></div>-->
 
+      <Sidebar
+        :collapsed="false"
+        :floating="sidebarFloating"
+        :floating-closing="sidebarFloatingClosing"
+        :no-transition="sidebarNoTransition"
+        :width="sidebarWidth"
+        :media-panel-open="workspacePanelOpen"
+        :active-workspace-panel="activeWorkspacePanel"
+        @open-settings="openSettingsWindow"
+        @toggle-collapse="handleSidebarToggle"
+        @open-search="openSearch"
+        @create-new-chat="createNewChat"
+        @toggle-media-panel="openWorkspacePanel('media')"
+        @open-workspace-panel="openWorkspacePanel"
+        @select-session="selectSidebarSession"
+        @mouseleave="handleSidebarMouseLeave"
+      />
+    </div>
+
+    <Splitter
+      class="app-shell"
+      :class="{ 'is-sidebar-resizing': sidebarResizing }"
+      :gap="0"
+      :resizer-size="1"
+      :resizer-hit-size="12"
+      @resize-start="handleSidebarResizeStart"
+      @resize-end="handleSidebarResizeEnd"
+    >
+      <SplitterPanel
+        v-if="sidebarDockedVisible"
+        v-model:size="sidebarWidth"
+        as="aside"
+        class="app-left-sidebar-region"
+        size-unit="px"
+        :min="MIN_SIDEBAR_WIDTH"
+        :max="MAX_SIDEBAR_WIDTH"
+      >
         <Sidebar
-          :collapsed="sidebarCollapsed && !sidebarFloating"
-          :floating="sidebarFloating"
-          :floating-closing="sidebarFloatingClosing"
+          :collapsed="false"
+          :floating="false"
+          :floating-closing="false"
           :no-transition="sidebarNoTransition"
           :width="sidebarWidth"
           :media-panel-open="workspacePanelOpen"
@@ -40,10 +78,17 @@
           @create-new-chat="createNewChat"
           @toggle-media-panel="openWorkspacePanel('media')"
           @open-workspace-panel="openWorkspacePanel"
-          @resize="handleSidebarResize"
-          @mouseleave="handleSidebarMouseLeave"
+          @select-session="selectSidebarSession"
         />
+      </SplitterPanel>
 
+      <!-- Main Content - No Header -->
+      <SplitterPanel
+        flex
+        class="app-shell-main-region"
+        :resizable="sidebarDockedVisible"
+      >
+        <div class="app-content">
         <div
           class="app-sidebar-actions"
           :class="{ transitioning: sidebarActionAnimating }"
@@ -58,51 +103,95 @@
           />
         </div>
 
-        <MediaPanel
-          v-if="activeWorkspacePanel"
-          mode="main"
-          :visible="true"
-          :initial-tab="activeWorkspacePanel"
-          @close="closeWorkspacePanel"
-        />
+        <Splitter
+          class="app-content-splitter"
+          :gap="0"
+          :resizer-size="1"
+          :resizer-hit-size="12"
+          @resize-start="inspectorResizing = true"
+          @resize-end="handleInspectorResizeEnd"
+        >
+          <SplitterPanel
+            v-model:size="mainWorkspacePanelSize"
+            :min="52"
+            :resizable="inspectorVisible"
+          >
+            <Container
+              as="div"
+              main-as="div"
+              class="app-main-region"
+              body-class="app-main-body"
+              main-class="app-main-content-region"
+              full-height
+              :main-flex="'1 1 0'"
+              overflow="hidden"
+              main-overflow="hidden"
+            >
+              <div
+                class="workspace-view-stack"
+                :data-active-workspace-view="activeWorkspaceView"
+              >
+                <ChatContainer
+                  v-show="activeWorkspaceView === 'chat'"
+                  ref="chatContainerRef"
+                  class="workspace-view workspace-view-chat"
+                  :show-settings="showSettings"
+                  :sidebar-collapsed="sidebarCollapsed"
+                  :sidebar-floating="sidebarFloating"
+                  :show-hover-trigger="sidebarCollapsed && !sidebarFloating"
+                  :media-panel-open="workspacePanelOpen"
+                  :show-diff-overlay="showDiffOverlay"
+                  :diff-overlay-data="diffOverlayData"
+                  :is-inspector-open="inspectorOpen"
+                  :reserve-sidebar-actions="reserveSidebarActions"
+                  :layout-transitioning="sidebarActionAnimating"
+                  @close-settings="showSettings = false"
+                  @open-settings="showSettings = true"
+                  @toggle-sidebar="handleSidebarToggle"
+                  @open-search="openSearch"
+                  @create-new-chat="createNewChat"
+                  @show-floating-sidebar="handleTriggerEnter"
+                  @hide-floating-sidebar="handleTriggerLeave"
+                  @close-diff-overlay="closeDiffOverlay"
+                  @toggle-inspector="inspectorOpen = !inspectorOpen"
+                  @open-file="openFileInRightWorkbench"
+                />
 
-        <ChatContainer
-          v-show="!activeWorkspacePanel"
-          ref="chatContainerRef"
-          :show-settings="showSettings"
-          :sidebar-collapsed="sidebarCollapsed"
-          :sidebar-floating="sidebarFloating"
-          :show-hover-trigger="sidebarCollapsed && !sidebarFloating"
-          :media-panel-open="workspacePanelOpen"
-          :show-diff-overlay="showDiffOverlay"
-          :diff-overlay-data="diffOverlayData"
-          :is-inspector-open="inspectorOpen"
-          :reserve-sidebar-actions="reserveSidebarActions"
-          @close-settings="showSettings = false"
-          @open-settings="showSettings = true"
-          @toggle-sidebar="handleSidebarToggle"
-          @open-search="openSearch"
-          @create-new-chat="createNewChat"
-          @show-floating-sidebar="handleTriggerEnter"
-          @hide-floating-sidebar="handleTriggerLeave"
-          @close-diff-overlay="closeDiffOverlay"
-          @toggle-inspector="inspectorOpen = !inspectorOpen"
-        />
+                <MediaPanel
+                  v-show="workspacePanelOpen"
+                  class="workspace-view workspace-view-panel"
+                  mode="main"
+                  :visible="workspacePanelOpen"
+                  :active-tab="activeWorkspacePanel"
+                  @close="closeWorkspacePanel"
+                />
+              </div>
+            </Container>
+          </SplitterPanel>
 
-        <!-- Session Lens (app-level right sidebar) -->
-        <Transition name="lens-pop">
-          <ChatInspectorPanel
-            v-if="inspectorOpen && sessionsStore.currentSessionId"
-            :session-id="sessionsStore.currentSessionId"
-            @close="inspectorOpen = false"
-          />
-        </Transition>
+          <SplitterPanel
+            v-if="inspectorVisible"
+            v-model:size="inspectorPanelSize"
+            as="aside"
+            class="app-right-sidebar-region"
+            :min="22"
+            :max="48"
+          >
+            <RightWorkbenchPanel
+              ref="rightWorkbenchRef"
+              :session-id="sessionsStore.currentSessionId"
+              :workspace-root="currentWorkspaceRoot"
+              @close="inspectorOpen = false"
+            />
+          </SplitterPanel>
+        </Splitter>
 
         <VoiceOverlay />
-      </div>
+        </div>
+      </SplitterPanel>
 
       <!-- Old search overlay removed — replaced by Search Everywhere window -->
-    </div>
+    </Splitter>
   </ErrorBoundary>
 </template>
 
@@ -117,11 +206,14 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { Sidebar } from '@/components/sidebar'
 import SidebarActionGroup from '@/components/sidebar/SidebarActionGroup.vue'
 import ChatContainer from '@/components/ChatContainer.vue'
+import Container from '@/components/common/Container.vue'
+import Splitter from '@/components/common/Splitter.vue'
+import SplitterPanel from '@/components/common/SplitterPanel.vue'
 import ErrorBoundary from '@/components/common/ErrorBoundary.vue'
 import MediaPanel from '@/components/MediaPanel.vue'
 import SettingsPage from '@/components/SettingsPage.vue'
 import ImagePreviewWindow from '@/components/ImagePreviewWindow.vue'
-import ChatInspectorPanel from '@/components/chat/ChatInspectorPanel.vue'
+import RightWorkbenchPanel from '@/components/workbench/RightWorkbenchPanel.vue'
 import SearchWindow from '@/components/search/SearchWindow.vue'
 import TodoPlanWindow from '@/components/TodoPlanWindow.vue'
 import VoiceRuntimeWindow from '@/components/voice/VoiceRuntimeWindow.vue'
@@ -167,17 +259,23 @@ const voiceStore = useVoiceStore()
 const appReady = ref(false)
 const showSettings = ref(false)
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
+const rightWorkbenchRef = ref<InstanceType<typeof RightWorkbenchPanel> | null>(null)
 const inspectorOpen = computed({
   get: () => chatStore.inspectorOpen,
   set: (val) => { chatStore.inspectorOpen = val }
 })
 
 // Sidebar width (persisted)
-const sidebarWidth = ref(parseInt(localStorage.getItem('sidebarWidth') || '300', 10))
-function handleSidebarResize(width: number) {
-  sidebarWidth.value = width
-  localStorage.setItem('sidebarWidth', String(width))
+const MIN_SIDEBAR_WIDTH = 200
+const MAX_SIDEBAR_WIDTH = 500
+
+function clampSidebarWidth(width: number): number {
+  if (!Number.isFinite(width)) return 300
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, width))
 }
+
+const sidebarWidth = ref(clampSidebarWidth(parseInt(localStorage.getItem('sidebarWidth') || '300', 10)))
+const sidebarResizing = ref(false)
 
 type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks'
 
@@ -186,6 +284,7 @@ type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks'
 // the left edge.
 const activeWorkspacePanel = ref<WorkspacePanel | null>(null)
 const workspacePanelOpen = computed(() => activeWorkspacePanel.value !== null)
+const activeWorkspaceView = computed(() => activeWorkspacePanel.value ?? 'chat')
 
 // Diff overlay state
 const showDiffOverlay = ref(false)
@@ -207,11 +306,19 @@ function openWorkspacePanel(panel: WorkspacePanel) {
   if (sidebarFloating.value) {
     closeFloatingSidebar()
   }
-  activeWorkspacePanel.value = activeWorkspacePanel.value === panel ? null : panel
+  activeWorkspacePanel.value = panel
 }
 
 function closeWorkspacePanel() {
   activeWorkspacePanel.value = null
+}
+
+async function selectSidebarSession(sessionId: string) {
+  if (sidebarFloating.value) {
+    closeFloatingSidebar()
+  }
+  activeWorkspacePanel.value = null
+  await sessionsStore.switchSession(sessionId)
 }
 
 function openSettingsWindow() {
@@ -259,6 +366,9 @@ const sidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true'
 const sidebarFloating = ref(false)
 const sidebarFloatingClosing = ref(false)
 const sidebarNoTransition = ref(false) // Disable transition during/after floating
+const sidebarDockedVisible = computed(() =>
+  !sidebarCollapsed.value && !sidebarFloating.value && !sidebarFloatingClosing.value
+)
 const reserveSidebarActions = ref(sidebarCollapsed.value)
 const sidebarActionAnimating = ref(false)
 const floatingCooldown = ref(false) // Prevent re-expansion after toggle
@@ -270,6 +380,53 @@ const sidebarActionLeft = computed(() => {
   if (sidebarCollapsed.value) return SIDEBAR_ACTION_COLLAPSED_LEFT
   return Math.max(SIDEBAR_ACTION_COLLAPSED_LEFT, sidebarWidth.value - SIDEBAR_ACTION_GROUP_WIDTH)
 })
+
+function handleSidebarResizeStart() {
+  sidebarResizing.value = true
+}
+
+function handleSidebarResizeEnd() {
+  sidebarWidth.value = clampSidebarWidth(sidebarWidth.value)
+  sidebarResizing.value = false
+  localStorage.setItem('sidebarWidth', String(sidebarWidth.value))
+}
+const inspectorVisible = computed(() => inspectorOpen.value && Boolean(sessionsStore.currentSessionId))
+const currentWorkspaceRoot = computed(() => {
+  const session = sessionsStore.currentSession
+  return session?.workingDirectory || session?.workingDirectoryRoots?.[0] || ''
+})
+const MIN_INSPECTOR_PANEL_SIZE = 22
+const MAX_INSPECTOR_PANEL_SIZE = 48
+const DEFAULT_INSPECTOR_PANEL_SIZE = 32
+
+function clampInspectorPanelSize(size: number): number {
+  if (!Number.isFinite(size)) return DEFAULT_INSPECTOR_PANEL_SIZE
+  return Math.min(MAX_INSPECTOR_PANEL_SIZE, Math.max(MIN_INSPECTOR_PANEL_SIZE, size))
+}
+
+const inspectorPanelSize = ref(clampInspectorPanelSize(
+  Number.parseFloat(localStorage.getItem('inspectorPanelSize') || String(DEFAULT_INSPECTOR_PANEL_SIZE))
+))
+const inspectorResizing = ref(false)
+const mainWorkspacePanelSize = computed({
+  get: () => inspectorVisible.value ? 100 - inspectorPanelSize.value : 100,
+  set: (size: number) => {
+    if (!inspectorVisible.value) return
+    inspectorPanelSize.value = clampInspectorPanelSize(100 - size)
+  }
+})
+
+function handleInspectorResizeEnd() {
+  inspectorResizing.value = false
+  localStorage.setItem('inspectorPanelSize', String(inspectorPanelSize.value))
+}
+
+async function openFileInRightWorkbench(filePath: string) {
+  if (!filePath) return
+  inspectorOpen.value = true
+  await nextTick()
+  await rightWorkbenchRef.value?.openFile(filePath)
+}
 
 // Close floating sidebar with animation
 function closeFloatingSidebar() {
@@ -388,6 +545,7 @@ if (!isSettingsWindow.value && !isImagePreviewWindow.value && !isSearchWindow.va
 
 // Open a temporary New Chat UI. A real session is created only when the user sends the first message.
 async function createNewChat() {
+  activeWorkspacePanel.value = null
   sessionsStore.openNewChatDraft('New Chat')
   await nextTick()
   chatContainerRef.value?.focusInput?.()
@@ -401,21 +559,30 @@ let unsubscribeSearchAction: (() => void) | null = null
 onMounted(async () => {
   window.addEventListener('hashchange', syncCurrentHash)
 
-  // Fonts are already preloaded in main.ts before mount, so the markdown cache
-  // is the only async dep we still need to gate `appReady` on.
-  const markdownCacheReady = ensureMarkdownCacheReady()
+  const markdownCacheReady = ensureMarkdownCacheReady().catch((e) => {
+    console.warn('[App] markdown cache init failed', e)
+  })
+  const appStateReady = window.electronAPI.getAppState().catch((e) => {
+    console.warn('[App] Failed to restore app state:', e)
+    return null
+  })
 
-  // Load initial data
-  await sessionsStore.loadSessions()
-  await settingsStore.loadSettings()
-  await voiceStore.initialize()
+  // Load independent startup data in parallel. Voice is intentionally
+  // initialized in the background so microphone state never blocks first paint.
+  await Promise.all([
+    sessionsStore.loadSessions(),
+    settingsStore.loadSettings(),
+  ])
+  void voiceStore.initialize().catch((e) => {
+    console.warn('[App] voice init failed', e)
+  })
 
   // Initialize theme system (must be after settings load)
   await themeStore.initialize()
 
   // Restore last session from saved app state
-  try {
-    const appState = await window.electronAPI.getAppState()
+  const appState = await appStateReady
+  if (appState) {
     if (appState.currentSessionId) {
       const sessionExists = sessionsStore.sessions.some(s => s.id === appState.currentSessionId)
       if (sessionExists) {
@@ -426,19 +593,10 @@ onMounted(async () => {
       sidebarCollapsed.value = appState.sidebarCollapsed
       reserveSidebarActions.value = appState.sidebarCollapsed
     }
-  } catch (e) {
-    console.warn('[App] Failed to restore app state:', e)
-  }
-
-  // Make sure the disk-restored markdown cache is in memory before MessageList
-  // mounts; otherwise the first render misses every entry.
-  try {
-    await markdownCacheReady
-  } catch (e) {
-    console.warn('[App] markdown cache init failed', e)
   }
 
   appReady.value = true
+  void markdownCacheReady
 
   // Listen for settings changes from other windows (e.g., settings window)
   unsubscribeSettingsChanged = window.electronAPI.onSettingsChanged((newSettings) => {
@@ -490,12 +648,13 @@ onMounted(async () => {
     }
     if (actionId.startsWith('switch-session:')) {
       const sessionId = actionId.replace('switch-session:', '')
+      activeWorkspacePanel.value = null
       await sessionsStore.switchSession(sessionId)
       return
     }
     if (actionId.startsWith('open-file:')) {
       const filePath = actionId.replace('open-file:', '')
-      chatContainerRef.value?.openFileTab?.(filePath)
+      await openFileInRightWorkbench(filePath)
       return
     }
     if (actionId.startsWith('jump-message:')) {
@@ -557,22 +716,111 @@ onUnmounted(() => {
 
 <style scoped>
 .app-shell {
+  --app-sidebar-transition-duration: 0.3s;
+  --app-sidebar-transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
   height: 100%;
   width: 100%;
-  display: flex;
-  flex-direction: row;
   background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+}
+
+.app-shell :deep(.app-shell-body),
+.app-shell :deep(.app-shell-main-region),
+.app-shell :deep(.app-content-body),
+.app-shell :deep(.app-content-main-region),
+.app-shell :deep(.app-main-body),
+.app-shell :deep(.app-main-content-region) {
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-shell :deep(.app-shell-body),
+.app-shell :deep(.app-shell-main-region),
+.app-shell :deep(.app-content-body),
+.app-shell :deep(.app-content-main-region),
+.app-shell :deep(.app-main-body),
+.app-shell :deep(.app-main-content-region) {
+  height: 100%;
+}
+
+.app-shell :deep(.app-left-sidebar-region),
+.app-shell :deep(.app-right-sidebar-region) {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell :deep(.app-shell-main-region),
+.app-shell :deep(.app-content-main-region),
+.app-shell :deep(.app-main-content-region) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.app-shell :deep(.app-left-sidebar-region > .sidebar) {
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+.app-shell :deep(.app-left-sidebar-region) {
+  /* Keep layout width discrete; animating it relayouts the full message list every frame. */
+  transition: none;
+}
+
+.app-shell.is-sidebar-resizing :deep(.app-left-sidebar-region) {
+  transition: none;
 }
 
 /* Main Content - Full height, horizontal layout */
 .app-content {
-  flex: 1;
-  display: flex;
+  width: 100%;
+  height: 100%;
   min-height: 0;
   min-width: 0;
   position: relative;
   overflow: hidden;
   background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+}
+
+.app-main-region {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+}
+
+.app-content-splitter {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.app-right-sidebar-region {
+  position: relative;
+}
+
+.workspace-view-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--ui-surface-app-bg, var(--bg-app, var(--bg)));
+}
+
+.workspace-view {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 .app-sidebar-actions {
@@ -587,20 +835,7 @@ onUnmounted(() => {
 }
 
 .app-sidebar-actions.transitioning {
-  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Session Lens slide transition */
-.lens-pop-enter-active,
-.lens-pop-leave-active {
-  transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.26s ease;
-  overflow: hidden;
-}
-
-.lens-pop-enter-from,
-.lens-pop-leave-to {
-  width: 0 !important;
-  opacity: 0;
+  transition: none;
 }
 
 /* Floating sidebar backdrop */

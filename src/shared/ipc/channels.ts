@@ -162,7 +162,7 @@ export const IPC_CHANNELS = {
   IMAGE_PREVIEW_UPDATE: 'image-preview:update',
   IMAGE_GALLERY_UPDATE: 'image-gallery:update',
 
-  // Skills related (Official Claude Code Skills)
+  // Skills related
   SKILLS_GET_ALL: 'skills:get-all',
   SKILLS_REFRESH: 'skills:refresh',
   SKILLS_READ_FILE: 'skills:read-file',

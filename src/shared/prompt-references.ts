@@ -27,10 +27,34 @@ export function formatPromptForModel(title: string, body: string): string {
   return `<user_prompt name="${title.replace(/"/g, '&quot;')}">\n${body}\n</user_prompt>`
 }
 
-export function formatSkillForModel(name: string, source: string, description: string, body: string): string {
-  const safeName = name.replace(/"/g, '&quot;')
-  const safeSource = source.replace(/"/g, '&quot;')
-  return `<selected_skill name="${safeName}" source="${safeSource}">\n<description>\n${description}\n</description>\n<instructions>\n${body}\n</instructions>\n</selected_skill>`
+export interface SkillModelPaths {
+  path?: string
+  directoryPath?: string
+}
+
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+export function formatSkillForModel(
+  name: string,
+  source: string,
+  description: string,
+  body: string,
+  paths: SkillModelPaths = {},
+): string {
+  const attrs = [
+    `name="${escapeAttr(name)}"`,
+    `source="${escapeAttr(source)}"`,
+  ]
+  if (paths.path) attrs.push(`path="${escapeAttr(paths.path)}"`)
+  if (paths.directoryPath) attrs.push(`directory_path="${escapeAttr(paths.directoryPath)}"`)
+
+  return `<selected_skill ${attrs.join(' ')}>\n<description>\n${description}\n</description>\n<instructions>\n${body}\n</instructions>\n</selected_skill>`
 }
 
 export function displayTextFromPromptParts(

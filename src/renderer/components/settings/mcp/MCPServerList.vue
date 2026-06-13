@@ -5,7 +5,8 @@
         MCP Servers
       </h3>
       <div class="header-actions">
-        <button
+        <Button
+          unstyled
           class="import-btn"
           title="Import servers"
           @click="$emit('import')"
@@ -28,8 +29,9 @@
             />
           </svg>
           Import
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="add-server-btn"
           @click="$emit('add')"
         >
@@ -44,7 +46,7 @@
             <path d="M12 5v14M5 12h14" />
           </svg>
           Add Server
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -108,6 +110,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import type { MCPServerState, MCPServerConfig } from '@/types'
 import MCPServerItem from './MCPServerItem.vue'
 

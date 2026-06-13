@@ -6,8 +6,9 @@
       class="diff-toolbar"
     >
       <div class="toolbar-left">
-        <button
+        <Button
           v-if="allowStyleToggle"
+          unstyled
           class="toolbar-btn"
           :title="currentDiffStyle === 'split' ? 'Switch to unified view' : 'Switch to split view'"
           @click="toggleDiffStyle"
@@ -46,11 +47,12 @@
             />
           </svg>
           <span>{{ currentDiffStyle === 'split' ? 'Split' : 'Unified' }}</span>
-        </button>
+        </Button>
       </div>
       <div class="toolbar-right">
-        <button
+        <Button
           v-if="allowCopy"
+          unstyled
           class="toolbar-btn"
           :title="copied ? 'Copied!' : 'Copy diff'"
           @click="copyDiffContent"
@@ -86,7 +88,7 @@
             <polyline points="20 6 9 17 4 12" />
           </svg>
           <span>{{ copied ? 'Copied' : 'Copy' }}</span>
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -119,8 +121,10 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { FileDiff, parsePatchFiles } from '@pierre/diffs'
+import { createDomButton } from '@/components/common/dom-button'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import type {
   FileDiffOptions,
@@ -458,17 +462,17 @@ function createHeaderButton(
   iconName: string,
   onClick: () => void,
   title: string
-): HTMLButtonElement {
-  const btn = document.createElement('button')
-  btn.className = 'diff-header-btn'
-  btn.innerHTML = getLucideIconSVG(iconName, 14)
-  btn.title = title
-  btn.type = 'button'
-  btn.onclick = (e) => {
-    e.preventDefault()
-    onClick()
-  }
-  return btn
+): ReturnType<typeof createDomButton> {
+  const mounted = createDomButton({
+    className: 'diff-header-btn',
+    title,
+    onClick: (event) => {
+      event.preventDefault()
+      onClick()
+    },
+  })
+  mounted.button.innerHTML = getLucideIconSVG(iconName, 14)
+  return mounted
 }
 
 /** Render custom file header with metadata */
@@ -524,7 +528,7 @@ function renderHeaderMetadata(headerProps: RenderHeaderMetadataProps): HTMLEleme
       () => toggleDiffStyle(),
       currentDiffStyle.value === 'split' ? 'Switch to unified view' : 'Switch to split view'
     )
-    controlsSection.appendChild(toggleBtn)
+    controlsSection.appendChild(toggleBtn.host)
   }
 
   if (props.allowCopy) {
@@ -533,8 +537,8 @@ function renderHeaderMetadata(headerProps: RenderHeaderMetadataProps): HTMLEleme
       () => copyDiffContent(),
       copied.value ? 'Copied!' : 'Copy diff'
     )
-    if (copied.value) copyBtn.classList.add('active')
-    controlsSection.appendChild(copyBtn)
+    if (copied.value) copyBtn.button.classList.add('active')
+    controlsSection.appendChild(copyBtn.host)
   }
 
   wrapper.appendChild(statsSection)

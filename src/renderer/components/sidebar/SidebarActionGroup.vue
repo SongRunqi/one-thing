@@ -4,55 +4,50 @@
     data-sidebar-action-group="true"
     :data-sidebar-action-group-location="variant"
   >
-    <button
+    <Button
+      text
+      circle
       class="sidebar-action-btn"
       :title="sidebarVisible ? 'Collapse sidebar' : 'Open sidebar'"
+      :aria-label="sidebarVisible ? 'Collapse sidebar' : 'Open sidebar'"
+      :icon="sidebarToggleIcon"
       @click="$emit('toggle-sidebar')"
-    >
-      <PanelLeftClose
-        v-if="sidebarVisible"
-        :size="15"
-        :stroke-width="1.9"
-      />
-      <PanelLeftOpen
-        v-else
-        :size="15"
-        :stroke-width="1.9"
-      />
-    </button>
-    <button
+    />
+    <Button
+      text
+      circle
       class="sidebar-action-btn"
       title="Search"
+      aria-label="Search"
+      :icon="Search"
       @click="$emit('open-search')"
-    >
-      <Search
-        :size="15"
-        :stroke-width="1.9"
-      />
-    </button>
-    <button
+    />
+    <Button
+      text
+      circle
       class="sidebar-action-btn"
       title="New chat"
+      aria-label="New chat"
+      :icon="SquarePen"
       @click="$emit('create-new-chat')"
-    >
-      <SquarePen
-        :size="15"
-        :stroke-width="1.9"
-      />
-    </button>
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
+import { computed } from 'vue'
 import { PanelLeftClose, PanelLeftOpen, Search, SquarePen } from 'lucide-vue-next'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   sidebarVisible?: boolean
   variant?: 'sidebar' | 'topbar' | 'docked'
 }>(), {
   sidebarVisible: true,
   variant: 'sidebar',
 })
+
+const sidebarToggleIcon = computed(() => props.sidebarVisible ? PanelLeftClose : PanelLeftOpen)
 
 defineEmits<{
   'toggle-sidebar': []
@@ -71,6 +66,14 @@ defineEmits<{
 }
 
 .sidebar-action-btn {
+  --app-button-height: 24px;
+  --app-button-min-width: 24px;
+  --app-button-padding-x: 0;
+  --app-button-hover-fill: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   width: 24px;
   height: 24px;
   display: inline-flex;

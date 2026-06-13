@@ -32,7 +32,9 @@ body,
 #app {
   width: 100%;
   height: 100%;
-  font-family: var(--font-sans);
+  font-family: var(--type-body-font, var(--font-sans));
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: var(--bg);

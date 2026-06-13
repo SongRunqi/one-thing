@@ -35,6 +35,9 @@ describe('MessageThinking', () => {
     await wrapper.setProps({ reasoning: 'reasoning summary' })
     await nextTick()
 
+    expect(wrapper.find('.thinking-panel').classes()).toContain('collapse-panel')
+    expect(wrapper.find('.thinking-panel').classes()).toContain('variant-plain')
+    expect(wrapper.find('.thinking-panel').classes()).toContain('icon-inline-end')
     const reasoning = wrapper.find('.thinking-reasoning-wrapper')
     expect(reasoning.exists()).toBe(true)
     expect(reasoning.classes()).toContain('expanded')
@@ -55,6 +58,8 @@ describe('MessageThinking', () => {
 
     expect(wrapper.text()).toContain('Extracting memory')
     expect(wrapper.text()).not.toContain('Waiting')
+    expect(wrapper.find('.thinking-panel').classes()).toContain('collapse-panel')
+    expect(wrapper.find('.collapse-panel-content').exists()).toBe(false)
 
     wrapper.unmount()
   })

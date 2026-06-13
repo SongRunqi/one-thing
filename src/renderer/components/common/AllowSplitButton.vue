@@ -1,15 +1,17 @@
 <template>
-  <button
+  <Button
+    unstyled
     class="allow-button"
-    type="button"
+    native-type="button"
     title="Allow (Enter)"
     @click="emit('confirm', 'once')"
   >
     Allow
-  </button>
+  </Button>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 type PermissionResponse = 'once'
 
 const emit = defineEmits<{

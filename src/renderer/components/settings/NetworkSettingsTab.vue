@@ -45,14 +45,15 @@
         </SettingRow>
 
         <SettingRow>
-          <button
+          <Button
+            unstyled
             class="test-btn"
-            type="button"
+            native-type="button"
             :disabled="isTesting || !proxy.enabled"
             @click="testProxy"
           >
             {{ isTesting ? 'Testing...' : 'Test Proxy' }}
-          </button>
+          </Button>
           <span
             v-if="testMessage"
             :class="['test-result', testStatus]"
@@ -66,6 +67,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, ref, toRaw } from 'vue'
 import type { AppSettings, ProxySettings } from '@/types'
 import {

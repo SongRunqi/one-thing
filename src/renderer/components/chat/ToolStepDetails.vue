@@ -1,17 +1,95 @@
 <template>
   <div class="tool-step-details">
     <div
-      v-if="failedEditOldTexts.length"
+      v-if="failedEditDetails"
       class="detail-section failed-edit-section"
     >
-      <div class="detail-label">
-        Text not found in file
+      <div class="failed-edit-heading">
+        <div class="detail-label">
+          Failed edit parameters
+        </div>
+        <div
+          v-if="failedEditDetails.summary"
+          class="failed-edit-summary"
+        >
+          {{ failedEditDetails.summary }}
+        </div>
       </div>
-      <pre
-        v-for="(text, index) in failedEditOldTexts"
-        :key="index"
-        class="failed-edit-snippet"
-      >{{ text }}</pre>
+
+      <dl
+        v-if="failedEditDetails.params.length"
+        class="failed-edit-param-list"
+      >
+        <template
+          v-for="param in failedEditDetails.params"
+          :key="param.label"
+        >
+          <dt class="failed-edit-param-label">
+            {{ param.label }}
+          </dt>
+          <dd
+            class="failed-edit-param-value"
+            :title="param.value"
+          >
+            {{ param.value }}
+          </dd>
+        </template>
+      </dl>
+
+      <div
+        v-if="failedEditDetails.attempts.length"
+        class="failed-edit-attempts"
+      >
+        <div
+          v-for="attempt in failedEditDetails.attempts"
+          :key="attempt.index"
+          class="failed-edit-attempt"
+        >
+          <div class="failed-edit-attempt-title">
+            {{ failedEditDetails.attempts.length > 1 ? `Edit ${attempt.index + 1}` : 'Edit' }}
+          </div>
+
+          <template v-if="attempt.oldTextPresent">
+            <div class="failed-edit-snippet-label">
+              Old string
+            </div>
+            <pre
+              class="failed-edit-snippet"
+              :class="{ 'is-empty': !attempt.oldText }"
+            >{{ displayEditText(attempt.oldText) }}</pre>
+          </template>
+
+          <template v-if="attempt.newTextPresent">
+            <div class="failed-edit-snippet-label">
+              New string
+            </div>
+            <pre
+              class="failed-edit-snippet replacement"
+              :class="{ 'is-empty': !attempt.newText }"
+            >{{ displayEditText(attempt.newText) }}</pre>
+          </template>
+
+          <dl
+            v-if="attempt.extraParams.length"
+            class="failed-edit-param-list compact"
+          >
+            <template
+              v-for="param in attempt.extraParams"
+              :key="param.label"
+            >
+              <dt class="failed-edit-param-label">
+                {{ param.label }}
+              </dt>
+              <dd
+                class="failed-edit-param-value"
+                :title="param.value"
+              >
+                {{ param.value }}
+              </dd>
+            </template>
+          </dl>
+        </div>
+      </div>
     </div>
 
     <ToolDiffPreview
@@ -127,6 +205,26 @@ import type { ToolStepView } from '@/stores/helpers/tool-step-view'
 import ToolDiffPreview from './ToolDiffPreview.vue'
 import ToolResultRenderer from './ToolResultRenderer.vue'
 
+interface FailedEditParam {
+  label: string
+  value: string
+}
+
+interface FailedEditAttempt {
+  index: number
+  oldText: string
+  oldTextPresent: boolean
+  newText: string
+  newTextPresent: boolean
+  extraParams: FailedEditParam[]
+}
+
+interface FailedEditDetails {
+  summary: string
+  params: FailedEditParam[]
+  attempts: FailedEditAttempt[]
+}
+
 const props = defineProps<{
   view: ToolStepView
   /** Soft-wrap long diff lines (controlled by the outer tool-step header) */
@@ -138,16 +236,53 @@ const streamingPreviewRef = ref<InstanceType<typeof ToolDiffPreview> | null>(nul
 const activeDiff = computed(() => props.view.diff || props.view.streamingDiff)
 const activeDiffLines = computed(() => props.view.diff ? props.view.diffLines : props.view.streamingDiffLines)
 const isFailedEdit = computed(() => props.view.toolName === 'edit' && (props.view.status === 'failed' || props.view.status === 'rejected'))
-const failedEditOldTexts = computed<string[]>(() => {
-  if (props.view.toolName !== 'edit' || props.view.status !== 'failed') return []
-  const edits = props.view.toolCall.arguments?.edits
-  if (!Array.isArray(edits)) return []
-  return edits
-    .map((edit: unknown) => {
-      const oldText = (edit as { oldText?: unknown } | null)?.oldText
-      return typeof oldText === 'string' ? oldText : ''
+const failedEditDetails = computed<FailedEditDetails | null>(() => {
+  if (props.view.toolName !== 'edit' || props.view.status !== 'failed') return null
+  const args = props.view.toolCall.arguments || {}
+  const edits = Array.isArray(args.edits) ? args.edits : []
+  const params: FailedEditParam[] = []
+  const path = typeof args.path === 'string' ? args.path : ''
+
+  if (path) {
+    params.push({ label: 'Path', value: path })
+  }
+  if (edits.length) {
+    params.push({ label: 'Edits', value: String(edits.length) })
+  }
+
+  for (const [key, value] of Object.entries(args)) {
+    if (key === 'path' || key === 'edits') continue
+    params.push({ label: key, value: formatParamValue(value) })
+  }
+
+  const attempts = edits
+    .map((edit: unknown, index): FailedEditAttempt | null => {
+      if (!isRecord(edit)) return null
+      const oldTextPresent = hasOwn(edit, 'oldText')
+      const newTextPresent = hasOwn(edit, 'newText')
+      const extraParams = Object.entries(edit)
+        .filter(([key]) => key !== 'oldText' && key !== 'newText')
+        .map(([key, value]) => ({ label: key, value: formatParamValue(value) }))
+
+      return {
+        index,
+        oldText: oldTextPresent ? formatEditText(edit.oldText) : '',
+        oldTextPresent,
+        newText: newTextPresent ? formatEditText(edit.newText) : '',
+        newTextPresent,
+        extraParams,
+      }
     })
-    .filter(Boolean)
+    .filter((attempt): attempt is FailedEditAttempt => attempt !== null)
+
+  if (!params.length && !attempts.length) return null
+
+  const summary = [
+    path ? shortDisplayPath(path) : '',
+    attempts.length ? `${attempts.length} ${attempts.length === 1 ? 'edit' : 'edits'}` : '',
+  ].filter(Boolean).join(' · ')
+
+  return { summary, params, attempts }
 })
 const resultRenderKind = computed(() => props.view.toolName === 'bash' ? 'bash' : 'text')
 const resultForRenderer = computed<ToolPartialResult | null>(() => {
@@ -190,7 +325,35 @@ const showErrorDetails = computed(() => {
   if (normalizeErrorText(error) === normalizeErrorText(reason)) return false
   return error.split('\n').filter(line => line.trim()).length > 1
 })
-const showErrorSection = computed(() => !!props.view.step.error && showErrorDetails.value)
+const showErrorSection = computed(() => !isFailedEdit.value && !!props.view.step.error && showErrorDetails.value)
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
+function formatParamValue(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (value === null) return 'null'
+  if (value === undefined) return 'undefined'
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function formatEditText(value: unknown): string {
+  return typeof value === 'string' ? value : formatParamValue(value)
+}
+
+function displayEditText(value: string): string {
+  return value.length ? value : '(empty string)'
+}
 
 function compactOutput(value: string): string {
   return value.replace(/\n{3,}/g, '\n\n').trimEnd()
@@ -370,18 +533,107 @@ pre {
 }
 
 .failed-edit-section {
-  padding-top: 2px;
+  padding-top: 1px;
+}
+
+.failed-edit-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  max-width: 72ch;
+  margin-bottom: 8px;
+}
+
+.failed-edit-heading .detail-label {
+  margin-bottom: 0;
+}
+
+.failed-edit-summary {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  font-family: var(--tool-font-mono);
+  font-size: var(--tool-font-size-meta);
+  line-height: var(--tool-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.failed-edit-param-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 9px;
+  max-width: 72ch;
+  margin: 0 0 9px;
+}
+
+.failed-edit-param-list.compact {
+  margin: 7px 0 0;
+}
+
+.failed-edit-param-label {
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  font-family: var(--tool-font-sans);
+  font-size: var(--tool-font-size-meta);
+  font-weight: 500;
+  line-height: var(--tool-line-height);
+}
+
+.failed-edit-param-value {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  font-family: var(--tool-font-mono);
+  font-size: var(--tool-font-size-meta);
+  line-height: var(--tool-line-height);
+}
+
+.failed-edit-attempts {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.failed-edit-attempt {
+  max-width: 72ch;
+  min-width: 0;
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 48%, transparent);
+}
+
+.failed-edit-attempt-title,
+.failed-edit-snippet-label {
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  font-family: var(--tool-font-sans);
+  font-size: var(--tool-font-size-meta);
+  font-weight: 500;
+  line-height: var(--tool-line-height);
+}
+
+.failed-edit-attempt-title {
+  margin-bottom: 5px;
+}
+
+.failed-edit-snippet-label {
+  margin: 6px 0 4px;
 }
 
 .failed-edit-snippet {
-  max-width: 72ch;
-  max-height: calc(var(--tool-pane-max) * 0.6);
-  border-left: 3px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 30%, transparent);
+  max-width: 100%;
+  max-height: calc(var(--tool-pane-max) * 0.62);
+  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
   font-size: var(--tool-font-size-line, 11.5px);
 }
 
-.failed-edit-snippet + .failed-edit-snippet {
-  margin-top: 6px;
+.failed-edit-snippet.replacement {
+  background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-add-bar)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
+}
+
+.failed-edit-snippet.is-empty {
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  font-style: italic;
 }
 
 .detail-note-row {

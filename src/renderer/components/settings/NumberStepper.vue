@@ -3,15 +3,16 @@
     class="number-stepper"
     :class="[`number-stepper-${size}`, { disabled }]"
   >
-    <button
+    <Button
+      unstyled
       class="stepper-btn"
-      type="button"
+      native-type="button"
       :aria-label="`Decrease ${ariaLabel || 'value'}`"
       :disabled="disabled || !canDecrease"
       @click="stepBy(-1)"
     >
       -
-    </button>
+    </Button>
     <span class="stepper-value">
       <input
         class="stepper-input"
@@ -33,19 +34,21 @@
         class="stepper-suffix"
       >{{ suffix }}</span>
     </span>
-    <button
+    <Button
+      unstyled
       class="stepper-btn"
-      type="button"
+      native-type="button"
       :aria-label="`Increase ${ariaLabel || 'value'}`"
       :disabled="disabled || !canIncrease"
       @click="stepBy(1)"
     >
       +
-    </button>
+    </Button>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, ref, watch } from 'vue'
 
 const props = withDefaults(defineProps<{

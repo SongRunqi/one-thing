@@ -125,6 +125,44 @@ describe('tool activity view', () => {
     expect(activity.stats).toBe('+3 -1')
   })
 
+  it('shows duration only while a tool is active', () => {
+    const executing = buildToolActivityView(step({
+      status: 'running',
+      toolCall: tc({
+        status: 'executing',
+        startTime: 1_000,
+      }),
+    }), 2_500)
+    const streaming = buildToolActivityView(step({
+      status: 'running',
+      toolCall: tc({
+        status: 'input-streaming',
+        startTime: 1_000,
+      }),
+    }), 1_500)
+    const completed = buildToolActivityView(step({
+      status: 'completed',
+      toolCall: tc({
+        status: 'completed',
+        startTime: 1_000,
+        endTime: 2_500,
+      }),
+    }), 3_000)
+    const failed = buildToolActivityView(step({
+      status: 'failed',
+      toolCall: tc({
+        status: 'failed',
+        startTime: 1_000,
+        endTime: 2_500,
+      }),
+    }), 3_000)
+
+    expect(executing.duration).toBe('1.5s')
+    expect(streaming.duration).toBe('500ms')
+    expect(completed.duration).toBe('')
+    expect(failed.duration).toBe('')
+  })
+
   it('exposes numeric additions/deletions for group aggregation', () => {
     const activity = buildToolActivityView(step({
       status: 'completed',
@@ -145,7 +183,7 @@ describe('tool activity view', () => {
     expect(activity.stats).toBe('+3 -1')
   })
 
-  it('marks permission rows but only auto-expands failed states', () => {
+  it('keeps permission and failed rows collapsed by default', () => {
     const awaiting = buildToolActivityView(step({
       status: 'awaiting-confirmation',
       toolCall: tc({
@@ -162,7 +200,7 @@ describe('tool activity view', () => {
     expect(awaiting.isAwaitingConfirmation).toBe(true)
     expect(awaiting.defaultExpanded).toBe(false)
     expect(failed.status).toBe('failed')
-    expect(failed.defaultExpanded).toBe(true)
+    expect(failed.defaultExpanded).toBe(false)
   })
 
   it('surfaces failed edit target while keeping the failure reason compact', () => {
@@ -200,7 +238,8 @@ describe('tool activity view', () => {
 
     expect(rejected.status).toBe('rejected')
     expect(rejected.verb).toBe('Rejected run')
-    expect(rejected.defaultExpanded).toBe(true)
+    expect(rejected.errorSummary).toBe('')
+    expect(rejected.defaultExpanded).toBe(false)
   })
 
   it('uses action-specific labels for variable tools', () => {

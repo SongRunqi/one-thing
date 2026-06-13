@@ -21,8 +21,9 @@
 
     <div class="chat-header-right">
       <!-- Back to parent (for branch sessions) -->
-      <button
+      <Button
         v-if="isBranchSession"
+        unstyled
         class="chat-header-btn back-btn"
         title="Back to parent chat"
         @click="$emit('goToParent')"
@@ -31,11 +32,12 @@
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
 
       <!-- Split button -->
-      <button
+      <Button
         v-if="showSplitButton"
+        unstyled
         class="chat-header-btn"
         title="Split view"
         @click="$emit('split')"
@@ -44,11 +46,12 @@
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
 
       <!-- Equalize panels button -->
-      <button
+      <Button
         v-if="canClose"
+        unstyled
         class="chat-header-btn"
         title="Equalize panels"
         @click="$emit('equalize')"
@@ -57,22 +60,24 @@
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
 
-      <button
+      <Button
+        unstyled
         :class="['chat-header-btn', 'inspector-toggle', { hidden: isInspectorOpen }]"
-        title="Show session lens"
+        title="Show workbench"
         @click="$emit('toggleInspector')"
       >
-        <Radar
+        <PanelRightOpen
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
 
       <!-- Close button (for multi-panel) -->
-      <button
+      <Button
         v-if="canClose"
+        unstyled
         class="chat-header-btn close-btn"
         title="Close panel"
         @click="$emit('close')"
@@ -81,13 +86,14 @@
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
     </div>
   </header>
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, Columns2, Equal, X, Radar } from 'lucide-vue-next'
+import Button from '@/components/common/Button.vue'
+import { ArrowLeft, Columns2, Equal, X, PanelRightOpen } from 'lucide-vue-next'
 
 defineProps<{
   sessionName: string

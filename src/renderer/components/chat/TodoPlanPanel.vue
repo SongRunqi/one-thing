@@ -17,16 +17,18 @@
     @mouseleave="handlePanelMouseLeave"
     @keydown="handleShortcut"
   >
-    <button
+    <Button
       v-if="collapsed"
+      text
       class="wake-button"
-      type="button"
+      native-type="button"
       title="Todo / Notes"
       aria-label="Show Todo / Notes"
-      @click="collapsed = false"
+      @mousedown.prevent
+      @click.stop="collapsed = false"
     >
       <FileText :size="15" />
-    </button>
+    </Button>
 
     <template v-else>
       <header class="panel-header">
@@ -41,44 +43,52 @@
         </div>
 
         <div class="panel-actions">
-          <button
+          <Button
+            text
             class="icon-button"
-            type="button"
+            native-type="button"
             title="Command Panel"
             aria-label="Command Panel"
-            @click="openActionPanel"
+            @mousedown.prevent
+            @click.stop="openActionPanel"
           >
             <Command :size="14" />
-          </button>
-          <button
+          </Button>
+          <Button
             ref="titleButtonRef"
+            text
             class="icon-button"
-            type="button"
+            native-type="button"
             title="Browse notes"
             aria-label="Browse notes"
-            @click="openSwitcher"
+            @mousedown.prevent
+            @click.stop="openSwitcher"
           >
             <FileText :size="14" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="icon-button"
-            type="button"
+            native-type="button"
             title="New note"
             aria-label="New note"
-            @click="createNote"
+            @mousedown.prevent
+            @click.stop="createNote"
           >
             <Plus :size="14" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="icon-button"
             :class="{ active: pinned }"
-            type="button"
+            native-type="button"
             :title="pinControlLabel"
             :aria-label="pinControlLabel"
-            @click="togglePinned"
+            @mousedown.prevent
+            @click.stop="togglePinned"
           >
             <Pin :size="14" />
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -122,10 +132,12 @@
             :data-note-id="doc.id"
             @mouseenter="selectSwitcherDocument(doc.id)"
           >
-            <button
+            <Button
+              text
               class="note-option-main"
-              type="button"
-              @click="selectDocument(doc.id)"
+              native-type="button"
+              @mousedown.prevent
+              @click.stop="selectDocument(doc.id)"
             >
               <strong>{{ doc.title }}</strong>
               <small>
@@ -134,25 +146,29 @@
                 <b>•</b>
                 {{ doc.content.length }} Characters
               </small>
-            </button>
+            </Button>
             <div class="note-option-actions">
-              <button
+              <Button
+                text
                 :class="{ active: isNotePinned(doc.id) }"
-                type="button"
+                native-type="button"
                 :title="isNotePinned(doc.id) ? 'Unpin note' : 'Pin note'"
                 :aria-label="isNotePinned(doc.id) ? 'Unpin note' : 'Pin note'"
-                @click="toggleNotePinned(doc.id)"
+                @mousedown.prevent
+                @click.stop="toggleNotePinned(doc.id)"
               >
                 <Pin :size="16" />
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                text
+                native-type="button"
                 title="Delete note"
                 aria-label="Delete note"
-                @click="deleteUserNote(doc.id)"
+                @mousedown.prevent
+                @click.stop="deleteUserNote(doc.id)"
               >
                 <Trash2 :size="16" />
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -169,10 +185,12 @@
             :data-note-id="doc.id"
             @mouseenter="selectSwitcherDocument(doc.id)"
           >
-            <button
+            <Button
+              text
               class="note-option-main"
-              type="button"
-              @click="selectDocument(doc.id)"
+              native-type="button"
+              @mousedown.prevent
+              @click.stop="selectDocument(doc.id)"
             >
               <strong>AI Todo</strong>
               <small>
@@ -181,7 +199,7 @@
                 <b>•</b>
                 {{ doc.content.length }} Characters
               </small>
-            </button>
+            </Button>
             <div class="note-option-actions">
               <Bot :size="16" />
             </div>
@@ -203,33 +221,39 @@
           @keydown="handleFindKeydown"
         >
         <span>{{ findStatus }}</span>
-        <button
+        <Button
+          text
           class="mini-button"
-          type="button"
+          native-type="button"
           title="Previous match"
           aria-label="Previous match"
-          @click="moveFind(-1)"
+          @mousedown.prevent
+          @click.stop="moveFind(-1)"
         >
           <ChevronUp :size="14" />
-        </button>
-        <button
+        </Button>
+        <Button
+          text
           class="mini-button"
-          type="button"
+          native-type="button"
           title="Next match"
           aria-label="Next match"
-          @click="moveFind(1)"
+          @mousedown.prevent
+          @click.stop="moveFind(1)"
         >
           <ChevronDown :size="14" />
-        </button>
-        <button
+        </Button>
+        <Button
+          text
           class="mini-button"
-          type="button"
+          native-type="button"
           title="Close find"
           aria-label="Close find"
-          @click="closeFind"
+          @mousedown.prevent
+          @click.stop="closeFind"
         >
           <X :size="14" />
-        </button>
+        </Button>
       </div>
 
       <div
@@ -271,149 +295,165 @@
           role="toolbar"
           aria-label="Markdown formatting"
         >
-          <button
+          <Button
+            text
             class="format-command heading-command"
-            type="button"
+            native-type="button"
             title="Heading 1"
             aria-label="Heading 1"
             @mousedown.prevent
-            @click="runFormatCommand('heading-1')"
+            @click.stop="runFormatCommand('heading-1')"
           >
             <span>H</span>
             <ChevronDown :size="12" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Bold"
             aria-label="Bold"
             @mousedown.prevent
-            @click="runFormatCommand('bold')"
+            @click.stop="runFormatCommand('bold')"
           >
             <Bold :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Italic"
             aria-label="Italic"
             @mousedown.prevent
-            @click="runFormatCommand('italic')"
+            @click.stop="runFormatCommand('italic')"
           >
             <Italic :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Strikethrough"
             aria-label="Strikethrough"
             @mousedown.prevent
-            @click="runFormatCommand('strikethrough')"
+            @click.stop="runFormatCommand('strikethrough')"
           >
             <Strikethrough :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Underline"
             aria-label="Underline"
             @mousedown.prevent
-            @click="runFormatCommand('underline')"
+            @click.stop="runFormatCommand('underline')"
           >
             <Underline :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Inline code"
             aria-label="Inline code"
             @mousedown.prevent
-            @click="runFormatCommand('inline-code')"
+            @click.stop="runFormatCommand('inline-code')"
           >
             <Code2 :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Link"
             aria-label="Link"
             @mousedown.prevent
-            @click="runFormatCommand('link')"
+            @click.stop="runFormatCommand('link')"
           >
             <Link :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Code block"
             aria-label="Code block"
             @mousedown.prevent
-            @click="runFormatCommand('code-block')"
+            @click.stop="runFormatCommand('code-block')"
           >
             <Code2 :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Quote"
             aria-label="Quote"
             @mousedown.prevent
-            @click="runFormatCommand('blockquote')"
+            @click.stop="runFormatCommand('blockquote')"
           >
             <Quote :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Bulleted list"
             aria-label="Bulleted list"
             @mousedown.prevent
-            @click="runFormatCommand('bullet-list')"
+            @click.stop="runFormatCommand('bullet-list')"
           >
             <List :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Numbered list"
             aria-label="Numbered list"
             @mousedown.prevent
-            @click="runFormatCommand('ordered-list')"
+            @click.stop="runFormatCommand('ordered-list')"
           >
             <ListOrdered :size="16" />
-          </button>
-          <button
+          </Button>
+          <Button
+            text
             class="format-command"
-            type="button"
+            native-type="button"
             title="Task list"
             aria-label="Task list"
             @mousedown.prevent
-            @click="runFormatCommand('task-list')"
+            @click.stop="runFormatCommand('task-list')"
           >
             <ListChecks :size="16" />
-          </button>
+          </Button>
           <span class="format-separator" />
-          <button
+          <Button
+            text
             class="format-command close-format"
-            type="button"
+            native-type="button"
             title="Hide formatting bar"
             aria-label="Hide formatting bar"
-            @click="formatBufferOpen = false"
+            @mousedown.prevent
+            @click.stop="formatBufferOpen = false"
           >
             <X :size="16" />
-          </button>
+          </Button>
         </div>
         <template v-else>
           <span>{{ characterCountLabel }}</span>
-          <button
+          <Button
+            text
             class="format-toggle"
-            type="button"
+            native-type="button"
             title="Show formatting bar"
             aria-label="Show formatting bar"
-            @click="toggleFormatBuffer"
+            @mousedown.prevent
+            @click.stop="toggleFormatBuffer"
           >
             <Type :size="21" />
-          </button>
+          </Button>
         </template>
       </footer>
 
@@ -428,6 +468,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   Bot,
@@ -544,7 +585,7 @@ const findQuery = ref('')
 const activeFindIndex = ref(0)
 const panelRef = ref<HTMLElement | null>(null)
 const bodyRef = ref<HTMLElement | null>(null)
-const titleButtonRef = ref<HTMLElement | null>(null)
+const titleButtonRef = ref<{ contains: (node: Node | null) => boolean } | null>(null)
 const switcherRef = ref<HTMLElement | null>(null)
 const switcherInputRef = ref<HTMLInputElement | null>(null)
 const findBarRef = ref<HTMLElement | null>(null)
@@ -1431,6 +1472,17 @@ onUnmounted(() => {
 .note-option-actions button,
 .format-toggle,
 .format-command {
+  --app-button-height: auto;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 0;
+  --app-button-gap: 0;
+  --app-button-font-size: inherit;
+  --app-button-tone: var(--todo-muted);
+  --app-button-hover-fill: transparent;
+  --app-button-hover-fg: var(--todo-text);
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   border: 0;
   color: var(--todo-muted);
   background: transparent;
@@ -1438,7 +1490,31 @@ onUnmounted(() => {
   font: inherit;
 }
 
+.wake-button :deep(.app-button-content),
+.icon-button :deep(.app-button-content),
+.mini-button :deep(.app-button-content),
+.note-option-actions button :deep(.app-button-content),
+.format-toggle :deep(.app-button-content),
+.format-command :deep(.app-button-content) {
+  justify-content: center;
+}
+
+.wake-button :deep(.app-button-label),
+.icon-button :deep(.app-button-label),
+.mini-button :deep(.app-button-label),
+.note-option-actions button :deep(.app-button-label),
+.format-toggle :deep(.app-button-label),
+.format-command :deep(.app-button-label) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
 .wake-button {
+  --app-button-tone: color-mix(in srgb, var(--todo-muted) 58%, transparent);
+  --app-button-hover-fg: color-mix(in srgb, var(--todo-accent) 68%, var(--todo-muted) 32%);
+
   position: relative;
   width: 100%;
   height: 100%;
@@ -1532,6 +1608,9 @@ onUnmounted(() => {
 }
 
 .icon-button {
+  --app-button-height: 22px;
+  --app-button-tone: color-mix(in srgb, var(--todo-text) 66%, transparent);
+
   width: 22px;
   height: 22px;
   display: inline-flex;
@@ -1542,6 +1621,9 @@ onUnmounted(() => {
 }
 
 .mini-button {
+  --app-button-height: 24px;
+  --app-button-tone: color-mix(in srgb, var(--todo-text) 66%, transparent);
+
   width: 24px;
   height: 24px;
   display: inline-flex;
@@ -1554,11 +1636,16 @@ onUnmounted(() => {
 .icon-button:hover,
 .icon-button.active:hover,
 .mini-button:hover {
+  --app-button-tone: var(--todo-text);
+  --app-button-hover-fill: color-mix(in srgb, var(--todo-text) 10%, transparent);
+
   color: var(--todo-text);
   background: color-mix(in srgb, var(--todo-text) 10%, transparent);
 }
 
 .icon-button.active {
+  --app-button-tone: color-mix(in srgb, var(--todo-text) 66%, transparent);
+
   color: color-mix(in srgb, var(--todo-text) 66%, transparent);
   background: transparent;
 }
@@ -1650,6 +1737,10 @@ onUnmounted(() => {
 }
 
 .note-option-main {
+  --app-button-height: 100%;
+  --app-button-tone: inherit;
+  --app-button-hover-fill: transparent;
+
   min-width: 0;
   width: 100%;
   height: 100%;
@@ -1661,6 +1752,11 @@ onUnmounted(() => {
   gap: 4px;
   border-radius: inherit;
   text-align: left;
+}
+
+.note-option-main :deep(.app-button-content),
+.note-option-main :deep(.app-button-label) {
+  display: contents;
 }
 
 .note-option-main:hover {
@@ -1716,6 +1812,10 @@ onUnmounted(() => {
 }
 
 .note-option-actions button {
+  --app-button-height: 24px;
+  --app-button-tone: var(--todo-muted);
+  --app-button-hover-fill: color-mix(in srgb, var(--todo-text) 11%, transparent);
+
   width: 24px;
   height: 24px;
   display: inline-flex;
@@ -1758,6 +1858,8 @@ onUnmounted(() => {
 }
 
 .note-option-actions button.active {
+  --app-button-tone: var(--todo-text);
+
   color: var(--todo-text);
   background: color-mix(in srgb, var(--todo-text) 11%, transparent);
 }
@@ -1838,6 +1940,10 @@ onUnmounted(() => {
 }
 
 .format-toggle {
+  --app-button-height: 30px;
+  --app-button-tone: color-mix(in srgb, var(--todo-text) 72%, transparent);
+  --app-button-hover-fill: color-mix(in srgb, var(--todo-text) 9%, transparent);
+
   width: 30px;
   height: 30px;
   display: inline-flex;
@@ -1870,6 +1976,10 @@ onUnmounted(() => {
 }
 
 .format-command {
+  --app-button-height: 30px;
+  --app-button-tone: color-mix(in srgb, var(--todo-text) 72%, transparent);
+  --app-button-hover-fill: color-mix(in srgb, var(--todo-text) 9%, transparent);
+
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
@@ -1904,6 +2014,10 @@ onUnmounted(() => {
 }
 
 .close-format {
+  --app-button-tone: var(--todo-card-bg);
+  --app-button-hover-fg: var(--todo-card-bg);
+  --app-button-hover-fill: color-mix(in srgb, var(--todo-text) 72%, transparent);
+
   width: 30px;
   height: 30px;
   border-radius: 999px;

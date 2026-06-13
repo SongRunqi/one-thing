@@ -9,6 +9,7 @@ import {
 } from '@codemirror/view'
 import type { SkillDefinition, UserPrompt } from '@shared/ipc'
 import { PROMPT_REF_PATTERN, SKILL_REF_PATTERN } from '@shared/prompt-references'
+import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
 import type { CommandDefinition } from '@/types/commands'
 
 export interface PromptCardData {
@@ -44,14 +45,6 @@ export interface PromptCardExtensionOptions {
 const LEGACY_SKILL_REF_PATTERN = /(^|\s)\/skill:([^\n]+?)(?=\s{2,}|$)/g
 const LEADING_SLASH_REF_PATTERN = /^\/([a-zA-Z0-9_-]+)(?=\s|$)/
 
-function escapeAttr(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-}
-
 class PromptRefWidget extends WidgetType {
   private popover: HTMLElement | null = null
   private hideTimer: number | null = null
@@ -80,37 +73,48 @@ class PromptRefWidget extends WidgetType {
     const span = document.createElement('span')
     span.className = `prompt-ref-widget is-${this.card.kind}`
     span.contentEditable = 'false'
-    span.innerHTML = `
-      <span class="prompt-ref-widget-icon">${escapeAttr(this.card.icon)}</span>
-      <span class="prompt-ref-widget-title">${escapeAttr(label)}</span>
-      <button class="prompt-ref-widget-close" type="button" aria-label="Remove ${escapeAttr(this.card.kind)} ${escapeAttr(label)}">&times;</button>
-    `
+
+    const icon = document.createElement('span')
+    icon.className = 'prompt-ref-widget-icon'
+    icon.textContent = this.card.icon
+
+    const title = document.createElement('span')
+    title.className = 'prompt-ref-widget-title'
+    title.textContent = label
+
+    const closeMount = createDomButton({
+      className: 'prompt-ref-widget-close',
+      ariaLabel: `Remove ${this.card.kind} ${label}`,
+      children: '×',
+      onMouseDown: (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      },
+      onClick: (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        const docLength = view.state.doc.length
+        if (this.from < 0 || this.to > docLength || this.from >= this.to) return
+        view.dispatch({
+          changes: { from: this.from, to: this.to, insert: '' },
+          selection: { anchor: this.from },
+          scrollIntoView: true,
+        })
+        view.focus()
+      },
+    })
+
+    span.append(icon, title, closeMount.host)
     span.addEventListener('mouseenter', () => this.showPopover(span))
     span.addEventListener('mouseleave', () => this.scheduleHidePopover())
     span.addEventListener('focusin', () => this.showPopover(span))
     span.addEventListener('focusout', () => this.scheduleHidePopover())
 
-    const close = span.querySelector<HTMLButtonElement>('.prompt-ref-widget-close')
-    close?.addEventListener('mousedown', event => {
-      event.preventDefault()
-      event.stopPropagation()
-    })
-    close?.addEventListener('click', event => {
-      event.preventDefault()
-      event.stopPropagation()
-      const docLength = view.state.doc.length
-      if (this.from < 0 || this.to > docLength || this.from >= this.to) return
-      view.dispatch({
-        changes: { from: this.from, to: this.to, insert: '' },
-        selection: { anchor: this.from },
-        scrollIntoView: true,
-      })
-      view.focus()
-    })
     return span
   }
 
-  destroy(): void {
+  destroy(dom: HTMLElement): void {
+    unmountDomButtons(dom)
     this.removePopover()
   }
 

@@ -190,8 +190,9 @@ function buildStats(diff: ToolDiffData | null, toolCall: ToolCall): ActivityStat
 }
 
 function buildDuration(toolCall: ToolCall, nowMs = Date.now()): string {
+  if (toolCall.status !== 'executing' && toolCall.status !== 'input-streaming') return ''
   if (!toolCall.startTime) return ''
-  const end = toolCall.endTime ?? (toolCall.status === 'executing' || toolCall.status === 'input-streaming' ? nowMs : 0)
+  const end = toolCall.endTime ?? nowMs
   if (!end) return ''
   const ms = Math.max(0, end - toolCall.startTime)
   if (ms < 1000) return `${ms}ms`
@@ -206,13 +207,10 @@ export function buildErrorSummary(
   status: ToolRenderStatus,
 ): string {
   if (status !== 'failed' && status !== 'rejected') return ''
+  if (status === 'rejected') return ''
 
   const rawError = getRawToolError(step, toolCall)
   const reason = compactFailureReason(rawError)
-
-  if (status === 'rejected') {
-    return reason || 'Permission was rejected.'
-  }
 
   const fileCategory = getFileToolCategory(toolName)
   if (fileCategory === 'edit' || fileCategory === 'write') {

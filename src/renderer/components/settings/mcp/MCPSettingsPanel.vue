@@ -63,18 +63,20 @@
             <p>Are you sure you want to delete this MCP server? This action cannot be undone.</p>
           </div>
           <div class="dialog-footer">
-            <button
+            <Button
+              unstyled
               class="btn secondary"
               @click="showDeleteDialog = false"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               class="btn danger"
               @click="handleDeleteServer"
             >
               Delete
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -91,6 +93,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, watch, onMounted } from 'vue'
 import type { MCPServerConfig, MCPSettings } from '@/types'
 import { useMCPServers, type ServerForm } from './useMCPServers'

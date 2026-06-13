@@ -1,13 +1,14 @@
 /**
- * Claude Code Skills Loader
+ * Onething Skills Loader
  *
- * Loads skills from filesystem following official Claude Code Skills format:
- * - User skills: ~/.claude/skills/
- * - Project skills: .claude/skills/ (relative to working directory)
+ * Loads Hermes-style skills from filesystem:
+ * - Runtime skills: ~/.onething/skills/
+ * - Project skills: .onething/skills/
+ * - Plugin-provided skill roots
  *
  * Each skill is a directory containing:
  * - SKILL.md (required) - Markdown file with YAML frontmatter
- * - Additional files (optional) - scripts, templates, reference docs
+ * - Additional files (optional) - references, templates, scripts, assets
  */
 
 import fs from 'fs'
@@ -16,14 +17,36 @@ import os from 'os'
 import crypto from 'crypto'
 import { app } from 'electron'
 import { parse as parseYaml } from 'yaml'
-import type { SkillDefinition, SkillFile, SkillSource } from '../../shared/ipc.js'
+import type { SkillConditions, SkillDefinition, SkillFile, SkillSource } from '../../shared/ipc.js'
 import { listPluginSkillRoots, type PluginSkillRoot } from './plugin-roots.js'
+import { getStorePath } from '../stores/paths.js'
 
-// YAML frontmatter parser (simple implementation)
 interface SkillFrontmatter {
   name: string
   description: string
   'allowed-tools'?: string[]
+  platforms?: string[]
+  tags?: string[] | string
+  related_skills?: string[] | string
+  metadata?: Record<string, unknown>
+  prerequisites?: Record<string, unknown>
+  required_environment_variables?: unknown
+}
+
+const MAX_NAME_LENGTH = 64
+const MAX_DESCRIPTION_LENGTH = 1024
+const ONETHING_SKILLS_CONFIG_FILENAME = 'skills.yaml'
+
+function isSkillsDebugEnabled(): boolean {
+  return process.env.ONETHING_DEBUG_SKILLS === '1' || Boolean(process.env.DEBUG?.includes('skills'))
+}
+
+function logLoadedSkillRoot(label: string, rootPath: string, skills: SkillDefinition[]): void {
+  if (isSkillsDebugEnabled()) {
+    console.log(`[Skills] ${label}: ${rootPath}, found ${skills.length} skills:`, skills.map(s => s.name))
+    return
+  }
+  console.log(`[Skills] ${label}: ${rootPath}, found ${skills.length} skills`)
 }
 
 /**
@@ -49,11 +72,18 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | nu
       const allowedTools = Array.isArray(allowed)
         ? allowed.filter((item): item is string => typeof item === 'string')
         : undefined
+      const platforms = normalizeStringList(parsed.platforms)
       return {
         frontmatter: {
           name,
           description,
           ...(allowedTools ? { 'allowed-tools': allowedTools } : {}),
+          ...(platforms.length ? { platforms } : {}),
+          ...(parsed.tags !== undefined ? { tags: parsed.tags as string[] | string } : {}),
+          ...(parsed.related_skills !== undefined ? { related_skills: parsed.related_skills as string[] | string } : {}),
+          ...(parsed.metadata && typeof parsed.metadata === 'object' ? { metadata: parsed.metadata as Record<string, unknown> } : {}),
+          ...(parsed.prerequisites && typeof parsed.prerequisites === 'object' ? { prerequisites: parsed.prerequisites as Record<string, unknown> } : {}),
+          ...(parsed.required_environment_variables !== undefined ? { required_environment_variables: parsed.required_environment_variables } : {}),
         },
         body,
       }
@@ -127,11 +157,136 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | nu
   }
 }
 
+function normalizeStringList(value: unknown): string[] {
+  if (value === undefined || value === null) return []
+  if (Array.isArray(value)) {
+    return value.map(item => String(item).trim()).filter(Boolean)
+  }
+  const text = String(value).trim()
+  if (!text) return []
+  const unwrapped = text.startsWith('[') && text.endsWith(']') ? text.slice(1, -1) : text
+  return unwrapped.split(',').map(item => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+}
+
+function parseHermesMetadata(frontmatter: SkillFrontmatter): Record<string, unknown> {
+  const metadata = frontmatter.metadata
+  if (!metadata || typeof metadata !== 'object') return {}
+  const hermes = metadata.hermes
+  return hermes && typeof hermes === 'object' && !Array.isArray(hermes)
+    ? hermes as Record<string, unknown>
+    : {}
+}
+
+function getHermesTags(frontmatter: SkillFrontmatter): string[] {
+  const hermes = parseHermesMetadata(frontmatter)
+  return normalizeStringList(hermes.tags ?? frontmatter.tags)
+}
+
+function getRelatedSkills(frontmatter: SkillFrontmatter): string[] {
+  const hermes = parseHermesMetadata(frontmatter)
+  return normalizeStringList(hermes.related_skills ?? frontmatter.related_skills)
+}
+
+function getSkillConditions(frontmatter: SkillFrontmatter): SkillConditions {
+  const hermes = parseHermesMetadata(frontmatter)
+  return {
+    fallbackForToolsets: normalizeStringList(hermes.fallback_for_toolsets),
+    requiresToolsets: normalizeStringList(hermes.requires_toolsets),
+    fallbackForTools: normalizeStringList(hermes.fallback_for_tools),
+    requiresTools: normalizeStringList(hermes.requires_tools),
+  }
+}
+
+function nonEmptyConditions(conditions: SkillConditions): SkillConditions | undefined {
+  const filtered: SkillConditions = {}
+  if (conditions.fallbackForToolsets?.length) filtered.fallbackForToolsets = conditions.fallbackForToolsets
+  if (conditions.requiresToolsets?.length) filtered.requiresToolsets = conditions.requiresToolsets
+  if (conditions.fallbackForTools?.length) filtered.fallbackForTools = conditions.fallbackForTools
+  if (conditions.requiresTools?.length) filtered.requiresTools = conditions.requiresTools
+  return Object.keys(filtered).length ? filtered : undefined
+}
+
+function isExistingDirectory(candidate: string): boolean {
+  try {
+    return fs.statSync(candidate).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function realPathKey(candidate: string): string {
+  try {
+    return fs.realpathSync(candidate)
+  } catch {
+    return path.resolve(candidate)
+  }
+}
+
+function isSamePath(a: string, b: string): boolean {
+  return realPathKey(a) === realPathKey(b)
+}
+
+function toPosixPath(input: string): string {
+  return input.split(path.sep).join('/')
+}
+
+function getSkillCategory(skillDir: string, rootDir?: string): string | undefined {
+  if (!rootDir) return undefined
+  const relativeDir = path.relative(path.resolve(rootDir), path.resolve(skillDir))
+  if (!relativeDir || relativeDir.startsWith('..') || path.isAbsolute(relativeDir)) return undefined
+  const parent = path.dirname(relativeDir)
+  return parent && parent !== '.' ? toPosixPath(parent) : undefined
+}
+
+function getRelativeSkillPath(skillMdPath: string, rootDir?: string): string | undefined {
+  if (!rootDir) return undefined
+  const relativePath = path.relative(path.resolve(rootDir), path.resolve(skillMdPath))
+  if (!relativePath || relativePath.startsWith('..') || path.isAbsolute(relativePath)) return undefined
+  return toPosixPath(relativePath)
+}
+
+function currentPlatformAliases(): Set<string> {
+  switch (process.platform) {
+    case 'darwin':
+      return new Set(['darwin', 'macos', 'mac', 'osx'])
+    case 'win32':
+      return new Set(['win32', 'windows', 'win'])
+    default:
+      return new Set(['linux', process.platform])
+  }
+}
+
+function isPlatformSupported(platforms: string[] | undefined): boolean {
+  if (!platforms?.length) return true
+  const aliases = currentPlatformAliases()
+  return platforms.some(platform => {
+    const normalized = platform.trim().toLowerCase()
+    return normalized === '*' || normalized === 'all' || normalized === 'any' || aliases.has(normalized)
+  })
+}
+
+/**
+ * Get the app-owned home directory path.
+ *
+ * Keep the historical export name for compatibility with callers, but never
+ * default to another agent's home directory.
+ */
+export function getHermesHome(): string {
+  return getStorePath()
+}
+
+/**
+ * Get the app-owned skills config file path.
+ */
+export function getHermesConfigPath(): string {
+  return path.join(getHermesHome(), ONETHING_SKILLS_CONFIG_FILENAME)
+}
+
 /**
  * Get the user skills directory path
  */
 export function getUserSkillsPath(): string {
-  return path.join(os.homedir(), '.claude', 'skills')
+  return path.join(getHermesHome(), 'skills')
 }
 
 /**
@@ -139,7 +294,7 @@ export function getUserSkillsPath(): string {
  */
 export function getProjectSkillsPath(cwd?: string): string {
   const workingDir = cwd || process.cwd()
-  return path.join(workingDir, '.claude', 'skills')
+  return path.join(workingDir, '.onething', 'skills')
 }
 
 
@@ -162,20 +317,16 @@ export function getBuiltinSkillsPath(): string {
 }
 
 /**
- * Environment variable for additional skills directory
- */
-const SKILLS_DIR_ENV = 'CLAUDE_SKILLS_DIR'
-
-/**
- * Traverse upward from a directory to find all .claude directories
- * Similar to how git finds .git directories
+ * Traverse upward from a directory to find project skill roots.
+ * Only app-owned `.onething/skills` roots are considered.
  *
  * @param startDir - Directory to start traversal from
  * @param stopAt - Optional directory to stop at (e.g., home directory)
- * @returns Array of .claude/skills paths found (closest first)
+ * @returns Array of skill root paths found (closest first)
  */
 export function findProjectSkillPaths(startDir: string, stopAt?: string): string[] {
   const skillsPaths: string[] = []
+  const seen = new Set<string>()
   const homeDir = os.homedir()
   const stopDirectory = stopAt || homeDir
 
@@ -185,9 +336,13 @@ export function findProjectSkillPaths(startDir: string, stopAt?: string): string
   while (currentDir && !visitedDirs.has(currentDir)) {
     visitedDirs.add(currentDir)
 
-    // Check for .claude/skills in current directory
-    const skillsPath = path.join(currentDir, '.claude', 'skills')
-    if (fs.existsSync(skillsPath) && fs.statSync(skillsPath).isDirectory()) {
+    for (const skillsPath of [
+      path.join(currentDir, '.onething', 'skills'),
+    ]) {
+      if (!isExistingDirectory(skillsPath)) continue
+      const key = realPathKey(skillsPath)
+      if (seen.has(key)) continue
+      seen.add(key)
       skillsPaths.push(skillsPath)
     }
 
@@ -204,14 +359,19 @@ export function findProjectSkillPaths(startDir: string, stopAt?: string): string
 }
 
 /**
- * Get skills directory from environment variable
+ * Legacy extension point retained for API compatibility.
+ * Runtime loading now uses app-owned roots only.
  */
 export function getEnvSkillsPath(): string | null {
-  const envPath = process.env[SKILLS_DIR_ENV]
-  if (envPath && fs.existsSync(envPath) && fs.statSync(envPath).isDirectory()) {
-    return envPath
-  }
   return null
+}
+
+/**
+ * Legacy extension point retained for API compatibility.
+ * Runtime loading now uses app-owned roots only.
+ */
+export function getExternalSkillsPaths(): string[] {
+  return []
 }
 
 /**
@@ -219,10 +379,11 @@ export function getEnvSkillsPath(): string | null {
  */
 function getFileType(fileName: string, filePath: string): SkillFile['type'] {
   const ext = path.extname(fileName).toLowerCase()
+  const normalizedPath = toPosixPath(filePath)
 
   if (ext === '.md') return 'markdown'
   if (['.py', '.js', '.ts', '.sh', '.bash'].includes(ext)) return 'script'
-  if (filePath.includes('/templates/') || fileName.includes('template')) return 'template'
+  if (normalizedPath.includes('/templates/') || fileName.includes('template')) return 'template'
 
   return 'other'
 }
@@ -234,14 +395,19 @@ function getFileType(fileName: string, filePath: string): SkillFile['type'] {
 const EXCLUDED_DIRECTORIES = new Set([
   'node_modules',
   '.git',
+  '.github',
+  '.hub',
+  '.archive',
   '.svn',
   '.hg',
   '__pycache__',
   '.pytest_cache',
+  '.ruff_cache',
   '.mypy_cache',
   '.tox',
   '.venv',
   'venv',
+  'site-packages',
   '.env',
   'dist',
   'build',
@@ -313,16 +479,22 @@ function scanSkillFiles(skillDir: string): SkillFile[] {
 /**
  * Load a single skill from a directory
  */
-function skillIdFor(source: SkillSource, name: string, skillDir: string, ownerId?: string): string {
-  if (source !== 'plugin') return `${source}:${name}`
+function skillIdFor(source: SkillSource, name: string, skillDir: string, ownerId?: string, rootDir?: string): string {
+  const relativeKey = rootDir
+    ? toPosixPath(path.relative(path.resolve(rootDir), path.resolve(skillDir)))
+    : ''
+  const key = relativeKey && !relativeKey.startsWith('..') && !path.isAbsolute(relativeKey)
+    ? relativeKey
+    : name
+  if (source !== 'plugin') return `${source}:${key || name}`
   const hash = crypto.createHash('sha1').update(path.resolve(skillDir)).digest('hex').slice(0, 10)
-  return ownerId ? `plugin:${ownerId}:${hash}:${name}` : `plugin:${hash}:${name}`
+  return ownerId ? `plugin:${ownerId}:${hash}:${key || name}` : `plugin:${hash}:${key || name}`
 }
 
 function loadSkillFromDirectory(
   skillDir: string,
   source: SkillSource,
-  options: { ownerId?: string } = {},
+  options: { ownerId?: string; rootDir?: string } = {},
 ): SkillDefinition | null {
   const skillMdPath = path.join(skillDir, 'SKILL.md')
 
@@ -340,22 +512,47 @@ function loadSkillFromDirectory(
       return null
     }
 
+    const name = frontmatter.name.trim()
+    const description = frontmatter.description.trim()
+    const platforms = normalizeStringList(frontmatter.platforms)
+
     // Validate name format
-    if (!/^[a-z0-9-]+$/.test(frontmatter.name)) {
-      console.warn(`[Skills] Invalid skill name "${frontmatter.name}": must be lowercase letters, numbers, and hyphens only`)
+    if (isSkillsDebugEnabled() && !/^[a-z0-9][a-z0-9._-]*$/.test(name)) {
+      console.warn(`[Skills] Invalid skill name "${name}": recommended format is lowercase letters, numbers, dots, underscores, and hyphens`)
+    }
+    if (name.length > MAX_NAME_LENGTH) {
+      console.warn(`[Skills] Invalid skill name "${name}": must be ${MAX_NAME_LENGTH} characters or less`)
+      return null
+    }
+    if (description.length > MAX_DESCRIPTION_LENGTH) {
+      console.warn(`[Skills] Skill "${name}" description is longer than ${MAX_DESCRIPTION_LENGTH} characters and will be truncated`)
+    }
+    if (!isPlatformSupported(platforms)) {
+      return null
     }
 
     // Scan for additional files
     const files = scanSkillFiles(skillDir)
+    const tags = getHermesTags(frontmatter)
+    const relatedSkills = getRelatedSkills(frontmatter)
+    const rootDir = options.rootDir ? path.resolve(options.rootDir) : undefined
+    const conditions = nonEmptyConditions(getSkillConditions(frontmatter))
 
     const skill: SkillDefinition = {
-      id: skillIdFor(source, frontmatter.name, skillDir, options.ownerId),
-      name: frontmatter.name,
-      description: frontmatter.description,
+      id: skillIdFor(source, name, skillDir, options.ownerId, rootDir),
+      name,
+      description: description.slice(0, MAX_DESCRIPTION_LENGTH),
       allowedTools: frontmatter['allowed-tools'],
+      category: getSkillCategory(skillDir, rootDir),
+      tags: tags.length ? tags : undefined,
+      relatedSkills: relatedSkills.length ? relatedSkills : undefined,
+      platforms: platforms.length ? platforms : undefined,
+      conditions,
       source,
       path: skillMdPath,
       directoryPath: skillDir,
+      rootPath: rootDir,
+      relativePath: getRelativeSkillPath(skillMdPath, rootDir),
       enabled: true,
       instructions: body.trim(),
       files: files.length > 0 ? files : undefined
@@ -388,9 +585,14 @@ function loadSkillsFromPath(
 ): SkillDefinition[] {
   const skills: SkillDefinition[] = []
 
-  if (!fs.existsSync(skillsDir)) {
+  if (!isExistingDirectory(skillsDir)) {
     return skills
   }
+
+  const rootDir = path.resolve(skillsDir)
+  const rootSkill = loadSkillFromDirectory(skillsDir, source, { ownerId: options.ownerId, rootDir })
+  if (rootSkill) return [rootSkill]
+  const shouldRecurse = options.recursive ?? true
 
   const visited = new Set<string>()
 
@@ -412,12 +614,13 @@ function loadSkillsFromPath(
         if (!isDirectoryEntry(fullPath, entry)) continue
         if (EXCLUDED_DIRECTORIES.has(entry.name)) continue
 
-        const skill = loadSkillFromDirectory(fullPath, source, { ownerId: options.ownerId })
+        const skill = loadSkillFromDirectory(fullPath, source, { ownerId: options.ownerId, rootDir })
         if (skill) {
           skills.push(skill)
+          continue
         }
 
-        if (options.recursive) {
+        if (shouldRecurse) {
           scan(fullPath)
         }
       }
@@ -442,8 +645,8 @@ function loadBuiltinSkills(): SkillDefinition[] {
     return []
   }
 
-  const skills = loadSkillsFromPath(builtinPath, 'builtin')
-  console.log(`[Skills] Builtin skills path: ${builtinPath}, found ${skills.length} skills:`, skills.map(s => s.name))
+  const skills = loadSkillsFromPath(builtinPath, 'builtin', { recursive: true })
+  logLoadedSkillRoot('Builtin skills path', builtinPath, skills)
 
   return skills
 }
@@ -454,123 +657,75 @@ function loadPluginRootSkills(root: PluginSkillRoot): SkillDefinition[] {
     recursive: root.recursive ?? true,
     ownerId: root.pluginId,
   })
-  console.log(`[Skills] Plugin root (${root.pluginId}) path: ${root.path}, found ${skills.length} skills:`, skills.map(s => s.name))
+  logLoadedSkillRoot(`Plugin root (${root.pluginId}) path`, root.path, skills)
   return skills
 }
 
-function findClaudePluginSkillPaths(): string[] {
-  const marketplacesDir = path.join(os.homedir(), '.claude', 'plugins', 'marketplaces')
-  if (!fs.existsSync(marketplacesDir)) return []
+function loadProjectSkillsForDirectoryWithPaths(
+  workingDirectory: string,
+  userSkillsPath = getUserSkillsPath(),
+): { projectSkills: SkillDefinition[]; projectSkillPaths: string[] } {
+  const projectSkills: SkillDefinition[] = []
+  const allProjectSkillPaths = findProjectSkillPaths(workingDirectory)
+  const projectSkillPaths = allProjectSkillPaths.filter(p => !isSamePath(p, userSkillsPath))
 
-  const roots: string[] = []
-  const visited = new Set<string>()
-  const maxDepth = 7
+  if (isSkillsDebugEnabled()) {
+    console.log(`[Skills] Project skill paths from ${workingDirectory}:`, projectSkillPaths, `(excluded user path: ${userSkillsPath})`)
+  } else {
+    console.log(`[Skills] Project skill roots from ${workingDirectory}: ${projectSkillPaths.length}`)
+  }
 
-  function scan(dir: string, depth: number): void {
-    if (depth > maxDepth) return
-    let resolved: string
-    try {
-      resolved = fs.realpathSync(dir)
-    } catch {
-      resolved = path.resolve(dir)
-    }
-    if (visited.has(resolved)) return
-    visited.add(resolved)
-
-    if (path.basename(dir) === 'skills') {
-      roots.push(dir)
-      return
-    }
-
-    let entries: fs.Dirent[]
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-
-    for (const entry of entries) {
-      if (entry.name.startsWith('.') || EXCLUDED_DIRECTORIES.has(entry.name)) continue
-      const fullPath = path.join(dir, entry.name)
-      if (isDirectoryEntry(fullPath, entry)) {
-        scan(fullPath, depth + 1)
+  const seenSkillIds = new Set<string>()
+  for (const skillPath of projectSkillPaths) {
+    const skills = loadSkillsFromPath(skillPath, 'project', { recursive: true })
+    // Deduplicate: closer skills take precedence.
+    for (const skill of skills) {
+      if (!seenSkillIds.has(skill.id)) {
+        seenSkillIds.add(skill.id)
+        projectSkills.push(skill)
       }
     }
   }
 
-  scan(marketplacesDir, 0)
-  return roots
+  console.log(`[Skills] Found ${projectSkillPaths.length} project skill directories via upward traversal`)
+  return { projectSkills, projectSkillPaths }
 }
 
-function loadClaudePluginSkills(): SkillDefinition[] {
-  const skillPaths = findClaudePluginSkillPaths()
-  const skills = skillPaths.flatMap(skillPath => {
-    const ownerId = `claude:${path.relative(path.join(os.homedir(), '.claude', 'plugins'), skillPath)}`
-    const loaded = loadSkillsFromPath(skillPath, 'plugin', { ownerId })
-    console.log(`[Skills] Claude plugin skills path: ${skillPath}, found ${loaded.length} skills:`, loaded.map(s => s.name))
-    return loaded
-  })
-  console.log(`[Skills] Found ${skillPaths.length} Claude plugin skill directories`)
-  return skills
+export function loadProjectSkillsForDirectory(workingDirectory: string): SkillDefinition[] {
+  return loadProjectSkillsForDirectoryWithPaths(workingDirectory).projectSkills
 }
 
 /**
- * Load all skills from user, project, and builtin directories
+ * Load all skills from project, app-owned runtime, plugin, and builtin directories.
  * Uses upward traversal for project skills when workingDirectory is provided
  *
  * @param workingDirectory - Optional working directory for project skills (enables upward traversal)
  */
 export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
-  // 1. Builtin skills (shipped with the app, lowest priority - can be overridden)
+  // Builtin skills are shipped with the app and have the lowest priority.
   const builtinSkills = loadBuiltinSkills()
 
-  // 2. User skills (global)
+  // Runtime user skills (~/.onething/skills).
   const userSkillsPath = getUserSkillsPath()
-  const userSkills = loadSkillsFromPath(userSkillsPath, 'user')
-  console.log(`[Skills] User skills path: ${userSkillsPath}, found ${userSkills.length} skills:`, userSkills.map(s => s.name))
+  const userSkills = loadSkillsFromPath(userSkillsPath, 'user', { recursive: true })
+  logLoadedSkillRoot('User skills path', userSkillsPath, userSkills)
 
-  // 3. Project skills (with upward traversal if workingDirectory provided)
-  const projectSkills: SkillDefinition[] = []
-  if (workingDirectory) {
-    // Use upward traversal to find all .claude/skills directories
-    // IMPORTANT: Exclude user skills path to avoid duplication (it's already loaded above)
-    const allProjectSkillPaths = findProjectSkillPaths(workingDirectory)
-    const projectSkillPaths = allProjectSkillPaths.filter(p => p !== userSkillsPath)
-    console.log(`[Skills] Project skill paths from ${workingDirectory}:`, projectSkillPaths, `(excluded user path: ${userSkillsPath})`)
-    const seenSkillIds = new Set<string>()
+  // Project skills (with upward traversal if workingDirectory provided).
+  const { projectSkills, projectSkillPaths } = workingDirectory
+    ? loadProjectSkillsForDirectoryWithPaths(workingDirectory, userSkillsPath)
+    : { projectSkills: [] as SkillDefinition[], projectSkillPaths: [] as string[] }
 
-    for (const skillPath of projectSkillPaths) {
-      const skills = loadSkillsFromPath(skillPath, 'project')
-      // Deduplicate: closer skills take precedence
-      for (const skill of skills) {
-        if (!seenSkillIds.has(skill.id)) {
-          seenSkillIds.add(skill.id)
-          projectSkills.push(skill)
-        }
-      }
-    }
-
-    console.log(`[Skills] Found ${projectSkillPaths.length} project skill directories via upward traversal`)
-  }
-
-  // 4. Environment variable skills
-  let envSkills: SkillDefinition[] = []
-  const envSkillsPath = getEnvSkillsPath()
-  console.log(`[Skills] Env skills path (${SKILLS_DIR_ENV}): ${envSkillsPath || 'not set'}`)
-  if (envSkillsPath) {
-    envSkills = loadSkillsFromPath(envSkillsPath, 'user') // Treat as user-level
-    console.log(`[Skills] Loaded ${envSkills.length} skills from ${SKILLS_DIR_ENV}:`, envSkills.map(s => s.name))
-  }
-
-  // 5. Plugin-provided skill roots
+  // Plugin-provided skill roots.
   const pluginSkills = listPluginSkillRoots().flatMap(loadPluginRootSkills)
 
-  // 6. Claude-compatible plugin marketplace skills
-  const claudePluginSkills = loadClaudePluginSkills()
-
-  // Priority: project > plugin > Claude plugin > user > env > builtin
-  // Builtin skills can be overridden by user/project skills with the same name
-  const allSkills = [...projectSkills, ...pluginSkills, ...claudePluginSkills, ...userSkills, ...envSkills, ...builtinSkills]
+  // Priority: project > user > plugin > builtin.
+  // First matching name wins.
+  const allSkills = [
+    ...projectSkills,
+    ...userSkills,
+    ...pluginSkills,
+    ...builtinSkills,
+  ]
 
   // Deduplicate by name (first one wins, so higher priority sources take precedence)
   const seenNames = new Set<string>()
@@ -582,8 +737,12 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     return true
   })
 
-  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${pluginSkills.length} plugin, ${claudePluginSkills.length} Claude plugin, ${envSkills.length} env skills`)
-  console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}, names:`, dedupedSkills.map(s => s.name))
+  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${pluginSkills.length} plugin skills`)
+  if (isSkillsDebugEnabled()) {
+    console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}, names:`, dedupedSkills.map(s => s.name))
+  } else {
+    console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}`)
+  }
 
   return dedupedSkills
 }
@@ -598,16 +757,20 @@ export function createSkill(
   source: SkillSource
 ): SkillDefinition {
   // Validate name
-  if (!/^[a-z0-9-]+$/.test(name)) {
-    throw new Error('Skill name must contain only lowercase letters, numbers, and hyphens')
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(name)) {
+    throw new Error('Skill name must start with a lowercase letter or number and contain only lowercase letters, numbers, dots, underscores, and hyphens')
   }
 
-  if (name.length > 64) {
-    throw new Error('Skill name must be 64 characters or less')
+  if (name.length > MAX_NAME_LENGTH) {
+    throw new Error(`Skill name must be ${MAX_NAME_LENGTH} characters or less`)
   }
 
-  if (description.length > 1024) {
-    throw new Error('Skill description must be 1024 characters or less')
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new Error(`Skill description must be ${MAX_DESCRIPTION_LENGTH} characters or less`)
+  }
+
+  if (source !== 'user' && source !== 'project') {
+    throw new Error('Skills can only be created in user or project roots')
   }
 
   // Determine directory
@@ -624,8 +787,8 @@ export function createSkill(
 
   // Create SKILL.md content
   const skillMdContent = `---
-name: ${name}
-description: ${description}
+name: ${JSON.stringify(name)}
+description: ${JSON.stringify(description)}
 ---
 
 ${instructions}
@@ -634,17 +797,11 @@ ${instructions}
   const skillMdPath = path.join(skillDir, 'SKILL.md')
   fs.writeFileSync(skillMdPath, skillMdContent, 'utf-8')
 
-  // Return the created skill
-  return {
-    id: `${source}:${name}`,
-    name,
-    description,
-    source,
-    path: skillMdPath,
-    directoryPath: skillDir,
-    enabled: true,
-    instructions
+  const skill = loadSkillFromDirectory(skillDir, source, { rootDir: skillsDir })
+  if (!skill) {
+    throw new Error(`Failed to load created skill "${name}"`)
   }
+  return skill
 }
 
 /**
@@ -698,15 +855,16 @@ export function readSkillFile(skillId: string, fileName: string): string | null 
 
   // Security: ensure the path is within the skill directory
   const skillDir = skill.directoryPath
-  const filePath = path.join(skillDir, fileName)
-  const resolvedPath = path.resolve(filePath)
-  if (!resolvedPath.startsWith(path.resolve(skillDir))) {
+  const resolvedSkillDir = path.resolve(skillDir)
+  const resolvedPath = path.resolve(resolvedSkillDir, fileName)
+  const relativePath = path.relative(resolvedSkillDir, resolvedPath)
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
     console.error(`[Skills] Security: attempted to read file outside skill directory`)
     return null
   }
 
   try {
-    return fs.readFileSync(filePath, 'utf-8')
+    return fs.readFileSync(resolvedPath, 'utf-8')
   } catch (error) {
     return null
   }

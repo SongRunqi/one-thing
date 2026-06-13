@@ -50,10 +50,10 @@ describe('formatVariablesForPrompt', () => {
       v({
         name: 'workdir',
         value: `${home}/project`,
-        values: [`${home}/project`, `${home}/.claude/skills/iva`],
+        values: [`${home}/project`, `${home}/.onething/skills/iva`],
       }),
     ])
-    expect(out).toBe('- workdir: ~/project (current cwd; values[0])\n  - extra root: ~/.claude/skills/iva')
+    expect(out).toBe('- workdir: ~/project (current cwd; values[0])\n  - extra root: ~/.onething/skills/iva')
   })
 
   it('folds multi-line values to first line + (+N more lines)', () => {

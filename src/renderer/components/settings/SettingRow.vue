@@ -105,19 +105,20 @@ const hasDescription = computed(() => Boolean(props.description || slots.descrip
 .setting-row-title {
   min-width: 0;
   overflow: hidden;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
+  color: var(--settings-ink-2, var(--type-body-strong-color, var(--ui-text-primary-fg, var(--text-primary))));
+  font-size: var(--type-body-strong-size);
+  font-weight: var(--type-body-strong-weight);
+  line-height: var(--type-body-strong-line-height);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .setting-row-description {
   max-width: min(760px, 100%);
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
-  font-size: 12px;
-  line-height: 1.4;
+  color: var(--settings-ink-4, var(--type-meta-color, var(--ui-text-muted-fg, var(--text-muted))));
+  font-size: var(--type-meta-size);
+  font-weight: var(--type-meta-weight);
+  line-height: var(--type-meta-line-height);
 }
 
 .setting-row-control {

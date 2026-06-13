@@ -16,14 +16,15 @@
         <h3 class="section-label">
           Providers
         </h3>
-        <button
+        <Button
+          unstyled
           class="primary-action"
-          type="button"
+          native-type="button"
           @click="$emit('add-custom-provider')"
         >
           <span>+</span>
           Add provider
-        </button>
+        </Button>
       </div>
 
       <div class="provider-rows">
@@ -74,9 +75,10 @@
             >
               {{ providerSettings.isProviderEnabled(provider.id) ? 'active' : 'off' }}
             </span>
-            <button
+            <Button
+              unstyled
               class="provider-configure"
-              type="button"
+              native-type="button"
               :aria-label="`${isProviderExpanded(provider.id) ? 'Collapse' : 'Expand'} ${provider.name} settings`"
               @click.stop="toggleProviderDetail(provider.id)"
             >
@@ -86,16 +88,17 @@
                 :class="{ expanded: isProviderExpanded(provider.id) }"
                 :size="14"
               />
-            </button>
-            <button
+            </Button>
+            <Button
               v-if="providerSettings.isUserCustomProvider(provider.id)"
+              unstyled
               class="provider-row-edit"
-              type="button"
+              native-type="button"
               title="Edit provider"
               @click.stop="$emit('edit-custom-provider', provider.id)"
             >
               Edit
-            </button>
+            </Button>
           </div>
 
           <Transition name="provider-config">
@@ -171,9 +174,10 @@
                           :placeholder="`Enter ${providerSettings.currentProviderName.value} key...`"
                           @input="providerSettings.updateProviderApiKey(($event.target as HTMLInputElement).value)"
                         >
-                        <button
+                        <Button
+                          unstyled
                           class="input-toggle"
-                          type="button"
+                          native-type="button"
                           :title="showApiKey ? 'Hide API key' : 'Show API key'"
                           @click="showApiKey = !showApiKey"
                         >
@@ -185,7 +189,7 @@
                             v-else
                             :size="14"
                           />
-                        </button>
+                        </Button>
                       </div>
                     </div>
                     <div class="settings-row">
@@ -249,14 +253,15 @@
                       v-else-if="!providerSettings.hasProviderTemperatureOverride.value"
                       class="section-hint"
                     >(default)</span>
-                    <button
+                    <Button
                       v-else
+                      unstyled
                       class="section-reset"
-                      type="button"
+                      native-type="button"
                       @click="providerSettings.resetProviderTemperature"
                     >
                       Reset
-                    </button>
+                    </Button>
                   </h3>
                   <div
                     class="settings-group"
@@ -304,14 +309,15 @@
                       v-else-if="!providerSettings.hasActiveModelMaxOverride.value"
                       class="section-hint"
                     >(half of {{ providerSettings.activeModelMaxLimit.value.toLocaleString() }})</span>
-                    <button
+                    <Button
                       v-else
+                      unstyled
                       class="section-reset"
-                      type="button"
+                      native-type="button"
                       @click="providerSettings.resetActiveModelMaxOutput"
                     >
                       Reset
-                    </button>
+                    </Button>
                   </h3>
                   <div
                     class="settings-group"
@@ -349,6 +355,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, onMounted, onUnmounted } from 'vue'
 import { ChevronDown, Eye, EyeOff } from 'lucide-vue-next'
 import type { AppSettings, ProviderInfo } from '@/types'

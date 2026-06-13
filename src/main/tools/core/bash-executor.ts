@@ -1,7 +1,12 @@
-import { constants, createWriteStream, existsSync } from 'node:fs'
-import { access as fsAccess } from 'node:fs/promises'
+import { constants, existsSync } from 'node:fs'
+import { access as fsAccess, writeFile as fsWriteFile } from 'node:fs/promises'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
-import { createBackgroundLogPath, getProcessGroupPids, registerBackgroundJob } from './background-jobs.js'
+import {
+  cleanupBackgroundJobLogs,
+  createBackgroundLogPath,
+  getProcessGroupPids,
+  registerBackgroundJob,
+} from './background-jobs.js'
 
 export interface ShellConfig {
   shell: string
@@ -30,6 +35,7 @@ export interface BashOperations {
 }
 
 const EXIT_STDIO_GRACE_MS = 100
+const MAX_BACKGROUND_STARTUP_LOG_BYTES = 1024 * 1024
 const trackedDetachedChildPids = new Set<number>()
 
 function findBashOnPath(): string | null {
@@ -192,9 +198,48 @@ export function waitForChildProcess(child: ChildProcess): Promise<number | null>
   })
 }
 
+function createDeferredBackgroundLog(maxBytes = MAX_BACKGROUND_STARTUP_LOG_BYTES) {
+  const chunks: Buffer[] = []
+  let byteLength = 0
+  let omittedBytes = 0
+
+  return {
+    append(data: Buffer): void {
+      if (byteLength >= maxBytes) {
+        omittedBytes += data.length
+        return
+      }
+
+      const remaining = maxBytes - byteLength
+      const chunk = data.length > remaining ? data.subarray(0, remaining) : data
+      chunks.push(Buffer.from(chunk))
+      byteLength += chunk.length
+      omittedBytes += data.length - chunk.length
+    },
+
+    async flush(): Promise<string | undefined> {
+      if (byteLength === 0 && omittedBytes === 0) return undefined
+
+      const logPath = createBackgroundLogPath()
+      const parts = [...chunks]
+      if (omittedBytes > 0) {
+        parts.push(Buffer.from(`\n\n[background log truncated after ${maxBytes} bytes; ${omittedBytes} bytes omitted]\n`))
+      }
+
+      try {
+        await fsWriteFile(logPath, Buffer.concat(parts))
+        return logPath
+      } catch {
+        return undefined
+      }
+    },
+  }
+}
+
 export function createLocalBashOperations(options: { shellPath?: string; spawnHook?: BashSpawnHook } = {}): BashOperations {
   return {
     exec: async (command, cwd, { onData, signal, timeout, env }) => {
+      cleanupBackgroundJobLogs()
       try {
         await fsAccess(cwd, constants.F_OK)
       } catch {
@@ -215,10 +260,9 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
       if (child.pid) trackDetachedChildPid(child.pid)
       let timedOut = false
       let timeoutHandle: NodeJS.Timeout | undefined
-      const backgroundLogPath = createBackgroundLogPath()
-      const backgroundLog = createWriteStream(backgroundLogPath, { flags: 'a' })
+      const backgroundLog = createDeferredBackgroundLog()
       const appendOutput = (data: Buffer) => {
-        backgroundLog.write(data)
+        backgroundLog.append(data)
         onData(data)
       }
 
@@ -246,6 +290,9 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
         const backgroundPids = child.pid && process.platform !== 'win32'
           ? getProcessGroupPids(child.pid).filter(pid => pid !== child.pid)
           : []
+        const backgroundLogPath = backgroundPids.length > 0
+          ? await backgroundLog.flush()
+          : undefined
         const backgroundJobIds = child.pid && backgroundPids.length > 0
           ? [registerBackgroundJob({
               command: spawnContext.command,
@@ -260,7 +307,6 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
       } finally {
         child.stdout?.removeListener('data', appendOutput)
         child.stderr?.removeListener('data', appendOutput)
-        backgroundLog.end()
         if (child.pid) untrackDetachedChildPid(child.pid)
         if (timeoutHandle) clearTimeout(timeoutHandle)
         if (signal) signal.removeEventListener('abort', onAbort)

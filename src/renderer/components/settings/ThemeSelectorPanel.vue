@@ -12,9 +12,10 @@
       >
         <label class="theme-select-label">{{ item.label }}</label>
         <div class="theme-dropdown">
-          <button
+          <Button
+            unstyled
             class="theme-trigger"
-            type="button"
+            native-type="button"
             :aria-expanded="openMode === item.mode"
             :aria-controls="`theme-menu-${item.mode}`"
             @click="toggleDropdown(item.mode)"
@@ -39,7 +40,7 @@
               class="theme-trigger-icon"
               :size="15"
             />
-          </button>
+          </Button>
 
           <Transition name="theme-menu">
             <div
@@ -48,12 +49,13 @@
               class="theme-menu"
               role="listbox"
             >
-              <button
+              <Button
                 v-for="theme in themesForMode(item.mode)"
                 :key="theme.id"
+                unstyled
                 class="theme-option"
                 :class="{ selected: selectedThemeIdForMode(item.mode) === theme.id }"
-                type="button"
+                native-type="button"
                 role="option"
                 :aria-selected="selectedThemeIdForMode(item.mode) === theme.id"
                 @click="selectTheme(theme.id, item.mode)"
@@ -77,7 +79,7 @@
                   class="theme-option-check"
                   :size="14"
                 />
-              </button>
+              </Button>
 
               <div
                 v-if="themesForMode(item.mode).length === 0"
@@ -92,18 +94,20 @@
     </div>
 
     <div class="theme-actions">
-      <button
+      <Button
+        unstyled
         class="action-btn"
-        type="button"
+        native-type="button"
         title="Open themes folder"
         @click="openThemesFolder"
       >
         <FolderOpen :size="15" />
         <span>Open folder</span>
-      </button>
-      <button
+      </Button>
+      <Button
+        unstyled
         class="action-btn"
-        type="button"
+        native-type="button"
         :disabled="themeStore.isLoading"
         @click="refreshThemes"
       >
@@ -112,7 +116,7 @@
           :size="15"
         />
         <span>{{ themeStore.isLoading ? 'Refreshing...' : 'Refresh' }}</span>
-      </button>
+      </Button>
     </div>
 
     <div
@@ -125,6 +129,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Check, ChevronDown, FolderOpen, RefreshCw } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/themes'

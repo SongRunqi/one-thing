@@ -20,6 +20,7 @@ import type {
   SoulMemoryCanonicalSettings,
   SoulMemoryLoggingSettings,
   SoulMemoryReadSettings,
+  SoulMemoryReviewSettings,
   SoulMemorySearchSettings,
   SoulMemorySettings,
 } from '../ipc/settings.js'
@@ -100,6 +101,15 @@ export const DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS: Required<SoulMemoryCaptureSet
   dailyMinConfidence: 0.55,
 }
 
+export const DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS: Required<SoulMemoryReviewSettings> = {
+  enabled: true,
+  interval: 10,
+  maxInputChars: 16000,
+  timeoutMs: 20000,
+  maxCandidates: 6,
+  minConfidence: 0.72,
+}
+
 export const DEFAULT_SOUL_MEMORY_CANONICAL_SETTINGS: Required<SoulMemoryCanonicalSettings> = {
   enabled: true,
   store: 'sqlite',
@@ -155,6 +165,7 @@ export const DEFAULT_SOUL_MEMORY_SETTINGS: Required<SoulMemorySettings> = {
   embeddings: DEFAULT_SOUL_MEMORY_EMBEDDING_SETTINGS,
   memoryFlush: DEFAULT_SOUL_MEMORY_FLUSH_SETTINGS,
   capture: DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS,
+  review: DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS,
   canonicalMemory: DEFAULT_SOUL_MEMORY_CANONICAL_SETTINGS,
   dreaming: DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS,
   dailyContext: DEFAULT_SOUL_MEMORY_DAILY_CONTEXT_SETTINGS,
@@ -259,6 +270,7 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
   themeId: 'flexoki',
   darkThemeId: 'flexoki',
   lightThemeId: 'flexoki',
+  typographyDensity: 'compact',
   messageListDensity: 'comfortable',
   shortcuts: {
     sendMessage: { key: 'Enter' },
@@ -463,6 +475,7 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         ...defaults.general.shortcuts,
         ...settings.general?.shortcuts,
       },
+      typographyDensity: normalizeTypographyDensity(settings.general?.typographyDensity),
       quickCommands: settings.general?.quickCommands ?? defaults.general.quickCommands,
       dailyNotes: {
         ...defaults.general.dailyNotes,
@@ -632,6 +645,7 @@ export function normalizeSoulMemorySettings(settings?: SoulMemorySettings): Requ
     embeddings: normalizeSoulMemoryEmbeddingSettings(settings?.embeddings),
     memoryFlush: normalizeSoulMemoryFlushSettings(settings?.memoryFlush),
     capture: normalizeSoulMemoryCaptureSettings(settings?.capture),
+    review: normalizeSoulMemoryReviewSettings(settings?.review),
     canonicalMemory: normalizeSoulMemoryCanonicalSettings(settings?.canonicalMemory),
     dreaming: normalizeSoulMemoryDreamingSettings(settings?.dreaming),
     dailyContext: normalizeSoulMemoryDailyContextSettings(settings?.dailyContext),
@@ -879,6 +893,47 @@ function normalizeSoulMemoryCaptureSettings(
   }
 }
 
+function normalizeSoulMemoryReviewSettings(
+  settings?: SoulMemoryReviewSettings,
+): Required<SoulMemoryReviewSettings> {
+  const rawInterval = typeof settings?.interval === 'number' ? settings.interval : undefined
+  return {
+    enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.enabled,
+    interval: rawInterval === 0
+      ? 0
+      : clampNumber(
+        rawInterval,
+        1,
+        200,
+        DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.interval,
+      ),
+    maxInputChars: clampNumber(
+      settings?.maxInputChars,
+      4000,
+      80000,
+      DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.maxInputChars,
+    ),
+    timeoutMs: clampNumber(
+      settings?.timeoutMs,
+      1000,
+      120000,
+      DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.timeoutMs,
+    ),
+    maxCandidates: clampNumber(
+      settings?.maxCandidates,
+      1,
+      20,
+      DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.maxCandidates,
+    ),
+    minConfidence: clampFraction(
+      settings?.minConfidence,
+      0,
+      1,
+      DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS.minConfidence,
+    ),
+  }
+}
+
 function normalizeSoulMemoryCanonicalSettings(
   settings?: SoulMemoryCanonicalSettings,
 ): Required<SoulMemoryCanonicalSettings> {
@@ -1019,6 +1074,10 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
 function clampFraction(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.max(min, Math.min(max, value))
+}
+
+function normalizeTypographyDensity(value: unknown): GeneralSettings['typographyDensity'] {
+  return value === 'comfortable' ? 'comfortable' : DEFAULT_GENERAL_SETTINGS.typographyDensity
 }
 
 function stripLegacyProviderLocalAddress(providers: Record<string, unknown>): void {

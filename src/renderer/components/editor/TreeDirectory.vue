@@ -1,6 +1,7 @@
 <template>
   <div class="tree-directory">
-    <button
+    <Button
+      unstyled
       class="tree-row directory-row"
       :style="{ paddingLeft: `${depth * 14 + 8}px` }"
       @click="toggleDirectory(dirPath)"
@@ -12,7 +13,7 @@
       />
       <Folder :size="13" />
       <span>{{ name }}</span>
-    </button>
+    </Button>
     <template v-if="node?.expanded">
       <div
         v-if="node.loading"
@@ -37,8 +38,9 @@
           @delete-path="$emit('deletePath', $event)"
           @context-menu="$emit('contextMenu', $event)"
         />
-        <button
+        <Button
           v-else
+          unstyled
           :class="['tree-row', 'file-row', { active: entry.path === activePath }]"
           :style="{ paddingLeft: `${(depth + 1) * 14 + 24}px` }"
           @click="$emit('openFile', entry.path)"
@@ -46,13 +48,14 @@
         >
           <FileText :size="13" />
           <span>{{ entry.name }}</span>
-        </button>
+        </Button>
       </template>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, onMounted } from 'vue'
 import { ChevronRight, FileText, Folder } from 'lucide-vue-next'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'

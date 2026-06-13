@@ -2,8 +2,12 @@ import { defineStore } from 'pinia'
 import { ref, toRaw, computed } from 'vue'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, OpenRouterModel } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
-import type { AIProvider } from '../../shared/ipc'
+import type { AIProvider, TypographyDensity } from '../../shared/ipc'
 import { createDefaultSettings } from '../../shared/defaults/settings'
+
+function isThemeDebugEnabled(): boolean {
+  return import.meta.env.DEV && localStorage.getItem('onething:debug-theme') === '1'
+}
 
 // Read initial theme from what index.html already set (via URL hash or localStorage)
 // This prevents the flash where Vue overwrites the correct theme with defaults
@@ -11,7 +15,9 @@ function getInitialTheme(): 'light' | 'dark' | 'system' {
   // First check what index.html already set on the document
   const docTheme = document.documentElement.getAttribute('data-theme')
   if (docTheme === 'light' || docTheme === 'dark') {
-    console.log('[Theme] getInitialTheme: using document data-theme:', docTheme)
+    if (isThemeDebugEnabled()) {
+      console.log('[Theme] getInitialTheme: using document data-theme:', docTheme)
+    }
     // We don't know if user setting is 'system' or explicit, so return the effective theme
     // loadSettings() will later update this to the actual setting
     return docTheme
@@ -19,14 +25,23 @@ function getInitialTheme(): 'light' | 'dark' | 'system' {
   // Fallback to localStorage cache
   const cached = localStorage.getItem('cached-theme')
   if (cached === 'light' || cached === 'dark') {
-    console.log('[Theme] getInitialTheme: using localStorage cache:', cached)
+    if (isThemeDebugEnabled()) {
+      console.log('[Theme] getInitialTheme: using localStorage cache:', cached)
+    }
     return cached
   }
-  console.log('[Theme] getInitialTheme: no cached value, defaulting to dark')
+  if (isThemeDebugEnabled()) {
+    console.log('[Theme] getInitialTheme: no cached value, defaulting to dark')
+  }
   return 'dark'
 }
 
 const initialTheme = getInitialTheme()
+const DEFAULT_TYPOGRAPHY_DENSITY: TypographyDensity = 'compact'
+
+function normalizeTypographyDensity(density: unknown): TypographyDensity {
+  return density === 'comfortable' ? 'comfortable' : DEFAULT_TYPOGRAPHY_DENSITY
+}
 
 // Use shared default settings (single source of truth)
 const defaultSettings: AppSettings = {
@@ -105,24 +120,27 @@ export const useSettingsStore = defineStore('settings', () => {
 
     const theme = effectiveTheme.value
     const currentTheme = document.documentElement.getAttribute('data-theme')
-    console.log('[Theme] applyAppearanceFromSettings called:', {
-      effectiveTheme: theme,
-      currentDataTheme: currentTheme,
-      settingsTheme: settings.value.theme,
-      systemTheme: systemTheme.value,
-      stack: new Error().stack?.split('\n').slice(1, 4).join('\n')
-    })
+    if (isThemeDebugEnabled()) {
+      console.log('[Theme] applyAppearanceFromSettings called:', {
+        effectiveTheme: theme,
+        currentDataTheme: currentTheme,
+        settingsTheme: settings.value.theme,
+        systemTheme: systemTheme.value,
+        stack: new Error().stack?.split('\n').slice(1, 4).join('\n')
+      })
+    }
 
     // Always apply color theme and base theme first
     // They may need updating even if base theme hasn't changed
     applyColorTheme()
     applyBaseTheme()
+    applyTypographyDensity()
 
     if (currentTheme !== theme) {
       document.documentElement.setAttribute('data-theme', theme)
       // Cache effective theme to localStorage for instant startup
       localStorage.setItem('cached-theme', theme)
-    } else {
+    } else if (isThemeDebugEnabled()) {
       console.log('[Theme] Base theme already correct:', theme)
     }
 
@@ -147,7 +165,9 @@ export const useSettingsStore = defineStore('settings', () => {
   function applyColorTheme() {
     const colorTheme = settings.value.general?.colorTheme || 'blue'
     const currentColorTheme = document.documentElement.getAttribute('data-color-theme')
-    console.log('[Theme] applyColorTheme:', { from: currentColorTheme, to: colorTheme })
+    if (isThemeDebugEnabled()) {
+      console.log('[Theme] applyColorTheme:', { from: currentColorTheme, to: colorTheme })
+    }
     if (currentColorTheme === colorTheme) {
       return // Already correct
     }
@@ -164,6 +184,15 @@ export const useSettingsStore = defineStore('settings', () => {
       return // Already correct
     }
     document.documentElement.setAttribute('data-base-theme', baseTheme)
+  }
+
+  function applyTypographyDensity() {
+    const typographyDensity = normalizeTypographyDensity(settings.value.general?.typographyDensity)
+    const currentTypographyDensity = document.documentElement.getAttribute('data-typography-density')
+    if (currentTypographyDensity === typographyDensity) {
+      return // Already correct
+    }
+    document.documentElement.setAttribute('data-typography-density', typographyDensity)
   }
 
   async function loadSettings() {
@@ -245,7 +274,8 @@ export const useSettingsStore = defineStore('settings', () => {
         settings.value.general?.baseTheme !== plainSettings.general?.baseTheme ||
         settings.value.general?.themeId !== plainSettings.general?.themeId ||
         settings.value.general?.darkThemeId !== plainSettings.general?.darkThemeId ||
-        settings.value.general?.lightThemeId !== plainSettings.general?.lightThemeId
+        settings.value.general?.lightThemeId !== plainSettings.general?.lightThemeId ||
+        settings.value.general?.typographyDensity !== plainSettings.general?.typographyDensity
 
       // Detect changes to the customProviders list so we can rebuild
       // availableProviders — otherwise the InputBox ModelSelector and the
@@ -315,6 +345,11 @@ export const useSettingsStore = defineStore('settings', () => {
 
   function updateMessageListDensity(density: 'compact' | 'comfortable' | 'spacious') {
     settings.value.general.messageListDensity = density
+  }
+
+  function updateTypographyDensity(density: TypographyDensity) {
+    settings.value.general.typographyDensity = normalizeTypographyDensity(density)
+    applyTypographyDensity()
   }
 
   // Get current provider's config
@@ -638,9 +673,11 @@ export const useSettingsStore = defineStore('settings', () => {
     applyTheme,
     applyColorTheme,
     applyBaseTheme,
+    applyTypographyDensity,
     updateColorTheme,
     updateBaseTheme,
     updateMessageListDensity,
+    updateTypographyDensity,
     // Model name cache
     updateModelNameCache,
     getModelDisplayName,

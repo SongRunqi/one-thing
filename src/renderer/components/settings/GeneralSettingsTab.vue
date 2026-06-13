@@ -34,19 +34,44 @@
     <!-- Typography -->
     <SettingsSection title="Typography">
       <SettingsGroup>
+        <SettingRow
+          label="Interface Density"
+          description="Controls UI text scale and line height outside the chat message density setting."
+        >
+          <div class="segmented-control typography-density-control">
+            <Button
+              unstyled
+              :class="['segment-btn', { active: currentTypographyDensity === 'compact' }]"
+              native-type="button"
+              @click="updateTypographyDensity('compact')"
+            >
+              Compact
+            </Button>
+            <Button
+              unstyled
+              :class="['segment-btn', { active: currentTypographyDensity === 'comfortable' }]"
+              native-type="button"
+              @click="updateTypographyDensity('comfortable')"
+            >
+              Comfortable
+            </Button>
+          </div>
+        </SettingRow>
+
         <!-- Font Size -->
         <SettingRow description="Font size for chat text.">
           <template #label>
             <span class="setting-title-row">
               <span>Font Size</span>
-              <button
+              <Button
+                unstyled
                 class="reset-inline"
-                type="button"
+                native-type="button"
                 title="Reset font size"
                 @click="updateFontSize(defaultFontSize)"
               >
                 <RotateCcw :size="14" />
-              </button>
+              </Button>
             </span>
           </template>
           <NumberStepper
@@ -173,20 +198,22 @@
           description="Choose where daily note files are read from."
         >
           <div class="segmented-control">
-            <button
+            <Button
+              unstyled
               :class="['segment-btn', { active: (dailyNotes.directoryMode || 'personal') === 'personal' }]"
-              type="button"
+              native-type="button"
               @click="updateDailyNotes({ directoryMode: 'personal' })"
             >
               Personal note dir
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               :class="['segment-btn', { active: dailyNotes.directoryMode === 'custom' }]"
-              type="button"
+              native-type="button"
               @click="updateDailyNotes({ directoryMode: 'custom' })"
             >
               Custom directory
-            </button>
+            </Button>
           </div>
         </SettingRow>
 
@@ -205,13 +232,14 @@
               spellcheck="false"
               @input="updateDailyNotes({ customDirectory: ($event.target as HTMLInputElement).value })"
             >
-            <button
+            <Button
+              unstyled
               class="secondary-btn"
-              type="button"
+              native-type="button"
               @click="chooseDailyNoteDirectory"
             >
               Choose
-            </button>
+            </Button>
           </div>
         </SettingRow>
 
@@ -270,13 +298,14 @@
               spellcheck="false"
               @input="updateTodoPlan({ directory: ($event.target as HTMLInputElement).value })"
             >
-            <button
+            <Button
+              unstyled
               class="secondary-btn"
-              type="button"
+              native-type="button"
               @click="chooseTodoPlanDirectory"
             >
               Choose
-            </button>
+            </Button>
           </div>
         </SettingRow>
       </SettingsGroup>
@@ -285,9 +314,10 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import { RotateCcw } from 'lucide-vue-next'
-import type { AppSettings } from '@/types'
+import type { AppSettings, TypographyDensity } from '@/types'
 import type { DailyNoteSettings } from '@shared/ipc/settings'
 import type { TodoPlanSettings } from '@shared/ipc/todo-plan'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
@@ -316,6 +346,9 @@ const maxFontSize = 20
 const defaultFontSize = 15
 
 const currentFontSize = computed(() => props.settings.chat?.chatFontSize ?? defaultFontSize)
+const currentTypographyDensity = computed<TypographyDensity>(() => (
+  props.settings.general.typographyDensity === 'comfortable' ? 'comfortable' : 'compact'
+))
 const currentFontEn = computed(() => props.settings.chat?.chatFontEn ?? DEFAULT_FONT_EN)
 const currentFontZh = computed(() => props.settings.chat?.chatFontZh ?? DEFAULT_FONT_ZH)
 const contextCompactEnabled = computed(() => props.settings.chat?.contextCompactEnabled !== false)
@@ -361,6 +394,16 @@ function updateFontSize(size: number) {
     chat: {
       ...props.settings.chat!,
       chatFontSize: Math.max(minFontSize, Math.min(maxFontSize, size)),
+    },
+  })
+}
+
+function updateTypographyDensity(typographyDensity: TypographyDensity) {
+  emit('update:settings', {
+    ...props.settings,
+    general: {
+      ...props.settings.general,
+      typographyDensity,
     },
   })
 }
@@ -631,6 +674,7 @@ async function chooseTodoPlanDirectory() {
   gap: 8px;
   font-size: var(--type-label-size);
   font-weight: var(--type-label-weight);
+  line-height: var(--type-label-line-height);
   color: var(--ui-text-primary-fg, var(--text-primary));
   margin-bottom: 8px;
 }
@@ -643,6 +687,7 @@ async function chooseTodoPlanDirectory() {
   background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
   color: var(--ui-text-primary-fg, var(--text-primary));
   font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
   padding: 7px 10px;
   outline: none;
 }
@@ -655,6 +700,7 @@ async function chooseTodoPlanDirectory() {
   background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
   color: var(--ui-text-primary-fg, var(--text-primary));
   font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
   padding: 7px 10px;
   outline: none;
 }
@@ -694,6 +740,12 @@ async function chooseTodoPlanDirectory() {
   background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
 }
 
+.typography-density-control {
+  width: 320px;
+  max-width: 100%;
+  justify-self: end;
+}
+
 .segment-btn {
   min-height: 30px;
   border: 0;
@@ -701,6 +753,7 @@ async function chooseTodoPlanDirectory() {
   background: transparent;
   color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: var(--type-label-size);
+  line-height: var(--type-label-line-height);
   cursor: pointer;
 }
 
@@ -741,6 +794,7 @@ async function chooseTodoPlanDirectory() {
   color: var(--ui-text-primary-fg, var(--text-primary));
   padding: 0 12px;
   font-size: var(--type-label-size);
+  line-height: var(--type-label-line-height);
   cursor: pointer;
 }
 
@@ -764,12 +818,14 @@ async function chooseTodoPlanDirectory() {
 .toggle-title {
   font-size: var(--type-body-size);
   font-weight: var(--font-weight-semibold);
+  line-height: var(--type-body-line-height);
   color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .toggle-desc {
   margin-top: 2px;
   font-size: var(--font-size-sm);
+  line-height: var(--type-meta-line-height);
   color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
@@ -828,6 +884,7 @@ async function chooseTodoPlanDirectory() {
   border-top: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
   font-size: var(--type-label-size);
   font-weight: var(--type-label-weight);
+  line-height: var(--type-label-line-height);
 }
 
 .theme-preview {
@@ -1140,8 +1197,9 @@ async function chooseTodoPlanDirectory() {
 }
 
 .font-tag {
-  font-size: 10px;
+  font-size: var(--type-micro-size);
   font-weight: var(--font-weight-semibold);
+  line-height: var(--type-micro-line-height);
   color: var(--ui-text-faint-fg, var(--text-faint));
   background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--bg-hover)));
   padding: 2px 6px;

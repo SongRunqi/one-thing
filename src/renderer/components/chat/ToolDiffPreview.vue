@@ -73,7 +73,9 @@ const shouldUseFixedHeight = computed(() =>
 )
 const highlightedLines = computed(() => props.lines.map(line => ({
   line,
-  segments: highlightCode(line.content),
+  segments: line.class === 'diff-add' || line.class === 'diff-del'
+    ? highlightCode(line.content)
+    : [{ text: line.content }],
 })))
 
 function lineKey(line: ToolDiffLine, idx: number): string {
@@ -172,11 +174,12 @@ defineExpose({
 
 <style scoped>
 .diff-preview {
+  --diff-normal-bg: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 42%, transparent);
   margin: 0;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 58%, transparent);
+  background: var(--diff-normal-bg);
 }
 
 .diff-content {
@@ -186,7 +189,7 @@ defineExpose({
   max-height: 220px;
   overflow: auto;
   overscroll-behavior: contain;
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
   font-weight: 400;
@@ -217,13 +220,14 @@ defineExpose({
 }
 
 .diff-line {
-  --row-bg: var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub));
+  --row-bg: transparent;
   display: flex;
   align-items: stretch;
   white-space: pre;
   width: 100%;
   min-height: calc(var(--tool-font-size-body) * var(--tool-code-line-height));
   background: var(--row-bg);
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
 }
 
 .diff-line[data-diff-line] {
@@ -239,8 +243,12 @@ defineExpose({
   display: flex;
   align-items: flex-start;
   flex-shrink: 0;
-  background: var(--row-bg);
+  background: transparent;
   border-left: 3px solid transparent;
+}
+
+.diff-content:not(.wrap) .line-gutter {
+  background: var(--row-bg, var(--diff-normal-bg));
 }
 
 .line-number {

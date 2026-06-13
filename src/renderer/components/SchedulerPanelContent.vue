@@ -5,9 +5,10 @@
         <h2>Tasks</h2>
       </div>
       <div class="header-actions">
-        <button
+        <Button
+          unstyled
           class="icon-btn"
-          type="button"
+          native-type="button"
           title="Refresh"
           :disabled="loading"
           @click="() => loadAll()"
@@ -16,15 +17,16 @@
             :size="16"
             :class="{ spinning: loading }"
           />
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="primary-btn compact"
-          type="button"
+          native-type="button"
           @click="startCreate"
         >
           <Plus :size="15" />
           <span>New Task</span>
-        </button>
+        </Button>
       </div>
     </header>
 
@@ -44,10 +46,11 @@
           <span>All Tasks</span>
           <strong>{{ tasks.length }}</strong>
         </div>
-        <button
+        <Button
           v-for="task in tasks"
           :key="task.id"
-          type="button"
+          unstyled
+          native-type="button"
           class="task-row"
           :class="{ active: selectedTaskId === task.id }"
           @click="selectTask(task.id)"
@@ -77,7 +80,7 @@
             <span class="status-marker" />
             {{ taskStatusLabel(task) }}
           </span>
-        </button>
+        </Button>
         <div
           v-if="!loading && tasks.length === 0"
           class="empty-state"
@@ -92,14 +95,15 @@
         class="task-detail"
       >
         <div class="detail-header-nav">
-          <button
+          <Button
+            unstyled
             class="back-btn icon-btn"
-            type="button"
+            native-type="button"
             title="Back to list"
             @click="taskDetailActive = false"
           >
             <ArrowLeft :size="16" />
-          </button>
+          </Button>
           <span class="detail-nav-title">Task Details</span>
         </div>
 
@@ -130,44 +134,48 @@
           </div>
 
           <div class="overview-actions">
-            <button
+            <Button
+              unstyled
               class="secondary-btn"
-              type="button"
+              native-type="button"
               title="Run now"
               :disabled="actionId === selectedTask.id || selectedTask.inFlight"
               @click="runNow(selectedTask.id)"
             >
               <Play :size="15" />
               <span>Run Now</span>
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               class="secondary-btn"
-              type="button"
+              native-type="button"
               :title="selectedTask.enabled ? 'Disable' : 'Enable'"
               :disabled="actionId === selectedTask.id"
               @click="setEnabled(selectedTask.id, !selectedTask.enabled)"
             >
               <Power :size="15" />
               <span>{{ selectedTask.enabled ? 'Disable' : 'Enable' }}</span>
-            </button>
-            <button
+            </Button>
+            <Button
               v-if="!selectedTask.readonly"
+              unstyled
               class="icon-btn"
-              type="button"
+              native-type="button"
               title="Edit"
               @click="startEdit(selectedTask)"
             >
               <Pencil :size="15" />
-            </button>
-            <button
+            </Button>
+            <Button
               v-if="!selectedTask.readonly"
+              unstyled
               class="icon-btn danger"
-              type="button"
+              native-type="button"
               title="Delete"
               @click="deleteTask(selectedTask.id)"
             >
               <Trash2 :size="15" />
-            </button>
+            </Button>
           </div>
         </section>
 
@@ -202,16 +210,17 @@
         </section>
 
         <section class="history-section">
-          <button
+          <Button
+            unstyled
             class="history-toggle"
-            type="button"
+            native-type="button"
             @click="toggleHistory"
           >
             <span>
               <strong>Run history</strong>
             </span>
             <span>{{ historyOpen ? 'Hide' : 'Show' }}</span>
-          </button>
+          </Button>
 
           <div
             v-if="historyOpen"
@@ -219,14 +228,15 @@
           >
             <div class="section-title">
               <strong>Recent runs</strong>
-              <button
+              <Button
+                unstyled
                 class="text-btn"
-                type="button"
+                native-type="button"
                 :disabled="runsLoading"
                 @click="loadRuns(selectedTask.id)"
               >
                 Refresh
-              </button>
+              </Button>
             </div>
 
             <div class="runs-list">
@@ -262,9 +272,10 @@
                       class="timeline-node-line"
                     />
                   </div>
-                  <button
+                  <Button
+                    unstyled
                     class="timeline-run-card run-row"
-                    type="button"
+                    native-type="button"
                     @click="selectedRun = selectedRun?.runId === run.runId ? null : run"
                   >
                     <div class="run-card-header">
@@ -277,7 +288,7 @@
                     <div class="run-card-meta">
                       <span :title="formatMaybeDate(run.startedAt)">{{ formatShortDate(run.startedAt) }}</span>
                     </div>
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -290,14 +301,15 @@
         >
           <div class="section-title">
             <strong>Run detail</strong>
-            <button
+            <Button
               v-if="selectedRun.sessionId"
+              unstyled
               class="text-btn"
-              type="button"
+              native-type="button"
               @click="openRunSession(selectedRun.sessionId)"
             >
               Open session
-            </button>
+            </Button>
           </div>
           <p
             v-if="selectedRun.error"
@@ -350,38 +362,42 @@
             <div>
               <h4>Configuration</h4>
             </div>
-            <button
+            <Button
+              unstyled
               class="text-btn"
-              type="button"
+              native-type="button"
               @click="resetDreamingForm"
             >
               Reset
-            </button>
+            </Button>
           </div>
 
           <!-- Tabbed Configuration Header -->
           <div class="config-tabs segmented">
-            <button
+            <Button
+              unstyled
               :class="{ active: configTab === 'trigger' }"
-              type="button"
+              native-type="button"
               @click="configTab = 'trigger'"
             >
               Trigger & Model
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               :class="{ active: configTab === 'limits' }"
-              type="button"
+              native-type="button"
               @click="configTab = 'limits'"
             >
               Constraints
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               :class="{ active: configTab === 'scoring' }"
-              type="button"
+              native-type="button"
               @click="configTab = 'scoring'"
             >
               Relevance
-            </button>
+            </Button>
           </div>
 
           <div class="config-stack">
@@ -754,15 +770,16 @@
 
           <div class="config-savebar">
             <span>{{ dreamingFormDirty ? 'Unsaved changes' : 'Memory Dreaming settings' }}</span>
-            <button
+            <Button
+              unstyled
               class="primary-btn"
-              type="button"
+              native-type="button"
               :disabled="saving || !dreamingFormDirty"
               @click="saveManagedDreamingTask"
             >
               <Save :size="15" />
               <span>{{ saving ? 'Saving...' : 'Save Changes' }}</span>
-            </button>
+            </Button>
           </div>
         </section>
       </section>
@@ -790,15 +807,16 @@
             </h3>
             <p>{{ editingId ? 'Update the task details without leaving the task view.' : 'Create a scheduled task without interrupting task browsing.' }}</p>
           </div>
-          <button
+          <Button
+            unstyled
             class="icon-btn"
-            type="button"
+            native-type="button"
             title="Close"
             :disabled="saving"
             @click="cancelEdit"
           >
             <X :size="16" />
-          </button>
+          </Button>
         </header>
 
         <div class="task-editor-body">
@@ -938,23 +956,25 @@
         </div>
 
         <footer class="task-editor-footer">
-          <button
+          <Button
+            unstyled
             class="secondary-btn"
-            type="button"
+            native-type="button"
             :disabled="saving"
             @click="cancelEdit"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             class="primary-btn"
-            type="button"
+            native-type="button"
             :disabled="saving"
             @click="saveTask"
           >
             <Save :size="15" />
             <span>{{ saving ? 'Saving...' : editingId ? 'Save Changes' : 'Create Task' }}</span>
-          </button>
+          </Button>
         </footer>
       </section>
     </div>
@@ -962,6 +982,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
 import { useSettingsStore } from '@/stores/settings'

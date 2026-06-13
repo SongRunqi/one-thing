@@ -35,18 +35,20 @@
         {{ error }}
       </p>
       <div class="actions">
-        <button
+        <Button
+          unstyled
           class="retry-btn"
           @click="handleRetry"
         >
           Retry
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="refresh-btn"
           @click="handleRefresh"
         >
           Refresh Page
-        </button>
+        </Button>
       </div>
     </div>
   </div>
@@ -54,6 +56,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, onErrorCaptured } from 'vue'
 
 const error = ref<string | null>(null)

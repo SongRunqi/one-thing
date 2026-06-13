@@ -36,6 +36,8 @@ interface ComposerReferenceMatch {
   end: number
 }
 
+const BARE_SLASH_SKILL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/
+
 function bodyHash(body: string): string {
   return crypto.createHash('sha256').update(body).digest('hex').slice(0, 16)
 }
@@ -71,6 +73,43 @@ function pushTextPart(parts: ContentPart[], text: string): void {
   parts.push({ type: 'text', content: text })
 }
 
+function hasWhitespaceTokenBoundaries(content: string, start: number, end: number): boolean {
+  const before = start > 0 ? content[start - 1] : ''
+  const after = content[end] || ''
+  return (!before || /\s/.test(before)) && (!after || /\s/.test(after))
+}
+
+function collectCaseInsensitiveSkillTokenMatches(
+  rawContent: string,
+  token: string,
+  skill: SkillDefinition,
+): ComposerReferenceMatch[] {
+  const matches: ComposerReferenceMatch[] = []
+  const lowerContent = rawContent.toLowerCase()
+  const lowerToken = token.toLowerCase()
+  let searchFrom = 0
+
+  while (searchFrom < rawContent.length) {
+    const start = lowerContent.indexOf(lowerToken, searchFrom)
+    if (start === -1) break
+    const end = start + token.length
+
+    if (hasWhitespaceTokenBoundaries(rawContent, start, end)) {
+      matches.push({
+        kind: 'skill',
+        refId: skill.id,
+        token: rawContent.slice(start, end),
+        start,
+        end,
+      })
+    }
+
+    searchFrom = end
+  }
+
+  return matches
+}
+
 function collectReferenceMatches(rawContent: string, skills: SkillDefinition[]): ComposerReferenceMatch[] {
   const matches: ComposerReferenceMatch[] = []
   COMPOSER_REF_PATTERN.lastIndex = 0
@@ -87,18 +126,14 @@ function collectReferenceMatches(rawContent: string, skills: SkillDefinition[]):
 
   const skillsByLength = [...skills].sort((a, b) => b.name.length - a.name.length)
   for (const skill of skillsByLength) {
-    const token = `/skill:${skill.name}`
-    let searchFrom = 0
-    while (searchFrom < rawContent.length) {
-      const start = rawContent.indexOf(token, searchFrom)
-      if (start === -1) break
-      const end = start + token.length
-      const before = start > 0 ? rawContent[start - 1] : ''
-      const after = rawContent[end] || ''
-      if ((!before || /\s/.test(before)) && (!after || /\s/.test(after))) {
-        matches.push({ kind: 'skill', refId: skill.id, token, start, end })
-      }
-      searchFrom = end
+    matches.push(
+      ...collectCaseInsensitiveSkillTokenMatches(rawContent, `/skill:${skill.name}`, skill),
+    )
+
+    if (BARE_SLASH_SKILL_NAME_PATTERN.test(skill.name)) {
+      matches.push(
+        ...collectCaseInsensitiveSkillTokenMatches(rawContent, `/${skill.name}`, skill),
+      )
     }
   }
 
@@ -153,7 +188,10 @@ export function resolvePromptReferences(
         pushTextPart(parts, token)
       } else {
         const snapshot = snapshotFromSkill(skill)
-        modelContent += formatSkillForModel(skill.name, skill.source, skill.description, skill.instructions)
+        modelContent += formatSkillForModel(skill.name, skill.source, skill.description, skill.instructions, {
+          path: skill.path,
+          directoryPath: skill.directoryPath,
+        })
         displayContent += `[Skill: ${skill.name}]`
         parts.push({ type: 'skill-ref', ...snapshot })
         hasSkillReferences = true

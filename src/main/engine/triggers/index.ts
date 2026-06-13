@@ -5,7 +5,8 @@
  * Triggers run asynchronously and don't block the user experience.
  */
 
-import type { ChatMessage, ChatSession, ProviderConfig } from '../../../shared/ipc.js'
+import type { AppSettings, ChatMessage, ChatSession, ProviderConfig } from '../../../shared/ipc.js'
+import { createSkillReviewTrigger } from './skill-review.js'
 
 /**
  * Context passed to triggers when they run.
@@ -18,6 +19,10 @@ export interface TriggerContext {
   lastAssistantMessage: string
   providerId: string
   providerConfig: ProviderConfig
+  settings: AppSettings
+  toolIterations?: number
+  skillManageCalled?: boolean
+  enabledToolNames?: string[]
 }
 
 /**
@@ -124,6 +129,14 @@ class TriggerManager {
 
 // Singleton instance
 export const triggerManager = new TriggerManager()
+
+let builtinTriggersRegistered = false
+
+export function registerBuiltinTriggers(): void {
+  if (builtinTriggersRegistered) return
+  builtinTriggersRegistered = true
+  triggerManager.register(createSkillReviewTrigger())
+}
 
 // Re-export for convenience
 export { TriggerManager }

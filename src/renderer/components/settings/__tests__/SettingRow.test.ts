@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
+import { h } from 'vue'
 import { describe, expect, it } from 'vitest'
+import Button from '../../common/Button.vue'
 import SettingRow from '../SettingRow.vue'
 
 describe('SettingRow', () => {
@@ -12,7 +14,7 @@ describe('SettingRow', () => {
           'This is a deliberately long setting description that should live below the title/control row instead of forcing the control to share a tall copy column.',
       },
       slots: {
-        default: '<button type="button" class="row-action">Toggle</button>',
+        default: () => h(Button, { unstyled: true, class: 'row-action' }, () => 'Toggle'),
       },
     })
 

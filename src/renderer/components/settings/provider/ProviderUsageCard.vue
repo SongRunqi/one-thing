@@ -10,9 +10,10 @@
           Codex account limits and credits
         </div>
       </div>
-      <button
+      <Button
+        unstyled
         class="usage-button"
-        type="button"
+        native-type="button"
         :disabled="isLoading"
         @click="$emit('refresh')"
       >
@@ -21,7 +22,7 @@
           :size="13"
         />
         <span>{{ isLoading ? 'Refreshing...' : 'Refresh' }}</span>
-      </button>
+      </Button>
     </div>
 
     <div
@@ -115,6 +116,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import type { CodexProviderUsage, CodexUsageLimit, CodexUsageWindow, ProviderUsageResponse } from '@/types'

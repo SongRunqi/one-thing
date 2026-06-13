@@ -10,7 +10,6 @@ import type {
   SemanticHighlightToken,
   SemanticUIToken,
   Theme,
-  ThemeColors,
   ThemeDefs,
   ThemeHighlightGroup,
 } from '../../shared/ipc/themes.js'
@@ -20,6 +19,7 @@ import {
   colorToRgbString,
   deriveSurfaceRoles,
   mixCssColors,
+  parseCssColor,
   readableAgainst,
   resolveColorOverBackground,
   rgbaFromCssColor,
@@ -230,6 +230,50 @@ const DEFAULT_HIGHLIGHT_ALIASES: Record<string, SemanticHighlightToken> = {
   Underlined: 'syntax.link',
 }
 
+export type ThemeStatusColorToken = 'success' | 'warning' | 'danger' | 'info'
+
+export const THEME_STATUS_COLOR_TOKENS: ThemeStatusColorToken[] = [
+  'success',
+  'warning',
+  'danger',
+  'info',
+]
+
+export const THEME_NEUTRAL_COLOR_TOKENS = [
+  'primaryText',
+  'regularText',
+  'secondaryText',
+  'placeholderText',
+  'disabledText',
+  'darkerBorder',
+  'darkBorder',
+  'baseBorder',
+  'lightBorder',
+  'lighterBorder',
+  'extraLightBorder',
+  'darkerFill',
+  'darkFill',
+  'baseFill',
+  'lightFill',
+  'lighterFill',
+  'extraLightFill',
+  'blankFill',
+  'basicBlack',
+  'basicWhite',
+  'transparent',
+  'pageBackground',
+  'baseBackground',
+  'overlayBackground',
+] as const
+
+export type ThemeNeutralColorToken = typeof THEME_NEUTRAL_COLOR_TOKENS[number]
+
+export interface ResolvedThemeColorSemantics {
+  primary: string
+  status: Record<ThemeStatusColorToken, string>
+  neutral: Record<ThemeNeutralColorToken, string>
+}
+
 /**
  * Check if a value is a direct color value (not a reference)
  */
@@ -334,6 +378,157 @@ function flattenObject(
   return result
 }
 
+const DEFAULT_PRIMARY_COLOR = '#4385BE'
+
+const STATUS_COLOR_DEFAULTS: Record<ThemeStatusColorToken, string> = {
+  success: '#10B981',
+  warning: '#F59E0B',
+  danger: '#EF4444',
+  info: '#3B82F6',
+}
+
+const STATUS_COLOR_FALLBACK_PATHS: Record<ThemeStatusColorToken, string[]> = {
+  success: ['color.success', 'text.success', 'border.success', 'diff.addText'],
+  warning: ['color.warning', 'text.warning', 'border.warning'],
+  danger: ['color.danger', 'text.error', 'border.error', 'bg.btn.danger', 'diff.delText'],
+  info: ['color.info', 'text.info', 'text.link', 'accent'],
+}
+
+const STATUS_LIGHT_FALLBACK_PATHS: Record<ThemeStatusColorToken, string[]> = {
+  success: ['color.successLight', 'bg.toolSuccess', 'diff.addBg'],
+  warning: ['color.warningLight', 'bg.highlight'],
+  danger: ['color.dangerLight', 'bg.message.error', 'bg.toolError', 'diff.delBg'],
+  info: ['color.infoLight'],
+}
+
+const NEUTRAL_COLOR_FALLBACK_PATHS: Record<ThemeNeutralColorToken, string[]> = {
+  primaryText: ['neutral.primaryText', 'text.primary'],
+  regularText: ['neutral.regularText', 'text.secondary', 'text.primary'],
+  secondaryText: ['neutral.secondaryText', 'text.muted', 'text.secondary', 'text.primary'],
+  placeholderText: ['neutral.placeholderText', 'text.inputPlaceholder', 'text.faint', 'text.muted'],
+  disabledText: ['neutral.disabledText', 'text.inputDisabled', 'text.btn.disabled', 'text.faint', 'text.muted'],
+  darkerBorder: ['neutral.darkerBorder', 'border.strong', 'border.default'],
+  darkBorder: ['neutral.darkBorder', 'border.strong', 'border.default'],
+  baseBorder: ['neutral.baseBorder', 'border.default'],
+  lightBorder: ['neutral.lightBorder', 'border.subtle', 'border.default'],
+  lighterBorder: ['neutral.lighterBorder', 'border.divider', 'border.subtle', 'border.default'],
+  extraLightBorder: ['neutral.extraLightBorder', 'border.divider', 'border.subtle', 'border.default'],
+  darkerFill: ['neutral.darkerFill', 'bg.floating', 'bg.elevated', 'bg.panel', 'bg.chat'],
+  darkFill: ['neutral.darkFill', 'bg.elevated', 'bg.panel', 'bg.chat'],
+  baseFill: ['neutral.baseFill', 'bg.panel', 'bg.chat'],
+  lightFill: ['neutral.lightFill', 'bg.chat', 'bg.panel', 'bg.app'],
+  lighterFill: ['neutral.lighterFill', 'bg.input', 'bg.chat', 'bg.app'],
+  extraLightFill: ['neutral.extraLightFill', 'bg.app', 'bg.chat'],
+  blankFill: ['neutral.blankFill'],
+  basicBlack: ['neutral.basicBlack'],
+  basicWhite: ['neutral.basicWhite'],
+  transparent: ['neutral.transparent'],
+  pageBackground: ['neutral.pageBackground', 'bg.app'],
+  baseBackground: ['neutral.baseBackground', 'bg.chat', 'bg.panel', 'bg.app'],
+  overlayBackground: ['neutral.overlayBackground', 'bg.modal', 'bg.floating', 'bg.panel'],
+}
+
+const NEUTRAL_COLOR_DEFAULTS: Record<ThemeNeutralColorToken, string> = {
+  primaryText: '#F9FAFB',
+  regularText: '#E5E7EB',
+  secondaryText: '#9CA3AF',
+  placeholderText: '#6B7280',
+  disabledText: '#4B5563',
+  darkerBorder: '#4B5563',
+  darkBorder: '#374151',
+  baseBorder: '#2F3746',
+  lightBorder: '#253041',
+  lighterBorder: '#202A39',
+  extraLightBorder: '#1B2433',
+  darkerFill: '#374151',
+  darkFill: '#2F3746',
+  baseFill: '#253041',
+  lightFill: '#202A39',
+  lighterFill: '#1B2433',
+  extraLightFill: '#111827',
+  blankFill: 'transparent',
+  basicBlack: '#000000',
+  basicWhite: '#FFFFFF',
+  transparent: 'transparent',
+  pageBackground: '#111827',
+  baseBackground: '#1F2937',
+  overlayBackground: '#374151',
+}
+
+function firstResolvedThemeValue(
+  resolvedTheme: Record<string, string>,
+  ...paths: string[]
+): string | undefined {
+  for (const path of paths) {
+    const value = resolvedTheme[path]
+    if (value !== undefined && value !== '') return value
+  }
+  return undefined
+}
+
+function deriveTranslucentColor(color: string, alpha: number): string {
+  if (parseCssColor(color)) {
+    return rgbaFromCssColor(color, alpha)
+  }
+  return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`
+}
+
+function applyThemeColorSemantics(resolvedTheme: Record<string, string>): void {
+  const primary = firstResolvedThemeValue(
+    resolvedTheme,
+    'primary',
+    'accentMain',
+    'accent'
+  ) || DEFAULT_PRIMARY_COLOR
+
+  resolvedTheme.primary = primary
+  if (!resolvedTheme.accent) resolvedTheme.accent = primary
+  if (!resolvedTheme.accentMain) resolvedTheme.accentMain = primary
+  if (!resolvedTheme.accentLight) {
+    resolvedTheme.accentLight = resolvedTheme.accentSub || primary
+  }
+
+  for (const token of THEME_STATUS_COLOR_TOKENS) {
+    const colorPath = `color.${token}`
+    const lightPath = `color.${token}Light`
+    const color = firstResolvedThemeValue(
+      resolvedTheme,
+      ...STATUS_COLOR_FALLBACK_PATHS[token]
+    ) || STATUS_COLOR_DEFAULTS[token]
+
+    resolvedTheme[colorPath] = color
+    resolvedTheme[lightPath] = firstResolvedThemeValue(
+      resolvedTheme,
+      ...STATUS_LIGHT_FALLBACK_PATHS[token]
+    ) || deriveTranslucentColor(color, 0.15)
+  }
+
+  for (const token of THEME_NEUTRAL_COLOR_TOKENS) {
+    const path = `neutral.${token}`
+    resolvedTheme[path] = firstResolvedThemeValue(
+      resolvedTheme,
+      ...NEUTRAL_COLOR_FALLBACK_PATHS[token]
+    ) || NEUTRAL_COLOR_DEFAULTS[token]
+  }
+}
+
+export function resolveThemeColorSemantics(
+  resolvedTheme: Record<string, string>
+): ResolvedThemeColorSemantics {
+  const normalizedTheme = { ...resolvedTheme }
+  applyThemeColorSemantics(normalizedTheme)
+
+  return {
+    primary: normalizedTheme.primary,
+    status: Object.fromEntries(
+      THEME_STATUS_COLOR_TOKENS.map(token => [token, normalizedTheme[`color.${token}`]])
+    ) as Record<ThemeStatusColorToken, string>,
+    neutral: Object.fromEntries(
+      THEME_NEUTRAL_COLOR_TOKENS.map(token => [token, normalizedTheme[`neutral.${token}`]])
+    ) as Record<ThemeNeutralColorToken, string>,
+  }
+}
+
 /**
  * Resolve all colors in a theme for a specific mode
  * @param theme - The theme to resolve
@@ -346,10 +541,21 @@ export function resolveTheme(
 ): Record<string, string> {
   const resolved: Record<string, string> = {}
   const resolvedMap = new Map<string, ResolvedColorValue>()
-  const defs = theme.defs || {}
+  const defs = { ...(theme.defs || {}) }
 
   // Flatten the theme colors to dot-notation
   const flatColors = flattenObject(theme.theme as unknown as Record<string, any>)
+  const explicitPrimary = flatColors.primary
+  if (
+    explicitPrimary !== undefined &&
+    !(typeof explicitPrimary === 'string' && (explicitPrimary === 'accent' || explicitPrimary === 'accentMain'))
+  ) {
+    defs.primary = explicitPrimary
+    defs.accent = explicitPrimary
+    defs.accentMain = explicitPrimary
+    flatColors.accent = explicitPrimary
+    flatColors.accentMain = explicitPrimary
+  }
 
   // Resolve each color
   for (const [path, value] of Object.entries(flatColors)) {
@@ -377,6 +583,8 @@ export function resolveTheme(
   if (!resolved['accentLight']) {
     resolved['accentLight'] = resolved['accentSub'] || resolved['accent'] || '#4385BE'
   }
+
+  applyThemeColorSemantics(resolved)
 
   return resolved
 }

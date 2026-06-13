@@ -13,30 +13,34 @@
         Save changes to {{ fileName }} before closing?
       </p>
       <div class="dialog-actions">
-        <button
+        <Button
+          unstyled
           class="btn secondary"
           @click="$emit('discard')"
         >
           Discard
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="btn secondary"
           @click="$emit('cancel')"
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="btn primary"
           @click="$emit('save')"
         >
           Save
-        </button>
+        </Button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import { AlertTriangle } from 'lucide-vue-next'
 

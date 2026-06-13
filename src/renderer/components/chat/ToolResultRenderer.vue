@@ -54,10 +54,11 @@
     <template v-else-if="isReadTextResult">
       <div class="read-output">
         <pre>{{ visibleReadText }}</pre>
-        <button
+        <Button
           v-if="hasMoreReadLines"
+          unstyled
           class="more-button"
-          type="button"
+          native-type="button"
           @click="showMoreReadLines"
         >
           <ChevronDown
@@ -65,7 +66,7 @@
             :stroke-width="2"
           />
           <span>more</span>
-        </button>
+        </Button>
       </div>
     </template>
 
@@ -94,6 +95,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { ChevronDown, Zap } from 'lucide-vue-next'
 import type { ToolPartialResult, ToolRenderKind } from '@/types'

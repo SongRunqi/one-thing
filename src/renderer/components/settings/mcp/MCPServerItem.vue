@@ -57,7 +57,8 @@
           :text="server.status === 'connected' ? 'Stop' : 'Start'"
           position="top"
         >
-          <button
+          <Button
+            unstyled
             class="icon-btn small connect-btn"
             :class="{
               'is-loading': isConnecting,
@@ -79,13 +80,14 @@
               v-else
               :size="14"
             />
-          </button>
+          </Button>
         </Tooltip>
         <Tooltip
           text="Edit"
           position="top"
         >
-          <button
+          <Button
+            unstyled
             class="icon-btn small"
             @click.stop="$emit('edit')"
           >
@@ -100,13 +102,14 @@
               <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
               <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
             </svg>
-          </button>
+          </Button>
         </Tooltip>
         <Tooltip
           text="Delete"
           position="top"
         >
-          <button
+          <Button
+            unstyled
             class="icon-btn small danger"
             @click.stop="$emit('delete')"
           >
@@ -120,7 +123,7 @@
             >
               <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
             </svg>
-          </button>
+          </Button>
         </Tooltip>
         <svg
           class="expand-chevron"
@@ -247,6 +250,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import type { MCPServerState } from '@/types'
 import { Play, Pause, Loader2 } from 'lucide-vue-next'

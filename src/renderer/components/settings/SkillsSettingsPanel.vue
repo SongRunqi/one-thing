@@ -5,14 +5,15 @@
       <div class="section-header">
         <div>
           <h3 class="section-title">
-            Claude Code Skills
+            Hermes Agent Skills
           </h3>
           <p class="section-description">
-            Skills are loaded from <code>~/.claude/skills/</code> (user) and <code>.claude/skills/</code> (project)
+            Skills are loaded from <code>~/.onething/skills/</code> (user) and <code>.onething/skills/</code> (project)
           </p>
         </div>
         <div class="header-actions">
-          <button
+          <Button
+            unstyled
             class="action-btn"
             :disabled="isLoading"
             title="Refresh skills"
@@ -22,8 +23,9 @@
               :class="{ spinning: isLoading }"
               :size="16"
             />
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             class="action-btn"
             title="Open skills folder"
             @click="openSkillsDirectory"
@@ -38,7 +40,7 @@
             >
               <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
             </svg>
-          </button>
+          </Button>
         </div>
       </div>
     </section>
@@ -83,7 +85,7 @@
         >
           <div class="group-header">
             <span class="group-title">User Skills</span>
-            <span class="group-path">~/.claude/skills/</span>
+            <span class="group-path">~/.onething/skills/</span>
             <span class="group-count">{{ userSkills.length }}</span>
           </div>
           <div class="skills-list">
@@ -108,7 +110,7 @@
         >
           <div class="group-header">
             <span class="group-title">Project Skills</span>
-            <span class="group-path">.claude/skills/</span>
+            <span class="group-path">.onething/skills/</span>
             <span class="group-count">{{ projectSkills.length }}</span>
           </div>
           <div class="skills-list">
@@ -133,7 +135,7 @@
         >
           <div class="group-header">
             <span class="group-title">Plugin Skills</span>
-            <span class="group-path">~/.claude/plugins/cache/claude-plugins-official/</span>
+            <span class="group-path">Plugin and compatibility roots</span>
             <span class="group-count">{{ pluginSkills.length }}</span>
           </div>
           <div class="skills-list">
@@ -192,18 +194,20 @@
             </p>
           </div>
           <div class="dialog-footer">
-            <button
+            <Button
+              unstyled
               class="btn secondary"
               @click="showDeleteDialog = false"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               class="btn danger"
               @click="deleteSkill"
             >
               Delete
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -212,6 +216,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import type { SkillDefinition, SkillSettings } from '@/types'

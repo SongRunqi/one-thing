@@ -27,7 +27,8 @@
           >
           <span class="toggle-slider" />
         </label>
-        <button
+        <Button
+          unstyled
           class="icon-btn small"
           title="Open in file manager"
           @click="$emit('open-directory', skill.id)"
@@ -42,9 +43,10 @@
           >
             <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
           </svg>
-        </button>
-        <button
+        </Button>
+        <Button
           v-if="canDelete"
+          unstyled
           class="icon-btn small danger"
           title="Delete skill"
           @click="$emit('delete', skill)"
@@ -59,7 +61,7 @@
           >
             <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
           </svg>
-        </button>
+        </Button>
         <svg
           class="expand-chevron"
           width="14"
@@ -112,6 +114,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import type { SkillDefinition } from '@/types'
 
 defineProps<{

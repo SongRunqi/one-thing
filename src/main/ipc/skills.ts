@@ -1,7 +1,7 @@
 /**
  * Skills IPC Handlers
  *
- * Handles IPC communication for Claude Code Skills operations
+ * Handles IPC communication for Hermes Agent SKILL.md operations
  */
 
 import { ipcMain, shell } from 'electron'
@@ -9,6 +9,7 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { SkillDefinition, SkillSource } from '../../shared/ipc.js'
 import {
   loadAllSkills,
+  loadProjectSkillsForDirectory,
   createSkill,
   deleteSkill,
   readSkillFile,
@@ -272,6 +273,19 @@ function applySkillSettings(skills: SkillDefinition[], enabledOnly = true): Skil
   return enabledOnly ? result.filter(s => s.enabled) : result
 }
 
+function mergeSkillsByPriority(...skillGroups: SkillDefinition[][]): SkillDefinition[] {
+  const seenNames = new Set<string>()
+  const merged: SkillDefinition[] = []
+  for (const group of skillGroups) {
+    for (const skill of group) {
+      if (seenNames.has(skill.name)) continue
+      seenNames.add(skill.name)
+      merged.push(skill)
+    }
+  }
+  return merged
+}
+
 /**
  * Invalidate skills cache for a specific workingDirectory or all caches
  */
@@ -308,9 +322,12 @@ function getSkillsForDirectory(workingDirectory?: string, enabledOnly = true): S
     return applySkillSettings(cached, enabledOnly)
   }
 
-  // 缓存不存在，加载并缓存
+  // 缓存不存在，加载并缓存。When the global cache is already warm, only
+  // scan project skill roots for session-specific working directories.
   console.log(`[Skills] Cache MISS for: ${cacheKey} - loading from filesystem`)
-  const allSkills = loadAllSkills(workingDirectory)
+  const allSkills = workingDirectory && isInitialized
+    ? mergeSkillsByPriority(loadProjectSkillsForDirectory(workingDirectory), skillsCache)
+    : loadAllSkills(workingDirectory)
   skillsCacheByDir.set(cacheKey, allSkills)
 
   return applySkillSettings(allSkills, enabledOnly)

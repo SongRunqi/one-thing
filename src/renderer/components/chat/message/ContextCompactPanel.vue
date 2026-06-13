@@ -21,10 +21,11 @@
         />
       </span>
 
-      <button
+      <Button
         v-if="canExpand"
+        unstyled
         class="event-toggle"
-        type="button"
+        native-type="button"
         :aria-expanded="isExpanded"
         :title="isExpanded ? 'Hide summary' : 'Show summary'"
         @click="isExpanded = !isExpanded"
@@ -39,7 +40,7 @@
           :size="14"
           :stroke-width="2"
         />
-      </button>
+      </Button>
 
       <div
         v-else
@@ -61,6 +62,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed } from 'vue'
 import { AlertCircle, Archive, ChevronDown } from 'lucide-vue-next'
 import { renderMarkdown } from '@/composables/useMarkdownRenderer'

@@ -48,8 +48,20 @@ export interface InitContext {
     name: string
     description: string
     source: 'user' | 'project' | 'plugin' | 'builtin'
+    category?: string
+    tags?: string[]
+    relatedSkills?: string[]
+    platforms?: string[]
+    conditions?: {
+      fallbackForToolsets?: string[]
+      requiresToolsets?: string[]
+      fallbackForTools?: string[]
+      requiresTools?: string[]
+    }
     path: string
     directoryPath: string
+    rootPath?: string
+    relativePath?: string
     enabled: boolean
     instructions: string
     files?: Array<{ name: string; path: string; type: string }>

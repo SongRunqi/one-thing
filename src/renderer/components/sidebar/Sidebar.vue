@@ -1,12 +1,16 @@
 <template>
   <aside
-    :class="['sidebar', { collapsed, floating, 'floating-closing': floatingClosing, resizing: isResizing }]"
+    :class="['sidebar', { collapsed, floating, 'floating-closing': floatingClosing }]"
     :style="sidebarStyle"
   >
-    <div
-      v-show="showContent"
+    <Space
+      as="div"
+      direction="vertical"
+      size="none"
+      align="stretch"
       class="sidebar-content"
       :class="{ 'content-hidden': collapsed && !floating }"
+      :aria-hidden="collapsed && !floating"
     >
       <!-- Sidebar Header: traffic lights space -->
       <SidebarHeader />
@@ -14,12 +18,13 @@
       <!-- Session List: workspace actions live inside the same scroll panel -->
       <SessionList
         :groups="groupedSessions"
+        :active-index="activeSidebarIndex"
         :current-session-id="sessionsStore.currentSessionId"
         :is-session-generating="chatStore.isSessionGenerating"
         :editing-session-id="editingSessionId"
         :editing-name="editingName"
         @create-new-chat="$emit('create-new-chat')"
-        @session-click="handleSessionClick"
+        @menu-select="handleSidebarMenuSelect"
         @context-menu="openContextMenu"
         @toggle-collapse="sessionOrganizer.toggleCollapse"
         @start-rename="startInlineRename"
@@ -28,23 +33,27 @@
         @overflow-change="handleOverflowChange"
       >
         <template #before>
-          <div class="sidebar-workspace-actions">
-            <button
+          <div
+            class="sidebar-workspace-actions"
+          >
+            <MenuItem
               v-for="action in workspaceActions"
               :key="action.id"
-              type="button"
+              :index="panelMenuIndex(action.id)"
+              :title="action.label"
               class="workspace-action"
-              :class="{ active: activeWorkspacePanel === action.id }"
-              @click="$emit('open-workspace-panel', action.id)"
             >
-              <component
-                :is="action.icon"
-                :size="16"
-                :stroke-width="1.8"
-                class="workspace-action-icon"
-              />
-              <span class="workspace-action-title">{{ action.label }}</span>
-            </button>
+              <template #icon>
+                <component
+                  :is="action.icon"
+                  :size="18"
+                  :stroke-width="2"
+                />
+              </template>
+              <template #title>
+                <span class="workspace-action-title">{{ action.label }}</span>
+              </template>
+            </MenuItem>
           </div>
         </template>
       </SessionList>
@@ -52,16 +61,15 @@
       <!-- Bottom bar -->
       <div class="sidebar-bottom">
         <div class="sidebar-bottom-spacer" />
-        <button
+        <Button
+          text
+          circle
           class="sidebar-bottom-btn"
           title="Settings"
+          aria-label="Settings"
+          :icon="Settings"
           @click="$emit('open-settings')"
-        >
-          <Settings
-            :size="19"
-            :stroke-width="1.8"
-          />
-        </button>
+        />
       </div>
 
       <!-- Context Menu -->
@@ -75,19 +83,14 @@
         @pin="handleContextPin"
         @delete="handleContextDelete"
       />
-    </div>
-
-    <!-- Resize Handle -->
-    <SidebarResizeHandle
-      :current-width="width"
-      @resize="(w) => $emit('resize', w)"
-      @resize-start="isResizing = true"
-      @resize-end="isResizing = false"
-    />
+    </Space>
   </aside>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
+import MenuItem from '@/components/common/MenuItem.vue'
+import Space from '@/components/common/Space.vue'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
@@ -95,7 +98,6 @@ import { Bot, Brain, CalendarClock, Images, Settings } from 'lucide-vue-next'
 import SidebarHeader from './SidebarHeader.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
-import SidebarResizeHandle from './SidebarResizeHandle.vue'
 import { useSessionOrganizer, type SessionWithBranches } from './useSessionOrganizer'
 
 interface Props {
@@ -108,22 +110,25 @@ interface Props {
   width?: number
 }
 
+type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks'
+
 const props = withDefaults(defineProps<Props>(), {
   collapsed: false,
   floating: false,
   floatingClosing: false,
   noTransition: false,
+  activeWorkspacePanel: null,
   width: 300,
 })
 
 const emit = defineEmits<{
   toggleCollapse: []
   'toggle-media-panel': []
-  'open-workspace-panel': [panel: 'memory' | 'media' | 'agents' | 'tasks']
+  'open-workspace-panel': [panel: WorkspacePanel]
+  'select-session': [sessionId: string]
   'create-new-chat': []
   'open-search': []
   'open-settings': []
-  'resize': [width: number]
 }>()
 
 // Stores
@@ -147,11 +152,7 @@ const floatingClosing = computed(() => props.floatingClosing)
 
 // Local state
 const localSearchQuery = ref('')
-const isResizing = ref(false)
 const hasContentBelow = ref(false)
-
-// Content visibility
-const showContent = computed(() => !props.collapsed || props.floating)
 
 // Inline editing state
 const editingSessionId = ref<string | null>(null)
@@ -170,6 +171,7 @@ const sidebarStyle = computed(() => {
   // When floating, force width to 0 (the CSS .floating class handles the visual width)
   if (floating.value || floatingClosing.value) {
     return {
+      '--sidebar-docked-width': `${props.width}px`,
       width: '0',
       maxWidth: '0',
       transition: 'none'
@@ -178,8 +180,7 @@ const sidebarStyle = computed(() => {
 
   // Normal mode
   return {
-    width: collapsed.value ? '0' : props.width + 'px',
-    maxWidth: collapsed.value ? '0' : props.width + 'px',
+    '--sidebar-docked-width': `${props.width}px`,
     transition: props.noTransition ? 'none' : undefined
   }
 })
@@ -200,10 +201,30 @@ const groupedSessions = computed(() => {
   return sessionOrganizer.getGroupedSessions(filteredSessions.value)
 })
 
-// Session click handler
-function handleSessionClick(_event: MouseEvent, session: SessionWithBranches) {
-  if (editingSessionId.value) return
-  sessionsStore.switchSession(session.id)
+const activeSidebarIndex = computed(() => {
+  if (props.activeWorkspacePanel) return panelMenuIndex(props.activeWorkspacePanel)
+  if (sessionsStore.currentSessionId) return sessionMenuIndex(sessionsStore.currentSessionId)
+  return ''
+})
+
+function panelMenuIndex(panel: WorkspacePanel): string {
+  return `panel:${panel}`
+}
+
+function sessionMenuIndex(sessionId: string): string {
+  return `session:${sessionId}`
+}
+
+function handleSidebarMenuSelect(index: string) {
+  if (index.startsWith('panel:')) {
+    emit('open-workspace-panel', index.slice('panel:'.length) as WorkspacePanel)
+    return
+  }
+
+  if (index.startsWith('session:')) {
+    if (editingSessionId.value) return
+    emit('select-session', index.slice('session:'.length))
+  }
 }
 
 // Overflow change handler
@@ -294,28 +315,23 @@ onUnmounted(() => {
 
 <style scoped>
 .sidebar {
+  --sidebar-docked-width: 300px;
   --sidebar-bg: var(
     --ui-sidebar-surface-bg,
     var(--ui-surface-app-bg, var(--bg-app, var(--bg)))
   );
   position: relative;
+  flex: 1 1 auto;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
-  transition:
-    width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.2s ease;
+  transition: opacity 0.2s ease;
   overflow: hidden;
   background: var(--sidebar-bg);
   padding: 0;
   contain: layout style;
-}
-
-/* Disable transition during resize for smooth dragging */
-.sidebar.resizing {
-  transition: none;
 }
 
 /* Floating sidebar mode */
@@ -336,6 +352,9 @@ onUnmounted(() => {
 
 /* Floating mode only needs height adjustment since base styles already have margin */
 .sidebar.floating .sidebar-content {
+  width: auto;
+  min-width: 0;
+  max-width: none;
   height: calc(100% - 12px);
   margin: 6px;
   padding-bottom: 0;
@@ -376,8 +395,10 @@ onUnmounted(() => {
 /* Sidebar content panel */
 .sidebar-content {
   flex: 1;
-  display: flex;
-  flex-direction: column;
+  align-self: flex-start;
+  width: var(--sidebar-docked-width);
+  min-width: var(--sidebar-docked-width);
+  max-width: var(--sidebar-docked-width);
   min-height: 0;
   margin-top: 12px;
   background: transparent;
@@ -393,9 +414,6 @@ onUnmounted(() => {
 }
 
 .sidebar.collapsed {
-  width: 0;
-  max-width: 0;
-  min-width: 0;
   padding: 0;
   overflow: hidden;
   border: none;
@@ -406,60 +424,62 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  padding: 6px 6px 10px 0;
-  margin: 0 6px 6px 0;
+  padding: 6px 6px 6px 0;
+  margin: 0 6px 2px 0;
   flex-shrink: 0;
 }
 
-.workspace-action {
-  display: flex;
-  align-items: center;
-  gap: 9px;
+.workspace-action :deep(.app-menu-item) {
   width: 100%;
-  min-height: 34px;
+  height: 34px;
   padding: 0 10px;
   border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item)));
-  font: inherit;
   font-size: 13px;
-  text-align: left;
-  cursor: pointer;
   -webkit-app-region: no-drag;
   transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
-.workspace-action:hover {
+.workspace-action :deep(.app-menu-item:hover),
+.workspace-action :deep(.app-menu-item:focus-visible) {
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
   color: var(--ui-accent-primary-fg, var(--accent));
   transform: translateX(2px);
+  box-shadow: none;
 }
 
-.workspace-action:hover .workspace-action-icon {
+.workspace-action :deep(.app-menu-item:hover .app-menu-item-icon),
+.workspace-action :deep(.app-menu-item:focus-visible .app-menu-item-icon) {
   color: var(--ui-accent-primary-fg, var(--accent));
   transform: scale(1.1);
   opacity: 1;
 }
 
-.workspace-action.active {
+.workspace-action.is-active :deep(.app-menu-item) {
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
   color: var(--ui-accent-primary-fg, var(--accent));
   font-weight: 600;
   transform: translateX(2px);
 }
 
-.workspace-action-icon {
+.workspace-action :deep(.app-menu-item-icon) {
   flex: 0 0 auto;
   color: currentColor;
   opacity: 0.82;
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.25s ease, opacity 0.25s ease;
 }
 
-.workspace-action.active .workspace-action-icon {
+.workspace-action.is-active :deep(.app-menu-item-icon) {
   color: var(--ui-accent-primary-fg, var(--accent));
   transform: scale(1.1);
   opacity: 1;
+}
+
+.workspace-action :deep(.app-menu-item-label) {
+  flex: 1;
+  min-width: 0;
 }
 
 .workspace-action-title {
@@ -477,6 +497,14 @@ onUnmounted(() => {
 }
 
 .sidebar-bottom-btn {
+  --app-button-height: 32px;
+  --app-button-min-width: 32px;
+  --app-button-padding-x: 0;
+  --app-button-hover-fill: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+
   width: 32px;
   height: 32px;
   display: flex;

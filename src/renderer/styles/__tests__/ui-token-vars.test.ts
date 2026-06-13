@@ -131,7 +131,17 @@ function lineNumber(text: string, offset: number): number {
 }
 
 function isSemanticVarName(name: string | null): boolean {
-  return !!name && (/^--ui-/.test(name) || /^--hg-/.test(name) || /^--diff-/.test(name))
+  return !!name && (
+    /^--ui-/.test(name) ||
+    /^--hg-/.test(name) ||
+    /^--diff-/.test(name) ||
+    /^--color-primary/.test(name) ||
+    /^--color-neutral-/.test(name) ||
+    /^--text-color-/.test(name) ||
+    /^--border-color-/.test(name) ||
+    /^--fill-color-/.test(name) ||
+    /^--bg-color-/.test(name)
+  )
 }
 
 function isInsideSemanticVar(text: string, offset: number): boolean {
@@ -192,6 +202,12 @@ describe('renderer UI semantic variables', () => {
     expect(variables).toContain('--ui-action-primary-bg')
     expect(variables).toContain('--ui-status-danger-fg')
     expect(variables).toContain('--ui-surface-note-bg')
+    expect(variables).toContain('--color-primary')
+    expect(variables).toContain('--color-neutral-primary-text')
+    expect(variables).toContain('--text-color-regular')
+    expect(variables).toContain('--border-color-extra-light')
+    expect(variables).toContain('--fill-color-blank')
+    expect(variables).toContain('--bg-color-overlay')
     expect(variables).toContain('--ui-surface-tooltip-border')
     expect(variables).toContain('--ui-surface-tooltip-shadow')
     expect(variables).toContain('--ui-surface-chat-panel-shadow')
@@ -213,6 +229,8 @@ describe('renderer UI semantic variables', () => {
 
   it('routes high-value UI surfaces directly through UI semantic tokens', () => {
     const stepsPanel = readRendererFile('components/chat/StepsPanel.vue')
+    const toolResultRenderer = readRendererFile('components/chat/ToolResultRenderer.vue')
+    const toolStepDetails = readRendererFile('components/chat/ToolStepDetails.vue')
     const toolDiffPreview = readRendererFile('components/chat/ToolDiffPreview.vue')
     const messageBubble = readRendererFile('components/chat/message/MessageBubble.vue')
     const inputBox = readRendererFile('components/chat/InputBox.vue')
@@ -232,8 +250,9 @@ describe('renderer UI semantic variables', () => {
     const editorExtensions = readRendererFile('editor/extensions.ts')
     const markdownStyles = readRendererFile('styles/markdown.css')
 
-    expect(stepsPanel).toContain('var(--ui-tool-surface-bg')
     expect(stepsPanel).toContain('var(--ui-tool-danger-text-fg')
+    expect(toolResultRenderer).toContain('var(--ui-tool-surface-subtle-bg')
+    expect(toolStepDetails).toContain('var(--ui-tool-surface-subtle-bg')
     expect(toolDiffPreview).toContain('var(--ui-tool-surface-subtle-bg')
     expect(messageBubble).toContain('var(--ui-message-user-bg')
     expect(messageBubble).toContain('var(--ui-message-user-shadow')

@@ -31,8 +31,9 @@
         />
         {{ displayTitle }}
       </span>
-      <button
+      <Button
         v-if="closable"
+        unstyled
         class="tab-close"
         title="Close tab"
         aria-label="Close tab"
@@ -41,12 +42,13 @@
         @keydown.space.stop
       >
         <X :size="12" />
-      </button>
+      </Button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed } from 'vue'
 import { MessageSquare, FolderCode, X } from 'lucide-vue-next'
 import type { Tab } from '@/types/tabs'

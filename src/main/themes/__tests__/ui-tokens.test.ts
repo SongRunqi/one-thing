@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Theme } from '../../../shared/ipc/themes.js'
 import { generateCSSVariables } from '../css-mapper.js'
-import { resolveTheme, resolveThemeUI } from '../resolver.js'
+import { resolveTheme, resolveThemeColorSemantics, resolveThemeUI } from '../resolver.js'
 
 function makeTheme(overrides: Partial<Theme> = {}): Theme {
   return {
@@ -154,7 +154,7 @@ describe('theme UI semantic tokens', () => {
       border: '#282828',
     })
     expect(resolvedUI['ui.surface.note']).toMatchObject({
-      bg: '#282828',
+      bg: 'rgba(255, 200, 0, 0.16)',
       fg: '#eeeeee',
       border: '#282828',
     })
@@ -196,8 +196,45 @@ describe('theme UI semantic tokens', () => {
       border: '#dd3333',
     })
 
+    const colorSemantics = resolveThemeColorSemantics(resolvedTheme)
+    expect(colorSemantics.primary).toBe('#3388dd')
+    expect(colorSemantics.status).toMatchObject({
+      success: '#33aa55',
+      warning: '#F59E0B',
+      danger: '#dd3333',
+      info: '#3388dd',
+    })
+    expect(colorSemantics.neutral).toMatchObject({
+      primaryText: '#eeeeee',
+      regularText: '#cccccc',
+      secondaryText: '#888888',
+      placeholderText: '#888888',
+      disabledText: '#555555',
+      baseBorder: '#303030',
+      lightBorder: '#282828',
+      baseFill: '#202020',
+      blankFill: 'transparent',
+      basicBlack: '#000000',
+      basicWhite: '#FFFFFF',
+      pageBackground: '#101010',
+      baseBackground: '#181818',
+      overlayBackground: '#202020',
+    })
+
+    expect(cssVariables['--color-primary']).toBe('#3388dd')
+    expect(cssVariables['--primary']).toBe('#3388dd')
     expect(cssVariables['--ui-text-primary-fg']).toBe('#eeeeee')
     expect(cssVariables['--text-primary']).toBe('#eeeeee')
+    expect(cssVariables['--color-neutral-primary-text']).toBe('#eeeeee')
+    expect(cssVariables['--text-color-primary']).toBe('#eeeeee')
+    expect(cssVariables['--color-neutral-regular-text']).toBe('#cccccc')
+    expect(cssVariables['--text-color-regular']).toBe('#cccccc')
+    expect(cssVariables['--color-neutral-base-border']).toBe('#303030')
+    expect(cssVariables['--border-color-base']).toBe('#303030')
+    expect(cssVariables['--color-neutral-base-fill']).toBe('#202020')
+    expect(cssVariables['--fill-color-base']).toBe('#202020')
+    expect(cssVariables['--color-neutral-page-background']).toBe('#101010')
+    expect(cssVariables['--bg-color-page']).toBe('#101010')
     expect(cssVariables['--ui-action-primary-bg']).toBe('#3388dd')
     expect(cssVariables['--bg-btn-primary']).toBe('#3388dd')
     expect(cssVariables['--ui-tool-surface-bg']).toBe('#202020')
@@ -206,8 +243,8 @@ describe('theme UI semantic tokens', () => {
     expect(cssVariables['--bg-app']).toBe('#101010')
     expect(cssVariables['--ui-sidebar-surface-bg']).toBe('#101010')
     expect(cssVariables['--bg-sidebar']).toBe('#101010')
-    expect(cssVariables['--ui-surface-note-bg']).toBe('#282828')
-    expect(cssVariables['--bg-note']).toBe('#282828')
+    expect(cssVariables['--ui-surface-note-bg']).toBe('rgba(255, 200, 0, 0.16)')
+    expect(cssVariables['--bg-note']).toBe('rgba(255, 200, 0, 0.16)')
     expect(cssVariables['--ui-surface-preview-light-bg']).toBe('#ffffff')
     expect(cssVariables['--ui-surface-preview-dark-bg']).toBe('#0f1117')
     expect(cssVariables['--ui-sidebar-item-active-fg']).toBe('#eeeeee')
@@ -216,6 +253,37 @@ describe('theme UI semantic tokens', () => {
     expect(cssVariables['--tab-item-active-fg']).toBe('#eeeeee')
     expect(cssVariables['--ui-status-danger-fg']).toBe('#dd3333')
     expect(cssVariables['--color-danger']).toBe('#dd3333')
+  })
+
+  it('lets new primary and neutral definitions override duplicated legacy roles', () => {
+    const theme = makeTheme()
+    theme.theme.primary = 'override'
+    theme.theme.neutral = {
+      regularText: 'override',
+      pageBackground: 'override',
+      blankFill: '#123456',
+    }
+
+    const resolvedTheme = resolveTheme(theme, 'dark')
+    const resolvedUI = resolveThemeUI(theme, 'dark', resolvedTheme)
+    const cssVariables = generateCSSVariables(resolvedTheme, undefined, resolvedUI)
+    const colorSemantics = resolveThemeColorSemantics(resolvedTheme)
+
+    expect(resolvedTheme.primary).toBe('#ff00ff')
+    expect(resolvedTheme.accent).toBe('#ff00ff')
+    expect(resolvedTheme['bg.btn.primary']).toBe('#ff00ff')
+    expect(colorSemantics.primary).toBe('#ff00ff')
+    expect(colorSemantics.neutral.regularText).toBe('#ff00ff')
+    expect(colorSemantics.neutral.pageBackground).toBe('#ff00ff')
+    expect(colorSemantics.neutral.blankFill).toBe('#123456')
+    expect(cssVariables['--color-primary']).toBe('#ff00ff')
+    expect(cssVariables['--accent']).toBe('#ff00ff')
+    expect(cssVariables['--bg-btn-primary']).toBe('#ff00ff')
+    expect(cssVariables['--text-color-regular']).toBe('#ff00ff')
+    expect(cssVariables['--bg-color-page']).toBe('#ff00ff')
+    expect(cssVariables['--fill-color-blank']).toBe('#123456')
+    expect(cssVariables['--color-primary-rgb']).toBe('255, 0, 255')
+    expect(cssVariables['--color-neutral-blank-fill-rgb']).toBe('18, 52, 86')
   })
 
   it('ignores theme UI overrides so every theme uses shared role mapping', () => {

@@ -169,7 +169,7 @@ describe('buildToolStepView', () => {
 
     expect(view.status).toBe('rejected')
     expect(view.errorPreview).toBe('Rejected')
-    expect(view.defaultExpanded).toBe(true)
+    expect(view.defaultExpanded).toBe(false)
   })
 
   it('caches streaming write parsing for the same tool input length and status', () => {

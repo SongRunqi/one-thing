@@ -97,6 +97,7 @@ describe('appearance synchronization', () => {
     document.documentElement.removeAttribute('data-theme')
     document.documentElement.removeAttribute('data-color-theme')
     document.documentElement.removeAttribute('data-base-theme')
+    document.documentElement.removeAttribute('data-typography-density')
     document.documentElement.style.cssText = ''
   })
 
@@ -117,6 +118,7 @@ describe('appearance synchronization', () => {
 
     const themeStore = useThemeStore()
     expect(document.documentElement.getAttribute('data-theme')).toBe('light')
+    expect(document.documentElement.getAttribute('data-typography-density')).toBe('compact')
     expect(themeStore.darkThemeId).toBe('one-dark')
     expect(themeStore.lightThemeId).toBe('github-light')
     expect(electronAPI.getSystemTheme).toHaveBeenCalledTimes(1)
@@ -173,5 +175,44 @@ describe('appearance synchronization', () => {
     expect(electronAPI.saveSettings).toHaveBeenCalledTimes(1)
     expect(electronAPI.applyTheme).toHaveBeenLastCalledWith('github-dark', 'dark')
     expect(document.documentElement.style.getPropertyValue('--applied-theme')).toBe('github-dark:dark')
+  })
+
+  it('applies typography density to the root element', async () => {
+    const { useSettingsStore } = await loadStores()
+    const settingsStore = useSettingsStore()
+
+    await settingsStore.applyAppearanceFromSettings(makeSettings({
+      general: {
+        typographyDensity: 'comfortable',
+      },
+    }))
+
+    expect(document.documentElement.getAttribute('data-typography-density')).toBe('comfortable')
+
+    settingsStore.updateTypographyDensity('compact')
+
+    expect(document.documentElement.getAttribute('data-typography-density')).toBe('compact')
+  })
+
+  it('re-applies appearance when saving typography density changes', async () => {
+    const electronAPI = installElectronAPI('dark')
+    const { useSettingsStore } = await loadStores()
+    const settingsStore = useSettingsStore()
+
+    await settingsStore.applyAppearanceFromSettings(makeSettings({
+      general: {
+        typographyDensity: 'compact',
+      },
+    }))
+    vi.mocked(electronAPI.applyTheme).mockClear()
+
+    await settingsStore.saveSettings(makeSettings({
+      general: {
+        typographyDensity: 'comfortable',
+      },
+    }))
+
+    expect(document.documentElement.getAttribute('data-typography-density')).toBe('comfortable')
+    expect(electronAPI.applyTheme).toHaveBeenCalledTimes(1)
   })
 })

@@ -13,14 +13,15 @@
             placeholder="Search prompts"
           >
         </label>
-        <button
+        <Button
+          unstyled
           class="prompt-primary-btn"
-          type="button"
+          native-type="button"
           @click="startCreate"
         >
           <Plus :size="14" />
           <span>New Prompt</span>
-        </button>
+        </Button>
       </div>
     </SettingsSection>
 
@@ -32,12 +33,13 @@
         </div>
 
         <div class="prompt-list">
-          <button
+          <Button
             v-for="prompt in filteredPrompts"
             :key="prompt.id"
+            unstyled
             class="prompt-row"
             :class="{ active: selectedId === prompt.id }"
-            type="button"
+            native-type="button"
             @click="selectPrompt(prompt.id)"
           >
             <span class="prompt-row-top">
@@ -54,7 +56,7 @@
                 :key="tag"
               >{{ tag }}</span>
             </span>
-          </button>
+          </Button>
 
           <SettingsEmptyState
             v-if="!isLoading && promptsStore.prompts.length === 0"
@@ -65,13 +67,14 @@
               <NotebookPen :size="16" />
             </template>
             <template #actions>
-              <button
+              <Button
+                unstyled
                 class="prompt-secondary-btn"
-                type="button"
+                native-type="button"
                 @click="startCreate"
               >
                 Create Prompt
-              </button>
+              </Button>
             </template>
           </SettingsEmptyState>
 
@@ -165,31 +168,34 @@
               <span v-else>{{ editingId ? 'Saved prompts are available globally.' : 'New prompts become available immediately after saving.' }}</span>
             </template>
 
-            <button
+            <Button
               v-if="editingId"
+              unstyled
               class="prompt-danger-btn"
-              type="button"
+              native-type="button"
               @click="handleDeleteClick"
             >
               <Trash2 :size="14" />
               <span>{{ confirmingDelete ? 'Delete' : 'Delete Prompt' }}</span>
-            </button>
-            <button
+            </Button>
+            <Button
               v-if="confirmingDelete"
+              unstyled
               class="prompt-secondary-btn"
-              type="button"
+              native-type="button"
               @click="confirmingDelete = false"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               class="prompt-primary-btn"
-              type="submit"
+              native-type="submit"
               :disabled="isSaving"
             >
               <Save :size="14" />
               <span>{{ isSaving ? 'Saving...' : 'Save Prompt' }}</span>
-            </button>
+            </Button>
           </SettingsActionBar>
         </SettingsGroup>
       </form>
@@ -198,6 +204,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed, onMounted, ref, watch } from 'vue'
 import { NotebookPen, Plus, Save, Search, Trash2 } from 'lucide-vue-next'
 import { usePromptsStore } from '@/stores/prompts'

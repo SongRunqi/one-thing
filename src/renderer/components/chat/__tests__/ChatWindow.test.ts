@@ -2,6 +2,7 @@
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import Button from '../../common/Button.vue'
 import ChatWindow from '../ChatWindow.vue'
 
 const mocks = vi.hoisted(() => {
@@ -66,20 +67,22 @@ vi.mock('@/composables/useEditorWorkspace', () => ({
 vi.mock('../TabBar.vue', () => ({
   default: {
     name: 'TabBar',
+    components: { Button },
     props: ['tabs', 'activeTabId'],
     emits: ['selectTab', 'closeTab'],
     template: `
       <div class="mock-tab-bar">
-        <button
+        <Button
           v-for="tab in tabs"
           :key="tab.id"
+          unstyled
           class="tab-button"
           :data-type="tab.type"
           :data-active="tab.id === activeTabId"
           @click="$emit('selectTab', tab.id)"
         >
           {{ tab.type }}
-        </button>
+        </Button>
       </div>
     `,
   },
@@ -88,7 +91,8 @@ vi.mock('../TabBar.vue', () => ({
 vi.mock('../ChatPanel.vue', () => ({
   default: {
     name: 'ChatPanel',
-    props: ['sessionId'],
+    components: { Button },
+    props: ['sessionId', 'active', 'footerTarget'],
     emits: ['splitWithBranch', 'openFile'],
     setup(_props: unknown, { expose }: { expose: (exposed: Record<string, unknown>) => void }) {
       expose({
@@ -100,8 +104,8 @@ vi.mock('../ChatPanel.vue', () => ({
       return {}
     },
     template: `
-      <div class="mock-chat-panel">
-        <button class="open-file" @click="$emit('openFile', '/repo/src/a.ts')">open file</button>
+      <div class="mock-chat-panel" :data-active="active">
+        <Button unstyled class="open-file" @click="$emit('openFile', '/repo/src/a.ts')">open file</Button>
       </div>
     `,
   },
@@ -166,7 +170,7 @@ describe('ChatWindow tab switching', () => {
     installElectronAPI()
   })
 
-  it('saves chat state before switching to workbench and restores it when switching back', async () => {
+  it('does not restore persisted workbench tabs into the chat window', async () => {
     const wrapper = mount(ChatWindow, {
       props: {
         sessionId: 'session-1',
@@ -175,21 +179,27 @@ describe('ChatWindow tab switching', () => {
     await settle()
 
     const buttons = wrapper.findAll('.tab-button')
-    expect(buttons.map(button => button.attributes('data-type'))).toEqual(['chat', 'workbench'])
-
-    await buttons[1].trigger('click')
-    await settle()
-
-    expect(mocks.chatPanelSave).toHaveBeenCalledTimes(1)
-    expect(mocks.chatPanelRestore).not.toHaveBeenCalled()
-
-    await buttons[0].trigger('click')
-    await settle()
-
-    expect(mocks.chatPanelRestore).toHaveBeenCalledTimes(1)
+    expect(buttons.map(button => button.attributes('data-type'))).toEqual(['chat'])
+    expect(wrapper.find('.mock-file-panel').exists()).toBe(false)
   })
 
-  it('saves chat state before opening a workbench from chat', async () => {
+  it('provides a footer region to host the chat composer', async () => {
+    const wrapper = mount(ChatWindow, {
+      props: {
+        sessionId: 'session-1',
+      },
+    })
+    await settle()
+
+    const footer = wrapper.find('.layout-container-footer .chat-footer')
+    const chatPanel = wrapper.findComponent({ name: 'ChatPanel' })
+
+    expect(footer.exists()).toBe(true)
+    expect(chatPanel.props('active')).toBe(true)
+    expect(chatPanel.props('footerTarget')).toBe(footer.element)
+  })
+
+  it('emits file opens for the app-level right workbench instead of creating a chat tab', async () => {
     const wrapper = mount(ChatWindow, {
       props: {
         sessionId: 'session-1',
@@ -200,11 +210,14 @@ describe('ChatWindow tab switching', () => {
     await wrapper.find('.open-file').trigger('click')
     await settle()
 
-    expect(mocks.chatPanelSave).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('openFile')).toEqual([['/repo/src/a.ts']])
+    expect(wrapper.findAll('.tab-button').map(button => button.attributes('data-type'))).toEqual(['chat'])
+    expect(wrapper.find('.mock-file-panel').exists()).toBe(false)
+    expect(mocks.chatPanelSave).not.toHaveBeenCalled()
     expect(mocks.chatPanelRestore).not.toHaveBeenCalled()
   })
 
-  it('restores chat state before scrolling to a target message from a non-chat tab', async () => {
+  it('scrolls to a target message from the chat tab without restoring a workbench tab', async () => {
     installElectronAPI(1)
     const wrapper = mount(ChatWindow, {
       props: {
@@ -218,8 +231,7 @@ describe('ChatWindow tab switching', () => {
     await settle()
 
     expect(result).toBe(true)
-    expect(mocks.chatPanelRestore.mock.invocationCallOrder[0])
-      .toBeLessThan(mocks.chatPanelScrollToMessage.mock.invocationCallOrder[0])
+    expect(mocks.chatPanelRestore).not.toHaveBeenCalled()
     expect(mocks.chatPanelScrollToMessage).toHaveBeenCalledWith('message-1')
   })
 })

@@ -65,9 +65,10 @@
                 @keydown.enter.prevent="selectNavItem(item.id)"
                 @keydown.space.prevent="toggleNavExpanded(item.id)"
               >
-                <button
+                <Button
+                  unstyled
                   class="sidebar-disclosure-button"
-                  type="button"
+                  native-type="button"
                   :aria-label="`${isNavExpanded(item.id) ? 'Collapse' : 'Expand'} ${item.label}`"
                   :aria-expanded="isNavExpanded(item.id)"
                   @click.stop="toggleNavExpanded(item.id)"
@@ -77,7 +78,7 @@
                     :is="isNavExpanded(item.id) ? ChevronDown : ChevronRight"
                     class="sidebar-disclosure"
                   />
-                </button>
+                </Button>
                 <span class="sidebar-copy">
                   <span class="sidebar-label">{{ item.label }}</span>
                   <span class="sidebar-hint">{{ item.hint }}</span>
@@ -87,14 +88,15 @@
                 v-if="isNavExpanded(item.id) && item.sections.length > 0"
                 class="sidebar-subnav"
               >
-                <button
+                <Button
                   v-for="section in item.sections"
                   :key="section"
+                  unstyled
                   class="sidebar-subitem"
                   @click="selectNavSection(item.id, section)"
                 >
                   {{ section }}
-                </button>
+                </Button>
               </div>
             </div>
             <div
@@ -114,13 +116,14 @@
                 <span class="scope-badge">User</span>
                 <span class="scope-name">onething</span>
               </div>
-              <button
+              <Button
+                unstyled
                 class="json-settings-button"
-                type="button"
+                native-type="button"
                 @click="openSettingsJson"
               >
                 Edit in settings.json
-              </button>
+              </Button>
             </div>
             <div class="content-header-copy">
               <h1>{{ currentNavItem?.label }}</h1>
@@ -247,6 +250,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import {
   Boxes,

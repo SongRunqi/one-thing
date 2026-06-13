@@ -48,9 +48,10 @@
         <div class="form-group">
           <label class="form-label">API Compatibility <span class="required">*</span></label>
           <div class="api-type-selector">
-            <button
+            <Button
+              unstyled
               :class="['api-type-btn', { active: form.apiType === 'openai' }]"
-              type="button"
+              native-type="button"
               @click="form.apiType = 'openai'"
             >
               <svg
@@ -62,10 +63,11 @@
                 <path d="M22.282 9.821a6 6 0 0 0-.516-4.91 6.05 6.05 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a6 6 0 0 0-3.998 2.9 6.05 6.05 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.05 6.05 0 0 0 6.515 2.9A6 6 0 0 0 13.26 24a6.06 6.06 0 0 0 5.772-4.206 6 6 0 0 0 3.997-2.9 6.06 6.06 0 0 0-.747-7.073M13.26 22.43a4.48 4.48 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.8.8 0 0 0 .392-.681v-6.737l2.02 1.168a.07.07 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494M3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.77.77 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646" />
               </svg>
               OpenAI Compatible
-            </button>
-            <button
+            </Button>
+            <Button
+              unstyled
               :class="['api-type-btn', { active: form.apiType === 'anthropic' }]"
-              type="button"
+              native-type="button"
               @click="form.apiType = 'anthropic'"
             >
               <svg
@@ -77,7 +79,7 @@
                 <path d="m3.127 10.604 3.135-1.76.053-.153-.053-.085H6.11l-.525-.032-1.791-.048-1.554-.065-1.505-.08-.38-.081L0 7.832l.036-.234.32-.214.455.04 1.009.069 1.513.105 1.097.064 1.626.17h.259l.036-.105-.089-.065" />
               </svg>
               Anthropic Compatible
-            </button>
+            </Button>
           </div>
           <p class="form-hint">
             Most local AI servers (Ollama, LM Studio, etc.) use OpenAI-compatible API
@@ -129,29 +131,32 @@
       </div>
 
       <div class="dialog-actions">
-        <button
+        <Button
           v-if="isEditing"
+          unstyled
           class="btn danger"
-          type="button"
+          native-type="button"
           @click="$emit('delete')"
         >
           Delete
-        </button>
+        </Button>
         <div class="dialog-actions-right">
-          <button
+          <Button
+            unstyled
             class="btn secondary"
-            type="button"
+            native-type="button"
             @click="$emit('close')"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             class="btn primary"
-            type="button"
+            native-type="button"
             @click="handleSave"
           >
             {{ isEditing ? 'Save Changes' : 'Add Provider' }}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -159,6 +164,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, watch, computed } from 'vue'
 
 export interface CustomProviderForm {

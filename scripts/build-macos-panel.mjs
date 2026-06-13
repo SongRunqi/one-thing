@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, rmSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
@@ -8,6 +8,7 @@ const root = resolve(__dirname, '..')
 const nativeDir = join(root, 'native', 'macos-panel')
 const outputDir = join(root, 'resources', 'native')
 const outputFile = join(outputDir, 'macos_panel.node')
+const force = process.argv.includes('--force') || process.env.ONETHING_FORCE_NATIVE_REBUILD === '1'
 
 if (process.platform !== 'darwin') {
   mkdirSync(outputDir, { recursive: true })
@@ -18,6 +19,30 @@ if (process.platform !== 'darwin') {
 const nodeGyp = join(root, 'node_modules', 'node-gyp', 'bin', 'node-gyp.js')
 if (!existsSync(nodeGyp)) {
   throw new Error('node-gyp is not installed; run npm install or bun install first')
+}
+
+function newestInputMtime() {
+  const inputs = [
+    fileURLToPath(import.meta.url),
+    join(nativeDir, 'binding.gyp'),
+    join(nativeDir, 'macos_panel.mm'),
+    join(root, 'package.json'),
+    join(root, 'package-lock.json'),
+    join(root, 'bun.lock'),
+  ]
+
+  return Math.max(...inputs
+    .filter(existsSync)
+    .map(file => statSync(file).mtimeMs))
+}
+
+function isOutputFresh() {
+  return existsSync(outputFile) && statSync(outputFile).mtimeMs >= newestInputMtime()
+}
+
+if (!force && isOutputFresh()) {
+  console.log(`[native] macOS panel bridge is up to date: ${outputFile}`)
+  process.exit(0)
 }
 
 function unique(values) {

@@ -34,30 +34,34 @@
         You have unsaved changes. What would you like to do?
       </p>
       <div class="dialog-actions">
-        <button
+        <Button
+          unstyled
           class="btn secondary"
           @click="$emit('discard')"
         >
           Discard
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="btn secondary"
           @click="$emit('cancel')"
         >
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="btn primary"
           @click="$emit('save')"
         >
           Save & Close
-        </button>
+        </Button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 interface Props {
   visible: boolean
 }

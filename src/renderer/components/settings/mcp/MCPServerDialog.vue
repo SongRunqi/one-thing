@@ -8,7 +8,8 @@
       <div class="dialog">
         <div class="dialog-header">
           <h3>{{ editingServer ? 'Edit Server' : 'Add MCP Server' }}</h3>
-          <button
+          <Button
+            unstyled
             class="close-btn"
             @click="$emit('close')"
           >
@@ -22,7 +23,7 @@
             >
               <path d="M18 6L6 18M6 6l12 12" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         <div class="dialog-content">
@@ -39,7 +40,8 @@
           <div class="form-group">
             <label class="form-label">Transport Type</label>
             <div class="transport-selector">
-              <button
+              <Button
+                unstyled
                 :class="['transport-option', { active: form.transport === 'stdio' }]"
                 @click="form.transport = 'stdio'"
               >
@@ -92,8 +94,9 @@
                 </svg>
                 <span>Stdio</span>
                 <span class="transport-desc">Local process</span>
-              </button>
-              <button
+              </Button>
+              <Button
+                unstyled
                 :class="['transport-option', { active: form.transport === 'sse' }]"
                 @click="form.transport = 'sse'"
               >
@@ -120,7 +123,7 @@
                 </svg>
                 <span>SSE</span>
                 <span class="transport-desc">HTTP endpoint</span>
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -180,19 +183,21 @@
         </div>
 
         <div class="dialog-footer">
-          <button
+          <Button
+            unstyled
             class="btn secondary"
             @click="$emit('close')"
           >
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             class="btn primary"
             :disabled="isSaving"
             @click="handleSave"
           >
             {{ isSaving ? 'Saving...' : (editingServer ? 'Save Changes' : 'Add Server') }}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -200,6 +205,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, watch } from 'vue'
 import type { MCPServerConfig } from '@/types'
 import type { ServerForm } from './useMCPServers'

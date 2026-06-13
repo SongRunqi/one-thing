@@ -56,16 +56,18 @@ defineProps<{
 }
 
 .settings-empty-title {
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
-  font-size: 13px;
-  font-weight: 650;
+  color: var(--settings-ink-2, var(--type-title-sm-color, var(--ui-text-primary-fg, var(--text-primary))));
+  font-size: var(--type-title-sm-size);
+  font-weight: var(--type-title-sm-weight);
+  line-height: var(--type-title-sm-line-height);
 }
 
 .settings-empty-description {
   max-width: 360px;
   margin: 5px 0 0;
-  font-size: 12px;
-  line-height: 1.45;
+  color: var(--type-caption-muted-color, var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted))));
+  font-size: var(--type-caption-muted-size);
+  line-height: var(--type-caption-muted-line-height);
 }
 
 .settings-empty-actions {

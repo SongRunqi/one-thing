@@ -45,6 +45,7 @@ import type {
   ProviderConfig,
   SoulMemoryCaptureSettings,
   SoulMemoryDreamingSettings,
+  SoulMemoryReviewSettings,
   SoulMemorySettings,
   SchedulerRunTimelineEntryDTO,
 } from '../../../shared/ipc.js'
@@ -136,6 +137,22 @@ import {
   cosine,
   ftsQuery,
 } from '../../memory/workspace.js'
+import {
+  addHermesMemoryEntry,
+  buildHermesMemoryPromptFragment,
+  getHermesMemoryStatus,
+  readHermesMemoryFile,
+  removeHermesMemoryText,
+  replaceHermesMemoryText,
+  splitHermesMemoryEntries,
+  type HermesMemoryTarget,
+} from '../../memory/hermes-file-memory.js'
+import {
+  formatMemoryReviewConversation,
+  getMemoryReviewProgress,
+  parseMemoryReviewModelResult,
+  type MemoryReviewCandidate,
+} from '../../memory/review.js'
 
 import {
   closeDb,
@@ -211,6 +228,7 @@ export const soulMemoryManifest = {
 const ACTIVE_MEMORY_CACHE = new Map<string, { expiresAt: number; content: string | null }>()
 const ACTIVE_MEMORY_TIMEOUTS = new Map<string, { count: number; cooldownUntil: number }>()
 let activeSoulMemoryPluginApi: PluginAPI | null = null
+const REVIEW_LAST_TURN_PREFIX = 'memoryReviewLastTurn:'
 const DEFAULT_STATUS: IndexStatus = {
   indexedFiles: 0,
   indexedChunks: 0,
@@ -395,6 +413,14 @@ setOnDbSwitch((agentId) => {
 
 async function listMemoryFiles(workspace: MemoryWorkspace): Promise<MemoryIndexFile[]> {
   const files: MemoryIndexFile[] = []
+  const rootMemoryStat = await fsp.stat(workspace.memoryPath).catch(() => null)
+  if (rootMemoryStat?.isFile()) {
+    files.push({
+      absolutePath: workspace.memoryPath,
+      relativePath: 'MEMORY.md',
+      kind: 'memory',
+    })
+  }
 
   async function walk(dir: string): Promise<void> {
     let entries: fs.Dirent[]
@@ -1010,8 +1036,8 @@ function resolveMemoryFile(
   if (options.allowDreams && relativePath === 'DREAMS.md') {
     return { absolutePath, relativePath }
   }
-  if (relativePath !== 'MEMORY.md' && !relativePath.startsWith(`memory${path.sep}`)) {
-    throw new Error('Only MEMORY.md and files under memory/ can be accessed')
+  if (relativePath !== 'USER.md' && relativePath !== 'MEMORY.md' && !relativePath.startsWith(`memory${path.sep}`)) {
+    throw new Error('Only USER.md, MEMORY.md, and files under memory/ can be accessed')
   }
   return { absolutePath, relativePath }
 }
@@ -1106,6 +1132,20 @@ async function appendMemory(options: {
     })
   }
   return target
+}
+
+function markHermesFileMemoryChanged(
+  workspace: MemoryWorkspace,
+  relativePath: string,
+  reason: string,
+): void {
+  if (!isIndexableMarkdownPath(relativePath)) return
+  markIndexDirty(reason, { relativePath })
+  scheduleIndexSync({
+    settings: getSettings(),
+    agentId: workspace.agentId,
+    reason,
+  })
 }
 
 // Graph CRUD functions extracted to ../../memory/graph.ts
@@ -2472,6 +2512,301 @@ async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseC
   }
 }
 
+function memoryReviewLastTurnKey(agentId: string, sessionId: string): string {
+  return `${REVIEW_LAST_TURN_PREFIX}${agentId}:${sessionId}`
+}
+
+function cleanReviewMemoryText(value: string | undefined): string {
+  return normalizeBulletText(value || '')
+}
+
+async function buildMemoryReviewInput(
+  context: AfterAssistantResponseContext,
+  workspace: MemoryWorkspace,
+  maxChars: number,
+): Promise<string> {
+  const [userMemory, longTermMemory] = await Promise.all([
+    readHermesMemoryFile(workspace, 'user'),
+    readHermesMemoryFile(workspace, 'memory'),
+  ])
+  const perMemoryFileMaxChars = Math.max(1000, Math.min(4000, Math.floor(maxChars * 0.2)))
+  const existingMemory = [
+    '# Existing USER.md',
+    userMemory.content.trim() ? truncate(userMemory.content.trim(), perMemoryFileMaxChars) : '(empty)',
+    '',
+    '# Existing MEMORY.md',
+    longTermMemory.content.trim() ? truncate(longTermMemory.content.trim(), perMemoryFileMaxChars) : '(empty)',
+  ].join('\n')
+  const conversationMaxChars = Math.max(2000, maxChars - existingMemory.length - 1000)
+  const conversation = formatMemoryReviewConversation(context.messages, conversationMaxChars)
+
+  return truncate([
+    'Review this completed conversation snapshot and the current memory files.',
+    '',
+    existingMemory,
+    '',
+    '# Conversation snapshot',
+    conversation,
+  ].join('\n'), maxChars)
+}
+
+async function applyMemoryReviewCandidate(
+  workspace: MemoryWorkspace,
+  candidate: MemoryReviewCandidate,
+  minConfidence: number,
+): Promise<{ changed: boolean; skipped: boolean; relativePath?: string; reason?: string }> {
+  if (candidate.confidence < minConfidence) {
+    return { changed: false, skipped: true, reason: 'below-confidence' }
+  }
+
+  if (candidate.action === 'add') {
+    const content = cleanReviewMemoryText(candidate.content || candidate.text)
+    if (!content) return { changed: false, skipped: true, reason: 'empty-add' }
+    const existing = await readHermesMemoryFile(workspace, candidate.target)
+    const existingKeys = new Set(splitHermesMemoryEntries(existing.content).map(normalizeForDedupe))
+    const key = normalizeForDedupe(content)
+    if (!key || existingKeys.has(key)) {
+      return { changed: false, skipped: true, relativePath: existing.file.relativePath, reason: 'duplicate' }
+    }
+    const result = await addHermesMemoryEntry({ workspace, target: candidate.target, content })
+    markHermesFileMemoryChanged(workspace, result.relativePath, 'memory-review-add')
+    return { changed: true, skipped: false, relativePath: result.relativePath }
+  }
+
+  if (candidate.action === 'replace') {
+    const oldText = candidate.oldText?.trim()
+    const newText = cleanReviewMemoryText(candidate.newText)
+    if (!oldText || typeof candidate.newText !== 'string') {
+      return { changed: false, skipped: true, reason: 'invalid-replace' }
+    }
+    const result = await replaceHermesMemoryText({
+      workspace,
+      target: candidate.target,
+      oldText,
+      newText,
+      replaceAll: false,
+    })
+    if (result.changed) {
+      markHermesFileMemoryChanged(workspace, result.relativePath, 'memory-review-replace')
+    }
+    return {
+      changed: result.changed,
+      skipped: !result.changed,
+      relativePath: result.relativePath,
+      reason: result.changed ? undefined : 'no-match',
+    }
+  }
+
+  const text = candidate.text?.trim() || candidate.oldText?.trim() || candidate.content?.trim()
+  if (!text) return { changed: false, skipped: true, reason: 'empty-remove' }
+  const result = await removeHermesMemoryText({
+    workspace,
+    target: candidate.target,
+    text,
+    removeAll: false,
+  })
+  if (result.changed) {
+    markHermesFileMemoryChanged(workspace, result.relativePath, 'memory-review-remove')
+  }
+  return {
+    changed: result.changed,
+    skipped: !result.changed,
+    relativePath: result.relativePath,
+    reason: result.changed ? undefined : 'no-match',
+  }
+}
+
+async function runMemoryReview(
+  api: PluginAPI,
+  context: AfterAssistantResponseContext,
+  options: { force?: boolean } = {},
+): Promise<void> {
+  const startedAt = Date.now()
+  const runId = sha(`review:${context.sessionId}:${context.assistantMessageId}:${startedAt}`).slice(0, 16)
+  const agentId = resolveSessionAgentId(context.sessionId)
+  const workspace = await ensureWorkspace(context.settings, agentId)
+  const review = workspace.settings.review
+  const lastTurnKey = memoryReviewLastTurnKey(agentId, context.sessionId)
+  const lastReviewedTurn = api.store.get<number>(lastTurnKey)
+  const progress = getMemoryReviewProgress({
+    messages: context.messages,
+    interval: review.interval,
+    lastReviewedTurn,
+  })
+
+  if (
+    !workspace.settings.enabled ||
+    !review.enabled ||
+    review.interval <= 0 ||
+    (!options.force && !progress.shouldReview)
+  ) {
+    logMemoryDiagnostic({
+      subsystem: 'review',
+      operation: 'after-assistant-response',
+      stage: 'gate',
+      status: 'skipped',
+      sessionId: context.sessionId,
+      runId,
+      request: {
+        enabled: workspace.settings.enabled && review.enabled,
+        interval: review.interval,
+        userTurns: progress.userTurns,
+        turnsUntilReview: progress.turnsUntilReview,
+        lastReviewedTurn,
+        force: options.force === true,
+      },
+    })
+    return
+  }
+
+  if (!context.lastUserMessage.trim() || !context.lastAssistantMessage.trim()) {
+    logMemoryDiagnostic({
+      subsystem: 'review',
+      operation: 'after-assistant-response',
+      stage: 'gate',
+      status: 'skipped',
+      sessionId: context.sessionId,
+      runId,
+      summary: 'Missing user or assistant text for review.',
+    })
+    return
+  }
+
+  api.store.set(lastTurnKey, progress.userTurns)
+  api.store.set('lastReviewTurn', progress.userTurns)
+  lastStatus.lastReviewTurn = progress.userTurns
+
+  try {
+    const input = await buildMemoryReviewInput(context, workspace, review.maxInputChars)
+    logMemoryDiagnostic({
+      subsystem: 'review',
+      operation: 'model-review',
+      stage: 'request',
+      status: 'started',
+      sessionId: context.sessionId,
+      runId,
+      request: {
+        providerId: context.providerId,
+        model: (context.providerConfig as any)?.model || '',
+        inputChars: input.length,
+        userTurns: progress.userTurns,
+        interval: review.interval,
+        timeoutMs: review.timeoutMs,
+        force: options.force === true,
+      },
+    })
+    const output = await withTimeout(generateChatResponse(
+      context.providerId,
+      context.providerConfig as any,
+      [
+        {
+          role: 'system',
+          content: [
+            'You are a Hermes-style background self-improvement memory reviewer.',
+            'This review runs after the assistant has answered, every fixed number of user turns.',
+            'Review the conversation snapshot and current USER.md/MEMORY.md content.',
+            'You may only propose edits to those two memory files. Do not propose shell, file, or application actions.',
+            'Use target "user" only for stable user identity, long-term preferences, standing constraints, and user profile facts.',
+            'Use target "memory" for durable project facts, decisions, recurring context, and stable lessons useful across future chats.',
+            'Prefer add actions for new durable facts. Use replace only when oldText is copied exactly from existing memory and newText is safer or more accurate.',
+            'Use remove only for exact stale or contradicted memory. Never store secrets, credentials, transient task status, tool chatter, or unsupported assistant guesses.',
+            'Return compact JSON only: {"action":"review"|"none","confidence":0..1,"memories":[{"action":"add|replace|remove","target":"user|memory","confidence":0..1,"content":"...","oldText":"exact existing text for replace/remove","newText":"replacement for replace","text":"text for remove","reason":"short reason","sensitivity":"normal|sensitive|secret"}],"reason":"short reason"}.',
+          ].join(' '),
+        },
+        { role: 'user', content: input },
+      ],
+      { temperature: 0.1, maxTokens: 900 },
+    ), review.timeoutMs)
+
+    const parsed = parseMemoryReviewModelResult(output)
+    if (!parsed || parsed.confidence < review.minConfidence) {
+      lastStatus.lastReviewAt = Date.now()
+      lastStatus.lastReviewStatus = 'none'
+      lastStatus.lastReviewApplied = 0
+      delete lastStatus.lastReviewError
+      api.store.set('lastReviewAt', lastStatus.lastReviewAt)
+      api.store.set('lastReviewStatus', lastStatus.lastReviewStatus)
+      api.store.set('lastReviewApplied', 0)
+      api.store.delete('lastReviewError')
+      logMemoryDiagnostic({
+        subsystem: 'review',
+        operation: 'model-review',
+        stage: 'response',
+        status: 'skipped',
+        durationMs: Date.now() - startedAt,
+        sessionId: context.sessionId,
+        runId,
+        response: {
+          parsed: Boolean(parsed),
+          confidence: parsed?.confidence ?? 0,
+          outputHash: sha(output).slice(0, 16),
+        },
+        summary: 'Review model returned no memory changes above threshold.',
+      })
+      return
+    }
+
+    let applied = 0
+    let skipped = 0
+    const paths = new Set<string>()
+    for (const candidate of parsed.candidates.slice(0, review.maxCandidates)) {
+      const result = await applyMemoryReviewCandidate(workspace, candidate, review.minConfidence)
+      if (result.changed) {
+        applied += 1
+        if (result.relativePath) paths.add(result.relativePath)
+      } else if (result.skipped) {
+        skipped += 1
+      }
+    }
+
+    lastStatus.lastReviewAt = Date.now()
+    lastStatus.lastReviewApplied = applied
+    lastStatus.lastReviewStatus = `applied:${applied} skipped:${skipped} turn:${progress.userTurns}`
+    delete lastStatus.lastReviewError
+    api.store.set('lastReviewAt', lastStatus.lastReviewAt)
+    api.store.set('lastReviewApplied', applied)
+    api.store.set('lastReviewStatus', lastStatus.lastReviewStatus)
+    api.store.delete('lastReviewError')
+    logMemoryDiagnostic({
+      subsystem: 'review',
+      operation: 'after-assistant-response',
+      stage: 'finish',
+      status: 'ok',
+      durationMs: Date.now() - startedAt,
+      sessionId: context.sessionId,
+      runId,
+      response: {
+        applied,
+        skipped,
+        candidates: parsed.candidates.length,
+        paths: Array.from(paths),
+        userTurns: progress.userTurns,
+      },
+    })
+    if (applied > 0) {
+      api.ui.notify(`Memory Review saved ${applied} update${applied === 1 ? '' : 's'} to ${Array.from(paths).join(', ')}`, 'info')
+    }
+  } catch (error: any) {
+    const message = error?.message || String(error)
+    lastStatus.lastReviewError = message
+    lastStatus.lastReviewStatus = 'error'
+    lastStatus.lastReviewAt = Date.now()
+    api.store.set('lastReviewError', message)
+    api.store.set('lastReviewStatus', 'error')
+    api.store.set('lastReviewAt', lastStatus.lastReviewAt)
+    logMemoryDiagnostic({
+      subsystem: 'review',
+      operation: 'after-assistant-response',
+      stage: 'finish',
+      status: 'error',
+      durationMs: Date.now() - startedAt,
+      sessionId: context.sessionId,
+      runId,
+      error,
+    })
+  }
+}
+
 async function savePendingCapture(id?: string): Promise<{ absolutePath: string; relativePath: string }> {
   const pluginStore = new PluginStore(SOUL_MEMORY_PLUGIN_ID)
   const captures = getPendingCaptures(pluginStore)
@@ -2543,20 +2878,22 @@ function resolveManagedMemoryFile(
   const normalized = normalizeRelativeMemoryPath(relativePath)
   if (
     normalized === 'SOUL.md' ||
+    normalized === 'USER.md' ||
     normalized === 'MEMORY.md' ||
     normalized === 'DREAMS.md' ||
     normalized.startsWith('memory/')
   ) {
     return { absolutePath, relativePath: normalized }
   }
-  throw new Error('Only SOUL.md, MEMORY.md, DREAMS.md, and files under memory/ can be accessed')
+  throw new Error('Only SOUL.md, USER.md, MEMORY.md, DREAMS.md, and files under memory/ can be accessed')
 }
 
 function managedFileOrder(kind: MemoryManagedFileKind): number {
   if (kind === 'soul') return 0
-  if (kind === 'memory') return 1
-  if (kind === 'dreams') return 2
-  return 3
+  if (kind === 'user') return 1
+  if (kind === 'memory') return 2
+  if (kind === 'dreams') return 3
+  return 4
 }
 
 async function describeManagedFile(file: {
@@ -2597,6 +2934,8 @@ async function listManagedMemoryFiles(workspace: MemoryWorkspace): Promise<Memor
     date?: string
   }> = [
     { absolutePath: workspace.soulPath, relativePath: 'SOUL.md', kind: 'soul' },
+    { absolutePath: workspace.userPath, relativePath: 'USER.md', kind: 'user' },
+    { absolutePath: workspace.memoryPath, relativePath: 'MEMORY.md', kind: 'memory' },
     { absolutePath: workspace.dreamsPath, relativePath: 'DREAMS.md', kind: 'dreams' },
     ...indexedFiles
       .filter(file => file.kind === 'daily')
@@ -2716,6 +3055,7 @@ export async function getSoulMemoryOverview(agentId = DEFAULT_AGENT_ID): Promise
     root: workspace.root,
     memoryDir: workspace.memoryDir,
     soulPath: workspace.soulPath,
+    userPath: workspace.userPath,
     memoryPath: workspace.memoryPath,
     dreamsPath: workspace.dreamsPath,
     todayPath: workspace.todayPath,
@@ -2768,11 +3108,13 @@ export async function saveSoulMemoryManagedFile(request: MemorySaveFileRequest):
   const kind: MemoryManagedFileKind =
     target.relativePath === 'SOUL.md'
       ? 'soul'
-      : target.relativePath === 'MEMORY.md'
-        ? 'memory'
-        : target.relativePath === 'DREAMS.md'
-          ? 'dreams'
-          : 'daily'
+      : target.relativePath === 'USER.md'
+        ? 'user'
+        : target.relativePath === 'MEMORY.md'
+          ? 'memory'
+          : target.relativePath === 'DREAMS.md'
+            ? 'dreams'
+            : 'daily'
   const described = await describeManagedFile({
     absolutePath: target.absolutePath,
     relativePath: target.relativePath,
@@ -3450,6 +3792,36 @@ async function resolveDreamingProvider(settings: AppSettings, dreaming: Resolved
   }
 }
 
+async function resolveMemoryReviewProvider(settings: AppSettings): Promise<{
+  providerId: string
+  config: any
+}> {
+  const providerId = settings.ai.provider
+  const custom = (settings.ai.customProviders || []).find(provider => provider.id === providerId)
+  const model = custom?.model || settings.ai.providers[providerId]?.model
+  if (!model) {
+    throw new Error('Memory Review model is not configured')
+  }
+  const resolved = resolveProviderConfig(settings, providerId, model)
+  const authContext = await resolveProviderAuth(resolved.providerId, resolved.config as ProviderConfig)
+  if (!authContext) {
+    throw new Error(
+      `Memory Review provider auth is unavailable for ${resolved.providerId}/${resolved.config.model}. ` +
+      'Open the provider settings and reconnect or choose a different provider.',
+    )
+  }
+  return {
+    providerId: resolved.providerId,
+    config: {
+      ...resolved.config,
+      selectedModels: resolved.config.selectedModels ?? [resolved.config.model],
+      apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+      authContext,
+      oauthToken: authContext.kind === 'oauth' ? authContext.token : resolved.config.oauthToken,
+    },
+  }
+}
+
 async function appendDreamsReport(workspace: MemoryWorkspace, report: {
   runAt: Date
   reason: SchedulerRunReason
@@ -3530,6 +3902,7 @@ async function appendDreamingPromotions(workspace: MemoryWorkspace, memory: stri
   const needsSection = !existing.includes(DREAMING_MEMORY_SECTION)
   const nextContent = `${compactDreamingManagedSection(existing, block).replace(/\s+$/u, '')}${needsSection ? `\n\n${DREAMING_MEMORY_SECTION}\n\n` : '\n\n'}${block}`
   await replaceFileAtomic(workspace.memoryPath, nextContent)
+  markHermesFileMemoryChanged(workspace, 'MEMORY.md', 'dreaming-promotion')
   return { applied: promotions.length, block }
 }
 
@@ -3880,6 +4253,24 @@ function saveCaptureSettingsPatch(patch: Partial<SoulMemoryCaptureSettings>): Re
   return resolveSettings(getSettings()).capture
 }
 
+function saveReviewSettingsPatch(patch: Partial<SoulMemoryReviewSettings>): ResolvedSoulMemorySettings['review'] {
+  const current = getSettings()
+  saveSettings({
+    ...current,
+    general: {
+      ...current.general,
+      soulMemory: {
+        ...current.general.soulMemory,
+        review: {
+          ...current.general.soulMemory?.review,
+          ...patch,
+        },
+      },
+    },
+  })
+  return resolveSettings(getSettings()).review
+}
+
 function buildDreamingStatus(api: PluginAPI, workspace: MemoryWorkspace): {
   enabled: boolean
   frequency: string
@@ -3952,6 +4343,147 @@ function formatDreamingStatus(api: PluginAPI, workspace: MemoryWorkspace): strin
     status.inFlight ? 'Run in progress: yes' : '',
     status.lastError ? `Last error: ${status.lastError}` : '',
   ].filter(Boolean).join('\n')
+}
+
+function buildMemoryReviewStatus(api: PluginAPI, workspace: MemoryWorkspace, sessionId: string): {
+  enabled: boolean
+  interval: number
+  maxInputChars: number
+  timeoutMs: number
+  maxCandidates: number
+  minConfidence: number
+  userTurns: number
+  turnsSinceReview: number
+  turnsUntilReview: number
+  shouldReview: boolean
+  lastRunAt?: number
+  lastApplied?: number
+  lastStatus?: string
+  lastError?: string
+  lastReviewedTurn?: number
+} {
+  const lastReviewedTurn = api.store.get<number>(memoryReviewLastTurnKey(workspace.agentId, sessionId))
+  const progress = getMemoryReviewProgress({
+    messages: store.getSession(sessionId)?.messages ?? [],
+    interval: workspace.settings.review.interval,
+    lastReviewedTurn,
+  })
+  return {
+    enabled: workspace.settings.enabled && workspace.settings.review.enabled && workspace.settings.review.interval > 0,
+    interval: workspace.settings.review.interval,
+    maxInputChars: workspace.settings.review.maxInputChars,
+    timeoutMs: workspace.settings.review.timeoutMs,
+    maxCandidates: workspace.settings.review.maxCandidates,
+    minConfidence: workspace.settings.review.minConfidence,
+    ...progress,
+    lastRunAt: api.store.get<number>('lastReviewAt') ?? lastStatus.lastReviewAt,
+    lastApplied: api.store.get<number>('lastReviewApplied') ?? lastStatus.lastReviewApplied,
+    lastStatus: api.store.get<string>('lastReviewStatus') ?? lastStatus.lastReviewStatus,
+    lastError: api.store.get<string>('lastReviewError') ?? lastStatus.lastReviewError,
+    lastReviewedTurn,
+  }
+}
+
+function formatMemoryReviewStatus(api: PluginAPI, workspace: MemoryWorkspace, sessionId: string): string {
+  const status = buildMemoryReviewStatus(api, workspace, sessionId)
+  return [
+    `Memory Review: ${status.enabled ? 'on' : 'off'}`,
+    `Interval: ${status.interval > 0 ? `every ${status.interval} user turns` : 'disabled'}`,
+    `Progress: ${status.userTurns} user turns total, ${status.turnsUntilReview} until next review`,
+    `Input cap: ${status.maxInputChars} chars, timeout ${Math.round(status.timeoutMs / 1000)}s`,
+    `Candidates: up to ${status.maxCandidates}, min confidence ${status.minConfidence}`,
+    `Last run: ${formatMaybeTimestamp(status.lastRunAt)}`,
+    `Last result: ${status.lastStatus || 'none'}${typeof status.lastApplied === 'number' ? `, applied ${status.lastApplied}` : ''}`,
+    typeof status.lastReviewedTurn === 'number' ? `Last reviewed turn: ${status.lastReviewedTurn}` : '',
+    status.lastError ? `Last error: ${status.lastError}` : '',
+  ].filter(Boolean).join('\n')
+}
+
+async function handleMemoryReviewCommand(api: PluginAPI, args: string, ctx: PluginCommandContext): Promise<void> {
+  const [rawAction = 'status', ...rest] = args.trim().split(/\s+/).filter(Boolean)
+  const action = rawAction.toLowerCase()
+  const agentId = resolveSessionAgentId(ctx.sessionId)
+
+  if (action === 'status') {
+    const workspace = await ensureWorkspace(getSettings(), agentId)
+    ctx.notify(formatMemoryReviewStatus(api, workspace, ctx.sessionId))
+    return
+  }
+
+  if (action === 'on' || action === 'off') {
+    const current = resolveSettings(getSettings()).review
+    const review = saveReviewSettingsPatch(
+      action === 'on'
+        ? { enabled: true, interval: current.interval > 0 ? current.interval : 10 }
+        : { enabled: false },
+    )
+    const workspace = await ensureWorkspace(getSettings(), agentId)
+    ctx.notify([
+      `Memory Review is ${review.enabled ? 'on' : 'off'}`,
+      formatMemoryReviewStatus(api, workspace, ctx.sessionId),
+    ].join('\n'))
+    return
+  }
+
+  if (action === 'interval') {
+    const value = Number(rest[0])
+    if (!Number.isInteger(value) || value < 0 || value > 200) {
+      ctx.notify('Usage: /memory review interval <0-200>', 'warn')
+      return
+    }
+    const review = saveReviewSettingsPatch({
+      interval: value,
+      enabled: value === 0 ? false : true,
+    })
+    const workspace = await ensureWorkspace(getSettings(), agentId)
+    ctx.notify([
+      `Memory Review interval: ${review.interval === 0 ? 'disabled' : `${review.interval} user turns`}`,
+      formatMemoryReviewStatus(api, workspace, ctx.sessionId),
+    ].join('\n'))
+    return
+  }
+
+  if (action === 'run') {
+    const settings = getSettings()
+    const workspace = await ensureWorkspace(settings, agentId)
+    if (!workspace.settings.enabled || !workspace.settings.review.enabled || workspace.settings.review.interval <= 0) {
+      ctx.notify('Memory Review is disabled. Use /memory review on first.', 'warn')
+      return
+    }
+    const session = store.getSession(ctx.sessionId)
+    if (!session) {
+      ctx.notify('No current session found for Memory Review.', 'warn')
+      return
+    }
+    const lastAssistant = [...session.messages].reverse().find(message => message.role === 'assistant' && message.content.trim())
+    const lastUser = [...session.messages].reverse().find(message => message.role === 'user' && message.content.trim())
+    if (!lastAssistant || !lastUser) {
+      ctx.notify('Memory Review needs at least one user message and one assistant response.', 'warn')
+      return
+    }
+    ctx.notify('Memory Review started.')
+    try {
+      const provider = await resolveMemoryReviewProvider(settings)
+      await runMemoryReview(api, {
+        sessionId: ctx.sessionId,
+        assistantMessageId: lastAssistant.id,
+        session,
+        messages: session.messages,
+        lastUserMessage: lastUser.content,
+        lastAssistantMessage: lastAssistant.content,
+        providerId: provider.providerId,
+        providerConfig: provider.config,
+        settings,
+      }, { force: true })
+      const status = buildMemoryReviewStatus(api, workspace, ctx.sessionId)
+      ctx.notify(`Memory Review finished: ${status.lastStatus || 'none'}`)
+    } catch (error: any) {
+      ctx.notify(`Memory Review failed: ${error?.message || String(error)}`, 'error')
+    }
+    return
+  }
+
+  ctx.notify('Usage: /memory review status|on|off|interval <n>|run', 'warn')
 }
 
 function registerDreamingTask(api: PluginAPI): void {
@@ -4580,6 +5112,15 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
       },
     ]
 
+    const hermesFileMemory = await buildHermesMemoryPromptFragment(workspace, maxChars)
+    if (hermesFileMemory) {
+      fragments.push({
+        role: 'user' as const,
+        source: 'plugins/soul-memory/hermes-file-memory',
+        content: hermesFileMemory,
+      })
+    }
+
     const graphProfile = buildGraphProfileSummary(workspace)
     if (graphProfile) {
       fragments.push({
@@ -4800,6 +5341,10 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     await runMemoryCapture(api, context)
   })
 
+  api.afterAssistantResponse('memory-review', async context => {
+    await runMemoryReview(api, context)
+  })
+
   api.registerTool({
     name: 'soul_get',
     description: 'Read SOUL.md, the assistant voice and stance file. Use when the user asks to inspect or revise the assistant personality.',
@@ -4848,6 +5393,108 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
   })
 
   api.registerTool({
+    name: 'memory',
+    description: 'Manage Hermes-style file memory. Use only when the user explicitly asks to remember, update, forget, or inspect durable file memory. target="user" writes USER.md for stable user profile/preferences; target="memory" writes MEMORY.md for long-term facts and notes. This is exact text matching, not embedding search.',
+    permissionGuard: 'permission-gated',
+    parameters: z.object({
+      action: z.enum(['status', 'read', 'add', 'replace', 'remove']),
+      target: z.enum(['user', 'memory']).optional(),
+      content: z.string().optional(),
+      oldText: z.string().optional(),
+      newText: z.string().optional(),
+      text: z.string().optional(),
+      all: z.boolean().optional(),
+    }),
+    async execute(args, ctx) {
+      const workspace = await ensureWorkspace(getSettings(), resolveSessionAgentId(ctx.sessionId))
+      if (!workspace.settings.enabled) {
+        return {
+          title: 'Memory disabled',
+          output: 'Soul-memory is disabled in settings.',
+          metadata: { disabled: true } as any,
+        }
+      }
+
+      if (args.action === 'status') {
+        const status = await getHermesMemoryStatus(workspace)
+        return {
+          title: 'Hermes file memory status',
+          output: JSON.stringify(status, null, 2),
+          metadata: status as any,
+        }
+      }
+
+      const target = (args.target || 'memory') as HermesMemoryTarget
+      if (args.action === 'read') {
+        const result = await readHermesMemoryFile(workspace, target)
+        return {
+          title: `Hermes memory: ${result.file.relativePath}`,
+          output: result.content.trim() || `${result.file.relativePath} is empty.`,
+          metadata: {
+            target,
+            path: result.file.absolutePath,
+            relativePath: result.file.relativePath,
+            chars: result.content.length,
+            entries: result.entries.length,
+          } as any,
+        }
+      }
+
+      if (args.action === 'add') {
+        if (!args.content?.trim()) throw new Error('content is required for memory action "add"')
+        const result = await addHermesMemoryEntry({ workspace, target, content: args.content })
+        markHermesFileMemoryChanged(workspace, result.relativePath, 'hermes-memory-add')
+        return {
+          title: `Hermes memory added: ${result.relativePath}`,
+          output: `Added memory to ${result.relativePath}.`,
+          metadata: result as any,
+        }
+      }
+
+      if (args.action === 'replace') {
+        if (!args.oldText?.trim()) throw new Error('oldText is required for memory action "replace"')
+        if (typeof args.newText !== 'string') throw new Error('newText is required for memory action "replace"')
+        const result = await replaceHermesMemoryText({
+          workspace,
+          target,
+          oldText: args.oldText,
+          newText: args.newText,
+          replaceAll: args.all,
+        })
+        if (result.changed) {
+          markHermesFileMemoryChanged(workspace, result.relativePath, 'hermes-memory-replace')
+        }
+        return {
+          title: result.changed ? `Hermes memory replaced: ${result.relativePath}` : 'Hermes memory unchanged',
+          output: result.changed
+            ? `Replaced ${result.matches} matching memory ${result.matches === 1 ? 'entry' : 'entries'} in ${result.relativePath}.`
+            : `No exact match found in ${result.relativePath}.`,
+          metadata: result as any,
+        }
+      }
+
+      const text = args.text || args.oldText || args.content
+      if (!text?.trim()) throw new Error('text, oldText, or content is required for memory action "remove"')
+      const result = await removeHermesMemoryText({
+        workspace,
+        target,
+        text,
+        removeAll: args.all,
+      })
+      if (result.changed) {
+        markHermesFileMemoryChanged(workspace, result.relativePath, 'hermes-memory-remove')
+      }
+      return {
+        title: result.changed ? `Hermes memory removed: ${result.relativePath}` : 'Hermes memory unchanged',
+        output: result.changed
+          ? `Removed ${result.matches} matching memory ${result.matches === 1 ? 'entry' : 'entries'} from ${result.relativePath}.`
+          : `No exact match found in ${result.relativePath}.`,
+        metadata: result as any,
+      }
+    },
+  })
+
+  api.registerTool({
     name: 'memory_search',
     description: 'Search SQLite graph memory plus AI notes Markdown before answering questions about prior work, decisions, dates, people, preferences, relationships, or todos. Uses SQLite FTS and optional vector search.',
     permissionGuard: 'safe',
@@ -4874,7 +5521,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
 
   api.registerTool({
     name: 'memory_get',
-    description: 'Read graph memory by entity:<id>, observation:<id>, or relation:<id>; can also read legacy profile:<key|id>, MEMORY.md, DREAMS.md, or a memory/*.md file by line range.',
+    description: 'Read graph memory by entity:<id>, observation:<id>, or relation:<id>; can also read legacy profile:<key|id>, USER.md, MEMORY.md, DREAMS.md, or a memory/*.md file by line range.',
     permissionGuard: 'safe',
     parameters: z.object({
       path: z.string().min(1),
@@ -4976,34 +5623,48 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
       const agentId = resolveSessionAgentId(ctx.sessionId)
       const workspace = await ensureWorkspace(getSettings(), agentId)
       const status = refreshIndexStatus(getDb(workspace))
-      if (indexDirty && !indexSyncInFlight) {
-        scheduleIndexSync({
-          settings: getSettings(),
-          agentId,
-          reason: 'memory-status',
-        })
-      }
-      const dreaming = buildDreamingStatus(api, workspace)
-      return {
-        title: 'Memory status',
-        output: JSON.stringify({
-          enabled: workspace.settings.enabled,
+	      if (indexDirty && !indexSyncInFlight) {
+	        scheduleIndexSync({
+	          settings: getSettings(),
+	          agentId,
+	          reason: 'memory-status',
+	        })
+	      }
+	      const dreaming = buildDreamingStatus(api, workspace)
+	      const reviewProgress = getMemoryReviewProgress({
+	        messages: store.getSession(ctx.sessionId)?.messages ?? [],
+	        interval: workspace.settings.review.interval,
+	        lastReviewedTurn: api.store.get<number>(memoryReviewLastTurnKey(agentId, ctx.sessionId)),
+	      })
+	      return {
+	        title: 'Memory status',
+	        output: JSON.stringify({
+	          enabled: workspace.settings.enabled,
           root: workspace.root,
           soulPath: workspace.soulPath,
+          userPath: workspace.userPath,
           memoryPath: workspace.memoryPath,
           graph: getGraphOverview(workspace),
           legacyCanonicalCount: getCanonicalMemoryCount(workspace),
           dreamsPath: workspace.dreamsPath,
           database: workspace.dbPath,
-          activeMemory: workspace.settings.activeMemory.enabled,
-          embeddings: workspace.settings.embeddings.enabled,
-          dreaming,
-          ...status,
-        }, null, 2),
-        metadata: { workspace, status, dreaming },
-      }
-    },
-  })
+	          activeMemory: workspace.settings.activeMemory.enabled,
+	          embeddings: workspace.settings.embeddings.enabled,
+	          review: {
+	            ...workspace.settings.review,
+	            ...reviewProgress,
+	            lastRunAt: api.store.get<number>('lastReviewAt') ?? lastStatus.lastReviewAt,
+	            lastStatus: api.store.get<string>('lastReviewStatus') ?? lastStatus.lastReviewStatus,
+	            lastApplied: api.store.get<number>('lastReviewApplied') ?? lastStatus.lastReviewApplied,
+	            lastError: api.store.get<string>('lastReviewError') ?? lastStatus.lastReviewError,
+	          },
+	          dreaming,
+	          ...status,
+	        }, null, 2),
+	        metadata: { workspace, status, dreaming, reviewProgress },
+	      }
+	    },
+	  })
 
   api.registerCommand('/active-memory', {
     description: 'Manage active memory recall for the current session',
@@ -5064,11 +5725,15 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
 
   api.registerCommand('/memory', {
     description: 'Inspect and maintain graph memory plus SOUL/AI notes index',
-    usage: '/memory status|search <query>|get <path|entity:id|observation:id|relation:id>|remember <text>|index|dreaming <subcommand>',
+    usage: '/memory status|search <query>|get <path|entity:id|observation:id|relation:id>|remember <text>|index|review <subcommand>|dreaming <subcommand>',
     async handler(args, ctx) {
       const [action = 'status', ...rest] = args.trim().split(/\s+/).filter(Boolean)
       if (action === 'dreaming' || action === 'dream') {
         await handleDreamingCommand(api, rest.join(' ') || 'status', ctx)
+        return
+      }
+      if (action === 'review') {
+        await handleMemoryReviewCommand(api, rest.join(' ') || 'status', ctx)
         return
       }
       if (action === 'capture') {
@@ -5191,15 +5856,20 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
         })
       }
       const graph = getGraphOverview(workspace)
+      const review = buildMemoryReviewStatus(api, workspace, ctx.sessionId)
       ctx.notify([
         `Root: ${workspace.root}`,
         `Database: ${workspace.dbPath}`,
+        `USER.md: ${workspace.userPath}`,
+        `MEMORY.md: ${workspace.memoryPath}`,
         `Graph memory: ${graph.entities} entities, ${graph.observations} observations, ${graph.relations} relations, ${graph.pendingDuplicates} possible duplicates`,
         `Legacy canonical rows: ${getCanonicalMemoryCount(workspace)}`,
         `Files: ${status.indexedFiles}`,
         `Chunks: ${status.indexedChunks}`,
         `FTS: ${status.ftsTokenizer}`,
         status.embeddingProvider ? `Embeddings: ${status.embeddingProvider}/${status.embeddingModel}` : 'Embeddings: fallback/none',
+        `Memory Review: ${review.enabled ? `on, every ${review.interval} user turns (${review.turnsUntilReview} until next)` : 'off'}`,
+        review.lastRunAt ? `Last review: ${formatMaybeTimestamp(review.lastRunAt)} (${review.lastStatus || 'unknown'}, applied ${review.lastApplied ?? 0})` : '',
         `Dreaming: ${workspace.settings.dreaming.enabled ? 'on' : 'off'} (${workspace.settings.dreaming.frequency})`,
         workspace.settings.dreaming.enabled
           ? `Next dreaming run: ${formatMaybeTimestamp(buildDreamingStatus(api, workspace).nextRunAt, workspace.settings.dreaming.timezone)}`
@@ -5207,6 +5877,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
         status.lastDreamingAt ? `Last dreaming run: ${formatMaybeTimestamp(status.lastDreamingAt, workspace.settings.dreaming.timezone)} (${status.lastDreamingStatus || 'unknown'}, promoted ${status.lastDreamingApplied ?? 0})` : '',
         status.lastError ? `Last error: ${status.lastError}` : '',
         status.lastFlushError ? `Last flush error: ${status.lastFlushError}` : '',
+        status.lastReviewError ? `Last review error: ${status.lastReviewError}` : '',
         status.lastDreamingError ? `Last dreaming error: ${status.lastDreamingError}` : '',
       ].filter(Boolean).join('\n'))
     },

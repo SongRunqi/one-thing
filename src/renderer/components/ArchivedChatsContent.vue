@@ -10,7 +10,8 @@
       >
       <!-- Grouping Mode Toggle -->
       <div class="grouping-toggle">
-        <button
+        <Button
+          unstyled
           class="toggle-btn"
           :class="{ active: groupingMode === 'date' }"
           title="Group by date"
@@ -51,8 +52,9 @@
               y2="10"
             />
           </svg>
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           class="toggle-btn"
           :class="{ active: groupingMode === 'branch' }"
           title="Group by branch"
@@ -84,7 +86,7 @@
             />
             <path d="M18 9a9 9 0 0 1-9 9" />
           </svg>
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -305,7 +307,8 @@
                 </p>
               </div>
               <div class="chat-actions">
-                <button
+                <Button
+                  unstyled
                   class="action-btn"
                   title="Restore"
                   @click.stop="restoreChat(session)"
@@ -321,8 +324,9 @@
                     <polyline points="1 4 1 10 7 10" />
                     <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                   </svg>
-                </button>
-                <button
+                </Button>
+                <Button
+                  unstyled
                   class="action-btn danger"
                   title="Delete permanently"
                   @click.stop="confirmDelete(session)"
@@ -338,7 +342,7 @@
                     <polyline points="3 6 5 6 21 6" />
                     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                   </svg>
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -386,6 +390,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import type { ChatSession, ChatMessage } from '@/types'

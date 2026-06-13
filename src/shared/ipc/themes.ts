@@ -214,7 +214,44 @@ export interface ThemeSemanticColors {
   infoLight?: ColorValue
 }
 
+/**
+ * Neutral colors for text, border, fill, and background hierarchy.
+ * Names follow the app's shared neutral contract and are intentionally
+ * close to common design-system wording so imported themes can map cleanly.
+ */
+export interface ThemeNeutralColors {
+  primaryText?: ColorValue
+  regularText?: ColorValue
+  secondaryText?: ColorValue
+  placeholderText?: ColorValue
+  disabledText?: ColorValue
+  darkerBorder?: ColorValue
+  darkBorder?: ColorValue
+  baseBorder?: ColorValue
+  lightBorder?: ColorValue
+  lighterBorder?: ColorValue
+  extraLightBorder?: ColorValue
+  darkerFill?: ColorValue
+  darkFill?: ColorValue
+  baseFill?: ColorValue
+  lightFill?: ColorValue
+  lighterFill?: ColorValue
+  extraLightFill?: ColorValue
+  blankFill?: ColorValue
+  basicBlack?: ColorValue
+  basicWhite?: ColorValue
+  transparent?: ColorValue
+  pageBackground?: ColorValue
+  baseBackground?: ColorValue
+  overlayBackground?: ColorValue
+}
+
 export interface ThemeColors {
+  /**
+   * Primary/default theme color. If present, it takes precedence over legacy
+   * accent fields for the default theme color semantics.
+   */
+  primary?: ColorValue
   accent: ColorValue
   accentMain?: ColorValue
   accentSub?: ColorValue
@@ -227,6 +264,7 @@ export interface ThemeColors {
   effects?: ThemeEffects
   diff?: ThemeDiffColors  // Diff view colors
   color?: ThemeSemanticColors  // Semantic status colors
+  neutral?: ThemeNeutralColors // Neutral text, border, fill, and background colors
 }
 
 // ============================================

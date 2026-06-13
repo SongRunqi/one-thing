@@ -24,19 +24,21 @@
         >
           Outline
         </span>
-        <button
-          type="button"
+        <Button
+          unstyled
+          native-type="button"
           class="assistant-nav-mode-tab"
           aria-label="Show message nav trail"
           title="Message nav trail"
           @click.stop="emit('switchMode')"
         >
           Trail
-        </button>
+        </Button>
       </div>
-      <button
+      <Button
         v-if="panelAvailable && effectiveOpen"
-        type="button"
+        unstyled
+        native-type="button"
         class="assistant-nav-close"
         :class="{ 'can-pin': isAutoPanelDismissed }"
         :aria-label="isAutoPanelDismissed ? 'Pin navigation panel' : 'Close navigation panel'"
@@ -55,7 +57,7 @@
           :stroke-width="2.2"
           aria-hidden="true"
         />
-      </button>
+      </Button>
       <div
         class="assistant-nav-scroll"
         role="listbox"
@@ -70,10 +72,11 @@
             :key="pageStartIndex"
             class="assistant-nav-page"
           >
-            <button
+            <Button
               v-for="marker in visibleMarkers"
               :key="marker.anchorId"
-              type="button"
+              unstyled
+              native-type="button"
               class="assistant-nav-row"
               :class="[
                 `level-${Math.min(4, Math.max(1, marker.level))}`,
@@ -90,7 +93,7 @@
             >
               <span class="assistant-nav-label">{{ marker.preview || marker.label }}</span>
               <span class="assistant-nav-marker" />
-            </button>
+            </Button>
           </div>
         </Transition>
       </div>
@@ -100,31 +103,34 @@
         :style="scrollThumbStyle"
         aria-hidden="true"
       />
-      <button
+      <Button
         v-if="hasPreviousPage"
-        type="button"
+        unstyled
+        native-type="button"
         class="assistant-nav-page-cue assistant-nav-page-cue-top"
         aria-label="Previous outline page"
         title="Previous page"
         @click.stop="goToPreviousPage"
       >
         <span class="assistant-nav-page-cue-icon" />
-      </button>
-      <button
+      </Button>
+      <Button
         v-if="hasNextPage"
-        type="button"
+        unstyled
+        native-type="button"
         class="assistant-nav-page-cue assistant-nav-page-cue-bottom"
         aria-label="Next outline page"
         title="Next page"
         @click.stop="goToNextPage"
       >
         <span class="assistant-nav-page-cue-icon" />
-      </button>
+      </Button>
     </div>
   </nav>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { Pin, X } from 'lucide-vue-next'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import type { AssistantMessageOutlineMarker } from './assistant-message-outline'

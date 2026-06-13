@@ -167,6 +167,29 @@ describe('TextEditor', () => {
     expect(editor.getSelection()).toEqual({ from: 5, to: 5 })
   })
 
+  it('defers prop reconfiguration requested during an editor update', async () => {
+    const wrapper = mount(TextEditor, {
+      attachTo: document.body,
+      props: {
+        modelValue: '',
+        profile: 'composer',
+        language: 'markdown',
+        placeholder: 'before',
+        onTransaction: () => {
+          void wrapper.setProps({ placeholder: 'after' })
+        },
+      },
+    })
+    await flushEditor()
+
+    const editor = wrapper.vm as unknown as EditorHandle
+    expect(() => editor.setValue('hello')).not.toThrow()
+    await flushEditor()
+
+    expect(editor.getValue()).toBe('hello')
+    expect(wrapper.find('.cm-editor').exists()).toBe(true)
+  })
+
   it('uses app highlight group variables for CodeMirror syntax highlighting', async () => {
     await mountEditor({
       modelValue: 'const value = "Ada"',

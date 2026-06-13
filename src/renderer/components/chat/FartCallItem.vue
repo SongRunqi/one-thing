@@ -47,21 +47,23 @@
 
     <!-- Control panel (arcade buttons) -->
     <div class="controls">
-      <button
+      <Button
+        unstyled
         class="arcade-btn btn-start"
         :title="isPlaying ? 'Playing…' : 'START / Replay'"
         :disabled="isPlaying || frames.length === 0"
         @click="play"
       >
         <span class="btn-label">START</span>
-      </button>
-      <button
+      </Button>
+      <Button
+        unstyled
         class="arcade-btn btn-sound"
         :title="muted ? 'Sound OFF' : 'Sound ON'"
         @click="muted = !muted"
       >
         <span class="btn-label">{{ muted ? 'SND OFF' : 'SND ON' }}</span>
-      </button>
+      </Button>
       <div class="credits">
         CREDIT {{ playCount.toString().padStart(2, '0') }}
       </div>
@@ -70,6 +72,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import type { ToolCall } from '@/types'
 import PixelSprite from './PixelSprite.vue'

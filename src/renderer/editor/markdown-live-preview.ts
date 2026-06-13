@@ -21,6 +21,7 @@ import {
   WidgetType,
 } from '@codemirror/view'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
+import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
 import { findEmojiShortcodes } from './markdown-emoji'
 
 export type MarkdownLivePreviewLineKind =
@@ -271,29 +272,36 @@ class MarkdownTaskWidget extends WidgetType {
     const slot = document.createElement('span')
     slot.className = 'md-live-task-checkbox-slot'
 
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = this.checked ? 'md-live-task-checkbox checked' : 'md-live-task-checkbox'
-    button.setAttribute('aria-label', this.checked ? 'Mark task incomplete' : 'Mark task complete')
-    button.setAttribute('aria-checked', String(this.checked))
-    button.disabled = view.state.facet(EditorState.readOnly)
-    button.addEventListener('mousedown', (event) => {
-      event.preventDefault()
+    const button = createDomButton({
+      className: this.checked ? 'md-live-task-checkbox checked' : 'md-live-task-checkbox',
+      ariaLabel: this.checked ? 'Mark task incomplete' : 'Mark task complete',
+      disabled: view.state.facet(EditorState.readOnly),
+      styled: true,
+      attrs: {
+        'aria-checked': String(this.checked),
+      },
+      onMouseDown: (event) => {
+        event.preventDefault()
+      },
+      onClick: (event) => {
+        event.preventDefault()
+        if (view.state.facet(EditorState.readOnly)) return
+        view.dispatch({
+          changes: {
+            from: this.checkFrom,
+            to: this.checkFrom + 1,
+            insert: this.checked ? ' ' : 'x',
+          },
+        })
+        view.focus()
+      },
     })
-    button.addEventListener('click', (event) => {
-      event.preventDefault()
-      if (view.state.facet(EditorState.readOnly)) return
-      view.dispatch({
-        changes: {
-          from: this.checkFrom,
-          to: this.checkFrom + 1,
-          insert: this.checked ? ' ' : 'x',
-        },
-      })
-      view.focus()
-    })
-    slot.append(button)
+    slot.append(button.host)
     return slot
+  }
+
+  destroy(dom: HTMLElement): void {
+    unmountDomButtons(dom)
   }
 
   ignoreEvent(event: Event): boolean {
@@ -342,11 +350,12 @@ class MarkdownImageWidget extends WidgetType {
       return frame
     }
 
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'md-live-image-widget'
-    button.title = this.src
-    button.textContent = this.alt || displayTargetLabel(this.src)
+    const buttonMount = createDomButton({
+      className: 'md-live-image-widget',
+      title: this.src,
+      children: this.alt || displayTargetLabel(this.src),
+    })
+    const button = buttonMount.button
 
     const applyResolved = (asset: MarkdownAssetResolution | null | undefined) => {
       if (!button.isConnected) return
@@ -394,8 +403,12 @@ class MarkdownImageWidget extends WidgetType {
         },
       }))
     })
-    frame.append(button, assetSourceEditor(view, this.rawSource, this.from, this.to, 'Image Markdown source'))
+    frame.append(buttonMount.host, assetSourceEditor(view, this.rawSource, this.from, this.to, 'Image Markdown source'))
     return frame
+  }
+
+  destroy(dom: HTMLElement): void {
+    unmountDomButtons(dom)
   }
 
   ignoreEvent(event: Event): boolean {
@@ -428,11 +441,12 @@ class MarkdownFileWidget extends WidgetType {
 
     let resolved: MarkdownAssetResolution | null = null
 
-    const button = document.createElement('button')
-    button.type = 'button'
-    button.className = 'md-live-file-widget'
-    button.title = this.href
-    button.textContent = this.label || displayTargetLabel(this.href)
+    const buttonMount = createDomButton({
+      className: 'md-live-file-widget',
+      title: this.href,
+      children: this.label || displayTargetLabel(this.href),
+    })
+    const button = buttonMount.button
 
     if (this.options.resolveAsset) {
       const entry = cachedAssetResolution(this.options.resolveAsset, this.href, { kind: 'link' })
@@ -472,8 +486,12 @@ class MarkdownFileWidget extends WidgetType {
         },
       }))
     })
-    frame.append(button, assetSourceEditor(view, this.rawSource, this.from, this.to, 'File Markdown source'))
+    frame.append(buttonMount.host, assetSourceEditor(view, this.rawSource, this.from, this.to, 'File Markdown source'))
     return frame
+  }
+
+  destroy(dom: HTMLElement): void {
+    unmountDomButtons(dom)
   }
 
   ignoreEvent(event: Event): boolean {
@@ -492,32 +510,35 @@ function assetSourceEditor(
   wrap.className = 'md-live-asset-source-editor'
   const readOnly = view.state.facet(EditorState.readOnly)
 
-  const toggle = document.createElement('button')
-  toggle.type = 'button'
-  toggle.className = 'md-live-source-toggle'
-  toggle.title = label
-  toggle.setAttribute('aria-label', label)
-  toggle.setAttribute('aria-expanded', 'false')
-  toggle.textContent = '</>'
-  toggle.disabled = readOnly
-  toggle.addEventListener('mousedown', event => event.preventDefault())
-  toggle.addEventListener('click', (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    if (readOnly) return
-    if (wrap.classList.contains('editing')) {
-      finishEditing(true, true)
-      return
-    }
-    editingDone = false
-    wrap.classList.add('editing')
-    toggle.setAttribute('aria-expanded', 'true')
-    const range = resolveLiveSourceRange(view, wrap, rawSource, from, to)
-    input.value = range.current || rawSource
-    input.focus()
-    input.select()
-    document.addEventListener('pointerdown', handleOutsidePointerDown, true)
+  const toggleMount = createDomButton({
+    className: 'md-live-source-toggle',
+    title: label,
+    ariaLabel: label,
+    disabled: readOnly,
+    attrs: {
+      'aria-expanded': 'false',
+    },
+    children: '</>',
+    onMouseDown: event => event.preventDefault(),
+    onClick: (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (readOnly) return
+      if (wrap.classList.contains('editing')) {
+        finishEditing(true, true)
+        return
+      }
+      editingDone = false
+      wrap.classList.add('editing')
+      toggle.setAttribute('aria-expanded', 'true')
+      const range = resolveLiveSourceRange(view, wrap, rawSource, from, to)
+      input.value = range.current || rawSource
+      input.focus()
+      input.select()
+      document.addEventListener('pointerdown', handleOutsidePointerDown, true)
+    },
   })
+  const toggle = toggleMount.button
 
   const input = document.createElement('input')
   input.className = 'md-live-source-input'
@@ -571,7 +592,7 @@ function assetSourceEditor(
   })
   input.addEventListener('blur', () => finishEditing(true, false))
 
-  wrap.append(toggle, input)
+  wrap.append(toggleMount.host, input)
   return wrap
 }
 
@@ -676,22 +697,24 @@ function foldToggleButton(
   collapsed: boolean,
   label: string,
   extraClass = '',
-): HTMLButtonElement {
-  const button = document.createElement('button')
-  button.type = 'button'
-  button.className = ['md-live-fold-button', collapsed ? 'collapsed' : '', extraClass].filter(Boolean).join(' ')
-  button.title = label
-  button.setAttribute('aria-label', label)
-  button.setAttribute('aria-expanded', String(!collapsed))
-  button.dataset.foldState = collapsed ? 'collapsed' : 'expanded'
-  button.textContent = collapsed ? '▸' : '▾'
-  button.addEventListener('mousedown', event => event.preventDefault())
-  button.addEventListener('click', (event) => {
-    event.preventDefault()
-    event.stopPropagation()
-    toggleMarkdownFold(view, foldKey, button)
+): HTMLElement {
+  const mounted = createDomButton({
+    className: ['md-live-fold-button', collapsed ? 'collapsed' : '', extraClass].filter(Boolean).join(' '),
+    title: label,
+    ariaLabel: label,
+    attrs: {
+      'aria-expanded': String(!collapsed),
+      'data-fold-state': collapsed ? 'collapsed' : 'expanded',
+    },
+    children: collapsed ? '▸' : '▾',
+    onMouseDown: event => event.preventDefault(),
+    onClick: (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      toggleMarkdownFold(view, foldKey, mounted.button)
+    },
   })
-  return button
+  return mounted.host
 }
 
 function toggleMarkdownFold(view: EditorView, foldKey: string, anchorElement?: HTMLElement): void {
@@ -777,26 +800,31 @@ class CodeBlockTopbarWidget extends WidgetType {
     const actions = document.createElement('span')
     actions.className = 'md-live-codeblock-actions'
 
-    const copy = document.createElement('button')
-    copy.type = 'button'
-    copy.className = 'md-live-code-copy-button'
-    copy.title = 'Copy code'
-    copy.textContent = 'Copy'
-    copy.addEventListener('mousedown', event => event.preventDefault())
-    copy.addEventListener('click', (event) => {
-      event.preventDefault()
-      event.stopPropagation()
-      void copyText(this.code).then((ok) => {
-        copy.textContent = ok ? 'Copied' : 'Copy failed'
-        window.setTimeout(() => {
-          if (copy.isConnected) copy.textContent = 'Copy'
-        }, 900)
-      })
+    const copyMount = createDomButton({
+      className: 'md-live-code-copy-button',
+      title: 'Copy code',
+      children: 'Copy',
+      onMouseDown: event => event.preventDefault(),
+      onClick: (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        void copyText(this.code).then((ok) => {
+          const copy = copyMount.button
+          copy.textContent = ok ? 'Copied' : 'Copy failed'
+          window.setTimeout(() => {
+            if (copy.isConnected) copy.textContent = 'Copy'
+          }, 900)
+        })
+      },
     })
 
-    actions.append(copy)
+    actions.append(copyMount.host)
     toolbar.append(actions)
     return toolbar
+  }
+
+  destroy(dom: HTMLElement): void {
+    unmountDomButtons(dom)
   }
 
   ignoreEvent(event: Event): boolean {
@@ -2864,22 +2892,41 @@ const theme = EditorView.theme({
     left: '0',
     top: '50%',
     transform: 'translateY(-50%)',
-    width: '16px',
-    height: '16px',
-    margin: '0',
-    padding: '0',
+    '--app-button-height': '16px',
+    '--app-button-min-width': '16px',
+    '--app-button-padding-x': '0',
+    '--app-button-gap': '0',
+    '--app-button-fill': 'color-mix(in srgb, var(--editor-text, var(--ui-editor-text-fg, var(--text-input, var(--text)))) 5%, transparent)',
+    '--app-button-hover-fill': 'color-mix(in srgb, var(--editor-text, var(--ui-editor-text-fg, var(--text-input, var(--text)))) 9%, transparent)',
+    '--app-button-border': 'color-mix(in srgb, var(--editor-text, var(--ui-editor-text-fg, var(--text-input, var(--text)))) 42%, var(--ui-border-default-border, var(--border, transparent)))',
+    '--app-button-hover-border': 'color-mix(in srgb, var(--editor-text, var(--ui-editor-text-fg, var(--text-input, var(--text)))) 62%, var(--ui-border-default-border, var(--border, transparent)))',
+    '--app-button-shadow': 'none',
+    '--app-button-hover-shadow': 'none',
+    width: '16px !important',
+    minWidth: '16px !important',
+    height: '16px !important',
+    minHeight: '16px !important',
+    margin: '0 !important',
+    padding: '0 !important',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
-    border: '1.5px solid color-mix(in srgb, var(--editor-text, var(--ui-editor-text-fg, var(--text-input, var(--text)))) 42%, var(--ui-border-default-border, var(--border, transparent)))',
+    border: '1px solid var(--app-button-border)',
     borderRadius: '5px',
     color: 'var(--ui-action-primary-fg, var(--text-btn-primary, #fff))',
-    background: 'color-mix(in srgb, var(--editor-text, var(--ui-editor-text-fg, var(--text-input, var(--text)))) 5%, transparent)',
+    background: 'var(--app-button-fill)',
     cursor: 'pointer',
   },
   '.md-live-task-checkbox.checked': {
-    borderColor: 'var(--ui-accent-primary-fg, var(--accent))',
-    background: 'var(--ui-accent-primary-fg, var(--accent))',
+    '--app-button-fill': 'var(--ui-accent-primary-fg, var(--accent))',
+    '--app-button-hover-fill': 'var(--ui-accent-primary-fg, var(--accent))',
+    '--app-button-border': 'var(--ui-accent-primary-fg, var(--accent))',
+    '--app-button-hover-border': 'var(--ui-accent-primary-fg, var(--accent))',
+    borderColor: 'var(--app-button-border)',
+    background: 'var(--app-button-fill)',
+  },
+  '.md-live-task-checkbox .app-button-content': {
+    display: 'none',
   },
   '.md-live-task-checkbox.checked::after': {
     content: '"✓"',

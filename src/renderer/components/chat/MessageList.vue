@@ -3,9 +3,13 @@
     class="message-list-wrapper"
     :style="messageListStyles"
   >
-    <div
-      ref="messageListRef"
-      :class="['message-list', `density-${messageListDensity}`]"
+    <Scrollbar
+      ref="messageScrollbarRef"
+      :class="[
+        'message-list',
+        `density-${messageListDensity}`,
+        { 'stream-following': useBottomScrollAnchor },
+      ]"
       :style="messageListStyles"
     >
       <EmptyState
@@ -18,15 +22,16 @@
         ref="messageListContentRef"
         class="message-list-content"
       >
-        <button
+        <Button
           v-if="pageHistorySummary"
+          unstyled
           class="history-page-summary"
-          type="button"
+          native-type="button"
           :disabled="pageState?.isLoadingOlder"
           @click="loadOlderHistoryIfNeeded(true)"
         >
           <span>{{ pageHistorySummary }}</span>
-        </button>
+        </Button>
 
         <div
           v-for="(message, index) in messages"
@@ -57,7 +62,7 @@
           aria-hidden="true"
         />
       </div>
-    </div>
+    </Scrollbar>
 
     <AssistantMessageNavRail
       v-if="effectiveNavRailMode === 'outline'"
@@ -81,10 +86,11 @@
     />
 
     <Transition name="scroll-bottom-btn">
-      <button
+      <Button
         v-if="showScrollToBottomButton && messages.length > 0"
+        unstyled
         class="scroll-to-bottom-btn"
-        type="button"
+        native-type="button"
         title="Scroll to bottom"
         aria-label="Scroll to bottom"
         @click="scrollToBottomFromButton"
@@ -93,7 +99,7 @@
           :size="16"
           :stroke-width="2"
         />
-      </button>
+      </Button>
     </Transition>
 
     <!-- Reject Reason Dialog -->
@@ -107,7 +113,8 @@
           <div class="reject-dialog">
             <div class="reject-dialog-header">
               <span class="reject-dialog-title">Reject reason</span>
-              <button
+              <Button
+                unstyled
                 class="reject-dialog-close"
                 @click="cancelReject"
               >
@@ -121,7 +128,7 @@
                 >
                   <path d="M18 6L6 18M6 6l12 12" />
                 </svg>
-              </button>
+              </Button>
             </div>
             <div class="reject-dialog-body">
               <textarea
@@ -139,18 +146,20 @@
               </div>
             </div>
             <div class="reject-dialog-footer">
-              <button
+              <Button
+                unstyled
                 class="reject-dialog-btn reject-dialog-btn-cancel"
                 @click="cancelReject"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                unstyled
                 class="reject-dialog-btn reject-dialog-btn-confirm"
                 @click="confirmReject"
               >
                 Reject
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -160,6 +169,8 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
+import Scrollbar from '@/components/common/Scrollbar.vue'
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdated } from 'vue'
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
@@ -204,11 +215,13 @@ interface Props {
   messages: ChatMessage[]
   isLoading?: boolean
   sessionId?: string
+  layoutTransitioning?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isLoading: false,
   sessionId: undefined,
+  layoutTransitioning: false,
 })
 
 const emit = defineEmits<{
@@ -223,6 +236,7 @@ const emit = defineEmits<{
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
 const settingsStore = useSettingsStore()
+const messageScrollbarRef = ref<InstanceType<typeof Scrollbar> | null>(null)
 const messageListRef = ref<HTMLElement | null>(null)
 const messageListContentRef = ref<HTMLElement | null>(null)
 const bottomSentinelRef = ref<HTMLElement | null>(null)
@@ -267,22 +281,28 @@ const chatFontSize = computed(() => {
 const chatFontEn = computed(() => settingsStore.settings.chat?.chatFontEn)
 const chatFontZh = computed(() => settingsStore.settings.chat?.chatFontZh)
 
-function getDensityFontSize(density: string): number {
-  if (density === 'compact') return 14
-  if (density === 'spacious') return 16
-  return 15
-}
+const MESSAGE_DENSITY_TYPOGRAPHY = {
+  compact: {
+    fontSize: 14,
+    lineHeight: 20 / 14,
+    contentSpacing: 0.4,
+  },
+  comfortable: {
+    fontSize: 15,
+    lineHeight: 24 / 15,
+    contentSpacing: 0.75,
+  },
+  spacious: {
+    fontSize: 16,
+    lineHeight: 29 / 16,
+    contentSpacing: 1,
+  },
+} as const
 
-function getDensityLineHeight(density: string): number {
-  if (density === 'compact') return 1.4
-  if (density === 'spacious') return 1.8
-  return 1.6
-}
+type MessageDensityKey = keyof typeof MESSAGE_DENSITY_TYPOGRAPHY
 
-function getDensityContentSpacing(density: string): number {
-  if (density === 'compact') return 0.4
-  if (density === 'spacious') return 1
-  return 0.75
+function getDensityTypography(density: string) {
+  return MESSAGE_DENSITY_TYPOGRAPHY[(density as MessageDensityKey)] ?? MESSAGE_DENSITY_TYPOGRAPHY.comfortable
 }
 
 function px(value: number): string {
@@ -293,9 +313,10 @@ function px(value: number): string {
 const messageListStyles = computed(() => {
   const styles: Record<string, string> = {}
   const density = messageListDensity.value
-  const fontSize = Number(chatFontSize.value) || getDensityFontSize(density)
-  const lineHeight = Number(customLineHeight.value) || getDensityLineHeight(density)
-  const contentSpacing = getDensityContentSpacing(density)
+  const densityTypography = getDensityTypography(density)
+  const fontSize = Number(chatFontSize.value) || densityTypography.fontSize
+  const lineHeight = Number(customLineHeight.value) || densityTypography.lineHeight
+  const contentSpacing = densityTypography.contentSpacing
 
   if (customLineHeight.value) {
     styles['--message-line-height'] = String(customLineHeight.value)
@@ -342,6 +363,9 @@ let renderMeasureStart: number | null = null
 let renderMeasureSessionId = ''
 let renderMeasureMessageCount = 0
 let userMessageMeasurements: Array<{ messageIndex: number; messageId: string; start: number }> = []
+let deferredLayoutMeasurementRefresh = false
+let deferredLayoutMeasurementTimer: ReturnType<typeof setTimeout> | null = null
+let deferredLayoutMeasurementFollowupTimer: ReturnType<typeof setTimeout> | null = null
 
 interface TopAnchor {
   messageId: string
@@ -365,13 +389,46 @@ const pageHistorySummary = computed(() => {
   return `Load earlier messages · ${loaded}/${total}`
 })
 
+const hasActiveStream = computed(() => props.messages.some(message => message.isStreaming))
+
+function deferLayoutMeasurementDuringTransition(): boolean {
+  if (!props.layoutTransitioning) return false
+  deferredLayoutMeasurementRefresh = true
+  return true
+}
+
+function cancelPendingLayoutMeasurementFrames() {
+  if (navMarkerUpdateFrame !== null) {
+    cancelAnimationFrame(navMarkerUpdateFrame)
+    navMarkerUpdateFrame = null
+  }
+  if (navPanelRoomUpdateFrame !== null) {
+    cancelAnimationFrame(navPanelRoomUpdateFrame)
+    navPanelRoomUpdateFrame = null
+  }
+  if (assistantOutlineUpdateFrame !== null) {
+    cancelAnimationFrame(assistantOutlineUpdateFrame)
+    assistantOutlineUpdateFrame = null
+  }
+  if (visibleUserMessageFrame !== null) {
+    cancelAnimationFrame(visibleUserMessageFrame)
+    visibleUserMessageFrame = null
+  }
+  if (measurementRefreshFrame !== null) {
+    cancelAnimationFrame(measurementRefreshFrame)
+    measurementRefreshFrame = null
+  }
+}
+
 const follow = useFollowScroll({
   scroller: messageListRef,
   content: messageListContentRef,
   count: computed(() => props.messages.length),
+  maintainOnLayout: hasActiveStream,
 })
 
 const { isFollowing } = follow
+const useBottomScrollAnchor = computed(() => isFollowing.value && hasActiveStream.value)
 const scrollCoordinator = useMessageScrollCoordinator({
   scroller: messageListRef,
   getSessionId: () => effectiveSessionId.value,
@@ -379,7 +436,7 @@ const scrollCoordinator = useMessageScrollCoordinator({
   onStateChange: updateScrollToBottomButton,
 })
 
-// Auto-scroll: when following, keep the scroller pinned to its natural bottom.
+// Auto-scroll: while a response is streaming, keep the scroller pinned to its natural bottom.
 // Composer safety is real tail padding below the list content, so "follow" and
 // the real scrollbar bottom stay identical even as the composer changes height.
 const effectiveScrollVersion = computed(() => chatStore.getScrollVersion(effectiveSessionId.value))
@@ -388,7 +445,7 @@ let followNudgeFrame: number | null = null
 
 function scheduleFollowNudge(source: string) {
   void source
-  if (isFollowing.value) {
+  if (isFollowing.value && hasActiveStream.value) {
     scrollCoordinator.onLayoutChange()
     updateScrollToBottomButton()
     return
@@ -458,14 +515,14 @@ watch(
     }
     if (!el || typeof ResizeObserver === 'undefined') return
     navContentResizeObserver = new ResizeObserver(() => {
+      if (deferLayoutMeasurementDuringTransition()) return
       scheduleNavMarkerUpdate()
       scheduleNavPanelRoomUpdate()
       scheduleAssistantOutlineUpdate()
       scheduleMeasurementRefresh()
-      // Always notify the coordinator — it routes itself based on tail / anchor / idle.
-      // Tail mode used to be skipped here, which let markdown hydration / code-block
-      // highlighting drift the viewport away from the bottom.
-      scrollCoordinator.onLayoutChange()
+      if (hasActiveStream.value || scrollCoordinator.isAnchored()) {
+        scrollCoordinator.onLayoutChange()
+      }
       if (!scrollCoordinator.isAnchored()) {
         scheduleVisibleUserMessageIndexUpdate()
       }
@@ -551,6 +608,7 @@ function updateNavPanelRoom() {
 }
 
 function scheduleNavPanelRoomUpdate() {
+  if (deferLayoutMeasurementDuringTransition()) return
   if (navPanelRoomUpdateFrame !== null) {
     cancelAnimationFrame(navPanelRoomUpdateFrame)
   }
@@ -813,6 +871,7 @@ function updateAssistantOutline() {
 }
 
 function scheduleAssistantOutlineUpdate() {
+  if (deferLayoutMeasurementDuringTransition()) return
   if (assistantOutlineUpdateFrame !== null) {
     cancelAnimationFrame(assistantOutlineUpdateFrame)
   }
@@ -1124,6 +1183,7 @@ function refreshUserMessageMeasurements() {
 }
 
 function scheduleMeasurementRefresh() {
+  if (deferLayoutMeasurementDuringTransition()) return
   if (measurementRefreshFrame !== null) return
   measurementRefreshFrame = requestAnimationFrame(() => {
     measurementRefreshFrame = null
@@ -1133,6 +1193,7 @@ function scheduleMeasurementRefresh() {
 }
 
 function scheduleVisibleUserMessageIndexUpdate() {
+  if (deferLayoutMeasurementDuringTransition()) return
   if (visibleUserMessageFrame !== null) return
   visibleUserMessageFrame = requestAnimationFrame(() => {
     visibleUserMessageFrame = null
@@ -1225,7 +1286,7 @@ function updateVisibleUserMessageIndex(options: { allowAnchored?: boolean } = {}
 function handleScroll() {
   follow.checkReattach()
   const el = messageListRef.value
-  if (el && isFollowing.value && el.scrollHeight - el.scrollTop - el.clientHeight <= 2) {
+  if (el && hasActiveStream.value && isFollowing.value && el.scrollHeight - el.scrollTop - el.clientHeight <= 2) {
     scrollCoordinator.setTail()
   }
   updateScrollToBottomButton()
@@ -1286,24 +1347,53 @@ function scrollToBottomFromButton() {
   scrollCoordinator.setTail({ behavior: 'smooth' })
 }
 
+let attachedMessageListElement: HTMLElement | null = null
+
+function syncMessageListScroller() {
+  const scroller = messageScrollbarRef.value?.getScrollElement() ?? null
+  messageListRef.value = scroller
+  return scroller
+}
+
+function attachMessageListListeners() {
+  const scroller = syncMessageListScroller()
+  if (!scroller || attachedMessageListElement === scroller) return
+
+  detachMessageListListeners()
+  attachedMessageListElement = scroller
+  scroller.addEventListener('scroll', handleScroll)
+  scroller.addEventListener('wheel', handleWheel, { passive: false })
+  scroller.addEventListener('pointerdown', handlePointerDown)
+
+  if (typeof ResizeObserver !== 'undefined') {
+    navResizeObserver = new ResizeObserver(() => {
+      if (deferLayoutMeasurementDuringTransition()) return
+      scheduleNavMarkerUpdate()
+      scheduleNavPanelRoomUpdate()
+      scheduleAssistantOutlineUpdate()
+      scheduleMeasurementRefresh()
+    })
+    navResizeObserver.observe(scroller)
+  }
+}
+
+function detachMessageListListeners() {
+  if (!attachedMessageListElement) return
+
+  attachedMessageListElement.removeEventListener('scroll', handleScroll)
+  attachedMessageListElement.removeEventListener('wheel', handleWheel)
+  attachedMessageListElement.removeEventListener('pointerdown', handlePointerDown)
+  attachedMessageListElement = null
+  navResizeObserver?.disconnect()
+  navResizeObserver = null
+}
+
 // Setup event listeners
 onMounted(() => {
-  if (messageListRef.value) {
-    messageListRef.value.addEventListener('scroll', handleScroll)
-    messageListRef.value.addEventListener('wheel', handleWheel, { passive: false })
-    messageListRef.value.addEventListener('pointerdown', handlePointerDown)
-    if (typeof ResizeObserver !== 'undefined') {
-      navResizeObserver = new ResizeObserver(() => {
-        scheduleNavMarkerUpdate()
-        scheduleNavPanelRoomUpdate()
-        scheduleAssistantOutlineUpdate()
-        scheduleMeasurementRefresh()
-      })
-      navResizeObserver.observe(messageListRef.value)
-    }
-  }
-  // Scroll to bottom on initial mount (messages may be pre-loaded in store)
   nextTick(() => {
+    attachMessageListListeners()
+
+    // Scroll to bottom on initial mount (messages may be pre-loaded in store)
     const snapshot = effectiveSessionId.value ? chatStore.getSnapshot(effectiveSessionId.value) : null
     if (props.messages.length > 0 && messageListRef.value && snapshot?.mode !== 'anchor') {
       scrollCoordinator.setTail()
@@ -1315,12 +1405,66 @@ onMounted(() => {
   })
 })
 
+watch(
+  () => props.layoutTransitioning,
+  (isTransitioning, wasTransitioning) => {
+    if (isTransitioning) {
+      cancelPendingLayoutMeasurementFrames()
+      deferredLayoutMeasurementRefresh = true
+      if (deferredLayoutMeasurementTimer) {
+        clearTimeout(deferredLayoutMeasurementTimer)
+        deferredLayoutMeasurementTimer = null
+      }
+      if (deferredLayoutMeasurementFollowupTimer) {
+        clearTimeout(deferredLayoutMeasurementFollowupTimer)
+        deferredLayoutMeasurementFollowupTimer = null
+      }
+      return
+    }
+
+    if (!wasTransitioning || !deferredLayoutMeasurementRefresh) return
+    deferredLayoutMeasurementRefresh = false
+    if (deferredLayoutMeasurementTimer) {
+      clearTimeout(deferredLayoutMeasurementTimer)
+    }
+    deferredLayoutMeasurementTimer = setTimeout(() => {
+      deferredLayoutMeasurementTimer = null
+      requestAnimationFrame(() => {
+        scheduleNavMarkerUpdate()
+        updateScrollToBottomButton()
+        if (deferredLayoutMeasurementFollowupTimer) {
+          clearTimeout(deferredLayoutMeasurementFollowupTimer)
+        }
+        deferredLayoutMeasurementFollowupTimer = setTimeout(() => {
+          deferredLayoutMeasurementFollowupTimer = null
+          if (props.layoutTransitioning) {
+            deferredLayoutMeasurementRefresh = true
+            return
+          }
+          requestAnimationFrame(() => {
+            scheduleNavPanelRoomUpdate()
+            scheduleAssistantOutlineUpdate()
+            scheduleMeasurementRefresh()
+            if (!scrollCoordinator.isAnchored()) {
+              scheduleVisibleUserMessageIndexUpdate()
+            }
+          })
+        }, 80)
+      })
+    }, 700)
+  },
+)
+
 onUnmounted(() => {
-  if (messageListRef.value) {
-    messageListRef.value.removeEventListener('scroll', handleScroll)
-    messageListRef.value.removeEventListener('wheel', handleWheel)
-    messageListRef.value.removeEventListener('pointerdown', handlePointerDown)
+  if (deferredLayoutMeasurementTimer) {
+    clearTimeout(deferredLayoutMeasurementTimer)
+    deferredLayoutMeasurementTimer = null
   }
+  if (deferredLayoutMeasurementFollowupTimer) {
+    clearTimeout(deferredLayoutMeasurementFollowupTimer)
+    deferredLayoutMeasurementFollowupTimer = null
+  }
+  detachMessageListListeners()
   if (navigationCooldownTimer) {
     clearTimeout(navigationCooldownTimer)
   }
@@ -1328,26 +1472,7 @@ onUnmounted(() => {
     clearTimeout(searchHighlightTimer)
     searchHighlightTimer = null
   }
-  if (navMarkerUpdateFrame !== null) {
-    cancelAnimationFrame(navMarkerUpdateFrame)
-    navMarkerUpdateFrame = null
-  }
-  if (navPanelRoomUpdateFrame !== null) {
-    cancelAnimationFrame(navPanelRoomUpdateFrame)
-    navPanelRoomUpdateFrame = null
-  }
-  if (assistantOutlineUpdateFrame !== null) {
-    cancelAnimationFrame(assistantOutlineUpdateFrame)
-    assistantOutlineUpdateFrame = null
-  }
-  if (visibleUserMessageFrame !== null) {
-    cancelAnimationFrame(visibleUserMessageFrame)
-    visibleUserMessageFrame = null
-  }
-  if (measurementRefreshFrame !== null) {
-    cancelAnimationFrame(measurementRefreshFrame)
-    measurementRefreshFrame = null
-  }
+  cancelPendingLayoutMeasurementFrames()
   if (followNudgeFrame !== null) {
     cancelAnimationFrame(followNudgeFrame)
     followNudgeFrame = null
@@ -1821,15 +1946,12 @@ defineExpose({
   position: relative;
   min-height: 0;
   container-type: inline-size;
-  /* Inherit parent's bottom border-radius for proper clipping */
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .scroll-to-bottom-btn {
   position: absolute;
-  left: var(--chat-content-column-center, 50%);
+  left: 50%;
   bottom: var(--scroll-bottom-button-offset);
   transform: translateX(-50%) translateY(50%);
   display: inline-flex;
@@ -1872,36 +1994,10 @@ defineExpose({
 
 .message-list {
   flex: 1;
-  overflow-y: auto;
   overflow-anchor: auto;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 20%, transparent) transparent;
   padding: 28px 28px 10px;
   background: transparent;
-  border-bottom-left-radius: var(--radius-lg);
-  border-bottom-right-radius: var(--radius-lg);
   position: relative;
-}
-
-.message-list::-webkit-scrollbar {
-  width: 7px;
-}
-
-.message-list::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.message-list::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 18%, transparent);
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background-clip: content-box;
-}
-
-.message-list::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 34%, transparent);
-  border: 3px solid transparent;
-  background-clip: content-box;
 }
 
 .message-list-content {
@@ -1926,8 +2022,8 @@ defineExpose({
   color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   cursor: pointer;
   font: inherit;
-  font-size: 12px;
-  line-height: 1;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-leading-control);
   overflow-anchor: none;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
@@ -1952,6 +2048,10 @@ defineExpose({
   width: 100%;
   height: 1px;
   pointer-events: none;
+  overflow-anchor: none;
+}
+
+.message-list.stream-following .message-list-bottom-sentinel {
   overflow-anchor: auto;
 }
 
@@ -1959,9 +2059,9 @@ defineExpose({
 .message-list.density-compact {
   --message-gap: 4px;
   --message-padding: 8px 12px;
-  --message-font-size: 14px;
-  --message-line-height: 1.4;
-  --message-line-height-px: 20px;
+  --message-font-size: var(--type-chat-compact-size);
+  --message-line-height: var(--type-chat-compact-line-height);
+  --message-line-height-px: var(--type-chat-compact-line-height-px);
   --avatar-size: 24px;
   --content-spacing: 0.4em;
   --content-spacing-px: 6px;
@@ -1978,9 +2078,9 @@ defineExpose({
 .message-list.density-comfortable {
   --message-gap: 10px;
   --message-padding: 14px 18px;
-  --message-font-size: 15px;
-  --message-line-height: 1.6;
-  --message-line-height-px: 25px;
+  --message-font-size: var(--type-chat-comfortable-size);
+  --message-line-height: var(--type-chat-comfortable-line-height);
+  --message-line-height-px: var(--type-chat-comfortable-line-height-px);
   --avatar-size: 32px;
   --content-spacing: 0.75em;
   --content-spacing-px: 12px;
@@ -1997,9 +2097,9 @@ defineExpose({
 .message-list.density-spacious {
   --message-gap: 16px;
   --message-padding: 18px 24px;
-  --message-font-size: 16px;
-  --message-line-height: 1.8;
-  --message-line-height-px: 29px;
+  --message-font-size: var(--type-chat-spacious-size);
+  --message-line-height: var(--type-chat-spacious-line-height);
+  --message-line-height-px: var(--type-chat-spacious-line-height-px);
   --avatar-size: 40px;
   --content-spacing: 1em;
   --content-spacing-px: 16px;
@@ -2044,11 +2144,11 @@ defineExpose({
   }
 
   .empty-title {
-    font-size: 26px;
+    font-size: var(--type-display-size);
   }
 
   .empty-subtitle {
-    font-size: 14px;
+    font-size: var(--type-body-size);
   }
 
   .thinking-indicator {
@@ -2100,8 +2200,9 @@ defineExpose({
 }
 
 .reject-dialog-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--type-headline-size);
+  font-weight: var(--type-headline-weight);
+  line-height: var(--type-headline-line-height);
   color: var(--ui-text-primary-fg, var(--text));
 }
 
@@ -2136,8 +2237,8 @@ defineExpose({
   border-radius: 10px;
   background: var(--base);
   color: var(--ui-text-primary-fg, var(--text));
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--type-body-size);
+  line-height: var(--type-body-line-height);
   resize: vertical;
   font-family: inherit;
   transition: border-color 0.15s ease;
@@ -2155,7 +2256,8 @@ defineExpose({
 
 .reject-dialog-hint {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
   color: var(--ui-text-muted-fg, var(--muted));
   text-align: right;
 }
@@ -2171,8 +2273,9 @@ defineExpose({
 .reject-dialog-btn {
   padding: 8px 18px;
   border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--type-label-size);
+  font-weight: var(--type-label-weight);
+  line-height: var(--type-label-line-height);
   cursor: pointer;
   transition: all 0.15s ease;
   border: 1px solid transparent;

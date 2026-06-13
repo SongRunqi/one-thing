@@ -24,12 +24,13 @@
         class="error-state"
       >
         <span>{{ error }}</span>
-        <button
+        <Button
+          unstyled
           class="btn-sm"
           @click="loadPlugins"
         >
           Retry
-        </button>
+        </Button>
       </div>
 
       <!-- Empty -->
@@ -42,13 +43,14 @@
           Create a plugin in <code>~/.onething/plugins/&lt;name&gt;/plugin-entry.js</code>
           or symlink <code>sample-plugins/</code> directories, then click <strong>Refresh</strong>.
         </p>
-        <button
+        <Button
+          unstyled
           class="btn-sm"
           @click="refreshPlugins"
         >
           <RefreshCw :size="13" />
           <span>Refresh</span>
-        </button>
+        </Button>
       </div>
 
       <!-- Plugin list -->
@@ -58,13 +60,14 @@
       >
         <div class="plugin-list-header">
           <span class="plugin-count">{{ plugins.length }} plugin{{ plugins.length > 1 ? 's' : '' }}</span>
-          <button
+          <Button
+            unstyled
             class="btn-sm refresh-btn"
             @click="refreshPlugins"
           >
             <RefreshCw :size="13" />
             <span>Refresh</span>
-          </button>
+          </Button>
         </div>
         <div
           v-for="plugin in plugins"
@@ -160,6 +163,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 

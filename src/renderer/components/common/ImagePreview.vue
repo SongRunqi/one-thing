@@ -21,7 +21,8 @@
 
         <!-- Controls -->
         <div class="preview-controls">
-          <button
+          <Button
+            unstyled
             class="control-btn"
             title="Zoom out"
             @click.stop="zoomOut"
@@ -52,9 +53,10 @@
                 y2="11"
               />
             </svg>
-          </button>
+          </Button>
           <span class="zoom-level">{{ Math.round(scale * 100) }}%</span>
-          <button
+          <Button
+            unstyled
             class="control-btn"
             title="Zoom in"
             @click.stop="zoomIn"
@@ -91,8 +93,9 @@
                 y2="11"
               />
             </svg>
-          </button>
-          <button
+          </Button>
+          <Button
+            unstyled
             class="control-btn"
             title="Reset"
             @click.stop="resetZoom"
@@ -108,11 +111,12 @@
               <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
               <path d="M3 3v5h5" />
             </svg>
-          </button>
+          </Button>
         </div>
 
         <!-- Close button -->
-        <button
+        <Button
+          unstyled
           class="close-btn"
           title="Close (ESC)"
           @click="close"
@@ -138,7 +142,7 @@
               y2="18"
             />
           </svg>
-        </button>
+        </Button>
 
         <!-- File name -->
         <div
@@ -153,6 +157,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 
 interface Props {

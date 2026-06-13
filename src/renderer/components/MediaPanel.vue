@@ -1,141 +1,127 @@
 <template>
-  <Transition name="media-panel">
+  <div
+    v-show="visible"
+    class="media-panel"
+    :class="`mode-${mode}`"
+  >
     <div
-      v-if="visible"
-      class="media-panel"
-      :class="`mode-${mode}`"
+      v-if="mode !== 'main'"
+      class="media-nav"
+      :class="{ 'media-nav-tasks': activeNav === 'tasks' }"
     >
-      <div
-        v-if="mode !== 'main'"
-        class="media-nav"
-        :class="{ 'media-nav-tasks': activeNav === 'tasks' }"
-      >
-        <div class="traffic-lights-space" />
-        <div class="nav-items">
-          <button
-            v-for="item in navItems"
-            :key="item.id"
-            class="nav-item"
-            :class="{ active: activeNav === item.id }"
-            @click="activeNav = item.id"
+      <div class="traffic-lights-space" />
+      <div class="nav-items">
+        <Button
+          v-for="item in navItems"
+          :key="item.id"
+          unstyled
+          class="nav-item"
+          :class="{ active: activeNav === item.id }"
+          @click="activeNav = item.id"
+        >
+          <component
+            :is="item.icon"
+            :size="20"
+            :stroke-width="1.5"
+            class="nav-icon"
+          />
+          <span class="nav-label">{{ item.label }}</span>
+          <span
+            v-if="item.id === 'media' && mediaStore.assets.length > 0"
+            class="nav-badge"
           >
-            <component
-              :is="item.icon"
-              :size="20"
-              :stroke-width="1.5"
-              class="nav-icon"
+            {{ mediaStore.assets.length }}
+          </span>
+        </Button>
+      </div>
+      <div class="nav-footer">
+        <Button
+          unstyled
+          class="nav-close-btn"
+          title="Close panel"
+          @click="$emit('close')"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line
+              x1="19"
+              y1="12"
+              x2="5"
+              y2="12"
             />
-            <span class="nav-label">{{ item.label }}</span>
-            <span
-              v-if="item.id === 'media' && mediaStore.assets.length > 0"
-              class="nav-badge"
-            >
-              {{ mediaStore.assets.length }}
-            </span>
-          </button>
+            <polyline points="12 19 5 12 12 5" />
+          </svg>
+        </Button>
+      </div>
+    </div>
+
+    <div class="media-content">
+      <div
+        v-if="mode === 'main'"
+        class="main-panel-header"
+      >
+        <div class="main-panel-title">
+          <component
+            :is="currentNavItem?.icon"
+            :size="17"
+            :stroke-width="1.8"
+          />
+          <span>{{ currentNavItem?.label }}</span>
         </div>
-        <div class="nav-footer">
-          <button
-            class="nav-close-btn"
-            title="Close panel"
-            @click="$emit('close')"
+        <Button
+          unstyled
+          class="main-panel-close"
+          native-type="button"
+          title="Close"
+          @click="$emit('close')"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <line
-                x1="19"
-                y1="12"
-                x2="5"
-                y2="12"
-              />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
-        </div>
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </Button>
       </div>
 
-      <div class="media-content">
-        <div
-          v-if="mode === 'main'"
-          class="main-panel-header"
+      <div class="workspace-panel-views">
+        <section
+          v-if="hasMountedNav('media')"
+          v-show="activeNav === 'media'"
+          class="workspace-panel-view workspace-panel-media-view"
+          data-workspace-panel-view="media"
         >
-          <div class="main-panel-title">
-            <component
-              :is="currentNavItem?.icon"
-              :size="17"
-              :stroke-width="1.8"
-            />
-            <span>{{ currentNavItem?.label }}</span>
-          </div>
-          <button
-            class="main-panel-close"
-            type="button"
-            title="Close"
-            @click="$emit('close')"
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-            >
-              <path d="M18 6 6 18" />
-              <path d="m6 6 12 12" />
-            </svg>
-          </button>
-        </div>
-
-        <template v-if="activeNav === 'media'">
-          <div class="content-header">
-            <input
+          <div class="content-header media-filter-bar">
+            <FilterSearchInput
               v-model="searchQuery"
-              type="text"
-              class="search-input"
+              class="media-search-control"
               :placeholder="searchPlaceholder"
-            >
-
-            <div class="kind-tabs">
-              <button
-                v-for="tab in kindTabs"
-                :key="tab.id"
-                class="kind-tab"
-                :class="{ active: activeKind === tab.id }"
-                @click="activeKind = tab.id"
-              >
-                <component
-                  :is="tab.icon"
-                  :size="15"
-                  :stroke-width="1.8"
-                />
-                <span>{{ tab.label }}</span>
-                <span class="tab-count">{{ tabCount(tab.id) }}</span>
-              </button>
-            </div>
-
-            <div
-              v-if="activeKind === 'image'"
-              class="source-tabs"
-            >
-              <button
-                v-for="filter in sourceFilters"
-                :key="filter.id"
-                class="source-tab"
-                :class="{ active: activeSource === filter.id }"
-                @click="activeSource = filter.id"
-              >
-                {{ filter.label }}
-                <span>{{ sourceCount(filter.id) }}</span>
-              </button>
-            </div>
+              label="Search media"
+            />
+            <FilterSelect
+              v-model="activeKindModel"
+              class="media-kind-filter"
+              :options="kindFilterOptions"
+              label="Filter by media type"
+            />
+            <FilterSelect
+              v-model="activeSourceModel"
+              class="media-source-filter"
+              :options="sourceFilterOptions"
+              label="Filter by source"
+            />
           </div>
 
           <div class="content-body">
@@ -143,8 +129,7 @@
               v-if="mediaStore.isLoading || mediaStore.isRebuilding"
               class="loading-state"
             >
-              <div class="loading-spinner" />
-              <span>{{ mediaStore.isRebuilding ? 'Indexing media...' : 'Loading media...' }}</span>
+              <LoadingSpinner :label="mediaLoadingLabel" />
             </div>
 
             <template v-else-if="activeKind === 'image' && filteredAssets.length > 0">
@@ -158,7 +143,11 @@
                   <img
                     :src="mediaStore.getImageUrl(asset)"
                     :alt="assetTitle(asset)"
+                    :width="asset.width"
+                    :height="asset.height"
                     class="media-thumbnail"
+                    loading="lazy"
+                    decoding="async"
                   >
                   <div class="media-source-badge">
                     {{ sourceLabel(asset.source) }}
@@ -169,7 +158,8 @@
                     </p>
                     <span class="media-meta">{{ assetSubtitle(asset) }}</span>
                   </div>
-                  <button
+                  <Button
+                    unstyled
                     class="delete-btn"
                     title="Remove from library"
                     @click.stop="removeAsset(asset.id)"
@@ -185,7 +175,7 @@
                       <polyline points="3 6 5 6 21 6" />
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
                     </svg>
-                  </button>
+                  </Button>
                 </div>
               </div>
             </template>
@@ -213,13 +203,14 @@
                     <span class="asset-row-meta">{{ assetSubtitle(asset) }}</span>
                   </span>
                   <span class="asset-source">{{ sourceLabel(asset.source) }}</span>
-                  <button
+                  <Button
+                    unstyled
                     class="row-remove"
                     title="Remove from library"
                     @click.stop="removeAsset(asset.id)"
                   >
                     Remove
-                  </button>
+                  </Button>
                 </div>
               </div>
             </template>
@@ -252,13 +243,14 @@
             >
               <div class="drawer-header">
                 <span class="drawer-title">Media Details</span>
-                <button
+                <Button
+                  unstyled
                   class="drawer-close-btn"
-                  type="button"
+                  native-type="button"
                   @click="selectedAsset = null"
                 >
                   <X :size="16" />
-                </button>
+                </Button>
               </div>
 
               <div class="drawer-scroll-body">
@@ -325,9 +317,10 @@
                     <h4 class="section-heading">
                       AI Generation Prompt
                     </h4>
-                    <button
+                    <Button
+                      unstyled
                       class="copy-text-btn"
-                      type="button"
+                      native-type="button"
                       title="Copy prompt"
                       @click="copyPromptText(selectedAsset.metadata.prompt)"
                     >
@@ -336,7 +329,7 @@
                         :size="13"
                       />
                       <span>{{ copiedPrompt ? 'Copied' : 'Copy' }}</span>
-                    </button>
+                    </Button>
                   </div>
                   <div class="prompt-text-card">
                     {{ selectedAsset.metadata.prompt }}
@@ -351,9 +344,10 @@
                     <h4 class="section-heading">
                       Revised Prompt
                     </h4>
-                    <button
+                    <Button
+                      unstyled
                       class="copy-text-btn"
-                      type="button"
+                      native-type="button"
                       title="Copy revised prompt"
                       @click="copyRevisedPromptText(selectedAsset.metadata.revisedPrompt)"
                     >
@@ -362,7 +356,7 @@
                         :size="13"
                       />
                       <span>{{ copiedRevisedPrompt ? 'Copied' : 'Copy' }}</span>
-                    </button>
+                    </Button>
                   </div>
                   <div class="prompt-text-card">
                     {{ selectedAsset.metadata.revisedPrompt }}
@@ -372,19 +366,21 @@
 
               <!-- Drawer Footer Actions -->
               <div class="drawer-footer">
-                <button
+                <Button
                   v-if="selectedAsset.filePath"
+                  unstyled
                   class="drawer-action-btn secondary"
-                  type="button"
+                  native-type="button"
                   @click="openFileExternally(selectedAsset)"
                 >
                   <ExternalLink :size="14" />
                   <span>Open Externally</span>
-                </button>
-                <button
+                </Button>
+                <Button
                   v-if="selectedAsset.filePath"
+                  unstyled
                   class="drawer-action-btn secondary"
-                  type="button"
+                  native-type="button"
                   @click="copyFilePath(selectedAsset.filePath)"
                 >
                   <component
@@ -392,33 +388,69 @@
                     :size="14"
                   />
                   <span>Copy Path</span>
-                </button>
-                <button
+                </Button>
+                <Button
+                  unstyled
                   class="drawer-action-btn danger"
-                  type="button"
+                  native-type="button"
                   @click="deleteAssetFromDrawer(selectedAsset)"
                 >
                   <Trash2 :size="14" />
                   <span>Delete</span>
-                </button>
+                </Button>
               </div>
             </div>
           </Transition>
-        </template>
+        </section>
 
-        <MemoryPanelContent v-else-if="activeNav === 'memory'" />
-        <AgentsPanelContent v-else-if="activeNav === 'agents'" />
-        <SchedulerPanelContent v-else-if="activeNav === 'tasks'" />
-        <ArchivedChatsContent v-else-if="activeNav === 'archive'" />
+        <section
+          v-if="hasMountedNav('memory')"
+          v-show="activeNav === 'memory'"
+          class="workspace-panel-view workspace-panel-content-view"
+          data-workspace-panel-view="memory"
+        >
+          <MemoryPanelContent />
+        </section>
+
+        <section
+          v-if="hasMountedNav('agents')"
+          v-show="activeNav === 'agents'"
+          class="workspace-panel-view workspace-panel-content-view"
+          data-workspace-panel-view="agents"
+        >
+          <AgentsPanelContent />
+        </section>
+
+        <section
+          v-if="hasMountedNav('tasks')"
+          v-show="activeNav === 'tasks'"
+          class="workspace-panel-view workspace-panel-content-view"
+          data-workspace-panel-view="tasks"
+        >
+          <SchedulerPanelContent />
+        </section>
+
+        <section
+          v-if="hasMountedNav('archive')"
+          v-show="activeNav === 'archive'"
+          class="workspace-panel-view workspace-panel-content-view"
+          data-workspace-panel-view="archive"
+        >
+          <ArchivedChatsContent />
+        </section>
       </div>
     </div>
-  </Transition>
+  </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vue'
 import AgentsPanelContent from './AgentsPanelContent.vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
+import FilterSearchInput from './common/FilterSearchInput.vue'
+import FilterSelect from './common/FilterSelect.vue'
+import LoadingSpinner from './common/LoadingSpinner.vue'
 import MemoryPanelContent from './memory/MemoryPanelContent.vue'
 import SchedulerPanelContent from './SchedulerPanelContent.vue'
 import { useMediaStore } from '@/stores/media'
@@ -439,11 +471,15 @@ import {
   Check,
 } from 'lucide-vue-next'
 
+type WorkspacePanelNav = 'media' | 'memory' | 'agents' | 'tasks' | 'archive'
+
 const props = withDefaults(defineProps<{
   visible: boolean
-  initialTab?: string
+  activeTab?: WorkspacePanelNav | null
+  initialTab?: WorkspacePanelNav | ''
   mode?: 'side' | 'main'
 }>(), {
+  activeTab: null,
   initialTab: '',
   mode: 'side',
 })
@@ -456,11 +492,12 @@ type SourceFilter = 'all' | 'user-upload' | 'ai-generated'
 
 const mediaStore = useMediaStore()
 const searchQuery = ref('')
-const activeNav = ref(props.initialTab || 'media')
+const activeNav = ref<WorkspacePanelNav>(normalizeNav(props.activeTab ?? props.initialTab) ?? 'media')
+const mountedNavs = ref<WorkspacePanelNav[]>([activeNav.value])
 const activeKind = ref<MediaKind>('image')
 const activeSource = ref<SourceFilter>('all')
 
-const navItems = [
+const navItems: Array<{ id: WorkspacePanelNav; label: string; icon: Component }> = [
   { id: 'media', label: 'Media', icon: Images },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'agents', label: 'Agents', icon: Bot },
@@ -470,28 +507,63 @@ const navItems = [
 
 const currentNavItem = computed(() => navItems.find(item => item.id === activeNav.value) || navItems[0])
 
-const kindTabs: Array<{ id: MediaKind; label: string; icon: Component }> = [
-  { id: 'image', label: 'Images', icon: Images },
-  { id: 'file', label: 'Files', icon: FileText },
-  { id: 'audio', label: 'Audio', icon: Music },
-  { id: 'video', label: 'Video', icon: Video },
-]
+function normalizeNav(tab?: string | null): WorkspacePanelNav | null {
+  if (tab === 'media' || tab === 'memory' || tab === 'agents' || tab === 'tasks' || tab === 'archive') {
+    return tab
+  }
+  return null
+}
 
-const sourceFilters: Array<{ id: SourceFilter; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'user-upload', label: 'Uploaded' },
-  { id: 'ai-generated', label: 'Generated' },
-]
+function markNavMounted(nav: WorkspacePanelNav) {
+  if (!mountedNavs.value.includes(nav)) {
+    mountedNavs.value = [...mountedNavs.value, nav]
+  }
+}
+
+function hasMountedNav(nav: WorkspacePanelNav): boolean {
+  return mountedNavs.value.includes(nav)
+}
 
 const searchPlaceholder = computed(() =>
-  activeKind.value === 'image' ? 'Search images...' : 'Search media...'
+  activeKind.value === 'image' ? 'Search images' : 'Search media'
 )
+
+const mediaLoadingLabel = computed(() =>
+  mediaStore.isRebuilding ? 'Indexing media...' : 'Loading media...'
+)
+
+const activeKindModel = computed({
+  get: () => activeKind.value,
+  set: (value: string) => {
+    activeKind.value = value as MediaKind
+  },
+})
+
+const activeSourceModel = computed({
+  get: () => activeSource.value,
+  set: (value: string) => {
+    activeSource.value = value as SourceFilter
+  },
+})
+
+const kindFilterOptions = computed<Array<{ value: MediaKind; label: string; icon: Component }>>(() => [
+  { value: 'image', label: 'Images', icon: Images },
+  { value: 'file', label: 'Files', icon: FileText },
+  { value: 'audio', label: 'Audio', icon: Music },
+  { value: 'video', label: 'Video', icon: Video },
+])
+
+const sourceFilterOptions = computed<Array<{ value: SourceFilter; label: string }>>(() => [
+  { value: 'all', label: 'All' },
+  { value: 'user-upload', label: 'Uploaded' },
+  { value: 'ai-generated', label: 'Generated' },
+])
 
 const filteredAssets = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   return mediaStore.assets
     .filter(asset => matchesActiveKind(asset))
-    .filter(asset => activeKind.value !== 'image' || activeSource.value === 'all' || asset.source === activeSource.value)
+    .filter(asset => activeSource.value === 'all' || asset.source === activeSource.value)
     .filter(asset => {
       if (!query) return true
       return [
@@ -507,38 +579,33 @@ const filteredAssets = computed(() => {
 })
 
 const emptyTitle = computed(() => {
-  if (activeKind.value !== 'image') return `No ${activeKind.value} assets yet`
+  const sourcePrefix = activeSource.value === 'all' ? '' : `${sourceLabel(activeSource.value).toLowerCase()} `
+  if (activeKind.value !== 'image') return `No ${sourcePrefix}${activeKind.value} assets yet`
   if (activeSource.value === 'user-upload') return 'No uploaded images yet'
   if (activeSource.value === 'ai-generated') return 'No generated images yet'
   return 'No images yet'
 })
 
 const emptyHint = computed(() => {
-  if (activeKind.value !== 'image') return 'Files attached in chat will appear here'
+  if (activeKind.value !== 'image') return 'Attached media that matches these filters will appear here'
   if (activeSource.value === 'user-upload') return 'Images you paste or attach in chat will appear here'
   if (activeSource.value === 'ai-generated') return 'AI-generated images will appear here'
   return 'Uploaded and AI-generated images will appear here'
 })
 
-function sourceCount(source: SourceFilter): number {
-  return mediaStore.images.filter(asset => source === 'all' || asset.source === source).length
+function matchesActiveKind(asset: MediaAsset): boolean {
+  return matchesKind(asset, activeKind.value)
 }
 
-function matchesActiveKind(asset: MediaAsset): boolean {
-  if (activeKind.value === 'file') {
+function matchesKind(asset: MediaAsset, kind: MediaKind): boolean {
+  if (kind === 'file') {
     return asset.kind === 'file' || asset.kind === 'document'
   }
-  return asset.kind === activeKind.value
+  return asset.kind === kind
 }
 
-function tabCount(kind: MediaKind): number {
-  if (kind === 'file') {
-    return mediaStore.kindCounts.file + mediaStore.kindCounts.document
-  }
-  return mediaStore.kindCounts[kind]
-}
-
-function sourceLabel(source: MediaSource): string {
+function sourceLabel(source: MediaSource | SourceFilter): string {
+  if (source === 'all') return 'All'
   if (source === 'user-upload') return 'Uploaded'
   if (source === 'ai-generated') return 'Generated'
   if (source === 'tool-output') return 'Tool'
@@ -639,6 +706,11 @@ watch([activeNav, activeKind, activeSource], () => {
   selectedAsset.value = null
 })
 
+watch(activeNav, markNavMounted, {
+  immediate: true,
+  flush: 'sync',
+})
+
 async function refreshMedia(rebuild = false) {
   await mediaStore.loadMedia({ rebuild })
 }
@@ -646,29 +718,39 @@ async function refreshMedia(rebuild = false) {
 let unsubscribe: (() => void) | null = null
 
 onMounted(async () => {
-  if (props.visible) {
-    await refreshMedia(true)
-  }
-
   unsubscribe = window.electronAPI.onImageGenerated(async () => {
     await refreshMedia()
   })
 })
 
 watch(
-  () => props.visible,
-  async (visible) => {
-    if (visible) {
-      await refreshMedia(true)
-    }
+  () => props.activeTab,
+  (tab) => {
+    const nav = normalizeNav(tab)
+    if (nav) activeNav.value = nav
   },
+  { flush: 'sync' },
 )
 
 watch(
   () => props.initialTab,
   (tab) => {
-    if (tab) activeNav.value = tab
+    if (props.activeTab) return
+    const nav = normalizeNav(tab)
+    if (nav) activeNav.value = nav
   },
+  { flush: 'sync' },
+)
+
+watch(
+  [() => props.visible, activeNav],
+  async ([visible, nav], previous) => {
+    const [wasVisible, previousNav] = previous ?? []
+    if (visible && nav === 'media' && (!wasVisible || previousNav !== 'media')) {
+      await refreshMedia(true)
+    }
+  },
+  { immediate: true },
 )
 
 onUnmounted(() => {
@@ -679,6 +761,9 @@ onUnmounted(() => {
 <style scoped>
 .media-panel {
   width: 560px;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
   flex-shrink: 0;
   display: flex;
   background: var(--ui-surface-panel-bg, var(--ui-surface-app-bg, var(--bg)));
@@ -688,13 +773,17 @@ onUnmounted(() => {
 .media-panel.mode-main {
   flex: 1 1 auto;
   width: auto;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
   background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
 }
 
 .media-nav {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   border-right: 1px solid var(--ui-border-default-border, var(--border));
   box-shadow:
@@ -800,13 +889,38 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 }
 
 .media-content {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
   padding: 12px;
   padding-top: 0;
   position: relative;
+}
+
+.workspace-panel-views {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-panel-view {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-panel-media-view,
+.workspace-panel-content-view {
+  display: flex;
+  flex-direction: column;
 }
 
 .mode-main .media-content {
@@ -819,7 +933,7 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 12px 0 14px;
+  padding: 0 12px 0 176px;
   border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 62%, transparent);
   background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
   -webkit-app-region: drag;
@@ -859,123 +973,70 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 }
 
 .content-header {
+  position: relative;
+  z-index: calc(var(--z-dropdown, 1000) + 5);
   padding: 16px 4px 12px;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
-.search-input {
+.media-search-control {
+  flex: 1 1 190px;
+  width: auto;
+  min-width: min(190px, 100%);
+  max-width: 240px;
+}
+
+.media-kind-filter {
+  flex: 0 1 142px;
+  min-width: 120px;
+}
+
+.media-source-filter {
+  flex: 0 1 136px;
+  min-width: 120px;
+}
+
+.mode-side .media-search-control {
+  flex: 1 1 100%;
   width: 100%;
-  padding: 9px 12px;
-  font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+  max-width: none;
 }
 
-.search-input:focus {
-  outline: none;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03), 0 0 0 1px var(--ui-accent-primary-fg, var(--accent));
-}
-
-.search-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.kind-tabs,
-.source-tabs {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--ui-state-hover-bg, var(--hover));
-  padding: 3px;
-  border-radius: 8px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
-  width: fit-content;
-}
-
-.kind-tab,
-.source-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 0 12px;
-  border: none;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
-  border-radius: 6px;
-  font-weight: 500;
-  font-size: 11.5px;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.kind-tab:hover,
-.source-tab:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
-}
-
-.kind-tab.active,
-.source-tab.active {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(0, 0, 0, 0.03);
-}
-
-.tab-count,
-.source-tab span {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 12%, transparent);
-  color: var(--ui-text-muted-fg, var(--muted));
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-}
-
-.kind-tab.active .tab-count,
-.source-tab.active span {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+.mode-side .media-kind-filter,
+.mode-side .media-source-filter {
+  flex: 1 1 calc(50% - 4px);
+  min-width: 0;
 }
 
 .content-body {
-  flex: 1;
+  position: relative;
+  z-index: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   padding: 0 4px;
 }
 
 .loading-state,
 .empty-state {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 20px;
+  min-height: 0;
+  padding: 20px;
   text-align: center;
   color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.loading-spinner {
-  width: 26px;
-  height: 26px;
-  border: 2px solid var(--ui-border-default-border, var(--border));
-  border-top-color: var(--ui-accent-primary-fg, var(--accent));
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin-bottom: 12px;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 .empty-icon {
@@ -997,10 +1058,14 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 }
 
 .media-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 12px;
+  column-width: 138px;
+  column-gap: 12px;
+  line-height: 0;
   padding-bottom: 16px;
+}
+
+.mode-main .media-grid {
+  column-width: 168px;
 }
 
 /* Inline Media Inspector Drawer Styling */
@@ -1247,10 +1312,15 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 
 .media-item {
   position: relative;
-  aspect-ratio: 1;
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 12px;
+  line-height: normal;
   border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
+  break-inside: avoid;
+  transform: translateZ(0);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   background: var(--ui-state-hover-bg, var(--hover));
 }
@@ -1262,8 +1332,9 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 
 .media-thumbnail {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  display: block;
+  object-fit: contain;
 }
 
 .media-source-badge {
@@ -1404,28 +1475,6 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 .row-remove:hover {
   color: var(--ui-status-danger-fg, var(--danger, #dc2626));
   border-color: currentColor;
-}
-
-.media-panel-enter-active,
-.media-panel-leave-active {
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
-}
-
-.media-panel-enter-from,
-.media-panel-leave-to {
-  width: 0;
-}
-
-.media-panel.mode-main.media-panel-enter-active,
-.media-panel.mode-main.media-panel-leave-active {
-  transition: opacity 0.12s ease;
-}
-
-.media-panel.mode-main.media-panel-enter-from,
-.media-panel.mode-main.media-panel-leave-to {
-  width: auto;
-  opacity: 0;
 }
 
 /* Clean up duplicate headers inside embedded workspace content */

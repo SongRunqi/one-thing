@@ -18,7 +18,7 @@ import { GlobTool } from './glob.js'
 import { GrepTool } from './grep.js'
 import { FindTool } from './find.js'
 import { LsTool } from './ls.js'
-import { SkillTool } from './skill.js'
+import { SkillManageTool, SkillTool, SkillsListTool, SkillViewTool } from './skill.js'
 import { FartTool } from './fart.js'
 import { VariableTool } from './variable.js'
 import { TodoPlanTool } from './todo-plan.js'
@@ -54,6 +54,9 @@ const builtinTools = [
 
 // Async tools that need initialization with context
 export const asyncBuiltinTools = [
+  SkillsListTool,
+  SkillViewTool,
+  SkillManageTool,
   SkillTool,
 ]
 

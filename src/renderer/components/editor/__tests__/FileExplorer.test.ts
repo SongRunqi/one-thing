@@ -58,4 +58,19 @@ describe('FileExplorer', () => {
 
     expect(revealPath).toHaveBeenCalledWith('/repo/src/index.ts')
   })
+
+  it('emits file selections for the workbench to open as top-level tabs', async () => {
+    const wrapper = mount(FileExplorer, {
+      attachTo: document.body,
+      props: {
+        root: '/repo',
+        activePath: '',
+      },
+    })
+
+    wrapper.findComponent(TreeDirectory).vm.$emit('openFile', '/repo/src/index.ts')
+    await nextTick()
+
+    expect(wrapper.emitted('openFile')).toEqual([['/repo/src/index.ts']])
+  })
 })

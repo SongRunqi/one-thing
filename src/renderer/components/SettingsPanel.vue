@@ -23,7 +23,8 @@
           </svg>
           <h2>Settings</h2>
         </div>
-        <button
+        <Button
+          unstyled
           class="close-btn"
           title="Close settings"
           @click="handleClose"
@@ -38,7 +39,7 @@
           >
             <path d="M18 6L6 18M6 6l12 12" />
           </svg>
-        </button>
+        </Button>
       </header>
 
       <!-- Unsaved Changes Dialog -->
@@ -62,7 +63,8 @@
 
       <!-- Tab Navigation -->
       <div class="tabs-nav">
-        <button
+        <Button
+          unstyled
           :class="['tab-btn', { active: activeTab === 'general' }]"
           @click="activeTab = 'general'"
         >
@@ -82,8 +84,9 @@
             <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
           </svg>
           General
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           :class="['tab-btn', { active: activeTab === 'ai' }]"
           @click="activeTab = 'ai'"
         >
@@ -107,8 +110,9 @@
             />
           </svg>
           AI Provider
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           :class="['tab-btn', { active: activeTab === 'editor' }]"
           @click="activeTab = 'editor'"
         >
@@ -124,8 +128,9 @@
             <polyline points="13 2 13 9 20 9" />
           </svg>
           Editor
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           :class="['tab-btn', { active: activeTab === 'tools' }]"
           @click="activeTab = 'tools'"
         >
@@ -140,8 +145,9 @@
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
           </svg>
           Tools
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           :class="['tab-btn', { active: activeTab === 'network' }]"
           @click="activeTab = 'network'"
         >
@@ -161,8 +167,9 @@
             <path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20" />
           </svg>
           Network
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           :class="['tab-btn', { active: activeTab === 'shortcuts' }]"
           @click="activeTab = 'shortcuts'"
         >
@@ -184,8 +191,9 @@
             <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10" />
           </svg>
           Shortcuts
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           :class="['tab-btn', { active: activeTab === 'mcp' }]"
           @click="activeTab = 'mcp'"
         >
@@ -219,8 +227,9 @@
             />
           </svg>
           MCP
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           :class="['tab-btn', { active: activeTab === 'skills' }]"
           @click="activeTab = 'skills'"
         >
@@ -237,8 +246,9 @@
             <path d="M2 12l10 5 10-5" />
           </svg>
           Skills
-        </button>
-        <button
+        </Button>
+        <Button
+          unstyled
           :class="['tab-btn', { active: activeTab === 'plugins' }]"
           @click="activeTab = 'plugins'"
         >
@@ -260,7 +270,7 @@
             />
           </svg>
           Plugins
-        </button>
+        </Button>
       </div>
 
       <div class="settings-content">
@@ -350,6 +360,7 @@
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, toRaw, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import type { AppSettings, AIProvider, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'

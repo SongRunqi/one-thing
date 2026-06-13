@@ -68,29 +68,6 @@ function step(overrides: Partial<Step> = {}): Step {
   }
 }
 
-function writeStep(overrides: Partial<Step> = {}, toolOverrides: Partial<ToolCall> = {}): Step {
-  const writeToolCall: ToolCall = {
-    id: 'write1',
-    toolId: 'write',
-    toolName: 'write',
-    arguments: {},
-    status: 'input-streaming',
-    timestamp: 0,
-    ...toolOverrides,
-  }
-
-  return {
-    id: 'write-step',
-    type: 'tool-call',
-    title: 'write',
-    status: 'running',
-    timestamp: 0,
-    toolCallId: writeToolCall.id,
-    toolCall: writeToolCall,
-    ...overrides,
-  }
-}
-
 function imageAttachment(overrides: Partial<MessageAttachment> = {}): MessageAttachment {
   return {
     id: 'img1',
@@ -230,7 +207,7 @@ describe('stream end visual stability', () => {
     expect(groups).toHaveLength(1)
     expect(groups[0].classes()).toContain('edit')
     expect(groups[0].find('.group-header-anchor > .group-header').exists()).toBe(true)
-    expect(wrapper.find('.group-summary-text').text()).toBe('2 edits')
+    expect(wrapper.find('.group-summary-text').text()).toBe('Edit 2 files')
     expect(wrapper.find('.operation-status-icon').exists()).toBe(true)
     expect(wrapper.find('.group-type-icon').exists()).toBe(false)
     expect(wrapper.find('.group-final-result').exists()).toBe(false)
@@ -292,19 +269,19 @@ describe('stream end visual stability', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('.workflow-group').classes()).toContain('collapsed')
+    expect(wrapper.find('.workflow-group').classes()).not.toContain('is-expanded')
     expect(wrapper.find('.group-timeline-tree').exists()).toBe(false)
 
     await wrapper.find('.group-header').trigger('click')
     await nextTick()
 
-    expect(wrapper.find('.workflow-group').classes()).toContain('expanded')
+    expect(wrapper.find('.workflow-group').classes()).toContain('is-expanded')
     expect(wrapper.find('.group-timeline-tree').exists()).toBe(true)
 
     await wrapper.find('.group-header').trigger('click')
     await nextTick()
 
-    expect(wrapper.find('.workflow-group').classes()).toContain('collapsed')
+    expect(wrapper.find('.workflow-group').classes()).not.toContain('is-expanded')
     expect(wrapper.find('.group-timeline-tree').exists()).toBe(false)
   })
 
@@ -337,9 +314,10 @@ describe('stream end visual stability', () => {
 
     const nodes = wrapper.findAll('.tree-node-row')
     expect(nodes).toHaveLength(2)
-    expect(nodes[0].find('.node-target').text()).toBe('Wrote a.ts')
+    expect(nodes[0].find('.node-target').attributes('aria-label')).toBe('Wrote a.ts')
     expect(nodes[0].find('.node-action').text().trim()).toBe('Wrote')
     expect(nodes[0].find('.node-target-name').text()).toBe('a.ts')
+    expect(nodes[0].find('.node-target-name').classes()).toContain('node-target-chip')
     expect(nodes[0].find('.node-target-name').classes()).toContain('file-link')
   })
 
@@ -376,7 +354,7 @@ describe('stream end visual stability', () => {
     expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
   })
 
-  it('auto-expands failed tool calls and shows failure summaries in groups', async () => {
+  it('shows failed tool summaries in groups without auto-expanding details', async () => {
     const wrapper = mount(StepsPanel, {
       props: {
         steps: [
@@ -416,11 +394,12 @@ describe('stream end visual stability', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('.workflow-group').classes()).toContain('expanded')
+    expect(wrapper.find('.workflow-group').classes()).toContain('is-expanded')
     expect(wrapper.findAll('.tree-node-row')).toHaveLength(2)
-    expect(wrapper.findAll('.operation-failure')).toHaveLength(2)
-    expect(wrapper.find('.operation-failure').text()).toContain('No matching text found')
-    expect(wrapper.findAll('.activity-inline-details')).toHaveLength(2)
+    expect(wrapper.findAll('.operation-failure')).toHaveLength(0)
+    expect(wrapper.findAll('.node-error-summary')).toHaveLength(2)
+    expect(wrapper.find('.node-error-summary').text()).toContain('No matching text found')
+    expect(wrapper.findAll('.activity-inline-details')).toHaveLength(0)
   })
 
   it('keeps expanded tool calls when reopening a group', async () => {
@@ -494,9 +473,10 @@ describe('stream end visual stability', () => {
 
     expect(wrapper.find('.operation-row').exists()).toBe(true)
     expect(wrapper.find('.workflow-group').exists()).toBe(false)
-    expect(wrapper.find('.operation-row .node-target').text()).toBe('Wrote a.ts')
+    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Wrote a.ts')
     expect(wrapper.find('.operation-row .node-action').text().trim()).toBe('Wrote')
     expect(wrapper.find('.operation-row .node-target-name').text()).toBe('a.ts')
+    expect(wrapper.find('.operation-row .node-target-name').classes()).toContain('node-target-chip')
 
     await wrapper.find('.operation-row .node-target').trigger('click')
     await nextTick()
@@ -533,10 +513,13 @@ describe('stream end visual stability', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('.operation-row .node-target').text()).toBe('Edit failed: app.ts')
-    expect(wrapper.find('.operation-failure').text()).toContain('No matching text found')
+    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Edit failed: app.ts')
+    expect(wrapper.find('.operation-row .node-action').text()).toBe('Edit failed:')
+    expect(wrapper.find('.operation-row .node-target-name').text()).toBe('app.ts')
+    expect(wrapper.find('.operation-failure').exists()).toBe(false)
+    expect(wrapper.find('.node-error-summary').text()).toContain('No matching text found')
     expect(wrapper.find('.group-final-result').exists()).toBe(false)
-    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
   })
 
   it('opens image attachments from base64 data and stops click bubbling', async () => {
@@ -599,6 +582,32 @@ describe('stream end visual stability', () => {
     const waiting = wrapper.find('.tool-loop-waiting')
     expect(waiting.exists()).toBe(true)
     expect(waiting.text()).toContain('Waiting')
+  })
+
+  it('summarizes inline thought headers from their reasoning content', async () => {
+    const wrapper = mount(MessageBubble, {
+      props: {
+        role: 'assistant',
+        content: '',
+        contentParts: [
+          { type: 'reasoning', content: 'Validate syntax and inspect the final diff. Then report the patch.', turnIndex: 1 },
+          { type: 'data-steps', turnIndex: 1 },
+          { type: 'reasoning', content: 'Run the Lua parser to catch any syntax errors before finishing.', turnIndex: 2 },
+        ],
+        steps: [step({ turnIndex: 1 })],
+        isStreaming: false,
+      },
+      global: { stubs: markdownStubs },
+    })
+
+    const headers = wrapper.findAll('.inline-reasoning-header')
+    const panels = wrapper.findAll('.inline-reasoning')
+    expect(panels).toHaveLength(2)
+    expect(panels[0].classes()).toContain('collapse-panel')
+    expect(headers).toHaveLength(2)
+    expect(headers[0].text()).toContain('Thought')
+    expect(headers[0].find('.inline-reasoning-summary-text').text()).toBe('Validate syntax and inspect the final diff.')
+    expect(headers[1].find('.inline-reasoning-summary-text').text()).toBe('Run the Lua parser to catch any syntax errors before finishing.')
   })
 
   it('hides opening waiting because MessageThinking owns that status', async () => {

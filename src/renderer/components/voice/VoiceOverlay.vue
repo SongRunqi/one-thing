@@ -17,9 +17,10 @@
           class="voice-error"
         >{{ voice.lastError }}</span>
       </div>
-      <button
+      <Button
+        unstyled
         class="voice-stop"
-        type="button"
+        native-type="button"
         :title="voice.lastError ? 'Dismiss' : 'Stop voice playback'"
         @click="handleOverlayAction"
       >
@@ -31,12 +32,13 @@
           v-else
           :size="14"
         />
-      </button>
+      </Button>
     </div>
   </Transition>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import { Volume2, X } from 'lucide-vue-next'
 import { useVoiceStore } from '@/stores/voice'

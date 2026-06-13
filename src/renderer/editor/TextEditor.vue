@@ -107,7 +107,10 @@ const hostRef = ref<HTMLElement | null>(null)
 let view: EditorView | null = null
 let resizeObserver: ResizeObserver | null = null
 let internalUpdate = false
+let editorUpdateInProgress = false
+let editorUpdateSettledScheduled = false
 let heightFrame: number | null = null
+const deferredEditorWork: Array<() => void> = []
 const compartments = createEditorCompartments()
 
 const effectiveSettings = computed(() => normalizeEditorSettings(props.settings))
@@ -192,57 +195,64 @@ function createExtensions() {
 }
 
 function handleViewUpdate(update: ViewUpdate) {
-  const selection = selectionFromState(update.state)
-  const value = update.state.doc.toString()
+  editorUpdateInProgress = true
+  try {
+    const selection = selectionFromState(update.state)
+    const value = update.state.doc.toString()
 
-  if (update.docChanged) {
-    internalUpdate = true
-    emit('update:modelValue', value)
-    nextTick(() => {
-      internalUpdate = false
-    })
-  }
+    if (update.docChanged) {
+      internalUpdate = true
+      emit('update:modelValue', value)
+      nextTick(() => {
+        internalUpdate = false
+      })
+    }
 
-  if (update.selectionSet) {
-    emit('selectionChange', selection)
-  }
+    if (update.selectionSet) {
+      emit('selectionChange', selection)
+    }
 
-  if (update.docChanged || update.selectionSet) {
-    emit('transaction', {
-      value,
-      selection,
-      docChanged: update.docChanged,
-      selectionChanged: update.selectionSet,
-    })
+    if (update.docChanged || update.selectionSet) {
+      emit('transaction', {
+        value,
+        selection,
+        docChanged: update.docChanged,
+        selectionChanged: update.selectionSet,
+      })
+    }
+  } finally {
+    scheduleEditorUpdateSettled()
   }
 }
 
 function reconfigureView() {
-  if (!view) return
-  const settings = effectiveSettings.value
-  view.dispatch({
-    effects: [
-      compartments.tabSize.reconfigure(tabSizeExtensions(settings.tabSize)),
-      compartments.readOnly.reconfigure(readOnlyExtensions(props.readOnly)),
-      compartments.theme.reconfigure(themeExtension(props.profile, props.spellcheck)),
-      compartments.selection.reconfigure(selectionExtensions(props.markdownLivePreview)),
-      compartments.wrapping.reconfigure(wrappingExtension(settings.lineWrapping)),
-      compartments.placeholder.reconfigure(placeholderExtensions(props.placeholder)),
-      compartments.language.reconfigure(languageExtensions(settings, props.language, props.path)),
-      compartments.completion.reconfigure(completionExtensions(settings.completionEnabled)),
-      compartments.markdownLivePreview.reconfigure(markdownLivePreviewExtension(
-        props.markdownLivePreview,
-        markdownLivePreviewOptions.value,
-      )),
-      compartments.promptCards.reconfigure(promptCardExtension({
-        prompts: props.promptRefs,
-        skills: props.skillRefs,
-        commands: props.commandRefs,
-      })),
-    ],
+  runEditorWork(() => {
+    if (!view) return
+    const settings = effectiveSettings.value
+    view.dispatch({
+      effects: [
+        compartments.tabSize.reconfigure(tabSizeExtensions(settings.tabSize)),
+        compartments.readOnly.reconfigure(readOnlyExtensions(props.readOnly)),
+        compartments.theme.reconfigure(themeExtension(props.profile, props.spellcheck)),
+        compartments.selection.reconfigure(selectionExtensions(props.markdownLivePreview)),
+        compartments.wrapping.reconfigure(wrappingExtension(settings.lineWrapping)),
+        compartments.placeholder.reconfigure(placeholderExtensions(props.placeholder)),
+        compartments.language.reconfigure(languageExtensions(settings, props.language, props.path)),
+        compartments.completion.reconfigure(completionExtensions(settings.completionEnabled)),
+        compartments.markdownLivePreview.reconfigure(markdownLivePreviewExtension(
+          props.markdownLivePreview,
+          markdownLivePreviewOptions.value,
+        )),
+        compartments.promptCards.reconfigure(promptCardExtension({
+          prompts: props.promptRefs,
+          skills: props.skillRefs,
+          commands: props.commandRefs,
+        })),
+      ],
+    })
+    view.contentDOM.setAttribute('spellcheck', props.spellcheck ? 'true' : 'false')
+    scheduleHeightChange()
   })
-  view.contentDOM.setAttribute('spellcheck', props.spellcheck ? 'true' : 'false')
-  scheduleHeightChange()
 }
 
 function getValue(): string {
@@ -257,24 +267,26 @@ function getSelectedText(): string {
 }
 
 function setValue(value: string, options: EditorSetValueOptions = {}) {
-  if (!view) return
-  const current = view.state.doc.toString()
-  if (current === value) return
-  const selection = getSelection()
-  const scrollTop = view.scrollDOM.scrollTop
-  const nextSelection = options.preserveSelection
-    ? {
-        anchor: Math.min(selection.from, value.length),
-        head: Math.min(selection.to, value.length),
-      }
-    : { anchor: value.length }
-  view.dispatch({
-    changes: { from: 0, to: current.length, insert: value },
-    selection: nextSelection,
+  runEditorWork(() => {
+    if (!view) return
+    const current = view.state.doc.toString()
+    if (current === value) return
+    const selection = getSelection()
+    const scrollTop = view.scrollDOM.scrollTop
+    const nextSelection = options.preserveSelection
+      ? {
+          anchor: Math.min(selection.from, value.length),
+          head: Math.min(selection.to, value.length),
+        }
+      : { anchor: value.length }
+    view.dispatch({
+      changes: { from: 0, to: current.length, insert: value },
+      selection: nextSelection,
+    })
+    if (options.preserveSelection) {
+      view.scrollDOM.scrollTop = scrollTop
+    }
   })
-  if (options.preserveSelection) {
-    view.scrollDOM.scrollTop = scrollTop
-  }
 }
 
 function getSelection(): EditorSelection {
@@ -282,26 +294,85 @@ function getSelection(): EditorSelection {
 }
 
 function setSelection(from: number, to = from) {
-  if (!view) return
-  const length = view.state.doc.length
-  const safeFrom = Math.max(0, Math.min(from, length))
-  const safeTo = Math.max(0, Math.min(to, length))
-  view.dispatch({
-    selection: { anchor: safeFrom, head: safeTo },
-    scrollIntoView: true,
+  runEditorWork(() => {
+    if (!view) return
+    const length = view.state.doc.length
+    const safeFrom = Math.max(0, Math.min(from, length))
+    const safeTo = Math.max(0, Math.min(to, length))
+    view.dispatch({
+      selection: { anchor: safeFrom, head: safeTo },
+      scrollIntoView: true,
+    })
   })
 }
 
 function replaceRange(from: number, to: number, text: string) {
-  if (!view) return
-  const length = view.state.doc.length
-  const safeFrom = Math.max(0, Math.min(from, length))
-  const safeTo = Math.max(safeFrom, Math.min(to, length))
-  view.dispatch({
-    changes: { from: safeFrom, to: safeTo, insert: text },
-    selection: { anchor: safeFrom + text.length },
-    scrollIntoView: true,
+  runEditorWork(() => {
+    if (!view) return
+    const length = view.state.doc.length
+    const safeFrom = Math.max(0, Math.min(from, length))
+    const safeTo = Math.max(safeFrom, Math.min(to, length))
+    view.dispatch({
+      changes: { from: safeFrom, to: safeTo, insert: text },
+      selection: { anchor: safeFrom + text.length },
+      scrollIntoView: true,
+    })
   })
+}
+
+function runEditorWork(work: () => void) {
+  if (!editorUpdateInProgress) {
+    try {
+      work()
+    } catch (error) {
+      if (isEditorUpdateInProgressError(error)) {
+        deferEditorWork(work)
+        return
+      }
+      throw error
+    }
+    return
+  }
+  deferEditorWork(work)
+}
+
+function deferEditorWork(work: () => void) {
+  deferredEditorWork.push(work)
+  scheduleEditorUpdateSettled()
+}
+
+function scheduleEditorUpdateSettled() {
+  if (editorUpdateSettledScheduled) return
+  editorUpdateSettledScheduled = true
+  queueMicrotask(() => {
+    editorUpdateSettledScheduled = false
+    editorUpdateInProgress = false
+    flushDeferredEditorWork()
+  })
+}
+
+function flushDeferredEditorWork() {
+  while (deferredEditorWork.length > 0 && !editorUpdateInProgress) {
+    const work = deferredEditorWork.shift()
+    if (!work) continue
+    try {
+      work()
+    } catch (error) {
+      if (isEditorUpdateInProgressError(error)) {
+        deferEditorWork(work)
+        break
+      }
+      throw error
+    }
+  }
+  if (deferredEditorWork.length > 0) {
+    scheduleEditorUpdateSettled()
+  }
+}
+
+function isEditorUpdateInProgressError(error: unknown): boolean {
+  return error instanceof Error
+    && error.message.includes('Calls to EditorView.update are not allowed while an update is in progress')
 }
 
 function scrollToTop() {
@@ -376,6 +447,8 @@ onBeforeUnmount(() => {
   }
   resizeObserver?.disconnect()
   resizeObserver = null
+  deferredEditorWork.length = 0
+  editorUpdateInProgress = false
   view?.destroy()
   view = null
 })

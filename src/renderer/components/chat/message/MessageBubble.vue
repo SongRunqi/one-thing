@@ -183,33 +183,35 @@
                 />
               </div>
               <!-- Inline reasoning parts that arrive after answer text -->
-              <div
+              <CollapsePanel
                 v-else-if="part.type === 'reasoning'"
                 class="inline-reasoning"
-                :class="{ expanded: isInlineReasoningExpanded(part, index) }"
+                :name="inlineReasoningKey(part, index)"
+                default-collapsed
+                :status="isStreaming ? 'streaming' : 'completed'"
+                :streaming="Boolean(isStreaming)"
+                variant="plain"
+                expand-icon-position="inline-end"
+                expand-icon-display="hover"
               >
-                <button
-                  class="inline-reasoning-header"
-                  @click="toggleInlineReasoning(part, index)"
-                >
-                  <span class="inline-reasoning-label">Thought</span>
-                  <svg
-                    class="inline-reasoning-icon"
-                    :class="{ expanded: isInlineReasoningExpanded(part, index) }"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                </button>
-                <div
-                  v-if="isInlineReasoningExpanded(part, index)"
-                  class="inline-reasoning-body"
-                >
+                <template #title>
+                  <div class="inline-reasoning-header">
+                    <span class="inline-reasoning-label">Thought</span>
+                    <span
+                      v-if="getInlineReasoningSummary(part)"
+                      class="inline-reasoning-summary"
+                      :title="getInlineReasoningSummary(part)"
+                    >
+                      <span
+                        class="inline-reasoning-summary-separator"
+                        aria-hidden="true"
+                      >·</span>
+                      <span class="inline-reasoning-summary-text">{{ getInlineReasoningSummary(part) }}</span>
+                    </span>
+                  </div>
+                </template>
+
+                <div class="inline-reasoning-body">
                   <div
                     class="inline-reasoning-content md-body"
                   >
@@ -226,7 +228,7 @@
                     />
                   </div>
                 </div>
-              </div>
+              </CollapsePanel>
               <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
               <StepsPanel
                 v-else-if="part.type === 'tool-call' && streamingOnlySteps(part.toolCalls).length > 0"
@@ -268,8 +270,9 @@
       </div>
 
       <!-- Collapse/Expand button (only for user messages) -->
-      <button
+      <Button
         v-if="role === 'user' && isOverflowing && !isStreaming"
+        unstyled
         class="collapse-toggle"
         :class="{ collapsed: isCollapsed }"
         @click.stop="toggleCollapse"
@@ -287,14 +290,16 @@
           <polyline points="6 9 12 15 18 9" />
         </svg>
         <span>{{ isCollapsed ? 'Show more' : 'Show less' }}</span>
-      </button>
+      </Button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/common/Button.vue'
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import StepsPanel from '../StepsPanel.vue'
+import CollapsePanel from '@/components/common/CollapsePanel.vue'
 import PromptReferenceCard from '@/components/common/PromptReferenceCard.vue'
 import StreamingMarkdown from './StreamingMarkdown.vue'
 import StaticMarkdown from './StaticMarkdown.vue'
@@ -336,7 +341,6 @@ const contentRef = ref<HTMLElement | null>(null)
 const editEditor = ref<EditorHandle | null>(null)
 const localEditContent = ref('')
 const isEditComposing = ref(false)
-const expandedInlineReasoning = ref<Set<string>>(new Set())
 const hasBeenStreaming = ref(Boolean(props.isStreaming))
 
 // Collapsible content
@@ -344,6 +348,7 @@ const MAX_COLLAPSED_HEIGHT = 300 // 最大折叠高度（像素）
 const isCollapsed = ref(true) // 默认折叠
 const isOverflowing = ref(false) // 内容是否超出最大高度
 let resizeObserver: ResizeObserver | null = null
+const INLINE_REASONING_SUMMARY_MAX = 88
 
 // ============ New overlay-based transition system ============
 
@@ -434,19 +439,36 @@ function hasVisibleReasoningContent(content: string): boolean {
   return /[\p{L}\p{N}\p{Script=Han}]/u.test(cleaned)
 }
 
-function isInlineReasoningExpanded(part: Extract<ContentPart, { type: 'reasoning' }>, index: number): boolean {
-  return expandedInlineReasoning.value.has(inlineReasoningKey(part, index))
+function getInlineReasoningSummary(part: Extract<ContentPart, { type: 'reasoning' }>): string {
+  return summarizeReasoningContent(part.content)
 }
 
-function toggleInlineReasoning(part: Extract<ContentPart, { type: 'reasoning' }>, index: number) {
-  const next = new Set(expandedInlineReasoning.value)
-  const key = inlineReasoningKey(part, index)
-  if (next.has(key)) {
-    next.delete(key)
-  } else {
-    next.add(key)
-  }
-  expandedInlineReasoning.value = next
+function summarizeReasoningContent(content: string): string {
+  const cleaned = cleanReasoningContent(content)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_~]{1,3}/g, '')
+    .replace(/\r\n/g, '\n')
+
+  const lines = cleaned
+    .split('\n')
+    .map(line => line
+      .replace(/^\s{0,3}(?:#{1,6}|[-*+]|>\s*|\d+[.)])\s+/u, '')
+      .trim())
+    .filter(line => hasVisibleReasoningContent(line))
+
+  const source = lines.join(' ').replace(/\s+/g, ' ').trim()
+  if (!source) return ''
+
+  const boundary = source.search(/[.!?。！？]/u)
+  const sentence = boundary >= 8 ? source.slice(0, boundary + 1) : source
+  return truncateReasoningSummary(sentence)
+}
+
+function truncateReasoningSummary(value: string): string {
+  if (value.length <= INLINE_REASONING_SUMMARY_MAX) return value
+  return `${value.slice(0, INLINE_REASONING_SUMMARY_MAX - 3).trimEnd()}...`
 }
 
 // Computed
@@ -763,7 +785,9 @@ html[data-theme='light'] .bubble.assistant ::selection {
   padding: 8px 12px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--type-meta-size);
+  font-weight: var(--type-meta-weight);
+  line-height: var(--type-meta-line-height);
   color: var(--ui-text-primary-fg, var(--text));
 }
 
@@ -792,7 +816,8 @@ html[data-theme='light'] .attachment-file {
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
   border-radius: 12px;
   margin-bottom: 8px;
-  font-size: 12px;
+  font-size: var(--type-caption-muted-size);
+  line-height: var(--type-caption-muted-line-height);
   color: var(--ui-accent-primary-fg, var(--accent));
 }
 
@@ -802,7 +827,7 @@ html[data-theme='light'] .attachment-file {
 }
 
 .skill-name {
-  font-weight: 500;
+  font-weight: var(--type-meta-weight);
 }
 
 /* Edit container */
@@ -812,7 +837,7 @@ html[data-theme='light'] .attachment-file {
 
 .edit-textarea {
   width: 100%;
-  --editor-font-size: var(--message-font-size, 15px);
+  --editor-font-size: var(--message-font-size, var(--type-chat-comfortable-size));
   min-height: 60px;
   padding: 12px;
 }
@@ -913,7 +938,9 @@ html[data-theme='light'] .image-generation-skeleton::after {
   background: transparent;
   border: none;
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 82%, transparent);
-  font-size: 12.5px;
+  font-size: var(--type-meta-size);
+  font-weight: var(--type-meta-weight);
+  line-height: var(--type-meta-line-height);
   cursor: pointer;
   transition: color 0.2s ease;
 }
@@ -942,15 +969,15 @@ html[data-theme='light'] .image-generation-skeleton::after {
   --md-code-copy-copied-icon-display: none;
   --md-code-copy-copied-check-display: block;
   --md-code-copy-copied-check-color: var(--ui-accent-primary-fg, var(--accent));
-  --md-code-line-height: 20px;
+  --md-code-line-height: var(--type-code-line-height-px);
   --md-code-plain-fg: var(--hg-syntax-plain-fg, var(--text-code-block));
 
   display: flow-root;
   word-wrap: break-word;
   overflow-wrap: anywhere;
   font-family: var(--font-body);
-  line-height: var(--message-line-height-px, 24px);
-  font-size: var(--message-font-size, 15px);
+  line-height: var(--message-line-height-px, var(--type-chat-comfortable-line-height-px));
+  font-size: var(--message-font-size, var(--type-chat-comfortable-size));
   color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 96%, var(--ui-text-secondary-fg, var(--text-secondary)) 4%);
   letter-spacing: 0;
 }
@@ -961,7 +988,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
 }
 
 .bubble.user .content {
-  line-height: var(--message-line-height-px, 24px);
+  line-height: var(--message-line-height-px, var(--type-chat-comfortable-line-height-px));
   color: var(--ui-message-user-fg, var(--text-user-primary));
 }
 
@@ -989,8 +1016,8 @@ html[data-theme='light'] .image-generation-skeleton::after {
   min-height: 30px;
   padding: 3px 0;
   color: var(--waiting-fg);
-  font-size: 13px;
-  line-height: 20px;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
 }
 
 .waiting-dot {
@@ -1004,8 +1031,8 @@ html[data-theme='light'] .image-generation-skeleton::after {
 }
 
 .waiting-text {
-  font-size: 13px;
-  font-weight: 560;
+  font-size: var(--type-body-strong-size);
+  font-weight: var(--type-body-strong-weight);
   color: currentColor;
 }
 
@@ -1027,6 +1054,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
   min-height: 22px;
   padding: 1px 0;
   background: transparent;
@@ -1034,7 +1062,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   color: color-mix(in srgb, var(--reasoning-fg) 88%, transparent);
   cursor: pointer;
   font: inherit;
-  line-height: 20px;
+  line-height: var(--type-meta-line-height);
 }
 
 .inline-reasoning-header:hover {
@@ -1042,17 +1070,36 @@ html[data-theme='light'] .image-generation-skeleton::after {
 }
 
 .inline-reasoning-label {
-  font-size: 12px;
-  font-weight: 560;
+  flex: 0 0 auto;
+  font-size: var(--type-meta-size);
+  font-weight: var(--type-meta-weight);
 }
 
-.inline-reasoning-icon {
-  color: currentColor;
-  transition: transform 0.2s ease;
+.inline-reasoning-summary {
+  min-width: 0;
+  max-width: min(72ch, 100%);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--reasoning-fg) 78%, transparent);
+  font-size: var(--type-meta-size);
+  font-weight: var(--type-meta-weight);
+  line-height: var(--type-meta-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.inline-reasoning-icon.expanded {
-  transform: rotate(180deg);
+.inline-reasoning-summary-separator {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--reasoning-fg) 52%, transparent);
+}
+
+.inline-reasoning-summary-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inline-reasoning-body {
@@ -1064,8 +1111,8 @@ html[data-theme='light'] .image-generation-skeleton::after {
   overflow: hidden;
   padding-left: 10px;
   border-left: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 34%, var(--ui-border-default-border, var(--border)));
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: var(--type-meta-size);
+  line-height: var(--type-meta-line-height);
   color: color-mix(in srgb, var(--reasoning-fg) 92%, var(--ui-text-primary-fg, var(--text-primary, var(--text))) 8%);
 }
 

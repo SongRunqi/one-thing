@@ -90,6 +90,45 @@ describe('useFollowScroll geometry helpers', () => {
     expect(scroller.scrollTop).toBe(760)
   })
 
+  it('does not pin content resize while layout maintenance is disabled', () => {
+    let resizeCallback: ResizeObserverCallback | null = null
+    class FakeResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback
+      }
+
+      observe() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver)
+
+    const maintainOnLayout = ref(false)
+    const scroller = {
+      scrollTop: 500,
+      scrollHeight: 1200,
+      clientHeight: 500,
+    }
+    const content = {}
+
+    useFollowScroll({
+      scroller: ref(scroller as HTMLElement),
+      content: ref(content as HTMLElement),
+      count: computed(() => 1),
+      maintainOnLayout,
+    })
+
+    scroller.scrollHeight = 1260
+    expect(resizeCallback).toBeTypeOf('function')
+    const triggerResize = resizeCallback as unknown as ResizeObserverCallback
+    triggerResize([] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+    expect(scroller.scrollTop).toBe(500)
+
+    maintainOnLayout.value = true
+    scroller.scrollHeight = 1300
+    triggerResize([] as unknown as ResizeObserverEntry[], {} as ResizeObserver)
+    expect(scroller.scrollTop).toBe(800)
+  })
+
   it('pins to bottom synchronously during content mutation while following', () => {
     let mutationCallback: MutationCallback | null = null
     class FakeResizeObserver {

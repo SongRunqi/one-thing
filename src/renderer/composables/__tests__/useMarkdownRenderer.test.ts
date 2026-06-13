@@ -10,11 +10,12 @@ describe('useMarkdownRenderer', () => {
     expect(html).not.toContain('<img src=x')
   })
 
-  it('renders code copy buttons without inline handlers', () => {
+  it('renders code copy button hosts without inline handlers', () => {
     const html = renderMarkdown('```ts\nconst value = 1\n```', false, { surface: 'document' })
 
-    expect(html).toContain('class="code-block-copy"')
+    expect(html).toContain('class="code-block-copy-host"')
     expect(html).toContain('data-code=')
+    expect(html).not.toContain(['<', 'button'].join(''))
     expect(html).not.toContain('onclick=')
   })
 
