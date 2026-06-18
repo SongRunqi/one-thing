@@ -1,33 +1,15 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Button from '../../common/Button.vue'
 import ChatWindow from '../ChatWindow.vue'
 
 const mocks = vi.hoisted(() => {
-  const isPathInsideRoot = (filePath: string, root: string) => {
-    const cleanPath = filePath.replace(/\/+$/, '')
-    const cleanRoot = root.replace(/\/+$/, '')
-    return cleanPath === cleanRoot || cleanPath.startsWith(`${cleanRoot}/`)
-  }
-
   return {
     chatPanelSave: vi.fn(),
     chatPanelRestore: vi.fn().mockResolvedValue(true),
     chatPanelScrollToMessage: vi.fn().mockResolvedValue(true),
-    editorWorkspace: {
-      workspace: {
-        activePath: '',
-        buffers: new Map<string, { dirty: boolean }>(),
-      },
-      isPathInsideRoot: vi.fn(isPathInsideRoot),
-      getDirtyBuffersForRoot: vi.fn(() => []),
-      closeWorkspace: vi.fn(),
-      closeFile: vi.fn(),
-      saveWorkspace: vi.fn().mockResolvedValue(true),
-      saveFile: vi.fn().mockResolvedValue(true),
-    },
     sessionsStore: {
       currentSessionId: 'session-1',
       sessions: [
@@ -42,13 +24,6 @@ const mocks = vi.hoisted(() => {
         mocks.sessionsStore.sessions.find((item: any) => item.id === sessionId),
       ),
     },
-    settingsStore: {
-      settings: {
-        general: {
-          maxFilePreviewKB: 256,
-        },
-      },
-    },
   }
 })
 
@@ -56,20 +31,12 @@ vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => mocks.sessionsStore,
 }))
 
-vi.mock('@/stores/settings', () => ({
-  useSettingsStore: () => mocks.settingsStore,
-}))
-
-vi.mock('@/composables/useEditorWorkspace', () => ({
-  useEditorWorkspace: () => mocks.editorWorkspace,
-}))
-
 vi.mock('../TabBar.vue', () => ({
   default: {
     name: 'TabBar',
     components: { Button },
-    props: ['tabs', 'activeTabId'],
-    emits: ['selectTab', 'closeTab'],
+    props: ['tabs', 'activeTabId', 'sidePanelAvailable', 'sidePanelCollapsed'],
+    emits: ['selectTab', 'closeTab', 'toggleSidePanel'],
     template: `
       <div class="mock-tab-bar">
         <Button
@@ -83,6 +50,14 @@ vi.mock('../TabBar.vue', () => ({
         >
           {{ tab.type }}
         </Button>
+        <Button
+          unstyled
+          class="mock-side-toggle"
+          :data-collapsed="String(!!sidePanelCollapsed)"
+          @click="$emit('toggleSidePanel')"
+        >
+          side
+        </Button>
       </div>
     `,
   },
@@ -92,7 +67,7 @@ vi.mock('../ChatPanel.vue', () => ({
   default: {
     name: 'ChatPanel',
     components: { Button },
-    props: ['sessionId', 'active', 'footerTarget'],
+    props: ['sessionId', 'active', 'footerTarget', 'outlineRailTarget'],
     emits: ['splitWithBranch', 'openFile'],
     setup(_props: unknown, { expose }: { expose: (exposed: Record<string, unknown>) => void }) {
       expose({
@@ -111,19 +86,27 @@ vi.mock('../ChatPanel.vue', () => ({
   },
 }))
 
-vi.mock('../FilePanel.vue', () => ({
+vi.mock('../ChatSidePanel.vue', () => ({
   default: {
-    name: 'FilePanel',
-    props: ['filePath', 'workspaceRoot', 'active'],
-    template: '<div class="mock-file-panel">{{ filePath }} {{ workspaceRoot }} {{ active }}</div>',
-  },
-}))
-
-vi.mock('../FileUnsavedDialog.vue', () => ({
-  default: {
-    name: 'FileUnsavedDialog',
-    props: ['visible', 'filePath'],
-    template: '<div v-if="visible" class="mock-unsaved-dialog">{{ filePath }}</div>',
+    name: 'ChatSidePanel',
+    props: ['sessionId', 'workingDirectory', 'collapsed'],
+    emits: ['outlineTargetChange'],
+    methods: {
+      emitOutlineTarget(this: any) {
+        this.$emit('outlineTargetChange', this.collapsed ? null : this.$el.querySelector('.mock-outline-target'))
+      },
+    },
+    mounted(this: any) {
+      this.emitOutlineTarget()
+    },
+    updated(this: any) {
+      this.emitOutlineTarget()
+    },
+    template: `
+      <aside class="mock-chat-side-panel" :data-collapsed="String(!!collapsed)">
+        <div v-if="!collapsed" class="mock-outline-target" />
+      </aside>
+    `,
   },
 }))
 
@@ -162,12 +145,51 @@ function installElectronAPI(activeTabIndex = 0) {
   })
 }
 
+let getRectSpy: ReturnType<typeof vi.spyOn> | null = null
+
+function installChatShell(width: number) {
+  getRectSpy?.mockRestore()
+  vi.stubGlobal('ResizeObserver', class ResizeObserver {
+    observe() {}
+    disconnect() {}
+  })
+  getRectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    right: width,
+    bottom: 800,
+    width,
+    height: 800,
+    toJSON: () => ({}),
+  } as DOMRect)
+}
+
+function installWideChatShell() {
+  installChatShell(1200)
+}
+
+function installNarrowChatShell() {
+  installChatShell(900)
+}
+
 describe('ChatWindow tab switching', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.editorWorkspace.workspace.activePath = ''
-    mocks.editorWorkspace.workspace.buffers.clear()
+    vi.stubGlobal('localStorage', {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    })
     installElectronAPI()
+    installWideChatShell()
+  })
+
+  afterEach(() => {
+    getRectSpy?.mockRestore()
+    getRectSpy = null
+    vi.unstubAllGlobals()
   })
 
   it('does not restore persisted workbench tabs into the chat window', async () => {
@@ -180,10 +202,9 @@ describe('ChatWindow tab switching', () => {
 
     const buttons = wrapper.findAll('.tab-button')
     expect(buttons.map(button => button.attributes('data-type'))).toEqual(['chat'])
-    expect(wrapper.find('.mock-file-panel').exists()).toBe(false)
   })
 
-  it('provides a footer region to host the chat composer', async () => {
+  it('provides a left-column footer region to host the chat composer', async () => {
     const wrapper = mount(ChatWindow, {
       props: {
         sessionId: 'session-1',
@@ -191,12 +212,80 @@ describe('ChatWindow tab switching', () => {
     })
     await settle()
 
-    const footer = wrapper.find('.layout-container-footer .chat-footer')
+    const footer = wrapper.find('.layout-container-main .chat-footer')
     const chatPanel = wrapper.findComponent({ name: 'ChatPanel' })
 
     expect(footer.exists()).toBe(true)
+    expect(wrapper.find('.layout-container-footer .chat-footer').exists()).toBe(false)
     expect(chatPanel.props('active')).toBe(true)
     expect(chatPanel.props('footerTarget')).toBe(footer.element)
+  })
+
+  it('passes the side panel outline target to ChatPanel on wide chat windows', async () => {
+    const wrapper = mount(ChatWindow, {
+      props: {
+        sessionId: 'session-1',
+      },
+    })
+    await settle()
+
+    const sidePanel = wrapper.find('.mock-chat-side-panel')
+    const outlineTarget = wrapper.find('.mock-outline-target')
+    const chatPanel = wrapper.findComponent({ name: 'ChatPanel' })
+
+    expect(sidePanel.exists()).toBe(true)
+    expect(outlineTarget.exists()).toBe(true)
+    expect(chatPanel.props('outlineRailTarget')).toBe(outlineTarget.element)
+  })
+
+  it('collapses the right side panel to zero width', async () => {
+    const wrapper = mount(ChatWindow, {
+      props: {
+        sessionId: 'session-1',
+      },
+    })
+    await settle()
+
+    await wrapper.find('.mock-side-toggle').trigger('click')
+    await settle()
+
+    const sidePanel = wrapper.find('.mock-chat-side-panel')
+    const sidebarRegion = wrapper.find('.layout-container-sidebar')
+    const containerStyle = wrapper.find('.layout-container').attributes('style')
+    const chatPanel = wrapper.findComponent({ name: 'ChatPanel' })
+
+    expect(containerStyle).toContain('--layout-container-sidebar-width: 0px')
+    expect(sidebarRegion.classes()).toContain('collapsed')
+    expect(sidePanel.attributes('data-collapsed')).toBe('true')
+    expect(chatPanel.props('outlineRailTarget')).toBeNull()
+  })
+
+  it('expands the right side panel from the persistent toggle on narrow chat windows', async () => {
+    vi.mocked(localStorage.getItem).mockReturnValue('true')
+    installNarrowChatShell()
+
+    const wrapper = mount(ChatWindow, {
+      props: {
+        sessionId: 'session-1',
+      },
+    })
+    await settle()
+
+    expect(wrapper.find('.mock-side-toggle').exists()).toBe(true)
+    expect(wrapper.find('.mock-chat-side-panel').exists()).toBe(false)
+
+    await wrapper.find('.mock-side-toggle').trigger('click')
+    await settle()
+
+    const sidePanel = wrapper.find('.mock-chat-side-panel')
+    const outlineTarget = wrapper.find('.mock-outline-target')
+    const containerStyle = wrapper.find('.layout-container').attributes('style')
+    const chatPanel = wrapper.findComponent({ name: 'ChatPanel' })
+
+    expect(containerStyle).toContain('--layout-container-sidebar-width: 268px')
+    expect(sidePanel.exists()).toBe(true)
+    expect(sidePanel.attributes('data-collapsed')).toBe('false')
+    expect(chatPanel.props('outlineRailTarget')).toBe(outlineTarget.element)
   })
 
   it('emits file opens for the app-level right workbench instead of creating a chat tab', async () => {
@@ -212,7 +301,6 @@ describe('ChatWindow tab switching', () => {
 
     expect(wrapper.emitted('openFile')).toEqual([['/repo/src/a.ts']])
     expect(wrapper.findAll('.tab-button').map(button => button.attributes('data-type'))).toEqual(['chat'])
-    expect(wrapper.find('.mock-file-panel').exists()).toBe(false)
     expect(mocks.chatPanelSave).not.toHaveBeenCalled()
     expect(mocks.chatPanelRestore).not.toHaveBeenCalled()
   })

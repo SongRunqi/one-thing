@@ -219,6 +219,12 @@
 	--accent-light: var(--fx-blue-100); /* Used by buttons and gradients */
 	--accent-rgb: 67, 133, 190;
 	--color-primary: var(--accent);
+	--color-primary-hover: var(--bg-btn-primary-hover, var(--accent-light, var(--accent-sub, var(--color-primary))));
+	--color-primary-bg: color-mix(in srgb, var(--color-primary) 10%, var(--color-neutral-base-fill, var(--bg-panel)));
+	--color-primary-bg-hover: color-mix(in srgb, var(--color-primary) 16%, var(--color-neutral-base-fill, var(--bg-panel)));
+	--color-primary-border: var(--border-accent, var(--border-input-focus, var(--color-primary)));
+	--color-primary-text: var(--color-primary);
+	--color-primary-light: var(--color-primary-bg);
 	--primary: var(--color-primary);
 	--color-primary-rgb: var(--accent-rgb);
 	--primary-rgb: var(--color-primary-rgb);
@@ -227,13 +233,29 @@
      Semantic Colors - Primary/Success/Warning/Danger/Info
      ============================================ */
 	--color-danger: var(--fx-red);
-	--color-danger-light: var(--fx-red-light);
+	--color-danger-bg: var(--fx-red-light);
+	--color-danger-bg-hover: color-mix(in srgb, var(--color-danger) 20%, var(--color-neutral-base-fill, var(--bg-panel)));
+	--color-danger-border: color-mix(in srgb, var(--color-danger) 34%, var(--color-neutral-base-border, var(--border-default)));
+	--color-danger-text: var(--color-danger);
+	--color-danger-light: var(--color-danger-bg);
 	--color-warning: var(--fx-orange);
-	--color-warning-light: var(--fx-orange-light);
+	--color-warning-bg: var(--fx-orange-light);
+	--color-warning-bg-hover: color-mix(in srgb, var(--color-warning) 20%, var(--color-neutral-base-fill, var(--bg-panel)));
+	--color-warning-border: color-mix(in srgb, var(--color-warning) 34%, var(--color-neutral-base-border, var(--border-default)));
+	--color-warning-text: var(--color-warning);
+	--color-warning-light: var(--color-warning-bg);
 	--color-success: var(--fx-green);
-	--color-success-light: var(--fx-green-light);
+	--color-success-bg: var(--fx-green-light);
+	--color-success-bg-hover: color-mix(in srgb, var(--color-success) 20%, var(--color-neutral-base-fill, var(--bg-panel)));
+	--color-success-border: color-mix(in srgb, var(--color-success) 34%, var(--color-neutral-base-border, var(--border-default)));
+	--color-success-text: var(--color-success);
+	--color-success-light: var(--color-success-bg);
 	--color-info: var(--fx-cyan);
-	--color-info-light: var(--fx-cyan-light);
+	--color-info-bg: var(--fx-cyan-light);
+	--color-info-bg-hover: color-mix(in srgb, var(--color-info) 20%, var(--color-neutral-base-fill, var(--bg-panel)));
+	--color-info-border: color-mix(in srgb, var(--color-info) 34%, var(--color-neutral-base-border, var(--border-default)));
+	--color-info-text: var(--color-info);
+	--color-info-light: var(--color-info-bg);
 
 	/* ============================================
      Neutral Color Semantics
@@ -319,7 +341,7 @@
      Runtime themes write concrete values; these aliases keep Flexoki fallback
      and early startup on the same semantic contract.
      ============================================ */
-	--ui-accent-primary-fg: var(--accent);
+	--ui-accent-primary-fg: var(--color-primary, var(--accent));
 	--ui-terminal-bg: #181818;
 	--ui-terminal-border: #2e2e2e;
 	--ui-terminal-header-bg: #222;
@@ -329,49 +351,49 @@
 	--ui-terminal-title: #888;
 	--ui-terminal-text: #e3e3e3;
 	--ui-terminal-command: #38bdf8;
-	--ui-accent-subtle-fg: var(--accent-sub);
-	--ui-surface-app-bg: var(--bg-app);
+	--ui-accent-subtle-fg: var(--color-primary-hover, var(--accent-sub));
+	--ui-surface-app-bg: var(--color-neutral-page-background, var(--bg-app));
 	--ui-surface-sidebar-bg: var(--bg-sidebar);
-	--ui-surface-chat-bg: var(--bg-chat);
-	--ui-surface-panel-bg: var(--bg-panel);
-	--ui-surface-elevated-bg: var(--bg-elevated);
-	--ui-surface-floating-bg: var(--bg-floating);
-	--ui-surface-overlay-bg: var(--bg-modal-overlay);
-	--ui-surface-menu-bg: var(--bg-menu);
-	--ui-surface-menu-hover-bg: var(--bg-menu-item-hover);
-	--ui-surface-input-bg: var(--bg-input);
-	--ui-surface-input-border: var(--border-input);
-	--ui-surface-input-focus-bg: var(--bg-input-focus);
-		--ui-surface-input-focus-border: var(--border-input-focus);
-		--ui-surface-input-focus-ring: var(--border-input-focus);
-		--ui-surface-code-inline-fg: var(--hg-syntax-plain-fg, var(--text-code-inline));
-		--ui-surface-code-inline-bg: var(--bg-code-inline);
-		--ui-surface-code-block-bg: var(--bg-code-block);
-	--ui-surface-code-block-border: var(--border-code);
-	--ui-surface-code-header-bg: var(--bg-code-header);
-	--ui-surface-code-block-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.8%, transparent),
+	--ui-surface-chat-bg: var(--color-neutral-base-background, var(--bg-chat));
+	--ui-surface-panel-bg: var(--color-neutral-base-fill, var(--bg-panel));
+	--ui-surface-elevated-bg: var(--color-neutral-dark-fill, var(--bg-elevated));
+	--ui-surface-floating-bg: var(--color-neutral-darker-fill, var(--bg-floating));
+	--ui-surface-overlay-bg: var(--color-neutral-overlay-background, var(--bg-modal-overlay));
+	--ui-surface-menu-bg: var(--color-neutral-darker-fill, var(--bg-menu));
+	--ui-surface-menu-hover-bg: var(--color-neutral-dark-fill, var(--bg-menu-item-hover));
+	--ui-surface-input-bg: var(--color-neutral-lighter-fill, var(--bg-input));
+	--ui-surface-input-border: var(--color-neutral-base-border, var(--border-input));
+	--ui-surface-input-focus-bg: var(--color-neutral-dark-fill, var(--bg-input-focus, var(--bg-input)));
+	--ui-surface-input-focus-border: var(--color-primary-border, var(--color-primary, var(--border-input-focus)));
+	--ui-surface-input-focus-ring: var(--color-primary-border, var(--color-primary, var(--border-input-focus)));
+	--ui-surface-code-inline-fg: var(--hg-syntax-plain-fg, var(--color-neutral-primary-text, var(--text-code-inline)));
+	--ui-surface-code-inline-bg: var(--color-neutral-dark-fill, var(--bg-code-inline));
+	--ui-surface-code-block-bg: var(--color-neutral-base-fill, var(--bg-code-block));
+	--ui-surface-code-block-border: var(--color-neutral-base-border, var(--border-code));
+	--ui-surface-code-header-bg: var(--color-neutral-dark-fill, var(--bg-code-header));
+	--ui-surface-code-block-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 1.8%, transparent),
 		0 1px 2px rgba(0, 0, 0, 0.025);
 	--ui-surface-chat-panel-shadow:
 		0 10px 28px rgba(0, 0, 0, 0.11),
 		0 1px 5px rgba(0, 0, 0, 0.055),
-		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.8%, transparent);
+		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 2.8%, transparent);
 	--ui-surface-composer-shadow:
 		0 1px 3px rgba(0, 0, 0, 0.03),
-		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.8%, transparent);
+		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 1.8%, transparent);
 	--ui-surface-composer-focus-shadow:
 		0 1px 5px rgba(0, 0, 0, 0.04),
-		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.2%, transparent),
-		0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 4.5%, transparent);
+		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 2.2%, transparent),
+		0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--color-primary-border, var(--color-primary, var(--accent))))) 4.5%, transparent);
 	--ui-surface-composer-queue-shadow: 0 -1px 6px rgba(0, 0, 0, 0.035);
 	--ui-surface-tooltip-bg: var(--bg-tooltip);
 	--ui-surface-tooltip-fg: var(--text-tooltip);
-	--ui-surface-tooltip-border: var(--border-strong, var(--border-default));
+	--ui-surface-tooltip-border: var(--color-neutral-dark-border, var(--border-strong, var(--border-default)));
 	--ui-surface-tooltip-shadow: var(--shadow-floating, 0 2px 8px rgba(0, 0, 0, 0.25));
-	--ui-surface-modal-bg: var(--bg-modal);
-	--ui-surface-modal-fg: var(--text-modal-body, var(--text-primary));
-	--ui-surface-note-bg: var(--color-warning-light);
-	--ui-surface-note-fg: var(--text-primary);
-	--ui-surface-note-border: var(--border-warning, var(--border-subtle));
+	--ui-surface-modal-bg: var(--color-neutral-darker-fill, var(--bg-modal));
+	--ui-surface-modal-fg: var(--color-neutral-regular-text, var(--text-modal-body, var(--text-primary)));
+	--ui-surface-note-bg: var(--color-warning-bg, var(--color-warning-light));
+	--ui-surface-note-fg: var(--color-neutral-primary-text, var(--text-primary));
+	--ui-surface-note-border: var(--color-warning-border, var(--color-warning, var(--border-warning, var(--border-subtle))));
 	--ui-surface-preview-light-bg: #ffffff;
 	--ui-surface-preview-light-fg: #111827;
 	--ui-surface-preview-light-border: #e5e7eb;
@@ -379,67 +401,71 @@
 	--ui-surface-preview-dark-fg: #f9fafb;
 	--ui-surface-preview-dark-border: #1f2937;
 
-	--ui-text-primary-fg: var(--text-primary);
-	--ui-text-secondary-fg: var(--text-secondary);
-	--ui-text-muted-fg: var(--text-muted);
-	--ui-text-faint-fg: var(--text-faint);
-	--ui-text-inverse-fg: var(--text-btn-primary, var(--bg-app));
-	--ui-text-placeholder-fg: var(--text-input-placeholder);
-	--ui-text-disabled-fg: var(--text-input-disabled, var(--text-btn-disabled));
-	--ui-text-link-fg: var(--text-link);
-	--ui-text-link-hover-fg: var(--text-link-hover);
+	--ui-text-primary-fg: var(--color-neutral-primary-text, var(--text-primary));
+	--ui-text-secondary-fg: var(--color-neutral-regular-text, var(--text-secondary));
+	--ui-text-muted-fg: var(--color-neutral-secondary-text, var(--text-muted));
+	--ui-text-faint-fg: var(--color-neutral-disabled-text, var(--text-faint));
+	--ui-text-inverse-fg: var(--color-neutral-page-background, var(--text-btn-primary, var(--bg-app)));
+	--ui-text-placeholder-fg: var(--color-neutral-placeholder-text, var(--text-input-placeholder));
+	--ui-text-disabled-fg: var(--color-neutral-disabled-text, var(--text-input-disabled, var(--text-btn-disabled)));
+	--ui-text-link-fg: var(--color-info, var(--text-link));
+	--ui-text-link-hover-fg: var(--color-info-text, var(--text-link-hover, var(--text-link, var(--color-info))));
 
-	--ui-border-default-border: var(--border-default);
-	--ui-border-subtle-border: var(--border-subtle);
-	--ui-border-strong-border: var(--border-strong);
-	--ui-border-divider-border: var(--border-divider);
-	--ui-border-focus-border: var(--border-input-focus);
-	--ui-border-focus-ring: var(--border-input-focus);
-	--ui-border-selected-border: var(--border-accent);
+	--ui-border-default-border: var(--color-neutral-base-border, var(--border-default));
+	--ui-border-subtle-border: var(--color-neutral-light-border, var(--border-subtle));
+	--ui-border-strong-border: var(--color-neutral-dark-border, var(--border-strong));
+	--ui-border-divider-border: var(--color-neutral-lighter-border, var(--border-divider));
+	--ui-border-focus-border: var(--color-primary-border, var(--color-primary, var(--border-input-focus)));
+	--ui-border-focus-ring: var(--color-primary-border, var(--color-primary, var(--border-input-focus)));
+	--ui-border-selected-border: var(--color-primary-border, var(--color-primary, var(--border-accent)));
 
-	--ui-action-primary-bg: var(--bg-btn-primary);
-	--ui-action-primary-fg: var(--text-btn-primary);
-	--ui-action-primary-border: var(--border-accent);
-	--ui-action-primary-hover-bg: var(--bg-btn-primary-hover);
-	--ui-action-secondary-bg: var(--bg-btn-secondary);
-	--ui-action-secondary-fg: var(--text-btn-secondary);
-	--ui-action-secondary-hover-bg: var(--bg-btn-secondary-hover);
+	--ui-action-primary-bg: var(--color-primary, var(--bg-btn-primary));
+	--ui-action-primary-fg: var(--color-neutral-page-background, var(--text-btn-primary, var(--bg-app)));
+	--ui-action-primary-border: var(--color-primary, var(--color-primary-border, var(--border-accent)));
+	--ui-action-primary-hover-bg: var(--color-primary-hover, var(--bg-btn-primary-hover, var(--accent-light, var(--color-primary))));
+	--ui-action-primary-hover-fg: var(--ui-action-primary-fg);
+	--ui-action-primary-hover-border: var(--ui-action-primary-border);
+	--ui-action-secondary-bg: var(--color-neutral-dark-fill, var(--bg-btn-secondary));
+	--ui-action-secondary-fg: var(--color-neutral-primary-text, var(--text-btn-secondary));
+	--ui-action-secondary-hover-bg: var(--color-neutral-darker-fill, var(--bg-btn-secondary-hover, var(--bg-btn-secondary)));
 	--ui-action-ghost-bg: var(--bg-btn-ghost);
-	--ui-action-ghost-fg: var(--text-btn-ghost);
-	--ui-action-ghost-hover-bg: var(--bg-btn-ghost-hover);
-	--ui-action-danger-bg: var(--bg-btn-danger);
-	--ui-action-danger-fg: var(--text-btn-danger);
-	--ui-action-danger-border: var(--border-error);
-	--ui-action-danger-hover-bg: var(--bg-btn-danger-hover);
-	--ui-action-disabled-bg: var(--bg-input-disabled);
-	--ui-action-disabled-fg: var(--text-btn-disabled);
-	--ui-action-primary-shadow: 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 22%, transparent);
-	--ui-action-primary-hover-shadow: 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 24%, transparent);
-	--ui-action-primary-active-shadow: 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 18%, transparent);
+	--ui-action-ghost-fg: var(--color-neutral-regular-text, var(--text-btn-ghost));
+	--ui-action-ghost-hover-bg: var(--color-neutral-dark-fill, var(--bg-btn-ghost-hover));
+	--ui-action-danger-bg: var(--color-danger, var(--bg-btn-danger));
+	--ui-action-danger-fg: var(--color-neutral-page-background, var(--text-btn-danger, var(--bg-app)));
+	--ui-action-danger-border: var(--color-danger-border, var(--color-danger, var(--border-error)));
+	--ui-action-danger-hover-bg: var(--color-danger-bg-hover, var(--bg-btn-danger-hover, var(--color-danger)));
+	--ui-action-danger-hover-fg: var(--ui-action-danger-fg);
+	--ui-action-danger-hover-border: var(--ui-action-danger-border);
+	--ui-action-disabled-bg: var(--color-neutral-lighter-fill, var(--bg-input-disabled));
+	--ui-action-disabled-fg: var(--color-neutral-disabled-text, var(--text-btn-disabled));
+	--ui-action-primary-shadow: 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--color-primary-text, var(--color-primary, var(--accent))))) 22%, transparent);
+	--ui-action-primary-hover-shadow: 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--color-primary-text, var(--color-primary, var(--accent))))) 24%, transparent);
+	--ui-action-primary-active-shadow: 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--color-primary-text, var(--color-primary, var(--accent))))) 18%, transparent);
 
 	--ui-state-hover-bg: var(--bg-hover);
 	--ui-state-active-bg: var(--bg-active);
-	--ui-state-selected-bg: var(--bg-selected);
-	--ui-state-selected-fg: var(--text-primary);
-	--ui-state-selected-border: var(--border-accent);
-	--ui-state-selected-hover-bg: var(--bg-selected-hover);
-	--ui-state-highlight-bg: var(--bg-highlight);
-	--ui-state-focus-border: var(--border-input-focus);
-	--ui-state-focus-ring: var(--border-input-focus);
-	--ui-state-disabled-bg: var(--bg-input-disabled);
-	--ui-state-disabled-fg: var(--text-input-disabled, var(--text-btn-disabled));
+	--ui-state-selected-bg: var(--color-primary-bg, var(--bg-selected));
+	--ui-state-selected-fg: var(--color-neutral-primary-text, var(--text-primary));
+	--ui-state-selected-border: var(--color-primary-border, var(--color-primary, var(--border-accent)));
+	--ui-state-selected-hover-bg: var(--color-primary-bg-hover, var(--bg-selected-hover, var(--color-primary-bg)));
+	--ui-state-highlight-bg: var(--color-warning-bg, var(--color-warning-light, var(--bg-highlight)));
+	--ui-state-focus-border: var(--color-primary-border, var(--color-primary, var(--border-input-focus)));
+	--ui-state-focus-ring: var(--color-primary-border, var(--color-primary, var(--border-input-focus)));
+	--ui-state-disabled-bg: var(--bg-input-disabled, var(--color-neutral-lighter-fill));
+	--ui-state-disabled-fg: var(--color-neutral-disabled-text, var(--text-input-disabled, var(--text-btn-disabled)));
 
 	--ui-sidebar-surface-bg: var(--ui-surface-sidebar-bg);
-	--ui-sidebar-surface-fg: var(--text-sidebar-item);
+	--ui-sidebar-surface-fg: var(--color-neutral-regular-text, var(--text-sidebar-item));
 	--ui-sidebar-surface-border: var(--ui-border-divider-border);
-	--ui-sidebar-item-fg: var(--text-sidebar-item);
+	--ui-sidebar-item-fg: var(--color-neutral-regular-text, var(--text-sidebar-item));
 	--ui-sidebar-item-hover-bg: var(--ui-state-hover-bg);
-	--ui-sidebar-item-hover-fg: var(--text-sidebar-item-hover);
+	--ui-sidebar-item-hover-fg: var(--color-neutral-primary-text, var(--text-sidebar-item-hover));
 	--ui-sidebar-item-active-bg: var(--ui-state-selected-bg);
 	--ui-sidebar-item-active-fg: var(--ui-text-primary-fg);
 	--ui-sidebar-item-active-border: var(--ui-border-selected-border);
-	--ui-sidebar-item-muted-fg: var(--text-sidebar-muted);
-	--ui-sidebar-header-fg: var(--text-sidebar-title);
+	--ui-sidebar-item-muted-fg: var(--color-neutral-secondary-text, var(--text-sidebar-muted));
+	--ui-sidebar-header-fg: var(--color-neutral-primary-text, var(--text-sidebar-title));
 	--ui-sidebar-action-fg: color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg)) 88%, transparent);
 	--ui-sidebar-action-hover-bg: var(--ui-state-hover-bg);
 	--ui-sidebar-action-hover-fg: var(--ui-text-primary-fg);
@@ -452,7 +478,7 @@
 	--ui-tab-bar-item-fg: var(--ui-text-muted-fg);
 	--ui-tab-bar-item-hover-bg: color-mix(in srgb, var(--ui-surface-elevated-bg) 28%, transparent);
 	--ui-tab-bar-item-hover-fg: var(--ui-text-primary-fg);
-	--ui-tab-bar-item-active-bg: color-mix(in srgb, var(--ui-surface-elevated-bg) 54%, transparent);
+	--ui-tab-bar-item-active-bg: var(--ui-state-selected-bg);
 	--ui-tab-bar-item-active-fg: var(--ui-text-primary-fg);
 	--ui-tab-bar-item-active-border: transparent;
 	--ui-tab-bar-action-fg: var(--ui-text-muted-fg);
@@ -462,21 +488,26 @@
 	--ui-tab-bar-danger-bg: var(--ui-status-danger-bg);
 	--ui-tab-bar-danger-fg: var(--ui-status-danger-fg);
 
-	--ui-status-danger-fg: var(--text-error, var(--color-danger));
-	--ui-status-danger-bg: var(--color-danger-light);
-	--ui-status-danger-border: var(--border-error);
-	--ui-status-warning-fg: var(--text-warning, var(--color-warning));
-	--ui-status-warning-bg: var(--color-warning-light);
-	--ui-status-warning-border: var(--border-warning);
-	--ui-status-success-fg: var(--text-success, var(--color-success));
-	--ui-status-success-bg: var(--color-success-light);
-	--ui-status-success-border: var(--border-success);
-	--ui-status-info-fg: var(--text-info, var(--color-info));
-	--ui-status-info-bg: var(--color-info-light);
-	--ui-status-danger-ring-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
+	--ui-status-danger-fg: var(--color-danger-text, var(--color-danger, var(--text-error)));
+	--ui-status-danger-bg: var(--color-danger-bg, var(--color-danger-light, var(--bg-message-error)));
+	--ui-status-danger-border: var(--color-danger-border, var(--color-danger, var(--border-error)));
+	--ui-status-danger-on-fg: var(--color-neutral-basic-white);
+	--ui-status-warning-fg: var(--color-warning-text, var(--color-warning, var(--text-warning)));
+	--ui-status-warning-bg: var(--color-warning-bg, var(--color-warning-light, var(--bg-highlight)));
+	--ui-status-warning-border: var(--color-warning-border, var(--color-warning, var(--border-warning)));
+	--ui-status-warning-on-fg: var(--color-neutral-basic-black);
+	--ui-status-success-fg: var(--color-success-text, var(--color-success, var(--text-success)));
+	--ui-status-success-bg: var(--color-success-bg, var(--color-success-light));
+	--ui-status-success-border: var(--color-success-border, var(--color-success, var(--border-success)));
+	--ui-status-success-on-fg: var(--color-neutral-basic-white);
+	--ui-status-info-fg: var(--color-info-text, var(--color-info, var(--text-info)));
+	--ui-status-info-bg: var(--color-info-bg, var(--color-info-light));
+	--ui-status-info-border: var(--color-info-border, var(--color-info, var(--border-accent)));
+	--ui-status-info-on-fg: var(--color-neutral-basic-black);
+	--ui-status-danger-ring-shadow: 0 0 0 4px var(--ui-status-danger-bg, transparent);
 
 	--ui-message-user-bg: var(--bg-message-user);
-	--ui-message-user-fg: var(--text-user-primary, var(--text-primary));
+	--ui-message-user-fg: var(--color-neutral-primary-text, var(--text-user-primary, var(--text-primary)));
 	--ui-message-user-border: var(--border-message-user);
 	--ui-message-user-solid-bg: var(--bg-message-user-solid);
 	--ui-message-surface-shadow: var(--shadow);
@@ -488,44 +519,44 @@
 		--ui-content-media-shadow: var(--ui-message-media-shadow);
 		--ui-content-media-hover-shadow: var(--ui-message-media-hover-shadow);
 		--ui-message-assistant-bg: var(--bg-message-ai);
-	--ui-message-assistant-fg: var(--text-ai-primary);
-	--ui-message-assistant-border: var(--border-message);
+	--ui-message-assistant-fg: var(--color-neutral-primary-text, var(--text-ai-primary));
+	--ui-message-assistant-border: var(--color-neutral-light-border, var(--border-message));
 	--ui-message-system-bg: var(--bg-message-system);
-	--ui-message-system-fg: var(--text-system, var(--text-secondary));
-	--ui-message-error-bg: var(--bg-message-error);
-	--ui-message-error-fg: var(--text-error, var(--color-danger));
-	--ui-message-error-border: var(--border-error);
+	--ui-message-system-fg: var(--color-neutral-regular-text, var(--text-system, var(--text-secondary)));
+	--ui-message-error-bg: var(--color-danger-bg, var(--color-danger-light, var(--bg-message-error)));
+	--ui-message-error-fg: var(--color-danger-text, var(--color-danger, var(--text-error)));
+	--ui-message-error-border: var(--color-danger-border, var(--color-danger, var(--border-error)));
 	--ui-message-hover-bg: var(--bg-message-hover);
-	--ui-message-thinking-fg: var(--text-ai-thinking);
+	--ui-message-thinking-fg: var(--color-neutral-secondary-text);
 
-	--ui-tool-surface-bg: var(--bg-tool-call);
-	--ui-tool-surface-border: var(--border-subtle);
-	--ui-tool-surface-hover-bg: var(--bg-tool-call-hover);
+	--ui-tool-surface-bg: var(--color-neutral-dark-fill, var(--bg-tool-call, var(--color-neutral-base-fill)));
+	--ui-tool-surface-border: var(--color-neutral-light-border, var(--border-subtle));
+	--ui-tool-surface-hover-bg: var(--color-neutral-darker-fill, var(--bg-tool-call-hover, var(--bg-tool-call, var(--color-neutral-dark-fill))));
 	--ui-tool-surface-subtle-bg: color-mix(
 		in srgb,
-		var(--ui-tool-text-fg, var(--text-primary)) 3%,
+		var(--ui-tool-text-fg, var(--color-neutral-primary-text, var(--text-primary))) 3%,
 		var(--ui-tool-surface-bg, var(--bg-tool-call))
 	);
-	--ui-tool-result-bg: var(--bg-tool-result);
-	--ui-tool-result-fg: var(--text-tool-result);
-	--ui-tool-error-bg: var(--bg-tool-error, var(--color-danger-light));
-	--ui-tool-error-fg: var(--text-tool-error, var(--color-danger));
-	--ui-tool-success-bg: var(--bg-tool-success, var(--color-success-light));
-	--ui-tool-text-fg: var(--text-tool-name, var(--text-primary));
-	--ui-tool-text-muted-fg: var(--text-tool-args, var(--text-muted));
-	--ui-tool-text-faint-fg: var(--text-tool-label, var(--text-faint));
-	--ui-tool-accent-fg: var(--accent);
-	--ui-tool-accent-on-fg: var(--bg-app);
-	--ui-tool-success-text-fg: var(--color-success);
-	--ui-tool-danger-text-fg: var(--color-danger);
-	--ui-tool-border-border: var(--border-subtle);
+	--ui-tool-result-bg: var(--color-neutral-base-fill, var(--bg-tool-result));
+	--ui-tool-result-fg: var(--color-neutral-regular-text, var(--text-tool-result));
+	--ui-tool-error-bg: var(--color-danger-bg, var(--color-danger-light, var(--bg-tool-error)));
+	--ui-tool-error-fg: var(--color-danger-text, var(--color-danger, var(--text-tool-error)));
+	--ui-tool-success-bg: var(--color-success-bg, var(--color-success-light, var(--bg-tool-success)));
+	--ui-tool-text-fg: var(--color-neutral-primary-text, var(--text-tool-name, var(--text-primary)));
+	--ui-tool-text-muted-fg: var(--color-neutral-secondary-text, var(--text-tool-args, var(--text-muted)));
+	--ui-tool-text-faint-fg: var(--color-neutral-disabled-text, var(--text-tool-label, var(--text-faint)));
+	--ui-tool-accent-fg: var(--color-primary, var(--accent));
+	--ui-tool-accent-on-fg: var(--color-neutral-page-background, var(--bg-app));
+	--ui-tool-success-text-fg: var(--color-success-text, var(--color-success, var(--text-success)));
+	--ui-tool-danger-text-fg: var(--color-danger-text, var(--color-danger, var(--text-error)));
+	--ui-tool-border-border: var(--color-neutral-light-border, var(--border-subtle));
 
-	--ui-editor-text-fg: var(--text-input);
-	--ui-editor-text-bg: var(--bg-input);
-	--ui-editor-text-border: var(--border-input);
-	--ui-editor-placeholder-fg: var(--text-input-placeholder);
+	--ui-editor-text-fg: var(--color-neutral-primary-text, var(--text-input));
+	--ui-editor-text-bg: var(--color-neutral-lighter-fill, var(--bg-input));
+	--ui-editor-text-border: var(--color-neutral-base-border, var(--border-input));
+	--ui-editor-placeholder-fg: var(--color-neutral-placeholder-text, var(--text-input-placeholder));
 	--ui-editor-caret-fg: var(--editor-caret);
-	--ui-editor-selection-bg: var(--bg-selected);
+	--ui-editor-selection-bg: var(--color-primary-bg, var(--bg-selected));
 }
 
 html[data-typography-density="comfortable"] {

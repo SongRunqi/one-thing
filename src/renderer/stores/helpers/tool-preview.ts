@@ -146,6 +146,7 @@ function formatArgsSummary(toolCall: ToolCall): string {
       return formatVariablePreview(args)
     }
 
+    case 'todo':
     case 'todo_plan': {
       const action = String(args.action || '')
       const target = String(args.title || args.id || args.scope || 'todos')
@@ -162,12 +163,6 @@ function formatArgsSummary(toolCall: ToolCall): string {
       const action = String(args.action || 'list')
       const path = args.path as string | undefined
       return path ? `${action} ${shortenPath(path, 42)}` : action
-    }
-
-    case 'skill': {
-      const action = String(args.action || 'list')
-      const name = String(args.name || args.query || '')
-      return name ? `${action} ${name}` : action
     }
 
     case 'mcp_search':

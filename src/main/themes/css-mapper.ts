@@ -21,6 +21,12 @@ export const CSS_VAR_MAP: Record<string, string[]> = {
   // Accent Colors
   // ============================================
   'primary': ['--color-primary', '--primary'],
+  'primaryHover': ['--color-primary-hover'],
+  'primaryBg': ['--color-primary-bg'],
+  'primaryBgHover': ['--color-primary-bg-hover'],
+  'primaryBorder': ['--color-primary-border'],
+  'primaryText': ['--color-primary-text'],
+  'primaryLight': ['--color-primary-light'],
   'accent': ['--accent', '--accent-main'],
   'accentMain': ['--accent-main'],
   'accentSub': ['--accent-sub'],
@@ -225,12 +231,28 @@ export const CSS_VAR_MAP: Record<string, string[]> = {
   // Semantic Colors
   // ============================================
   'color.danger': ['--color-danger', '--danger'],
+  'color.dangerBg': ['--color-danger-bg'],
+  'color.dangerBgHover': ['--color-danger-bg-hover'],
+  'color.dangerBorder': ['--color-danger-border'],
+  'color.dangerText': ['--color-danger-text'],
   'color.dangerLight': ['--color-danger-light'],
   'color.warning': ['--color-warning'],
+  'color.warningBg': ['--color-warning-bg'],
+  'color.warningBgHover': ['--color-warning-bg-hover'],
+  'color.warningBorder': ['--color-warning-border'],
+  'color.warningText': ['--color-warning-text'],
   'color.warningLight': ['--color-warning-light'],
   'color.success': ['--color-success'],
+  'color.successBg': ['--color-success-bg'],
+  'color.successBgHover': ['--color-success-bg-hover'],
+  'color.successBorder': ['--color-success-border'],
+  'color.successText': ['--color-success-text'],
   'color.successLight': ['--color-success-light'],
   'color.info': ['--color-info'],
+  'color.infoBg': ['--color-info-bg'],
+  'color.infoBgHover': ['--color-info-bg-hover'],
+  'color.infoBorder': ['--color-info-border'],
+  'color.infoText': ['--color-info-text'],
   'color.infoLight': ['--color-info-light'],
 
   // ============================================
@@ -480,6 +502,69 @@ const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleF
   'ui.sidebar.border': {
     border: ['--border-sidebar'],
   },
+  'ui.category.1.icon': {
+    fg: ['--ui-category-1-icon'],
+  },
+  'ui.category.1.badgeBg': {
+    bg: ['--ui-category-1-badge-bg'],
+  },
+  'ui.category.1.badgeText': {
+    fg: ['--ui-category-1-badge-text'],
+  },
+  'ui.category.2.icon': {
+    fg: ['--ui-category-2-icon'],
+  },
+  'ui.category.2.badgeBg': {
+    bg: ['--ui-category-2-badge-bg'],
+  },
+  'ui.category.2.badgeText': {
+    fg: ['--ui-category-2-badge-text'],
+  },
+  'ui.category.3.icon': {
+    fg: ['--ui-category-3-icon'],
+  },
+  'ui.category.3.badgeBg': {
+    bg: ['--ui-category-3-badge-bg'],
+  },
+  'ui.category.3.badgeText': {
+    fg: ['--ui-category-3-badge-text'],
+  },
+  'ui.category.4.icon': {
+    fg: ['--ui-category-4-icon'],
+  },
+  'ui.category.4.badgeBg': {
+    bg: ['--ui-category-4-badge-bg'],
+  },
+  'ui.category.4.badgeText': {
+    fg: ['--ui-category-4-badge-text'],
+  },
+  'ui.category.5.icon': {
+    fg: ['--ui-category-5-icon'],
+  },
+  'ui.category.5.badgeBg': {
+    bg: ['--ui-category-5-badge-bg'],
+  },
+  'ui.category.5.badgeText': {
+    fg: ['--ui-category-5-badge-text'],
+  },
+  'ui.category.6.icon': {
+    fg: ['--ui-category-6-icon'],
+  },
+  'ui.category.6.badgeBg': {
+    bg: ['--ui-category-6-badge-bg'],
+  },
+  'ui.category.6.badgeText': {
+    fg: ['--ui-category-6-badge-text'],
+  },
+  'ui.category.7.icon': {
+    fg: ['--ui-category-7-icon'],
+  },
+  'ui.category.7.badgeBg': {
+    bg: ['--ui-category-7-badge-bg'],
+  },
+  'ui.category.7.badgeText': {
+    fg: ['--ui-category-7-badge-text'],
+  },
   'ui.tabBar.surface': {
     bg: ['--tab-bar-bg'],
   },
@@ -510,23 +595,24 @@ const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleF
     bg: ['--tab-danger-bg'],
   },
   'ui.status.danger': {
-    fg: ['--color-danger', '--danger', '--text-error'],
+    fg: ['--text-error'],
     bg: ['--color-danger-light'],
     border: ['--border-error'],
   },
   'ui.status.warning': {
-    fg: ['--color-warning', '--text-warning'],
+    fg: ['--text-warning'],
     bg: ['--color-warning-light'],
     border: ['--border-warning'],
   },
   'ui.status.success': {
-    fg: ['--color-success', '--text-success'],
+    fg: ['--text-success'],
     bg: ['--color-success-light'],
     border: ['--border-success'],
   },
   'ui.status.info': {
-    fg: ['--color-info', '--text-info'],
+    fg: ['--text-info'],
     bg: ['--color-info-light'],
+    border: ['--border-info'],
   },
   'ui.message.user': {
     bg: ['--bg-message-user', '--user-bubble', '--gradient-user-bubble'],

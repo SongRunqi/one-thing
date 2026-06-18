@@ -88,8 +88,8 @@ describe('CollapsePanel', () => {
         expandIconPosition: 'start',
       },
       slots: {
-        icon: ({ expanded }) => h('span', { class: 'custom-icon' }, expanded ? '-' : '+'),
-        title: ({ title }) => h('span', { class: 'custom-title' }, `${title}: src/main.ts`),
+        icon: ({ expanded }: { expanded: boolean }) => h('span', { class: 'custom-icon' }, expanded ? '-' : '+'),
+        title: ({ title }: { title: string }) => h('span', { class: 'custom-title' }, `${title}: src/main.ts`),
         default: '<div />',
       },
     })
@@ -183,7 +183,7 @@ describe('CollapsePanel', () => {
         title: 'Read file',
       },
       slots: {
-        'title-icon': ({ hovered }) => h('span', { class: 'title-file-icon' }, hovered ? 'open' : 'file'),
+        'title-icon': ({ hovered }: { hovered: boolean }) => h('span', { class: 'title-file-icon' }, hovered ? 'open' : 'file'),
         default: '<div />',
       },
     })
@@ -229,8 +229,8 @@ describe('CollapsePanel', () => {
         expandIconDisplay: 'hover',
       },
       slots: {
-        icon: ({ hovered, headerHovered }) => h('span', { class: 'hover-icon' }, hovered ? 'icon' : headerHovered ? 'header' : 'idle'),
-        actions: ({ hovered }) => h('button', { class: 'title-action', type: 'button' }, hovered ? 'hovered' : 'idle'),
+        icon: ({ hovered, headerHovered }: { hovered: boolean; headerHovered: boolean }) => h('span', { class: 'hover-icon' }, hovered ? 'icon' : headerHovered ? 'header' : 'idle'),
+        actions: ({ hovered }: { hovered: boolean }) => h('button', { class: 'title-action', type: 'button' }, hovered ? 'hovered' : 'idle'),
         default: '<div />',
       },
     })
@@ -319,7 +319,7 @@ describe('CollapsePanel', () => {
         status: 'pending',
       },
       slots: {
-        title: ({ title, status }) => h('span', { class: 'dynamic-title' }, `${title} · ${status}`),
+        title: ({ title, status }: { title: string; status?: string }) => h('span', { class: 'dynamic-title' }, `${title} · ${status}`),
         default: '<div />',
       },
     })
@@ -424,8 +424,8 @@ describe('CollapseGroup', () => {
         title: 'Tool calls',
       },
       slots: {
-        'title-icon': ({ hovered }) => h('span', { class: 'group-title-icon' }, hovered ? 'active' : 'idle'),
-        title: ({ title, hovered }) => h('span', { class: 'group-title-copy' }, `${title}${hovered ? ' hovered' : ''}`),
+        'title-icon': ({ hovered }: { hovered: boolean }) => h('span', { class: 'group-title-icon' }, hovered ? 'active' : 'idle'),
+        title: ({ title, hovered }: { title: string; hovered: boolean }) => h('span', { class: 'group-title-copy' }, `${title}${hovered ? ' hovered' : ''}`),
         default: '<div class="group-body" />',
       },
     })
@@ -664,7 +664,7 @@ describe('NestedCollapseGroup', () => {
         ],
       },
       slots: {
-        title: ({ item, depth }) => h('span', { class: 'custom-nested-title' }, `${depth}:${item.title}`),
+        title: ({ item, depth }: { item: { title: string }; depth: number }) => h('span', { class: 'custom-nested-title' }, `${depth}:${item.title}`),
       },
     })
 

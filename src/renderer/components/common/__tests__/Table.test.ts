@@ -263,7 +263,7 @@ describe('Table', () => {
         data: people,
         rowKey: 'id',
         showSummary: true,
-        spanMethod: ({ rowIndex, columnIndex }) => {
+        spanMethod: ({ rowIndex, columnIndex }: { rowIndex: number; columnIndex: number }) => {
           if (rowIndex === 0 && columnIndex === 0) return [1, 2]
           if (rowIndex === 0 && columnIndex === 1) return [0, 0]
           return undefined

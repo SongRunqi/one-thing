@@ -720,8 +720,8 @@ onMounted(async () => {
 
 .agent-icon-button.danger:hover:not(:disabled) {
   color: var(--ui-status-danger-fg, #ef4444);
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
-  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 30%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
+  border-color: var(--ui-status-danger-border, #ef4444);
 }
 
 .agents-primary-action:disabled,
@@ -895,4 +895,3 @@ onMounted(async () => {
   }
 }
 </style>
-

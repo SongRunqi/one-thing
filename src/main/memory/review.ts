@@ -2,10 +2,11 @@ import type { ChatMessage } from '../../shared/ipc.js'
 import type { HermesMemoryTarget } from './hermes-file-memory.js'
 
 export type MemoryReviewAction = 'add' | 'replace' | 'remove'
+export type MemoryReviewTarget = HermesMemoryTarget | 'soul' | 'dreams'
 
 export interface MemoryReviewCandidate {
   action: MemoryReviewAction
-  target: HermesMemoryTarget
+  target: MemoryReviewTarget
   confidence: number
   content?: string
   oldText?: string
@@ -75,9 +76,9 @@ function normalizeAction(value: unknown): MemoryReviewAction | null {
   return null
 }
 
-function normalizeTarget(value: unknown): HermesMemoryTarget | null {
+function normalizeTarget(value: unknown): MemoryReviewTarget | null {
   const target = String(value || 'memory').toLowerCase()
-  if (target === 'user' || target === 'memory') return target
+  if (target === 'user' || target === 'memory' || target === 'soul' || target === 'dreams') return target
   return null
 }
 

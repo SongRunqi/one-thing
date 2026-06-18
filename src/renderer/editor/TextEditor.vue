@@ -511,6 +511,24 @@ defineExpose<EditorHandle>({
   width: 100%;
 }
 
+.text-editor.profile-markdown-document {
+  height: 100%;
+  min-height: 0;
+}
+
+.text-editor.profile-markdown-document :deep(.cm-editor),
+.text-editor.profile-markdown-document :deep(.cm-scroller) {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.text-editor.profile-markdown-document :deep(.cm-scroller) {
+  max-height: none;
+  overflow: auto;
+}
+
 .profile-composer {
   --editor-text: var(--ui-editor-text-fg, var(--text-input));
 }

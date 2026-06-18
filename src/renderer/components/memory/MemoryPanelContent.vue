@@ -466,7 +466,7 @@ import type {
 } from '@shared/ipc'
 
 type NoteFilter = 'all' | 'ai' | 'daily' | 'dreams'
-type BadgeTone = 'neutral' | 'accent' | 'info' | 'success' | 'warning' | 'danger' | 'muted'
+type BadgeTone = 'neutral' | 'accent' | 'info' | 'success' | 'warning' | 'danger' | 'muted' | 'category-1' | 'category-2' | 'category-3' | 'category-4'
 
 const memoryTableHeight = 'var(--memory-table-height)'
 
@@ -873,11 +873,11 @@ function kindLabel(kind: MemoryManagedFile['kind']): string {
 }
 
 function kindBadgeTone(kind: MemoryManagedFile['kind']): BadgeTone {
-  if (kind === 'daily') return 'success'
-  if (kind === 'memory') return 'accent'
-  if (kind === 'dreams') return 'info'
-  if (kind === 'user') return 'warning'
-  if (kind === 'soul') return 'muted'
+  if (kind === 'soul') return 'category-1'
+  if (kind === 'memory') return 'category-2'
+  if (kind === 'dreams') return 'category-3'
+  if (kind === 'user') return 'category-4'
+  if (kind === 'daily') return 'category-4'
   return 'neutral'
 }
 
@@ -1296,13 +1296,13 @@ function formatShortDate(ms?: number): string {
 
 .row-icon-btn.danger:hover:not(:disabled) {
   --app-button-tone: var(--ui-status-danger-fg, #ef4444);
-  --app-button-hover-fill: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 9%, transparent);
+  --app-button-hover-fill: var(--ui-status-danger-bg, transparent);
   --app-button-hover-fg: var(--ui-status-danger-fg, #ef4444);
-  --app-button-hover-border: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 26%, transparent);
+  --app-button-hover-border: var(--ui-status-danger-border, #ef4444);
 
   color: var(--ui-status-danger-fg, #ef4444);
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 9%, transparent);
-  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 26%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
+  border-color: var(--ui-status-danger-border, #ef4444);
 }
 
 .row-icon-btn:disabled {
@@ -1562,8 +1562,8 @@ function formatShortDate(ms?: number): string {
 
 .notice.error {
   color: var(--ui-status-danger-fg, #ef4444);
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 8%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 20%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
+  border-bottom: 1px solid var(--ui-status-danger-border, #ef4444);
 }
 
 /* Dropdown Selector styling */
@@ -1907,7 +1907,7 @@ function formatShortDate(ms?: number): string {
 }
 
 .strength-badge.strong {
-  background: color-mix(in srgb, var(--ui-status-success-fg, #10b981) 12%, transparent);
+  background: var(--ui-status-success-bg, transparent);
   color: var(--ui-status-success-fg, #10b981);
 }
 

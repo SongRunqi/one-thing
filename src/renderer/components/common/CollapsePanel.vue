@@ -1023,7 +1023,7 @@ function clearCollapseTransitionHeight(element: Element) {
 }
 
 .collapse-panel-diff-line.line-add {
-  --collapse-panel-diff-row-bg: color-mix(in srgb, var(--ui-status-success-fg, #10b981) 13%, transparent);
+  --collapse-panel-diff-row-bg: var(--ui-status-success-bg, transparent);
   color: var(--ui-text-primary-fg, var(--text));
 }
 
@@ -1033,7 +1033,7 @@ function clearCollapseTransitionHeight(element: Element) {
 }
 
 .collapse-panel-diff-line.line-delete {
-  --collapse-panel-diff-row-bg: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 12%, transparent);
+  --collapse-panel-diff-row-bg: var(--ui-status-danger-bg, transparent);
   color: var(--ui-text-primary-fg, var(--text));
 }
 

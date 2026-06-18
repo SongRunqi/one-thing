@@ -133,7 +133,7 @@ function handleDelete() {
 }
 
 .context-item.danger:hover {
-  background: color-mix(in srgb, var(--ui-status-danger-fg) 10%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
 }
 
 .context-divider {

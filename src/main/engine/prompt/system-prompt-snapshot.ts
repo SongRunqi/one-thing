@@ -1,0 +1,231 @@
+import type {
+  AppSettings,
+  SkillDefinition,
+  SystemPromptSnapshot,
+  ToolDefinition,
+} from '../../../shared/ipc.js'
+import * as store from '../../store.js'
+import { getAgent } from '../../agents/index.js'
+import { getSkillsForSession } from '../../ipc/skills.js'
+import { getMCPToolsForAI } from '../../mcp/index.js'
+import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
+import {
+  convertToolDefinitionsForAI,
+  isProviderSupported,
+} from '../../providers/index.js'
+import * as modelRegistry from '../../providers/model-registry.js'
+import {
+  getEffectiveProviderConfig,
+  resolveProviderAuth,
+} from '../stream/provider-helpers.js'
+import {
+  getEnabledToolsAsync,
+  initializeAsyncTools,
+  setInitContext,
+} from '../../tools/index.js'
+import { buildContextVariablesPromptText } from '../../variables/index.js'
+import { getCodexNativeToolsForConfig } from '../stream/tool-loop.js'
+import { buildPrompt } from './system-prompt.js'
+
+type ProviderConfigWithAuth = Record<string, unknown> & {
+  model: string
+  selectedModels?: string[]
+  apiKey?: string
+  authContext?: unknown
+  oauthToken?: unknown
+}
+
+function skillForInit(skill: SkillDefinition) {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    source: skill.source,
+    category: skill.category,
+    tags: skill.tags,
+    relatedSkills: skill.relatedSkills,
+    conditions: skill.conditions,
+    platforms: skill.platforms,
+    path: skill.path,
+    directoryPath: skill.directoryPath,
+    rootPath: skill.rootPath,
+    relativePath: skill.relativePath,
+    enabled: skill.enabled,
+    instructions: skill.instructions,
+    files: skill.files?.map(file => ({
+      name: file.name,
+      path: file.path,
+      type: file.type as 'markdown' | 'script' | 'template' | 'other',
+    })),
+  }
+}
+
+function toolSnapshot(tool: ToolDefinition) {
+  return {
+    id: tool.id,
+    name: tool.name,
+    description: tool.description,
+    category: tool.category,
+    modelFacingName: tool.id,
+  }
+}
+
+function mcpToolSnapshot(name: string, definition: { description?: string }) {
+  return {
+    id: name,
+    name,
+    description: definition.description,
+    category: 'mcp',
+    modelFacingName: name,
+  }
+}
+
+function nativeToolSnapshot(name: string) {
+  return {
+    id: name,
+    name,
+    description: name === 'image_generation'
+      ? 'Codex native image generation'
+      : 'Codex native tool',
+    category: 'codex-native',
+    modelFacingName: name,
+  }
+}
+
+function skillSnapshot(skill: SkillDefinition) {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    source: skill.source,
+    category: skill.category,
+    tags: skill.tags,
+    enabled: skill.enabled,
+  }
+}
+
+async function resolveProviderForSnapshot(settings: AppSettings, sessionId: string): Promise<{
+  providerId: string
+  model: string
+  providerConfig: ProviderConfigWithAuth
+  providerSupported: boolean
+  credentialsReady: boolean
+}> {
+  const { providerId, providerConfig, model } = getEffectiveProviderConfig(settings, sessionId)
+  const providerSupported = isProviderSupported(providerId)
+  const authContext = await resolveProviderAuth(providerId, providerConfig).catch(() => null)
+  const providerConfigWithAuth: ProviderConfigWithAuth = {
+    ...providerConfig,
+    model,
+    selectedModels: providerConfig?.selectedModels ?? [model],
+    apiKey: authContext?.kind === 'api-key' ? authContext.apiKey : '',
+    ...(authContext ? { authContext } : {}),
+    oauthToken: authContext?.kind === 'oauth' ? authContext.token : providerConfig?.oauthToken,
+  }
+
+  return {
+    providerId,
+    model,
+    providerConfig: providerConfigWithAuth,
+    providerSupported,
+    credentialsReady: Boolean(authContext),
+  }
+}
+
+export async function buildSystemPromptSnapshot(sessionId: string): Promise<SystemPromptSnapshot> {
+  const session = store.getSession(sessionId)
+  if (!session) {
+    throw new Error('Session not found')
+  }
+
+  const settings = store.getSettings()
+  const provider = await resolveProviderForSnapshot(settings, sessionId)
+  const skillsEnabled = settings.skills?.enableSkills !== false
+  const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
+
+  if (settings.tools?.enableToolCalls) {
+    setInitContext({
+      skills: enabledSkills.map(skillForInit),
+      workingDirectory: session.workingDirectory,
+      workingDirectoryRoots: session.workingDirectoryRoots,
+      providerId: provider.providerId,
+      providerConfig: {
+        apiKey: String(provider.providerConfig.apiKey || ''),
+        baseUrl: typeof provider.providerConfig.baseUrl === 'string'
+          ? provider.providerConfig.baseUrl
+          : undefined,
+        model: provider.model,
+      },
+    })
+    await initializeAsyncTools()
+  }
+
+  const enableToolCalls = settings.tools?.enableToolCalls === true
+  const allEnabledTools = enableToolCalls ? await getEnabledToolsAsync(settings.tools?.tools) : []
+  const builtinTools = allEnabledTools.filter(tool => !tool.id.startsWith('mcp:'))
+  const mcpTools = enableToolCalls ? getMCPToolsForAI(settings.tools?.tools) : {}
+  const modelSupportsTools = provider.providerSupported
+    ? await modelRegistry.modelSupportsTools(provider.model, provider.providerId).catch(() => false)
+    : false
+  const codexNativeTools = await getCodexNativeToolsForConfig({
+    providerId: provider.providerId,
+    providerConfig: provider.providerConfig,
+    toolSettings: settings.tools,
+    supportsTools: modelSupportsTools,
+  })
+  const hasTools = modelSupportsTools && (
+    builtinTools.length > 0 ||
+    Object.keys(mcpTools).length > 0 ||
+    codexNativeTools.length > 0
+  )
+  const builtinToolsForAI = hasTools ? convertToolDefinitionsForAI(builtinTools) : {}
+  const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
+  const agent = getAgent(session.agentId)
+  const requestMessages = await buildPrompt({
+    sessionId,
+    agentId: session.agentId,
+    providerId: provider.providerId,
+    providerConfig: provider.providerConfig,
+    settings,
+    hasTools,
+    skills: enabledSkills,
+    workingDirectory: session.workingDirectory,
+    workingDirectoryRoots: session.workingDirectoryRoots,
+    contextVariables: await buildContextVariablesPromptText(sessionId),
+    activeProject: projectVars.active,
+    knownProjects: projectVars.known,
+    toolNames: [...Object.keys(builtinToolsForAI), ...codexNativeTools],
+    mcpToolNames: Object.keys(mcpTools),
+    historyMessages: [],
+  })
+
+  return {
+    sessionId,
+    generatedAt: Date.now(),
+    providerId: provider.providerId,
+    model: provider.model,
+    providerSupported: provider.providerSupported,
+    credentialsReady: provider.credentialsReady,
+    workingDirectory: session.workingDirectory,
+    agentId: agent.id,
+    agentName: agent.name,
+    systemPrompt: requestMessages.systemPrompt,
+    systemPromptChars: requestMessages.systemPrompt.length,
+    tools: {
+      enableToolCalls,
+      modelSupportsTools,
+      hasTools,
+      configuredCount: allEnabledTools.length + Object.keys(mcpTools).length + codexNativeTools.length,
+      modelFacingCount: Object.keys(builtinToolsForAI).length + Object.keys(mcpTools).length + codexNativeTools.length,
+      builtin: builtinTools.map(toolSnapshot),
+      mcp: Object.entries(mcpTools).map(([name, definition]) => mcpToolSnapshot(name, definition)),
+      codexNative: codexNativeTools.map(nativeToolSnapshot),
+    },
+    skills: {
+      enabled: skillsEnabled,
+      includedInPrompt: requestMessages.systemPrompt.includes('# Skills'),
+      count: enabledSkills.length,
+      items: enabledSkills.map(skillSnapshot),
+    },
+  }
+}

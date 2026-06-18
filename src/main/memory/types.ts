@@ -121,13 +121,6 @@ export interface CaptureCandidate {
   explicit?: boolean
 }
 
-export interface CaptureModelResult {
-  candidates: CaptureCandidate[]
-  confidence: number
-  explicit: boolean
-  reason?: string
-}
-
 export interface CanonicalMemoryInput {
   memoryKey?: string
   kind: import('../../shared/ipc.js').CanonicalMemoryKind
@@ -197,20 +190,8 @@ export interface GraphMergeResult {
   relations: import('../../shared/ipc.js').MemoryGraphRelation[]
 }
 
-export interface ShortTermMemorySignal {
-  id: string
-  createdAt: number
-  sourceType: 'capture' | 'flush' | 'daily' | 'session' | 'recall'
-  source: string
-  kind: string
-  content: string
-  confidence: number
-  explicit?: boolean
-  promotedAt?: number
-}
-
 export interface DreamingSource {
-  sourceType: 'daily' | 'session' | 'short-term' | 'recall'
+  sourceType: 'daily'
   relativePath: string
   content: string
   mtimeMs: number

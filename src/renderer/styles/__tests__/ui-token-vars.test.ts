@@ -2,6 +2,9 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
+import type { Theme } from '../../../shared/ipc/themes.js'
+import { contrastRatio, parseCssColor } from '../../../main/themes/role-mapping.js'
+import { resolveTheme, resolveThemeUI } from '../../../main/themes/resolver.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const rendererDir = path.resolve(dirname, '..', '..')
@@ -92,6 +95,7 @@ function listStyleFiles(dir: string, files: string[] = []): string[] {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const absolutePath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
+      if (entry.name === '__tests__') continue
       listStyleFiles(absolutePath, files)
     } else if (styleFileExtensions.has(path.extname(entry.name))) {
       files.push(absolutePath)
@@ -130,17 +134,95 @@ function lineNumber(text: string, offset: number): number {
   return text.slice(0, offset).split('\n').length
 }
 
+function cssDeclarationValue(css: string, name: string): string {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = new RegExp(`${escapedName}\\s*:\\s*([^;]+);`).exec(css)
+  return match?.[1].replace(/\s+/g, ' ').trim() || ''
+}
+
+function makeActionContrastTheme(primary: string, danger: string, colorScheme: 'dark' | 'light'): Theme {
+  const dark = colorScheme === 'dark'
+  return {
+    id: `action-contrast-${colorScheme}`,
+    name: `Action contrast ${colorScheme}`,
+    type: 'full',
+    colorScheme,
+    defs: {},
+    theme: {
+      primary,
+      accent: primary,
+      accentSub: dark ? '#dbeafe' : '#1d4ed8',
+      bg: {
+        app: dark ? '#101010' : '#f8f8f8',
+        sidebar: dark ? '#141414' : '#f4f4f4',
+        chat: dark ? '#181818' : '#ffffff',
+        panel: dark ? '#202020' : '#f1f1f1',
+        elevated: dark ? '#282828' : '#e8e8e8',
+        floating: dark ? '#303030' : '#ffffff',
+        btn: {
+          primary: '#777777',
+          primaryHover: '#777777',
+          danger: '#777777',
+          dangerHover: '#777777',
+        },
+      },
+      text: {
+        primary: dark ? '#f5f5f5' : '#111111',
+        secondary: dark ? '#d0d0d0' : '#333333',
+        muted: dark ? '#999999' : '#666666',
+        btn: {
+          primary: '#777777',
+          danger: '#777777',
+        },
+      },
+      border: {
+        default: dark ? '#333333' : '#dddddd',
+        subtle: dark ? '#282828' : '#e5e5e5',
+        accent: '#777777',
+        error: '#777777',
+        inputFocus: '#777777',
+      },
+      color: {
+        danger,
+      },
+    },
+  }
+}
+
+function expectResolvedActionContrast(theme: Theme, mode: 'dark' | 'light'): void {
+  const resolvedTheme = resolveTheme(theme, mode)
+  const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
+
+  for (const token of [
+    'ui.action.primary',
+    'ui.action.primaryHover',
+    'ui.action.danger',
+    'ui.action.dangerHover',
+  ] as const) {
+    const style = resolvedUI[token]
+    const foreground = parseCssColor(style.fg)
+    const background = parseCssColor(style.bg)
+    if (!foreground || !background) {
+      throw new Error(`${token} should resolve parseable fg/bg colors, got ${style.fg} on ${style.bg}`)
+    }
+    expect(contrastRatio(foreground, background)).toBeGreaterThanOrEqual(4.5)
+  }
+}
+
+function isDirectThemeColorVar(name: string): boolean {
+  return (
+    /^--color-primary(?:-(?:hover|light|bg|bg-hover|border|text))?$/.test(name) ||
+    /^--color-(danger|warning|success|info)(?:-(?:light|bg|bg-hover|border|text))?$/.test(name) ||
+    /^--color-neutral-/.test(name) ||
+    /^--(?:neutral|text-color|border-color|fill-color|bg-color)-/.test(name)
+  )
+}
+
 function isSemanticVarName(name: string | null): boolean {
   return !!name && (
     /^--ui-/.test(name) ||
     /^--hg-/.test(name) ||
-    /^--diff-/.test(name) ||
-    /^--color-primary/.test(name) ||
-    /^--color-neutral-/.test(name) ||
-    /^--text-color-/.test(name) ||
-    /^--border-color-/.test(name) ||
-    /^--fill-color-/.test(name) ||
-    /^--bg-color-/.test(name)
+    /^--diff-/.test(name)
   )
 }
 
@@ -174,7 +256,11 @@ function collectDirectLegacyColorUsage(): string[] {
       const close = findMatchingParen(text, start + 3)
       if (close === -1) break
       const name = firstVarName(text.slice(start + 4, close))
-      if (name && legacyColorVars.has(name) && !isInsideSemanticVar(text, start + 2)) {
+      if (
+        name &&
+        (legacyColorVars.has(name) || isDirectThemeColorVar(name)) &&
+        !isInsideSemanticVar(text, start + 2)
+      ) {
         reports.push(`${path.relative(rendererDir, file)}:${lineNumber(text, start)} direct ${name}`)
       }
       cursor = close + 1
@@ -195,19 +281,51 @@ function collectDirectLegacyColorUsage(): string[] {
   return reports
 }
 
+function collectStatusColorMixUsage(): string[] {
+  const reports: string[] = []
+  const files = listStyleFiles(rendererDir)
+  const pattern = /color-mix\(\s*in\s+srgb,\s*var\(--ui-status-/g
+
+  for (const file of files) {
+    const text = fs.readFileSync(file, 'utf8')
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(text))) {
+      reports.push(`${path.relative(rendererDir, file)}:${lineNumber(text, match.index)} derives status color from ui.status fg`)
+    }
+  }
+
+  return reports
+}
+
 describe('renderer UI semantic variables', () => {
   it('defines UI semantic tokens and routes tool chrome aliases through them', () => {
     const variables = readRendererFile('styles/variables.css')
 
     expect(variables).toContain('--ui-action-primary-bg')
     expect(variables).toContain('--ui-status-danger-fg')
+    expect(variables).toContain('--ui-status-success-on-fg')
     expect(variables).toContain('--ui-surface-note-bg')
     expect(variables).toContain('--color-primary')
+    expect(variables).toContain('--color-primary-hover')
+    expect(variables).toContain('--color-primary-bg')
+    expect(variables).toContain('--color-primary-bg-hover')
+    expect(variables).toContain('--color-primary-border')
+    expect(variables).toContain('--color-primary-text')
+    expect(variables).toContain('--color-primary-light')
     expect(variables).toContain('--color-neutral-primary-text')
     expect(variables).toContain('--text-color-regular')
     expect(variables).toContain('--border-color-extra-light')
     expect(variables).toContain('--fill-color-blank')
     expect(variables).toContain('--bg-color-overlay')
+    expect(variables).toContain('--color-danger-bg')
+    expect(variables).toContain('--color-danger-bg-hover')
+    expect(variables).toContain('--color-danger-border')
+    expect(variables).toContain('--color-danger-text')
+    expect(variables).toContain('--color-success-bg')
+    expect(variables).toContain('--color-warning-bg')
+    expect(variables).toContain('--color-info-bg')
+    expect(variables).not.toContain('--color-primary-100')
+    expect(variables).not.toContain('--color-danger-100')
     expect(variables).toContain('--ui-surface-tooltip-border')
     expect(variables).toContain('--ui-surface-tooltip-shadow')
     expect(variables).toContain('--ui-surface-chat-panel-shadow')
@@ -227,12 +345,48 @@ describe('renderer UI semantic variables', () => {
     expect(variables).toContain('--tool-del-bar: var(--ui-tool-danger-text-fg')
   })
 
+  it('prefers canonical theme semantics in UI fallback definitions', () => {
+    const variables = readRendererFile('styles/variables.css')
+
+    expect(cssDeclarationValue(variables, '--ui-accent-primary-fg')).toBe('var(--color-primary, var(--accent))')
+    expect(cssDeclarationValue(variables, '--ui-accent-subtle-fg')).toBe('var(--color-primary-hover, var(--accent-sub))')
+    expect(cssDeclarationValue(variables, '--ui-action-primary-bg')).toBe('var(--color-primary, var(--bg-btn-primary))')
+    expect(cssDeclarationValue(variables, '--ui-action-primary-fg')).toBe('var(--color-neutral-page-background, var(--text-btn-primary, var(--bg-app)))')
+    expect(cssDeclarationValue(variables, '--ui-action-primary-hover-bg')).toBe('var(--color-primary-hover, var(--bg-btn-primary-hover, var(--accent-light, var(--color-primary))))')
+    expect(cssDeclarationValue(variables, '--ui-action-primary-hover-fg')).toBe('var(--ui-action-primary-fg)')
+    expect(cssDeclarationValue(variables, '--ui-action-danger-bg')).toBe('var(--color-danger, var(--bg-btn-danger))')
+    expect(cssDeclarationValue(variables, '--ui-action-danger-fg')).toBe('var(--color-neutral-page-background, var(--text-btn-danger, var(--bg-app)))')
+    expect(cssDeclarationValue(variables, '--ui-action-danger-hover-bg')).toBe('var(--color-danger-bg-hover, var(--bg-btn-danger-hover, var(--color-danger)))')
+    expect(cssDeclarationValue(variables, '--ui-text-primary-fg')).toBe('var(--color-neutral-primary-text, var(--text-primary))')
+    expect(cssDeclarationValue(variables, '--ui-text-secondary-fg')).toBe('var(--color-neutral-regular-text, var(--text-secondary))')
+    expect(cssDeclarationValue(variables, '--ui-message-thinking-fg')).toBe('var(--color-neutral-secondary-text)')
+    expect(cssDeclarationValue(variables, '--ui-border-default-border')).toBe('var(--color-neutral-base-border, var(--border-default))')
+    expect(cssDeclarationValue(variables, '--ui-surface-app-bg')).toBe('var(--color-neutral-page-background, var(--bg-app))')
+    expect(cssDeclarationValue(variables, '--ui-surface-chat-bg')).toBe('var(--color-neutral-base-background, var(--bg-chat))')
+    expect(cssDeclarationValue(variables, '--ui-state-selected-bg')).toBe('var(--color-primary-bg, var(--bg-selected))')
+    expect(cssDeclarationValue(variables, '--ui-state-selected-hover-bg')).toBe('var(--color-primary-bg-hover, var(--bg-selected-hover, var(--color-primary-bg)))')
+    expect(cssDeclarationValue(variables, '--ui-status-danger-fg')).toBe('var(--color-danger-text, var(--color-danger, var(--text-error)))')
+    expect(cssDeclarationValue(variables, '--ui-status-success-fg')).toBe('var(--color-success-text, var(--color-success, var(--text-success)))')
+    expect(cssDeclarationValue(variables, '--ui-status-warning-border')).toBe('var(--color-warning-border, var(--color-warning, var(--border-warning)))')
+    expect(cssDeclarationValue(variables, '--ui-status-info-border')).toBe('var(--color-info-border, var(--color-info, var(--border-accent)))')
+    expect(cssDeclarationValue(variables, '--ui-tool-accent-fg')).toBe('var(--color-primary, var(--accent))')
+    expect(cssDeclarationValue(variables, '--ui-tool-error-fg')).toBe('var(--color-danger-text, var(--color-danger, var(--text-tool-error)))')
+    expect(cssDeclarationValue(variables, '--ui-editor-text-bg')).toBe('var(--color-neutral-lighter-fill, var(--bg-input))')
+  })
+
+  it('resolves readable on-colors for solid action UI tokens', () => {
+    expectResolvedActionContrast(makeActionContrastTheme('#123abc', '#991b1b', 'dark'), 'dark')
+    expectResolvedActionContrast(makeActionContrastTheme('#facc15', '#fee2e2', 'light'), 'light')
+  })
+
   it('routes high-value UI surfaces directly through UI semantic tokens', () => {
     const stepsPanel = readRendererFile('components/chat/StepsPanel.vue')
     const toolResultRenderer = readRendererFile('components/chat/ToolResultRenderer.vue')
     const toolStepDetails = readRendererFile('components/chat/ToolStepDetails.vue')
     const toolDiffPreview = readRendererFile('components/chat/ToolDiffPreview.vue')
     const messageBubble = readRendererFile('components/chat/message/MessageBubble.vue')
+    const messageThinking = readRendererFile('components/chat/message/MessageThinking.vue')
+    const thinkToggle = readRendererFile('components/chat/ThinkToggle.vue')
     const inputBox = readRendererFile('components/chat/InputBox.vue')
     const chatWindow = readRendererFile('components/chat/ChatWindow.vue')
     const chatContainer = readRendererFile('components/ChatContainer.vue')
@@ -256,6 +410,13 @@ describe('renderer UI semantic variables', () => {
     expect(toolDiffPreview).toContain('var(--ui-tool-surface-subtle-bg')
     expect(messageBubble).toContain('var(--ui-message-user-bg')
     expect(messageBubble).toContain('var(--ui-message-user-shadow')
+    expect(messageBubble).toContain('--waiting-fg: var(--ui-message-thinking-fg')
+    expect(messageBubble).toContain('--reasoning-fg: var(--ui-message-thinking-fg')
+    expect(messageThinking).toContain('--thinking-fg: var(--ui-message-thinking-fg')
+    expect(thinkToggle).toContain('--think-accent: var(--ui-message-thinking-fg);')
+    expect(messageBubble).not.toContain('var(--ui-message-thinking-fg,')
+    expect(messageThinking).not.toContain('var(--ui-message-thinking-fg,')
+    expect(thinkToggle).not.toContain('var(--ui-message-thinking-fg,')
     expect(messageBubble).toContain('md-inline-code-scope')
     expect(inputBox).toContain('var(--ui-action-primary-bg')
     expect(inputBox).toContain('--ui-surface-composer-shadow')
@@ -299,6 +460,10 @@ describe('renderer UI semantic variables', () => {
 
   it('keeps component colors routed through UI, highlight, or diff semantic variables', () => {
     expect(collectDirectLegacyColorUsage()).toEqual([])
+  })
+
+  it('uses complete ui.status bg/border/fg tokens instead of deriving status surfaces from fg', () => {
+    expect(collectStatusColorMixUsage()).toEqual([])
   })
 
   it('keeps the todo window startup surface on semantic color fallbacks', () => {

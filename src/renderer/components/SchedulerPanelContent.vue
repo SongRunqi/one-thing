@@ -455,55 +455,6 @@
                       placeholder="System"
                     >
                   </label>
-
-                  <label class="config-row">
-                    <span class="setting-label-with-tooltip">
-                      <span>Model</span>
-                      <span
-                        class="tooltip-wrapper"
-                        title="The AI model used for extracting and merging memory details."
-                      >
-                        <Info
-                          :size="13"
-                          class="info-tooltip-icon"
-                        />
-                      </span>
-                    </span>
-                    <input
-                      v-model="dreamingForm.model"
-                      class="field"
-                      type="text"
-                      aria-label="Dreaming model"
-                      placeholder="Default"
-                    >
-                  </label>
-                </div>
-              </div>
-            </section>
-
-            <!-- SOURCES CONFIGURATION -->
-            <section
-              v-show="configTab === 'scoring'"
-              class="config-group"
-            >
-              <div class="config-section-head">
-                <h5>Sources</h5>
-              </div>
-
-              <div class="config-body">
-                <div class="source-list">
-                  <label
-                    v-for="source in dreamSourceOptions"
-                    :key="source.value"
-                    class="source-check"
-                  >
-                    <input
-                      type="checkbox"
-                      :checked="dreamingForm.sources.includes(source.value)"
-                      @change="toggleDreamingSourceFromEvent(source.value, $event)"
-                    >
-                    <span>{{ source.label }}</span>
-                  </label>
                 </div>
               </div>
             </section>
@@ -562,52 +513,6 @@
                       min="1"
                       step="1"
                       aria-label="Dreaming source files"
-                    >
-                  </label>
-
-                  <label class="config-field">
-                    <span class="setting-label-with-tooltip">
-                      <span>Sessions</span>
-                      <span
-                        class="tooltip-wrapper"
-                        title="Maximum chat sessions to retrieve for memory consolidation."
-                      >
-                        <Info
-                          :size="13"
-                          class="info-tooltip-icon"
-                        />
-                      </span>
-                    </span>
-                    <input
-                      v-model.number="dreamingForm.maxSessions"
-                      class="field"
-                      type="number"
-                      min="1"
-                      step="1"
-                      aria-label="Dreaming sessions"
-                    >
-                  </label>
-
-                  <label class="config-field">
-                    <span class="setting-label-with-tooltip">
-                      <span>Messages/session</span>
-                      <span
-                        class="tooltip-wrapper"
-                        title="Limit on message count parsed from each session to protect context limits."
-                      >
-                        <Info
-                          :size="13"
-                          class="info-tooltip-icon"
-                        />
-                      </span>
-                    </span>
-                    <input
-                      v-model.number="dreamingForm.maxMessagesPerSession"
-                      class="field"
-                      type="number"
-                      min="1"
-                      step="1"
-                      aria-label="Dreaming messages per session"
                     >
                   </label>
 
@@ -699,7 +604,7 @@
                       <span>Min score</span>
                       <span
                         class="tooltip-wrapper"
-                        title="Minimum recall relevance score required to qualify facts."
+                        title="Minimum confidence score required to qualify durable facts."
                       >
                         <Info
                           :size="13"
@@ -715,52 +620,6 @@
                       max="1"
                       step="0.01"
                       aria-label="Dreaming minimum score"
-                    >
-                  </label>
-
-                  <label class="config-field">
-                    <span class="setting-label-with-tooltip">
-                      <span>Min recalls</span>
-                      <span
-                        class="tooltip-wrapper"
-                        title="Minimum duplicate recall cycles before fact promotion."
-                      >
-                        <Info
-                          :size="13"
-                          class="info-tooltip-icon"
-                        />
-                      </span>
-                    </span>
-                    <input
-                      v-model.number="dreamingForm.minRecallCount"
-                      class="field"
-                      type="number"
-                      min="0"
-                      step="1"
-                      aria-label="Dreaming minimum recalls"
-                    >
-                  </label>
-
-                  <label class="config-field">
-                    <span class="setting-label-with-tooltip">
-                      <span>Unique sources</span>
-                      <span
-                        class="tooltip-wrapper"
-                        title="Minimum number of distinct sources required to corroborate a fact."
-                      >
-                        <Info
-                          :size="13"
-                          class="info-tooltip-icon"
-                        />
-                      </span>
-                    </span>
-                    <input
-                      v-model.number="dreamingForm.minUniqueSources"
-                      class="field"
-                      type="number"
-                      min="0"
-                      step="1"
-                      aria-label="Dreaming unique sources"
                     >
                   </label>
                 </div>
@@ -1031,15 +890,6 @@ const editorDialogRef = ref<HTMLElement | null>(null)
 
 const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
 
-type DreamingSource = NonNullable<SoulMemoryDreamingSettings['sources']>[number]
-
-const dreamSourceOptions: Array<{ value: DreamingSource; label: string }> = [
-  { value: 'daily', label: 'Daily notes' },
-  { value: 'sessions', label: 'Sessions' },
-  { value: 'short-term', label: 'Short-term notes' },
-  { value: 'recall', label: 'Recall index' },
-]
-
 const taskDetailActive = ref(false)
 const configTab = ref<'trigger' | 'limits' | 'scoring'>('trigger')
 
@@ -1062,7 +912,7 @@ const dreamingForm = ref<Required<SoulMemoryDreamingSettings>>({
   frequency: '0 3 * * *',
   timezone: '',
   model: '',
-  sources: ['daily', 'sessions', 'short-term'],
+  sources: ['daily'],
   lookbackDays: 30,
   maxSourceFiles: 12,
   maxSessions: 12,
@@ -1089,18 +939,12 @@ const dreamingFormDirty = computed(() => {
   return (
     current.frequency !== stored.frequency ||
     current.timezone !== stored.timezone ||
-    current.model !== stored.model ||
     current.lookbackDays !== stored.lookbackDays ||
     current.maxSourceFiles !== stored.maxSourceFiles ||
-    current.maxSessions !== stored.maxSessions ||
-    current.maxMessagesPerSession !== stored.maxMessagesPerSession ||
     current.maxInputChars !== stored.maxInputChars ||
     current.maxPromotions !== stored.maxPromotions ||
     current.minScore !== stored.minScore ||
-    current.minRecallCount !== stored.minRecallCount ||
-    current.minUniqueSources !== stored.minUniqueSources ||
-    current.timeoutMs !== stored.timeoutMs ||
-    JSON.stringify([...current.sources].sort()) !== JSON.stringify([...stored.sources].sort())
+    current.timeoutMs !== stored.timeoutMs
   )
 })
 
@@ -1133,7 +977,7 @@ function readDreamingSettings(): Required<SoulMemoryDreamingSettings> {
   return {
     ...DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS,
     ...dreaming,
-    sources: [...(dreaming.sources ?? DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.sources)],
+    sources: ['daily'],
   }
 }
 
@@ -1244,7 +1088,7 @@ async function saveMemoryDreamingSettings(
     dreaming: {
       ...currentDreaming,
       ...patch,
-      sources: patch.sources ? [...patch.sources] : [...currentDreaming.sources],
+      sources: ['daily'],
     },
   })
   await settingsStore.saveSettings({
@@ -1264,7 +1108,7 @@ async function saveManagedDreamingTask(): Promise<void> {
   try {
     await saveMemoryDreamingSettings({
       ...dreamingForm.value,
-      sources: [...dreamingForm.value.sources],
+      sources: ['daily'],
     })
     const response = await window.electronAPI.setSchedulerTaskEnabled({
       id: task.id,
@@ -1380,20 +1224,6 @@ async function deleteTask(taskId: string): Promise<void> {
 async function openRunSession(sessionId: string): Promise<void> {
   await window.electronAPI.updateSessionArchived(sessionId, false, null)
   await window.electronAPI.switchSession(sessionId)
-}
-
-function toggleDreamingSource(source: DreamingSource, checked: boolean): void {
-  const next = new Set(dreamingForm.value.sources)
-  if (checked) {
-    next.add(source)
-  } else {
-    next.delete(source)
-  }
-  dreamingForm.value.sources = Array.from(next)
-}
-
-function toggleDreamingSourceFromEvent(source: DreamingSource, event: Event): void {
-  toggleDreamingSource(source, (event.target as HTMLInputElement | null)?.checked === true)
 }
 
 function formatSchedule(schedule?: SchedulerSchedule): string {
@@ -1675,8 +1505,8 @@ label span {
   color: var(--ui-status-danger-fg, var(--color-danger));
 }
 .icon-btn.danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 10%, transparent);
-  border-color: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 20%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
+  border-color: var(--ui-status-danger-border, var(--color-danger));
 }
 
 .primary-btn,
@@ -2784,18 +2614,18 @@ input[type="checkbox"]:focus-visible {
 
 .timeline-node-dot.succeeded {
   background: var(--ui-status-success-fg, #10b981);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--ui-status-success-fg, #10b981) 40%, transparent);
+  box-shadow: 0 0 6px var(--ui-status-success-bg, transparent);
 }
 
 .timeline-node-dot.failed,
 .timeline-node-dot.blocked {
   background: var(--ui-status-danger-fg, #ef4444);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 40%, transparent);
+  box-shadow: 0 0 6px var(--ui-status-danger-bg, transparent);
 }
 
 .timeline-node-dot.running {
   background: var(--ui-status-warning-fg, #f59e0b);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 40%, transparent);
+  box-shadow: 0 0 6px var(--ui-status-warning-bg, transparent);
   animation: pulse-glow 1s infinite alternate;
 }
 
@@ -2854,18 +2684,18 @@ input[type="checkbox"]:focus-visible {
 }
 
 .run-status-pill.succeeded {
-  background: color-mix(in srgb, var(--ui-status-success-fg, #10b981) 12%, transparent);
+  background: var(--ui-status-success-bg, transparent);
   color: var(--ui-status-success-fg, #10b981);
 }
 
 .run-status-pill.failed,
 .run-status-pill.blocked {
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 12%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
   color: var(--ui-status-danger-fg, #ef4444);
 }
 
 .run-status-pill.running {
-  background: color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 12%, transparent);
+  background: var(--ui-status-warning-bg, transparent);
   color: var(--ui-status-warning-fg, #f59e0b);
 }
 
@@ -2990,4 +2820,3 @@ input[type="checkbox"]:focus-visible {
 
 
 </style>
-

@@ -1,3 +1,6 @@
+import { clampRgb, converter, formatHex, wcagContrast } from 'culori'
+import type { CuloriColor } from 'culori'
+
 export type ThemeColorScheme = 'dark' | 'light'
 
 export interface ParsedColor {
@@ -27,6 +30,118 @@ export interface ThemeSurfaceRoles {
   elevatedBg: string
   floatingBg: string
 }
+
+export interface NeutralTextRamp {
+  primaryText: string
+  regularText: string
+  secondaryText: string
+  placeholderText: string
+  disabledText: string
+}
+
+export interface StatusSurfaceRamp {
+  bg: string
+  bgHover: string
+  border: string
+}
+
+export interface StateOverlayRamp {
+  hover: string
+  active: string
+  selected: {
+    bg: string
+    border: string
+  }
+  selectedHover: string
+}
+
+export interface CategoryColor {
+  icon: string
+  badgeBg: string
+  badgeText: string
+}
+
+const toOklch = converter('oklch')
+const toRgb = converter('rgb')
+
+const CATEGORY_SOURCE_PATHS = [
+  ['b30.purple', 'purple', 'base0E', 'text.code.keyword'],
+  ['b30.cyan', 'cyan', 'base0C', 'text.code.type', 'text.link', 'color.info'],
+  ['b30.green', 'green', 'base0B', 'text.code.string', 'color.success'],
+  ['b30.orange', 'orange', 'base09', 'text.code.number', 'color.warning'],
+  ['b30.yellow', 'yellow', 'base0A'],
+  ['b30.brown', 'brown', 'base0F'],
+  ['b30.blue', 'blue', 'b30.nord_blue', 'nord_blue', 'base0D'],
+] as const
+
+const CATEGORY_FALLBACK_COLORS = [
+  '#8B6FC8',
+  '#2D9C96',
+  '#6F8F2F',
+  '#C77832',
+  '#A08B28',
+  '#A85F7A',
+  '#4B83B9',
+] as const
+
+const CATEGORY_MIN_ICON_CONTRAST = 3
+const CATEGORY_HUE_COLLISION_THRESHOLD = 25
+const CATEGORY_EXTENDED_HUE_COLLISION_THRESHOLD = 18
+const CATEGORY_CHROMA_SCALE: Record<ThemeColorScheme, number> = {
+  light: 0.7,
+  dark: 0.55,
+}
+
+const CATEGORY_MAX_CHROMA: Record<ThemeColorScheme, number> = {
+  light: 0.105,
+  dark: 0.082,
+}
+
+const NEUTRAL_TEXT_TARGETS = [
+  { token: 'primaryText', contrast: 12, chromaScale: 1 },
+  { token: 'regularText', contrast: 8, chromaScale: 0.9 },
+  { token: 'secondaryText', contrast: 4.5, chromaScale: 0.8 },
+  { token: 'placeholderText', contrast: 3, chromaScale: 0.7 },
+  { token: 'disabledText', contrast: 2, chromaScale: 0.6 },
+] as const satisfies ReadonlyArray<{
+  token: keyof NeutralTextRamp
+  contrast: number
+  chromaScale: number
+}>
+
+const STATUS_SURFACE_RAMP_STOPS = {
+  light: [
+    { token: 'bg', lightnessOffset: 0.025, chromaScale: 0.18 },
+    { token: 'bgHover', lightnessOffset: 0.055, chromaScale: 0.24 },
+    { token: 'border', lightnessOffset: 0.105, chromaScale: 0.34 },
+  ],
+  dark: [
+    { token: 'bg', lightnessOffset: 0.035, chromaScale: 0.2 },
+    { token: 'bgHover', lightnessOffset: 0.065, chromaScale: 0.28 },
+    { token: 'border', lightnessOffset: 0.115, chromaScale: 0.4 },
+  ],
+} as const satisfies Record<ThemeColorScheme, ReadonlyArray<{
+  token: keyof StatusSurfaceRamp
+  lightnessOffset: number
+  chromaScale: number
+}>>
+
+const STATE_LIGHTNESS_OFFSETS = {
+  light: {
+    hover: -0.04,
+    active: -0.07,
+    selected: -0.05,
+  },
+  dark: {
+    hover: 0.03,
+    active: 0.055,
+    selected: 0.04,
+  },
+} as const satisfies Record<ThemeColorScheme, {
+  hover: number
+  active: number
+  selected: number
+}>
 
 export function firstDefinedColor(...candidates: Array<string | undefined>): string | undefined {
   return candidates.find(color => typeof color === 'string' && color.length > 0)
@@ -223,6 +338,416 @@ export function readableColor(
   }
 
   return fallback
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+}
+
+function clampUnit(value: number): number {
+  return Math.min(1, Math.max(0, value))
+}
+
+function oklchColor(lightness: number, chroma: number, hue: number | undefined): string | undefined {
+  const color: CuloriColor = {
+    mode: 'oklch',
+    l: clampUnit(lightness),
+    c: Math.max(0, chroma),
+  }
+  if (isFiniteNumber(hue)) color.h = hue
+
+  const rgb = toRgb(color)
+  if (!rgb) return undefined
+
+  return formatHex(clampRgb(rgb)).toUpperCase()
+}
+
+function oklchTextColor(lightness: number, chroma: number, hue: number | undefined): string | undefined {
+  return oklchColor(lightness, chroma, hue)
+}
+
+function parseOklchColor(value: string | undefined): {
+  lightness: number
+  chroma: number
+  hue: number | undefined
+} | undefined {
+  if (!value) return undefined
+  const color = toOklch(value)
+  if (!color || !isFiniteNumber(color.l)) return undefined
+
+  return {
+    lightness: color.l,
+    chroma: isFiniteNumber(color.c) ? color.c : 0,
+    hue: isFiniteNumber(color.h) ? color.h : undefined,
+  }
+}
+
+function categoryColorCandidate(
+  themeColors: Record<string, string | undefined>,
+  index: number
+): string {
+  const paths = CATEGORY_SOURCE_PATHS[index % CATEGORY_SOURCE_PATHS.length] || CATEGORY_SOURCE_PATHS[0]
+  for (const path of paths) {
+    const color = themeColors[path]
+    if (color && parseOklchColor(color)) return color
+  }
+  return CATEGORY_FALLBACK_COLORS[index % CATEGORY_FALLBACK_COLORS.length]
+}
+
+function softenCategoryColor(color: string, mode: ThemeColorScheme): string {
+  const oklch = parseOklchColor(color)
+  if (!oklch) return color
+
+  const chroma = Math.min(
+    oklch.chroma * CATEGORY_CHROMA_SCALE[mode],
+    CATEGORY_MAX_CHROMA[mode]
+  )
+  return oklchColor(oklch.lightness, chroma, oklch.hue) || color
+}
+
+function categoryContrastColor(
+  color: string,
+  background: string,
+  mode: ThemeColorScheme,
+  minContrast = CATEGORY_MIN_ICON_CONTRAST
+): string {
+  if (colorMeetsContrast(color, background, minContrast)) return color
+
+  const oklch = parseOklchColor(color)
+  if (!oklch) return color
+
+  const direction = mode === 'dark' ? 1 : -1
+  let bestColor: string = color
+  let bestContrast = contrastWithBackground(color, background)
+
+  for (let step = 1; step <= 36; step += 1) {
+    const lightness = oklch.lightness + (direction * step * 0.025)
+    const candidate = oklchColor(lightness, oklch.chroma, oklch.hue)
+    const contrast = contrastWithBackground(candidate, background)
+    if (contrast > bestContrast && candidate) {
+      bestColor = candidate
+      bestContrast = contrast
+    }
+    if (candidate && colorMeetsContrast(candidate, background, minContrast)) return candidate
+  }
+
+  return bestColor
+}
+
+function normalizeCategoryIconColor(
+  color: string,
+  background: string | undefined,
+  mode: ThemeColorScheme
+): string {
+  const softened = softenCategoryColor(color, mode)
+  if (!background || !parseCssColor(background)) return softened
+  return categoryContrastColor(softened, background, mode)
+}
+
+function hueDistance(first: number, second: number): number {
+  const distance = Math.abs(first - second) % 360
+  return distance > 180 ? 360 - distance : distance
+}
+
+function categoryColorsHaveHueCollision(colors: string[]): boolean {
+  const hues = colors.map(color => parseOklchColor(color)?.hue)
+  if (hues.some(hue => !isFiniteNumber(hue))) return true
+  const threshold = colors.length > 4
+    ? CATEGORY_EXTENDED_HUE_COLLISION_THRESHOLD
+    : CATEGORY_HUE_COLLISION_THRESHOLD
+
+  for (let first = 0; first < hues.length; first += 1) {
+    for (let second = first + 1; second < hues.length; second += 1) {
+      if (hueDistance(hues[first]!, hues[second]!) < threshold) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+function deriveCategoryBadgeBg(icon: string, mode: ThemeColorScheme): string {
+  const oklch = parseOklchColor(icon)
+  if (!oklch) return icon
+
+  const lightness = mode === 'dark'
+    ? Math.min(0.34, Math.max(0.18, oklch.lightness - 0.36))
+    : Math.max(0.88, Math.min(0.97, oklch.lightness + 0.38))
+  const chroma = Math.min(oklch.chroma * (mode === 'dark' ? 0.32 : 0.24), 0.045)
+
+  return oklchColor(lightness, chroma, oklch.hue) || icon
+}
+
+function deriveCategoryBadgeText(icon: string, badgeBg: string, mode: ThemeColorScheme): string {
+  const oklch = parseOklchColor(icon)
+  if (!oklch) return icon
+
+  const preferredLightness = mode === 'dark'
+    ? Math.min(0.9, Math.max(0.72, oklch.lightness + 0.12))
+    : Math.max(0.24, Math.min(0.42, oklch.lightness - 0.28))
+  const preferred = oklchColor(preferredLightness, oklch.chroma * (mode === 'dark' ? 0.76 : 0.9), oklch.hue) || icon
+
+  if (colorMeetsContrast(preferred, badgeBg, 3)) return preferred
+  return categoryContrastColor(preferred, badgeBg, mode === 'dark' ? 'dark' : 'light', 3)
+}
+
+function completeCategoryColor(icon: string, mode: ThemeColorScheme): CategoryColor {
+  const badgeBg = deriveCategoryBadgeBg(icon, mode)
+  const badgeText = deriveCategoryBadgeText(icon, badgeBg, mode)
+  return { icon, badgeBg, badgeText }
+}
+
+function categoryBackgroundAt(
+  background: string | undefined | Array<string | undefined>,
+  index: number
+): string | undefined {
+  return Array.isArray(background) ? background[index] : background
+}
+
+export function deriveCategoryColors(
+  themeColors: Record<string, string | undefined>,
+  background: string | undefined | Array<string | undefined>,
+  mode: ThemeColorScheme = 'light',
+  count = 4
+): CategoryColor[] {
+  const requestedCount = Math.max(0, Math.floor(count))
+  const icons = Array.from({ length: requestedCount }, (_, index) => (
+    normalizeCategoryIconColor(categoryColorCandidate(themeColors, index), categoryBackgroundAt(background, index), mode)
+  ))
+
+  const finalIcons = categoryColorsHaveHueCollision(icons)
+    ? Array.from({ length: requestedCount }, (_, index) => (
+      normalizeCategoryIconColor(CATEGORY_FALLBACK_COLORS[index % CATEGORY_FALLBACK_COLORS.length], categoryBackgroundAt(background, index), mode)
+    ))
+    : icons
+
+  return finalIcons.map(icon => completeCategoryColor(icon, mode))
+}
+
+export function deriveStateOverlays(
+  surfaceColor: string | undefined,
+  primaryColor: string | undefined,
+  mode: ThemeColorScheme = 'light'
+): StateOverlayRamp | undefined {
+  if (!surfaceColor || !primaryColor) return undefined
+
+  const surfaceOklch = toOklch(surfaceColor)
+  if (!surfaceOklch || !isFiniteNumber(surfaceOklch.l)) return undefined
+
+  const hue = isFiniteNumber(surfaceOklch.h) ? surfaceOklch.h : undefined
+  const chroma = isFiniteNumber(surfaceOklch.c) ? surfaceOklch.c : 0
+  const offsets = STATE_LIGHTNESS_OFFSETS[mode]
+  const hover = oklchColor(surfaceOklch.l + offsets.hover, chroma, hue)
+  const active = oklchColor(surfaceOklch.l + offsets.active, chroma, hue)
+  const selectedBg = oklchColor(surfaceOklch.l + offsets.selected, chroma, hue)
+
+  if (!hover || !active || !selectedBg) return undefined
+
+  return {
+    hover,
+    active,
+    selected: {
+      bg: selectedBg,
+      border: primaryColor,
+    },
+    selectedHover: active,
+  }
+}
+
+function contrastWithBackground(color: string | undefined, background: string): number {
+  if (!color) return -1
+  try {
+    const contrast = wcagContrast(color, background)
+    return Number.isFinite(contrast) ? contrast : -1
+  } catch {
+    return -1
+  }
+}
+
+function selectNeutralTextEndLightness(
+  background: string,
+  backgroundLightness: number,
+  preferredLightness: number,
+  chroma: number,
+  hue: number | undefined,
+  targetContrast: number,
+  mode: ThemeColorScheme
+): number {
+  const modeExtreme = mode === 'dark' ? 1 : 0
+  const preferredExtreme = preferredLightness >= backgroundLightness ? 1 : 0
+  const candidates = Array.from(new Set([
+    preferredLightness,
+    preferredExtreme,
+    modeExtreme,
+    0,
+    1,
+  ].map(lightness => clampUnit(lightness))))
+    .map(lightness => ({
+      lightness,
+      contrast: contrastWithBackground(
+        oklchTextColor(lightness, chroma, hue),
+        background
+      ),
+    }))
+    .sort((a, b) => {
+      const aMeetsTarget = a.contrast >= targetContrast
+      const bMeetsTarget = b.contrast >= targetContrast
+      if (aMeetsTarget !== bMeetsTarget) return aMeetsTarget ? -1 : 1
+      return b.contrast - a.contrast
+    })
+
+  return candidates[0]?.lightness ?? preferredLightness
+}
+
+function findContrastDrivenNeutralText(
+  background: string,
+  backgroundLightness: number,
+  endLightness: number,
+  chroma: number,
+  hue: number | undefined,
+  targetContrast: number,
+  usedColors: Set<string>
+): string | undefined {
+  let endColor = oklchTextColor(endLightness, chroma, hue)
+  if (!endColor) return undefined
+
+  const endContrast = contrastWithBackground(endColor, background)
+  if (endContrast < targetContrast) {
+    return endColor
+  }
+
+  let low = 0
+  let high = 1
+  let bestColor = endColor
+  let bestPosition = 1
+
+  for (let index = 0; index < 24; index += 1) {
+    const mid = (low + high) / 2
+    const lightness = backgroundLightness + ((endLightness - backgroundLightness) * mid)
+    const candidate = oklchTextColor(lightness, chroma, hue)
+    const contrast = contrastWithBackground(candidate, background)
+
+    if (candidate && contrast >= targetContrast) {
+      bestColor = candidate
+      bestPosition = mid
+      high = mid
+    } else {
+      low = mid
+    }
+  }
+
+  if (!usedColors.has(bestColor)) return bestColor
+
+  for (let position = bestPosition + 0.01; position <= 1; position += 0.01) {
+    const lightness = backgroundLightness + ((endLightness - backgroundLightness) * position)
+    const candidate = oklchTextColor(lightness, chroma, hue)
+    if (!candidate || usedColors.has(candidate)) continue
+    if (contrastWithBackground(candidate, background) >= targetContrast) return candidate
+  }
+
+  endColor = oklchTextColor(endLightness, chroma, hue)
+  return endColor && !usedColors.has(endColor) ? endColor : bestColor
+}
+
+export function deriveStatusSurfaceRamp(
+  baseColor: string | undefined,
+  surface: string | undefined,
+  mode: ThemeColorScheme = 'light'
+): StatusSurfaceRamp | undefined {
+  if (!baseColor || !surface) {
+    return undefined
+  }
+
+  const baseOklch = toOklch(baseColor)
+  const surfaceOklch = toOklch(surface)
+  if (
+    !baseOklch ||
+    !surfaceOklch ||
+    !isFiniteNumber(surfaceOklch.l)
+  ) {
+    return undefined
+  }
+
+  const hue = isFiniteNumber(baseOklch.h) ? baseOklch.h : undefined
+  const baseChroma = isFiniteNumber(baseOklch.c) ? baseOklch.c : 0
+  const direction = mode === 'dark' ? 1 : -1
+  const ramp = {} as StatusSurfaceRamp
+
+  for (const stop of STATUS_SURFACE_RAMP_STOPS[mode]) {
+    const lightness = surfaceOklch.l + (direction * stop.lightnessOffset)
+    const color = oklchColor(lightness, baseChroma * stop.chromaScale, hue)
+    if (!color) return undefined
+    ramp[stop.token] = color
+  }
+
+  return ramp
+}
+
+export function nudgeDangerColorTowardRed(baseColor: string): string {
+  const oklch = parseOklchColor(baseColor)
+  if (!oklch || !isFiniteNumber(oklch.hue)) return baseColor
+
+  const hue = ((oklch.hue % 360) + 360) % 360
+  if (hue < 35 || hue > 85) return baseColor
+
+  const redHue = 25
+  const correctedHue = redHue + ((hue - redHue) * 0.25)
+  return oklchColor(oklch.lightness, oklch.chroma, correctedHue) || baseColor
+}
+
+export function deriveNeutralTextRamp(
+  foreground: string | undefined,
+  background: string | undefined,
+  mode: ThemeColorScheme = 'light'
+): NeutralTextRamp | undefined {
+  if (!foreground || !background) {
+    return undefined
+  }
+
+  const foregroundOklch = toOklch(foreground)
+  const backgroundOklch = toOklch(background)
+  if (
+    !foregroundOklch ||
+    !backgroundOklch ||
+    !isFiniteNumber(foregroundOklch.l) ||
+    !isFiniteNumber(backgroundOklch.l)
+  ) {
+    return undefined
+  }
+
+  const hue = isFiniteNumber(foregroundOklch.h) ? foregroundOklch.h : undefined
+  const baseChroma = isFiniteNumber(foregroundOklch.c) ? foregroundOklch.c : 0
+  const usedColors = new Set<string>()
+  const ramp = {} as NeutralTextRamp
+
+  for (const target of NEUTRAL_TEXT_TARGETS) {
+    const chroma = baseChroma * target.chromaScale
+    const endLightness = selectNeutralTextEndLightness(
+      background,
+      backgroundOklch.l,
+      foregroundOklch.l,
+      chroma,
+      hue,
+      target.contrast,
+      mode
+    )
+    const color = findContrastDrivenNeutralText(
+      background,
+      backgroundOklch.l,
+      endLightness,
+      chroma,
+      hue,
+      target.contrast,
+      usedColors
+    )
+    const fallback = readableColor(background, [foreground, '#000000', '#FFFFFF'], foreground, Math.min(target.contrast, 4.5))
+
+    ramp[target.token] = color || fallback
+    usedColors.add(ramp[target.token])
+  }
+
+  return ramp
 }
 
 function surfaceDistance(first: string | undefined, second: string | undefined): number | null {

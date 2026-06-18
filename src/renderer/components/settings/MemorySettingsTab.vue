@@ -69,7 +69,7 @@
           label="Prompt cap"
           description="Maximum characters from bootstrap memory added to the prompt."
         >
-          <NumberStepper
+          <InputNumber
             :model-value="memory.bootstrapMaxChars"
             :min="1000"
             :max="50000"
@@ -158,7 +158,7 @@
             label="Timeout"
             description="Maximum recall time."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.activeMemory.timeoutMs"
               :min="1000"
               :max="60000"
@@ -173,7 +173,7 @@
             label="Cache TTL"
             description="Reuse recent recall results."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.activeMemory.cacheTtlMs"
               :min="0"
               :max="120000"
@@ -191,7 +191,7 @@
             label="Summary chars"
             description="Maximum recalled summary length."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.activeMemory.maxSummaryChars"
               :min="100"
               :max="5000"
@@ -206,20 +206,20 @@
             description="User and assistant turns sampled for recall."
           >
             <div class="dual-stepper">
-              <NumberStepper
+              <InputNumber
                 :model-value="memory.activeMemory.recentUserTurns"
                 :min="1"
                 :max="8"
-                size="compact"
+                size="small"
                 :disabled="memoryDisabled || memory.activeMemory.enabled === false"
                 aria-label="recent user turns"
                 @update:model-value="value => updateActiveMemory({ recentUserTurns: value })"
               />
-              <NumberStepper
+              <InputNumber
                 :model-value="memory.activeMemory.recentAssistantTurns"
                 :min="0"
                 :max="6"
-                size="compact"
+                size="small"
                 :disabled="memoryDisabled || memory.activeMemory.enabled === false"
                 aria-label="recent assistant turns"
                 @update:model-value="value => updateActiveMemory({ recentAssistantTurns: value })"
@@ -233,7 +233,7 @@
             label="User chars"
             description="Characters per user turn."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.activeMemory.recentUserChars"
               :min="120"
               :max="6000"
@@ -247,7 +247,7 @@
             label="Assistant chars"
             description="Characters per assistant turn."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.activeMemory.recentAssistantChars"
               :min="120"
               :max="6000"
@@ -264,7 +264,7 @@
             label="Timeout breaker"
             description="Timeouts before recall cools down."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.activeMemory.circuitBreakerMaxTimeouts"
               :min="1"
               :max="10"
@@ -277,7 +277,7 @@
             label="Cooldown"
             description="Cooldown after repeated timeouts."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.activeMemory.circuitBreakerCooldownMs"
               :min="1000"
               :max="300000"
@@ -294,12 +294,12 @@
 
     <SettingsSection
       title="Capture"
-      description="How new facts are saved after assistant replies."
+      description="Extract daily-note bullets after assistant replies."
     >
       <SettingsGroup>
         <SettingRow
           label="Mode"
-          description="Auto saves high-confidence facts, Ask queues confirmations, Explicit only waits for clear remember intent."
+          description="Auto captures daily notes after replies. Explicit only waits for clear remember intent."
         >
           <select
             class="form-select"
@@ -310,9 +310,6 @@
             <option value="auto">
               Auto
             </option>
-            <option value="ask">
-              Ask
-            </option>
             <option value="explicit-only">
               Explicit only
             </option>
@@ -322,53 +319,12 @@
           </select>
         </SettingRow>
 
-        <SettingRow
-          label="Target"
-          description="Choose whether captured facts go to Profile, daily notes, or both."
-        >
-          <select
-            class="form-select"
-            :value="memory.capture.targetPolicy"
-            :disabled="memoryDisabled || memory.capture.enabled === false"
-            @change="updateCapture({ targetPolicy: ($event.target as HTMLSelectElement).value as SoulMemoryCaptureSettings['targetPolicy'] })"
-          >
-            <option value="canonical-first">
-              Profile first
-            </option>
-            <option value="daily-only">
-              Daily only
-            </option>
-            <option value="hybrid">
-              Hybrid
-            </option>
-          </select>
-        </SettingRow>
-
-        <SettingRow
-          label="Policy"
-          description="Aggressive lowers capture thresholds slightly."
-        >
-          <select
-            class="form-select"
-            :value="memory.capture.policy"
-            :disabled="memoryDisabled || memory.capture.enabled === false"
-            @change="updateCapture({ policy: ($event.target as HTMLSelectElement).value as SoulMemoryCaptureSettings['policy'] })"
-          >
-            <option value="high-confidence">
-              High confidence
-            </option>
-            <option value="aggressive">
-              Aggressive
-            </option>
-          </select>
-        </SettingRow>
-
         <div class="settings-grid-row">
           <SettingRow
             label="Input chars"
             description="Maximum conversation text sent to capture."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.capture.maxInputChars"
               :min="1000"
               :max="50000"
@@ -382,7 +338,7 @@
             label="Timeout"
             description="Maximum capture time."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.capture.timeoutMs"
               :min="1000"
               :max="60000"
@@ -394,51 +350,6 @@
             />
           </SettingRow>
         </div>
-
-        <div class="settings-grid-row">
-          <SettingRow
-            label="Candidates"
-            description="Maximum facts proposed per reply."
-          >
-            <NumberStepper
-              :model-value="memory.capture.maxCandidates"
-              :min="1"
-              :max="20"
-              :disabled="memoryDisabled || memory.capture.enabled === false"
-              aria-label="capture candidates"
-              @update:model-value="value => updateCapture({ maxCandidates: value })"
-            />
-          </SettingRow>
-          <SettingRow
-            label="Profile confidence"
-            description="Minimum confidence for long-term Profile facts."
-          >
-            <NumberStepper
-              :model-value="memory.capture.longTermMinConfidence"
-              :min="0"
-              :max="1"
-              :step="0.05"
-              :disabled="memoryDisabled || memory.capture.enabled === false"
-              aria-label="profile confidence"
-              @update:model-value="value => updateCapture({ longTermMinConfidence: value })"
-            />
-          </SettingRow>
-        </div>
-
-        <SettingRow
-          label="Daily confidence"
-          description="Minimum confidence for daily note capture."
-        >
-          <NumberStepper
-            :model-value="memory.capture.dailyMinConfidence"
-            :min="0"
-            :max="1"
-            :step="0.05"
-            :disabled="memoryDisabled || memory.capture.enabled === false"
-            aria-label="daily capture confidence"
-            @update:model-value="value => updateCapture({ dailyMinConfidence: value })"
-          />
-        </SettingRow>
       </SettingsGroup>
     </SettingsSection>
 
@@ -466,7 +377,7 @@
             label="High-confidence threshold"
             description="Default confidence for trusted Profile writes."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.canonicalMemory.highConfidenceThreshold"
               :min="0"
               :max="1"
@@ -480,7 +391,7 @@
             label="Dedupe threshold"
             description="Similarity required to mark Profile duplicates."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.canonicalMemory.semanticDedupeThreshold"
               :min="0.5"
               :max="1"
@@ -518,7 +429,7 @@
             label="Results"
             description="Default search result count."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.search.maxResults"
               :min="1"
               :max="20"
@@ -531,7 +442,7 @@
             label="Chunk tokens"
             description="Approximate token size per indexed chunk."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.search.chunkTokens"
               :min="100"
               :max="2000"
@@ -548,7 +459,7 @@
             label="Chunk overlap"
             description="Shared tokens between adjacent chunks."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.search.chunkOverlap"
               :min="0"
               :max="1000"
@@ -562,7 +473,7 @@
             label="Half-life"
             description="Temporal ranking decay in days."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.search.temporalDecayHalfLifeDays"
               :min="1"
               :max="365"
@@ -691,7 +602,7 @@
               label="Dimensions"
               description="Use 0 for provider default."
             >
-              <NumberStepper
+              <InputNumber
                 :model-value="memory.embeddings.dimensions"
                 :min="0"
                 :max="8192"
@@ -786,7 +697,7 @@
             label="Days back"
             description="How many previous days to include."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.dailyContext.daysBack"
               :min="0"
               :max="14"
@@ -799,7 +710,7 @@
             label="Max chars"
             description="Maximum daily context characters."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.dailyContext.maxChars"
               :min="1000"
               :max="50000"
@@ -835,7 +746,7 @@
           label="Input chars"
           description="Maximum compacted text sent to the memory writer."
         >
-          <NumberStepper
+          <InputNumber
             :model-value="memory.memoryFlush.maxInputChars"
             :min="2000"
             :max="120000"
@@ -897,7 +808,7 @@
             label="Retention"
             description="Days of diagnostic files to keep."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.logging.retentionDays"
               :min="1"
               :max="90"
@@ -911,7 +822,7 @@
             label="Preview chars"
             description="Maximum request/response preview size."
           >
-            <NumberStepper
+            <InputNumber
               :model-value="memory.logging.maxPreviewChars"
               :min="120"
               :max="4000"
@@ -974,7 +885,7 @@ import type {
 } from '@shared/ipc/settings'
 import { normalizeSoulMemorySettings } from '@shared/defaults/settings'
 import { resolveSoulMemoryEmbeddingTarget } from '@shared/embeddings/defaults'
-import NumberStepper from './NumberStepper.vue'
+import InputNumber from '@/components/common/InputNumber.vue'
 import {
   SettingRow,
   SettingsGroup,
@@ -1178,6 +1089,16 @@ async function chooseMemoryDirectory(): Promise<void> {
   width: 100%;
 }
 
+.dual-stepper :deep(.app-input-number) {
+  --app-input-number-height: 22px;
+  --app-input-number-control-width: 20px;
+  --app-input-number-padding-x: 3px;
+  --app-input-number-font-size: 11px;
+
+  min-width: 84px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
 .embedding-summary {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
@@ -1189,7 +1110,7 @@ async function chooseMemoryDirectory(): Promise<void> {
 }
 
 .embedding-summary.warning {
-  background: color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 9%, transparent);
+  background: var(--ui-status-warning-bg, transparent);
 }
 
 .embedding-summary strong,

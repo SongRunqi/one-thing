@@ -36,6 +36,8 @@ import type {
   CodexProviderUsage,
   CodexUsageLimit,
   CodexUsageWindow,
+  ProviderEnvStatus,
+  GetProviderEnvStatusResponse,
   ProviderUsageResponse,
   ModelInfo,
   OpenRouterModel,
@@ -83,6 +85,8 @@ import type {
   MarkdownSaveAttachmentsRequest,
   MarkdownSaveAttachmentsResponse,
   GetChatHistoryResponse,
+  GetSystemPromptSnapshotResponse,
+  SystemPromptSnapshot,
   GetSessionsResponse,
   CreateSessionResponse,
   SwitchSessionResponse,
@@ -282,6 +286,8 @@ export type {
   GetSessionMessagesPageResponse,
   UserMessageMarker,
   GetSessionUserMarkersResponse,
+  GetSystemPromptSnapshotResponse,
+  SystemPromptSnapshot,
   AISettings,
   AppSettings,
   AIProvider,
@@ -292,6 +298,8 @@ export type {
   CodexProviderUsage,
   CodexUsageLimit,
   CodexUsageWindow,
+  ProviderEnvStatus,
+  GetProviderEnvStatusResponse,
   ProviderUsageResponse,
   ModelInfo,
   OpenRouterModel,
@@ -470,6 +478,7 @@ export interface ElectronAPI {
   onUIMessageStream: (callback: (data: UIMessageStreamData) => void) => () => void
   getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
   generateTitle: (message: string) => Promise<GenerateTitleResponse>
+  getSystemPromptSnapshot: (sessionId: string) => Promise<GetSystemPromptSnapshotResponse>
   getSessions: () => Promise<GetSessionsResponse>
   createSession: (name: string) => Promise<CreateSessionResponse>
   switchSession: (sessionId: string) => Promise<SwitchSessionResponse>
@@ -554,6 +563,7 @@ export interface ElectronAPI {
   openThemesFolder: () => Promise<{ success: boolean; error?: string }>
   getProviders: () => Promise<GetProvidersResponse>
   getProviderUsage: (providerId: string) => Promise<ProviderUsageResponse>
+  getProviderEnvStatus: (providerId: string) => Promise<GetProviderEnvStatusResponse>
   // New OpenRouter-based model API
   getModelsWithCapabilities: (providerId: string, options?: { forceRefresh?: boolean }) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
   getAllModels: () => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>

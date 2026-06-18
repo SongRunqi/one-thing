@@ -82,7 +82,7 @@ describe('Pi-style prompt builder', () => {
     const result = await buildPrompt({
       ...baseOptions({
         workingDirectory: '/repo',
-        toolNames: ['read', 'todo_plan'],
+        toolNames: ['read', 'todo'],
       }),
       providerId: 'openai',
       historyMessages: [],

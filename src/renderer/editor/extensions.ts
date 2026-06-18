@@ -276,6 +276,7 @@ export function completionExtensions(enabled: boolean): Extension {
 export function themeExtension(profile: EditorProfile, spellcheck: boolean): Extension {
   const isComposer = profile === 'composer'
   const isInlineMessage = profile === 'inline-message'
+  const isMarkdownDocument = profile === 'markdown-document'
   const fontFamily = profile === 'code-file'
     ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
     : 'var(--font-sans)'
@@ -294,7 +295,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       outline: 'none',
     },
     '.cm-scroller': {
-      maxHeight: 'var(--editor-max-height)',
+      maxHeight: isMarkdownDocument ? 'none' : 'var(--editor-max-height)',
       overflowX: 'auto',
       overflowY: 'auto',
       scrollbarWidth: 'thin',
@@ -312,12 +313,12 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       wordBreak: 'normal',
     },
     '.cm-content.cm-lineWrapping': {
-      width: 'min(100%, var(--editor-soft-wrap-width, 88ch))',
+      width: isComposer ? '100%' : 'min(100%, var(--editor-soft-wrap-width, 88ch))',
       maxWidth: '100%',
-      minWidth: '0',
+      minWidth: isComposer ? '100%' : '0',
       boxSizing: 'border-box',
-      flexGrow: '0',
-      flexShrink: '1',
+      flexGrow: isComposer ? '1' : '0',
+      flexShrink: isComposer ? '0' : '1',
       whiteSpace: 'pre-wrap',
       wordBreak: 'break-word',
       overflowWrap: 'anywhere',
@@ -372,8 +373,8 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       lineHeight: '18px',
     },
     '.prompt-ref-widget.is-skill': {
-      borderColor: 'color-mix(in srgb, var(--ui-status-success-fg, var(--success, #2f8f5b)) 24%, var(--ui-border-default-border, var(--border)))',
-      background: 'color-mix(in srgb, var(--ui-status-success-fg, var(--success, #2f8f5b)) 8%, transparent)',
+      borderColor: 'var(--ui-status-success-border, var(--ui-border-default-border, var(--border)))',
+      background: 'var(--ui-status-success-bg, transparent)',
     },
     '.prompt-ref-widget.is-command': {
       borderColor: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 24%, var(--ui-border-default-border, var(--border)))',
@@ -391,7 +392,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       fontWeight: '700',
     },
     '.prompt-ref-widget.is-skill .prompt-ref-widget-icon': {
-      background: 'color-mix(in srgb, var(--ui-status-success-fg, var(--success, #2f8f5b)) 16%, transparent)',
+      background: 'var(--ui-status-success-bg, transparent)',
       color: 'var(--ui-status-success-fg, var(--success, #2f8f5b))',
     },
     '.prompt-ref-widget.is-command .prompt-ref-widget-icon': {
@@ -437,7 +438,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       pointerEvents: 'auto',
     },
     '.prompt-ref-widget-close:hover': {
-      background: 'color-mix(in srgb, var(--ui-status-danger-fg, var(--danger, #d14)) 12%, transparent)',
+      background: 'var(--ui-status-danger-bg, transparent)',
       color: 'var(--ui-status-danger-fg, var(--danger, #d14))',
     },
     '.prompt-ref-widget-popover': {

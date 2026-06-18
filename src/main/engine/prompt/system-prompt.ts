@@ -123,11 +123,9 @@ export async function buildPrompt(options: BuildPromptOptions): Promise<BuildPro
 
 function core(): string {
   const guidelines = [
-    'Use write for new files or complete rewrites.',
     'Follow the Tool Workspace Rules when choosing file paths or command directories.',
     'Prefer specific file/search tools over bash when they fit the task.',
     'When changing code, run an appropriate check when practical, then summarize changed paths clearly.',
-    'Be concise in your responses.',
     'Show file paths clearly when working with files.',
   ]
 
@@ -220,9 +218,6 @@ function getSkillToolHint(toolNames?: string[]): { load: string; file: string } 
   }
   if (toolNames.includes('skill_view')) {
     return { load: '`skill_view(name)`', file: 'Use `skill_view(name, file_path)` to read supporting files listed by the skill.' }
-  }
-  if (toolNames.includes('skill')) {
-    return { load: '`skill` action="load"', file: 'Use action="view" with filePath to read supporting files listed by the skill.' }
   }
   return undefined
 }

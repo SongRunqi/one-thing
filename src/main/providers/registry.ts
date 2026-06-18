@@ -11,6 +11,7 @@ import { builtinProviders } from './builtin/index.js'
 import type { ProviderDefinition, ProviderInfo, ProviderInstance, ProviderConfig } from './types.js'
 import { authService } from '../auth/auth-service.js'
 import { createBoundFetch } from './bound-fetch.js'
+import { withResolvedProviderApiKey } from './env.js'
 
 // Registry storage
 const providers = new Map<string, ProviderDefinition>()
@@ -138,10 +139,11 @@ export function createProviderInstance(
   providerId: string,
   config: ProviderConfig & { apiType?: 'openai' | 'anthropic' }
 ): ProviderInstance {
+  const resolvedConfig = withResolvedProviderApiKey(providerId, config)
   // 清理过期缓存
   cleanExpiredProviderCache()
 
-  const cacheKey = getProviderCacheKey(providerId, config)
+  const cacheKey = getProviderCacheKey(providerId, resolvedConfig)
   const cached = providerInstanceCache.get(cacheKey)
 
   // 有缓存直接返回
@@ -153,14 +155,14 @@ export function createProviderInstance(
 
   // Handle user-defined custom providers
   if (providerId.startsWith('custom-')) {
-    instance = createCustomProviderInstance(config)
+    instance = createCustomProviderInstance(resolvedConfig)
   } else {
     // Look up registered provider
     const definition = providers.get(providerId)
     if (!definition) {
       throw new Error(`Unsupported provider: ${providerId}`)
     }
-    instance = definition.create(config)
+    instance = definition.create(resolvedConfig)
   }
 
   // 缓存实例
@@ -177,9 +179,11 @@ export async function createProviderInstanceAsync(
   providerId: string,
   config: ProviderConfig & { apiType?: 'openai' | 'anthropic' }
 ): Promise<ProviderInstance> {
+  const resolvedConfig = withResolvedProviderApiKey(providerId, config)
+
   // Handle user-defined custom providers
   if (providerId.startsWith('custom-')) {
-    return createCustomProviderInstance(config)
+    return createCustomProviderInstance(resolvedConfig)
   }
 
   // Look up registered provider
@@ -198,7 +202,7 @@ export async function createProviderInstanceAsync(
 
     // Create provider with OAuth token
     return definition.create({
-      ...config,
+      ...resolvedConfig,
       oauthToken: token,
       authContext: {
         kind: 'oauth',
@@ -213,7 +217,7 @@ export async function createProviderInstanceAsync(
     })
   }
 
-  return definition.create(config)
+  return definition.create(resolvedConfig)
 }
 
 /**

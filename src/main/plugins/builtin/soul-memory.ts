@@ -9,7 +9,6 @@ import type {
   ChatMessage,
   AppSettings,
   CanonicalMemoryAuditEvent,
-  CanonicalMemoryKind,
   CanonicalMemoryRecord,
   MemoryAppendRequest,
   MemoryDreamingStatus,
@@ -19,16 +18,13 @@ import type {
   MemoryGraphDuplicate,
   MemoryGraphDuplicateDecisionRequest,
   MemoryGraphEntity,
-  MemoryGraphEntityType,
   MemoryGraphEntityUpsertRequest,
   MemoryGraphListRequest,
   MemoryGraphObservation,
-  MemoryGraphObservationKind,
   MemoryGraphObservationUpsertRequest,
   MemoryGraphOverview,
   MemoryGraphRelation,
   MemoryGraphRelationUpsertRequest,
-  MemoryGraphStatus,
   MemoryIndexStatus,
   MemoryManagedFile,
   MemoryManagedFileKind,
@@ -42,11 +38,9 @@ import type {
   MemorySaveFileRequest,
   MemorySearchHit,
   MemorySearchRequest,
-  ProviderConfig,
   SoulMemoryCaptureSettings,
   SoulMemoryDreamingSettings,
   SoulMemoryReviewSettings,
-  SoulMemorySettings,
   SchedulerRunTimelineEntryDTO,
 } from '../../../shared/ipc.js'
 import { DEFAULT_AGENT_ID } from '../../../shared/ipc.js'
@@ -71,16 +65,9 @@ import {
 } from '../../memory/diagnostics-logger.js'
 import type {
   CanonicalMemoryInput,
-  CanonicalUpsertResult,
   CaptureCandidate,
   CaptureCandidateKind,
-  CaptureModelResult,
   DreamingSource,
-  GraphEntityInput,
-  GraphEvidenceInput,
-  GraphMergeResult,
-  GraphObservationInput,
-  GraphRelationInput,
   IndexStatus,
   MemoryChunk,
   MemoryIndexFile,
@@ -88,20 +75,13 @@ import type {
   MemoryWorkspace,
   ResolvedSoulMemorySettings,
   SearchHit,
-  ShortTermMemorySignal,
 } from '../../memory/types.js'
 import {
   CAPTURE_MAX_PENDING,
   CAPTURE_PENDING_STORE_KEY,
   CANONICAL_MIGRATION_STORE_KEY,
-  dateString,
   dateStringDaysAgo,
-  DREAMING_END_MARKER,
-  DREAMING_MEMORY_BUDGET_CHARS,
-  DREAMING_MEMORY_SECTION,
   DREAMING_SCHEDULER_TASK_ID,
-  DREAMING_START_MARKER,
-  DREAMS_TEMPLATE,
   estimateTokens,
   getWorkspace,
   GRAPH_MIGRATION_STORE_KEY,
@@ -112,28 +92,17 @@ import {
   resolveSessionAgentId,
   resolveSettings,
   SCOPED_DREAMING_SCHEDULER_TASK_ID,
-  SESSION_INGESTION_STORE_KEY,
   sha,
-  SHORT_TERM_SIGNAL_RELATIVE_PATH,
   SOUL_MEMORY_PLUGIN_ID,
   SOUL_MEMORY_RULES_PROMPT,
   SOUL_TEMPLATE,
-  todayString,
   truncate,
   USER_SELF_ENTITY_ID,
   writeIfMissing,
   normalizeBulletText,
   asBullet,
-  slugifyMemoryKeyPart,
-  sanitizeMemoryKey,
-  extractCandidateValue,
-  looksLikeNameValue,
   previewLine,
   normalizeForDedupe,
-  canonicalKindFromCaptureKind,
-  canonicalTokens,
-  tokenJaccard,
-  isDurableCandidate,
   cosine,
   ftsQuery,
 } from '../../memory/workspace.js'
@@ -161,58 +130,39 @@ import {
   setOnDbSwitch,
 } from '../../memory/database.js'
 import {
-  appendGraphEvidence,
   appendMemoryEvent,
   ensureUserSelfEntity,
-  entityIdFor,
   getGraphEntityById,
   getGraphMemoryByIdentifier,
   getGraphObservationById,
   getGraphOverview,
   getGraphRelationById,
-  graphDisplayName,
-  graphEntityLabel,
-  graphInputsFromCandidate,
   graphSearchContent,
-  graphSlotFromCandidate,
   listGraphDuplicates,
   listGraphEntities,
   listGraphObservations,
   listGraphRelations,
   mergeGraphMemory,
-  normalizeEntityType,
-  normalizeGraphStatus,
-  normalizeObservationKind,
-  normalizeRelationType,
   reconcileSingletonGraphObservations,
   rowToGraphAuditEvent,
   rowToGraphDuplicate,
-  rowToGraphEntity,
-  rowToGraphObservation,
-  rowToGraphRelation,
   syncGraphFts,
   upsertGraphCandidates,
   upsertGraphEntity,
   upsertGraphObservation,
   upsertGraphRelation,
-  type GraphEmbeddingFn,
 } from '../../memory/graph.js'
 import {
   appendCanonicalAudit,
-  buildCanonicalProfileSummary,
   buildGraphProfileSummary,
   canonicalDisplayText,
-  deriveCanonicalMemoryInput,
-  findCanonicalDuplicate,
   getCanonicalMemoryByIdOrKey,
   getCanonicalMemoryCount,
   listCanonicalMemories,
   rowToCanonicalAuditEvent,
   rowToCanonicalMemory,
-  syncCanonicalFts,
   upsertCanonicalCandidates,
   upsertCanonicalMemory,
-  type CanonicalEmbeddingFn,
 } from '../../memory/canonical.js'
 
 export { SOUL_MEMORY_PLUGIN_ID } from '../../memory/workspace.js'
@@ -224,6 +174,75 @@ export const soulMemoryManifest = {
   description: 'SOUL.md prompt context, SQLite graph memory, AI notes recall, and compact-time memory flush',
   author: 'onething',
 }
+
+const DAILY_NOTE_EXTRACTION_SYSTEM_PROMPT = [
+  'You are a precision daily-note extraction filter for a local assistant memory system.',
+  'Goal: produce concise daily-note entries about what the user did today. A useful daily note answers: what did the user do, what work did they handle, which project/repo/file/system was involved, what requirement was implemented, what bug was fixed or investigated, what topic did the user learn/study or explicitly say they wanted to learn, and what problem/error/blocker did they encounter.',
+  'Daily notes are not raw transcripts and not short-term signal records. Transform requests into factual activity notes without adding unsupported details. Example: "给我讲讲 Go 的 array" becomes "用户今天学习了 Go array。"; "mvn compile 报 cannot find symbol" becomes "用户今天在 aikefu-bridge 排查 mvn compile 的 cannot find symbol 问题，错误集中在 Lombok getter/log 字段。".',
+  'Every line must already read like a daily-note bullet. Reject raw user questions, commands, copy-pasted requests, assistant completion claims, tool chatter, and vague summaries that do not name concrete work, project, learning topic, bug, requirement, or blocker.',
+  'Do not emit any candidate intended for short-term.jsonl or other transient signal files.',
+  'If a candidate would read like "the user asked/requested/wanted..." or simply repeats a message, rewrite it into a daily activity fact. Use "wanted to learn" only when the user explicitly expressed future intent; otherwise use "learned/studied" only when the conversation actually covered that topic. If rewriting requires inventing details, reject it.',
+  'Assistant text is supporting evidence only. Never preserve assistant speculation or "assistant reported it was done" as memory.',
+  'Prefer exact user-confirmed wording for rules and constraints; avoid lossy paraphrase when precision matters.',
+  'Do not generate JSON, graph/entity/profile metadata, headings, timestamps, explanations, or code fences.',
+  'Return markdown bullets only, one fact per line, each starting with "- ".',
+  'When there is no daily-note-worthy activity, return exactly NONE.',
+].join(' ')
+
+const DAILY_NOTE_CAPTURE_SYSTEM_PROMPT = [
+  'You are a precision daily-note mutation planner for a local assistant memory system.',
+  'Goal: keep today\'s memory/YYYY-MM-DD.md accurate and concise after an assistant reply.',
+  'Daily notes are not raw transcripts and not short-term signal records. A useful daily note answers: what did the user do, what work did they handle, which project/repo/file/system was involved, what requirement was implemented, what bug was fixed or investigated, what topic did the user learn/study or explicitly say they wanted to learn, and what problem/error/blocker did they encounter.',
+  'Use action "add" for new daily-note-worthy activity that is not already present.',
+  'Use action "replace" when the current daily note already has a wrong, duplicated, or imprecise bullet. oldText must copy the exact existing bullet line from Current daily note, including the leading "- ". newText must be the corrected bullet text.',
+  'Use action "remove" when the current daily note has a low-value, raw-request, false, duplicate, secret, or obsolete bullet. text must copy the exact existing bullet line from Current daily note, including the leading "- ".',
+  'Transform requests into factual activity notes without adding unsupported details. Example: "给我讲讲 Go 的 array" becomes "用户今天学习了 Go array。"; "mvn compile 报 cannot find symbol" becomes "用户今天在 aikefu-bridge 排查 mvn compile 的 cannot find symbol 问题，错误集中在 Lombok getter/log 字段。".',
+  'Reject raw user questions, commands, copy-pasted requests, assistant completion claims, tool chatter, and vague summaries that do not name concrete work, project, learning topic, bug, requirement, or blocker.',
+  'Do not emit any candidate intended for short-term.jsonl, MEMORY.md, USER.md, graph memory, or other transient signal files.',
+  'Assistant text is supporting evidence only. Never preserve assistant speculation or "assistant reported it was done" as memory.',
+  'Prefer exact user-confirmed wording for rules and constraints; avoid lossy paraphrase when precision matters.',
+  'Never add secrets or credentials. You may remove existing daily-note bullets that contain secrets.',
+  'Return compact JSON only: {"action":"capture"|"none","confidence":0..1,"memories":[{"action":"add|replace|remove","confidence":0..1,"content":"daily note bullet text for add","oldText":"exact existing bullet for replace","newText":"replacement daily note bullet text","text":"exact existing bullet for remove","reason":"short reason","sensitivity":"normal|sensitive|secret"}],"reason":"short reason"}.',
+  'Do not return markdown bullets, headings, timestamps, explanations, graph/entity/profile metadata, or code fences.',
+  'When there is no useful daily-note mutation, return exactly {"action":"none","confidence":1,"memories":[]}.',
+].join(' ')
+
+const MEMORY_CAPTURE_SYSTEM_PROMPT = DAILY_NOTE_CAPTURE_SYSTEM_PROMPT
+const MEMORY_FLUSH_SYSTEM_PROMPT = DAILY_NOTE_EXTRACTION_SYSTEM_PROMPT
+
+const MEMORY_DREAMING_SYSTEM_PROMPT = [
+  'You are a scheduled durable-memory mutation planner for a local assistant memory system.',
+  'Goal: keep MEMORY.md accurate and concise by consolidating stable, future-useful memory from daily notes.',
+  'Use only daily notes from memory/YYYY-MM-DD.md as source material.',
+  'Never use short-term signal files, recall snippets, session transcripts, DREAMS.md, or run reports as source material.',
+  'Use action "add" for new durable facts not already present in Existing MEMORY.md.',
+  'Use action "replace" when Existing MEMORY.md already has a wrong, duplicated, stale, or imprecise entry. oldText must copy exact existing MEMORY.md text; newText must be the corrected durable memory.',
+  'Use action "remove" when Existing MEMORY.md has an unsupported, stale, low-value, duplicate, secret, or contradicted entry. text must copy exact existing MEMORY.md text.',
+  'Reject raw user questions, commands, one-off troubleshooting requests, assistant completion claims, tool chatter, low-value learning Q&A, duplicate facts, and vague activity summaries.',
+  'Keep only durable facts: stable user preferences, identity, recurring constraints, confirmed project decisions, glossary/rule corrections, environment facts, and project context the user explicitly supplied or confirmed.',
+  'If a candidate would read like "the user asked/requested/wanted..." or simply repeats a recent message, reject it.',
+  'Assistant text is supporting evidence only. Never preserve assistant speculation or "done" claims as memory.',
+  'Prefer exact user-confirmed wording for rules and constraints; avoid lossy paraphrase when precision matters.',
+  'Never add secrets or credentials. You may remove existing MEMORY.md entries that contain secrets.',
+  'Return compact JSON only: {"action":"dream"|"none","confidence":0..1,"memories":[{"action":"add|replace|remove","confidence":0..1,"content":"durable memory text for add","oldText":"exact existing MEMORY.md text for replace","newText":"replacement durable memory text","text":"exact existing MEMORY.md text for remove","reason":"short reason","sensitivity":"normal|sensitive|secret"}],"reason":"short reason"}.',
+  'Do not return markdown bullets, XML blocks, headings, timestamps, explanations, graph/entity/profile metadata, or code fences.',
+  'When there is no useful MEMORY.md mutation, return exactly {"action":"none","confidence":1,"memories":[]}.',
+].join(' ')
+
+const MEMORY_REVIEW_SYSTEM_PROMPT = [
+  'You are a Hermes-style background self-improvement memory reviewer.',
+  'This review runs after the assistant has answered, every fixed number of user turns.',
+  'Review the conversation snapshot and current SOUL.md, DREAMS.md, USER.md, and MEMORY.md content.',
+  'You may only propose edits to those four local memory files. Do not propose shell, file, or application actions.',
+  'Use target "soul" for stable assistant voice, stance, interaction rules, and durable behavior instructions that should change SOUL.md.',
+  'Use target "dreams" for tentative self-improvement notes, future SOUL.md ideas, unresolved style observations, or reflections that are not yet stable enough for SOUL.md.',
+  'Use target "user" only for stable user identity, long-term preferences, standing constraints, and user profile facts.',
+  'Use target "memory" for durable project facts, decisions, recurring context, and stable lessons useful across future chats.',
+  'Prefer add actions for new durable facts or notes. Use replace only when oldText is copied exactly from an existing target file and newText is safer or more accurate.',
+  'Use remove only for exact stale, contradicted, low-value, or promoted text. If a DREAMS.md note has been promoted into SOUL.md, remove or replace the DREAMS.md note in the same response.',
+  'Never store secrets, credentials, transient task status, tool chatter, or unsupported assistant guesses.',
+  'Return compact JSON only: {"action":"review"|"none","confidence":0..1,"memories":[{"action":"add|replace|remove","target":"soul|dreams|user|memory","confidence":0..1,"content":"...","oldText":"exact existing text for replace/remove","newText":"replacement for replace","text":"text for remove","reason":"short reason","sensitivity":"normal|sensitive|secret"}],"reason":"short reason"}.',
+].join(' ')
 
 const ACTIVE_MEMORY_CACHE = new Map<string, { expiresAt: number; content: string | null }>()
 const ACTIVE_MEMORY_TIMEOUTS = new Map<string, { count: number; cooldownUntil: number }>()
@@ -300,6 +319,18 @@ function ensureIndexWatcher(workspace: MemoryWorkspace): void {
         })
       }, 750)
     })
+    indexWatcher.on('error', error => {
+      logMemoryDiagnostic({
+        subsystem: 'index',
+        operation: 'watcher',
+        stage: 'runtime',
+        status: 'fallback',
+        error,
+        summary: 'Memory directory watcher failed; app writes will still mark the index dirty.',
+        metadata: { memoryDir: workspace.memoryDir },
+      })
+      closeIndexWatcher()
+    })
   } catch (error) {
     logMemoryDiagnostic({
       subsystem: 'index',
@@ -311,6 +342,16 @@ function ensureIndexWatcher(workspace: MemoryWorkspace): void {
       metadata: { memoryDir: workspace.memoryDir },
     })
   }
+}
+
+function closeIndexWatcher(): void {
+  if (indexWatcherDebounce) {
+    clearTimeout(indexWatcherDebounce)
+    indexWatcherDebounce = null
+  }
+  indexWatcher?.close()
+  indexWatcher = null
+  indexWatcherRoot = ''
 }
 
 function scheduleIndexSync(options: {
@@ -1729,83 +1770,53 @@ async function mergeCanonicalMemory(options: {
   }
 }
 
-function shortTermSignalPath(workspace: MemoryWorkspace): string {
-  return path.join(workspace.root, SHORT_TERM_SIGNAL_RELATIVE_PATH)
-}
-
-async function appendShortTermSignals(
-  workspace: MemoryWorkspace,
-  signals: Omit<ShortTermMemorySignal, 'id' | 'createdAt'>[],
-): Promise<void> {
-  if (signals.length === 0) return
-  const filePath = shortTermSignalPath(workspace)
-  await fsp.mkdir(path.dirname(filePath), { recursive: true })
-  const now = Date.now()
-  const lines = signals.map(signal => {
-    const record: ShortTermMemorySignal = {
-      ...signal,
-      id: sha(`${now}:${signal.sourceType}:${signal.source}:${signal.content}`),
-      createdAt: now,
-    }
-    return JSON.stringify(record)
-  })
-  await fsp.appendFile(filePath, `${lines.join('\n')}\n`, 'utf-8')
-  logMemoryDiagnostic({
-    subsystem: 'daily',
-    operation: 'short-term-signals',
-    stage: 'write',
-    status: 'ok',
-    response: {
-      relativePath: SHORT_TERM_SIGNAL_RELATIVE_PATH,
-      count: signals.length,
-      sourceTypes: Array.from(new Set(signals.map(signal => signal.sourceType))),
-    },
-  })
-}
-
-async function readShortTermSignals(workspace: MemoryWorkspace): Promise<ShortTermMemorySignal[]> {
-  const filePath = shortTermSignalPath(workspace)
-  const raw = await fsp.readFile(filePath, 'utf-8').catch(() => '')
-  return raw
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(line => {
-      try {
-        const parsed = JSON.parse(line) as ShortTermMemorySignal
-        return parsed && typeof parsed.content === 'string' ? parsed : null
-      } catch {
-        return null
-      }
-    })
-    .filter((signal): signal is ShortTermMemorySignal => Boolean(signal))
-}
-
-async function appendDailyMemorySignals(options: {
+async function appendDailyNoteBullets(options: {
   settings?: AppSettings
-  workspace: MemoryWorkspace
-  candidates: CaptureCandidate[]
-  heading: string
-  source: string
-  sourceType?: ShortTermMemorySignal['sourceType']
+  agentId?: string
+  bullets: string[]
+  heading?: string
 }): Promise<{ absolutePath: string; relativePath: string } | null> {
-  const bullets = options.candidates.map(candidate => asBullet(candidate.text)).filter(Boolean)
+  const bullets = options.bullets.map(line => asBullet(line)).filter(Boolean)
   if (bullets.length === 0) return null
-  const target = await appendMemory({
+  return appendMemory({
     settings: options.settings,
+    agentId: options.agentId,
     target: 'daily',
-    heading: options.heading,
+    heading: options.heading || dailyNoteTimeHeading(),
     content: bullets.join('\n'),
   })
-  await appendShortTermSignals(options.workspace, options.candidates.map(candidate => ({
-    sourceType: options.sourceType || 'capture',
-    source: options.source,
-    kind: candidate.kind,
-    content: normalizeBulletText(candidate.text),
-    confidence: candidate.confidence,
-    explicit: candidate.explicit,
-  })))
-  return target
+}
+
+function dailyNoteTimeHeading(date = new Date()): string {
+  return date.toLocaleTimeString()
+}
+
+type DailyNoteCaptureAction = 'add' | 'replace' | 'remove'
+
+interface DailyNoteCaptureCandidate {
+  action: DailyNoteCaptureAction
+  confidence: number
+  content?: string
+  oldText?: string
+  newText?: string
+  text?: string
+  reason?: string
+}
+
+interface DailyNoteCaptureResult {
+  candidates: DailyNoteCaptureCandidate[]
+  confidence: number
+  reason?: string
+}
+
+interface DailyNoteCaptureApplyResult {
+  absolutePath: string
+  relativePath: string
+  applied: number
+  skipped: number
+  added: number
+  replaced: number
+  removed: number
 }
 
 type CaptureStore = Pick<PluginAPI['store'], 'get' | 'set'>
@@ -1832,142 +1843,118 @@ function stripJsonFence(value: string): string {
   return fenced?.[1]?.trim() || trimmed
 }
 
-function parseCaptureModelResult(value: string): CaptureModelResult | null {
-  const jsonText = stripJsonFence(value)
+function clampCaptureConfidence(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.min(1, value))
+    : fallback
+}
+
+function normalizeDailyNoteCaptureAction(value: unknown): DailyNoteCaptureAction | null {
+  const action = String(value || 'add').toLowerCase()
+  if (action === 'add' || action === 'replace' || action === 'remove') return action
+  return null
+}
+
+function optionalCaptureText(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function cleanDailyNoteCaptureText(value: unknown): string | undefined {
+  const text = optionalCaptureText(value)
+  if (!text) return undefined
+  const normalized = normalizeBulletText(text)
+  return normalized && !isLowValueDailyNoteLine(normalized) ? normalized : undefined
+}
+
+function parseDailyNoteCaptureResult(value: string): DailyNoteCaptureResult | null {
+  const jsonText = stripJsonFence(value).trim()
+  if (!jsonText || jsonText.toUpperCase() === 'NONE') return null
+
   const start = jsonText.indexOf('{')
   const end = jsonText.lastIndexOf('}')
-  if (start < 0 || end <= start) return null
+  if (start < 0 || end <= start) {
+    const additions = parseDailyNoteBullets(jsonText).map((content): DailyNoteCaptureCandidate => ({
+      action: 'add',
+      confidence: 0.75,
+      content,
+    }))
+    return additions.length > 0 ? { candidates: additions, confidence: 0.75 } : null
+  }
+
   try {
     const parsed = JSON.parse(jsonText.slice(start, end + 1)) as {
-      action?: string
-      candidates?: unknown
-      memory?: unknown
-      memories?: unknown
+      action?: unknown
       confidence?: unknown
-      explicit?: unknown
+      memories?: unknown
+      candidates?: unknown
+      items?: unknown
       reason?: unknown
     }
     if (String(parsed.action || '').toLowerCase() === 'none') return null
-    const confidence = typeof parsed.confidence === 'number' && Number.isFinite(parsed.confidence)
-      ? Math.max(0, Math.min(1, parsed.confidence))
-      : 0.7
 
-    const structured = Array.isArray(parsed.candidates)
-      ? parsed.candidates
-        .map((item): CaptureCandidate | null => {
-          if (!item || typeof item !== 'object') return null
-          const record = item as Record<string, unknown>
-          const text = String(record.text || record.memory || '').trim()
-          if (!text) return null
-          const rawKind = String(record.kind || 'fact').toLowerCase()
-          const kind: CaptureCandidateKind =
-            rawKind === 'identity' ||
-            rawKind === 'preference' ||
-            rawKind === 'decision' ||
-            rawKind === 'project' ||
-            rawKind === 'constraint' ||
-            rawKind === 'fact' ||
-            rawKind === 'summary' ||
-            rawKind === 'episodic' ||
-            rawKind === 'ignore'
-              ? rawKind
-              : 'fact'
-          const rawSource = String(record.source || 'conversation').toLowerCase()
-          const source = rawSource === 'user' || rawSource === 'assistant' ? rawSource : 'conversation'
-          const candidateConfidence = typeof record.confidence === 'number' && Number.isFinite(record.confidence)
-            ? Math.max(0, Math.min(1, record.confidence))
-            : confidence
-          const rawSensitivity = String(record.sensitivity || 'normal').toLowerCase()
-          const sensitivity = rawSensitivity === 'secret' || rawSensitivity === 'sensitive'
-            ? rawSensitivity
-            : 'normal'
-          const rawTarget = String(record.target || '').toLowerCase()
-          const target = rawTarget === 'memory' || rawTarget === 'daily' || rawTarget === 'ignore'
-            ? rawTarget
-            : undefined
-          const rawMemoryKey = String(record.memoryKey || record.memory_key || record.key || '').trim()
-          const memoryKey = rawMemoryKey ? sanitizeMemoryKey(rawMemoryKey) : undefined
-          const value = typeof record.value === 'string' ? record.value.trim() : undefined
-          const rawEntityType = String(record.entityType || record.entity_type || '').trim()
-          const rawFromEntityType = String(record.fromEntityType || record.from_entity_type || '').trim()
-          const rawToEntityType = String(record.toEntityType || record.to_entity_type || '').trim()
-          const entityName = typeof record.entityName === 'string'
-            ? record.entityName.trim()
-            : typeof record.entity_name === 'string'
-              ? record.entity_name.trim()
-              : undefined
-          const slot = typeof record.slot === 'string' ? record.slot.trim() : undefined
-          const relationType = typeof record.relationType === 'string'
-            ? record.relationType.trim()
-            : typeof record.relation_type === 'string'
-              ? record.relation_type.trim()
-              : undefined
-          const fromEntityName = typeof record.fromEntityName === 'string'
-            ? record.fromEntityName.trim()
-            : typeof record.from_entity_name === 'string'
-              ? record.from_entity_name.trim()
-              : undefined
-          const toEntityName = typeof record.toEntityName === 'string'
-            ? record.toEntityName.trim()
-            : typeof record.to_entity_name === 'string'
-              ? record.to_entity_name.trim()
-              : undefined
-          return {
-            kind,
-            source,
-            confidence: candidateConfidence,
-            text,
-            ...(memoryKey ? { memoryKey } : {}),
-            ...(value ? { value } : {}),
-            ...(rawEntityType ? { entityType: normalizeEntityType(rawEntityType) } : {}),
-            ...(entityName ? { entityName } : {}),
-            ...(slot ? { slot } : {}),
-            ...(relationType ? { relationType } : {}),
-            ...(rawFromEntityType ? { fromEntityType: normalizeEntityType(rawFromEntityType) } : {}),
-            ...(fromEntityName ? { fromEntityName } : {}),
-            ...(rawToEntityType ? { toEntityType: normalizeEntityType(rawToEntityType) } : {}),
-            ...(toEntityName ? { toEntityName } : {}),
-            ...(typeof record.reason === 'string' ? { reason: record.reason.slice(0, 500) } : {}),
-            sensitivity,
-            ...(target ? { target } : {}),
-            ...(typeof record.explicit === 'boolean' ? { explicit: record.explicit } : {}),
-          }
-        })
-        .filter((item): item is CaptureCandidate => Boolean(item))
-      : []
-
-    if (structured.length > 0) {
-      return {
-        candidates: structured,
-        confidence,
-        explicit: parsed.explicit === true || structured.some(candidate => candidate.explicit),
-        reason: typeof parsed.reason === 'string' ? parsed.reason.slice(0, 500) : undefined,
-      }
-    }
-
-    const raw = Array.isArray(parsed.memory)
-      ? parsed.memory
-      : Array.isArray(parsed.memories)
-        ? parsed.memories
-        : typeof parsed.memory === 'string'
-          ? parsed.memory.split(/\r?\n/)
+    const confidence = clampCaptureConfidence(parsed.confidence, 0.75)
+    const rawItems = Array.isArray(parsed.memories)
+      ? parsed.memories
+      : Array.isArray(parsed.candidates)
+        ? parsed.candidates
+        : Array.isArray(parsed.items)
+          ? parsed.items
           : []
-    const candidates = raw
-      .map(item => String(item || '').trim())
-      .filter(Boolean)
-      .map((line): CaptureCandidate => ({
-        kind: 'fact',
-        source: 'conversation',
-        confidence,
-        text: normalizeBulletText(line),
-        sensitivity: 'normal',
-        target: 'memory',
-      }))
+
+    const candidates = rawItems
+      .map((item): DailyNoteCaptureCandidate | null => {
+        if (!item || typeof item !== 'object') return null
+        const record = item as Record<string, unknown>
+        const action = normalizeDailyNoteCaptureAction(record.action)
+        if (!action) return null
+
+        const sensitivity = String(record.sensitivity || 'normal').toLowerCase()
+        if ((sensitivity === 'secret' || sensitivity === 'sensitive') && action !== 'remove') return null
+
+        const candidateConfidence = clampCaptureConfidence(record.confidence, confidence)
+        const reason = typeof record.reason === 'string' ? record.reason.slice(0, 500) : undefined
+
+        if (action === 'add') {
+          const content = cleanDailyNoteCaptureText(record.content) ||
+            cleanDailyNoteCaptureText(record.memory) ||
+            cleanDailyNoteCaptureText(record.text)
+          if (!content) return null
+          return {
+            action,
+            confidence: candidateConfidence,
+            content,
+            ...(reason ? { reason } : {}),
+          }
+        }
+
+        if (action === 'replace') {
+          const oldText = optionalCaptureText(record.oldText) || optionalCaptureText(record.old_text) || optionalCaptureText(record.text)
+          const newText = cleanDailyNoteCaptureText(record.newText) || cleanDailyNoteCaptureText(record.new_text) || cleanDailyNoteCaptureText(record.content)
+          if (!oldText || typeof newText !== 'string') return null
+          return {
+            action,
+            confidence: candidateConfidence,
+            oldText,
+            newText,
+            ...(reason ? { reason } : {}),
+          }
+        }
+
+        const text = optionalCaptureText(record.text) || optionalCaptureText(record.oldText) || optionalCaptureText(record.old_text) || optionalCaptureText(record.content)
+        if (!text) return null
+        return {
+          action,
+          confidence: candidateConfidence,
+          text,
+          ...(reason ? { reason } : {}),
+        }
+      })
+      .filter((item): item is DailyNoteCaptureCandidate => Boolean(item))
+
     if (candidates.length === 0) return null
     return {
       candidates,
       confidence,
-      explicit: parsed.explicit === true,
       reason: typeof parsed.reason === 'string' ? parsed.reason.slice(0, 500) : undefined,
     }
   } catch {
@@ -1993,6 +1980,94 @@ function compactCaptureInput(context: AfterAssistantResponseContext, maxChars: n
   ].join('\n'), maxChars)
 }
 
+async function buildMemoryCaptureInput(
+  context: AfterAssistantResponseContext,
+  workspace: MemoryWorkspace,
+  maxChars: number,
+): Promise<string> {
+  const dailyMaxChars = Math.max(200, Math.min(8000, Math.floor(maxChars * 0.35)))
+  const daily = await fsp.readFile(workspace.todayPath, 'utf-8').catch(() => '')
+  const dailySection = daily.trim()
+    ? truncate(daily.trim(), dailyMaxChars)
+    : '(empty)'
+  const conversationBudget = Math.max(300, maxChars - dailySection.length - 240)
+  const conversation = compactCaptureInput(context, conversationBudget)
+  return truncate([
+    `Current daily note (${path.relative(workspace.root, workspace.todayPath)}):`,
+    dailySection,
+    '',
+    conversation,
+  ].join('\n'), maxChars)
+}
+
+function stripCandidateNarration(value: string): string {
+  return normalizeBulletText(value)
+    .replace(/^用户(?:说|问|询问|要求|请求|想要|让我|叫我|提到|表示)[：:\s]+/u, '')
+    .replace(/^User\s+(?:asked|requested|wants?|needs?|said|told|mentioned)\s+(?:that\s+|to\s+|whether\s+|if\s+)?/iu, '')
+    .trim()
+}
+
+function isLikelyRawRequestEcho(value: string): boolean {
+  const text = normalizeBulletText(value)
+  const bare = stripCandidateNarration(text)
+  const lower = bare.toLowerCase()
+  if (!bare) return true
+  if (/[?？]\s*$/.test(bare)) return true
+  if (/^(?:怎么|如何|为什么|为啥|讲讲|解释|帮我|给我|请|能不能|可以|是否|更新|检查|修|改|添加|删除|把|不用调整|看下|看看)/u.test(bare)) {
+    return true
+  }
+  if (/^(?:how|why|what|can you|could you|please|explain|tell me|update|check|fix|change|add|remove|look at)\b/i.test(lower)) {
+    return true
+  }
+  if (/^User\s+(?:asked|requested|wants?|needs?)\b/i.test(text) && !/\b(?:confirmed|clarified|decided|prefers|final rule|constraint)\b/i.test(text)) {
+    return true
+  }
+  if (/^用户(?:问|询问|要求|请求|想要|让我|叫我)/u.test(text) && !/(?:确认|明确|纠正|规则|偏好|约束|决定)/u.test(text)) {
+    return true
+  }
+  return false
+}
+
+function isLowValueDailyNoteLine(text: string): boolean {
+  const normalized = normalizeBulletText(text)
+  if (!normalized) return true
+  if (isLikelyRawRequestEcho(normalized)) return true
+  if (/^\{[\s\S]*\}$/.test(normalized)) return true
+  if (
+    /\bassistant\s+(?:reported|replied|completed|said)\b/i.test(normalized) ||
+    /(?:助手|assistant).{0,12}(?:已|reported|完成|回复)/iu.test(normalized)
+  ) {
+    return !/(?:final rule|confirmed rule|最终规则|明确规则|确认|纠正|偏好|约束|决定)/iu.test(normalized)
+  }
+  return false
+}
+
+function parseDailyNoteBullets(value: string): string[] {
+  const trimmed = stripJsonFence(value).trim()
+  if (!trimmed || trimmed.toUpperCase() === 'NONE') return []
+  if (/^\s*\{/.test(trimmed)) return []
+
+  const seen = new Set<string>()
+  const bullets: string[] = []
+  for (const rawLine of trimmed.split(/\r?\n/)) {
+    const line = rawLine.trim()
+    if (!line || line.toUpperCase() === 'NONE' || line.startsWith('#')) continue
+    const match = line.match(/^(?:[-*+]\s+|\d+[.)]\s+)(.+)$/)
+    const text = normalizeBulletText(match ? match[1] : line)
+    if (isLowValueDailyNoteLine(text)) continue
+    const key = normalizeForDedupe(asBullet(text))
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    bullets.push(text)
+  }
+  return bullets
+}
+
+async function dedupeDailyNoteBullets(workspace: MemoryWorkspace, bullets: string[]): Promise<string[]> {
+  const lines = await dedupeCaptureLines(workspace, bullets.map(line => asBullet(line)))
+  return lines.map(line => normalizeBulletText(line)).filter(Boolean)
+}
+
 async function dedupeCaptureLines(workspace: MemoryWorkspace, lines: string[]): Promise<string[]> {
   const existingText = [
     await fsp.readFile(workspace.memoryPath, 'utf-8').catch(() => ''),
@@ -2012,169 +2087,143 @@ async function dedupeCaptureLines(workspace: MemoryWorkspace, lines: string[]): 
   })
 }
 
-function normalizeCaptureCandidate(candidate: CaptureCandidate, fallbackConfidence: number): CaptureCandidate | null {
-  const text = normalizeBulletText(candidate.text)
-  if (!text) return null
-  return {
-    ...candidate,
-    text,
-    confidence: Math.max(0, Math.min(1, Number.isFinite(candidate.confidence) ? candidate.confidence : fallbackConfidence)),
-    sensitivity: candidate.sensitivity || 'normal',
-  }
-}
-
-function candidateIsExplicit(
-  candidate: CaptureCandidate,
-  result: CaptureModelResult,
-  explicitIntent: boolean,
-): boolean {
-  return explicitIntent || result.explicit || candidate.explicit === true
-}
-
-function getCaptureThresholds(capture: ResolvedSoulMemorySettings['capture']): {
-  longTermMinConfidence: number
-  dailyMinConfidence: number
-} {
-  const adjustment = capture.policy === 'aggressive' ? 0.1 : 0
-  return {
-    longTermMinConfidence: Math.max(0, capture.longTermMinConfidence - adjustment),
-    dailyMinConfidence: Math.max(0, capture.dailyMinConfidence - adjustment),
-  }
-}
-
-function routeCaptureCandidates(
-  workspace: MemoryWorkspace,
-  result: CaptureModelResult,
-  explicitIntent: boolean,
-): {
-  longTerm: CaptureCandidate[]
-  daily: CaptureCandidate[]
-  ignored: CaptureCandidate[]
-} {
-  const capture = workspace.settings.capture
-  const { longTermMinConfidence: captureLongTermMin, dailyMinConfidence } = getCaptureThresholds(capture)
-  const longTermMinConfidence = Math.max(
-    captureLongTermMin,
-    workspace.settings.canonicalMemory.highConfidenceThreshold,
-  )
-  const longTerm: CaptureCandidate[] = []
-  const daily: CaptureCandidate[] = []
-  const ignored: CaptureCandidate[] = []
-  const seenLongTerm = new Set<string>()
-  const seenDaily = new Set<string>()
-
-  for (const rawCandidate of result.candidates.slice(0, capture.maxCandidates)) {
-    const normalized = normalizeCaptureCandidate(rawCandidate, result.confidence)
-    if (!normalized) continue
-    const explicit = candidateIsExplicit(normalized, result, explicitIntent)
-    const candidate = { ...normalized, explicit }
-    const key = normalizeForDedupe(asBullet(candidate.text))
-    const sensitivity = candidate.sensitivity || 'normal'
-
-    if (
-      (capture.mode === 'explicit-only' && !explicit) ||
-      candidate.kind === 'ignore' ||
-      candidate.target === 'ignore' ||
-      sensitivity === 'secret' ||
-      (sensitivity === 'sensitive' && !explicit)
-    ) {
-      ignored.push(candidate)
-      continue
-    }
-
-    const durable = isDurableCandidate(candidate)
-    const userBacked = candidate.source === 'user' ||
-      explicit ||
-      (candidate.source === 'conversation' && candidate.kind === 'decision')
-    const canonicalAllowed = workspace.settings.canonicalMemory.enabled &&
-      capture.targetPolicy !== 'daily-only' &&
-      candidate.target !== 'daily'
-    const canonicalEligible = canonicalAllowed &&
-      durable &&
-      userBacked &&
-      (explicit || candidate.target === 'memory' || candidate.confidence >= longTermMinConfidence)
-
-    if (canonicalEligible && key && !seenLongTerm.has(key)) {
-      seenLongTerm.add(key)
-      longTerm.push(candidate)
-      if (capture.targetPolicy !== 'hybrid') continue
-    }
-
-    if (candidate.confidence >= dailyMinConfidence && key && !seenDaily.has(key)) {
-      seenDaily.add(key)
-      daily.push(candidate)
-      continue
-    }
-
-    if (!canonicalEligible) ignored.push(candidate)
-  }
-
-  return { longTerm, daily, ignored }
-}
-
-function routeFlushCandidates(
-  workspace: MemoryWorkspace,
-  result: CaptureModelResult,
-): {
-  longTerm: CaptureCandidate[]
-  daily: CaptureCandidate[]
-} {
-  const longTerm: CaptureCandidate[] = []
-  const daily: CaptureCandidate[] = []
-  const capture = workspace.settings.capture
-  const longTermMinConfidence = Math.max(0.72, capture.longTermMinConfidence)
-  const dailyMinConfidence = Math.min(0.55, capture.dailyMinConfidence)
-  const seenLongTerm = new Set<string>()
-  const seenDaily = new Set<string>()
-
-  for (const rawCandidate of result.candidates.slice(0, Math.max(4, capture.maxCandidates))) {
-    const normalized = normalizeCaptureCandidate(rawCandidate, result.confidence)
-    if (!normalized) continue
-    if (
-      normalized.kind === 'ignore' ||
-      normalized.target === 'ignore' ||
-      normalized.sensitivity === 'secret' ||
-      normalized.sensitivity === 'sensitive'
-    ) continue
-
-    const key = normalizeForDedupe(asBullet(normalized.text))
-    if (!key) continue
-    const durable = isDurableCandidate(normalized)
-    const userBacked = normalized.source === 'user' ||
-      normalized.explicit === true ||
-      (normalized.source === 'conversation' && normalized.kind === 'decision')
-    const canonicalEligible = durable &&
-      userBacked &&
-      normalized.target !== 'daily' &&
-      (normalized.target === 'memory' || normalized.confidence >= longTermMinConfidence)
-
-    if (canonicalEligible && !seenLongTerm.has(key)) {
-      seenLongTerm.add(key)
-      longTerm.push(normalized)
-      continue
-    }
-
-    if (normalized.confidence >= dailyMinConfidence && !seenDaily.has(key)) {
-      seenDaily.add(key)
-      daily.push(normalized)
-    }
-  }
-
-  return { longTerm, daily }
-}
-
-async function dedupeDailyCandidates(
-  workspace: MemoryWorkspace,
-  candidates: CaptureCandidate[],
-): Promise<CaptureCandidate[]> {
-  const lines = await dedupeCaptureLines(workspace, candidates.map(candidate => asBullet(candidate.text)))
-  const allowed = new Set(lines.map(normalizeForDedupe))
-  return candidates.filter(candidate => {
-    const key = normalizeForDedupe(asBullet(candidate.text))
-    if (!key || !allowed.has(key)) return false
-    allowed.delete(key)
-    return true
+function findDailyNoteBulletLine(lines: string[], text: string | undefined): number {
+  const raw = text?.trim()
+  if (!raw) return -1
+  const bullet = asBullet(raw)
+  return lines.findIndex(line => {
+    const trimmed = line.trim()
+    return trimmed.startsWith('- ') && (trimmed === raw || (!!bullet && trimmed === bullet))
   })
+}
+
+function serializeDailyNoteLines(lines: string[]): string {
+  return `${lines.join('\n').replace(/\s+$/u, '')}\n`
+}
+
+function applyDailyNoteLineReplace(content: string, oldText: string, newText: string): {
+  next: string
+  changed: boolean
+} {
+  const lines = content.split(/\r?\n/)
+  const index = findDailyNoteBulletLine(lines, oldText)
+  if (index < 0) return { next: content, changed: false }
+  const replacement = asBullet(newText)
+  if (!replacement || lines[index].trim() === replacement) return { next: content, changed: false }
+  lines[index] = replacement
+  return { next: serializeDailyNoteLines(lines), changed: true }
+}
+
+function applyDailyNoteLineRemove(content: string, text: string): {
+  next: string
+  changed: boolean
+} {
+  const lines = content.split(/\r?\n/)
+  const index = findDailyNoteBulletLine(lines, text)
+  if (index < 0) return { next: content, changed: false }
+  lines.splice(index, 1)
+  return { next: serializeDailyNoteLines(lines), changed: true }
+}
+
+async function applyDailyNoteCaptureActions(options: {
+  settings?: AppSettings
+  workspace?: MemoryWorkspace
+  candidates: DailyNoteCaptureCandidate[]
+  heading?: string
+}): Promise<DailyNoteCaptureApplyResult | null> {
+  const workspace = options.workspace || await ensureWorkspace(options.settings)
+  const relativePath = path.relative(workspace.root, workspace.todayPath)
+  let content = await fsp.readFile(workspace.todayPath, 'utf-8').catch(() => '')
+  let changedContent = false
+  let skipped = 0
+  let replaced = 0
+  let removed = 0
+
+  for (const candidate of options.candidates) {
+    if (candidate.action === 'replace') {
+      const oldText = candidate.oldText?.trim()
+      const newText = candidate.newText?.trim()
+      if (!oldText || !newText) {
+        skipped += 1
+        continue
+      }
+      const result = applyDailyNoteLineReplace(content, oldText, newText)
+      if (result.changed) {
+        content = result.next
+        changedContent = true
+        replaced += 1
+      } else {
+        skipped += 1
+      }
+      continue
+    }
+
+    if (candidate.action === 'remove') {
+      const text = candidate.text?.trim() || candidate.oldText?.trim() || candidate.content?.trim()
+      if (!text) {
+        skipped += 1
+        continue
+      }
+      const result = applyDailyNoteLineRemove(content, text)
+      if (result.changed) {
+        content = result.next
+        changedContent = true
+        removed += 1
+      } else {
+        skipped += 1
+      }
+    }
+  }
+
+  if (changedContent) {
+    await fsp.mkdir(path.dirname(workspace.todayPath), { recursive: true })
+    await replaceFileAtomic(workspace.todayPath, content)
+  }
+
+  const addTexts = options.candidates
+    .filter(candidate => candidate.action === 'add')
+    .map(candidate => candidate.content || candidate.text || '')
+    .map(text => normalizeBulletText(text))
+    .filter(Boolean)
+  const dailyBullets = await dedupeDailyNoteBullets(workspace, addTexts)
+  skipped += addTexts.length - dailyBullets.length
+
+  let added = 0
+  if (dailyBullets.length > 0) {
+    const target = await appendDailyNoteBullets({
+      settings: options.settings,
+      agentId: workspace.agentId,
+      bullets: dailyBullets,
+      heading: options.heading || dailyNoteTimeHeading(),
+    })
+    added = target ? dailyBullets.length : 0
+    if (!target) skipped += dailyBullets.length
+  }
+
+  const applied = added + replaced + removed
+  if (applied === 0) return null
+  logMemoryDiagnostic({
+    subsystem: 'capture',
+    operation: 'daily-note-actions',
+    stage: 'write',
+    status: 'ok',
+    response: {
+      relativePath,
+      added,
+      replaced,
+      removed,
+      skipped,
+    },
+  })
+  return {
+    absolutePath: workspace.todayPath,
+    relativePath,
+    applied,
+    skipped,
+    added,
+    replaced,
+    removed,
+  }
 }
 
 function getPendingCaptures(storeLike: CaptureStore): MemoryCapturePending[] {
@@ -2194,30 +2243,6 @@ function publicPendingCaptures(agentId?: string): MemoryCapturePending[] {
   const resolvedAgentId = agentId || DEFAULT_AGENT_ID
   return getPendingCaptures(new PluginStore(SOUL_MEMORY_PLUGIN_ID))
     .filter(capture => (capture.agentId || DEFAULT_AGENT_ID) === resolvedAgentId)
-}
-
-function makePendingCapture(
-  context: AfterAssistantResponseContext,
-  workspace: MemoryWorkspace,
-  result: CaptureModelResult,
-  lines: string[],
-): MemoryCapturePending {
-  const createdAt = Date.now()
-  const content = lines.slice(0, workspace.settings.capture.maxCandidates).join('\n')
-  return {
-    id: sha(`${context.sessionId}:${context.assistantMessageId}:${createdAt}:${content}`),
-    sessionId: context.sessionId,
-    agentId: workspace.agentId,
-    createdAt,
-    target: workspace.settings.capture.targetPolicy === 'daily-only' ? 'daily' : 'memory',
-    heading: `Captured from chat ${new Date(createdAt).toLocaleString()}`,
-    content,
-    confidence: result.confidence,
-    explicit: result.explicit || hasExplicitMemoryIntent(context.lastUserMessage),
-    ...(result.reason ? { reason: result.reason } : {}),
-    userPreview: previewLine(context.lastUserMessage),
-    assistantPreview: previewLine(context.lastAssistantMessage),
-  }
 }
 
 async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseContext): Promise<void> {
@@ -2261,13 +2286,10 @@ async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseC
     runId,
     request: {
       mode: capture.mode,
-      policy: capture.policy,
-      targetPolicy: capture.targetPolicy,
       explicitIntent,
       userHash: sha(context.lastUserMessage).slice(0, 16),
       userPreview: previewLine(context.lastUserMessage, 180),
       assistantHash: sha(context.lastAssistantMessage).slice(0, 16),
-      maxCandidates: capture.maxCandidates,
       timeoutMs: capture.timeoutMs,
     },
   })
@@ -2286,7 +2308,8 @@ async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseC
   }
 
   try {
-    const input = compactCaptureInput(context, capture.maxInputChars)
+    const input = await buildMemoryCaptureInput(context, workspace, capture.maxInputChars)
+    const provider = await resolveMemoryToolProvider(context.settings, 'Memory Capture')
     logMemoryDiagnostic({
       subsystem: 'capture',
       operation: 'model-classify',
@@ -2295,176 +2318,75 @@ async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseC
       sessionId: context.sessionId,
       runId,
       request: {
-        providerId: context.providerId,
-        model: (context.providerConfig as any)?.model || '',
+        providerId: provider.providerId,
+        model: provider.config.model,
+        modelSource: provider.source,
         inputChars: input.length,
         timeoutMs: capture.timeoutMs,
       },
     })
     const output = await withTimeout(generateChatResponse(
-      context.providerId,
-      context.providerConfig as any,
+      provider.providerId,
+      provider.config,
       [
         {
           role: 'system',
-          content: [
-            'You are a memory capture filter for a local graph memory and markdown notes plugin.',
-            'Extract only durable memory worth remembering across future chats.',
-            'Prefer user-authored or user-confirmed facts: identity, stable preferences, recurring constraints, project decisions, and durable facts.',
-            'Assistant text is only supporting evidence; do not invent memory from assistant speculation.',
-            'Do not capture ordinary conversation, transient tasks, tool chatter, secrets, credentials, or unsupported guesses.',
-            'Classify each candidate with kind/source/confidence/text/reason/sensitivity/target plus graph hints when known.',
-            'The user entity is always user:self; for user name use memoryKey "user.name", slot "name", value "<name>". Do not create a separate user entity for the user name.',
-            'For project or component facts, include entityType/entityName and relationType/fromEntityType/fromEntityName/toEntityType/toEntityName when the relation is clear.',
-            'Only target "memory" when the latest user message itself supports the fact.',
-            'Use target "memory" for high-confidence long-term facts, "daily" for medium-confidence episodic notes, and "ignore" for rejects.',
-            'Return compact JSON only: {"action":"capture"|"none","explicit":boolean,"confidence":0..1,"candidates":[{"kind":"identity|preference|decision|project|constraint|fact|summary|episodic|ignore","source":"user|assistant|conversation","confidence":0..1,"memoryKey":"user.name","entityType":"user|project|tech|component|decision|concept","entityName":"...","slot":"name","relationType":"works_on","fromEntityType":"user","fromEntityName":"self","toEntityType":"project","toEntityName":"...","value":"...","text":"...","reason":"...","sensitivity":"normal|sensitive|secret","target":"memory|daily|ignore","explicit":boolean}],"reason":"short reason"}.',
-          ].join(' '),
+          content: MEMORY_CAPTURE_SYSTEM_PROMPT,
         },
         { role: 'user', content: input },
       ],
-      { temperature: 0.1, maxTokens: 500 },
+      { temperature: 0.1, maxTokens: 900 },
     ), capture.timeoutMs)
 
-    const parsed = parseCaptureModelResult(output)
-    if (!parsed || parsed.confidence < Math.min(capture.dailyMinConfidence, capture.longTermMinConfidence)) {
+    const parsed = parseDailyNoteCaptureResult(output)
+    if (!parsed || parsed.candidates.length === 0) {
       lastStatus.lastCaptureStatus = 'none'
       logMemoryDiagnostic({
         subsystem: 'capture',
-        operation: 'model-classify',
+        operation: 'model-extract',
         stage: 'response',
         status: 'skipped',
         durationMs: Date.now() - startedAt,
         sessionId: context.sessionId,
         runId,
         response: {
-          parsed: Boolean(parsed),
-          confidence: parsed?.confidence ?? 0,
+          candidates: 0,
+          outputHash: sha(output).slice(0, 16),
+          outputPreview: previewLine(output, 240),
+        },
+        summary: 'Capture model returned no daily-note mutations.',
+      })
+      return
+    }
+    const daily = await applyDailyNoteCaptureActions({
+      settings: context.settings,
+      workspace,
+      candidates: parsed.candidates,
+      heading: dailyNoteTimeHeading(),
+    })
+    if (!daily) {
+      lastStatus.lastCaptureStatus = 'none'
+      logMemoryDiagnostic({
+        subsystem: 'capture',
+        operation: 'daily-note-actions',
+        stage: 'write',
+        status: 'skipped',
+        durationMs: Date.now() - startedAt,
+        sessionId: context.sessionId,
+        runId,
+        response: {
+          candidates: parsed.candidates.length,
           outputHash: sha(output).slice(0, 16),
         },
-        summary: 'Capture model returned no durable candidate above threshold.',
+        summary: 'Capture model returned daily-note mutations but none applied.',
       })
       return
     }
-    if (capture.mode === 'explicit-only' && !parsed.explicit && !explicitIntent) {
-      lastStatus.lastCaptureStatus = 'none'
-      logMemoryDiagnostic({
-        subsystem: 'capture',
-        operation: 'model-classify',
-        stage: 'response',
-        status: 'skipped',
-        durationMs: Date.now() - startedAt,
-        sessionId: context.sessionId,
-        runId,
-        response: {
-          confidence: parsed.confidence,
-          explicit: parsed.explicit,
-          candidates: parsed.candidates.length,
-        },
-        summary: 'Capture model found candidates, but explicit-only policy rejected them.',
-      })
-      return
-    }
-
-    const routed = routeCaptureCandidates(workspace, parsed, explicitIntent)
-    const longTermCandidates = routed.longTerm
-    const dailyCandidates = await dedupeDailyCandidates(workspace, routed.daily)
-    logMemoryDiagnostic({
-      subsystem: 'capture',
-      operation: 'route-candidates',
-      stage: 'route',
-      status: 'ok',
-      sessionId: context.sessionId,
-      runId,
-      response: {
-        confidence: parsed.confidence,
-        explicit: parsed.explicit,
-        candidates: parsed.candidates.length,
-        longTerm: longTermCandidates.length,
-        daily: dailyCandidates.length,
-        ignored: routed.ignored.length,
-      },
-    })
-    const pendingLines = [
-      ...longTermCandidates.map(candidate => asBullet(candidate.text)),
-      ...dailyCandidates.map(candidate => asBullet(candidate.text)),
-    ].filter(Boolean)
-    if (pendingLines.length === 0) {
-      lastStatus.lastCaptureStatus = 'duplicate'
-      logMemoryDiagnostic({
-        subsystem: 'capture',
-        operation: 'after-assistant-response',
-        stage: 'finish',
-        status: 'skipped',
-        durationMs: Date.now() - startedAt,
-        sessionId: context.sessionId,
-        runId,
-        summary: 'All capture candidates were duplicates or already present.',
-      })
-      return
-    }
-
-    const pending = makePendingCapture(context, workspace, parsed, pendingLines)
-    if (capture.mode === 'ask') {
-      setPendingCaptures(api.store, [pending, ...getPendingCaptures(api.store)])
-      lastStatus.lastCaptureAt = Date.now()
-      lastStatus.lastCaptureStatus = 'pending'
-      delete lastStatus.lastCaptureError
-      api.store.set('lastCaptureAt', lastStatus.lastCaptureAt)
-      api.store.set('lastCaptureStatus', lastStatus.lastCaptureStatus)
-      api.store.delete('lastCaptureError')
-      api.ui.notify('Memory Capture found a candidate. Review it in Media Panel → Memory.', 'info')
-      logMemoryDiagnostic({
-        subsystem: 'capture',
-        operation: 'after-assistant-response',
-        stage: 'finish',
-        status: 'ok',
-        durationMs: Date.now() - startedAt,
-        sessionId: context.sessionId,
-        runId,
-        response: { pending: 1, lines: pendingLines.length },
-      })
-      return
-    }
-
-    const graph = longTermCandidates.length > 0
-      ? await mergeGraphMemory({
-        workspace,
-        settings: context.settings,
-        agentId,
-        candidates: longTermCandidates,
-        source: 'capture',
-        evidence: context.lastUserMessage,
-        sessionId: context.sessionId,
-        messageId: context.assistantMessageId,
-      })
-      : { applied: 0, skipped: 0, relativePath: 'graph memory', absolutePath: workspace.dbPath }
-    if (longTermCandidates.length > 0) {
-      await appendShortTermSignals(workspace, longTermCandidates.map(candidate => ({
-        sourceType: 'capture',
-        source: `chat:${context.sessionId}:${context.assistantMessageId}`,
-        kind: candidate.kind,
-        content: normalizeBulletText(candidate.text),
-        confidence: candidate.confidence,
-        explicit: candidate.explicit,
-      })))
-    }
-    const daily = dailyCandidates.length > 0
-      ? await appendDailyMemorySignals({
-        settings: context.settings,
-        workspace,
-        candidates: dailyCandidates,
-        heading: pending.heading,
-        source: `chat:${context.sessionId}:${context.assistantMessageId}`,
-        sourceType: 'capture',
-      })
-      : null
 
     lastStatus.lastCaptureAt = Date.now()
     lastStatus.lastCaptureStatus = [
-      capture.mode === 'auto' ? 'auto-saved' : 'explicit-saved',
-      `graph:${graph.applied}`,
-      `daily:${daily ? dailyCandidates.length : 0}`,
+      capture.mode === 'auto' ? 'auto-saved' : 'daily-saved',
+      `daily:add:${daily.added} replace:${daily.replaced} remove:${daily.removed} skipped:${daily.skipped}`,
     ].join(' ')
     delete lastStatus.lastCaptureError
     api.store.set('lastCaptureAt', lastStatus.lastCaptureAt)
@@ -2479,19 +2401,17 @@ async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseC
       sessionId: context.sessionId,
       runId,
       response: {
-        graphApplied: graph.applied,
-        dailyItems: daily ? dailyCandidates.length : 0,
-        longTermCandidates: longTermCandidates.length,
-        dailyCandidates: dailyCandidates.length,
+        dailyItems: daily.applied,
+        added: daily.added,
+        replaced: daily.replaced,
+        removed: daily.removed,
+        skipped: daily.skipped,
+        outputHash: sha(output).slice(0, 16),
         status: lastStatus.lastCaptureStatus,
       },
     })
-    if (explicitIntent && (graph.applied > 0 || daily)) {
-      const targets = [
-        graph.applied > 0 ? graph.relativePath : '',
-        daily?.relativePath || '',
-      ].filter(Boolean)
-      api.ui.notify(`Memory saved to ${targets.join(', ')}`, 'info')
+    if (explicitIntent) {
+      api.ui.notify(`Daily note saved to ${daily.relativePath}`, 'info')
     }
   } catch (error: any) {
     const message = error?.message || String(error)
@@ -2520,17 +2440,67 @@ function cleanReviewMemoryText(value: string | undefined): string {
   return normalizeBulletText(value || '')
 }
 
+type PlainReviewTarget = Extract<MemoryReviewCandidate['target'], 'soul' | 'dreams'>
+
+function isHermesReviewTarget(target: MemoryReviewCandidate['target']): target is HermesMemoryTarget {
+  return target === 'user' || target === 'memory'
+}
+
+function getPlainReviewFile(
+  workspace: MemoryWorkspace,
+  target: PlainReviewTarget,
+): { absolutePath: string; relativePath: 'SOUL.md' | 'DREAMS.md' } {
+  return target === 'soul'
+    ? { absolutePath: workspace.soulPath, relativePath: 'SOUL.md' }
+    : { absolutePath: workspace.dreamsPath, relativePath: 'DREAMS.md' }
+}
+
+async function readPlainReviewFile(workspace: MemoryWorkspace, target: PlainReviewTarget): Promise<{
+  absolutePath: string
+  relativePath: 'SOUL.md' | 'DREAMS.md'
+  content: string
+}> {
+  const file = getPlainReviewFile(workspace, target)
+  const content = await fsp.readFile(file.absolutePath, 'utf-8').catch(() => '')
+  return { ...file, content }
+}
+
+function cleanReviewDocumentText(value: string | undefined): string {
+  return (value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\s+$/u, '')
+    .trim()
+}
+
+function normalizeReviewDocumentContent(value: string): string {
+  const trimmed = value.replace(/\s+$/u, '')
+  return trimmed ? `${trimmed}\n` : ''
+}
+
+function appendReviewDocumentContent(existing: string, addition: string): string {
+  const base = existing.replace(/\s+$/u, '')
+  return normalizeReviewDocumentContent(base ? `${base}\n\n${addition}` : addition)
+}
+
 async function buildMemoryReviewInput(
   context: AfterAssistantResponseContext,
   workspace: MemoryWorkspace,
   maxChars: number,
 ): Promise<string> {
-  const [userMemory, longTermMemory] = await Promise.all([
+  const [soulMemory, dreamsMemory, userMemory, longTermMemory] = await Promise.all([
+    readPlainReviewFile(workspace, 'soul'),
+    readPlainReviewFile(workspace, 'dreams'),
     readHermesMemoryFile(workspace, 'user'),
     readHermesMemoryFile(workspace, 'memory'),
   ])
-  const perMemoryFileMaxChars = Math.max(1000, Math.min(4000, Math.floor(maxChars * 0.2)))
+  const perMemoryFileMaxChars = Math.max(1000, Math.min(4000, Math.floor(maxChars * 0.16)))
   const existingMemory = [
+    '# Existing SOUL.md',
+    soulMemory.content.trim() ? truncate(soulMemory.content.trim(), perMemoryFileMaxChars) : '(empty)',
+    '',
+    '# Existing DREAMS.md',
+    dreamsMemory.content.trim() ? truncate(dreamsMemory.content.trim(), perMemoryFileMaxChars) : '(empty)',
+    '',
     '# Existing USER.md',
     userMemory.content.trim() ? truncate(userMemory.content.trim(), perMemoryFileMaxChars) : '(empty)',
     '',
@@ -2550,6 +2520,55 @@ async function buildMemoryReviewInput(
   ].join('\n'), maxChars)
 }
 
+async function applyPlainReviewCandidate(
+  workspace: MemoryWorkspace,
+  candidate: MemoryReviewCandidate & { target: PlainReviewTarget },
+): Promise<{ changed: boolean; skipped: boolean; relativePath?: string; reason?: string }> {
+  const file = await readPlainReviewFile(workspace, candidate.target)
+
+  if (candidate.action === 'add') {
+    const content = cleanReviewDocumentText(candidate.content || candidate.text)
+    if (!content) return { changed: false, skipped: true, reason: 'empty-add' }
+    const key = normalizeForDedupe(content)
+    const existingKeys = new Set(
+      file.content
+        .split(/\r?\n/)
+        .map(normalizeForDedupe)
+        .filter(Boolean),
+    )
+    if (!key || existingKeys.has(key) || file.content.includes(content)) {
+      return { changed: false, skipped: true, relativePath: file.relativePath, reason: 'duplicate' }
+    }
+    await replaceFileAtomic(file.absolutePath, appendReviewDocumentContent(file.content, content))
+    return { changed: true, skipped: false, relativePath: file.relativePath }
+  }
+
+  if (candidate.action === 'replace') {
+    const oldText = candidate.oldText?.trim()
+    const newText = cleanReviewDocumentText(candidate.newText)
+    if (!oldText || typeof candidate.newText !== 'string') {
+      return { changed: false, skipped: true, reason: 'invalid-replace' }
+    }
+    const index = file.content.indexOf(oldText)
+    if (index < 0) {
+      return { changed: false, skipped: true, relativePath: file.relativePath, reason: 'no-match' }
+    }
+    const next = `${file.content.slice(0, index)}${newText}${file.content.slice(index + oldText.length)}`
+    await replaceFileAtomic(file.absolutePath, normalizeReviewDocumentContent(next))
+    return { changed: true, skipped: false, relativePath: file.relativePath }
+  }
+
+  const text = candidate.text?.trim() || candidate.oldText?.trim() || candidate.content?.trim()
+  if (!text) return { changed: false, skipped: true, reason: 'empty-remove' }
+  const index = file.content.indexOf(text)
+  if (index < 0) {
+    return { changed: false, skipped: true, relativePath: file.relativePath, reason: 'no-match' }
+  }
+  const next = `${file.content.slice(0, index)}${file.content.slice(index + text.length)}`
+  await replaceFileAtomic(file.absolutePath, normalizeReviewDocumentContent(next))
+  return { changed: true, skipped: false, relativePath: file.relativePath }
+}
+
 async function applyMemoryReviewCandidate(
   workspace: MemoryWorkspace,
   candidate: MemoryReviewCandidate,
@@ -2557,6 +2576,10 @@ async function applyMemoryReviewCandidate(
 ): Promise<{ changed: boolean; skipped: boolean; relativePath?: string; reason?: string }> {
   if (candidate.confidence < minConfidence) {
     return { changed: false, skipped: true, reason: 'below-confidence' }
+  }
+
+  if (!isHermesReviewTarget(candidate.target)) {
+    return applyPlainReviewCandidate(workspace, candidate as MemoryReviewCandidate & { target: PlainReviewTarget })
   }
 
   if (candidate.action === 'add') {
@@ -2678,6 +2701,7 @@ async function runMemoryReview(
 
   try {
     const input = await buildMemoryReviewInput(context, workspace, review.maxInputChars)
+    const provider = await resolveMemoryToolProvider(context.settings, 'Memory Review')
     logMemoryDiagnostic({
       subsystem: 'review',
       operation: 'model-review',
@@ -2686,8 +2710,9 @@ async function runMemoryReview(
       sessionId: context.sessionId,
       runId,
       request: {
-        providerId: context.providerId,
-        model: (context.providerConfig as any)?.model || '',
+        providerId: provider.providerId,
+        model: provider.config.model,
+        modelSource: provider.source,
         inputChars: input.length,
         userTurns: progress.userTurns,
         interval: review.interval,
@@ -2696,22 +2721,12 @@ async function runMemoryReview(
       },
     })
     const output = await withTimeout(generateChatResponse(
-      context.providerId,
-      context.providerConfig as any,
+      provider.providerId,
+      provider.config,
       [
         {
           role: 'system',
-          content: [
-            'You are a Hermes-style background self-improvement memory reviewer.',
-            'This review runs after the assistant has answered, every fixed number of user turns.',
-            'Review the conversation snapshot and current USER.md/MEMORY.md content.',
-            'You may only propose edits to those two memory files. Do not propose shell, file, or application actions.',
-            'Use target "user" only for stable user identity, long-term preferences, standing constraints, and user profile facts.',
-            'Use target "memory" for durable project facts, decisions, recurring context, and stable lessons useful across future chats.',
-            'Prefer add actions for new durable facts. Use replace only when oldText is copied exactly from existing memory and newText is safer or more accurate.',
-            'Use remove only for exact stale or contradicted memory. Never store secrets, credentials, transient task status, tool chatter, or unsupported assistant guesses.',
-            'Return compact JSON only: {"action":"review"|"none","confidence":0..1,"memories":[{"action":"add|replace|remove","target":"user|memory","confidence":0..1,"content":"...","oldText":"exact existing text for replace/remove","newText":"replacement for replace","text":"text for remove","reason":"short reason","sensitivity":"normal|sensitive|secret"}],"reason":"short reason"}.',
-          ].join(' '),
+          content: MEMORY_REVIEW_SYSTEM_PROMPT,
         },
         { role: 'user', content: input },
       ],
@@ -3005,12 +3020,10 @@ function buildPublicDreamingStatus(workspace: MemoryWorkspace): MemoryDreamingSt
     enabled: workspace.settings.dreaming.enabled,
     frequency: workspace.settings.dreaming.frequency,
     timezone: workspace.settings.dreaming.timezone,
-    model: workspace.settings.dreaming.model,
-    sources: workspace.settings.dreaming.sources,
+    model: formatMemoryToolModelRef(getSettings()),
+    sources: ['daily'],
     lookbackDays: workspace.settings.dreaming.lookbackDays,
     maxSourceFiles: workspace.settings.dreaming.maxSourceFiles,
-    maxSessions: workspace.settings.dreaming.maxSessions,
-    maxMessagesPerSession: workspace.settings.dreaming.maxMessagesPerSession,
     maxPromotions: workspace.settings.dreaming.maxPromotions,
     timeoutMs: workspace.settings.dreaming.timeoutMs,
     nextRunAt: scheduled?.nextRunAt ?? next.nextRunAt ?? pluginStore.get<number>('lastDreamingNextRunAt') ?? lastStatus.lastDreamingNextRunAt,
@@ -3552,14 +3565,7 @@ function extractTaggedBlock(text: string, tag: string): string | undefined {
   return match?.[1]?.trim()
 }
 
-function parseDreamingOutput(text: string): { memory: string; report: string } {
-  const memory = extractTaggedBlock(text, 'durable_memory') || ''
-  const report = extractTaggedBlock(text, 'dream_report') || text.trim()
-  return {
-    memory,
-    report,
-  }
-}
+type DreamingMemoryAction = 'add' | 'replace' | 'remove'
 
 function splitPromotions(memory: string, maxPromotions: number): string[] {
   const trimmed = memory.trim()
@@ -3574,6 +3580,169 @@ function splitPromotions(memory: string, maxPromotions: number): string[] {
   return candidates
     .filter(line => !/^none$/i.test(line))
     .slice(0, Math.max(0, maxPromotions))
+}
+
+interface DreamingMemoryCandidate {
+  action: DreamingMemoryAction
+  confidence: number
+  content?: string
+  oldText?: string
+  newText?: string
+  text?: string
+  reason?: string
+}
+
+interface DreamingMemoryResult {
+  candidates: DreamingMemoryCandidate[]
+  confidence: number
+  memory: string
+  reason?: string
+}
+
+interface DreamingMemoryApplyResult {
+  applied: number
+  block: string
+  added: number
+  replaced: number
+  removed: number
+  skipped: number
+}
+
+function normalizeDreamingMemoryAction(value: unknown): DreamingMemoryAction | null {
+  const action = String(value || 'add').toLowerCase()
+  if (action === 'add' || action === 'replace' || action === 'remove') return action
+  return null
+}
+
+function cleanDreamingMemoryText(value: unknown): string | undefined {
+  const text = optionalCaptureText(value)
+  if (!text) return undefined
+  const normalized = normalizeBulletText(text)
+  return normalized && !isLowValueDailyNoteLine(normalized) ? normalized : undefined
+}
+
+function parseLegacyDreamingMemory(text: string): DreamingMemoryResult {
+  const taggedMemory = extractTaggedBlock(text, 'durable_memory')
+  const memory = taggedMemory ?? text.trim()
+  const candidates = splitPromotions(memory, Number.MAX_SAFE_INTEGER)
+    .map(line => normalizeBulletText(line))
+    .filter(Boolean)
+    .map((content): DreamingMemoryCandidate => ({
+      action: 'add',
+      confidence: 0.8,
+      content,
+    }))
+  return {
+    candidates,
+    confidence: candidates.length > 0 ? 0.8 : 1,
+    memory: memory || 'NONE',
+  }
+}
+
+function parseDreamingOutput(text: string): DreamingMemoryResult {
+  const trimmed = stripJsonFence(text).trim()
+  if (!trimmed || trimmed.toUpperCase() === 'NONE') {
+    return { candidates: [], confidence: 1, memory: 'NONE' }
+  }
+
+  const start = trimmed.indexOf('{')
+  const end = trimmed.lastIndexOf('}')
+  if (start < 0 || end <= start) return parseLegacyDreamingMemory(trimmed)
+
+  try {
+    const parsed = JSON.parse(trimmed.slice(start, end + 1)) as {
+      action?: unknown
+      confidence?: unknown
+      memories?: unknown
+      candidates?: unknown
+      items?: unknown
+      reason?: unknown
+    }
+    if (String(parsed.action || '').toLowerCase() === 'none') {
+      return {
+        candidates: [],
+        confidence: clampCaptureConfidence(parsed.confidence, 1),
+        memory: 'NONE',
+        reason: typeof parsed.reason === 'string' ? parsed.reason.slice(0, 500) : undefined,
+      }
+    }
+
+    const confidence = clampCaptureConfidence(parsed.confidence, 0.8)
+    const rawItems = Array.isArray(parsed.memories)
+      ? parsed.memories
+      : Array.isArray(parsed.candidates)
+        ? parsed.candidates
+        : Array.isArray(parsed.items)
+          ? parsed.items
+          : []
+
+    const candidates = rawItems
+      .map((item): DreamingMemoryCandidate | null => {
+        if (!item || typeof item !== 'object') return null
+        const record = item as Record<string, unknown>
+        const action = normalizeDreamingMemoryAction(record.action)
+        if (!action) return null
+
+        const sensitivity = String(record.sensitivity || 'normal').toLowerCase()
+        if ((sensitivity === 'secret' || sensitivity === 'sensitive') && action !== 'remove') return null
+
+        const candidateConfidence = clampCaptureConfidence(record.confidence, confidence)
+        const reason = typeof record.reason === 'string' ? record.reason.slice(0, 500) : undefined
+
+        if (action === 'add') {
+          const content = cleanDreamingMemoryText(record.content) ||
+            cleanDreamingMemoryText(record.memory) ||
+            cleanDreamingMemoryText(record.text)
+          if (!content) return null
+          return {
+            action,
+            confidence: candidateConfidence,
+            content,
+            ...(reason ? { reason } : {}),
+          }
+        }
+
+        if (action === 'replace') {
+          const oldText = optionalCaptureText(record.oldText) || optionalCaptureText(record.old_text) || optionalCaptureText(record.text)
+          const newText = cleanDreamingMemoryText(record.newText) || cleanDreamingMemoryText(record.new_text) || cleanDreamingMemoryText(record.content)
+          if (!oldText || typeof newText !== 'string') return null
+          return {
+            action,
+            confidence: candidateConfidence,
+            oldText,
+            newText,
+            ...(reason ? { reason } : {}),
+          }
+        }
+
+        const text = optionalCaptureText(record.text) || optionalCaptureText(record.oldText) || optionalCaptureText(record.old_text) || optionalCaptureText(record.content)
+        if (!text) return null
+        return {
+          action,
+          confidence: candidateConfidence,
+          text,
+          ...(reason ? { reason } : {}),
+        }
+      })
+      .filter((item): item is DreamingMemoryCandidate => Boolean(item))
+      .slice(0, Math.max(0, Number.MAX_SAFE_INTEGER))
+
+    const memory = candidates.length > 0
+      ? candidates.map(candidate => {
+        if (candidate.action === 'replace') return `~ ${candidate.newText || ''}`.trim()
+        if (candidate.action === 'remove') return `- ${normalizeBulletText(candidate.text || '')}`.trim()
+        return asBullet(candidate.content || '')
+      }).filter(Boolean).join('\n')
+      : 'NONE'
+    return {
+      candidates,
+      confidence,
+      memory,
+      reason: typeof parsed.reason === 'string' ? parsed.reason.slice(0, 500) : undefined,
+    }
+  } catch {
+    return parseLegacyDreamingMemory(trimmed)
+  }
 }
 
 async function collectDailyDreamingSources(workspace: MemoryWorkspace): Promise<DreamingSource[]> {
@@ -3605,105 +3774,12 @@ async function collectDailyDreamingSources(workspace: MemoryWorkspace): Promise<
     .slice(0, workspace.settings.dreaming.maxSourceFiles)
 }
 
-function formatSessionSourceContent(session: {
-  id: string
-  name: string
-  messages: ChatMessage[]
-  summary?: string
-}, maxMessages: number): string {
-  const messages = session.messages
-    .filter(message => message.role === 'user' || message.role === 'assistant')
-    .slice(-Math.max(1, maxMessages))
-    .map(message => `${message.role === 'assistant' ? 'Assistant' : 'User'}: ${truncate(message.content, 1200)}`)
-  return [
-    `# Session ${session.name || session.id}`,
-    session.summary ? `Summary: ${session.summary}` : '',
-    ...messages,
-  ].filter(Boolean).join('\n\n')
-}
-
-function getSessionIngestionState(pluginStore: PluginStore): Record<string, number> {
-  const value = pluginStore.get<Record<string, number>>(SESSION_INGESTION_STORE_KEY)
-  if (!value || typeof value !== 'object') return {}
-  return value
-}
-
-async function collectSessionDreamingSources(
-  workspace: MemoryWorkspace,
-  pluginStore: PluginStore,
-): Promise<{ sources: DreamingSource[]; nextState: Record<string, number> }> {
-  const cutoffMs = Date.now() - workspace.settings.dreaming.lookbackDays * 86400000
-  const existingState = getSessionIngestionState(pluginStore)
-  const nextState = { ...existingState }
-  const metas = store.getSessionsList()
-    .filter(meta => !meta.isArchived)
-    .filter(meta => meta.updatedAt >= cutoffMs)
-    .filter(meta => meta.updatedAt > (existingState[meta.id] || 0))
-    .sort((left, right) => right.updatedAt - left.updatedAt)
-    .slice(0, workspace.settings.dreaming.maxSessions)
-  const sources: DreamingSource[] = []
-
-  for (const meta of metas) {
-    const session = store.getSession(meta.id)
-    if (!session) continue
-    const content = formatSessionSourceContent(session, workspace.settings.dreaming.maxMessagesPerSession)
-    if (!content.trim()) continue
-    sources.push({
-      sourceType: 'session',
-      relativePath: `sessions/${meta.id}.md`,
-      content,
-      mtimeMs: meta.updatedAt,
-    })
-    nextState[meta.id] = meta.updatedAt
-  }
-
-  return { sources, nextState }
-}
-
-async function collectShortTermDreamingSources(workspace: MemoryWorkspace): Promise<DreamingSource[]> {
-  const cutoffMs = Date.now() - workspace.settings.dreaming.lookbackDays * 86400000
-  const signals = (await readShortTermSignals(workspace))
-    .filter(signal => signal.createdAt >= cutoffMs && !signal.promotedAt)
-    .sort((left, right) => right.confidence - left.confidence || right.createdAt - left.createdAt)
-    .slice(0, Math.max(20, workspace.settings.dreaming.maxSourceFiles * 4))
-  if (signals.length === 0) return []
-  const content = signals.map(signal => [
-    `- [${signal.kind}] ${signal.content}`,
-    `  - source: ${signal.sourceType}:${signal.source}`,
-    `  - confidence: ${signal.confidence.toFixed(2)}${signal.explicit ? ', explicit' : ''}`,
-  ].join('\n')).join('\n')
-  return [{
-    sourceType: 'short-term',
-    relativePath: SHORT_TERM_SIGNAL_RELATIVE_PATH,
-    content,
-    mtimeMs: signals[0]?.createdAt || Date.now(),
-  }]
-}
-
-async function collectDreamingSources(
-  workspace: MemoryWorkspace,
-  pluginStore: PluginStore,
-): Promise<{ sources: DreamingSource[]; nextSessionState: Record<string, number> }> {
-  const sources: DreamingSource[] = []
-  let nextSessionState = getSessionIngestionState(pluginStore)
-  const enabledSources = new Set(workspace.settings.dreaming.sources)
-
-  if (enabledSources.has('daily')) {
-    sources.push(...await collectDailyDreamingSources(workspace))
-  }
-  if (enabledSources.has('short-term') || enabledSources.has('recall')) {
-    sources.push(...await collectShortTermDreamingSources(workspace))
-  }
-  if (enabledSources.has('sessions')) {
-    const sessionResult = await collectSessionDreamingSources(workspace, pluginStore)
-    sources.push(...sessionResult.sources)
-    nextSessionState = sessionResult.nextState
-  }
-  const selected = sources
+async function collectDreamingSources(workspace: MemoryWorkspace): Promise<{ sources: DreamingSource[] }> {
+  const selected = (await collectDailyDreamingSources(workspace))
     .filter(source => source.content.trim())
     .sort((left, right) => right.mtimeMs - left.mtimeMs)
-    .slice(0, Math.max(workspace.settings.dreaming.maxSourceFiles, workspace.settings.dreaming.maxSessions))
-  return { sources: selected, nextSessionState }
+    .slice(0, workspace.settings.dreaming.maxSourceFiles)
+  return { sources: selected }
 }
 
 function buildDreamingInput(files: Array<{ relativePath: string; content: string; sourceType?: string }>, maxChars: number): string {
@@ -3719,6 +3795,90 @@ function buildDreamingInput(files: Array<{ relativePath: string; content: string
     remaining -= header.length + body.length + 2
   }
   return sections.join('\n\n').trim()
+}
+
+interface MemoryToolProviderSelection {
+  providerId: string
+  config: any
+  model: string
+  source: 'tool' | 'default'
+}
+
+interface MemoryToolProvider extends MemoryToolProviderSelection {
+  modelRef: string
+}
+
+function providerExists(settings: AppSettings, providerId: string): boolean {
+  return Boolean(settings.ai.providers[providerId] || (settings.ai.customProviders || []).some(provider => provider.id === providerId))
+}
+
+function getProviderDefaultModel(settings: AppSettings, providerId: string): string {
+  const custom = (settings.ai.customProviders || []).find(provider => provider.id === providerId)
+  if (custom?.model) return custom.model
+  const providerConfig = settings.ai.providers[providerId]
+  return providerConfig?.model || providerConfig?.selectedModels?.[0] || ''
+}
+
+function getDefaultMemoryToolProviderId(settings: AppSettings): string {
+  if (settings.ai.provider && providerExists(settings, settings.ai.provider)) return settings.ai.provider
+  const configured = Object.entries(settings.ai.providers)
+    .find(([, config]) => Boolean(config?.model || config?.selectedModels?.[0]))?.[0]
+  if (configured) return configured
+  return (settings.ai.customProviders || []).find(provider => Boolean(provider.model))?.id || ''
+}
+
+function resolveMemoryToolProviderSelection(settings: AppSettings): MemoryToolProviderSelection {
+  const configuredProviderId = settings.tools?.toolCallModel?.providerId?.trim() || ''
+  const configuredModel = settings.tools?.toolCallModel?.model?.trim() || ''
+  const useConfiguredProvider = configuredProviderId && providerExists(settings, configuredProviderId)
+  const providerId = useConfiguredProvider
+    ? configuredProviderId
+    : getDefaultMemoryToolProviderId(settings)
+  const model = useConfiguredProvider && configuredModel
+    ? configuredModel
+    : getProviderDefaultModel(settings, providerId)
+  if (!providerId || !model) {
+    throw new Error('Tool provider/model is not configured for memory background tasks.')
+  }
+  const resolved = resolveProviderConfig(settings, providerId, model)
+  return {
+    providerId,
+    config: resolved.config,
+    model,
+    source: useConfiguredProvider ? 'tool' : 'default',
+  }
+}
+
+async function resolveMemoryToolProvider(settings: AppSettings, purpose: string): Promise<MemoryToolProvider> {
+  const selection = resolveMemoryToolProviderSelection(settings)
+  const authContext = await resolveProviderAuth(selection.providerId, selection.config)
+  if (!authContext) {
+    throw new Error(
+      `${purpose} provider auth is unavailable for ${selection.providerId}/${selection.model}. ` +
+      'Open Tools settings and configure the tool provider/model, or reconnect the provider.',
+    )
+  }
+  return {
+    ...selection,
+    modelRef: `${selection.providerId}/${selection.model}`,
+    config: {
+      ...selection.config,
+      model: selection.model,
+      selectedModels: selection.config.selectedModels?.length ? selection.config.selectedModels : [selection.model],
+      apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+      authContext,
+      oauthToken: authContext.kind === 'oauth' ? authContext.token : selection.config.oauthToken,
+    },
+  }
+}
+
+function formatMemoryToolModelRef(settings: AppSettings): string {
+  try {
+    const selection = resolveMemoryToolProviderSelection(settings)
+    return `${selection.providerId}/${selection.model}${selection.source === 'tool' ? '' : ' (default)'}`
+  } catch {
+    return 'tool provider/model not configured'
+  }
 }
 
 function resolveProviderConfig(settings: AppSettings, providerId: string, model: string): any {
@@ -3745,209 +3905,157 @@ function resolveProviderConfig(settings: AppSettings, providerId: string, model:
   }
 }
 
-async function resolveDreamingProvider(settings: AppSettings, dreaming: ResolvedSoulMemorySettings['dreaming']): Promise<{
-  providerId: string
-  config: any
-}> {
-  const configuredModel = dreaming.model.trim()
-  let resolved: { providerId: string; config: any }
-  if (configuredModel) {
-    const slash = configuredModel.indexOf('/')
-    if (slash > 0) {
-      resolved = resolveProviderConfig(
-        settings,
-        configuredModel.slice(0, slash),
-        configuredModel.slice(slash + 1),
-      )
-    } else {
-      resolved = resolveProviderConfig(settings, settings.ai.provider, configuredModel)
-    }
-  } else {
-    const providerId = settings.ai.provider
-    const custom = (settings.ai.customProviders || []).find(provider => provider.id === providerId)
-    const model = custom?.model || settings.ai.providers[providerId]?.model
-    if (!model) {
-      throw new Error('Dreaming model is not configured')
-    }
-    resolved = resolveProviderConfig(settings, providerId, model)
-  }
-
-  const authContext = await resolveProviderAuth(resolved.providerId, resolved.config as ProviderConfig)
-  if (!authContext) {
-    throw new Error(
-      `Dreaming provider auth is unavailable for ${resolved.providerId}/${resolved.config.model}. ` +
-      'Open the provider settings and reconnect or choose a different Memory Dreaming model.',
-    )
-  }
-
-  return {
-    providerId: resolved.providerId,
-    config: {
-      ...resolved.config,
-      selectedModels: resolved.config.selectedModels ?? [resolved.config.model],
-      apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
-      authContext,
-      oauthToken: authContext.kind === 'oauth' ? authContext.token : resolved.config.oauthToken,
-    },
-  }
+async function resolveDreamingProvider(settings: AppSettings): Promise<MemoryToolProvider> {
+  return resolveMemoryToolProvider(settings, 'Memory Dreaming')
 }
 
-async function resolveMemoryReviewProvider(settings: AppSettings): Promise<{
-  providerId: string
-  config: any
-}> {
-  const providerId = settings.ai.provider
-  const custom = (settings.ai.customProviders || []).find(provider => provider.id === providerId)
-  const model = custom?.model || settings.ai.providers[providerId]?.model
-  if (!model) {
-    throw new Error('Memory Review model is not configured')
-  }
-  const resolved = resolveProviderConfig(settings, providerId, model)
-  const authContext = await resolveProviderAuth(resolved.providerId, resolved.config as ProviderConfig)
-  if (!authContext) {
-    throw new Error(
-      `Memory Review provider auth is unavailable for ${resolved.providerId}/${resolved.config.model}. ` +
-      'Open the provider settings and reconnect or choose a different provider.',
-    )
-  }
-  return {
-    providerId: resolved.providerId,
-    config: {
-      ...resolved.config,
-      selectedModels: resolved.config.selectedModels ?? [resolved.config.model],
-      apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
-      authContext,
-      oauthToken: authContext.kind === 'oauth' ? authContext.token : resolved.config.oauthToken,
-    },
-  }
+async function resolveMemoryReviewProvider(settings: AppSettings): Promise<MemoryToolProvider> {
+  return resolveMemoryToolProvider(settings, 'Memory Review')
 }
 
-async function appendDreamsReport(workspace: MemoryWorkspace, report: {
-  runAt: Date
-  reason: SchedulerRunReason
-  sourceFiles: string[]
-  modelRef: string
-  memory: string
-  report: string
-  applied: number
-}): Promise<void> {
-  await writeIfMissing(workspace.dreamsPath, DREAMS_TEMPLATE)
-  const sourceLines = report.sourceFiles.length > 0
-    ? report.sourceFiles.map(file => `- ${file}`).join('\n')
-    : '- none'
-  const block = [
-    '',
-    `## Dreaming Sweep ${formatZonedDateTime(report.runAt, workspace.settings.dreaming.timezone)}`,
-    '',
-    `- Reason: ${report.reason}`,
-    `- Model: ${report.modelRef}`,
-    `- Promoted: ${report.applied}`,
-    '- Source files:',
-    sourceLines,
-    '',
-    '### Report',
-    '',
-    report.report || 'No report.',
-    '',
-    '### Durable Memory',
-    '',
-    report.memory || 'NONE',
-    '',
-  ].join('\n')
-  await fsp.appendFile(workspace.dreamsPath, block, 'utf-8')
-}
-
-function compactDreamingManagedSection(existing: string, nextBlock: string): string {
-  if (existing.length + nextBlock.length <= DREAMING_MEMORY_BUDGET_CHARS) return existing
-  const blockPattern = new RegExp(`${DREAMING_START_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${DREAMING_END_MARKER.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`, 'g')
-  let compacted = existing
-  const blocks = Array.from(existing.matchAll(blockPattern)).map(match => match[0])
-  for (const block of blocks) {
-    compacted = compacted.replace(block, '').replace(/\n{3,}/g, '\n\n')
-    if (compacted.length + nextBlock.length <= DREAMING_MEMORY_BUDGET_CHARS) break
+async function buildDreamingExistingMemorySummary(workspace: MemoryWorkspace): Promise<string> {
+  const sections: string[] = []
+  const graphSummary = buildGraphProfileSummary(workspace)
+  if (graphSummary?.trim()) {
+    sections.push([
+      '## Existing graph memory',
+      truncate(graphSummary.trim(), 12000),
+    ].join('\n\n'))
   }
-  return compacted
+
+  const hermesMemory = await readHermesMemoryFile(workspace, 'memory').catch(() => null)
+  if (hermesMemory?.content.trim()) {
+    sections.push([
+      '## Existing MEMORY.md',
+      truncate(hermesMemory.content.trim(), 12000),
+    ].join('\n\n'))
+  }
+
+  return sections.join('\n\n').trim() || '(empty)'
 }
 
-async function appendDreamingPromotions(workspace: MemoryWorkspace, memory: string, runAt: Date): Promise<{
-  applied: number
-  block: string
-}> {
-  if (workspace.settings.dreaming.maxPromotions <= 0) return { applied: 0, block: '' }
-  const existing = await fsp.readFile(workspace.memoryPath, 'utf-8').catch(() => '')
+async function applyDreamingMemoryActions(
+  workspace: MemoryWorkspace,
+  result: DreamingMemoryResult,
+  runAt: Date,
+): Promise<DreamingMemoryApplyResult> {
+  if (workspace.settings.dreaming.maxPromotions <= 0) {
+    return { applied: 0, block: '', added: 0, replaced: 0, removed: 0, skipped: 0 }
+  }
+  const existing = await readHermesMemoryFile(workspace, 'memory')
   const existingKeys = new Set(
-    existing
-      .split(/\r?\n/)
+    [
+      ...existing.entries,
+      ...existing.content.split(/\r?\n/),
+    ]
       .map(normalizeForDedupe)
       .filter(Boolean),
   )
-  const promotions = splitPromotions(memory, workspace.settings.dreaming.maxPromotions)
-    .filter(line => {
-      const key = normalizeForDedupe(line)
-      if (!key || existingKeys.has(key)) return false
-      existingKeys.add(key)
-      return true
-    })
-  if (promotions.length === 0) return { applied: 0, block: '' }
+  let added = 0
+  let replaced = 0
+  let removed = 0
+  let skipped = 0
+  const saved: string[] = []
 
-  const formattedPromotions = promotions.map(line => (/^[-*]\s+\S/.test(line) ? line : `- ${line.replace(/\s+/g, ' ').trim()}`))
-  const block = [
-    DREAMING_START_MARKER,
-    `### ${formatZonedDateTime(runAt, workspace.settings.dreaming.timezone)}`,
-    '',
-    ...formattedPromotions,
-    DREAMING_END_MARKER,
-    '',
-  ].join('\n')
-  const needsSection = !existing.includes(DREAMING_MEMORY_SECTION)
-  const nextContent = `${compactDreamingManagedSection(existing, block).replace(/\s+$/u, '')}${needsSection ? `\n\n${DREAMING_MEMORY_SECTION}\n\n` : '\n\n'}${block}`
-  await replaceFileAtomic(workspace.memoryPath, nextContent)
-  markHermesFileMemoryChanged(workspace, 'MEMORY.md', 'dreaming-promotion')
-  return { applied: promotions.length, block }
-}
-
-async function promoteDreamingGraphMemory(
-  workspace: MemoryWorkspace,
-  settings: AppSettings,
-  memory: string,
-  runAt: Date,
-): Promise<{ applied: number; block: string }> {
-  if (workspace.settings.dreaming.maxPromotions <= 0) return { applied: 0, block: '' }
-  const promotions = splitPromotions(memory, workspace.settings.dreaming.maxPromotions)
-  if (promotions.length === 0) return { applied: 0, block: '' }
-  const candidates: CaptureCandidate[] = promotions.map(line => {
-    const text = normalizeBulletText(line)
-    const lower = text.toLowerCase()
-    const kind: CaptureCandidateKind = /name is|identifies as|user is|我叫|我是/i.test(text)
-      ? 'identity'
-      : /prefer|preference|偏好|喜欢/.test(lower)
-        ? 'preference'
-        : /decision|decided|决定|方案/.test(lower)
-          ? 'decision'
-          : /project|component|repo|项目|组件/.test(lower)
-            ? 'project'
-            : 'fact'
-    return {
-      kind,
-      source: 'conversation',
-      confidence: Math.max(0.72, workspace.settings.dreaming.minScore),
-      text,
-      sensitivity: 'normal',
-      target: 'memory',
-      explicit: false,
+  for (const candidate of result.candidates.slice(0, workspace.settings.dreaming.maxPromotions)) {
+    if (candidate.confidence < workspace.settings.dreaming.minScore) {
+      skipped += 1
+      continue
     }
+
+    if (candidate.action === 'add') {
+      const content = cleanDreamingMemoryText(candidate.content || candidate.text)
+      const key = normalizeForDedupe(content || '')
+      if (!content || !key || existingKeys.has(key)) {
+        skipped += 1
+        continue
+      }
+      await addHermesMemoryEntry({
+        workspace,
+        target: 'memory',
+        content,
+      })
+      existingKeys.add(key)
+      added += 1
+      saved.push(`+ ${asBullet(content)}`)
+      continue
+    }
+
+    if (candidate.action === 'replace') {
+      const oldText = candidate.oldText?.trim()
+      const newText = cleanDreamingMemoryText(candidate.newText)
+      if (!oldText || !newText) {
+        skipped += 1
+        continue
+      }
+      const mutation = await replaceHermesMemoryText({
+        workspace,
+        target: 'memory',
+        oldText,
+        newText,
+        replaceAll: false,
+      })
+      if (mutation.changed) {
+        const oldKey = normalizeForDedupe(oldText)
+        const newKey = normalizeForDedupe(newText)
+        if (oldKey) existingKeys.delete(oldKey)
+        if (newKey) existingKeys.add(newKey)
+        replaced += 1
+        saved.push(`~ ${asBullet(newText)}`)
+      } else {
+        skipped += 1
+      }
+      continue
+    }
+
+    const text = candidate.text?.trim() || candidate.oldText?.trim() || candidate.content?.trim()
+    if (!text) {
+      skipped += 1
+      continue
+    }
+    const mutation = await removeHermesMemoryText({
+      workspace,
+      target: 'memory',
+      text,
+      removeAll: false,
+    })
+    if (mutation.changed) {
+      const key = normalizeForDedupe(text)
+      if (key) existingKeys.delete(key)
+      removed += 1
+      saved.push(`- ${asBullet(text)}`)
+    } else {
+      skipped += 1
+    }
+  }
+
+  const applied = added + replaced + removed
+  if (applied > 0) {
+    markHermesFileMemoryChanged(workspace, 'MEMORY.md', 'dreaming-memory-actions')
+  }
+  logMemoryDiagnostic({
+    subsystem: 'dreaming',
+    operation: 'memory-actions',
+    stage: 'write',
+    status: applied > 0 ? 'ok' : 'skipped',
+    response: {
+      relativePath: 'MEMORY.md',
+      applied,
+      added,
+      replaced,
+      removed,
+      skipped,
+      runAt: runAt.toISOString(),
+    },
   })
-  const result = await mergeGraphMemory({
-    workspace,
-    settings,
-    agentId: workspace.agentId,
-    candidates,
-    source: 'dreaming',
-    evidence: `Promoted by scheduled dreaming sweep at ${runAt.toISOString()}.`,
-    action: 'create',
-  })
-  const block = promotions.map(line => (/^[-*]\s+\S/.test(line) ? line : `- ${line}`)).join('\n')
-  return { applied: result.applied, block }
+  return {
+    applied,
+    block: saved.join('\n'),
+    added,
+    replaced,
+    removed,
+    skipped,
+  }
 }
 
 async function runMemoryDreamingSweep(api: PluginAPI, options: {
@@ -4006,11 +4114,10 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
         force: options.force === true,
         runAt: runAt.toISOString(),
         frequency: workspace.settings.dreaming.frequency,
-        sources: workspace.settings.dreaming.sources,
+        sources: ['daily'],
       },
     })
-    const pluginStore = new PluginStore(SOUL_MEMORY_PLUGIN_ID)
-    const sourceResult = await collectDreamingSources(workspace, pluginStore)
+    const sourceResult = await collectDreamingSources(workspace)
     const sourceFiles = sourceResult.sources
     timeline.push(dreamingTimelineEntry({
       type: 'dreaming:sources',
@@ -4026,7 +4133,7 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
         status: 'skipped',
         applied: 0,
         sourceFiles: [],
-        report: 'No dreaming sources had durable content in the configured lookback window.',
+        report: '',
         memory: 'NONE',
         runAt: runAt.getTime(),
         nextRunAt: nextRun,
@@ -4061,15 +4168,15 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
         durationMs: Date.now() - startedAt,
         runId,
         response: { sourceCount: 0, nextRunAt: nextRun },
-        summary: result.report,
+        summary: 'No daily notes had durable content in the configured lookback window.',
       })
       return result
     }
 
     const input = buildDreamingInput(sourceFiles, workspace.settings.dreaming.maxInputChars)
-    const existingMemory = buildGraphProfileSummary(workspace) || '(empty)'
-    const provider = await resolveDreamingProvider(settings, workspace.settings.dreaming)
-    const modelRef = `${provider.providerId}/${provider.config.model}`
+    const existingMemory = await buildDreamingExistingMemorySummary(workspace)
+    const provider = await resolveDreamingProvider(settings)
+    const modelRef = provider.modelRef
     timeline.push(dreamingTimelineEntry({
       type: 'dreaming:model',
       title: 'Model sweep requested',
@@ -4087,6 +4194,7 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
       runId,
       request: {
         modelRef,
+        modelSource: provider.source,
         inputChars: input.length,
         sourceCount: sourceFiles.length,
         timeoutMs: workspace.settings.dreaming.timeoutMs,
@@ -4099,21 +4207,17 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
         {
           role: 'system',
           content: [
-            'You run a scheduled memory dreaming sweep.',
-            'Use hybrid sources from daily notes, short-term capture signals, and capped recent sessions.',
-            'Promote only durable facts, user preferences, project decisions, recurring constraints, and stable context.',
-            'Do not promote transient todos, tool chatter, one-off status updates, or duplicates already present in graph memory.',
-            `Require roughly score >= ${workspace.settings.dreaming.minScore}, recall count >= ${workspace.settings.dreaming.minRecallCount}, and unique sources >= ${workspace.settings.dreaming.minUniqueSources} unless the item is explicitly user-authored.`,
-            'Return exactly two XML-style blocks: <durable_memory> markdown bullets or NONE </durable_memory>, then <dream_report> a concise human-readable report </dream_report>.',
+            MEMORY_DREAMING_SYSTEM_PROMPT,
+            `Require roughly score >= ${workspace.settings.dreaming.minScore} unless the item is explicitly user-authored.`,
           ].join(' '),
         },
         {
           role: 'user',
           content: [
-            'Existing graph memory summary:',
+            'Existing memory:',
             existingMemory || '(empty)',
             '',
-            'Hybrid memory sources to consolidate:',
+            'Daily notes to consolidate:',
             input,
           ].join('\n'),
         },
@@ -4122,37 +4226,26 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
     ), workspace.settings.dreaming.timeoutMs)
 
     const parsed = parseDreamingOutput(output)
-    const promoted = await promoteDreamingGraphMemory(workspace, settings, parsed.memory, runAt)
+    const memoryActions = await applyDreamingMemoryActions(workspace, parsed, runAt)
     timeline.push(dreamingTimelineEntry({
       type: 'dreaming:promotion',
-      title: 'Promoted durable memory',
-      detail: `${promoted.applied} applied`,
+      title: 'Applied durable memory actions',
+      detail: `${memoryActions.applied} applied`,
       metadata: {
-        reportPreview: previewLine(parsed.report, 240),
+        memoryPreview: previewLine(memoryActions.block || parsed.memory, 240),
+        added: memoryActions.added,
+        replaced: memoryActions.replaced,
+        removed: memoryActions.removed,
+        skipped: memoryActions.skipped,
       },
     }))
-    pluginStore.set(SESSION_INGESTION_STORE_KEY, sourceResult.nextSessionState)
-    await appendDreamsReport(workspace, {
-      runAt,
-      reason: options.reason,
-      sourceFiles: sourceFiles.map(file => file.relativePath),
-      modelRef,
-      memory: parsed.memory || 'NONE',
-      report: parsed.report,
-      applied: promoted.applied,
-    })
-    markIndexDirty('dreaming-report-write', { relativePath: 'DREAMS.md' })
-    scheduleIndexSync({
-      settings,
-      reason: 'dreaming-report-write',
-    })
 
     const result: DreamingRunResult = {
-      status: promoted.applied > 0 ? 'applied' : 'none',
-      applied: promoted.applied,
+      status: memoryActions.applied > 0 ? 'applied' : 'none',
+      applied: memoryActions.applied,
       sourceFiles: sourceFiles.map(file => file.relativePath),
-      report: parsed.report,
-      memory: promoted.block || parsed.memory || 'NONE',
+      report: '',
+      memory: memoryActions.block || parsed.memory || 'NONE',
       runAt: runAt.getTime(),
       nextRunAt: nextRun,
       timeline: [
@@ -4160,7 +4253,7 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
         dreamingTimelineEntry({
           type: 'dreaming:finish',
           title: 'Dreaming finished',
-          status: promoted.applied > 0 ? 'applied' : 'none',
+          status: memoryActions.applied > 0 ? 'applied' : 'none',
           durationMs: Date.now() - startedAt,
         }),
       ],
@@ -4187,10 +4280,13 @@ async function runMemoryDreamingSweep(api: PluginAPI, options: {
       response: {
         status: result.status,
         applied: result.applied,
+        added: memoryActions.added,
+        replaced: memoryActions.replaced,
+        removed: memoryActions.removed,
+        skipped: memoryActions.skipped,
         sourceCount: result.sourceFiles.length,
         modelRef,
         outputHash: sha(output).slice(0, 16),
-        reportPreview: previewLine(parsed.report, 240),
         nextRunAt: result.nextRunAt,
       },
     })
@@ -4276,15 +4372,11 @@ function buildDreamingStatus(api: PluginAPI, workspace: MemoryWorkspace): {
   frequency: string
   timezone: string
   model: string
-  sources: Array<'daily' | 'sessions' | 'short-term' | 'recall'>
+  sources: Array<'daily'>
   lookbackDays: number
   maxSourceFiles: number
-  maxSessions: number
-  maxMessagesPerSession: number
   maxPromotions: number
   minScore: number
-  minRecallCount: number
-  minUniqueSources: number
   timeoutMs: number
   nextRunAt?: number
   lastRunAt?: number
@@ -4302,16 +4394,12 @@ function buildDreamingStatus(api: PluginAPI, workspace: MemoryWorkspace): {
     enabled: workspace.settings.dreaming.enabled,
     frequency: workspace.settings.dreaming.frequency,
     timezone: workspace.settings.dreaming.timezone,
-    model: workspace.settings.dreaming.model,
-    sources: workspace.settings.dreaming.sources,
+    model: formatMemoryToolModelRef(getSettings()),
+    sources: ['daily'],
     lookbackDays: workspace.settings.dreaming.lookbackDays,
     maxSourceFiles: workspace.settings.dreaming.maxSourceFiles,
-    maxSessions: workspace.settings.dreaming.maxSessions,
-    maxMessagesPerSession: workspace.settings.dreaming.maxMessagesPerSession,
     maxPromotions: workspace.settings.dreaming.maxPromotions,
     minScore: workspace.settings.dreaming.minScore,
-    minRecallCount: workspace.settings.dreaming.minRecallCount,
-    minUniqueSources: workspace.settings.dreaming.minUniqueSources,
     timeoutMs: workspace.settings.dreaming.timeoutMs,
     nextRunAt: scheduled?.nextRunAt ?? next.nextRunAt ?? api.store.get<number>('lastDreamingNextRunAt') ?? lastStatus.lastDreamingNextRunAt,
     lastRunAt: scheduled?.lastRunAt ?? api.store.get<number>('lastDreamingAt') ?? lastStatus.lastDreamingAt,
@@ -4333,12 +4421,12 @@ function formatDreamingStatus(api: PluginAPI, workspace: MemoryWorkspace): strin
     `Frequency: ${status.frequency}`,
     `Timezone: ${status.timezone || 'system'}`,
     `Model: ${status.model || 'current chat model'}`,
-    `Sources: ${status.sources.join(', ')}`,
-    `Lookback: ${status.lookbackDays} days, ${status.maxSourceFiles} files, ${status.maxSessions} sessions x ${status.maxMessagesPerSession} messages`,
-    `Promotions: up to ${status.maxPromotions}, min score ${status.minScore}, timeout ${Math.round(status.timeoutMs / 1000)}s`,
+    'Sources: daily notes',
+    `Lookback: ${status.lookbackDays} days, ${status.maxSourceFiles} daily files`,
+    `Actions: up to ${status.maxPromotions}, min score ${status.minScore}, timeout ${Math.round(status.timeoutMs / 1000)}s`,
     `Next run: ${status.enabled ? formatMaybeTimestamp(status.nextRunAt, status.timezone) : 'disabled'}`,
     `Last run: ${formatMaybeTimestamp(status.lastRunAt, status.timezone)}`,
-    `Last result: ${status.lastStatus || 'none'}${typeof status.lastApplied === 'number' ? `, promoted ${status.lastApplied}` : ''}`,
+    `Last result: ${status.lastStatus || 'none'}${typeof status.lastApplied === 'number' ? `, applied ${status.lastApplied}` : ''}`,
     `Last sources: ${sourceFiles}`,
     status.inFlight ? 'Run in progress: yes' : '',
     status.lastError ? `Last error: ${status.lastError}` : '',
@@ -4590,7 +4678,7 @@ async function handleDreamingCommand(api: PluginAPI, args: string, ctx: PluginCo
       }
       ctx.notify([
         `Memory Dreaming ${result.status}.`,
-        `Promoted: ${result.applied}`,
+        `Applied: ${result.applied}`,
         `Sources: ${result.sourceFiles.length > 0 ? result.sourceFiles.join(', ') : 'none'}`,
         result.nextRunAt ? `Next scheduled run: ${formatMaybeTimestamp(result.nextRunAt, getSettings().general.soulMemory?.dreaming?.timezone)}` : '',
       ].filter(Boolean).join('\n'))
@@ -4636,16 +4724,15 @@ async function handleDreamingCommand(api: PluginAPI, args: string, ctx: PluginCo
   }
 
   if (action === 'model') {
-    const model = rest.join(' ').trim()
-    const normalized = ['current', 'default', 'chat', ''].includes(model.toLowerCase()) ? '' : model
-    saveDreamingSettingsPatch({ model: normalized })
-    api.scheduler.refresh(DREAMING_SCHEDULER_TASK_ID)
     const workspace = await ensureWorkspace(getSettings())
-    ctx.notify(formatDreamingStatus(api, workspace))
+    ctx.notify([
+      'Memory Dreaming now uses the Tools tool provider/model.',
+      formatDreamingStatus(api, workspace),
+    ].join('\n'))
     return
   }
 
-  ctx.notify('Usage: /dreaming status|on|off|run|frequency <cron>|timezone <tz>|model <provider/model>', 'warn')
+  ctx.notify('Usage: /dreaming status|on|off|run|frequency <cron>|timezone <tz>', 'warn')
 }
 
 function formatHits(hits: SearchHit[]): string {
@@ -4815,8 +4902,6 @@ async function activeMemoryRecall(options: {
   sessionId: string
   agentId?: string
   settings: AppSettings
-  providerId?: string
-  providerConfig?: Record<string, unknown>
   api: PluginAPI
 }): Promise<string | null> {
   const startedAt = Date.now()
@@ -4824,8 +4909,6 @@ async function activeMemoryRecall(options: {
   const resolved = resolveSettings(options.settings)
   const agentId = options.agentId || resolveSessionAgentId(options.sessionId)
   const sessionLabel = options.sessionId.slice(0, 8)
-  const providerLabel = options.providerId || 'unknown'
-  const modelLabel = String(options.providerConfig?.model || 'unknown')
   if (!resolved.enabled || !resolved.activeMemory.enabled) {
     logMemoryDiagnostic({
       subsystem: 'active-memory',
@@ -4875,7 +4958,24 @@ async function activeMemoryRecall(options: {
     return cached.content
   }
 
-  const breakerKey = circuitKey(options.providerId, String(options.providerConfig?.model || ''))
+  let provider: MemoryToolProvider | null = null
+  try {
+    provider = await resolveMemoryToolProvider(options.settings, 'Active Memory')
+  } catch (error: any) {
+    logMemoryDiagnostic({
+      subsystem: 'active-memory',
+      operation: 'recall',
+      stage: 'model-resolve',
+      status: 'fallback',
+      sessionId: options.sessionId,
+      runId,
+      error,
+      summary: 'Tool provider/model unavailable; active memory will use raw search hits.',
+    })
+  }
+  const providerLabel = provider?.providerId || 'none'
+  const modelLabel = String(provider?.config.model || 'none')
+  const breakerKey = circuitKey(provider?.providerId, modelLabel)
   const breaker = ACTIVE_MEMORY_TIMEOUTS.get(breakerKey)
   if (breaker && breaker.cooldownUntil > Date.now()) {
     console.warn(
@@ -4925,7 +5025,7 @@ async function activeMemoryRecall(options: {
       hitCount = hits.length
       if (hits.length === 0) return null
 
-      if (!options.providerId || !options.providerConfig?.model) {
+      if (!provider) {
         return formatHits(hits.slice(0, 4))
       }
 
@@ -4948,8 +5048,8 @@ async function activeMemoryRecall(options: {
       ].join('\n')
       usedFilterModel = true
       const result = await generateChatResponse(
-        options.providerId,
-        options.providerConfig as any,
+        provider.providerId,
+        provider.config,
         [
           {
             role: 'system',
@@ -5079,6 +5179,28 @@ async function buildRecentDailyContextFragment(
   return combined.trim() || null
 }
 
+export const __testing = {
+  applyDailyNoteCaptureActions,
+  applyMemoryReviewCandidate,
+  applyDreamingMemoryActions,
+  appendDailyNoteBullets,
+  buildMemoryReviewInput,
+  buildMemoryCaptureInput,
+  buildDreamingExistingMemorySummary,
+  closeIndexWatcherForTesting: closeIndexWatcher,
+  collectDreamingSources,
+  dailyNoteExtractionSystemPrompt: DAILY_NOTE_EXTRACTION_SYSTEM_PROMPT,
+  memoryReviewSystemPrompt: MEMORY_REVIEW_SYSTEM_PROMPT,
+  memoryDreamingSystemPrompt: MEMORY_DREAMING_SYSTEM_PROMPT,
+  parseDreamingOutput,
+  parseDailyNoteCaptureResult,
+  parseDailyNoteBullets,
+  isLikelyRawRequestEcho,
+  memoryCaptureSystemPrompt: MEMORY_CAPTURE_SYSTEM_PROMPT,
+  memoryFlushSystemPrompt: MEMORY_FLUSH_SYSTEM_PROMPT,
+  resolveMemoryToolProviderSelection,
+}
+
 export default function soulMemoryPlugin(api: PluginAPI): void {
   activeSoulMemoryPluginApi = api
   ensureWorkspace(getSettings()).then(workspace => migrateGraphMemoryIfNeeded(workspace, getSettings())).catch(error => {
@@ -5154,8 +5276,6 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
         sessionId: context.sessionId,
         agentId,
         settings,
-        providerId: context.providerId,
-        providerConfig: context.providerConfig,
         api,
       })
       if (recalled) {
@@ -5209,6 +5329,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
 
     try {
       const workspace = await ensureWorkspace(settings, agentId)
+      const provider = await resolveMemoryToolProvider(settings, 'Memory Flush')
       logMemoryDiagnostic({
         subsystem: 'flush',
         operation: 'before-context-compact',
@@ -5217,89 +5338,49 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
         sessionId: context.sessionId,
         runId,
         request: {
-          providerId: context.providerId,
-          model: (context.configWithApiKey as any)?.model || '',
+          providerId: provider.providerId,
+          model: provider.config.model,
+          modelSource: provider.source,
           inputChars: formatted.length,
           messages: context.messagesToSummarize.length,
         },
       })
       const output = await withTimeout(generateChatResponse(
-        context.providerId,
-        context.configWithApiKey as any,
+        provider.providerId,
+        provider.config,
         [
           {
             role: 'system',
-            content: [
-              'You are a pre-compaction memory flush filter for a local layered memory plugin.',
-              'Extract stable facts, user preferences, project decisions, recurring constraints, and compact episodic session summaries.',
-              'Route high-confidence durable user/project facts, preferences, relations, and decisions to target "memory" for SQLite graph memory; route session summaries and lower-confidence useful context to target "daily" AI notes.',
-              'Assistant text is only supporting evidence; prefer user-authored or user-confirmed facts.',
-              'Ignore transient tasks, tool chatter, secrets, credentials, and unsupported guesses.',
-              'The user entity is always user:self; for user name use memoryKey "user.name", slot "name", value "<name>".',
-              'For project or component facts, include entityType/entityName and relationType/fromEntityType/fromEntityName/toEntityType/toEntityName when clear.',
-              'Return compact JSON only: {"action":"capture"|"none","explicit":boolean,"confidence":0..1,"candidates":[{"kind":"identity|preference|decision|project|constraint|fact|summary|episodic|ignore","source":"user|assistant|conversation","confidence":0..1,"memoryKey":"user.name","entityType":"user|project|tech|component|decision|concept","entityName":"...","slot":"name","relationType":"works_on","fromEntityType":"user","fromEntityName":"self","toEntityType":"project","toEntityName":"...","value":"...","text":"...","reason":"...","sensitivity":"normal|sensitive|secret","target":"memory|daily|ignore"}],"reason":"short reason"}.',
-            ].join(' '),
+            content: MEMORY_FLUSH_SYSTEM_PROMPT,
           },
           { role: 'user', content: formatted },
         ],
         { temperature: 0.1, maxTokens: 500 },
       ), 20000)
-      const trimmed = output.trim()
-      if (!trimmed || trimmed.toUpperCase() === 'NONE') return
-      const parsed = parseCaptureModelResult(trimmed) || {
-        candidates: [{
-          kind: 'summary' as const,
-          source: 'conversation' as const,
-          confidence: 0.6,
-          text: trimmed,
-          sensitivity: 'normal' as const,
-          target: 'daily' as const,
-        }],
-        confidence: 0.6,
-        explicit: false,
-      }
-      const routed = routeFlushCandidates(workspace, parsed)
-      const graph = routed.longTerm.length > 0
-        ? await mergeGraphMemory({
-          workspace,
-          settings,
-          agentId,
-          candidates: routed.longTerm,
-          source: 'flush',
-          evidence: formatted,
-          sessionId: context.sessionId,
-        })
-        : { applied: 0 }
-      const dailyCandidates = await dedupeDailyCandidates(workspace, routed.daily)
-      const daily = dailyCandidates.length > 0
-        ? await appendDailyMemorySignals({
-          settings,
-          workspace,
-          candidates: dailyCandidates,
-          heading: `Context compact flush ${new Date().toLocaleString()}`,
-          source: `compact:${context.sessionId}`,
-          sourceType: 'flush',
-        })
-        : null
-      if (graph.applied === 0 && !daily) {
+      const dailyBullets = await dedupeDailyNoteBullets(workspace, parseDailyNoteBullets(output))
+      if (dailyBullets.length === 0) {
         logMemoryDiagnostic({
           subsystem: 'flush',
           operation: 'before-context-compact',
-          stage: 'finish',
+          stage: 'model-response',
           status: 'skipped',
           durationMs: Date.now() - startedAt,
           sessionId: context.sessionId,
           runId,
           response: {
-            graphApplied: 0,
-            dailyItems: 0,
-            longTermCandidates: routed.longTerm.length,
-            dailyCandidates: dailyCandidates.length,
+            bullets: 0,
+            outputHash: sha(output).slice(0, 16),
+            outputPreview: previewLine(output, 240),
           },
-          summary: 'Flush found no new graph or daily memory to write.',
+          summary: 'Flush model returned no daily-note-worthy bullets.',
         })
         return
       }
+      const daily = await appendDailyNoteBullets({
+        settings,
+        bullets: dailyBullets,
+        heading: dailyNoteTimeHeading(),
+      })
       lastStatus.lastFlushAt = Date.now()
       delete lastStatus.lastFlushError
       api.store.set('lastFlushAt', lastStatus.lastFlushAt)
@@ -5313,11 +5394,8 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
         sessionId: context.sessionId,
         runId,
         response: {
-          graphApplied: graph.applied,
-          dailyItems: daily ? dailyCandidates.length : 0,
+          dailyItems: daily ? dailyBullets.length : 0,
           outputHash: sha(output).slice(0, 16),
-          longTermCandidates: routed.longTerm.length,
-          dailyCandidates: dailyCandidates.length,
         },
       })
     } catch (error: any) {
@@ -5588,84 +5666,6 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     },
   })
 
-  api.registerTool({
-    name: 'memory_append',
-    description: 'Append AI working notes to the current daily note. User identity/preferences/facts and project relationships are captured into SQLite graph memory by the capture policy instead of appending Markdown bullets. Writes are permission-gated.',
-    permissionGuard: 'permission-gated',
-    parameters: z.object({
-      content: z.string().min(1),
-      target: z.enum(['daily']).optional(),
-      path: z.string().optional(),
-      heading: z.string().optional(),
-    }),
-    async execute(args, ctx) {
-      const target = await appendMemory({
-        agentId: resolveSessionAgentId(ctx.sessionId),
-        content: args.content,
-        target: args.target,
-        filePath: args.path,
-        heading: args.heading,
-      })
-      return {
-        title: `Memory appended: ${target.relativePath}`,
-        output: `Appended memory to ${target.relativePath}`,
-        metadata: target,
-      }
-    },
-  })
-
-  api.registerTool({
-    name: 'memory_status',
-    description: 'Show soul-memory plugin status, paths, index counts, embedding fallback state, and dreaming schedule state.',
-    permissionGuard: 'safe',
-    parameters: z.object({}),
-    async execute(_args, ctx) {
-      const agentId = resolveSessionAgentId(ctx.sessionId)
-      const workspace = await ensureWorkspace(getSettings(), agentId)
-      const status = refreshIndexStatus(getDb(workspace))
-	      if (indexDirty && !indexSyncInFlight) {
-	        scheduleIndexSync({
-	          settings: getSettings(),
-	          agentId,
-	          reason: 'memory-status',
-	        })
-	      }
-	      const dreaming = buildDreamingStatus(api, workspace)
-	      const reviewProgress = getMemoryReviewProgress({
-	        messages: store.getSession(ctx.sessionId)?.messages ?? [],
-	        interval: workspace.settings.review.interval,
-	        lastReviewedTurn: api.store.get<number>(memoryReviewLastTurnKey(agentId, ctx.sessionId)),
-	      })
-	      return {
-	        title: 'Memory status',
-	        output: JSON.stringify({
-	          enabled: workspace.settings.enabled,
-          root: workspace.root,
-          soulPath: workspace.soulPath,
-          userPath: workspace.userPath,
-          memoryPath: workspace.memoryPath,
-          graph: getGraphOverview(workspace),
-          legacyCanonicalCount: getCanonicalMemoryCount(workspace),
-          dreamsPath: workspace.dreamsPath,
-          database: workspace.dbPath,
-	          activeMemory: workspace.settings.activeMemory.enabled,
-	          embeddings: workspace.settings.embeddings.enabled,
-	          review: {
-	            ...workspace.settings.review,
-	            ...reviewProgress,
-	            lastRunAt: api.store.get<number>('lastReviewAt') ?? lastStatus.lastReviewAt,
-	            lastStatus: api.store.get<string>('lastReviewStatus') ?? lastStatus.lastReviewStatus,
-	            lastApplied: api.store.get<number>('lastReviewApplied') ?? lastStatus.lastReviewApplied,
-	            lastError: api.store.get<string>('lastReviewError') ?? lastStatus.lastReviewError,
-	          },
-	          dreaming,
-	          ...status,
-	        }, null, 2),
-	        metadata: { workspace, status, dreaming, reviewProgress },
-	      }
-	    },
-	  })
-
   api.registerCommand('/active-memory', {
     description: 'Manage active memory recall for the current session',
     usage: '/active-memory status|on|off [--global]',
@@ -5716,8 +5716,8 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
   })
 
   api.registerCommand('/dreaming', {
-    description: 'Manage scheduled memory dreaming promotion',
-    usage: '/dreaming status|on|off|run|frequency <cron>|timezone <tz>|model <provider/model>',
+    description: 'Manage scheduled memory dreaming updates',
+    usage: '/dreaming status|on|off|run|frequency <cron>|timezone <tz>',
     async handler(args, ctx) {
       await handleDreamingCommand(api, args, ctx)
     },
@@ -5745,8 +5745,6 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
           ctx.notify([
             `Memory Capture: ${capture.enabled ? 'on' : 'off'}`,
             `Mode: ${capture.mode}`,
-            `Policy: ${capture.policy}`,
-            `Target policy: ${capture.targetPolicy}`,
             `Pending: ${pending.length}`,
             lastStatus.lastCaptureStatus ? `Last result: ${lastStatus.lastCaptureStatus}` : '',
             lastStatus.lastCaptureError ? `Last error: ${lastStatus.lastCaptureError}` : '',
@@ -5771,15 +5769,15 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
         }
         if (sub === 'mode') {
           const mode = rawId
-          if (mode !== 'explicit-only' && mode !== 'ask' && mode !== 'auto' && mode !== 'off') {
-            ctx.notify('Usage: /memory capture mode explicit-only|ask|auto|off', 'warn')
+          if (mode !== 'explicit-only' && mode !== 'auto' && mode !== 'off') {
+            ctx.notify('Usage: /memory capture mode explicit-only|auto|off', 'warn')
             return
           }
           const capture = saveCaptureSettingsPatch({ mode })
           ctx.notify(`Memory Capture mode: ${capture.mode}`)
           return
         }
-        ctx.notify('Usage: /memory capture status|save [id]|discard [id]|on|off|mode explicit-only|ask|auto|off', 'warn')
+        ctx.notify('Usage: /memory capture status|save [id]|discard [id]|on|off|mode explicit-only|auto|off', 'warn')
         return
       }
       if (action === 'search') {
@@ -5874,7 +5872,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
         workspace.settings.dreaming.enabled
           ? `Next dreaming run: ${formatMaybeTimestamp(buildDreamingStatus(api, workspace).nextRunAt, workspace.settings.dreaming.timezone)}`
           : '',
-        status.lastDreamingAt ? `Last dreaming run: ${formatMaybeTimestamp(status.lastDreamingAt, workspace.settings.dreaming.timezone)} (${status.lastDreamingStatus || 'unknown'}, promoted ${status.lastDreamingApplied ?? 0})` : '',
+        status.lastDreamingAt ? `Last dreaming run: ${formatMaybeTimestamp(status.lastDreamingAt, workspace.settings.dreaming.timezone)} (${status.lastDreamingStatus || 'unknown'}, applied ${status.lastDreamingApplied ?? 0})` : '',
         status.lastError ? `Last error: ${status.lastError}` : '',
         status.lastFlushError ? `Last flush error: ${status.lastFlushError}` : '',
         status.lastReviewError ? `Last review error: ${status.lastReviewError}` : '',

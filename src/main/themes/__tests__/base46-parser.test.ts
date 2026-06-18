@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Base46Theme } from '../../../shared/ipc/themes.js'
 import { convertBase46ToTheme } from '../base46-parser.js'
+import { deriveStateOverlays } from '../role-mapping.js'
 import { resolveTheme, resolveThemeUI } from '../resolver.js'
 
 function parseHexColor(value: string): [number, number, number] {
@@ -214,5 +215,86 @@ describe('Base46 theme conversion', () => {
     expect(relativeLuminance(chatBg)).toBeGreaterThan(relativeLuminance(sidebarBg))
     expect(contrastRatio(resolvedUI['ui.sidebar.item'].fg as string, sidebarBg)).toBeGreaterThanOrEqual(4.5)
     expect(contrastRatio(resolvedUI['ui.text.primary'].fg as string, chatBg)).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('derives Base46 state colors from each surface instead of primary fills', () => {
+    const base46: Base46Theme = {
+      type: 'light',
+      base_30: {
+        white: '#172025',
+        darker_black: '#f7f1df',
+        black: '#fff9e8',
+        one_bg: '#e8dfca',
+        one_bg2: '#d7ccb5',
+        one_bg3: '#c6b99f',
+        grey: '#b8aa91',
+        grey_fg: '#5f6f75',
+        grey_fg2: '#536268',
+        light_grey: '#405055',
+        red: '#c85552',
+        green: '#5da111',
+        vibrant_green: '#87a060',
+        nord_blue: '#6fa8b6',
+        blue: '#3a94c5',
+        yellow: '#dfa000',
+        purple: '#b67996',
+        teal: '#69a59d',
+        orange: '#f7954f',
+        cyan: '#89bfdc',
+        line: '#ddd2ba',
+      },
+      base_16: {
+        base00: '#fff9e8',
+        base01: '#f6f0df',
+        base02: '#ede7d6',
+        base03: '#e5dfce',
+        base04: '#8c958f',
+        base05: '#495157',
+        base06: '#3b4349',
+        base07: '#272f35',
+        base08: '#5f9b93',
+        base09: '#b67996',
+        base0A: '#8da101',
+        base0B: '#d59600',
+        base0C: '#ef615e',
+        base0D: '#87a060',
+        base0E: '#c85552',
+        base0F: '#c85552',
+      },
+    }
+
+    const theme = convertBase46ToTheme(base46, 'state-fallthrough-light')
+    const panelStates = deriveStateOverlays(theme.theme.bg.panel as string, '#000000', 'light')!
+    const chatStates = deriveStateOverlays(theme.theme.bg.chat as string, '#000000', 'light')!
+
+    expect(theme.theme.bg.hover).toBe(panelStates.hover)
+    expect(theme.theme.bg.active).toBe(panelStates.active)
+    expect(theme.theme.bg.selected).toBe(panelStates.selected.bg)
+    expect(theme.theme.bg.selectedHover).toBe(panelStates.selectedHover)
+    expect(theme.theme.bg.message?.hover).toBe(chatStates.hover)
+    expect(theme.theme.effects?.overlayHover).toBeUndefined()
+    expect(theme.theme.effects?.overlayActive).toBeUndefined()
+
+    const resolvedTheme = resolveTheme(theme, 'light')
+    const resolvedUI = resolveThemeUI(theme, 'light', resolvedTheme)
+    const resolvedPanelStates = deriveStateOverlays(
+      resolvedUI['ui.surface.panel'].bg,
+      resolvedUI['ui.state.selected'].border,
+      'light'
+    )!
+    const resolvedSidebarStates = deriveStateOverlays(
+      resolvedUI['ui.sidebar.surface'].bg,
+      resolvedUI['ui.sidebar.itemActive'].border,
+      'light'
+    )!
+
+    expect(resolvedUI['ui.state.hover'].bg).toBe(resolvedPanelStates.hover)
+    expect(resolvedUI['ui.state.active'].bg).toBe(resolvedPanelStates.active)
+    expect(resolvedUI['ui.state.selected'].bg).toBe(resolvedPanelStates.selected.bg)
+    expect(resolvedUI['ui.state.selectedHover'].bg).toBe(resolvedPanelStates.selectedHover)
+    expect(resolvedUI['ui.state.selected'].bg).not.toBe(resolvedTheme.primaryBg)
+    expect(resolvedUI['ui.sidebar.itemHover'].bg).toBe(resolvedSidebarStates.hover)
+    expect(resolvedUI['ui.sidebar.itemActive'].bg).toBe(resolvedSidebarStates.selected.bg)
+    expect(resolvedUI['ui.sidebar.itemActive'].border).toBe(resolvedSidebarStates.selected.border)
   })
 })

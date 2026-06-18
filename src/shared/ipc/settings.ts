@@ -111,19 +111,9 @@ export interface SoulMemoryFlushSettings {
 
 export interface SoulMemoryCaptureSettings {
   enabled?: boolean
-  mode?: 'explicit-only' | 'ask' | 'auto' | 'off'
-  policy?: 'high-confidence' | 'aggressive'
-  targetPolicy?: 'canonical-first' | 'daily-only' | 'hybrid'
-  writePolicy?: 'high-confidence-auto'
-  /** @deprecated Use targetPolicy. Kept for old settings files. */
-  target?: 'daily' | 'memory'
+  mode?: 'explicit-only' | 'auto' | 'off'
   maxInputChars?: number
   timeoutMs?: number
-  maxCandidates?: number
-  /** @deprecated Use longTermMinConfidence / dailyMinConfidence. */
-  minConfidence?: number
-  longTermMinConfidence?: number
-  dailyMinConfidence?: number
 }
 
 export interface SoulMemoryReviewSettings {
@@ -146,8 +136,9 @@ export interface SoulMemoryDreamingSettings {
   enabled?: boolean
   frequency?: string
   timezone?: string
+  /** @deprecated Memory Dreaming uses tools.toolCallModel provider/model. */
   model?: string
-  sources?: Array<'daily' | 'sessions' | 'short-term' | 'recall'>
+  sources?: Array<'daily'>
   lookbackDays?: number
   maxSourceFiles?: number
   maxSessions?: number

@@ -320,16 +320,22 @@ describe("InputBox paste attachments", () => {
 
 		const wrapper = mountInputBox({ sessionId: draft.id });
 
-		expect(wrapper.find(".permission-mode-btn").text()).toBe("Normal");
+		expect(wrapper.find(".permission-mode-select .app-select-single-value").text()).toBe("Normal");
 
-		await wrapper.find(".permission-mode-btn").trigger("click");
+		await wrapper.find(".permission-mode-select .app-select-control").trigger("click");
+		await settle();
+		const autoEditsOption = Array.from(
+			document.body.querySelectorAll<HTMLButtonElement>(".app-select-option"),
+		).find((option) => option.textContent?.includes("Auto Edits"));
+		expect(autoEditsOption).toBeTruthy();
+		autoEditsOption?.click();
 		await settle();
 
 		expect(mocks.sessionsStore.updateSessionPermissionMode).toHaveBeenCalledWith(
 			draft.id,
 			"auto-accept-edits",
 		);
-		expect(wrapper.find(".permission-mode-btn").text()).toBe("Auto Edits");
+		expect(wrapper.find(".permission-mode-select .app-select-single-value").text()).toBe("Auto Edits");
 	});
 
 	it("shows an attachment tray after pasting a file", async () => {

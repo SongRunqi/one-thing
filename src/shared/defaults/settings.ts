@@ -89,16 +89,8 @@ export const DEFAULT_SOUL_MEMORY_FLUSH_SETTINGS: Required<SoulMemoryFlushSetting
 export const DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS: Required<SoulMemoryCaptureSettings> = {
   enabled: true,
   mode: 'auto',
-  policy: 'high-confidence',
-  targetPolicy: 'canonical-first',
-  writePolicy: 'high-confidence-auto',
-  target: 'memory',
   maxInputChars: 6000,
   timeoutMs: 12000,
-  maxCandidates: 5,
-  minConfidence: 0.55,
-  longTermMinConfidence: 0.75,
-  dailyMinConfidence: 0.55,
 }
 
 export const DEFAULT_SOUL_MEMORY_REVIEW_SETTINGS: Required<SoulMemoryReviewSettings> = {
@@ -122,7 +114,7 @@ export const DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS: Required<SoulMemoryDreamingS
   frequency: '0 3 * * *',
   timezone: '',
   model: '',
-  sources: ['daily', 'sessions', 'short-term'],
+  sources: ['daily'],
   lookbackDays: 30,
   maxSourceFiles: 12,
   maxSessions: 12,
@@ -831,29 +823,17 @@ function normalizeSoulMemoryFlushSettings(
 function normalizeSoulMemoryCaptureSettings(
   settings?: SoulMemoryCaptureSettings,
 ): Required<SoulMemoryCaptureSettings> {
-  const mode = settings?.mode === 'explicit-only' ||
-    settings?.mode === 'auto' ||
-    settings?.mode === 'ask' ||
-    settings?.mode === 'off'
-    ? settings.mode
-    : DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.mode
-  const legacyTargetPolicy = settings?.target === 'daily'
-    ? 'daily-only'
-    : settings?.target === 'memory'
-      ? 'canonical-first'
-      : undefined
+  const rawMode = (settings as { mode?: unknown } | undefined)?.mode
+  const mode = rawMode === 'explicit-only' ||
+    rawMode === 'auto' ||
+    rawMode === 'off'
+    ? rawMode
+    : rawMode === 'ask'
+      ? 'explicit-only'
+      : DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.mode
   return {
     enabled: mode === 'off' ? false : settings?.enabled ?? DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.enabled,
     mode,
-    policy: settings?.policy === 'aggressive'
-      ? 'aggressive'
-      : DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.policy,
-    writePolicy: 'high-confidence-auto',
-    targetPolicy:
-      settings?.targetPolicy === 'daily-only' || settings?.targetPolicy === 'hybrid' || settings?.targetPolicy === 'canonical-first'
-        ? settings.targetPolicy
-        : legacyTargetPolicy || DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.targetPolicy,
-    target: settings?.target === 'memory' ? 'memory' : DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.target,
     maxInputChars: clampNumber(
       settings?.maxInputChars,
       1000,
@@ -865,30 +845,6 @@ function normalizeSoulMemoryCaptureSettings(
       1000,
       60000,
       DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.timeoutMs,
-    ),
-    maxCandidates: clampNumber(
-      settings?.maxCandidates,
-      1,
-      20,
-      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.maxCandidates,
-    ),
-    minConfidence: clampFraction(
-      settings?.minConfidence,
-      0,
-      1,
-      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.minConfidence,
-    ),
-    longTermMinConfidence: clampFraction(
-      settings?.longTermMinConfidence ?? settings?.minConfidence,
-      0,
-      1,
-      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.longTermMinConfidence,
-    ),
-    dailyMinConfidence: clampFraction(
-      settings?.dailyMinConfidence ?? settings?.minConfidence,
-      0,
-      1,
-      DEFAULT_SOUL_MEMORY_CAPTURE_SETTINGS.dailyMinConfidence,
     ),
   }
 }
@@ -959,16 +915,12 @@ function normalizeSoulMemoryDreamingSettings(
   settings?: SoulMemoryDreamingSettings,
 ): Required<SoulMemoryDreamingSettings> {
   const frequency = settings?.frequency?.trim() || DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.frequency
-  const allowedSources = new Set(['daily', 'sessions', 'short-term', 'recall'])
-  const sources = Array.isArray(settings?.sources)
-    ? settings.sources.filter(source => allowedSources.has(source))
-    : DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.sources
   return {
     enabled: settings?.enabled ?? DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.enabled,
     frequency,
     timezone: settings?.timezone?.trim() || DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.timezone,
-    model: settings?.model?.trim() || DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.model,
-    sources: sources.length > 0 ? sources : DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.sources,
+    model: DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.model,
+    sources: ['daily'],
     lookbackDays: clampNumber(
       settings?.lookbackDays,
       1,

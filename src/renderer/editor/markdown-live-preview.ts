@@ -11,6 +11,7 @@ import {
 import {
   Decoration,
   type DecorationSet,
+  Direction,
   EditorView,
   type LayerMarker,
   layer,
@@ -256,6 +257,37 @@ export function isLineActive(view: EditorView, lineFrom: number, lineTo: number)
   })
 }
 
+function markdownWidgetCaretRect(dom: HTMLElement, pos: number, side: number): Rect | null {
+  const rect = dom.getBoundingClientRect()
+  const line = dom.closest('.cm-line') as HTMLElement | null
+  const lineRect = line?.getBoundingClientRect()
+  const height = markdownLineRectHeight(line)
+    || (Number.isFinite(rect.height) && rect.height > 0 ? rect.height : 16)
+  const top = lineRect
+    ? lineRect.top + Math.max(0, (lineRect.height - height) / 2)
+    : rect.top
+  const left = side < 0 || (side === 0 && pos <= 0)
+    ? rect.left
+    : rect.right
+
+  return {
+    left,
+    right: left,
+    top,
+    bottom: top + height,
+  }
+}
+
+function markdownLineRectHeight(line: HTMLElement | null): number | null {
+  if (!line) return null
+  const lineStyle = getComputedStyle(line)
+  const lineHeight = Number.parseFloat(lineStyle.lineHeight)
+  if (Number.isFinite(lineHeight) && lineHeight > 0) return lineHeight
+
+  const lineRect = line.getBoundingClientRect()
+  return Number.isFinite(lineRect.height) && lineRect.height > 0 ? lineRect.height : null
+}
+
 class MarkdownTaskWidget extends WidgetType {
   constructor(
     private readonly checked: boolean,
@@ -302,6 +334,10 @@ class MarkdownTaskWidget extends WidgetType {
 
   destroy(dom: HTMLElement): void {
     unmountDomButtons(dom)
+  }
+
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
   }
 
   ignoreEvent(event: Event): boolean {
@@ -411,6 +447,10 @@ class MarkdownImageWidget extends WidgetType {
     unmountDomButtons(dom)
   }
 
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
+  }
+
   ignoreEvent(event: Event): boolean {
     return event.type !== 'click' && event.type !== 'mousedown'
   }
@@ -492,6 +532,10 @@ class MarkdownFileWidget extends WidgetType {
 
   destroy(dom: HTMLElement): void {
     unmountDomButtons(dom)
+  }
+
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
   }
 
   ignoreEvent(event: Event): boolean {
@@ -851,6 +895,10 @@ class CodeBlockFoldSummaryWidget extends WidgetType {
     summary.textContent = `${this.language || 'code'} block - ${this.lineCount} ${this.lineCount === 1 ? 'line' : 'lines'} hidden`
     return summary
   }
+
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
+  }
 }
 
 class CodeBlockLanguageWidget extends WidgetType {
@@ -926,6 +974,10 @@ class MarkdownListMarkerWidget extends WidgetType {
     marker.textContent = this.label
     return marker
   }
+
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
+  }
 }
 
 class EmptyMarkdownWidget extends WidgetType {
@@ -933,6 +985,10 @@ class EmptyMarkdownWidget extends WidgetType {
     const span = document.createElement('span')
     span.className = 'md-live-hidden-source-widget'
     return span
+  }
+
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
   }
 }
 
@@ -989,6 +1045,10 @@ class MarkdownTableRowWidget extends WidgetType {
       row.append(cell)
     }
     return row
+  }
+
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
   }
 }
 
@@ -1075,6 +1135,10 @@ class MarkdownTableBlockWidget extends WidgetType {
     return table
   }
 
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
+  }
+
   ignoreEvent(event: Event): boolean {
     return event.type !== 'click' && event.type !== 'mousedown'
   }
@@ -1150,6 +1214,10 @@ class MarkdownFrontMatterWidget extends WidgetType {
     return panel
   }
 
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
+  }
+
   ignoreEvent(event: Event): boolean {
     return event.type !== 'click' && event.type !== 'mousedown'
   }
@@ -1160,6 +1228,10 @@ class HorizontalRuleWidget extends WidgetType {
     const hr = document.createElement('span')
     hr.className = 'md-live-horizontal-rule-widget'
     return hr
+  }
+
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
   }
 }
 
@@ -1181,6 +1253,10 @@ class MarkdownEmojiWidget extends WidgetType {
     span.setAttribute('aria-label', `:${this.name}:`)
     span.textContent = this.emoji
     return span
+  }
+
+  coordsAt(dom: HTMLElement, pos: number, side: number): Rect | null {
+    return markdownWidgetCaretRect(dom, pos, side)
   }
 }
 
@@ -1319,9 +1395,14 @@ function markdownLivePreviewCursorMarkers(
   className: string,
   range: EditorSelection['main'],
 ): readonly LayerMarker[] {
-  return RectangleMarker
+  const markers = RectangleMarker
     .forRange(view, className, range)
     .map(marker => normalizedMarkdownLivePreviewCursorMarker(view, className, range.head, marker))
+
+  if (markers.length > 0) return markers
+
+  const fallback = fallbackMarkdownLivePreviewCursorMarker(view, className, range.head)
+  return fallback ? [fallback] : []
 }
 
 function normalizedMarkdownLivePreviewCursorMarker(
@@ -1346,6 +1427,71 @@ function markdownLivePreviewCursorHeight(
   if (before) return before.bottom - before.top
 
   return null
+}
+
+function fallbackMarkdownLivePreviewCursorMarker(
+  view: EditorView,
+  className: string,
+  position: number,
+): RectangleMarker | null {
+  const safePosition = Math.max(0, Math.min(position, view.state.doc.length))
+  const lineBlock = view.lineBlockAt(safePosition)
+  const height = markdownLivePreviewCursorHeight(view, safePosition)
+    || markdownLivePreviewLineHeightAtPosition(view, safePosition)
+    || view.defaultLineHeight
+    || 16
+  const left = markdownLivePreviewCursorLeft(view, safePosition)
+  if (left === null) return null
+
+  const top = lineBlock.top + Math.max(0, (lineBlock.height - height) / 2)
+  return new RectangleMarker(className, left, top, null, height)
+}
+
+function markdownLivePreviewCursorLeft(view: EditorView, position: number): number | null {
+  const after = position < view.state.doc.length ? view.coordsForChar(position) : null
+  if (after) return screenLeftToDocumentLeft(view, after.left)
+
+  const before = position > 0 ? view.coordsForChar(position - 1) : null
+  if (before) return screenLeftToDocumentLeft(view, before.right)
+
+  const line = markdownLivePreviewLineElementAtPosition(view, position)
+  if (line) {
+    const lineRect = line.getBoundingClientRect()
+    const style = getComputedStyle(line)
+    const paddingLeft = Number.parseFloat(style.paddingLeft)
+    const inset = Number.isFinite(paddingLeft) ? paddingLeft : 0
+    return screenLeftToDocumentLeft(view, lineRect.left + inset)
+  }
+
+  const contentRect = view.contentDOM.getBoundingClientRect()
+  if (Number.isFinite(contentRect.left)) return screenLeftToDocumentLeft(view, contentRect.left)
+  return null
+}
+
+function markdownLivePreviewLineHeightAtPosition(view: EditorView, position: number): number | null {
+  return markdownLineRectHeight(markdownLivePreviewLineElementAtPosition(view, position))
+}
+
+function markdownLivePreviewLineElementAtPosition(view: EditorView, position: number): HTMLElement | null {
+  for (const side of [1, -1] as const) {
+    try {
+      const { node } = view.domAtPos(position, side)
+      const element = node instanceof Element ? node : node.parentElement
+      const line = element?.closest('.cm-line') as HTMLElement | null
+      if (line) return line
+    } catch {
+      // Some hidden widget boundaries are not directly mapped to a DOM text node.
+    }
+  }
+  return view.contentDOM.querySelector('.cm-line')
+}
+
+function screenLeftToDocumentLeft(view: EditorView, screenLeft: number): number {
+  const scrollRect = view.scrollDOM.getBoundingClientRect()
+  const baseLeft = view.textDirection === Direction.LTR
+    ? scrollRect.left
+    : scrollRect.right - view.scrollDOM.clientWidth * view.scaleX
+  return screenLeft - (baseLeft - view.scrollDOM.scrollLeft * view.scaleX)
 }
 
 function markdownDecorationScanRanges(view: EditorView, options: MarkdownLivePreviewOptions): MarkdownScanRange[] {
@@ -3584,7 +3730,7 @@ const theme = EditorView.theme({
   },
   '.md-live-file-widget[data-asset-kind="missing"], .md-live-image-widget[data-asset-kind="missing"]': {
     color: 'var(--ui-status-warning-fg, var(--color-warning, #d97706))',
-    borderColor: 'color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning, #d97706)) 42%, transparent)',
+    borderColor: 'var(--ui-status-warning-border, var(--color-warning, #d97706))',
   },
   '.md-live-asset-label': {
     overflow: 'hidden',

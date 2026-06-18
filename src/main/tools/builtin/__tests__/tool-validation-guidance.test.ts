@@ -27,7 +27,7 @@ describe('tool validation guidance', () => {
     }
   })
 
-  it('todo_plan validation tells the model action is required', async () => {
+  it('todo validation tells the model action is required', async () => {
     const { TodoPlanTool } = await import('../todo-plan')
     const parsed = TodoPlanTool.parameters.safeParse({
       scope: 'workspace-ai-todo',
@@ -36,6 +36,7 @@ describe('tool validation guidance', () => {
     expect(parsed.success).toBe(false)
     if (!parsed.success) {
       const message = TodoPlanTool.formatValidationError!(parsed.error)
+      expect(message).toContain('Usage: todo({')
       expect(message).toContain('action is always required')
       expect(message).toContain('action="update"')
     }

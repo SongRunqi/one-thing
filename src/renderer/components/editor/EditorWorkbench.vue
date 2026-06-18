@@ -447,6 +447,7 @@ watch(() => activeBufferForRoot.value?.filePath, async () => {
   gap: 8px;
   min-width: 0;
   height: 34px;
+  overflow: hidden;
   padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--ui-border-default-border, var(--border));
   background: var(--ui-surface-panel-bg, var(--bg-panel));
@@ -460,8 +461,55 @@ watch(() => activeBufferForRoot.value?.filePath, async () => {
 
 .editor-breadcrumb-wrap,
 .editor-breadcrumb {
+  display: flex;
+  align-items: center;
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 100%;
+}
+
+.editor-breadcrumb-wrap {
+  overflow: hidden;
+}
+
+.editor-breadcrumb {
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: 12px;
+  line-height: 1.25;
+  scrollbar-width: thin;
+  overscroll-behavior-inline: contain;
+}
+
+.editor-breadcrumb::-webkit-scrollbar {
+  height: 4px;
+}
+
+.editor-breadcrumb :deep(.app-breadcrumb__list) {
+  flex: 0 0 max-content;
+  flex-wrap: nowrap;
+  width: max-content;
+  min-width: max-content;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.editor-breadcrumb :deep(.app-breadcrumb-item) {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.editor-breadcrumb :deep(.app-breadcrumb-item.is-last) {
+  flex: 0 0 auto;
+}
+
+.editor-breadcrumb :deep(.app-breadcrumb-item__content) {
+  max-width: none;
+}
+
+.editor-breadcrumb :deep(.app-breadcrumb-item__separator) {
+  min-width: 1.25em;
+  padding: 0 0.28em;
 }
 
 .explorer-toggle {
@@ -505,31 +553,6 @@ watch(() => activeBufferForRoot.value?.filePath, async () => {
   flex: 1;
   min-height: 0;
   min-width: 0;
-}
-
-.markdown-workbench-editor {
-  height: 100%;
-  box-sizing: border-box;
-  padding: 18px 24px;
-  overflow: hidden;
-  min-width: 0;
-  min-height: 0;
-}
-
-.markdown-workbench-editor :deep(.markdown-document-textarea),
-.markdown-workbench-editor :deep(.text-editor),
-.markdown-workbench-editor :deep(.cm-editor) {
-  height: 100%;
-  width: 100%;
-  min-height: 0;
-  min-width: 0;
-}
-
-.markdown-workbench-editor :deep(.cm-scroller) {
-  height: 100%;
-  width: 100%;
-  max-height: none;
-  overflow: auto;
 }
 
 .editor-state {

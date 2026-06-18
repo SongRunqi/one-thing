@@ -8,6 +8,7 @@ export const IPC_CHANNELS = {
   GET_CHAT_HISTORY: 'chat:get-history',
   CLEAR_CHAT: 'chat:clear',
   GENERATE_TITLE: 'chat:generate-title',
+  GET_SYSTEM_PROMPT_SNAPSHOT: 'chat:get-system-prompt-snapshot',
 
   // Streaming related
   STREAM_CHUNK: 'chat:stream-chunk',
@@ -109,6 +110,7 @@ export const IPC_CHANNELS = {
   // Providers related
   GET_PROVIDERS: 'providers:get-all',
   GET_PROVIDER_USAGE: 'providers:get-usage',
+  GET_PROVIDER_ENV_STATUS: 'providers:get-env-status',
 
   // Tools related
   GET_TOOLS: 'tools:get-all',

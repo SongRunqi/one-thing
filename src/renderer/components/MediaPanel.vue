@@ -110,17 +110,44 @@
               :placeholder="searchPlaceholder"
               label="Search media"
             />
-            <FilterSelect
+            <Select
               v-model="activeKindModel"
               class="media-kind-filter"
               :options="kindFilterOptions"
-              label="Filter by media type"
-            />
-            <FilterSelect
+              aria-label="Filter by media type"
+              fit-input-width
+            >
+              <template #label="{ option, label }">
+                <span class="media-select-label">
+                  <component
+                    :is="optionIcon(option)"
+                    v-if="optionIcon(option)"
+                    :size="14"
+                    :stroke-width="1.8"
+                    class="media-select-icon"
+                  />
+                  <span class="media-select-text">{{ label }}</span>
+                </span>
+              </template>
+              <template #option="{ option, label }">
+                <span class="media-select-label">
+                  <component
+                    :is="optionIcon(option)"
+                    v-if="optionIcon(option)"
+                    :size="14"
+                    :stroke-width="1.8"
+                    class="media-select-icon"
+                  />
+                  <span class="media-select-text">{{ label }}</span>
+                </span>
+              </template>
+            </Select>
+            <Select
               v-model="activeSourceModel"
               class="media-source-filter"
               :options="sourceFilterOptions"
-              label="Filter by source"
+              aria-label="Filter by source"
+              fit-input-width
             />
           </div>
 
@@ -449,8 +476,8 @@ import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vu
 import AgentsPanelContent from './AgentsPanelContent.vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
 import FilterSearchInput from './common/FilterSearchInput.vue'
-import FilterSelect from './common/FilterSelect.vue'
 import LoadingSpinner from './common/LoadingSpinner.vue'
+import Select from './common/Select.vue'
 import MemoryPanelContent from './memory/MemoryPanelContent.vue'
 import SchedulerPanelContent from './SchedulerPanelContent.vue'
 import { useMediaStore } from '@/stores/media'
@@ -489,6 +516,8 @@ defineEmits<{
 }>()
 
 type SourceFilter = 'all' | 'user-upload' | 'ai-generated'
+type KindFilterOption = { value: MediaKind; label: string; icon: Component }
+type SourceFilterOption = { value: SourceFilter; label: string }
 
 const mediaStore = useMediaStore()
 const searchQuery = ref('')
@@ -546,18 +575,23 @@ const activeSourceModel = computed({
   },
 })
 
-const kindFilterOptions = computed<Array<{ value: MediaKind; label: string; icon: Component }>>(() => [
+const kindFilterOptions = computed<KindFilterOption[]>(() => [
   { value: 'image', label: 'Images', icon: Images },
   { value: 'file', label: 'Files', icon: FileText },
   { value: 'audio', label: 'Audio', icon: Music },
   { value: 'video', label: 'Video', icon: Video },
 ])
 
-const sourceFilterOptions = computed<Array<{ value: SourceFilter; label: string }>>(() => [
+const sourceFilterOptions = computed<SourceFilterOption[]>(() => [
   { value: 'all', label: 'All' },
   { value: 'user-upload', label: 'Uploaded' },
   { value: 'ai-generated', label: 'Generated' },
 ])
+
+function optionIcon(option: unknown): Component | null {
+  if (!option || typeof option !== 'object' || !('icon' in option)) return null
+  return (option as KindFilterOption).icon
+}
 
 const filteredAssets = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
@@ -1012,6 +1046,25 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   min-width: 0;
 }
 
+.media-select-label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+}
+
+.media-select-icon {
+  flex: 0 0 auto;
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.media-select-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .content-body {
   position: relative;
   z-index: 0;
@@ -1286,11 +1339,11 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 .drawer-action-btn.danger {
   background: transparent;
   color: var(--ui-status-danger-fg, #ef4444);
-  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 30%, transparent);
+  border-color: var(--ui-status-danger-border, #ef4444);
 }
 
 .drawer-action-btn.danger:hover {
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
   border-color: var(--ui-status-danger-fg, #ef4444);
 }
 

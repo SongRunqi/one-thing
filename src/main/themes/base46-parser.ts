@@ -14,15 +14,15 @@ import type {
 } from '../../shared/ipc/themes.js'
 import type { ThemeColorScheme } from './role-mapping.js'
 import {
+  deriveStateOverlays,
   deriveSurfaceRoles,
   firstDefinedColor,
   mixCssColors,
-  neutralOverlay,
   parseCssColor,
   readableColor,
   relativeLuminance,
-  rgbaFromCssColor,
 } from './role-mapping.js'
+import { selectPrimaryColorSemantics, selectStatusColorSemantics } from './resolver.js'
 
 const BASE46_HIGHLIGHT_ALIASES: Record<string, SemanticHighlightToken> = {
   Normal: 'syntax.plain',
@@ -213,10 +213,6 @@ interface Base46AppRoles {
   borderDefault: string
   borderSubtle: string
   borderStrong: string
-  hoverBg: string
-  activeBg: string
-  selectedBg: string
-  selectedHoverBg: string
 }
 
 function deriveBase46AppRoles(
@@ -330,10 +326,6 @@ function deriveBase46AppRoles(
     borderDefault: firstDefinedColor(b30.line, b30.grey, b16.base02, mixCssColors(primaryText, panelBg, 0.18)) || '#44475A',
     borderSubtle: firstDefinedColor(b30.one_bg2, b16.base01, mixCssColors(primaryText, panelBg, 0.12)) || '#343331',
     borderStrong: firstDefinedColor(b30.grey_fg, b16.base03, mixCssColors(primaryText, panelBg, 0.28)) || '#575653',
-    hoverBg: neutralOverlay(colorScheme, colorScheme === 'dark' ? 0.05 : 0.06),
-    activeBg: neutralOverlay(colorScheme, colorScheme === 'dark' ? 0.09 : 0.1),
-    selectedBg: rgbaFromCssColor(accent, colorScheme === 'dark' ? 0.14 : 0.12),
-    selectedHoverBg: rgbaFromCssColor(accent, colorScheme === 'dark' ? 0.2 : 0.17),
   }
 }
 
@@ -354,6 +346,28 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
   const bgColor = b30.black || b30.darker_black || b16.base00 || '#1E1E2E'
   const colorScheme = base46.type || detectColorSchemeFromBg(bgColor)
   const roles = deriveBase46AppRoles(b30, b16, colorScheme)
+  const dangerBase = b30.red || b16.base08 || '#FF5555'
+  const warningBase = b30.orange || b30.yellow || b16.base09 || '#FFB86C'
+  const successBase = b30.green || b16.base0B || '#50FA7B'
+  const infoBase = b30.cyan || b16.base0C || '#8BE9FD'
+  const danger = selectStatusColorSemantics(dangerBase, colorScheme, roles.appBg)
+  const warning = selectStatusColorSemantics(warningBase, colorScheme, roles.appBg)
+  const success = selectStatusColorSemantics(successBase, colorScheme, roles.appBg)
+  const info = selectStatusColorSemantics(infoBase, colorScheme, roles.appBg)
+  const primary = selectPrimaryColorSemantics(roles.accent, colorScheme, roles.appBg)
+  const selectedBorder = colorScheme === 'dark'
+    ? primary.hover || primary.base || roles.accent
+    : primary.border || primary.base || roles.accent
+  const panelStates = deriveStateOverlays(roles.panelBg, selectedBorder, colorScheme) || {
+    hover: roles.elevatedBg,
+    active: roles.floatingBg,
+    selected: {
+      bg: roles.elevatedBg,
+      border: selectedBorder,
+    },
+    selectedHover: roles.floatingBg,
+  }
+  const chatStates = deriveStateOverlays(roles.chatBg, selectedBorder, colorScheme) || panelStates
 
   // Build defs from all Base46 colors
   const defs: ThemeDefs = {}
@@ -393,13 +407,17 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
         panel: roles.panelBg,
         elevated: roles.elevatedBg,
         floating: roles.floatingBg,
+        selected: panelStates.selected.bg,
+        selectedHover: panelStates.selectedHover,
+        hover: panelStates.hover,
+        active: panelStates.active,
         message: {
           user: roles.elevatedBg,
           userSolid: roles.elevatedBg,
           ai: 'transparent',
           system: roles.panelBg,
-          error: `rgba(${hexToRgb(b30.red || b16.base08 || '#FF5555')}, 0.12)`,
-          hover: neutralOverlay(colorScheme, colorScheme === 'dark' ? 0.03 : 0.04),
+          error: danger.bg,
+          hover: chatStates.hover,
         },
         toolCall: roles.panelBg,
         toolCallHover: roles.elevatedBg,
@@ -413,8 +431,8 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
           secondaryHover: roles.borderStrong,
           ghost: 'transparent',
           ghostHover: roles.elevatedBg,
-          danger: b30.red || b16.base08 || '#FF5555',
-          dangerHover: b30.baby_pink || b16.base09 || '#FFB86C',
+          danger: danger.base,
+          dangerHover: b30.baby_pink || danger.text,
         },
         code: {
           inline: roles.elevatedBg,
@@ -425,11 +443,7 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
         menuItemHover: roles.floatingBg,
         tooltip: b30.light_grey || b16.base07 || '#F2F0E5',
         modal: roles.panelBg,
-        selected: roles.selectedBg,
-        selectedHover: roles.selectedHoverBg,
-        highlight: `rgba(${hexToRgb(b30.yellow || b16.base0A || '#F1FA8C')}, 0.2)`,
-        hover: roles.hoverBg,
-        active: roles.activeBg,
+        highlight: warning.bg,
       },
 
       text: {
@@ -437,26 +451,26 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
         secondary: roles.secondaryText,
         muted: roles.mutedText,
         faint: roles.faintText,
-        error: b30.red || b16.base08 || '#FF5555',
-        warning: b30.orange || b16.base09 || '#FFB86C',
-        success: b30.green || b16.base0B || '#50FA7B',
-        info: b30.cyan || b16.base0C || '#8BE9FD',
-        link: b30.cyan || b16.base0C || '#8BE9FD',
+        error: danger.text,
+        warning: warning.text,
+        success: success.text,
+        info: info.text,
+        link: info.text,
         linkHover: b30.teal || b16.base0C || '#8BE9FD',
         user: {
           primary: roles.primaryText,
           secondary: roles.secondaryText,
         },
         ai: {
-          primary: roles.secondaryText,
-          secondary: roles.mutedText,
+          primary: roles.primaryText,
+          secondary: roles.secondaryText,
           thinking: roles.faintText,
         },
         tool: {
           name: b30.purple || b16.base0E || '#BD93F9',
           args: roles.faintText,
           result: roles.mutedText,
-          error: b30.red || b16.base08 || '#FF5555',
+          error: danger.text,
         },
         sidebar: {
           title: roles.sidebarTitleText,
@@ -502,12 +516,12 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
         subtle: roles.borderSubtle,
         strong: roles.borderStrong,
         accent: roles.accent,
-        error: b30.red || b16.base08 || '#FF5555',
-        success: b30.green || b16.base0B || '#50FA7B',
-        warning: b30.orange || b16.base09 || '#FFB86C',
+        error: danger.border,
+        success: success.border,
+        warning: warning.border,
         input: roles.borderDefault,
         inputFocus: roles.accent,
-        inputError: b30.red || b16.base08 || '#FF5555',
+        inputError: danger.border,
         message: roles.borderSubtle,
         messageUser: roles.borderDefault,
         code: roles.borderDefault,
@@ -523,7 +537,7 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
         inner: 'inset 0 2px 4px rgba(0, 0, 0, 0.15)',
         glow: {
           accent: `0 0 20px rgba(${hexToRgb(b30.blue || b16.base0D || '#4385BE')}, 0.2)`,
-          error: `0 0 20px rgba(${hexToRgb(b30.red || b16.base08 || '#FF5555')}, 0.2)`,
+          error: `0 0 20px rgba(${hexToRgb(danger.base)}, 0.2)`,
         },
         elevated: '0 8px 32px rgba(0, 0, 0, 0.4)',
         floating: '0 12px 48px rgba(0, 0, 0, 0.5)',
@@ -533,32 +547,46 @@ export function convertBase46ToTheme(base46: Base46Theme, fileName: string): The
         gradientUserBubble: `linear-gradient(135deg, ${roles.elevatedBg} 0%, ${roles.panelBg} 100%)`,
         gradientAiBubble: 'linear-gradient(135deg, transparent 0%, transparent 100%)',
         gradientAccent: `linear-gradient(135deg, ${roles.accent} 0%, ${roles.accentSub} 100%)`,
-        overlayHover: roles.hoverBg,
-        overlayActive: roles.activeBg,
         overlayDisabled: 'rgba(0, 0, 0, 0.5)',
         blurBackdrop: '24px',
       },
 
       // Diff colors for code diff views
       diff: {
-        addBg: `rgba(${hexToRgb(b30.green || b16.base0B || '#50FA7B')}, 0.15)`,
-        addText: b30.vibrant_green || b30.green || b16.base0B || '#50FA7B',
-        delBg: `rgba(${hexToRgb(b30.red || b16.base08 || '#FF5555')}, 0.15)`,
-        delText: b30.baby_pink || b30.red || b16.base08 || '#FF5555',
+        addBg: success.bg,
+        addText: b30.vibrant_green || success.text,
+        delBg: danger.bg,
+        delText: b30.baby_pink || danger.text,
         hunkBg: `rgba(${hexToRgb(b30.grey || b16.base03 || '#6F6E69')}, 0.1)`,
         hunkText: b30.grey || b16.base03 || '#6F6E69',
       },
 
       // Semantic colors (aligned with Base46 color scheme)
       color: {
-        danger: b30.red || b16.base08 || '#FF5555',
-        dangerLight: `rgba(${hexToRgb(b30.red || b16.base08 || '#FF5555')}, 0.15)`,
-        warning: b30.orange || b30.yellow || b16.base09 || '#FFB86C',
-        warningLight: `rgba(${hexToRgb(b30.orange || b30.yellow || b16.base09 || '#FFB86C')}, 0.15)`,
-        success: b30.green || b16.base0B || '#50FA7B',
-        successLight: `rgba(${hexToRgb(b30.green || b16.base0B || '#50FA7B')}, 0.15)`,
-        info: b30.cyan || b16.base0C || '#8BE9FD',
-        infoLight: `rgba(${hexToRgb(b30.cyan || b16.base0C || '#8BE9FD')}, 0.15)`,
+        danger: danger.base,
+        dangerBg: danger.bg,
+        dangerBgHover: danger.bgHover,
+        dangerBorder: danger.border,
+        dangerText: danger.text,
+        dangerLight: danger.bg,
+        warning: warning.base,
+        warningBg: warning.bg,
+        warningBgHover: warning.bgHover,
+        warningBorder: warning.border,
+        warningText: warning.text,
+        warningLight: warning.bg,
+        success: success.base,
+        successBg: success.bg,
+        successBgHover: success.bgHover,
+        successBorder: success.border,
+        successText: success.text,
+        successLight: success.bg,
+        info: info.base,
+        infoBg: info.bg,
+        infoBgHover: info.bgHover,
+        infoBorder: info.border,
+        infoText: info.text,
+        infoLight: info.bg,
       },
     },
 

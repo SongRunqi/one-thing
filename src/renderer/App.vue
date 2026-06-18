@@ -42,7 +42,8 @@
         @toggle-media-panel="openWorkspacePanel('media')"
         @open-workspace-panel="openWorkspacePanel"
         @select-session="selectSidebarSession"
-        @mouseleave="handleSidebarMouseLeave"
+        @request-floating-keep-open="keepFloatingSidebarOpen"
+        @request-floating-close="closeFloatingSidebar"
       />
     </div>
 
@@ -181,6 +182,7 @@
               ref="rightWorkbenchRef"
               :session-id="sessionsStore.currentSessionId"
               :workspace-root="currentWorkspaceRoot"
+              :workspace-roots="currentWorkspaceRoots"
               @close="inspectorOpen = false"
             />
           </SplitterPanel>
@@ -374,6 +376,8 @@ const sidebarActionAnimating = ref(false)
 const floatingCooldown = ref(false) // Prevent re-expansion after toggle
 const floatingShowTimer = ref<ReturnType<typeof setTimeout> | null>(null) // Delay before showing floating sidebar
 let sidebarToggleTimer: ReturnType<typeof setTimeout> | null = null
+let floatingCloseTimer: ReturnType<typeof setTimeout> | null = null
+let floatingCooldownTimer: ReturnType<typeof setTimeout> | null = null
 const SIDEBAR_ACTION_GROUP_WIDTH = 80
 const SIDEBAR_ACTION_COLLAPSED_LEFT = 84
 const sidebarActionLeft = computed(() => {
@@ -391,10 +395,33 @@ function handleSidebarResizeEnd() {
   localStorage.setItem('sidebarWidth', String(sidebarWidth.value))
 }
 const inspectorVisible = computed(() => inspectorOpen.value && Boolean(sessionsStore.currentSessionId))
-const currentWorkspaceRoot = computed(() => {
+function normalizeRootPath(root?: string | null): string {
+  if (!root) return ''
+  const trimmed = root.trim()
+  if (trimmed === '/') return '/'
+  return trimmed.replace(/\/+$/, '')
+}
+
+function uniqueRootPaths(roots: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const root of roots) {
+    const normalized = normalizeRootPath(root)
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    result.push(normalized)
+  }
+  return result
+}
+
+const currentWorkspaceRoots = computed(() => {
   const session = sessionsStore.currentSession
-  return session?.workingDirectory || session?.workingDirectoryRoots?.[0] || ''
+  return uniqueRootPaths([
+    session?.workingDirectory,
+    ...(session?.workingDirectoryRoots || []),
+  ])
 })
+const currentWorkspaceRoot = computed(() => currentWorkspaceRoots.value[0] || '')
 const MIN_INSPECTOR_PANEL_SIZE = 22
 const MAX_INSPECTOR_PANEL_SIZE = 48
 const DEFAULT_INSPECTOR_PANEL_SIZE = 32
@@ -431,18 +458,44 @@ async function openFileInRightWorkbench(filePath: string) {
 // Close floating sidebar with animation
 function closeFloatingSidebar() {
   if (!sidebarFloating.value || sidebarFloatingClosing.value) return
+  if (floatingCloseTimer) {
+    clearTimeout(floatingCloseTimer)
+    floatingCloseTimer = null
+  }
+  if (floatingCooldownTimer) {
+    clearTimeout(floatingCooldownTimer)
+    floatingCooldownTimer = null
+  }
   sidebarFloatingClosing.value = true
   sidebarNoTransition.value = true
   floatingCooldown.value = true
-  setTimeout(() => {
+  floatingCloseTimer = setTimeout(() => {
     sidebarFloating.value = false
     sidebarFloatingClosing.value = false
+    floatingCloseTimer = null
     // Keep transition disabled a bit longer to prevent flash
-    setTimeout(() => {
+    floatingCooldownTimer = setTimeout(() => {
       sidebarNoTransition.value = false
       floatingCooldown.value = false
+      floatingCooldownTimer = null
     }, 300)
   }, 200) // Match animation duration
+}
+
+function keepFloatingSidebarOpen() {
+  if (!sidebarFloating.value && !sidebarFloatingClosing.value) return
+  if (floatingCloseTimer) {
+    clearTimeout(floatingCloseTimer)
+    floatingCloseTimer = null
+  }
+  if (floatingCooldownTimer) {
+    clearTimeout(floatingCooldownTimer)
+    floatingCooldownTimer = null
+  }
+  sidebarFloating.value = true
+  sidebarFloatingClosing.value = false
+  floatingCooldown.value = false
+  sidebarNoTransition.value = false
 }
 
 // Handle sidebar toggle - if floating, just close floating mode
@@ -494,21 +547,6 @@ function handleTriggerLeave() {
     clearTimeout(floatingShowTimer.value)
     floatingShowTimer.value = null
   }
-}
-
-// Handle mouse leaving the floating sidebar
-function handleSidebarMouseLeave(event: MouseEvent) {
-  if (!sidebarFloating.value) return
-
-  // Only close if mouse is leaving to the right (outside the sidebar)
-  // Check if mouse is moving towards the content area
-  const sidebarWidth = sidebarFloating.value ? 280 : 0
-  if (event.clientX <= sidebarWidth + 10) {
-    // Mouse is still near/inside the sidebar area, don't close
-    return
-  }
-
-  closeFloatingSidebar()
 }
 
 // Close floating mode when sidebar is expanded permanently
@@ -707,6 +745,14 @@ onUnmounted(() => {
   if (sidebarToggleTimer) {
     clearTimeout(sidebarToggleTimer)
     sidebarToggleTimer = null
+  }
+  if (floatingCloseTimer) {
+    clearTimeout(floatingCloseTimer)
+    floatingCloseTimer = null
+  }
+  if (floatingCooldownTimer) {
+    clearTimeout(floatingCooldownTimer)
+    floatingCooldownTimer = null
   }
 })
 

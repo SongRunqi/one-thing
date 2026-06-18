@@ -1005,11 +1005,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
 
 /* Tool loop waiting (工具执行后等待 AI 继续) */
 .tool-loop-waiting {
-  --waiting-fg: color-mix(
-    in srgb,
-    var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--text-muted, var(--muted)))) 72%,
-    var(--ui-text-primary-fg, var(--text-primary, var(--text))) 28%
-  );
+  --waiting-fg: var(--ui-message-thinking-fg);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1041,11 +1037,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
 }
 
 .inline-reasoning {
-  --reasoning-fg: color-mix(
-    in srgb,
-    var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--text-muted, var(--muted)))) 76%,
-    var(--ui-text-primary-fg, var(--text-primary, var(--text))) 24%
-  );
+  --reasoning-fg: var(--ui-message-thinking-fg);
   margin: 3px 0;
   color: var(--reasoning-fg);
 }
@@ -1113,7 +1105,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   border-left: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 34%, var(--ui-border-default-border, var(--border)));
   font-size: var(--type-meta-size);
   line-height: var(--type-meta-line-height);
-  color: color-mix(in srgb, var(--reasoning-fg) 92%, var(--ui-text-primary-fg, var(--text-primary, var(--text))) 8%);
+  color: var(--reasoning-fg);
 }
 
 .inline-reasoning-content :deep(p) {

@@ -34,7 +34,7 @@ export interface InitContext {
   agents?: Array<{ id: string; name: string; description: string }>
   /** Current workspace info */
   workspace?: { id: string; name: string }
-  /** Current agent info (for SkillTool permission checking) */
+  /** Current agent info */
   agent?: {
     id: string
     name: string
@@ -42,7 +42,7 @@ export interface InitContext {
       skill?: Record<string, 'allow' | 'ask' | 'deny'>
     }
   }
-  /** Available skills (for SkillTool) */
+  /** Available skills for async skill tools */
   skills?: Array<{
     id: string
     name: string

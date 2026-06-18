@@ -32,10 +32,9 @@ const knownToolSamples: Array<{ toolName: string; args?: Record<string, unknown>
   { toolName: 'get_current_time', args: { timezone: 'UTC' } },
   { toolName: 'fart' },
   { toolName: 'variable', args: { action: 'set', name: 'workdir', value: '/tmp/project' } },
-  { toolName: 'todo_plan', args: { action: 'update', title: 'Ship it' } },
+  { toolName: 'todo', args: { action: 'update', title: 'Ship it' } },
   { toolName: 'time', args: { action: 'convert', timezone: 'UTC' } },
   { toolName: 'project_dirs', args: { action: 'update', path: '/tmp/project' } },
-  { toolName: 'skill', args: { action: 'load', name: 'code-review' } },
   { toolName: 'mcp_search', args: { action: 'call', tool: 'brave_web_search' } },
   { toolName: 'mcp_old_tool', args: { query: 'legacy' } },
 ]
@@ -54,12 +53,7 @@ describe('tool display mappings', () => {
     }
   })
 
-  it('uses action-specific labels for skill and MCP router tools', () => {
-    expect(buildToolVerb('skill', 'executing', tc('skill', { action: 'search', query: 'crv' }))).toBe('Searching')
-    expect(buildToolVerb('skill', 'completed', tc('skill', { action: 'find', query: 'crv' }))).toBe('Found')
-    expect(buildToolVerb('skill', 'completed', tc('skill', { action: 'load', name: 'code-review' }))).toBe('Loaded')
-    expect(buildToolActivityTarget('skill', tc('skill', { action: 'load', name: 'code-review' }))).toBe('code-review')
-
+  it('uses action-specific labels for MCP router tools', () => {
     expect(buildToolVerb('mcp_search', 'executing', tc('mcp_search', { action: 'search', query: 'brave' }))).toBe('Searching')
     expect(buildToolVerb('mcp_search', 'completed', tc('mcp_search', { action: 'find', query: 'brave' }))).toBe('Found')
     expect(buildToolVerb('mcp_search', 'completed', tc('mcp_search', { action: 'describe', tool: 'brave_web_search' }))).toBe('Inspected')
@@ -70,6 +64,7 @@ describe('tool display mappings', () => {
 
   it('uses action-specific labels for multi-action built-in tools', () => {
     expect(buildToolVerb('variable', 'awaiting-confirmation', tc('variable', { action: 'append', name: 'workdir' }))).toBe('Add')
+    expect(buildToolVerb('todo', 'executing', tc('todo', { action: 'delete', id: 'todo-1' }))).toBe('Deleting')
     expect(buildToolVerb('todo_plan', 'executing', tc('todo_plan', { action: 'delete', id: 'todo-1' }))).toBe('Deleting')
     expect(buildToolVerb('time', 'completed', tc('time', { action: 'diff' }))).toBe('Compared')
     expect(buildToolVerb('project_dirs', 'executing', tc('project_dirs', { action: 'remove', path: '/tmp/project' }))).toBe('Removing')

@@ -1175,8 +1175,13 @@ export function addMessage(sessionId: string, message: ChatMessage): void {
   if (!session) return
 
   session.messages.push(message)
-  if (message.role === 'assistant' && message.model) {
-    session.lastModel = message.model
+  if (message.role === 'assistant') {
+    if (message.provider) {
+      session.lastProvider = message.provider
+    }
+    if (message.model) {
+      session.lastModel = message.model
+    }
   }
   session.updatedAt = Date.now()
 
@@ -1193,7 +1198,10 @@ export function addMessage(sessionId: string, message: ChatMessage): void {
   const meta = index.find((s) => s.id === sessionId)
   if (meta) {
     meta.updatedAt = session.updatedAt
-    meta.lastModel = message.role === 'assistant' ? message.model : meta.lastModel
+    if (message.role === 'assistant') {
+      meta.lastProvider = message.provider ?? meta.lastProvider
+      meta.lastModel = message.model ?? meta.lastModel
+    }
     saveSessionsIndex(index)
   }
 }

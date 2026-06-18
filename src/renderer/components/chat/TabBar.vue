@@ -105,6 +105,18 @@
 
       <Button
         unstyled
+        class="header-btn side-panel-toggle"
+        :title="sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel'"
+        @click="$emit('toggleSidePanel')"
+      >
+        <ListTree
+          :size="14"
+          :stroke-width="2"
+        />
+      </Button>
+
+      <Button
+        unstyled
         :class="['header-btn', 'inspector-toggle', { hidden: isInspectorOpen }]"
         title="Show workbench"
         @click="$emit('toggleInspector')"
@@ -134,7 +146,7 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import { ref, computed } from 'vue'
-import { ArrowLeft, Columns2, Equal, X, PanelRightOpen } from 'lucide-vue-next'
+import { ArrowLeft, Columns2, Equal, ListTree, PanelRightOpen, X } from 'lucide-vue-next'
 import TabItem from './TabItem.vue'
 import AgentSelector from './AgentSelector.vue'
 import type { Tab } from '@/types/tabs'
@@ -151,6 +163,8 @@ const props = defineProps<{
   canClose: boolean
   isInspectorOpen?: boolean
   reserveSidebarActions?: boolean
+  sidePanelAvailable?: boolean
+  sidePanelCollapsed?: boolean
 }>()
 
 defineEmits<{
@@ -165,6 +179,7 @@ defineEmits<{
   equalize: []
   close: []
   toggleInspector: []
+  toggleSidePanel: []
 }>()
 
 const dragFromId = ref<string | null>(null)
@@ -331,7 +346,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 }
 
 .header-btn.close-btn:hover {
-  background: var(--ui-tab-bar-danger-bg, color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 15%, transparent));
+  background: var(--ui-tab-bar-danger-bg, var(--ui-status-danger-bg, transparent));
   color: var(--ui-tab-bar-danger-fg, var(--ui-status-danger-fg, #ef4444));
 }
 

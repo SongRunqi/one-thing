@@ -523,8 +523,8 @@ html[data-theme='light'] .message.user :deep(.bubble.editing) {
   gap: 8px;
   padding: 10px 14px;
   margin-top: 8px;
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ui-status-danger-border, var(--color-danger)) 30%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
+  border: 1px solid var(--ui-status-danger-border, var(--color-danger));
   border-radius: 8px;
   color: var(--ui-status-danger-fg, var(--text-error));
   font-size: 13px;

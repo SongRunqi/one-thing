@@ -9,6 +9,7 @@ import type {
 	PromptDeleteRequest,
 	PromptGetRequest,
 	PromptUpdateRequest,
+	GetProviderEnvStatusResponse,
 	ProviderUsageResponse,
 	SchedulerCreateTaskRequest,
 	SchedulerDeleteTaskRequest,
@@ -216,6 +217,9 @@ const electronAPI = {
 
 	generateTitle: (message: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GENERATE_TITLE, { message }),
+
+	getSystemPromptSnapshot: (sessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_PROMPT_SNAPSHOT, { sessionId }),
 
 	resumeAfterToolConfirm: (sessionId: string, messageId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM, {
@@ -563,6 +567,11 @@ const electronAPI = {
 
 	getProviderUsage: (providerId: string): Promise<ProviderUsageResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDER_USAGE, { providerId }),
+
+	getProviderEnvStatus: (providerId: string): Promise<GetProviderEnvStatusResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDER_ENV_STATUS, {
+			providerId,
+		}),
 
 	// Tools methods
 	getTools: () => ipcRenderer.invoke(IPC_CHANNELS.GET_TOOLS),

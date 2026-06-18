@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { mount } from '@vue/test-utils'
 import { nextTick, reactive } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,6 +13,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => mocks.settingsStore,
 }))
+
+function readSettingsPageSource() {
+  return readFileSync(path.join(process.cwd(), 'src/renderer/components/SettingsPage.vue'), 'utf8')
+}
 
 function appSettings() {
   return {
@@ -96,14 +102,23 @@ describe('SettingsPage shell', () => {
 
     expect(wrapper.find('.titlebar-title').text()).toBe('Settings')
     expect(wrapper.find('.content-header h1').text()).toBe('General')
+    expect(wrapper.find('.settings-window').classes()).toContain('layout-container')
+    expect(wrapper.find('.settings-layout').classes()).toContain('layout-container-body')
+    expect(wrapper.find('.settings-traffic-lights-space').exists()).toBe(true)
+    expect(wrapper.find('.settings-sidebar-inner').element.firstElementChild?.classList.contains('settings-traffic-lights-space')).toBe(true)
 
-    await wrapper.findAll('.sidebar-item').find(item => item.text().includes('Prompts'))!.trigger('click')
+    expect(wrapper.find('.sidebar-nav').classes()).toContain('app-menu')
+    const firstSubMenuTitle = wrapper.find('.sidebar-entry .app-sub-menu-title')
+    expect(firstSubMenuTitle.element.children[0]?.classList.contains('app-sub-menu-chevron')).toBe(true)
+    expect(firstSubMenuTitle.element.children[1]?.classList.contains('app-sub-menu-icon')).toBe(true)
+
+    await wrapper.find('[data-index="prompts"]').trigger('click')
     await settle()
 
     expect(wrapper.find('.content-header h1').text()).toBe('Prompts')
     expect(wrapper.find('.stub-prompts').exists()).toBe(true)
 
-    await wrapper.findAll('.sidebar-item').find(item => item.text().includes('Memory'))!.trigger('click')
+    await wrapper.find('[data-index="memory"]').trigger('click')
     await settle()
 
     expect(wrapper.find('.content-header h1').text()).toBe('Memory')
@@ -125,30 +140,38 @@ describe('SettingsPage shell', () => {
     const wrapper = mountSettingsPage()
     await settle()
 
-    const subnavText = () => wrapper.findAll('.sidebar-subnav').map(nav => nav.text()).join(' ')
+    const subnavText = () => wrapper.findAll('.app-sub-menu-panel').map(nav => nav.text()).join(' ')
     const entryByLabel = (label: string) =>
       wrapper.findAll('.sidebar-entry').find(entry => entry.find('.sidebar-label').text() === label)!
 
     expect(subnavText()).not.toContain('Theme')
     expect(subnavText()).not.toContain('Text Editor')
 
-    await entryByLabel('General').find('.sidebar-disclosure-button').trigger('click')
+    await entryByLabel('General').find('.app-sub-menu-title').trigger('click')
     await settle()
 
     expect(subnavText()).toContain('Theme')
     expect(subnavText()).not.toContain('Text Editor')
 
-    await entryByLabel('Editor').find('.sidebar-disclosure-button').trigger('click')
+    await entryByLabel('Editor').find('.app-sub-menu-title').trigger('click')
     await settle()
 
-    expect(wrapper.find('.content-header h1').text()).toBe('General')
+    expect(wrapper.find('.content-header h1').text()).toBe('Editor')
     expect(subnavText()).toContain('Theme')
     expect(subnavText()).toContain('Text Editor')
 
-    await entryByLabel('General').find('.sidebar-disclosure-button').trigger('click')
+    await entryByLabel('General').find('.app-sub-menu-title').trigger('click')
     await settle()
 
     expect(subnavText()).not.toContain('Theme')
     expect(subnavText()).toContain('Text Editor')
+  })
+
+  it('targets Container-owned layout regions through scoped deep selectors', () => {
+    const source = readSettingsPageSource()
+
+    expect(source).toContain('.settings-window :deep(.settings-titlebar)')
+    expect(source).toContain('.settings-window :deep(.settings-sidebar)')
+    expect(source).toContain('.settings-window :deep(.settings-content)')
   })
 })

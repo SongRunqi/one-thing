@@ -162,12 +162,14 @@ function cancelRename() {
 /* Session Item - Minimal Design */
 .session-item {
   position: relative;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: 36px;
   padding: 7px 10px;
   margin: 2px 2px;
+  border-inline-start: 3px solid transparent;
   border-radius: 8px;
   cursor: pointer;
   user-select: none;
@@ -175,6 +177,7 @@ function cancelRename() {
   max-height: 44px;
   transition:
     background 0.15s ease,
+    border-color 0.15s ease,
     max-height 0.25s ease,
     padding 0.25s ease,
     margin 0.25s ease,
@@ -182,11 +185,12 @@ function cancelRename() {
 }
 
 .session-item:not(.active):hover {
-  background: color-mix(in srgb, var(--ui-sidebar-item-hover-bg, var(--ui-state-hover-bg, var(--hover))) 54%, transparent);
+  background: var(--ui-sidebar-item-hover-bg, var(--ui-state-hover-bg, var(--hover)));
 }
 
 .session-item.active {
-  background: color-mix(in srgb, var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight))) 54%, transparent);
+  border-inline-start-color: var(--ui-sidebar-item-active-border, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))));
+  background: var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight)));
 }
 
 .session-item.hidden {

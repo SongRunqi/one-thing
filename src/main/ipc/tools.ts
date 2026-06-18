@@ -38,7 +38,7 @@ export function registerToolHandlers() {
 	// dynamic descriptions, plus the MCP router tool when MCP functions exist.
 	ipcMain.handle(IPC_CHANNELS.GET_TOOLS, async () => {
 		try {
-			// Set init context for async tools (like SkillTool)
+			// Set init context for async tools
 			// Use the first session's working directory, or current directory if no sessions
 			const sessionsList = store.getSessionsList();
 			const firstSession =

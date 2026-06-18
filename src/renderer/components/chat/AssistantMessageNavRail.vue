@@ -1,7 +1,10 @@
 <template>
   <nav
     class="assistant-nav-rail"
-    :class="{ 'with-mode-tabs': showModeSwitch && panelAvailable && effectiveOpen }"
+    :class="[
+      `placement-${props.placement}`,
+      { 'with-mode-tabs': showModeSwitch && effectivePanelAvailable && effectiveOpen },
+    ]"
     aria-label="Assistant message outline"
   >
     <div
@@ -14,7 +17,7 @@
       @click.stop
     >
       <div
-        v-if="showModeSwitch && panelAvailable && effectiveOpen"
+        v-if="showModeSwitch && effectivePanelAvailable && effectiveOpen"
         class="assistant-nav-mode-tabs"
         aria-label="Navigation mode"
       >
@@ -36,7 +39,7 @@
         </Button>
       </div>
       <Button
-        v-if="panelAvailable && effectiveOpen"
+        v-if="!isSidePlacement && panelAvailable && effectiveOpen"
         unstyled
         native-type="button"
         class="assistant-nav-close"
@@ -58,7 +61,42 @@
           aria-hidden="true"
         />
       </Button>
+      <Scrollbar
+        v-if="isSidePlacement"
+        ref="sideScrollbarRef"
+        class="assistant-nav-side-scroll"
+      >
+        <div
+          class="assistant-nav-side-list"
+          role="listbox"
+          aria-label="Assistant outline"
+        >
+          <Button
+            v-for="marker in sortedMarkers"
+            :key="marker.anchorId"
+            unstyled
+            native-type="button"
+            class="assistant-nav-row"
+            :class="[
+              `level-${Math.min(4, Math.max(1, marker.level))}`,
+              `kind-${marker.kind}`,
+              { active: marker.navIndex === currentIndex },
+            ]"
+            :data-assistant-nav-index="marker.navIndex"
+            :aria-label="marker.label"
+            :aria-current="marker.navIndex === currentIndex ? 'location' : undefined"
+            :aria-selected="marker.navIndex === currentIndex"
+            role="option"
+            @click.stop="handleNavigate(marker.navIndex)"
+          >
+            <span class="assistant-nav-label">{{ marker.preview || marker.label }}</span>
+            <span class="assistant-nav-marker" />
+          </Button>
+        </div>
+      </Scrollbar>
+
       <div
+        v-else
         class="assistant-nav-scroll"
         role="listbox"
         aria-label="Assistant outline"
@@ -98,13 +136,13 @@
         </Transition>
       </div>
       <span
-        v-if="showScrollThumb"
+        v-if="!isSidePlacement && showScrollThumb"
         class="assistant-nav-scroll-thumb"
         :style="scrollThumbStyle"
         aria-hidden="true"
       />
       <Button
-        v-if="hasPreviousPage"
+        v-if="!isSidePlacement && hasPreviousPage"
         unstyled
         native-type="button"
         class="assistant-nav-page-cue assistant-nav-page-cue-top"
@@ -115,7 +153,7 @@
         <span class="assistant-nav-page-cue-icon" />
       </Button>
       <Button
-        v-if="hasNextPage"
+        v-if="!isSidePlacement && hasNextPage"
         unstyled
         native-type="button"
         class="assistant-nav-page-cue assistant-nav-page-cue-bottom"
@@ -131,8 +169,9 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Scrollbar from '@/components/common/Scrollbar.vue'
 import { Pin, X } from 'lucide-vue-next'
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import type { AssistantMessageOutlineMarker } from './assistant-message-outline'
 
 const props = withDefaults(defineProps<{
@@ -140,8 +179,10 @@ const props = withDefaults(defineProps<{
   currentIndex: number
   showModeSwitch?: boolean
   panelAvailable?: boolean
+  placement?: 'overlay' | 'side'
 }>(), {
   panelAvailable: true,
+  placement: 'overlay',
 })
 
 const emit = defineEmits<{
@@ -150,12 +191,14 @@ const emit = defineEmits<{
 }>()
 
 const sortedMarkers = computed(() => [...props.markers].sort((a, b) => a.navIndex - b.navIndex))
+const sideScrollbarRef = ref<InstanceType<typeof Scrollbar> | null>(null)
 const isOpen = ref(false)
 const isAutoPanelDismissed = ref(false)
 const pageStartIndex = ref(0)
 const pageDirection = ref<1 | -1>(1)
 let pageWheelLockTimer: ReturnType<typeof setTimeout> | null = null
 
+const SIDE_ACTIVE_MARKER_OFFSET_PX = 16
 const pageSize = 8
 const maxPageStartIndex = computed(() => {
   const total = sortedMarkers.value.length
@@ -189,13 +232,17 @@ const scrollThumbStyle = computed(() => {
 })
 
 const pageTransitionName = computed(() => pageDirection.value > 0 ? 'assistant-nav-page-next' : 'assistant-nav-page-prev')
-const effectiveOpen = computed(() => isOpen.value || (props.panelAvailable && !isAutoPanelDismissed.value))
+const isSidePlacement = computed(() => props.placement === 'side')
+const effectivePanelAvailable = computed(() => isSidePlacement.value || props.panelAvailable)
+const effectiveOpen = computed(() => isSidePlacement.value || isOpen.value || (props.panelAvailable && !isAutoPanelDismissed.value))
 
 function openPanel() {
+  if (isSidePlacement.value) return
   isOpen.value = true
 }
 
 function closePanel() {
+  if (isSidePlacement.value) return
   isOpen.value = false
 }
 
@@ -236,6 +283,38 @@ function handleNavigate(navIndex: number) {
   emit('navigate', navIndex)
 }
 
+function scrollActiveSideMarkerIntoView() {
+  if (!isSidePlacement.value || props.currentIndex < 0) return
+  const scroller = sideScrollbarRef.value?.getScrollElement()
+  if (!scroller) return
+
+  const row = scroller.querySelector<HTMLElement>(`[data-assistant-nav-index="${props.currentIndex}"]`)
+  if (!row) return
+
+  const rowTop = row.offsetTop
+  const rowBottom = rowTop + row.offsetHeight
+  const viewTop = scroller.scrollTop
+  const viewBottom = viewTop + scroller.clientHeight
+  let nextTop: number | null = null
+
+  if (rowTop < viewTop + SIDE_ACTIVE_MARKER_OFFSET_PX) {
+    nextTop = rowTop - SIDE_ACTIVE_MARKER_OFFSET_PX
+  } else if (rowBottom > viewBottom - SIDE_ACTIVE_MARKER_OFFSET_PX) {
+    nextTop = rowBottom - scroller.clientHeight + SIDE_ACTIVE_MARKER_OFFSET_PX
+  }
+
+  if (nextTop === null) return
+  const top = Math.max(0, nextTop)
+  if (typeof scroller.scrollTo === 'function') {
+    scroller.scrollTo({
+      top,
+      behavior: 'smooth',
+    })
+  } else {
+    scroller.scrollTop = top
+  }
+}
+
 function dismissAutoPanel() {
   isAutoPanelDismissed.value = true
   isOpen.value = false
@@ -254,7 +333,7 @@ function toggleAutoPanelPin() {
 watch(
   () => props.panelAvailable,
   available => {
-    if (!available) {
+    if (!available && !isSidePlacement.value) {
       isAutoPanelDismissed.value = false
     }
   },
@@ -270,6 +349,12 @@ watch(
     }
   },
   { immediate: true, flush: 'sync' },
+)
+
+watch(
+  [() => props.currentIndex, () => props.markers.length, isSidePlacement],
+  () => nextTick(scrollActiveSideMarkerIntoView),
+  { immediate: true, flush: 'post' },
 )
 
 watch(maxPageStartIndex, maxStart => {
@@ -317,6 +402,19 @@ onUnmounted(() => {
   --assistant-nav-header-offset-half: 14px;
 }
 
+.assistant-nav-rail.placement-side {
+  --assistant-nav-expanded-width: 100%;
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  z-index: auto;
+  pointer-events: auto;
+  transform: none;
+}
+
 .assistant-nav-card {
   position: absolute;
   top: 50%;
@@ -348,6 +446,26 @@ onUnmounted(() => {
     0 1px 3px rgba(0, 0, 0, 0.035);
 }
 
+.assistant-nav-rail.placement-side .assistant-nav-card {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
+  min-width: 0;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.assistant-nav-rail.placement-side .assistant-nav-card.open {
+  width: 100%;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .assistant-nav-scroll {
   position: absolute;
   top: calc(var(--assistant-nav-vertical-padding) + var(--assistant-nav-header-offset));
@@ -362,6 +480,25 @@ onUnmounted(() => {
 
 .assistant-nav-card.open .assistant-nav-scroll {
   pointer-events: auto;
+}
+
+.assistant-nav-rail.placement-side .assistant-nav-scroll {
+  pointer-events: auto;
+}
+
+.assistant-nav-side-scroll {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.assistant-nav-side-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 0;
+  padding: 2px 9px 2px 0;
 }
 
 .assistant-nav-page {
@@ -397,6 +534,27 @@ onUnmounted(() => {
   width: 100%;
 }
 
+.assistant-nav-rail.placement-side .assistant-nav-row {
+  width: 100%;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 26px 0 8px;
+  overflow: hidden;
+  border-radius: 6px;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.assistant-nav-rail.placement-side .assistant-nav-row:hover,
+.assistant-nav-rail.placement-side .assistant-nav-row:focus-visible {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
+}
+
+.assistant-nav-rail.placement-side .assistant-nav-row.active {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+}
+
 .assistant-nav-label {
   position: absolute;
   top: 50%;
@@ -423,6 +581,17 @@ onUnmounted(() => {
   visibility: visible;
 }
 
+.assistant-nav-rail.placement-side .assistant-nav-label {
+  position: static;
+  display: block;
+  width: 100%;
+  opacity: 0.74;
+  text-align: left;
+  visibility: visible;
+  transform: none;
+  line-height: 24px;
+}
+
 .assistant-nav-row.level-1 .assistant-nav-label,
 .assistant-nav-row.level-2 .assistant-nav-label {
   font-weight: 600;
@@ -430,6 +599,11 @@ onUnmounted(() => {
 
 .assistant-nav-row.level-3 .assistant-nav-label,
 .assistant-nav-row.level-4 .assistant-nav-label {
+  opacity: 0.68;
+}
+
+.assistant-nav-rail.placement-side .assistant-nav-row.level-3 .assistant-nav-label,
+.assistant-nav-rail.placement-side .assistant-nav-row.level-4 .assistant-nav-label {
   opacity: 0.68;
 }
 
@@ -454,6 +628,10 @@ onUnmounted(() => {
     background-color 0.12s ease,
     opacity 0.12s ease,
     box-shadow 0.12s ease;
+}
+
+.assistant-nav-rail.placement-side .assistant-nav-marker {
+  right: 8px;
 }
 
 .assistant-nav-row.level-3 .assistant-nav-marker {
@@ -510,6 +688,10 @@ onUnmounted(() => {
   display: block;
 }
 
+.assistant-nav-rail.placement-side .assistant-nav-scroll-thumb {
+  display: block;
+}
+
 .assistant-nav-page-cue {
   position: absolute;
   right: 0;
@@ -563,6 +745,10 @@ onUnmounted(() => {
     background-color 0.12s ease,
     border-color 0.12s ease,
     opacity 0.12s ease;
+}
+
+.assistant-nav-rail.placement-side .assistant-nav-mode-tabs {
+  right: 0;
 }
 
 .assistant-nav-card.open .assistant-nav-mode-tabs {

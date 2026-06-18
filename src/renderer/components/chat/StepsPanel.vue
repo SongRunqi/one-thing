@@ -936,7 +936,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   min-width: 0;
   max-width: min(56ch, 100%);
   overflow: hidden;
-  color: color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error)) 72%, var(--ui-text-muted-fg, var(--muted)) 28%);
+  color: var(--ui-status-danger-fg, var(--text-error));
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1.35;

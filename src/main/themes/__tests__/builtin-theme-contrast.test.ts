@@ -3,7 +3,13 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 import type { Theme } from '../../../shared/ipc/themes.js'
-import { extractPreviewColors, resolveTheme, resolveThemeHighlights, resolveThemeUI } from '../resolver.js'
+import {
+  extractPreviewColors,
+  resolveTheme,
+  resolveThemeHighlights,
+  resolveThemeUI,
+  THEME_STATUS_COLOR_TOKENS,
+} from '../resolver.js'
 import { CSS_VAR_MAP, generateCSSVariables } from '../css-mapper.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -213,6 +219,43 @@ describe('built-in theme text contrast', () => {
     for (const fileName of builtinThemeFiles) {
       const theme = loadBuiltinTheme(fileName)
       expect(theme.ui, `${theme.name} should use shared role mapping instead of theme.ui overrides`).toBeUndefined()
+    }
+  })
+
+  it('generates parseable status semantic colors without exposing ramps', () => {
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      const modes: Array<'dark' | 'light'> = theme.colorScheme === 'dark' || theme.colorScheme === 'light'
+        ? [theme.colorScheme]
+        : ['dark', 'light']
+
+      for (const mode of modes) {
+        const resolvedTheme = resolveTheme(theme, mode)
+        const pageBackground = resolvedTheme['neutral.pageBackground'] || resolvedTheme['bg.app']
+        const parsedBackground = parseCssColor(pageBackground)
+        expect(parsedBackground, `${theme.name} ${mode} page background should be parseable`).toBeTruthy()
+        if (!parsedBackground) continue
+
+        expect(resolvedTheme['primary.100'], `${theme.name} ${mode} should not expose primary ramp paths`).toBeUndefined()
+
+        for (const token of THEME_STATUS_COLOR_TOKENS) {
+          expect(resolvedTheme[`color.${token}.100`], `${theme.name} ${mode} should not expose ${token} ramp paths`).toBeUndefined()
+
+          for (const suffix of ['', 'Bg', 'BgHover', 'Border', 'Text']) {
+            const path = `color.${token}${suffix}`
+            expect(
+              parseCssColor(resolvedTheme[path]),
+              `${theme.name} ${mode} ${path} should be a parseable semantic status color`,
+            ).toBeTruthy()
+          }
+
+          const textColor = resolveColorOver(resolvedTheme[`color.${token}Text`], pageBackground)
+          expect.soft(
+            contrastRatio(textColor, parsedBackground),
+            `${theme.name} ${mode} color.${token}Text should remain visible on page background`,
+          ).toBeGreaterThanOrEqual(1.15)
+        }
+      }
     }
   })
 

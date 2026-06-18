@@ -7,14 +7,22 @@
       ref="chipRef"
       unstyled
       class="agent-chip"
+      :class="{ open }"
       native-type="button"
       :disabled="isDisabled"
       :title="isDisabled ? 'Agent can be changed after the current response finishes' : 'Change agent for this chat'"
       @click.stop="toggleOpen"
     >
-      <Bot :size="14" />
+      <Bot
+        class="agent-chip-icon"
+        :size="14"
+        :stroke-width="2"
+      />
       <span>{{ currentAgent?.name || 'Default Agent' }}</span>
-      <ChevronDown :size="13" />
+      <ChevronDown
+        class="agent-chip-chevron"
+        :size="13"
+      />
     </Button>
 
     <Teleport to="body">
@@ -51,6 +59,7 @@
               >Default</span>
               <Check
                 v-if="agent.id === currentAgentId"
+                class="agent-row-check"
                 :size="14"
                 :stroke-width="2.2"
               />
@@ -188,6 +197,11 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .agent-selector {
+  --agent-selector-accent: var(--ui-category-3-icon, var(--ui-status-success-fg, var(--color-success, var(--ui-accent-primary-fg, var(--accent)))));
+  --agent-selector-hover-bg: color-mix(in srgb, var(--agent-selector-accent) 10%, transparent);
+  --agent-selector-selected-bg: color-mix(in srgb, var(--agent-selector-accent) 13%, transparent);
+  --agent-selector-hover-border: color-mix(in srgb, var(--agent-selector-accent) 24%, transparent);
+  --agent-selector-selected-border: color-mix(in srgb, var(--agent-selector-accent) 32%, transparent);
   position: relative;
   flex: 0 0 auto;
   align-self: center;
@@ -195,6 +209,13 @@ onBeforeUnmount(() => {
 }
 
 .agent-chip {
+  --app-button-fill: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 42%, transparent);
+  --app-button-hover-fill: var(--agent-selector-hover-bg);
+  --app-button-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 70%, transparent);
+  --app-button-hover-border: var(--agent-selector-hover-border);
+  --app-button-hover-fg: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
   height: 28px;
   max-width: clamp(150px, 26vw, 260px);
   display: inline-flex;
@@ -207,6 +228,29 @@ onBeforeUnmount(() => {
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   cursor: pointer;
+  transition:
+    background 0.25s cubic-bezier(0.25, 0.8, 0.25, 1),
+    border-color 0.25s cubic-bezier(0.25, 0.8, 0.25, 1),
+    color 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.agent-chip-icon {
+  flex: 0 0 auto;
+  color: var(--agent-selector-accent);
+  opacity: 0.9;
+  transition:
+    color 0.25s ease,
+    opacity 0.25s ease,
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.agent-chip-chevron {
+  flex: 0 0 auto;
+  color: currentColor;
+  opacity: 0.78;
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .agent-chip span {
@@ -216,8 +260,31 @@ onBeforeUnmount(() => {
 }
 
 .agent-chip:hover:not(:disabled) {
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-border-default-border, var(--border));
+  background: var(--agent-selector-hover-bg);
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  border-color: var(--agent-selector-hover-border);
+}
+
+.agent-chip.open {
+  --app-button-fill: var(--agent-selector-selected-bg);
+  --app-button-hover-fill: var(--agent-selector-selected-bg);
+  --app-button-border: var(--agent-selector-selected-border);
+  --app-button-hover-border: var(--agent-selector-selected-border);
+  background: var(--agent-selector-selected-bg);
+  border-color: var(--agent-selector-selected-border);
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-active-fg, var(--text-sidebar-item)));
+}
+
+.agent-chip:hover:not(:disabled) .agent-chip-icon,
+.agent-chip.open .agent-chip-icon {
+  color: var(--agent-selector-accent);
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.agent-chip.open .agent-chip-chevron {
+  opacity: 1;
+  transform: rotate(180deg);
 }
 
 .agent-chip:disabled {
@@ -226,6 +293,11 @@ onBeforeUnmount(() => {
 }
 
 .agent-menu {
+  --agent-selector-accent: var(--ui-category-3-icon, var(--ui-status-success-fg, var(--color-success, var(--ui-accent-primary-fg, var(--accent)))));
+  --agent-selector-hover-bg: color-mix(in srgb, var(--agent-selector-accent) 10%, transparent);
+  --agent-selector-selected-bg: color-mix(in srgb, var(--agent-selector-accent) 13%, transparent);
+  --agent-selector-hover-border: color-mix(in srgb, var(--agent-selector-accent) 24%, transparent);
+  --agent-selector-selected-border: color-mix(in srgb, var(--agent-selector-accent) 32%, transparent);
   position: fixed;
   box-sizing: border-box;
   overflow: auto;
@@ -249,10 +321,17 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
-.agent-row {
+.agent-menu .agent-row {
+  --app-button-fill: transparent;
+  --app-button-hover-fill: var(--agent-selector-hover-bg);
+  --app-button-border: transparent;
+  --app-button-hover-border: var(--agent-selector-hover-border);
+  --app-button-hover-fg: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-fg, var(--text-sidebar-item)));
   cursor: pointer;
 }
 
@@ -268,10 +347,25 @@ onBeforeUnmount(() => {
   text-align: left;
 }
 
-.agent-row:hover,
-.agent-row.active {
-  background: var(--ui-state-hover-bg, var(--bg-hover));
-  border-color: var(--ui-border-subtle-border, var(--border-subtle));
+.agent-menu .agent-row:hover,
+.agent-menu .agent-row.app-button.is-unstyled:hover {
+  --app-button-hover-fill: var(--agent-selector-hover-bg);
+  --app-button-hover-border: var(--agent-selector-hover-border);
+  background: var(--agent-selector-hover-bg);
+  border-color: var(--agent-selector-hover-border);
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+}
+
+.agent-menu .agent-row.active,
+.agent-menu .agent-row.app-button.is-unstyled.active {
+  --app-button-fill: var(--agent-selector-selected-bg);
+  --app-button-hover-fill: var(--agent-selector-selected-bg);
+  --app-button-border: var(--agent-selector-selected-border);
+  --app-button-hover-border: var(--agent-selector-selected-border);
+  background: var(--agent-selector-selected-bg);
+  border-color: var(--agent-selector-selected-border);
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-active-fg, var(--text-sidebar-item)));
+  font-weight: 600;
 }
 
 .agent-row-main {
@@ -304,6 +398,11 @@ onBeforeUnmount(() => {
   color: var(--ui-text-muted-fg, var(--muted));
 }
 
+.agent-row.active .agent-row-side,
+.agent-row.active .agent-row-check {
+  color: var(--agent-selector-accent);
+}
+
 .agent-row-meta {
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
@@ -315,3 +414,10 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 </style>
+.agent-menu .agent-row.active:hover,
+.agent-menu .agent-row.app-button.is-unstyled.active:hover {
+  --app-button-hover-fill: var(--agent-selector-selected-bg);
+  --app-button-hover-border: var(--agent-selector-selected-border);
+  background: var(--agent-selector-selected-bg);
+  border-color: var(--agent-selector-selected-border);
+}

@@ -88,6 +88,47 @@ describe('memory review helpers', () => {
     })
   })
 
+  it('parses soul and dreams review targets', () => {
+    const parsed = parseMemoryReviewModelResult(JSON.stringify({
+      action: 'review',
+      confidence: 0.86,
+      memories: [
+        {
+          action: 'replace',
+          target: 'soul',
+          oldText: 'Keep replies formal.',
+          newText: 'Keep replies warm and precise.',
+          confidence: 0.9,
+        },
+        {
+          action: 'remove',
+          target: 'dreams',
+          text: 'Maybe revisit tone later.',
+          confidence: 0.88,
+        },
+      ],
+    }))
+
+    expect(parsed?.candidates).toEqual([
+      {
+        action: 'replace',
+        target: 'soul',
+        confidence: 0.9,
+        content: 'Keep replies formal.',
+        oldText: 'Keep replies formal.',
+        newText: 'Keep replies warm and precise.',
+        text: 'Keep replies formal.',
+      },
+      {
+        action: 'remove',
+        target: 'dreams',
+        confidence: 0.88,
+        content: 'Maybe revisit tone later.',
+        text: 'Maybe revisit tone later.',
+      },
+    ])
+  })
+
   it('keeps the latest conversation tail when compacting', () => {
     const formatted = formatMemoryReviewConversation(conversation(80), 220)
 

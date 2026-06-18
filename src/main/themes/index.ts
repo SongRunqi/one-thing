@@ -7,7 +7,13 @@ import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import type { Theme, ThemeMeta, Base46Theme } from '../../shared/ipc/themes.js'
-import { resolveTheme, resolveThemeHighlights, resolveThemeUI, extractPreviewColors } from './resolver.js'
+import {
+  extractPreviewColors,
+  resolveTheme,
+  resolveThemeColorScaleDiagnostics,
+  resolveThemeHighlights,
+  resolveThemeUI,
+} from './resolver.js'
 import { generateCSSVariables } from './css-mapper.js'
 import { parseBase46Lua, convertBase46ToTheme } from './base46-parser.js'
 
@@ -323,6 +329,25 @@ function applyThemeInternal(
   const resolvedColors = resolveTheme(theme, mode)
   const resolvedHighlights = resolveThemeHighlights(theme, mode, resolvedColors)
   const resolvedUI = resolveThemeUI(theme, mode, resolvedColors)
+  const colorScaleDiagnostics = resolveThemeColorScaleDiagnostics(resolvedColors, mode)
+
+  console.log('[ThemeManager] Neutral text semantics', JSON.stringify({
+    themeId: theme.id,
+    themeName: theme.name,
+    mode,
+    'neutral.primaryText': resolvedColors['neutral.primaryText'],
+    'neutral.regularText': resolvedColors['neutral.regularText'],
+    'neutral.secondaryText': resolvedColors['neutral.secondaryText'],
+    'neutral.placeholderText': resolvedColors['neutral.placeholderText'],
+    'neutral.disabledText': resolvedColors['neutral.disabledText'],
+  }, null, 2))
+  console.log('[ThemeManager] Primary/status semantics and scales', JSON.stringify({
+    themeId: theme.id,
+    themeName: theme.name,
+    mode,
+    primary: colorScaleDiagnostics.primary,
+    status: colorScaleDiagnostics.status,
+  }, null, 2))
 
   // Map to CSS variables
   const cssVariables = generateCSSVariables(resolvedColors, resolvedHighlights, resolvedUI)

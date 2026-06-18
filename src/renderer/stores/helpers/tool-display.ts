@@ -65,13 +65,6 @@ const PROJECT_DIRS_VERBS: Record<string, ToolVerbSet> = {
   remove: { wait: 'Remove', run: 'Removing', done: 'Removed' },
 }
 
-const SKILL_VERBS: Record<string, ToolVerbSet> = {
-  list: { wait: 'Search', run: 'Searching', done: 'Searched' },
-  search: { wait: 'Search', run: 'Searching', done: 'Searched' },
-  find: { wait: 'Find', run: 'Finding', done: 'Found' },
-  load: { wait: 'Load', run: 'Loading', done: 'Loaded' },
-}
-
 const MCP_SEARCH_VERBS: Record<string, ToolVerbSet> = {
   list: { wait: 'List', run: 'Listing', done: 'Listed' },
   search: { wait: 'Search', run: 'Searching', done: 'Searched' },
@@ -115,14 +108,17 @@ function isMcpSearchTool(toolName: string): boolean {
   return toolName === 'mcp_search' || toolName === 'tool_function'
 }
 
+function isTodoTool(toolName: string): boolean {
+  return toolName === 'todo' || toolName === 'todo_plan'
+}
+
 export { getFileToolCategory }
 
 function verbsForTool(toolName: string, toolCall?: ToolCall): ToolVerbSet {
   if (toolName === 'variable') return VARIABLE_VERBS[actionOf(toolCall)] || { wait: 'Change', run: 'Changing', done: 'Changed' }
-  if (toolName === 'todo_plan') return TODO_PLAN_VERBS[actionOf(toolCall)] || { wait: 'Update', run: 'Updating', done: 'Updated' }
+  if (isTodoTool(toolName)) return TODO_PLAN_VERBS[actionOf(toolCall)] || { wait: 'Update', run: 'Updating', done: 'Updated' }
   if (toolName === 'time') return TIME_VERBS[actionOf(toolCall)] || TIME_VERBS.now
   if (toolName === 'project_dirs') return PROJECT_DIRS_VERBS[actionOf(toolCall)] || { wait: 'Manage', run: 'Managing', done: 'Managed' }
-  if (toolName === 'skill') return SKILL_VERBS[actionOf(toolCall)] || { wait: 'Open', run: 'Opening', done: 'Opened' }
   if (isMcpSearchTool(toolName)) return MCP_SEARCH_VERBS[actionOf(toolCall)] || DEFAULT_VERBS
   if (isLegacyMcpTool(toolName)) return DEFAULT_VERBS
 
@@ -154,15 +150,11 @@ export function buildToolActivityTarget(toolNameInput: string | undefined, toolC
   const args = getArgs(toolCall)
 
   if (toolName === 'variable') return buildVariableTarget(toolCall)
-  if (toolName === 'todo_plan') return String(args.title || args.id || args.scope || 'todos')
+  if (isTodoTool(toolName)) return String(args.title || args.id || args.scope || 'todos')
   if (toolName === 'time') return String(args.timezone || args.fromTimezone || args.toTimezone || action || 'time')
   if (toolName === 'project_dirs') {
     const path = valueOf(toolCall, 'path')
     return path ? shortenPath(path, 42) : 'projects'
-  }
-  if (toolName === 'skill') {
-    if (action === 'load') return valueOf(toolCall, 'name') || 'skill'
-    return valueOf(toolCall, 'query') ? quote(valueOf(toolCall, 'query'), 42) : 'skills'
   }
   if (isMcpSearchTool(toolName)) {
     if (action === 'list' || action === 'search' || action === 'find') {
@@ -209,10 +201,9 @@ export function buildToolPermissionTitle(toolCall: ToolCall): string {
     return `Find ${quote(valueOf(toolCall, 'pattern'), 60) || 'text'} in ${hostFor(valueOf(toolCall, 'url')) || 'web page'}`
   }
   if (toolName === 'variable') return buildVariablePermissionTitle(toolCall)
-  if (toolName === 'todo_plan') return buildActionPermissionTitle(toolCall, TODO_PLAN_VERBS, 'todo')
+  if (isTodoTool(toolName)) return buildActionPermissionTitle(toolCall, TODO_PLAN_VERBS, 'todo')
   if (toolName === 'time') return buildActionPermissionTitle(toolCall, TIME_VERBS, 'time')
   if (toolName === 'project_dirs') return buildActionPermissionTitle(toolCall, PROJECT_DIRS_VERBS, 'project')
-  if (toolName === 'skill') return buildSkillPermissionTitle(toolCall)
   if (isMcpSearchTool(toolName)) return buildMcpSearchPermissionTitle(toolCall)
   if (toolName === 'calculator') return `Calculate ${valueOf(toolCall, 'expression') || 'expression'}`
   if (toolName === 'get_current_time') return 'Get current time'
@@ -231,14 +222,6 @@ function buildActionPermissionTitle(
   const verb = verbs[action]?.wait || DEFAULT_VERBS.wait
   const target = buildToolActivityTarget(toolCall.toolName || toolCall.toolId, toolCall)
   return `${verb} ${target && target !== action ? target : noun}`
-}
-
-function buildSkillPermissionTitle(toolCall: ToolCall): string {
-  const action = actionOf(toolCall)
-  if (action === 'load') return `Load skill ${valueOf(toolCall, 'name') || ''}`.trim()
-  return valueOf(toolCall, 'query')
-    ? `Search skills for ${quote(valueOf(toolCall, 'query'), 60)}`
-    : 'List skills'
 }
 
 function buildMcpSearchPermissionTitle(toolCall: ToolCall): string {

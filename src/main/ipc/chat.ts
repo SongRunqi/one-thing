@@ -67,6 +67,7 @@ import {
 } from '../engine/stream/tool-loop.js'
 import { sanitizeMessagesForRenderer } from './message-sanitizer.js'
 import { resolvePromptReferences } from '../prompts/resolver.js'
+import { buildSystemPromptSnapshot } from '../engine/prompt/system-prompt-snapshot.js'
 
 // ============================================
 // IPC Handlers
@@ -85,6 +86,21 @@ export function registerChatHandlers() {
   // 生成聊天标题
   ipcMain.handle(IPC_CHANNELS.GENERATE_TITLE, async (_event, { message }) => {
     return handleGenerateTitle(message)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_SYSTEM_PROMPT_SNAPSHOT, async (_event, { sessionId }) => {
+    try {
+      return {
+        success: true,
+        snapshot: await buildSystemPromptSnapshot(sessionId),
+      }
+    } catch (error: any) {
+      console.error('[Chat] Failed to build system prompt snapshot:', error)
+      return {
+        success: false,
+        error: error?.message || 'Failed to build system prompt snapshot',
+      }
+    }
   })
 
   // 更新消息的 thinkingTime（用于持久化thinking时长）
@@ -770,12 +786,12 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
     // Build tool-aware conversation messages
     const conversationMessages: ToolChatMessage[] = []
 
-    // Load skills first (before tools, as SkillTool needs them in InitContext)
+    // Load skills first so async skill tools can initialize with context
     const skillsSettings = settings.skills
     const skillsEnabled = skillsSettings?.enableSkills !== false
     const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
 
-    // Set init context for async tools (like SkillTool)
+    // Set init context for async tools
     if (settings.tools?.enableToolCalls) {
       setInitContext({
         skills: enabledSkills.map(s => ({

@@ -18,7 +18,7 @@ import { GlobTool } from './glob.js'
 import { GrepTool } from './grep.js'
 import { FindTool } from './find.js'
 import { LsTool } from './ls.js'
-import { SkillManageTool, SkillTool, SkillsListTool, SkillViewTool } from './skill.js'
+import { SkillManageTool, SkillsListTool, SkillViewTool } from './skill.js'
 import { FartTool } from './fart.js'
 import { VariableTool } from './variable.js'
 import { TodoPlanTool } from './todo-plan.js'
@@ -31,7 +31,7 @@ import { WebOpenTool } from './web-search/open.js'
 import { WebFindTool } from './web-search/find.js'
 
 // All built-in tools (Tool.define() format)
-// Note: SkillTool is async and needs separate initialization
+// Note: some tools are async and need separate initialization
 const builtinTools = [
   BashTool,
   EditTool,
@@ -57,7 +57,6 @@ export const asyncBuiltinTools = [
   SkillsListTool,
   SkillViewTool,
   SkillManageTool,
-  SkillTool,
 ]
 
 /**
@@ -69,7 +68,7 @@ export function registerBuiltinTools(): void {
     registerTool(tool)
   }
 
-  // Register async tools (e.g., SkillTool)
+  // Register async tools
   for (const tool of asyncBuiltinTools) {
     registerTool(tool)
   }

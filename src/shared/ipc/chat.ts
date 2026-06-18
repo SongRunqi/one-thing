@@ -106,6 +106,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]  // Tool calls made by the assistant
   contentParts?: ContentPart[]  // Sequential content parts for inline tool call display
   model?: string  // AI model used for assistant messages
+  provider?: string  // AI provider used for assistant messages
   thinkingTime?: number  // Final thinking time in seconds (persisted for display after session switch)
   thinkingStartTime?: number  // Timestamp when thinking started (for calculating elapsed time on session switch)
   skillUsed?: string  // Name of the skill used by the assistant (e.g., "agent-plan")
@@ -370,6 +371,64 @@ export interface GenerateTitleRequest {
 export interface GenerateTitleResponse {
   success: boolean
   title?: string
+  error?: string
+}
+
+export interface SystemPromptToolSnapshot {
+  id: string
+  name: string
+  description?: string
+  category?: string
+  modelFacingName?: string
+}
+
+export interface SystemPromptSkillSnapshot {
+  id: string
+  name: string
+  description?: string
+  source?: string
+  category?: string
+  tags?: string[]
+  enabled?: boolean
+}
+
+export interface SystemPromptSnapshot {
+  sessionId: string
+  generatedAt: number
+  providerId: string
+  model: string
+  providerSupported: boolean
+  credentialsReady: boolean
+  workingDirectory?: string
+  agentId?: string
+  agentName?: string
+  systemPrompt: string
+  systemPromptChars: number
+  tools: {
+    enableToolCalls: boolean
+    modelSupportsTools: boolean
+    hasTools: boolean
+    configuredCount: number
+    modelFacingCount: number
+    builtin: SystemPromptToolSnapshot[]
+    mcp: SystemPromptToolSnapshot[]
+    codexNative: SystemPromptToolSnapshot[]
+  }
+  skills: {
+    enabled: boolean
+    includedInPrompt: boolean
+    count: number
+    items: SystemPromptSkillSnapshot[]
+  }
+}
+
+export interface GetSystemPromptSnapshotRequest {
+  sessionId: string
+}
+
+export interface GetSystemPromptSnapshotResponse {
+  success: boolean
+  snapshot?: SystemPromptSnapshot
   error?: string
 }
 

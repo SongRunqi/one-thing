@@ -249,3 +249,25 @@ export interface ProviderUsageResponse {
   unsupported?: boolean
   error?: string
 }
+
+export interface ProviderEnvVarCandidate {
+  name: string
+  isSet: boolean
+}
+
+export interface ProviderEnvStatus {
+  providerId: string
+  detectedEnvVar?: string
+  resolvedEnvVar?: string
+  candidates: ProviderEnvVarCandidate[]
+}
+
+export interface GetProviderEnvStatusRequest {
+  providerId: string
+}
+
+export interface GetProviderEnvStatusResponse {
+  success: boolean
+  status?: ProviderEnvStatus
+  error?: string
+}

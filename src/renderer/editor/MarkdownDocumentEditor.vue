@@ -356,9 +356,21 @@ defineExpose<MarkdownDocumentEditorHandle>({
   position: relative;
   display: flex;
   flex-direction: column;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden;
   color: var(--ui-text-primary-fg, var(--text));
+}
+
+.markdown-document-editor[data-surface="document"] {
+  padding: 18px 0 18px 24px;
+}
+
+.markdown-document-editor[data-surface="todo-notes"] {
+  padding: 0 0 0 18px;
 }
 
 .markdown-document-toolbar {

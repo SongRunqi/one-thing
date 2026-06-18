@@ -1237,7 +1237,7 @@ function normalizeASRTestError(error: any) {
 }
 
 .voice-state-pill.on {
-  border-color: color-mix(in srgb, var(--ui-status-success-fg, #16a34a) 36%, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  border-color: var(--ui-status-success-border, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
   color: var(--ui-status-success-fg, #15803d);
 }
 
@@ -1418,17 +1418,17 @@ function normalizeASRTestError(error: any) {
 }
 
 .setup-status.success {
-  border-color: color-mix(in srgb, var(--ui-status-success-fg, #16a34a) 42%, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  border-color: var(--ui-status-success-border, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
   color: var(--ui-status-success-fg, #15803d);
 }
 
 .setup-status.error {
-  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #dc2626) 42%, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  border-color: var(--ui-status-danger-border, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
   color: var(--ui-status-danger-fg, #b91c1c);
 }
 
 .setup-status.warning {
-  border-color: color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 48%, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  border-color: var(--ui-status-warning-border, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
   color: var(--ui-status-warning-fg, #92400e);
   background: color-mix(in srgb, var(--ui-surface-note-bg, var(--ui-status-warning-bg, #fef3c7)) 28%, var(--settings-paper-2, var(--bg-secondary)));
 }

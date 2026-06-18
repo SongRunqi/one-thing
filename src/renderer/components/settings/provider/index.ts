@@ -5,7 +5,6 @@
  */
 
 export { default as AIProviderTab } from './AIProviderTab.vue'
-export { default as ProviderList } from './ProviderList.vue'
 export { default as AuthCard } from './AuthCard.vue'
 export { default as ProviderUsageCard } from './ProviderUsageCard.vue'
 export { default as ProviderModels } from './ProviderModels.vue'

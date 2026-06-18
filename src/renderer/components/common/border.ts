@@ -95,9 +95,9 @@ const toneBorderTokens: Record<BorderTone, string> = {
   subtle: 'color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 72%, transparent)',
   strong: 'var(--ui-border-strong-border, var(--border-strong, var(--border)))',
   accent: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 58%, transparent)',
-  success: 'color-mix(in srgb, var(--ui-status-success-fg, var(--color-success, #10b981)) 58%, transparent)',
-  warning: 'color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning, #f59e0b)) 58%, transparent)',
-  danger: 'color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger, #ef4444)) 58%, transparent)',
+  success: 'var(--ui-status-success-border, var(--color-success, #10b981))',
+  warning: 'var(--ui-status-warning-border, var(--color-warning, #f59e0b))',
+  danger: 'var(--ui-status-danger-border, var(--color-danger, #ef4444))',
 }
 
 const toneHoverBorderTokens: Record<BorderTone, string> = {

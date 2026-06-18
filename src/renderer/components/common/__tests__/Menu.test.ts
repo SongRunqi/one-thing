@@ -123,6 +123,27 @@ describe('Menu', () => {
     expect(onOpen).toHaveBeenCalledWith('two', ['two'])
   })
 
+  it('can render submenu expand icons at the start of the title', async () => {
+    const wrapper = mount(Menu, {
+      slots: {
+        default: () => h(SubMenu, {
+          index: 'appearance',
+          title: 'Appearance',
+          expandIconPosition: 'start',
+        }, {
+          icon: () => h('span', { class: 'settings-icon' }),
+          default: () => h(MenuItem, { index: 'theme', title: 'Theme' }),
+        }),
+      },
+    })
+
+    await settle()
+
+    const title = wrapper.find('.app-sub-menu-title')
+    expect(title.element.children[0]?.classList.contains('app-sub-menu-chevron')).toBe(true)
+    expect(title.element.children[1]?.classList.contains('app-sub-menu-icon')).toBe(true)
+  })
+
   it('ignores disabled menu items and disabled submenus', async () => {
     const onSelect = vi.fn()
     const wrapper = mount(Menu, {

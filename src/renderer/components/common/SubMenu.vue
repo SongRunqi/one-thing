@@ -21,6 +21,15 @@
       @click="handleTitleClick"
       @keydown="handleTitleKeydown"
     >
+      <ChevronRight
+        v-if="expandIconPosition === 'start'"
+        class="app-sub-menu-chevron"
+        :class="{ 'is-opened': isOpened }"
+        :size="15"
+        :stroke-width="2"
+        aria-hidden="true"
+      />
+
       <span
         v-if="$slots.icon"
         class="app-sub-menu-icon"
@@ -34,6 +43,7 @@
       </span>
 
       <ChevronRight
+        v-if="expandIconPosition === 'end'"
         class="app-sub-menu-chevron"
         :class="{ 'is-opened': isOpened }"
         :size="15"
@@ -63,6 +73,7 @@ import { computed, inject, onBeforeUnmount, provide, watch, type StyleValue } fr
 import {
   menuContextKey,
   subMenuContextKey,
+  type SubMenuExpandIconPosition,
   type MenuRegisteredSubMenu,
 } from './menu'
 
@@ -74,12 +85,14 @@ const props = withDefaults(defineProps<{
   index: string
   title?: string
   disabled?: boolean
+  expandIconPosition?: SubMenuExpandIconPosition
   popperOffset?: number
   showTimeout?: number
   hideTimeout?: number
 }>(), {
   title: '',
   disabled: false,
+  expandIconPosition: 'end',
   popperOffset: undefined,
   showTimeout: undefined,
   hideTimeout: undefined,
@@ -91,6 +104,7 @@ const parentSubMenu = inject(subMenuContextKey, null)
 const level = computed(() => parentSubMenu ? parentSubMenu.level.value + 1 : 1)
 const indexPath = computed(() => parentSubMenu ? [...parentSubMenu.indexPath.value, props.index] : [props.index])
 const disabled = computed(() => props.disabled)
+const expandIconPosition = computed(() => props.expandIconPosition)
 const isOpened = computed(() => menu?.isSubMenuOpen(props.index) ?? false)
 const isActive = computed(() => menu?.isSubMenuActive(props.index) ?? false)
 const isHorizontal = computed(() => menu?.mode.value === 'horizontal')

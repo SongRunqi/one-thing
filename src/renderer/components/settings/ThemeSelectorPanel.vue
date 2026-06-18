@@ -429,9 +429,9 @@ async function refreshThemes() {
 
 .error-message {
   padding: 9px 11px;
-  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 30%, transparent);
+  border: 1px solid var(--ui-status-danger-border, var(--text-error, var(--color-danger)));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 9%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
   font-size: 12px;
 }

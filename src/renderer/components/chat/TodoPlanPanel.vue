@@ -1895,27 +1895,6 @@ onUnmounted(() => {
   background: var(--todo-card-bg);
 }
 
-.markdown-editor {
-  width: 100%;
-  height: 100%;
-  --editor-font-size: 15px;
-  min-height: 96px;
-  padding: 0 0 0 18px;
-  min-width: 0;
-  box-sizing: border-box;
-}
-
-.markdown-editor :deep(.cm-editor),
-.markdown-editor :deep(.cm-scroller) {
-  height: 100%;
-  width: 100%;
-  min-width: 0;
-}
-
-.markdown-editor :deep(.cm-scroller) {
-  overflow: auto;
-}
-
 .note-footer {
   height: 38px;
   padding: 0 18px;

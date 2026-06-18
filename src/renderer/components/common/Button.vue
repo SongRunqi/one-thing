@@ -313,43 +313,43 @@ defineExpose({
 .app-button--success {
   --app-button-tone: var(--ui-status-success-fg, var(--color-success, #10b981));
   --app-button-fill: var(--app-button-tone);
-  --app-button-fg: var(--color-neutral-basic-white);
+  --app-button-fg: var(--ui-status-success-on-fg, #fff);
   --app-button-border: var(--app-button-tone);
   --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 84%, var(--ui-text-primary-fg, #111) 16%);
-  --app-button-hover-fg: var(--color-neutral-basic-white);
+  --app-button-hover-fg: var(--ui-status-success-on-fg, #fff);
   --app-button-hover-border: var(--app-button-hover-fill);
 }
 
 .app-button--warning {
   --app-button-tone: var(--ui-status-warning-fg, var(--color-warning, #f59e0b));
   --app-button-fill: var(--app-button-tone);
-  --app-button-fg: var(--color-neutral-basic-black);
+  --app-button-fg: var(--ui-status-warning-on-fg, #111);
   --app-button-border: var(--app-button-tone);
   --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 82%, var(--ui-text-primary-fg, #111) 18%);
-  --app-button-hover-fg: var(--color-neutral-basic-black);
+  --app-button-hover-fg: var(--ui-status-warning-on-fg, #111);
   --app-button-hover-border: var(--app-button-hover-fill);
-  --app-button-contrast: var(--color-neutral-basic-black);
+  --app-button-contrast: var(--ui-status-warning-on-fg, #111);
 }
 
 .app-button--danger {
   --app-button-tone: var(--ui-status-danger-fg, var(--color-danger, #ef4444));
   --app-button-fill: var(--app-button-tone);
-  --app-button-fg: var(--color-neutral-basic-white);
+  --app-button-fg: var(--ui-status-danger-on-fg, #fff);
   --app-button-border: var(--app-button-tone);
   --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 84%, var(--ui-text-primary-fg, #111) 16%);
-  --app-button-hover-fg: var(--color-neutral-basic-white);
+  --app-button-hover-fg: var(--ui-status-danger-on-fg, #fff);
   --app-button-hover-border: var(--app-button-hover-fill);
 }
 
 .app-button--info {
   --app-button-tone: var(--ui-status-info-fg, var(--color-info));
   --app-button-fill: var(--app-button-tone);
-  --app-button-fg: var(--color-neutral-basic-black);
+  --app-button-fg: var(--ui-status-info-on-fg, #111);
   --app-button-border: var(--app-button-tone);
   --app-button-hover-fill: color-mix(in srgb, var(--app-button-tone) 82%, var(--ui-text-primary-fg, #111) 18%);
-  --app-button-hover-fg: var(--color-neutral-basic-black);
+  --app-button-hover-fg: var(--ui-status-info-on-fg, #111);
   --app-button-hover-border: var(--app-button-hover-fill);
-  --app-button-contrast: var(--color-neutral-basic-black);
+  --app-button-contrast: var(--ui-status-info-on-fg, #111);
 }
 
 .app-button.has-custom-color {

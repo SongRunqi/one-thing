@@ -154,104 +154,109 @@
       </span>
     </div>
 
-    <Transition name="app-select-dropdown">
-      <div
-        v-if="isOpen"
-        :id="listboxId"
-        ref="dropdownRef"
-        class="app-select-dropdown"
-        :class="popperClass"
-        :style="dropdownStyle"
-        role="listbox"
-        :aria-multiselectable="multiple ? 'true' : undefined"
-        @scroll="handleDropdownScroll"
-      >
+    <Teleport
+      to="body"
+      :disabled="!componentProps.teleported"
+    >
+      <Transition name="app-select-dropdown">
         <div
-          v-if="$slots.header"
-          class="app-select-dropdown-extra app-select-dropdown-header"
+          v-if="isOpen"
+          :id="listboxId"
+          ref="dropdownRef"
+          class="app-select-dropdown"
+          :class="popperClass"
+          :style="dropdownStyle"
+          role="listbox"
+          :aria-multiselectable="multiple ? 'true' : undefined"
+          @scroll="handleDropdownScroll"
         >
-          <slot name="header" />
-        </div>
-
-        <div
-          v-if="loading"
-          class="app-select-empty app-select-loading"
-        >
-          <slot name="loading">
-            {{ loadingText }}
-          </slot>
-        </div>
-
-        <template v-else-if="renderItems.length > 0">
-          <template
-            v-for="item in renderItems"
-            :key="item.key"
+          <div
+            v-if="$slots.header"
+            class="app-select-dropdown-extra app-select-dropdown-header"
           >
-            <div
-              v-if="item.type === 'group'"
-              class="app-select-group-label"
-              :class="{ disabled: item.disabled }"
-            >
-              {{ item.label }}
-            </div>
+            <slot name="header" />
+          </div>
 
-            <button
-              v-else
-              class="app-select-option"
-              type="button"
-              role="option"
-              :class="{
-                selected: isSelected(item.option),
-                highlighted: highlightedKey === item.option.key,
-                created: item.option.created,
-              }"
-              :data-select-key="item.option.key"
-              :aria-selected="isSelected(item.option)"
-              :disabled="item.option.disabled"
-              @mouseenter="highlightedKey = item.option.key"
-              @click="selectOption(item.option)"
+          <div
+            v-if="loading"
+            class="app-select-empty app-select-loading"
+          >
+            <slot name="loading">
+              {{ loadingText }}
+            </slot>
+          </div>
+
+          <template v-else-if="renderItems.length > 0">
+            <template
+              v-for="item in renderItems"
+              :key="item.key"
             >
-              <slot
-                name="option"
-                :option="item.option.raw"
-                :label="item.option.label"
-                :value="item.option.value"
-                :selected="isSelected(item.option)"
-                :disabled="item.option.disabled"
-                :created="item.option.created"
-                :index="item.index"
+              <div
+                v-if="item.type === 'group'"
+                class="app-select-group-label"
+                :class="{ disabled: item.disabled }"
               >
-                <span class="app-select-option-label">{{ item.option.label }}</span>
-              </slot>
+                {{ item.label }}
+              </div>
 
-              <Check
-                v-if="isSelected(item.option)"
-                class="app-select-option-check"
-                :size="15"
-                :stroke-width="2"
-                aria-hidden="true"
-              />
-            </button>
+              <button
+                v-else
+                class="app-select-option"
+                type="button"
+                role="option"
+                :class="{
+                  selected: isSelected(item.option),
+                  highlighted: highlightedKey === item.option.key,
+                  created: item.option.created,
+                }"
+                :data-select-key="item.option.key"
+                :aria-selected="isSelected(item.option)"
+                :disabled="item.option.disabled"
+                @mouseenter="highlightedKey = item.option.key"
+                @click="selectOption(item.option)"
+              >
+                <slot
+                  name="option"
+                  :option="item.option.raw"
+                  :label="item.option.label"
+                  :value="item.option.value"
+                  :selected="isSelected(item.option)"
+                  :disabled="item.option.disabled"
+                  :created="item.option.created"
+                  :index="item.index"
+                >
+                  <span class="app-select-option-label">{{ item.option.label }}</span>
+                </slot>
+
+                <Check
+                  v-if="isSelected(item.option)"
+                  class="app-select-option-check"
+                  :size="15"
+                  :stroke-width="2"
+                  aria-hidden="true"
+                />
+              </button>
+            </template>
           </template>
-        </template>
 
-        <div
-          v-else
-          class="app-select-empty"
-        >
-          <slot name="empty">
-            {{ emptyText }}
-          </slot>
-        </div>
+          <div
+            v-else
+            class="app-select-empty"
+          >
+            <slot name="empty">
+              {{ emptyText }}
+            </slot>
+          </div>
 
-        <div
-          v-if="$slots.footer"
-          class="app-select-dropdown-extra app-select-dropdown-footer"
-        >
-          <slot name="footer" />
+          <div
+            v-if="$slots.footer"
+            class="app-select-dropdown-extra app-select-dropdown-footer"
+          >
+            <slot name="footer" />
+          </div>
         </div>
-      </div>
-    </Transition>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -322,6 +327,8 @@ interface SelectProps {
   popperStyle?: StyleValue
   fitInputWidth?: boolean
   offset?: number
+  placement?: 'top' | 'bottom'
+  teleported?: boolean
 }
 
 type RenderItem =
@@ -378,6 +385,8 @@ const componentProps = withDefaults(defineProps<SelectProps>(), {
   popperStyle: undefined,
   fitInputWidth: false,
   offset: 6,
+  placement: 'bottom',
+  teleported: false,
 })
 
 const emit = defineEmits<{
@@ -400,6 +409,7 @@ const isOpen = ref(false)
 const searchQuery = ref('')
 const highlightedKey = ref<string | null>(null)
 const listboxId = `app-select-listbox-${++selectIdCounter}`
+const teleportedRect = ref<{ left: number; top: number; bottom: number; width: number } | null>(null)
 let remoteTimer: ReturnType<typeof setTimeout> | null = null
 
 const {
@@ -623,11 +633,34 @@ const emptyText = computed(() => {
 })
 
 const dropdownStyle = computed<StyleValue>(() => {
-  const style: Record<string, string> = {
-    top: `calc(100% + ${componentProps.offset}px)`,
+  const style: Record<string, string> = {}
+
+  if (componentProps.teleported) {
+    const rect = teleportedRect.value
+    style.position = 'fixed'
+    if (rect) {
+      style.left = `${Math.round(rect.left)}px`
+      style.minWidth = `${Math.round(rect.width)}px`
+      if (componentProps.fitInputWidth) {
+        style.width = `${Math.round(rect.width)}px`
+      }
+
+      if (componentProps.placement === 'top') {
+        style.bottom = `${Math.round(Math.max(8, window.innerHeight - rect.top + componentProps.offset))}px`
+        style.maxHeight = `${Math.round(Math.min(268, Math.max(96, rect.top - componentProps.offset - 8)))}px`
+      } else {
+        style.top = `${Math.round(rect.bottom + componentProps.offset)}px`
+        style.maxHeight = `${Math.round(Math.min(268, Math.max(96, window.innerHeight - rect.bottom - componentProps.offset - 8)))}px`
+      }
+    }
+  } else if (componentProps.placement === 'top') {
+    style.top = 'auto'
+    style.bottom = `calc(100% + ${componentProps.offset}px)`
+  } else {
+    style.top = `calc(100% + ${componentProps.offset}px)`
   }
 
-  if (componentProps.fitInputWidth) {
+  if (componentProps.fitInputWidth && !componentProps.teleported) {
     style.width = '100%'
   }
 
@@ -650,6 +683,7 @@ watch(isOpen, visible => {
 
   if (visible) {
     nextTick(() => {
+      updateDropdownPosition()
       ensureHighlightedOption()
       if (componentProps.filterable) inputRef.value?.focus()
     })
@@ -861,6 +895,7 @@ const highlightedOption = computed(() =>
 
 function openDropdown() {
   if (componentProps.disabled || isOpen.value) return
+  updateDropdownPosition()
   isOpen.value = true
 }
 
@@ -936,13 +971,26 @@ function handleFocusIn(event: FocusEvent) {
 function handleFocusOut(event: FocusEvent) {
   requestAnimationFrame(() => {
     if (rootRef.value?.contains(document.activeElement)) return
+    if (dropdownRef.value?.contains(document.activeElement)) return
     emit('blur', event)
   })
 }
 
 function handlePointerDown(event: PointerEvent) {
-  if (!rootRef.value?.contains(event.target as Node)) {
-    closeDropdown()
+  const target = event.target as Node
+  if (rootRef.value?.contains(target) || dropdownRef.value?.contains(target)) return
+  closeDropdown()
+}
+
+function updateDropdownPosition() {
+  if (!componentProps.teleported) return
+  const rect = controlRef.value?.getBoundingClientRect()
+  if (!rect) return
+  teleportedRect.value = {
+    left: rect.left,
+    top: rect.top,
+    bottom: rect.bottom,
+    width: rect.width,
   }
 }
 
@@ -995,10 +1043,14 @@ function isNormalizedOption(value: unknown): value is SelectNormalizedOption {
 
 onMounted(() => {
   document.addEventListener('pointerdown', handlePointerDown)
+  window.addEventListener('resize', updateDropdownPosition)
+  window.addEventListener('scroll', updateDropdownPosition, true)
 })
 
 onUnmounted(() => {
   document.removeEventListener('pointerdown', handlePointerDown)
+  window.removeEventListener('resize', updateDropdownPosition)
+  window.removeEventListener('scroll', updateDropdownPosition, true)
   if (remoteTimer) clearTimeout(remoteTimer)
 })
 

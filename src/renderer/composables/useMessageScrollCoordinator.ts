@@ -1,4 +1,4 @@
-import { onUnmounted, type Ref } from 'vue'
+import { getCurrentInstance, onUnmounted, type Ref } from 'vue'
 
 export type MessageScrollMode =
   | { type: 'idle' }
@@ -110,6 +110,10 @@ export function useMessageScrollCoordinator(options: UseMessageScrollCoordinator
     }
   }
 
+  function isTail(): boolean {
+    return mode.type === 'tail'
+  }
+
   function isAnchored(): boolean {
     if (mode.type !== 'anchor') return false
     if (mode.sessionId !== options.getSessionId() || performance.now() > mode.until) {
@@ -187,11 +191,14 @@ export function useMessageScrollCoordinator(options: UseMessageScrollCoordinator
     }
   }
 
-  onUnmounted(clear)
+  if (getCurrentInstance()) {
+    onUnmounted(clear)
+  }
 
   return {
     clear,
     isAnchored,
+    isTail,
     onLayoutChange,
     setAnchor,
     setTail,

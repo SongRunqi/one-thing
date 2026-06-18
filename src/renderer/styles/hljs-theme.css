@@ -134,16 +134,16 @@
    Additions (diff)
    ============================================ */
 .hljs-addition {
-	color: var(--hg-syntax-inserted-fg, var(--hljs-string, var(--text-code-string)));
-	background-color: color-mix(in srgb, var(--color-success) 12%, transparent);
+	color: var(--hg-syntax-inserted-fg, var(--diff-add-text, var(--ui-status-success-fg, var(--hljs-string, var(--text-code-string)))));
+	background-color: var(--hg-syntax-inserted-bg, var(--diff-add-bg, var(--ui-status-success-bg, transparent)));
 }
 
 /* ============================================
    Deletions (diff)
    ============================================ */
 .hljs-deletion {
-	color: var(--hg-syntax-deleted-fg, var(--color-danger));
-	background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
+	color: var(--hg-syntax-deleted-fg, var(--diff-del-text, var(--ui-status-danger-fg, var(--text-error))));
+	background-color: var(--hg-syntax-deleted-bg, var(--diff-del-bg, var(--ui-status-danger-bg, transparent)));
 }
 
 /* ============================================

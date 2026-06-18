@@ -293,7 +293,7 @@ const selectedToolCallModel = computed(() => {
 const toolCallModelHint = computed(() => {
   if (!selectedToolCallProvider.value) return 'Select models in Providers before choosing a tool call model.'
   if (selectedToolCallModels.value.length === 0) return 'This provider has no selected models.'
-  return 'Used asynchronously for chat naming without blocking the main response.'
+  return 'Used asynchronously for chat naming, memory background tasks, and Memory Dreaming.'
 })
 
 const toolCallThinkingEnabled = computed(() => {

@@ -9,6 +9,7 @@ import { requiresOAuth } from '../../providers/index.js'
 import { oauthManager } from '../../providers/auth/oauth-manager.js'
 import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
+import { resolveProviderApiKey } from '../../providers/env.js'
 
 /**
  * Extract detailed error information from API responses
@@ -111,8 +112,8 @@ export async function getApiKeyForProvider(providerId: string, providerConfig: P
     }
   }
 
-  // Regular provider - use API key from config
-  return providerConfig?.apiKey || null
+  // Regular provider - use manual API key, or an environment variable when configured/detected.
+  return resolveProviderApiKey(providerId, providerConfig)
 }
 
 /**
@@ -124,14 +125,14 @@ export async function resolveProviderAuth(
 ): Promise<ProviderAuthContext | null> {
   if (requiresOAuth(providerId)) {
     try {
-      return await authService.resolveProviderAuth(providerId, providerConfig?.apiKey)
+      return await authService.resolveProviderAuth(providerId, resolveProviderApiKey(providerId, providerConfig) ?? undefined)
     } catch (error) {
       console.error(`Failed to resolve OAuth credentials for ${providerId}:`, error)
       return null
     }
   }
 
-  const apiKey = providerConfig?.apiKey || ''
+  const apiKey = resolveProviderApiKey(providerId, providerConfig) || ''
   return apiKey ? { kind: 'api-key', apiKey } : null
 }
 

@@ -64,25 +64,30 @@
       </div>
     </Scrollbar>
 
-    <AssistantMessageNavRail
-      v-if="effectiveNavRailMode === 'outline'"
-      :markers="assistantOutlineMarkers"
-      :current-index="currentAssistantOutlineIndex"
-      :panel-available="hasNavPanelRoom"
-      :show-mode-switch="showNavModeToggle"
-      @navigate="navigateToAssistantOutline"
-      @switch-mode="setNavRailMode('trail')"
-    />
+    <Teleport
+      :to="props.outlineRailTarget || 'body'"
+      :disabled="!useSideOutlineRail"
+    >
+      <AssistantMessageNavRail
+        v-if="useSideOutlineRail && hasAssistantOutlineNav"
+        :markers="assistantOutlineMarkers"
+        :current-index="currentAssistantOutlineIndex"
+        :panel-available="true"
+        placement="side"
+        :show-mode-switch="false"
+        @navigate="navigateToAssistantOutline"
+      />
+    </Teleport>
 
     <UserMessageNavRail
-      v-else-if="effectiveNavRailMode === 'trail'"
+      v-if="hasUserNavTrail"
       :markers="displayNavMarkers"
       :current-index="currentUserMessageNavIndex"
       :total-count="displayNavMarkers.length"
       :panel-available="hasNavPanelRoom"
-      :show-mode-switch="showNavModeToggle"
+      placement="overlay"
+      :show-mode-switch="false"
       @navigate="navigateToUserMessage"
-      @switch-mode="setNavRailMode('outline')"
     />
 
     <Transition name="scroll-bottom-btn">
@@ -209,19 +214,20 @@ const EMPTY_BRANCHES: BranchInfo[] = []
 
 type NavMarker = UserMessageNavMarker
 type MessageScrollBehavior = 'auto' | 'instant' | 'smooth'
-type NavRailMode = 'outline' | 'trail'
 
 interface Props {
   messages: ChatMessage[]
   isLoading?: boolean
   sessionId?: string
   layoutTransitioning?: boolean
+  outlineRailTarget?: HTMLElement | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
   isLoading: false,
   sessionId: undefined,
   layoutTransitioning: false,
+  outlineRailTarget: null,
 })
 
 const emit = defineEmits<{
@@ -242,7 +248,6 @@ const messageListContentRef = ref<HTMLElement | null>(null)
 const bottomSentinelRef = ref<HTMLElement | null>(null)
 const navMarkers = ref<NavMarker[]>([])
 const assistantOutlineMarkers = ref<AssistantMessageOutlineMarker[]>([])
-const preferredNavRailMode = ref<NavRailMode>('outline')
 const hasNavPanelRoom = ref(false)
 const showScrollToBottomButton = ref(false)
 const searchHighlightedMessageId = ref<string | null>(null)
@@ -445,7 +450,7 @@ let followNudgeFrame: number | null = null
 
 function scheduleFollowNudge(source: string) {
   void source
-  if (isFollowing.value && hasActiveStream.value) {
+  if ((isFollowing.value && hasActiveStream.value) || scrollCoordinator.isTail()) {
     scrollCoordinator.onLayoutChange()
     updateScrollToBottomButton()
     return
@@ -520,7 +525,7 @@ watch(
       scheduleNavPanelRoomUpdate()
       scheduleAssistantOutlineUpdate()
       scheduleMeasurementRefresh()
-      if (hasActiveStream.value || scrollCoordinator.isAnchored()) {
+      if (hasActiveStream.value || scrollCoordinator.isAnchored() || scrollCoordinator.isTail()) {
         scrollCoordinator.onLayoutChange()
       }
       if (!scrollCoordinator.isAnchored()) {
@@ -579,19 +584,7 @@ const displayNavMarkers = computed<NavMarker[]>(() => {
 
 const hasAssistantOutlineNav = computed(() => assistantOutlineMarkers.value.length > 1)
 const hasUserNavTrail = computed(() => displayNavMarkers.value.length > 1)
-const showNavModeToggle = computed(() => hasAssistantOutlineNav.value && hasUserNavTrail.value)
-
-const effectiveNavRailMode = computed<NavRailMode | null>(() => {
-  if (preferredNavRailMode.value === 'outline' && hasAssistantOutlineNav.value) return 'outline'
-  if (preferredNavRailMode.value === 'trail' && hasUserNavTrail.value) return 'trail'
-  if (hasAssistantOutlineNav.value) return 'outline'
-  if (hasUserNavTrail.value) return 'trail'
-  return null
-})
-
-function setNavRailMode(mode: NavRailMode) {
-  preferredNavRailMode.value = mode
-}
+const useSideOutlineRail = computed(() => Boolean(props.outlineRailTarget))
 
 function updateNavPanelRoom() {
   const scroller = messageListRef.value
@@ -1286,8 +1279,11 @@ function updateVisibleUserMessageIndex(options: { allowAnchored?: boolean } = {}
 function handleScroll() {
   follow.checkReattach()
   const el = messageListRef.value
-  if (el && hasActiveStream.value && isFollowing.value && el.scrollHeight - el.scrollTop - el.clientHeight <= 2) {
-    scrollCoordinator.setTail()
+  if (el) {
+    const isAtTail = el.scrollHeight - el.scrollTop - el.clientHeight <= 2
+    if (isAtTail && !scrollCoordinator.isAnchored() && (hasActiveStream.value ? isFollowing.value : true)) {
+      scrollCoordinator.setTail()
+    }
   }
   updateScrollToBottomButton()
   scheduleNavMarkerUpdate()
@@ -1859,7 +1855,6 @@ defineExpose({
 
   prepareForSwitch: () => {
     scrollCoordinator.clear()
-    scrollCoordinator.writeScrollTop(0)
     follow.prepareForSwitch()
   },
 
@@ -1995,7 +1990,7 @@ defineExpose({
 .message-list {
   flex: 1;
   overflow-anchor: auto;
-  padding: 28px 28px 10px;
+  padding: 0;
   background: transparent;
   position: relative;
 }
@@ -2072,7 +2067,7 @@ defineExpose({
   --content-heading-bottom-gap: 3px;
   --content-heading-line-height-px: 18px;
   gap: 6px;
-  padding: 18px 16px 8px;
+  padding: 0;
 }
 
 .message-list.density-comfortable {
@@ -2091,7 +2086,7 @@ defineExpose({
   --content-heading-bottom-gap: 5px;
   --content-heading-line-height-px: 22px;
   gap: 14px;
-  padding: 28px 28px 10px;
+  padding: 0;
 }
 
 .message-list.density-spacious {
@@ -2110,12 +2105,12 @@ defineExpose({
   --content-heading-bottom-gap: 3px;
   --content-heading-line-height-px: 21px;
   gap: 24px;
-  padding: 32px 28px 14px;
+  padding: 0;
 }
 /* Responsive styles */
 @media (max-width: 768px) {
   .message-list {
-    padding: 14px 12px;
+    padding: 0;
     gap: 12px;
   }
 
@@ -2139,7 +2134,7 @@ defineExpose({
 
 @media (max-width: 480px) {
   .message-list {
-    padding: 10px 8px;
+    padding: 0;
     gap: 10px;
   }
 

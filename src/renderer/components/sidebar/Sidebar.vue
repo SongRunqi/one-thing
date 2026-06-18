@@ -2,6 +2,8 @@
   <aside
     :class="['sidebar', { collapsed, floating, 'floating-closing': floatingClosing }]"
     :style="sidebarStyle"
+    @mouseenter="handleMouseEnter"
+    @mouseleave="handleMouseLeave"
   >
     <Space
       as="div"
@@ -42,6 +44,7 @@
               :index="panelMenuIndex(action.id)"
               :title="action.label"
               class="workspace-action"
+              :style="workspaceActionStyle(action.categorySlot)"
             >
               <template #icon>
                 <component
@@ -129,6 +132,8 @@ const emit = defineEmits<{
   'create-new-chat': []
   'open-search': []
   'open-settings': []
+  'request-floating-keep-open': []
+  'request-floating-close': []
 }>()
 
 // Stores
@@ -136,10 +141,10 @@ const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
 
 const workspaceActions = [
-  { id: 'memory' as const, label: 'Memory', icon: Brain },
-  { id: 'media' as const, label: 'Media', icon: Images },
-  { id: 'agents' as const, label: 'Agents', icon: Bot },
-  { id: 'tasks' as const, label: 'Tasks', icon: CalendarClock },
+  { id: 'memory' as const, label: 'Memory', icon: Brain, categorySlot: 1 },
+  { id: 'media' as const, label: 'Media', icon: Images, categorySlot: 2 },
+  { id: 'agents' as const, label: 'Agents', icon: Bot, categorySlot: 3 },
+  { id: 'tasks' as const, label: 'Tasks', icon: CalendarClock, categorySlot: 4 },
 ]
 
 // Composable
@@ -168,19 +173,19 @@ const contextMenu = ref({
 
 // Computed sidebar style
 const sidebarStyle = computed(() => {
-  // When floating, force width to 0 (the CSS .floating class handles the visual width)
+  const baseStyle = {
+    '--sidebar-docked-width': `${props.width}px`,
+  }
+
   if (floating.value || floatingClosing.value) {
     return {
-      '--sidebar-docked-width': `${props.width}px`,
-      width: '0',
-      maxWidth: '0',
+      ...baseStyle,
       transition: 'none'
     }
   }
 
-  // Normal mode
   return {
-    '--sidebar-docked-width': `${props.width}px`,
+    ...baseStyle,
     transition: props.noTransition ? 'none' : undefined
   }
 })
@@ -215,6 +220,12 @@ function sessionMenuIndex(sessionId: string): string {
   return `session:${sessionId}`
 }
 
+function workspaceActionStyle(categorySlot: number): Record<string, string> {
+  return {
+    '--workspace-action-icon-color': `var(--ui-category-${categorySlot}-icon)`,
+  }
+}
+
 function handleSidebarMenuSelect(index: string) {
   if (index.startsWith('panel:')) {
     emit('open-workspace-panel', index.slice('panel:'.length) as WorkspacePanel)
@@ -225,6 +236,16 @@ function handleSidebarMenuSelect(index: string) {
     if (editingSessionId.value) return
     emit('select-session', index.slice('session:'.length))
   }
+}
+
+function handleMouseEnter() {
+  if (!props.floating && !props.floatingClosing) return
+  emit('request-floating-keep-open')
+}
+
+function handleMouseLeave() {
+  if (!props.floating || props.floatingClosing) return
+  emit('request-floating-close')
 }
 
 // Overflow change handler
@@ -316,6 +337,8 @@ onUnmounted(() => {
 <style scoped>
 .sidebar {
   --sidebar-docked-width: 300px;
+  --sidebar-floating-gutter: 6px;
+  --sidebar-floating-safe-zone: 36px;
   --sidebar-bg: var(
     --ui-sidebar-surface-bg,
     var(--ui-surface-app-bg, var(--bg-app, var(--bg)))
@@ -339,24 +362,34 @@ onUnmounted(() => {
   position: fixed;
   left: 0;
   top: 0;
-  width: 300px !important;
-  max-width: 300px !important;
+  width: calc(
+    var(--sidebar-docked-width)
+    + var(--sidebar-floating-gutter)
+    + var(--sidebar-floating-gutter)
+    + var(--sidebar-floating-safe-zone)
+  ) !important;
+  max-width: calc(
+    var(--sidebar-docked-width)
+    + var(--sidebar-floating-gutter)
+    + var(--sidebar-floating-gutter)
+    + var(--sidebar-floating-safe-zone)
+  ) !important;
   height: 100%;
   z-index: 650;
   background: transparent;
   animation: slideInLeft 0.2s cubic-bezier(0.32, 0.72, 0, 1) forwards;
   overflow: visible;
   transition: none;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 /* Floating mode only needs height adjustment since base styles already have margin */
 .sidebar.floating .sidebar-content {
-  width: auto;
-  min-width: 0;
-  max-width: none;
-  height: calc(100% - 12px);
-  margin: 6px;
+  width: var(--sidebar-docked-width);
+  min-width: var(--sidebar-docked-width);
+  max-width: var(--sidebar-docked-width);
+  height: calc(100% - var(--sidebar-floating-gutter) - var(--sidebar-floating-gutter));
+  margin: var(--sidebar-floating-gutter);
   padding-bottom: 0;
   background: var(--sidebar-bg);
   border: 1px solid color-mix(in srgb, var(--ui-sidebar-border-border, var(--ui-border-subtle-border, var(--border-subtle, var(--border)))) 72%, transparent);
@@ -436,7 +469,7 @@ onUnmounted(() => {
   border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item)));
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-fg, var(--text-sidebar-item)));
   font-size: 13px;
   -webkit-app-region: no-drag;
   transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -444,35 +477,35 @@ onUnmounted(() => {
 
 .workspace-action :deep(.app-menu-item:hover),
 .workspace-action :deep(.app-menu-item:focus-visible) {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent))) 10%, transparent);
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
   transform: translateX(2px);
   box-shadow: none;
 }
 
 .workspace-action :deep(.app-menu-item:hover .app-menu-item-icon),
 .workspace-action :deep(.app-menu-item:focus-visible .app-menu-item-icon) {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent)));
   transform: scale(1.1);
   opacity: 1;
 }
 
 .workspace-action.is-active :deep(.app-menu-item) {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent))) 13%, transparent);
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-active-fg, var(--text-sidebar-item)));
   font-weight: 600;
   transform: translateX(2px);
 }
 
 .workspace-action :deep(.app-menu-item-icon) {
   flex: 0 0 auto;
-  color: currentColor;
-  opacity: 0.82;
+  color: var(--workspace-action-icon-color, currentColor);
+  opacity: 0.9;
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.25s ease, opacity 0.25s ease;
 }
 
 .workspace-action.is-active :deep(.app-menu-item-icon) {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent)));
   transform: scale(1.1);
   opacity: 1;
 }

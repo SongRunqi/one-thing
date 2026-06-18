@@ -91,12 +91,12 @@
 /* Ghost Danger Button (for dialogs) */
 .btn.danger-ghost {
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, var(--danger)) 40%, transparent);
+  border: 1px solid var(--ui-status-danger-border, var(--danger));
   color: var(--ui-status-danger-fg, var(--danger));
 }
 
 .btn.danger-ghost:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--danger)) 10%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
   border-color: var(--ui-status-danger-fg, var(--danger));
 }
 
@@ -279,8 +279,8 @@
 
 .error-message {
   padding: 12px;
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--danger)) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, var(--danger)) 30%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
+  border: 1px solid var(--ui-status-danger-border, var(--danger));
   border-radius: var(--radius-sm);
   color: var(--ui-status-danger-fg, var(--danger));
   font-size: var(--type-label-size);
@@ -290,8 +290,8 @@
 
 .success-message {
   padding: 12px;
-  background: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success, var(--accent))) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--ui-status-success-fg, var(--color-success, var(--accent))) 30%, transparent);
+  background: var(--ui-status-success-bg, transparent);
+  border: 1px solid var(--ui-status-success-border, var(--color-success, var(--accent)));
   border-radius: var(--radius-sm);
   color: var(--ui-status-success-fg, var(--color-success, var(--accent)));
   font-size: var(--type-label-size);
@@ -399,7 +399,7 @@
 }
 
 .toast.success {
-  border-color: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success, var(--accent))) 30%, transparent);
+  border-color: var(--ui-status-success-border, var(--color-success, var(--accent)));
 }
 
 .toast.success svg {
@@ -407,7 +407,7 @@
 }
 
 .toast.error {
-  border-color: color-mix(in srgb, var(--ui-status-danger-fg, var(--danger)) 30%, transparent);
+  border-color: var(--ui-status-danger-border, var(--danger));
 }
 
 .toast.error svg {

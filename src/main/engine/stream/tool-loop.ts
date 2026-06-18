@@ -4,7 +4,7 @@
  */
 
 import * as store from '../../store.js'
-import type { SkillDefinition, ToolCall, ChatMessage, ContentPart } from '../../../shared/ipc.js'
+import type { SkillDefinition, ToolCall, ChatMessage, ContentPart, ToolSettings } from '../../../shared/ipc.js'
 import type { AIMessageContent, ToolChatMessage } from '../../providers/index.js'
 import {
   streamChatResponseWithTools,
@@ -128,22 +128,24 @@ function getTurnCodexEncryptedReasoning(turnState: TurnState): string[] {
     .map((part) => part.encryptedReasoning as string)
 }
 
-function providerUsesCodexOAuth(ctx: StreamContext): boolean {
-  const providerConfig = ctx.providerConfig as any
-  return providerConfig.authContext?.kind === 'oauth' ||
-    typeof providerConfig.oauthToken?.accessToken === 'string'
+function providerConfigUsesCodexOAuth(providerConfig: unknown): boolean {
+  const config = providerConfig as any
+  return config?.authContext?.kind === 'oauth' ||
+    typeof config?.oauthToken?.accessToken === 'string'
 }
 
-async function getCodexNativeToolsForTurn(
-  ctx: StreamContext,
-  supportsTools: boolean,
-): Promise<string[]> {
-  if (ctx.providerId !== 'codex') return []
-  if (!ctx.toolSettings?.enableToolCalls) return []
-  if (!supportsTools) return []
-  if (!providerUsesCodexOAuth(ctx)) return []
+export async function getCodexNativeToolsForConfig(options: {
+  providerId: string
+  providerConfig: { model?: string; authContext?: unknown; oauthToken?: unknown }
+  toolSettings?: ToolSettings
+  supportsTools: boolean
+}): Promise<string[]> {
+  if (options.providerId !== 'codex') return []
+  if (!options.toolSettings?.enableToolCalls) return []
+  if (!options.supportsTools) return []
+  if (!providerConfigUsesCodexOAuth(options.providerConfig)) return []
 
-  const modelInfo = await modelRegistry.getModelById(ctx.providerConfig.model, ctx.providerId)
+  const modelInfo = await modelRegistry.getModelById(options.providerConfig.model || '', options.providerId)
   const codexMetadata = modelInfo?.providerMetadata?.codex as Record<string, unknown> | undefined
   const nativeTools = Array.isArray(codexMetadata?.nativeTools)
     ? codexMetadata.nativeTools.filter((tool): tool is string => typeof tool === 'string')
@@ -159,6 +161,25 @@ async function getCodexNativeToolsForTurn(
   return !modelInfo || inputModalities?.includes('image')
     ? [CODEX_NATIVE_IMAGE_GENERATION_TOOL]
     : []
+}
+
+function providerUsesCodexOAuth(ctx: StreamContext): boolean {
+  const providerConfig = ctx.providerConfig as any
+  return providerConfig.authContext?.kind === 'oauth' ||
+    typeof providerConfig.oauthToken?.accessToken === 'string'
+}
+
+async function getCodexNativeToolsForTurn(
+  ctx: StreamContext,
+  supportsTools: boolean,
+): Promise<string[]> {
+  if (!providerUsesCodexOAuth(ctx)) return []
+  return getCodexNativeToolsForConfig({
+    providerId: ctx.providerId,
+    providerConfig: ctx.providerConfig,
+    toolSettings: ctx.toolSettings,
+    supportsTools,
+  })
 }
 
 function getLatestUserPrompt(messages: ToolChatMessage[]): string {
@@ -321,6 +342,7 @@ async function createNextAssistantTurn(
     id: assistantMessageId,
     role: 'assistant',
     model: ctx.providerConfig.model,
+    provider: ctx.providerId,
     content: '',
     timestamp: Date.now(),
     isStreaming: true,
@@ -1342,7 +1364,7 @@ export async function executeStreamGeneration(
       console.log(`[Chat] Loading skills for session working directory: ${sessionWorkingDir}`)
     }
 
-    // Set init context for async tools (like SkillTool)
+    // Set init context for async tools
     if (ctx.toolSettings?.enableToolCalls) {
       setInitContext({
         skills: enabledSkills.map(s => ({

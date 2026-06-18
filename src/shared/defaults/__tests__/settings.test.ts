@@ -147,10 +147,17 @@ describe('soul memory settings defaults', () => {
     expect(settings.general.soulMemory?.embeddings?.providerId).toBe('auto')
     expect(settings.general.soulMemory?.embeddings?.apiKey).toBe('')
     expect(settings.general.soulMemory?.memoryFlush?.enabled).toBe(true)
+    expect(settings.general.soulMemory?.capture).toEqual({
+      enabled: true,
+      mode: 'auto',
+      maxInputChars: 6000,
+      timeoutMs: 12000,
+    })
     expect(settings.general.soulMemory?.review?.enabled).toBe(true)
     expect(settings.general.soulMemory?.review?.interval).toBe(10)
     expect(settings.general.soulMemory?.dreaming?.enabled).toBe(false)
     expect(settings.general.soulMemory?.dreaming?.frequency).toBe('0 3 * * *')
+    expect(settings.general.soulMemory?.dreaming?.sources).toEqual(['daily'])
     expect(settings.general.soulMemory?.dreaming?.lookbackDays).toBe(30)
     expect(settings.general.soulMemory?.dreaming?.maxPromotions).toBe(10)
     expect(settings.general.soulMemory?.dreaming?.timeoutMs).toBe(60000)
@@ -177,6 +184,16 @@ describe('soul memory settings defaults', () => {
           memoryFlush: {
             maxInputChars: 1,
           },
+          capture: {
+            mode: 'ask',
+            targetPolicy: 'hybrid',
+            policy: 'aggressive',
+            maxInputChars: 1,
+            timeoutMs: 999999,
+            maxCandidates: 999,
+            longTermMinConfidence: 2,
+            dailyMinConfidence: -1,
+          },
           review: {
             interval: 999,
             maxInputChars: 1,
@@ -186,6 +203,8 @@ describe('soul memory settings defaults', () => {
           },
           dreaming: {
             frequency: '*/15 * * * *',
+            model: 'legacy-dream-provider/legacy-dream-model',
+            sources: ['sessions', 'short-term', 'recall'],
             lookbackDays: 999,
             maxSourceFiles: 0,
             maxInputChars: 1,
@@ -214,12 +233,25 @@ describe('soul memory settings defaults', () => {
     expect(settings.general.soulMemory?.search?.chunkOverlap).toBe(119)
     expect(settings.general.soulMemory?.search?.maxResults).toBe(20)
     expect(settings.general.soulMemory?.memoryFlush?.maxInputChars).toBe(2000)
+    expect(settings.general.soulMemory?.capture).toEqual({
+      enabled: true,
+      mode: 'explicit-only',
+      maxInputChars: 1000,
+      timeoutMs: 60000,
+    })
+    expect(settings.general.soulMemory?.capture).not.toHaveProperty('targetPolicy')
+    expect(settings.general.soulMemory?.capture).not.toHaveProperty('policy')
+    expect(settings.general.soulMemory?.capture).not.toHaveProperty('maxCandidates')
+    expect(settings.general.soulMemory?.capture).not.toHaveProperty('longTermMinConfidence')
+    expect(settings.general.soulMemory?.capture).not.toHaveProperty('dailyMinConfidence')
     expect(settings.general.soulMemory?.review?.interval).toBe(200)
     expect(settings.general.soulMemory?.review?.maxInputChars).toBe(4000)
     expect(settings.general.soulMemory?.review?.timeoutMs).toBe(1000)
     expect(settings.general.soulMemory?.review?.maxCandidates).toBe(20)
     expect(settings.general.soulMemory?.review?.minConfidence).toBe(1)
     expect(settings.general.soulMemory?.dreaming?.frequency).toBe('*/15 * * * *')
+    expect(settings.general.soulMemory?.dreaming?.model).toBe('')
+    expect(settings.general.soulMemory?.dreaming?.sources).toEqual(['daily'])
     expect(settings.general.soulMemory?.dreaming?.lookbackDays).toBe(365)
     expect(settings.general.soulMemory?.dreaming?.maxSourceFiles).toBe(1)
     expect(settings.general.soulMemory?.dreaming?.maxInputChars).toBe(2000)

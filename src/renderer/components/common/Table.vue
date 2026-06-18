@@ -1791,19 +1791,19 @@ defineExpose({
 }
 
 .app-table-row.is-success .app-table-cell {
-  background: color-mix(in srgb, var(--ui-status-success-fg, #10b981) 10%, var(--app-table-bg));
+  background: var(--ui-status-success-bg, var(--app-table-bg));
 }
 
 .app-table-row.is-info .app-table-cell {
-  background: color-mix(in srgb, var(--ui-status-info-fg, #3b82f6) 10%, var(--app-table-bg));
+  background: var(--ui-status-info-bg, var(--app-table-bg));
 }
 
 .app-table-row.is-warning .app-table-cell {
-  background: color-mix(in srgb, var(--ui-status-warning-fg, #f59e0b) 12%, var(--app-table-bg));
+  background: var(--ui-status-warning-bg, var(--app-table-bg));
 }
 
 .app-table-row.is-danger .app-table-cell {
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, var(--app-table-bg));
+  background: var(--ui-status-danger-bg, var(--app-table-bg));
 }
 
 .app-table-cell,

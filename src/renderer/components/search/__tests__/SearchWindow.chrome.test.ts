@@ -193,4 +193,32 @@ describe('SearchWindow reduced chrome layout', () => {
     expect(guides.classes()).toContain('is-default-height')
     expect(wrapper.find('.resize-grip').exists()).toBe(true)
   })
+
+  it('confirms the selected result on normal Enter', async () => {
+    const state = installSearchWindowState({
+      results: [
+        createResult({ id: 'action:1', type: 'action', title: 'Open settings', actionId: 'settings:open' }),
+      ],
+    })
+    const wrapper = await mountSearchWindow()
+
+    await wrapper.find('input.search-input').trigger('keydown', { key: 'Enter' })
+
+    expect(state.searchExecuteAction).toHaveBeenCalledWith('settings:open')
+  })
+
+  it('does not confirm the selected result when Enter commits IME composition', async () => {
+    const state = installSearchWindowState({
+      results: [
+        createResult({ id: 'action:1', type: 'action', title: 'Open settings', actionId: 'settings:open' }),
+      ],
+    })
+    const wrapper = await mountSearchWindow()
+    const input = wrapper.find('input.search-input')
+
+    await input.trigger('compositionstart')
+    await input.trigger('keydown', { key: 'Enter' })
+
+    expect(state.searchExecuteAction).not.toHaveBeenCalled()
+  })
 })

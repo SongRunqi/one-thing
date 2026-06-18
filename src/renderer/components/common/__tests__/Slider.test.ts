@@ -171,7 +171,7 @@ describe('Slider', () => {
         vertical: true,
         height: '240px',
         placement: 'right',
-        formatTooltip: value => `${value}%`,
+        formatTooltip: (value: number) => `${value}%`,
       },
     })
 

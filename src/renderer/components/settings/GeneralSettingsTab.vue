@@ -74,7 +74,7 @@
               </Button>
             </span>
           </template>
-          <NumberStepper
+          <InputNumber
             :model-value="currentFontSize"
             :min="minFontSize"
             :max="maxFontSize"
@@ -104,7 +104,7 @@
           label="Auto compact threshold"
           description="Compact older chat history when context usage reaches this percentage."
         >
-          <NumberStepper
+          <InputNumber
             :model-value="contextCompactThreshold"
             :min="50"
             :max="100"
@@ -120,7 +120,7 @@
           label="Keep recent turns"
           description="Keep this many recent turns verbatim before summarizing older context."
         >
-          <NumberStepper
+          <InputNumber
             :model-value="contextCompactKeepRecentTurns"
             :min="1"
             :max="20"
@@ -320,8 +320,8 @@ import { RotateCcw } from 'lucide-vue-next'
 import type { AppSettings, TypographyDensity } from '@/types'
 import type { DailyNoteSettings } from '@shared/ipc/settings'
 import type { TodoPlanSettings } from '@shared/ipc/todo-plan'
+import InputNumber from '@/components/common/InputNumber.vue'
 import ThemeSelectorPanel from './ThemeSelectorPanel.vue'
-import NumberStepper from './NumberStepper.vue'
 import { getFontsByLang, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
 import {
   SettingRow,
@@ -579,53 +579,9 @@ async function chooseTodoPlanDirectory() {
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
-.number-stepper {
+.app-input-number {
   flex-shrink: 0;
   justify-self: end;
-  display: inline-grid;
-  grid-template-columns: 44px minmax(72px, auto) 44px;
-  min-height: 34px;
-  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
-}
-
-.stepper-btn {
-  border: 0;
-  background: transparent;
-  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
-  font: inherit;
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.stepper-btn:not(:last-child) {
-  border-right: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
-}
-
-.stepper-btn:last-child {
-  border-left: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
-}
-
-.stepper-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.stepper-btn:hover:not(:disabled) {
-  background: var(--ui-state-hover-bg, var(--hover));
-}
-
-.stepper-value {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 72px;
-  padding: 0 12px;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
-  font-size: 17px;
-  font-weight: 650;
 }
 
 .prefer-select {
@@ -1121,7 +1077,7 @@ async function chooseTodoPlanDirectory() {
     max-width: none;
   }
 
-  .number-stepper {
+  .app-input-number {
     justify-self: start;
   }
 

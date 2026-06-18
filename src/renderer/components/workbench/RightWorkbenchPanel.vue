@@ -11,7 +11,7 @@
     @keydown.esc="pickerOpen = false"
   >
     <div
-      v-if="pickerOpen"
+      v-if="pickerOpen && openTabs.length"
       class="workbench-tab-picker"
       @mousedown.stop
     >
@@ -20,6 +20,7 @@
         :key="option.type"
         unstyled
         class="picker-option"
+        :style="workbenchToolStyle(option.categorySlot)"
         @click="addWorkbenchTab(option.type)"
       >
         <component
@@ -63,7 +64,10 @@
         lazy
       >
         <template #label>
-          <span class="workbench-tab-label">
+          <span
+            class="workbench-tab-label"
+            :style="workbenchToolStyle(tabCategorySlot(tab.type))"
+          >
             <component
               :is="tabIcon(tab.type)"
               :size="14"
@@ -181,18 +185,24 @@
 
     <div
       v-else
-      class="workbench-empty-state"
+      class="workbench-empty-state empty-root"
     >
       <Button
+        v-for="option in tabOptions"
+        :key="option.type"
         unstyled
-        class="empty-add"
-        @click="togglePicker"
+        class="empty-action"
+        :style="workbenchToolStyle(option.categorySlot)"
+        :title="option.title"
+        @click="addWorkbenchTab(option.type)"
       >
-        <Plus
-          :size="16"
+        <component
+          :is="option.icon"
+          :size="15"
           :stroke-width="2"
           aria-hidden="true"
         />
+        <span>{{ option.title }}</span>
       </Button>
     </div>
   </Container>
@@ -200,7 +210,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type Component } from 'vue'
-import { ArrowRight, FileText, Files, Globe2, Play, Plus, Terminal, X } from 'lucide-vue-next'
+import { ArrowRight, FileText, Files, Globe2, Play, Terminal, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import Tabs from '@/components/common/Tabs.vue'
@@ -208,6 +218,7 @@ import TabPane from '@/components/common/TabPane.vue'
 import EditorWorkbench from '@/components/editor/EditorWorkbench.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import type { TabPaneName } from '@/components/common/tabs'
+import type { ContextVariable } from '@/types'
 
 type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser'
 
@@ -228,6 +239,7 @@ interface TerminalLine {
 const props = defineProps<{
   sessionId: string
   workspaceRoot?: string
+  workspaceRoots?: string[]
 }>()
 
 defineEmits<{
@@ -238,16 +250,19 @@ const tabOptions: Array<{
   type: WorkbenchTabType
   title: string
   icon: Component
+  categorySlot: number
 }> = [
-  { type: 'files', title: 'Files', icon: Files },
-  { type: 'terminal', title: 'Terminal', icon: Terminal },
-  { type: 'browser', title: 'Browser', icon: Globe2 },
+  { type: 'files', title: 'Files', icon: Files, categorySlot: 5 },
+  { type: 'terminal', title: 'Terminal', icon: Terminal, categorySlot: 6 },
+  { type: 'browser', title: 'Browser', icon: Globe2, categorySlot: 7 },
 ]
 
 const pickerOpen = ref(false)
 const openTabs = ref<WorkbenchTab[]>([])
 const activeTabId = ref('')
 const filesWorkspaceRoot = ref('')
+const variableWorkspaceRoots = ref<string[]>([])
+const noteWorkspaceRoots = ref<string[]>([])
 const terminalInput = ref('')
 const terminalBusy = ref(false)
 const terminalOutputRef = ref<HTMLElement | null>(null)
@@ -255,9 +270,17 @@ const terminalLines = ref<TerminalLine[]>([])
 const browserInput = ref('localhost:3000')
 const browserUrl = ref('')
 let terminalLineId = 0
+let variableRequestId = 0
+
+const NOTE_ROOT_VARIABLE_NAMES = new Set(['ai_note_dir', 'user_note_dir', 'work_note_dir'])
 
 const editorWorkspace = useEditorWorkspace()
-const workspaceRoot = computed(() => filesWorkspaceRoot.value || props.workspaceRoot || '')
+const configuredWorkspaceRoots = computed(() => uniquePaths([
+  ...variableWorkspaceRoots.value,
+  ...(props.workspaceRoots || []),
+  props.workspaceRoot,
+]))
+const workspaceRoot = computed(() => filesWorkspaceRoot.value || configuredWorkspaceRoots.value[0] || '')
 
 function togglePicker() {
   pickerOpen.value = !pickerOpen.value
@@ -302,9 +325,22 @@ function tabIcon(type: WorkbenchTabType): Component {
   return Files
 }
 
+function tabCategorySlot(type: WorkbenchTabType): number {
+  if (type === 'terminal') return 6
+  if (type === 'browser') return 7
+  return 5
+}
+
+function workbenchToolStyle(categorySlot: number): Record<string, string> {
+  return {
+    '--workbench-tool-icon-color': `var(--ui-category-${categorySlot}-icon)`,
+  }
+}
+
 function normalizePath(path: string): string {
-  if (path === '/') return '/'
-  return path.replace(/\/+$/, '')
+  const trimmed = path.trim()
+  if (trimmed === '/') return '/'
+  return trimmed.replace(/\/+$/, '')
 }
 
 function parentDir(filePath: string): string {
@@ -322,17 +358,69 @@ function isPathInsideRoot(filePath: string, root: string): boolean {
   return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`)
 }
 
+function uniquePaths(paths: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const path of paths) {
+    if (!path) continue
+    const normalized = normalizePath(path)
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    result.push(normalized)
+  }
+  return result
+}
+
+function findContainingRoot(filePath: string, roots: string[]): string {
+  return roots.find(root => isPathInsideRoot(filePath, root)) || ''
+}
+
+function rootsFromWorkdirVariable(variable?: ContextVariable): string[] {
+  if (!variable) return []
+  const values = Array.isArray(variable.values) && variable.values.length > 0
+    ? variable.values
+    : [variable.value]
+  return uniquePaths(values)
+}
+
+function applyVariableRoots(variables: ContextVariable[]) {
+  const workdirVariable = variables.find(variable => variable.name === 'workdir')
+  variableWorkspaceRoots.value = rootsFromWorkdirVariable(workdirVariable)
+  noteWorkspaceRoots.value = uniquePaths(
+    variables
+      .filter(variable => NOTE_ROOT_VARIABLE_NAMES.has(variable.name))
+      .map(variable => variable.value),
+  )
+}
+
+async function refreshVariableRoots(): Promise<void> {
+  const sessionId = props.sessionId
+  if (!sessionId || !window.electronAPI?.listVariables) return
+
+  const requestId = ++variableRequestId
+  try {
+    const response = await window.electronAPI.listVariables(sessionId)
+    if (requestId !== variableRequestId || sessionId !== props.sessionId) return
+    if (!response.success || !response.variables) return
+    applyVariableRoots(response.variables)
+  } catch {
+    // Variables are an enhancement for root detection; props still provide the project roots.
+  }
+}
+
 function resolveFileWorkspaceRoot(filePath: string): string {
-  if (filesWorkspaceRoot.value && isPathInsideRoot(filePath, filesWorkspaceRoot.value)) {
-    return filesWorkspaceRoot.value
-  }
-  if (props.workspaceRoot && isPathInsideRoot(filePath, props.workspaceRoot)) {
-    return props.workspaceRoot
-  }
+  const noteRoot = findContainingRoot(filePath, noteWorkspaceRoots.value)
+  if (noteRoot) return noteRoot
+
+  const projectRoot = findContainingRoot(filePath, configuredWorkspaceRoots.value)
+  if (projectRoot) return projectRoot
+
+  if (filesWorkspaceRoot.value && isPathInsideRoot(filePath, filesWorkspaceRoot.value)) return filesWorkspaceRoot.value
   return parentDir(filePath)
 }
 
 async function openFile(filePath: string) {
+  await refreshVariableRoots()
   const root = resolveFileWorkspaceRoot(filePath)
   filesWorkspaceRoot.value = root
   const existing = openTabs.value.find(tab => tab.type === 'file' && tab.filePath === filePath)
@@ -365,6 +453,14 @@ watch(activeTabId, id => {
     .catch(() => {})
     .then(() => editorWorkspace.openFile(tab.filePath!))
 })
+
+watch(() => props.sessionId, () => {
+  filesWorkspaceRoot.value = ''
+  variableWorkspaceRoots.value = []
+  noteWorkspaceRoots.value = []
+  variableRequestId += 1
+  void refreshVariableRoots()
+}, { immediate: true })
 
 function pushTerminalLine(kind: TerminalLine['kind'], text: string) {
   terminalLineId += 1
@@ -440,6 +536,32 @@ defineExpose({
   height: 100%;
   min-width: 0;
   min-height: 0;
+  --workbench-tool-card-bg: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  --workbench-tool-card-hover-bg: color-mix(
+    in srgb,
+    var(--workbench-tool-card-bg) 90%,
+    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent))) 10%
+  );
+  --workbench-tool-card-active-bg: color-mix(
+    in srgb,
+    var(--workbench-tool-card-bg) 87%,
+    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent))) 13%
+  );
+  --workbench-tool-card-border: color-mix(
+    in srgb,
+    var(--ui-border-default-border, var(--border)) 84%,
+    var(--ui-text-muted-fg, var(--muted)) 16%
+  );
+  --workbench-tool-card-hover-border: color-mix(
+    in srgb,
+    var(--workbench-tool-card-border) 76%,
+    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent))) 24%
+  );
+  --workbench-tool-card-active-border: color-mix(
+    in srgb,
+    var(--workbench-tool-card-border) 68%,
+    var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent))) 32%
+  );
   background: var(--ui-surface-panel-bg, var(--bg-panel));
   color: var(--ui-text-primary-fg, var(--text));
 }
@@ -494,6 +616,17 @@ defineExpose({
   min-width: 0;
 }
 
+.workbench-tab-label svg,
+.picker-option svg,
+.empty-action svg {
+  color: var(--workbench-tool-icon-color, currentColor);
+  opacity: 0.92;
+  transition:
+    color 0.25s ease,
+    opacity 0.25s ease,
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 .workbench-tab-label span {
   min-width: 0;
   overflow: hidden;
@@ -514,7 +647,12 @@ defineExpose({
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
 }
 
-.picker-option {
+.right-workbench .picker-option {
+  --app-button-fill: transparent;
+  --app-button-hover-fill: var(--workbench-tool-card-hover-bg);
+  --app-button-hover-border: var(--workbench-tool-card-hover-border);
+  --app-button-hover-fg: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  --app-button-hover-shadow: none;
   width: 100%;
   height: 30px;
   display: flex;
@@ -525,10 +663,30 @@ defineExpose({
   color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   text-align: left;
+  transition: background 0.14s ease, color 0.14s ease, box-shadow 0.14s ease;
 }
 
-.picker-option:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+.right-workbench .picker-option:hover {
+  background: var(--workbench-tool-card-hover-bg);
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  box-shadow: none;
+}
+
+.right-workbench .picker-option:hover svg,
+.right-workbench .picker-option:focus-visible svg,
+.right-workbench .empty-action:hover svg,
+.right-workbench .empty-action:focus-visible svg {
+  color: var(--workbench-tool-icon-color, var(--ui-accent-primary-fg, var(--accent)));
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.right-workbench .picker-option:active {
+  --app-button-hover-fill: var(--workbench-tool-card-active-bg);
+  --app-button-hover-border: var(--workbench-tool-card-active-border);
+  --app-button-hover-shadow: none;
+  background: var(--workbench-tool-card-active-bg);
+  box-shadow: none;
 }
 
 .workbench-empty-state {
@@ -542,26 +700,69 @@ defineExpose({
   font-size: 13px;
 }
 
+.workbench-empty-state.empty-root {
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
 .workbench-empty-state.compact {
   height: auto;
   flex: 1 1 auto;
 }
 
-.empty-add {
-  width: 32px;
-  height: 32px;
+.right-workbench .empty-action {
+  --app-button-fill: var(--workbench-tool-card-bg);
+  --app-button-hover-fill: var(--workbench-tool-card-hover-bg);
+  --app-button-border: var(--workbench-tool-card-border);
+  --app-button-hover-border: var(--workbench-tool-card-hover-border);
+  --app-button-hover-fg: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
+  width: min(190px, 100%);
+  height: 34px;
+  box-sizing: border-box;
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  gap: 7px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--workbench-tool-card-border);
   border-radius: 8px;
   color: var(--ui-text-muted-fg, var(--muted));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: var(--workbench-tool-card-bg);
+  font-size: 12px;
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
 }
 
-.empty-add:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+.empty-action span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.right-workbench .empty-action:hover {
+  border-color: var(--workbench-tool-card-hover-border);
+  background: var(--workbench-tool-card-hover-bg);
+  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  box-shadow: none;
+}
+
+.right-workbench .empty-action:active {
+  --app-button-hover-fill: var(--workbench-tool-card-active-bg);
+  --app-button-hover-border: var(--workbench-tool-card-active-border);
+  --app-button-hover-shadow: none;
+  border-color: var(--workbench-tool-card-active-border);
+  background: var(--workbench-tool-card-active-bg);
+  box-shadow: none;
 }
 
 .workbench-terminal,

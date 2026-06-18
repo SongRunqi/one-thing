@@ -564,7 +564,7 @@ onMounted(async () => {
 
 .prompt-notice.success {
   color: var(--ui-status-success-fg, var(--success, #1a7f45));
-  background: color-mix(in srgb, var(--ui-status-success-fg, var(--success, #1a7f45)) 10%, transparent);
+  background: var(--ui-status-success-bg, transparent);
 }
 
 .prompt-notice.error,

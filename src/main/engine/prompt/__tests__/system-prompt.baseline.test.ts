@@ -104,10 +104,10 @@ describe('system prompt baseline', () => {
     expect(result.systemPrompt).toMatchSnapshot('agent-systemPrompt')
   })
 
-  it('includes compact skill index when the skill tool is available', async () => {
+  it('includes compact skill index when skill_view is available', async () => {
     const result = await buildPrompt({
       ...baseOptions({
-        toolNames: ['read', 'skill'],
+        toolNames: ['read', 'skill_view'],
         skills: [{
           id: 'user:writing/docs',
           name: 'docs-polish',
@@ -128,6 +128,6 @@ describe('system prompt baseline', () => {
 
     expect(result.systemPrompt).toContain('# Skills')
     expect(result.systemPrompt).toContain('docs-polish [writing]: Improve documentation writing (tags=docs)')
-    expect(result.systemPrompt).toContain('action="load"')
+    expect(result.systemPrompt).toContain('skill_view(name)')
   })
 })

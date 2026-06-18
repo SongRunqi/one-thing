@@ -30,40 +30,46 @@
     <!-- Models group container -->
     <div class="settings-group">
       <div class="model-toolbar">
-        <label
+        <Input
           v-if="models.length > 0"
           class="model-search-field"
+          input-class="search-input"
+          type="search"
+          size="small"
+          :prefix-icon="Search"
+          :model-value="searchQuery"
+          placeholder="Search models"
+          aria-label="Search models"
+          @update:model-value="$emit('update:searchQuery', $event)"
         >
-          <Search :size="14" />
-          <input
-            :value="searchQuery"
-            type="text"
-            class="search-input"
-            placeholder="Search models"
-            @input="$emit('update:searchQuery', ($event.target as HTMLInputElement).value)"
-          >
-          <Button
-            v-if="searchQuery"
-            unstyled
-            class="search-clear"
-            native-type="button"
-            title="Clear search"
-            @click="$emit('update:searchQuery', '')"
-          >
-            <X :size="12" />
-          </Button>
-        </label>
+          <template #suffix>
+            <Button
+              v-if="searchQuery"
+              unstyled
+              class="search-clear"
+              native-type="button"
+              title="Clear search"
+              @click="$emit('update:searchQuery', '')"
+            >
+              <X :size="12" />
+            </Button>
+          </template>
+        </Input>
 
         <div class="add-model-row">
-          <input
+          <Input
             ref="addModelInputRef"
-            :value="newModelInput"
+            :model-value="newModelInput"
             type="text"
             class="add-model-input"
+            input-class="add-model-input-native"
+            size="small"
             placeholder="Add model ID, e.g. gpt-4o"
-            @input="$emit('update:newModelInput', ($event.target as HTMLInputElement).value)"
+            :spellcheck="false"
+            aria-label="Add model ID"
+            @update:model-value="$emit('update:newModelInput', $event)"
             @keydown.enter.prevent="submitCustomModel"
-          >
+          />
           <Button
             unstyled
             class="add-model-btn"
@@ -77,299 +83,277 @@
         </div>
       </div>
 
-      <!-- Selected models (always shown) -->
-      <div
-        v-if="selectedModelsList.length > 0 && models.length === 0"
-        class="model-list-static"
+      <VirtualTable
+        v-if="shouldShowModelTable"
+        ref="tableRef"
+        class="model-list"
+        row-key="id"
+        :data="modelTableRows"
+        :columns="modelTableColumns"
+        :height="modelTableHeight"
+        :row-height="ROW_HEIGHT"
+        :header-height="30"
+        :overscan="BUFFER"
+        :show-header="models.length > 0"
+        empty-text=""
+        :row-class-name="modelRowClassName"
+        :get-row-aria-label="modelRowAriaLabel"
+        @row-click="handleModelRowClick"
       >
-        <div
-          v-for="modelId in selectedModelsList"
-          :key="modelId"
-          :class="['model-row', 'selected', { 'is-active': modelId === activeModelId }]"
-          :title="`Click to configure ${modelId}`"
-          @click="$emit('select-active', modelId)"
-        >
+        <template #cell-select="{ row }">
           <span
-            class="model-check checked"
+            :class="['model-check', { checked: isModelSelected(row.id) }]"
             role="checkbox"
             tabindex="0"
-            aria-checked="true"
-            title="Deselect"
-            @click.stop="$emit('toggle', modelId)"
-            @keydown.space.prevent="$emit('toggle', modelId)"
-            @keydown.enter.prevent="$emit('toggle', modelId)"
+            :aria-checked="isModelSelected(row.id)"
+            :title="isModelSelected(row.id) ? 'Deselect' : 'Select'"
+            @click.stop="$emit('toggle', row.id)"
+            @keydown.space.prevent="$emit('toggle', row.id)"
+            @keydown.enter.prevent="$emit('toggle', row.id)"
           >
-            <Check :size="11" />
+            <Check
+              v-if="isModelSelected(row.id)"
+              :size="11"
+            />
           </span>
+        </template>
+
+        <template #cell-model="{ row }">
           <span class="model-identity">
-            <span class="model-primary">{{ modelId }}</span>
-            <span class="model-secondary">Selected custom model</span>
+            <span class="model-primary">{{ row.name || row.id }}</span>
+            <span
+              v-if="row.isSelectedOnly || (row.name && row.name !== row.id)"
+              class="model-secondary"
+            >{{ row.isSelectedOnly ? 'Selected custom model' : row.id }}</span>
           </span>
+        </template>
+
+        <template #cell-capabilities="{ row }">
           <span
-            v-if="modelId === activeModelId"
-            class="model-active-pill"
-          >Active</span>
-        </div>
-      </div>
-
-      <!-- Model rows (virtual scroll, shown after fetch) -->
-      <template v-if="models.length > 0">
-        <div
-          v-if="filteredModels.length > 0"
-          class="model-table-head"
-        >
-          <span />
-          <span>Model</span>
-          <span>Capabilities</span>
-          <span>Context</span>
-          <span>Output</span>
-          <span />
-        </div>
-        <div
-          v-if="filteredModels.length > 0"
-          ref="listRef"
-          class="model-list"
-          @scroll="onScroll"
-        >
-          <div :style="{ paddingTop: topPad + 'px', paddingBottom: bottomPad + 'px' }">
-            <div
-              v-for="model in visibleModels"
-              :key="model.id"
-              :class="['model-row', { selected: isModelSelected(model.id), 'is-active': model.id === activeModelId }]"
-              :title="`Click to configure ${model.id}`"
-              @click="$emit('select-active', model.id)"
+            class="model-capabilities"
+            @click.stop
+          >
+            <span
+              v-if="row.id === activeModelId"
+              class="model-active-pill"
+            >Active</span>
+            <Tooltip
+              v-if="hasVision(row)"
+              text="Image input"
             >
-              <span
-                :class="['model-check', { checked: isModelSelected(model.id) }]"
-                role="checkbox"
-                tabindex="0"
-                :aria-checked="isModelSelected(model.id)"
-                :title="isModelSelected(model.id) ? 'Deselect' : 'Select'"
-                @click.stop="$emit('toggle', model.id)"
-                @keydown.space.prevent="$emit('toggle', model.id)"
-                @keydown.enter.prevent="$emit('toggle', model.id)"
-              >
-                <Check
-                  v-if="isModelSelected(model.id)"
-                  :size="11"
-                />
-              </span>
-              <span class="model-identity">
-                <span class="model-primary">{{ model.name || model.id }}</span>
-                <span
-                  v-if="model.name && model.name !== model.id"
-                  class="model-secondary"
-                >{{ model.id }}</span>
-              </span>
-              <span
-                class="model-capabilities"
+              <Eye :size="12" />
+            </Tooltip>
+            <Tooltip
+              v-if="hasImageGeneration(row)"
+              text="Image generation"
+            >
+              <Image :size="12" />
+            </Tooltip>
+            <Tooltip
+              v-if="hasTools(row)"
+              text="Tool calling"
+            >
+              <Wrench :size="12" />
+            </Tooltip>
+            <Tooltip
+              v-if="hasReasoning(row)"
+              text="Reasoning model"
+            >
+              <Brain :size="12" />
+            </Tooltip>
+          </span>
+        </template>
+
+        <template #cell-context="{ row }">
+          <Tooltip
+            v-if="row.context_length"
+            :text="`Context window: ${row.context_length.toLocaleString()} tokens`"
+          >
+            <span class="model-ctx">
+              <ArrowDownToLine
+                :size="10"
+                class="ctx-icon"
+              />{{ formatContextLength(row.context_length) }}
+            </span>
+          </Tooltip>
+          <span
+            v-else
+            class="model-ctx"
+          >{{ formatContextLength(row.context_length) }}</span>
+        </template>
+
+        <template #cell-output="{ row }">
+          <Tooltip :text="getMaxOutputTooltip(row)">
+            <span
+              class="model-out-wrap"
+              :class="{ overridden: maxOutputs[row.id] != null }"
+              @click.stop
+            >
+              <ArrowUpFromLine
+                :size="10"
+                class="out-icon"
+              />
+              <InputNumber
+                class="model-out-stepper"
+                size="small"
+                :model-value="getMaxOutputValue(row)"
+                :min="1"
+                :max="getModelMaxLimit(row) || undefined"
+                :step="getModelMaxOutputStep(row)"
+                :aria-label="`max output for ${row.name || row.id}`"
                 @click.stop
-              >
-                <span
-                  v-if="model.id === activeModelId"
-                  class="model-active-pill"
-                >Active</span>
-                <Tooltip
-                  v-if="hasVision(model)"
-                  text="Image input"
-                >
-                  <Eye :size="12" />
-                </Tooltip>
-                <Tooltip
-                  v-if="hasImageGeneration(model)"
-                  text="Image generation"
-                >
-                  <Image :size="12" />
-                </Tooltip>
-                <Tooltip
-                  v-if="hasTools(model)"
-                  text="Tool calling"
-                >
-                  <Wrench :size="12" />
-                </Tooltip>
-                <Tooltip
-                  v-if="hasReasoning(model)"
-                  text="Reasoning model"
-                >
-                  <Brain :size="12" />
-                </Tooltip>
-              </span>
-              <Tooltip
-                v-if="model.context_length"
-                :text="`Context window: ${model.context_length.toLocaleString()} tokens`"
-              >
-                <span class="model-ctx">
-                  <ArrowDownToLine
-                    :size="10"
-                    class="ctx-icon"
-                  />{{ formatContextLength(model.context_length) }}
-                </span>
-              </Tooltip>
-              <span
-                v-else
-                class="model-ctx"
-              >{{ formatContextLength(model.context_length) }}</span>
-              <Tooltip
-                :text="getMaxOutputTooltip(model)"
-              >
-                <span
-                  class="model-out-wrap"
-                  :class="{ overridden: maxOutputs[model.id] != null }"
-                  @click.stop
-                >
-                  <ArrowUpFromLine
-                    :size="10"
-                    class="out-icon"
-                  />
-                  <NumberStepper
-                    class="model-out-stepper"
-                    size="compact"
-                    :model-value="getMaxOutputValue(model)"
-                    :min="1"
-                    :max="getModelMaxLimit(model) || undefined"
-                    :step="getModelMaxOutputStep(model)"
-                    :aria-label="`max output for ${model.name || model.id}`"
-                    @click.stop
-                    @update:model-value="onMaxOutStep(model.id, $event)"
-                  />
-                  <Button
-                    v-if="maxOutputs[model.id] != null"
-                    unstyled
-                    class="model-out-clear"
-                    native-type="button"
-                    title="Reset to default (half of model limit)"
-                    @click.stop="emit('update-max-output', model.id, null)"
-                  >×</Button>
-                </span>
-              </Tooltip>
+                @update:model-value="onMaxOutStep(row.id, $event)"
+              />
               <Button
+                v-if="maxOutputs[row.id] != null"
                 unstyled
-                class="model-caps-edit"
-                :class="{ 'has-override': hasCapabilityOverride(model.id) }"
-                :title="capabilityEditTitle(model.id)"
+                class="model-out-clear"
                 native-type="button"
-                @click.stop="(e) => toggleCapabilityEditor(model.id, e.currentTarget as HTMLElement)"
-              >
-                <SlidersHorizontal :size="13" />
-              </Button>
-              <Teleport
-                v-if="capabilityEditorOpenFor === model.id"
-                to="body"
-              >
-                <div
-                  ref="capabilityPopoverRef"
-                  class="model-caps-popover"
-                  :style="popoverStyle"
-                  @click.stop
+                title="Reset to default (half of model limit)"
+                @click.stop="emit('update-max-output', row.id, null)"
+              >×</Button>
+            </span>
+          </Tooltip>
+        </template>
+
+        <template #cell-actions="{ row }">
+          <Button
+            unstyled
+            class="model-caps-edit"
+            :class="{ 'has-override': hasCapabilityOverride(row.id) }"
+            :title="capabilityEditTitle(row.id)"
+            native-type="button"
+            @click.stop="(e) => toggleCapabilityEditor(row.id, e.currentTarget as HTMLElement)"
+          >
+            <SlidersHorizontal :size="13" />
+          </Button>
+          <Teleport
+            v-if="capabilityEditorOpenFor === row.id"
+            to="body"
+          >
+            <div
+              ref="capabilityPopoverRef"
+              class="model-caps-popover"
+              :style="popoverStyle"
+              @click.stop
+            >
+              <div class="model-caps-popover-head">
+                <span>Edit model</span>
+                <Button
+                  unstyled
+                  native-type="button"
+                  class="model-caps-close"
+                  title="Close"
+                  @click="closeCapabilityEditor"
                 >
-                  <div class="model-caps-popover-head">
-                    <span>Edit model</span>
-                    <Button
-                      unstyled
-                      native-type="button"
-                      class="model-caps-close"
-                      title="Close"
-                      @click="closeCapabilityEditor"
-                    >
-                      ×
-                    </Button>
-                  </div>
+                  ×
+                </Button>
+              </div>
 
-                  <label class="model-caps-id-label">Model ID</label>
-                  <div class="model-caps-id-row">
-                    <input
-                      v-model.trim="modelIdDraft"
-                      class="model-caps-id-input"
-                      type="text"
-                      spellcheck="false"
-                      autocapitalize="off"
-                      autocorrect="off"
-                      @keydown.enter.prevent="commitRename(model.id)"
-                      @keydown.esc.prevent="closeCapabilityEditor"
-                    >
-                    <Button
-                      unstyled
-                      native-type="button"
-                      class="model-caps-id-save"
-                      :disabled="!modelIdDraft || modelIdDraft === model.id"
-                      @click="commitRename(model.id)"
-                    >
-                      Save
-                    </Button>
-                  </div>
-                  <p
-                    v-if="renameError"
-                    class="model-caps-id-error"
-                  >
-                    {{ renameError }}
-                  </p>
+              <label class="model-caps-id-label">Model ID</label>
+              <div class="model-caps-id-row">
+                <Input
+                  class="model-caps-id-control"
+                  input-class="model-caps-id-input"
+                  type="text"
+                  size="small"
+                  :model-value="modelIdDraft"
+                  spellcheck="false"
+                  autocomplete="off"
+                  aria-label="Model ID"
+                  @update:model-value="modelIdDraft = $event.trim()"
+                  @keydown.enter.prevent="commitRename(row.id)"
+                  @keydown.esc.prevent="closeCapabilityEditor"
+                />
+                <Button
+                  unstyled
+                  native-type="button"
+                  class="model-caps-id-save"
+                  :disabled="!modelIdDraft || modelIdDraft === row.id"
+                  @click="commitRename(row.id)"
+                >
+                  Save
+                </Button>
+              </div>
+              <p
+                v-if="renameError"
+                class="model-caps-id-error"
+              >
+                {{ renameError }}
+              </p>
 
-                  <div class="model-caps-section-label">
-                    <span>Capabilities</span>
-                    <Button
-                      v-if="hasCapabilityOverride(model.id)"
-                      unstyled
-                      native-type="button"
-                      class="model-caps-reset"
-                      @click="onResetCapabilities(model.id)"
-                    >
-                      Reset
-                    </Button>
-                  </div>
-                  <div
-                    v-for="cap in CAPABILITY_KEYS"
-                    :key="cap.key"
-                    class="model-caps-row"
+              <div class="model-caps-section-label">
+                <span>Capabilities</span>
+                <Button
+                  v-if="hasCapabilityOverride(row.id)"
+                  unstyled
+                  native-type="button"
+                  class="model-caps-reset"
+                  @click="onResetCapabilities(row.id)"
+                >
+                  Reset
+                </Button>
+              </div>
+              <div
+                v-for="cap in CAPABILITY_KEYS"
+                :key="cap.key"
+                class="model-caps-row"
+              >
+                <span class="model-caps-row-label">
+                  <component
+                    :is="cap.icon"
+                    :size="12"
+                  />
+                  {{ cap.label }}
+                </span>
+                <div class="model-caps-tristate">
+                  <Button
+                    v-for="opt in TRISTATE_OPTIONS"
+                    :key="opt.value === undefined ? 'auto' : String(opt.value)"
+                    unstyled
+                    native-type="button"
+                    :class="['tristate-btn', { active: getCapabilityState(row.id, cap.key) === opt.value }]"
+                    :title="opt.title"
+                    @click="onUpdateCapability(row.id, cap.key, opt.value)"
                   >
-                    <span class="model-caps-row-label">
-                      <component
-                        :is="cap.icon"
-                        :size="12"
-                      />
-                      {{ cap.label }}
-                    </span>
-                    <div class="model-caps-tristate">
-                      <Button
-                        v-for="opt in TRISTATE_OPTIONS"
-                        :key="opt.value === undefined ? 'auto' : String(opt.value)"
-                        unstyled
-                        native-type="button"
-                        :class="['tristate-btn', { active: getCapabilityState(model.id, cap.key) === opt.value }]"
-                        :title="opt.title"
-                        @click="onUpdateCapability(model.id, cap.key, opt.value)"
-                      >
-                        {{ opt.label }}
-                      </Button>
-                    </div>
-                  </div>
-                  <p class="model-caps-popover-hint">
-                    Auto = use the bundled models.dev metadata. Override for hand-added models.
-                  </p>
+                    {{ opt.label }}
+                  </Button>
                 </div>
-              </Teleport>
+              </div>
+              <p class="model-caps-popover-hint">
+                Auto = use the bundled models.dev metadata. Override for hand-added models.
+              </p>
             </div>
-          </div>
-        </div>
+          </Teleport>
+        </template>
 
-        <!-- No results -->
-        <div
-          v-else-if="searchQuery"
-          class="empty-row"
-        >
-          No models match "{{ searchQuery }}"
-        </div>
-      </template>
+        <template #empty>
+          <span
+            v-if="searchQuery"
+            class="empty-row"
+          >
+            No models match "{{ searchQuery }}"
+          </span>
+        </template>
+      </VirtualTable>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { Eye, Image, Wrench, Brain, ArrowDownToLine, ArrowUpFromLine, SlidersHorizontal, AudioLines, RefreshCw, Search, X, Plus, Check } from 'lucide-vue-next'
 import type { OpenRouterModel, ModelCapabilityOverride } from '@/types'
 import Tooltip from '@/components/common/Tooltip.vue'
-import NumberStepper from '../NumberStepper.vue'
+import InputNumber from '@/components/common/InputNumber.vue'
+import Input from '@/components/common/Input.vue'
+import VirtualTable from '@/components/common/VirtualTable.vue'
+import type {
+  VirtualTableColumn,
+  VirtualTableRef,
+  VirtualTableRowContext,
+} from '@/components/common/virtual-table/types'
 
 // Capability keys exposed in the per-model override editor.
 // Order here drives the popover order.
@@ -399,6 +383,11 @@ const TRISTATE_OPTIONS: Array<{
 const ROW_HEIGHT = 44
 const CONTAINER_HEIGHT = 308
 const BUFFER = 5
+const HEADER_HEIGHT = 30
+
+interface ModelTableRow extends OpenRouterModel {
+  isSelectedOnly?: boolean
+}
 
 interface Props {
   models: OpenRouterModel[]
@@ -435,6 +424,75 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+const tableRef = ref<VirtualTableRef | null>(null)
+
+const modelTableRows = computed<ModelTableRow[]>(() => {
+  if (props.models.length > 0) return props.filteredModels as ModelTableRow[]
+  return props.selectedModelsList.map(createSelectedOnlyModel)
+})
+
+const shouldShowModelTable = computed(() =>
+  props.models.length > 0 || props.selectedModelsList.length > 0
+)
+
+const modelTableHeight = computed(() => {
+  if (props.models.length > 0) return HEADER_HEIGHT + CONTAINER_HEIGHT
+  return Math.min(Math.max(modelTableRows.value.length * ROW_HEIGHT, ROW_HEIGHT), 242)
+})
+
+const fullModelColumns: VirtualTableColumn<ModelTableRow>[] = [
+  { key: 'select', title: '', width: 32, className: 'model-select-cell', headerClassName: 'model-select-head' },
+  { key: 'model', field: 'id', title: 'Model', width: 292, className: 'model-name-cell' },
+  { key: 'capabilities', title: 'Capabilities', width: 142, className: 'model-capabilities-cell' },
+  { key: 'context', title: 'Context', width: 86, align: 'right', headerAlign: 'right', className: 'model-context-cell' },
+  { key: 'output', title: 'Output', width: 150, align: 'right', headerAlign: 'right', className: 'model-output-cell' },
+  { key: 'actions', title: '', width: 36, align: 'right', className: 'model-action-cell' },
+]
+
+const selectedOnlyColumns: VirtualTableColumn<ModelTableRow>[] = [
+  { key: 'select', title: '', width: 32, className: 'model-select-cell' },
+  { key: 'model', field: 'id', title: 'Model', width: 480, className: 'model-name-cell' },
+  { key: 'capabilities', title: '', width: 120, className: 'model-capabilities-cell' },
+]
+
+const modelTableColumns = computed(() =>
+  props.models.length > 0 ? fullModelColumns : selectedOnlyColumns
+)
+
+function createSelectedOnlyModel(modelId: string): ModelTableRow {
+  return {
+    id: modelId,
+    name: modelId,
+    description: 'Custom model',
+    context_length: 0,
+    architecture: {
+      modality: 'text',
+      input_modalities: ['text'],
+      output_modalities: ['text'],
+      tokenizer: 'unknown',
+    },
+    pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
+    top_provider: { context_length: 0, max_completion_tokens: 0, is_moderated: false },
+    supported_parameters: [],
+    isSelectedOnly: true,
+  }
+}
+
+function modelRowClassName({ row }: VirtualTableRowContext<ModelTableRow>) {
+  return {
+    'model-row': true,
+    selected: props.isModelSelected(row.id),
+    'is-active': row.id === props.activeModelId,
+  }
+}
+
+function modelRowAriaLabel({ row }: VirtualTableRowContext<ModelTableRow>) {
+  return `Click to configure ${row.id}`
+}
+
+function handleModelRowClick(row: ModelTableRow) {
+  emit('select-active', row.id)
+}
 
 // Hard upper bound for the model: from models.dev's `limit.output`. Used as
 // the cap on any user-entered value.
@@ -639,23 +697,7 @@ function onResetCapabilities(modelId: string) {
   capabilityEditorOpenFor.value = null
 }
 
-const listRef = ref<HTMLElement | null>(null)
-const addModelInputRef = ref<HTMLInputElement | null>(null)
-const scrollTop = ref(0)
-
-const startIndex = computed(() => Math.max(0, Math.floor(scrollTop.value / ROW_HEIGHT) - BUFFER))
-const endIndex = computed(() => Math.min(
-  props.filteredModels.length,
-  Math.ceil((scrollTop.value + CONTAINER_HEIGHT) / ROW_HEIGHT) + BUFFER
-))
-
-const visibleModels = computed(() => props.filteredModels.slice(startIndex.value, endIndex.value))
-const topPad = computed(() => startIndex.value * ROW_HEIGHT)
-const bottomPad = computed(() => Math.max(0, (props.filteredModels.length - endIndex.value) * ROW_HEIGHT))
-
-function onScroll(e: Event) {
-  scrollTop.value = (e.target as HTMLElement).scrollTop
-}
+const addModelInputRef = ref<{ focus: () => void } | null>(null)
 
 function submitCustomModel() {
   if (!props.newModelInput.trim()) return
@@ -667,14 +709,18 @@ function submitCustomModel() {
 
 // Reset scroll when search query or model list changes
 watch(() => props.searchQuery, () => {
-  scrollTop.value = 0
-  if (listRef.value) listRef.value.scrollTop = 0
+  resetModelTableScroll()
 })
 
 watch(() => props.filteredModels.length, () => {
-  scrollTop.value = 0
-  if (listRef.value) listRef.value.scrollTop = 0
+  resetModelTableScroll()
 })
+
+function resetModelTableScroll() {
+  void nextTick(() => {
+    tableRef.value?.scrollToTop()
+  })
+}
 </script>
 
 <style scoped>
@@ -763,27 +809,29 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-search-field {
-  display: inline-flex;
-  align-items: center;
   flex: 1 1 280px;
   min-width: 220px;
-  height: 32px;
+}
+
+.model-search-field :deep(.app-input-control) {
+  min-height: 32px;
   gap: 8px;
   padding: 0 9px;
-  border: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.14));
+  border-color: var(--settings-rule-soft, rgba(128, 128, 128, 0.14));
   border-radius: 6px;
   background: color-mix(in srgb, var(--settings-paper, transparent) 82%, transparent);
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  box-shadow: none;
 }
 
-.model-search-field:focus-within {
+.model-search-field.is-focused :deep(.app-input-control) {
   border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, var(--settings-rule, transparent));
   background: var(--settings-paper, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 8%, transparent);
 }
 
-.search-input {
+.model-search-field :deep(.search-input) {
   flex: 1;
   min-width: 0;
   border: none;
@@ -793,8 +841,12 @@ watch(() => props.filteredModels.length, () => {
   font-size: 13px;
 }
 
-.search-input::placeholder,
-.add-model-input::placeholder {
+.model-search-field :deep(.search-input::-webkit-search-cancel-button) {
+  appearance: none;
+}
+
+.model-search-field :deep(.search-input::placeholder),
+.add-model-input :deep(.add-model-input-native::placeholder) {
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
@@ -833,19 +885,24 @@ watch(() => props.filteredModels.length, () => {
 .add-model-input {
   flex: 1;
   min-width: 0;
-  height: 32px;
-  padding: 0 10px;
-  border: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.14));
-  border-radius: 6px;
-  outline: none;
-  background: color-mix(in srgb, var(--settings-paper, transparent) 82%, transparent);
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  font-size: 13px;
-  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
 }
 
-.add-model-input:focus,
-.add-model-input:focus-visible {
+.add-model-input :deep(.app-input-control) {
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: var(--settings-rule-soft, rgba(128, 128, 128, 0.14));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--settings-paper, transparent) 82%, transparent);
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  box-shadow: none;
+}
+
+.add-model-input :deep(.add-model-input-native) {
+  font-size: 13px;
+}
+
+.add-model-input.is-focused :deep(.app-input-control) {
   border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, var(--settings-rule, transparent));
   background: var(--settings-paper, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 8%, transparent);
@@ -879,89 +936,74 @@ watch(() => props.filteredModels.length, () => {
 }
 
 /* ── Model list ── */
-.model-table-head,
-.model-row {
-  display: grid;
-  grid-template-columns: 22px minmax(180px, 1.6fr) minmax(112px, auto) minmax(64px, 0.44fr) minmax(126px, 0.58fr) 28px;
-  align-items: center;
-  gap: 10px;
+.model-list {
+  --virtual-table-bg: var(--settings-paper, transparent);
+  --virtual-table-head-bg: var(--settings-paper, transparent);
+  --virtual-table-row-bg: var(--settings-paper, transparent);
+  --virtual-table-row-hover-bg: color-mix(in srgb, var(--settings-paper-3, var(--settings-paper, transparent)) 62%, transparent);
+  --virtual-table-border: var(--settings-rule-soft, rgba(128, 128, 128, 0.06));
+  --virtual-table-strong-border: var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
+  --virtual-table-fg: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  --virtual-table-muted-fg: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  --virtual-table-accent: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+
   min-width: 0;
 }
 
-.model-table-head {
-  height: 30px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
+.model-list :deep(.virtual-table-viewport) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.model-list :deep(.virtual-table-header) {
+  border-bottom-color: var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
+}
+
+.model-list :deep(.virtual-table-header-cell) {
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-size: 10.5px;
   font-weight: 620;
   line-height: 1;
+  letter-spacing: 0;
 }
 
-.model-table-head span:nth-child(4),
-.model-table-head span:nth-child(5) {
-  justify-self: end;
-}
-
-.model-list {
-  height: 308px;
-  overflow-y: auto;
-}
-
-.model-list::-webkit-scrollbar,
-.model-list-static::-webkit-scrollbar {
-  width: 8px;
-}
-
-.model-list::-webkit-scrollbar-track,
-.model-list-static::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.model-list::-webkit-scrollbar-thumb,
-.model-list-static::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, #000)) 16%, transparent);
-  background-clip: padding-box;
-}
-
-.model-list-static {
-  max-height: 242px;
-  overflow-y: auto;
-}
-
-.model-row {
-  position: relative;
-  height: 44px;
-  padding: 0 12px;
-  box-sizing: border-box;
-  border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.06));
+.model-list :deep(.virtual-table-cell) {
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 13px;
+}
+
+.model-list :deep(.virtual-table-cell-content) {
+  padding: 0 10px;
+}
+
+.model-list :deep(.model-select-cell .virtual-table-cell-content),
+.model-list :deep(.model-select-head .virtual-table-cell-content) {
+  justify-content: center;
+  padding: 0 8px;
+}
+
+.model-list :deep(.model-context-cell .virtual-table-cell-content),
+.model-list :deep(.model-output-cell .virtual-table-cell-content),
+.model-list :deep(.model-action-cell .virtual-table-cell-content) {
+  justify-content: flex-end;
+}
+
+.model-list :deep(.virtual-table-row.model-row) {
   cursor: pointer;
-  transition: background 0.1s ease;
 }
 
-.model-row:last-child {
-  border-bottom: none;
-}
-
-.model-row:hover {
-  background: color-mix(in srgb, var(--settings-paper-3, var(--settings-paper, transparent)) 62%, transparent);
-}
-
-.model-row.selected .model-primary,
-.model-row.is-active .model-primary {
+.model-list :deep(.virtual-table-row.model-row.selected .model-primary),
+.model-list :deep(.virtual-table-row.model-row.is-active .model-primary) {
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font-weight: 620;
 }
 
-.model-row.is-active {
+.model-list :deep(.virtual-table-row.model-row.is-active .virtual-table-cell) {
   background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent);
 }
 
-.model-row.is-active::before {
+.model-list :deep(.virtual-table-row.model-row.is-active::before) {
   content: '';
   position: absolute;
   left: 0;
@@ -1060,11 +1102,6 @@ watch(() => props.filteredModels.length, () => {
   letter-spacing: 0;
 }
 
-.model-row > :deep(.tooltip-wrapper) {
-  justify-self: end;
-  min-width: 0;
-}
-
 .model-ctx {
   display: inline-flex;
   align-items: center;
@@ -1120,14 +1157,21 @@ watch(() => props.filteredModels.length, () => {
   opacity: 1;
 }
 
-.model-out-wrap :deep(.number-stepper.model-out-stepper) {
+.model-out-wrap :deep(.app-input-number.model-out-stepper) {
+  --app-input-number-height: 22px;
+  --app-input-number-control-width: 20px;
+  --app-input-number-padding-x: 3px;
+  --app-input-number-font-size: 11px;
+
+  min-width: 84px;
   min-height: 22px;
   border: 0;
   background: transparent;
   box-shadow: none;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
 }
 
-.model-out-wrap :deep(.number-stepper.model-out-stepper:focus-within) {
+.model-out-wrap :deep(.app-input-number.model-out-stepper:focus-within) {
   border-color: transparent;
   box-shadow: none;
 }
@@ -1151,7 +1195,7 @@ watch(() => props.filteredModels.length, () => {
 }
 
 .model-out-clear:hover {
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 18%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
 }
 
@@ -1195,23 +1239,11 @@ watch(() => props.filteredModels.length, () => {
 
 .error-message {
   padding: 8px 12px;
-  background: color-mix(in srgb, var(--ui-status-danger-fg, var(--text-error, var(--color-danger))) 8%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
   border-radius: 8px;
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
   font-size: 12px;
   margin-bottom: 8px;
-}
-
-@media (max-width: 980px) {
-  .model-table-head,
-  .model-row {
-    grid-template-columns: 22px minmax(150px, 1fr) minmax(64px, 0.42fr) minmax(126px, 0.62fr) 28px;
-  }
-
-  .model-table-head span:nth-child(3),
-  .model-capabilities {
-    display: none;
-  }
 }
 
 @media (max-width: 720px) {
@@ -1219,24 +1251,6 @@ watch(() => props.filteredModels.length, () => {
   .add-model-row {
     flex-basis: 100%;
     min-width: 0;
-  }
-
-  .model-table-head {
-    display: none;
-  }
-
-  .model-row {
-    grid-template-columns: 22px minmax(0, 1fr) 28px;
-    min-height: 48px;
-    height: auto;
-    padding-top: 7px;
-    padding-bottom: 7px;
-  }
-
-  .model-row > :deep(.tooltip-wrapper),
-  .model-ctx,
-  .model-out-wrap {
-    display: none;
   }
 }
 </style>
@@ -1372,20 +1386,27 @@ watch(() => props.filteredModels.length, () => {
   padding: 0 4px;
 }
 
-.model-caps-id-input {
+.model-caps-id-control {
   flex: 1;
   min-width: 0;
-  height: 26px;
+}
+
+.model-caps-id-control .app-input-control {
+  min-height: 26px;
   padding: 0 8px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border-color: var(--ui-border-default-border, var(--border));
   border-radius: 6px;
   background: var(--ui-surface-app-bg, var(--bg, transparent));
   color: var(--ui-text-primary-fg, var(--text));
+  box-shadow: none;
+}
+
+.model-caps-id-control .model-caps-id-input {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 12px;
-  outline: none;
 }
-.model-caps-id-input:focus {
+
+.model-caps-id-control.is-focused .app-input-control {
   border-color: var(--ui-border-default-border, var(--border));
   box-shadow: none;
 }

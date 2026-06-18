@@ -17,14 +17,10 @@ export const SOUL_MEMORY_PLUGIN_ID = 'soul-memory'
 export const SOUL_MEMORY_RULES_PROMPT = `# Soul Memory Rules
 - SOUL.md是你的个性文件
 - memory/YYYY-MM-DD.md is for AI daily working notes, session process, and medium-confidence context.
-- DREAMS.md is for scheduled sweep reports and reviewable memory synthesis.
+- MEMORY.md is for durable promoted memory.
 `
 
 export const SOUL_TEMPLATE = `# SOUL.md
-
-`
-
-export const DREAMS_TEMPLATE = `# DREAMS.md
 
 `
 
@@ -35,12 +31,6 @@ export const CAPTURE_MAX_PENDING = 20
 export const CANONICAL_MIGRATION_STORE_KEY = 'canonicalMemoryMigrationV1Done'
 export const GRAPH_MIGRATION_STORE_KEY = 'graphMemoryMigrationV1Done'
 export const USER_SELF_ENTITY_ID = 'user:self'
-export const SHORT_TERM_SIGNAL_RELATIVE_PATH = path.join('memory', '.dreams', 'short-term.jsonl')
-export const SESSION_INGESTION_STORE_KEY = 'dreamingSessionIngestion'
-export const DREAMING_MEMORY_SECTION = '## Dreaming Promotions'
-export const DREAMING_START_MARKER = '<!-- soul-memory:dreaming:start -->'
-export const DREAMING_END_MARKER = '<!-- soul-memory:dreaming:end -->'
-export const DREAMING_MEMORY_BUDGET_CHARS = 10000
 
 export function normalizeMemoryRelativePath(value: string): string {
   return value.split(path.sep).join('/')

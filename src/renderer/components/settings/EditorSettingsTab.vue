@@ -7,7 +7,7 @@
           label="Max Open Tabs"
           description="Maximum number of tabs kept open in a panel."
         >
-          <NumberStepper
+          <InputNumber
             :model-value="currentMaxTabs"
             :min="3"
             :max="30"
@@ -25,7 +25,7 @@
           label="Tab Size"
           description="Number of spaces used for each tab stop."
         >
-          <NumberStepper
+          <InputNumber
             :model-value="currentEditor.tabSize"
             :min="1"
             :max="8"
@@ -48,7 +48,7 @@
           label="Soft Wrap Column"
           description="Preferred text width before soft wrapping."
         >
-          <NumberStepper
+          <InputNumber
             :model-value="currentEditor.softWrapColumn"
             :values="softWrapColumnOptionsWithCurrent"
             suffix="ch"
@@ -81,7 +81,7 @@
           label="Composer Height"
           description="Maximum height of the message composer."
         >
-          <NumberStepper
+          <InputNumber
             :model-value="currentEditor.composerMaxHeight"
             :values="composerHeightOptionsWithCurrent"
             suffix="px"
@@ -125,7 +125,7 @@
           label="Preview Size Limit"
           description="Maximum file size to render in the preview."
         >
-          <NumberStepper
+          <InputNumber
             :model-value="currentMaxFilePreviewKB"
             :values="previewSizeOptionsWithCurrent"
             suffix="KB"
@@ -146,7 +146,7 @@ import {
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
-import NumberStepper from './NumberStepper.vue'
+import InputNumber from '@/components/common/InputNumber.vue'
 
 const props = defineProps<{
   settings: AppSettings

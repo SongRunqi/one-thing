@@ -43,4 +43,18 @@ describe('MemorySettingsTab', () => {
     expect(wrapper.text()).toContain('Configure in Tasks')
     expect(wrapper.find('input[aria-label="Dreaming cron"]').exists()).toBe(false)
   })
+
+  it('hides retired capture routing controls', () => {
+    const wrapper = mount(MemorySettingsTab, {
+      props: {
+        settings: createDefaultSettings(),
+      },
+    })
+
+    expect(wrapper.find('option[value="ask"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('Profile first')
+    expect(wrapper.text()).not.toContain('Aggressive lowers capture thresholds')
+    expect(wrapper.find('input[aria-label="capture candidates"]').exists()).toBe(false)
+    expect(wrapper.find('input[aria-label="daily capture confidence"]').exists()).toBe(false)
+  })
 })

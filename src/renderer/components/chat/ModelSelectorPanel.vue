@@ -792,22 +792,22 @@ onUnmounted(() => {
 }
 
 .badge.image {
-  background: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 15%, transparent);
+  background: var(--ui-status-success-bg, transparent);
   color: var(--ui-status-success-fg, var(--text-success));
 }
 
 .badge.image-gen {
-  background: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 15%, transparent);
+  background: var(--ui-status-success-bg, transparent);
   color: var(--ui-status-success-fg, var(--text-success));
 }
 
 .badge.vision {
-  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 15%, transparent);
+  background: var(--ui-status-warning-bg, transparent);
   color: var(--ui-status-warning-fg, var(--text-warning));
 }
 
 .badge.speed {
-  background: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 15%, transparent);
+  background: var(--ui-status-warning-bg, transparent);
   color: var(--ui-status-warning-fg, var(--text-warning));
 }
 

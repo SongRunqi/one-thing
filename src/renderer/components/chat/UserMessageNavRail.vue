@@ -1,7 +1,10 @@
 <template>
   <nav
     class="user-nav-rail"
-    :class="{ 'with-mode-tabs': showModeSwitch && panelAvailable && effectiveOpen }"
+    :class="[
+      `placement-${props.placement}`,
+      { 'with-mode-tabs': showModeSwitch && effectivePanelAvailable && effectiveOpen },
+    ]"
     aria-label="User message navigation"
   >
     <div
@@ -14,7 +17,7 @@
       @click.stop
     >
       <div
-        v-if="showModeSwitch && panelAvailable && effectiveOpen"
+        v-if="showModeSwitch && effectivePanelAvailable && effectiveOpen"
         class="user-nav-mode-tabs"
         aria-label="Navigation mode"
       >
@@ -36,23 +39,15 @@
         </span>
       </div>
       <Button
-        v-if="panelAvailable && effectiveOpen"
+        v-if="!isSidePlacement && panelAvailable && effectiveOpen"
         unstyled
         native-type="button"
         class="user-nav-close"
-        :class="{ 'can-pin': isAutoPanelDismissed }"
-        :aria-label="isAutoPanelDismissed ? 'Pin navigation panel' : 'Close navigation panel'"
-        :title="isAutoPanelDismissed ? 'Pin panel' : 'Close panel'"
-        @click.stop="toggleAutoPanelPin"
+        aria-label="Close navigation panel"
+        title="Close panel"
+        @click.stop="closePanel"
       >
-        <Pin
-          v-if="isAutoPanelDismissed"
-          :size="12"
-          :stroke-width="2.2"
-          aria-hidden="true"
-        />
         <X
-          v-else
           :size="12"
           :stroke-width="2.2"
           aria-hidden="true"
@@ -127,7 +122,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { Pin, X } from 'lucide-vue-next'
+import { X } from 'lucide-vue-next'
 import { computed, onUnmounted, ref, watch } from 'vue'
 
 export interface UserMessageNavMarker {
@@ -145,9 +140,11 @@ const props = withDefaults(defineProps<{
   totalCount?: number
   showModeSwitch?: boolean
   panelAvailable?: boolean
+  placement?: 'overlay' | 'side'
 }>(), {
   panelAvailable: true,
   totalCount: 0,
+  placement: 'overlay',
 })
 
 const emit = defineEmits<{
@@ -157,7 +154,6 @@ const emit = defineEmits<{
 
 const sortedMarkers = computed(() => [...props.markers].sort((a, b) => a.navIndex - b.navIndex))
 const isOpen = ref(false)
-const isAutoPanelDismissed = ref(false)
 const pageStartIndex = ref(0)
 const pageDirection = ref<1 | -1>(1)
 let pageWheelLockTimer: ReturnType<typeof setTimeout> | null = null
@@ -195,13 +191,17 @@ const scrollThumbStyle = computed(() => {
 })
 
 const pageTransitionName = computed(() => pageDirection.value > 0 ? 'nav-page-next' : 'nav-page-prev')
-const effectiveOpen = computed(() => isOpen.value || (props.panelAvailable && !isAutoPanelDismissed.value))
+const isSidePlacement = computed(() => props.placement === 'side')
+const effectivePanelAvailable = computed(() => isSidePlacement.value || props.panelAvailable)
+const effectiveOpen = computed(() => isSidePlacement.value || isOpen.value)
 
 function openPanel() {
+  if (isSidePlacement.value) return
   isOpen.value = true
 }
 
 function closePanel() {
+  if (isSidePlacement.value) return
   isOpen.value = false
 }
 
@@ -241,30 +241,6 @@ function goToNextPage() {
 function handleNavigate(navIndex: number) {
   emit('navigate', navIndex)
 }
-
-function dismissAutoPanel() {
-  isAutoPanelDismissed.value = true
-  isOpen.value = false
-}
-
-function toggleAutoPanelPin() {
-  if (isAutoPanelDismissed.value) {
-    isAutoPanelDismissed.value = false
-    isOpen.value = false
-    return
-  }
-
-  dismissAutoPanel()
-}
-
-watch(
-  () => props.panelAvailable,
-  available => {
-    if (!available) {
-      isAutoPanelDismissed.value = false
-    }
-  },
-)
 
 watch(
   [() => props.currentIndex, () => props.markers.length],
@@ -324,6 +300,20 @@ onUnmounted(() => {
   --user-nav-header-offset-half: 14px;
 }
 
+.user-nav-rail.placement-side {
+  --user-nav-expanded-width: 100%;
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  z-index: auto;
+  pointer-events: auto;
+  transform: none;
+}
+
 .user-nav-card {
   position: absolute;
   top: 50%;
@@ -356,6 +346,26 @@ onUnmounted(() => {
     0 1px 3px rgba(0, 0, 0, 0.035);
 }
 
+.user-nav-rail.placement-side .user-nav-card {
+  position: relative;
+  top: auto;
+  right: auto;
+  width: 100%;
+  min-width: 0;
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.user-nav-rail.placement-side .user-nav-card.open {
+  width: 100%;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
 .user-nav-scroll {
   position: absolute;
   top: calc(var(--user-nav-vertical-padding) + var(--user-nav-header-offset));
@@ -373,6 +383,10 @@ onUnmounted(() => {
 }
 
 .user-nav-card.open .user-nav-scroll {
+  pointer-events: auto;
+}
+
+.user-nav-rail.placement-side .user-nav-scroll {
   pointer-events: auto;
 }
 
@@ -409,6 +423,10 @@ onUnmounted(() => {
   width: 100%;
 }
 
+.user-nav-rail.placement-side .user-nav-row {
+  width: 100%;
+}
+
 .user-nav-label {
   position: absolute;
   top: 50%;
@@ -435,6 +453,14 @@ onUnmounted(() => {
   visibility: visible;
 }
 
+.user-nav-rail.placement-side .user-nav-label {
+  right: 30px;
+  width: calc(100% - 48px);
+  opacity: 0.74;
+  text-align: left;
+  visibility: visible;
+}
+
 .user-nav-card.open .user-nav-row:hover .user-nav-label,
 .user-nav-card.open .user-nav-row:focus-visible .user-nav-label {
   color: var(--ui-accent-primary-fg, var(--accent));
@@ -456,6 +482,10 @@ onUnmounted(() => {
     background-color 0.12s ease,
     opacity 0.12s ease,
     box-shadow 0.12s ease;
+}
+
+.user-nav-rail.placement-side .user-nav-marker {
+  right: 6px;
 }
 
 .user-nav-row:hover .user-nav-marker,
@@ -494,6 +524,10 @@ onUnmounted(() => {
 }
 
 .user-nav-card.open .user-nav-scroll-thumb {
+  display: block;
+}
+
+.user-nav-rail.placement-side .user-nav-scroll-thumb {
   display: block;
 }
 
@@ -550,6 +584,10 @@ onUnmounted(() => {
     background-color 0.12s ease,
     border-color 0.12s ease,
     opacity 0.12s ease;
+}
+
+.user-nav-rail.placement-side .user-nav-mode-tabs {
+  right: 0;
 }
 
 .user-nav-card.open .user-nav-mode-tabs {

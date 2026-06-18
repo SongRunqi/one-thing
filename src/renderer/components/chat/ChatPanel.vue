@@ -9,18 +9,13 @@
       :is-loading="isLoading"
       :session-id="effectiveSessionId"
       :layout-transitioning="props.layoutTransitioning"
+      :outline-rail-target="props.outlineRailTarget"
       @set-quoted-text="handleSetQuotedText"
       @set-input-text="handleSetInputText"
       @regenerate="handleRegenerate"
       @edit-and-resend="handleEditAndResend"
       @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
       @open-file="(filePath) => emit('openFile', filePath)"
-    />
-
-    <TodoPlanPanel
-      v-if="settingsStore.settings.general?.todoPlan?.enabled !== false"
-      :session-id="effectiveSessionId"
-      :working-directory="currentSession?.workingDirectory || ''"
     />
 
     <Teleport
@@ -146,11 +141,9 @@ import Button from '@/components/common/Button.vue'
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { useSettingsStore } from '@/stores/settings'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
-import TodoPlanPanel from './TodoPlanPanel.vue'
 import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
 import type { MessageAttachment, ToolCall } from '@/types'
 import { buildToolPermissionTitle } from '@/stores/helpers/tool-display'
@@ -160,10 +153,12 @@ const props = withDefaults(defineProps<{
   active?: boolean
   footerTarget?: HTMLElement | null
   layoutTransitioning?: boolean
+  outlineRailTarget?: HTMLElement | null
 }>(), {
   active: true,
   footerTarget: null,
   layoutTransitioning: false,
+  outlineRailTarget: null,
 })
 
 const emit = defineEmits<{
@@ -173,7 +168,6 @@ const emit = defineEmits<{
 
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
-const settingsStore = useSettingsStore()
 
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
 
@@ -442,11 +436,26 @@ function rejectCurrentPermissionWithInstruction() {
   messageListRef.value?.rejectTool(toolCall, rejectInstruction.value.trim() || undefined)
 }
 
-async function waitForRestorePage(sessionId: string, anchorMessageId?: string) {
+async function waitForRestorePage(
+  sessionId: string,
+  anchorMessageId?: string,
+  options: { allowEmptyTail?: boolean } = {},
+) {
   for (let frame = 0; frame < RESTORE_WAIT_FRAME_LIMIT; frame += 1) {
     if (effectiveSessionId.value !== sessionId) return false
     const messages = chatStore.sessionMessages.get(sessionId) ?? []
-    const hasRestoreMessages = messages.length > 0
+    const pageState = chatStore.getSessionPageState(sessionId)
+    const session = sessionsStore.getSessionItem(sessionId)
+    const canRestoreEmptyTail = options.allowEmptyTail === true &&
+      !anchorMessageId &&
+      messages.length === 0 &&
+      (
+        sessionsStore.isNewChatDraftId(sessionId) ||
+        pageState?.totalCount === 0 ||
+        session?.messageCount === 0 ||
+        (!isLoading.value && !pageState && typeof session?.messageCount !== 'number')
+      )
+    const hasRestoreMessages = messages.length > 0 || canRestoreEmptyTail
     const hasAnchor = !anchorMessageId || messages.some(message => message.id === anchorMessageId)
     if (!isLoading.value && hasRestoreMessages && hasAnchor) {
       await nextTick()
@@ -486,7 +495,12 @@ function saveCurrentSnapshot(sessionId: string, prepareForSwitch = false) {
 
 async function restoreCurrentSnapshot(sessionId: string) {
   const snapshot = chatStore.getSnapshot(sessionId)
-  if (!snapshot) return false
+  if (!snapshot) {
+    await waitForRestorePage(sessionId, undefined, { allowEmptyTail: true })
+    if (effectiveSessionId.value !== sessionId) return false
+    messageListRef.value?.restoreTail()
+    return false
+  }
 
   if (snapshot.mode === 'anchor') {
     await waitForRestorePage(sessionId, snapshot.anchorMessageId)
@@ -602,11 +616,12 @@ watch(effectiveSessionId, async (newId, oldId) => {
 
   if (newId) {
     const hadSnapshot = !!chatStore.getSnapshot(newId)
-    await restoreCurrentSnapshot(newId)
     if (effectiveSessionId.value !== newId) return
     if (!hadSnapshot) {
       inputBoxRef.value?.clearInput()
     }
+    await restoreCurrentSnapshot(newId)
+    if (effectiveSessionId.value !== newId) return
   }
 
   requestAnimationFrame(() => {
@@ -737,15 +752,15 @@ defineExpose({
 
 .session-permission-panel {
   --permission-panel-fg: var(--ui-status-warning-fg, var(--text-warning));
-  --permission-panel-border: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 36%, var(--ui-border-default-border, var(--border)));
-  --permission-panel-bg: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 9%, var(--ui-surface-app-bg, var(--bg)));
+  --permission-panel-border: var(--ui-status-warning-border, var(--border-warning));
+  --permission-panel-bg: var(--ui-status-warning-bg, var(--ui-surface-app-bg, var(--bg)));
   --permission-panel-shadow: var(--shadow-md, 0 8px 24px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 10%, transparent));
   --permission-allow-fg: var(--ui-status-success-fg, var(--text-success));
-  --permission-allow-border: color-mix(in srgb, var(--ui-status-success-border, var(--border-success)) 36%, var(--ui-border-default-border, var(--border)));
-  --permission-allow-bg: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 9%, transparent);
+  --permission-allow-border: var(--ui-status-success-border, var(--border-success));
+  --permission-allow-bg: var(--ui-status-success-bg, transparent);
   --permission-reject-fg: var(--ui-status-warning-fg, var(--text-warning));
-  --permission-reject-border: color-mix(in srgb, var(--ui-status-warning-border, var(--border-warning)) 42%, var(--ui-border-default-border, var(--border)));
-  --permission-reject-bg: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 8%, transparent);
+  --permission-reject-border: var(--ui-status-warning-border, var(--border-warning));
+  --permission-reject-bg: var(--ui-status-warning-bg, transparent);
 
   width: var(--chat-composer-width);
   margin: 0 var(--chat-content-column-right, auto) 8px var(--chat-content-column-left, auto);

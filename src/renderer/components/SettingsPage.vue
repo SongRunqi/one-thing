@@ -9,14 +9,19 @@
       <span>Loading settings...</span>
     </div>
 
-    <div
+    <Container
       v-else
       class="settings-window"
+      full-height
+      overflow="hidden"
+      main-overflow="hidden"
+      sidebar-overflow="hidden"
+      body-class="settings-layout"
+      header-class="settings-titlebar"
+      sidebar-class="settings-sidebar"
+      main-class="settings-content"
     >
-      <header
-        class="settings-titlebar"
-        aria-label="Settings window"
-      >
+      <template #header>
         <div class="titlebar-title">
           Settings
         </div>
@@ -26,11 +31,15 @@
         >
           {{ hasUnsavedChanges ? 'Saving...' : 'Saved' }}
         </div>
-      </header>
+      </template>
 
-      <div class="settings-layout">
-        <!-- Sidebar navigation -->
-        <aside class="settings-sidebar">
+      <template #sidebar>
+        <div class="settings-sidebar-inner">
+          <div
+            class="settings-traffic-lights-space"
+            aria-hidden="true"
+          />
+
           <div class="sidebar-heading">
             <h2>Settings</h2>
             <p>Configure onething</p>
@@ -46,189 +55,174 @@
             >
           </label>
 
-          <nav
+          <AppMenu
+            v-if="filteredNavItems.length > 0"
             class="sidebar-nav"
-            role="tree"
+            :model-value="activeTab"
+            :default-openeds="expandedNavMenuIndexes"
+            :ellipsis="false"
+            menu-trigger="click"
+            @select="handleNavMenuSelect"
+            @open="handleNavMenuOpen"
+            @close="handleNavMenuClose"
           >
-            <div
+            <SubMenu
               v-for="item in filteredNavItems"
               :key="item.id"
+              :index="item.id"
               class="sidebar-entry"
+              expand-icon-position="start"
             >
-              <div
-                :class="['sidebar-item', { active: activeTab === item.id }]"
-                role="treeitem"
-                tabindex="0"
-                :aria-current="activeTab === item.id ? 'page' : undefined"
-                :aria-expanded="isNavExpanded(item.id)"
-                @click="selectNavItem(item.id)"
-                @keydown.enter.prevent="selectNavItem(item.id)"
-                @keydown.space.prevent="toggleNavExpanded(item.id)"
-              >
-                <Button
-                  unstyled
-                  class="sidebar-disclosure-button"
-                  native-type="button"
-                  :aria-label="`${isNavExpanded(item.id) ? 'Collapse' : 'Expand'} ${item.label}`"
-                  :aria-expanded="isNavExpanded(item.id)"
-                  @click.stop="toggleNavExpanded(item.id)"
-                  @keydown.stop
-                >
-                  <component
-                    :is="isNavExpanded(item.id) ? ChevronDown : ChevronRight"
-                    class="sidebar-disclosure"
-                  />
-                </Button>
+              <template #icon>
+                <component
+                  :is="item.icon"
+                  class="sidebar-icon"
+                  aria-hidden="true"
+                />
+              </template>
+              <template #title>
                 <span class="sidebar-copy">
                   <span class="sidebar-label">{{ item.label }}</span>
                   <span class="sidebar-hint">{{ item.hint }}</span>
                 </span>
-              </div>
-              <div
-                v-if="isNavExpanded(item.id) && item.sections.length > 0"
-                class="sidebar-subnav"
-              >
-                <Button
-                  v-for="section in item.sections"
-                  :key="section"
-                  unstyled
-                  class="sidebar-subitem"
-                  @click="selectNavSection(item.id, section)"
-                >
-                  {{ section }}
-                </Button>
-              </div>
-            </div>
-            <div
-              v-if="filteredNavItems.length === 0"
-              class="sidebar-empty"
-            >
-              No matching settings
-            </div>
-          </nav>
-        </aside>
-
-        <!-- Content Area -->
-        <main class="settings-content">
-          <header class="content-header">
-            <div class="content-topline">
-              <div class="settings-scope">
-                <span class="scope-badge">User</span>
-                <span class="scope-name">onething</span>
-              </div>
-              <Button
-                unstyled
-                class="json-settings-button"
-                native-type="button"
-                @click="openSettingsJson"
-              >
-                Edit in settings.json
-              </Button>
-            </div>
-            <div class="content-header-copy">
-              <h1>{{ currentNavItem?.label }}</h1>
-              <p class="content-hint">
-                {{ currentNavItem?.hint }}
-              </p>
-            </div>
-            <span
-              class="save-state"
-              :class="{ active: hasUnsavedChanges }"
-            >
-              {{ hasUnsavedChanges ? 'Saving changes...' : 'Changes save automatically' }}
-            </span>
-          </header>
-
-          <div class="content-body">
-            <div
-              class="content-inner"
-              :class="{ 'content-inner-wide': activeTab === 'providers' || activeTab === 'prompts' }"
-            >
-              <template v-if="localSettings">
-                <GeneralSettingsTab
-                  v-if="activeTab === 'general'"
-                  :settings="localSettings"
-                  @update:settings="handleSettingsUpdate"
-                />
-
-                <EditorSettingsTab
-                  v-else-if="activeTab === 'editor'"
-                  :settings="localSettings"
-                  @update:settings="handleSettingsUpdate"
-                />
-
-                <AIProviderTab
-                  v-else-if="activeTab === 'providers'"
-                  :settings="localSettings"
-                  :providers="allProviders"
-                  @update:settings="handleSettingsUpdate"
-                  @add-custom-provider="showCustomProviderDialog = true"
-                  @edit-custom-provider="editCustomProvider"
-                />
-
-                <ToolsSettingsTab
-                  v-else-if="activeTab === 'tools'"
-                  :settings="localSettings"
-                  :tools="tools"
-                  @update:settings="handleSettingsUpdate"
-                />
-
-                <NetworkSettingsTab
-                  v-else-if="activeTab === 'network'"
-                  :settings="localSettings"
-                  @update:settings="handleSettingsUpdate"
-                />
-
-                <VoiceSettingsTab
-                  v-else-if="activeTab === 'voice'"
-                  :settings="localSettings"
-                  @update:settings="handleSettingsUpdate"
-                />
-
-                <MemorySettingsTab
-                  v-else-if="activeTab === 'memory'"
-                  :settings="localSettings"
-                  @update:settings="handleSettingsUpdate"
-                />
-
-                <ShortcutsSettingsTab
-                  v-else-if="activeTab === 'shortcuts'"
-                  :settings="localSettings"
-                  @update:settings="handleSettingsUpdate"
-                />
-
-                <MCPSettingsPanel
-                  v-else-if="activeTab === 'mcp'"
-                  :settings="localSettings.mcp || { enabled: true, servers: [] }"
-                  @update:settings="handleMCPSettingsUpdate"
-                />
-
-                <SkillsSettingsPanel
-                  v-else-if="activeTab === 'skills'"
-                  :settings="localSettings.skills || { enableSkills: true, skills: {} }"
-                  @update:settings="handleSkillsSettingsUpdate"
-                />
-
-                <PromptsSettingsPanel
-                  v-else-if="activeTab === 'prompts'"
-                />
-
-                <PluginsSettingsTab
-                  v-else-if="activeTab === 'plugins'"
-                  @plugins-changed="loadTools"
-                />
               </template>
-              <div
-                v-else
-                class="loading-content"
-              >
-                Loading...
-              </div>
-            </div>
+
+              <MenuItem
+                v-for="section in item.sections"
+                :key="section"
+                :index="navSectionIndex(item.id, section)"
+                :title="section"
+                item-as="button"
+                class="sidebar-subitem"
+              />
+            </SubMenu>
+          </AppMenu>
+          <div
+            v-else
+            class="sidebar-empty"
+          >
+            No matching settings
           </div>
-        </main>
+        </div>
+      </template>
+
+      <header class="content-header">
+        <div class="content-topline">
+          <div class="settings-scope">
+            <span class="scope-badge">User</span>
+            <span class="scope-name">onething</span>
+          </div>
+          <Button
+            unstyled
+            class="json-settings-button"
+            native-type="button"
+            @click="openSettingsJson"
+          >
+            Edit in settings.json
+          </Button>
+        </div>
+        <div class="content-header-copy">
+          <h1>{{ currentNavItem?.label }}</h1>
+          <p class="content-hint">
+            {{ currentNavItem?.hint }}
+          </p>
+        </div>
+        <span
+          class="save-state"
+          :class="{ active: hasUnsavedChanges }"
+        >
+          {{ hasUnsavedChanges ? 'Saving changes...' : 'Changes save automatically' }}
+        </span>
+      </header>
+
+      <div class="content-body">
+        <div
+          class="content-inner"
+          :class="{ 'content-inner-wide': activeTab === 'providers' || activeTab === 'prompts' }"
+        >
+          <template v-if="localSettings">
+            <GeneralSettingsTab
+              v-if="activeTab === 'general'"
+              :settings="localSettings"
+              @update:settings="handleSettingsUpdate"
+            />
+
+            <EditorSettingsTab
+              v-else-if="activeTab === 'editor'"
+              :settings="localSettings"
+              @update:settings="handleSettingsUpdate"
+            />
+
+            <AIProviderTab
+              v-else-if="activeTab === 'providers'"
+              :settings="localSettings"
+              :providers="allProviders"
+              @update:settings="handleSettingsUpdate"
+              @add-custom-provider="showCustomProviderDialog = true"
+              @edit-custom-provider="editCustomProvider"
+            />
+
+            <ToolsSettingsTab
+              v-else-if="activeTab === 'tools'"
+              :settings="localSettings"
+              :tools="tools"
+              @update:settings="handleSettingsUpdate"
+            />
+
+            <NetworkSettingsTab
+              v-else-if="activeTab === 'network'"
+              :settings="localSettings"
+              @update:settings="handleSettingsUpdate"
+            />
+
+            <VoiceSettingsTab
+              v-else-if="activeTab === 'voice'"
+              :settings="localSettings"
+              @update:settings="handleSettingsUpdate"
+            />
+
+            <MemorySettingsTab
+              v-else-if="activeTab === 'memory'"
+              :settings="localSettings"
+              @update:settings="handleSettingsUpdate"
+            />
+
+            <ShortcutsSettingsTab
+              v-else-if="activeTab === 'shortcuts'"
+              :settings="localSettings"
+              @update:settings="handleSettingsUpdate"
+            />
+
+            <MCPSettingsPanel
+              v-else-if="activeTab === 'mcp'"
+              :settings="localSettings.mcp || { enabled: true, servers: [] }"
+              @update:settings="handleMCPSettingsUpdate"
+            />
+
+            <SkillsSettingsPanel
+              v-else-if="activeTab === 'skills'"
+              :settings="localSettings.skills || { enableSkills: true, skills: {} }"
+              @update:settings="handleSkillsSettingsUpdate"
+            />
+
+            <PromptsSettingsPanel
+              v-else-if="activeTab === 'prompts'"
+            />
+
+            <PluginsSettingsTab
+              v-else-if="activeTab === 'plugins'"
+              @plugins-changed="loadTools"
+            />
+          </template>
+          <div
+            v-else
+            class="loading-content"
+          >
+            Loading...
+          </div>
+        </div>
       </div>
-    </div>
+    </Container>
 
     <!-- Custom Provider Dialog -->
     <CustomProviderDialog
@@ -251,12 +245,14 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Container from '@/components/common/Container.vue'
+import AppMenu from '@/components/common/Menu.vue'
+import MenuItem from '@/components/common/MenuItem.vue'
+import SubMenu from '@/components/common/SubMenu.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import {
   Boxes,
   Brain,
-  ChevronDown,
-  ChevronRight,
   Code2,
   Globe2,
   Keyboard,
@@ -403,6 +399,27 @@ const filteredNavItems = computed(() => {
     `${item.label} ${item.hint} ${item.sections.join(' ')}`.toLowerCase().includes(query)
   )
 })
+const expandedNavMenuIndexes = computed(() => [...expandedNavItems.value])
+
+function navSectionIndex(tabId: string, sectionLabel: string) {
+  return `${tabId}::${sectionLabel}`
+}
+
+function parseNavMenuIndex(index: string) {
+  const separatorIndex = index.indexOf('::')
+  if (separatorIndex === -1) {
+    return { tabId: index, sectionLabel: '' }
+  }
+
+  return {
+    tabId: index.slice(0, separatorIndex),
+    sectionLabel: index.slice(separatorIndex + 2),
+  }
+}
+
+function isNavItemId(tabId: string) {
+  return navItems.some(item => item.id === tabId)
+}
 
 // Providers list
 const allProviders = computed<ProviderInfo[]>(() => {
@@ -487,10 +504,6 @@ async function selectNavItem(tabId: string) {
   document.querySelector('.content-body')?.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-function isNavExpanded(tabId: string) {
-  return expandedNavItems.value.has(tabId)
-}
-
 function setNavExpanded(tabId: string, expanded: boolean) {
   const next = new Set(expandedNavItems.value)
   if (expanded) {
@@ -501,8 +514,28 @@ function setNavExpanded(tabId: string, expanded: boolean) {
   expandedNavItems.value = next
 }
 
-function toggleNavExpanded(tabId: string) {
-  setNavExpanded(tabId, !isNavExpanded(tabId))
+function handleNavMenuSelect(index: string) {
+  const { tabId, sectionLabel } = parseNavMenuIndex(index)
+  if (!isNavItemId(tabId)) return
+
+  if (sectionLabel) {
+    void selectNavSection(tabId, sectionLabel)
+    return
+  }
+
+  void selectNavItem(tabId)
+}
+
+function handleNavMenuOpen(index: string) {
+  if (!isNavItemId(index)) return
+  setNavExpanded(index, true)
+  void selectNavItem(index)
+}
+
+function handleNavMenuClose(index: string) {
+  if (!isNavItemId(index)) return
+  setNavExpanded(index, false)
+  void selectNavItem(index)
 }
 
 async function selectNavSection(tabId: string, sectionLabel: string) {
@@ -718,15 +751,6 @@ onUnmounted(() => {
   position: relative;
 }
 
-.settings-page-grain {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.08;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0 0.04 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-  mix-blend-mode: multiply;
-}
-
 .settings-window {
   position: relative;
   z-index: 1;
@@ -767,12 +791,6 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
-.titlebar-mark,
-.brand-mark {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-style: italic;
-}
-
 .settings-layout {
   display: flex;
   flex: 1;
@@ -788,43 +806,6 @@ onUnmounted(() => {
   border-right: 1px solid var(--settings-rule);
   background: var(--settings-paper-2);
   -webkit-app-region: no-drag;
-}
-
-.sidebar-identity {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 8px 14px;
-}
-
-.brand-mark {
-  width: 32px;
-  height: 32px;
-  display: grid;
-  place-items: center;
-  border-radius: 9px;
-  background: var(--settings-ink);
-  color: var(--settings-paper);
-  font-size: 19px;
-  line-height: 1;
-}
-
-.brand-copy {
-  min-width: 0;
-}
-
-.brand-name {
-  font-size: 13.5px;
-  font-weight: 650;
-  line-height: 1.2;
-}
-
-.brand-subtitle {
-  margin-top: 2px;
-  color: var(--settings-ink-4);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10.5px;
-  letter-spacing: 0.03em;
 }
 
 .settings-search {
@@ -861,30 +842,6 @@ onUnmounted(() => {
   display: none;
 }
 
-.search-kbd {
-  min-width: 22px;
-  padding: 2px 7px;
-  border: 1px solid var(--settings-rule);
-  border-bottom-width: 2px;
-  border-radius: 5px;
-  background: var(--settings-paper-2);
-  color: var(--settings-ink-3);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.2;
-  text-align: center;
-}
-
-.sidebar-group-label {
-  padding: 6px 0 4px 8px;
-  color: var(--settings-ink-4);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .sidebar-nav {
   display: flex;
   flex-direction: column;
@@ -893,63 +850,11 @@ onUnmounted(() => {
   overflow-y: auto;
 }
 
-.sidebar-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  border-radius: 8px;
-  color: var(--settings-ink-3);
-  cursor: pointer;
-  text-align: left;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-}
-
-.sidebar-item:hover {
-  background: color-mix(in srgb, var(--settings-paper) 72%, transparent);
-  color: var(--settings-ink);
-}
-
-.sidebar-item.active {
-  border-color: var(--settings-rule);
-  background: var(--settings-paper);
-  color: var(--settings-ink);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--settings-ink) 8%, transparent), 0 1px 2px rgba(0, 0, 0, 0.04);
-}
-
-.sidebar-item.active::before {
-  content: '';
-  position: absolute;
-  left: -12px;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--settings-accent);
-}
-
-.sidebar-index {
-  width: 18px;
-  flex-shrink: 0;
-  color: var(--settings-ink-4);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 9.5px;
-  letter-spacing: 0.04em;
-}
-
 .sidebar-icon {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
   color: var(--settings-ink-3);
-}
-
-.sidebar-item.active .sidebar-icon {
-  color: var(--settings-ink);
 }
 
 .sidebar-copy {
@@ -985,18 +890,6 @@ onUnmounted(() => {
   background: var(--settings-paper);
 }
 
-.content-strip {
-  height: 44px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--settings-rule-soft);
-  color: var(--settings-ink-4);
-}
-
-.breadcrumb,
 .save-state {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
@@ -1021,40 +914,6 @@ onUnmounted(() => {
 
 .content-inner-wide {
   width: min(100%, 900px);
-}
-
-.section-hero {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-  margin-bottom: 26px;
-}
-
-.section-eyebrow {
-  flex-shrink: 0;
-  color: var(--settings-ink-4);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-}
-
-.section-hero h1 {
-  margin: 0;
-  color: var(--settings-ink);
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 30px;
-  font-style: italic;
-  font-weight: 400;
-  letter-spacing: 0;
-  line-height: 1.05;
-}
-
-.section-hero p {
-  max-width: 580px;
-  margin: 8px 0 0;
-  color: var(--settings-ink-3);
-  font-size: 13.5px;
-  line-height: 1.55;
 }
 
 .content-body::-webkit-scrollbar {
@@ -1320,24 +1179,6 @@ onUnmounted(() => {
   gap: 2px;
 }
 
-.sidebar-item {
-  gap: 9px;
-  min-height: 34px;
-  padding: 7px 9px;
-  border-radius: 7px;
-  color: var(--settings-ink-3);
-}
-
-.sidebar-item.active {
-  border-color: var(--settings-rule-soft);
-  background: var(--settings-paper);
-  box-shadow: none;
-}
-
-.sidebar-item.active::before {
-  display: none;
-}
-
 .sidebar-icon {
   width: 15px;
   height: 15px;
@@ -1374,16 +1215,6 @@ onUnmounted(() => {
 
 .content-header-copy {
   min-width: 0;
-}
-
-.breadcrumb {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--settings-ink-4);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .content-header h1 {
@@ -1541,18 +1372,46 @@ onUnmounted(() => {
 }
 
 .settings-window {
+  --layout-container-sidebar-width: 214px;
+
   background: var(--settings-paper);
 }
 
-.settings-layout {
-  height: 100vh;
+.settings-window :deep(.settings-titlebar) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  -webkit-app-region: drag;
 }
 
-.settings-sidebar {
+.settings-window :deep(.settings-layout) {
+  height: 100vh;
+  min-height: 0;
+}
+
+.settings-window :deep(.settings-sidebar) {
   width: 214px;
-  padding: 38px 10px 14px;
+  padding: 0 10px 14px;
   border-right: 1px solid var(--settings-rule);
   background: var(--settings-paper-2);
+  -webkit-app-region: drag;
+}
+
+.settings-sidebar-inner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.settings-traffic-lights-space {
+  flex: 0 0 38px;
   -webkit-app-region: drag;
 }
 
@@ -1600,8 +1459,26 @@ onUnmounted(() => {
 }
 
 .sidebar-nav {
+  --app-menu-bg: transparent;
+  --app-menu-border: transparent;
+  --app-menu-width: 100%;
+  --app-menu-padding: 0;
+  --app-menu-item-height: 30px;
+  --app-menu-item-radius: 4px;
+  --app-menu-item-gap: 8px;
+  --app-menu-indent-step: 0px;
+  --app-menu-item-fg: var(--settings-ink-4);
+  --app-menu-item-hover-bg: color-mix(in srgb, var(--settings-paper) 46%, transparent);
+  --app-menu-item-hover-fg: var(--settings-ink-2);
+  --app-menu-active-bg: color-mix(in srgb, var(--settings-paper) 72%, var(--settings-accent-soft));
+  --app-menu-active-fg: var(--settings-ink);
+
   gap: 0;
+  width: 100%;
   padding-right: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .sidebar-entry {
@@ -1609,7 +1486,7 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.sidebar-item {
+.sidebar-entry :deep(.app-sub-menu-title) {
   gap: 8px;
   min-height: 30px;
   padding: 5px 8px;
@@ -1617,64 +1494,66 @@ onUnmounted(() => {
   border-radius: 4px;
   color: var(--settings-ink-4);
   font: inherit;
+  font-size: 14px;
   outline: none;
+  text-align: left;
   transition: background 120ms ease, color 120ms ease;
 }
 
-.sidebar-item:hover {
+.sidebar-entry :deep(.app-sub-menu-title:hover) {
   background: color-mix(in srgb, var(--settings-paper) 46%, transparent);
   color: var(--settings-ink-2);
 }
 
-.sidebar-item:focus-visible {
+.sidebar-entry :deep(.app-sub-menu-title:focus-visible) {
   outline: 2px solid color-mix(in srgb, var(--settings-ink) 24%, transparent);
   outline-offset: 2px;
+  box-shadow: none;
 }
 
-.sidebar-item.active {
+.sidebar-entry.is-active :deep(.app-sub-menu-title) {
   border-color: transparent;
   background: color-mix(in srgb, var(--settings-paper) 72%, var(--settings-accent-soft));
   color: var(--settings-ink);
   box-shadow: none;
 }
 
-.sidebar-disclosure-button {
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.sidebar-entry :deep(.app-sub-menu-chevron) {
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--settings-ink-4);
-  cursor: pointer;
+  color: currentColor;
+  opacity: 1;
 }
 
-.sidebar-disclosure-button:hover {
-  background: color-mix(in srgb, var(--settings-paper) 52%, transparent);
-  color: var(--settings-ink-2);
+.sidebar-entry :deep(.app-sub-menu-icon) {
+  width: 16px;
+  height: 16px;
+  color: currentColor;
 }
 
-.sidebar-disclosure {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
-  pointer-events: none;
-}
-
-.sidebar-item.active .sidebar-disclosure-button {
-  color: var(--settings-ink-3);
+.sidebar-entry :deep(.app-sub-menu-label) {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
 }
 
 .sidebar-icon {
-  display: none;
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: currentColor;
 }
 
 .sidebar-copy {
-  display: block;
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
 }
 
 .sidebar-label {
@@ -1687,7 +1566,7 @@ onUnmounted(() => {
   display: none;
 }
 
-.sidebar-subnav {
+.sidebar-entry :deep(.app-sub-menu-panel) {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1696,7 +1575,7 @@ onUnmounted(() => {
   padding: 1px 0 1px 14px;
 }
 
-.sidebar-subnav::before {
+.sidebar-entry :deep(.app-sub-menu-panel::before) {
   content: '';
   position: absolute;
   left: 5px;
@@ -1707,7 +1586,15 @@ onUnmounted(() => {
 }
 
 .sidebar-subitem {
+  width: 100%;
+}
+
+.sidebar-subitem :deep(.app-menu-item) {
   min-height: 25px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
   border: 0;
   border-radius: 4px;
   background: transparent;
@@ -1719,9 +1606,16 @@ onUnmounted(() => {
   text-align: left;
 }
 
-.sidebar-subitem:hover {
+.sidebar-subitem :deep(.app-menu-item:hover),
+.sidebar-subitem :deep(.app-menu-item:focus-visible) {
   background: color-mix(in srgb, var(--settings-paper) 42%, transparent);
   color: var(--settings-ink-2);
+  box-shadow: none;
+}
+
+.sidebar-subitem :deep(.app-menu-item-label) {
+  min-width: 0;
+  text-align: left;
 }
 
 .sidebar-empty {
@@ -1730,7 +1624,12 @@ onUnmounted(() => {
   font-size: 12.5px;
 }
 
-.settings-content {
+.settings-window :deep(.settings-content) {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
   background: var(--settings-paper);
 }
 
@@ -1815,8 +1714,7 @@ onUnmounted(() => {
   line-height: 1.2;
 }
 
-.content-hint,
-.breadcrumb {
+.content-hint {
   display: none;
 }
 
@@ -2142,7 +2040,7 @@ onUnmounted(() => {
 .settings-page :deep(.settings-search:focus-within),
 .settings-page :deep(.prompt-search:focus-within),
 .settings-page :deep(.model-search-field:focus-within),
-.settings-page :deep(.number-stepper:focus-within),
+.settings-page :deep(.app-input-number:focus-within),
 .settings-page :deep(.model-out-wrap:focus-within) {
   border-color: color-mix(in srgb, var(--settings-ink) 24%, var(--settings-rule));
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-ink) 8%, transparent);
@@ -2157,9 +2055,13 @@ onUnmounted(() => {
 }
 
 @media (max-width: 860px) {
-  .settings-sidebar {
+  .settings-window {
+    --layout-container-sidebar-width: 204px;
+  }
+
+  .settings-window :deep(.settings-sidebar) {
     width: 204px;
-    padding: 38px 8px 12px;
+    padding: 0 8px 12px;
   }
 
   .content-header {

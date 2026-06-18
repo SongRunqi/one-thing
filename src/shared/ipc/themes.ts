@@ -205,12 +205,28 @@ export interface ThemeDiffColors {
  */
 export interface ThemeSemanticColors {
   danger?: ColorValue      // Base46: red / base08 - errors, deletions
-  dangerLight?: ColorValue // Transparent variant for backgrounds
+  dangerBg?: ColorValue
+  dangerBgHover?: ColorValue
+  dangerBorder?: ColorValue
+  dangerText?: ColorValue
+  dangerLight?: ColorValue // Deprecated compatibility alias for dangerBg
   warning?: ColorValue     // Base46: orange|yellow / base09 - warnings
+  warningBg?: ColorValue
+  warningBgHover?: ColorValue
+  warningBorder?: ColorValue
+  warningText?: ColorValue
   warningLight?: ColorValue
   success?: ColorValue     // Base46: green / base0B - success, additions
+  successBg?: ColorValue
+  successBgHover?: ColorValue
+  successBorder?: ColorValue
+  successText?: ColorValue
   successLight?: ColorValue
   info?: ColorValue        // Base46: cyan / base0C - info, links
+  infoBg?: ColorValue
+  infoBgHover?: ColorValue
+  infoBorder?: ColorValue
+  infoText?: ColorValue
   infoLight?: ColorValue
 }
 
@@ -252,6 +268,12 @@ export interface ThemeColors {
    * accent fields for the default theme color semantics.
    */
   primary?: ColorValue
+  primaryHover?: ColorValue
+  primaryBg?: ColorValue
+  primaryBgHover?: ColorValue
+  primaryBorder?: ColorValue
+  primaryText?: ColorValue
+  primaryLight?: ColorValue // Deprecated compatibility alias for primaryBg
   accent: ColorValue
   accentMain?: ColorValue
   accentSub?: ColorValue
@@ -388,6 +410,27 @@ export type SemanticUIToken =
   | 'ui.sidebar.action'
   | 'ui.sidebar.actionHover'
   | 'ui.sidebar.border'
+  | 'ui.category.1.icon'
+  | 'ui.category.1.badgeBg'
+  | 'ui.category.1.badgeText'
+  | 'ui.category.2.icon'
+  | 'ui.category.2.badgeBg'
+  | 'ui.category.2.badgeText'
+  | 'ui.category.3.icon'
+  | 'ui.category.3.badgeBg'
+  | 'ui.category.3.badgeText'
+  | 'ui.category.4.icon'
+  | 'ui.category.4.badgeBg'
+  | 'ui.category.4.badgeText'
+  | 'ui.category.5.icon'
+  | 'ui.category.5.badgeBg'
+  | 'ui.category.5.badgeText'
+  | 'ui.category.6.icon'
+  | 'ui.category.6.badgeBg'
+  | 'ui.category.6.badgeText'
+  | 'ui.category.7.icon'
+  | 'ui.category.7.badgeBg'
+  | 'ui.category.7.badgeText'
   | 'ui.tabBar.surface'
   | 'ui.tabBar.divider'
   | 'ui.tabBar.item'

@@ -49,7 +49,7 @@
               />
               <span
                 class="provider-status-dot"
-                :class="providerStatus(provider.id)"
+                :class="providerSettings.isProviderEnabled(provider.id) ? 'active' : 'off'"
               />
             </span>
 
@@ -113,14 +113,13 @@
                   <h2 class="detail-title">
                     {{ providerSettings.currentProviderName.value }}
                   </h2>
-                  <label class="enable-toggle">
-                    <input
-                      type="checkbox"
-                      :checked="providerSettings.isProviderEnabled(providerSettings.viewingProvider.value)"
-                      @change="providerSettings.toggleProviderEnabled(providerSettings.viewingProvider.value)"
-                    >
-                    <span class="toggle-switch" />
-                  </label>
+                  <Switch
+                    :model-value="providerSettings.isProviderEnabled(providerSettings.viewingProvider.value)"
+                    size="small"
+                    class="detail-enable-switch"
+                    aria-label="Provider enabled"
+                    @change="providerSettings.toggleProviderEnabled(providerSettings.viewingProvider.value)"
+                  />
                 </div>
 
                 <!-- API Configuration -->
@@ -165,42 +164,38 @@
                     class="settings-group"
                   >
                     <div class="settings-row">
-                      <span class="row-label">API Key</span>
-                      <div class="row-input-wrap">
-                        <input
-                          :value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.apiKey"
-                          :type="showApiKey ? 'text' : 'password'"
-                          class="row-input"
-                          :placeholder="`Enter ${providerSettings.currentProviderName.value} key...`"
-                          @input="providerSettings.updateProviderApiKey(($event.target as HTMLInputElement).value)"
+                      <span class="row-label api-key-label">
+                        API Key
+                        <span
+                          v-if="providerSettings.currentProviderUsesEnvApiKey.value"
+                          class="env-detected-badge"
                         >
-                        <Button
-                          unstyled
-                          class="input-toggle"
-                          native-type="button"
-                          :title="showApiKey ? 'Hide API key' : 'Show API key'"
-                          @click="showApiKey = !showApiKey"
-                        >
-                          <EyeOff
-                            v-if="showApiKey"
-                            :size="14"
-                          />
-                          <Eye
-                            v-else
-                            :size="14"
-                          />
-                        </Button>
-                      </div>
+                          <Terminal :size="12" />
+                          Env {{ providerSettings.currentProviderEnvVarName.value }}
+                        </span>
+                      </span>
+                      <Input
+                        :model-value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.apiKey"
+                        type="password"
+                        show-password
+                        class="row-input"
+                        :placeholder="`Enter ${providerSettings.currentProviderName.value} key...`"
+                        :spellcheck="false"
+                        aria-label="API key"
+                        @update:model-value="providerSettings.updateProviderApiKey"
+                      />
                     </div>
                     <div class="settings-row">
                       <span class="row-label">Base URL</span>
-                      <input
-                        :value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.baseUrl"
+                      <Input
+                        :model-value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.baseUrl"
                         type="text"
                         class="row-input"
                         :placeholder="providerSettings.getDefaultBaseUrl()"
-                        @input="providerSettings.updateProviderBaseUrl(($event.target as HTMLInputElement).value)"
-                      >
+                        :spellcheck="false"
+                        aria-label="Base URL"
+                        @update:model-value="providerSettings.updateProviderBaseUrl"
+                      />
                     </div>
                   </div>
                 </section>
@@ -268,7 +263,7 @@
                     :class="{ 'is-disabled': !providerSettings.activeModelSupportsTemperature.value }"
                   >
                     <div class="stepper-row">
-                      <NumberStepper
+                      <InputNumber
                         :model-value="providerSettings.currentTemperature.value"
                         :min="0"
                         :max="2"
@@ -324,7 +319,7 @@
                     :class="{ 'is-disabled': !providerSettings.activeModelMaxLimit.value }"
                   >
                     <div class="stepper-row">
-                      <NumberStepper
+                      <InputNumber
                         :model-value="providerSettings.activeModelMaxOutput.value"
                         :min="1"
                         :max="Math.max(1, providerSettings.activeModelMaxLimit.value)"
@@ -357,8 +352,9 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import { ref, onMounted, onUnmounted } from 'vue'
-import { ChevronDown, Eye, EyeOff } from 'lucide-vue-next'
+import { ChevronDown, Terminal } from 'lucide-vue-next'
 import type { AppSettings, ProviderInfo } from '@/types'
+import Input from '@/components/common/Input.vue'
 import GlobalDefaultSelector from './GlobalDefaultSelector.vue'
 import ProviderIcon from '../ProviderIcon.vue'
 import AuthCard from './AuthCard.vue'
@@ -366,7 +362,8 @@ import ProviderUsageCard from './ProviderUsageCard.vue'
 import ProviderModels from './ProviderModels.vue'
 import { useProviderSettings } from './useProviderSettings'
 import { useProviderUsage } from './useProviderUsage'
-import NumberStepper from '../NumberStepper.vue'
+import InputNumber from '@/components/common/InputNumber.vue'
+import Switch from '@/components/common/Switch.vue'
 
 const props = defineProps<{
   settings: AppSettings
@@ -378,8 +375,6 @@ const emit = defineEmits<{
   'add-custom-provider': []
   'edit-custom-provider': [providerId: string]
 }>()
-
-const showApiKey = ref(false)
 
 const providerSettings = useProviderSettings(props, (event, value) => emit(event, value))
 const providerUsage = useProviderUsage(providerSettings.viewingProvider, providerSettings.oauthStatus)
@@ -405,16 +400,17 @@ function providerModelLabel(providerId: string): string {
   return model ? providerSettings.getModelName(model) : 'No model selected'
 }
 
-function providerStatus(providerId: string): 'active' | 'off' {
-  return providerSettings.isProviderEnabled(providerId) ? 'active' : 'off'
-}
-
 function providerKeyPreview(providerId: string): string {
   const config = props.settings.ai.providers?.[providerId]
   const provider = props.providers.find(p => p.id === providerId)
   const key = config?.apiKey?.trim()
+  const envStatus = providerSettings.getProviderEnvStatus(providerId)
+  const envVar = envStatus?.resolvedEnvVar
 
   if (provider?.requiresOAuth) return 'Subscription'
+  if (providerSettings.providerUsesEnvApiKey(providerId)) {
+    return envVar ? `Env ${envVar}` : 'Env missing'
+  }
   if (key) {
     const head = key.slice(0, Math.min(6, key.length))
     const tail = key.length > 10 ? key.slice(-4) : ''
@@ -626,8 +622,8 @@ onUnmounted(() => {
 }
 
 .provider-pill.green {
-  border-color: color-mix(in srgb, var(--ui-status-success-fg, var(--text-success, var(--color-success))) 32%, transparent);
-  background: color-mix(in srgb, var(--ui-status-success-fg, var(--text-success, var(--color-success))) 12%, var(--settings-paper));
+  border-color: var(--ui-status-success-border, var(--text-success, var(--color-success)));
+  background: var(--ui-status-success-bg, var(--settings-paper));
   color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
 }
 
@@ -728,47 +724,6 @@ onUnmounted(() => {
   letter-spacing: 0;
 }
 
-.enable-toggle {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-}
-
-.enable-toggle input { display: none; }
-
-.toggle-switch {
-  width: 36px;
-  height: 20px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  background: var(--settings-paper, var(--ui-border-default-border, var(--border)));
-  border-radius: 10px;
-  position: relative;
-  transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-.toggle-switch::after {
-  content: '';
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  background: var(--settings-ink-3, var(--ui-text-muted-fg, var(--muted)));
-  border-radius: 50%;
-  top: 1px;
-  left: 1px;
-  transition: transform 0.2s ease;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
-}
-
-.enable-toggle input:checked + .toggle-switch {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-}
-
-.enable-toggle input:checked + .toggle-switch::after {
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
-  transform: translateX(16px);
-}
-
 .detail-section {
   margin-bottom: 24px;
 }
@@ -808,10 +763,6 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.form-slider:disabled {
-  cursor: not-allowed;
 }
 
 .section-hint {
@@ -866,74 +817,59 @@ onUnmounted(() => {
   font-weight: 520;
 }
 
-.row-input-wrap {
-  position: relative;
-  width: 100%;
-  min-width: 0;
+.api-key-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.env-detected-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--ui-status-success-border, var(--text-success, var(--color-success)));
+  border-radius: 999px;
+  background: var(--ui-status-success-bg, var(--settings-paper));
+  color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 560;
+  line-height: 1.3;
+  white-space: nowrap;
 }
 
 .row-input {
   width: 100%;
   min-width: 0;
+}
+
+.row-input :deep(.app-input-control) {
   min-height: 34px;
-  padding: 7px 10px;
-  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-color: var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
   border-radius: 7px;
   background: var(--settings-paper-2, var(--ui-surface-input-bg, var(--bg-input, var(--bg))));
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  box-shadow: none;
+}
+
+.row-input :deep(.app-input-inner) {
   font-size: 13px;
   text-align: left;
 }
 
-.row-input-wrap .row-input {
-  padding-right: 34px;
-}
-
-.row-input:focus {
-  outline: none;
+.row-input.is-focused :deep(.app-input-control) {
   border-color: var(--settings-rule-strong, var(--settings-rule, var(--ui-border-default-border, var(--border))));
   box-shadow: none;
 }
 
-.row-input::placeholder {
+.row-input :deep(.app-input-inner::placeholder) {
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
-.row-select {
-  -webkit-appearance: none;
-  appearance: none;
-  padding-right: 8px;
-  cursor: pointer;
-}
-
-.network-group {
-  margin-top: 10px;
-}
-
-.input-toggle {
-  position: absolute;
-  top: 50%;
-  right: 6px;
-  transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  border-radius: 4px;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.input-toggle:hover {
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-}
-
-.stepper-row,
-.slider-row {
+.stepper-row {
   padding: 16px 16px 14px;
 }
 
@@ -943,27 +879,7 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.form-slider {
-  width: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  cursor: pointer;
-  -webkit-appearance: none;
-}
-
-.form-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.stepper-labels,
-.slider-labels {
+.stepper-labels {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -973,8 +889,7 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-.stepper-labels code,
-.slider-labels code {
+.stepper-labels code {
   font-family: var(--font-mono, 'SF Mono', monospace);
   font-size: 10px;
   padding: 1px 6px;

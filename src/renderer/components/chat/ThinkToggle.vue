@@ -1,84 +1,64 @@
 <template>
   <div
     v-if="visible"
-    ref="rootRef"
     class="thinking-control"
+    @click.stop
   >
     <Tooltip :text="tooltipText">
-      <Button
-        ref="selectorRef"
-        plain
-        round
+      <Select
+        class="think-select"
+        :class="{ active: selectionActive }"
+        :style="thinkSelectStyle"
         size="small"
-        :class="['think-select', { active: selectionActive, open: panelOpen }]"
-        native-type="button"
-        aria-haspopup="listbox"
-        :aria-expanded="panelOpen"
-        @mousedown.prevent
-        @click.stop="togglePanel"
-        @keydown="handleSelectorKeydown"
+        teleported
+        placement="top"
+        :model-value="thinkingSelectValue"
+        :options="thinkSelectOptions"
+        :aria-label="tooltipText"
+        :popper-style="thinkDropdownStyle"
+        @change="handleThinkSelect"
       >
-        <template #icon>
+        <template #prefix>
           <Brain :size="14" />
         </template>
-        <span class="think-value">{{ currentSelectionLabel }}</span>
-        <ChevronDown
-          class="think-chevron"
-          :size="13"
-        />
-      </Button>
-    </Tooltip>
 
-    <Teleport to="body">
-      <div
-        v-if="panelOpen"
-        ref="panelRef"
-        class="think-panel"
-        :style="panelStyle"
-        role="listbox"
-        tabindex="-1"
-        @keydown="handlePanelKeydown"
-      >
-        <div
-          v-for="group in optionGroups"
-          :key="group.key"
-          class="think-group"
-        >
-          <div class="think-section-label">
-            {{ group.label }}
-          </div>
-          <Button
-            v-for="option in group.options"
-            :key="optionKey(option)"
-            text
-            size="small"
-            :class="['think-option', { selected: isOptionSelected(option), active: isOptionActive(option) }]"
-            native-type="button"
-            role="option"
-            :aria-selected="isOptionSelected(option)"
-            @mousedown.prevent
-            @click.stop="selectOption(option)"
-          >
-            <span class="think-option-text">{{ option.label }}</span>
+        <template #label>
+          <span class="think-value">{{ currentSelectionLabel }}</span>
+        </template>
+
+        <template #option="{ option }">
+          <span class="think-option-row">
+            <span class="think-option-main">
+              <span class="think-option-text">{{ thinkOptionLabel(option) }}</span>
+              <span
+                v-if="thinkOptionDescription(option)"
+                class="think-option-description"
+              >
+                {{ thinkOptionDescription(option) }}
+              </span>
+            </span>
             <Check
-              v-if="isOptionSelected(option)"
+              v-if="isThinkSelectOptionSelected(option)"
+              class="think-option-check"
               :size="13"
             />
-          </Button>
-        </div>
-      </div>
-    </Teleport>
+          </span>
+        </template>
+      </Select>
+    </Tooltip>
   </div>
 </template>
 
 <script setup lang="ts">
-import Button from '@/components/common/Button.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Brain, Check, ChevronDown } from 'lucide-vue-next'
+import Select from '@/components/common/Select.vue'
+import { computed, type StyleValue } from 'vue'
+import { Brain, Check } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import type { AIProvider, OpenRouterModel, ThinkingEffort } from '../../../shared/ipc'
+import type { SelectModelValue, SelectOptionLike } from '@/components/common/select'
 import Tooltip from '../common/Tooltip.vue'
+import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
 
 interface Props {
   sessionId?: string
@@ -108,6 +88,13 @@ interface ThinkOptionGroup {
   options: ThinkOption[]
 }
 
+interface ThinkSelectOption {
+  value: string
+  label: string
+  description?: string
+  option: ThinkOption
+}
+
 interface CodexModelMetadata {
   defaultReasoningEffort?: ThinkingEffort
   supportedReasoningEfforts?: Array<{
@@ -131,13 +118,6 @@ const props = defineProps<Props>()
 
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
-
-const rootRef = ref<HTMLElement | null>(null)
-const selectorRef = ref<HTMLElement | null>(null)
-const panelRef = ref<HTMLElement | null>(null)
-const panelOpen = ref(false)
-const activeOptionIndex = ref(0)
-const panelStyle = ref<Record<string, string>>({})
 
 const THINKING_PAIRS: Record<string, { normal: string; thinking: string }> = {
   deepseek: { normal: 'deepseek-chat', thinking: 'deepseek-reasoner' },
@@ -165,12 +145,9 @@ const EFFORT_LABELS: Record<ThinkingEffort, string> = {
   max: 'Max',
 }
 
-const PANEL_WIDTH = 160
-const PANEL_GAP = 6
-const PANEL_MARGIN = 8
-const OPTION_HEIGHT = 30
-const SECTION_LABEL_HEIGHT = 22
-const PANEL_VERTICAL_PADDING = 8
+const thinkDropdownStyle = computed<StyleValue>(() => ({
+  width: '190px',
+}))
 
 const currentSession = computed(() => {
   const sid = props.sessionId
@@ -178,17 +155,16 @@ const currentSession = computed(() => {
   return sessionsStore.getSessionItem(sid) || null
 })
 
-const currentProvider = computed(() => {
-  const session = currentSession.value
-  if (session?.lastProvider) return session.lastProvider
-  return settingsStore.settings?.ai?.provider || ''
-})
+const currentSelection = computed(() => resolveProviderModelSelection({
+  settings: settingsStore.settings,
+  session: currentSession.value,
+  providers: settingsStore.availableProviders,
+  getCachedModels: providerId => settingsStore.getCachedModels(providerId),
+}))
 
-const currentModel = computed(() => {
-  const session = currentSession.value
-  if (session?.lastModel) return session.lastModel
-  return settingsStore.settings?.ai?.providers?.[currentProvider.value]?.model || ''
-})
+const currentProvider = computed(() => currentSelection.value.providerId)
+
+const currentModel = computed(() => currentSelection.value.model)
 
 const cachedModelInfo = computed<OpenRouterModel | undefined>(() => {
   if (!currentProvider.value || !currentModel.value) return undefined
@@ -328,6 +304,10 @@ const currentSelectionLabel = computed(() => {
     : thinkingLabel
 })
 
+const thinkSelectStyle = computed<StyleValue>(() => ({
+  '--think-select-width': `${thinkSelectWidth(currentSelectionLabel.value)}px`,
+}))
+
 const selectionActive = computed(() => thinking.value || !!currentServiceTier.value)
 
 const speedOptions = computed<ThinkOption[]>(() => {
@@ -385,6 +365,15 @@ const optionGroups = computed<ThinkOptionGroup[]>(() => {
 
 const flatOptions = computed<ThinkOption[]>(() => optionGroups.value.flatMap((group) => group.options))
 
+const thinkingSelectValue = computed(() => `current:${currentSelectionLabel.value}`)
+
+const thinkSelectOptions = computed<SelectOptionLike[]>(() => {
+  return optionGroups.value.map((group) => ({
+    label: group.label,
+    options: group.options.map(toThinkSelectOption),
+  }))
+})
+
 function normalizeEffort(value: unknown): ThinkingEffort | null {
   if (
     value === 'minimal' ||
@@ -407,6 +396,19 @@ function titleCaseServiceTier(value: string): string {
     .join(' ') || value
 }
 
+function thinkSelectWidth(label: string): number {
+  const text = label.trim() || 'Off'
+  const visualLength = Array.from(text).reduce((total, char) => {
+    if (/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(char)) return total + 1.7
+    if (/[A-Z0-9]/.test(char)) return total + 1.05
+    if (/[-_./·]/.test(char)) return total + 0.65
+    if (char === ' ') return total + 0.45
+    return total + 0.9
+  }, 0)
+
+  return Math.round(Math.max(92, Math.min(240, 62 + visualLength * 7.2)))
+}
+
 function optionKey(option: ThinkOption): string {
   if (option.kind === 'effort') return `effort-${option.value}`
   if (option.kind === 'speed') return `speed-${option.value ?? 'auto'}`
@@ -420,41 +422,40 @@ function isOptionSelected(option: ThinkOption): boolean {
   return thinking.value && currentEffort.value === option.value
 }
 
-function isOptionActive(option: ThinkOption): boolean {
-  const active = flatOptions.value[activeOptionIndex.value]
-  return !!active && optionKey(option) === optionKey(active)
-}
-
-function setActiveOptionToCurrent(): void {
-  const index = flatOptions.value.findIndex(isOptionSelected)
-  activeOptionIndex.value = index >= 0 ? index : 0
-}
-
-function togglePanel(): void {
-  if (panelOpen.value) {
-    closePanel()
-  } else {
-    openPanel()
+function toThinkSelectOption(option: ThinkOption): ThinkSelectOption {
+  return {
+    value: optionKey(option),
+    label: option.label,
+    description: option.description,
+    option,
   }
 }
 
-function openPanel(): void {
-  setActiveOptionToCurrent()
-  panelOpen.value = true
-  nextTick(() => {
-    updatePanelPosition()
-    panelRef.value?.focus()
-  })
+function asThinkSelectOption(option: SelectOptionLike): ThinkSelectOption | null {
+  if (!option || typeof option !== 'object' || Array.isArray(option)) return null
+  const candidate = option as Partial<ThinkSelectOption>
+  if (!candidate.option || typeof candidate.label !== 'string') return null
+  return candidate as ThinkSelectOption
 }
 
-function closePanel(): void {
-  panelOpen.value = false
+function thinkOptionLabel(option: SelectOptionLike): string {
+  return asThinkSelectOption(option)?.label || ''
 }
 
-function moveActiveOption(delta: number): void {
-  const count = flatOptions.value.length
-  if (count === 0) return
-  activeOptionIndex.value = (activeOptionIndex.value + delta + count) % count
+function thinkOptionDescription(option: SelectOptionLike): string {
+  return asThinkSelectOption(option)?.description || ''
+}
+
+function isThinkSelectOptionSelected(option: SelectOptionLike): boolean {
+  const selectOption = asThinkSelectOption(option)
+  return selectOption ? isOptionSelected(selectOption.option) : false
+}
+
+async function handleThinkSelect(value: SelectModelValue): Promise<void> {
+  if (Array.isArray(value) || typeof value !== 'string') return
+  const option = flatOptions.value.find((item) => optionKey(item) === value)
+  if (!option) return
+  await selectOption(option)
 }
 
 async function selectOption(option: ThinkOption): Promise<void> {
@@ -467,8 +468,6 @@ async function selectOption(option: ThinkOption): Promise<void> {
   } else {
     await setNativeThinkingEffort(option.value)
   }
-  closePanel()
-  selectorRef.value?.focus()
 }
 
 async function setThinkingEnabled(enabled: boolean): Promise<void> {
@@ -571,172 +570,60 @@ async function setLegacyPairThinking(enabled: boolean): Promise<void> {
     await sessionsStore.updateSessionModel(sid, provider, target)
   }
 }
-
-function updatePanelPosition(): void {
-  const anchor = selectorRef.value
-  if (!anchor) return
-
-  const rect = anchor.getBoundingClientRect()
-  const optionCount = Math.max(flatOptions.value.length, 1)
-  const groupCount = Math.max(optionGroups.value.length, 1)
-  const panelHeight =
-    optionCount * OPTION_HEIGHT +
-    groupCount * SECTION_LABEL_HEIGHT +
-    PANEL_VERTICAL_PADDING
-  const width = PANEL_WIDTH
-  const left = Math.min(
-    Math.max(rect.left, PANEL_MARGIN),
-    Math.max(PANEL_MARGIN, window.innerWidth - width - PANEL_MARGIN),
-  )
-
-  const canOpenBelow = window.innerHeight - rect.bottom >= panelHeight + PANEL_GAP + PANEL_MARGIN
-  const top = canOpenBelow
-    ? rect.bottom + PANEL_GAP
-    : Math.max(PANEL_MARGIN, rect.top - panelHeight - PANEL_GAP)
-
-  panelStyle.value = {
-    position: 'fixed',
-    left: `${Math.round(left)}px`,
-    top: `${Math.round(top)}px`,
-    width: `${width}px`,
-  }
-}
-
-function handleSelectorKeydown(event: KeyboardEvent): void {
-  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-    event.preventDefault()
-    if (!panelOpen.value) openPanel()
-    else moveActiveOption(event.key === 'ArrowDown' ? 1 : -1)
-  } else if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault()
-    if (!panelOpen.value) openPanel()
-    else {
-      const option = flatOptions.value[activeOptionIndex.value]
-      if (option) void selectOption(option)
-    }
-  } else if (event.key === 'Escape') {
-    closePanel()
-  }
-}
-
-async function handlePanelKeydown(event: KeyboardEvent): Promise<void> {
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    closePanel()
-    selectorRef.value?.focus()
-  } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-    event.preventDefault()
-    moveActiveOption(event.key === 'ArrowDown' ? 1 : -1)
-  } else if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault()
-    const option = flatOptions.value[activeOptionIndex.value]
-    if (option) await selectOption(option)
-  }
-}
-
-function handleDocumentPointerDown(event: PointerEvent): void {
-  if (!panelOpen.value) return
-  const target = event.target as Node | null
-  if (target && (rootRef.value?.contains(target) || panelRef.value?.contains(target))) return
-  closePanel()
-}
-
-function handleViewportChange(): void {
-  if (panelOpen.value) updatePanelPosition()
-}
-
-onMounted(() => {
-  document.addEventListener('pointerdown', handleDocumentPointerDown, true)
-  window.addEventListener('resize', handleViewportChange)
-  window.addEventListener('scroll', handleViewportChange, true)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', handleDocumentPointerDown, true)
-  window.removeEventListener('resize', handleViewportChange)
-  window.removeEventListener('scroll', handleViewportChange, true)
-})
 </script>
 
 <style scoped>
-.thinking-control,
-.think-panel {
-  --think-accent: var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--accent)));
+.thinking-control {
+  --think-accent: var(--ui-message-thinking-fg);
   --think-accent-border: color-mix(in srgb, var(--think-accent) 50%, transparent);
   --think-accent-bg: color-mix(in srgb, var(--think-accent) 10%, transparent);
   --think-accent-bg-strong: color-mix(in srgb, var(--think-accent) 18%, transparent);
-}
 
-.thinking-control {
   display: inline-flex;
   align-items: center;
   min-width: 0;
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .think-select {
-  --app-button-height: 28px;
-  --app-button-min-width: 0;
-  --app-button-padding-x: 10px;
-  --app-button-gap: 5px;
-  --app-button-font-size: 12px;
-  --app-button-fill: transparent;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
+  width: var(--think-select-width, 112px);
+}
 
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  max-width: 160px;
-  padding: 0 8px 0 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+.think-select :deep(.app-select-control) {
+  min-height: 28px;
+  padding: 3px 7px 3px 9px;
   border-radius: 14px;
+  border-color: var(--ui-border-default-border, var(--border));
   background: transparent;
   color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease,
-    transform 0.15s ease;
 }
 
-.think-select :deep(.app-button-label) {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-}
-
-.think-select:hover {
+.think-select :deep(.app-select-control:hover),
+.think-select.is-open :deep(.app-select-control) {
   color: var(--ui-text-primary-fg, var(--text));
+  border-color: var(--ui-border-default-border, var(--border));
   background: var(--ui-state-hover-bg, var(--hover));
+  box-shadow: none;
 }
 
-.think-select:active {
-  transform: scale(0.97);
-}
-
-.think-select.active {
+.think-select.active :deep(.app-select-control) {
   color: var(--ui-text-primary-fg, var(--text));
   border-color: var(--think-accent-border);
   background: var(--think-accent-bg);
 }
 
-.think-select.active:hover,
-.think-select.open {
+.think-select.active :deep(.app-select-control:hover),
+.think-select.active.is-open :deep(.app-select-control) {
   background: var(--think-accent-bg-strong);
 }
 
+.think-select :deep(.app-select-single-value),
 .think-value {
-  color: var(--ui-text-primary-fg, var(--text));
   min-width: 0;
   overflow: hidden;
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 12px;
+  font-weight: 520;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -745,96 +632,42 @@ onBeforeUnmount(() => {
   color: var(--ui-text-muted-fg, var(--muted));
 }
 
-.think-chevron {
-  flex: 0 0 auto;
-  transition: transform 0.15s ease;
-}
-
-.think-select.open .think-chevron {
-  transform: rotate(180deg);
-}
-
-.think-panel {
-  z-index: 10000;
-  padding: 4px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-surface-app-bg, var(--bg));
-  box-shadow: var(--shadow-lg, 0 10px 28px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 18%, transparent));
-  outline: none;
-}
-
-.think-group + .think-group {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.think-section-label {
-  height: 22px;
-  padding: 5px 8px 3px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 14px;
-  text-transform: uppercase;
-}
-
-.think-option {
-  --app-button-height: 30px;
-  --app-button-min-width: 0;
-  --app-button-padding-x: 8px;
-  --app-button-font-size: 12px;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
-
+.think-option-row {
+  min-width: 0;
+  width: 100%;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  height: 30px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 12px;
-  font-weight: 500;
-  text-align: left;
-  cursor: pointer;
-}
-
-.think-option :deep(.app-button-label) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  width: 100%;
-  min-width: 0;
 }
 
-.think-option-text {
+.think-option-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.think-option-text,
+.think-option-description {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.think-option:hover,
-.think-option.active {
-  background: var(--ui-state-hover-bg, var(--hover));
+.think-option-text {
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.think-option.selected {
-  color: var(--ui-text-primary-fg, var(--text));
+.think-option-description {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 10.5px;
 }
 
-@media (max-width: 600px) {
-  .think-select {
-    max-width: 112px;
-    padding: 0 8px;
-  }
+.think-option-check {
+  flex: 0 0 auto;
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 </style>

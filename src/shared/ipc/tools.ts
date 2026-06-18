@@ -134,9 +134,9 @@ export interface WebSearchSettings {
 export type PermissionMode = 'normal' | 'auto-accept-edits' | 'dangerously-allow-all'
 
 export interface ToolCallModelSettings {
-  /** Provider used for lightweight AI utility calls, such as chat title generation. Empty = use chat default. */
+  /** Provider used for lightweight AI utility calls, memory background tasks, and dreaming. Empty = use chat default. */
   providerId?: string
-  /** Model used for lightweight AI utility calls. Empty = provider default model. */
+  /** Model used for lightweight AI utility calls, memory background tasks, and dreaming. Empty = provider default model. */
   model?: string
   /** Independent thinking toggle for lightweight AI utility calls. Defaults to disabled. */
   thinking?: boolean

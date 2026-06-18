@@ -364,6 +364,24 @@ export async function executeToolAndUpdate(
   // Get session's workingDirectory for sandbox boundary (reuse session from above)
   const workingDirectory = session?.workingDirectory
   const workingDirectoryRoots = session?.workingDirectoryRoots
+  let sideEffectStarted = false
+
+  const markSideEffectStarted = async () => {
+    await options.beforeSideEffect?.()
+
+    if (sideEffectStarted) return
+    sideEffectStarted = true
+
+    toolCall.status = 'executing'
+    toolCall.requiresConfirmation = false
+    toolCall.startTime = Date.now()
+    store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
+    emitter.sendToolCall(toolCall)
+    emitter.sendStepUpdated(step.id, {
+      status: 'running',
+      toolCall: { ...toolCall, changes: step.toolCall?.changes },
+    })
+  }
 
   // Execute tool directly (no LLM overhead)
   const result = await executeToolDirectly(
@@ -440,7 +458,7 @@ export async function executeToolAndUpdate(
           error: subStep.error,
         })
       },
-      beforeSideEffect: options.beforeSideEffect,
+      beforeSideEffect: markSideEffectStarted,
     }
   )
 

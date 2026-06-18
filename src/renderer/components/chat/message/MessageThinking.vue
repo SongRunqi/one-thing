@@ -233,11 +233,7 @@ onUnmounted(() => {
 }
 
 .thinking-panel {
-  --thinking-fg: color-mix(
-    in srgb,
-    var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--text-muted, var(--muted)))) 72%,
-    var(--ui-text-primary-fg, var(--text-primary, var(--text))) 28%
-  );
+  --thinking-fg: var(--ui-message-thinking-fg);
   color: var(--thinking-fg);
 }
 
@@ -275,7 +271,7 @@ onUnmounted(() => {
 }
 
 .thinking-text.thought {
-  color: color-mix(in srgb, var(--thinking-fg) 90%, var(--ui-text-primary-fg, var(--text-primary, var(--text))) 10%);
+  color: var(--thinking-fg);
 }
 
 .thinking-dot {
@@ -359,11 +355,7 @@ onUnmounted(() => {
 
 .thinking-content {
   padding: 0;
-  color: color-mix(
-    in srgb,
-    var(--ui-message-thinking-fg, var(--text-ai-thinking, var(--text-muted, var(--muted)))) 82%,
-    var(--ui-text-primary-fg, var(--text-primary, var(--text))) 18%
-  );
+  color: var(--thinking-fg);
   font-size: 12.5px;
   line-height: 1.5;
 }

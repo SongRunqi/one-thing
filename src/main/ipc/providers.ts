@@ -1,9 +1,15 @@
 import { ipcMain } from 'electron'
 import { AIProvider, IPC_CHANNELS } from '../../shared/ipc.js'
-import type { ProviderUsageRequest, ProviderUsageResponse } from '../../shared/ipc.js'
+import type {
+  GetProviderEnvStatusRequest,
+  GetProviderEnvStatusResponse,
+  ProviderUsageRequest,
+  ProviderUsageResponse,
+} from '../../shared/ipc.js'
 import { authService } from '../auth/auth-service.js'
 import { fetchCodexUsage } from '../providers/builtin/codex.js'
 import { getAvailableProviders } from '../providers/index.js'
+import { getProviderEnvStatus } from '../providers/env.js'
 
 function toUsageAccount(token: Awaited<ReturnType<typeof authService.refreshTokenIfNeeded>>): ProviderUsageResponse['account'] {
   return {
@@ -42,6 +48,23 @@ export async function handleGetProviderUsage(
   }
 }
 
+export async function handleGetProviderEnvStatus(
+  _event: Electron.IpcMainInvokeEvent,
+  request: GetProviderEnvStatusRequest,
+): Promise<GetProviderEnvStatusResponse> {
+  try {
+    return {
+      success: true,
+      status: getProviderEnvStatus(request.providerId),
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error?.message || 'Failed to inspect provider environment variables',
+    }
+  }
+}
+
 export function registerProvidersHandlers() {
   // Get all available providers
   ipcMain.handle(IPC_CHANNELS.GET_PROVIDERS, async () => {
@@ -61,4 +84,5 @@ export function registerProvidersHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.GET_PROVIDER_USAGE, handleGetProviderUsage)
+  ipcMain.handle(IPC_CHANNELS.GET_PROVIDER_ENV_STATUS, handleGetProviderEnvStatus)
 }

@@ -3,6 +3,7 @@
  * Recursively resolves color references from defs and theme properties
  */
 
+import { generate as generateAntColorPalette } from '@ant-design/colors'
 import type {
   ColorValue,
   HighlightFontStyle,
@@ -15,10 +16,18 @@ import type {
 } from '../../shared/ipc/themes.js'
 import type { ThemeSurfaceRoles } from './role-mapping.js'
 import {
+  type CategoryColor,
   colorMeetsContrast,
+  colorToHex,
   colorToRgbString,
+  contrastRatio,
+  deriveCategoryColors,
+  deriveNeutralTextRamp,
+  deriveStateOverlays,
+  deriveStatusSurfaceRamp,
   deriveSurfaceRoles,
   mixCssColors,
+  nudgeDangerColorTowardRed,
   parseCssColor,
   readableAgainst,
   resolveColorOverBackground,
@@ -129,6 +138,27 @@ export const SEMANTIC_UI_TOKENS: SemanticUIToken[] = [
   'ui.sidebar.action',
   'ui.sidebar.actionHover',
   'ui.sidebar.border',
+  'ui.category.1.icon',
+  'ui.category.1.badgeBg',
+  'ui.category.1.badgeText',
+  'ui.category.2.icon',
+  'ui.category.2.badgeBg',
+  'ui.category.2.badgeText',
+  'ui.category.3.icon',
+  'ui.category.3.badgeBg',
+  'ui.category.3.badgeText',
+  'ui.category.4.icon',
+  'ui.category.4.badgeBg',
+  'ui.category.4.badgeText',
+  'ui.category.5.icon',
+  'ui.category.5.badgeBg',
+  'ui.category.5.badgeText',
+  'ui.category.6.icon',
+  'ui.category.6.badgeBg',
+  'ui.category.6.badgeText',
+  'ui.category.7.icon',
+  'ui.category.7.badgeBg',
+  'ui.category.7.badgeText',
   'ui.tabBar.surface',
   'ui.tabBar.divider',
   'ui.tabBar.item',
@@ -268,10 +298,35 @@ export const THEME_NEUTRAL_COLOR_TOKENS = [
 
 export type ThemeNeutralColorToken = typeof THEME_NEUTRAL_COLOR_TOKENS[number]
 
+export interface ResolvedStatusColorSemantics {
+  base: string
+  hover?: string
+  bg: string
+  bgHover: string
+  border: string
+  text: string
+  light: string
+}
+
+export interface ResolvedPrimaryColorSemantics extends ResolvedStatusColorSemantics {
+  hover: string
+}
+
 export interface ResolvedThemeColorSemantics {
-  primary: string
-  status: Record<ThemeStatusColorToken, string>
+  primary: ResolvedPrimaryColorSemantics
+  status: Record<ThemeStatusColorToken, ResolvedStatusColorSemantics>
   neutral: Record<ThemeNeutralColorToken, string>
+}
+
+export interface ResolvedColorScaleDiagnostics {
+  primary: {
+    semantics: ResolvedPrimaryColorSemantics
+    scale: string[]
+  }
+  status: Record<ThemeStatusColorToken, {
+    semantics: ResolvedStatusColorSemantics
+    scale: string[]
+  }>
 }
 
 /**
@@ -395,10 +450,31 @@ const STATUS_COLOR_FALLBACK_PATHS: Record<ThemeStatusColorToken, string[]> = {
 }
 
 const STATUS_LIGHT_FALLBACK_PATHS: Record<ThemeStatusColorToken, string[]> = {
-  success: ['color.successLight', 'bg.toolSuccess', 'diff.addBg'],
-  warning: ['color.warningLight', 'bg.highlight'],
-  danger: ['color.dangerLight', 'bg.message.error', 'bg.toolError', 'diff.delBg'],
-  info: ['color.infoLight'],
+  success: ['color.successBg', 'color.successLight', 'bg.toolSuccess', 'diff.addBg'],
+  warning: ['color.warningBg', 'color.warningLight', 'bg.highlight'],
+  danger: ['color.dangerBg', 'color.dangerLight', 'bg.message.error', 'bg.toolError', 'diff.delBg'],
+  info: ['color.infoBg', 'color.infoLight'],
+}
+
+const STATUS_BG_HOVER_FALLBACK_PATHS: Record<ThemeStatusColorToken, string[]> = {
+  success: ['color.successBgHover', 'color.successBg', 'color.successLight', 'bg.toolSuccess'],
+  warning: ['color.warningBgHover', 'color.warningBg', 'color.warningLight', 'bg.highlight'],
+  danger: ['color.dangerBgHover', 'color.dangerBg', 'color.dangerLight', 'bg.toolError', 'bg.message.error'],
+  info: ['color.infoBgHover', 'color.infoBg', 'color.infoLight'],
+}
+
+const STATUS_BORDER_FALLBACK_PATHS: Record<ThemeStatusColorToken, string[]> = {
+  success: ['color.successBorder', 'border.success', 'color.success'],
+  warning: ['color.warningBorder', 'border.warning', 'color.warning'],
+  danger: ['color.dangerBorder', 'border.error', 'color.danger'],
+  info: ['color.infoBorder', 'border.accent', 'color.info', 'accent'],
+}
+
+const STATUS_TEXT_FALLBACK_PATHS: Record<ThemeStatusColorToken, string[]> = {
+  success: ['color.successText', 'text.success', 'color.success'],
+  warning: ['color.warningText', 'text.warning', 'color.warning'],
+  danger: ['color.dangerText', 'text.error', 'color.danger'],
+  info: ['color.infoText', 'text.info', 'text.link', 'color.info'],
 }
 
 const NEUTRAL_COLOR_FALLBACK_PATHS: Record<ThemeNeutralColorToken, string[]> = {
@@ -427,6 +503,16 @@ const NEUTRAL_COLOR_FALLBACK_PATHS: Record<ThemeNeutralColorToken, string[]> = {
   baseBackground: ['neutral.baseBackground', 'bg.chat', 'bg.panel', 'bg.app'],
   overlayBackground: ['neutral.overlayBackground', 'bg.modal', 'bg.floating', 'bg.panel'],
 }
+
+const NEUTRAL_TEXT_COLOR_TOKENS = [
+  'primaryText',
+  'regularText',
+  'secondaryText',
+  'placeholderText',
+  'disabledText',
+] as const satisfies readonly ThemeNeutralColorToken[]
+
+type NeutralTextColorToken = typeof NEUTRAL_TEXT_COLOR_TOKENS[number]
 
 const NEUTRAL_COLOR_DEFAULTS: Record<ThemeNeutralColorToken, string> = {
   primaryText: '#F9FAFB',
@@ -473,7 +559,89 @@ function deriveTranslucentColor(color: string, alpha: number): string {
   return `color-mix(in srgb, ${color} ${Math.round(alpha * 100)}%, transparent)`
 }
 
-function applyThemeColorSemantics(resolvedTheme: Record<string, string>): void {
+function solidColorForRamp(color: string, background: string | undefined): string | undefined {
+  const colorOverBackground = resolveColorOverBackground(color, background)
+  if (colorOverBackground) return colorToHex(colorOverBackground)
+
+  const parsed = parseCssColor(color)
+  if (!parsed) return undefined
+
+  return colorToHex(parsed)
+}
+
+function fallbackStatusColorScale(baseColor: string, mode: 'dark' | 'light'): string[] {
+  const surface = mode === 'dark' ? '#141414' : '#FFFFFF'
+  const contrast = mode === 'dark' ? '#FFFFFF' : '#000000'
+
+  return [
+    `color-mix(in srgb, ${baseColor} 8%, ${surface})`,
+    `color-mix(in srgb, ${baseColor} 14%, ${surface})`,
+    `color-mix(in srgb, ${baseColor} 22%, ${surface})`,
+    `color-mix(in srgb, ${baseColor} 34%, ${surface})`,
+    `color-mix(in srgb, ${baseColor} 52%, ${surface})`,
+    baseColor,
+    `color-mix(in srgb, ${baseColor} 86%, ${contrast})`,
+    `color-mix(in srgb, ${baseColor} 72%, ${contrast})`,
+    `color-mix(in srgb, ${baseColor} 58%, ${contrast})`,
+    `color-mix(in srgb, ${baseColor} 44%, ${contrast})`,
+  ]
+}
+
+function generateSemanticColorScale(
+  baseColor: string,
+  mode: 'dark' | 'light',
+  background: string | undefined,
+): string[] {
+  const solidBase = solidColorForRamp(baseColor, background)
+  if (!solidBase) return fallbackStatusColorScale(baseColor, mode)
+
+  const solidBackground = background ? solidColorForRamp(background, undefined) : undefined
+  return generateAntColorPalette(solidBase, {
+    theme: mode === 'dark' ? 'dark' : 'default',
+    ...(mode === 'dark' && solidBackground ? { backgroundColor: solidBackground } : {}),
+  })
+}
+
+export function selectPrimaryColorSemantics(
+  baseColor: string,
+  mode: 'dark' | 'light',
+  background: string | undefined,
+): ResolvedPrimaryColorSemantics {
+  const scale = generateSemanticColorScale(baseColor, mode, background)
+
+  return {
+    base: scale[5] || baseColor,
+    hover: (mode === 'dark' ? scale[6] : scale[4]) || baseColor,
+    bg: scale[0] || deriveTranslucentColor(baseColor, 0.1),
+    bgHover: scale[1] || deriveTranslucentColor(baseColor, 0.14),
+    border: scale[2] || deriveTranslucentColor(baseColor, 0.28),
+    text: (mode === 'dark' ? scale[7] : scale[6]) || baseColor,
+    light: scale[0] || deriveTranslucentColor(baseColor, 0.1),
+  }
+}
+
+export function selectStatusColorSemantics(
+  baseColor: string,
+  mode: 'dark' | 'light',
+  background: string | undefined,
+): ResolvedStatusColorSemantics {
+  const scale = generateSemanticColorScale(baseColor, mode, background)
+  const surfaceRamp = deriveStatusSurfaceRamp(baseColor, background, mode)
+
+  return {
+    base: scale[5] || baseColor,
+    bg: surfaceRamp?.bg || scale[0] || deriveTranslucentColor(baseColor, 0.12),
+    bgHover: surfaceRamp?.bgHover || scale[1] || deriveTranslucentColor(baseColor, 0.18),
+    border: surfaceRamp?.border || scale[2] || deriveTranslucentColor(baseColor, 0.32),
+    text: (mode === 'dark' ? scale[7] : scale[6]) || baseColor,
+    light: surfaceRamp?.bg || scale[0] || deriveTranslucentColor(baseColor, 0.12),
+  }
+}
+
+function applyThemeColorSemantics(
+  resolvedTheme: Record<string, string>,
+  mode: 'dark' | 'light' = 'light',
+): void {
   const primary = firstResolvedThemeValue(
     resolvedTheme,
     'primary',
@@ -488,23 +656,93 @@ function applyThemeColorSemantics(resolvedTheme: Record<string, string>): void {
     resolvedTheme.accentLight = resolvedTheme.accentSub || primary
   }
 
+  const rampBackground = firstResolvedThemeValue(
+    resolvedTheme,
+    'neutral.pageBackground',
+    'bg.app',
+  )
+  const generatedPrimary = selectPrimaryColorSemantics(primary, mode, rampBackground)
+
+  resolvedTheme.primaryHover = firstResolvedThemeValue(
+    resolvedTheme,
+    'primaryHover',
+  ) || generatedPrimary.hover || firstResolvedThemeValue(
+    resolvedTheme,
+    'bg.btn.primaryHover',
+    'accentLight',
+    'accentSub',
+  ) || primary
+  resolvedTheme.primaryBg = firstResolvedThemeValue(
+    resolvedTheme,
+    'primaryBg',
+  ) || generatedPrimary.bg
+  resolvedTheme.primaryBgHover = firstResolvedThemeValue(
+    resolvedTheme,
+    'primaryBgHover',
+  ) || generatedPrimary.bgHover
+  resolvedTheme.primaryBorder = firstResolvedThemeValue(
+    resolvedTheme,
+    'primaryBorder',
+  ) || generatedPrimary.border || firstResolvedThemeValue(
+    resolvedTheme,
+    'border.accent',
+    'border.inputFocus',
+  ) || primary
+  resolvedTheme.primaryText = firstResolvedThemeValue(
+    resolvedTheme,
+    'primaryText',
+  ) || generatedPrimary.text
+  resolvedTheme.primaryLight = resolvedTheme.primaryBg || firstResolvedThemeValue(resolvedTheme, 'primaryLight') || generatedPrimary.light
+
   for (const token of THEME_STATUS_COLOR_TOKENS) {
     const colorPath = `color.${token}`
+    const bgPath = `color.${token}Bg`
+    const bgHoverPath = `color.${token}BgHover`
+    const borderPath = `color.${token}Border`
+    const textPath = `color.${token}Text`
     const lightPath = `color.${token}Light`
-    const color = firstResolvedThemeValue(
+    const requestedBaseColor = firstResolvedThemeValue(
       resolvedTheme,
       ...STATUS_COLOR_FALLBACK_PATHS[token]
     ) || STATUS_COLOR_DEFAULTS[token]
+    const requestedColor = token === 'danger'
+      ? nudgeDangerColorTowardRed(requestedBaseColor)
+      : requestedBaseColor
+    const generated = selectStatusColorSemantics(requestedColor, mode, rampBackground)
+    const explicitBorder = firstResolvedThemeValue(resolvedTheme, borderPath)
+    const explicitText = firstResolvedThemeValue(resolvedTheme, textPath)
 
-    resolvedTheme[colorPath] = color
-    resolvedTheme[lightPath] = firstResolvedThemeValue(
-      resolvedTheme,
-      ...STATUS_LIGHT_FALLBACK_PATHS[token]
-    ) || deriveTranslucentColor(color, 0.15)
+    resolvedTheme[colorPath] = requestedColor
+    resolvedTheme[bgPath] = firstResolvedThemeValue(resolvedTheme, bgPath, lightPath) || generated.bg
+    resolvedTheme[bgHoverPath] = firstResolvedThemeValue(resolvedTheme, bgHoverPath) || generated.bgHover
+    resolvedTheme[borderPath] = explicitBorder
+      ? (explicitBorder === requestedBaseColor ? requestedColor : explicitBorder)
+      : generated.border
+    resolvedTheme[textPath] = explicitText
+      ? (explicitText === requestedBaseColor ? requestedColor : explicitText)
+      : generated.text
+    resolvedTheme[lightPath] = resolvedTheme[bgPath] || firstResolvedThemeValue(resolvedTheme, lightPath) || generated.bg
   }
+
+  const generatedNeutralText = deriveNeutralTextRamp(
+    firstResolvedThemeValue(resolvedTheme, 'text.primary', 'neutral.primaryText') || NEUTRAL_COLOR_DEFAULTS.primaryText,
+    firstResolvedThemeValue(resolvedTheme, 'neutral.pageBackground', 'bg.app') || NEUTRAL_COLOR_DEFAULTS.pageBackground,
+    mode,
+  )
+  const generatedNeutralTextByToken = generatedNeutralText as Record<NeutralTextColorToken, string> | undefined
 
   for (const token of THEME_NEUTRAL_COLOR_TOKENS) {
     const path = `neutral.${token}`
+    if (NEUTRAL_TEXT_COLOR_TOKENS.includes(token as NeutralTextColorToken)) {
+      resolvedTheme[path] = generatedNeutralTextByToken?.[token as NeutralTextColorToken]
+        || firstResolvedThemeValue(
+          resolvedTheme,
+          ...NEUTRAL_COLOR_FALLBACK_PATHS[token]
+        )
+        || NEUTRAL_COLOR_DEFAULTS[token]
+      continue
+    }
+
     resolvedTheme[path] = firstResolvedThemeValue(
       resolvedTheme,
       ...NEUTRAL_COLOR_FALLBACK_PATHS[token]
@@ -513,19 +751,90 @@ function applyThemeColorSemantics(resolvedTheme: Record<string, string>): void {
 }
 
 export function resolveThemeColorSemantics(
-  resolvedTheme: Record<string, string>
+  resolvedTheme: Record<string, string>,
+  mode: 'dark' | 'light' = 'light',
 ): ResolvedThemeColorSemantics {
   const normalizedTheme = { ...resolvedTheme }
-  applyThemeColorSemantics(normalizedTheme)
+  applyThemeColorSemantics(normalizedTheme, mode)
 
   return {
-    primary: normalizedTheme.primary,
+    primary: {
+      base: normalizedTheme.primary,
+      hover: normalizedTheme.primaryHover,
+      bg: normalizedTheme.primaryBg,
+      bgHover: normalizedTheme.primaryBgHover,
+      border: normalizedTheme.primaryBorder,
+      text: normalizedTheme.primaryText,
+      light: normalizedTheme.primaryLight,
+    },
     status: Object.fromEntries(
-      THEME_STATUS_COLOR_TOKENS.map(token => [token, normalizedTheme[`color.${token}`]])
-    ) as Record<ThemeStatusColorToken, string>,
+      THEME_STATUS_COLOR_TOKENS.map(token => [
+        token,
+        {
+          base: normalizedTheme[`color.${token}`],
+          bg: normalizedTheme[`color.${token}Bg`],
+          bgHover: normalizedTheme[`color.${token}BgHover`],
+          border: normalizedTheme[`color.${token}Border`],
+          text: normalizedTheme[`color.${token}Text`],
+          light: normalizedTheme[`color.${token}Light`],
+        },
+      ])
+    ) as Record<ThemeStatusColorToken, ResolvedStatusColorSemantics>,
     neutral: Object.fromEntries(
       THEME_NEUTRAL_COLOR_TOKENS.map(token => [token, normalizedTheme[`neutral.${token}`]])
     ) as Record<ThemeNeutralColorToken, string>,
+  }
+}
+
+export function resolveThemeColorScaleDiagnostics(
+  resolvedTheme: Record<string, string>,
+  mode: 'dark' | 'light' = 'light',
+): ResolvedColorScaleDiagnostics {
+  const normalizedTheme = { ...resolvedTheme }
+  applyThemeColorSemantics(normalizedTheme, mode)
+
+  const rampBackground = firstResolvedThemeValue(
+    normalizedTheme,
+    'neutral.pageBackground',
+    'bg.app',
+  )
+
+  return {
+    primary: {
+      semantics: {
+        base: normalizedTheme.primary,
+        hover: normalizedTheme.primaryHover,
+        bg: normalizedTheme.primaryBg,
+        bgHover: normalizedTheme.primaryBgHover,
+        border: normalizedTheme.primaryBorder,
+        text: normalizedTheme.primaryText,
+        light: normalizedTheme.primaryLight,
+      },
+      scale: generateSemanticColorScale(
+        normalizedTheme.primary || DEFAULT_PRIMARY_COLOR,
+        mode,
+        rampBackground,
+      ),
+    },
+    status: Object.fromEntries(
+      THEME_STATUS_COLOR_TOKENS.map(token => {
+        const base = normalizedTheme[`color.${token}`] || STATUS_COLOR_DEFAULTS[token]
+        return [
+          token,
+          {
+            semantics: {
+              base,
+              bg: normalizedTheme[`color.${token}Bg`],
+              bgHover: normalizedTheme[`color.${token}BgHover`],
+              border: normalizedTheme[`color.${token}Border`],
+              text: normalizedTheme[`color.${token}Text`],
+              light: normalizedTheme[`color.${token}Light`],
+            },
+            scale: generateSemanticColorScale(base, mode, rampBackground),
+          },
+        ]
+      })
+    ) as ResolvedColorScaleDiagnostics['status'],
   }
 }
 
@@ -584,7 +893,7 @@ export function resolveTheme(
     resolved['accentLight'] = resolved['accentSub'] || resolved['accent'] || '#4385BE'
   }
 
-  applyThemeColorSemantics(resolved)
+  applyThemeColorSemantics(resolved, mode)
 
   return resolved
 }
@@ -611,6 +920,32 @@ function buildResolvedMap(resolvedTheme: Record<string, string>): Map<string, Re
 
 function selectModeValue(value: ResolvedColorValue, mode: 'dark' | 'light'): string {
   return typeof value === 'object' && 'dark' in value ? value[mode] : value
+}
+
+function resolveThemeDefinitionColors(
+  theme: Theme,
+  mode: 'dark' | 'light',
+  resolvedTheme: Record<string, string>
+): Record<string, string> {
+  const defs = theme.defs || {}
+  const resolvedMap = buildResolvedMap(resolvedTheme)
+  const resolvedDefs: Record<string, string> = {}
+
+  for (const [key, value] of Object.entries(defs)) {
+    try {
+      resolvedDefs[key] = selectModeValue(resolveColorValue(value, defs, resolvedMap, new Set()), mode)
+    } catch {
+      // Invalid optional palette entries should not block semantic UI fallback.
+    }
+  }
+
+  for (const key of ['purple', 'cyan', 'green', 'orange', 'yellow', 'brown', 'blue', 'nord_blue'] as const) {
+    if (resolvedDefs[key] && !resolvedDefs[`b30.${key}`]) {
+      resolvedDefs[`b30.${key}`] = resolvedDefs[key]
+    }
+  }
+
+  return resolvedDefs
 }
 
 function resolveHighlightColor(
@@ -670,19 +1005,120 @@ function deriveLightSurface(base: string, primaryText: string | undefined, stren
   return mixCssColors(primaryText, base, strength) || base
 }
 
+function contrastForColor(
+  foreground: string | undefined,
+  background: string | undefined
+): number {
+  const foregroundColor = resolveColorOverBackground(foreground, background)
+  const backgroundColor = parseCssColor(background)
+  if (!foregroundColor || !backgroundColor) return -1
+  return contrastRatio(foregroundColor, backgroundColor)
+}
+
+function onSolidColor(
+  resolvedTheme: Record<string, string>,
+  background: string | undefined,
+  ...fallbackPaths: string[]
+): string | undefined {
+  const fallback = getResolvedThemeValue(resolvedTheme, ...fallbackPaths)
+  const candidates = [
+    getResolvedThemeValue(resolvedTheme, 'neutral.basicWhite') || NEUTRAL_COLOR_DEFAULTS.basicWhite,
+    getResolvedThemeValue(resolvedTheme, 'neutral.basicBlack') || NEUTRAL_COLOR_DEFAULTS.basicBlack,
+  ]
+    .map(color => ({ color, contrast: contrastForColor(color, background) }))
+    .sort((a, b) => b.contrast - a.contrast)
+
+  const readable = candidates.find(candidate => candidate.contrast >= 4.5)
+  return readable?.color || fallback
+}
+
+function deriveSemanticSurfaceRoles(
+  resolvedTheme: Record<string, string>,
+  mode: 'dark' | 'light'
+): ThemeSurfaceRoles {
+  const get = (...paths: string[]) => getResolvedThemeValue(resolvedTheme, ...paths)
+
+  return deriveSurfaceRoles({
+    colorScheme: mode,
+    app: get('neutral.pageBackground', 'bg.app'),
+    // Sidebar has its own visual role, so keep explicit sidebar before neutral fallbacks.
+    sidebar: get('bg.sidebar', 'neutral.baseFill', 'neutral.pageBackground'),
+    chat: get('neutral.baseBackground', 'bg.chat'),
+    panel: get('neutral.baseFill', 'bg.panel'),
+    elevated: get('neutral.darkFill', 'bg.elevated'),
+    floating: get('neutral.darkerFill', 'bg.floating'),
+    primaryText: get('neutral.primaryText', 'text.primary'),
+  })
+}
+
+function selectedStateBorderColor(
+  resolvedTheme: Record<string, string>,
+  mode: 'dark' | 'light'
+): string | undefined {
+  return mode === 'dark'
+    ? getResolvedThemeValue(
+      resolvedTheme,
+      'primaryHover',
+      'primary',
+      'accentMain',
+      'accent',
+      'primaryBorder',
+      'border.accent',
+    )
+    : getResolvedThemeValue(
+      resolvedTheme,
+      'primaryBorder',
+      'primary',
+      'accentMain',
+      'accent',
+      'border.accent',
+    )
+}
+
+function deriveStateOverlaysForSurface(
+  resolvedTheme: Record<string, string>,
+  surface: string | undefined,
+  mode: 'dark' | 'light'
+) {
+  return deriveStateOverlays(surface, selectedStateBorderColor(resolvedTheme, mode), mode)
+}
+
+function categoryUIStyle(token: SemanticUIToken, categoryColors: CategoryColor[]): ResolvedUIStyle | undefined {
+  const match = /^ui\.category\.(\d+)\.(icon|badgeBg|badgeText)$/.exec(token)
+  if (!match) return undefined
+
+  const category = categoryColors[Number(match[1]) - 1]
+  if (!category) return {}
+
+  switch (match[2]) {
+    case 'icon':
+      return { fg: category.icon }
+    case 'badgeBg':
+      return { bg: category.badgeBg }
+    case 'badgeText':
+      return { fg: category.badgeText }
+    default:
+      return undefined
+  }
+}
+
 function fallbackUIStyle(
   resolvedTheme: Record<string, string>,
   token: SemanticUIToken,
   surfaceRoles: ThemeSurfaceRoles,
-  mode: 'dark' | 'light'
+  mode: 'dark' | 'light',
+  categoryColors: CategoryColor[] = []
 ): ResolvedUIStyle {
+  const categoryStyle = categoryUIStyle(token, categoryColors)
+  if (categoryStyle) return categoryStyle
+
   const get = (...paths: string[]) => getResolvedThemeValue(resolvedTheme, ...paths)
 
   switch (token) {
     case 'ui.accent.primary':
-      return { fg: get('accentMain', 'accent') }
+      return { fg: get('primary', 'accentMain', 'accent') }
     case 'ui.accent.subtle':
-      return { fg: get('accentSub', 'accentLight', 'accent') }
+      return { fg: get('primaryHover', 'accentSub', 'accentLight', 'primaryText', 'primary', 'accent') }
     case 'ui.surface.app':
       return { bg: surfaceRoles.appBg }
     case 'ui.surface.sidebar':
@@ -702,45 +1138,45 @@ function fallbackUIStyle(
         shadow: get('shadow.floating', 'shadow.lg', 'shadow.md'),
       }
     case 'ui.surface.overlay':
-      return { bg: get('bg.modalOverlay', 'effects.overlayActive') }
+      return { bg: get('neutral.overlayBackground', 'bg.modalOverlay', 'effects.overlayActive') }
     case 'ui.surface.menu':
-      return { bg: get('bg.menu') || surfaceRoles.floatingBg }
+      return { bg: get('neutral.darkerFill', 'bg.menu') || surfaceRoles.floatingBg }
     case 'ui.surface.menuHover':
       return {
         bg: mode === 'light'
-          ? rgbaFromCssColor(get('accentMain', 'accent'), 0.12)
-          : get('bg.menuItemHover', 'bg.hover'),
+          ? rgbaFromCssColor(get('primary', 'accentMain', 'accent'), 0.12)
+          : get('neutral.darkFill', 'bg.menuItemHover', 'bg.hover'),
       }
     case 'ui.surface.input':
       return {
-        bg: get('bg.input') || surfaceRoles.panelBg,
-        border: get('border.input', 'border.default'),
+        bg: get('neutral.lighterFill', 'bg.input') || surfaceRoles.panelBg,
+        border: get('neutral.baseBorder', 'border.input', 'border.default'),
       }
     case 'ui.surface.inputFocus':
       return {
-        bg: get('bg.inputFocus', 'bg.input') || surfaceRoles.elevatedBg,
-        border: get('border.inputFocus', 'border.accent', 'accent'),
-        ring: get('border.inputFocus', 'border.accent', 'accent'),
+        bg: get('neutral.darkFill', 'bg.inputFocus', 'bg.input') || surfaceRoles.elevatedBg,
+        border: get('primaryBorder', 'primary', 'border.inputFocus', 'border.accent', 'accent'),
+        ring: get('primaryBorder', 'primary', 'border.inputFocus', 'border.accent', 'accent'),
       }
     case 'ui.surface.codeInline':
       return {
-        bg: get('bg.code.inline') || (surfaceRoles.elevatedBg),
-        fg: get('text.code.inline', 'text.primary'),
-        border: get('border.code', 'border.subtle'),
+        bg: get('neutral.darkFill', 'bg.code.inline') || (surfaceRoles.elevatedBg),
+        fg: get('neutral.primaryText', 'text.code.inline', 'text.primary'),
+        border: get('neutral.baseBorder', 'border.code', 'border.subtle'),
       }
     case 'ui.surface.codeBlock':
       return {
         bg: mode === 'light'
-          ? deriveLightSurface(surfaceRoles.chatBg, get('text.primary'), 0.035)
-          : (get('bg.code.block') || surfaceRoles.panelBg),
-        fg: get('text.code.block', 'text.primary'),
-        border: get('border.code', 'border.subtle'),
+          ? deriveLightSurface(surfaceRoles.chatBg, get('neutral.primaryText', 'text.primary'), 0.035)
+          : (get('neutral.baseFill', 'bg.code.block') || surfaceRoles.panelBg),
+        fg: get('neutral.primaryText', 'text.code.block', 'text.primary'),
+        border: get('neutral.baseBorder', 'border.code', 'border.subtle'),
       }
     case 'ui.surface.codeHeader':
       return {
         bg: mode === 'light'
-          ? deriveLightSurface(surfaceRoles.chatBg, get('text.primary'), 0.055)
-          : (get('bg.code.header') || surfaceRoles.elevatedBg),
+          ? deriveLightSurface(surfaceRoles.chatBg, get('neutral.primaryText', 'text.primary'), 0.055)
+          : (get('neutral.darkFill', 'bg.code.header') || surfaceRoles.elevatedBg),
       }
     case 'ui.surface.tooltip':
       {
@@ -752,142 +1188,166 @@ function fallbackUIStyle(
             get('text.btn.primary'),
             surfaceRoles.appBg,
             surfaceRoles.panelBg,
-            get('text.primary'),
-            get('text.secondary'),
-          ], get('text.primary'), 4.5),
-          border: get('border.strong', 'border.default'),
+            get('neutral.primaryText', 'text.primary'),
+            get('neutral.regularText', 'text.secondary'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
+          border: get('neutral.darkBorder', 'border.strong', 'border.default'),
           shadow: get('shadow.floating', 'shadow.lg', 'shadow.md'),
         }
       }
     case 'ui.surface.modal':
       return {
-        bg: get('bg.modal') || surfaceRoles.floatingBg,
-        fg: get('text.modalBody', 'text.primary'),
-        border: get('border.default'),
+        bg: get('neutral.darkerFill', 'bg.modal') || surfaceRoles.floatingBg,
+        fg: get('neutral.regularText', 'text.modalBody', 'text.primary'),
+        border: get('neutral.baseBorder', 'border.default'),
         shadow: get('shadow.floating', 'shadow.xl', 'shadow.lg'),
       }
     case 'ui.surface.note':
       return {
-        bg: get('color.warningLight') || surfaceRoles.elevatedBg,
-        fg: get('text.primary'),
-        border: get('border.warning', 'border.subtle', 'border.default'),
+        bg: get('color.warningBg', 'color.warningLight') || surfaceRoles.elevatedBg,
+        fg: get('neutral.primaryText', 'text.primary'),
+        border: get('color.warningBorder', 'color.warning', 'border.warning', 'border.subtle', 'border.default'),
       }
     case 'ui.surface.previewLight':
       return { bg: '#ffffff', fg: '#111827', border: '#e5e7eb' }
     case 'ui.surface.previewDark':
       return { bg: '#0f1117', fg: '#f9fafb', border: '#1f2937' }
     case 'ui.text.primary':
-      return { fg: get('text.primary') }
+      return { fg: get('neutral.primaryText', 'text.primary') }
     case 'ui.text.secondary':
-      return { fg: get('text.secondary', 'text.primary') }
+      return { fg: get('neutral.regularText', 'text.secondary', 'text.primary') }
     case 'ui.text.muted':
-      return { fg: get('text.muted', 'text.secondary', 'text.primary') }
+      return { fg: get('neutral.secondaryText', 'text.muted', 'text.secondary', 'text.primary') }
     case 'ui.text.faint':
-      return { fg: get('text.faint', 'text.muted', 'text.secondary') }
+      return { fg: get('neutral.disabledText', 'text.faint', 'text.muted', 'text.secondary') }
     case 'ui.text.inverse':
-      return { fg: get('text.btn.primary', 'bg.app', 'text.primary') }
+      return { fg: get('neutral.pageBackground', 'bg.app', 'text.btn.primary', 'neutral.primaryText', 'text.primary') }
     case 'ui.text.placeholder':
-      return { fg: get('text.inputPlaceholder', 'text.muted') }
+      return { fg: get('neutral.placeholderText', 'text.inputPlaceholder', 'text.muted') }
     case 'ui.text.disabled':
-      return { fg: get('text.inputDisabled', 'text.btn.disabled', 'text.faint', 'text.muted') }
+      return { fg: get('neutral.disabledText', 'text.inputDisabled', 'text.btn.disabled', 'text.faint', 'text.muted') }
     case 'ui.text.link':
-      return { fg: get('text.link', 'color.info', 'accent') }
+      return { fg: get('color.info', 'text.link', 'primary', 'accent') }
     case 'ui.text.linkHover':
-      return { fg: get('text.linkHover', 'text.link', 'color.info', 'accent') }
+      return { fg: get('color.infoText', 'text.linkHover', 'text.link', 'color.info', 'primary', 'accent') }
     case 'ui.border.default':
-      return { border: get('border.default') }
+      return { border: get('neutral.baseBorder', 'border.default') }
     case 'ui.border.subtle':
-      return { border: get('border.subtle', 'border.default') }
+      return { border: get('neutral.lightBorder', 'border.subtle', 'border.default') }
     case 'ui.border.strong':
-      return { border: get('border.strong', 'border.default') }
+      return { border: get('neutral.darkBorder', 'border.strong', 'border.default') }
     case 'ui.border.divider':
-      return { border: get('border.divider', 'border.subtle', 'border.default') }
+      return { border: get('neutral.lighterBorder', 'border.divider', 'border.subtle', 'border.default') }
     case 'ui.border.focus':
-      return { border: get('border.inputFocus', 'border.accent', 'accent'), ring: get('border.inputFocus', 'accent') }
+      return { border: get('primaryBorder', 'primary', 'border.inputFocus', 'border.accent', 'accent'), ring: get('primaryBorder', 'primary', 'border.inputFocus', 'accent') }
     case 'ui.border.selected':
-      return { border: get('border.accent', 'border.inputFocus', 'accent') }
+      return { border: get('primaryBorder', 'primary', 'border.accent', 'border.inputFocus', 'accent') }
     case 'ui.action.primary':
-      return {
-        bg: get('bg.btn.primary', 'accent'),
-        fg: get('text.btn.primary', 'bg.app'),
-        border: get('border.accent', 'accent'),
+      {
+        const bg = get('primary', 'bg.btn.primary', 'accent')
+        return {
+          bg,
+          fg: onSolidColor(resolvedTheme, bg, 'text.btn.primary', 'neutral.pageBackground', 'bg.app'),
+          border: get('primary', 'primaryBorder', 'border.accent', 'accent'),
+        }
       }
     case 'ui.action.primaryHover':
-      return {
-        bg: get('bg.btn.primaryHover', 'accentLight', 'accentSub', 'bg.btn.primary', 'accent'),
-        fg: get('text.btn.primary', 'bg.app'),
-        border: get('border.accent', 'accent'),
+      {
+        const bg = get('primaryHover', 'bg.btn.primaryHover', 'accentLight', 'accentSub', 'bg.btn.primary', 'primary', 'accent')
+        return {
+          bg,
+          fg: onSolidColor(resolvedTheme, bg, 'text.btn.primary', 'neutral.pageBackground', 'bg.app'),
+          border: get('primary', 'primaryBorder', 'border.accent', 'accent'),
+        }
       }
     case 'ui.action.secondary':
       return {
-        bg: get('bg.btn.secondary') || surfaceRoles.elevatedBg,
-        fg: get('text.btn.secondary', 'text.primary'),
-        border: get('border.subtle', 'border.default'),
+        bg: get('neutral.darkFill', 'bg.btn.secondary') || surfaceRoles.elevatedBg,
+        fg: get('neutral.primaryText', 'text.btn.secondary', 'text.primary'),
+        border: get('neutral.lightBorder', 'border.subtle', 'border.default'),
       }
     case 'ui.action.secondaryHover':
       return {
-        bg: get('bg.btn.secondaryHover', 'bg.btn.secondary', 'bg.hover'),
-        fg: get('text.btn.secondary', 'text.primary'),
-        border: get('border.default', 'border.subtle'),
+        bg: get('neutral.darkerFill', 'bg.btn.secondaryHover', 'bg.btn.secondary', 'bg.hover'),
+        fg: get('neutral.primaryText', 'text.btn.secondary', 'text.primary'),
+        border: get('neutral.baseBorder', 'border.default', 'border.subtle'),
       }
     case 'ui.action.ghost':
       return {
         bg: get('bg.btn.ghost') || 'transparent',
-        fg: get('text.btn.ghost', 'text.primary'),
+        fg: get('neutral.regularText', 'text.btn.ghost', 'text.primary'),
         border: 'transparent',
       }
     case 'ui.action.ghostHover':
       return {
-        bg: get('bg.btn.ghostHover', 'bg.hover'),
-        fg: get('text.btn.ghost', 'text.primary'),
+        bg: get('neutral.darkFill', 'bg.btn.ghostHover', 'bg.hover'),
+        fg: get('neutral.primaryText', 'text.btn.ghost', 'text.primary'),
         border: 'transparent',
       }
     case 'ui.action.danger':
-      return {
-        bg: get('bg.btn.danger', 'color.danger'),
-        fg: get('text.btn.danger', 'bg.app'),
-        border: get('border.error', 'color.danger'),
+      {
+        const bg = get('color.danger', 'bg.btn.danger')
+        return {
+          bg,
+          fg: onSolidColor(resolvedTheme, bg, 'text.btn.danger', 'neutral.pageBackground', 'bg.app'),
+          border: get('color.dangerBorder', 'color.danger', 'border.error'),
+        }
       }
     case 'ui.action.dangerHover':
-      return {
-        bg: get('bg.btn.dangerHover', 'bg.btn.danger', 'color.danger'),
-        fg: get('text.btn.danger', 'bg.app'),
-        border: get('border.error', 'color.danger'),
+      {
+        const bg = get('color.dangerBgHover', 'bg.btn.dangerHover', 'bg.btn.danger', 'color.danger')
+        return {
+          bg,
+          fg: onSolidColor(resolvedTheme, bg, 'text.btn.danger', 'neutral.pageBackground', 'bg.app'),
+          border: get('color.dangerBorder', 'color.danger', 'border.error'),
+        }
       }
     case 'ui.action.disabled':
       return {
-        bg: get('bg.inputDisabled', 'effects.overlayDisabled', 'bg.hover'),
-        fg: get('text.btn.disabled', 'text.inputDisabled', 'text.faint'),
-        border: get('border.subtle', 'border.default'),
+        bg: get('neutral.lighterFill', 'bg.inputDisabled', 'effects.overlayDisabled', 'bg.hover'),
+        fg: get('neutral.disabledText', 'text.btn.disabled', 'text.inputDisabled', 'text.faint'),
+        border: get('neutral.lightBorder', 'border.subtle', 'border.default'),
       }
     case 'ui.state.hover':
-      return { bg: get('bg.hover', 'effects.overlayHover') }
+      {
+        const state = deriveStateOverlaysForSurface(resolvedTheme, surfaceRoles.panelBg, mode)
+        return { bg: state?.hover || get('bg.hover', 'effects.overlayHover', 'neutral.darkFill') || surfaceRoles.elevatedBg }
+      }
     case 'ui.state.active':
-      return { bg: get('bg.active', 'effects.overlayActive') }
+      {
+        const state = deriveStateOverlaysForSurface(resolvedTheme, surfaceRoles.panelBg, mode)
+        return { bg: state?.active || get('bg.active', 'effects.overlayActive', 'neutral.darkerFill') || surfaceRoles.floatingBg }
+      }
     case 'ui.state.selected':
-      return {
-        bg: get('bg.selected'),
-        fg: get('text.primary'),
-        border: get('border.accent', 'accent'),
+      {
+        const state = deriveStateOverlaysForSurface(resolvedTheme, surfaceRoles.panelBg, mode)
+        return {
+          bg: state?.selected.bg || get('bg.selected', 'primaryBg'),
+          fg: get('neutral.primaryText', 'text.primary'),
+          border: state?.selected.border || get('primaryBorder', 'primary', 'border.accent', 'accent'),
+        }
       }
     case 'ui.state.selectedHover':
-      return {
-        bg: get('bg.selectedHover', 'bg.selected'),
-        fg: get('text.primary'),
-        border: get('border.accent', 'accent'),
+      {
+        const state = deriveStateOverlaysForSurface(resolvedTheme, surfaceRoles.panelBg, mode)
+        return {
+          bg: state?.selectedHover || get('bg.selectedHover', 'primaryBgHover', 'bg.selected', 'primaryBg'),
+          fg: get('neutral.primaryText', 'text.primary'),
+          border: state?.selected.border || get('primaryBorder', 'primary', 'border.accent', 'accent'),
+        }
       }
     case 'ui.state.highlight':
-      return { bg: get('bg.highlight', 'accentSub') }
+      return { bg: get('color.warningBg', 'color.warningLight', 'bg.highlight', 'accentSub') }
     case 'ui.state.focus':
       return {
-        border: get('border.inputFocus', 'border.accent', 'accent'),
-        ring: get('border.inputFocus', 'border.accent', 'accent'),
+        border: get('primaryBorder', 'primary', 'border.inputFocus', 'border.accent', 'accent'),
+        ring: get('primaryBorder', 'primary', 'border.inputFocus', 'border.accent', 'accent'),
       }
     case 'ui.state.disabled':
       return {
-        bg: get('bg.inputDisabled', 'effects.overlayDisabled'),
-        fg: get('text.inputDisabled', 'text.btn.disabled', 'text.faint'),
-        border: get('border.subtle', 'border.default'),
+        bg: get('bg.inputDisabled', 'neutral.lighterFill', 'effects.overlayDisabled'),
+        fg: get('neutral.disabledText', 'text.inputDisabled', 'text.btn.disabled', 'text.faint'),
+        border: get('neutral.lightBorder', 'border.subtle', 'border.default'),
       }
     case 'ui.sidebar.surface':
       {
@@ -896,10 +1356,10 @@ function fallbackUIStyle(
           bg,
           fg: readableAgainst(bg, [
             get('text.sidebar.item'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.primary'), 4.5),
-          border: get('border.divider', 'border.subtle', 'border.default'),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
+          border: get('neutral.lighterBorder', 'border.divider', 'border.subtle', 'border.default'),
         }
       }
     case 'ui.sidebar.item':
@@ -908,38 +1368,42 @@ function fallbackUIStyle(
         return {
           fg: readableAgainst(bg, [
             get('text.sidebar.item'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.primary'), 4.5),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
         }
       }
     case 'ui.sidebar.itemHover':
       {
         const bg = surfaceRoles.sidebarBg
+        const state = deriveStateOverlaysForSurface(resolvedTheme, bg, mode)
+        const hoverBg = state?.hover || get('bg.hover', 'effects.overlayHover')
+        const hoverSurface = colorToRgbString(resolveColorOverBackground(hoverBg, bg)) || hoverBg || bg
         return {
-          bg: get('bg.hover', 'effects.overlayHover'),
-          fg: readableAgainst(bg, [
+          bg: hoverBg,
+          fg: readableAgainst(hoverSurface, [
             get('text.sidebar.itemHover'),
-            get('text.primary'),
+            get('neutral.primaryText', 'text.primary'),
             get('text.sidebar.item'),
-            get('text.secondary'),
-          ], get('text.primary'), 4.5),
+            get('neutral.regularText', 'text.secondary'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
         }
       }
     case 'ui.sidebar.itemActive':
       {
         const bg = surfaceRoles.sidebarBg
-        const activeBg = get('bg.selected')
+        const state = deriveStateOverlaysForSurface(resolvedTheme, bg, mode)
+        const activeBg = state?.selected.bg || get('bg.selected', 'primaryBg')
         const activeSurface = colorToRgbString(resolveColorOverBackground(activeBg, bg)) || activeBg || bg
         return {
           bg: activeBg,
           fg: readableAgainst(activeSurface, [
-            get('text.primary'),
+            get('neutral.primaryText', 'text.primary'),
             get('text.sidebar.itemActive'),
             get('text.sidebar.itemHover'),
-            get('text.secondary'),
-          ], get('text.primary'), 4.5),
-          border: get('border.accent', 'accent'),
+            get('neutral.regularText', 'text.secondary'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
+          border: state?.selected.border || get('primaryBorder', 'primary', 'border.accent', 'accent'),
         }
       }
     case 'ui.sidebar.itemMuted':
@@ -949,10 +1413,10 @@ function fallbackUIStyle(
           fg: readableAgainst(bg, [
             get('text.sidebar.muted'),
             get('text.sidebar.count'),
-            get('text.muted'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.secondary', 'text.primary'), 3.5),
+            get('neutral.secondaryText', 'text.muted'),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.regularText', 'text.secondary', 'text.primary'), 3.5),
         }
       }
     case 'ui.sidebar.header':
@@ -961,11 +1425,11 @@ function fallbackUIStyle(
         return {
           fg: readableAgainst(bg, [
             get('text.sidebar.title'),
-            get('text.faint'),
-            get('text.muted'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.secondary', 'text.primary'), 3.5),
+            get('neutral.disabledText', 'text.faint'),
+            get('neutral.secondaryText', 'text.muted'),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.regularText', 'text.secondary', 'text.primary'), 3.5),
         }
       }
     case 'ui.sidebar.action':
@@ -974,31 +1438,34 @@ function fallbackUIStyle(
         return {
           fg: readableAgainst(bg, [
             get('text.sidebar.item'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.secondary', 'text.primary'), 3.5),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.regularText', 'text.secondary', 'text.primary'), 3.5),
           bg: 'transparent',
         }
       }
     case 'ui.sidebar.actionHover':
       {
         const bg = surfaceRoles.sidebarBg
+        const state = deriveStateOverlaysForSurface(resolvedTheme, bg, mode)
+        const hoverBg = state?.hover || get('bg.hover', 'effects.overlayHover')
+        const hoverSurface = colorToRgbString(resolveColorOverBackground(hoverBg, bg)) || hoverBg || bg
         return {
-          bg: get('bg.hover', 'effects.overlayHover'),
-          fg: readableAgainst(bg, [
+          bg: hoverBg,
+          fg: readableAgainst(hoverSurface, [
             get('text.sidebar.itemHover'),
-            get('text.primary'),
+            get('neutral.primaryText', 'text.primary'),
             get('text.sidebar.item'),
-            get('text.secondary'),
-          ], get('text.primary'), 4.5),
+            get('neutral.regularText', 'text.secondary'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
         }
       }
     case 'ui.sidebar.border':
-      return { border: get('border.divider', 'border.subtle', 'border.default') }
+      return { border: get('neutral.lighterBorder', 'border.divider', 'border.subtle', 'border.default') }
     case 'ui.tabBar.surface':
       return {
         bg: surfaceRoles.tabBarBg,
-        border: get('border.divider', 'border.subtle', 'border.default'),
+        border: get('neutral.lighterBorder', 'border.divider', 'border.subtle', 'border.default'),
         shadow: 'none',
       }
     case 'ui.tabBar.divider':
@@ -1008,36 +1475,40 @@ function fallbackUIStyle(
         const bg = surfaceRoles.tabBarBg
         return {
           fg: readableAgainst(bg, [
-            get('text.muted'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.secondary', 'text.primary'), 3.5),
+            get('neutral.secondaryText', 'text.muted'),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.regularText', 'text.secondary', 'text.primary'), 3.5),
         }
       }
     case 'ui.tabBar.itemHover':
       {
         const bg = surfaceRoles.tabBarBg
+        const state = deriveStateOverlaysForSurface(resolvedTheme, bg, mode)
+        const hoverBg = state?.hover || get('bg.hover', 'effects.overlayHover')
+        const hoverSurface = colorToRgbString(resolveColorOverBackground(hoverBg, bg)) || hoverBg || bg
         return {
-          bg: get('bg.hover', 'effects.overlayHover'),
-          fg: readableAgainst(bg, [
-            get('text.primary'),
-            get('text.secondary'),
-          ], get('text.primary'), 4.5),
+          bg: hoverBg,
+          fg: readableAgainst(hoverSurface, [
+            get('neutral.primaryText', 'text.primary'),
+            get('neutral.regularText', 'text.secondary'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
         }
       }
     case 'ui.tabBar.itemActive':
       {
-        const activeBg = get('bg.selected') || surfaceRoles.elevatedBg
+        const state = deriveStateOverlaysForSurface(resolvedTheme, surfaceRoles.tabBarBg, mode)
+        const activeBg = state?.selected.bg || get('bg.selected', 'primaryBg') || surfaceRoles.elevatedBg
         return {
           bg: activeBg,
           fg: readableAgainst(colorToRgbString(resolveColorOverBackground(activeBg, surfaceRoles.tabBarBg)) || activeBg, [
-            get('text.primary'),
+            get('neutral.primaryText', 'text.primary'),
             get('text.sidebar.itemActive'),
-            get('text.secondary'),
+            get('neutral.regularText', 'text.secondary'),
             get('text.btn.secondary'),
             '#F9FAFB',
             '#111827',
-          ], get('text.primary'), 4.5),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
           border: 'transparent',
         }
       }
@@ -1046,10 +1517,10 @@ function fallbackUIStyle(
         const bg = surfaceRoles.tabBarBg
         return {
           fg: readableAgainst(bg, [
-            get('text.muted'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.secondary', 'text.primary'), 3.5),
+            get('neutral.secondaryText', 'text.muted'),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.regularText', 'text.secondary', 'text.primary'), 3.5),
         }
       }
     case 'ui.tabBar.actionHover':
@@ -1058,52 +1529,52 @@ function fallbackUIStyle(
         return {
           bg,
           fg: readableAgainst(bg, [
-            get('text.primary'),
-            get('text.secondary'),
-          ], get('text.primary'), 4.5),
-          border: get('border.subtle', 'border.default'),
+            get('neutral.primaryText', 'text.primary'),
+            get('neutral.regularText', 'text.secondary'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
+          border: get('neutral.lightBorder', 'border.subtle', 'border.default'),
         }
       }
     case 'ui.tabBar.danger':
       return {
-        bg: 'color-mix(in srgb, var(--ui-status-danger-fg, var(--color-danger)) 15%, transparent)',
-        fg: get('text.error', 'color.danger'),
+        bg: get('color.dangerBg', 'color.dangerLight', 'bg.message.error'),
+        fg: get('color.dangerText', 'color.danger', 'text.error'),
       }
     case 'ui.status.danger':
       return {
-        fg: get('text.error', 'color.danger'),
-        bg: get('color.dangerLight', 'bg.message.error'),
-        border: get('border.error', 'color.danger'),
+        fg: get('color.dangerText', 'color.danger', 'text.error'),
+        bg: get('color.dangerBg', 'color.dangerLight', 'bg.message.error'),
+        border: get('color.dangerBorder', 'color.danger', 'border.error'),
       }
     case 'ui.status.warning':
       return {
-        fg: get('text.warning', 'color.warning'),
-        bg: get('color.warningLight'),
-        border: get('border.warning', 'color.warning'),
+        fg: get('color.warningText', 'color.warning', 'text.warning'),
+        bg: get('color.warningBg', 'color.warningLight'),
+        border: get('color.warningBorder', 'color.warning', 'border.warning'),
       }
     case 'ui.status.success':
       return {
-        fg: get('text.success', 'color.success'),
-        bg: get('color.successLight'),
-        border: get('border.success', 'color.success'),
+        fg: get('color.successText', 'color.success', 'text.success'),
+        bg: get('color.successBg', 'color.successLight'),
+        border: get('color.successBorder', 'color.success', 'border.success'),
       }
     case 'ui.status.info':
       return {
-        fg: get('text.info', 'color.info'),
-        bg: get('color.infoLight'),
-        border: get('border.accent', 'color.info', 'accent'),
+        fg: get('color.infoText', 'color.info', 'text.info'),
+        bg: get('color.infoBg', 'color.infoLight'),
+        border: get('color.infoBorder', 'color.info', 'border.accent', 'primary', 'accent'),
       }
     case 'ui.message.user':
       return {
         bg: get('bg.message.user', 'bg.message.userSolid'),
-        fg: get('text.user.primary', 'text.primary'),
-        border: get('border.messageUser', 'border.message', 'border.subtle'),
+        fg: get('neutral.primaryText', 'text.user.primary', 'text.primary'),
+        border: get('neutral.lightBorder', 'border.messageUser', 'border.message', 'border.subtle'),
       }
     case 'ui.message.userSolid':
       return {
         bg: get('bg.message.userSolid', 'bg.message.user'),
-        fg: get('text.user.primary', 'text.primary'),
-        border: get('border.messageUser', 'border.message', 'border.subtle'),
+        fg: get('neutral.primaryText', 'text.user.primary', 'text.primary'),
+        border: get('neutral.lightBorder', 'border.messageUser', 'border.message', 'border.subtle'),
       }
     case 'ui.message.assistant':
       {
@@ -1115,39 +1586,39 @@ function fallbackUIStyle(
           bg,
           fg: readableAgainst(surface, [
             get('text.ai.primary'),
-            get('text.primary'),
-            get('text.secondary'),
-          ], get('text.primary'), 4.5),
-          border: get('border.message', 'border.subtle'),
+            get('neutral.primaryText', 'text.primary'),
+            get('neutral.regularText', 'text.secondary'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
+          border: get('neutral.lightBorder', 'border.message', 'border.subtle'),
         }
       }
     case 'ui.message.system':
       return {
         bg: get('bg.message.system', 'bg.panel'),
-        fg: get('text.system', 'text.secondary', 'text.primary'),
-        border: get('border.message', 'border.subtle'),
+        fg: get('neutral.regularText', 'text.system', 'text.secondary', 'text.primary'),
+        border: get('neutral.lightBorder', 'border.message', 'border.subtle'),
       }
     case 'ui.message.error':
       return {
-        bg: get('bg.message.error', 'color.dangerLight'),
-        fg: get('text.error', 'color.danger'),
-        border: get('border.error', 'color.danger'),
+        bg: get('color.dangerBg', 'color.dangerLight', 'bg.message.error'),
+        fg: get('color.dangerText', 'color.danger', 'text.error'),
+        border: get('color.dangerBorder', 'color.danger', 'border.error'),
       }
     case 'ui.message.hover':
       return { bg: get('bg.message.hover', 'bg.hover') }
     case 'ui.message.thinking':
-      return { fg: get('text.ai.thinking', 'text.muted') }
+      return { fg: get('neutral.secondaryText', 'text.ai.thinking', 'text.muted') }
     case 'ui.tool.surface':
       return {
-        bg: get('bg.toolCall', 'bg.panel'),
-        fg: get('text.primary'),
-        border: get('border.subtle', 'border.default'),
+        bg: get('neutral.darkFill', 'bg.toolCall', 'neutral.baseFill', 'bg.panel'),
+        fg: get('neutral.primaryText', 'text.primary'),
+        border: get('neutral.lightBorder', 'border.subtle', 'border.default'),
       }
     case 'ui.tool.surfaceHover':
       return {
-        bg: get('bg.toolCallHover', 'bg.toolCall', 'bg.hover'),
-        fg: get('text.primary'),
-        border: get('border.default', 'border.subtle'),
+        bg: get('neutral.darkerFill', 'bg.toolCallHover', 'bg.toolCall', 'neutral.darkFill', 'bg.hover'),
+        fg: get('neutral.primaryText', 'text.primary'),
+        border: get('neutral.baseBorder', 'border.default', 'border.subtle'),
       }
     case 'ui.tool.surfaceSubtle':
       return {
@@ -1155,93 +1626,97 @@ function fallbackUIStyle(
       }
     case 'ui.tool.result':
       return {
-        bg: get('bg.toolResult', 'bg.toolCall', 'bg.panel'),
-        fg: get('text.tool.result', 'text.primary'),
+        bg: get('neutral.baseFill', 'bg.toolResult', 'bg.toolCall', 'bg.panel'),
+        fg: get('neutral.regularText', 'text.tool.result', 'text.primary'),
       }
     case 'ui.tool.error':
       return {
-        bg: get('bg.toolError', 'color.dangerLight', 'bg.message.error'),
-        fg: get('text.tool.error', 'text.error', 'color.danger'),
-        border: get('border.error', 'color.danger'),
+        bg: get('color.dangerBg', 'color.dangerLight', 'bg.toolError', 'bg.message.error'),
+        fg: get('color.dangerText', 'color.danger', 'text.tool.error', 'text.error'),
+        border: get('color.dangerBorder', 'color.danger', 'border.error'),
       }
     case 'ui.tool.success':
       return {
-        bg: get('bg.toolSuccess', 'color.successLight'),
-        fg: get('text.success', 'color.success'),
-        border: get('border.success', 'color.success'),
+        bg: get('color.successBg', 'color.successLight', 'bg.toolSuccess'),
+        fg: get('color.successText', 'color.success', 'text.success'),
+        border: get('color.successBorder', 'color.success', 'border.success'),
       }
     case 'ui.tool.text':
       {
-        const bg = get('bg.toolCall', 'bg.panel')
+        const bg = get('neutral.darkFill', 'bg.toolCall', 'neutral.baseFill', 'bg.panel')
         return {
           fg: readableAgainst(bg, [
+            get('neutral.primaryText', 'text.primary'),
             get('text.tool.name'),
-            get('text.primary'),
-            get('text.secondary'),
-          ], get('text.primary'), 4.5),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.basicWhite'),
+            get('neutral.basicBlack'),
+          ], get('neutral.primaryText', 'text.primary'), 4.5),
         }
       }
     case 'ui.tool.textMuted':
       {
-        const bg = get('bg.toolCall', 'bg.panel')
+        const bg = get('neutral.darkFill', 'bg.toolCall', 'neutral.baseFill', 'bg.panel')
         return {
           fg: readableAgainst(bg, [
             get('text.tool.args'),
-            get('text.muted'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.secondary', 'text.primary'), 3.5),
+            get('neutral.secondaryText', 'text.muted'),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.regularText', 'text.secondary', 'text.primary'), 3.5),
         }
       }
     case 'ui.tool.textFaint':
       {
-        const bg = get('bg.toolCall', 'bg.panel')
+        const bg = get('neutral.darkFill', 'bg.toolCall', 'neutral.baseFill', 'bg.panel')
         return {
           fg: readableAgainst(bg, [
             get('text.tool.label'),
-            get('text.faint'),
-            get('text.muted'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.secondary', 'text.primary'), 3),
+            get('neutral.disabledText', 'text.faint'),
+            get('neutral.secondaryText', 'text.muted'),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.regularText', 'text.secondary', 'text.primary'), 3),
         }
       }
     case 'ui.tool.accent':
-      return { fg: get('accent') }
+      return { fg: get('primary', 'accent') }
     case 'ui.tool.accentOn':
-      return { fg: get('bg.app', 'text.btn.primary') }
+      return { fg: get('neutral.pageBackground', 'bg.app', 'text.btn.primary') }
     case 'ui.tool.successText':
       return { fg: get('color.success', 'text.success') }
     case 'ui.tool.dangerText':
       return { fg: get('color.danger', 'text.error') }
     case 'ui.tool.border':
-      return { border: get('border.subtle', 'border.default') }
+      return { border: get('neutral.lightBorder', 'border.subtle', 'border.default') }
     case 'ui.editor.text':
       return {
-        fg: get('text.input', 'text.primary'),
-        bg: get('bg.input', 'bg.panel'),
-        border: get('border.input', 'border.default'),
+        fg: get('neutral.primaryText', 'text.input', 'text.primary'),
+        bg: get('neutral.lighterFill', 'bg.input', 'bg.panel'),
+        border: get('neutral.baseBorder', 'border.input', 'border.default'),
       }
     case 'ui.editor.placeholder':
       {
-        const bg = get('bg.input', 'bg.panel')
+        const bg = get('neutral.lighterFill', 'bg.input', 'bg.panel')
         return {
           fg: readableAgainst(bg, [
-            get('text.inputPlaceholder'),
-            get('text.muted'),
-            get('text.secondary'),
-            get('text.primary'),
-          ], get('text.secondary', 'text.primary'), 3.5),
+            get('neutral.placeholderText', 'text.inputPlaceholder'),
+            get('neutral.secondaryText', 'text.muted'),
+            get('neutral.regularText', 'text.secondary'),
+            get('neutral.primaryText', 'text.primary'),
+          ], get('neutral.regularText', 'text.secondary', 'text.primary'), 3.5),
         }
       }
     case 'ui.editor.caret':
-      return { fg: get('text.input', 'text.primary') }
+      return { fg: get('neutral.primaryText', 'text.input', 'text.primary') }
     case 'ui.editor.selection':
       return {
-        bg: get('bg.selected'),
-        fg: get('text.primary'),
+        bg: get('primaryBg', 'bg.selected'),
+        fg: get('neutral.primaryText', 'text.primary'),
       }
   }
+
+  return {}
 }
 
 function fallbackHighlightStyle(theme: Theme, token: SemanticHighlightToken): HighlightStyle {
@@ -1449,20 +1924,11 @@ export function resolveThemeHighlights(
   }
 
   if (mode === 'light') {
-    const surfaceRoles = deriveSurfaceRoles({
-      colorScheme: mode,
-      app: resolvedTheme['bg.app'],
-      sidebar: resolvedTheme['bg.sidebar'],
-      chat: resolvedTheme['bg.chat'],
-      panel: resolvedTheme['bg.panel'],
-      elevated: resolvedTheme['bg.elevated'],
-      floating: resolvedTheme['bg.floating'],
-      primaryText: resolvedTheme['text.primary'],
-    })
+    const surfaceRoles = deriveSemanticSurfaceRoles(resolvedTheme, mode)
     ensureLightHighlightContrast(
       styles,
       resolvedTheme,
-      deriveLightSurface(surfaceRoles.chatBg, resolvedTheme['text.primary'], 0.035)
+      deriveLightSurface(surfaceRoles.chatBg, resolvedTheme['neutral.primaryText'] || resolvedTheme['text.primary'], 0.035)
     )
   }
 
@@ -1482,19 +1948,27 @@ export function resolveThemeUI(
   resolvedTheme: Record<string, string> = resolveTheme(theme, mode)
 ): Record<SemanticUIToken, ResolvedUIStyle> {
   const styles = new Map<SemanticUIToken, ResolvedUIStyle>()
-  const surfaceRoles = deriveSurfaceRoles({
-    colorScheme: mode,
-    app: resolvedTheme['bg.app'],
-    sidebar: resolvedTheme['bg.sidebar'],
-    chat: resolvedTheme['bg.chat'],
-    panel: resolvedTheme['bg.panel'],
-    elevated: resolvedTheme['bg.elevated'],
-    floating: resolvedTheme['bg.floating'],
-    primaryText: resolvedTheme['text.primary'],
-  })
+  const surfaceRoles = deriveSemanticSurfaceRoles(resolvedTheme, mode)
+  const categoryColors = deriveCategoryColors(
+    {
+      ...resolvedTheme,
+      ...resolveThemeDefinitionColors(theme, mode, resolvedTheme),
+    },
+    [
+      surfaceRoles.sidebarBg,
+      surfaceRoles.sidebarBg,
+      surfaceRoles.sidebarBg,
+      surfaceRoles.sidebarBg,
+      surfaceRoles.panelBg,
+      surfaceRoles.panelBg,
+      surfaceRoles.panelBg,
+    ],
+    mode,
+    7
+  )
 
   for (const token of SEMANTIC_UI_TOKENS) {
-    styles.set(token, fallbackUIStyle(resolvedTheme, token, surfaceRoles, mode))
+    styles.set(token, fallbackUIStyle(resolvedTheme, token, surfaceRoles, mode, categoryColors))
   }
 
   return Object.fromEntries(

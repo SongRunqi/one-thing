@@ -279,7 +279,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
       // Detect changes to the customProviders list so we can rebuild
       // availableProviders — otherwise the InputBox ModelSelector and the
-      // settings ProviderList stay stale after add/edit/delete via the
+      // provider settings page stay stale after add/edit/delete via the
       // SettingsPage flow (which mutates localSettings then auto-saves).
       const prevCustomKey = JSON.stringify(settings.value.ai?.customProviders ?? [])
       const nextCustomKey = JSON.stringify(plainSettings.ai?.customProviders ?? [])
@@ -405,7 +405,9 @@ export const useSettingsStore = defineStore('settings', () => {
 
     // Also update providers config
     if (settings.value.ai.providers[providerId]) {
-      if (updates.apiKey !== undefined) settings.value.ai.providers[providerId].apiKey = updates.apiKey
+      if (updates.apiKey !== undefined) {
+        settings.value.ai.providers[providerId].apiKey = updates.apiKey
+      }
       if (updates.baseUrl !== undefined) settings.value.ai.providers[providerId].baseUrl = updates.baseUrl
       if (updates.model !== undefined) settings.value.ai.providers[providerId].model = updates.model
       if (updates.selectedModels !== undefined) settings.value.ai.providers[providerId].selectedModels = updates.selectedModels

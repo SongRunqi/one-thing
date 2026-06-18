@@ -237,7 +237,7 @@ html[data-theme='light'] .diff-overlay {
   font-weight: 500;
   padding: 2px 6px;
   border-radius: var(--radius-xs);
-  background: color-mix(in srgb, var(--ui-status-success-fg, var(--success, var(--color-success))) 15%, transparent);
+  background: var(--ui-status-success-bg, transparent);
   color: var(--ui-status-success-fg, var(--success, #22c55e));
   text-transform: uppercase;
   letter-spacing: 0.5px;

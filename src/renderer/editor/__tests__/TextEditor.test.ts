@@ -211,6 +211,38 @@ describe('TextEditor', () => {
     expect(styleText).toContain('--hg-syntax-string-fg')
   })
 
+  it('keeps composer line wrapping at the full editor width', async () => {
+    await mountEditor({
+      placeholder: 'Ask anything...',
+      settings: {
+        ...DEFAULT_EDITOR_SETTINGS,
+        lineWrapping: true,
+        softWrapColumn: 40,
+      },
+    })
+
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent || '')
+      .join('\n')
+    expect(styleText).toMatch(/\.cm-content\.cm-lineWrapping\s*\{[^}]*width: 100%/)
+    expect(styleText).toMatch(/\.cm-content\.cm-lineWrapping\s*\{[^}]*min-width: 100%/)
+    expect(styleText).toMatch(/\.cm-content\.cm-lineWrapping\s*\{[^}]*flex-grow: 1/)
+    expect(styleText).toMatch(/\.cm-content\.cm-lineWrapping\s*\{[^}]*flex-shrink: 0/)
+  })
+
+  it('uses the shared full-height scroller profile for markdown documents', async () => {
+    await mountEditor({
+      modelValue: '# Note',
+      profile: 'markdown-document',
+      markdownLivePreview: true,
+    })
+
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map(style => style.textContent || '')
+      .join('\n')
+    expect(styleText).toMatch(/\.cm-scroller\s*\{[^}]*max-height: none/)
+  })
+
   it('does not load language or highlight extensions when syntax highlighting is disabled', () => {
     const extensions = languageExtensions({
       ...DEFAULT_EDITOR_SETTINGS,

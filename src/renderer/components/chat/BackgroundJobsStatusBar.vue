@@ -138,7 +138,7 @@ onBeforeUnmount(() => {
   height: 8px;
   border-radius: 999px;
   background: var(--ui-status-success-fg, var(--success-color, #16a34a));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-status-success-fg, var(--success-color, #16a34a)) 18%, transparent);
+  box-shadow: 0 0 0 3px var(--ui-status-success-bg, transparent);
 }
 
 .jobs-list {

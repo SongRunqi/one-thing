@@ -13,6 +13,8 @@
         :placeholder="inputPlaceholder"
         spellcheck="false"
         @keydown="onInputKeydown"
+        @compositionstart="onInputCompositionStart"
+        @compositionend="onInputCompositionEnd"
       >
       <div
         :class="['scope-tabs', { 'has-active-scope': activeTab !== 'all' }]"
@@ -194,6 +196,9 @@ const showPromptCreate = ref(false)
 const promptForm = ref({ title: '', description: '', body: '' })
 const promptFormError = ref('')
 const dragGuides = ref<SearchWindowGuideState>(HIDDEN_GUIDES)
+const isInputComposing = ref(false)
+
+const COMPOSITION_ENTER_SUPPRESS_MS = 80
 
 const {
   settingsStore,
@@ -216,12 +221,15 @@ const {
 
 let unsubscribeShown: (() => void) | null = null
 let unsubscribeGuides: (() => void) | null = null
+let lastCompositionEndAt: number | null = null
 
 function closeWindow() {
   window.electronAPI.closeSearchWindow()
 }
 
 function onInputKeydown(event: KeyboardEvent) {
+  if (isComposingKeydown(event)) return
+
   if ((event.metaKey || event.ctrlKey) && selectTabByShortcut(event.key)) {
     event.preventDefault()
     return
@@ -253,6 +261,22 @@ function onInputKeydown(event: KeyboardEvent) {
       if (!query.value && activeTab.value !== 'actions') activeTab.value = 'actions'
       break
   }
+}
+
+function isComposingKeydown(event: KeyboardEvent) {
+  if (isInputComposing.value || event.isComposing || event.keyCode === 229) return true
+  return event.key === 'Enter' &&
+    lastCompositionEndAt !== null &&
+    Date.now() - lastCompositionEndAt < COMPOSITION_ENTER_SUPPRESS_MS
+}
+
+function onInputCompositionStart() {
+  isInputComposing.value = true
+}
+
+function onInputCompositionEnd() {
+  isInputComposing.value = false
+  lastCompositionEndAt = Date.now()
 }
 
 function confirmSelected() {

@@ -3,6 +3,7 @@ import type { ComputedRef, InjectionKey, Ref } from 'vue'
 export type MenuMode = 'vertical' | 'horizontal'
 export type MenuTrigger = 'hover' | 'click'
 export type MenuRoute = string | Record<string, unknown>
+export type SubMenuExpandIconPosition = 'start' | 'end'
 
 export interface MenuItemClicked {
   index: string

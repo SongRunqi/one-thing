@@ -13,16 +13,19 @@
       main-as="section"
       body-class="chat-body"
       main-class="chat-main-region"
-      footer-class="chat-footer-region"
+      sidebar-position="right"
+      :sidebar-class="['chat-side-region', { collapsed: sidePanelCollapsed }]"
       full-height
       :main-flex="'1 1 0'"
+      :sidebar-width="chatSidePanelWidth"
       overflow="hidden"
       main-overflow="hidden"
+      sidebar-overflow="hidden"
     >
       <!-- Tab Bar (replaces ChatHeader) -->
       <template #header>
         <TabBar
-          :tabs="tabsWithDirty"
+          :tabs="tabs"
           :active-tab-id="activeTabId"
           :session-id="effectiveSessionId"
           :session-name="currentSession?.name || 'New Chat'"
@@ -33,6 +36,8 @@
           :is-inspector-open="isInspectorOpen"
           :media-panel-open="mediaPanelOpen"
           :reserve-sidebar-actions="reserveSidebarActions"
+          :side-panel-available="sidePanelAvailable"
+          :side-panel-collapsed="sidePanelCollapsed"
           @select-tab="activateTab"
           @close-tab="handleCloseTab"
           @move-tab="tabState.moveTab"
@@ -44,36 +49,27 @@
           @equalize="emit('equalize')"
           @close="emit('close')"
           @toggle-inspector="emit('toggleInspector')"
+          @toggle-side-panel="toggleSidePanelCollapsed"
         />
       </template>
 
       <!-- Tab Content -->
       <div class="tab-content">
         <ChatPanel
-          v-show="activeTab?.type === 'chat'"
           ref="chatPanelRef"
           :session-id="effectiveSessionId"
-          :active="activeTab?.type === 'chat'"
+          :active="true"
           :footer-target="chatFooterRef"
           :layout-transitioning="layoutTransitioning"
+          :outline-rail-target="!sidePanelCollapsed ? chatSideOutlineTarget : null"
           @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
-          @open-file="addFileTab"
-        />
-        <FilePanel
-          v-if="isWorkbenchLikeTab(activeTab)"
-          :file-path="activeWorkbenchFilePath"
-          :workspace-root="activeWorkbenchRoot"
-          :max-size-kb="maxFilePreviewKB"
-          :active="true"
+          @open-file="handleOpenFile"
         />
       </div>
 
-      <FileUnsavedDialog
-        :visible="!!pendingCloseWorkbench"
-        :file-path="pendingCloseWorkbenchPath"
-        @save="saveAndClosePendingWorkbench"
-        @discard="discardAndClosePendingWorkbench"
-        @cancel="pendingCloseWorkbench = null"
+      <div
+        ref="chatFooterRef"
+        class="chat-footer"
       />
 
       <!-- Settings Panel overlay -->
@@ -84,10 +80,19 @@
         />
       </Transition>
 
-      <template #footer>
-        <div
-          ref="chatFooterRef"
-          class="chat-footer"
+      <template
+        v-if="sidePanelVisible"
+        #sidebar
+      >
+        <ChatSidePanel
+          :session-id="effectiveSessionId"
+          :working-directory="currentSession?.workingDirectory || ''"
+          :agent-id="currentSession?.agentId"
+          :last-provider="currentSession?.lastProvider"
+          :last-model="currentSession?.lastModel"
+          :collapsed="sidePanelCollapsed"
+          @outline-target-change="handleSideOutlineTargetChange"
+          @toggle-collapsed="toggleSidePanelCollapsed"
         />
       </template>
     </Container>
@@ -95,20 +100,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted, nextTick } from 'vue'
-import { ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
-import { useSettingsStore } from '@/stores/settings'
 import { useTabs } from '@/composables/useTabs'
 import TabBar from './TabBar.vue'
 import ChatPanel from './ChatPanel.vue'
-import FilePanel from './FilePanel.vue'
-import FileUnsavedDialog from './FileUnsavedDialog.vue'
+import ChatSidePanel from './ChatSidePanel.vue'
 import Container from '@/components/common/Container.vue'
 import BorderBox from '@/components/common/BorderBox.vue'
 import SettingsPanel from '../SettingsPanel.vue'
-import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
-import type { FileTab, Tab, WorkbenchTab } from '@/types/tabs'
 
 interface Props {
   showSettings?: boolean
@@ -134,6 +134,10 @@ const chatPanelShadowFallback = [
   'inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.8%, transparent)',
 ].join(', ')
 const chatPanelShadowValue = `var(--ui-surface-chat-panel-shadow, ${chatPanelShadowFallback})`
+const CHAT_SIDE_PANEL_WIDTH = 268
+const CHAT_SIDE_PANEL_COLLAPSED_WIDTH = 0
+const CHAT_SIDE_PANEL_MIN_WINDOW_WIDTH = 1100
+const CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY = 'chatSidePanelCollapsed'
 
 const emit = defineEmits<{
   closeSettings: []
@@ -150,77 +154,12 @@ const emit = defineEmits<{
 }>()
 
 const sessionsStore = useSessionsStore()
-const settingsStore = useSettingsStore()
-const editorWorkspace = useEditorWorkspace()
 
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
-const maxFilePreviewKB = computed(() => settingsStore.settings?.general?.maxFilePreviewKB ?? 256)
 
 // Tab state
 const tabState = useTabs(effectiveSessionId.value || '')
-const { tabs, activeTabId, activeTab } = tabState
-const pendingCloseWorkbench = ref<WorkbenchTab | FileTab | null>(null)
-const tabsWithDirty = computed<Tab[]>(() => tabs.value.map(tab => {
-  if (tab.type === 'workbench') {
-    return {
-      ...tab,
-      activeFilePath: editorWorkspace.isPathInsideRoot(editorWorkspace.workspace.activePath, tab.workspaceRoot)
-        ? editorWorkspace.workspace.activePath
-        : tab.activeFilePath,
-      dirty: editorWorkspace.getDirtyBuffersForRoot(tab.workspaceRoot).length > 0,
-    }
-  }
-  if (tab.type !== 'file') return tab
-  const buffer = editorWorkspace.workspace.buffers.get(tab.filePath)
-  return {
-    ...tab,
-    dirty: !!buffer?.dirty,
-  }
-}))
-
-function normalizePath(path: string): string {
-  if (path === '/') return '/'
-  return path.replace(/\/+$/, '')
-}
-
-function parentDir(filePath: string): string {
-  return normalizePath(filePath).split('/').slice(0, -1).join('/') || '/'
-}
-
-function basename(path: string): string {
-  return normalizePath(path).split('/').filter(Boolean).pop() || path
-}
-
-function isPathInsideRoot(filePath: string, root: string): boolean {
-  if (!filePath || !root) return false
-  const normalizedPath = normalizePath(filePath)
-  const normalizedRoot = normalizePath(root)
-  return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`)
-}
-
-function isWorkbenchLikeTab(tab: Tab | undefined): tab is WorkbenchTab | FileTab {
-  return tab?.type === 'workbench' || tab?.type === 'file'
-}
-
-const activeWorkbenchRoot = computed(() => {
-  if (activeTab.value?.type === 'workbench') return activeTab.value.workspaceRoot
-  if (activeTab.value?.type === 'file') return parentDir(activeTab.value.filePath)
-  return ''
-})
-
-const activeWorkbenchFilePath = computed(() => {
-  if (activeTab.value?.type === 'workbench') {
-    return activeTab.value.activeFilePath || activeTab.value.initialFilePath
-  }
-  if (activeTab.value?.type === 'file') return activeTab.value.filePath
-  return ''
-})
-
-const pendingCloseWorkbenchPath = computed(() => {
-  const tab = pendingCloseWorkbench.value
-  if (!tab) return undefined
-  return tab.type === 'workbench' ? tab.workspaceRoot : tab.filePath
-})
+const { tabs, activeTabId } = tabState
 
 // Restore saved tabs on mount
 onMounted(async () => {
@@ -240,14 +179,6 @@ watch(effectiveSessionId, (newId) => {
   if (newId) tabState.updateChatSession(newId)
 }, { immediate: true })
 
-watch(() => editorWorkspace.workspace.activePath, (filePath) => {
-  const tab = activeTab.value
-  if (!filePath || tab?.type !== 'workbench') return
-  if (!isPathInsideRoot(filePath, tab.workspaceRoot)) return
-  tab.activeFilePath = filePath
-  tabState.persistTabs()
-})
-
 // Session info for TabBar
 const currentSession = computed(() => {
   const sid = effectiveSessionId.value
@@ -266,7 +197,12 @@ async function goToParentSession() {
 // ChatPanel ref for focusInput
 const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null)
 const chatFooterRef = ref<HTMLElement | null>(null)
-let tabActivationRun = 0
+const chatSideOutlineTarget = ref<HTMLElement | null>(null)
+const sidePanelAvailable = ref(false)
+const sidePanelCollapsed = ref(localStorage.getItem(CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY) === 'true')
+let chatResizeObserver: ResizeObserver | null = null
+const chatSidePanelWidth = computed(() => sidePanelCollapsed.value ? CHAT_SIDE_PANEL_COLLAPSED_WIDTH : CHAT_SIDE_PANEL_WIDTH)
+const sidePanelVisible = computed(() => sidePanelAvailable.value || !sidePanelCollapsed.value)
 
 function focusInput() {
   chatPanelRef.value?.focusInput()
@@ -276,91 +212,75 @@ function insertPromptReference(promptId: string) {
   chatPanelRef.value?.insertPromptReference(promptId)
 }
 
-function saveChatSnapshotBeforeLeaving(nextType: Tab['type']) {
-  if (activeTab.value?.type === 'chat' && nextType !== 'chat') {
-    chatPanelRef.value?.saveSnapshotForCurrentSession()
-  }
-}
-
-async function restoreChatSnapshotAfterActivation(run: number) {
-  await nextTick()
-  if (run !== tabActivationRun || activeTab.value?.type !== 'chat') return
-  await chatPanelRef.value?.restoreSnapshotForCurrentSession()
-}
-
-async function activateTab(id: string) {
-  const nextTab = tabs.value.find(tab => tab.id === id)
-  if (!nextTab || activeTabId.value === id) return
-
-  const run = ++tabActivationRun
-  saveChatSnapshotBeforeLeaving(nextTab.type)
+function activateTab(id: string) {
+  if (!tabs.value.some(tab => tab.id === id) || activeTabId.value === id) return
   tabState.setActiveTab(id)
-
-  if (nextTab.type === 'chat') {
-    await restoreChatSnapshotAfterActivation(run)
-  }
 }
 
-function addFileTab(filePath: string) {
+function handleOpenFile(filePath: string) {
   emit('openFile', filePath)
 }
 
-async function removeTabAndRelease(tab: Tab) {
-  const wasActive = activeTabId.value === tab.id
-  const run = wasActive ? ++tabActivationRun : tabActivationRun
-  tabState.removeTab(tab.id)
-  if (tab.type === 'workbench') {
-    editorWorkspace.closeWorkspace(tab.workspaceRoot)
-  } else if (tab.type === 'file') {
-    editorWorkspace.closeFile(tab.filePath)
-  }
-  if (wasActive && activeTab.value?.type === 'chat') {
-    await restoreChatSnapshotAfterActivation(run)
-  }
+function handleCloseTab(id: string) {
+  tabState.removeTab(id)
 }
 
-function handleCloseTab(id: string) {
-  const tab = tabs.value.find(t => t.id === id)
-  if (!tab) return
-  const hasDirtyWorkbench = tab.type === 'workbench' && editorWorkspace.getDirtyBuffersForRoot(tab.workspaceRoot).length > 0
-  const buffer = tab.type === 'file' ? editorWorkspace.workspace.buffers.get(tab.filePath) : null
-  if (hasDirtyWorkbench || (tab.type === 'file' && buffer?.dirty)) {
-    pendingCloseWorkbench.value = tab
+function getChatRootElement() {
+  return chatFooterRef.value?.closest('.chat') as HTMLElement | null
+}
+
+function updateSidePanelAvailability() {
+  const width = getChatRootElement()?.getBoundingClientRect().width ?? 0
+  sidePanelAvailable.value = width >= CHAT_SIDE_PANEL_MIN_WINDOW_WIDTH
+}
+
+function observeChatWidth() {
+  chatResizeObserver?.disconnect()
+  chatResizeObserver = null
+  const chatRoot = getChatRootElement()
+  if (!chatRoot || typeof ResizeObserver === 'undefined') {
+    updateSidePanelAvailability()
     return
   }
-  void removeTabAndRelease(tab)
+  chatResizeObserver = new ResizeObserver(updateSidePanelAvailability)
+  chatResizeObserver.observe(chatRoot)
+  updateSidePanelAvailability()
 }
 
-async function saveAndClosePendingWorkbench() {
-  const tab = pendingCloseWorkbench.value
-  if (!tab) return
-  const saved = tab.type === 'workbench'
-    ? await editorWorkspace.saveWorkspace(tab.workspaceRoot)
-    : await editorWorkspace.saveFile(tab.filePath)
-  if (!saved) return
-  pendingCloseWorkbench.value = null
-  await removeTabAndRelease(tab)
+function handleSideOutlineTargetChange(target: HTMLElement | null) {
+  chatSideOutlineTarget.value = !sidePanelCollapsed.value ? target : null
 }
 
-function discardAndClosePendingWorkbench() {
-  const tab = pendingCloseWorkbench.value
-  if (!tab) return
-  pendingCloseWorkbench.value = null
-  void removeTabAndRelease(tab)
+function toggleSidePanelCollapsed() {
+  sidePanelCollapsed.value = !sidePanelCollapsed.value
+  localStorage.setItem(CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY, String(sidePanelCollapsed.value))
+  if (sidePanelCollapsed.value) {
+    chatSideOutlineTarget.value = null
+  }
 }
+
+watch(sidePanelCollapsed, (collapsed) => {
+  if (collapsed) {
+    chatSideOutlineTarget.value = null
+  }
+})
+
+onMounted(() => {
+  nextTick(observeChatWidth)
+})
+
+onBeforeUnmount(() => {
+  chatResizeObserver?.disconnect()
+  chatResizeObserver = null
+})
 
 async function scrollToMessage(messageId: string) {
-  const chatTab = tabs.value.find(tab => tab.type === 'chat')
-  if (chatTab && activeTabId.value !== chatTab.id) {
-    await activateTab(chatTab.id)
-  }
   return chatPanelRef.value?.scrollToMessage?.(messageId) ?? false
 }
 
 defineExpose({
   focusInput,
   insertPromptReference,
-  addFileTab,
   scrollToMessage,
 })
 </script>
@@ -368,6 +288,7 @@ defineExpose({
 <style scoped>
 .chat {
   --chat-surface: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
+  --chat-side-panel-width: 268px;
 
   flex: 1;
   height: 100%;
@@ -393,16 +314,19 @@ defineExpose({
   overflow: hidden;
 }
 
-.chat :deep(.chat-footer-region) {
+.chat :deep(.chat-side-region) {
   min-width: 0;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .chat-footer {
   display: flex;
+  flex: 0 0 auto;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: visible;
 }
 
 .tab-content {

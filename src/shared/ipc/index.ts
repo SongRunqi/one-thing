@@ -121,6 +121,11 @@ export type {
   UpdateSessionPinResponse,
   GenerateTitleRequest,
   GenerateTitleResponse,
+  SystemPromptToolSnapshot,
+  SystemPromptSkillSnapshot,
+  SystemPromptSnapshot,
+  GetSystemPromptSnapshotRequest,
+  GetSystemPromptSnapshotResponse,
   // Optimized session loading (Phase 4)
   GetSessionsListResponse,
   ActivateSessionResponse,
@@ -181,6 +186,10 @@ export type {
   CodexProviderUsage,
   ProviderUsageRequest,
   ProviderUsageResponse,
+  ProviderEnvVarCandidate,
+  ProviderEnvStatus,
+  GetProviderEnvStatusRequest,
+  GetProviderEnvStatusResponse,
 } from './providers.js'
 
 export { AIProvider } from './providers.js'

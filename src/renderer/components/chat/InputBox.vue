@@ -327,19 +327,20 @@
           <div class="toolbar-left">
             <ModelSelector :session-id="props.sessionId" />
             <ThinkToggle :session-id="props.sessionId" />
-            <Button
-              text
-              round
+            <Select
               size="small"
-              class="permission-mode-btn"
-              native-type="button"
+              class="permission-mode-select"
               :class="`mode-${permissionMode}`"
+              teleported
+              placement="top"
+              :model-value="permissionMode"
+              :options="PERMISSION_MODE_OPTIONS"
+              :popper-style="permissionDropdownStyle"
+              aria-label="Permission mode"
               :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
-              @mousedown.prevent
-              @click.stop="cyclePermissionMode"
-            >
-              {{ permissionModeLabel }}
-            </Button>
+              @click.stop
+              @change="handlePermissionModeChange"
+            />
           </div>
 
           <div
@@ -410,6 +411,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import Select from '@/components/common/Select.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
@@ -428,6 +430,7 @@ import { findCommand, getCommands, refreshPluginCommands } from '@/services/comm
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
 import type { MessageAttachment, PermissionMode } from '@/types'
+import type { SelectModelValue } from '@/components/common/select'
 import { DEFAULT_VOICE_SETTINGS } from '@shared/defaults/settings'
 import { getDiffFromStep } from '@/stores/helpers/tool-step-view'
 
@@ -464,6 +467,11 @@ const voiceStore = useVoiceStore()
 const promptsStore = usePromptsStore()
 
 const PERMISSION_MODES: PermissionMode[] = ['normal', 'auto-accept-edits', 'dangerously-allow-all']
+const PERMISSION_MODE_OPTIONS = [
+  { value: 'normal', label: 'Normal' },
+  { value: 'auto-accept-edits', label: 'Auto Edits' },
+  { value: 'dangerously-allow-all', label: 'Danger' },
+]
 
 // Get the effective session ID
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -481,6 +489,10 @@ const permissionModeLabel = computed(() => {
     default: return 'Normal'
   }
 })
+
+const permissionDropdownStyle = computed(() => ({
+  width: '178px',
+}))
 
 // Core state
 const messageInput = ref('')
@@ -942,12 +954,29 @@ async function cyclePermissionMode() {
 
   const currentIndex = PERMISSION_MODES.indexOf(permissionMode.value)
   const nextMode = PERMISSION_MODES[(currentIndex + 1) % PERMISSION_MODES.length]
+  await updatePermissionMode(nextMode)
+}
+
+async function handlePermissionModeChange(value: SelectModelValue) {
+  if (Array.isArray(value) || typeof value !== 'string') return
+  if (!isPermissionMode(value) || value === permissionMode.value) return
+  await updatePermissionMode(value)
+}
+
+async function updatePermissionMode(nextMode: PermissionMode) {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return
+
   const result = await sessionsStore.updateSessionPermissionMode(sessionId, nextMode)
   if (!result.success) {
     showCommandFeedback('error', result.error || 'Failed to update permission mode')
     return
   }
   showCommandFeedback('success', `Permission mode: ${permissionModeLabel.value}`)
+}
+
+function isPermissionMode(value: string): value is PermissionMode {
+  return PERMISSION_MODES.includes(value as PermissionMode)
 }
 
 function handleKeyDown(e: KeyboardEvent) {
@@ -1387,12 +1416,12 @@ defineExpose({
 }
 
 .command-feedback.success {
-  border-color: color-mix(in srgb, var(--ui-status-success-border, var(--color-success)) 30%, transparent);
+  border-color: var(--ui-status-success-border, var(--color-success));
   color: var(--ui-status-success-fg, var(--text-success, var(--text)));
 }
 
 .command-feedback.error {
-  border-color: color-mix(in srgb, var(--ui-status-danger-border, var(--color-danger)) 30%, transparent);
+  border-color: var(--ui-status-danger-border, var(--color-danger));
   color: var(--ui-status-danger-fg, var(--text-error, var(--text)));
 }
 
@@ -1890,8 +1919,8 @@ defineExpose({
 }
 
 .voice-capture-bar.recording {
-  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 36%, var(--ui-border-default-border, var(--border)));
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 8%, var(--ui-surface-elevated-bg, var(--bg-tertiary, var(--ui-state-hover-bg, var(--hover)))));
+  border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
+  background: var(--ui-status-danger-bg, var(--ui-surface-elevated-bg, var(--bg-tertiary, var(--ui-state-hover-bg, var(--hover)))));
 }
 
 .voice-capture-bar.transcribing {
@@ -1960,7 +1989,7 @@ defineExpose({
   --app-button-padding-x: 8px;
   --app-button-gap: 5px;
   --app-button-font-size: 12px;
-  --app-button-hover-fill: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 15%, transparent);
+  --app-button-hover-fill: var(--ui-status-danger-bg, transparent);
   --app-button-hover-fg: var(--ui-status-danger-fg, #ef4444);
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
@@ -1970,9 +1999,9 @@ defineExpose({
   align-items: center;
   gap: 5px;
   padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 42%, var(--ui-border-default-border, var(--border)));
+  border: 1px solid var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
   border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 9%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
   color: var(--ui-status-danger-fg, #ef4444);
   font-size: 12px;
   font-weight: 650;
@@ -1980,7 +2009,7 @@ defineExpose({
 }
 
 .voice-capture-stop:hover {
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 15%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
 }
 
 @keyframes attachment-spin {
@@ -2005,10 +2034,13 @@ defineExpose({
 }
 
 .toolbar-left {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) max-content max-content;
   align-items: center;
-  gap: 4px;
+  column-gap: 6px;
   flex: 1;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
 }
@@ -2020,49 +2052,53 @@ defineExpose({
   flex-shrink: 0;
 }
 
-.permission-mode-btn {
-  --app-button-height: 26px;
-  --app-button-min-width: 0;
-  --app-button-padding-x: 8px;
-  --app-button-font-size: 11px;
-  --app-button-hover-fill: var(--permission-mode-bg);
-  --app-button-hover-fg: var(--permission-mode-fg-hover);
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
+.permission-mode-select {
   --permission-mode-fg: var(--ui-text-muted-fg, var(--muted));
   --permission-mode-fg-hover: var(--ui-text-primary-fg, var(--text));
   --permission-mode-border: var(--ui-border-default-border, var(--border));
   --permission-mode-border-hover: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 35%, var(--ui-border-default-border, var(--border)));
   --permission-mode-bg: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 88%, transparent);
 
-  height: 26px;
-  padding: 0 8px;
+  width: 98px;
+  flex: 0 0 auto;
+}
+
+.permission-mode-select :deep(.app-select-control) {
+  min-height: 28px;
+  gap: 5px;
+  padding: 3px 7px 3px 8px;
   border-radius: 999px;
-  border: 1px solid var(--permission-mode-border);
+  border-color: var(--permission-mode-border);
   background: var(--permission-mode-bg);
   color: var(--permission-mode-fg);
   font-size: 11px;
   font-weight: 650;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
 }
 
-.permission-mode-btn:hover {
+.permission-mode-select :deep(.app-select-single-value) {
+  color: var(--permission-mode-fg);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.permission-mode-select :deep(.app-select-control:hover),
+.permission-mode-select.is-open :deep(.app-select-control) {
   color: var(--permission-mode-fg-hover);
   border-color: var(--permission-mode-border-hover);
+  background: var(--permission-mode-bg);
+  box-shadow: none;
 }
 
-.permission-mode-btn.mode-auto-accept-edits {
+.permission-mode-select.mode-auto-accept-edits {
   --permission-mode-fg: var(--ui-status-success-fg, var(--text-success));
-  --permission-mode-border: color-mix(in srgb, var(--ui-status-success-border, var(--border-success)) 32%, var(--ui-border-default-border, var(--border)));
-  --permission-mode-bg: color-mix(in srgb, var(--ui-status-success-fg, var(--color-success)) 8%, transparent);
+  --permission-mode-border: var(--ui-status-success-border, var(--border-success));
+  --permission-mode-bg: var(--ui-status-success-bg, transparent);
 }
 
-.permission-mode-btn.mode-dangerously-allow-all {
+.permission-mode-select.mode-dangerously-allow-all {
   --permission-mode-fg: var(--ui-status-warning-fg, var(--text-warning));
-  --permission-mode-border: color-mix(in srgb, var(--ui-status-warning-border, var(--color-warning)) 40%, var(--ui-border-default-border, var(--border)));
-  --permission-mode-bg: color-mix(in srgb, var(--ui-status-warning-fg, var(--color-warning)) 10%, transparent);
+  --permission-mode-border: var(--ui-status-warning-border, var(--color-warning));
+  --permission-mode-bg: var(--ui-status-warning-bg, transparent);
 }
 
 /* Toolbar buttons */
@@ -2142,9 +2178,9 @@ defineExpose({
 
 .voice-btn.active {
   color: var(--ui-status-danger-fg, #ef4444);
-  border-color: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 45%, var(--ui-border-default-border, var(--border)));
-  background: color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent);
-  box-shadow: var(--ui-status-danger-ring-shadow, 0 0 0 4px color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 10%, transparent));
+  border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
+  background: var(--ui-status-danger-bg, transparent);
+  box-shadow: var(--ui-status-danger-ring-shadow, 0 0 0 4px var(--ui-status-danger-bg, transparent));
 }
 
 .voice-btn.transcribing {
@@ -2169,14 +2205,14 @@ defineExpose({
   --app-button-padding-x: 0;
   --app-button-hover-fill: var(--ui-action-primary-hover-bg, var(--bg-btn-primary-hover));
   --app-button-hover-fg: var(--ui-action-primary-fg, var(--text-btn-primary));
-  --app-button-shadow: var(--ui-action-primary-shadow, 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 22%, transparent));
-  --app-button-hover-shadow: var(--ui-action-primary-hover-shadow, 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 24%, transparent));
+  --app-button-shadow: var(--ui-action-primary-shadow, 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 22%, transparent));
+  --app-button-hover-shadow: var(--ui-action-primary-hover-shadow, 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 24%, transparent));
 
   width: 33px;
   height: 33px;
   border-radius: 10px;
   border: 1px solid transparent;
-  background: var(--ui-action-primary-bg, var(--accent));
+  background: var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent))));
   color: var(--ui-action-primary-fg, var(--text-btn-primary));
   cursor: pointer;
   display: flex;
@@ -2184,18 +2220,18 @@ defineExpose({
   justify-content: center;
   transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
   flex-shrink: 0;
-  box-shadow: var(--ui-action-primary-shadow, 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 22%, transparent));
+  box-shadow: var(--ui-action-primary-shadow, 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 22%, transparent));
 }
 
 .send-btn:hover:not(:disabled) {
   background: var(--ui-action-primary-hover-bg, var(--bg-btn-primary-hover));
   transform: translateY(-1px);
-  box-shadow: var(--ui-action-primary-hover-shadow, 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 24%, transparent));
+  box-shadow: var(--ui-action-primary-hover-shadow, 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 24%, transparent));
 }
 
 .send-btn:active:not(:disabled) {
   transform: scale(0.97);
-  box-shadow: var(--ui-action-primary-active-shadow, 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent))) 18%, transparent));
+  box-shadow: var(--ui-action-primary-active-shadow, 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 18%, transparent));
 }
 
 .send-btn:disabled {
@@ -2234,7 +2270,7 @@ defineExpose({
 }
 
 @media (max-width: 600px) {
-  .toolbar-left { gap: 2px; }
+  .toolbar-left { column-gap: 3px; }
   .toolbar-btn { width: 30px; height: 30px; }
 }
 

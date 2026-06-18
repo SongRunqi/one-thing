@@ -67,7 +67,7 @@ function mountProviderTab(settings = createSettings()) {
         AuthCard: { template: '<div class="auth-card-stub" />' },
         ProviderUsageCard: { template: '<div class="usage-card-stub" />' },
         ProviderModels: { template: '<div class="provider-models-stub" />' },
-        NumberStepper: { template: '<div class="number-stepper-stub" />' },
+        InputNumber: { template: '<div class="input-number-stub" />' },
       },
     },
   })
@@ -91,6 +91,8 @@ describe('AIProviderTab provider rows', () => {
       setDefaultModel: vi.fn(),
       isUserCustomProvider: vi.fn(() => false),
       isProviderEnabled: vi.fn((providerId: string) => providerId === 'openai'),
+      getProviderEnvStatus: vi.fn(() => undefined),
+      providerUsesEnvApiKey: vi.fn(() => false),
       switchViewingProvider: vi.fn(async (providerId: string) => {
         viewingProvider.value = providerId
       }),
@@ -114,6 +116,8 @@ describe('AIProviderTab provider rows', () => {
       updateProviderBaseUrl: vi.fn(),
       availableModels: ref([]),
       filteredModels: ref([]),
+      currentProviderUsesEnvApiKey: ref(false),
+      currentProviderEnvVarName: ref('OPENAI_API_KEY'),
       currentSelectedModels: computed(() => ['openai/gpt-4o']),
       modelSearchQuery: ref(''),
       newModelInput: ref(''),

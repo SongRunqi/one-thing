@@ -102,7 +102,7 @@ function handleOverlayAction() {
 .is-recording .voice-dot,
 .is-transcribing .voice-dot {
   background: var(--ui-status-danger-fg, #ef4444);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-status-danger-fg, #ef4444) 18%, transparent);
+  box-shadow: 0 0 0 4px var(--ui-status-danger-bg, transparent);
 }
 
 .is-speaking .voice-dot {

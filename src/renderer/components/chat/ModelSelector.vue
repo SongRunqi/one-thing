@@ -3,60 +3,91 @@
     ref="selectorRef"
     class="model-selector"
     :class="{ compact: isCompact }"
+    :style="modelSelectorStyle"
+    @click.stop
   >
-    <Button
-      text
-      class="model-selector-btn"
-      native-type="button"
+    <Select
+      class="model-select"
+      size="small"
+      filterable
+      teleported
+      placement="top"
+      popper-class="model-select-dropdown"
+      default-first-option
+      :model-value="modelSelectValue"
+      :options="modelSelectOptions"
+      :filter-method="filterModelOption"
+      :placeholder="displayName || 'Select model'"
+      :aria-label="displayName || 'Select model'"
       :title="displayName || 'Select model'"
-      @mousedown.prevent
-      @click.stop="openPanel"
+      :popper-style="modelDropdownStyle"
+      no-data-text="No models configured"
+      no-match-text="No models found"
+      @change="handleModelChange"
+      @visible-change="handleVisibleChange"
     >
-      <!-- Provider icon -->
-      <template #icon>
+      <template #prefix>
         <ProviderIcon
           :provider="currentProvider"
           :size="18"
         />
       </template>
-      <!-- Model name (hidden in compact mode) -->
-      <span class="model-text">{{ displayName }}</span>
-      <!-- Chevron -->
-      <svg
-        class="chevron-icon"
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <polyline points="6 9 12 15 18 9" />
-      </svg>
-    </Button>
 
-    <!-- New two-column panel -->
-    <ModelSelectorPanel
-      v-model:visible="showPanel"
-      :position="panelPosition"
-      :current-provider="currentProvider"
-      :current-model="currentModel"
-      @select="handleSelect"
-    />
+      <template #label>
+        <span class="model-text">{{ displayName }}</span>
+      </template>
+
+      <template #option="{ option }">
+        <span class="model-option">
+          <span class="model-option-main">
+            <span class="model-option-name">{{ modelOptionName(option) }}</span>
+            <span class="model-option-id">{{ modelOptionId(option) }}</span>
+          </span>
+          <span class="model-option-meta">
+            <span
+              v-if="modelOptionContext(option)"
+              class="model-context"
+            >
+              {{ modelOptionContext(option) }}
+            </span>
+            <span
+              v-for="capability in modelOptionCompactCapabilities(option)"
+              :key="capability"
+              class="model-badge"
+            >
+              {{ capability }}
+            </span>
+          </span>
+        </span>
+      </template>
+    </Select>
   </div>
 </template>
 
 <script setup lang="ts">
-import Button from '@/components/common/Button.vue'
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import Select from '@/components/common/Select.vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type StyleValue } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
-import type { AIProvider } from '../../../shared/ipc'
+import type { AIProvider, OpenRouterModel } from '../../../shared/ipc'
+import type { SelectModelValue, SelectNormalizedOption, SelectOptionLike } from '@/components/common/select'
 import ProviderIcon from '../settings/ProviderIcon.vue'
-import ModelSelectorPanel from './ModelSelectorPanel.vue'
+import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
 
 interface Props {
   sessionId?: string
+}
+
+interface ModelSelectOption {
+  value: string
+  label: string
+  providerId: string
+  providerName: string
+  modelId: string
+  modelName: string
+  description?: string
+  contextLength: number
+  capabilities: string[]
 }
 
 const props = defineProps<Props>()
@@ -64,245 +95,505 @@ const props = defineProps<Props>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 
-const showPanel = ref(false)
+const MODEL_SELECTOR_MIN_WIDTH = 112
+const MODEL_SELECTOR_MAX_WIDTH = 420
+const MODEL_SELECTOR_CHROME_WIDTH = 72
+const MODEL_TEXT_FALLBACK_FONT = '520 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+
 const selectorRef = ref<HTMLElement | null>(null)
-const panelPosition = ref<{ bottom: string; left: string }>({ bottom: '0px', left: '0px' })
-
-// Compact mode when there's not enough space
 const isCompact = ref(false)
+const measuredModelText = ref({ label: '', width: 0 })
 let resizeObserver: ResizeObserver | null = null
+let modelTextMeasureCanvas: HTMLCanvasElement | null = null
 
-// Check if the button is being clipped or has very little space
-function checkCompactMode() {
-  if (!selectorRef.value) return
+const modelDropdownStyle = computed<StyleValue>(() => ({
+  width: 'min(340px, calc(100vw - 24px))',
+  maxHeight: '224px',
+}))
 
-  // Get the parent toolbar-left container
-  const parent = selectorRef.value.closest('.toolbar-left') as HTMLElement
-  if (!parent) {
-    // Fallback to window-based check
-    isCompact.value = window.innerWidth < 550
-    return
-  }
-
-  // Calculate available width: parent width minus other siblings
-  const parentRect = parent.getBoundingClientRect()
-  const siblings = Array.from(parent.children) as HTMLElement[]
-  let usedWidth = 0
-
-  for (const sibling of siblings) {
-    if (sibling !== selectorRef.value) {
-      usedWidth += sibling.getBoundingClientRect().width + 4 // 4px gap
-    }
-  }
-
-  const availableForSelector = parentRect.width - usedWidth
-  // If available width is less than 120px, go compact (just show icon)
-  // The full selector needs about 150-180px for icon + text + chevron
-  isCompact.value = availableForSelector < 120
-}
-
-onMounted(() => {
-  checkCompactMode()
-
-  // Use ResizeObserver on the parent toolbar to detect size changes
-  if (selectorRef.value) {
-    const parent = selectorRef.value.closest('.toolbar-left')
-    if (parent) {
-      resizeObserver = new ResizeObserver(() => {
-        checkCompactMode()
-      })
-      resizeObserver.observe(parent)
-    }
-  }
-
-  // Also listen for window resize as fallback
-  window.addEventListener('resize', checkCompactMode)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkCompactMode)
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
-  }
-})
-
-// Get the session for this selector (if sessionId provided)
 const currentSession = computed(() => {
   const sid = props.sessionId
   if (!sid) return null
   return sessionsStore.getSessionItem(sid) || null
 })
 
-// Use session's lastProvider if available, otherwise fall back to global settings
-const currentProvider = computed(() => {
-  const session = currentSession.value
-  if (session?.lastProvider) {
-    return session.lastProvider as AIProvider
-  }
-  return settingsStore.settings?.ai?.provider || 'claude'
-})
+const currentSelection = computed(() => resolveProviderModelSelection({
+  settings: settingsStore.settings,
+  session: currentSession.value,
+  providers: settingsStore.availableProviders,
+  getCachedModels: providerId => settingsStore.getCachedModels(providerId),
+}))
 
-// Use session's lastModel if available, otherwise fall back to global settings
-const currentModel = computed(() => {
-  const session = currentSession.value
-  if (session?.lastModel) {
-    return session.lastModel
-  }
-  return settingsStore.settings?.ai?.providers?.[currentProvider.value]?.model || ''
-})
+const currentProvider = computed(() => (currentSelection.value.providerId || 'claude') as AIProvider)
 
-// Display name with alias support
+const currentModel = computed(() => currentSelection.value.model)
+
 const displayName = computed(() => {
   if (!currentModel.value) return 'Select model'
   return settingsStore.getModelDisplayName(currentModel.value)
 })
 
-// Warm the model-name cache for the current provider so the button label
-// resolves from the model id (e.g. "deepseek-v4-pro") to its proper
-// display name (e.g. "DeepSeek V4 Pro") without waiting for the user to
-// open the model picker. Cheap when cached: fetchModelsForProvider
-// short-circuits on hit.
+const modelSelectorStyle = computed<StyleValue>(() => {
+  const label = displayName.value
+  const measuredWidth = measuredModelText.value.label === label
+    ? measuredModelText.value.width
+    : 0
+
+  return {
+    '--model-selector-width': isCompact.value
+      ? '34px'
+      : `${modelSelectorWidth(label, measuredWidth)}px`,
+  }
+})
+
+const modelSelectValue = computed(() => {
+  if (!currentProvider.value || !currentModel.value) return ''
+  return makeModelValue(currentProvider.value, currentModel.value)
+})
+
+const visibleProviders = computed(() => {
+  const settings = settingsStore.settings
+  const providers = settingsStore.availableProviders || []
+  if (!settings?.ai?.providers) return []
+
+  return providers.filter((provider) => {
+    const config = settings.ai.providers[provider.id]
+    const isCurrent = provider.id === currentProvider.value
+    const isCustom = settingsStore.isCustomProvider(provider.id)
+    const selectedModels = config?.selectedModels || []
+    const customDefaultModel = isCustom ? config?.model : ''
+    const hasModels = selectedModels.length > 0 || (isCurrent && !!currentModel.value) || !!customDefaultModel
+    return config?.enabled !== false && hasModels
+  })
+})
+
+const modelSelectOptions = computed<SelectOptionLike[]>(() => {
+  return visibleProviders.value
+    .map((provider) => {
+      const options = buildProviderModelOptions(provider.id, provider.name)
+      return {
+        label: provider.name,
+        options,
+      }
+    })
+    .filter((group) => group.options.length > 0)
+})
+
 watch(
   currentProvider,
   (provider) => {
     if (!provider) return
-    settingsStore.fetchModelsForProvider(provider).catch((err) => {
-      console.warn('[ModelSelector] failed to warm model name cache:', err)
-    })
+    void loadModelsForProvider(provider)
   },
   { immediate: true },
 )
 
-function openPanel() {
-  if (selectorRef.value) {
-    const rect = selectorRef.value.getBoundingClientRect()
-    const panelWidth = 480
+watch(
+  displayName,
+  () => {
+    void updateMeasuredModelTextWidth()
+  },
+  { immediate: true },
+)
 
-    let left = rect.left + (rect.width / 2) - (panelWidth / 2)
-    const bottom = window.innerHeight - rect.top + 8
+function checkCompactMode() {
+  if (!selectorRef.value) return
 
-    // Keep panel within viewport
-    if (left < 16) {
-      left = 16
-    }
-    if (left + panelWidth > window.innerWidth - 16) {
-      left = window.innerWidth - panelWidth - 16
-    }
-
-    panelPosition.value = {
-      bottom: `${bottom}px`,
-      left: `${left}px`
-    }
+  const parent = selectorRef.value.closest('.toolbar-left') as HTMLElement | null
+  if (!parent) {
+    isCompact.value = window.innerWidth < 550
+    return
   }
-  showPanel.value = true
+
+  const parentRect = parent.getBoundingClientRect()
+  const siblings = Array.from(parent.children) as HTMLElement[]
+  const usedWidth = siblings
+    .filter((sibling) => sibling !== selectorRef.value)
+    .reduce((total, sibling) => total + sibling.getBoundingClientRect().width + 4, 0)
+
+  isCompact.value = parentRect.width - usedWidth < 120
 }
 
-async function handleSelect(provider: string, model: string) {
-  // Get the effective session ID (props or current)
+onMounted(() => {
+  void updateMeasuredModelTextWidth()
+
+  if (document.fonts) {
+    void document.fonts.ready.then(() => updateMeasuredModelTextWidth())
+  }
+
+  checkCompactMode()
+
+  const parent = selectorRef.value?.closest('.toolbar-left')
+  if (parent) {
+    resizeObserver = new ResizeObserver(checkCompactMode)
+    resizeObserver.observe(parent)
+  }
+
+  window.addEventListener('resize', checkCompactMode)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkCompactMode)
+  resizeObserver?.disconnect()
+  resizeObserver = null
+})
+
+function buildProviderModelOptions(providerId: string, providerName: string): ModelSelectOption[] {
+  const config = settingsStore.settings?.ai?.providers?.[providerId]
+  const selectedModels = config?.selectedModels || []
+  const ids = [...selectedModels]
+
+  if (providerId === currentProvider.value && currentModel.value && !ids.includes(currentModel.value)) {
+    ids.unshift(currentModel.value)
+  }
+
+  if (settingsStore.isCustomProvider(providerId) && config?.model && !ids.includes(config.model)) {
+    ids.unshift(config.model)
+  }
+
+  const cachedModels = settingsStore.getCachedModels(providerId)
+  return ids.map((id) => {
+    const model = cachedModels.find((item) => item.id === id)
+    const modelName = settingsStore.getModelDisplayName(id) || model?.name || id
+    return {
+      value: makeModelValue(providerId, id),
+      label: modelName,
+      providerId,
+      providerName,
+      modelId: id,
+      modelName,
+      description: model?.description,
+      contextLength: model?.context_length || 0,
+      capabilities: capabilityLabels(providerId, model),
+    }
+  })
+}
+
+async function updateMeasuredModelTextWidth() {
+  const label = displayName.value
+  await nextTick()
+
+  const width = measureModelTextWidth(label)
+  measuredModelText.value = { label, width }
+
+  await nextTick()
+  checkCompactMode()
+}
+
+function measureModelTextWidth(label: string): number {
+  const text = label.trim() || 'Select model'
+  const context = getModelTextMeasureContext()
+  if (!context) return estimateModelTextWidth(text)
+
+  context.font = getModelTextFont()
+  const width = Math.ceil(context.measureText(text).width)
+  return Number.isFinite(width) && width > 0 ? width : estimateModelTextWidth(text)
+}
+
+function getModelTextMeasureContext(): CanvasRenderingContext2D | null {
+  if (!modelTextMeasureCanvas) {
+    modelTextMeasureCanvas = document.createElement('canvas')
+  }
+  return modelTextMeasureCanvas.getContext('2d')
+}
+
+function getModelTextFont(): string {
+  const textElement = selectorRef.value?.querySelector<HTMLElement>('.model-text')
+  if (!textElement) return MODEL_TEXT_FALLBACK_FONT
+
+  const styles = window.getComputedStyle(textElement)
+  if (styles.font) return styles.font
+
+  return `${styles.fontWeight || 520} ${styles.fontSize || '13px'} ${styles.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'}`
+}
+
+function estimateModelTextWidth(text: string): number {
+  const visualLength = Array.from(text).reduce((total, char) => {
+    if (/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(char)) return total + 1.7
+    if (/[A-Z0-9]/.test(char)) return total + 1.05
+    if (/[-_./]/.test(char)) return total + 0.65
+    if (char === ' ') return total + 0.45
+    return total + 0.9
+  }, 0)
+
+  return Math.ceil(visualLength * 7.8)
+}
+
+function modelSelectorWidth(label: string, measuredTextWidth = 0): number {
+  const text = label.trim() || 'Select model'
+  const textWidth = measuredTextWidth > 0 ? measuredTextWidth : estimateModelTextWidth(text)
+  return Math.round(Math.max(
+    MODEL_SELECTOR_MIN_WIDTH,
+    Math.min(MODEL_SELECTOR_MAX_WIDTH, textWidth + MODEL_SELECTOR_CHROME_WIDTH),
+  ))
+}
+
+function makeModelValue(provider: string, model: string): string {
+  return JSON.stringify([provider, model])
+}
+
+function parseModelValue(value: string): { provider: string; model: string } | null {
+  try {
+    const parsed = JSON.parse(value)
+    if (
+      Array.isArray(parsed) &&
+      typeof parsed[0] === 'string' &&
+      typeof parsed[1] === 'string'
+    ) {
+      return { provider: parsed[0], model: parsed[1] }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+async function handleModelChange(value: SelectModelValue) {
+  if (Array.isArray(value) || typeof value !== 'string') return
+  const selection = parseModelValue(value)
+  if (!selection) return
+
+  if (selection.provider !== currentProvider.value) {
+    settingsStore.updateAIProvider(selection.provider as AIProvider)
+  }
+  settingsStore.updateModel(selection.model, selection.provider as AIProvider)
+
   const effectiveSessionId = props.sessionId || sessionsStore.currentSessionId
-
-  // Update UI state
-  if (provider !== currentProvider.value) {
-    settingsStore.updateAIProvider(provider as AIProvider)
-  }
-  settingsStore.updateModel(model, provider as AIProvider)
-
-  // Save to session for per-session persistence
   if (effectiveSessionId) {
-    await sessionsStore.updateSessionModel(effectiveSessionId, provider, model)
+    await sessionsStore.updateSessionModel(effectiveSessionId, selection.provider, selection.model)
   }
+}
+
+function handleVisibleChange(visible: boolean) {
+  if (!visible) return
+  for (const provider of visibleProviders.value) {
+    void loadModelsForProvider(provider.id)
+  }
+}
+
+async function loadModelsForProvider(providerId: string) {
+  try {
+    await settingsStore.fetchModelsForProvider(providerId)
+  } catch (error) {
+    console.warn('[ModelSelector] failed to load provider models:', error)
+  }
+}
+
+function filterModelOption(query: string, option?: SelectNormalizedOption): boolean {
+  const item = asModelOption(option?.raw)
+  if (!item) return false
+  const normalized = query.toLowerCase()
+  return [
+    item.modelName,
+    item.modelId,
+    item.providerName,
+    item.description || '',
+    ...item.capabilities,
+  ].some((part) => part.toLowerCase().includes(normalized))
+}
+
+function asModelOption(option: SelectOptionLike | undefined): ModelSelectOption | null {
+  if (!option || typeof option !== 'object' || Array.isArray(option)) return null
+  const candidate = option as Partial<ModelSelectOption>
+  if (typeof candidate.modelId !== 'string' || typeof candidate.modelName !== 'string') return null
+  return candidate as ModelSelectOption
+}
+
+function modelOptionName(option: SelectOptionLike): string {
+  return asModelOption(option)?.modelName || ''
+}
+
+function modelOptionId(option: SelectOptionLike): string {
+  const item = asModelOption(option)
+  if (!item || item.modelId === item.modelName) return ''
+  return item.modelId
+}
+
+function modelOptionContext(option: SelectOptionLike): string {
+  const length = asModelOption(option)?.contextLength || 0
+  if (!length) return ''
+  if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M`
+  if (length >= 1000) return `${Math.round(length / 1000)}K`
+  return String(length)
+}
+
+function modelOptionCapabilities(option: SelectOptionLike): string[] {
+  return asModelOption(option)?.capabilities || []
+}
+
+function modelOptionCompactCapabilities(option: SelectOptionLike): string[] {
+  return modelOptionCapabilities(option).slice(0, 2)
+}
+
+function capabilityLabels(providerId: string, model?: OpenRouterModel): string[] {
+  if (providerId === 'codex' && !model) {
+    return ['Tools', 'Reasoning', 'Image input', 'Image generation']
+  }
+
+  const labels: string[] = []
+  const codexMetadata = model?.providerMetadata?.codex as Record<string, unknown> | undefined
+
+  if (model?.supported_parameters?.includes('tools') || !!codexMetadata) {
+    labels.push('Tools')
+  }
+  if (
+    model?.supported_parameters?.includes('reasoning') ||
+    Array.isArray(codexMetadata?.supportedReasoningEfforts) ||
+    codexMetadata?.supportsReasoningSummaries === true
+  ) {
+    labels.push('Reasoning')
+  }
+  if (model?.architecture?.input_modalities?.includes('image')) {
+    labels.push('Image input')
+  }
+  if (model?.architecture?.output_modalities?.includes('image')) {
+    labels.push('Image output')
+  }
+  if (Array.isArray(codexMetadata?.nativeTools) && codexMetadata.nativeTools.includes('image_generation')) {
+    labels.push('Image generation')
+  }
+  if (
+    (Array.isArray(codexMetadata?.serviceTiers) && codexMetadata.serviceTiers.length > 0) ||
+    (Array.isArray(codexMetadata?.additionalSpeedTiers) && codexMetadata.additionalSpeedTiers.length > 0)
+  ) {
+    labels.push('Speed')
+  }
+
+  return labels
 }
 </script>
 
 <style scoped>
 .model-selector {
-  position: relative;
-}
-
-.model-selector-btn {
-  --app-button-height: 32px;
-  --app-button-min-width: 0;
-  --app-button-padding-x: 8px;
-  --app-button-gap: 6px;
-  --app-button-font-size: 13px;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
-
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 6px;
-  padding: 0 8px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  height: 32px;
-}
-
-.model-selector-btn :deep(.app-button-label) {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   min-width: 0;
+  width: var(--model-selector-width, 168px);
+  flex: 0 0 var(--model-selector-width, 168px);
 }
 
-.model-selector-btn:hover {
+.model-selector.compact {
+  width: 34px;
+  flex-basis: 34px;
+}
+
+.model-select {
+  width: 100%;
+}
+
+.model-select :deep(.app-select-control) {
+  min-height: 30px;
+  gap: 5px;
+  padding: 3px 6px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.model-select :deep(.app-select-control:hover),
+.model-select.is-open :deep(.app-select-control) {
+  border-color: transparent;
   background: var(--ui-state-hover-bg, var(--hover));
   color: var(--ui-text-primary-fg, var(--text));
-  transform: scale(1.02);
+  box-shadow: none;
 }
 
-.model-selector-btn:active {
-  transform: scale(0.97);
-}
-
-html[data-theme='light'] .model-selector-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.model-selector-btn :deep(.app-button-icon) {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.model-text {
-  white-space: nowrap;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chevron-icon {
-  color: var(--ui-text-muted-fg, var(--muted));
-  flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-
-.model-selector-btn:hover .chevron-icon {
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-/* Compact mode - hide text and chevron, show only icon */
-.model-selector.compact .model-text,
-.model-selector.compact .chevron-icon {
+.model-selector.compact :deep(.app-select-selection),
+.model-selector.compact :deep(.app-select-suffix) {
   display: none;
 }
 
-.model-selector.compact .model-selector-btn {
-  padding: 0;
-  width: 32px;
+.model-selector.compact :deep(.app-select-control) {
   justify-content: center;
+  padding: 3px;
+}
+
+.model-text {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 13px;
+  font-weight: 520;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-option {
+  min-width: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-option-main {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.model-option-name,
+.model-option-id {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-option-name {
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.model-option-id {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 10.5px;
+}
+
+.model-option-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex-wrap: nowrap;
+  max-width: 128px;
+  overflow: hidden;
+}
+
+.model-context,
+.model-badge {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.model-context {
+  color: var(--ui-text-muted-fg, var(--muted));
+  background: var(--ui-state-hover-bg, var(--hover));
+  font-family: var(--font-mono, monospace);
+}
+
+.model-badge {
+  color: var(--ui-accent-primary-fg, var(--accent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+}
+
+:global(.model-select-dropdown) {
+  max-width: min(340px, calc(100vw - 24px));
+  padding: 4px;
+}
+
+:global(.model-select-dropdown .app-select-option) {
+  min-height: 28px;
+  padding: 2px 7px;
+}
+
+:global(.model-select-dropdown .app-select-group-label) {
+  padding: 6px 7px 3px;
+  font-size: 10px;
 }
 </style>

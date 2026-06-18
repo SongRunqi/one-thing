@@ -39,7 +39,7 @@ const settingsStore = vi.hoisted(() => {
           frequency: '0 3 * * *',
           timezone: '',
           model: '',
-          sources: ['daily', 'sessions', 'short-term'],
+          sources: ['daily'],
           lookbackDays: 30,
           maxSourceFiles: 12,
           maxSessions: 12,
@@ -298,7 +298,6 @@ describe('SchedulerPanelContent', () => {
       'Run history',
       'Configuration',
       'Basic',
-      'Sources',
       'Limits',
       'Scoring',
     ]
@@ -308,7 +307,6 @@ describe('SchedulerPanelContent', () => {
     expect(wrapper.find('.config-disclosure-head').exists()).toBe(false)
     expect(wrapper.findAll('.config-section-head').map(section => section.text())).toEqual([
       'Basic',
-      'Sources',
       'Limits',
       'Scoring',
     ])
@@ -328,6 +326,7 @@ describe('SchedulerPanelContent', () => {
     })
     const nextSettings = settingsStore.saveSettings.mock.calls.at(-1)![0]
     expect(nextSettings.general.soulMemory.dreaming.frequency).toBe('30 2 * * *')
+    expect(nextSettings.general.soulMemory.dreaming.sources).toEqual(['daily'])
     expect(nextSettings.general.soulMemory.dreaming.maxSourceFiles).toBe(20)
     expect(nextSettings.general.soulMemory.dreaming.enabled).toBe(true)
     expect(window.electronAPI.setSchedulerTaskEnabled).toHaveBeenCalledWith({

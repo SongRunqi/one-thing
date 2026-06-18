@@ -823,12 +823,12 @@ function onFaviconError(e: Event) {
 }
 
 .matches-tag {
-  background: color-mix(in srgb, var(--ui-status-warning-fg) 10%, transparent);
+  background: var(--ui-status-warning-bg, transparent);
   color: var(--ui-status-warning-fg);
 }
 
 .warning-tag {
-  background: color-mix(in srgb, var(--ui-status-danger-fg) 10%, transparent);
+  background: var(--ui-status-danger-bg, transparent);
   color: var(--ui-status-danger-fg);
 }
 

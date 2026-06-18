@@ -172,8 +172,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#CCD0DA",
-            "sidebarActive": "rgba(136, 57, 239, 0.15)",
-            "tabActive": "rgba(136, 57, 239, 0.15)",
+            "sidebarActive": "#f9f0ff",
+            "tabActive": "#f9f0ff",
           },
           "surfaces": {
             "app": "#DCE0E8",
@@ -181,7 +181,7 @@ describe('built-in theme gallery regression', () => {
             "composer": "#EFF1F5",
             "sidebar": "#E6E9EF",
             "tabbar": "#EFF1F5",
-            "tool": "#E6E9EF",
+            "tool": "#CCD0DA",
           },
           "theme": "Catppuccin Latte",
         },
@@ -190,8 +190,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#313244",
-            "sidebarActive": "rgba(203, 166, 247, 0.2)",
-            "tabActive": "rgba(203, 166, 247, 0.2)",
+            "sidebarActive": "#211d31",
+            "tabActive": "#211d31",
           },
           "surfaces": {
             "app": "#11111B",
@@ -199,7 +199,7 @@ describe('built-in theme gallery regression', () => {
             "composer": "#1E1E2E",
             "sidebar": "#11111B",
             "tabbar": "#1E1E2E",
-            "tool": "#181825",
+            "tool": "#313244",
           },
           "theme": "Catppuccin Mocha",
         },
@@ -208,8 +208,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#44475A",
-            "sidebarActive": "rgba(189, 147, 249, 0.2)",
-            "tabActive": "rgba(189, 147, 249, 0.2)",
+            "sidebarActive": "#2d2a3f",
+            "tabActive": "#2d2a3f",
           },
           "surfaces": {
             "app": "#21222C",
@@ -217,7 +217,7 @@ describe('built-in theme gallery regression', () => {
             "composer": "#282A36",
             "sidebar": "#21222C",
             "tabbar": "#343746",
-            "tool": "#343746",
+            "tool": "#44475A",
           },
           "theme": "Dracula",
         },
@@ -226,8 +226,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#403E3C",
-            "sidebarActive": "rgba(67, 133, 190, 0.15)",
-            "tabActive": "rgba(67, 133, 190, 0.15)",
+            "sidebarActive": "#262c32",
+            "tabActive": "#262c32",
           },
           "surfaces": {
             "app": "#282726",
@@ -235,7 +235,7 @@ describe('built-in theme gallery regression', () => {
             "composer": "#343331",
             "sidebar": "#282726",
             "tabbar": "#343331",
-            "tool": "#343331",
+            "tool": "#403E3C",
           },
           "theme": "Flexoki",
         },
@@ -244,8 +244,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#161B22",
-            "sidebarActive": "rgba(88, 166, 255, 0.2)",
-            "tabActive": "rgba(88, 166, 255, 0.2)",
+            "sidebarActive": "#081223",
+            "tabActive": "#081223",
           },
           "surfaces": {
             "app": "#010409",
@@ -262,8 +262,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#F6F8FA",
-            "sidebarActive": "rgba(9, 105, 218, 0.15)",
-            "tabActive": "rgba(9, 105, 218, 0.15)",
+            "sidebarActive": "#e6f6ff",
+            "tabActive": "#e6f6ff",
           },
           "surfaces": {
             "app": "#FFFFFF",
@@ -280,8 +280,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#3C3836",
-            "sidebarActive": "rgba(131, 165, 152, 0.2)",
-            "tabActive": "rgba(131, 165, 152, 0.2)",
+            "sidebarActive": "#2b2f2e",
+            "tabActive": "#2b2f2e",
           },
           "surfaces": {
             "app": "#282828",
@@ -298,8 +298,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#EBDBB2",
-            "sidebarActive": "rgba(7, 102, 120, 0.15)",
-            "tabActive": "rgba(7, 102, 120, 0.15)",
+            "sidebarActive": "#a5b8b8",
+            "tabActive": "#a5b8b8",
           },
           "surfaces": {
             "app": "#FBF1C7",
@@ -316,8 +316,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#434C5E",
-            "sidebarActive": "rgba(136, 192, 208, 0.18)",
-            "tabActive": "rgba(136, 192, 208, 0.18)",
+            "sidebarActive": "#323e4a",
+            "tabActive": "#323e4a",
           },
           "surfaces": {
             "app": "#2E3440",
@@ -325,7 +325,7 @@ describe('built-in theme gallery regression', () => {
             "composer": "#434C5E",
             "sidebar": "#2E3440",
             "tabbar": "#3B4252",
-            "tool": "#3B4252",
+            "tool": "#434C5E",
           },
           "theme": "Nord",
         },
@@ -334,8 +334,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#2C323C",
-            "sidebarActive": "rgba(97, 175, 239, 0.2)",
-            "tabActive": "rgba(97, 175, 239, 0.2)",
+            "sidebarActive": "#242f3d",
+            "tabActive": "#242f3d",
           },
           "surfaces": {
             "app": "#21252B",
@@ -343,7 +343,7 @@ describe('built-in theme gallery regression', () => {
             "composer": "#282C34",
             "sidebar": "#21252B",
             "tabbar": "#2C323C",
-            "tool": "#21252B",
+            "tool": "#2C323C",
           },
           "theme": "One Dark",
         },
@@ -352,8 +352,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#E5E5E6",
-            "sidebarActive": "rgba(64, 120, 242, 0.15)",
-            "tabActive": "rgba(64, 120, 242, 0.15)",
+            "sidebarActive": "#f0f7ff",
+            "tabActive": "#f0f7ff",
           },
           "surfaces": {
             "app": "#FAFAFA",
@@ -361,7 +361,7 @@ describe('built-in theme gallery regression', () => {
             "composer": "#FAFAFA",
             "sidebar": "#F0F0F0",
             "tabbar": "#FAFAFA",
-            "tool": "#F0F0F0",
+            "tool": "#E5E5E6",
           },
           "theme": "One Light",
         },
@@ -370,8 +370,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#1F1D2E",
-            "sidebarActive": "rgba(196, 167, 231, 0.2)",
-            "tabActive": "rgba(196, 167, 231, 0.2)",
+            "sidebarActive": "#272236",
+            "tabActive": "#272236",
           },
           "surfaces": {
             "app": "#191724",
@@ -388,8 +388,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#073642",
-            "sidebarActive": "rgba(38, 139, 210, 0.14)",
-            "tabActive": "rgba(38, 139, 210, 0.14)",
+            "sidebarActive": "#023042",
+            "tabActive": "#023042",
           },
           "surfaces": {
             "app": "#002B36",
@@ -406,8 +406,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#EEE8D5",
-            "sidebarActive": "rgba(38, 139, 210, 0.15)",
-            "tabActive": "rgba(38, 139, 210, 0.15)",
+            "sidebarActive": "#f0fbff",
+            "tabActive": "#f0fbff",
           },
           "surfaces": {
             "app": "#FDF6E3",
@@ -423,9 +423,9 @@ describe('built-in theme gallery regression', () => {
           "accent": "#7AA2F7",
           "scheme": "dark",
           "states": {
-            "composerFocus": "#292E42",
-            "sidebarActive": "#364A82",
-            "tabActive": "#364A82",
+            "composerFocus": "#414868",
+            "sidebarActive": "#1d2133",
+            "tabActive": "#1d2133",
           },
           "surfaces": {
             "app": "#16161E",
@@ -433,7 +433,7 @@ describe('built-in theme gallery regression', () => {
             "composer": "#1A1B26",
             "sidebar": "#16161E",
             "tabbar": "#292E42",
-            "tool": "#1A1B26",
+            "tool": "#414868",
           },
           "theme": "Tokyo Night",
         },

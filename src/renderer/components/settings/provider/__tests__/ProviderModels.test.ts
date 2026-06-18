@@ -59,9 +59,9 @@ function mountProviderModels(overrides: Record<string, unknown> = {}) {
     global: {
       stubs: {
         Tooltip: { template: '<span class="tooltip-stub"><slot /></span>' },
-        NumberStepper: {
+        InputNumber: {
           props: ['modelValue'],
-          template: '<input class="number-stepper-stub" :value="modelValue" @input="$emit(\'update:modelValue\', Number($event.target.value))">',
+          template: '<input class="input-number-stub" :value="modelValue" @input="$emit(\'update:modelValue\', Number($event.target.value))">',
         },
       },
     },
@@ -82,8 +82,8 @@ describe('ProviderModels', () => {
     expect(wrapper.find('.model-toolbar').exists()).toBe(true)
     expect(wrapper.find('.model-search-field .search-input').exists()).toBe(true)
     expect(wrapper.find('.add-model-row .add-model-input').exists()).toBe(true)
-    expect(wrapper.find('.model-table-head').text()).toContain('Capabilities')
-    expect(wrapper.find('.model-table-head').text()).toContain('Output')
+    expect(wrapper.find('.virtual-table-header').text()).toContain('Capabilities')
+    expect(wrapper.find('.virtual-table-header').text()).toContain('Output')
 
     await wrapper.find('.search-input').setValue('sonnet')
     await wrapper.find('.search-clear').trigger('click')
@@ -123,8 +123,8 @@ describe('ProviderModels', () => {
     })
 
     expect(wrapper.find('.model-search-field').exists()).toBe(false)
-    expect(wrapper.find('.model-list-static .model-row.selected').text()).toContain('custom/local-model')
-    expect(wrapper.find('.model-list-static .model-active-pill').text()).toBe('Active')
+    expect(wrapper.find('.model-list .model-row.selected').text()).toContain('custom/local-model')
+    expect(wrapper.find('.model-list .model-active-pill').text()).toBe('Active')
     expect(wrapper.find('.add-model-row').exists()).toBe(true)
   })
 })

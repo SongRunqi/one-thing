@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { SkillManageTool, SkillTool, SkillsListTool, SkillViewTool } from '../skill.js'
+import { SkillManageTool, SkillsListTool, SkillViewTool } from '../skill.js'
 import type { SkillDefinition } from '../../../../shared/ipc.js'
 
 vi.mock('electron', () => ({
@@ -42,102 +42,7 @@ function makeSkill(name: string, description: string, instructions: string): Ski
   }
 }
 
-describe('SkillTool', () => {
-  it('keeps model-facing schema compact and lists skills through fuzzy search', async () => {
-    const skill = makeSkill('code-review', 'Review code changes carefully', '# Review')
-    const initialized = await SkillTool.init({ skills: [skill] })
-    const partials: unknown[] = []
-
-    expect(initialized.description).not.toContain('code-review')
-
-    const result = await initialized.execute(
-      { action: 'search', query: 'crv' },
-      {
-        sessionId: 's1',
-        messageId: 'm1',
-        metadata: vi.fn(),
-        updateResult: update => partials.push(update),
-      },
-    )
-
-    expect(result.output).toContain('code-review')
-    expect(partials).toHaveLength(1)
-  })
-
-  it('supports find as an explicit fuzzy-search action', async () => {
-    const skill = makeSkill('docs-polish', 'Improve documentation writing', '# Docs')
-    const initialized = await SkillTool.init({ skills: [skill] })
-
-    const result = await initialized.execute(
-      { action: 'find', query: 'dcp' },
-      {
-        sessionId: 's1',
-        messageId: 'm1',
-        metadata: vi.fn(),
-        updateResult: vi.fn(),
-      },
-    )
-
-    expect(result.output).toContain('docs-polish')
-  })
-
-  it('streams loading and ready states when loading one skill', async () => {
-    const skill = makeSkill('docs', 'Write docs', '# Docs instructions')
-    const initialized = await SkillTool.init({ skills: [skill] })
-    const partials: Array<any> = []
-
-    const result = await initialized.execute(
-      { action: 'load', name: 'docs' },
-      {
-        sessionId: 's1',
-        messageId: 'm1',
-        metadata: vi.fn(),
-        updateResult: update => partials.push(update),
-      },
-    )
-
-    expect(result.output).toContain('# Docs instructions')
-    expect(result.output).toContain('Skill paths:')
-    expect(result.output).toContain(`- current: ${skill.directoryPath}`)
-    expect(result.output).toContain(`- instructions: ${skill.path}`)
-    expect(partials.map(part => part.details?.phase)).toEqual(['loading', 'ready'])
-  })
-
-  it('reads supporting files by relative path', async () => {
-    const skill = makeSkill('docs', 'Write docs', '# Docs instructions')
-    const referencesDir = path.join(skill.directoryPath, 'references')
-    fs.mkdirSync(referencesDir, { recursive: true })
-    const referencePath = path.join(referencesDir, 'style.md')
-    fs.writeFileSync(referencePath, '# Style guide', 'utf-8')
-    skill.files = [{ name: 'references/style.md', path: referencePath, type: 'markdown' }]
-
-    const initialized = await SkillTool.init({ skills: [skill] })
-    const loaded = await initialized.execute(
-      { action: 'load', name: 'docs' },
-      {
-        sessionId: 's1',
-        messageId: 'm1',
-        metadata: vi.fn(),
-        updateResult: vi.fn(),
-      },
-    )
-
-    expect(loaded.output).toContain('Supporting files:')
-    expect(loaded.output).toContain(`references/style.md (markdown) path: ${referencePath}`)
-
-    const viewed = await initialized.execute(
-      { action: 'view', name: 'docs', filePath: 'references/style.md' },
-      {
-        sessionId: 's1',
-        messageId: 'm1',
-        metadata: vi.fn(),
-        updateResult: vi.fn(),
-      },
-    )
-
-    expect(viewed.output).toBe('# Style guide')
-  })
-
+describe('Skill read tools', () => {
   it('provides Hermes-style skills_list and skill_view tools', async () => {
     const skill = makeSkill('docs', 'Write docs', '# Docs instructions')
     skill.category = 'writing'

@@ -110,8 +110,7 @@ describe('MediaPanel', () => {
 
     expect(wrapper.find('.media-filter-bar').exists()).toBe(true)
     expect(wrapper.find('.filter-search-input').exists()).toBe(true)
-    expect(wrapper.findAll('.filter-select-trigger')).toHaveLength(2)
-    expect(wrapper.find('.filter-select-count').exists()).toBe(false)
+    expect(wrapper.findAll('.app-select-control')).toHaveLength(2)
     expect(wrapper.find('.kind-tabs').exists()).toBe(false)
     expect(wrapper.find('.source-tabs').exists()).toBe(false)
     expect(wrapper.text()).toContain('Uploaded')
@@ -127,13 +126,12 @@ describe('MediaPanel', () => {
       global: { stubs: { ArchivedChatsContent: true } },
     })
 
-    await wrapper.find('.media-source-filter .filter-select-trigger').trigger('click')
+    await wrapper.find('.media-source-filter .app-select-control').trigger('click')
 
-    const uploadedOption = wrapper.findAll('.media-source-filter .filter-select-option')
+    const uploadedOption = wrapper.findAll('.media-source-filter .app-select-option')
       .find(option => option.text().includes('Uploaded'))
 
     expect(uploadedOption).toBeTruthy()
-    expect(uploadedOption!.find('.filter-select-count').exists()).toBe(false)
     await uploadedOption!.trigger('click')
 
     expect(wrapper.findAll('.media-item')).toHaveLength(1)

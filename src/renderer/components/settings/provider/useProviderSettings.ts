@@ -4,8 +4,8 @@
  * Manages AI Provider configuration, OAuth flow, model selection, etc.
  */
 
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import type { AppSettings, AIProvider, ProviderInfo, OpenRouterModel } from '@/types'
+import { ref, computed, watch } from 'vue'
+import type { AppSettings, AIProvider, ProviderEnvStatus, ProviderInfo, OpenRouterModel } from '@/types'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderAuth } from './useProviderAuth'
 
@@ -21,6 +21,7 @@ export function useProviderSettings(
   const modelSearchQuery = ref('')
   const newModelInput = ref('')
   const modelError = ref('')
+  const providerEnvStatuses = ref<Record<string, ProviderEnvStatus>>({})
 
   // Viewing provider (can be different from active provider)
   const viewingProvider = ref<string>(props.settings.ai.provider)
@@ -113,6 +114,20 @@ export function useProviderSettings(
     return provider?.requiresOAuth === true
   })
 
+  const currentProviderEnvStatus = computed(() => {
+    return providerEnvStatuses.value[viewingProvider.value]
+  })
+
+  const currentProviderUsesEnvApiKey = computed(() => {
+    return providerUsesEnvApiKey(viewingProvider.value)
+  })
+
+  const currentProviderEnvVarName = computed(() => {
+    return currentProviderEnvStatus.value?.resolvedEnvVar ||
+      currentProviderEnvStatus.value?.candidates[0]?.name ||
+      ''
+  })
+
   const providerAuth = useProviderAuth(viewingProvider, isOAuthProvider, async (providerId) => {
     if (providerId !== viewingProvider.value) return
     await fetchModels(false)
@@ -149,6 +164,16 @@ export function useProviderSettings(
   function isProviderEnabled(providerId: string): boolean {
     const config = props.settings.ai.providers[providerId]
     return config?.enabled !== false
+  }
+
+  function getProviderEnvStatus(providerId: string): ProviderEnvStatus | undefined {
+    return providerEnvStatuses.value[providerId]
+  }
+
+  function providerUsesEnvApiKey(providerId: string): boolean {
+    const config = props.settings.ai.providers[providerId]
+    if (config?.apiKey?.trim()) return false
+    return Boolean(providerEnvStatuses.value[providerId]?.resolvedEnvVar)
   }
 
   function isModelSelected(modelId: string): boolean {
@@ -457,6 +482,7 @@ export function useProviderSettings(
     viewingProvider.value = provider
     modelError.value = ''
     modelSearchQuery.value = ''
+    await refreshProviderEnvStatus(provider)
     providerAuth.resetOAuthState()
     await providerAuth.checkOAuthStatus()
     if (isOAuthProvider.value && providerAuth.oauthStatus.value.isLoggedIn) {
@@ -561,6 +587,28 @@ export function useProviderSettings(
   }
 
   // Model loading
+  async function refreshProviderEnvStatus(providerId = viewingProvider.value) {
+    try {
+      const response = await window.electronAPI.getProviderEnvStatus(providerId)
+      if (response.success && response.status) {
+        providerEnvStatuses.value = {
+          ...providerEnvStatuses.value,
+          [providerId]: response.status,
+        }
+      }
+    } catch (err) {
+      console.error(`[ProviderSettings] Failed to inspect env variables for ${providerId}:`, err)
+    }
+  }
+
+  async function refreshAllProviderEnvStatuses() {
+    await Promise.all(
+      props.providers
+        .filter(provider => provider.requiresOAuth !== true)
+        .map(provider => refreshProviderEnvStatus(provider.id))
+    )
+  }
+
   async function loadCachedModels() {
     try {
       await settingsStore.fetchModelsForProvider(viewingProvider.value)
@@ -588,6 +636,7 @@ export function useProviderSettings(
   // Lifecycle
   async function initialize() {
     providerAuth.initializeOAuthListeners()
+    await refreshAllProviderEnvStatuses()
     await providerAuth.checkOAuthStatus()
     if (isOAuthProvider.value && providerAuth.oauthStatus.value.isLoggedIn) {
       await fetchModels(false)
@@ -632,6 +681,8 @@ export function useProviderSettings(
     activeModelMaxOutputStep,
     filteredModels,
     isOAuthProvider,
+    currentProviderUsesEnvApiKey,
+    currentProviderEnvVarName,
     enabledProviders,
     defaultProviderSelectedModels,
     defaultProviderModel,
@@ -640,6 +691,8 @@ export function useProviderSettings(
     getDefaultBaseUrl,
     isUserCustomProvider,
     isProviderEnabled,
+    getProviderEnvStatus,
+    providerUsesEnvApiKey,
     isModelSelected,
     getModelName,
     hasVision,
@@ -665,11 +718,9 @@ export function useProviderSettings(
     setDefaultProvider,
     setDefaultModel,
     addCustomModel,
-    checkOAuthStatus: providerAuth.checkOAuthStatus,
     startOAuthLogin: providerAuth.startOAuthLogin,
     submitManualCode: providerAuth.submitManualCode,
     logoutOAuth: providerAuth.logoutOAuth,
-    loadCachedModels,
     fetchModels,
     initialize,
     cleanup,
