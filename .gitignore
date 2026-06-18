@@ -47,3 +47,6 @@ resources/native/*.node
 # Store data
 userData/
 .devtools
+
+# Generated audit docs/assets
+docs/tool-ui-audit/
