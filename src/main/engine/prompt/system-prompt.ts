@@ -189,37 +189,41 @@ function knownProjects(known: PromptKnownProjects): string {
 }
 
 function skills_(ctx: BuildPromptContextOptions): string | undefined {
-  const toolHint = getSkillToolHint(ctx.toolNames)
-  if (!ctx.hasTools || !ctx.skills.length || !toolHint) return undefined
+  const hasReadTool = Boolean(ctx.hasTools && ctx.toolNames?.includes('read'))
+  if (!hasReadTool || !ctx.skills.length) return undefined
   const skills = ctx.skills
-    .filter(skill => skill.enabled !== false)
+    .filter(skill => skill.enabled !== false && !skill.disableModelInvocation)
     .slice()
     .sort((a, b) => `${a.category ?? ''}/${a.name}`.localeCompare(`${b.category ?? ''}/${b.name}`))
   if (skills.length === 0) return undefined
 
   const lines = [
     '# Skills',
-    `Installed Hermes Agent skills are available on demand. If a skill is relevant to the user request, first load it with ${toolHint.load}, then follow the loaded instructions. ${toolHint.file} If no skill is relevant, proceed normally.`,
+    'The following skills provide specialized instructions for specific tasks.',
+    'Use the read tool to load a skill file when the task matches its description.',
+    'When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.',
     '',
     '<available_skills>',
   ]
   for (const skill of skills) {
-    const category = skill.category ? ` [${skill.category}]` : ''
-    const tags = skill.tags?.length ? `tags=${skill.tags.join(',')}` : ''
-    lines.push(`- ${skill.name}${category}: ${skill.description}${tags ? ` (${tags})` : ''}`)
+    const location = skill.path || skill.directoryPath || skill.name
+    lines.push('  <skill>')
+    lines.push(`    <name>${escapeSkillXml(skill.name)}</name>`)
+    lines.push(`    <description>${escapeSkillXml(skill.description)}</description>`)
+    lines.push(`    <location>${escapeSkillXml(location)}</location>`)
+    lines.push('  </skill>')
   }
   lines.push('</available_skills>')
   return lines.join('\n')
 }
 
-function getSkillToolHint(toolNames?: string[]): { load: string; file: string } | undefined {
-  if (!toolNames?.length) {
-    return { load: '`skill_view(name)`', file: 'Use `skill_view(name, file_path)` to read supporting files listed by the skill.' }
-  }
-  if (toolNames.includes('skill_view')) {
-    return { load: '`skill_view(name)`', file: 'Use `skill_view(name, file_path)` to read supporting files listed by the skill.' }
-  }
-  return undefined
+function escapeSkillXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
 }
 
 function os_(): string {

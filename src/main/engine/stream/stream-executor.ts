@@ -11,10 +11,15 @@ import type { AppSettings, ProviderConfig, ToolSettings } from '../../../shared/
 import * as modelRegistry from '../../providers/model-registry.js'
 import { processImageGenerationStream } from './image-stream.js'
 import { executeStreamGeneration, type StreamGenerationResult } from './tool-loop.js'
+import {
+  executeAgentLoopStreamGeneration,
+  shouldUseAgentLoopStream,
+} from './agent-loop-executor.js'
 import { type StreamContext } from './stream-processor.js'
 import { getStreamEngine } from '../index.js'
 import type { HistoryMessage } from './message-helpers.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
+import type { AgentOutputModality } from '../../agent-loop/types.js'
 
 // Re-export for convenience
 export type { HistoryMessage }
@@ -38,6 +43,7 @@ export interface StreamExecutionParams {
   historyMessages: HistoryMessage[]
   configWithApiKey: ProviderConfigWithKey
   providerId: string
+  requestedOutputModalities?: AgentOutputModality[]
   settings: AppSettings
   toolSettings?: ToolSettings
   sessionName?: string
@@ -74,6 +80,7 @@ export async function executeMessageStream(
     historyMessages,
     configWithApiKey,
     providerId,
+    requestedOutputModalities,
     settings,
     toolSettings,
     sessionName,
@@ -131,6 +138,7 @@ export async function executeMessageStream(
         settings,
         providerConfig: configWithApiKey,
         providerId,
+        requestedOutputModalities,
         toolSettings,
         voiceConversation,
         speakMode: speakMode ?? voiceConversation,
@@ -138,11 +146,17 @@ export async function executeMessageStream(
         followUpQueue: engine.getFollowUpQueue(sessionId),
       }
 
-      const result: StreamGenerationResult = await executeStreamGeneration(
-        ctx,
-        historyMessages,
-        sessionName
-      )
+      const result: StreamGenerationResult = shouldUseAgentLoopStream(ctx)
+        ? await executeAgentLoopStreamGeneration(
+            ctx,
+            historyMessages,
+            sessionName,
+          )
+        : await executeStreamGeneration(
+            ctx,
+            historyMessages,
+            sessionName
+          )
 
       // Only remove controller if stream completed (not paused for confirmation)
       if (!result.pausedForConfirmation) {

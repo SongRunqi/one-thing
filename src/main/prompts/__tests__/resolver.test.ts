@@ -101,7 +101,7 @@ describe('prompt reference resolver', () => {
     expect(resolved.missingPromptIds).toEqual(['missing-id'])
   })
 
-  it('expands selected skill tokens for the model and snapshots skill parts for display', () => {
+  it('expands selected skill tokens as skill invocation blocks for the model and snapshots skill parts for display', () => {
     const skill: SkillDefinition = {
       id: 'user:skill-development',
       name: 'Skill Development',
@@ -116,8 +116,8 @@ describe('prompt reference resolver', () => {
     const resolved = resolvePromptReferences(`Use ${createSkillToken(skill.id)} now`, { skills: [skill] })
 
     expect(resolved.modelContent).toBe(`Use ${formatExpectedSkill(skill)} now`)
-    expect(resolved.modelContent).toContain('path="/skills/skill-development/SKILL.md"')
-    expect(resolved.modelContent).toContain('directory_path="/skills/skill-development"')
+    expect(resolved.modelContent).toContain('<skill name="Skill Development" location="/skills/skill-development/SKILL.md">')
+    expect(resolved.modelContent).toContain('References are relative to /skills/skill-development.')
     expect(resolved.displayContent).toBe('Use [Skill: Skill Development] now')
     expect(resolved.contentParts).toEqual([
       { type: 'text', content: 'Use ' },
@@ -138,7 +138,7 @@ describe('prompt reference resolver', () => {
     })).toBe(resolved.displayContent)
   })
 
-  it('keeps legacy slash skill references model-visible as selected skills', () => {
+  it('expands slash skill references as skill invocation blocks', () => {
     const skill: SkillDefinition = {
       id: 'user:skill-development',
       name: 'Skill Development',
@@ -153,6 +153,7 @@ describe('prompt reference resolver', () => {
     const resolved = resolvePromptReferences('/skill:Skill Development', { skills: [skill] })
 
     expect(resolved.modelContent).toBe(formatExpectedSkill(skill))
+    expect(resolved.modelContent).toContain('<skill name="Skill Development" location="/skills/skill-development/SKILL.md">')
     expect(resolved.displayContent).toBe('[Skill: Skill Development]')
     expect(resolved.contentParts?.[0]).toMatchObject({
       type: 'skill-ref',

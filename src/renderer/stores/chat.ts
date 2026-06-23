@@ -37,6 +37,7 @@ import {
   linkStepsToToolCalls,
   upsertMessageToolCall,
 } from './helpers/tool-calls'
+import { rawTextFromPromptParts } from '@shared/prompt-references'
 
 // Stream chunk type from IPC
 interface StreamChunk {
@@ -1381,7 +1382,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // For user messages, use edit-and-resend with same content
-    return await editAndResend(sessionId, messageId, message.content)
+    return await editAndResend(sessionId, messageId, rawTextFromPromptParts(message.content, message.contentParts))
   }
 
   /**

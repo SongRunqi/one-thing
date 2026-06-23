@@ -2,19 +2,20 @@ import type {
   AgentFinishReason,
   AgentMessage,
   AgentProvider,
-  AgentStreamEvent,
   AgentTool,
   AgentToolCall,
   AgentToolChoice,
   AgentTurn,
   AgentTurnRequest,
+  AgentTurnStreamEvent,
   AgentUsage,
 } from '../types.js'
+import { agentContentToText, collectAgentTurnFromStream } from '../stream.js'
 import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
 
 type FetchFn = typeof globalThis.fetch
 
-interface DeepSeekAgentProviderOptions {
+export interface DeepSeekAgentProviderOptions {
   apiKey: string
   baseUrl?: string
   fetchImpl?: FetchFn
@@ -100,15 +101,16 @@ function toDeepSeekMessage(message: AgentMessage): DeepSeekMessage {
   if (message.role === 'tool') {
     return {
       role: 'tool',
-      content: message.content ?? '',
+      content: agentContentToText(message.content),
       tool_call_id: message.toolCallId ?? '',
     }
   }
 
   if (message.role === 'assistant') {
+    const content = agentContentToText(message.content)
     return {
       role: 'assistant',
-      content: message.content ?? null,
+      content: content || null,
       ...(message.reasoningContent ? { reasoning_content: message.reasoningContent } : {}),
       ...(message.toolCalls?.length
         ? {
@@ -127,7 +129,7 @@ function toDeepSeekMessage(message: AgentMessage): DeepSeekMessage {
 
   return {
     role: message.role,
-    content: message.content ?? '',
+    content: agentContentToText(message.content),
   }
 }
 
@@ -165,33 +167,28 @@ function usageFromChunk(chunk: DeepSeekStreamChunk): AgentUsage | undefined {
   }
 }
 
-function emitToolCallDone(
+function toolCallDoneEvent(
   turn: number,
   entry: ToolCallAccumulator,
-  onEvent?: (event: AgentStreamEvent) => void,
-): AgentToolCall {
+): Extract<AgentTurnStreamEvent, { type: 'tool-call-done' }> {
   const toolCall = {
     id: entry.id,
     name: entry.name,
     arguments: entry.arguments,
   }
-  onEvent?.({ type: 'tool-call-done', turn, toolCall })
-  return toolCall
+  return { type: 'tool-call-done', turn, toolCall }
 }
 
-async function readDeepSeekStream(
+async function* streamDeepSeekResponse(
   response: Response,
   turn: number,
-  onEvent?: (event: AgentStreamEvent) => void,
-): Promise<AgentTurn> {
+): AsyncGenerator<AgentTurnStreamEvent, void, unknown> {
   const reader = response.body?.getReader()
   if (!reader) throw new Error('DeepSeek agent loop: response has no body')
 
   const decoder = new TextDecoder()
   const toolCalls = new Map<number, ToolCallAccumulator>()
   let buffer = ''
-  let content = ''
-  let reasoningContent = ''
   let usage: AgentUsage | undefined
   let finishReason: AgentFinishReason = 'unknown'
 
@@ -226,13 +223,11 @@ async function readDeepSeekStream(
         const delta = choice?.delta
 
         if (delta?.reasoning_content) {
-          reasoningContent += delta.reasoning_content
-          onEvent?.({ type: 'reasoning-delta', turn, delta: delta.reasoning_content })
+          yield { type: 'reasoning-delta', turn, delta: delta.reasoning_content }
         }
 
         if (delta?.content) {
-          content += delta.content
-          onEvent?.({ type: 'text-delta', turn, delta: delta.content })
+          yield { type: 'text-delta', turn, delta: delta.content }
         }
 
         if (delta?.tool_calls) {
@@ -256,22 +251,22 @@ async function readDeepSeekStream(
 
             if (!entry.started && entry.name) {
               entry.started = true
-              onEvent?.({
+              yield {
                 type: 'tool-call-start',
                 turn,
                 toolCallId: entry.id,
                 toolName: entry.name,
-              })
+              }
             }
 
             if (argumentsDelta && entry.name) {
-              onEvent?.({
+              yield {
                 type: 'tool-call-delta',
                 turn,
                 toolCallId: entry.id,
                 toolName: entry.name,
                 argumentsDelta,
-              })
+              }
             }
           }
         }
@@ -285,67 +280,73 @@ async function readDeepSeekStream(
     reader.releaseLock()
   }
 
-  const finalToolCalls = [...toolCalls.entries()]
+  for (const [, entry] of [...toolCalls.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([, entry]) => emitToolCallDone(turn, entry, onEvent))
-
-  return {
-    message: {
-      role: 'assistant',
-      content,
-      ...(reasoningContent ? { reasoningContent } : {}),
-      ...(finalToolCalls.length ? { toolCalls: finalToolCalls } : {}),
-    },
-    finishReason,
-    usage,
+  ) {
+    yield toolCallDoneEvent(turn, entry)
   }
+
+  yield { type: 'finish', turn, finishReason, usage }
 }
 
 export function createDeepSeekAgentProvider(options: DeepSeekAgentProviderOptions): AgentProvider {
   const baseUrl = (options.baseUrl || 'https://api.deepseek.com').replace(/\/$/, '')
   const fetchImpl = options.fetchImpl ?? createRequiredAppFetch()
 
+  async function* streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, unknown> {
+    const tools = toDeepSeekTools(request.tools)
+    const body: DeepSeekRequestBody = {
+      model: request.model,
+      messages: request.messages.map(toDeepSeekMessage),
+      stream: true,
+      stream_options: { include_usage: true },
+    }
+
+    if (tools?.length) {
+      body.tools = tools
+      body.tool_choice = request.toolChoice ?? 'auto'
+    }
+    if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens
+    if (request.thinking) body.thinking = { type: request.thinking }
+    if (request.thinking === 'enabled' && request.reasoningEffort) {
+      body.reasoning_effort = request.reasoningEffort
+    }
+    if (request.temperature !== undefined && request.thinking !== 'enabled') {
+      body.temperature = request.temperature
+    }
+
+    const response = await fetchImpl(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${options.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: request.abortSignal,
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(`DeepSeek agent loop API error: ${response.status} ${text}`)
+    }
+
+    yield* streamDeepSeekResponse(response, request.turn)
+  }
+
   return {
     id: 'deepseek',
+    capabilities: {
+      capabilities: ['text-input', 'text-output', 'streaming', 'tool-calls', 'reasoning'],
+      inputModalities: ['text'],
+      outputModalities: ['text'],
+      supportsTools: true,
+      supportsReasoning: true,
+      supportsStreaming: true,
+    },
+    streamTurn,
 
     async runTurn(request: AgentTurnRequest): Promise<AgentTurn> {
-      const tools = toDeepSeekTools(request.tools)
-      const body: DeepSeekRequestBody = {
-        model: request.model,
-        messages: request.messages.map(toDeepSeekMessage),
-        stream: true,
-        stream_options: { include_usage: true },
-      }
-
-      if (tools?.length) {
-        body.tools = tools
-        body.tool_choice = request.toolChoice ?? 'auto'
-      }
-      if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens
-      if (request.thinking) body.thinking = { type: request.thinking }
-      if (request.thinking === 'enabled' && request.reasoningEffort) {
-        body.reasoning_effort = request.reasoningEffort
-      }
-      if (request.temperature !== undefined && request.thinking !== 'enabled') {
-        body.temperature = request.temperature
-      }
-
-      const response = await fetchImpl(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${options.apiKey}`,
-        },
-        body: JSON.stringify(body),
-        signal: request.abortSignal,
-      })
-
-      if (!response.ok) {
-        const text = await response.text()
-        throw new Error(`DeepSeek agent loop API error: ${response.status} ${text}`)
-      }
-
-      return readDeepSeekStream(response, request.turn, request.onEvent)
+      return collectAgentTurnFromStream(streamTurn(request), request.onEvent)
     },
   }
 }

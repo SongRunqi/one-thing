@@ -1,8 +1,8 @@
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
+import { getLogDir } from '../stores/paths.js'
 import type {
   MemoryDiagnosticLevel,
   MemoryDiagnosticLogEntry,
@@ -52,7 +52,7 @@ const FLUSH_INTERVAL_MS = 750
 const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000
 
 function memoryLogDir(): string {
-  return path.join(os.homedir(), '.onething', 'logs', 'memory')
+  return path.join(getLogDir(), 'memory')
 }
 
 function dayKey(timestamp = Date.now()): string {

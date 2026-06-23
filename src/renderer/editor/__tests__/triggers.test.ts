@@ -81,6 +81,29 @@ describe('editor trigger parsing', () => {
     })
   })
 
+  it('parses explicit @skills triggers in the middle of a line', () => {
+    const value = 'use @skills note before sending'
+    const cursor = 'use @skills note'.length
+
+    expect(parseEditorTrigger(value, cursor)).toEqual({
+      type: 'skill',
+      query: 'note',
+      from: 4,
+      to: cursor,
+      explicit: true,
+    })
+  })
+
+  it('parses @downloads as a regular file search query', () => {
+    expect(parseEditorTrigger('attach @downloads')).toEqual({
+      type: 'file',
+      query: 'downloads',
+      from: 7,
+      to: 17,
+      explicit: false,
+    })
+  })
+
   it('parses backward-compatible @path triggers', () => {
     expect(parseEditorTrigger('inspect @src/app')).toEqual({
       type: 'file',

@@ -158,6 +158,120 @@
                     />
                   </div>
 
+                  <!-- ACP Agent Configuration -->
+                  <div
+                    v-else-if="providerSettings.isACPProvider?.value"
+                    class="settings-group"
+                  >
+                    <div class="settings-row">
+                      <span class="row-label">Connection</span>
+                      <div class="acp-connection-row">
+                        <span
+                          class="provider-pill"
+                          :class="providerSettings.currentACPAgentState.value?.status === 'connected' ? 'green' : providerSettings.currentACPAgentState.value?.status === 'error' ? 'red' : 'mute'"
+                        >
+                          {{ providerSettings.currentACPAgentState.value?.status || 'disconnected' }}
+                        </span>
+                        <Button
+                          unstyled
+                          class="mini-action"
+                          native-type="button"
+                          @click="providerSettings.connectACPAgent"
+                        >
+                          Connect
+                        </Button>
+                        <Button
+                          unstyled
+                          class="mini-action"
+                          native-type="button"
+                          @click="providerSettings.disconnectACPAgent"
+                        >
+                          Disconnect
+                        </Button>
+                        <Button
+                          unstyled
+                          class="mini-action"
+                          native-type="button"
+                          @click="providerSettings.refreshACPAgent"
+                        >
+                          Refresh
+                        </Button>
+                      </div>
+                    </div>
+                    <div
+                      v-if="providerSettings.currentACPAgentState.value?.error"
+                      class="settings-row"
+                    >
+                      <span class="row-label">Error</span>
+                      <span class="row-note error-note">{{ providerSettings.currentACPAgentState.value.error }}</span>
+                    </div>
+                    <template v-if="providerSettings.currentACPAgent.value">
+                      <div class="settings-row">
+                        <span class="row-label">Command</span>
+                        <Input
+                          :model-value="providerSettings.currentACPAgent.value.command"
+                          type="text"
+                          class="row-input"
+                          :spellcheck="false"
+                          aria-label="ACP command"
+                          @update:model-value="providerSettings.updateACPAgent({ command: String($event) })"
+                        />
+                      </div>
+                      <div class="settings-row">
+                        <span class="row-label">Arguments</span>
+                        <Input
+                          :model-value="(providerSettings.currentACPAgent.value.args || []).join(' ')"
+                          type="text"
+                          class="row-input"
+                          :spellcheck="false"
+                          aria-label="ACP command arguments"
+                          @update:model-value="providerSettings.updateACPArgs(String($event))"
+                        />
+                      </div>
+                      <div class="settings-row">
+                        <span class="row-label">Working dir</span>
+                        <Input
+                          :model-value="providerSettings.currentACPAgent.value.cwd || ''"
+                          type="text"
+                          class="row-input"
+                          :spellcheck="false"
+                          aria-label="ACP working directory"
+                          @update:model-value="providerSettings.updateACPAgent({ cwd: String($event) })"
+                        />
+                      </div>
+                      <div class="settings-row">
+                        <span class="row-label">Permission</span>
+                        <select
+                          class="row-select"
+                          :value="providerSettings.currentACPAgent.value.permissionMode || 'allow'"
+                          aria-label="ACP permission mode"
+                          @change="providerSettings.updateACPAgent({ permissionMode: (($event.target as HTMLSelectElement).value === 'reject' ? 'reject' : 'allow') })"
+                        >
+                          <option value="allow">Allow</option>
+                          <option value="reject">Reject</option>
+                        </select>
+                      </div>
+                      <div class="settings-row compact-toggle-row">
+                        <span class="row-label">Client FS</span>
+                        <Switch
+                          :model-value="providerSettings.currentACPAgent.value.allowFileSystemAccess === true"
+                          size="small"
+                          aria-label="ACP file system access"
+                          @change="providerSettings.updateACPAgent({ allowFileSystemAccess: Boolean($event) })"
+                        />
+                      </div>
+                      <div class="settings-row compact-toggle-row">
+                        <span class="row-label">Client terminal</span>
+                        <Switch
+                          :model-value="providerSettings.currentACPAgent.value.allowTerminalAccess === true"
+                          size="small"
+                          aria-label="ACP terminal access"
+                          @change="providerSettings.updateACPAgent({ allowTerminalAccess: Boolean($event) })"
+                        />
+                      </div>
+                    </template>
+                  </div>
+
                   <!-- Traditional API Key Input -->
                   <div
                     v-else
@@ -407,6 +521,7 @@ function providerKeyPreview(providerId: string): string {
   const envStatus = providerSettings.getProviderEnvStatus(providerId)
   const envVar = envStatus?.resolvedEnvVar
 
+  if (providerId === 'acp') return 'Local agent'
   if (provider?.requiresOAuth) return 'Subscription'
   if (providerSettings.providerUsesEnvApiKey(providerId)) {
     return envVar ? `Env ${envVar}` : 'Env missing'
@@ -627,6 +742,12 @@ onUnmounted(() => {
   color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
 }
 
+.provider-pill.red {
+  border-color: var(--ui-status-error-border, var(--color-danger, #d84c4c));
+  background: var(--ui-status-error-bg, var(--settings-paper));
+  color: var(--ui-status-error-fg, var(--color-danger, #d84c4c));
+}
+
 .provider-configure,
 .provider-row-edit {
   display: inline-flex;
@@ -844,6 +965,60 @@ onUnmounted(() => {
 .row-input {
   width: 100%;
   min-width: 0;
+}
+
+.row-select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--settings-rule, var(--ui-border-subtle-border, var(--border-subtle)));
+  border-radius: 7px;
+  background: var(--settings-paper-2, var(--ui-surface-input-bg, var(--bg-input, var(--bg))));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  font: inherit;
+  font-size: 13px;
+}
+
+.acp-connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.mini-action {
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 7px;
+  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
+  font-size: 12px;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.mini-action:hover {
+  border-color: var(--settings-rule-strong, var(--settings-ink-4, var(--ui-border-default-border, var(--border))));
+}
+
+.row-note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error-note {
+  color: var(--ui-status-error-fg, var(--color-danger, #d84c4c));
+}
+
+.compact-toggle-row {
+  min-height: 44px;
 }
 
 .row-input :deep(.app-input-control) {

@@ -230,6 +230,30 @@ export type {
   MCPReadConfigFileResponse,
 } from './mcp.js'
 
+// ACP types
+export type {
+  ACPConnectionStatus,
+  ACPPermissionMode,
+  ACPAgentConfig,
+  ACPAgentState,
+  ACPSettings,
+  ACPGetAgentsResponse,
+  ACPAddAgentRequest,
+  ACPAddAgentResponse,
+  ACPUpdateAgentRequest,
+  ACPUpdateAgentResponse,
+  ACPRemoveAgentRequest,
+  ACPRemoveAgentResponse,
+  ACPConnectAgentRequest,
+  ACPConnectAgentResponse,
+  ACPDisconnectAgentRequest,
+  ACPDisconnectAgentResponse,
+  ACPRefreshAgentRequest,
+  ACPRefreshAgentResponse,
+  ACPCancelSessionRequest,
+  ACPCancelSessionResponse,
+} from './acp.js'
+
 // OAuth types
 export type {
   OAuthStartRequest,
@@ -396,12 +420,16 @@ export type {
   SoulMemorySettings,
   GeneralSettings,
   ChatSettings,
+  NetworkAddressFamily,
+  NetworkInterfaceOption,
+  NetworkInterfaceSettings,
   NetworkSettings,
   ProxySettings,
   AppSettings,
   GetSettingsResponse,
   SaveSettingsRequest,
   SaveSettingsResponse,
+  GetNetworkInterfacesResponse,
   TestProxyRequest,
   TestProxyResponse,
 } from './settings.js'

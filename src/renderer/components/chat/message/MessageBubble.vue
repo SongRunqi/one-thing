@@ -850,8 +850,12 @@ html[data-theme='light'] .attachment-file {
 /* Collapsible content wrapper */
 .content-wrapper {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   transition: max-height 0.3s ease;
+}
+
+.content-wrapper.collapsed {
+  overflow: hidden;
 }
 
 .bubble.assistant .content-wrapper {

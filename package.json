@@ -9,8 +9,8 @@
   "main": "./out/main/index.js",
   "type": "module",
   "scripts": {
-    "dev": "npm run build:native:mac && npm run rebuild:sqlite:electron && electron-vite dev",
-    "start": "npm run build:native:mac && npm run rebuild:sqlite:electron && electron-vite preview",
+    "dev": "node scripts/dev-with-logging.mjs dev",
+    "start": "node scripts/dev-with-logging.mjs start",
     "build:native:mac": "node scripts/build-macos-panel.mjs",
     "build:native:mac:force": "node scripts/build-macos-panel.mjs --force",
     "rebuild:sqlite:node": "npm rebuild better-sqlite3",
@@ -79,6 +79,7 @@
     "lxgw-wenkai-webfont": "^1.7.0",
     "monaco-editor": "^0.55.1",
     "openai": "^6.35.0",
+    "socks": "^2.8.7",
     "undici": "^8.1.0",
     "uuid": "^13.0.0",
     "yaml": "^2.8.2",

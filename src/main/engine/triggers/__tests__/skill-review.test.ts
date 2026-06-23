@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateChatResponse } from '../../../providers/index.js'
 import { createDeepSeekAgentProvider, runAgentLoop } from '../../../agent-loop/index.js'
 import { getUserSkillsPath } from '../../../skills/index.js'
+import { executeSkillManage } from '../../../skills/manage.js'
 import { invalidateSkillsCache } from '../../../ipc/skills.js'
 import { createSkillReviewTrigger } from '../skill-review.js'
 import { clearSkillReviewState } from '../skill-review-state.js'
@@ -80,6 +81,26 @@ function triggerContext(): Parameters<ReturnType<typeof createSkillReviewTrigger
   } as any
 }
 
+function createExistingSkill(name = 'review-workflow'): string {
+  const content = [
+    '---',
+    `name: "${name}"`,
+    'description: "Existing review workflow skill."',
+    '---',
+    '',
+    'Original durable instruction that must survive automatic review.',
+    '',
+  ].join('\n')
+  const result = executeSkillManage({
+    action: 'create',
+    name,
+    content,
+  }, { workingDirectory: tmpDir })
+  expect(result.success).toBe(true)
+  invalidateSkillsCache()
+  return content
+}
+
 describe('Hermes skill review trigger', () => {
   it('creates a complete skill package with supporting files', async () => {
     vi.mocked(generateChatResponse).mockResolvedValue(JSON.stringify({
@@ -137,25 +158,56 @@ describe('Hermes skill review trigger', () => {
     expect(procedure).toContain('Follow the compact workflow every time.')
   })
 
-  it('uses the independent agent loop with skill_manage for DeepSeek review', async () => {
+  it('updates an existing skill during JSON background review without overwriting SKILL.md', async () => {
+    const original = createExistingSkill('review-workflow')
+    vi.mocked(generateChatResponse).mockResolvedValue(JSON.stringify({
+      actions: [
+        {
+          action: 'create',
+          name: 'review-workflow',
+          description: 'Use when preserving a newer workflow.',
+          instructions: 'Replacement text that must not overwrite the existing SKILL.md.',
+          files: [{
+            file_path: 'references/new.md',
+            content: 'This should not be written to an existing skill.',
+          }],
+        },
+        {
+          action: 'edit',
+          name: 'review-workflow',
+          description: 'Use when editing a newer workflow.',
+          instructions: 'Another replacement that must be ignored.',
+        },
+      ],
+    }))
+
+    await createSkillReviewTrigger().execute(triggerContext())
+
+    const skillDir = path.join(getUserSkillsPath(), 'review-workflow')
+    const skillMarkdown = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')
+
+    expect(skillMarkdown).toContain(original.trim())
+    expect(skillMarkdown).toContain('references/new.md')
+    expect(skillMarkdown).toContain('references/background-review-update.md')
+    expect(skillMarkdown).not.toContain('Replacement text')
+    expect(fs.readFileSync(path.join(skillDir, 'references', 'new.md'), 'utf-8'))
+      .toContain('This should not be written to an existing skill.')
+    expect(fs.readFileSync(path.join(skillDir, 'references', 'background-review-update.md'), 'utf-8'))
+      .toContain('Another replacement that must be ignored.')
+  })
+
+  it('uses the independent agent loop with file tools for DeepSeek review', async () => {
     vi.mocked(runAgentLoop).mockImplementation(async options => {
       expect(options.model).toBe('deepseek-v4-pro')
       expect(options.thinking).toBe('enabled')
       expect(options.reasoningEffort).toBe('high')
-      expect(options.selectedToolNames).toEqual(['skill_manage'])
-      expect(options.tools?.map(tool => tool.name)).toEqual(['skill_manage'])
-      expect(options.messages[0].content).toContain('Use the skill_manage tool')
-      expect(options.tools?.[0].parameters).toMatchObject({
-        type: 'object',
-        properties: expect.objectContaining({
-          action: expect.any(Object),
-          name: expect.any(Object),
-          content: expect.any(Object),
-        }),
-      })
-      const toolResult = await options.tools?.[0].execute({
-        action: 'create',
-        name: 'agent-workflow',
+      expect(options.selectedToolNames).toEqual(['read', 'write', 'edit'])
+      expect(options.tools?.map(tool => tool.name)).toEqual(['read', 'write', 'edit'])
+      expect(options.messages[0].content).toContain('Use the read, write, and edit tools')
+      const writeTool = options.tools?.find(tool => tool.name === 'write')
+      const skillDir = path.join(getUserSkillsPath(), 'agent-workflow')
+      const skillResult = await writeTool?.execute({
+        path: path.join(skillDir, 'SKILL.md'),
         content: [
           '---',
           'name: "agent-workflow"',
@@ -171,17 +223,33 @@ describe('Hermes skill review trigger', () => {
         toolCallId: 'call_1',
         workingDirectory: tmpDir,
       })
-      expect(toolResult?.error).toBeUndefined()
+      const supportResult = await writeTool?.execute({
+        path: path.join(skillDir, 'references', 'procedure.md'),
+        content: '# Procedure\n\nCapture the reusable workflow from the recent conversation.',
+      }, {
+        sessionId: 's1',
+        messageId: 'm1',
+        toolCallId: 'call_2',
+        workingDirectory: tmpDir,
+      })
+      expect(skillResult?.error).toBeUndefined()
+      expect(supportResult?.error).toBeUndefined()
       return {
         messages: options.messages,
         text: '{"changed":true}',
         reasoning: 'reviewed',
         finishReason: 'stop',
         turns: 1,
-        toolResults: [{
-          toolCall: { id: 'call_1', name: 'skill_manage', arguments: '{"action":"create"}' },
-          result: toolResult!,
-        }],
+        toolResults: [
+          {
+            toolCall: { id: 'call_1', name: 'write', arguments: '{}' },
+            result: skillResult!,
+          },
+          {
+            toolCall: { id: 'call_2', name: 'write', arguments: '{}' },
+            result: supportResult!,
+          },
+        ],
       }
     })
 
@@ -208,5 +276,114 @@ describe('Hermes skill review trigger', () => {
 
     expect(skillMarkdown).toContain('references/procedure.md')
     expect(procedure).toContain('Capture the reusable workflow')
+  })
+
+  it('updates an existing skill through the DeepSeek agent loop without overwriting SKILL.md', async () => {
+    const original = createExistingSkill('agent-workflow')
+    vi.mocked(runAgentLoop).mockImplementation(async options => {
+      const readTool = options.tools?.find(tool => tool.name === 'read')
+      const editTool = options.tools?.find(tool => tool.name === 'edit')
+      const skillPath = path.join(getUserSkillsPath(), 'agent-workflow', 'SKILL.md')
+      const readResult = await readTool?.execute({
+        path: skillPath,
+      }, {
+        sessionId: 's1',
+        messageId: 'm1',
+        toolCallId: 'call_1',
+        workingDirectory: tmpDir,
+      })
+      const editResult = await editTool?.execute({
+        path: skillPath,
+        edits: [{
+          oldText: 'Original durable instruction that must survive automatic review.',
+          newText: 'Original durable instruction that must survive automatic review.\n\nNew reusable detail captured by automatic review.',
+        }],
+      }, {
+        sessionId: 's1',
+        messageId: 'm1',
+        toolCallId: 'call_2',
+        workingDirectory: tmpDir,
+      })
+
+      expect(readResult?.error).toBeUndefined()
+      expect(editResult?.error).toBeUndefined()
+      return {
+        messages: options.messages,
+        text: '{"changed":true}',
+        reasoning: 'reviewed',
+        finishReason: 'stop',
+        turns: 1,
+        toolResults: [
+          {
+            toolCall: { id: 'call_1', name: 'read', arguments: '{}' },
+            result: readResult!,
+          },
+          {
+            toolCall: { id: 'call_2', name: 'edit', arguments: '{}' },
+            result: editResult!,
+          },
+        ],
+      }
+    })
+
+    const ctx = triggerContext()
+    ctx.providerId = 'deepseek'
+    ctx.providerConfig = {
+      apiKey: 'deepseek-key',
+      baseUrl: 'https://deepseek.test',
+      model: 'deepseek-v4-pro',
+    } as any
+
+    await createSkillReviewTrigger().execute(ctx)
+
+    const skillDir = path.join(getUserSkillsPath(), 'agent-workflow')
+    const skillMarkdown = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')
+
+    expect(skillMarkdown).toContain(original.trim())
+    expect(skillMarkdown).toContain('New reusable detail captured by automatic review.')
+  })
+
+  it('rejects DeepSeek background review file tools outside mutable skill roots', async () => {
+    const original = createExistingSkill('agent-workflow')
+    const outsidePath = path.join(os.tmpdir(), `outside-skill-review-${path.basename(tmpDir)}.md`)
+    vi.mocked(runAgentLoop).mockImplementation(async options => {
+      const writeTool = options.tools?.find(tool => tool.name === 'write')
+      const toolResult = await writeTool?.execute({
+        path: outsidePath,
+        content: 'This write must be blocked.',
+      }, {
+        sessionId: 's1',
+        messageId: 'm1',
+        toolCallId: 'call_1',
+        workingDirectory: tmpDir,
+      })
+
+      expect(toolResult?.error).toContain('can only access mutable skill directories')
+      return {
+        messages: options.messages,
+        text: '{"changed":false}',
+        reasoning: 'reviewed',
+        finishReason: 'stop',
+        turns: 1,
+        toolResults: [{
+          toolCall: { id: 'call_1', name: 'write', arguments: '{}' },
+          result: toolResult!,
+        }],
+      }
+    })
+
+    const ctx = triggerContext()
+    ctx.providerId = 'deepseek'
+    ctx.providerConfig = {
+      apiKey: 'deepseek-key',
+      baseUrl: 'https://deepseek.test',
+      model: 'deepseek-v4-pro',
+    } as any
+
+    await createSkillReviewTrigger().execute(ctx)
+
+    const skillMarkdown = fs.readFileSync(path.join(getUserSkillsPath(), 'agent-workflow', 'SKILL.md'), 'utf-8')
+    expect(skillMarkdown).toBe(original)
+    expect(fs.existsSync(outsidePath)).toBe(false)
   })
 })

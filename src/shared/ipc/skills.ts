@@ -17,6 +17,7 @@ export interface SkillDefinition {
   relatedSkills?: string[]        // metadata.hermes.related_skills
   platforms?: string[]            // Supported OS platforms
   conditions?: SkillConditions    // metadata.hermes conditional activation
+  disableModelInvocation?: boolean // Exclude from automatic model-visible skill index
 
   // Metadata added by loader
   id: string                      // Unique identifier (path-based)
@@ -29,6 +30,7 @@ export interface SkillDefinition {
 
   // Content
   instructions: string            // Main body of SKILL.md (after frontmatter)
+  runtimeContext?: string         // Host-injected context appended at load time
 
   // Optional: additional files in the skill directory
   files?: SkillFile[]

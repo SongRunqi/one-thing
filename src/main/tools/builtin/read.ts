@@ -12,7 +12,7 @@ import { z } from 'zod'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
-import { checkFileAccess, findSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
+import { checkFileAccess, findReadSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
 import { classifySensitiveFile } from '../core/sensitive-files.js'
 
 // Maximum lines/bytes to return by default, matching Pi's read tool behavior.
@@ -201,7 +201,7 @@ export const ReadTool = Tool.define<typeof ReadParameters, ReadMetadata>('read',
   async analyze(args, ctx) {
     const resolvedPath = resolveToolPath(args.path, ctx.workingDirectory)
     const boundary = getSandboxBoundary(ctx.workingDirectory)
-    const matchedRoot = findSandboxRootForPath(resolvedPath, ctx.workingDirectory, ctx.workingDirectoryRoots)
+    const matchedRoot = findReadSandboxRootForPath(resolvedPath, ctx.workingDirectory, ctx.workingDirectoryRoots)
     const sensitivity = classifySensitiveFile(resolvedPath)
     const effects = []
     if (!matchedRoot) {

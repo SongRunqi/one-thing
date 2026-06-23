@@ -3,9 +3,16 @@
  * Chat and message-related type definitions for IPC communication
  */
 
-import type { PermissionMode, ToolCall, ToolPartialResult } from './tools.js'
+import type {
+  PermissionMode,
+  ToolCall,
+  ToolExecutionMode,
+  ToolParameter,
+  ToolPartialResult,
+  ToolRenderKind,
+} from './tools.js'
 import type { PromptReferenceSnapshot } from './prompts.js'
-import type { SkillReferenceSnapshot } from './skills.js'
+import type { SkillConditions, SkillReferenceSnapshot, SkillSource } from './skills.js'
 import type { VoiceTranscriptMetadata } from './voice.js'
 
 /**
@@ -380,16 +387,41 @@ export interface SystemPromptToolSnapshot {
   description?: string
   category?: string
   modelFacingName?: string
+  source?: 'builtin' | 'plugin' | 'mcp' | 'codex-native'
+  serverId?: string
+  serverName?: string
+  enabled?: boolean
+  autoExecute?: boolean
+  permissionGuard?: 'safe' | 'sandboxed' | 'internal-check' | 'permission-gated' | 'external'
+  executionMode?: ToolExecutionMode
+  renderKind?: ToolRenderKind
+  parameters?: ToolParameter[]
+}
+
+export interface SystemPromptSkillFileSnapshot {
+  name: string
+  path?: string
+  type: 'markdown' | 'script' | 'template' | 'other'
 }
 
 export interface SystemPromptSkillSnapshot {
   id: string
   name: string
   description?: string
-  source?: string
+  source?: SkillSource
   category?: string
   tags?: string[]
   enabled?: boolean
+  allowedTools?: string[]
+  relatedSkills?: string[]
+  platforms?: string[]
+  conditions?: SkillConditions
+  path?: string
+  directoryPath?: string
+  rootPath?: string
+  relativePath?: string
+  runtimeContext?: string
+  files?: SystemPromptSkillFileSnapshot[]
 }
 
 export interface SystemPromptSnapshot {
@@ -413,6 +445,13 @@ export interface SystemPromptSnapshot {
     builtin: SystemPromptToolSnapshot[]
     mcp: SystemPromptToolSnapshot[]
     codexNative: SystemPromptToolSnapshot[]
+  }
+  agentLoopStream: {
+    enabled: boolean
+    enabledBy: 'env' | 'settings' | 'off'
+    providerSupported: boolean
+    active: boolean
+    supportedProviderIds: string[]
   }
   skills: {
     enabled: boolean

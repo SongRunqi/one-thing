@@ -53,6 +53,24 @@ describe('dispatcher cache keys', () => {
     expect(same).toBe(first)
     expect(differentProxy).not.toBe(first)
   })
+
+  it('separates selected local addresses', () => {
+    const first = getAppDispatcher(undefined, {
+      enabled: true,
+      address: '192.168.1.23',
+    })
+    const same = getAppDispatcher(undefined, {
+      enabled: true,
+      address: '192.168.1.23',
+    })
+    const differentAddress = getAppDispatcher(undefined, {
+      enabled: true,
+      address: '192.168.1.24',
+    })
+
+    expect(same).toBe(first)
+    expect(differentAddress).not.toBe(first)
+  })
 })
 
 describe('dispatcher timeouts', () => {
@@ -62,6 +80,15 @@ describe('dispatcher timeouts', () => {
     expect(getDispatcherOptions(dispatcher)?.bodyTimeout).toBe(0)
   })
 
+  it('passes selected local address to direct dispatchers', () => {
+    const dispatcher = getAppDispatcher(undefined, {
+      enabled: true,
+      address: '192.168.1.23',
+    })
+
+    expect(getDispatcherOptions(dispatcher)?.localAddress).toBe('192.168.1.23')
+  })
+
   it('disables body inactivity timeout for long-running proxied streams', () => {
     const dispatcher = getAppDispatcher({
       enabled: true,
@@ -69,5 +96,29 @@ describe('dispatcher timeouts', () => {
     })
 
     expect(getDispatcherOptions(getProxyInnerAgent(dispatcher))?.bodyTimeout).toBe(0)
+  })
+
+  it('passes selected local address to proxied dispatchers', () => {
+    const dispatcher = getAppDispatcher({
+      enabled: true,
+      url: 'http://proxy.example.com:7890',
+    }, {
+      enabled: true,
+      address: '192.168.1.23',
+    })
+
+    expect((getDispatcherOptions(getProxyInnerAgent(dispatcher))?.proxyTls as any)?.localAddress).toBe('192.168.1.23')
+  })
+
+  it('does not bind selected local address when proxy is loopback', () => {
+    const dispatcher = getAppDispatcher({
+      enabled: true,
+      url: 'http://127.0.0.1:7890',
+    }, {
+      enabled: true,
+      address: '192.168.1.23',
+    })
+
+    expect((getDispatcherOptions(getProxyInnerAgent(dispatcher))?.proxyTls as any)?.localAddress).toBeUndefined()
   })
 })

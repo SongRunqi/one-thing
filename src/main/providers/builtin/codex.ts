@@ -1186,7 +1186,16 @@ function summarizeCodexErrorBody(body: string): string {
   } catch {
     // Fall back to a compact text preview below.
   }
-  return body.replace(/\s+/g, ' ').trim().slice(0, 300)
+  const compact = body.replace(/\s+/g, ' ').trim()
+  const title = compact.match(/<title>(.*?)<\/title>/i)?.[1]?.trim()
+  const paragraph = compact.match(/<p>(?:<b>\d+\.<\/b>\s*)?(.*?)(?:<p>|$)/i)?.[1]
+    ?.replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (title || paragraph) {
+    return [title, paragraph].filter(Boolean).join(': ').slice(0, 300)
+  }
+  return compact.slice(0, 300)
 }
 
 function headersToRecord(headers: Headers): Record<string, string> {

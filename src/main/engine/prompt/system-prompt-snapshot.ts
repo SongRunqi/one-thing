@@ -25,6 +25,7 @@ import {
 } from '../../tools/index.js'
 import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { getCodexNativeToolsForConfig } from '../stream/tool-loop.js'
+import { resolveAgentLoopStreamRoute } from '../stream/agent-loop-selection.js'
 import { buildPrompt } from './system-prompt.js'
 
 type ProviderConfigWithAuth = Record<string, unknown> & {
@@ -45,6 +46,7 @@ function skillForInit(skill: SkillDefinition) {
     tags: skill.tags,
     relatedSkills: skill.relatedSkills,
     conditions: skill.conditions,
+    disableModelInvocation: skill.disableModelInvocation,
     platforms: skill.platforms,
     path: skill.path,
     directoryPath: skill.directoryPath,
@@ -52,6 +54,7 @@ function skillForInit(skill: SkillDefinition) {
     relativePath: skill.relativePath,
     enabled: skill.enabled,
     instructions: skill.instructions,
+    runtimeContext: skill.runtimeContext,
     files: skill.files?.map(file => ({
       name: file.name,
       path: file.path,
@@ -67,16 +70,52 @@ function toolSnapshot(tool: ToolDefinition) {
     description: tool.description,
     category: tool.category,
     modelFacingName: tool.id,
+    source: tool.source ?? (
+      tool.id.startsWith('mcp:') ? 'mcp' : tool.category === 'custom' ? 'plugin' : 'builtin'
+    ),
+    serverId: tool.serverId,
+    serverName: tool.serverName,
+    enabled: tool.enabled,
+    autoExecute: tool.autoExecute,
+    permissionGuard: tool.permissionGuard,
+    executionMode: tool.executionMode,
+    renderKind: tool.renderKind,
+    parameters: tool.parameters,
   }
 }
 
-function mcpToolSnapshot(name: string, definition: { description?: string }) {
+function normalizeToolParameterType(type: string | undefined): ToolDefinition['parameters'][number]['type'] {
+  if (type === 'string' || type === 'number' || type === 'boolean' || type === 'object' || type === 'array') {
+    return type
+  }
+  return 'string'
+}
+
+function mcpToolSnapshot(name: string, definition: {
+  description?: string
+  parameters?: Array<{
+    name: string
+    type: string
+    description: string
+    required?: boolean
+    enum?: string[]
+  }>
+}) {
   return {
     id: name,
     name,
     description: definition.description,
     category: 'mcp',
     modelFacingName: name,
+    source: 'mcp' as const,
+    enabled: true,
+    autoExecute: false,
+    permissionGuard: 'permission-gated' as const,
+    executionMode: 'sequential' as const,
+    parameters: definition.parameters?.map(param => ({
+      ...param,
+      type: normalizeToolParameterType(param.type),
+    })),
   }
 }
 
@@ -89,6 +128,9 @@ function nativeToolSnapshot(name: string) {
       : 'Codex native tool',
     category: 'codex-native',
     modelFacingName: name,
+    source: 'codex-native' as const,
+    enabled: true,
+    autoExecute: false,
   }
 }
 
@@ -101,6 +143,19 @@ function skillSnapshot(skill: SkillDefinition) {
     category: skill.category,
     tags: skill.tags,
     enabled: skill.enabled,
+    allowedTools: skill.allowedTools,
+    relatedSkills: skill.relatedSkills,
+    platforms: skill.platforms,
+    conditions: skill.conditions,
+    path: skill.path,
+    directoryPath: skill.directoryPath,
+    rootPath: skill.rootPath,
+    relativePath: skill.relativePath,
+    files: skill.files?.map(file => ({
+      name: file.name,
+      path: file.path,
+      type: file.type,
+    })),
   }
 }
 
@@ -140,6 +195,10 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
 
   const settings = store.getSettings()
   const provider = await resolveProviderForSnapshot(settings, sessionId)
+  const agentLoopStream = resolveAgentLoopStreamRoute({
+    providerId: provider.providerId,
+    settings,
+  })
   const skillsEnabled = settings.skills?.enableSkills !== false
   const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
 
@@ -221,6 +280,7 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
       mcp: Object.entries(mcpTools).map(([name, definition]) => mcpToolSnapshot(name, definition)),
       codexNative: codexNativeTools.map(nativeToolSnapshot),
     },
+    agentLoopStream,
     skills: {
       enabled: skillsEnabled,
       includedInPrompt: requestMessages.systemPrompt.includes('# Skills'),

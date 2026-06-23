@@ -47,6 +47,32 @@ function getConfiguredCodexFallbackModels(): OpenRouterModel[] {
   return modelIds.length > 0 ? getCodexFallbackModels(modelIds) : []
 }
 
+function getACPAgentModels(): OpenRouterModel[] {
+  const agents = getSettings()?.acp?.agents ?? []
+  return agents.map(agent => ({
+    id: agent.id,
+    name: agent.name || agent.id,
+    description: agent.description || `ACP agent command: ${[agent.command, ...(agent.args ?? [])].filter(Boolean).join(' ')}`,
+    context_length: 128000,
+    architecture: {
+      modality: 'text',
+      input_modalities: ['text'],
+      output_modalities: ['text'],
+      tokenizer: 'external',
+    },
+    pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
+    top_provider: { context_length: 128000, max_completion_tokens: 16384, is_moderated: false },
+    supported_parameters: [],
+    providerMetadata: {
+      acp: {
+        command: agent.command,
+        enabled: agent.enabled,
+        status: 'local-agent',
+      },
+    },
+  }))
+}
+
 async function getCachedCodexModelsWithFallbacks(includeDefaultFallback = false): Promise<OpenRouterModel[]> {
   const regModels = await modelRegistry.getModelsForProvider('codex')
   const groups = [regModels, getConfiguredCodexFallbackModels()]
@@ -126,6 +152,13 @@ export async function handleGetModelsWithCapabilities(
           success: true,
           models: await getCachedCodexModelsWithFallbacks(true),
         }
+      }
+    }
+
+    if (request.providerId === 'acp' || request.providerId === AIProvider.ACP) {
+      return {
+        success: true,
+        models: getACPAgentModels(),
       }
     }
 

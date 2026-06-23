@@ -29,7 +29,8 @@ describe('DeepSeek agent provider', () => {
     })
     const events: string[] = []
 
-    const turn = await provider.runTurn({
+    expect(provider.runTurn).toBeDefined()
+    const turn = await provider.runTurn!({
       model: 'deepseek-v4-pro',
       messages: [{ role: 'user', content: 'create a skill' }],
       tools: [{

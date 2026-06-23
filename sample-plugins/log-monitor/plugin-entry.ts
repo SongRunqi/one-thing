@@ -5,7 +5,7 @@
  *
  * Features:
  *   1. Real-time event tracking (12+ event types, non-blocking WriteStream)
- *   2. Daily log rotation + 7-day cleanup (~/.onething/logs/agent-YYYY-MM-DD.log)
+ *   2. Daily log rotation + 7-day cleanup (~/.onething/log/agent-YYYY-MM-DD.log)
  *   3. In-memory ring buffer (500 entries) for fast queries
  *   4. search_logs tool — LLM can query logs during conversation
  *   5. Commands: /log-tail, /log-errors, /log-stats, /log-export, /log-clear
@@ -23,7 +23,7 @@ export default function logMonitorPlugin(api) {
   const MAX_BUFFER = 500
   const FLUSH_INTERVAL_MS = 1000
   const LOG_RETENTION_DAYS = 7
-  const LOG_DIR = path.join(process.env.HOME || '~', '.onething', 'logs')
+  const LOG_DIR = path.join(process.env.HOME || '~', '.onething', 'log')
 
   // ── State ──────────────────────────────────────────
   const logs = []                       // In-memory ring buffer

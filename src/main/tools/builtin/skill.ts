@@ -13,13 +13,13 @@ import { executeSkillManage, isSkillManageMutation, previewSkillManage, type Ski
 /**
  * Skill tool metadata for UI display
  */
-interface SkillMetadata {
+export interface SkillMetadata {
   skillName: string
   skillSource: string
   [key: string]: unknown
 }
 
-interface SkillManageMetadata {
+export interface SkillManageMetadata {
   action: string
   skillName?: string
   path?: string
@@ -125,23 +125,28 @@ function skillViewPayload(skills: SkillDefinition[], name: string | undefined, r
   }
 
   try {
-    const content = fs.readFileSync(targetPath, 'utf-8')
+    const rawContent = fs.readFileSync(targetPath, 'utf-8')
     if (filePath) {
       return JSON.stringify({
         success: true,
         name: skill.name,
         file: filePath,
-        content,
+        content: rawContent,
         file_type: path.extname(filePath),
         path: targetPath,
         skill_dir: skill.directoryPath,
       })
     }
+    const content = skill.runtimeContext
+      ? `${rawContent.trimEnd()}\n\n${skill.runtimeContext}`
+      : rawContent
 
     return JSON.stringify({
       success: true,
       name: skill.name,
       content,
+      instructions: skill.instructions,
+      runtime_context: skill.runtimeContext ?? null,
       description: skill.description,
       tags: skill.tags ?? [],
       related_skills: skill.relatedSkills ?? [],

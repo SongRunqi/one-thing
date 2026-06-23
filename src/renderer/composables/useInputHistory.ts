@@ -2,6 +2,8 @@ import { ref, computed, type Ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { nextTick } from 'vue'
 import type { EditorHandle } from '@/editor'
+import type { ContentPart } from '@/types'
+import { rawTextFromPromptParts } from '@shared/prompt-references'
 
 export function isSelectionOnFirstLine(value: string, selectionStart: number): boolean {
   if (!value) return true
@@ -11,6 +13,13 @@ export function isSelectionOnFirstLine(value: string, selectionStart: number): b
 export function isSelectionOnLastLine(value: string, selectionStart: number): boolean {
   if (!value) return true
   return !value.substring(selectionStart).includes('\n')
+}
+
+export function historyTextFromMessage(message: {
+  content: string
+  contentParts?: ContentPart[]
+}): string {
+  return rawTextFromPromptParts(message.content, message.contentParts)
 }
 
 export function useInputHistory(
@@ -31,7 +40,7 @@ export function useInputHistory(
     const messages = chatStore.sessionMessages.get(sessionId) || []
     return messages
       .filter(m => m.role === 'user' && m.content.trim())
-      .map(m => m.content)
+      .map(m => historyTextFromMessage(m))
       .reverse()
   })
 

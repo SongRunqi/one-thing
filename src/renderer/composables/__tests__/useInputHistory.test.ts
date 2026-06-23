@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  historyTextFromMessage,
   isSelectionOnFirstLine,
   isSelectionOnLastLine,
 } from '../useInputHistory'
+import { createSkillToken } from '@shared/prompt-references'
 
 describe('input history cursor helpers', () => {
   it('treats empty input as both first and last line', () => {
@@ -41,5 +43,24 @@ describe('input history cursor helpers', () => {
     expect(isSelectionOnLastLine(value, value.indexOf('\n'))).toBe(false)
     expect(isSelectionOnFirstLine(value, value.indexOf('\n') + 1)).toBe(false)
     expect(isSelectionOnLastLine(value, value.indexOf('\n') + 1)).toBe(true)
+  })
+
+  it('restores skill references as composer tokens for history navigation', () => {
+    expect(historyTextFromMessage({
+      content: '<selected_skill name="IVA">expanded instructions</selected_skill>',
+      contentParts: [
+        { type: 'text', content: 'Use ' },
+        {
+          type: 'skill-ref',
+          skillId: 'user:iva',
+          name: 'IVA',
+          description: '',
+          source: 'user',
+          content: 'expanded instructions',
+          bodyHash: 'hash',
+        },
+        { type: 'text', content: ' now' },
+      ],
+    })).toBe(`Use ${createSkillToken('user:iva')} now`)
   })
 })

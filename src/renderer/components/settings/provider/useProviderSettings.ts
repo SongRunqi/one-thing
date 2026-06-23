@@ -5,7 +5,7 @@
  */
 
 import { ref, computed, watch } from 'vue'
-import type { AppSettings, AIProvider, ProviderEnvStatus, ProviderInfo, OpenRouterModel } from '@/types'
+import type { ACPAgentConfig, ACPAgentState, AppSettings, AIProvider, ProviderEnvStatus, ProviderInfo, OpenRouterModel } from '@/types'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderAuth } from './useProviderAuth'
 
@@ -22,6 +22,7 @@ export function useProviderSettings(
   const newModelInput = ref('')
   const modelError = ref('')
   const providerEnvStatuses = ref<Record<string, ProviderEnvStatus>>({})
+  const acpAgentStates = ref<Record<string, ACPAgentState>>({})
 
   // Viewing provider (can be different from active provider)
   const viewingProvider = ref<string>(props.settings.ai.provider)
@@ -113,6 +114,8 @@ export function useProviderSettings(
     const provider = props.providers.find(p => p.id === viewingProvider.value)
     return provider?.requiresOAuth === true
   })
+
+  const isACPProvider = computed(() => viewingProvider.value === 'acp')
 
   const currentProviderEnvStatus = computed(() => {
     return providerEnvStatuses.value[viewingProvider.value]
@@ -258,6 +261,17 @@ export function useProviderSettings(
   // (i.e. what gets used when you send a message with this provider).
   const activeModelId = computed<string>(() => {
     return props.settings.ai.providers[viewingProvider.value]?.model ?? ''
+  })
+
+  const currentACPAgent = computed<ACPAgentConfig | undefined>(() => {
+    if (!isACPProvider.value) return undefined
+    const agents = props.settings.acp?.agents ?? []
+    return agents.find(agent => agent.id === activeModelId.value) ?? agents[0]
+  })
+
+  const currentACPAgentState = computed<ACPAgentState | undefined>(() => {
+    const agentId = currentACPAgent.value?.id
+    return agentId ? acpAgentStates.value[agentId] : undefined
   })
 
   // Hard limit from models.dev for the active model. 0 = unknown.
@@ -487,9 +501,70 @@ export function useProviderSettings(
     await providerAuth.checkOAuthStatus()
     if (isOAuthProvider.value && providerAuth.oauthStatus.value.isLoggedIn) {
       await fetchModels(false)
+    } else if (isACPProvider.value) {
+      await loadACPAgents()
+      await fetchModels(false)
     } else {
       // Warm-load from cache (no force) so capability icons show without a manual Fetch click.
       loadCachedModels()
+    }
+  }
+
+  async function loadACPAgents() {
+    try {
+      const response = await window.electronAPI.acpGetAgents()
+      if (response.success && response.agents) {
+        acpAgentStates.value = Object.fromEntries(response.agents.map(agent => [agent.config.id, agent]))
+      }
+    } catch (err) {
+      console.error('[ProviderSettings] Failed to load ACP agents:', err)
+    }
+  }
+
+  function updateACPAgent(updates: Partial<ACPAgentConfig>) {
+    const current = currentACPAgent.value
+    if (!current) return
+    const acp = {
+      enabled: props.settings.acp?.enabled ?? true,
+      agents: [...(props.settings.acp?.agents ?? [])],
+    }
+    const index = acp.agents.findIndex(agent => agent.id === current.id)
+    if (index === -1) return
+    acp.agents[index] = { ...current, ...updates }
+    updateSettings({ acp })
+  }
+
+  function updateACPArgs(value: string) {
+    updateACPAgent({
+      args: value
+        .split(/\s+/)
+        .map(part => part.trim())
+        .filter(Boolean),
+    })
+  }
+
+  async function connectACPAgent() {
+    const agentId = currentACPAgent.value?.id
+    if (!agentId) return
+    const response = await window.electronAPI.acpConnectAgent(agentId)
+    if (response.success && response.agent) {
+      acpAgentStates.value = { ...acpAgentStates.value, [agentId]: response.agent }
+    }
+  }
+
+  async function disconnectACPAgent() {
+    const agentId = currentACPAgent.value?.id
+    if (!agentId) return
+    await window.electronAPI.acpDisconnectAgent(agentId)
+    await loadACPAgents()
+  }
+
+  async function refreshACPAgent() {
+    const agentId = currentACPAgent.value?.id
+    if (!agentId) return
+    const response = await window.electronAPI.acpRefreshAgent(agentId)
+    if (response.success && response.agent) {
+      acpAgentStates.value = { ...acpAgentStates.value, [agentId]: response.agent }
     }
   }
 
@@ -640,6 +715,9 @@ export function useProviderSettings(
     await providerAuth.checkOAuthStatus()
     if (isOAuthProvider.value && providerAuth.oauthStatus.value.isLoggedIn) {
       await fetchModels(false)
+    } else if (isACPProvider.value) {
+      await loadACPAgents()
+      await fetchModels(false)
     } else {
       // Warm-load models for the initial provider so capability icons render on open.
       loadCachedModels()
@@ -681,6 +759,9 @@ export function useProviderSettings(
     activeModelMaxOutputStep,
     filteredModels,
     isOAuthProvider,
+    isACPProvider,
+    currentACPAgent,
+    currentACPAgentState,
     currentProviderUsesEnvApiKey,
     currentProviderEnvVarName,
     enabledProviders,
@@ -718,6 +799,12 @@ export function useProviderSettings(
     setDefaultProvider,
     setDefaultModel,
     addCustomModel,
+    loadACPAgents,
+    updateACPAgent,
+    updateACPArgs,
+    connectACPAgent,
+    disconnectACPAgent,
+    refreshACPAgent,
     startOAuthLogin: providerAuth.startOAuthLogin,
     submitManualCode: providerAuth.submitManualCode,
     logoutOAuth: providerAuth.logoutOAuth,

@@ -1,4 +1,5 @@
 import type { Step, ToolCall } from '@/types'
+import { diffLines } from 'diff'
 import { basename, formatToolCallPreview } from './tool-preview'
 import { getToolRenderStatus, type ToolRenderStatus } from './tool-status'
 import { getFileToolCategory } from './tool-ui-registry'
@@ -26,9 +27,12 @@ export interface StreamingToolContent {
   filePath: string
   content: string
   additions: number
+  deletions?: number
   isTruncated?: boolean
   totalLines?: number
   omittedLines?: number
+  kind?: 'write' | 'edit'
+  replacements?: StreamingEditReplacement[]
 }
 
 export interface ToolStepView {
@@ -71,6 +75,13 @@ interface ToolContentSource {
   filePath: string
   content: string
   cacheKey: string
+  kind: 'write' | 'edit'
+  replacements?: StreamingEditReplacement[]
+}
+
+interface StreamingEditReplacement {
+  oldText: string
+  newText: string
 }
 
 export function clearStreamingContentCache(): void {
@@ -229,8 +240,13 @@ function shouldDefaultExpand(toolName: string, status: ToolRenderStatus): boolea
 function hasPotentialStreamingDetails(step: Step, toolName: string): boolean {
   const cat = getFileToolCategory(toolName)
   if (cat !== 'write' && cat !== 'edit') return false
+  if (step.toolCall?.streamingArgs) {
+    const source = getStreamingContentSource(toolName, step.toolCall.streamingArgs)
+    if (!source) return false
+    if (source.kind === 'edit') return Boolean(source.replacements?.length)
+    return Boolean(source.content)
+  }
   return Boolean(
-    step.toolCall?.streamingArgs ||
     step.toolCall?.changes ||
     getFinalizedContentSource(step.toolCall, toolName),
   )
@@ -288,6 +304,19 @@ export function getToolFilePath(
   return ''
 }
 
+export function getStreamingDiffStats(toolCall: ToolCall | undefined): { additions: number; deletions: number } | null {
+  if (!toolCall?.streamingArgs) return null
+  const toolName = toolCall.toolName?.toLowerCase() || ''
+  const cat = getFileToolCategory(toolName)
+  if (cat !== 'write' && cat !== 'edit') return null
+  const source = getStreamingContentSource(toolName, toolCall.streamingArgs)
+  if (!source) return null
+  return {
+    additions: countStreamingSourceAdditions(source),
+    deletions: countStreamingSourceDeletions(source),
+  }
+}
+
 function getPathArgument(args: Record<string, any>): string {
   const value = args.path ||
     args.filePath ||
@@ -310,16 +339,22 @@ function getPathFromDetails(details: unknown): string {
 
 function getStreamingDiff(streamingContent: StreamingToolContent | null): ToolDiffData | null {
   if (!streamingContent) return null
+  if (streamingContent.kind === 'edit' && !streamingContent.replacements?.length) return null
   return {
     diff: '',
     filePath: streamingContent.filePath,
     additions: streamingContent.additions,
-    deletions: 0,
+    deletions: streamingContent.deletions || 0,
   }
 }
 
 function parseStreamingDiffLines(streamingContent: StreamingToolContent | null): ToolDiffLine[] {
-  if (!streamingContent?.content) return []
+  if (!streamingContent) return []
+  if (streamingContent.kind === 'edit') {
+    return parseStreamingEditDiffLines(streamingContent.replacements || [])
+  }
+  if (!streamingContent.content) return []
+
   const lines = streamingContent.content.split('\n')
   const result: ToolDiffLine[] = lines.map((line, index) => ({
     class: 'diff-add',
@@ -338,6 +373,65 @@ function parseStreamingDiffLines(streamingContent: StreamingToolContent | null):
   }
 
   return result
+}
+
+function parseStreamingEditDiffLines(replacements: StreamingEditReplacement[]): ToolDiffLine[] {
+  const result: ToolDiffLine[] = []
+
+  replacements.forEach((replacement, replacementIndex) => {
+    if (replacementIndex > 0) {
+      result.push({
+        class: 'diff-hunk',
+        prefix: '',
+        content: `... edit ${replacementIndex + 1} ...`,
+        oldNum: '',
+        newNum: '',
+      })
+    }
+
+    let oldLineNum = 1
+    let newLineNum = 1
+    for (const change of diffLines(replacement.oldText, replacement.newText)) {
+      const lines = splitDisplayLines(change.value)
+      if (change.removed) {
+        for (const line of lines) {
+          result.push({ class: 'diff-del', prefix: '-', content: line, oldNum: oldLineNum, newNum: '' })
+          oldLineNum++
+        }
+        continue
+      }
+      if (change.added) {
+        for (const line of lines) {
+          result.push({ class: 'diff-add', prefix: '+', content: line, oldNum: '', newNum: newLineNum })
+          newLineNum++
+        }
+        continue
+      }
+      for (const line of lines) {
+        result.push({ class: '', prefix: ' ', content: line, oldNum: oldLineNum, newNum: newLineNum })
+        oldLineNum++
+        newLineNum++
+      }
+    }
+  })
+
+  return truncateStreamingDiffLines(result)
+}
+
+function truncateStreamingDiffLines(lines: ToolDiffLine[]): ToolDiffLine[] {
+  if (lines.length <= STREAMING_PREVIEW_MAX_LINES) return lines
+  const omittedLines = lines.length - STREAMING_PREVIEW_MAX_LINES
+  return [
+    ...lines.slice(0, STREAMING_PREVIEW_HEAD_LINES),
+    {
+      class: 'diff-hunk',
+      prefix: '',
+      content: `... ${omittedLines} diff lines omitted while streaming ...`,
+      oldNum: '',
+      newNum: '',
+    },
+    ...lines.slice(-STREAMING_PREVIEW_TAIL_LINES),
+  ]
 }
 
 export function getResultText(step: Step): string | null {
@@ -487,7 +581,10 @@ function getCachedStreamingContent(
   const result = normalizeStreamingContent({
     filePath: source.filePath,
     content: source.content,
-    additions: countAddedLines(source.content),
+    additions: countStreamingSourceAdditions(source),
+    deletions: countStreamingSourceDeletions(source),
+    kind: source.kind,
+    replacements: source.replacements,
   })
   streamingContentCache.set(cacheKey, result)
   if (streamingContentCache.size > STREAMING_CONTENT_CACHE_LIMIT) {
@@ -512,19 +609,31 @@ function getToolContentSource(step: Step): ToolContentSource | null {
 
 function getStreamingContentSource(toolName: string, args: string): ToolContentSource | null {
   const result = { filePath: '', content: '' }
+  const cat = getFileToolCategory(toolName)
 
   try {
     const parsed = JSON.parse(args)
-    const cat = getFileToolCategory(toolName)
-    const parsedContent = cat === 'write'
-      ? parsed.content
-      : extractEditReplacementContent(parsed)
-    const content = typeof parsedContent === 'string' ? parsedContent : ''
     const filePath = typeof parsed.path === 'string' ? parsed.path : ''
-    return (filePath || content)
+    if (cat === 'edit') {
+      const replacements = extractEditReplacements(parsed)
+      const content = replacements.map(edit => edit.newText).join('\n')
+      return (content || replacements.length)
+        ? {
+          filePath,
+          content,
+          kind: 'edit',
+          replacements,
+          cacheKey: `stream:${args.length}:${hashString(replacements.map(edit => `${edit.oldText}\u0000${edit.newText}`).join('\u0001'))}`,
+        }
+        : null
+    }
+
+    const content = typeof parsed.content === 'string' ? parsed.content : ''
+    return content
       ? {
         filePath,
         content,
+        kind: 'write',
         cacheKey: `stream:${args.length}:${hashString(content)}`,
       }
       : null
@@ -535,8 +644,22 @@ function getStreamingContentSource(toolName: string, args: string): ToolContentS
 
   result.filePath = extractStreamingStringValue(args, 'path') || ''
 
-  const cat = getFileToolCategory(toolName)
-  const contentKey = cat === 'write' ? 'content' : 'newText'
+  if (cat === 'edit') {
+    const oldText = extractStreamingStringValue(args, 'oldText') || ''
+    const newText = extractStreamingStringValue(args, 'newText') || ''
+    const replacements = oldText || newText ? [{ oldText, newText }] : []
+    return replacements.length
+      ? {
+        ...result,
+        content: replacements.map(edit => edit.newText).join('\n'),
+        kind: 'edit',
+        replacements,
+        cacheKey: `stream:${args.length}:${hashString(replacements.map(edit => `${edit.oldText}\u0000${edit.newText}`).join('\u0001'))}`,
+      }
+      : null
+  }
+
+  const contentKey = 'content'
   const contentMatch = args.match(new RegExp(`"${contentKey}"\\s*:\\s*"`))
   if (contentMatch) {
     const startIdx = contentMatch.index! + contentMatch[0].length
@@ -550,22 +673,30 @@ function getStreamingContentSource(toolName: string, args: string): ToolContentS
     result.content = content
   }
 
-  return (result.filePath || result.content)
+  return result.content
     ? {
       ...result,
+      kind: 'write',
       cacheKey: `stream:${args.length}:${hashString(result.content)}`,
     }
     : null
 }
 
 function extractEditReplacementContent(args: Record<string, any>): string {
-  if (Array.isArray(args.edits)) {
-    return args.edits
-      .map((edit: any) => typeof edit?.newText === 'string' ? edit.newText : '')
-      .filter(Boolean)
-      .join('\n')
-  }
-  return ''
+  return extractEditReplacements(args)
+    .map(edit => edit.newText)
+    .filter(Boolean)
+    .join('\n')
+}
+
+function extractEditReplacements(args: Record<string, any>): StreamingEditReplacement[] {
+  if (!Array.isArray(args.edits)) return []
+  return args.edits
+    .map((edit: any) => ({
+      oldText: typeof edit?.oldText === 'string' ? edit.oldText : '',
+      newText: typeof edit?.newText === 'string' ? edit.newText : '',
+    }))
+    .filter(edit => edit.oldText || edit.newText)
 }
 
 function getFinalizedContentSource(toolCall: ToolCall | undefined, toolName: string): ToolContentSource | null {
@@ -581,6 +712,8 @@ function getFinalizedContentSource(toolCall: ToolCall | undefined, toolName: str
   return {
     filePath,
     content: parsedContent,
+    kind: cat === 'edit' ? 'edit' : 'write',
+    replacements: cat === 'edit' ? extractEditReplacements(args) : undefined,
     cacheKey: `final:${filePath}:${parsedContent.length}:${hashString(parsedContent)}`,
   }
 }
@@ -595,6 +728,15 @@ function hashString(value: string): string {
 }
 
 function normalizeStreamingContent(content: StreamingToolContent): StreamingToolContent {
+  if (content.kind === 'edit') {
+    return {
+      ...content,
+      totalLines: countAddedLines(content.content),
+      isTruncated: false,
+      omittedLines: 0,
+    }
+  }
+
   const lines = content.content ? content.content.split('\n') : []
   if (lines.length <= STREAMING_PREVIEW_MAX_LINES) {
     return {
@@ -623,6 +765,36 @@ function countAddedLines(content: string): number {
   return content.endsWith('\n')
     ? content.split('\n').length - 1
     : content.split('\n').length
+}
+
+function splitDisplayLines(value: string): string[] {
+  if (!value) return []
+  const lines = value.split('\n')
+  if (lines[lines.length - 1] === '') lines.pop()
+  return lines
+}
+
+function countStreamingSourceAdditions(source: ToolContentSource): number {
+  if (source.kind !== 'edit') return countAddedLines(source.content)
+  return countStreamingEditChanges(source.replacements || []).additions
+}
+
+function countStreamingSourceDeletions(source: ToolContentSource): number {
+  if (source.kind !== 'edit') return 0
+  return countStreamingEditChanges(source.replacements || []).deletions
+}
+
+function countStreamingEditChanges(replacements: StreamingEditReplacement[]): { additions: number; deletions: number } {
+  let additions = 0
+  let deletions = 0
+  for (const replacement of replacements) {
+    for (const change of diffLines(replacement.oldText, replacement.newText)) {
+      const count = change.count ?? splitDisplayLines(change.value).length
+      if (change.added) additions += count
+      if (change.removed) deletions += count
+    }
+  }
+  return { additions, deletions }
 }
 
 function extractStreamingStringValue(source: string, key: string): string | null {

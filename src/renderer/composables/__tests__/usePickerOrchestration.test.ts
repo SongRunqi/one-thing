@@ -54,11 +54,11 @@ function makeEditorHandle(value: Ref<string>, cursor: Ref<number>): EditorHandle
   }
 }
 
-function createHarness(initialValue: string) {
+function createHarness(initialValue: string, options: { cwd?: string } = {}) {
   const scope = effectScope()
   const input = ref(initialValue)
   const cursor = ref(initialValue.length)
-  const cwd = ref('/repo')
+  const cwd = ref(options.cwd ?? '/repo')
   const sessionId = ref('session-1')
   const editor = ref<EditorHandle | null>(makeEditorHandle(input, cursor))
   const adjustHeight = vi.fn()
@@ -80,6 +80,7 @@ function createHarness(initialValue: string) {
     scope,
     input,
     cursor,
+    cwd,
     editor,
     adjustHeight,
     checkHistoryEdit,
@@ -208,6 +209,145 @@ describe('usePickerOrchestration', () => {
     expect(harness.input.value).toBe(`${createSkillToken('user:skill-development')} `)
     expect(window.electronAPI.executeSkill).not.toHaveBeenCalled()
     harness.scope.stop()
+  })
+
+  it('replaces @skills triggers with skill reference tokens', async () => {
+    vi.mocked(window.electronAPI.getSkills).mockResolvedValue({
+      success: true,
+      skills: [{
+        id: 'plugin:note-skills:daily',
+        name: 'daily-note',
+        description: 'Use daily note context',
+        source: 'plugin',
+        path: '/notes/daily/SKILL.md',
+        directoryPath: '/notes/daily',
+        enabled: true,
+        instructions: 'Use note attachments.',
+      }],
+    })
+    const harness = createHarness('use @skills daily')
+
+    await harness.api.loadSkills()
+    harness.api.refreshTriggerState(harness.input.value, harness.cursor.value)
+    await settleWatchers()
+
+    expect(harness.api.showCommandPicker.value).toBe(true)
+    expect(harness.api.commandQuery.value).toBe('daily')
+    expect(harness.api.commandPickerTypes.value).toEqual(['skill'])
+
+    await harness.api.confirmActiveExtension()
+
+    expect(harness.input.value).toBe(`use ${createSkillToken('plugin:note-skills:daily')} `)
+    expect(window.electronAPI.executeSkill).not.toHaveBeenCalled()
+    harness.scope.stop()
+  })
+
+  it('shows Downloads as a normal @ file picker directory result', async () => {
+    vi.useFakeTimers()
+    vi.mocked(window.electronAPI.listFiles).mockResolvedValue({
+      success: true,
+      files: [],
+      entries: [{
+        path: '/Users/me/Downloads',
+        type: 'directory',
+        source: 'downloads',
+        label: 'Downloads',
+      }],
+    })
+    const harness = createHarness('attach @downloads')
+
+    try {
+      await vi.advanceTimersByTimeAsync(200)
+      await settleWatchers()
+
+      expect(harness.api.showFilePicker.value).toBe(true)
+      expect(harness.api.activeExtension.value).toMatchObject({
+        type: 'files',
+        query: 'downloads',
+        items: [{
+          kind: 'directory',
+          title: 'Downloads',
+          value: '/Users/me/Downloads',
+        }],
+      })
+      expect(window.electronAPI.listFiles).toHaveBeenCalledWith({
+        cwd: '/repo',
+        query: 'downloads',
+        limit: 50,
+      })
+    } finally {
+      harness.scope.stop()
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows note and downloads directories for bare @ even without a workdir', async () => {
+    vi.useFakeTimers()
+    vi.mocked(window.electronAPI.listFiles).mockResolvedValue({
+      success: true,
+      files: [],
+      entries: [
+        {
+          path: '/Users/me/Notes',
+          type: 'directory',
+          source: 'note',
+          label: 'Personal notes',
+        },
+        {
+          path: '/Users/me/Downloads',
+          type: 'directory',
+          source: 'downloads',
+          label: 'Downloads',
+        },
+      ],
+    })
+    const harness = createHarness('attach @', { cwd: '' })
+
+    try {
+      await vi.advanceTimersByTimeAsync(200)
+      await settleWatchers()
+
+      expect(window.electronAPI.listFiles).toHaveBeenCalledWith({
+        cwd: '',
+        query: '',
+        limit: 50,
+      })
+      expect(harness.api.activeExtension.value.items).toEqual([
+        expect.objectContaining({
+          kind: 'directory',
+          title: 'Personal notes',
+          value: '/Users/me/Notes',
+        }),
+        expect.objectContaining({
+          kind: 'directory',
+          title: 'Downloads',
+          value: '/Users/me/Downloads',
+        }),
+      ])
+    } finally {
+      harness.scope.stop()
+      vi.useRealTimers()
+    }
+  })
+
+  it('searches @files even when no workdir is available', async () => {
+    vi.useFakeTimers()
+    const harness = createHarness('attach @files receipt', { cwd: '' })
+
+    try {
+      await vi.advanceTimersByTimeAsync(200)
+      await settleWatchers()
+
+      expect(harness.api.showFilePicker.value).toBe(true)
+      expect(window.electronAPI.listFiles).toHaveBeenCalledWith({
+        cwd: '',
+        query: 'receipt',
+        limit: 50,
+      })
+    } finally {
+      harness.scope.stop()
+      vi.useRealTimers()
+    }
   })
 
   it('tracks /cd path triggers and replaces the exact path range', async () => {

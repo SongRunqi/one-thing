@@ -334,9 +334,9 @@ const navItems = [
   {
     id: 'network',
     label: 'Network',
-    hint: 'Global proxy for outbound requests',
+    hint: 'Network interface and proxy routing',
     icon: Globe2,
-    sections: ['Network Proxy'],
+    sections: ['Network Interface', 'Network Proxy'],
   },
   {
     id: 'voice',

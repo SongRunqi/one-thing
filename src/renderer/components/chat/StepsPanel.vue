@@ -585,7 +585,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 
 .activity-group {
   --activity-title-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 82%, transparent);
-  --activity-row-fg: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 68%, var(--ui-text-muted-fg, var(--muted)) 32%);
+  --activity-row-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 84%, var(--ui-text-primary-fg, var(--text)) 16%);
   --activity-link-fg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 74%, var(--ui-text-muted-fg, var(--muted)) 26%);
   display: flex;
   flex-direction: column;

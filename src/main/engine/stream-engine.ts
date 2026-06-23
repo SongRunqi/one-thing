@@ -16,7 +16,7 @@ import type { WebContents } from 'electron'
 import type { PermissionMode } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
 import type { AppSettings, ChatMessage, MessageAttachment } from '../../shared/ipc.js'
-import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand, RetryMessageCommand, InjectSteeringCommand, InjectFollowUpCommand, CompactContextCommand } from '../../shared/events/session-commands.js'
+import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand, RetryMessageCommand, InjectSteeringCommand, InjectFollowUpCommand, CompactContextCommand, AbortCommand } from '../../shared/events/session-commands.js'
 import type { EventBus } from '../events/event-bus.js'
 import type { ToolChatMessage } from '../providers/index.js'
 import { Permission } from '../permission/index.js'
@@ -29,8 +29,13 @@ import {
 } from './stream/provider-helpers.js'
 import { isProviderSupported, requiresOAuth, convertToolDefinitionsForAI, generateChatTitle } from '../providers/index.js'
 import { buildHistoryMessages } from './stream/message-helpers.js'
+import { buildResumeHistoryAfterToolConfirmation } from './stream/resume-history.js'
 import { executeMessageStream, type ProviderConfigWithKey } from './stream/stream-executor.js'
 import { createStreamProcessor, type StreamContext } from './stream/stream-processor.js'
+import {
+  executeAgentLoopStreamGeneration,
+  shouldUseAgentLoopStream,
+} from './stream/agent-loop-executor.js'
 import { runStream } from './stream/tool-loop.js'
 import { buildPrompt } from './prompt/index.js'
 import { getSkillsForSession } from '../ipc/skills.js'
@@ -153,6 +158,9 @@ export class StreamEngine {
         this.handleCompactContext(envelope.sessionId, envelope.event as CompactContextCommand)
           .catch(err => console.error('[StreamEngine] command:compact-context error:', err))
       }, 'StreamEngine'),
+      eventBus.onAnySession('command:abort', (envelope) => {
+        this.handleAbort(envelope.sessionId, envelope.event as AbortCommand)
+      }, 'StreamEngine'),
       eventBus.onAnySession('command:resume-after-confirm', (envelope) => {
         if (!this.sender) return
         this.handleResumeAfterConfirm(envelope.sessionId, envelope.event as ResumeAfterConfirmCommand, this.sender)
@@ -170,6 +178,10 @@ export class StreamEngine {
   }
 
   // ── Command Handlers ───────────────────────────
+
+  handleAbort(sessionId: string, cmd: AbortCommand = { type: 'command:abort' }): boolean {
+    return this.abort(sessionId, cmd.reason)
+  }
 
   /**
    * Handle send-message command.
@@ -544,9 +556,11 @@ export class StreamEngine {
             id: s.id, name: s.name, description: s.description,
             source: s.source, category: s.category, tags: s.tags, relatedSkills: s.relatedSkills,
             conditions: s.conditions,
+            disableModelInvocation: s.disableModelInvocation,
             platforms: s.platforms, path: s.path, directoryPath: s.directoryPath,
             rootPath: s.rootPath, relativePath: s.relativePath,
             enabled: s.enabled, instructions: s.instructions,
+            runtimeContext: s.runtimeContext,
             files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
           })),
         })
@@ -644,6 +658,32 @@ export class StreamEngine {
       })
 
       try {
+        if (shouldUseAgentLoopStream(ctx)) {
+          console.log('[StreamEngine] Resuming agent loop after confirmation')
+          const requestStartTime = Date.now()
+          const resumeHistoryMessages = buildResumeHistoryAfterToolConfirmation(historyWithoutCurrent, assistantMessage)
+
+          const result = await executeAgentLoopStreamGeneration(
+            ctx,
+            resumeHistoryMessages,
+            session.name,
+            {
+              initialContent: {
+                content: assistantMessage.content || '',
+                reasoning: assistantMessage.reasoning || '',
+              },
+            },
+          )
+
+          const requestDuration = (Date.now() - requestStartTime) / 1000
+          console.log(`[StreamEngine] Agent loop resume completed in ${requestDuration.toFixed(2)}s`)
+
+          if (!result.pausedForConfirmation) {
+            this.removeController(sessionId)
+          }
+          return
+        }
+
         console.log('[StreamEngine] Resuming tool loop after confirmation')
         const requestStartTime = Date.now()
 
@@ -712,9 +752,10 @@ export class StreamEngine {
     this.sessionChannels.delete(sessionId)
   }
 
-  abort(sessionId: string): boolean {
+  abort(sessionId: string, reason = 'User cancelled'): boolean {
     const controller = this.activeStreams.get(sessionId)
     if (controller) {
+      console.log(`[StreamEngine] Aborting stream for session: ${sessionId} (${reason})`)
       controller.abort()
       this.activeStreams.delete(sessionId)
     }
@@ -918,6 +959,8 @@ export class StreamEngine {
     configWithApiKey: ProviderConfigWithKey,
     settings: AppSettings,
   ): Promise<boolean> {
+    if (providerId === 'acp') return true
+
     const compactSettings = settings.chat
     if (compactSettings?.contextCompactEnabled === false) return true
     if (this.activeCompactions.has(sessionId)) {

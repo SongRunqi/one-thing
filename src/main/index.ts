@@ -1,8 +1,15 @@
 import { app, BrowserWindow, protocol, net, powerMonitor } from 'electron'
 import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
-import { createWindow, recoverMainWindowAfterSystemResume, shouldSuppressMainWindowActivation, warmTodoPlanWindow } from './window.js'
-import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills } from './ipc/handlers.js'
+import {
+  activateMainWindow,
+  createWindow,
+  isTodoPlanBrowserWindow,
+  recoverMainWindowAfterSystemResume,
+  shouldSuppressMainWindowActivation,
+  warmTodoPlanWindow,
+} from './window.js'
+import { initializeIPC, initializeMCP, shutdownMCP, initializeSkills, initializeACP, shutdownACP } from './ipc/handlers.js'
 import { initializeStores, flushAllPendingSaves } from './store.js'
 import { initializeSettings } from './stores/settings.js'
 import { sanitizeAllSessionsOnStartup } from './stores/sessions.js'
@@ -21,9 +28,13 @@ import { registerGlobalWindowShortcuts, unregisterGlobalWindowShortcuts } from '
 import { getVoiceService } from './voice/service.js'
 import { attachVoiceTrayMainWindow, markVoiceQuitRequested } from './voice/tray.js'
 import { killTrackedDetachedChildren } from './tools/core/bash-executor.js'
+import { initializeAppLogging, shutdownAppLogging } from './logging/index.js'
+import { hydrateProcessEnvFromLoginShell } from './utils/login-shell-env.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
+
+initializeAppLogging()
 
 /**
  * Refresh model metadata from models.dev on first startup.
@@ -66,6 +77,10 @@ if (process.env.NODE_ENV === 'development') {
 let mainWindow: BrowserWindow | null = null
 
 app.on('ready', async () => {
+  if (app.isPackaged) {
+    await hydrateProcessEnvFromLoginShell({ logger: console })
+  }
+
   // Register custom protocol for media files
   protocol.handle('media', (request) => {
     const filename = decodeURIComponent(request.url.slice('media://'.length))
@@ -178,6 +193,12 @@ function startPostWindowServices(): void {
     console.error('[MCP] Initialization failed (non-blocking):', err)
   })
 
+  try {
+    initializeACP()
+  } catch (err) {
+    console.error('[ACP] Initialization failed (non-blocking):', err)
+  }
+
   // Refresh model registry on first startup (non-blocking)
   refreshModelsOnFirstStartup().catch(err => {
     console.error('[Models] First-startup refresh failed (non-blocking):', err)
@@ -202,11 +223,11 @@ app.on('window-all-closed', () => {
 })
 
 app.on('activate', () => {
-  if (shouldSuppressMainWindowActivation()) {
-    return
-  }
-
   if (mainWindow === null) {
+    if (shouldSuppressMainWindowActivation()) {
+      return
+    }
+
     mainWindow = createWindow()
     attachVoiceTrayMainWindow(mainWindow)
     registerGlobalWindowShortcuts(mainWindow)
@@ -229,10 +250,20 @@ app.on('activate', () => {
         preserveMainWindowVisibility: true,
       })
     }, 1600)
-  } else if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-    mainWindow.show()
-    mainWindow.focus()
+  } else {
+    activateMainWindow(mainWindow)
   }
+})
+
+app.on('did-become-active', () => {
+  setTimeout(() => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+
+    const focusedWindow = BrowserWindow.getFocusedWindow()
+    if (isTodoPlanBrowserWindow(focusedWindow)) {
+      activateMainWindow(mainWindow)
+    }
+  }, 0)
 })
 
 // Cleanup on quit
@@ -243,6 +274,7 @@ app.on('before-quit', async () => {
 
   // Shutdown MCP
   await shutdownMCP()
+  await shutdownACP()
 
   // Stop any detached bash process groups that are still tracked.
   killTrackedDetachedChildren()
@@ -259,6 +291,7 @@ app.on('before-quit', async () => {
   } catch (err) {
     console.error('[Shutdown] flushAllPendingSaves error:', err)
   }
+  await shutdownAppLogging()
 })
 
 export { mainWindow }

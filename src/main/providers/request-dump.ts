@@ -1,6 +1,6 @@
 import fsp from 'fs/promises'
 import path from 'path'
-import { getStorePath } from '../stores/paths.js'
+import { getLogDir } from '../stores/paths.js'
 
 export type ProviderRequestDumpMode =
   | 'stream'
@@ -19,7 +19,7 @@ export interface ProviderRequestDumpPayload {
 }
 
 function requestDumpDir(): string {
-  return path.join(getStorePath(), 'logs', 'provider-requests')
+  return path.join(getLogDir(), 'provider-requests')
 }
 
 function shouldDumpProviderRequests(): boolean {

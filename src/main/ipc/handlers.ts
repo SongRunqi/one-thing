@@ -26,6 +26,7 @@ import { registerSearchHandlers } from '../search/index.js'
 import { registerAppStateHandlers } from './app-state.js'
 import { registerTodoPlanHandlers } from '../todo-plan/ipc.js'
 import { registerVoiceHandlers } from '../voice/ipc.js'
+import { registerACPHandlers, initializeACP, shutdownACP } from './acp.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -54,6 +55,7 @@ export function initializeIPC() {
   registerAppStateHandlers()
   registerTodoPlanHandlers()
   registerVoiceHandlers()
+  registerACPHandlers()
   registerCommandHandler()
 }
 
@@ -77,4 +79,4 @@ function registerCommandHandler() {
   console.log('[IPC] session:command handler registered')
 }
 
-export { initializeMCP, shutdownMCP, initializeSkills, cleanupOAuth, initializeThemeSystem }
+export { initializeMCP, shutdownMCP, initializeSkills, cleanupOAuth, initializeThemeSystem, initializeACP, shutdownACP }

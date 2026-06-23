@@ -1,5 +1,5 @@
 import { session } from 'electron'
-import type { ProxySettings, TestProxyResponse } from '../../shared/ipc.js'
+import type { NetworkInterfaceSettings, ProxySettings, TestProxyResponse } from '../../shared/ipc.js'
 import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '../providers/bound-fetch.js'
 import { getSettings } from '../stores/settings.js'
 
@@ -47,7 +47,7 @@ export async function applyNetworkProxySettings(proxy: ProxySettings = getSettin
   })
 }
 
-export async function testProxy(proxy: ProxySettings): Promise<TestProxyResponse> {
+export async function testProxy(proxy: ProxySettings, networkInterface?: NetworkInterfaceSettings): Promise<TestProxyResponse> {
   if (!proxy.enabled) {
     return { success: false, error: 'Proxy is disabled.' }
   }
@@ -63,6 +63,7 @@ export async function testProxy(proxy: ProxySettings): Promise<TestProxyResponse
         ...proxy,
         url: validated.normalizedUrl,
       },
+      networkInterface,
     })
     const response = await fetchImpl('https://www.gstatic.com/generate_204', {
       method: 'GET',

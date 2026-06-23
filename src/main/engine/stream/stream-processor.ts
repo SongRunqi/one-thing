@@ -13,6 +13,7 @@ import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from 
 import { resolveAIToolName } from '../../providers/tool-name-alias.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import type { PendingMessageQueue } from './message-queue.js'
+import type { AgentOutputModality } from '../../agent-loop/types.js'
 
 // ============================================================
 // Active Streams Registry
@@ -99,6 +100,7 @@ export interface StreamContext {
   settings: AppSettings
   providerConfig: ProviderConfig
   providerId: string
+  requestedOutputModalities?: AgentOutputModality[]
   toolSettings: ToolSettings | undefined
   // Note: skills are passed separately to runStream/executeToolAndUpdate, not stored here
   // Accumulated token usage across all turns (for statistics)

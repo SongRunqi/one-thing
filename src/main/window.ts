@@ -613,6 +613,24 @@ export function shouldSuppressMainWindowActivation(): boolean {
   return Date.now() < suppressMainWindowActivationUntil
 }
 
+export function isTodoPlanBrowserWindow(window: BrowserWindow | null | undefined): boolean {
+  return Boolean(window && !window.isDestroyed() && window === todoPlanWindow)
+}
+
+export function activateMainWindow(mainWindow: BrowserWindow | null | undefined): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  if (shouldSuppressMainWindowActivation()) return false
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore()
+  }
+  if (!mainWindow.isVisible()) {
+    mainWindow.show()
+  }
+  mainWindow.focus()
+  return true
+}
+
 function hideTodoPlanWindowPreservingBounds(): boolean {
   if (!todoPlanWindow || todoPlanWindow.isDestroyed() || !todoPlanWindow.isVisible()) {
     return false

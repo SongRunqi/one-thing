@@ -4,7 +4,7 @@
  */
 
 // Provider IDs - can be extended by adding new providers
-export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'zhipu' | 'gemini' | 'codex' | 'custom' | string
+export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'zhipu' | 'gemini' | 'codex' | 'acp' | 'custom' | string
 
 export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
@@ -20,6 +20,7 @@ export enum AIProvider {
   ClaudeCode = 'claude-code',
   GitHubCopilot = 'github-copilot',
   Codex = 'codex',
+  ACP = 'acp',
   Custom = 'custom',
 }
 

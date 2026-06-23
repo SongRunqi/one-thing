@@ -19,6 +19,7 @@ import gemini from './gemini.js'
 import claudeCode from './claude-code.js'
 import githubCopilot from './github-copilot.js'
 import codex from './codex.js'
+import acp from './acp.js'
 
 import type { ProviderDefinition } from '../types.js'
 
@@ -34,6 +35,7 @@ export const builtinProviders: ProviderDefinition[] = [
   claudeCode,
   githubCopilot,
   codex,
+  acp,
 ]
 
 export default builtinProviders

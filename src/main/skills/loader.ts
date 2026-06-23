@@ -26,6 +26,7 @@ interface SkillFrontmatter {
   description: string
   'allowed-tools'?: string[]
   platforms?: string[]
+  'disable-model-invocation'?: boolean
   tags?: string[] | string
   related_skills?: string[] | string
   metadata?: Record<string, unknown>
@@ -79,6 +80,9 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | nu
           description,
           ...(allowedTools ? { 'allowed-tools': allowedTools } : {}),
           ...(platforms.length ? { platforms } : {}),
+          ...(parsed['disable-model-invocation'] !== undefined
+            ? { 'disable-model-invocation': isTruthyFrontmatterValue(parsed['disable-model-invocation']) }
+            : {}),
           ...(parsed.tags !== undefined ? { tags: parsed.tags as string[] | string } : {}),
           ...(parsed.related_skills !== undefined ? { related_skills: parsed.related_skills as string[] | string } : {}),
           ...(parsed.metadata && typeof parsed.metadata === 'object' ? { metadata: parsed.metadata as Record<string, unknown> } : {}),
@@ -136,7 +140,11 @@ function parseFrontmatter(content: string): { frontmatter: SkillFrontmatter | nu
       }
 
       if (value) {
-        frontmatter[key as keyof SkillFrontmatter] = value as any
+        if (key === 'disable-model-invocation') {
+          frontmatter['disable-model-invocation'] = isTruthyFrontmatterValue(value)
+        } else {
+          frontmatter[key as keyof SkillFrontmatter] = value as any
+        }
         currentKey = null
       } else {
         // Empty value might mean array follows
@@ -166,6 +174,10 @@ function normalizeStringList(value: unknown): string[] {
   if (!text) return []
   const unwrapped = text.startsWith('[') && text.endsWith(']') ? text.slice(1, -1) : text
   return unwrapped.split(',').map(item => item.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean)
+}
+
+function isTruthyFrontmatterValue(value: unknown): boolean {
+  return value === true || (typeof value === 'string' && value.toLowerCase() === 'true')
 }
 
 function parseHermesMetadata(frontmatter: SkillFrontmatter): Record<string, unknown> {
@@ -494,7 +506,11 @@ function skillIdFor(source: SkillSource, name: string, skillDir: string, ownerId
 function loadSkillFromDirectory(
   skillDir: string,
   source: SkillSource,
-  options: { ownerId?: string; rootDir?: string } = {},
+  options: {
+    ownerId?: string
+    rootDir?: string
+    instructionContext?: PluginSkillRoot['instructionContext']
+  } = {},
 ): SkillDefinition | null {
   const skillMdPath = path.join(skillDir, 'SKILL.md')
 
@@ -537,6 +553,15 @@ function loadSkillFromDirectory(
     const relatedSkills = getRelatedSkills(frontmatter)
     const rootDir = options.rootDir ? path.resolve(options.rootDir) : undefined
     const conditions = nonEmptyConditions(getSkillConditions(frontmatter))
+    const runtimeContext = options.instructionContext?.({
+      skillDir,
+      skillPath: skillMdPath,
+      rootDir: rootDir ?? skillDir,
+    })?.trim()
+    const instructions = [
+      body.trim(),
+      runtimeContext,
+    ].filter(Boolean).join('\n\n')
 
     const skill: SkillDefinition = {
       id: skillIdFor(source, name, skillDir, options.ownerId, rootDir),
@@ -548,13 +573,15 @@ function loadSkillFromDirectory(
       relatedSkills: relatedSkills.length ? relatedSkills : undefined,
       platforms: platforms.length ? platforms : undefined,
       conditions,
+      disableModelInvocation: frontmatter['disable-model-invocation'] === true,
       source,
       path: skillMdPath,
       directoryPath: skillDir,
       rootPath: rootDir,
       relativePath: getRelativeSkillPath(skillMdPath, rootDir),
       enabled: true,
-      instructions: body.trim(),
+      instructions,
+      runtimeContext: runtimeContext || undefined,
       files: files.length > 0 ? files : undefined
     }
 
@@ -581,7 +608,11 @@ function isDirectoryEntry(entryPath: string, entry: fs.Dirent): boolean {
 function loadSkillsFromPath(
   skillsDir: string,
   source: SkillSource,
-  options: { recursive?: boolean; ownerId?: string } = {},
+  options: {
+    recursive?: boolean
+    ownerId?: string
+    instructionContext?: PluginSkillRoot['instructionContext']
+  } = {},
 ): SkillDefinition[] {
   const skills: SkillDefinition[] = []
 
@@ -590,7 +621,11 @@ function loadSkillsFromPath(
   }
 
   const rootDir = path.resolve(skillsDir)
-  const rootSkill = loadSkillFromDirectory(skillsDir, source, { ownerId: options.ownerId, rootDir })
+  const rootSkill = loadSkillFromDirectory(skillsDir, source, {
+    ownerId: options.ownerId,
+    rootDir,
+    instructionContext: options.instructionContext,
+  })
   if (rootSkill) return [rootSkill]
   const shouldRecurse = options.recursive ?? true
 
@@ -614,7 +649,11 @@ function loadSkillsFromPath(
         if (!isDirectoryEntry(fullPath, entry)) continue
         if (EXCLUDED_DIRECTORIES.has(entry.name)) continue
 
-        const skill = loadSkillFromDirectory(fullPath, source, { ownerId: options.ownerId, rootDir })
+        const skill = loadSkillFromDirectory(fullPath, source, {
+          ownerId: options.ownerId,
+          rootDir,
+          instructionContext: options.instructionContext,
+        })
         if (skill) {
           skills.push(skill)
           continue
@@ -656,6 +695,7 @@ function loadPluginRootSkills(root: PluginSkillRoot): SkillDefinition[] {
   const skills = loadSkillsFromPath(root.path, source, {
     recursive: root.recursive ?? true,
     ownerId: root.pluginId,
+    instructionContext: root.instructionContext,
   })
   logLoadedSkillRoot(`Plugin root (${root.pluginId}) path`, root.path, skills)
   return skills

@@ -49,6 +49,10 @@ import type {
   ShortcutSettings,
   EditorSettings,
   ChatSettings,
+  NetworkAddressFamily,
+  NetworkInterfaceOption,
+  NetworkInterfaceSettings,
+  GetNetworkInterfacesResponse,
   ProxySettings,
   NetworkSettings,
   VoiceEndpointingMode,
@@ -86,7 +90,9 @@ import type {
   MarkdownSaveAttachmentsResponse,
   GetChatHistoryResponse,
   GetSystemPromptSnapshotResponse,
+  SystemPromptSkillSnapshot,
   SystemPromptSnapshot,
+  SystemPromptToolSnapshot,
   GetSessionsResponse,
   CreateSessionResponse,
   SwitchSessionResponse,
@@ -99,6 +105,7 @@ import type {
   GenerateTitleResponse,
   GetProvidersResponse,
   ToolDefinition,
+  ToolParameter,
   ToolCall,
   ToolResult,
   ToolPartialResult,
@@ -145,6 +152,18 @@ import type {
   MCPGetPromptsResponse,
   MCPGetPromptResponse,
   MCPReadConfigFileResponse,
+  // ACP types
+  ACPAgentConfig,
+  ACPAgentState,
+  ACPSettings,
+  ACPGetAgentsResponse,
+  ACPAddAgentResponse,
+  ACPUpdateAgentResponse,
+  ACPRemoveAgentResponse,
+  ACPConnectAgentResponse,
+  ACPDisconnectAgentResponse,
+  ACPRefreshAgentResponse,
+  ACPCancelSessionResponse,
   // Skills types (Official Claude Code Skills)
   SkillDefinition,
   SkillFile,
@@ -287,7 +306,9 @@ export type {
   UserMessageMarker,
   GetSessionUserMarkersResponse,
   GetSystemPromptSnapshotResponse,
+  SystemPromptSkillSnapshot,
   SystemPromptSnapshot,
+  SystemPromptToolSnapshot,
   AISettings,
   AppSettings,
   AIProvider,
@@ -311,6 +332,10 @@ export type {
   ShortcutSettings,
   EditorSettings,
   ChatSettings,
+  NetworkAddressFamily,
+  NetworkInterfaceOption,
+  NetworkInterfaceSettings,
+  GetNetworkInterfacesResponse,
   ProxySettings,
   NetworkSettings,
   VoiceEndpointingMode,
@@ -346,6 +371,7 @@ export type {
   MarkdownSaveAttachmentsRequest,
   MarkdownSaveAttachmentsResponse,
   ToolDefinition,
+  ToolParameter,
   ToolCall,
   ToolResult,
   ToolPartialResult,
@@ -376,6 +402,17 @@ export type {
   MCPResourceInfo,
   MCPPromptInfo,
   MCPSettings,
+  ACPAgentConfig,
+  ACPAgentState,
+  ACPSettings,
+  ACPGetAgentsResponse,
+  ACPAddAgentResponse,
+  ACPUpdateAgentResponse,
+  ACPRemoveAgentResponse,
+  ACPConnectAgentResponse,
+  ACPDisconnectAgentResponse,
+  ACPRefreshAgentResponse,
+  ACPCancelSessionResponse,
   // Skills types (Official Claude Code Skills)
   SkillDefinition,
   SkillFile,
@@ -542,7 +579,8 @@ export interface ElectronAPI {
   voiceRuntimeEvent: (event: VoiceEvent) => Promise<{ success: boolean }>
   onVoiceRuntimeCommand: (callback: (command: VoiceRuntimeCommand) => void) => () => void
   getSystemTheme: () => Promise<{ success: boolean; theme?: 'light' | 'dark' }>
-  testProxy: (proxy: ProxySettings) => Promise<{ success: boolean; error?: string; status?: number }>
+  getNetworkInterfaces: () => Promise<GetNetworkInterfacesResponse>
+  testProxy: (proxy: ProxySettings, networkInterface?: NetworkInterfaceSettings) => Promise<{ success: boolean; error?: string; status?: number }>
   onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void
   // Agent methods
   listAgents: () => Promise<AgentsListResponse>
@@ -601,6 +639,16 @@ export interface ElectronAPI {
   mcpGetPrompts: () => Promise<MCPGetPromptsResponse>
   mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) => Promise<MCPGetPromptResponse>
   mcpReadConfigFile: (filePath: string) => Promise<MCPReadConfigFileResponse>
+
+  // ACP methods
+  acpGetAgents: () => Promise<ACPGetAgentsResponse>
+  acpAddAgent: (config: ACPAgentConfig) => Promise<ACPAddAgentResponse>
+  acpUpdateAgent: (config: ACPAgentConfig) => Promise<ACPUpdateAgentResponse>
+  acpRemoveAgent: (agentId: string) => Promise<ACPRemoveAgentResponse>
+  acpConnectAgent: (agentId: string) => Promise<ACPConnectAgentResponse>
+  acpDisconnectAgent: (agentId: string) => Promise<ACPDisconnectAgentResponse>
+  acpRefreshAgent: (agentId: string) => Promise<ACPRefreshAgentResponse>
+  acpCancelSession: (sessionId: string, agentId?: string) => Promise<ACPCancelSessionResponse>
 
   // Skills methods (Official Claude Code Skills)
   getSkills: (workingDirectory?: string) => Promise<GetSkillsResponse>
@@ -695,7 +743,17 @@ export interface ElectronAPI {
   onMenuCloseChat: (callback: () => void) => () => void
 
   // Files methods (for @ file search)
-  listFiles: (options: { cwd: string; query?: string; limit?: number }) => Promise<{ success: boolean; files: string[]; error?: string }>
+  listFiles: (options: { cwd?: string; query?: string; limit?: number }) => Promise<{
+    success: boolean
+    files: string[]
+    entries?: Array<{
+      path: string
+      type: 'file' | 'directory'
+      source?: 'workdir' | 'downloads' | 'note'
+      label?: string
+    }>
+    error?: string
+  }>
 
   // File rollback (for /files command)
   rollbackFile: (options: { auditPath?: string; filePath?: string; originalContent?: string; isNew?: boolean }) => Promise<{ success: boolean; error?: string; auditId?: string; filePath?: string; restoredExists?: boolean }>

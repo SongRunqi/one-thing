@@ -26,7 +26,13 @@
         @mouseenter="emit('highlight', index)"
       >
         <div class="composer-extension-row-icon">
+          <Folder
+            v-if="item.kind === 'directory'"
+            :size="15"
+            :stroke-width="2"
+          />
           <FileText
+            v-else
             :size="15"
             :stroke-width="2"
           />
@@ -49,7 +55,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { FileText } from 'lucide-vue-next'
+import { FileText, Folder } from 'lucide-vue-next'
 import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
 import type { ComposerExtensionItem } from '@/composables/usePickerOrchestration'
 

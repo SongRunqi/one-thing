@@ -326,6 +326,25 @@
         <div class="composer-toolbar">
           <div class="toolbar-left">
             <ModelSelector :session-id="props.sessionId" />
+            <Tooltip
+              :text="contextTooltipText"
+              position="top"
+              :delay="120"
+            >
+              <button
+                type="button"
+                class="context-meter"
+                :class="contextMeterTone"
+                :style="contextMeterStyle"
+                :title="contextTooltipText"
+                :aria-label="contextAriaLabel"
+                @mousedown.prevent
+                @click.stop="openContextInspector"
+              >
+                <span class="context-meter-fill" />
+                <span class="context-meter-label">{{ contextMeterLabel }}</span>
+              </button>
+            </Tooltip>
             <ThinkToggle :session-id="props.sessionId" />
             <Select
               size="small"
@@ -412,6 +431,7 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import Select from '@/components/common/Select.vue'
+import Tooltip from '@/components/common/Tooltip.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
@@ -493,6 +513,106 @@ const permissionModeLabel = computed(() => {
 const permissionDropdownStyle = computed(() => ({
   width: '178px',
 }))
+
+const activeProvider = computed(() => {
+  return currentSession.value?.lastProvider || settingsStore.settings?.ai?.provider || ''
+})
+
+const activeModel = computed(() => {
+  if (currentSession.value?.lastModel) return currentSession.value.lastModel
+  const provider = activeProvider.value
+  return provider
+    ? settingsStore.settings?.ai?.providers?.[provider]?.model || ''
+    : ''
+})
+
+const modelContextLength = computed(() => {
+  const provider = activeProvider.value
+  const model = activeModel.value
+  if (!provider || !model) return 0
+  const cachedModels = settingsStore.getCachedModels?.(provider) ?? []
+  const found = cachedModels.find((item: any) => item.id === model)
+  return Math.max(0, found?.context_length ?? found?.top_provider?.context_length ?? 0)
+})
+
+function normalizeTokenCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.round(value))
+    : 0
+}
+
+const contextTokens = computed(() => {
+  return normalizeTokenCount(currentSession.value?.contextSize ?? currentSession.value?.lastInputTokens)
+})
+
+const totalInputTokens = computed(() => normalizeTokenCount(currentSession.value?.totalInputTokens))
+const totalOutputTokens = computed(() => normalizeTokenCount(currentSession.value?.totalOutputTokens))
+const totalTokens = computed(() => normalizeTokenCount(currentSession.value?.totalTokens))
+
+const contextPercent = computed(() => {
+  const windowTokens = modelContextLength.value
+  if (windowTokens <= 0) return null
+  return Math.min(100, Math.max(0, (contextTokens.value / windowTokens) * 100))
+})
+
+const contextMeterProgress = computed(() => contextPercent.value ?? 0)
+
+const contextMeterStyle = computed<Record<string, string>>(() => ({
+  '--context-meter-progress': `${contextMeterProgress.value}%`,
+}))
+
+const contextMeterTone = computed(() => {
+  const percent = contextPercent.value
+  if (percent === null) return contextTokens.value > 0 ? 'is-measured' : 'is-empty'
+  if (percent >= 85) return 'is-high'
+  if (percent >= 70) return 'is-medium'
+  if (contextTokens.value === 0) return 'is-empty'
+  return 'is-measured'
+})
+
+function formatNumber(value: number): string {
+  return value.toLocaleString()
+}
+
+function formatCompactTokens(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(value >= 10_000_000 ? 0 : 1)}m`
+  if (value >= 10_000) return `${Math.round(value / 1000)}k`
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}k`
+  return `${value}`
+}
+
+const contextMeterLabel = computed(() => {
+  if (contextTokens.value <= 0) return 'CTX'
+  const percent = contextPercent.value
+  if (percent !== null) return `${Math.round(percent)}%`
+  return formatCompactTokens(contextTokens.value)
+})
+
+const contextAriaLabel = computed(() => {
+  const percent = contextPercent.value
+  if (percent !== null) {
+    return `Context ${formatNumber(contextTokens.value)} of ${formatNumber(modelContextLength.value)} tokens, ${Math.round(percent)} percent`
+  }
+  return `Context ${formatNumber(contextTokens.value)} tokens`
+})
+
+const contextTooltipText = computed(() => {
+  const lines: string[] = []
+  const percent = contextPercent.value
+  if (modelContextLength.value > 0) {
+    lines.push(`Context: ${formatNumber(contextTokens.value)} / ${formatNumber(modelContextLength.value)} tokens (${Math.round(percent ?? 0)}%)`)
+  } else {
+    lines.push(`Context: ${formatNumber(contextTokens.value)} tokens`)
+  }
+  lines.push(`Last input: ${formatNumber(contextTokens.value)} tokens`)
+  lines.push(`Total input: ${formatNumber(totalInputTokens.value)} tokens`)
+  lines.push(`Total output: ${formatNumber(totalOutputTokens.value)} tokens`)
+  if (totalTokens.value > 0) lines.push(`Total: ${formatNumber(totalTokens.value)} tokens`)
+  if (activeModel.value) {
+    lines.push(`Model: ${activeProvider.value ? `${activeProvider.value} / ` : ''}${activeModel.value}`)
+  }
+  return lines.join('\n')
+})
 
 // Core state
 const messageInput = ref('')
@@ -897,6 +1017,10 @@ function queuedPatchAttachmentChanges(): QueuedFileChangeSummary | null {
 
 function reviewQueuedFileChanges() {
   chatStore.openInspectorToTab?.('diff', queuedFileChanges.value?.selectedStepId || '')
+}
+
+function openContextInspector() {
+  chatStore.openInspectorToTab?.('context')
 }
 
 function queuedMessagePreview(item: QueuedMessage): string {
@@ -2035,7 +2159,7 @@ defineExpose({
 
 .toolbar-left {
   display: grid;
-  grid-template-columns: minmax(0, max-content) max-content max-content;
+  grid-template-columns: minmax(0, max-content) max-content max-content max-content;
   align-items: center;
   column-gap: 6px;
   flex: 1;
@@ -2043,6 +2167,70 @@ defineExpose({
   max-width: 100%;
   min-width: 0;
   overflow: hidden;
+}
+
+.context-meter {
+  --context-meter-track: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
+  --context-meter-ring: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 68%, var(--ui-text-muted-fg, var(--muted)));
+  --context-meter-center: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 88%, transparent);
+  --context-meter-fg: var(--ui-text-muted-fg, var(--muted));
+
+  position: relative;
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: conic-gradient(var(--context-meter-ring) var(--context-meter-progress, 0%), var(--context-meter-track) 0);
+  color: var(--context-meter-fg);
+  cursor: pointer;
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  transition: color 0.16s ease, filter 0.16s ease, transform 0.16s ease;
+}
+
+.context-meter.is-empty {
+  --context-meter-ring: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 38%, transparent);
+  --context-meter-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 80%, transparent);
+}
+
+.context-meter.is-medium {
+  --context-meter-ring: var(--ui-status-warning-fg, var(--text-warning, #d97706));
+  --context-meter-fg: var(--ui-status-warning-fg, var(--text-warning, #d97706));
+}
+
+.context-meter.is-high {
+  --context-meter-ring: var(--ui-status-danger-fg, var(--text-error, #ef4444));
+  --context-meter-fg: var(--ui-status-danger-fg, var(--text-error, #ef4444));
+}
+
+.context-meter:hover {
+  color: var(--ui-text-primary-fg, var(--text));
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+
+.context-meter-fill {
+  position: absolute;
+  inset: 3px;
+  border-radius: inherit;
+  background: var(--context-meter-center);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--ui-border-default-border, var(--border)) 28%, transparent);
+}
+
+.context-meter-label {
+  position: relative;
+  z-index: 1;
+  max-width: 23px;
+  overflow: hidden;
+  font-size: 9px;
+  font-weight: 760;
+  letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 .toolbar-right {

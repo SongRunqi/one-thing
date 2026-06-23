@@ -803,6 +803,7 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
           tags: s.tags,
           relatedSkills: s.relatedSkills,
           conditions: s.conditions,
+          disableModelInvocation: s.disableModelInvocation,
           platforms: s.platforms,
           path: s.path,
           directoryPath: s.directoryPath,

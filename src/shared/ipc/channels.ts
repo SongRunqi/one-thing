@@ -96,6 +96,7 @@ export const IPC_CHANNELS = {
   PROMPTS_DELETE: 'prompts:delete',
 
   // Network related
+  GET_NETWORK_INTERFACES: 'network:get-interfaces',
   TEST_PROXY: 'network:test-proxy',
 
   // Models related (read from settings.json modelRegistry)
@@ -149,6 +150,16 @@ export const IPC_CHANNELS = {
   MCP_GET_PROMPTS: 'mcp:get-prompts',
   MCP_GET_PROMPT: 'mcp:get-prompt',
   MCP_READ_CONFIG_FILE: 'mcp:read-config-file',
+
+  // ACP related
+  ACP_GET_AGENTS: 'acp:get-agents',
+  ACP_ADD_AGENT: 'acp:add-agent',
+  ACP_UPDATE_AGENT: 'acp:update-agent',
+  ACP_REMOVE_AGENT: 'acp:remove-agent',
+  ACP_CONNECT_AGENT: 'acp:connect-agent',
+  ACP_DISCONNECT_AGENT: 'acp:disconnect-agent',
+  ACP_REFRESH_AGENT: 'acp:refresh-agent',
+  ACP_CANCEL_SESSION: 'acp:cancel-session',
 
   // Dialog related
   SHOW_OPEN_DIALOG: 'dialog:show-open',

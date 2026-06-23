@@ -286,12 +286,17 @@ export const useSettingsStore = defineStore('settings', () => {
       const customProvidersChanged = prevCustomKey !== nextCustomKey
 
       settings.value = plainSettings
-      await window.electronAPI.saveSettings(plainSettings)
+      const response = await window.electronAPI.saveSettings(plainSettings)
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to save settings')
+      }
+      const savedSettings = response.settings ?? plainSettings
+      settings.value = savedSettings
 
       // Only apply theme if theme-related settings actually changed
       if (themeChanged) {
         await applyAppearanceFromSettings(undefined, {
-          refreshSystemTheme: plainSettings.theme === 'system',
+          refreshSystemTheme: savedSettings.theme === 'system',
         })
       }
 

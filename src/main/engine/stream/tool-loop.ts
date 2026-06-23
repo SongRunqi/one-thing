@@ -880,6 +880,7 @@ export async function runStream(
     })
 
     dumpAssembledPrompt({ sessionId: ctx.sessionId, providerId: ctx.providerId, model, systemPrompt })
+    const sessionWorkingDir = store.getSession(ctx.sessionId)?.workingDirectory
 
     const stream = streamChatResponseWithTools(
       ctx.providerId,
@@ -903,6 +904,7 @@ export async function runStream(
         codexNativeTools: activeCodexNativeTools,
         debugSessionId: ctx.sessionId,
         debugTurn: currentTurn,
+        workingDirectory: sessionWorkingDir,
       }
     )
 
@@ -1383,6 +1385,7 @@ export async function executeStreamGeneration(
           relativePath: s.relativePath,
           enabled: s.enabled,
           instructions: s.instructions,
+          runtimeContext: s.runtimeContext,
           files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
         })),
       })

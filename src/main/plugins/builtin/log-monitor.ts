@@ -9,6 +9,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { z } from 'zod'
 import type { PluginAPI } from '../types.js'
+import { getLogDir } from '../../stores/paths.js'
 
 interface LogEntry {
   eventType: string
@@ -30,7 +31,7 @@ export default function logMonitorPlugin(api: PluginAPI): void {
   const MAX_BUFFER = 500
   const FLUSH_INTERVAL_MS = 1000
   const LOG_RETENTION_DAYS = 7
-  const LOG_DIR = path.join(process.env.HOME || '~', '.onething', 'logs')
+  const LOG_DIR = getLogDir()
 
   const logs: LogEntry[] = []
   const writeBuffer: string[] = []

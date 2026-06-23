@@ -6,6 +6,7 @@
 import type { AISettings } from './providers.js'
 import type { ToolSettings } from './tools.js'
 import type { MCPSettings } from './mcp.js'
+import type { ACPSettings } from './acp.js'
 import type { SkillSettings } from './skills.js'
 import type { TodoPlanSettings } from './todo-plan.js'
 import type { VoiceSettings } from './voice.js'
@@ -247,6 +248,7 @@ export interface ChatSettings {
   contextCompactEnabled?: boolean  // Enable automatic context compacting, default true
   contextCompactThreshold?: number  // Context usage % to trigger compacting, 50-100, default 85
   contextCompactKeepRecentTurns?: number  // Recent user/assistant turns to keep verbatim, default 6
+  agentLoopStream?: boolean        // Route supported providers through the agent-loop stream runtime, default false
 }
 
 export interface ProxySettings {
@@ -255,8 +257,29 @@ export interface ProxySettings {
   bypassRules?: string
 }
 
+export type NetworkAddressFamily = 'IPv4' | 'IPv6'
+
+export interface NetworkInterfaceOption {
+  id: string
+  name: string
+  address: string
+  family: NetworkAddressFamily
+  internal: boolean
+  mac?: string
+  cidr?: string | null
+}
+
+export interface NetworkInterfaceSettings {
+  enabled: boolean
+  address: string
+  id?: string
+  name?: string
+  family?: NetworkAddressFamily
+}
+
 export interface NetworkSettings {
   proxy: ProxySettings
+  networkInterface: NetworkInterfaceSettings
 }
 
 export interface AppSettings {
@@ -268,6 +291,7 @@ export interface AppSettings {
   tools: ToolSettings
   network?: NetworkSettings
   mcp?: MCPSettings
+  acp?: ACPSettings
   skills?: SkillSettings
 }
 
@@ -282,15 +306,23 @@ export interface SaveSettingsRequest extends AppSettings { }
 
 export interface SaveSettingsResponse {
   success: boolean
+  settings?: AppSettings
   error?: string
 }
 
 export interface TestProxyRequest {
   proxy: ProxySettings
+  networkInterface?: NetworkInterfaceSettings
 }
 
 export interface TestProxyResponse {
   success: boolean
   error?: string
   status?: number
+}
+
+export interface GetNetworkInterfacesResponse {
+  success: boolean
+  interfaces?: NetworkInterfaceOption[]
+  error?: string
 }

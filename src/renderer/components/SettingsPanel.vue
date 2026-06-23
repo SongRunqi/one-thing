@@ -464,17 +464,33 @@ function initializeSettings() {
   // Ensure network settings exist
   if (!localSettings.value.network) {
     localSettings.value.network = {
+      networkInterface: {
+        enabled: false,
+        address: '',
+        id: '',
+        name: '',
+      },
       proxy: {
         enabled: false,
         url: '',
         bypassRules: 'localhost;127.0.0.1;::1;*.local',
       },
     }
-  } else if (!localSettings.value.network.proxy) {
-    localSettings.value.network.proxy = {
-      enabled: false,
-      url: '',
-      bypassRules: 'localhost;127.0.0.1;::1;*.local',
+  } else {
+    if (!localSettings.value.network.proxy) {
+      localSettings.value.network.proxy = {
+        enabled: false,
+        url: '',
+        bypassRules: 'localhost;127.0.0.1;::1;*.local',
+      }
+    }
+    if (!localSettings.value.network.networkInterface) {
+      localSettings.value.network.networkInterface = {
+        enabled: false,
+        address: '',
+        id: '',
+        name: '',
+      }
     }
   }
 

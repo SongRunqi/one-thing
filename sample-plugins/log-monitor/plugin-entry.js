@@ -6,7 +6,7 @@ export default function logMonitorPlugin(api) {
   const MAX_BUFFER = 500
   const FLUSH_INTERVAL_MS = 1000
   const LOG_RETENTION_DAYS = 7
-  const LOG_DIR = path.join(process.env.HOME || '~', '.onething', 'logs')
+  const LOG_DIR = path.join(process.env.HOME || '~', '.onething', 'log')
 
   const logs = []
   const writeBuffer = []

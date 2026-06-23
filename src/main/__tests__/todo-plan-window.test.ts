@@ -409,6 +409,52 @@ describe('todo plan standalone window controls', () => {
     expect(main.visible).toBe(false)
   })
 
+  it('activates the main window even when it is already visible', async () => {
+    const { activateMainWindow } = await loadWindowModule()
+    const main = new mocks.MockBrowserWindow({
+      width: 1000,
+      height: 800,
+      show: true,
+    })
+    main.focused = false
+
+    expect(activateMainWindow(main as any)).toBe(true)
+
+    expect(main.show).not.toHaveBeenCalled()
+    expect(main.focus).toHaveBeenCalledTimes(1)
+    expect(mocks.MockBrowserWindow.focusedWindow).toBe(main)
+  })
+
+  it('restores a minimized main window before activating it', async () => {
+    const { activateMainWindow } = await loadWindowModule()
+    const main = new mocks.MockBrowserWindow({
+      width: 1000,
+      height: 800,
+      show: false,
+    })
+    main.minimized = true
+
+    expect(activateMainWindow(main as any)).toBe(true)
+
+    expect(main.restore).toHaveBeenCalledTimes(1)
+    expect(main.show).toHaveBeenCalledTimes(1)
+    expect(main.focus).toHaveBeenCalledTimes(1)
+  })
+
+  it('can identify the standalone todo window for macOS activation correction', async () => {
+    const { isTodoPlanBrowserWindow, openTodoPlanWindow } = await loadWindowModule()
+    const main = new mocks.MockBrowserWindow({
+      width: 1000,
+      height: 800,
+      show: true,
+    })
+    const todo = openTodoPlanWindow() as unknown as InstanceType<typeof mocks.MockBrowserWindow>
+
+    expect(isTodoPlanBrowserWindow(todo as any)).toBe(true)
+    expect(isTodoPlanBrowserWindow(main as any)).toBe(false)
+    expect(isTodoPlanBrowserWindow(null)).toBe(false)
+  })
+
   it('repaints but does not reload a healthy main window after system resume', async () => {
     vi.useFakeTimers()
     const { createWindow, recoverMainWindowAfterSystemResume, MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS } = await loadWindowModule()

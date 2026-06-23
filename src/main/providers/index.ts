@@ -43,10 +43,27 @@ import {
 	dumpProviderRequest,
 	type ProviderRequestDumpMode,
 } from "./request-dump.js";
+import { ACPManager } from "../acp/index.js";
+import { createDeepSeekAgentProvider } from "../agent-loop/providers/deepseek.js";
+import {
+	agentContentToText,
+	collectAgentTurnFromStream,
+} from "../agent-loop/stream.js";
+import { agentEventsToProviderStreamChunks } from "../agent-loop/provider-stream.js";
+import type {
+	AgentMessage,
+	AgentTool,
+} from "../agent-loop/types.js";
 
 type RuntimeProviderConfig = ProviderConfig & {
 	model: string;
 	apiType?: "openai" | "anthropic";
+};
+
+type DeepSeekRuntimeConfig = {
+	apiKey?: string;
+	baseUrl?: string;
+	model: string;
 };
 
 type ChatGenerationOptions = {
@@ -69,6 +86,9 @@ type ChatGenerationOptions = {
 // before this gate, which measurably slowed streaming output.
 const DEBUG_STREAM =
 	process.env.DEBUG_STREAM === "1" || process.env.DEBUG_STREAM === "true";
+
+const ACP_PROVIDER_ID = "acp";
+const DEEPSEEK_PROVIDER_ID = "deepseek";
 
 // Multimodal content type for AI messages (Vercel AI SDK 6.x format)
 export type AIMessageContent =
@@ -499,15 +519,409 @@ export interface AIToolDefinition {
 	execute?: (args: any) => Promise<any>;
 }
 
-function stringifyMessageContent(content: AIMessageContent): string {
+function stringifyMessageContent(content: unknown): string {
+	if (content == null) return "";
 	if (typeof content === "string") return content;
+	if (!Array.isArray(content)) return String(content);
 	return content
-		.map((part) => {
-			if (part.type === "text") return part.text;
+		.map((part: any) => {
+			if (part?.type === "text") return part.text;
 			return "";
 		})
 		.filter(Boolean)
 		.join("\n");
+}
+
+function isACPProvider(providerId: string): boolean {
+	return providerId === ACP_PROVIDER_ID;
+}
+
+function isDeepSeekProvider(providerId: string): boolean {
+	return providerId === DEEPSEEK_PROVIDER_ID;
+}
+
+function isDeepSeekThinkingModel(modelId: string): boolean {
+	const lower = modelId.toLowerCase();
+	return (
+		lower.includes("reasoner") ||
+		lower.includes("thinking") ||
+		/(^|[^a-z])v4/.test(lower)
+	);
+}
+
+function normalizeDeepSeekAgentReasoningEffort(
+	value: ThinkingEffort | undefined,
+): "high" | "max" | undefined {
+	if (value === "high" || value === "max") return value;
+	if (value === "low" || value === "medium") return "high";
+	if (value === "xhigh") return "max";
+	return undefined;
+}
+
+function resolveDeepSeekAgentThinking(
+	modelId: string,
+	options: Pick<ChatGenerationOptions, "thinking">,
+): "enabled" | "disabled" | undefined {
+	if (options.thinking === true) return "enabled";
+	if (options.thinking === false) return "disabled";
+	if (isDeepSeekThinkingModel(modelId)) return "enabled";
+	return undefined;
+}
+
+function parametersToJsonSchema(
+	parameters: Array<{
+		name: string;
+		type: string;
+		description: string;
+		required?: boolean;
+		enum?: string[];
+	}> = [],
+): Record<string, unknown> {
+	const properties: Record<string, unknown> = {};
+	const required: string[] = [];
+
+	for (const param of parameters) {
+		const schema: Record<string, unknown> = {
+			type: param.type || "string",
+			description: param.description,
+		};
+		if (param.enum?.length) schema.enum = param.enum;
+		properties[param.name] = schema;
+		if (param.required) required.push(param.name);
+	}
+
+	return {
+		type: "object",
+		properties,
+		required,
+	};
+}
+
+function deepSeekAgentToolsFromDefinitions(
+	tools: Record<
+		string,
+		{
+			description: string;
+			parameters: Array<{
+				name: string;
+				type: string;
+				description: string;
+				required?: boolean;
+				enum?: string[];
+			}>;
+			parameterSchema?: Record<string, unknown>;
+		}
+	>,
+): AgentTool[] {
+	return Object.entries(tools).map(([name, tool]) => ({
+		name,
+		description: tool.description,
+		parameters: tool.parameterSchema ?? parametersToJsonSchema(tool.parameters),
+		async execute() {
+			return { content: "" };
+		},
+	}));
+}
+
+function stringifyToolOutput(output: unknown): string {
+	if (output == null) return "";
+	if (typeof output === "string") return output;
+	try {
+		return JSON.stringify(output);
+	} catch {
+		return String(output);
+	}
+}
+
+function deepSeekAgentMessagesFromMessages(
+	messages: Array<{
+		role: string;
+		content?: unknown;
+		reasoningContent?: string;
+		toolCalls?: Array<{
+			toolCallId: string;
+			toolName: string;
+			args: Record<string, unknown>;
+		}>;
+	}>,
+): AgentMessage[] {
+	const result: AgentMessage[] = [];
+
+	for (const message of messages) {
+		if (message.role === "tool" && Array.isArray(message.content)) {
+			for (const item of message.content as Array<{
+				toolCallId?: string;
+				result?: unknown;
+			}>) {
+				result.push({
+					role: "tool",
+					toolCallId: item.toolCallId ?? "",
+					content: stringifyToolOutput(item.result),
+				});
+			}
+			continue;
+		}
+
+		if (message.role === "assistant") {
+			result.push({
+				role: "assistant",
+				content:
+					message.content === null || message.content === undefined
+						? null
+						: stringifyMessageContent(message.content as AIMessageContent),
+				...(message.reasoningContent
+					? { reasoningContent: message.reasoningContent }
+					: {}),
+				...(message.toolCalls?.length
+					? {
+							toolCalls: message.toolCalls.map((toolCall) => ({
+								id: toolCall.toolCallId,
+								name: toolCall.toolName,
+								arguments: JSON.stringify(toolCall.args ?? {}),
+							})),
+						}
+					: {}),
+			});
+			continue;
+		}
+
+		if (
+			message.role === "system" ||
+			message.role === "developer" ||
+			message.role === "user"
+		) {
+			result.push({
+				role: message.role === "user" ? "user" : "system",
+				content: stringifyMessageContent(message.content as AIMessageContent),
+			});
+		}
+	}
+
+	return result;
+}
+
+async function dumpDeepSeekAgentRequest(options: {
+	config: DeepSeekRuntimeConfig;
+	messages: AgentMessage[];
+	tools?: AgentTool[];
+	temperature?: number;
+	maxTokens?: number;
+	thinking?: "enabled" | "disabled";
+	reasoningEffort?: "high" | "max";
+	mode: ProviderRequestDumpMode;
+	metadata?: Record<string, unknown>;
+}): Promise<void> {
+	await dumpProviderRequest({
+		providerId: DEEPSEEK_PROVIDER_ID,
+		model: options.config.model,
+		mode: options.mode,
+		metadata: options.metadata,
+		requestBody: {
+			model: options.config.model,
+			messages: options.messages,
+			stream: true,
+			stream_options: { include_usage: true },
+			tools: options.tools?.length
+				? options.tools.map((tool) => ({
+						type: "function",
+						function: {
+							name: tool.name,
+							description: tool.description,
+							parameters: tool.parameters,
+						},
+					}))
+				: undefined,
+			tool_choice: options.tools?.length ? "auto" : undefined,
+			temperature:
+				options.thinking === "enabled" ? undefined : options.temperature,
+			max_tokens: options.maxTokens,
+			thinking: options.thinking ? { type: options.thinking } : undefined,
+			reasoning_effort:
+				options.thinking === "enabled" ? options.reasoningEffort : undefined,
+		},
+	});
+}
+
+async function generateWithDeepSeekAgent(
+	config: DeepSeekRuntimeConfig,
+	messages: Array<{
+		role: "user" | "assistant" | "system";
+		content: AIMessageContent;
+		reasoningContent?: string;
+	}>,
+	options: ChatGenerationOptions = {},
+): Promise<ChatResponseResult> {
+	const agentMessages = deepSeekAgentMessagesFromMessages(messages);
+	const maxTokens = options.maxTokens || 4096;
+	const thinking = resolveDeepSeekAgentThinking(config.model, options);
+	const reasoningEffort = normalizeDeepSeekAgentReasoningEffort(
+		options.thinkingEffort,
+	);
+
+	await dumpDeepSeekAgentRequest({
+		config,
+		messages: agentMessages,
+		maxTokens,
+		temperature: options.temperature,
+		thinking,
+		reasoningEffort,
+		mode: "stream-reasoning",
+		metadata:
+			options.debugPurpose || options.debugSessionId
+				? {
+						purpose: options.debugPurpose,
+						sessionId: options.debugSessionId,
+						transport: "deepseek-agent",
+					}
+				: { transport: "deepseek-agent" },
+	});
+
+	const provider = createDeepSeekAgentProvider({
+		apiKey: config.apiKey ?? "",
+		baseUrl: config.baseUrl,
+	});
+	if (!provider.streamTurn) {
+		throw new Error("DeepSeek agent provider does not implement streamTurn");
+	}
+	const turn = await collectAgentTurnFromStream(provider.streamTurn({
+		model: config.model,
+		messages: agentMessages,
+		toolChoice: "none",
+		maxTokens,
+		temperature: thinking === "enabled" ? undefined : options.temperature,
+		thinking,
+		reasoningEffort,
+		abortSignal: options.abortSignal,
+		turn: 1,
+	}));
+
+	return {
+		text: agentContentToText(turn.message.content),
+		reasoning: turn.message.reasoningContent || undefined,
+	};
+}
+
+async function* streamDeepSeekAgentTurn(
+	config: DeepSeekRuntimeConfig,
+	messages: Array<{
+		role: string;
+		content?: unknown;
+		reasoningContent?: string;
+		toolCalls?: Array<{
+			toolCallId: string;
+			toolName: string;
+			args: Record<string, unknown>;
+		}>;
+	}>,
+	tools: Record<
+		string,
+		{
+			description: string;
+			parameters: Array<{
+				name: string;
+				type: string;
+				description: string;
+				required?: boolean;
+				enum?: string[];
+			}>;
+			parameterSchema?: Record<string, unknown>;
+		}
+	> = {},
+	options: ChatGenerationOptions & {
+		debugTurn?: number;
+	} = {},
+	mode: ProviderRequestDumpMode = "stream-tools",
+	metadata: Record<string, unknown> = {},
+): AsyncGenerator<StreamChunkWithTools, void, unknown> {
+	const agentMessages = deepSeekAgentMessagesFromMessages(messages);
+	const agentTools = deepSeekAgentToolsFromDefinitions(tools);
+	const maxTokens = options.maxTokens || 4096;
+	const thinking = resolveDeepSeekAgentThinking(config.model, options);
+	const reasoningEffort = normalizeDeepSeekAgentReasoningEffort(
+		options.thinkingEffort,
+	);
+
+	await dumpDeepSeekAgentRequest({
+		config,
+		messages: agentMessages,
+		tools: agentTools,
+		maxTokens,
+		temperature: options.temperature,
+		thinking,
+		reasoningEffort,
+		mode,
+		metadata: {
+			...metadata,
+			sessionId: options.debugSessionId,
+			turn: options.debugTurn,
+			transport: "deepseek-agent",
+		},
+	});
+
+	const provider = createDeepSeekAgentProvider({
+		apiKey: config.apiKey ?? "",
+		baseUrl: config.baseUrl,
+	});
+	if (!provider.streamTurn) {
+		throw new Error("DeepSeek agent provider does not implement streamTurn");
+	}
+
+	const events = provider.streamTurn({
+		model: config.model,
+		messages: agentMessages,
+		tools: agentTools,
+		toolChoice: agentTools.length > 0 ? "auto" : "none",
+		maxTokens,
+		temperature: thinking === "enabled" ? undefined : options.temperature,
+		thinking,
+		reasoningEffort,
+		abortSignal: options.abortSignal,
+		turn: options.debugTurn ?? 1,
+	});
+
+	for await (const chunk of agentEventsToProviderStreamChunks(events)) {
+		if (chunk.type === "turn-start" || chunk.type === "tool-metadata" || chunk.type === "tool-partial-result") {
+			continue;
+		}
+		yield chunk;
+	}
+}
+
+function getLatestUserMessageText(messages: ToolChatMessage[]): string {
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index];
+		if (message.role !== "user") continue;
+		const text = stringifyMessageContent(message.content).trim();
+		if (text) return text;
+	}
+	return "";
+}
+
+function formatACPPlan(update: any): string {
+	const entries = Array.isArray(update.entries) ? update.entries : [];
+	if (entries.length === 0) return "ACP agent updated its plan.";
+	return [
+		"ACP plan:",
+		...entries.map((entry: any) => {
+			const status = entry.status ? `[${entry.status}] ` : "";
+			const title = entry.title || entry.content || entry.description || "";
+			return `- ${status}${title}`.trim();
+		}),
+	].join("\n");
+}
+
+function formatACPTool(update: any): string {
+	const status = update.status ? ` (${update.status})` : "";
+	const title = update.title || update.toolCallId || "tool call";
+	return `ACP ${title}${status}`;
+}
+
+function mapACPStopReason(stopReason: string): StreamChunkWithTools["finishReason"] {
+	if (stopReason === "end_turn") return "stop";
+	if (stopReason === "max_tokens") return "length";
+	if (stopReason === "cancelled") return "other";
+	if (stopReason === "refusal") return "content-filter";
+	return "other";
 }
 
 function mergeSystemMessagesForGenerateIfNeeded(
@@ -617,7 +1031,8 @@ function createZodSchema(
 }
 
 /**
- * Generate a chat response using the AI SDK
+ * Generate a chat response through the provider facade.
+ * DeepSeek is routed through the local agent provider instead of the AI SDK.
  * For reasoning models (like deepseek-reasoner, o1), temperature is automatically disabled
  */
 export async function generateChatResponse(
@@ -636,7 +1051,8 @@ export async function generateChatResponse(
 }
 
 /**
- * Stream a chat response using the AI SDK
+ * Stream a chat response through the provider facade.
+ * DeepSeek is routed through the local agent provider instead of the AI SDK.
  * Returns an async generator that yields text chunks
  */
 export async function* streamChatResponse(
@@ -645,6 +1061,23 @@ export async function* streamChatResponse(
 	messages: Array<{ role: "user" | "assistant" | "system"; content: string }>,
 	options: { temperature?: number; maxTokens?: number } = {},
 ): AsyncGenerator<{ text: string; reasoning?: string }, void, unknown> {
+	if (isDeepSeekProvider(providerId)) {
+		for await (const chunk of streamDeepSeekAgentTurn(
+			config,
+			messages,
+			{},
+			options,
+			"stream",
+		)) {
+			if (chunk.type === "text" && chunk.text) {
+				yield { text: chunk.text };
+			} else if (chunk.type === "reasoning" && chunk.reasoning) {
+				yield { text: "", reasoning: chunk.reasoning };
+			}
+		}
+		return;
+	}
+
 	const provider = createProvider(providerId, config);
 	const model = provider.createModel(config.model);
 
@@ -722,14 +1155,40 @@ export async function* streamChatResponseWithReasoning(
 		serviceTier?: string;
 	} = {},
 ): AsyncGenerator<ReasoningStreamChunk, void, unknown> {
-	const provider = createProvider(providerId, config);
-	const model = provider.createModel(config.model);
-
 	const isReasoning = isReasoningModel(config.model, providerId);
 	const effectiveMessages = mergeSystemMessagesForGenerateIfNeeded(
 		providerId,
 		messages,
 	);
+
+	if (isDeepSeekProvider(providerId)) {
+		for await (const chunk of streamDeepSeekAgentTurn(
+			config,
+			effectiveMessages,
+			{},
+			options,
+			"stream-reasoning",
+		)) {
+			if (chunk.type === "reasoning" && chunk.reasoning) {
+				yield { type: "text" as const, text: "", reasoning: chunk.reasoning };
+			} else if (chunk.type === "text" && chunk.text) {
+				yield { type: "text" as const, text: chunk.text };
+			} else if (chunk.type === "finish") {
+				yield {
+					type: "finish" as const,
+					usage: chunk.usage ?? {
+						inputTokens: 0,
+						outputTokens: 0,
+						totalTokens: 0,
+					},
+				};
+			}
+		}
+		return;
+	}
+
+	const provider = createProvider(providerId, config);
+	const model = provider.createModel(config.model);
 
 	// Convert messages to include reasoning_content for DeepSeek Reasoner
 	const convertedMessages = effectiveMessages.map((msg) => {
@@ -936,14 +1395,36 @@ export async function generateChatResponseWithReasoning(
 	}>,
 	options: ChatGenerationOptions = {},
 ): Promise<ChatResponseResult> {
-	const provider = createProvider(providerId, config);
-	const model = provider.createModel(config.model);
+	if (isACPProvider(providerId)) {
+		let text = "";
+		let reasoning = "";
+		for await (const chunk of streamACPChatResponseWithTools(
+			config,
+			messages as ToolChatMessage[],
+			{
+				abortSignal: options.abortSignal,
+				debugSessionId: options.debugSessionId,
+				workingDirectory: config.baseUrl,
+			},
+		)) {
+			if (chunk.type === "text" && chunk.text) text += chunk.text;
+			if (chunk.type === "reasoning" && chunk.reasoning) reasoning += chunk.reasoning;
+		}
+		return { text, reasoning: reasoning || undefined };
+	}
 
 	const isReasoning = isReasoningModel(config.model, providerId);
 	const effectiveMessages = mergeSystemMessagesForGenerateIfNeeded(
 		providerId,
 		messages,
 	);
+
+	if (isDeepSeekProvider(providerId)) {
+		return generateWithDeepSeekAgent(config, effectiveMessages, options);
+	}
+
+	const provider = createProvider(providerId, config);
+	const model = provider.createModel(config.model);
 
 	// Convert messages to include reasoning_content for DeepSeek Reasoner
 	const convertedMessages = effectiveMessages.map((msg) => {
@@ -956,19 +1437,6 @@ export async function generateChatResponseWithReasoning(
 		}
 		return { role: msg.role, content: msg.content };
 	});
-
-	// DeepSeek custom provider implements streaming; reasoning models also only
-	// expose reasoning through streaming.
-	if (providerId === "deepseek") {
-		return generateWithStreamForReasoning(
-			providerId,
-			config.model,
-			model,
-			convertedMessages,
-			options,
-			isReasoning,
-		);
-	}
 
 	// For non-reasoning models, use generateText
 	let generateOptions: Parameters<typeof generateText>[0] = {
@@ -1042,83 +1510,6 @@ export async function generateChatResponseWithReasoning(
 }
 
 /**
- * Use streamText to capture reasoning from DeepSeek reasoning models
- * Collects the full stream and extracts reasoning and text parts
- */
-async function generateWithStreamForReasoning(
-	providerId: string,
-	modelId: string,
-	model: any,
-	messages: Array<{
-		role: "user" | "assistant" | "system";
-		content: AIMessageContent;
-	}>,
-	options: ChatGenerationOptions = {},
-	isReasoning = true,
-): Promise<ChatResponseResult> {
-	let streamOptions: Parameters<typeof streamText>[0] = {
-		model,
-		messages: messages as any,
-		maxOutputTokens: options.maxTokens || 4096,
-	};
-
-	if (!isReasoning && options.temperature !== undefined) {
-		streamOptions.temperature = options.temperature;
-	}
-
-	streamOptions = applyReasoningProviderOptions(
-		providerId,
-		streamOptions as any,
-		options,
-	) as Parameters<typeof streamText>[0];
-
-	streamOptions = prepareProviderCallOptions(
-		providerId,
-		modelId,
-		streamOptions as any,
-		{
-			mode: "stream",
-			isReasoningModel: isReasoning,
-		},
-	) as Parameters<typeof streamText>[0];
-
-	await dumpAISDKRequest(
-		providerId,
-		modelId,
-		"stream-reasoning",
-		streamOptions as any,
-		messages,
-		options.debugPurpose || options.debugSessionId
-			? {
-					purpose: options.debugPurpose,
-					sessionId: options.debugSessionId,
-				}
-			: undefined,
-	);
-
-	const result = streamText(streamOptions);
-
-	// Collect reasoning and text from the stream
-	let reasoningText = "";
-	let responseText = "";
-
-	for await (const part of result.fullStream) {
-		const partAny = part as any;
-		// Handle reasoning parts (DeepSeek reasoning model)
-		if (part.type === "reasoning-delta") {
-			reasoningText += partAny.textDelta || partAny.delta || partAny.text || "";
-		} else if (part.type === "text-delta") {
-			responseText += partAny.textDelta || partAny.delta || partAny.text || "";
-		}
-	}
-
-	return {
-		text: responseText,
-		reasoning: reasoningText || undefined,
-	};
-}
-
-/**
  * Stream callbacks for real-time updates
  */
 export interface StreamCallbacks {
@@ -1152,6 +1543,14 @@ export async function generateChatTitle(
 		"thinking" | "thinkingEffort" | "serviceTier" | "debugSessionId"
 	> = {},
 ): Promise<string> {
+	if (isACPProvider(providerId)) {
+		return userMessage
+			.replace(/\s+/g, " ")
+			.trim()
+			.replace(/^[`"'“”‘’#:\-\s]+/, "")
+			.slice(0, 40) || "ACP Chat";
+	}
+
 	const systemPrompt = [
 		"Create a short topic title from the user's first message.",
 		"Use the same language as the message when possible.",
@@ -1217,6 +1616,71 @@ export type ToolChatMessage =
 			}>;
 	  };
 
+async function* streamACPChatResponseWithTools(
+	config: RuntimeProviderConfig,
+	messages: ToolChatMessage[],
+	options: {
+		abortSignal?: AbortSignal;
+		debugSessionId?: string;
+		workingDirectory?: string;
+	} = {},
+): AsyncGenerator<StreamChunkWithTools, void, unknown> {
+	const agentId = config.model;
+	const prompt = getLatestUserMessageText(messages);
+	if (!prompt) {
+		throw new Error("ACP prompt is empty");
+	}
+
+	const localSessionId = options.debugSessionId || `acp-${agentId}`;
+	const cwd = options.workingDirectory || config.baseUrl || process.cwd();
+
+	for await (const event of ACPManager.streamPrompt(agentId, {
+		localSessionId,
+		prompt,
+		cwd,
+		abortSignal: options.abortSignal,
+	})) {
+		if (event.type === "warning") {
+			yield { type: "reasoning", reasoning: event.message };
+			continue;
+		}
+
+		if (event.type === "finish") {
+			yield {
+				type: "finish",
+				finishReason: mapACPStopReason(event.stopReason),
+				usage: event.usage ?? { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+			};
+			continue;
+		}
+
+		const update = event.notification.update as any;
+		switch (update.sessionUpdate) {
+			case "agent_message_chunk":
+				if (update.content?.type === "text" && update.content.text) {
+					yield { type: "text", text: update.content.text };
+				}
+				break;
+			case "agent_thought_chunk":
+				if (update.content?.type === "text" && update.content.text) {
+					yield { type: "reasoning", reasoning: update.content.text };
+				}
+				break;
+			case "plan":
+				yield { type: "reasoning", reasoning: formatACPPlan(update) };
+				break;
+			case "tool_call":
+			case "tool_call_update":
+				yield { type: "reasoning", reasoning: formatACPTool(update) };
+				break;
+			case "usage_update":
+				break;
+			default:
+				break;
+		}
+	}
+}
+
 /**
  * Stream a chat response with tools support
  * Returns an async generator that yields text, reasoning, and tool call chunks
@@ -1255,8 +1719,30 @@ export async function* streamChatResponseWithTools(
 		debugSessionId?: string;
 		/** Debug-only tool loop turn correlation written to provider request dump files. */
 		debugTurn?: number;
+		/** Session working directory for local ACP agents. */
+		workingDirectory?: string;
 	} = {},
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
+	if (isACPProvider(providerId)) {
+		yield* streamACPChatResponseWithTools(config, messages, options);
+		return;
+	}
+
+	if (isDeepSeekProvider(providerId)) {
+		yield* streamDeepSeekAgentTurn(
+			config,
+			messages,
+			tools,
+			options,
+			"stream-tools",
+			{
+				originalMessageCount: messages.length,
+				convertedMessageCount: messages.length,
+			},
+		);
+		return;
+	}
+
 	const provider = createProvider(providerId, config);
 	const model = provider.createModel(config.model);
 
@@ -1807,6 +2293,78 @@ export function convertToolDefinitionsForAI(
  */
 import type { UIMessage } from "../../shared/ipc.js";
 
+function toolChatMessagesFromUIMessages(messages: UIMessage[]): ToolChatMessage[] {
+	const result: ToolChatMessage[] = [];
+
+	for (const message of messages) {
+		const text = message.parts
+			.filter((part) => part.type === "text")
+			.map((part) => (part as any).text)
+			.join("\n");
+
+		if (message.role === "system" || message.role === "user") {
+			result.push({ role: message.role, content: text });
+			continue;
+		}
+
+		const reasoningContent = message.parts
+			.filter((part) => part.type === "reasoning")
+			.map((part) => (part as any).text)
+			.join("");
+		const toolCalls: Array<{
+			toolCallId: string;
+			toolName: string;
+			args: Record<string, any>;
+		}> = [];
+		const toolResults: Array<{
+			type: "tool-result";
+			toolCallId: string;
+			toolName: string;
+			result: any;
+		}> = [];
+
+		for (const part of message.parts) {
+			if (!part.type.startsWith("tool-")) continue;
+			const toolPart = part as any;
+			const toolName =
+				(toolPart.toolName || typeof toolPart.type === "string")
+					? String(toolPart.toolName || toolPart.type.replace(/^tool-/, ""))
+					: "tool";
+			toolCalls.push({
+				toolCallId: toolPart.toolCallId,
+				toolName,
+				args: toolPart.input ?? {},
+			});
+			if (
+				toolPart.state === "output-available" ||
+				toolPart.state === "output-error"
+			) {
+				toolResults.push({
+					type: "tool-result",
+					toolCallId: toolPart.toolCallId,
+					toolName,
+					result:
+						toolPart.state === "output-error"
+							? { error: toolPart.errorText ?? "Tool failed" }
+							: toolPart.output,
+				});
+			}
+		}
+
+		result.push({
+			role: "assistant",
+			content: text,
+			...(reasoningContent ? { reasoningContent } : {}),
+			...(toolCalls.length ? { toolCalls } : {}),
+		});
+		if (toolResults.length) {
+			result.push({ role: "tool", content: toolResults });
+		}
+	}
+
+	return result;
+}
+
 /**
  * 将我们的 UIMessage 转换为 AI SDK 期望的格式
  * AI SDK 的 convertToModelMessages 期望 { id, role, parts } 格式
@@ -1891,6 +2449,22 @@ export async function* streamChatWithUIMessages(
 		abortSignal?: AbortSignal;
 	} = {},
 ): AsyncGenerator<StreamChunkWithTools, void, unknown> {
+	if (isDeepSeekProvider(providerId)) {
+		const modelMessages = toolChatMessagesFromUIMessages(uiMessages);
+		yield* streamDeepSeekAgentTurn(
+			config,
+			modelMessages,
+			tools,
+			options,
+			"stream-ui-messages",
+			{
+				uiMessageCount: uiMessages.length,
+				modelMessageCount: modelMessages.length,
+			},
+		);
+		return;
+	}
+
 	const provider = createProvider(providerId, config);
 	const model = provider.createModel(config.model);
 

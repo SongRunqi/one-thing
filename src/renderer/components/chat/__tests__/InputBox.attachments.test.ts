@@ -178,6 +178,7 @@ describe("InputBox paste attachments", () => {
 			getCachedModels: vi.fn(() => [
 				{
 					id: "gpt-vision",
+					context_length: 32000,
 					architecture: { input_modalities: ["text", "image"] },
 				},
 			]),
@@ -284,6 +285,32 @@ describe("InputBox paste attachments", () => {
 		const wrapper = mountInputBox();
 
 		expect(wrapper.find(".queued-messages").exists()).toBe(false);
+	});
+
+	it("shows a context meter with exact token values on hover", async () => {
+		Object.assign(mocks.sessionsStore.sessions[0], {
+			lastProvider: "openai",
+			lastModel: "gpt-vision",
+			contextSize: 8000,
+			lastInputTokens: 8000,
+			totalInputTokens: 12000,
+			totalOutputTokens: 3000,
+			totalTokens: 15000,
+		});
+
+		const wrapper = mountInputBox();
+		await settle();
+
+		const meter = wrapper.find(".context-meter");
+		expect(meter.exists()).toBe(true);
+		expect(meter.text()).toBe("25%");
+		expect(meter.attributes("title")).toContain(
+			"Context: 8,000 / 32,000 tokens (25%)",
+		);
+		expect(meter.attributes("title")).toContain("Total output: 3,000 tokens");
+
+		await meter.trigger("click");
+		expect(mocks.chatStore.openInspectorToTab).toHaveBeenCalledWith("context");
 	});
 
 	it("restores composer text when switching back to a draft session", async () => {

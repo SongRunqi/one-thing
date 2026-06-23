@@ -4,6 +4,8 @@ import * as os from 'os'
 import * as path from 'path'
 import { ReadTool } from '../read'
 import { Permission } from '../../../permission/index.js'
+import { resetVariablesStoreForTests } from '../../../variables/store/index.js'
+import { createDefaultVariablesFile } from '../../../variables/store/schema.js'
 
 vi.mock('../../../permission/index.js', () => ({
   Permission: {
@@ -26,6 +28,12 @@ function createContext(workingDirectory: string, overrides: Record<string, unkno
 describe('ReadTool path API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetVariablesStoreForTests().hydrateForTests({
+      ...createDefaultVariablesFile(),
+      ai_note_dir: '',
+      user_note_dir: '',
+      work_note_dir: '',
+    })
   })
 
   it('reads files using the path parameter', async () => {
@@ -116,6 +124,28 @@ describe('ReadTool path API', () => {
       content: [{ type: 'text', text: result.output }],
       details: expect.objectContaining({ phase: 'ready', path: filePath }),
     }))
+  })
+
+  it('does not request external-directory permission for note or downloads reads', async () => {
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-read-workspace-'))
+    const noteRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-read-notes-'))
+    const downloadsRoot = path.join(os.homedir(), 'Downloads')
+
+    resetVariablesStoreForTests().hydrateForTests({
+      ...createDefaultVariablesFile(),
+      ai_note_dir: '',
+      user_note_dir: noteRoot,
+      work_note_dir: '',
+    })
+
+    const analyze = ReadTool.analyze
+    if (!analyze) throw new Error('ReadTool analyze hook is required')
+
+    const noteAnalysis = await analyze({ path: path.join(noteRoot, 'today.md') }, createContext(workspace))
+    const downloadsAnalysis = await analyze({ path: path.join(downloadsRoot, 'receipt.pdf') }, createContext(workspace))
+
+    expect(noteAnalysis.effects.some(effect => effect.kind === 'external_directory')).toBe(false)
+    expect(downloadsAnalysis.effects.some(effect => effect.kind === 'external_directory')).toBe(false)
   })
 
   it('honors abort signals before reading', async () => {

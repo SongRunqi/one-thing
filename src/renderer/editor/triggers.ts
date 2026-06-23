@@ -1,4 +1,4 @@
-export type EditorTriggerType = 'command' | 'path' | 'file' | 'prompt'
+export type EditorTriggerType = 'command' | 'path' | 'file' | 'prompt' | 'skill'
 
 export interface EditorTrigger {
   type: EditorTriggerType
@@ -54,6 +54,18 @@ export function parseEditorTrigger(value: string, cursor = value.length): Editor
       type: 'prompt',
       query: (promptMatch[2] || '').trim(),
       from: lineStart + promptMatch.index + leading.length,
+      to: boundedCursor,
+      explicit: true,
+    }
+  }
+
+  const skillMatch = lineBeforeCursor.match(/(^|\s)@skills?(?:\s+([^\n@]*))?$/)
+  if (skillMatch?.index !== undefined) {
+    const leading = skillMatch[1] || ''
+    return {
+      type: 'skill',
+      query: (skillMatch[2] || '').trim(),
+      from: lineStart + skillMatch.index + leading.length,
       to: boundedCursor,
       explicit: true,
     }

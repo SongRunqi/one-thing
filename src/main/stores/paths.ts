@@ -19,6 +19,10 @@ export function getStorePath(): string {
   return path.join(os.homedir(), '.onething')
 }
 
+export function getLogDir(): string {
+  return path.join(getStorePath(), 'log')
+}
+
 export function getSettingsPath(): string {
   return path.join(getStorePath(), 'settings.json')
 }
@@ -177,6 +181,7 @@ export function ensureDir(dir: string): void {
 export function ensureStoreDirs(): void {
   const dirs = [
     getStorePath(),
+    getLogDir(),
     getAgentsDir(),
     getSessionsDir(),
     getWorkspacesDir(),

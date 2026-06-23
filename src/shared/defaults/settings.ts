@@ -27,6 +27,7 @@ import type {
 import type { VoiceSettings } from '../ipc/voice.js'
 import type { ProviderConfig, AISettings } from '../ipc/providers.js'
 import type { ToolSettings } from '../ipc/tools.js'
+import type { ACPSettings } from '../ipc/acp.js'
 
 // ============================================================================
 // Constants
@@ -230,6 +231,11 @@ export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
     authType: 'oauth',
     enabled: false,
   },
+  [AIProvider.ACP]: {
+    model: 'claude-code',
+    selectedModels: ['claude-code', 'codex-cli', 'pi'],
+    enabled: false,
+  },
   [AIProvider.Custom]: {
     apiKey: '',
     baseUrl: '',
@@ -313,6 +319,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   contextCompactEnabled: true,
   contextCompactThreshold: 85,
   contextCompactKeepRecentTurns: 6,
+  agentLoopStream: false,
 }
 
 // ============================================================================
@@ -341,7 +348,73 @@ export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
   },
 }
 
+export const DEFAULT_ACP_SETTINGS: ACPSettings = {
+  enabled: true,
+  agents: [
+    {
+      id: 'claude-code',
+      name: 'Claude Code',
+      description: 'Claude Code ACP-compatible local agent.',
+      enabled: true,
+      command: 'claude-agent-acp',
+      args: [],
+      permissionMode: 'allow',
+      allowFileSystemAccess: false,
+      allowTerminalAccess: false,
+      idleTimeoutMs: 10 * 60 * 1000,
+      connectTimeoutMs: 30000,
+      promptTimeoutMs: 30 * 60 * 1000,
+      maxBufferedUpdates: 1000,
+      maxSessionRecords: 100,
+      maxTerminals: 32,
+      maxTerminalOutputBytes: 1024 * 1024,
+    },
+    {
+      id: 'codex-cli',
+      name: 'Codex CLI',
+      description: 'Codex ACP-compatible local agent.',
+      enabled: true,
+      command: 'codex-acp',
+      args: [],
+      permissionMode: 'allow',
+      allowFileSystemAccess: false,
+      allowTerminalAccess: false,
+      idleTimeoutMs: 10 * 60 * 1000,
+      connectTimeoutMs: 30000,
+      promptTimeoutMs: 30 * 60 * 1000,
+      maxBufferedUpdates: 1000,
+      maxSessionRecords: 100,
+      maxTerminals: 32,
+      maxTerminalOutputBytes: 1024 * 1024,
+    },
+    {
+      id: 'pi',
+      name: 'Pi',
+      description: 'Custom Pi ACP-compatible local agent.',
+      enabled: true,
+      command: 'pi-acp',
+      args: [],
+      permissionMode: 'allow',
+      allowFileSystemAccess: false,
+      allowTerminalAccess: false,
+      idleTimeoutMs: 10 * 60 * 1000,
+      connectTimeoutMs: 30000,
+      promptTimeoutMs: 30 * 60 * 1000,
+      maxBufferedUpdates: 1000,
+      maxSessionRecords: 100,
+      maxTerminals: 32,
+      maxTerminalOutputBytes: 1024 * 1024,
+    },
+  ],
+}
+
 export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
+  networkInterface: {
+    enabled: false,
+    address: '',
+    id: '',
+    name: '',
+  },
   proxy: {
     enabled: false,
     url: '',
@@ -438,6 +511,7 @@ export function createDefaultSettings(): AppSettings {
     tools: JSON.parse(JSON.stringify(DEFAULT_TOOL_SETTINGS)),
     voice: JSON.parse(JSON.stringify(DEFAULT_VOICE_SETTINGS)),
     network: JSON.parse(JSON.stringify(DEFAULT_NETWORK_SETTINGS)),
+    acp: JSON.parse(JSON.stringify(DEFAULT_ACP_SETTINGS)),
   }
 }
 
@@ -512,6 +586,10 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     network: {
       ...defaults.network!,
       ...settings.network,
+      networkInterface: {
+        ...defaults.network!.networkInterface,
+        ...settings.network?.networkInterface,
+      },
       proxy: {
         ...defaults.network!.proxy,
         ...settings.network?.proxy,
@@ -519,6 +597,7 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     },
     voice: normalizeVoiceSettings(settings.voice),
     mcp: settings.mcp,
+    acp: normalizeACPSettings(settings.acp),
     skills: settings.skills,
   }
 
@@ -530,6 +609,46 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
   }
 
   return merged as AppSettings
+}
+
+export function normalizeACPSettings(settings?: ACPSettings): ACPSettings {
+  const defaults = JSON.parse(JSON.stringify(DEFAULT_ACP_SETTINGS)) as ACPSettings
+  const byId = new Map(defaults.agents.map(agent => [agent.id, agent]))
+
+  for (const agent of settings?.agents ?? []) {
+    if (!agent?.id) continue
+    const defaultAgent = byId.get(agent.id)
+    const normalizedAgent = migrateLegacyDefaultACPAgent({
+      ...(defaultAgent ?? {}),
+      ...agent,
+      args: Array.isArray(agent.args) ? agent.args : defaultAgent?.args ?? [],
+      env: agent.env && typeof agent.env === 'object' ? agent.env : defaultAgent?.env,
+      enabled: agent.enabled !== false,
+      permissionMode: agent.permissionMode === 'reject' ? 'reject' : 'allow',
+    })
+    byId.set(agent.id, normalizedAgent)
+  }
+
+  return {
+    enabled: settings?.enabled !== false,
+    agents: Array.from(byId.values()).filter(agent => Boolean(agent.id && agent.command)),
+  }
+}
+
+function migrateLegacyDefaultACPAgent(agent: ACPSettings['agents'][number]): ACPSettings['agents'][number] {
+  if (agent.id === 'claude-code' && agent.command === 'claude-code-acp') {
+    return { ...agent, command: 'claude-agent-acp', args: [] }
+  }
+
+  if (agent.id === 'codex-cli' && agent.command === 'codex' && (agent.args ?? []).join(' ') === '--experimental-acp') {
+    return { ...agent, command: 'codex-acp', args: [] }
+  }
+
+  if (agent.id === 'pi' && agent.command === 'pi' && (agent.args ?? []).join(' ') === '--acp') {
+    return { ...agent, command: 'pi-acp', args: [] }
+  }
+
+  return agent
 }
 
 export function normalizeVoiceSettings(settings?: VoiceSettings): VoiceSettings {

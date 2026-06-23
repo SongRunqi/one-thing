@@ -202,6 +202,49 @@ describe('buildToolStepView', () => {
     expect(view.streamingDiffLines.length).toBeLessThan(220)
   })
 
+  it('renders streaming edit replacements as a real diff preview', () => {
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        toolId: 'edit',
+        toolName: 'edit',
+        status: 'input-streaming',
+        streamingArgs: JSON.stringify({
+          path: 'src/app.ts',
+          edits: [{
+            oldText: 'const a = 1\nconst shared = true\nconst b = 2\n',
+            newText: 'const a = 1\nconst shared = true\nconst b = 3\n',
+          }],
+        }),
+      }),
+    }))
+
+    expect(view.streamingDiff?.additions).toBe(1)
+    expect(view.streamingDiff?.deletions).toBe(1)
+    expect(view.streamingDiffLines.map(line => line.class)).toEqual(['', '', 'diff-del', 'diff-add'])
+    expect(view.streamingDiffLines[1]).toMatchObject({ class: '', content: 'const shared = true' })
+  })
+
+  it('keeps deletion-only streaming edits visible', () => {
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        toolId: 'edit',
+        toolName: 'edit',
+        status: 'input-streaming',
+        streamingArgs: JSON.stringify({
+          path: 'src/app.ts',
+          edits: [{ oldText: 'remove me\n', newText: '' }],
+        }),
+      }),
+    }))
+
+    expect(view.streamingContent?.content).toBe('')
+    expect(view.streamingDiff?.additions).toBe(0)
+    expect(view.streamingDiff?.deletions).toBe(1)
+    expect(view.streamingDiffLines).toEqual([
+      { class: 'diff-del', prefix: '-', content: 'remove me', oldNum: 1, newNum: '' },
+    ])
+  })
+
   it('extracts filePath from step.result payload if args.path is missing', () => {
     const view = buildToolStepView(step({
       result: JSON.stringify({ path: '/Users/me/project/src/resolved.ts', content: 'hello' }),

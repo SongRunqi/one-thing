@@ -64,6 +64,7 @@ export interface InitContext {
     relativePath?: string
     enabled: boolean
     instructions: string
+    runtimeContext?: string
     files?: Array<{ name: string; path: string; type: string }>
   }>
   /** Session's working directory */

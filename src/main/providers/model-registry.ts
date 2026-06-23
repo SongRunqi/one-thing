@@ -458,6 +458,8 @@ export async function getModelMaxOutputTokens(modelId: string, providerId?: stri
 // ============================================================================
 
 export async function modelSupportsTools(modelId: string, providerId?: string): Promise<boolean> {
+  if (providerId === 'acp') return false
+
   const override = getCapabilityOverride(modelId, providerId, 'tools')
   if (override !== undefined) return override
 
@@ -470,6 +472,8 @@ export async function modelSupportsTools(modelId: string, providerId?: string): 
 }
 
 export async function modelSupportsTemperature(modelId: string, providerId?: string): Promise<boolean> {
+  if (providerId === 'acp') return false
+
   const entry = getModelEntry(modelId, providerId)
   if (entry) return entry.supportsTemperature
   return true

@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getExternalSkillsPaths, getUserSkillsPath, loadAllSkills } from '../loader.js'
+import { registerPluginSkillRootProvider } from '../plugin-roots.js'
 
 vi.mock('electron', () => ({
   app: { isPackaged: false },
@@ -97,5 +98,46 @@ describe('Hermes skills loader', () => {
 
     expect(externalSkill).toBeUndefined()
     expect(skills.some(item => item.name === 'windows-only')).toBe(false)
+  })
+
+  it('loads disable-model-invocation from skill frontmatter', () => {
+    const skillDir = path.join(getUserSkillsPath(), 'manual-only')
+    writeSkill(
+      skillDir,
+      'name: manual-only\ndescription: Use only when explicitly selected\nplatforms: [all]\ndisable-model-invocation: true',
+    )
+
+    const skill = loadAllSkills().find(item => item.name === 'manual-only')
+
+    expect(skill?.disableModelInvocation).toBe(true)
+  })
+
+  it('appends plugin instruction context to loaded skill instructions', () => {
+    const noteRoot = path.join(tmpDir, 'notes')
+    const skillDir = path.join(noteRoot, 'daily-note')
+    writeSkill(
+      skillDir,
+      'name: daily-note\ndescription: Use daily note context\nplatforms: [all]',
+      'Follow the note workflow.',
+    )
+
+    const unregister = registerPluginSkillRootProvider('note-skills', () => [{
+      pluginId: 'note-skills',
+      path: noteRoot,
+      source: 'plugin',
+      recursive: true,
+      instructionContext: ({ skillDir: loadedSkillDir, rootDir }) =>
+        `<note_skill_context>${path.basename(rootDir)}:${path.basename(loadedSkillDir)}</note_skill_context>`,
+    }])
+
+    try {
+      const skill = loadAllSkills().find(item => item.name === 'daily-note')
+
+      expect(skill?.instructions).toContain('Follow the note workflow.')
+      expect(skill?.instructions).toContain('<note_skill_context>notes:daily-note</note_skill_context>')
+      expect(skill?.runtimeContext).toBe('<note_skill_context>notes:daily-note</note_skill_context>')
+    } finally {
+      unregister()
+    }
   })
 })

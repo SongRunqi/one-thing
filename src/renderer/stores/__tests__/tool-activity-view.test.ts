@@ -32,13 +32,14 @@ function step(overrides: Partial<Step> = {}): Step {
 }
 
 describe('tool activity view', () => {
-  it('builds lightweight streaming write rows without detailed previews', () => {
+  it('builds lightweight streaming write rows with full streaming stats', () => {
+    const content = Array.from({ length: 220 }, (_, index) => `line ${index + 1}`).join('\n')
     const streamingStep = step({
       toolCall: tc({
         status: 'input-streaming',
         streamingArgs: JSON.stringify({
           path: '/Users/me/project/src/large.ts',
-          content: 'x'.repeat(6_000),
+          content,
         }),
       }),
     })
@@ -49,7 +50,8 @@ describe('tool activity view', () => {
     expect(activity.verb).toBe('Writing')
     expect(activity.target).toBe('large.ts')
     expect(activity.filePath).toBe('/Users/me/project/src/large.ts')
-    expect(activity.stats).toBe('')
+    expect(activity.additions).toBe(220)
+    expect(activity.stats).toBe('+220 -0')
     expect(activity.hasDetails).toBe(true)
     expect(activity.defaultExpanded).toBe(true)
   })

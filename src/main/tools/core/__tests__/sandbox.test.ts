@@ -12,15 +12,26 @@ import {
   isPathContained,
   getSandboxBoundary,
   getSandboxRoots,
+  getReadSandboxRoots,
+  getDownloadsDirectory,
   findSandboxRootForPath,
+  findReadSandboxRootForPath,
   resolveToolPath,
   checkFileAccess,
 } from '../sandbox'
 import { getSettings } from '../../../stores/settings.js'
+import { resetVariablesStoreForTests } from '../../../variables/store/index.js'
+import { createDefaultVariablesFile } from '../../../variables/store/schema.js'
 
 describe('sandbox', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetVariablesStoreForTests().hydrateForTests({
+      ...createDefaultVariablesFile(),
+      ai_note_dir: '',
+      user_note_dir: '',
+      work_note_dir: '',
+    })
   })
 
   // ─── expandPath ──────────────────────────────────────────────────
@@ -169,6 +180,36 @@ describe('sandbox', () => {
 
     it('finds the containing root for a target path', () => {
       expect(findSandboxRootForPath('/skills/iva/SKILL.md', '/workspace', ['/skills/iva'])).toBe('/skills/iva')
+    })
+
+    it('adds note directories and downloads to read sandbox roots', () => {
+      resetVariablesStoreForTests().hydrateForTests({
+        ...createDefaultVariablesFile(),
+        ai_note_dir: '',
+        user_note_dir: '/notes/personal',
+        work_note_dir: '/notes/work',
+      })
+
+      expect(getReadSandboxRoots('/workspace', ['/shared'])).toEqual([
+        '/workspace',
+        '/shared',
+        '/notes/personal',
+        '/notes/work',
+        getDownloadsDirectory(),
+      ])
+    })
+
+    it('finds read sandbox roots for note and downloads paths', () => {
+      resetVariablesStoreForTests().hydrateForTests({
+        ...createDefaultVariablesFile(),
+        ai_note_dir: '',
+        user_note_dir: '/notes/personal',
+        work_note_dir: '',
+      })
+
+      expect(findReadSandboxRootForPath('/notes/personal/today.md', '/workspace')).toBe('/notes/personal')
+      expect(findReadSandboxRootForPath(path.join(getDownloadsDirectory(), 'receipt.pdf'), '/workspace'))
+        .toBe(getDownloadsDirectory())
     })
   })
 

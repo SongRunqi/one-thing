@@ -42,19 +42,15 @@ function escapeAttr(value: string): string {
 
 export function formatSkillForModel(
   name: string,
-  source: string,
-  description: string,
+  _source: string,
+  _description: string,
   body: string,
   paths: SkillModelPaths = {},
 ): string {
-  const attrs = [
-    `name="${escapeAttr(name)}"`,
-    `source="${escapeAttr(source)}"`,
-  ]
-  if (paths.path) attrs.push(`path="${escapeAttr(paths.path)}"`)
-  if (paths.directoryPath) attrs.push(`directory_path="${escapeAttr(paths.directoryPath)}"`)
+  const location = paths.path || paths.directoryPath || ''
+  const referenceBase = paths.directoryPath || location || '.'
 
-  return `<selected_skill ${attrs.join(' ')}>\n<description>\n${description}\n</description>\n<instructions>\n${body}\n</instructions>\n</selected_skill>`
+  return `<skill name="${escapeAttr(name)}" location="${escapeAttr(location)}">\nReferences are relative to ${referenceBase}.\n\n${body}\n</skill>`
 }
 
 export function displayTextFromPromptParts(

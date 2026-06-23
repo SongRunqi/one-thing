@@ -10,7 +10,14 @@ import { usePromptsStore } from '@/stores/prompts'
 import { createPromptToken, createSkillToken } from '@shared/prompt-references'
 
 export type ComposerExtensionType = 'none' | 'palette' | 'files' | 'paths'
-export type ComposerExtensionItemKind = PaletteItemType | 'file' | 'path'
+export type ComposerExtensionItemKind = PaletteItemType | 'file' | 'directory' | 'path'
+
+interface FileSearchEntry {
+  path: string
+  type: 'file' | 'directory'
+  source?: 'workdir' | 'downloads' | 'note'
+  label?: string
+}
 
 export interface ComposerExtensionItem {
   id: string
@@ -299,15 +306,19 @@ export function usePickerOrchestration(
     return absolutePath
   }
 
-  function toFileExtensionItem(filePath: string): ComposerExtensionItem {
-    const title = getRelativeFileLabel(filePath)
+  function toFileExtensionItem(fileInput: string | FileSearchEntry): ComposerExtensionItem {
+    const filePath = typeof fileInput === 'string' ? fileInput : fileInput.path
+    const type = typeof fileInput === 'string' ? 'file' : fileInput.type
+    const title = typeof fileInput === 'string'
+      ? getRelativeFileLabel(filePath)
+      : fileInput.label || getRelativeFileLabel(filePath)
     const parent = dirname(filePath)
     return {
-      id: `file:${filePath}`,
-      kind: 'file',
+      id: `${type}:${filePath}`,
+      kind: type,
       title,
       description: title === filePath ? parent : filePath,
-      meta: 'File',
+      meta: type === 'directory' ? 'Directory' : 'File',
       value: filePath,
     }
   }
@@ -349,12 +360,6 @@ export function usePickerOrchestration(
     try {
       await loadNoteRoots()
       const cwd = variableWorkdir.value || workingDirectory.value
-      if (!cwd) {
-        if (run === fileRequestRun && activeExtension.value.type === 'files') {
-          patchActiveExtension({ items: [], loading: false })
-        }
-        return
-      }
 
       const result = await window.electronAPI.listFiles({
         cwd,
@@ -362,10 +367,17 @@ export function usePickerOrchestration(
         limit: 50,
       })
 
-      if (run !== fileRequestRun || activeExtension.value.type !== 'files' || activeExtension.value.query !== query) return
+      if (
+        run !== fileRequestRun ||
+        activeExtension.value.type !== 'files' ||
+        activeExtension.value.query !== query
+      ) return
       if (result.success) {
+        const entries = result.entries?.length
+          ? result.entries
+          : (result.files || []).map(path => ({ path, type: 'file' as const }))
         patchActiveExtension({
-          items: (result.files || []).map(toFileExtensionItem),
+          items: entries.map(toFileExtensionItem),
           loading: false,
           error: null,
         })
@@ -496,6 +508,11 @@ export function usePickerOrchestration(
       return
     }
 
+    if (trigger?.type === 'skill') {
+      showPalette(trigger, ['skill'])
+      return
+    }
+
     closeAllPickers()
   }
 
@@ -565,7 +582,10 @@ export function usePickerOrchestration(
   }
 
   async function handleSkillSelect(skill: SkillDefinition) {
-    replaceActiveTrigger(`${createSkillToken(skill.id)} `, 'command')
+    replaceActiveTrigger(
+      `${createSkillToken(skill.id)} `,
+      activeTrigger.value?.type === 'skill' ? 'skill' : 'command',
+    )
     await nextTick()
     adjustHeight()
     editorRef.value?.focus()

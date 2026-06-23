@@ -4,9 +4,11 @@ import * as store from '../store.js'
 import { openSettingsWindow } from '../window.js'
 import { invalidateProviderCache } from '../providers/registry.js'
 import { applyNetworkProxySettings, testProxy } from '../network/proxy.js'
+import { listNetworkInterfaces } from '../network/interfaces.js'
 import { registerGlobalWindowShortcuts } from '../shortcuts/global-shortcuts.js'
 import { getVoiceServiceSafe } from '../voice/service.js'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
+import { ACPManager } from '../acp/index.js'
 
 export function registerSettingsHandlers() {
   // Open settings window
@@ -41,14 +43,16 @@ export function registerSettingsHandlers() {
   // 保存设置
   ipcMain.handle(IPC_CHANNELS.SAVE_SETTINGS, async (event, settings) => {
     store.saveSettings(settings)
+    const normalizedSettings = store.getSettings()
 
     // Invalidate provider cache so new API keys / base URLs take effect immediately
     invalidateProviderCache()
-    await applyNetworkProxySettings(settings.network?.proxy)
+    await applyNetworkProxySettings(normalizedSettings.network?.proxy)
     registerGlobalWindowShortcuts()
-    getVoiceServiceSafe()?.applySettings(settings)
-    await MCPManager.updateSettings(settings.mcp || { enabled: true, servers: [] })
+    getVoiceServiceSafe()?.applySettings(normalizedSettings)
+    await MCPManager.updateSettings(normalizedSettings.mcp || { enabled: true, servers: [] })
     await registerMCPTools()
+    ACPManager.updateSettings(normalizedSettings.acp || { enabled: true, agents: [] })
 
     // Get the sender's webContents ID to exclude from broadcast
     const senderWebContentsId = event.sender.id
@@ -57,14 +61,22 @@ export function registerSettingsHandlers() {
     // The sender already updated its local state, so it doesn't need the broadcast
     BrowserWindow.getAllWindows().forEach(win => {
       if (win.webContents.id !== senderWebContentsId) {
-        win.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, settings)
+        win.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, normalizedSettings)
       }
     })
-    return { success: true }
+    return { success: true, settings: normalizedSettings }
   })
 
   ipcMain.handle(IPC_CHANNELS.TEST_PROXY, async (_event, request) => {
-    return testProxy(request.proxy)
+    return testProxy(request.proxy, request.networkInterface)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_NETWORK_INTERFACES, async () => {
+    try {
+      return { success: true, interfaces: listNetworkInterfaces() }
+    } catch (error: any) {
+      return { success: false, error: error.message || 'Failed to list network interfaces.' }
+    }
   })
 
   // 显示打开目录对话框

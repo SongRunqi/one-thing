@@ -501,9 +501,15 @@ const electronAPI = {
 
 	getSystemTheme: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_THEME),
 
-	testProxy: (proxy: any) =>
+	getNetworkInterfaces: () =>
+		ipcRenderer.invoke(IPC_CHANNELS.GET_NETWORK_INTERFACES),
+
+	testProxy: (proxy: any, networkInterface?: any) =>
 		ipcRenderer.invoke(IPC_CHANNELS.TEST_PROXY, {
 			proxy: JSON.parse(JSON.stringify(proxy)),
+			networkInterface: networkInterface
+				? JSON.parse(JSON.stringify(networkInterface))
+				: undefined,
 		}),
 
 	onSystemThemeChanged: (callback: (theme: "light" | "dark") => void) => {
@@ -665,6 +671,30 @@ const electronAPI = {
 
 	mcpReadConfigFile: (filePath: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.MCP_READ_CONFIG_FILE, { filePath }),
+
+	// ACP methods
+	acpGetAgents: () => ipcRenderer.invoke(IPC_CHANNELS.ACP_GET_AGENTS),
+
+	acpAddAgent: (config: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.ACP_ADD_AGENT, { config }),
+
+	acpUpdateAgent: (config: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.ACP_UPDATE_AGENT, { config }),
+
+	acpRemoveAgent: (agentId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.ACP_REMOVE_AGENT, { agentId }),
+
+	acpConnectAgent: (agentId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.ACP_CONNECT_AGENT, { agentId }),
+
+	acpDisconnectAgent: (agentId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.ACP_DISCONNECT_AGENT, { agentId }),
+
+	acpRefreshAgent: (agentId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.ACP_REFRESH_AGENT, { agentId }),
+
+	acpCancelSession: (sessionId: string, agentId?: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.ACP_CANCEL_SESSION, { sessionId, agentId }),
 
 	// Skills methods (Official Claude Code Skills)
 	getSkills: (workingDirectory?: string) =>
@@ -874,7 +904,7 @@ const electronAPI = {
 	},
 
 	// Files methods (for @ file search)
-	listFiles: (options: { cwd: string; query?: string; limit?: number }) =>
+	listFiles: (options: { cwd?: string; query?: string; limit?: number }) =>
 		ipcRenderer.invoke(IPC_CHANNELS.FILES_LIST, options),
 
 	// File rollback (prefer auditPath for hash-revalidated rollback)

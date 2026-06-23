@@ -13,7 +13,7 @@ import {
 let homeDir = ''
 
 function logDir(): string {
-  return path.join(homeDir, '.onething', 'logs', 'memory')
+  return path.join(homeDir, '.onething', 'log', 'memory')
 }
 
 beforeEach(() => {

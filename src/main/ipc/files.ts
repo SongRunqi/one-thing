@@ -12,17 +12,28 @@ import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { listFiles } from '../utils/ripgrep.js'
 import { getVariablesStore } from '../variables/store/index.js'
 import { applyFileMutationUndo } from '../tools/core/file-mutation-audit.js'
+import { getDownloadsDirectory } from '../tools/core/sandbox.js'
 
-// Types for file listing
 export interface ListFilesRequest {
-  cwd: string
+  cwd?: string
   query?: string
   limit?: number
+}
+
+export type FileSearchEntryType = 'file' | 'directory'
+export type FileSearchEntrySource = 'workdir' | 'downloads' | 'note'
+
+export interface FileSearchEntry {
+  path: string
+  type: FileSearchEntryType
+  source?: FileSearchEntrySource
+  label?: string
 }
 
 export interface ListFilesResponse {
   success: boolean
   files: string[]
+  entries?: FileSearchEntry[]
   error?: string
 }
 
@@ -122,26 +133,54 @@ function looksBinary(buffer: Buffer): boolean {
   return false
 }
 
-function getFileSearchDirs(cwd: string): string[] {
-  const dirs: string[] = []
+interface FileSearchRoot {
+  path: string
+  source: FileSearchEntrySource
+  label: string
+}
+
+function getNoteRootLabel(name: 'ai_note_dir' | 'user_note_dir' | 'work_note_dir'): string {
+  if (name === 'ai_note_dir') return 'AI notes'
+  if (name === 'work_note_dir') return 'Work notes'
+  return 'Personal notes'
+}
+
+function getFileSearchRoots(cwd: string | undefined): FileSearchRoot[] {
+  const roots: FileSearchRoot[] = []
   const seen = new Set<string>()
 
-  function add(p: string | undefined | null) {
+  function add(p: string | undefined | null, source: FileSearchEntrySource, label: string) {
     if (!p) return
     const resolved = path.resolve(expandPath(p))
     if (seen.has(resolved)) return
     seen.add(resolved)
-    dirs.push(resolved)
+    roots.push({ path: resolved, source, label })
   }
 
-  add(cwd)
+  add(cwd, 'workdir', 'Workspace')
 
   const variablesStore = getVariablesStore()
-  add(variablesStore.getAiNoteDir())
-  add(variablesStore.getUserNoteDir())
-  add(variablesStore.getWorkNoteDir())
+  const noteRoots = [
+    ['ai_note_dir', variablesStore.getAiNoteDir()],
+    ['user_note_dir', variablesStore.getUserNoteDir()],
+    ['work_note_dir', variablesStore.getWorkNoteDir()],
+  ] as const
+  for (const [name, value] of noteRoots) {
+    add(value, 'note', getNoteRootLabel(name))
+  }
+  add(getDownloadsDirectory(), 'downloads', 'Downloads')
 
-  return dirs
+  return roots
+}
+
+function entryMatchesQuery(entry: FileSearchEntry, lowerQuery: string): boolean {
+  if (!lowerQuery) return true
+  return [
+    entry.path,
+    path.basename(entry.path),
+    entry.label || '',
+    entry.source || '',
+  ].some(value => value.toLowerCase().includes(lowerQuery))
 }
 
 /**
@@ -156,29 +195,48 @@ export function registerFilesHandlers() {
 
       try {
         const files: string[] = []
+        const entries: FileSearchEntry[] = []
         const lowerQuery = query.toLowerCase()
-        const searchDirs = getFileSearchDirs(cwd)
+        const searchRoots = getFileSearchRoots(cwd)
         const seen = new Set<string>()
 
-        if (searchDirs.length === 0) {
-          return { success: true, files: [] }
+        if (searchRoots.length === 0) {
+          return { success: true, files: [], entries: [] }
         }
 
-        for (const searchDir of searchDirs) {
+        for (const root of searchRoots) {
+          const rootEntry: FileSearchEntry = {
+            path: root.path,
+            type: 'directory',
+            source: root.source,
+            label: root.label,
+          }
+          if (entryMatchesQuery(rootEntry, lowerQuery) && !seen.has(root.path)) {
+            seen.add(root.path)
+            entries.push(rootEntry)
+          }
+        }
+
+        for (const root of searchRoots) {
           try {
             // Collect files from async generator
-            for await (const file of listFiles({ cwd: searchDir, hidden: false, noIgnore: true })) {
+            for await (const file of listFiles({ cwd: root.path, hidden: false, noIgnore: true })) {
               // Fuzzy match: check if query is contained in file path (case-insensitive)
               if (!query || file.toLowerCase().includes(lowerQuery)) {
                 // Return absolute path by joining cwd with relative path
-                const absolutePath = path.join(searchDir, file)
+                const absolutePath = path.join(root.path, file)
                 if (!seen.has(absolutePath)) {
                   seen.add(absolutePath)
                   files.push(absolutePath)
+                  entries.push({
+                    path: absolutePath,
+                    type: 'file',
+                    source: root.source,
+                  })
                 }
 
                 // Stop collecting once we reach the limit
-                if (files.length >= limit) {
+                if (entries.length >= limit) {
                   break
                 }
               }
@@ -188,10 +246,14 @@ export function registerFilesHandlers() {
             // Skip it and keep returning matches from the remaining roots.
           }
 
-          if (files.length >= limit) break
+          if (entries.length >= limit) break
         }
 
-        return { success: true, files }
+        return {
+          success: true,
+          files,
+          entries: entries.slice(0, limit),
+        }
       } catch (error) {
         console.error('[Files IPC] Failed to list files:', error)
         return {

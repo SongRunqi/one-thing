@@ -8,7 +8,9 @@
 
 import * as undici from 'undici'
 import type { Dispatcher } from 'undici'
-import type { ProxySettings } from '../../shared/ipc.js'
+import { isIP } from 'node:net'
+import { SocksClient } from 'socks'
+import type { NetworkInterfaceSettings, ProxySettings } from '../../shared/ipc.js'
 import { getSettings } from '../stores/settings.js'
 
 type FetchFn = typeof globalThis.fetch
@@ -58,6 +60,21 @@ function getActiveProxySettings(override?: ProxySettings): ProxySettings | undef
   return normalizeProxySettings(getSettings().network?.proxy)
 }
 
+function normalizeNetworkInterfaceSettings(networkInterface?: NetworkInterfaceSettings): NetworkInterfaceSettings | undefined {
+  if (!networkInterface?.enabled) return undefined
+  const address = typeof networkInterface.address === 'string' ? networkInterface.address.trim() : ''
+  if (!address) return undefined
+  return {
+    ...networkInterface,
+    address,
+  }
+}
+
+function getActiveNetworkInterfaceSettings(override?: NetworkInterfaceSettings): NetworkInterfaceSettings | undefined {
+  if (override) return normalizeNetworkInterfaceSettings(override)
+  return normalizeNetworkInterfaceSettings(getSettings().network?.networkInterface)
+}
+
 function splitBypassRules(rules?: string): string[] {
   return (rules || '')
     .split(/[;,]/)
@@ -92,35 +109,112 @@ export function shouldBypassProxy(input: unknown, bypassRules?: string): boolean
   return splitBypassRules(bypassRules).some(rule => hostnameMatchesRule(hostname, rule))
 }
 
-function dispatcherKey(proxy: ProxySettings | undefined): string {
-  if (proxy) return `proxy#${proxy.url}#${proxy.bypassRules || ''}`
-  return 'direct'
+function dispatcherKey(proxy: ProxySettings | undefined, networkInterface?: NetworkInterfaceSettings): string {
+  const localAddress = networkInterface?.address || 'default'
+  if (proxy) return `proxy#${proxy.url}#${proxy.bypassRules || ''}#${localAddress}`
+  return `direct#${localAddress}`
 }
 
-export function getAppDispatcher(proxy?: ProxySettings): Dispatcher {
-  const key = dispatcherKey(proxy)
+function createDispatcherOptions(networkInterface?: NetworkInterfaceSettings): Record<string, unknown> {
+  return {
+    bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
+    ...(networkInterface?.address ? { localAddress: networkInterface.address } : {}),
+  }
+}
+
+function normalizeHostname(hostname: string): string {
+  return hostname.replace(/^\[|\]$/g, '').toLowerCase()
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = normalizeHostname(hostname)
+  if (normalized === 'localhost' || normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') return true
+  if (isIP(normalized) === 4 && normalized.startsWith('127.')) return true
+  return false
+}
+
+function shouldBindProxyConnection(proxy: ProxySettings, networkInterface?: NetworkInterfaceSettings): boolean {
+  if (!networkInterface?.address) return false
+  try {
+    return !isLoopbackHostname(new URL(proxy.url).hostname)
+  } catch {
+    return true
+  }
+}
+
+function createProxyDispatcherOptions(proxy: ProxySettings, networkInterface?: NetworkInterfaceSettings): Record<string, unknown> {
+  return {
+    bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
+    ...(shouldBindProxyConnection(proxy, networkInterface)
+      ? { proxyTls: { localAddress: networkInterface?.address } }
+      : {}),
+  }
+}
+
+function createSocks5ProxyAgent(proxy: ProxySettings, options: Record<string, unknown>, networkInterface?: NetworkInterfaceSettings): Dispatcher {
+  const Socks5ProxyAgent = (undici as any).Socks5ProxyAgent
+  if (!Socks5ProxyAgent) {
+    throw new Error('SOCKS5 proxy support is not available in this undici version.')
+  }
+
+  if (!shouldBindProxyConnection(proxy, networkInterface)) {
+    return new Socks5ProxyAgent(proxy.url, options)
+  }
+
+  const localAddress = networkInterface!.address
+  const proxyUrl = new URL(proxy.url)
+  const proxyHost = normalizeHostname(proxyUrl.hostname)
+  const proxyPort = Number(proxyUrl.port) || 1080
+  const username = proxyUrl.username ? decodeURIComponent(proxyUrl.username) : undefined
+  const password = proxyUrl.password ? decodeURIComponent(proxyUrl.password) : undefined
+  const connectTimeout = Number((options.proxyTls as any)?.timeout ?? (options as any).connectTimeout ?? 10000)
+
+  const BoundSocks5ProxyAgent = class extends (Socks5ProxyAgent as new (...args: any[]) => any) {
+    async createSocks5Connection(targetHost: string, targetPort: number) {
+      const result = await SocksClient.createConnection({
+        command: 'connect',
+        destination: {
+          host: targetHost,
+          port: targetPort,
+        },
+        proxy: {
+          host: proxyHost,
+          port: proxyPort,
+          type: 5,
+          ...(username ? { userId: username } : {}),
+          ...(password ? { password } : {}),
+        },
+        timeout: connectTimeout > 0 ? connectTimeout : 10000,
+        socket_options: {
+          localAddress,
+        } as any,
+      })
+
+      return result.socket
+    }
+  }
+
+  return new BoundSocks5ProxyAgent(proxy.url, options) as unknown as Dispatcher
+}
+
+export function getAppDispatcher(proxy?: ProxySettings, networkInterface?: NetworkInterfaceSettings): Dispatcher {
+  const key = dispatcherKey(proxy, networkInterface)
   let dispatcher = dispatcherCache.get(key)
   if (dispatcher) return dispatcher
 
   if (proxy) {
+    const proxyDispatcherOptions = createProxyDispatcherOptions(proxy, networkInterface)
     if (proxy.url.toLowerCase().startsWith('socks5:')) {
-      const Socks5ProxyAgent = (undici as any).Socks5ProxyAgent
-      if (!Socks5ProxyAgent) {
-        throw new Error('SOCKS5 proxy support is not available in this undici version.')
-      }
-      dispatcher = new Socks5ProxyAgent(proxy.url, {
-        bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
-      })
+      dispatcher = createSocks5ProxyAgent(proxy, proxyDispatcherOptions, networkInterface)
     } else {
       dispatcher = new undici.ProxyAgent({
         uri: proxy.url,
-        bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
+        ...proxyDispatcherOptions,
       } as any)
     }
   } else {
-    dispatcher = new undici.Agent({
-      bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
-    })
+    const dispatcherOptions = createDispatcherOptions(networkInterface)
+    dispatcher = new undici.Agent(dispatcherOptions as any)
   }
 
   if (!dispatcher) throw new Error('Failed to create app network dispatcher')
@@ -137,14 +231,16 @@ export function clearAppDispatcherCache(): void {
  * The proxy setting is resolved at request time so cached provider instances
  * pick up proxy changes without needing to recreate their SDK clients first.
  */
-export function createAppFetch(options: { proxy?: ProxySettings } = {}): FetchFn {
+export function createAppFetch(options: { proxy?: ProxySettings; networkInterface?: NetworkInterfaceSettings } = {}): FetchFn {
   return (async (input: any, init?: any) => {
     const proxy = getActiveProxySettings(options.proxy)
-    if (!proxy || shouldBypassProxy(input, proxy.bypassRules)) {
+    const networkInterface = getActiveNetworkInterfaceSettings(options.networkInterface)
+    const activeProxy = proxy && !shouldBypassProxy(input, proxy.bypassRules) ? proxy : undefined
+    if (!activeProxy && !networkInterface) {
       return fetch(input, init)
     }
 
-    const dispatcher = getAppDispatcher(proxy)
+    const dispatcher = getAppDispatcher(activeProxy, networkInterface)
     try {
       return await undici.fetch(input, { ...(init || {}), dispatcher })
     } catch (error: any) {
@@ -154,9 +250,10 @@ export function createAppFetch(options: { proxy?: ProxySettings } = {}): FetchFn
           ? input.toString()
           : input?.url || String(input)
       const cause = error?.cause
-      console.error('[Network] Proxied fetch failed:', {
+      console.error('[Network] App fetch failed:', {
         target,
-        proxy: proxy.url,
+        proxy: activeProxy?.url,
+        localAddress: networkInterface?.address,
         code: cause?.code || error?.code,
         message: cause?.message || error?.message,
       })
@@ -165,7 +262,7 @@ export function createAppFetch(options: { proxy?: ProxySettings } = {}): FetchFn
   }) as unknown as FetchFn
 }
 
-export function createRequiredAppFetch(options: { proxy?: ProxySettings } = {}): FetchFn {
+export function createRequiredAppFetch(options: { proxy?: ProxySettings; networkInterface?: NetworkInterfaceSettings } = {}): FetchFn {
   return createAppFetch(options)
 }
 

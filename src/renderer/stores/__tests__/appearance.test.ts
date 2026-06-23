@@ -215,4 +215,23 @@ describe('appearance synchronization', () => {
     expect(document.documentElement.getAttribute('data-typography-density')).toBe('comfortable')
     expect(electronAPI.applyTheme).toHaveBeenCalledTimes(1)
   })
+
+  it('uses normalized settings returned from saveSettings', async () => {
+    const electronAPI = installElectronAPI('dark')
+    const { useSettingsStore } = await loadStores()
+    const settingsStore = useSettingsStore()
+    const submitted = makeSettings()
+    submitted.chat!.agentLoopStream = false
+    const normalized = makeSettings()
+    normalized.chat!.agentLoopStream = true
+
+    vi.mocked(electronAPI.saveSettings).mockResolvedValueOnce({
+      success: true,
+      settings: normalized,
+    })
+
+    await settingsStore.saveSettings(submitted)
+
+    expect(settingsStore.settings.chat?.agentLoopStream).toBe(true)
+  })
 })

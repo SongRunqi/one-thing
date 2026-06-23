@@ -104,10 +104,10 @@ describe('system prompt baseline', () => {
     expect(result.systemPrompt).toMatchSnapshot('agent-systemPrompt')
   })
 
-  it('includes compact skill index when skill_view is available', async () => {
+  it('includes XML skill index when read is available', async () => {
     const result = await buildPrompt({
       ...baseOptions({
-        toolNames: ['read', 'skill_view'],
+        toolNames: ['read'],
         skills: [{
           id: 'user:writing/docs',
           name: 'docs-polish',
@@ -127,7 +127,44 @@ describe('system prompt baseline', () => {
     })
 
     expect(result.systemPrompt).toContain('# Skills')
-    expect(result.systemPrompt).toContain('docs-polish [writing]: Improve documentation writing (tags=docs)')
-    expect(result.systemPrompt).toContain('skill_view(name)')
+    expect(result.systemPrompt).toContain('<available_skills>')
+    expect(result.systemPrompt).toContain('<name>docs-polish</name>')
+    expect(result.systemPrompt).toContain('<description>Improve documentation writing</description>')
+    expect(result.systemPrompt).toContain('<location>/skills/writing/docs/SKILL.md</location>')
+    expect(result.systemPrompt).toContain('Use the read tool to load a skill file')
+  })
+
+  it('excludes skills marked disable-model-invocation from the automatic index', async () => {
+    const result = await buildPrompt({
+      ...baseOptions({
+        toolNames: ['read'],
+        skills: [
+          {
+            name: 'visible-skill',
+            description: 'Visible to the model',
+            source: 'user',
+            path: '/skills/visible/SKILL.md',
+            directoryPath: '/skills/visible',
+            enabled: true,
+            instructions: 'Use visible workflow.',
+          } as never,
+          {
+            name: 'manual-only',
+            description: 'Only explicit invocation',
+            source: 'user',
+            path: '/skills/manual/SKILL.md',
+            directoryPath: '/skills/manual',
+            enabled: true,
+            disableModelInvocation: true,
+            instructions: 'Use manual workflow.',
+          } as never,
+        ],
+      }),
+      providerId: 'openai',
+      historyMessages: [],
+    })
+
+    expect(result.systemPrompt).toContain('<name>visible-skill</name>')
+    expect(result.systemPrompt).not.toContain('manual-only')
   })
 })

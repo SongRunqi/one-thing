@@ -8,6 +8,7 @@ describe('compact settings defaults', () => {
     expect(settings.chat?.contextCompactEnabled).toBe(true)
     expect(settings.chat?.contextCompactThreshold).toBe(85)
     expect(settings.chat?.contextCompactKeepRecentTurns).toBe(6)
+    expect(settings.chat?.agentLoopStream).toBe(false)
   })
 
   it('clamps compact numeric settings when merging', () => {
@@ -20,6 +21,16 @@ describe('compact settings defaults', () => {
 
     expect(settings.chat?.contextCompactThreshold).toBe(100)
     expect(settings.chat?.contextCompactKeepRecentTurns).toBe(1)
+  })
+
+  it('preserves the agent loop stream opt-in when merging', () => {
+    const settings = mergeWithDefaults({
+      chat: {
+        agentLoopStream: true,
+      } as any,
+    })
+
+    expect(settings.chat?.agentLoopStream).toBe(true)
   })
 })
 
@@ -332,12 +343,45 @@ describe('network settings defaults', () => {
     expect(settings.network?.proxy.enabled).toBe(false)
     expect(settings.network?.proxy.url).toBe('')
     expect(settings.network?.proxy.bypassRules).toContain('localhost')
+    expect(settings.network?.networkInterface).toEqual({
+      enabled: false,
+      address: '',
+      id: '',
+      name: '',
+    })
   })
 
   it('merges proxy settings for older settings files', () => {
     const settings = mergeWithDefaults({})
 
     expect(settings.network?.proxy.enabled).toBe(false)
+    expect(settings.network?.networkInterface.enabled).toBe(false)
+  })
+
+  it('preserves selected network interface settings when merging', () => {
+    const settings = mergeWithDefaults({
+      network: {
+        networkInterface: {
+          enabled: true,
+          id: 'en0:IPv4:192.168.1.23',
+          name: 'en0',
+          address: '192.168.1.23',
+          family: 'IPv4',
+        },
+        proxy: {
+          enabled: false,
+          url: '',
+        },
+      },
+    } as any)
+
+    expect(settings.network?.networkInterface).toMatchObject({
+      enabled: true,
+      id: 'en0:IPv4:192.168.1.23',
+      name: 'en0',
+      address: '192.168.1.23',
+      family: 'IPv4',
+    })
   })
 })
 

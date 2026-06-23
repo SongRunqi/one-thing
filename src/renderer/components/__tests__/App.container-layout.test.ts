@@ -329,6 +329,15 @@ describe('App container layout', () => {
     expect(assistantRail).toContain('v-if="!isSidePlacement && hasPreviousPage"')
     expect(assistantRail).toContain('v-if="!isSidePlacement && panelAvailable && effectiveOpen"')
 
+    expect(sidePanel).toContain("import Splitter from '@/components/common/Splitter.vue'")
+    expect(sidePanel).toContain("import SplitterPanel from '@/components/common/SplitterPanel.vue'")
+    expect(sidePanel).toContain('class="chat-side-splitter"')
+    expect(sidePanel).toContain('layout="vertical"')
+    expect(sidePanel).toContain('v-model:size="sidePanelSizes.outline"')
+    expect(sidePanel).toContain('v-model:size="sidePanelSizes.system"')
+    expect(sidePanel).toContain('v-model:size="sidePanelSizes.todo"')
+    expect(sidePanel).toContain('const EQUAL_THREE_PANEL_SIZE = 100 / 3')
+    expect(sidePanel).toContain('enabled => equalizeSidePanelHeights(enabled ? 3 : 2)')
     expect(sidePanel).toContain('ref="outlineHostRef"')
     expect(sidePanel).toContain('class="chat-side-section chat-side-outline-section"')
     expect(sidePanel).toContain("emit('outlineTargetChange', props.collapsed ? null : outlineHostRef.value)")
@@ -346,6 +355,7 @@ describe('App container layout', () => {
     expect(todoProgress).toContain('window.electronAPI.getTodoPlan')
     expect(todoProgress).toContain('window.electronAPI.onTodoPlanChanged')
     expect(todoProgress).toContain('parseTasks')
+    expect(todoProgress).toContain('flex: 1 1 auto;')
   })
 
   it('lets workspace loading states fill memory and media panels', () => {

@@ -1933,6 +1933,10 @@ defineExpose({
     max(calc(var(--content-spacing-px, 8px) * 3), calc(var(--message-line-height-px, 20px) * 1.25))
   );
   --chat-scroll-tail-reserve: var(--chat-scroll-safe-gap);
+  --chat-scroll-top-reserve: max(
+    calc(var(--content-spacing-px, 8px) * 1.25),
+    calc(var(--message-line-height-px, 20px) * 0.65)
+  );
   --scroll-bottom-button-offset: var(--chat-scroll-safe-gap);
 
   flex: 1;
@@ -1999,6 +2003,7 @@ defineExpose({
   position: relative;
   width: var(--chat-content-width, min(68%, 740px));
   margin: 0 auto;
+  padding-top: var(--chat-scroll-top-reserve);
   padding-bottom: var(--chat-scroll-tail-reserve);
 }
 

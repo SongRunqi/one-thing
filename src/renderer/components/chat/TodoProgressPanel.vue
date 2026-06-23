@@ -326,6 +326,7 @@ onUnmounted(() => {
 
 .todo-progress-sections {
   display: grid;
+  flex: 1 1 auto;
   gap: 12px;
   min-height: 0;
   margin-top: 12px;

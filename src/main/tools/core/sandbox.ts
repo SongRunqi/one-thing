@@ -8,7 +8,19 @@
 
 import * as path from 'path'
 import * as os from 'os'
+import { createRequire } from 'module'
 import { getSettings } from '../../stores/settings.js'
+import { getVariablesStore } from '../../variables/store/index.js'
+
+const require = createRequire(import.meta.url)
+const electronModule = (() => {
+  try {
+    return require('electron') as any
+  } catch {
+    return null
+  }
+})()
+const electronApp = typeof electronModule === 'object' ? electronModule?.app : null
 
 /**
  * Expand ~ to home directory
@@ -81,6 +93,33 @@ export function getSandboxRoots(workingDirectory?: string, workingDirectoryRoots
   ])
 }
 
+export function getDownloadsDirectory(): string {
+  try {
+    const downloads = electronApp?.getPath?.('downloads')
+    if (typeof downloads === 'string' && downloads.trim()) return downloads
+  } catch {
+    // Fall back to the conventional per-user Downloads directory below.
+  }
+  return path.join(os.homedir(), 'Downloads')
+}
+
+export function getDefaultReadRoots(): string[] {
+  const store = getVariablesStore()
+  return uniquePaths([
+    store.getAiNoteDir(),
+    store.getUserNoteDir(),
+    store.getWorkNoteDir(),
+    getDownloadsDirectory(),
+  ])
+}
+
+export function getReadSandboxRoots(workingDirectory?: string, workingDirectoryRoots?: string[]): string[] {
+  return uniquePaths([
+    ...getSandboxRoots(workingDirectory, workingDirectoryRoots),
+    ...getDefaultReadRoots(),
+  ])
+}
+
 export function findSandboxRootForPath(
   targetPath: string,
   workingDirectory?: string,
@@ -91,6 +130,19 @@ export function findSandboxRootForPath(
     ? expandedTarget
     : path.resolve(getSandboxBoundary(workingDirectory), expandedTarget)
   return getSandboxRoots(workingDirectory, workingDirectoryRoots)
+    .find(root => isPathContained(root, absoluteTarget))
+}
+
+export function findReadSandboxRootForPath(
+  targetPath: string,
+  workingDirectory?: string,
+  workingDirectoryRoots?: string[],
+): string | undefined {
+  const expandedTarget = expandPath(targetPath)
+  const absoluteTarget = path.isAbsolute(expandedTarget)
+    ? expandedTarget
+    : path.resolve(getSandboxBoundary(workingDirectory), expandedTarget)
+  return getReadSandboxRoots(workingDirectory, workingDirectoryRoots)
     .find(root => isPathContained(root, absoluteTarget))
 }
 

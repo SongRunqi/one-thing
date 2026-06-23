@@ -101,6 +101,10 @@ export function getProviderConfig(settings: AppSettings): ProviderConfig | undef
  * For regular providers, returns the configured API key
  */
 export async function getApiKeyForProvider(providerId: string, providerConfig: ProviderConfig | undefined): Promise<string | null> {
+  if (providerId === 'acp') {
+    return ''
+  }
+
   // Check if this is an OAuth provider
   if (requiresOAuth(providerId)) {
     try {
@@ -123,6 +127,10 @@ export async function resolveProviderAuth(
   providerId: string,
   providerConfig: ProviderConfig | undefined,
 ): Promise<ProviderAuthContext | null> {
+  if (providerId === 'acp') {
+    return { kind: 'api-key', apiKey: '' }
+  }
+
   if (requiresOAuth(providerId)) {
     try {
       return await authService.resolveProviderAuth(providerId, resolveProviderApiKey(providerId, providerConfig) ?? undefined)
