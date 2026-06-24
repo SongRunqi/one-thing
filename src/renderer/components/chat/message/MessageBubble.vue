@@ -133,10 +133,10 @@
               v-for="(part, index) in otherParts"
               :key="getOtherPartKey(part, index)"
             >
-              <!-- Tool loop waiting (工具执行后等待 AI 继续) -->
+              <!-- Generation waiting (工具执行后等待 AI 继续) -->
               <div
                 v-if="part.type === 'waiting'"
-                class="tool-loop-waiting"
+                class="generation-waiting"
                 role="status"
                 aria-live="polite"
               >
@@ -1007,8 +1007,8 @@ html[data-theme='light'] .image-generation-skeleton::after {
   opacity: 0;
 }
 
-/* Tool loop waiting (工具执行后等待 AI 继续) */
-.tool-loop-waiting {
+/* Generation waiting (工具执行后等待 AI 继续) */
+.generation-waiting {
   --waiting-fg: var(--ui-message-thinking-fg);
   display: inline-flex;
   align-items: center;

@@ -5,7 +5,10 @@ import type {
   AgentMessageContent,
   AgentModelCapabilities,
   AgentOutputModality,
+  AgentExecutableProvider,
   AgentProvider,
+  AgentRunnableProvider,
+  AgentStreamingProvider,
 } from './types.js'
 
 export const TEXT_ONLY_AGENT_CAPABILITIES: AgentModelCapabilities = {
@@ -78,6 +81,38 @@ export function agentSupportsTools(capabilities: AgentModelCapabilities): boolea
   return capabilities.supportsTools === true || agentSupportsCapability(capabilities, 'tool-calls')
 }
 
+export function agentSupportsStructuredToolResults(capabilities: AgentModelCapabilities): boolean {
+  return capabilities.supportsStructuredToolResults === true ||
+    agentSupportsCapability(capabilities, 'structured-tool-results')
+}
+
+export function agentSupportsToolResultModality(
+  capabilities: AgentModelCapabilities,
+  modality: AgentInputModality,
+): boolean {
+  if (modality === 'text') return true
+  if (!agentSupportsStructuredToolResults(capabilities)) return false
+  return capabilities.toolResultModalities?.includes(modality) === true
+}
+
+export function isAgentStreamingProvider(provider: AgentProvider): provider is AgentStreamingProvider {
+  return typeof provider.streamTurn === 'function'
+}
+
+export function isAgentRunnableProvider(provider: AgentProvider): provider is AgentRunnableProvider {
+  return typeof provider.runTurn === 'function'
+}
+
+export function agentProviderCanRunTurn(provider: AgentProvider): provider is AgentExecutableProvider {
+  return typeof provider.streamTurn === 'function' || typeof provider.runTurn === 'function'
+}
+
+export function assertAgentProviderCanRunTurn(provider: AgentProvider): void {
+  if (!agentProviderCanRunTurn(provider)) {
+    throw new Error(`Agent provider ${provider.id} does not implement streamTurn or runTurn`)
+  }
+}
+
 export function inputModalitiesFromAgentContent(content: AgentMessageContent | undefined): AgentInputModality[] {
   if (content == null || content === '') return []
   if (typeof content === 'string') return ['text']
@@ -113,6 +148,12 @@ export function assertAgentMessagesSupportedByCapabilities(
 ): void {
   for (const message of messages) {
     for (const modality of inputModalitiesFromAgentContent(message.content)) {
+      if (message.role === 'tool') {
+        if (!agentSupportsToolResultModality(capabilities, modality)) {
+          throw new Error(`Agent provider does not support ${modality} tool-result input`)
+        }
+        continue
+      }
       if (!agentSupportsInputModality(capabilities, modality)) {
         throw new Error(`Agent provider does not support ${modality} input for role "${message.role}"`)
       }
@@ -148,6 +189,17 @@ export async function providerSupportsInputModality(
   modality: AgentInputModality,
 ): Promise<boolean> {
   return agentSupportsInputModality(
+    await resolveAgentModelCapabilities(provider, model),
+    modality,
+  )
+}
+
+export async function providerSupportsToolResultModality(
+  provider: AgentProvider,
+  model: string,
+  modality: AgentInputModality,
+): Promise<boolean> {
+  return agentSupportsToolResultModality(
     await resolveAgentModelCapabilities(provider, model),
     modality,
   )

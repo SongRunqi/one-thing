@@ -448,7 +448,7 @@ export interface SystemPromptSnapshot {
   }
   agentLoopStream: {
     enabled: boolean
-    enabledBy: 'env' | 'settings' | 'off'
+    enabledBy: 'env' | 'settings' | 'default'
     providerSupported: boolean
     active: boolean
     supportedProviderIds: string[]

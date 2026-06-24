@@ -1,13 +1,8 @@
 /**
  * Google Gemini Provider Definition
- *
- * Uses the official @ai-sdk/google package.
  */
 
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import type { LanguageModel } from 'ai'
 import type { ProviderDefinition } from '../types.js'
-import { createBoundFetch } from '../bound-fetch.js'
 
 const geminiProvider: ProviderDefinition = {
   id: 'gemini',
@@ -24,16 +19,6 @@ const geminiProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API
   },
 
-  create: ({ apiKey, baseUrl }) => {
-    const provider = createGoogleGenerativeAI({
-      apiKey,
-      baseURL: baseUrl || 'https://generativelanguage.googleapis.com/v1beta',
-      fetch: createBoundFetch(),
-    })
-    return {
-      createModel: (modelId: string) => provider(modelId) as unknown as LanguageModel,
-    }
-  },
 }
 
 export default geminiProvider

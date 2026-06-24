@@ -1,27 +1,29 @@
 import * as store from '../../store.js'
 import { v4 as uuidv4 } from 'uuid'
 import { getSkillsForSession } from '../../ipc/skills.js'
-import { getMCPToolsForAI } from '../../mcp/index.js'
+import { getMCPRouterToolDefinition } from '../../mcp/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
-import { convertToolDefinitionsForAI } from '../../providers/index.js'
-import { resolveAIToolName } from '../../providers/tool-name-alias.js'
 import {
   createAgentProviderFromRuntime,
   isAgentProviderRuntimeSupported,
 } from '../../agent-loop/providers/factory.js'
+import { resolveAIToolName } from '../../agent-loop/tool-names.js'
 import {
   agentMessagesFromHistory,
   type AgentHistoryMessage,
 } from '../../agent-loop/messages.js'
 import {
+  agentProviderCanRunTurn,
+  agentToolDefinitionsFromSourceTools,
+  agentToolsFromToolDefinitions,
   agentSupportsTools,
   buildAgentLoopRuntime,
   type AgentLoopOptions,
   type AgentLoopResult,
   type AgentMessage,
+  type AgentModelCapabilities,
   type AgentProviderStreamChunk,
   type AgentSkillContext,
-  type AgentTool,
   resolveAgentModelCapabilities,
   streamAgentLoopProviderChunks,
 } from '../../agent-loop/index.js'
@@ -31,8 +33,9 @@ import {
   setInitContext,
 } from '../../tools/index.js'
 import type { ChatMessage, ChatSession, SkillDefinition } from '../../../shared/ipc.js'
+import { toJsonObject, toJsonValue } from '../../../shared/json.js'
 import { buildHistoryMessages, type HistoryMessage } from './message-helpers.js'
-import type { StreamContext } from './stream-processor.js'
+import type { StreamContext, StreamProviderConfig } from './stream-processor.js'
 import { buildPrompt } from '../prompt/index.js'
 import { buildContextVariablesPromptText } from '../../variables/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
@@ -40,24 +43,13 @@ import { executeToolDirectly } from './tool-execution.js'
 import {
   compactSessionContext,
   getContextCompactReason,
+  shouldSkipAutoCompactForProviderUsageMismatch,
   type ContextCompactResult,
 } from '../context-compact.js'
 import { getEventBus } from '../../events/index.js'
 import { resolvePromptReferences } from '../../prompts/resolver.js'
 import type { PendingMessage } from './message-queue.js'
 import type { IPCEmitter } from './ipc-emitter.js'
-
-type ProviderToolDefinition = {
-  description?: string
-  parameters?: Array<{
-    name: string
-    type: string
-    description: string
-    required?: boolean
-    enum?: string[]
-  }>
-  parameterSchema?: Record<string, unknown>
-}
 
 export type BuildAgentLoopStreamRuntimeResult =
   | {
@@ -74,11 +66,38 @@ export type BuildAgentLoopStreamRuntimeResult =
       hasTools: boolean
       supportsTools: boolean
       modelContextLength: number
-	      reservedOutputTokens: number
-	    }
+      reservedOutputTokens: number
+    }
 
 export interface BuildAgentLoopStreamRuntimeOptions {
   emitter?: IPCEmitter
+}
+
+function configWithApiKey(config: StreamProviderConfig): StreamProviderConfig & { apiKey: string } {
+  return {
+    ...config,
+    apiKey: config.apiKey ?? '',
+  }
+}
+
+function normalizeDeepSeekReasoningEffort(value: unknown): 'high' | 'max' | undefined {
+  return value === 'max' ? 'max' : value === 'high' ? 'high' : undefined
+}
+
+function getAgentLoopThinkingOptions(ctx: StreamContext): {
+  thinking?: 'enabled' | 'disabled'
+  reasoningEffort?: 'high' | 'max'
+} {
+  if (ctx.providerId !== 'deepseek') return {}
+  const model = ctx.providerConfig.model
+  const enabled = ctx.providerConfig.thinkingByModel?.[model]
+  if (enabled === false) return { thinking: 'disabled' }
+  if (enabled !== true) return {}
+
+  return {
+    thinking: 'enabled',
+    reasoningEffort: normalizeDeepSeekReasoningEffort(ctx.providerConfig.thinkingEffortByModel?.[model]) ?? 'high',
+  }
 }
 
 function shouldEmitActiveMemoryLoading(ctx: StreamContext): boolean {
@@ -104,6 +123,12 @@ export function buildAgentLoopContextHardLimitError(
   ].join(' ')
 }
 
+function positiveTokenLimit(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined
+}
+
 export function getAgentLoopContextBlockReason(options: {
   turn: number
   providerId: string
@@ -115,6 +140,11 @@ export function getAgentLoopContextBlockReason(options: {
   if (options.providerId === 'acp') return undefined
   if (!options.compactEnabled) return undefined
   if (!options.session) return undefined
+  if (shouldSkipAutoCompactForProviderUsageMismatch({
+    providerId: options.providerId,
+    session: options.session,
+    modelContextLength: options.budget.modelContextLength,
+  })) return undefined
 
   const reason = getContextCompactReason({
     session: options.session,
@@ -185,6 +215,21 @@ export async function maybeCompactAgentLoopContext(options: {
     const session = store.getSession(options.ctx.sessionId)
     if (!session) return undefined
 
+    if (shouldSkipAutoCompactForProviderUsageMismatch({
+      providerId: options.ctx.providerId,
+      session,
+      modelContextLength: options.budget.modelContextLength,
+    })) {
+      console.warn('[AgentLoopRuntime] Skipping context compact because provider usage exceeds registered model context length:', {
+        sessionId: options.ctx.sessionId,
+        providerId: options.ctx.providerId,
+        model: options.ctx.providerConfig.model,
+        contextSize: session.contextSize ?? session.lastInputTokens ?? 0,
+        modelContextLength: options.budget.modelContextLength,
+      })
+      return undefined
+    }
+
     const reason = getContextCompactReason({
       session,
       modelContextLength: options.budget.modelContextLength,
@@ -207,12 +252,12 @@ export async function maybeCompactAgentLoopContext(options: {
     const result = await compactSessionContext({
       sessionId: options.ctx.sessionId,
       providerId: options.ctx.providerId,
-      configWithApiKey: options.ctx.providerConfig as any,
+      configWithApiKey: configWithApiKey(options.ctx.providerConfig),
       settings: options.ctx.settings,
       keepRecentTurns,
       onMessageCreated: async message => {
         await getEventBus().emit(options.ctx.sessionId, {
-          type: 'message:user-created',
+          type: 'message:created',
           message,
         })
       },
@@ -271,13 +316,18 @@ export async function maybeCompactAgentLoopContext(options: {
   return compacted ? options.rebuildMessages() : undefined
 }
 
-async function resolveAgentLoopContextBudget(ctx: StreamContext): Promise<AgentLoopContextBudget> {
-  let modelContextLength = 128000
+async function resolveAgentLoopContextBudget(
+  ctx: StreamContext,
+  capabilities?: AgentModelCapabilities,
+): Promise<AgentLoopContextBudget> {
+  let modelContextLength = positiveTokenLimit(capabilities?.maxInputTokens) ?? 128000
   let reservedOutputTokens = ctx.settings.chat?.maxTokens || 4096
 
   try {
-    modelContextLength = await modelRegistry.getModelContextLength(ctx.providerConfig.model, ctx.providerId)
-    const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(ctx.providerConfig.model, ctx.providerId)
+    modelContextLength = positiveTokenLimit(capabilities?.maxInputTokens)
+      ?? await modelRegistry.getModelContextLength(ctx.providerConfig.model, ctx.providerId)
+    const modelMaxOutputTokens = positiveTokenLimit(capabilities?.maxOutputTokens)
+      ?? await modelRegistry.getModelMaxOutputTokens(ctx.providerConfig.model, ctx.providerId)
     const perModelOverride = ctx.providerConfig.maxOutputByModel?.[ctx.providerConfig.model]
     const halfDefault = modelMaxOutputTokens > 0 ? Math.max(1, Math.floor(modelMaxOutputTokens / 2)) : 0
     const requested = perModelOverride ?? (halfDefault > 0 ? halfDefault : reservedOutputTokens)
@@ -291,85 +341,6 @@ async function resolveAgentLoopContextBudget(ctx: StreamContext): Promise<AgentL
     reservedOutputTokens,
     thresholdPercent: ctx.settings.chat?.contextCompactThreshold ?? 85,
   }
-}
-
-function parametersToJsonSchema(parameters: ProviderToolDefinition['parameters'] = []): Record<string, unknown> {
-  const properties: Record<string, unknown> = {}
-  const required: string[] = []
-
-  for (const parameter of parameters) {
-    properties[parameter.name] = {
-      type: parameter.type || 'string',
-      description: parameter.description,
-      ...(parameter.enum?.length ? { enum: parameter.enum } : {}),
-    }
-    if (parameter.required) required.push(parameter.name)
-  }
-
-  return { type: 'object', properties, required }
-}
-
-function toolOutputToText(output: unknown): string {
-  if (output == null) return ''
-  if (typeof output === 'string') return output
-  if (typeof output === 'object' && 'output' in output && typeof (output as any).output === 'string') {
-    return (output as any).output
-  }
-  try {
-    return JSON.stringify(output)
-  } catch {
-    return String(output)
-  }
-}
-
-export function agentToolsFromProviderToolDefinitions(
-  definitions: Record<string, ProviderToolDefinition>,
-  ctx: StreamContext,
-): AgentTool[] {
-  const session = store.getSession(ctx.sessionId)
-  const workingDirectory = session?.workingDirectory
-  const workingDirectoryRoots = session?.workingDirectoryRoots
-
-  return Object.entries(definitions).map(([name, definition]) => ({
-    name,
-    description: definition.description,
-    parameters: definition.parameterSchema ?? parametersToJsonSchema(definition.parameters),
-    async execute(args, toolCtx) {
-      const result = await executeToolDirectly(resolveAIToolName(name), args, {
-        sessionId: ctx.sessionId,
-        messageId: ctx.assistantMessageId,
-        toolCallId: toolCtx.toolCallId,
-        workingDirectory,
-        workingDirectoryRoots,
-        abortSignal: toolCtx.abortSignal ?? ctx.abortSignal,
-        onMetadata: toolCtx.onMetadata,
-        onPartialResult: toolCtx.onPartialResult as any,
-      })
-
-      if (!result.success) {
-        return {
-          content: '',
-          error: result.error || `Tool failed: ${name}`,
-          data: result,
-          requiresConfirmation: result.requiresConfirmation,
-          commandType: result.commandType,
-          aborted: result.aborted,
-          rejected: result.rejected,
-          rejectionReason: result.rejectionReason,
-        }
-      }
-
-      return {
-        content: toolOutputToText(result.data),
-        data: result.data,
-        requiresConfirmation: result.requiresConfirmation,
-        commandType: result.commandType,
-        aborted: result.aborted,
-        rejected: result.rejected,
-        rejectionReason: result.rejectionReason,
-      }
-    },
-  }))
 }
 
 function agentSkillContexts(skills: SkillDefinition[]): AgentSkillContext[] {
@@ -440,8 +411,10 @@ export async function buildAgentLoopRuntimeFromStreamContext(
   const sessionWorkingDirRoots = session?.workingDirectoryRoots
   const skillsEnabled = ctx.settings.skills?.enableSkills !== false
   const enabledSkills = skillsEnabled ? getSkillsForSession(sessionWorkingDir) : []
+  const effectiveToolSettings = ctx.toolSettings ?? ctx.settings.tools
+  const toolCallsEnabled = effectiveToolSettings?.enableToolCalls !== false
 
-  if (ctx.toolSettings?.enableToolCalls) {
+  if (toolCallsEnabled) {
     setInitContext({
       skills: enabledSkills.map(skill => ({
         id: skill.id,
@@ -468,11 +441,14 @@ export async function buildAgentLoopRuntimeFromStreamContext(
   }
 
   const provider = createAgentProviderFromRuntime(ctx.providerId, {
-    apiKey: (ctx.providerConfig as any).apiKey,
+    apiKey: ctx.providerConfig.apiKey,
     baseUrl: ctx.providerConfig.baseUrl,
     model: ctx.providerConfig.model,
-    oauthToken: (ctx.providerConfig as any).oauthToken,
-    authContext: (ctx.providerConfig as any).authContext,
+    apiType: ctx.providerConfig.apiType,
+    oauthToken: ctx.providerConfig.oauthToken,
+    authContext: ctx.providerConfig.authContext,
+    modelCapabilitiesByModel: ctx.providerConfig.modelCapabilitiesByModel,
+    models: ctx.providerConfig.models,
   }, {
     workingDirectory: sessionWorkingDir,
     localSessionId: ctx.sessionId,
@@ -484,30 +460,37 @@ export async function buildAgentLoopRuntimeFromStreamContext(
       reason: `Provider ${ctx.providerId} did not create an AgentProvider runtime`,
     }
   }
+  if (!agentProviderCanRunTurn(provider)) {
+    return {
+      supported: false,
+      reason: `Provider ${ctx.providerId} AgentProvider runtime does not implement streamTurn or runTurn`,
+    }
+  }
 
   const providerCapabilities = await resolveAgentModelCapabilities(provider, ctx.providerConfig.model)
-  const supportsTools = (
-    await modelRegistry.modelSupportsTools(ctx.providerConfig.model, ctx.providerId)
-  ) && agentSupportsTools(providerCapabilities)
-  const allEnabledTools = ctx.toolSettings?.enableToolCalls
-    ? await getEnabledToolsAsync(ctx.toolSettings.tools)
+  const supportsTools = agentSupportsTools(providerCapabilities)
+  const toolLoadingEnabled = Boolean(toolCallsEnabled && supportsTools)
+  const allEnabledTools = toolLoadingEnabled
+    ? await getEnabledToolsAsync(effectiveToolSettings?.tools)
     : []
   const enabledTools = allEnabledTools.filter(tool => !tool.id.startsWith('mcp:'))
-  const mcpTools = ctx.toolSettings?.enableToolCalls ? getMCPToolsForAI(ctx.toolSettings.tools) : {}
+  const mcpRouterTool = toolLoadingEnabled ? getMCPRouterToolDefinition() : null
+  const mcpTools = mcpRouterTool && effectiveToolSettings?.tools?.[mcpRouterTool.id]?.enabled !== false
+    ? agentToolDefinitionsFromSourceTools([mcpRouterTool])
+    : {}
   const hasTools = Boolean(
-    ctx.toolSettings?.enableToolCalls &&
-    supportsTools &&
+    toolLoadingEnabled &&
     (enabledTools.length > 0 || Object.keys(mcpTools).length > 0),
   )
-  const builtinToolsForAI = hasTools ? convertToolDefinitionsForAI(enabledTools) : {}
-  const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
+  const builtinToolDefinitions = hasTools ? agentToolDefinitionsFromSourceTools(enabledTools) : {}
+  const modelToolDefinitions = hasTools ? { ...builtinToolDefinitions, ...mcpTools } : {}
   const projectVars = buildProjectDirsPromptVars(sessionWorkingDir)
-  const budget = await resolveAgentLoopContextBudget(ctx)
+  const budget = await resolveAgentLoopContextBudget(ctx, providerCapabilities)
   const buildPromptForHistory = async (nextHistoryMessages: HistoryMessage[]) => buildPrompt({
     sessionId: ctx.sessionId,
     agentId: session?.agentId,
     providerId: ctx.providerId,
-    providerConfig: ctx.providerConfig as unknown as Record<string, unknown>,
+    providerConfig: toJsonObject(ctx.providerConfig),
     settings: ctx.settings,
     hasTools,
     skills: enabledSkills,
@@ -516,7 +499,7 @@ export async function buildAgentLoopRuntimeFromStreamContext(
     contextVariables: await buildContextVariablesPromptText(ctx.sessionId),
     activeProject: projectVars.active,
     knownProjects: projectVars.known,
-    toolNames: Object.keys(builtinToolsForAI),
+    toolNames: Object.keys(builtinToolDefinitions),
     mcpToolNames: Object.keys(mcpTools),
     voiceConversation: ctx.voiceConversation,
     speakMode: ctx.speakMode ?? ctx.voiceConversation,
@@ -554,6 +537,7 @@ export async function buildAgentLoopRuntimeFromStreamContext(
     ]
   }
 
+  const thinkingOptions = getAgentLoopThinkingOptions(ctx)
   const runtime = await buildAgentLoopRuntime({
     provider,
     model: ctx.providerConfig.model,
@@ -564,8 +548,29 @@ export async function buildAgentLoopRuntimeFromStreamContext(
     workingDirectory: sessionWorkingDir,
     abortSignal: ctx.abortSignal,
     maxTokens: budget.reservedOutputTokens,
+    thinking: thinkingOptions.thinking,
+    reasoningEffort: thinkingOptions.reasoningEffort,
     tools: {
-      tools: agentToolsFromProviderToolDefinitions(toolsForAI, ctx),
+      tools: agentToolsFromToolDefinitions(modelToolDefinitions, async (name, args, toolCtx) => {
+        const result = await executeToolDirectly(resolveAIToolName(name), args, {
+          sessionId: ctx.sessionId,
+          messageId: ctx.assistantMessageId,
+          toolCallId: toolCtx.toolCallId,
+          workingDirectory: sessionWorkingDir,
+          workingDirectoryRoots: sessionWorkingDirRoots,
+          abortSignal: toolCtx.abortSignal ?? ctx.abortSignal,
+          onMetadata: toolCtx.onMetadata
+            ? update => toolCtx.onMetadata?.({
+                title: update.title,
+                metadata: toJsonObject(update.metadata),
+              })
+            : undefined,
+          onPartialResult: toolCtx.onPartialResult
+            ? update => toolCtx.onPartialResult?.(update)
+            : undefined,
+        })
+        return { ...result, data: toJsonValue(result.data) }
+      }),
       policy: { enabled: hasTools },
     },
     skills: agentSkillContexts(enabledSkills),
@@ -615,7 +620,7 @@ export async function buildAgentLoopRuntimeFromStreamContext(
     runtime,
     systemPrompt: requestMessages.systemPrompt,
     enabledSkills,
-    toolNames: Object.keys(builtinToolsForAI),
+    toolNames: Object.keys(builtinToolDefinitions),
     mcpToolNames: Object.keys(mcpTools),
     hasTools,
     supportsTools,
@@ -627,7 +632,7 @@ export async function buildAgentLoopRuntimeFromStreamContext(
 export async function* streamAgentLoopChunksFromStreamContext(
   ctx: StreamContext,
   historyMessages: HistoryMessage[],
-): AsyncGenerator<AgentProviderStreamChunk, AgentLoopResult, unknown> {
+): AsyncGenerator<AgentProviderStreamChunk, AgentLoopResult, void> {
   const prepared = await buildAgentLoopRuntimeFromStreamContext(ctx, historyMessages)
   if (!prepared.supported) {
     throw new Error(prepared.reason)

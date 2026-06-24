@@ -1,9 +1,9 @@
 import type {
   AgentFinishReason,
+  AgentJsonObject,
   AgentMessage,
   AgentProvider,
   AgentTool,
-  AgentToolCall,
   AgentToolChoice,
   AgentTurn,
   AgentTurnRequest,
@@ -11,14 +11,34 @@ import type {
   AgentUsage,
 } from '../types.js'
 import { agentContentToText, collectAgentTurnFromStream } from '../stream.js'
+import { agentToolMessageContentToText } from '../tool-results.js'
 import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
+import { dumpProviderRequest } from '../../providers/request-dump.js'
+import { readJsonSseData } from './sse.js'
 
 type FetchFn = typeof globalThis.fetch
+
+function shouldDebugDeepSeekStream(): boolean {
+  return process.env.ONETHING_DEBUG_STREAM === '1' || process.env.ONETHING_DEBUG_DEEPSEEK_STREAM === '1'
+}
+
+function logTime(): string {
+  return new Date().toISOString()
+}
+
+function previewText(value: string | null | undefined, maxLength = 240): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength)
+}
+
+function elapsedSince(previous: number | undefined, now = Date.now()): number | undefined {
+  return previous === undefined ? undefined : now - previous
+}
 
 export interface DeepSeekAgentProviderOptions {
   apiKey: string
   baseUrl?: string
   fetchImpl?: FetchFn
+  capabilities?: AgentProvider['capabilities']
 }
 
 interface DeepSeekToolCall {
@@ -43,7 +63,7 @@ interface DeepSeekTool {
   function: {
     name: string
     description?: string
-    parameters?: Record<string, unknown>
+    parameters?: AgentJsonObject
   }
 }
 
@@ -101,7 +121,7 @@ function toDeepSeekMessage(message: AgentMessage): DeepSeekMessage {
   if (message.role === 'tool') {
     return {
       role: 'tool',
-      content: agentContentToText(message.content),
+      content: agentToolMessageContentToText(message.content),
       tool_call_id: message.toolCallId ?? '',
     }
   }
@@ -182,102 +202,99 @@ function toolCallDoneEvent(
 async function* streamDeepSeekResponse(
   response: Response,
   turn: number,
-): AsyncGenerator<AgentTurnStreamEvent, void, unknown> {
-  const reader = response.body?.getReader()
-  if (!reader) throw new Error('DeepSeek agent loop: response has no body')
-
-  const decoder = new TextDecoder()
+): AsyncGenerator<AgentTurnStreamEvent, void, void> {
   const toolCalls = new Map<number, ToolCallAccumulator>()
-  let buffer = ''
   let usage: AgentUsage | undefined
   let finishReason: AgentFinishReason = 'unknown'
+  const debugStream = shouldDebugDeepSeekStream()
+  let lastDeltaAt: number | undefined
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+  for await (const chunk of readJsonSseData<DeepSeekStreamChunk>(response, {
+    sourceName: 'DeepSeek agent loop',
+    invalidMessage: 'invalid stream chunk',
+  })) {
+    if (chunk.error) {
+      throw new Error(`DeepSeek agent loop error: ${chunk.error.message ?? 'unknown error'}`)
+    }
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
+    usage = usageFromChunk(chunk) ?? usage
+    const choice = chunk.choices?.[0]
+    const delta = choice?.delta
 
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data: ')) continue
-        if (trimmed === 'data: [DONE]') continue
+    if (delta?.reasoning_content) {
+      if (debugStream) {
+        const now = Date.now()
+        console.log('[DeepSeekProvider:SSE] reasoning-delta', {
+          time: logTime(),
+          gapMs: elapsedSince(lastDeltaAt, now),
+          turn,
+          chars: delta.reasoning_content.length,
+          text: previewText(delta.reasoning_content),
+        })
+        lastDeltaAt = now
+      }
+      yield { type: 'reasoning-delta', turn, delta: delta.reasoning_content }
+    }
 
-        const payload = trimmed.slice(6)
-        let chunk: DeepSeekStreamChunk
-        try {
-          chunk = JSON.parse(payload) as DeepSeekStreamChunk
-        } catch (error) {
-          throw new Error(`DeepSeek agent loop: invalid stream chunk: ${payload}`)
+    if (delta?.content) {
+      if (debugStream) {
+        const now = Date.now()
+        console.log('[DeepSeekProvider:SSE] text-delta', {
+          time: logTime(),
+          gapMs: elapsedSince(lastDeltaAt, now),
+          turn,
+          chars: delta.content.length,
+          text: previewText(delta.content),
+        })
+        lastDeltaAt = now
+      }
+      yield { type: 'text-delta', turn, delta: delta.content }
+    }
+
+    if (delta?.tool_calls) {
+      for (const toolCallDelta of delta.tool_calls) {
+        const index = toolCallDelta.index
+        let entry = toolCalls.get(index)
+        if (!entry) {
+          entry = {
+            id: toolCallDelta.id ?? `tool-${turn}-${index}`,
+            name: '',
+            arguments: '',
+            started: false,
+          }
+          toolCalls.set(index, entry)
         }
 
-        if (chunk.error) {
-          throw new Error(`DeepSeek agent loop error: ${chunk.error.message ?? 'unknown error'}`)
-        }
+        if (toolCallDelta.id) entry.id = toolCallDelta.id
+        if (toolCallDelta.function?.name) entry.name += toolCallDelta.function.name
+        const argumentsDelta = toolCallDelta.function?.arguments ?? ''
+        if (argumentsDelta) entry.arguments += argumentsDelta
 
-        usage = usageFromChunk(chunk) ?? usage
-        const choice = chunk.choices?.[0]
-        const delta = choice?.delta
-
-        if (delta?.reasoning_content) {
-          yield { type: 'reasoning-delta', turn, delta: delta.reasoning_content }
-        }
-
-        if (delta?.content) {
-          yield { type: 'text-delta', turn, delta: delta.content }
-        }
-
-        if (delta?.tool_calls) {
-          for (const toolCallDelta of delta.tool_calls) {
-            const index = toolCallDelta.index
-            let entry = toolCalls.get(index)
-            if (!entry) {
-              entry = {
-                id: toolCallDelta.id ?? `tool-${turn}-${index}`,
-                name: '',
-                arguments: '',
-                started: false,
-              }
-              toolCalls.set(index, entry)
-            }
-
-            if (toolCallDelta.id) entry.id = toolCallDelta.id
-            if (toolCallDelta.function?.name) entry.name += toolCallDelta.function.name
-            const argumentsDelta = toolCallDelta.function?.arguments ?? ''
-            if (argumentsDelta) entry.arguments += argumentsDelta
-
-            if (!entry.started && entry.name) {
-              entry.started = true
-              yield {
-                type: 'tool-call-start',
-                turn,
-                toolCallId: entry.id,
-                toolName: entry.name,
-              }
-            }
-
-            if (argumentsDelta && entry.name) {
-              yield {
-                type: 'tool-call-delta',
-                turn,
-                toolCallId: entry.id,
-                toolName: entry.name,
-                argumentsDelta,
-              }
-            }
+        if (!entry.started && entry.name) {
+          entry.started = true
+          yield {
+            type: 'tool-call-start',
+            turn,
+            toolCallId: entry.id,
+            toolName: entry.name,
           }
         }
 
-        if (choice?.finish_reason) {
-          finishReason = mapFinishReason(choice.finish_reason)
+        if (argumentsDelta && entry.name) {
+          yield {
+            type: 'tool-call-delta',
+            turn,
+            toolCallId: entry.id,
+            toolName: entry.name,
+            argumentsDelta,
+          }
         }
       }
     }
-  } finally {
-    reader.releaseLock()
+
+    if (choice?.finish_reason) {
+      finishReason = mapFinishReason(choice.finish_reason)
+    }
   }
 
   for (const [, entry] of [...toolCalls.entries()]
@@ -293,7 +310,7 @@ export function createDeepSeekAgentProvider(options: DeepSeekAgentProviderOption
   const baseUrl = (options.baseUrl || 'https://api.deepseek.com').replace(/\/$/, '')
   const fetchImpl = options.fetchImpl ?? createRequiredAppFetch()
 
-  async function* streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, unknown> {
+  async function* streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
     const tools = toDeepSeekTools(request.tools)
     const body: DeepSeekRequestBody = {
       model: request.model,
@@ -315,6 +332,30 @@ export function createDeepSeekAgentProvider(options: DeepSeekAgentProviderOption
       body.temperature = request.temperature
     }
 
+    const requestDumpPath = await dumpProviderRequest({
+      providerId: 'deepseek',
+      model: request.model,
+      mode: 'stream',
+      metadata: {
+        url: `${baseUrl}/chat/completions`,
+        method: 'POST',
+        turn: request.turn,
+      },
+      requestBody: body,
+    })
+    console.log('[DeepSeekAgentProvider] streamTurn request', {
+      model: request.model,
+      turn: request.turn,
+      messageCount: request.messages.length,
+      toolCount: request.tools?.length ?? 0,
+      thinking: body.thinking?.type ?? 'default',
+      reasoningEffort: body.reasoning_effort,
+      lastUserPreview: previewText(agentContentToText(
+        [...request.messages].reverse().find(message => message.role === 'user')?.content ?? '',
+      )),
+      requestDumpPath,
+    })
+
     const response = await fetchImpl(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -335,7 +376,7 @@ export function createDeepSeekAgentProvider(options: DeepSeekAgentProviderOption
 
   return {
     id: 'deepseek',
-    capabilities: {
+    capabilities: options.capabilities ?? {
       capabilities: ['text-input', 'text-output', 'streaming', 'tool-calls', 'reasoning'],
       inputModalities: ['text'],
       outputModalities: ['text'],

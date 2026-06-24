@@ -6,6 +6,7 @@ import type {
 	Step,
 	ToolCall,
 } from "../../../shared/ipc.js";
+import type { JsonObject, JsonValue } from "../../../shared/json.js";
 import type { StreamContext, StreamProcessor } from "./stream-processor.js";
 import type { IPCEmitter } from "./ipc-emitter.js";
 import { executeToolAndUpdate } from "./tool-execution.js";
@@ -76,7 +77,7 @@ export class ToolOrchestrator {
 
 	start(
 		toolCall: ToolCall,
-		toolCallData: { toolName: string; args: Record<string, any> },
+		toolCallData: { toolName: string; args: JsonObject },
 		existingStepId?: string,
 	): void {
 		if (this.executedToolCallIds.has(toolCall.id)) return;
@@ -294,7 +295,7 @@ export class ToolOrchestrator {
 
 	private checkDoomLoop(toolCallData: {
 		toolName: string;
-		args: Record<string, any>;
+		args: JsonObject;
 	}): { detected: boolean; message?: string } {
 		const signature = `${toolCallData.toolName.toLowerCase()}:${stableStringify(toolCallData.args)}`;
 		const count = (this.toolSignatureCounts.get(signature) || 0) + 1;
@@ -355,10 +356,12 @@ function shouldStopAfterTool(toolCall: ToolCall): boolean {
 	return Boolean(toolCall.rejected) || toolCall.status === "cancelled";
 }
 
-function stableStringify(value: unknown): string {
-	if (value === null || typeof value !== "object") return JSON.stringify(value);
+function stableStringify(value: JsonValue | undefined): string {
+	if (value === null || typeof value !== "object") {
+		return JSON.stringify(value) ?? "undefined";
+	}
 	if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-	const object = value as Record<string, unknown>;
+	const object = value as JsonObject;
 	return `{${Object.keys(object)
 		.sort()
 		.map((key) => `${JSON.stringify(key)}:${stableStringify(object[key])}`)

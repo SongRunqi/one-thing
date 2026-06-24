@@ -10,13 +10,14 @@
  */
 
 import type { VoiceTranscriptMetadata } from '../ipc/voice.js'
+import type { JsonObject } from '../json.js'
 
 export interface SendMessageCommand {
   type: 'command:send-message'
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
   content: string
-  attachments?: unknown[]
+  attachments?: JsonObject[]
   source?: 'text' | 'voice' | 'api' | string
   voice?: VoiceTranscriptMetadata
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ToolCall } from '@/types'
+import type { JsonObject } from '../../../shared/json'
 import {
   buildToolActivityTarget,
   buildToolPermissionTitle,
@@ -7,7 +8,7 @@ import {
 } from '../helpers/tool-display'
 import type { ToolRenderStatus } from '../helpers/tool-status'
 
-function tc(toolName: string, args: Record<string, unknown> = {}): ToolCall {
+function tc(toolName: string, args: JsonObject = {}): ToolCall {
   return {
     id: `tc-${toolName}`,
     toolId: toolName,
@@ -18,7 +19,7 @@ function tc(toolName: string, args: Record<string, unknown> = {}): ToolCall {
   }
 }
 
-const knownToolSamples: Array<{ toolName: string; args?: Record<string, unknown> }> = [
+const knownToolSamples: Array<{ toolName: string; args?: JsonObject }> = [
   { toolName: 'bash', args: { command: 'echo hi' } },
   { toolName: 'read', args: { path: 'src/main.ts' } },
   { toolName: 'grep', args: { pattern: 'needle' } },

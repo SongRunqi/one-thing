@@ -25,6 +25,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { formatPermissionRejectedMessage } from '../../shared/tool-errors.js'
 import * as PermissionGrants from './permission-grants.js'
+import type { JsonObject } from '../../shared/json.js'
 
 // Lazy imports to avoid circular dependencies
 type EventBus = import('../events/event-bus.js').EventBus
@@ -42,7 +43,7 @@ export namespace Permission {
     messageId: string
     callId?: string
     title: string
-    metadata: Record<string, unknown>
+    metadata: JsonObject
     createdAt: number
     /** Working directory for persistent directory-level permissions */
     workingDirectory?: string
@@ -379,7 +380,7 @@ export namespace Permission {
       public readonly sessionId: string,
       public readonly permissionId: string,
       public readonly toolCallId?: string,
-      public readonly metadata?: Record<string, unknown>,
+      public readonly metadata?: JsonObject,
       public readonly reason?: string
     ) {
       super(formatPermissionRejectedMessage(reason))

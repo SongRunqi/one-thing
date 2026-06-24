@@ -21,6 +21,33 @@ import type { ReasoningPlacement, SessionEventEnvelope, StreamChunk } from '../.
 import type { Unsubscribe } from '../events/types.js'
 import { getEventBus, getStreamChannel } from '../events/index.js'
 
+function shouldDebugStream(): boolean {
+  return process.env.ONETHING_DEBUG_STREAM === '1' || process.env.ONETHING_DEBUG_CODEX_STREAM === '1'
+}
+
+function logTime(): string {
+  return new Date().toISOString()
+}
+
+function streamChunkText(chunk: BufferedStreamChunk): string {
+  if (chunk.type === 'text-delta') return chunk.text
+  if (chunk.type === 'reasoning-delta') return chunk.reasoning
+  if (chunk.type === 'tool-input-delta') return chunk.argsTextDelta
+  return ''
+}
+
+function previewText(value: string, maxLength = 240): string {
+  return value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
+}
+
+const debugLastSendAt = new Map<string, number>()
+
+function debugGapMs(key: string, now = Date.now()): number | undefined {
+  const previous = debugLastSendAt.get(key)
+  debugLastSendAt.set(key, now)
+  return previous === undefined ? undefined : now - previous
+}
+
 type BufferedStreamChunk =
   | { type: 'text-delta'; text: string; turnIndex?: number; voiceSpeakText?: string }
   | { type: 'reasoning-delta'; reasoning: string; turnIndex?: number; placement?: ReasoningPlacement }
@@ -235,6 +262,19 @@ export class IPCBridge {
     }
 
     for (const chunk of drainStreamBuffer(buf)) {
+      if (shouldDebugStream()) {
+        const text = streamChunkText(chunk)
+        const key = `${sessionId}:${state.messageId}:${chunk.type}`
+        console.log('[IPCBridge] send session:stream', {
+          time: logTime(),
+          gapMs: debugGapMs(key),
+          sessionId,
+          messageId: state.messageId,
+          type: chunk.type,
+          chars: text.length,
+          text: previewText(text),
+        })
+      }
       this.safeSend(IPC_CHANNELS.SESSION_STREAM, {
         sessionId,
         chunk: { ...chunk, messageId: state.messageId },

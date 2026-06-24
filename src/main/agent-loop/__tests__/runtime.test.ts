@@ -2,11 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { agentEventToChunk } from '../chunks.js'
 import { buildAgentLoopRuntime } from '../runtime.js'
 import { runAgentLoop } from '../runner.js'
-import type { AgentProvider } from '../types.js'
+import type { AgentMessage, AgentMessageContent, AgentProvider, AgentToolChoice } from '../types.js'
+
+interface SeenRuntimeRequest {
+  messages: AgentMessage[]
+  tools?: Array<{ name: string }>
+  toolChoice?: AgentToolChoice
+}
 
 describe('agent loop runtime builder', () => {
   it('assembles provider, tools, skills, prompt injectors, and tool policy', async () => {
-    const seen: any[] = []
+    const seen: SeenRuntimeRequest[] = []
     const provider: AgentProvider = {
       id: 'runtime-provider',
       capabilities: {
@@ -68,7 +74,7 @@ describe('agent loop runtime builder', () => {
     expect(result.text).toBe('runtime-ok')
     expect(seen[0].tools).toEqual([{ name: 'read' }])
     expect(seen[0].toolChoice).toBe('auto')
-    expect(seen[0].messages.map((message: any) => message.content)).toEqual([
+    expect(seen[0].messages.map(message => message.content)).toEqual([
       expect.stringContaining('repo-skill'),
       'system base',
       'dynamic extra',
@@ -80,7 +86,7 @@ describe('agent loop runtime builder', () => {
   })
 
   it('can preserve skill context without injecting a duplicate skill prompt', async () => {
-    const seen: any[] = []
+    const seen: AgentMessageContent[][] = []
     const provider: AgentProvider = {
       id: 'runtime-provider',
       async *streamTurn(request) {

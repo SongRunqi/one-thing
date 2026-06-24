@@ -564,7 +564,7 @@ describe('stream end visual stability', () => {
     expect(skeleton.attributes('aria-label')).toBe('Generating image')
   })
 
-  it('renders tool-loop waiting after data steps', async () => {
+  it('renders generation waiting after data steps', async () => {
     const wrapper = mount(MessageBubble, {
       props: {
         role: 'assistant',
@@ -579,7 +579,7 @@ describe('stream end visual stability', () => {
       global: { stubs: markdownStubs },
     })
 
-    const waiting = wrapper.find('.tool-loop-waiting')
+    const waiting = wrapper.find('.generation-waiting')
     expect(waiting.exists()).toBe(true)
     expect(waiting.text()).toContain('Waiting')
   })
@@ -621,7 +621,7 @@ describe('stream end visual stability', () => {
       global: { stubs: markdownStubs },
     })
 
-    expect(wrapper.find('.tool-loop-waiting').exists()).toBe(false)
+    expect(wrapper.find('.generation-waiting').exists()).toBe(false)
   })
 
   it('opens image attachments from url-only sources', async () => {
@@ -705,5 +705,73 @@ describe('stream end visual stability', () => {
       'data:image/png;base64,abc123',
       'screenshot.png',
     )
+  })
+
+  it('does not show waiting when streamed content only exists in content parts', async () => {
+    const { default: MessageItem } = await import('../../MessageItem.vue')
+    const message: ChatMessage = {
+      id: 'm1',
+      role: 'assistant',
+      content: '',
+      timestamp: 0,
+      isStreaming: true,
+      contentParts: [{ type: 'text', content: 'answer from content parts', turnIndex: 1 }],
+    }
+    const wrapper = mount(MessageItem, {
+      props: { message },
+      global: {
+        stubs: {
+          ...markdownStubs,
+          ImagePreview: { template: '<div />' },
+          MessageActions: { template: '<div />' },
+          MessageError: { template: '<div />' },
+          MessageSystem: { template: '<div />' },
+          SelectionToolbar: { template: '<div />' },
+          StepsPanel: { template: '<div />' },
+        },
+      },
+    })
+
+    expect(wrapper.find('.thinking-text').exists()).toBe(false)
+    expect(wrapper.text()).toContain('answer from content parts')
+  })
+
+  it('replaces waiting with streamed content when MessageItem receives a new message object', async () => {
+    const { default: MessageItem } = await import('../../MessageItem.vue')
+    const waitingMessage: ChatMessage = {
+      id: 'm1',
+      role: 'assistant',
+      content: '',
+      timestamp: 0,
+      isStreaming: true,
+      contentParts: [{ type: 'waiting', turnIndex: 1 }],
+    }
+    const wrapper = mount(MessageItem, {
+      props: { message: waitingMessage },
+      global: {
+        stubs: {
+          ...markdownStubs,
+          ImagePreview: { template: '<div />' },
+          MessageActions: { template: '<div />' },
+          MessageError: { template: '<div />' },
+          MessageSystem: { template: '<div />' },
+          SelectionToolbar: { template: '<div />' },
+          StepsPanel: { template: '<div />' },
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Waiting')
+
+    await wrapper.setProps({
+      message: {
+        ...waitingMessage,
+        content: 'streamed answer',
+        contentParts: [{ type: 'text', content: 'streamed answer', turnIndex: 1 }],
+      },
+    })
+
+    expect(wrapper.text()).not.toContain('Waiting')
+    expect(wrapper.text()).toContain('streamed answer')
   })
 })

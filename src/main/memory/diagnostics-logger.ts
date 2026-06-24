@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { getLogDir } from '../stores/paths.js'
+import { toJsonObject, type JsonObject, type JsonValue } from '../../shared/json.js'
 import type {
   MemoryDiagnosticLevel,
   MemoryDiagnosticLogEntry,
@@ -22,10 +23,10 @@ type LogInput = {
   durationMs?: number
   sessionId?: string
   runId?: string
-  request?: Record<string, unknown>
-  response?: Record<string, unknown>
+  request?: JsonObject
+  response?: JsonObject
   error?: unknown
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
 }
 
 type LoggerConfig = Required<SoulMemoryLoggingSettings>
@@ -94,7 +95,7 @@ function truncate(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(0, maxChars))}...`
 }
 
-export function sanitizeForMemoryLog(value: unknown, maxPreviewChars = DEFAULT_CONFIG.maxPreviewChars): unknown {
+export function sanitizeForMemoryLog(value: unknown, maxPreviewChars = DEFAULT_CONFIG.maxPreviewChars): JsonValue | undefined {
   if (value === null || value === undefined) return value
   if (typeof value === 'string') {
     const sanitized = /^https?:\/\//i.test(value) ? sanitizeUrlForMemoryLog(value) : value
@@ -102,15 +103,18 @@ export function sanitizeForMemoryLog(value: unknown, maxPreviewChars = DEFAULT_C
   }
   if (typeof value === 'number' || typeof value === 'boolean') return value
   if (Array.isArray(value)) {
-    return value.slice(0, 40).map(item => sanitizeForMemoryLog(item, maxPreviewChars))
+    return value.slice(0, 40)
+      .map(item => sanitizeForMemoryLog(item, maxPreviewChars))
+      .filter((item): item is JsonValue => item !== undefined)
   }
   if (typeof value === 'object') {
-    const result: Record<string, unknown> = {}
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const result: JsonObject = {}
+    for (const [key, entry] of Object.entries(value)) {
       if (SENSITIVE_KEY_RE.test(key)) {
         result[key] = '[redacted]'
       } else {
-        result[key] = sanitizeForMemoryLog(entry, maxPreviewChars)
+        const sanitized = sanitizeForMemoryLog(entry, maxPreviewChars)
+        if (sanitized !== undefined) result[key] = sanitized
       }
     }
     return result
@@ -118,7 +122,7 @@ export function sanitizeForMemoryLog(value: unknown, maxPreviewChars = DEFAULT_C
   return String(value)
 }
 
-function cleanError(error: unknown, maxPreviewChars: number): Record<string, unknown> {
+function cleanError(error: unknown, maxPreviewChars: number): JsonObject {
   if (error instanceof Error) {
     return {
       name: error.name,
@@ -131,7 +135,7 @@ function cleanError(error: unknown, maxPreviewChars: number): Record<string, unk
   }
 }
 
-function requestMeta(input: RequestInfo | URL, init?: RequestInit): Record<string, unknown> {
+function requestMeta(input: RequestInfo | URL, init?: RequestInit): JsonObject {
   const url = typeof input === 'string'
     ? input
     : input instanceof URL
@@ -210,10 +214,10 @@ export class MemoryDiagnosticsLogger {
       ...(typeof input.durationMs === 'number' ? { durationMs: Math.max(0, Math.round(input.durationMs)) } : {}),
       ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       ...(input.runId ? { runId: input.runId } : {}),
-      ...(input.request ? { request: sanitizeForMemoryLog(input.request, this.config.maxPreviewChars) as Record<string, unknown> } : {}),
-      ...(input.response ? { response: sanitizeForMemoryLog(input.response, this.config.maxPreviewChars) as Record<string, unknown> } : {}),
+      ...(input.request ? { request: toJsonObject(sanitizeForMemoryLog(input.request, this.config.maxPreviewChars)) } : {}),
+      ...(input.response ? { response: toJsonObject(sanitizeForMemoryLog(input.response, this.config.maxPreviewChars)) } : {}),
       ...(input.error ? { error: cleanError(input.error, this.config.maxPreviewChars) } : {}),
-      ...(input.metadata ? { metadata: sanitizeForMemoryLog(input.metadata, this.config.maxPreviewChars) as Record<string, unknown> } : {}),
+      ...(input.metadata ? { metadata: toJsonObject(sanitizeForMemoryLog(input.metadata, this.config.maxPreviewChars)) } : {}),
     }
     this.buffer.push(entry)
     if (this.buffer.length > MAX_BUFFER) this.buffer.splice(0, this.buffer.length - MAX_BUFFER)

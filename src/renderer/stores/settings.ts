@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, toRaw, computed } from 'vue'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, OpenRouterModel } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
-import type { AIProvider, TypographyDensity } from '../../shared/ipc'
+import type { AIProviderId, TypographyDensity } from '../../shared/ipc'
 import { createDefaultSettings } from '../../shared/defaults/settings'
 
 function isThemeDebugEnabled(): boolean {
@@ -39,7 +39,7 @@ function getInitialTheme(): 'light' | 'dark' | 'system' {
 const initialTheme = getInitialTheme()
 const DEFAULT_TYPOGRAPHY_DENSITY: TypographyDensity = 'compact'
 
-function normalizeTypographyDensity(density: unknown): TypographyDensity {
+function normalizeTypographyDensity(density: TypographyDensity | string | null | undefined): TypographyDensity {
   return density === 'comfortable' ? 'comfortable' : DEFAULT_TYPOGRAPHY_DENSITY
 }
 
@@ -308,16 +308,16 @@ export const useSettingsStore = defineStore('settings', () => {
     }
   }
 
-  function updateAIProvider(provider: AIProvider) {
+  function updateAIProvider(provider: AIProviderId) {
     settings.value.ai.provider = provider
   }
 
-  function updateAPIKey(apiKey: string, provider?: AIProvider) {
+  function updateAPIKey(apiKey: string, provider?: AIProviderId) {
     const targetProvider = provider || settings.value.ai.provider
     settings.value.ai.providers[targetProvider].apiKey = apiKey
   }
 
-  function updateModel(model: string, provider?: AIProvider) {
+  function updateModel(model: string, provider?: AIProviderId) {
     const targetProvider = provider || settings.value.ai.provider
     settings.value.ai.providers[targetProvider].model = model
   }

@@ -3,8 +3,9 @@ import type { AppSettings, ChatMessage, ChatSession } from '../../shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from '../providers/index.js'
 import { buildContextCompactPrompt } from './prompt/index.js'
-import { runBeforeContextCompactHooks } from '../plugins/lifecycle.js'
+import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '../plugins/lifecycle.js'
 import * as store from '../store.js'
+import { sanitizeToolResultForAI } from './stream/message-helpers.js'
 
 export interface ContextCompactResult {
   success: boolean
@@ -24,8 +25,9 @@ interface CompactPlan {
 }
 
 const DEFAULT_KEEP_RECENT_TURNS = 6
-const SUMMARY_MAX_OUTPUT_TOKENS = 1200
+const SUMMARY_MAX_OUTPUT_TOKENS = 1600
 const MAX_CHUNK_CHARS = 80000
+const SUMMARY_TOOL_RESULT_MAX_CHARS = 6000
 
 export function selectCompactPlan(
   session: ChatSession,
@@ -123,10 +125,13 @@ export async function compactSessionContext(options: {
   await options.onMessageCreated?.(compactMessage)
 
   try {
+    const configWithApiKeyForHooks: BeforeContextCompactContext['configWithApiKey'] = {
+      ...options.configWithApiKey,
+    }
     await runBeforeContextCompactHooks({
       sessionId: options.sessionId,
       providerId: options.providerId,
-      configWithApiKey: options.configWithApiKey as unknown as Record<string, unknown>,
+      configWithApiKey: configWithApiKeyForHooks,
       settings: options.settings,
       keepRecentTurns: options.keepRecentTurns,
       messagesToSummarize: plan.messagesToSummarize,
@@ -163,9 +168,11 @@ export async function compactSessionContext(options: {
       compactedThroughMessageId: plan.cutoffMessage.id,
       retainedContextSize: 0,
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('[ContextCompact] Failed to compact session:', error)
-    const errorMessage = error?.message || 'Failed to compact context'
+    const errorMessage = error instanceof Error && error.message
+      ? error.message
+      : 'Failed to compact context'
     const failedContent = JSON.stringify({
       type: 'context-compact',
       status: 'failed',
@@ -201,7 +208,7 @@ export function getContextCompactReason(options: {
 }): 'threshold' | 'hard-limit' | null {
   const threshold = Math.max(50, Math.min(100, options.thresholdPercent || 85))
   const contextLength = options.modelContextLength > 0 ? options.modelContextLength : 128000
-  const inputContextSize = options.session.contextSize ?? options.session.lastInputTokens ?? 0
+  const inputContextSize = estimateCurrentInputTokens(options.session)
   if (inputContextSize <= 0) return null
 
   const reservedOutputTokens = Math.max(0, options.reservedOutputTokens || 0)
@@ -212,6 +219,71 @@ export function getContextCompactReason(options: {
   if (hardLimitRisk) return 'hard-limit'
   if (thresholdHit) return 'threshold'
   return null
+}
+
+export function estimateCurrentInputTokens(session: ChatSession): number {
+  const providerInputTokens = Math.max(
+    0,
+    session.contextSize ?? 0,
+    session.lastInputTokens ?? 0,
+  )
+  const estimatedInputTokens = estimateSessionInputTokens(session)
+  return Math.max(providerInputTokens, estimatedInputTokens)
+}
+
+export function estimateSessionInputTokens(
+  session: Pick<ChatSession, 'messages' | 'summary' | 'summaryUpToMessageId'>,
+): number {
+  const parts: string[] = []
+
+  if (session.summary && session.summaryUpToMessageId) {
+    parts.push(`[Conversation History Summary]\n${session.summary}`)
+  }
+
+  const summaryIndex = session.summary && session.summaryUpToMessageId
+    ? session.messages.findIndex(message => message.id === session.summaryUpToMessageId)
+    : -1
+  const messages = summaryIndex >= 0
+    ? session.messages.slice(summaryIndex + 1)
+    : session.messages
+
+  for (const message of messages) {
+    if (message.role !== 'user' && message.role !== 'assistant') continue
+    if (message.isStreaming) continue
+
+    parts.push(`${message.role}: ${message.content || ''}`)
+    if (message.reasoning) {
+      parts.push(`reasoning: ${message.reasoning}`)
+    }
+    if (message.attachments?.length) {
+      parts.push(`attachments: ${message.attachments.map(attachment =>
+        `${attachment.fileName} (${attachment.mimeType}, ${attachment.size} bytes)`,
+      ).join('; ')}`)
+    }
+    if (message.toolCalls?.length) {
+      parts.push(`toolCalls: ${formatToolCallsForSummary(message.toolCalls)}`)
+    }
+  }
+
+  return estimateTextTokens(parts.join('\n\n'))
+}
+
+export function estimateTextTokens(text: string): number {
+  if (!text) return 0
+  const cjkCount = (text.match(/[\u4e00-\u9fff]/g) || []).length
+  const nonCjkCount = Math.max(0, text.length - cjkCount)
+  return Math.ceil(cjkCount / 1.8 + nonCjkCount / 4)
+}
+
+export function shouldSkipAutoCompactForProviderUsageMismatch(options: {
+  providerId: string
+  session: ChatSession
+  modelContextLength: number
+}): boolean {
+  if (options.providerId !== 'codex') return false
+  if (!Number.isFinite(options.modelContextLength) || options.modelContextLength <= 0) return false
+  const inputContextSize = options.session.contextSize ?? options.session.lastInputTokens ?? 0
+  return inputContextSize > options.modelContextLength
 }
 
 async function summarizeInChunks(options: {
@@ -226,27 +298,55 @@ async function summarizeInChunks(options: {
 
   for (const chunk of chunks) {
     const prompt = buildContextCompactPrompt(chunk, summary || undefined)
-    summary = await generateChatResponse(
+    const nextSummary = await generateChatResponse(
       options.providerId,
       options.configWithApiKey,
       [
         {
           role: 'system',
-          content: 'You summarize chat history for context compaction. Return only the updated Markdown summary.',
+          content: 'You summarize chat history for context compaction. Return only valid JSON matching the requested schema.',
         },
         { role: 'user', content: prompt },
       ],
       {
-        temperature: 0.2,
+        temperature: 0,
         maxTokens: SUMMARY_MAX_OUTPUT_TOKENS,
       },
     )
+    summary = normalizeContextSummaryOutput(nextSummary)
   }
 
   return summary.trim()
 }
 
-function formatMessagesForSummary(messages: ChatMessage[]): string {
+export function normalizeContextSummaryOutput(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+
+  const withoutFence = trimmed
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+
+  try {
+    return JSON.stringify(JSON.parse(withoutFence), null, 2)
+  } catch {
+    const start = withoutFence.indexOf('{')
+    const end = withoutFence.lastIndexOf('}')
+    if (start >= 0 && end > start) {
+      const candidate = withoutFence.slice(start, end + 1)
+      try {
+        return JSON.stringify(JSON.parse(candidate), null, 2)
+      } catch {
+        // Fall through to returning the raw text.
+      }
+    }
+  }
+
+  return trimmed
+}
+
+export function formatMessagesForSummary(messages: ChatMessage[]): string {
   return messages.map((message, index) => {
     const label = message.role === 'user' ? 'User' : 'Assistant'
     const parts = [`### ${index + 1}. ${label}`, message.content || '(empty)']
@@ -256,10 +356,7 @@ function formatMessagesForSummary(messages: ChatMessage[]): string {
     }
 
     if (message.toolCalls?.length) {
-      parts.push(`Tool calls:\n${message.toolCalls.map(tc => {
-        const status = tc.status ? ` (${tc.status})` : ''
-        return `- ${tc.toolName || tc.toolId}${status}: ${JSON.stringify(tc.arguments || {})}`
-      }).join('\n')}`)
+      parts.push(`Tool calls:\n${formatToolCallsForSummary(message.toolCalls)}`)
     }
 
     if (message.attachments?.length) {
@@ -268,6 +365,42 @@ function formatMessagesForSummary(messages: ChatMessage[]): string {
 
     return parts.join('\n\n')
   }).join('\n\n---\n\n')
+}
+
+function formatToolCallsForSummary(toolCalls: NonNullable<ChatMessage['toolCalls']>): string {
+  return toolCalls.map(tc => {
+    const status = tc.status ? ` (${tc.status})` : ''
+    const lines = [`- ${tc.toolName || tc.toolId}${status}: ${safeJsonForSummary(tc.arguments || {})}`]
+    const result = formatToolCallResultForSummary(tc)
+    if (result) {
+      lines.push(`  result: ${result}`)
+    }
+    return lines.join('\n')
+  }).join('\n')
+}
+
+function formatToolCallResultForSummary(toolCall: NonNullable<ChatMessage['toolCalls']>[number]): string {
+  if (toolCall.status === 'failed' || toolCall.status === 'cancelled') {
+    return compactSummaryText(toolCall.error || toolCall.rejectionReason || 'Tool did not complete.')
+  }
+
+  if (toolCall.status !== 'completed') return ''
+  const sanitized = sanitizeToolResultForAI(toolCall.result)
+  return compactSummaryText(safeJsonForSummary(sanitized))
+}
+
+function safeJsonForSummary(value: unknown): string {
+  try {
+    return typeof value === 'string' ? value : JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function compactSummaryText(value: string): string {
+  const normalized = value.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= SUMMARY_TOOL_RESULT_MAX_CHARS) return normalized
+  return `${normalized.slice(0, SUMMARY_TOOL_RESULT_MAX_CHARS).trimEnd()} [truncated ${normalized.length - SUMMARY_TOOL_RESULT_MAX_CHARS} chars]`
 }
 
 function chunkText(text: string, maxChars: number): string[] {

@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
+  agentProviderCanRunTurn,
   agentSupportsInputModality,
   agentSupportsOutputModality,
+  agentSupportsStructuredToolResults,
+  agentSupportsToolResultModality,
+  assertAgentProviderCanRunTurn,
   assertAgentMessagesSupportedByCapabilities,
   assertAgentOutputModalitiesSupportedByCapabilities,
   inputModalitiesFromAgentContent,
+  isAgentRunnableProvider,
+  isAgentStreamingProvider,
   providerSupportsInputModality,
   providerSupportsOutputModality,
+  providerSupportsToolResultModality,
 } from '../capabilities.js'
 import type { AgentModelCapabilities, AgentProvider } from '../types.js'
 
@@ -87,5 +94,65 @@ describe('agent loop capabilities', () => {
     await expect(providerSupportsInputModality(provider, 'multi-model', 'image')).resolves.toBe(true)
     await expect(providerSupportsOutputModality(provider, 'multi-model', 'audio')).resolves.toBe(true)
     await expect(providerSupportsOutputModality(provider, 'multi-model', 'video')).resolves.toBe(false)
+  })
+
+  it('separates tool-result media support from normal input modality support', async () => {
+    const capabilities: AgentModelCapabilities = {
+      capabilities: ['text-input', 'text-output', 'tool-calls', 'structured-tool-results'],
+      inputModalities: ['text'],
+      outputModalities: ['text'],
+      toolResultModalities: ['text', 'image'],
+      supportsTools: true,
+    }
+
+    expect(agentSupportsStructuredToolResults(capabilities)).toBe(true)
+    expect(agentSupportsToolResultModality(capabilities, 'image')).toBe(true)
+    expect(agentSupportsToolResultModality(capabilities, 'file')).toBe(false)
+    expect(() => assertAgentMessagesSupportedByCapabilities([
+      {
+        role: 'tool',
+        toolCallId: 'call_1',
+        content: [{ type: 'image', image: 'data:image/png;base64,abc', mediaType: 'image/png' }],
+      },
+    ], capabilities)).not.toThrow()
+    expect(() => assertAgentMessagesSupportedByCapabilities([
+      {
+        role: 'tool',
+        toolCallId: 'call_1',
+        content: [{ type: 'file', data: 'pdfbase64', mediaType: 'application/pdf' }],
+      },
+    ], capabilities)).toThrow('Agent provider does not support file tool-result input')
+
+    const provider: AgentProvider = { id: 'rich-tool-result-provider', capabilities }
+    await expect(providerSupportsToolResultModality(provider, 'rich-model', 'image')).resolves.toBe(true)
+    await expect(providerSupportsToolResultModality(provider, 'rich-model', 'audio')).resolves.toBe(false)
+  })
+
+  it('exposes a provider execution-interface guard for runtime builders', () => {
+    const streamProvider: AgentProvider = {
+      id: 'stream-provider',
+      async *streamTurn() {
+        yield { type: 'finish', turn: 1, finishReason: 'stop' }
+      },
+    }
+    const runProvider: AgentProvider = {
+      id: 'run-provider',
+      runTurn: async () => ({
+        message: { role: 'assistant', content: 'ok' },
+        finishReason: 'stop',
+      }),
+    }
+
+    expect(isAgentStreamingProvider(streamProvider)).toBe(true)
+    expect(isAgentRunnableProvider(streamProvider)).toBe(false)
+    expect(isAgentRunnableProvider(runProvider)).toBe(true)
+    expect(isAgentStreamingProvider(runProvider)).toBe(false)
+    expect(agentProviderCanRunTurn(streamProvider)).toBe(true)
+    expect(agentProviderCanRunTurn(runProvider)).toBe(true)
+
+    const incompleteProvider: AgentProvider = { id: 'incomplete-provider' }
+    expect(agentProviderCanRunTurn(incompleteProvider)).toBe(false)
+    expect(() => assertAgentProviderCanRunTurn(incompleteProvider))
+      .toThrow('Agent provider incomplete-provider does not implement streamTurn or runTurn')
   })
 })

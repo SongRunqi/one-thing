@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { StreamExecutionParams } from '../stream-executor.js'
+import { createDefaultSettings } from '../../../../shared/defaults/settings.js'
+import type { ToolSettings } from '../../../../shared/ipc.js'
+import type { StreamSender } from '../stream-processor.js'
+import type { ProviderConfigWithKey, StreamExecutionParams } from '../stream-executor.js'
 
 const mocks = vi.hoisted(() => ({
   engine: {
@@ -10,9 +13,7 @@ const mocks = vi.hoisted(() => ({
   },
   modelSupportsImageGeneration: vi.fn(async () => false),
   processImageGenerationStream: vi.fn(async () => true),
-  executeStreamGeneration: vi.fn(async () => ({ pausedForConfirmation: false })),
   executeAgentLoopStreamGeneration: vi.fn(async () => ({ pausedForConfirmation: false })),
-  shouldUseAgentLoopStream: vi.fn(() => false),
 }))
 
 vi.mock('../../../providers/model-registry.js', () => ({
@@ -23,13 +24,8 @@ vi.mock('../image-stream.js', () => ({
   processImageGenerationStream: mocks.processImageGenerationStream,
 }))
 
-vi.mock('../tool-loop.js', () => ({
-  executeStreamGeneration: mocks.executeStreamGeneration,
-}))
-
 vi.mock('../agent-loop-executor.js', () => ({
   executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
-  shouldUseAgentLoopStream: mocks.shouldUseAgentLoopStream,
 }))
 
 vi.mock('../../index.js', () => ({
@@ -38,17 +34,33 @@ vi.mock('../../index.js', () => ({
 
 const { executeMessageStream } = await import('../stream-executor.js')
 
+const sender: StreamSender = {
+  isDestroyed: () => false,
+  send: vi.fn(),
+}
+
+const configWithApiKey: ProviderConfigWithKey = {
+  apiKey: 'key',
+  model: 'deepseek-v4-flash',
+  selectedModels: ['deepseek-v4-flash'],
+}
+
+const toolSettings: ToolSettings = {
+  enableToolCalls: true,
+  tools: {},
+}
+
 function params(overrides: Partial<StreamExecutionParams> = {}): StreamExecutionParams {
   return {
-    sender: { isDestroyed: () => false, send: vi.fn() } as any,
+    sender,
     sessionId: 's1',
     assistantMessageId: 'm1',
     messageContent: 'hello',
     historyMessages: [{ role: 'user', content: 'hello' }],
-    configWithApiKey: { apiKey: 'key', model: 'deepseek-v4-flash', selectedModels: ['deepseek-v4-flash'] } as any,
+    configWithApiKey,
     providerId: 'deepseek',
-    settings: { chat: {}, skills: {}, tools: {} } as any,
-    toolSettings: { enableToolCalls: true } as any,
+    settings: createDefaultSettings(),
+    toolSettings,
     sessionName: 'Session',
     ...overrides,
   }
@@ -59,8 +71,7 @@ describe('stream executor agent-loop routing', () => {
     vi.clearAllMocks()
   })
 
-  it('routes text streams through agent-loop when the opt-in predicate matches', async () => {
-    mocks.shouldUseAgentLoopStream.mockReturnValue(true)
+  it('routes text streams through agent-loop', async () => {
     const abortController = new AbortController()
 
     const result = await executeMessageStream(params({
@@ -85,12 +96,10 @@ describe('stream executor agent-loop routing', () => {
       [{ role: 'user', content: 'hello' }],
       'Session',
     )
-    expect(mocks.executeStreamGeneration).not.toHaveBeenCalled()
     expect(mocks.engine.removeController).toHaveBeenCalledWith('s1')
   })
 
   it('keeps the controller registered when agent-loop pauses for confirmation', async () => {
-    mocks.shouldUseAgentLoopStream.mockReturnValue(true)
     mocks.executeAgentLoopStreamGeneration.mockResolvedValueOnce({ pausedForConfirmation: true })
 
     const result = await executeMessageStream(params())
@@ -100,20 +109,31 @@ describe('stream executor agent-loop routing', () => {
     expect(mocks.engine.removeController).not.toHaveBeenCalled()
   })
 
-  it('falls back to the existing tool loop when agent-loop is not selected', async () => {
-    mocks.shouldUseAgentLoopStream.mockReturnValue(false)
+  it('ignores the legacy agent-loop opt-out setting for text streams', async () => {
+    const settings = createDefaultSettings()
+    settings.chat!.agentLoopStream = false
 
-    const result = await executeMessageStream(params({ providerId: 'openai' }))
+    const result = await executeMessageStream(params({
+      providerId: 'openai',
+      settings,
+    }))
 
     expect(result.pausedForConfirmation).toBe(false)
-    expect(mocks.executeStreamGeneration).toHaveBeenCalled()
-    expect(mocks.executeAgentLoopStreamGeneration).not.toHaveBeenCalled()
+    expect(mocks.executeAgentLoopStreamGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: 'openai',
+        settings: expect.objectContaining({
+          chat: expect.objectContaining({ agentLoopStream: false }),
+        }),
+      }),
+      [{ role: 'user', content: 'hello' }],
+      'Session',
+    )
     expect(mocks.engine.removeController).toHaveBeenCalledWith('s1')
   })
 
   it('keeps image generation on the dedicated image path', async () => {
     mocks.modelSupportsImageGeneration.mockResolvedValueOnce(true)
-    mocks.shouldUseAgentLoopStream.mockReturnValue(true)
 
     const result = await executeMessageStream(params({ messageContent: 'draw moon' }))
 
@@ -128,7 +148,6 @@ describe('stream executor agent-loop routing', () => {
       model: 'deepseek-v4-flash',
     }))
     expect(mocks.executeAgentLoopStreamGeneration).not.toHaveBeenCalled()
-    expect(mocks.executeStreamGeneration).not.toHaveBeenCalled()
     expect(mocks.engine.removeController).toHaveBeenCalledWith('s1')
   })
 })

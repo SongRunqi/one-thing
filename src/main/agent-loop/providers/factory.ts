@@ -1,17 +1,33 @@
 import type { OAuthToken } from '../../../shared/ipc.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
-import type { AgentProvider } from '../types.js'
+import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
+import type { AgentCapability, AgentModelCapabilities, AgentProvider } from '../types.js'
 import { createACPAgentProvider } from './acp.js'
+import { createClaudeAgentProvider } from './claude.js'
 import { createCodexAgentProvider } from './codex.js'
 import { createDeepSeekAgentProvider } from './deepseek.js'
+import { createGeminiAgentProvider } from './gemini.js'
 import { createOpenAICompatibleAgentProvider } from './openai-compatible.js'
 
 export interface AgentProviderRuntimeConfig {
   apiKey?: string
   baseUrl?: string
   model?: string
+  apiType?: 'openai' | 'anthropic'
   oauthToken?: OAuthToken
   authContext?: ProviderAuthContext
+  modelCapabilitiesByModel?: Record<string, {
+    tools?: boolean
+    vision?: boolean
+    reasoning?: boolean
+  }>
+  models?: Record<string, {
+    supportsTools?: boolean
+    supportsVision?: boolean
+    supportsReasoning?: boolean
+    contextLength?: number
+    maxOutputTokens?: number
+  }>
 }
 
 export interface CreateAgentProviderFromRuntimeOptions {
@@ -30,6 +46,69 @@ export interface RegisterAgentProviderRuntimeOptions {
 }
 
 const agentProviderRuntimeFactories = new Map<string, AgentProviderRuntimeFactory>()
+
+interface CopilotCompletionToken {
+  token: string
+  expiresAt: number
+}
+
+interface CopilotTokenResponse {
+  token?: string
+  expires_in?: number
+}
+
+const copilotTokenCache = new Map<string, CopilotCompletionToken>()
+const CLAUDE_CODE_HEADER = "You are Claude Code, Anthropic's official CLI for Claude."
+const CLAUDE_CODE_OAUTH_BETA_HEADERS = [
+  'oauth-2025-04-20',
+  'claude-code-20250219',
+  'interleaved-thinking-2025-05-14',
+  'fine-grained-tool-streaming-2025-05-14',
+].join(',')
+
+function accessTokenFromRuntimeConfig(config: AgentProviderRuntimeConfig): string {
+  if (config.authContext?.kind === 'oauth') {
+    return config.authContext.token.accessToken
+  }
+  return config.oauthToken?.accessToken || config.apiKey || ''
+}
+
+async function getCopilotCompletionToken(
+  githubAccessToken: string,
+  fetchImpl: typeof globalThis.fetch,
+): Promise<string> {
+  const cached = copilotTokenCache.get(githubAccessToken)
+  if (cached && cached.expiresAt > Date.now() + 60000) {
+    return cached.token
+  }
+
+  const response = await fetchImpl('https://api.github.com/copilot_internal/v2/token', {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${githubAccessToken}`,
+      Accept: 'application/json',
+      'User-Agent': 'onething/1.0',
+      'Editor-Version': 'vscode/1.85.1',
+      'Editor-Plugin-Version': 'copilot-chat/0.29.1',
+    },
+  })
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`Failed to get Copilot token: ${response.status} ${text}`)
+  }
+
+  const data = await response.json() as CopilotTokenResponse
+  if (!data.token) {
+    throw new Error('Failed to get Copilot token: response did not include a token')
+  }
+
+  copilotTokenCache.set(githubAccessToken, {
+    token: data.token,
+    expiresAt: Date.now() + (data.expires_in ?? 1800) * 1000,
+  })
+  return data.token
+}
 
 export function registerAgentProviderRuntime(
   providerId: string,
@@ -53,7 +132,7 @@ export function getSupportedAgentProviderRuntimeIds(): string[] {
 }
 
 export function isAgentProviderRuntimeSupported(providerId: string): boolean {
-  return agentProviderRuntimeFactories.has(providerId)
+  return agentProviderRuntimeFactories.has(providerId) || isCustomAgentProviderRuntime(providerId)
 }
 
 export function createAgentProviderFromRuntime(
@@ -62,12 +141,117 @@ export function createAgentProviderFromRuntime(
   options: CreateAgentProviderFromRuntimeOptions = {},
 ): AgentProvider | undefined {
   return agentProviderRuntimeFactories.get(providerId)?.(config, options)
+    ?? createCustomAgentProviderFromRuntime(providerId, config, options)
+}
+
+function isCustomAgentProviderRuntime(providerId: string): boolean {
+  return providerId.startsWith('custom-')
+}
+
+function runtimeCapabilityFlags(
+  config: AgentProviderRuntimeConfig,
+  defaults: {
+    tools: boolean
+    vision: boolean
+    reasoning: boolean
+  },
+) {
+  const model = config.model
+  const override = model ? config.modelCapabilitiesByModel?.[model] : undefined
+  const metadata = model ? config.models?.[model] : undefined
+
+  return {
+    tools: override?.tools ?? metadata?.supportsTools ?? defaults.tools,
+    vision: override?.vision ?? metadata?.supportsVision ?? defaults.vision,
+    reasoning: override?.reasoning ?? metadata?.supportsReasoning ?? defaults.reasoning,
+  }
+}
+
+function capabilitiesFromFlags(flags: { tools: boolean; vision: boolean; reasoning: boolean }): AgentModelCapabilities {
+  const capabilities: AgentCapability[] = ['text-input', 'text-output', 'streaming']
+  if (flags.tools) capabilities.push('tool-calls', 'structured-tool-results')
+  if (flags.vision) capabilities.push('vision-input')
+  if (flags.reasoning) capabilities.push('reasoning')
+
+  return {
+    capabilities,
+    inputModalities: flags.vision ? ['text', 'image'] : ['text'],
+    outputModalities: ['text'],
+    toolResultModalities: flags.tools && flags.vision ? ['text', 'image'] : ['text'],
+    supportsTools: flags.tools,
+    supportsStructuredToolResults: flags.tools,
+    supportsReasoning: flags.reasoning,
+    supportsStreaming: true,
+  }
+}
+
+function positiveInteger(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined
+}
+
+function capabilityLimitsFromRuntimeConfig(config: AgentProviderRuntimeConfig): Pick<AgentModelCapabilities, 'maxInputTokens' | 'maxOutputTokens'> {
+  const metadata = config.model ? config.models?.[config.model] : undefined
+  return {
+    maxInputTokens: positiveInteger(metadata?.contextLength),
+    maxOutputTokens: positiveInteger(metadata?.maxOutputTokens),
+  }
+}
+
+function createCustomAgentProviderFromRuntime(
+  providerId: string,
+  config: AgentProviderRuntimeConfig,
+  options: CreateAgentProviderFromRuntimeOptions,
+): AgentProvider | undefined {
+  if (!isCustomAgentProviderRuntime(providerId)) return undefined
+
+  if (config.apiType === 'anthropic') {
+    const capabilities = runtimeCapabilityFlags(config, {
+      tools: true,
+      vision: true,
+      reasoning: true,
+    })
+    return createClaudeAgentProvider({
+      providerId,
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      fetchImpl: options.fetchImpl,
+      capabilities: capabilitiesFromFlags(capabilities),
+    })
+  }
+
+  const capabilities = runtimeCapabilityFlags(config, {
+    tools: true,
+    vision: true,
+    reasoning: true,
+  })
+
+  return createOpenAICompatibleAgentProvider({
+    providerId,
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    defaultBaseUrl: 'https://api.openai.com/v1',
+    fetchImpl: options.fetchImpl,
+    supportsVision: capabilities.vision,
+    supportsReasoning: capabilities.reasoning,
+    supportsTools: capabilities.tools,
+    includeAssistantReasoning: capabilities.reasoning,
+  })
 }
 
 registerAgentProviderRuntime('deepseek', (config, options) => createDeepSeekAgentProvider({
   apiKey: config.apiKey ?? '',
   baseUrl: config.baseUrl,
   fetchImpl: options.fetchImpl,
+  capabilities: {
+    ...capabilitiesFromFlags(runtimeCapabilityFlags(config, {
+      tools: true,
+      vision: false,
+      reasoning: true,
+    })),
+    ...capabilityLimitsFromRuntimeConfig(config),
+  },
 }), { replace: true })
 
 registerAgentProviderRuntime('codex', (config, options) => createCodexAgentProvider({
@@ -117,6 +301,63 @@ registerAgentProviderRuntime('zhipu', (config, options) => createOpenAICompatibl
   fetchImpl: options.fetchImpl,
   supportsReasoning: true,
   includeAssistantReasoning: true,
+}), { replace: true })
+
+registerAgentProviderRuntime('github-copilot', (config, options) => {
+  const githubAccessToken = accessTokenFromRuntimeConfig(config)
+  if (!githubAccessToken) {
+    throw new Error('Not logged in to GitHub Copilot. Please login first.')
+  }
+  const fetchImpl = options.fetchImpl ?? createRequiredAppFetch()
+  return createOpenAICompatibleAgentProvider({
+    providerId: 'github-copilot',
+    baseUrl: config.baseUrl,
+    defaultBaseUrl: 'https://api.individual.githubcopilot.com',
+    fetchImpl,
+    headers: {
+      'Editor-Version': 'vscode/1.85.1',
+      'Editor-Plugin-Version': 'copilot-chat/0.29.1',
+      'Copilot-Integration-Id': 'vscode-chat',
+      'User-Agent': 'onething/1.0',
+      'OpenAI-Intent': 'conversation-panel',
+    },
+    resolveAuth: async () => ({
+      apiKey: await getCopilotCompletionToken(githubAccessToken, fetchImpl),
+    }),
+    supportsVision: true,
+    supportsReasoning: true,
+    supportsTools: true,
+  })
+}, { replace: true })
+
+registerAgentProviderRuntime('claude', (config, options) => createClaudeAgentProvider({
+  apiKey: config.apiKey,
+  baseUrl: config.baseUrl,
+  fetchImpl: options.fetchImpl,
+}), { replace: true })
+
+registerAgentProviderRuntime('claude-code', (config, options) => {
+  const accessToken = accessTokenFromRuntimeConfig(config)
+  if (!accessToken) {
+    throw new Error('Not logged in to Claude Code. Please login first.')
+  }
+  return createClaudeAgentProvider({
+    providerId: 'claude-code',
+    baseUrl: config.baseUrl,
+    fetchImpl: options.fetchImpl,
+    omitApiKeyHeader: true,
+    systemHeader: CLAUDE_CODE_HEADER,
+    headers: {
+      authorization: `Bearer ${accessToken}`,
+      'anthropic-beta': CLAUDE_CODE_OAUTH_BETA_HEADERS,
+    },
+  })
+}, { replace: true })
+
+registerAgentProviderRuntime('gemini', (config, options) => createGeminiAgentProvider({
+  apiKey: config.apiKey,
+  baseUrl: config.baseUrl,
+  fetchImpl: options.fetchImpl,
 }), { replace: true })
 
 registerAgentProviderRuntime('acp', (_config, options) => createACPAgentProvider({

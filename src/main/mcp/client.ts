@@ -16,6 +16,37 @@ import type {
   MCPToolCallResult,
   MCPConnectionStatus,
 } from './types.js'
+import { toJsonSchemaObject, toJsonValue, type JsonArray, type JsonObject, type JsonValue } from '../../shared/json.js'
+
+function normalizeMCPContent(content: object[] | undefined): MCPToolCallResult['content'] {
+  if (!Array.isArray(content)) return undefined
+  return content.map(item => {
+    const record = toJsonValue(item)
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      return { type: 'text', text: String(record ?? '') }
+    }
+    const type = typeof record.type === 'string' ? record.type : 'text'
+    if (type === 'image') {
+      return {
+        type: 'image',
+        data: typeof record.data === 'string' ? record.data : undefined,
+        mimeType: typeof record.mimeType === 'string' ? record.mimeType : undefined,
+      }
+    }
+    if (type === 'resource') {
+      return {
+        type: 'resource',
+        text: typeof record.text === 'string' ? record.text : undefined,
+        data: typeof record.data === 'string' ? record.data : undefined,
+        mimeType: typeof record.mimeType === 'string' ? record.mimeType : undefined,
+      }
+    }
+    return {
+      type: 'text',
+      text: typeof record.text === 'string' ? record.text : JSON.stringify(record),
+    }
+  })
+}
 
 /**
  * MCP Client wrapper class
@@ -104,9 +135,9 @@ export class MCPClient {
 
       console.log(`[MCP:${this.id}] Connected successfully`)
       console.log(`[MCP:${this.id}] Tools: ${this._state.tools.length}, Resources: ${this._state.resources.length}, Prompts: ${this._state.prompts.length}`)
-    } catch (error: any) {
+    } catch (error) {
       this._state.status = 'error'
-      this._state.error = error.message || 'Unknown connection error'
+      this._state.error = error instanceof Error ? error.message : String(error ?? 'Unknown connection error')
       console.error(`[MCP:${this.id}] Connection failed:`, error)
       throw error
     }
@@ -164,10 +195,10 @@ export class MCPClient {
     // Fetch tools
     try {
       const toolsResult = await this.client.listTools()
-      this._state.tools = (toolsResult.tools || []).map((tool: any) => ({
+      this._state.tools = (toolsResult.tools || []).map((tool) => ({
         name: tool.name,
         description: tool.description,
-        inputSchema: tool.inputSchema || { type: 'object' },
+        inputSchema: { ...toJsonSchemaObject(tool.inputSchema || { type: 'object' }), type: 'object' },
         serverId: this.id,
       }))
     } catch (error) {
@@ -178,8 +209,8 @@ export class MCPClient {
     // Fetch resources
     try {
       const resourcesResult = await this.client.listResources()
-      this._state.resources = (resourcesResult.resources || []).map((resource: any) => ({
-        uri: resource.uri,
+      this._state.resources = (resourcesResult.resources || []).map((resource) => ({
+        uri: String(resource.uri),
         name: resource.name,
         description: resource.description,
         mimeType: resource.mimeType,
@@ -193,7 +224,7 @@ export class MCPClient {
     // Fetch prompts
     try {
       const promptsResult = await this.client.listPrompts()
-      this._state.prompts = (promptsResult.prompts || []).map((prompt: any) => ({
+      this._state.prompts = (promptsResult.prompts || []).map((prompt) => ({
         name: prompt.name,
         description: prompt.description,
         arguments: prompt.arguments,
@@ -208,7 +239,7 @@ export class MCPClient {
   /**
    * Call a tool
    */
-  async callTool(toolName: string, args: Record<string, any>, options?: { timeoutMs?: number }): Promise<MCPToolCallResult> {
+  async callTool(toolName: string, args: JsonObject, options?: { timeoutMs?: number }): Promise<MCPToolCallResult> {
     if (!this.client) {
       return {
         success: false,
@@ -235,22 +266,24 @@ export class MCPClient {
 
       return {
         success: true,
-        content: result.content as any,
+        content: normalizeMCPContent(Array.isArray(result.content)
+          ? result.content.filter((item): item is object => item !== null && typeof item === 'object')
+          : undefined),
         isError: result.isError === true,
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error(`[MCP:${this.id}] Tool call failed:`, error)
       return {
         success: false,
-        error: error.message || 'Unknown error',
+        error: error instanceof Error ? error.message : String(error ?? 'Unknown error'),
       }
     }
   }
 
-  /**
+   /**
    * Read a resource
    */
-  async readResource(uri: string): Promise<{ success: boolean; content?: any; error?: string }> {
+  async readResource(uri: string): Promise<{ success: boolean; content?: JsonValue; error?: string }> {
     if (!this.client) {
       return {
         success: false,
@@ -262,20 +295,20 @@ export class MCPClient {
       const result = await this.client.readResource({ uri })
       return {
         success: true,
-        content: result.contents,
+        content: toJsonValue(result.contents),
       }
-    } catch (error: any) {
+    } catch (error) {
       return {
         success: false,
-        error: error.message || 'Unknown error',
+        error: error instanceof Error ? error.message : String(error ?? 'Unknown error'),
       }
     }
   }
 
-  /**
+   /**
    * Get a prompt
    */
-  async getPrompt(name: string, args?: Record<string, string>): Promise<{ success: boolean; messages?: any[]; error?: string }> {
+  async getPrompt(name: string, args?: Record<string, string>): Promise<{ success: boolean; messages?: JsonArray; error?: string }> {
     if (!this.client) {
       return {
         success: false,
@@ -285,14 +318,15 @@ export class MCPClient {
 
     try {
       const result = await this.client.getPrompt({ name, arguments: args })
+      const messages = toJsonValue(result.messages)
       return {
         success: true,
-        messages: result.messages,
+        messages: Array.isArray(messages) ? messages : undefined,
       }
-    } catch (error: any) {
+    } catch (error) {
       return {
         success: false,
-        error: error.message || 'Unknown error',
+        error: error instanceof Error ? error.message : String(error ?? 'Unknown error'),
       }
     }
   }

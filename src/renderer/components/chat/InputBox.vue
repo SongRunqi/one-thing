@@ -90,7 +90,7 @@
             class="queued-message-action"
             native-type="button"
             :disabled="!!item.attachments?.length"
-            :title="item.attachments?.length ? 'File messages will send after the current response' : 'Steer the current tool loop with this message'"
+            :title="item.attachments?.length ? 'File messages will send after the current response' : 'Steer the current agent response with this message'"
             @click.stop="steerQueuedMessage(item.id)"
           >
             <template #icon>

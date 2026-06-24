@@ -1,15 +1,18 @@
 import type { ToolResult as CanonicalToolResult, ToolResultContentPart } from '../../../shared/ipc/index.js'
+import type { JsonObject } from '../../../shared/json.js'
+import { toJsonObject } from '../../../shared/json.js'
 import { summarizeToolFailureParameters } from '../../../shared/tool-failure-params.js'
 import { formatPermissionRejectedMessage } from '../../../shared/tool-errors.js'
 
 export interface ToolResultLike {
   title?: string
   output?: string
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
   attachments?: Array<{
     type: 'file' | 'image'
     path: string
     content?: string
+    data?: string
     mimeType?: string
   }>
 }
@@ -28,8 +31,15 @@ export function textFromToolResult(result: CanonicalToolResult | undefined): str
   return text || JSON.stringify(result)
 }
 
-export function toolResultToStructured(result: unknown): CanonicalToolResult<Record<string, unknown> | undefined> {
-  if (isCanonicalToolResult(result)) return result
+type ToolResultInput =
+  | string
+  | ToolResultLike
+  | CanonicalToolResult<JsonObject | undefined>
+  | null
+  | undefined
+
+export function toolResultToStructured(result: ToolResultInput): CanonicalToolResult<JsonObject | undefined> {
+  if (result && typeof result === 'object' && isCanonicalToolResult(result)) return result
 
   if (typeof result === 'string') {
     return { content: [{ type: 'text', text: result }], details: undefined }
@@ -44,12 +54,19 @@ export function toolResultToStructured(result: unknown): CanonicalToolResult<Rec
 
   for (const attachment of value.attachments ?? []) {
     if (!attachment?.path) continue
-    content.push({
+    const part: ToolResultContentPart = {
       type: attachment.type === 'image' ? 'image' : 'file',
       path: attachment.path,
-      text: attachment.content,
       mimeType: attachment.mimeType,
-    })
+    }
+    const attachmentData = attachment.content ?? attachment.data
+    if (attachment.type === 'image') {
+      part.data = attachmentData
+    } else {
+      part.text = attachment.content
+      part.data = attachment.data
+    }
+    content.push(part)
   }
 
   if (content.length === 0) {
@@ -58,7 +75,7 @@ export function toolResultToStructured(result: unknown): CanonicalToolResult<Rec
 
   return {
     content,
-    details: value.metadata,
+    details: value.metadata ? toJsonObject(value.metadata) : undefined,
   }
 }
 
@@ -69,7 +86,7 @@ export interface ToolFailureLike {
   status?: string
   toolName?: string
   toolId?: string
-  arguments?: Record<string, unknown>
+  arguments?: JsonObject
 }
 
 export interface ToolFailureResultForAI {
@@ -77,7 +94,7 @@ export interface ToolFailureResultForAI {
   rejected?: boolean
   rejectionReason?: string
   status?: string
-  parameters?: Record<string, unknown>
+  parameters?: JsonObject
   parameterSummary?: string
 }
 
@@ -108,10 +125,9 @@ export function toolFailureResultForAI(failure: ToolFailureLike): ToolFailureRes
   return result
 }
 
-export function isCanonicalToolResult(value: unknown): value is CanonicalToolResult<Record<string, unknown> | undefined> {
+export function isCanonicalToolResult(value: object | null | undefined): value is CanonicalToolResult<JsonObject | undefined> {
   return Boolean(
     value &&
-    typeof value === 'object' &&
-    Array.isArray((value as CanonicalToolResult).content),
+    Array.isArray((value as Partial<CanonicalToolResult>).content),
   )
 }

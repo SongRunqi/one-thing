@@ -500,8 +500,8 @@ function getModelMaxLimit(model: OpenRouterModel): number {
   return model.top_provider?.max_completion_tokens ?? 0
 }
 
-// Suggested default — half the model's hard limit. This matches the backend
-// resolution in tool-loop.ts when the user hasn't set an override.
+// Suggested default — half the model's hard limit. This matches backend stream
+// parameter resolution when the user hasn't set an override.
 function getDefaultMaxOutput(model: OpenRouterModel): number {
   const limit = getModelMaxLimit(model)
   if (limit <= 0) return 0

@@ -5,6 +5,8 @@ import type {
   AgentMessage,
   AgentTool,
   AgentToolCall,
+  AgentJsonObject,
+  AgentJsonValue,
   AgentToolResult,
   AgentUsage,
   AgentFinishReason,
@@ -12,10 +14,19 @@ import type {
   AgentTurn,
   AgentToolPolicy,
 } from './types.js'
-import { agentContentToText, collectAgentTurnFromStream } from './stream.js'
+import {
+  agentContentToText,
+  collectAgentTurnFromStream,
+  createAgentAbortError,
+  runWithAgentAbort,
+  streamAgentProviderTurnEvents,
+  throwIfAgentAborted,
+} from './stream.js'
 import { applyPromptInjectors, createSkillPromptInjector } from './prompts.js'
 import { AgentLoopPauseForConfirmationError } from './errors.js'
+import { agentToolResultToMessageContentForCapabilities } from './tool-results.js'
 import {
+  assertAgentProviderCanRunTurn,
   agentSupportsTools,
   assertAgentOutputModalitiesSupportedByCapabilities,
   assertAgentMessagesSupportedByCapabilities,
@@ -24,61 +35,18 @@ import {
 
 const DEFAULT_MAX_TURNS = 8
 
-function createAbortError(reason = 'Agent loop aborted'): Error {
-  const error = new Error(reason)
-  error.name = 'AbortError'
-  return error
-}
-
-function isAbortError(error: unknown): boolean {
+function isAbortError(error: Error): boolean {
   return error instanceof Error && error.name === 'AbortError'
 }
 
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
-    throw createAbortError()
-  }
-}
-
-async function runWithAbort<T>(
-  signal: AbortSignal | undefined,
-  operation: () => Promise<T> | T,
-): Promise<T> {
-  throwIfAborted(signal)
-  if (!signal) return operation()
-
-  let removeAbortListener = () => {}
-  const abortPromise = new Promise<never>((_, reject) => {
-    const onAbort = () => reject(createAbortError())
-    removeAbortListener = () => signal.removeEventListener('abort', onAbort)
-    signal.addEventListener('abort', onAbort, { once: true })
-  })
-
-  try {
-    return await Promise.race([
-      Promise.resolve().then(operation),
-      abortPromise,
-    ])
-  } finally {
-    removeAbortListener()
-  }
-}
-
-function parseToolArguments(call: AgentToolCall): Record<string, unknown> {
+function parseToolArguments(call: AgentToolCall): AgentJsonObject {
   const raw = call.arguments.trim()
   if (!raw) return {}
-  const parsed = JSON.parse(raw)
+  const parsed = JSON.parse(raw) as AgentJsonValue
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error(`Tool arguments for ${call.name} must be a JSON object`)
   }
-  return parsed as Record<string, unknown>
-}
-
-function stringifyToolResult(result: AgentToolResult): string {
-  if (result.error) {
-    return JSON.stringify({ success: false, error: result.error })
-  }
-  return result.content
+  return parsed
 }
 
 function addUsage(a: AgentUsage | undefined, b: AgentUsage | undefined): AgentUsage | undefined {
@@ -123,17 +91,15 @@ function resolveToolChoice(
 }
 
 async function executeProviderTurn(request: AgentTurnRequest, provider: AgentLoopOptions['provider']): Promise<AgentTurn> {
-  if (provider.streamTurn) {
-    return collectAgentTurnFromStream(provider.streamTurn(request), request.onEvent)
-  }
-  if (provider.runTurn) {
-    return provider.runTurn(request)
+  if (provider.streamTurn || provider.runTurn) {
+    return collectAgentTurnFromStream(streamAgentProviderTurnEvents(provider, request), request.onEvent)
   }
   throw new Error(`Agent provider ${provider.id} does not implement streamTurn or runTurn`)
 }
 
 export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoopResult> {
-  throwIfAborted(options.abortSignal)
+  throwIfAgentAborted(options.abortSignal)
+  assertAgentProviderCanRunTurn(options.provider)
   const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS
   const capabilities = await resolveAgentModelCapabilities(options.provider, options.model)
   assertAgentOutputModalitiesSupportedByCapabilities(options.requestedOutputModalities, capabilities)
@@ -147,7 +113,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     ...(injectSkillPrompts && skills.length > 0 ? [createSkillPromptInjector()] : []),
     ...(options.promptInjectors ?? []),
   ]
-  let messages = await runWithAbort(options.abortSignal, () =>
+  let messages = await runWithAgentAbort(options.abortSignal, () =>
     applyPromptInjectors(
       baseMessages,
       promptInjectors,
@@ -158,6 +124,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         tools,
         skills,
         workingDirectory: options.workingDirectory,
+        abortSignal: options.abortSignal,
       },
     ))
   assertAgentMessagesSupportedByCapabilities(messages, capabilities)
@@ -169,8 +136,8 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   let usage: AgentUsage | undefined
 
   for (let turn = 1; turn <= maxTurns; turn++) {
-    throwIfAborted(options.abortSignal)
-    const replacementMessages = await runWithAbort(options.abortSignal, () => options.beforeTurn?.({
+    throwIfAgentAborted(options.abortSignal)
+    const replacementMessages = await runWithAgentAbort(options.abortSignal, () => options.beforeTurn?.({
       provider: options.provider,
       model: options.model,
       messages,
@@ -178,8 +145,9 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       skills,
       turn,
       workingDirectory: options.workingDirectory,
+      abortSignal: options.abortSignal,
     }))
-    throwIfAborted(options.abortSignal)
+    throwIfAgentAborted(options.abortSignal)
     if (replacementMessages) {
       messages = replacementMessages.map(message => ({ ...message }))
       assertAgentMessagesSupportedByCapabilities(messages, capabilities)
@@ -187,7 +155,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
 
     options.onEvent?.({ type: 'turn-start', turn })
 
-    const agentTurn = await runWithAbort(options.abortSignal, () =>
+    const agentTurn = await runWithAgentAbort(options.abortSignal, () =>
       executeProviderTurn({
         model: options.model,
         messages,
@@ -202,7 +170,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         onEvent: options.onEvent,
         turn,
       }, options.provider))
-    throwIfAborted(options.abortSignal)
+    throwIfAgentAborted(options.abortSignal)
 
     messages.push(agentTurn.message)
     finalText = agentContentToText(agentTurn.message.content)
@@ -213,7 +181,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
 
     const toolCalls = agentTurn.message.toolCalls ?? []
     if (toolCalls.length === 0) {
-      const replacementMessages = await runWithAbort(options.abortSignal, () => options.afterTurn?.({
+      const replacementMessages = await runWithAgentAbort(options.abortSignal, () => options.afterTurn?.({
         provider: options.provider,
         model: options.model,
         messages,
@@ -222,8 +190,9 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         turn,
         turnResult: agentTurn,
         workingDirectory: options.workingDirectory,
+        abortSignal: options.abortSignal,
       }))
-      throwIfAborted(options.abortSignal)
+      throwIfAgentAborted(options.abortSignal)
       if (replacementMessages) {
         messages = replacementMessages.map(message => ({ ...message }))
         assertAgentMessagesSupportedByCapabilities(messages, capabilities)
@@ -242,7 +211,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     }
 
     for (const toolCall of toolCalls) {
-      throwIfAborted(options.abortSignal)
+      throwIfAgentAborted(options.abortSignal)
       const tool = toolMap.get(toolCall.name)
       let result: AgentToolResult
 
@@ -251,7 +220,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       } else {
         try {
           const args = parseToolArguments(toolCall)
-          result = await runWithAbort(options.abortSignal, () =>
+          result = await runWithAgentAbort(options.abortSignal, () =>
             tool.execute(args, {
               sessionId: options.sessionId,
               messageId: options.messageId,
@@ -266,12 +235,13 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
               },
             }))
         } catch (error) {
-          if (options.abortSignal?.aborted || isAbortError(error)) {
-            throw isAbortError(error) ? error : createAbortError()
+          const caught = error instanceof Error ? error : new Error(String(error))
+          if (options.abortSignal?.aborted || isAbortError(caught)) {
+            throw isAbortError(caught) ? caught : createAgentAbortError()
           }
           result = {
             content: '',
-            error: error instanceof Error ? error.message : String(error),
+            error: caught.message,
           }
         }
       }
@@ -279,7 +249,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       allToolResults.push({ toolCall, result })
       options.onEvent?.({ type: 'tool-result', turn, toolCall, result })
       if (options.abortSignal?.aborted || result.aborted) {
-        throw createAbortError()
+        throw createAgentAbortError()
       }
       if (result.requiresConfirmation) {
         throw new AgentLoopPauseForConfirmationError(toolCall, result)
@@ -287,8 +257,9 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       messages.push({
         role: 'tool',
         toolCallId: toolCall.id,
-        content: stringifyToolResult(result),
+        content: agentToolResultToMessageContentForCapabilities(result, capabilities),
       })
+      assertAgentMessagesSupportedByCapabilities(messages, capabilities)
     }
   }
 

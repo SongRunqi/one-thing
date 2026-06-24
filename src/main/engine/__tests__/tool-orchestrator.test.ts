@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ToolCall } from '../../../shared/ipc'
+import type { ChatMessage, ChatSession, ToolCall } from '../../../shared/ipc'
+import { createDefaultSettings } from '../../../shared/defaults/settings.js'
+import type { JsonObject } from '../../../shared/json.js'
+import type { IPCEmitter } from '../stream/ipc-emitter.js'
+import type { StreamContext, StreamProcessor } from '../stream/stream-processor.js'
 
 const mockBus = {
   emit: vi.fn(async () => undefined),
@@ -51,12 +55,100 @@ function toolCall(id: string, toolId: string): ToolCall {
   }
 }
 
+function testSession(message: Partial<ChatMessage> = {}): ChatSession {
+  const assistantMessage: ChatMessage = {
+    id: 'msg',
+    role: 'assistant',
+    content: '',
+    timestamp: 0,
+    toolCalls: [],
+    steps: [
+      { id: 's1', type: 'tool-call', title: 'edit', status: 'running', timestamp: 0, toolCallId: 'edit' },
+      { id: 's2', type: 'tool-call', title: 'read', status: 'running', timestamp: 0, toolCallId: 'read' },
+    ],
+    contentParts: [{ type: 'tool-call', toolCalls: [] }],
+    ...message,
+  }
+
+  return {
+    id: 'session',
+    name: 'Tool session',
+    createdAt: 0,
+    updatedAt: 0,
+    messages: [assistantMessage],
+  }
+}
+
+function testContext(): StreamContext {
+  return {
+    sessionId: 'session',
+    assistantMessageId: 'msg',
+    abortSignal: new AbortController().signal,
+    settings: createDefaultSettings(),
+    providerConfig: {
+      model: 'test-model',
+      selectedModels: ['test-model'],
+      apiKey: 'test-key',
+    },
+    providerId: 'deepseek',
+    toolSettings: undefined,
+    sender: {
+      isDestroyed: () => false,
+      send: vi.fn(),
+    },
+  }
+}
+
+function testProcessor(toolCalls: ToolCall[]): StreamProcessor {
+  return {
+    get accumulatedContent() { return '' },
+    get accumulatedReasoning() { return '' },
+    get toolCalls() { return toolCalls },
+    handleTextChunk: vi.fn(text => text),
+    handleReasoningChunk: vi.fn(),
+    handleToolCallChunk: vi.fn(() => toolCalls[0]),
+    handleToolInputStart: vi.fn(),
+    handleToolInputDelta: vi.fn(),
+    handleToolInputEnd: vi.fn(() => toolCalls[0] ?? null),
+    getStepIdForToolCall: vi.fn(() => undefined),
+    finalize: vi.fn(async () => undefined),
+  }
+}
+
+function testEmitter(overrides: Partial<IPCEmitter> = {}): IPCEmitter {
+  return {
+    sendTextChunk: vi.fn(),
+    sendReasoningChunk: vi.fn(),
+    sendContentPart: vi.fn(),
+    sendContinuation: vi.fn(),
+    sendToolCall: vi.fn(),
+    sendToolResult: vi.fn(),
+    sendToolInputStart: vi.fn(),
+    sendToolInputDelta: vi.fn(),
+    sendToolExecutionStart: vi.fn(),
+    sendToolExecutionUpdate: vi.fn(),
+    sendToolExecutionEnd: vi.fn(),
+    sendContextSizeUpdate: vi.fn(),
+    sendStepAdded: vi.fn(),
+    sendStepUpdated: vi.fn(),
+    sendStreamComplete: vi.fn(),
+    sendStreamError: vi.fn(),
+    sendStreamAborted: vi.fn(),
+    sendSkillActivated: vi.fn(),
+    ...overrides,
+  }
+}
+
+function toolArgs(args: JsonObject): JsonObject {
+  return args
+}
+
 describe('ToolOrchestrator', () => {
   beforeEach(async () => {
     mockBus.emit.mockClear()
     const { executeToolAndUpdate } = await import('../stream/tool-execution')
-    ;(executeToolAndUpdate as any).mockReset()
-    ;(executeToolAndUpdate as any).mockImplementation(async (_ctx: any, toolCall: ToolCall) => {
+    vi.mocked(executeToolAndUpdate).mockReset()
+    vi.mocked(executeToolAndUpdate).mockImplementation(async (_ctx: StreamContext, toolCall: ToolCall) => {
       if (toolCall.id === 'edit') {
         toolCall.status = 'failed'
         toolCall.rejected = true
@@ -67,63 +159,54 @@ describe('ToolOrchestrator', () => {
       }
     })
     const store = await import('../../store.js')
-    ;(store.getSession as any).mockReturnValue({
-      messages: [{
-        id: 'msg',
+    vi.mocked(store.getSession).mockReturnValue(testSession({
         toolCalls: [],
         steps: [
           { id: 's1', type: 'tool-call', title: 'edit', status: 'running', timestamp: 0, toolCallId: 'edit' },
           { id: 's2', type: 'tool-call', title: 'read', status: 'running', timestamp: 0, toolCallId: 'read' },
         ],
         contentParts: [{ type: 'tool-call', toolCalls: [] }],
-      }],
-    })
+    }))
   })
 
   it('does not emit a stale message update for a hidden tool that was never published', async () => {
     const { ToolOrchestrator } = await import('../stream/tool-orchestrator')
     const { executeToolAndUpdate } = await import('../stream/tool-execution')
     const store = await import('../../store.js')
-    ;(executeToolAndUpdate as any).mockReset()
+    vi.mocked(executeToolAndUpdate).mockReset()
     mockBus.emit.mockClear()
 
     let releaseFirst!: () => void
     const firstExecution = new Promise<void>(resolve => { releaseFirst = resolve })
-    ;(executeToolAndUpdate as any)
+    vi.mocked(executeToolAndUpdate)
       .mockImplementationOnce(async () => firstExecution)
-      .mockImplementationOnce(async (_ctx: any, toolCall: ToolCall) => {
+      .mockImplementationOnce(async (_ctx: StreamContext, toolCall: ToolCall) => {
         toolCall.status = 'completed'
       })
 
-    ;(store.getSession as any).mockReturnValue({
-      messages: [{
-        id: 'msg',
+    vi.mocked(store.getSession).mockReturnValue(testSession({
         toolCalls: [toolCall('permissioned-bash', 'bash')],
         steps: [
           { id: 's1', type: 'command', title: 'bash', status: 'running', timestamp: 0, toolCallId: 'permissioned-bash' },
         ],
         contentParts: [{ type: 'data-steps', turnIndex: 1 }],
-      }],
-    })
+    }))
 
     const visible = toolCall('permissioned-bash', 'bash')
     const hidden = toolCall('hidden-read', 'read')
     const processorToolCalls = [visible]
     const orchestrator = new ToolOrchestrator({
-      ctx: {
-        sessionId: 'session',
-        assistantMessageId: 'msg',
-      } as any,
-      processor: { toolCalls: processorToolCalls } as any,
+      ctx: testContext(),
+      processor: testProcessor(processorToolCalls),
       enabledSkills: [],
       turnIndex: 1,
       turnToolCalls: [],
-      emitter: {} as any,
+      emitter: testEmitter(),
       beforeFirstTool: vi.fn(),
     })
 
-    orchestrator.start(visible, { toolName: 'bash', args: { command: 'npm run build' } })
-    orchestrator.start(hidden, { toolName: 'read', args: { path: 'README.md' } })
+    orchestrator.start(visible, { toolName: 'bash', args: toolArgs({ command: 'npm run build' }) })
+    orchestrator.start(hidden, { toolName: 'read', args: toolArgs({ path: 'README.md' }) })
 
     expect(mockBus.emit).not.toHaveBeenCalledWith(
       'session',
@@ -141,22 +224,19 @@ describe('ToolOrchestrator', () => {
     const sent: ToolCall[] = []
 
     const orchestrator = new ToolOrchestrator({
-      ctx: {
-        sessionId: 'session',
-        assistantMessageId: 'msg',
-      } as any,
-      processor: { toolCalls: processorToolCalls } as any,
+      ctx: testContext(),
+      processor: testProcessor(processorToolCalls),
       enabledSkills: [],
       turnIndex: 1,
       turnToolCalls,
-      emitter: {
+      emitter: testEmitter({
         sendToolCall: (tc: ToolCall) => sent.push({ ...tc }),
-      } as any,
+      }),
       beforeFirstTool: vi.fn(),
     })
 
-    orchestrator.start(processorToolCalls[0], { toolName: 'edit', args: {} })
-    orchestrator.start(processorToolCalls[1], { toolName: 'read', args: {} })
+    orchestrator.start(processorToolCalls[0], { toolName: 'edit', args: toolArgs({}) })
+    orchestrator.start(processorToolCalls[1], { toolName: 'read', args: toolArgs({}) })
 
     expect(sent.map(tc => `${tc.id}:${tc.status}`)).toEqual([])
     expect(processorToolCalls.map(tc => tc.id)).toEqual(['edit'])
@@ -171,12 +251,12 @@ describe('ToolOrchestrator', () => {
   it('publishes a hidden tail only after the preceding barrier succeeds', async () => {
     const { ToolOrchestrator } = await import('../stream/tool-orchestrator')
     const { executeToolAndUpdate } = await import('../stream/tool-execution')
-    ;(executeToolAndUpdate as any).mockReset()
-    ;(executeToolAndUpdate as any)
-      .mockImplementationOnce(async (_ctx: any, toolCall: ToolCall) => {
+    vi.mocked(executeToolAndUpdate).mockReset()
+    vi.mocked(executeToolAndUpdate)
+      .mockImplementationOnce(async (_ctx: StreamContext, toolCall: ToolCall) => {
         toolCall.status = 'completed'
       })
-      .mockImplementationOnce(async (_ctx: any, toolCall: ToolCall) => {
+      .mockImplementationOnce(async (_ctx: StreamContext, toolCall: ToolCall) => {
         toolCall.status = 'completed'
       })
 
@@ -185,22 +265,19 @@ describe('ToolOrchestrator', () => {
     const sent: ToolCall[] = []
 
     const orchestrator = new ToolOrchestrator({
-      ctx: {
-        sessionId: 'session',
-        assistantMessageId: 'msg',
-      } as any,
-      processor: { toolCalls: processorToolCalls } as any,
+      ctx: testContext(),
+      processor: testProcessor(processorToolCalls),
       enabledSkills: [],
       turnIndex: 1,
       turnToolCalls,
-      emitter: {
+      emitter: testEmitter({
         sendToolCall: (tc: ToolCall) => sent.push({ ...tc }),
-      } as any,
+      }),
       beforeFirstTool: vi.fn(),
     })
 
-    orchestrator.start(processorToolCalls[0], { toolName: 'edit', args: {} })
-    orchestrator.start(processorToolCalls[1], { toolName: 'bash', args: { command: 'npm run build' } })
+    orchestrator.start(processorToolCalls[0], { toolName: 'edit', args: toolArgs({}) })
+    orchestrator.start(processorToolCalls[1], { toolName: 'bash', args: toolArgs({ command: 'npm run build' }) })
 
     expect(sent.map(tc => `${tc.id}:${tc.status}`)).toEqual([])
     expect(processorToolCalls.map(tc => tc.id)).toEqual(['edit-success'])
@@ -214,13 +291,13 @@ describe('ToolOrchestrator', () => {
   it('continues hidden tail after a failed tool that is not a rejection', async () => {
     const { ToolOrchestrator } = await import('../stream/tool-orchestrator')
     const { executeToolAndUpdate } = await import('../stream/tool-execution')
-    ;(executeToolAndUpdate as any).mockReset()
-    ;(executeToolAndUpdate as any)
-      .mockImplementationOnce(async (_ctx: any, toolCall: ToolCall) => {
+    vi.mocked(executeToolAndUpdate).mockReset()
+    vi.mocked(executeToolAndUpdate)
+      .mockImplementationOnce(async (_ctx: StreamContext, toolCall: ToolCall) => {
         toolCall.status = 'failed'
         toolCall.error = 'Exact edit text not found'
       })
-      .mockImplementationOnce(async (_ctx: any, toolCall: ToolCall) => {
+      .mockImplementationOnce(async (_ctx: StreamContext, toolCall: ToolCall) => {
         toolCall.status = 'completed'
       })
 
@@ -229,22 +306,19 @@ describe('ToolOrchestrator', () => {
     const sent: ToolCall[] = []
 
     const orchestrator = new ToolOrchestrator({
-      ctx: {
-        sessionId: 'session',
-        assistantMessageId: 'msg',
-      } as any,
-      processor: { toolCalls: processorToolCalls } as any,
+      ctx: testContext(),
+      processor: testProcessor(processorToolCalls),
       enabledSkills: [],
       turnIndex: 1,
       turnToolCalls,
-      emitter: {
+      emitter: testEmitter({
         sendToolCall: (tc: ToolCall) => sent.push({ ...tc }),
-      } as any,
+      }),
       beforeFirstTool: vi.fn(),
     })
 
-    orchestrator.start(processorToolCalls[0], { toolName: 'edit', args: {} })
-    orchestrator.start(processorToolCalls[1], { toolName: 'bash', args: { command: 'npm run build' } })
+    orchestrator.start(processorToolCalls[0], { toolName: 'edit', args: toolArgs({}) })
+    orchestrator.start(processorToolCalls[1], { toolName: 'bash', args: toolArgs({ command: 'npm run build' }) })
 
     await orchestrator.waitForAll()
 
@@ -266,23 +340,20 @@ describe('ToolOrchestrator', () => {
     const results: ToolCall[] = []
 
     const orchestrator = new ToolOrchestrator({
-      ctx: {
-        sessionId: 'session',
-        assistantMessageId: 'msg',
-      } as any,
-      processor: { toolCalls: processorToolCalls } as any,
+      ctx: testContext(),
+      processor: testProcessor(processorToolCalls),
       enabledSkills: [],
       turnIndex: 1,
       turnToolCalls,
-      emitter: {
+      emitter: testEmitter({
         sendToolCall: (tc: ToolCall) => sent.push({ ...tc }),
         sendToolResult: (tc: ToolCall) => results.push({ ...tc }),
-      } as any,
+      }),
       beforeFirstTool: vi.fn(),
     })
 
     for (const call of [...processorToolCalls]) {
-      orchestrator.start(call, { toolName: 'read', args: { path: 'same.txt' } })
+      orchestrator.start(call, { toolName: 'read', args: toolArgs({ path: 'same.txt' }) })
     }
 
     await orchestrator.waitForAll()

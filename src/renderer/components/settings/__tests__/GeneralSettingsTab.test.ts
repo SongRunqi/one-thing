@@ -9,7 +9,7 @@ vi.mock('../ThemeSelectorPanel.vue', () => ({
 }))
 
 describe('GeneralSettingsTab', () => {
-  it('emits agent loop streaming updates through chat settings', async () => {
+  it('does not expose the legacy agent loop stream opt-out', async () => {
     const settings = createDefaultSettings()
     const chat = settings.chat!
     chat.agentLoopStream = false
@@ -27,15 +27,6 @@ describe('GeneralSettingsTab', () => {
     })
 
     const toggle = wrapper.find('input[aria-label="use agent loop streaming"]')
-    expect((toggle.element as HTMLInputElement).checked).toBe(false)
-
-    await toggle.setValue(true)
-
-    const emitted = wrapper.emitted('update:settings')
-    expect(emitted).toBeTruthy()
-    const nextSettings = emitted!.at(-1)![0] as ReturnType<typeof createDefaultSettings>
-    expect(nextSettings.chat?.agentLoopStream).toBe(true)
-    expect(nextSettings.chat?.contextCompactEnabled).toBe(true)
-    expect(nextSettings.chat?.contextCompactThreshold).toBe(85)
+    expect(toggle.exists()).toBe(false)
   })
 })

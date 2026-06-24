@@ -13,9 +13,15 @@ import { getSettings } from '../../stores/settings.js'
 import { getVariablesStore } from '../../variables/store/index.js'
 
 const require = createRequire(import.meta.url)
-const electronModule = (() => {
+type ElectronModuleShape = {
+  app?: {
+    getPath(name: string): string
+  }
+}
+
+const electronModule = ((): ElectronModuleShape | null => {
   try {
-    return require('electron') as any
+    return require('electron') as ElectronModuleShape
   } catch {
     return null
   }

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { JsonObject } from '../../../shared/json.js'
 import { Permission } from '../../permission/index.js'
 import { enforcePermissionPolicy } from '../../tools/core/permission-policy.js'
 import type { ToolEffect } from '../../tools/core/tool-effect.js'
@@ -9,7 +10,7 @@ vi.mock('../../permission/index.js', () => {
       public readonly sessionId: string,
       public readonly permissionId: string,
       public readonly toolCallId?: string,
-      public readonly metadata?: Record<string, unknown>,
+      public readonly metadata?: JsonObject,
       public readonly reason?: string,
     ) {
       super(reason ? `The user rejected permission for this tool. Reason: ${reason}` : 'The user rejected permission for this tool.')
@@ -39,7 +40,7 @@ function baseInput(effects: ToolEffect[], toolName = 'bash') {
 describe('central PermissionPolicy execution', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(Permission.getMode as any).mockReturnValue('normal')
+    vi.mocked(Permission.getMode).mockReturnValue('normal')
   })
 
   it('routes bash permission through PermissionPolicy', async () => {

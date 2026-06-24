@@ -1,4 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { WebContents } from 'electron'
+import type { ChatSession, ToolDefinition } from '../../../shared/ipc.js'
+import type { ResumeAfterConfirmCommand } from '../../../shared/events/session-commands.js'
+import { EventBus } from '../../events/event-bus.js'
+
+type SenderMock = Pick<WebContents, 'isDestroyed' | 'send' | 'on'>
 
 const mocks = vi.hoisted(() => ({
   eventBus: {
@@ -35,13 +41,12 @@ const mocks = vi.hoisted(() => ({
   initializeAsyncTools: vi.fn(async () => undefined),
   setInitContext: vi.fn(),
   getMCPToolsForAI: vi.fn(() => ({})),
+  getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
   modelSupportsTools: vi.fn(async () => true),
   buildContextVariablesPromptText: vi.fn(async () => ''),
   buildProjectDirsPromptVars: vi.fn(() => ({ active: undefined, known: [] })),
   buildPrompt: vi.fn(async () => ({ systemPrompt: 'system', messages: [] })),
-  shouldUseAgentLoopStream: vi.fn(() => true),
   executeAgentLoopStreamGeneration: vi.fn(async () => ({ pausedForConfirmation: false })),
-  runStream: vi.fn(async () => ({ pausedForConfirmation: false })),
 }))
 
 vi.mock('../../store.js', () => ({
@@ -54,14 +59,14 @@ vi.mock('../../store.js', () => ({
 vi.mock('../stream/provider-helpers.js', () => ({
   getEffectiveProviderConfig: mocks.getEffectiveProviderConfig,
   resolveProviderAuth: mocks.resolveProviderAuth,
-  extractErrorDetails: vi.fn((error: any) => error?.message),
+  extractErrorDetails: vi.fn((error: { message?: string }) => error.message),
   getProviderApiType: vi.fn(() => 'chat'),
 }))
 
 vi.mock('../../providers/index.js', () => ({
   isProviderSupported: vi.fn(() => true),
   requiresOAuth: vi.fn(() => false),
-  convertToolDefinitionsForAI: vi.fn(() => ({})),
+  convertToolDefinitionsForProvider: vi.fn(() => ({})),
   generateChatTitle: vi.fn(async () => 'Generated title'),
 }))
 
@@ -70,12 +75,7 @@ vi.mock('../stream/stream-executor.js', () => ({
 }))
 
 vi.mock('../stream/agent-loop-executor.js', () => ({
-  shouldUseAgentLoopStream: mocks.shouldUseAgentLoopStream,
   executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
-}))
-
-vi.mock('../stream/tool-loop.js', () => ({
-  runStream: mocks.runStream,
 }))
 
 vi.mock('../prompt/index.js', () => ({
@@ -94,6 +94,7 @@ vi.mock('../../tools/index.js', () => ({
 
 vi.mock('../../mcp/index.js', () => ({
   getMCPToolsForAI: mocks.getMCPToolsForAI,
+  getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))
 
 vi.mock('../../providers/model-registry.js', () => ({
@@ -129,10 +130,20 @@ vi.mock('../../prompts/resolver.js', () => ({
 
 const { StreamEngine } = await import('../stream-engine.js')
 
-function session() {
+function sender(): WebContents {
+  return mocks.sender as SenderMock as WebContents
+}
+
+function resumeCommand(messageId = 'm1'): ResumeAfterConfirmCommand {
+  return { type: 'command:resume-after-confirm', messageId }
+}
+
+function session(): ChatSession {
   return {
     id: 's1',
     name: 'Resume Session',
+    createdAt: 1,
+    updatedAt: 2,
     workingDirectory: '/tmp/project',
     messages: [
       {
@@ -159,7 +170,7 @@ function session() {
         }],
       },
     ],
-  } as any
+  }
 }
 
 describe('StreamEngine resume-after-confirm agent-loop path', () => {
@@ -170,19 +181,14 @@ describe('StreamEngine resume-after-confirm agent-loop path', () => {
   it('resumes through agent-loop with reconstructed assistant/tool history', async () => {
     mocks.getSession.mockReturnValue(session())
     const engine = new StreamEngine()
-    engine.setEventBus(mocks.eventBus as any)
+    engine.setEventBus(new EventBus())
 
     await engine.handleResumeAfterConfirm(
       's1',
-      { type: 'command:resume-after-confirm', messageId: 'm1' } as any,
-      mocks.sender as any,
+      resumeCommand(),
+      sender(),
     )
 
-    expect(mocks.shouldUseAgentLoopStream).toHaveBeenCalledWith(expect.objectContaining({
-      sessionId: 's1',
-      assistantMessageId: 'm1',
-      providerId: 'deepseek',
-    }))
     expect(mocks.executeAgentLoopStreamGeneration).toHaveBeenCalledWith(
       expect.objectContaining({
         sessionId: 's1',
@@ -219,7 +225,6 @@ describe('StreamEngine resume-after-confirm agent-loop path', () => {
         },
       },
     )
-    expect(mocks.runStream).not.toHaveBeenCalled()
     expect(engine.getController('s1')).toBeUndefined()
   })
 
@@ -227,12 +232,12 @@ describe('StreamEngine resume-after-confirm agent-loop path', () => {
     mocks.getSession.mockReturnValue(session())
     mocks.executeAgentLoopStreamGeneration.mockResolvedValueOnce({ pausedForConfirmation: true })
     const engine = new StreamEngine()
-    engine.setEventBus(mocks.eventBus as any)
+    engine.setEventBus(new EventBus())
 
     await engine.handleResumeAfterConfirm(
       's1',
-      { type: 'command:resume-after-confirm', messageId: 'm1' } as any,
-      mocks.sender as any,
+      resumeCommand(),
+      sender(),
     )
 
     expect(mocks.executeAgentLoopStreamGeneration).toHaveBeenCalled()
@@ -241,13 +246,14 @@ describe('StreamEngine resume-after-confirm agent-loop path', () => {
 
   it('subscribes to abort commands through the event bus', () => {
     const engine = new StreamEngine()
-    engine.setEventBus(mocks.eventBus as any)
+    const bus = new EventBus()
+    const onAnySessionSpy = vi.spyOn(bus, 'onAnySession')
+    engine.setEventBus(bus)
 
-    expect(mocks.eventBus.onAnySession).toHaveBeenCalledWith(
-      'command:abort',
-      expect.any(Function),
-      'StreamEngine',
-    )
+    const abortSubscription = onAnySessionSpy.mock.calls.find(([eventType]) => eventType === 'command:abort')
+    expect(abortSubscription?.[0]).toBe('command:abort')
+    expect(typeof abortSubscription?.[1]).toBe('function')
+    expect(abortSubscription?.[2]).toBe('StreamEngine')
   })
 
   it('aborts active streams and clears queued agent messages', () => {

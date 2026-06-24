@@ -6,8 +6,49 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import type { SkillDefinition } from '../../../shared/ipc.js'
-import type { AIMessageContent } from '../../providers/index.js'
 import { getStorePath } from '../../stores/paths.js'
+
+type ChatLogValue = string | number | boolean | null | undefined | object
+type ChatLogRecord = { [key: string]: ChatLogValue }
+type ChatLogToolCall = {
+  toolCallId?: string
+  toolName?: string
+  args?: ChatLogValue
+}
+type ChatLogToolResult = {
+  type?: string
+  toolCallId?: string
+  toolName?: string
+  result?: ChatLogValue
+}
+export type ChatLogMessageShape = {
+  role: string
+  content: ChatLogValue
+  toolCalls?: ChatLogToolCall[]
+  reasoningContent?: string
+}
+type ChatLogRow = {
+  index: number
+  role: string
+  contentChars: number
+  toolCalls?: number
+  toolArgChars?: number
+  toolResults?: number
+  resultChars?: number
+  reasoningChars?: number
+}
+type ChatLogTotals = {
+  contentChars: number
+  toolCalls: number
+  toolArgChars: number
+  toolResults: number
+  toolResultChars: number
+  reasoningChars: number
+}
+type ToolDefinitionForLog = {
+  description?: string
+  parameters?: ChatLogValue
+}
 
 /**
  * Dump the fully assembled system prompt to a debug file so the exact text sent
@@ -47,8 +88,8 @@ export function logRequestStart(ctx: {
   model: string
   systemPromptLength: number
   systemPrompt: string
-  messages: Array<{ role: string; content: unknown }>
-  tools: Record<string, unknown>
+  messages: Array<{ role: string; content: ChatLogValue }>
+  tools: Record<string, ChatLogValue>
   skills: SkillDefinition[]
   hasTools: boolean
 }): void {
@@ -93,7 +134,7 @@ export function logRequestStart(ctx: {
   console.log(`[Chat] ${DOUBLE_LINE}`)
 }
 
-function jsonLength(value: unknown): number {
+function jsonLength(value: ChatLogValue): number {
   try {
     return JSON.stringify(value ?? '').length
   } catch {
@@ -101,12 +142,12 @@ function jsonLength(value: unknown): number {
   }
 }
 
-function contentTextLength(content: unknown): number {
+function contentTextLength(content: ChatLogValue): number {
   if (typeof content === 'string') return content.length
   if (Array.isArray(content)) {
     return content.reduce((total, part) => {
       if (!part || typeof part !== 'object') return total
-      const item = part as Record<string, unknown>
+      const item = part as ChatLogRecord
       if (typeof item.text === 'string') return total + item.text.length
       if (typeof item.content === 'string') return total + item.content.length
       if (typeof item.data === 'string') return total + item.data.length
@@ -119,8 +160,8 @@ function contentTextLength(content: unknown): number {
 
 export function logMessageBodyShape(
   label: string,
-  messages: Array<Record<string, any>>,
-  extra: Record<string, unknown> = {},
+  messages: ChatLogMessageShape[],
+  extra: Record<string, ChatLogValue> = {},
 ): void {
   const roleCounts = messages.reduce<Record<string, number>>((counts, message) => {
     const role = typeof message.role === 'string' ? message.role : 'unknown'
@@ -128,7 +169,7 @@ export function logMessageBodyShape(
     return counts
   }, {})
 
-  const rows = messages.map((message, index) => {
+  const rows: ChatLogRow[] = messages.map((message, index) => {
     const base = {
       index,
       role: message.role,
@@ -140,7 +181,7 @@ export function logMessageBodyShape(
       return {
         ...base,
         toolCalls: toolCalls.length,
-        toolArgChars: toolCalls.reduce((sum: number, call: any) => sum + jsonLength(call?.args ?? {}), 0),
+        toolArgChars: toolCalls.reduce((sum, call) => sum + jsonLength(call.args ?? {}), 0),
         reasoningChars: typeof message.reasoningContent === 'string' ? message.reasoningContent.length : 0,
       }
     }
@@ -150,14 +191,17 @@ export function logMessageBodyShape(
       return {
         ...base,
         toolResults: toolResults.length,
-        resultChars: toolResults.reduce((sum: number, result: any) => sum + jsonLength(result?.result), 0),
+        resultChars: toolResults.reduce((sum, result) => {
+          const record = result && typeof result === 'object' ? result as ChatLogToolResult : undefined
+          return sum + jsonLength(record?.result ?? null)
+        }, 0),
       }
     }
 
     return base
   })
 
-  const totals = rows.reduce((acc, row: any) => {
+  const totals = rows.reduce<ChatLogTotals>((acc, row) => {
     acc.contentChars += row.contentChars ?? 0
     acc.toolCalls += row.toolCalls ?? 0
     acc.toolArgChars += row.toolArgChars ?? 0
@@ -251,12 +295,12 @@ export function logContinuationMessages(
   toolCalls: Array<{
     toolCallId: string
     toolName: string
-    args: Record<string, any>
+    args: object
   }>,
   toolResults: Array<{
     toolCallId: string
     toolName: string
-    result: any
+    result: ChatLogValue
   }>
 ): void {
   console.log(`[Chat] ${SINGLE_LINE}`)
@@ -294,13 +338,21 @@ export function logContinuationMessages(
 /**
  * Log detailed tool definitions (for debugging)
  */
-export function logToolsDetail(tools: Record<string, any>): void {
+export function logToolsDetail(tools: Record<string, ToolDefinitionForLog>): void {
   console.log(`[Chat] Tool Definitions:`)
   for (const [name, tool] of Object.entries(tools)) {
     const params = tool.parameters || []
     const paramNames = Array.isArray(params)
-      ? params.map((p: any) => p.name).join(', ')
-      : Object.keys(params.properties || {}).join(', ')
+      ? params
+          .map((param) => {
+            const record = param && typeof param === 'object' ? param as ChatLogRecord : undefined
+            return typeof record?.name === 'string' ? record.name : ''
+          })
+          .filter(Boolean)
+          .join(', ')
+      : params && typeof params === 'object'
+        ? Object.keys((params as { properties?: object }).properties || {}).join(', ')
+        : ''
     console.log(`[Chat]   - ${name}: ${tool.description?.substring(0, 80)}...`)
     console.log(`[Chat]     params: ${paramNames || 'none'}`)
   }

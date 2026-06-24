@@ -7,6 +7,7 @@ import fs from 'fs'
 import path from 'path'
 import { Tool, type InitContext, type ToolContext, type ToolResult } from '../core/tool.js'
 import type { SkillDefinition } from '../../../shared/ipc.js'
+import type { JsonObjectProperty } from '../../../shared/json.js'
 import { fuzzyFilter } from '../../utils/fuzzy.js'
 import { executeSkillManage, isSkillManageMutation, previewSkillManage, type SkillManageAction, type SkillManageArgs } from '../../skills/manage.js'
 
@@ -16,7 +17,7 @@ import { executeSkillManage, isSkillManageMutation, previewSkillManage, type Ski
 export interface SkillMetadata {
   skillName: string
   skillSource: string
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 export interface SkillManageMetadata {
@@ -24,7 +25,7 @@ export interface SkillManageMetadata {
   skillName?: string
   path?: string
   mutated?: boolean
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 type LinkedFiles = {
@@ -161,8 +162,9 @@ function skillViewPayload(skills: SkillDefinition[], name: string | undefined, r
       setup_skipped: false,
       gateway_setup_hint: null,
     })
-  } catch (error: any) {
-    return errorPayload(`Error reading skill file: ${error.message}`, 'Check the skill path and file permissions.')
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return errorPayload(`Error reading skill file: ${message}`, 'Check the skill path and file permissions.')
   }
 }
 

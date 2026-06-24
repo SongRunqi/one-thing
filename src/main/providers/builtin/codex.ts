@@ -12,9 +12,11 @@ import type {
   OAuthToken,
   OpenRouterModel,
 } from '../../../shared/ipc.js'
+import { toJsonObject } from '../../../shared/json.js'
 import type { ProviderCallOptions, ProviderCallPreparationContext, ProviderDefinition } from '../types.js'
 import { createBoundFetch, createRequiredAppFetch } from '../bound-fetch.js'
 import { dumpProviderRequest } from '../request-dump.js'
+import { toolResultPayloadFromPart, toolResultToCodexOutput } from '../tool-result-content.js'
 
 export const CODEX_PROVIDER_ID = 'codex'
 export const CODEX_BASE_URL = 'https://chatgpt.com/backend-api/codex'
@@ -44,6 +46,30 @@ const CODEX_RESPONSES_ALLOWED_KEYS = new Set([
   'client_metadata',
 ])
 
+type CodexRawPrimitive = string | number | boolean | null | undefined
+type CodexRawRecord = { [key: string]: CodexRawValue }
+type CodexRawValue =
+  | CodexRawPrimitive
+  | CodexRawRecord
+  | CodexRawValue[]
+  | object
+
+type CodexProviderOptions = {
+  [key: string]: CodexRawValue
+}
+
+type CodexResponsesBody = {
+  [key: string]: CodexRawValue
+}
+
+type CodexCallOptionValue =
+  | CodexRawValue
+  | CodexRawValue[]
+  | CodexFunctionToolDefinition[]
+  | Array<CodexFunctionToolDefinition | CodexRawRecord>
+  | Record<string, string | undefined>
+  | AbortSignal
+
 type FetchFn = typeof globalThis.fetch
 
 type CodexFinishReason = 'stop' | 'length' | 'tool-calls' | 'content-filter' | 'error' | 'other' | 'unknown'
@@ -60,18 +86,18 @@ interface CodexFunctionToolDefinition {
   type: 'function'
   name: string
   description?: string
-  inputSchema?: unknown
+  inputSchema?: object
 }
 
 interface CodexCallOptions {
-  prompt: any[]
-  tools?: Array<CodexFunctionToolDefinition | { type: string; [key: string]: unknown }>
-  providerOptions?: Record<string, any>
+  prompt: object[]
+  tools?: Array<CodexFunctionToolDefinition | { type: string; [key: string]: CodexRawValue }>
+  providerOptions?: CodexProviderOptions
   headers?: Record<string, string | undefined>
   abortSignal?: AbortSignal
   maxOutputTokens?: number
   temperature?: number
-  [key: string]: any
+  [key: string]: CodexCallOptionValue
 }
 
 interface CodexCallWarning {
@@ -80,8 +106,8 @@ interface CodexCallWarning {
   details?: string
 }
 
-type CodexStreamPart = { type: string; [key: string]: any }
-type CodexGeneratedContent = { type: string; [key: string]: any }
+type CodexStreamPart = { type: string; [key: string]: CodexRawValue }
+type CodexGeneratedContent = { type: string; [key: string]: CodexRawValue }
 type CodexReasoningEffort = typeof CODEX_REASONING_EFFORTS[number]
 type CodexNativeToolName = typeof CODEX_NATIVE_IMAGE_GENERATION_TOOL
 
@@ -92,7 +118,7 @@ interface CodexLanguageModel {
   supportedUrls: Record<string, RegExp[]>
   doStream(options: CodexCallOptions): Promise<{
     stream: ReadableStream<CodexStreamPart>
-    request?: { body?: unknown }
+    request?: { body?: CodexRawValue }
     response?: { headers?: Record<string, string> }
   }>
   doGenerate(options: CodexCallOptions): Promise<{
@@ -100,7 +126,7 @@ interface CodexLanguageModel {
     finishReason: CodexFinishReason
     usage: CodexUsage
     warnings: CodexCallWarning[]
-    request?: { body?: unknown }
+    request?: { body?: CodexRawValue }
     response?: { headers?: Record<string, string>; modelId?: string; timestamp?: Date }
   }>
 }
@@ -128,12 +154,15 @@ interface CodexFunctionCallItem {
 interface CodexFunctionCallOutputItem {
   type: 'function_call_output'
   call_id: string
-  output: string
+  output: string | Array<
+    | { type: 'input_text'; text: string }
+    | { type: 'input_image'; image_url: string; detail: 'auto' }
+  >
 }
 
 interface CodexReasoningInputItem {
   type: 'reasoning'
-  summary: unknown[]
+  summary: CodexRawValue[]
   encrypted_content: string
 }
 
@@ -144,7 +173,7 @@ interface CodexFunctionTool {
   name: string
   description?: string
   strict?: boolean
-  parameters?: Record<string, unknown>
+  parameters?: object
 }
 
 interface CodexImageGenerationTool {
@@ -157,6 +186,25 @@ type CodexTool = CodexFunctionTool | CodexImageGenerationTool
 interface CodexReasoningOptions {
   effort?: CodexReasoningEffort
   summary?: 'auto' | 'concise' | 'detailed'
+}
+
+interface CodexReasoningLevel {
+  effort: CodexReasoningEffort
+  description?: string
+}
+
+interface CodexServiceTier {
+  id: string
+  name: string
+  description?: string
+}
+
+interface CodexModelProviderMetadata {
+  defaultReasoningEffort: CodexReasoningEffort
+  supportedReasoningEfforts: CodexReasoningLevel[]
+  supportsReasoningSummaries: boolean
+  serviceTiers: CodexServiceTier[]
+  nativeTools: CodexNativeToolName[]
 }
 
 interface CodexRequest {
@@ -172,17 +220,26 @@ interface CodexRequest {
   include: string[]
   service_tier?: string
   prompt_cache_key?: string
-  text?: Record<string, unknown>
-  client_metadata?: Record<string, unknown>
+  text?: CodexRawRecord
+  client_metadata?: CodexRawRecord
 }
 
 interface CodexSseEvent {
   type?: string
   delta?: string
+  input?: string
+  arguments_delta?: string
+  argumentsDelta?: string
+  text?: string
+  summary?: CodexRawValue
+  summary_text?: CodexRawValue
+  summaryText?: CodexRawValue
   item_id?: string
+  itemId?: string
   call_id?: string
+  callId?: string
   output_index?: number
-  item?: any
+  item?: CodexRawRecord
   response?: {
     id?: string
     model?: string
@@ -199,22 +256,19 @@ interface CodexSseEvent {
   error?: { message?: string; code?: string; type?: string }
 }
 
+type CodexFunctionCallSseItem = CodexRawRecord & { type: 'function_call' | 'custom_tool_call' }
+type CodexImageGenerationSseItem = CodexRawRecord & { type: typeof CODEX_NATIVE_IMAGE_GENERATION_TOOL | 'image_generation_call' }
+
+interface CodexApiError extends Error {
+  statusCode: number
+  responseBody: string
+  responseHeaders: Record<string, string>
+  isRetryable: boolean
+}
+
 interface BuiltCodexRequest {
   body: CodexRequest
   warnings: CodexCallWarning[]
-}
-
-function getCodexToken(config: { apiKey?: string; oauthToken?: OAuthToken; authContext?: any }): OAuthToken | null {
-  if (config.authContext?.kind === 'oauth') return config.authContext.token
-  if (config.oauthToken) return config.oauthToken
-  if (config.apiKey) {
-    return {
-      accessToken: config.apiKey,
-      expiresAt: Date.now() + 60 * 60 * 1000,
-      tokenType: 'Bearer',
-    }
-  }
-  return null
 }
 
 export function buildCodexHeaders(token: OAuthToken): Record<string, string> {
@@ -235,13 +289,14 @@ export function buildCodexHeaders(token: OAuthToken): Record<string, string> {
   return headers
 }
 
-function contentToInstructionText(content: unknown): string {
+function contentToInstructionText(content: CodexRawValue): string {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
     return content
-      .map((part: any) => {
+      .map((part) => {
         if (typeof part === 'string') return part
-        if (part?.type === 'text' && typeof part.text === 'string') return part.text
+        const record = recordFromValue(part)
+        if (record.type === 'text' && typeof record.text === 'string') return record.text
         return ''
       })
       .filter(Boolean)
@@ -250,8 +305,27 @@ function contentToInstructionText(content: unknown): string {
   return content == null ? '' : String(content)
 }
 
-function isInstructionRole(role: unknown): boolean {
+function isInstructionRole(role: CodexRawValue): boolean {
   return role === 'system' || role === 'developer'
+}
+
+function recordFromValue(value: CodexRawValue): CodexRawRecord {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as CodexRawRecord : {}
+}
+
+function optionalStringFromValue(value: CodexRawValue): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function optionalRecordFromValue(value: CodexRawValue): CodexRawRecord | undefined {
+  const record = recordFromValue(value)
+  return Object.keys(record).length > 0 ? record : undefined
+}
+
+function stringArrayFromValue(value: CodexRawValue): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
 }
 
 function isCodexReasoningModel(modelId: string): boolean {
@@ -263,33 +337,33 @@ function isCodexReasoningModel(modelId: string): boolean {
     lower.includes('reasoning')
 }
 
-export function normalizeCodexReasoningEffort(effort: unknown): CodexReasoningEffort {
+export function normalizeCodexReasoningEffort(effort: CodexRawValue): CodexReasoningEffort {
   if (effort === 'max') return 'high'
   return CODEX_REASONING_EFFORTS.includes(effort as CodexReasoningEffort)
     ? effort as CodexReasoningEffort
     : 'medium'
 }
 
-function normalizeCodexReasoningSummary(summary: unknown): CodexReasoningOptions['summary'] {
+function normalizeCodexReasoningSummary(summary: CodexRawValue): CodexReasoningOptions['summary'] {
   return summary === 'concise' || summary === 'detailed' || summary === 'auto'
     ? summary
     : 'auto'
 }
 
-function readCodexThinkingFlag(providerOptions: Record<string, any>): boolean {
+function readCodexThinkingFlag(providerOptions: CodexProviderOptions): boolean {
   const value = providerOptions.thinking
   if (value === false || value === 'disabled' || value === 'off') return false
   return true
 }
 
-function normalizeCodexNativeToolName(value: unknown): CodexNativeToolName | undefined {
+function normalizeCodexNativeToolName(value: CodexRawValue): CodexNativeToolName | undefined {
   if (typeof value !== 'string') return undefined
   return value.trim() === CODEX_NATIVE_IMAGE_GENERATION_TOOL
     ? CODEX_NATIVE_IMAGE_GENERATION_TOOL
     : undefined
 }
 
-function normalizeCodexNativeTools(raw: unknown): CodexNativeToolName[] {
+function normalizeCodexNativeTools(raw: CodexRawValue): CodexNativeToolName[] {
   const values = Array.isArray(raw) ? raw : raw ? [raw] : []
   const tools = new Set<CodexNativeToolName>()
 
@@ -297,7 +371,7 @@ function normalizeCodexNativeTools(raw: unknown): CodexNativeToolName[] {
     const normalized = normalizeCodexNativeToolName(
       typeof value === 'string'
         ? value
-        : (value as any)?.id ?? (value as any)?.name ?? (value as any)?.type ?? (value as any)?.value,
+        : recordFromValue(value).id ?? recordFromValue(value).name ?? recordFromValue(value).type ?? recordFromValue(value).value,
     )
     if (normalized) tools.add(normalized)
   }
@@ -330,17 +404,17 @@ function mapFinishReason(reason: string | null | undefined): CodexFinishReason {
   }
 }
 
-function stringifyToolResult(output: unknown): string {
-  if (output == null) return ''
-  if (typeof output === 'string') return output
-  if (typeof output === 'object' && output !== null && 'value' in (output as any)) {
-    const value = (output as any).value
-    return typeof value === 'string' ? value : JSON.stringify(value)
-  }
-  return JSON.stringify(output)
+function isCodexUsage(value: CodexRawValue): value is CodexUsage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const usage = value as Partial<CodexUsage>
+  return (
+    (usage.inputTokens === undefined || typeof usage.inputTokens === 'number') &&
+    (usage.outputTokens === undefined || typeof usage.outputTokens === 'number') &&
+    (usage.totalTokens === undefined || typeof usage.totalTokens === 'number')
+  )
 }
 
-function dataContentToUrl(data: unknown, mediaType?: string): string | null {
+function dataContentToUrl(data: CodexRawValue, mediaType?: string): string | null {
   if (typeof data === 'string') {
     if (data.startsWith('data:') || data.startsWith('http://') || data.startsWith('https://')) {
       return data
@@ -358,7 +432,7 @@ function dataContentToUrl(data: unknown, mediaType?: string): string | null {
 }
 
 function contentPartsToCodexContent(
-  content: unknown,
+  content: CodexRawValue,
   role: 'developer' | 'user' | 'assistant',
 ): CodexContentItem[] {
   if (typeof content === 'string') {
@@ -368,18 +442,20 @@ function contentPartsToCodexContent(
   if (!Array.isArray(content)) return []
 
   const items: CodexContentItem[] = []
-  for (const part of content as any[]) {
-    if (part?.type === 'text' && typeof part.text === 'string' && part.text.length > 0) {
+  for (const part of content) {
+    const partRecord = recordFromValue(part)
+    if (partRecord.type === 'text' && typeof partRecord.text === 'string' && partRecord.text.length > 0) {
       items.push({
         type: role === 'assistant' ? 'output_text' : 'input_text',
-        text: part.text,
+        text: partRecord.text,
       })
       continue
     }
 
-    if ((part?.type === 'file' || part?.type === 'image') && role !== 'assistant') {
-      const imageUrl = dataContentToUrl(part.data ?? part.image, part.mediaType)
-      if (imageUrl && (part.mediaType?.startsWith('image/') || imageUrl.startsWith('data:image/') || imageUrl.startsWith('http'))) {
+    if ((partRecord.type === 'file' || partRecord.type === 'image') && role !== 'assistant') {
+      const mediaType = typeof partRecord.mediaType === 'string' ? partRecord.mediaType : undefined
+      const imageUrl = dataContentToUrl(partRecord.data ?? partRecord.image, mediaType)
+      if (imageUrl && (mediaType?.startsWith('image/') || imageUrl.startsWith('data:image/') || imageUrl.startsWith('http'))) {
         items.push({ type: 'input_image', image_url: imageUrl, detail: 'auto' })
       }
     }
@@ -388,38 +464,42 @@ function contentPartsToCodexContent(
   return items
 }
 
-function toolInputToString(input: unknown): string {
+function toolInputToString(input: CodexRawValue): string {
   if (typeof input === 'string') return input
   return JSON.stringify(input ?? {})
 }
 
-function getCodexEncryptedReasoning(msg: any): string[] {
-  const raw = msg?.providerOptions?.codex?.encryptedReasoning
+function getCodexEncryptedReasoning(msg: CodexRawValue): string[] {
+  const messageRecord = recordFromValue(msg)
+  const providerOptions = recordFromValue(messageRecord.providerOptions)
+  const codexOptions = recordFromValue(providerOptions.codex)
+  const raw = codexOptions.encryptedReasoning
   const values = Array.isArray(raw) ? raw : raw ? [raw] : []
   return values.filter((value): value is string => typeof value === 'string' && value.length > 0)
 }
 
-export function convertPromptToCodexInput(prompt: any[]): CodexInputItem[] {
+export function convertPromptToCodexInput(prompt: CodexRawValue[]): CodexInputItem[] {
   const input: CodexInputItem[] = []
 
   for (const msg of prompt) {
-    if (msg.role === 'system' || msg.role === 'developer') {
-      const content = contentPartsToCodexContent(msg.content, 'developer')
+    const messageRecord = recordFromValue(msg)
+    if (messageRecord.role === 'system' || messageRecord.role === 'developer') {
+      const content = contentPartsToCodexContent(messageRecord.content, 'developer')
       if (content.length > 0) {
         input.push({ type: 'message', role: 'developer', content })
       }
       continue
     }
 
-    if (msg.role === 'user') {
-      const content = contentPartsToCodexContent(msg.content, 'user')
+    if (messageRecord.role === 'user') {
+      const content = contentPartsToCodexContent(messageRecord.content, 'user')
       if (content.length > 0) {
         input.push({ type: 'message', role: 'user', content })
       }
       continue
     }
 
-    if (msg.role === 'assistant') {
+    if (messageRecord.role === 'assistant') {
       for (const encryptedContent of getCodexEncryptedReasoning(msg)) {
         input.push({
           type: 'reasoning',
@@ -428,25 +508,31 @@ export function convertPromptToCodexInput(prompt: any[]): CodexInputItem[] {
         })
       }
 
-      const textContent = contentPartsToCodexContent(msg.content, 'assistant')
+      const textContent = contentPartsToCodexContent(messageRecord.content, 'assistant')
       if (textContent.length > 0) {
         input.push({ type: 'message', role: 'assistant', content: textContent })
       }
 
-      if (Array.isArray(msg.content)) {
-        for (const part of msg.content) {
-          if (part?.type === 'tool-call') {
+      if (Array.isArray(messageRecord.content)) {
+        for (const part of messageRecord.content) {
+          const partRecord = recordFromValue(part)
+          if (partRecord.type === 'tool-call') {
+            const name = typeof partRecord.toolName === 'string' ? partRecord.toolName : ''
+            const callId = typeof partRecord.toolCallId === 'string' ? partRecord.toolCallId : ''
+            if (!name || !callId) continue
             input.push({
               type: 'function_call',
-              name: part.toolName,
-              arguments: toolInputToString(part.input),
-              call_id: part.toolCallId,
+              name,
+              arguments: toolInputToString(partRecord.input),
+              call_id: callId,
             })
-          } else if (part?.type === 'tool-result') {
+          } else if (partRecord.type === 'tool-result') {
+            const callId = typeof partRecord.toolCallId === 'string' ? partRecord.toolCallId : ''
+            if (!callId) continue
             input.push({
               type: 'function_call_output',
-              call_id: part.toolCallId,
-              output: stringifyToolResult(part.output),
+              call_id: callId,
+              output: toolResultToCodexOutput(toolResultPayloadFromPart(part)),
             })
           }
         }
@@ -454,13 +540,16 @@ export function convertPromptToCodexInput(prompt: any[]): CodexInputItem[] {
       continue
     }
 
-    if (msg.role === 'tool' && Array.isArray(msg.content)) {
-      for (const part of msg.content) {
-        if (part?.type === 'tool-result') {
+    if (messageRecord.role === 'tool' && Array.isArray(messageRecord.content)) {
+      for (const part of messageRecord.content) {
+        const partRecord = recordFromValue(part)
+        if (partRecord.type === 'tool-result') {
+          const callId = typeof partRecord.toolCallId === 'string' ? partRecord.toolCallId : ''
+          if (!callId) continue
           input.push({
             type: 'function_call_output',
-            call_id: part.toolCallId,
-            output: stringifyToolResult(part.output),
+            call_id: callId,
+            output: toolResultToCodexOutput(toolResultPayloadFromPart(part)),
           })
         }
       }
@@ -487,7 +576,7 @@ function buildCodexTools(
       name: functionTool.name,
       description: functionTool.description,
       strict: false,
-      parameters: (functionTool.inputSchema ?? {}) as Record<string, unknown>,
+      parameters: functionTool.inputSchema ?? {},
     })
   }
 
@@ -504,15 +593,15 @@ function buildCodexTools(
   return codexTools
 }
 
-function pickProviderOptions(options: CodexCallOptions): Record<string, any> {
-  const providerOptions = options.providerOptions as Record<string, any> | undefined
+function pickProviderOptions(options: CodexCallOptions): CodexProviderOptions {
+  const providerOptions = recordFromValue(options.providerOptions)
   return {
-    ...(providerOptions?.openai ?? {}),
-    ...(providerOptions?.codex ?? {}),
+    ...recordFromValue(providerOptions.openai),
+    ...recordFromValue(providerOptions.codex),
   }
 }
 
-function buildCodexReasoning(modelId: string, providerOptions: Record<string, any>): CodexReasoningOptions | undefined {
+function buildCodexReasoning(modelId: string, providerOptions: CodexProviderOptions): CodexReasoningOptions | undefined {
   if (!readCodexThinkingFlag(providerOptions)) {
     return undefined
   }
@@ -535,25 +624,30 @@ export function buildCodexRequest(
   const instructions = contentToInstructionText(providerOptions.instructions).trim() ||
     CODEX_FALLBACK_INSTRUCTIONS
   const tools = buildCodexTools(options.tools, normalizeCodexNativeTools(providerOptions.nativeTools))
-  const include = Array.isArray(providerOptions.include) ? [...providerOptions.include] : []
+  const include = stringArrayFromValue(providerOptions.include)
   const reasoning = buildCodexReasoning(modelId, providerOptions)
+  const serviceTier = optionalStringFromValue(providerOptions.serviceTier)
+  const promptCacheKey = optionalStringFromValue(providerOptions.promptCacheKey)
+  const text = optionalRecordFromValue(providerOptions.text)
+  const clientMetadata = optionalRecordFromValue(providerOptions.clientMetadata)
 
-  const body = normalizeCodexResponsesBody({
+  const body: CodexRequest = {
     model: modelId,
     instructions,
-    input: convertPromptToCodexInput(options.prompt as any[]),
+    input: convertPromptToCodexInput(options.prompt),
     tools,
     tool_choice: 'auto',
     parallel_tool_calls: false,
-    reasoning,
     store: false,
     stream: true,
     include: reasoning ? addUnique(include, CODEX_REASONING_INCLUDE) : include,
-    service_tier: providerOptions.serviceTier,
-    prompt_cache_key: providerOptions.promptCacheKey,
-    text: providerOptions.text,
-    client_metadata: providerOptions.clientMetadata,
-  }) as CodexRequest
+  }
+
+  if (reasoning) body.reasoning = reasoning
+  if (serviceTier) body.service_tier = serviceTier
+  if (promptCacheKey) body.prompt_cache_key = promptCacheKey
+  if (text) body.text = text
+  if (clientMetadata) body.client_metadata = clientMetadata
 
   const warnings: BuiltCodexRequest['warnings'] = []
   if (options.maxOutputTokens !== undefined) {
@@ -574,23 +668,23 @@ export function buildCodexRequest(
   return { body, warnings }
 }
 
-function getFetchUrl(input: any): string {
+function getFetchUrl(input: RequestInfo | URL): string {
   if (typeof input === 'string') return input
   if (input instanceof URL) return input.toString()
-  return input?.url || String(input)
+  return input.url || String(input)
 }
 
-function parseJsonBody(body: unknown): any | null {
+function parseJsonBody(body: BodyInit | null | undefined): CodexRawValue | null {
   if (typeof body === 'string') {
     try {
-      return JSON.parse(body)
+      return JSON.parse(body) as CodexRawValue
     } catch {
       return null
     }
   }
   if (body instanceof Uint8Array) {
     try {
-      return JSON.parse(new TextDecoder().decode(body))
+      return JSON.parse(new TextDecoder().decode(body)) as CodexRawValue
     } catch {
       return null
     }
@@ -610,7 +704,7 @@ function getCodexErrorPayload(body: string): { message?: string; param?: string 
   }
 }
 
-function removeDottedParam(body: Record<string, any>, param: string): boolean {
+function removeDottedParam(body: CodexResponsesBody, param: string): boolean {
   const [topLevel] = param.split('.')
   if (!topLevel || !(topLevel in body)) return false
   delete body[topLevel]
@@ -618,9 +712,9 @@ function removeDottedParam(body: Record<string, any>, param: string): boolean {
 }
 
 export function repairCodexRejectedBody(
-  body: Record<string, any>,
+  body: CodexResponsesBody,
   responseBody: string,
-): Record<string, any> | null {
+): CodexResponsesBody | null {
   const { message, param } = getCodexErrorPayload(responseBody)
   if (!message && !param) return null
 
@@ -649,12 +743,9 @@ export function isCodexResponsesUrl(input: string): boolean {
   }
 }
 
-export function normalizeCodexResponsesBody(body: unknown): Record<string, any> {
-  const raw: Record<string, any> =
-    body && typeof body === 'object' && !Array.isArray(body)
-      ? body as Record<string, any>
-      : {}
-  const normalized: Record<string, any> = {}
+export function normalizeCodexResponsesBody(body: CodexRawValue): CodexResponsesBody {
+  const raw = recordFromValue(body)
+  const normalized: CodexResponsesBody = {}
 
   for (const [key, value] of Object.entries(raw)) {
     if (value !== undefined && CODEX_RESPONSES_ALLOWED_KEYS.has(key)) {
@@ -678,12 +769,13 @@ export function normalizeCodexResponsesBody(body: unknown): Record<string, any> 
 
   normalized.tool_choice = 'auto'
 
-  const include = Array.isArray(normalized.include) ? [...normalized.include] : []
+  const include = stringArrayFromValue(normalized.include)
   if (normalized.reasoning && typeof normalized.reasoning === 'object') {
+    const reasoning = recordFromValue(normalized.reasoning)
     normalized.reasoning = {
-      ...(normalized.reasoning as Record<string, unknown>),
-      effort: normalizeCodexReasoningEffort((normalized.reasoning as Record<string, unknown>).effort),
-      summary: normalizeCodexReasoningSummary((normalized.reasoning as Record<string, unknown>).summary),
+      ...reasoning,
+      effort: normalizeCodexReasoningEffort(reasoning.effort),
+      summary: normalizeCodexReasoningSummary(reasoning.summary),
     }
     normalized.include = addUnique(include, CODEX_REASONING_INCLUDE)
   } else {
@@ -705,11 +797,12 @@ export function prepareCodexCallOptions(
   const systemMessages: string[] = []
 
   if (Array.isArray(options.messages)) {
-    const nonSystemMessages: any[] = []
+    const nonSystemMessages: object[] = []
 
     for (const message of options.messages) {
-      if (isInstructionRole(message?.role)) {
-        const text = contentToInstructionText(message.content).trim()
+      const messageRecord = recordFromValue(message)
+      if (isInstructionRole(messageRecord.role)) {
+        const text = contentToInstructionText(messageRecord.content).trim()
         if (text) systemMessages.push(text)
       } else {
         nonSystemMessages.push(message)
@@ -719,9 +812,9 @@ export function prepareCodexCallOptions(
     options.messages = nonSystemMessages
   }
 
-  const existingProviderOptions = options.providerOptions ?? {}
-  const existingOpenAIOptions = existingProviderOptions.openai ?? {}
-  const existingCodexOptions = existingProviderOptions.codex ?? {}
+  const existingProviderOptions = recordFromValue(options.providerOptions)
+  const existingOpenAIOptions = recordFromValue(existingProviderOptions.openai)
+  const existingCodexOptions = recordFromValue(existingProviderOptions.codex)
   const existingInstructions = contentToInstructionText(
     existingCodexOptions.instructions ?? existingOpenAIOptions.instructions,
   ).trim()
@@ -748,7 +841,7 @@ export function prepareCodexCallOptions(
 }
 
 export function createCodexFetch(baseFetch: typeof globalThis.fetch = createBoundFetch()): typeof globalThis.fetch {
-  return (async (input: any, init?: any) => {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (!isCodexResponsesUrl(getFetchUrl(input))) {
       return baseFetch(input, init)
     }
@@ -788,31 +881,31 @@ export function buildCodexModelsUrl(): string {
   return url.toString()
 }
 
-function normalizeCodexSupportedReasoningLevels(raw: any): Array<{ effort: CodexReasoningEffort; description?: string }> {
+function normalizeCodexSupportedReasoningLevels(raw: CodexRawValue): CodexReasoningLevel[] {
+  const record = recordFromValue(raw)
   const levels =
-    raw?.supported_reasoning_efforts ??
-    raw?.supportedReasoningEfforts ??
-    raw?.supported_reasoning_levels ??
-    raw?.supportedReasoningLevels
+    record.supported_reasoning_efforts ??
+    record.supportedReasoningEfforts ??
+    record.supported_reasoning_levels ??
+    record.supportedReasoningLevels
   const values = Array.isArray(levels) && levels.length > 0
     ? levels
     : CODEX_FALLBACK_REASONING_EFFORTS.map((effort) => ({ effort }))
 
   const seen = new Set<CodexReasoningEffort>()
-  const normalized: Array<{ effort: CodexReasoningEffort; description?: string }> = []
+  const normalized: CodexReasoningLevel[] = []
 
   for (const level of values) {
+    const levelRecord = recordFromValue(level)
     const effort = normalizeCodexReasoningEffort(
       typeof level === 'string'
         ? level
-        : level?.effort ?? level?.reasoningEffort ?? level?.reasoning_effort ?? level?.name ?? level?.value,
+        : levelRecord.effort ?? levelRecord.reasoningEffort ?? levelRecord.reasoning_effort ?? levelRecord.name ?? levelRecord.value,
     )
     if (seen.has(effort)) continue
     seen.add(effort)
-    normalized.push({
-      effort,
-      description: typeof level?.description === 'string' ? level.description : undefined,
-    })
+    const description = optionalStringFromValue(levelRecord.description)
+    normalized.push(description ? { effort, description } : { effort })
   }
 
   return normalized
@@ -826,9 +919,10 @@ function titleCaseServiceTier(id: string): string {
     .join(' ') || id
 }
 
-function normalizeCodexServiceTiers(raw: any): Array<{ id: string; name: string; description?: string }> {
-  const serviceTiers = raw?.service_tiers ?? raw?.serviceTiers
-  const speedTiers = raw?.additional_speed_tiers ?? raw?.additionalSpeedTiers
+function normalizeCodexServiceTiers(raw: CodexRawValue): CodexServiceTier[] {
+  const record = recordFromValue(raw)
+  const serviceTiers = record.service_tiers ?? record.serviceTiers
+  const speedTiers = record.additional_speed_tiers ?? record.additionalSpeedTiers
   const values = Array.isArray(serviceTiers) && serviceTiers.length > 0
     ? serviceTiers
     : Array.isArray(speedTiers)
@@ -836,52 +930,60 @@ function normalizeCodexServiceTiers(raw: any): Array<{ id: string; name: string;
       : []
 
   const seen = new Set<string>()
-  const normalized: Array<{ id: string; name: string; description?: string }> = []
+  const normalized: CodexServiceTier[] = []
 
   for (const tier of values) {
-    const id = typeof tier === 'string' ? tier : tier?.id ?? tier?.value ?? tier?.name
+    const tierRecord = recordFromValue(tier)
+    const id = typeof tier === 'string' ? tier : tierRecord.id ?? tierRecord.value ?? tierRecord.name
     if (typeof id !== 'string') continue
     const trimmedId = id.trim()
     if (!trimmedId || seen.has(trimmedId)) continue
     seen.add(trimmedId)
-    const name = typeof tier?.name === 'string' && tier.name.trim()
-      ? tier.name.trim()
+    const rawName = optionalStringFromValue(tierRecord.name)
+    const rawDescription = optionalStringFromValue(tierRecord.description)
+    const name = rawName?.trim()
+      ? rawName.trim()
       : titleCaseServiceTier(trimmedId)
-    const description = typeof tier?.description === 'string' && tier.description.trim()
-      ? tier.description.trim()
+    const description = rawDescription?.trim()
+      ? rawDescription.trim()
       : undefined
-    normalized.push({ id: trimmedId, name, description })
+    normalized.push(description ? { id: trimmedId, name, description } : { id: trimmedId, name })
   }
 
   return normalized
 }
 
-function normalizeStringArray(raw: unknown): string[] {
+function normalizeStringArray(raw: CodexRawValue): string[] {
   const values = Array.isArray(raw) ? raw : raw ? [raw] : []
   return values
     .map((value) => {
       if (typeof value === 'string') return value.trim()
-      const candidate = (value as any)?.id ?? (value as any)?.name ?? (value as any)?.type ?? (value as any)?.value
+      const record = recordFromValue(value)
+      const candidate = record.id ?? record.name ?? record.type ?? record.value
       return typeof candidate === 'string' ? candidate.trim() : ''
     })
     .filter(Boolean)
 }
 
-function getCodexRawInputModalities(raw: any): string[] {
-  const value = raw?.input_modalities ?? raw?.inputModalities ?? raw?.modalities?.input
-  return (Array.isArray(value) ? value : ['text', 'image'])
+function getCodexRawInputModalities(raw: CodexRawValue): string[] {
+  const record = recordFromValue(raw)
+  const modalities = recordFromValue(record.modalities)
+  const value = record.input_modalities ?? record.inputModalities ?? modalities.input
+  const values = Array.isArray(value) ? value : ['text', 'image']
+  return values
     .map((item) => String(item).trim().toLowerCase())
     .filter(Boolean)
 }
 
-function normalizeCodexModelNativeTools(raw: any): CodexNativeToolName[] {
+function normalizeCodexModelNativeTools(raw: CodexRawValue): CodexNativeToolName[] {
+  const record = recordFromValue(raw)
   const explicitTools = normalizeStringArray(
-    raw?.experimental_supported_tools ??
-      raw?.experimentalSupportedTools ??
-      raw?.supported_tools ??
-      raw?.supportedTools ??
-      raw?.native_tools ??
-      raw?.nativeTools,
+    record.experimental_supported_tools ??
+      record.experimentalSupportedTools ??
+      record.supported_tools ??
+      record.supportedTools ??
+      record.native_tools ??
+      record.nativeTools,
   )
   const tools = new Set<CodexNativeToolName>()
 
@@ -890,11 +992,12 @@ function normalizeCodexModelNativeTools(raw: any): CodexNativeToolName[] {
     if (normalized) tools.add(normalized)
   }
 
+  const capabilities = recordFromValue(record.capabilities)
   const capability =
-    raw?.capabilities?.image_generation ??
-    raw?.capabilities?.imageGeneration ??
-    raw?.image_generation ??
-    raw?.imageGeneration
+    capabilities.image_generation ??
+    capabilities.imageGeneration ??
+    record.image_generation ??
+    record.imageGeneration
   if (capability === true) {
     tools.add(CODEX_NATIVE_IMAGE_GENERATION_TOOL)
   }
@@ -906,16 +1009,17 @@ function normalizeCodexModelNativeTools(raw: any): CodexNativeToolName[] {
   return Array.from(tools)
 }
 
-function getCodexModelProviderMetadata(raw: any): Record<string, unknown> {
+function getCodexModelProviderMetadata(raw: CodexRawValue): { codex: CodexModelProviderMetadata } {
+  const record = recordFromValue(raw)
   const supportedReasoningEfforts = normalizeCodexSupportedReasoningLevels(raw)
   const defaultReasoningEffort = normalizeCodexReasoningEffort(
-    raw?.default_reasoning_effort ??
-      raw?.defaultReasoningEffort ??
-      raw?.default_reasoning_level ??
-      raw?.defaultReasoningLevel,
+    record.default_reasoning_effort ??
+      record.defaultReasoningEffort ??
+      record.default_reasoning_level ??
+      record.defaultReasoningLevel,
   )
   const supportsReasoningSummaries =
-    raw?.supports_reasoning_summaries ?? raw?.supportsReasoningSummaries
+    record.supports_reasoning_summaries ?? record.supportsReasoningSummaries
   const serviceTiers = normalizeCodexServiceTiers(raw)
   const nativeTools = normalizeCodexModelNativeTools(raw)
 
@@ -958,11 +1062,11 @@ export function getCodexFallbackModel(modelId: string = CODEX_DEFAULT_MODEL): Op
     pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
     top_provider: { context_length: 192000, max_completion_tokens: 65536, is_moderated: false },
     supported_parameters: ['tools', 'reasoning'],
-    providerMetadata: getCodexModelProviderMetadata({
+    providerMetadata: toJsonObject(getCodexModelProviderMetadata({
       default_reasoning_level: 'medium',
       supported_reasoning_levels: CODEX_FALLBACK_REASONING_EFFORTS.map((effort) => ({ effort })),
       supports_reasoning_summaries: true,
-    }),
+    })),
   }
 }
 
@@ -971,58 +1075,69 @@ export function getCodexFallbackModels(modelIds: string[] = [CODEX_DEFAULT_MODEL
   return ids.map((id) => getCodexFallbackModel(id))
 }
 
-function coerceCodexModelArray(data: any): any[] {
+function coerceCodexModelArray(data: CodexRawValue): CodexRawValue[] {
+  const record = recordFromValue(data)
   if (Array.isArray(data)) return data
-  if (Array.isArray(data?.data)) return data.data
-  if (Array.isArray(data?.models)) return data.models
-  if (data?.models && typeof data.models === 'object') return Object.values(data.models)
+  if (Array.isArray(record.data)) return record.data
+  if (Array.isArray(record.models)) return record.models
+  if (record.models && typeof record.models === 'object' && !Array.isArray(record.models)) {
+    return Object.values(record.models)
+  }
   return []
 }
 
-export function codexModelInfoToOpenRouterModel(raw: any): OpenRouterModel | null {
-  const id = raw?.id || raw?.slug || raw?.model || raw?.name
-  if (!id || typeof id !== 'string') return null
+export function codexModelInfoToOpenRouterModel(raw: CodexRawValue): OpenRouterModel | null {
+  const record = recordFromValue(raw)
+  const limit = recordFromValue(record.limit)
+  const modalities = recordFromValue(record.modalities)
+  const id = optionalStringFromValue(record.id) ??
+    optionalStringFromValue(record.slug) ??
+    optionalStringFromValue(record.model) ??
+    optionalStringFromValue(record.name)
+  if (!id) return null
   const contextLength =
-    raw.context_length ||
-    raw.contextWindow ||
-    raw.context_window ||
-    raw.max_context_window ||
-    raw.maxContextWindow ||
-    raw.limit?.context ||
+    asNumber(record.context_length) ??
+    asNumber(record.contextWindow) ??
+    asNumber(record.context_window) ??
+    asNumber(record.max_context_window) ??
+    asNumber(record.maxContextWindow) ??
+    asNumber(limit.context) ??
     192000
   const maxOutput =
-    raw.max_output_tokens ||
-    raw.maxOutputTokens ||
-    raw.limit?.output ||
+    asNumber(record.max_output_tokens) ??
+    asNumber(record.maxOutputTokens) ??
+    asNumber(limit.output) ??
     65536
   const inputModalities = getCodexRawInputModalities(raw)
-  const outputModalities = raw.output_modalities || raw.outputModalities || raw.modalities?.output || ['text']
-  const supportedParameters = new Set<string>(raw.supported_parameters || raw.supportedParameters || [])
+  const outputModalities = normalizeStringArray(record.output_modalities ?? record.outputModalities ?? modalities.output)
+  const supportedParameters = new Set<string>(normalizeStringArray(record.supported_parameters ?? record.supportedParameters))
   const providerMetadata = getCodexModelProviderMetadata(raw)
-  const codexMetadata = providerMetadata.codex as Record<string, unknown>
   supportedParameters.add('tools')
   if (
-    raw.reasoning !== false &&
-    ((codexMetadata.supportsReasoningSummaries !== false) ||
-      ((codexMetadata.supportedReasoningEfforts as unknown[])?.length ?? 0) > 0 ||
-      raw.default_reasoning_level ||
-      raw.defaultReasoningLevel)
+    record.reasoning !== false &&
+    ((providerMetadata.codex.supportsReasoningSummaries !== false) ||
+      providerMetadata.codex.supportedReasoningEfforts.length > 0 ||
+      record.default_reasoning_level ||
+      record.defaultReasoningLevel)
   ) {
     supportedParameters.add('reasoning')
   }
-  if (raw.temperature !== false) supportedParameters.add('temperature')
-  if (raw.support_verbosity) supportedParameters.add('verbosity')
+  if (record.temperature !== false) supportedParameters.add('temperature')
+  if (record.support_verbosity) supportedParameters.add('verbosity')
 
   return {
     id,
-    name: raw.display_name || raw.displayName || raw.name || id,
-    description: raw.description || 'Codex model',
+    name: optionalStringFromValue(record.display_name) ??
+      optionalStringFromValue(record.displayName) ??
+      optionalStringFromValue(record.name) ??
+      id,
+    description: optionalStringFromValue(record.description) ?? 'Codex model',
     context_length: contextLength,
     architecture: {
       modality: inputModalities.includes('image') ? 'multimodal' : 'text',
       input_modalities: inputModalities,
-      output_modalities: outputModalities,
-      tokenizer: raw.tokenizer || 'unknown',
+      output_modalities: outputModalities.length > 0 ? outputModalities : ['text'],
+      tokenizer: optionalStringFromValue(record.tokenizer) ?? 'unknown',
     },
     pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
     top_provider: {
@@ -1031,8 +1146,10 @@ export function codexModelInfoToOpenRouterModel(raw: any): OpenRouterModel | nul
       is_moderated: false,
     },
     supported_parameters: Array.from(supportedParameters),
-    last_updated: raw.last_updated || raw.lastUpdated || raw.release_date,
-    providerMetadata,
+    last_updated: optionalStringFromValue(record.last_updated) ??
+      optionalStringFromValue(record.lastUpdated) ??
+      optionalStringFromValue(record.release_date),
+    providerMetadata: toJsonObject(providerMetadata),
   }
 }
 
@@ -1061,7 +1178,7 @@ export async function fetchCodexModels(token: OAuthToken): Promise<OpenRouterMod
   return models.length > 0 ? models : getCodexFallbackModels()
 }
 
-function asNumber(value: unknown): number | undefined {
+function asNumber(value: CodexRawValue): number | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string' && value.trim()) {
     const parsed = Number(value)
@@ -1070,29 +1187,29 @@ function asNumber(value: unknown): number | undefined {
   return undefined
 }
 
-function asString(value: unknown): string | undefined {
+function asString(value: CodexRawValue): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
-function normalizeCodexUsageWindow(raw: any): CodexUsageWindow | undefined {
-  if (!raw || typeof raw !== 'object') return undefined
-  const usedPercent = asNumber(raw.used_percent ?? raw.usedPercent)
+function normalizeCodexUsageWindow(raw: CodexRawValue): CodexUsageWindow | undefined {
+  const record = recordFromValue(raw)
+  const usedPercent = asNumber(record.used_percent ?? record.usedPercent)
   if (usedPercent === undefined) return undefined
   const window: CodexUsageWindow = { usedPercent }
-  const windowSeconds = asNumber(raw.limit_window_seconds ?? raw.limitWindowSeconds ?? raw.window_seconds ?? raw.windowSeconds)
-  const resetAfterSeconds = asNumber(raw.reset_after_seconds ?? raw.resetAfterSeconds)
-  const resetAt = asNumber(raw.reset_at ?? raw.resetAt)
+  const windowSeconds = asNumber(record.limit_window_seconds ?? record.limitWindowSeconds ?? record.window_seconds ?? record.windowSeconds)
+  const resetAfterSeconds = asNumber(record.reset_after_seconds ?? record.resetAfterSeconds)
+  const resetAt = asNumber(record.reset_at ?? record.resetAt)
   if (windowSeconds !== undefined) window.windowSeconds = windowSeconds
   if (resetAfterSeconds !== undefined) window.resetAfterSeconds = resetAfterSeconds
   if (resetAt !== undefined) window.resetAt = resetAt
   return window
 }
 
-function normalizeCodexUsageCredits(raw: any): CodexUsageCredits | undefined {
-  if (!raw || typeof raw !== 'object') return undefined
-  const hasCredits = raw.has_credits ?? raw.hasCredits
-  const unlimited = raw.unlimited
-  const balance = asString(raw.balance)
+function normalizeCodexUsageCredits(raw: CodexRawValue): CodexUsageCredits | undefined {
+  const record = recordFromValue(raw)
+  const hasCredits = record.has_credits ?? record.hasCredits
+  const unlimited = record.unlimited
+  const balance = asString(record.balance)
   if (hasCredits === undefined && unlimited === undefined && !balance) return undefined
   return {
     hasCredits: Boolean(hasCredits),
@@ -1101,19 +1218,21 @@ function normalizeCodexUsageCredits(raw: any): CodexUsageCredits | undefined {
   }
 }
 
-function normalizeCodexRateLimitReachedType(raw: any): string | undefined {
+function normalizeCodexRateLimitReachedType(raw: CodexRawValue): string | undefined {
   if (typeof raw === 'string') return asString(raw)
-  return asString(raw?.type ?? raw?.kind)
+  const record = recordFromValue(raw)
+  return asString(record.type ?? record.kind)
 }
 
 function normalizeCodexUsageLimit(
   id: string,
   name: string | undefined,
-  rawRateLimit: any,
+  rawRateLimit: CodexRawValue,
   rateLimitReachedType?: string,
 ): CodexUsageLimit {
-  const primary = normalizeCodexUsageWindow(rawRateLimit?.primary_window ?? rawRateLimit?.primaryWindow)
-  const secondary = normalizeCodexUsageWindow(rawRateLimit?.secondary_window ?? rawRateLimit?.secondaryWindow)
+  const rateLimit = recordFromValue(rawRateLimit)
+  const primary = normalizeCodexUsageWindow(rateLimit.primary_window ?? rateLimit.primaryWindow)
+  const secondary = normalizeCodexUsageWindow(rateLimit.secondary_window ?? rateLimit.secondaryWindow)
   return {
     id,
     ...(name ? { name } : {}),
@@ -1123,27 +1242,29 @@ function normalizeCodexUsageLimit(
   }
 }
 
-export function normalizeCodexUsagePayload(payload: any): CodexProviderUsage {
-  const planType = asString(payload?.plan_type ?? payload?.planType)
-  const credits = normalizeCodexUsageCredits(payload?.credits)
+export function normalizeCodexUsagePayload(payload: CodexRawValue): CodexProviderUsage {
+  const record = recordFromValue(payload)
+  const planType = asString(record.plan_type ?? record.planType)
+  const credits = normalizeCodexUsageCredits(record.credits)
   const rateLimitReachedType = normalizeCodexRateLimitReachedType(
-    payload?.rate_limit_reached_type ?? payload?.rateLimitReachedType,
+    record.rate_limit_reached_type ?? record.rateLimitReachedType,
   )
 
   const limits: CodexUsageLimit[] = [
-    normalizeCodexUsageLimit('codex', undefined, payload?.rate_limit ?? payload?.rateLimit, rateLimitReachedType),
+    normalizeCodexUsageLimit('codex', undefined, record.rate_limit ?? record.rateLimit, rateLimitReachedType),
   ]
 
-  const additional = payload?.additional_rate_limits ?? payload?.additionalRateLimits
+  const additional = record.additional_rate_limits ?? record.additionalRateLimits
   if (Array.isArray(additional)) {
     for (const detail of additional) {
-      const id = asString(detail?.metered_feature ?? detail?.meteredFeature ?? detail?.id)
+      const detailRecord = recordFromValue(detail)
+      const id = asString(detailRecord.metered_feature ?? detailRecord.meteredFeature ?? detailRecord.id)
       if (!id) continue
       limits.push(normalizeCodexUsageLimit(
         id,
-        asString(detail?.limit_name ?? detail?.limitName ?? detail?.name),
-        detail?.rate_limit ?? detail?.rateLimit,
-        normalizeCodexRateLimitReachedType(detail?.rate_limit_reached_type ?? detail?.rateLimitReachedType),
+        asString(detailRecord.limit_name ?? detailRecord.limitName ?? detailRecord.name),
+        detailRecord.rate_limit ?? detailRecord.rateLimit,
+        normalizeCodexRateLimitReachedType(detailRecord.rate_limit_reached_type ?? detailRecord.rateLimitReachedType),
       ))
     }
   }
@@ -1212,11 +1333,12 @@ function createCodexApiError(status: number, responseBody: string, headers: Head
   const detail = summarizeCodexErrorBody(responseBody)
   const requestId = headers.get('x-oai-request-id')
   const message = `Codex request failed (${status})${detail ? `: ${detail}` : ''}${requestId ? ` [request-id: ${requestId}]` : ''}`
-  const error = new Error(message)
-  ;(error as any).statusCode = status
-  ;(error as any).responseBody = responseBody
-  ;(error as any).responseHeaders = headersToRecord(headers)
-  ;(error as any).isRetryable = status >= 500 || status === 429
+  const error: CodexApiError = Object.assign(new Error(message), {
+    statusCode: status,
+    responseBody,
+    responseHeaders: headersToRecord(headers),
+    isRetryable: status >= 500 || status === 429,
+  })
   return error
 }
 
@@ -1231,6 +1353,44 @@ function usageFromResponse(response: CodexSseEvent['response']): CodexUsage {
   }
 }
 
+function shouldDebugCodexStream(): boolean {
+  return process.env.ONETHING_DEBUG_STREAM === '1' || process.env.ONETHING_DEBUG_CODEX_STREAM === '1'
+}
+
+function logTime(): string {
+  return new Date().toISOString()
+}
+
+function previewText(value: unknown, maxLength = 160): string {
+  const text = typeof value === 'string' ? value : JSON.stringify(value ?? '')
+  return text.replace(/\s+/g, ' ').trim().slice(0, maxLength)
+}
+
+function codexInputText(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((part) => {
+      const record = recordFromValue(part)
+      return typeof record.text === 'string' ? record.text : ''
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function summarizeCodexRequestBody(body: CodexRequest): Record<string, unknown> {
+  const messages = body.input.filter(item => item.type === 'message')
+  const lastUser = [...messages].reverse().find(item => item.role === 'user')
+  return {
+    model: body.model,
+    inputCount: body.input.length,
+    messageCount: messages.length,
+    toolCount: body.tools.length,
+    stream: body.stream,
+    lastUserPreview: previewText(codexInputText(lastUser?.content)),
+  }
+}
+
 function hasMeaningfulUsage(usage: CodexUsage): boolean {
   return usage.inputTokens !== undefined ||
     usage.outputTokens !== undefined ||
@@ -1239,19 +1399,21 @@ function hasMeaningfulUsage(usage: CodexUsage): boolean {
     usage.cachedInputTokens !== undefined
 }
 
-function extractOutputText(item: any): string {
-  if (!item || !Array.isArray(item.content)) return ''
-  return item.content
-    .map((content: any) => {
-      if (typeof content?.text === 'string') return content.text
-      if (typeof content?.content === 'string') return content.content
+function extractOutputText(item: CodexRawValue): string {
+  const itemRecord = recordFromValue(item)
+  if (!Array.isArray(itemRecord.content)) return ''
+  return itemRecord.content
+    .map((content) => {
+      const contentRecord = recordFromValue(content)
+      if (typeof contentRecord.text === 'string') return contentRecord.text
+      if (typeof contentRecord.content === 'string') return contentRecord.content
       return ''
     })
     .filter(Boolean)
     .join('')
 }
 
-function collectReasoningSummaryText(value: unknown): string[] {
+function collectReasoningSummaryText(value: CodexRawValue): string[] {
   if (typeof value === 'string') return value ? [value] : []
   if (!value || typeof value !== 'object') return []
 
@@ -1259,7 +1421,7 @@ function collectReasoningSummaryText(value: unknown): string[] {
     return value.flatMap(collectReasoningSummaryText)
   }
 
-  const record = value as Record<string, unknown>
+  const record = recordFromValue(value)
   const fragments: string[] = []
   for (const key of ['text', 'summary_text', 'summaryText', 'value']) {
     const text = record[key]
@@ -1273,36 +1435,38 @@ function collectReasoningSummaryText(value: unknown): string[] {
   return fragments
 }
 
-function extractReasoningSummaryText(item: any): string {
-  if (!item || typeof item !== 'object') return ''
+function extractReasoningSummaryText(item: CodexRawValue): string {
+  const record = recordFromValue(item)
   return collectReasoningSummaryText([
-    item.summary,
-    item.text,
-    item.summary_text,
-    item.summaryText,
-    item.reasoning_summary,
-    item.reasoningSummary,
+    record.summary,
+    record.text,
+    record.summary_text,
+    record.summaryText,
+    record.reasoning_summary,
+    record.reasoningSummary,
   ]).join('')
 }
 
-function isCodexImageGenerationItem(item: any): boolean {
-  return item?.type === CODEX_NATIVE_IMAGE_GENERATION_TOOL ||
-    item?.type === 'image_generation_call'
+function isCodexImageGenerationItem(item: CodexRawValue): item is CodexImageGenerationSseItem {
+  const record = recordFromValue(item)
+  return record.type === CODEX_NATIVE_IMAGE_GENERATION_TOOL ||
+    record.type === 'image_generation_call'
 }
 
-function isCodexFunctionCallItem(item: any): boolean {
-  return item?.type === 'function_call' || item?.type === 'custom_tool_call'
+function isCodexFunctionCallItem(item: CodexRawValue): item is CodexFunctionCallSseItem {
+  const record = recordFromValue(item)
+  return record.type === 'function_call' || record.type === 'custom_tool_call'
 }
 
-function getCodexImageGenerationCallId(item: any, event?: CodexSseEvent): string | undefined {
-  const eventAny = event as any
-  const callId = item?.id ?? item?.call_id ?? item?.callId ?? eventAny?.item_id ?? eventAny?.itemId
+function getCodexImageGenerationCallId(item: CodexRawValue, event?: CodexSseEvent): string | undefined {
+  const record = recordFromValue(item)
+  const callId = record.id ?? record.call_id ?? record.callId ?? event?.item_id ?? event?.itemId
   return typeof callId === 'string' && callId.length > 0 ? callId : undefined
 }
 
-function getReasoningItemId(item: any, event: CodexSseEvent, fallback: string): string {
-  const eventAny = event as any
-  const id = item?.id ?? item?.item_id ?? eventAny.item_id ?? eventAny.itemId
+function getReasoningItemId(item: CodexRawValue, event: CodexSseEvent, fallback: string): string {
+  const record = recordFromValue(item)
+  const id = record.id ?? record.item_id ?? event.item_id ?? event.itemId
   return typeof id === 'string' && id.length > 0 ? id : fallback
 }
 
@@ -1405,7 +1569,7 @@ export function createCodexModel(
 
     async doStream(options: CodexCallOptions) {
       const { body, warnings } = buildCodexRequest(modelId, options)
-      await dumpProviderRequest({
+      const requestDumpPath = await dumpProviderRequest({
         providerId: CODEX_PROVIDER_ID,
         model: modelId,
         mode: 'codex-http',
@@ -1415,6 +1579,11 @@ export function createCodexModel(
           warningCount: warnings.length,
         },
         requestBody: body,
+      })
+      const debugStream = shouldDebugCodexStream()
+      console.log('[CodexProvider] sending /responses request', {
+        ...summarizeCodexRequestBody(body),
+        requestDumpPath,
       })
       const response = await fetchImpl(`${baseUrl}/responses`, {
         method: 'POST',
@@ -1507,31 +1676,29 @@ export function createCodexModel(
         const toolInputByCallId = new Map<string, ActiveFunctionCallInput>()
         const pendingToolInputDeltas = new Map<string, string>()
 
-        const getFunctionCallItemId = (item: any, event?: CodexSseEvent, fallback?: string): string | undefined => {
-          const eventAny = event as any
-          const id = item?.id ?? item?.item_id ?? item?.itemId ?? eventAny?.item_id ?? eventAny?.itemId ?? fallback
+        const getFunctionCallItemId = (item: CodexRawRecord, event?: CodexSseEvent, fallback?: string): string | undefined => {
+          const id = item.id ?? item.item_id ?? item.itemId ?? event?.item_id ?? fallback
           return typeof id === 'string' && id.length > 0 ? id : undefined
         }
 
-        const getFunctionCallCallId = (item: any, event?: CodexSseEvent): string | undefined => {
-          const eventAny = event as any
-          const callId = item?.call_id ?? item?.callId ?? eventAny?.call_id ?? eventAny?.callId ?? item?.id
+        const getFunctionCallCallId = (item: CodexRawRecord, event?: CodexSseEvent): string | undefined => {
+          const callId = item.call_id ?? item.callId ?? event?.call_id ?? item.id
           return typeof callId === 'string' && callId.length > 0 ? callId : undefined
         }
 
-        const getFunctionCallToolName = (item: any): string | undefined => {
-          const name = item?.name ?? item?.tool_name ?? item?.toolName
+        const getFunctionCallToolName = (item: CodexRawRecord): string | undefined => {
+          const name = item.name ?? item.tool_name ?? item.toolName
           return typeof name === 'string' && name.length > 0 ? name : undefined
         }
 
-        const getFunctionCallArgs = (item: any): string => {
-          if (typeof item?.arguments === 'string') return item.arguments
-          if (typeof item?.input === 'string') return item.input
-          const value = item?.arguments ?? item?.input ?? {}
+        const getFunctionCallArgs = (item: CodexRawRecord): string => {
+          if (typeof item.arguments === 'string') return item.arguments
+          if (typeof item.input === 'string') return item.input
+          const value = item.arguments ?? item.input ?? {}
           return JSON.stringify(value)
         }
 
-        const registerFunctionCallInput = (item: any, event?: CodexSseEvent): ActiveFunctionCallInput | undefined => {
+        const registerFunctionCallInput = (item: CodexRawRecord, event?: CodexSseEvent): ActiveFunctionCallInput | undefined => {
           const callId = getFunctionCallCallId(item, event)
           const toolName = getFunctionCallToolName(item)
           if (!callId || !toolName) return
@@ -1577,7 +1744,7 @@ export function createCodexModel(
           }
         }
 
-        const registerAndStartFunctionCallInput = function* (item: any, event?: CodexSseEvent): Generator<CodexStreamPart> {
+        const registerAndStartFunctionCallInput = function* (item: CodexRawRecord, event?: CodexSseEvent): Generator<CodexStreamPart> {
           const state = registerFunctionCallInput(item, event)
           if (!state) return
           yield* startFunctionCallInput(state)
@@ -1585,11 +1752,10 @@ export function createCodexModel(
         }
 
         const emitFunctionCallInputDelta = function* (event: CodexSseEvent): Generator<CodexStreamPart> {
-          const eventAny = event as any
-          const delta = event.delta ?? eventAny.input ?? eventAny.arguments_delta ?? eventAny.argumentsDelta ?? ''
+          const delta = event.delta ?? event.input ?? event.arguments_delta ?? event.argumentsDelta ?? ''
           if (!delta) return
-          const itemId = typeof event.item_id === 'string' ? event.item_id : typeof eventAny.itemId === 'string' ? eventAny.itemId : undefined
-          const callId = typeof event.call_id === 'string' ? event.call_id : typeof eventAny.callId === 'string' ? eventAny.callId : undefined
+          const itemId = typeof event.item_id === 'string' ? event.item_id : event.itemId
+          const callId = typeof event.call_id === 'string' ? event.call_id : event.callId
           const state = (itemId ? toolInputByItemId.get(itemId) : undefined) ?? (callId ? toolInputByCallId.get(callId) : undefined)
           if (!state) {
             const key = itemId ?? callId
@@ -1601,7 +1767,7 @@ export function createCodexModel(
           yield { type: 'tool-input-delta', id: state.callId, delta }
         }
 
-        const emitFunctionCall = function* (item: any, event?: CodexSseEvent): Generator<CodexStreamPart> {
+        const emitFunctionCall = function* (item: CodexRawRecord, event?: CodexSseEvent): Generator<CodexStreamPart> {
           const callId = getFunctionCallCallId(item, event)
           const toolName = getFunctionCallToolName(item)
           if (!callId || !toolName) return
@@ -1641,9 +1807,10 @@ export function createCodexModel(
           }
         }
 
-        const emitImageGenerationStart = function* (item: any, event?: CodexSseEvent): Generator<CodexStreamPart> {
+        const emitImageGenerationStart = function* (item: CodexRawRecord, event?: CodexSseEvent): Generator<CodexStreamPart> {
           const callId = getCodexImageGenerationCallId(item, event)
           if (!callId) return
+          const status = optionalStringFromValue(item.status)
           yield* closeReasoning()
           yield* closeText()
           yield {
@@ -1652,15 +1819,16 @@ export function createCodexModel(
               provider: CODEX_PROVIDER_ID,
               type: 'image-generation-start',
               callId,
-              status: typeof item?.status === 'string' ? item.status : undefined,
+              status,
             },
           }
         }
 
-        const emitImageGenerationResult = function* (item: any, event?: CodexSseEvent): Generator<CodexStreamPart> {
+        const emitImageGenerationResult = function* (item: CodexRawRecord, event?: CodexSseEvent): Generator<CodexStreamPart> {
           const callId = getCodexImageGenerationCallId(item, event)
-          const result = typeof item?.result === 'string' ? item.result : ''
+          const result = optionalStringFromValue(item.result) ?? ''
           if (!callId || !result) return
+          const revisedPrompt = optionalStringFromValue(item.revised_prompt) ?? optionalStringFromValue(item.revisedPrompt)
           yield* closeReasoning()
           yield* closeText()
           yield {
@@ -1669,18 +1837,24 @@ export function createCodexModel(
               provider: CODEX_PROVIDER_ID,
               type: 'image-generation-result',
               callId,
-              status: typeof item?.status === 'string' ? item.status : 'completed',
-              revisedPrompt: typeof item?.revised_prompt === 'string'
-                ? item.revised_prompt
-                : typeof item?.revisedPrompt === 'string'
-                  ? item.revisedPrompt
-                  : undefined,
+              status: optionalStringFromValue(item.status) ?? 'completed',
+              revisedPrompt,
               result,
             },
           }
         }
 
         for await (const event of parseCodexSseStream(response.body!)) {
+      if (debugStream) {
+        console.log('[CodexProvider:SSE] event', {
+          time: logTime(),
+          type: event.type,
+          deltaChars: typeof event.delta === 'string' ? event.delta.length : 0,
+          deltaPreview: typeof event.delta === 'string' ? previewText(event.delta, 240) : '',
+          itemType: event.item?.type,
+          hasUsage: Boolean(event.response?.usage),
+        })
+          }
           if (event.error) {
             throw new Error(`Codex stream error: ${event.error.message ?? 'unknown error'}`)
           }
@@ -1714,8 +1888,7 @@ export function createCodexModel(
 
             case 'response.reasoning_summary_text.delta': {
               const itemId = getReasoningItemId(undefined, event, activeReasoningItemId ?? reasoningId)
-              const eventAny = event as any
-              yield* emitReasoning(event.delta ?? eventAny.text ?? '', itemId)
+              yield* emitReasoning(event.delta ?? event.text ?? '', itemId)
               break
             }
 
@@ -1728,13 +1901,12 @@ export function createCodexModel(
             }
 
             case 'response.reasoning_summary_text.done': {
-              const eventAny = event as any
               const itemId = getReasoningItemId(undefined, event, activeReasoningItemId ?? reasoningId)
               const summary = collectReasoningSummaryText([
-                eventAny.text,
-                eventAny.summary,
-                eventAny.summary_text,
-                eventAny.summaryText,
+                event.text,
+                event.summary,
+                event.summary_text,
+                event.summaryText,
               ]).join('')
               if (summary && !reasoningSummaryByItem.get(itemId)?.trim()) {
                 yield* emitReasoning(summary, itemId)
@@ -1853,15 +2025,15 @@ export function createCodexModel(
           const { done, value } = await reader.read()
           if (done) break
 
-          if (value.type === 'text-delta') {
+          if (value.type === 'text-delta' && typeof value.id === 'string' && typeof value.delta === 'string') {
             textById.set(value.id, `${textById.get(value.id) ?? ''}${value.delta}`)
-          } else if (value.type === 'reasoning-delta') {
+          } else if (value.type === 'reasoning-delta' && typeof value.id === 'string' && typeof value.delta === 'string') {
             reasoningById.set(value.id, `${reasoningById.get(value.id) ?? ''}${value.delta}`)
           } else if (value.type === 'tool-call') {
             content.push(value)
           } else if (value.type === 'finish') {
-            finishReason = value.finishReason
-            usage = value.usage
+            finishReason = mapFinishReason(typeof value.finishReason === 'string' ? value.finishReason : undefined)
+            if (isCodexUsage(value.usage)) usage = value.usage
           }
         }
       } finally {
@@ -1905,20 +2077,6 @@ const codexProvider: ProviderDefinition = {
     requiresApiKey: false,
     requiresOAuth: true,
     oauthFlow: 'authorization-code',
-  },
-
-  create: ({ baseUrl, apiKey, oauthToken, authContext }) => {
-    const token = getCodexToken({ apiKey, oauthToken, authContext })
-    if (!token?.accessToken) {
-      throw new Error('Not logged in to Codex. Please login first.')
-    }
-    const finalBaseUrl = (baseUrl || CODEX_BASE_URL).replace(/\/$/, '')
-    const fetchImpl = createCodexFetch(createBoundFetch())
-
-    return {
-      createModel: (modelId: string) =>
-        createCodexModel(modelId, token, finalBaseUrl, fetchImpl) as any,
-    }
   },
 
   prepareCallOptions: prepareCodexCallOptions,

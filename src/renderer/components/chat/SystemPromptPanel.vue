@@ -130,15 +130,19 @@
                   <dd
                     :class="{ mono: row.mono }"
                     :title="row.title || row.value"
-                  >{{ row.value }}</dd>
+                  >
+                    {{ row.value }}
+                  </dd>
                 </div>
               </dl>
 
               <div
-                v-if="tool.parameters?.length"
+                v-if="tool.parameters.length"
                 class="system-prompt-subgroup"
               >
-                <div class="system-prompt-subhead">Parameters</div>
+                <div class="system-prompt-subhead">
+                  Parameters
+                </div>
                 <ul class="system-prompt-param-list">
                   <li
                     v-for="param in tool.parameters"
@@ -191,7 +195,7 @@
           </div>
           <div>
             <dt>Active route</dt>
-            <dd>{{ snapshot.agentLoopStream.active ? 'Agent loop' : 'Tool loop' }}</dd>
+            <dd>{{ snapshot.agentLoopStream.active ? 'Agent loop' : 'Unavailable' }}</dd>
           </div>
           <div>
             <dt>Supported providers</dt>
@@ -266,7 +270,9 @@
                   <dd
                     :class="{ mono: row.mono }"
                     :title="row.title || row.value"
-                  >{{ row.value }}</dd>
+                  >
+                    {{ row.value }}
+                  </dd>
                 </div>
               </dl>
 
@@ -274,7 +280,9 @@
                 v-if="skill.files?.length"
                 class="system-prompt-subgroup"
               >
-                <div class="system-prompt-subhead">Files</div>
+                <div class="system-prompt-subhead">
+                  Files
+                </div>
                 <ul class="system-prompt-file-list">
                   <li
                     v-for="file in skill.files"
@@ -350,7 +358,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { AlertCircle, Check, Copy } from 'lucide-vue-next'
 import type {
   SystemPromptSkillSnapshot,
@@ -373,7 +381,7 @@ const props = defineProps<{
 
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
-const snapshot = ref<SystemPromptSnapshot | null>(null)
+const snapshot = shallowRef<SystemPromptSnapshot | null>(null)
 const loading = ref(false)
 const error = ref('')
 const copied = ref(false)
@@ -403,7 +411,7 @@ const refreshKey = computed(() => {
     aiModel: settings.ai.providers?.[settings.ai.provider]?.model || '',
     toolsEnabled: settings.tools?.enableToolCalls,
     toolSettings: settings.tools?.tools,
-    agentLoopStream: settings.chat?.agentLoopStream === true,
+    agentLoopStream: true,
     skillsEnabled: settings.skills?.enableSkills,
     skillSettings: settings.skills?.skills,
     variables,
@@ -435,9 +443,9 @@ const skillsStatus = computed(() => {
 const runtimeStatus = computed(() => {
   const runtime = snapshot.value?.agentLoopStream
   if (!runtime) return 'Unknown'
-  if (!runtime.enabled) return 'Tool loop'
+  if (!runtime.enabled) return 'Agent loop'
   if (!runtime.providerSupported) return 'Unsupported'
-  return runtime.active ? 'Agent loop' : 'Tool loop'
+  return runtime.active ? 'Agent loop' : 'Unavailable'
 })
 
 const providerWarning = computed(() => {
@@ -453,17 +461,74 @@ type DetailRow = {
   mono?: boolean
 }
 
-type ToolPanelItem = SystemPromptToolSnapshot & { key: string }
+type ToolPanelParameter = {
+  name: string
+  type: ToolParameter['type']
+  description: string
+  required?: boolean
+  enum?: string[]
+}
+
+type ToolPanelItem = {
+  key: string
+  id: string
+  name: string
+  description?: string
+  category?: string
+  modelFacingName?: string
+  source?: SystemPromptToolSnapshot['source']
+  serverId?: string
+  serverName?: string
+  enabled?: boolean
+  autoExecute?: boolean
+  permissionGuard?: SystemPromptToolSnapshot['permissionGuard']
+  executionMode?: SystemPromptToolSnapshot['executionMode']
+  renderKind?: SystemPromptToolSnapshot['renderKind']
+  parameters: ToolPanelParameter[]
+}
 
 const toolItems = computed<ToolPanelItem[]>(() => {
   const tools = snapshot.value?.tools
   if (!tools) return []
   return [
-    ...tools.builtin.map(tool => ({ ...tool, key: `builtin:${tool.id}` })),
-    ...tools.mcp.map(tool => ({ ...tool, key: `mcp:${tool.id}` })),
-    ...tools.codexNative.map(tool => ({ ...tool, key: `native:${tool.id}` })),
+    ...tools.builtin.map(tool => toToolPanelItem(tool, 'builtin')),
+    ...tools.mcp.map(tool => toToolPanelItem(tool, 'mcp')),
+    ...tools.codexNative.map(tool => toToolPanelItem(tool, 'native')),
   ]
 })
+
+function toToolPanelParameter(param: ToolParameter): ToolPanelParameter {
+  return {
+    name: param.name,
+    type: param.type,
+    description: param.description,
+    required: param.required,
+    enum: param.enum ? [...param.enum] : undefined,
+  }
+}
+
+function toToolPanelItem(
+  tool: SystemPromptToolSnapshot,
+  keyPrefix: 'builtin' | 'mcp' | 'native',
+): ToolPanelItem {
+  return {
+    key: `${keyPrefix}:${tool.id}`,
+    id: tool.id,
+    name: tool.name,
+    description: tool.description,
+    category: tool.category,
+    modelFacingName: tool.modelFacingName,
+    source: tool.source,
+    serverId: tool.serverId,
+    serverName: tool.serverName,
+    enabled: tool.enabled,
+    autoExecute: tool.autoExecute,
+    permissionGuard: tool.permissionGuard,
+    executionMode: tool.executionMode,
+    renderKind: tool.renderKind,
+    parameters: tool.parameters?.map(toToolPanelParameter) ?? [],
+  }
+}
 
 function detailRow(
   label: string,
@@ -499,7 +564,7 @@ function formatToken(value: string | undefined): string {
     .join(' ')
 }
 
-function formatParameterMeta(param: ToolParameter): string {
+function formatParameterMeta(param: ToolPanelParameter): string {
   const parts: string[] = [param.type]
   if (param.required) parts.push('required')
   if (param.enum?.length) parts.push(`one of ${param.enum.join(', ')}`)
@@ -516,15 +581,15 @@ function formatConditions(skill: SystemPromptSkillSnapshot): string {
   return entries.join(' · ')
 }
 
-function getToolSubtitle(tool: SystemPromptToolSnapshot): string {
+function getToolSubtitle(tool: ToolPanelItem): string {
   return [
     formatSource(tool.source),
     tool.modelFacingName && tool.modelFacingName !== tool.name ? `model: ${tool.modelFacingName}` : '',
-    tool.parameters?.length ? `${tool.parameters.length} params` : 'no params',
+    tool.parameters.length ? `${tool.parameters.length} params` : 'no params',
   ].filter(Boolean).join(' · ')
 }
 
-function getToolDetailRows(tool: SystemPromptToolSnapshot): DetailRow[] {
+function getToolDetailRows(tool: ToolPanelItem): DetailRow[] {
   return [
     detailRow('ID', tool.id, { mono: true }),
     detailRow('Model name', tool.modelFacingName, { mono: true }),

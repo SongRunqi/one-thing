@@ -1,7 +1,12 @@
 import * as crypto from 'crypto'
 import * as fs from 'fs/promises'
 import * as path from 'path'
+import type { JsonObject } from '../../../shared/json.js'
 import { withFileMutationQueue } from './file-mutation-queue.js'
+
+function hasErrorCode(error: Error | object | string | number | boolean | null | undefined, code: string): boolean {
+  return Boolean(error && typeof error === 'object' && 'code' in error && error.code === code)
+}
 
 export type FileMutationOperation = 'edit' | 'write_create' | 'write_overwrite'
 
@@ -20,7 +25,7 @@ export interface FileMutationAuditRecord {
   beforeContent: string
   afterContent: string
   diff: string
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
 }
 
 export interface RecordFileMutationAuditInput {
@@ -35,7 +40,7 @@ export interface RecordFileMutationAuditInput {
   beforeContent: string
   afterContent: string
   diff: string
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
 }
 
 export interface RecordFileMutationAuditResult {
@@ -67,8 +72,9 @@ async function readCurrentFileSnapshot(filePath: string): Promise<CurrentFileSna
     }
     const content = await fs.readFile(filePath, 'utf-8')
     return { exists: true, content, hash: hashAuditContent(true, content) }
-  } catch (error: any) {
-    if (error.code !== 'ENOENT') throw error
+  } catch (error) {
+    const caught = error instanceof Error || (error && typeof error === 'object') ? error : String(error)
+    if (!hasErrorCode(caught, 'ENOENT')) throw error
     return { exists: false, content: '', hash: hashAuditContent(false, '') }
   }
 }

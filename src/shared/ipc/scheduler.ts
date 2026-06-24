@@ -1,3 +1,5 @@
+import type { JsonObject, JsonValue } from '../json.js'
+
 export type SchedulerRunReason = 'startup' | 'scheduled' | 'manual'
 export type SchedulerTaskKind = 'agent' | 'plugin'
 export type SchedulerTaskSource = 'user' | 'plugin'
@@ -32,7 +34,7 @@ export interface SchedulerRunRecordDTO {
   skipped?: boolean
   skippedReason?: string
   error?: string
-  result?: unknown
+  result?: JsonValue
 }
 
 export interface SchedulerRunTimelineEntryDTO {
@@ -45,7 +47,7 @@ export interface SchedulerRunTimelineEntryDTO {
   toolCallId?: string
   stepId?: string
   status?: string
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
 }
 
 export interface SchedulerRunToolCallDTO {

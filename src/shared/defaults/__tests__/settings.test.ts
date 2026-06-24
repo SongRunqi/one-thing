@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
+import type { JsonObject } from '../../json.js'
+import type { AppSettings } from '../../ipc/settings.js'
 import { createDefaultSettings, mergeWithDefaults } from '../settings.js'
+
+type ProviderConfigWithLocalAddress = {
+  localAddress?: string
+}
+
+function mergeSettings(settings: JsonObject): AppSettings {
+  return mergeWithDefaults(settings as Partial<AppSettings>)
+}
 
 describe('compact settings defaults', () => {
   it('enables compacting by default', () => {
@@ -8,26 +18,26 @@ describe('compact settings defaults', () => {
     expect(settings.chat?.contextCompactEnabled).toBe(true)
     expect(settings.chat?.contextCompactThreshold).toBe(85)
     expect(settings.chat?.contextCompactKeepRecentTurns).toBe(6)
-    expect(settings.chat?.agentLoopStream).toBe(false)
+    expect(settings.chat?.agentLoopStream).toBe(true)
   })
 
   it('clamps compact numeric settings when merging', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       chat: {
         contextCompactThreshold: 120,
         contextCompactKeepRecentTurns: 0,
-      } as any,
+      },
     })
 
     expect(settings.chat?.contextCompactThreshold).toBe(100)
     expect(settings.chat?.contextCompactKeepRecentTurns).toBe(1)
   })
 
-  it('preserves the agent loop stream opt-in when merging', () => {
-    const settings = mergeWithDefaults({
+  it('normalizes legacy agent loop stream opt-out when merging', () => {
+    const settings = mergeSettings({
       chat: {
-        agentLoopStream: true,
-      } as any,
+        agentLoopStream: false,
+      },
     })
 
     expect(settings.chat?.agentLoopStream).toBe(true)
@@ -43,28 +53,28 @@ describe('typography density defaults', () => {
   })
 
   it('backfills typography density for older settings files', () => {
-    const settings = mergeWithDefaults({
-      general: {} as any,
+    const settings = mergeSettings({
+      general: {},
     })
 
     expect(settings.general.typographyDensity).toBe('compact')
   })
 
   it('preserves explicit comfortable typography density', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       general: {
         typographyDensity: 'comfortable',
-      } as any,
+      },
     })
 
     expect(settings.general.typographyDensity).toBe('comfortable')
   })
 
   it('normalizes invalid typography density values', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       general: {
         typographyDensity: 'roomy',
-      } as any,
+      },
     })
 
     expect(settings.general.typographyDensity).toBe('compact')
@@ -84,12 +94,12 @@ describe('tool call model settings defaults', () => {
   })
 
   it('backfills tool call model settings for older settings files', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       tools: {
         enableToolCalls: true,
         tools: {},
       },
-    } as any)
+    })
 
     expect(settings.tools.toolCallModel).toEqual({
       providerId: '',
@@ -117,7 +127,7 @@ describe('editor settings defaults', () => {
   })
 
   it('merges and clamps editor settings', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       general: {
         editor: {
           tabSize: 99,
@@ -127,7 +137,7 @@ describe('editor settings defaults', () => {
           markdownNoteAttachmentDirectory: 'attachments',
           markdownProjectAttachmentDirectory: 'assets',
         },
-      } as any,
+      },
     })
 
     expect(settings.general.editor?.tabSize).toBe(8)
@@ -178,7 +188,7 @@ describe('soul memory settings defaults', () => {
   })
 
   it('merges and clamps soul-memory settings for older settings files', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       general: {
         soulMemory: {
           bootstrapMaxChars: 999999,
@@ -232,7 +242,7 @@ describe('soul memory settings defaults', () => {
             maxLines: 60,
           },
         },
-      } as any,
+      },
     })
 
     expect(settings.general.soulMemory?.bootstrapMaxChars).toBe(50000)
@@ -286,7 +296,7 @@ describe('shortcut settings defaults', () => {
   })
 
   it('merges new shortcut defaults for older settings files', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       general: {
         shortcuts: {
           sendMessage: { key: 'Enter' },
@@ -295,7 +305,7 @@ describe('shortcut settings defaults', () => {
           toggleSidebar: { key: 'b', metaKey: true },
           focusInput: { key: '/' },
         },
-      } as any,
+      },
     })
 
     expect(settings.general.shortcuts?.searchEverywhere).toEqual({ key: 'k', metaKey: true })
@@ -303,12 +313,12 @@ describe('shortcut settings defaults', () => {
   })
 
   it('preserves double shift shortcut sequences', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       general: {
         shortcuts: {
           searchEverywhere: { key: 'Shift', sequence: 'double-shift' },
         },
-      } as any,
+      },
     })
 
     expect(settings.general.shortcuts?.searchEverywhere).toEqual({ key: 'Shift', sequence: 'double-shift' })
@@ -324,12 +334,12 @@ describe('todo plan settings defaults', () => {
   })
 
   it('merges active todo autonomy for older settings files', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       general: {
         todoPlan: {
           enabled: true,
         },
-      } as any,
+      },
     })
 
     expect(settings.general.todoPlan?.autonomy).toBe('active')
@@ -359,7 +369,7 @@ describe('network settings defaults', () => {
   })
 
   it('preserves selected network interface settings when merging', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       network: {
         networkInterface: {
           enabled: true,
@@ -373,7 +383,7 @@ describe('network settings defaults', () => {
           url: '',
         },
       },
-    } as any)
+    })
 
     expect(settings.network?.networkInterface).toMatchObject({
       enabled: true,
@@ -387,7 +397,7 @@ describe('network settings defaults', () => {
 
 describe('legacy network interface settings', () => {
   it('strips provider localAddress values when merging settings', () => {
-    const settings = mergeWithDefaults({
+    const settings = mergeSettings({
       ai: {
         providers: {
           openai: {
@@ -407,10 +417,10 @@ describe('legacy network interface settings', () => {
           selectedModels: ['model'],
           localAddress: '10.0.0.2',
         }],
-      } as any,
+      },
     })
 
-    expect((settings.ai.providers.openai as any).localAddress).toBeUndefined()
-    expect((settings.ai.customProviders?.[0] as any).localAddress).toBeUndefined()
+    expect((settings.ai.providers.openai as ProviderConfigWithLocalAddress).localAddress).toBeUndefined()
+    expect((settings.ai.customProviders?.[0] as ProviderConfigWithLocalAddress | undefined)?.localAddress).toBeUndefined()
   })
 })

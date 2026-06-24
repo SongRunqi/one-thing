@@ -6,7 +6,6 @@
  * IMAGE_GENERATED is a one-off notification sent directly via sender.
  */
 
-import type { WebContents } from 'electron'
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import * as store from '../../store.js'
 import { saveMediaImage } from '../../ipc/media.js'
@@ -17,9 +16,10 @@ import {
   generateGeminiImage,
   type ImageGenerationResult,
 } from './image-generation.js'
+import type { StreamSender } from './stream-processor.js'
 
 export interface ImageStreamParams {
-  sender: WebContents
+  sender: StreamSender
   sessionId: string
   assistantMessageId: string
   prompt: string

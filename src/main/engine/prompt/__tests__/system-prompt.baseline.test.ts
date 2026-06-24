@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { BuildPromptContextOptions } from '../system-prompt.js'
+import type { BuildPromptContextOptions, PromptRequestMessage } from '../system-prompt.js'
 import { buildPrompt } from '../index.js'
 
 // Baseline snapshot lock: captures the exact assembled prompt TEXT for a range
@@ -43,7 +43,7 @@ beforeEach(() => {
   }))
 })
 
-function shape(messages: Array<{ role: string; content: unknown }>) {
+function shape(messages: Array<Pick<PromptRequestMessage, 'role' | 'content'>>) {
   return messages.map(m => ({ role: m.role, content: m.content }))
 }
 

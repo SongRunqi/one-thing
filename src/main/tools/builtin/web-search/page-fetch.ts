@@ -169,12 +169,14 @@ export async function fetchSearchPage(
       fetchMs: Date.now() - start,
       error: text ? undefined : 'No readable text found on the page.',
     }
-  } catch (error: any) {
+  } catch (error) {
     return {
       ...basePage,
       status: 'failed',
       fetchMs: Date.now() - start,
-      error: timeout.timedOut ? 'Timed out while fetching the page.' : error?.message || 'Failed to fetch page.',
+      error: timeout.timedOut
+        ? 'Timed out while fetching the page.'
+        : error instanceof Error ? error.message : 'Failed to fetch page.',
     }
   } finally {
     timeout.cleanup()

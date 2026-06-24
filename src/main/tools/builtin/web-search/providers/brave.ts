@@ -8,6 +8,7 @@
 import type { SearchProvider, SearchOptions, SearchResponse, SearchResult } from './types.js'
 import { getSettings } from '../../../../stores/settings.js'
 import { createRequiredAppFetch } from '../../../../providers/bound-fetch.js'
+import { toJsonObject, type JsonObject, type JsonObjectProperty } from '../../../../../shared/json.js'
 
 const BRAVE_API_URL = 'https://api.search.brave.com/res/v1/web/search'
 const RATE_LIMIT_SAFETY_MS = 100
@@ -101,22 +102,28 @@ export class BraveSearchProvider implements SearchProvider {
       throw new Error(`Brave Search API error: ${response.status} - ${error}`)
     }
 
-    const data = await response.json()
+    const data = toJsonObject(await response.json())
+    const web = toJsonObject(data.web)
+    const rawResults = Array.isArray(web.results) ? web.results : []
     
-    const results: SearchResult[] = (data.web?.results || []).map((r: any) => ({
-      title: r.title,
-      url: r.url,
-      snippet: r.description,
-      publishedDate: r.age,
-      source: r.profile?.name,
-      language: r.language,
-      extraSnippets: Array.isArray(r.extra_snippets) ? r.extra_snippets : undefined,
-    }))
+    const results: SearchResult[] = rawResults.map((item) => {
+      const result = toJsonObject(item)
+      const profile = toJsonObject(result.profile)
+      return {
+        title: stringValue(result.title),
+        url: stringValue(result.url),
+        snippet: stringValue(result.description),
+        publishedDate: stringValue(result.age),
+        source: stringValue(profile.name),
+        language: stringValue(result.language),
+        extraSnippets: stringArrayValue(result.extra_snippets),
+      }
+    })
 
     return {
       query,
       results,
-      totalResults: data.web?.total,
+      totalResults: numberValue(web.total),
       provider: this.id,
     }
   }
@@ -189,18 +196,34 @@ function updateRateLimitFromHeaders(headers: Headers): void {
 }
 
 function updateRateLimitFromErrorBody(bodyText: string): void {
-  let data: any
+  let data: JsonObject = {}
   try {
-    data = JSON.parse(bodyText)
+    data = toJsonObject(JSON.parse(bodyText))
   } catch {
     return
   }
 
-  const rateLimit = Number(data?.error?.meta?.rate_limit)
+  const error = toJsonObject(data.error)
+  const meta = toJsonObject(error.meta)
+  const rateLimit = Number(meta.rate_limit)
   if (!Number.isFinite(rateLimit) || rateLimit <= 0) return
 
   learnedMinIntervalMs = Math.ceil(1000 / rateLimit) + RATE_LIMIT_SAFETY_MS
   nextAllowedRequestAt = Math.max(nextAllowedRequestAt, Date.now() + learnedMinIntervalMs)
+}
+
+function stringValue(value: JsonObjectProperty): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function numberValue(value: JsonObjectProperty): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function stringArrayValue(value: JsonObjectProperty): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const strings = value.filter((item): item is string => typeof item === 'string')
+  return strings.length > 0 ? strings : undefined
 }
 
 function parseRateLimitHeaders(headers: Headers): RateLimitSnapshot | null {

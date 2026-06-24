@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { toJsonObject, type JsonObject, type JsonValue } from '../../../../shared/json.js'
 import {
   buildCodexHeaders,
   buildCodexModelsUrl,
@@ -19,6 +20,74 @@ import {
   prepareCodexCallOptions,
   repairCodexRejectedBody,
 } from '../codex.js'
+
+type CodexRequestOptions = Parameters<typeof buildCodexRequest>[1]
+type CodexLanguageModel = ReturnType<typeof createCodexModel>
+type CodexStreamOptions = Parameters<CodexLanguageModel['doStream']>[0]
+type CodexStreamResult = Awaited<ReturnType<CodexLanguageModel['doStream']>>
+type CodexStreamChunk = CodexStreamResult['stream'] extends ReadableStream<infer Chunk> ? Chunk : never
+
+function codexMetadata(model: { providerMetadata?: object | null } | null | undefined): JsonObject {
+  return toJsonObject(toJsonObject(model?.providerMetadata).codex)
+}
+
+function jsonArrayField(object: JsonObject, key: string): JsonValue[] {
+  const value = object[key]
+  return Array.isArray(value) ? value : []
+}
+
+function fieldValues(items: JsonValue[], key: string): JsonValue[] {
+  return items.map(item => toJsonObject(item)[key] ?? null)
+}
+
+function requestUrl(input: Parameters<typeof globalThis.fetch>[0]): string {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.toString()
+  return input.url
+}
+
+function headersRecord(headers: HeadersInit | undefined): Record<string, string> {
+  if (!headers) return {}
+  if (headers instanceof Headers) {
+    const record: Record<string, string> = {}
+    headers.forEach((value, key) => {
+      record[key] = value
+    })
+    return record
+  }
+  if (Array.isArray(headers)) return Object.fromEntries(headers)
+  return { ...headers }
+}
+
+function bodyText(body: BodyInit | null | undefined): string | undefined {
+  if (typeof body === 'string') return body
+  if (body instanceof URLSearchParams) return body.toString()
+  if (body instanceof Uint8Array) return new TextDecoder().decode(body)
+  return undefined
+}
+
+function codexRequestOptions(options: CodexRequestOptions): CodexRequestOptions {
+  return options
+}
+
+function codexStreamOptions(options: CodexStreamOptions): CodexStreamOptions {
+  return options
+}
+
+async function readCodexChunks(stream: ReadableStream<CodexStreamChunk>): Promise<CodexStreamChunk[]> {
+  const reader = stream.getReader()
+  const chunks: CodexStreamChunk[] = []
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  return chunks
+}
 
 describe('codex provider helpers', () => {
   it('builds ChatGPT subscription auth headers', () => {
@@ -46,8 +115,8 @@ describe('codex provider helpers', () => {
 
   it('fetches official Codex usage from the ChatGPT WHAM endpoint', async () => {
     const calls: Array<{ url: string; headers?: Record<string, string> }> = []
-    const fetchImpl = vi.fn(async (input: any, init?: any) => {
-      calls.push({ url: String(input), headers: init?.headers })
+    const fetchImpl = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      calls.push({ url: requestUrl(input), headers: headersRecord(init?.headers) })
       return new Response(JSON.stringify({
         plan_type: 'pro',
         credits: {
@@ -82,7 +151,7 @@ describe('codex provider helpers', () => {
           },
         }],
       }), { status: 200 })
-    }) as unknown as typeof globalThis.fetch
+    })
 
     const usage = await fetchCodexUsage({
       accessToken: 'access-token',
@@ -133,9 +202,9 @@ describe('codex provider helpers', () => {
   })
 
   it('surfaces Codex usage errors without leaking request secrets', async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+    const fetchImpl = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({
       detail: 'usage unavailable',
-    }), { status: 403 })) as unknown as typeof globalThis.fetch
+    }), { status: 403 }))
 
     await expect(fetchCodexUsage({
       accessToken: 'secret-token',
@@ -156,15 +225,16 @@ describe('codex provider helpers', () => {
     expect(models[0].id).toBe(CODEX_DEFAULT_MODEL)
     expect(models[0].supported_parameters).toContain('tools')
     expect(models[0].supported_parameters).toContain('reasoning')
-    expect((models[0].providerMetadata?.codex as any)?.defaultReasoningEffort).toBe('medium')
-    expect((models[0].providerMetadata?.codex as any)?.supportedReasoningEfforts.map((level: any) => level.effort)).toEqual([
+    const metadata = codexMetadata(models[0])
+    expect(metadata.defaultReasoningEffort).toBe('medium')
+    expect(fieldValues(jsonArrayField(metadata, 'supportedReasoningEfforts'), 'effort')).toEqual([
       'minimal',
       'low',
       'medium',
       'high',
       'xhigh',
     ])
-    expect((models[0].providerMetadata?.codex as any)?.nativeTools).toContain('image_generation')
+    expect(jsonArrayField(metadata, 'nativeTools')).toContain('image_generation')
 
     const selectedFallback = getCodexFallbackModel('gpt-5.5')
     expect(selectedFallback.id).toBe('gpt-5.5')
@@ -200,16 +270,17 @@ describe('codex provider helpers', () => {
     expect(model?.architecture.input_modalities).toEqual(['text', 'image'])
     expect(model?.supported_parameters).toContain('verbosity')
     expect(model?.supported_parameters).toContain('reasoning')
-    expect((model?.providerMetadata?.codex as any)?.defaultReasoningEffort).toBe('low')
-    expect((model?.providerMetadata?.codex as any)?.supportedReasoningEfforts).toEqual([
+    const metadata = codexMetadata(model)
+    expect(metadata.defaultReasoningEffort).toBe('low')
+    expect(jsonArrayField(metadata, 'supportedReasoningEfforts')).toEqual([
       { effort: 'low', description: 'Fast' },
       { effort: 'xhigh', description: 'Deep' },
     ])
-    expect((model?.providerMetadata?.codex as any)?.serviceTiers).toEqual([
+    expect(jsonArrayField(metadata, 'serviceTiers')).toEqual([
       { id: 'fast', name: 'Fast', description: 'Priority processing.' },
       { id: 'flex', name: 'Flex', description: 'Flexible processing.' },
     ])
-    expect((model?.providerMetadata?.codex as any)?.nativeTools).toEqual(['image_generation'])
+    expect(jsonArrayField(metadata, 'nativeTools')).toEqual(['image_generation'])
   })
 
   it('respects explicit Codex model metadata when native image generation is absent', () => {
@@ -219,7 +290,7 @@ describe('codex provider helpers', () => {
       experimental_supported_tools: ['web_search'],
     })
 
-    expect((model?.providerMetadata?.codex as any)?.nativeTools).toEqual([])
+    expect(jsonArrayField(codexMetadata(model), 'nativeTools')).toEqual([])
     expect(model?.architecture.output_modalities).toEqual(['text'])
   })
 
@@ -230,7 +301,7 @@ describe('codex provider helpers', () => {
       additionalSpeedTiers: ['fast'],
     })
 
-    expect((model?.providerMetadata?.codex as any)?.serviceTiers).toEqual([
+    expect(jsonArrayField(codexMetadata(model), 'serviceTiers')).toEqual([
       { id: 'fast', name: 'Fast', description: undefined },
     ])
     expect(model?.architecture.input_modalities).toEqual(['text', 'image'])
@@ -256,7 +327,8 @@ describe('codex provider helpers', () => {
     })
 
     expect(options.messages).toEqual([{ role: 'user', content: 'Hello' }])
-    expect(options.providerOptions?.codex.instructions).toBe('System rules\n\nDeveloper rules')
+    const codexOptions = options.providerOptions?.codex as { instructions?: string } | undefined
+    expect(codexOptions?.instructions).toBe('System rules\n\nDeveloper rules')
     expect(options.providerOptions?.openai).toBeUndefined()
     expect(options.toolChoice).toEqual({ type: 'auto' })
     expect(options.maxOutputTokens).toBeUndefined()
@@ -328,7 +400,7 @@ describe('codex provider helpers', () => {
   })
 
   it('builds a native Codex Responses request without OpenAI Responses-only parameters', () => {
-    const { body, warnings } = buildCodexRequest('gpt-5.5', {
+    const { body, warnings } = buildCodexRequest('gpt-5.5', codexRequestOptions({
       prompt: [
         { role: 'system', content: 'System rules' },
         { role: 'user', content: [{ type: 'text', text: 'Read package.json' }] },
@@ -372,7 +444,7 @@ describe('codex provider helpers', () => {
       },
       maxOutputTokens: 64000,
       temperature: 0.2,
-    } as any)
+    }))
 
     expect(body.instructions).toBe('Top-level instructions')
     expect(body.store).toBe(false)
@@ -411,11 +483,59 @@ describe('codex provider helpers', () => {
     ])
     expect(body).not.toHaveProperty('max_output_tokens')
     expect(body).not.toHaveProperty('temperature')
-    expect(warnings.map((warning) => (warning as any).setting)).toEqual(['maxOutputTokens', 'temperature'])
+    expect(warnings.map(warning => warning.setting)).toEqual(['maxOutputTokens', 'temperature'])
+  })
+
+  it('maps image tool results to Codex Responses multimodal function output', () => {
+    const { body } = buildCodexRequest('gpt-5.5', codexRequestOptions({
+      prompt: [
+        {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool-call',
+              toolCallId: 'call_read',
+              toolName: 'read',
+              input: { path: 'pixel.png' },
+            },
+          ],
+        },
+        {
+          role: 'tool',
+          content: [
+            {
+              type: 'tool-result',
+              toolCallId: 'call_read',
+              toolName: 'read',
+              result: {
+                output: '[Image file: /tmp/pixel.png]\nMIME type: image/png',
+                attachments: [{
+                  type: 'image',
+                  path: '/tmp/pixel.png',
+                  content: 'aW1hZ2U=',
+                  mimeType: 'image/png',
+                }],
+              },
+            },
+          ],
+        },
+      ],
+      tools: [],
+    }))
+
+    const outputItem = body.input.find(item => item.type === 'function_call_output')
+    expect(outputItem).toEqual({
+      type: 'function_call_output',
+      call_id: 'call_read',
+      output: [
+        { type: 'input_text', text: '[Image file: /tmp/pixel.png]\nMIME type: image/png' },
+        { type: 'input_image', image_url: 'data:image/png;base64,aW1hZ2U=', detail: 'auto' },
+      ],
+    })
   })
 
   it('disables Codex thinking when requested', () => {
-    const { body } = buildCodexRequest('gpt-5.5', {
+    const { body } = buildCodexRequest('gpt-5.5', codexRequestOptions({
       prompt: [{ role: 'user', content: 'Hi' }],
       providerOptions: {
         codex: {
@@ -424,14 +544,14 @@ describe('codex provider helpers', () => {
           reasoningEffort: 'high',
         },
       },
-    } as any)
+    }))
 
     expect(body.reasoning).toBeUndefined()
     expect(body.include).not.toContain('reasoning.encrypted_content')
   })
 
   it('sends Codex service tier only when explicitly selected', () => {
-    const explicit = buildCodexRequest('gpt-5.5', {
+    const explicit = buildCodexRequest('gpt-5.5', codexRequestOptions({
       prompt: [{ role: 'user', content: 'Hi' }],
       providerOptions: {
         codex: {
@@ -439,23 +559,23 @@ describe('codex provider helpers', () => {
           serviceTier: 'fast',
         },
       },
-    } as any)
+    }))
 
-    const automatic = buildCodexRequest('gpt-5.5', {
+    const automatic = buildCodexRequest('gpt-5.5', codexRequestOptions({
       prompt: [{ role: 'user', content: 'Hi' }],
       providerOptions: {
         codex: {
           instructions: 'Instructions',
         },
       },
-    } as any)
+    }))
 
     expect(explicit.body.service_tier).toBe('fast')
     expect(automatic.body.service_tier).toBeUndefined()
   })
 
   it('adds Codex native image generation as a backend tool when enabled', () => {
-    const { body } = buildCodexRequest('gpt-5.5', {
+    const { body } = buildCodexRequest('gpt-5.5', codexRequestOptions({
       prompt: [{ role: 'user', content: 'Generate an image of the app mascot' }],
       tools: [
         {
@@ -471,7 +591,7 @@ describe('codex provider helpers', () => {
           nativeTools: ['image_generation'],
         },
       },
-    } as any)
+    }))
 
     expect(body.tools).toEqual([
       {
@@ -491,25 +611,25 @@ describe('codex provider helpers', () => {
   })
 
   it('does not add Codex native image generation when disabled', () => {
-    const { body } = buildCodexRequest('gpt-5.5', {
+    const { body } = buildCodexRequest('gpt-5.5', codexRequestOptions({
       prompt: [{ role: 'user', content: 'Generate an image' }],
       providerOptions: {
         codex: {
           instructions: 'Instructions',
         },
       },
-    } as any)
+    }))
 
     expect(body.tools).toEqual([])
   })
 
-  it('streams Codex backend SSE through the AI SDK language model surface', async () => {
+  it('streams Codex backend SSE through the provider model surface', async () => {
     const calls: Array<{ url: string; body?: string; headers?: Record<string, string> }> = []
-    const baseFetch = vi.fn(async (input: any, init?: any) => {
+    const baseFetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
       calls.push({
-        url: String(input),
-        body: init?.body,
-        headers: init?.headers,
+        url: requestUrl(input),
+        body: bodyText(init?.body),
+        headers: headersRecord(init?.headers),
       })
       return new Response([
         'data: {"type":"response.reasoning_summary_text.delta","delta":"summary"}\n\n',
@@ -524,7 +644,7 @@ describe('codex provider helpers', () => {
           'x-oai-request-id': 'req_1',
         },
       })
-    }) as unknown as typeof globalThis.fetch
+    })
     const model = createCodexModel('gpt-5.5', {
       accessToken: 'access-token',
       expiresAt: Date.now() + 60_000,
@@ -532,7 +652,7 @@ describe('codex provider helpers', () => {
       accountId: 'acct_123',
     }, CODEX_BASE_URL, baseFetch)
 
-    const result = await model.doStream({
+    const result = await model.doStream(codexStreamOptions({
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }],
       providerOptions: {
         openai: { instructions: 'Instructions' },
@@ -540,18 +660,8 @@ describe('codex provider helpers', () => {
       },
       maxOutputTokens: 64000,
       tools: [],
-    } as any)
-    const reader = result.stream.getReader()
-    const chunks: any[] = []
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        chunks.push(value)
-      }
-    } finally {
-      reader.releaseLock()
-    }
+    }))
+    const chunks = await readCodexChunks(result.stream)
 
     const requestBody = JSON.parse(calls[0].body || '{}')
     expect(calls[0].url).toBe('https://chatgpt.com/backend-api/codex/responses')
@@ -576,27 +686,84 @@ describe('codex provider helpers', () => {
       },
     })
     const finish = chunks.find((chunk) => chunk.type === 'finish')
-    expect(finish.finishReason).toBe('stop')
-    expect(finish.usage).toMatchObject({ inputTokens: 3, outputTokens: 2, totalTokens: 5 })
+    expect(finish?.finishReason).toBe('stop')
+    expect(finish?.usage).toMatchObject({ inputTokens: 3, outputTokens: 2, totalTokens: 5 })
   })
 
-  it('streams Codex native image generation calls without exposing base64 in text chunks', async () => {
-    const imageBase64 = Buffer.from('fake-png').toString('base64')
-    const baseFetch = vi.fn(async () => new Response([
-      'data: {"type":"response.output_item.added","item":{"type":"image_generation_call","id":"ig_1","status":"in_progress"}}\n\n',
-      `data: {"type":"response.output_item.done","item":{"type":"image_generation_call","id":"ig_1","status":"completed","revised_prompt":"A clean app icon","result":"${imageBase64}"}}\n\n`,
-      'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}\n\n',
-    ].join(''), {
+  it('emits output text deltas before the Codex SSE stream completes', async () => {
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+    let completedEnqueued = false
+    const encoder = new TextEncoder()
+    const body = new ReadableStream<Uint8Array>({
+      start(nextController) {
+        controller = nextController
+      },
+    })
+    const baseFetch = vi.fn<typeof globalThis.fetch>(async () => new Response(body, {
       status: 200,
       headers: { 'content-type': 'text/event-stream' },
-    })) as unknown as typeof globalThis.fetch
+    }))
     const model = createCodexModel('gpt-5.5', {
       accessToken: 'access-token',
       expiresAt: Date.now() + 60_000,
       tokenType: 'Bearer',
     }, CODEX_BASE_URL, baseFetch)
 
-    const result = await model.doStream({
+    const result = await model.doStream(codexStreamOptions({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'Stream now' }] }],
+      providerOptions: { codex: { instructions: 'Instructions' } },
+      tools: [],
+    }))
+    const reader = result.stream.getReader()
+
+    expect(await reader.read()).toEqual({
+      done: false,
+      value: { type: 'stream-start', warnings: [] },
+    })
+
+    controller?.enqueue(encoder.encode('data: {"type":"response.output_text.delta","delta":"live"}\n\n'))
+    expect(await reader.read()).toEqual({
+      done: false,
+      value: { type: 'text-start', id: 'text-0' },
+    })
+    expect(await reader.read()).toEqual({
+      done: false,
+      value: { type: 'text-delta', id: 'text-0', delta: 'live' },
+    })
+    expect(completedEnqueued).toBe(false)
+
+    completedEnqueued = true
+    controller?.enqueue(encoder.encode('data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5"}}\n\n'))
+    controller?.close()
+    const remaining: CodexStreamChunk[] = []
+    while (true) {
+      const next = await reader.read()
+      if (next.done) break
+      remaining.push(next.value)
+    }
+    expect(remaining.find(chunk => chunk.type === 'finish')).toMatchObject({
+      type: 'finish',
+      finishReason: 'stop',
+    })
+  })
+
+  it('streams Codex native image generation calls without exposing base64 in text chunks', async () => {
+    const imageBase64 = Buffer.from('fake-png').toString('base64')
+    const baseFetch = vi.fn<typeof globalThis.fetch>(async () => new Response([
+      'data: {"type":"response.output_item.added","item":{"type":"image_generation_call","id":"ig_1","status":"in_progress"}}\n\n',
+      `data: {"type":"response.output_item.done","item":{"type":"image_generation_call","id":"ig_1","status":"completed","revised_prompt":"A clean app icon","result":"${imageBase64}"}}\n\n`,
+      'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5","usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}\n\n',
+    ].join(''), {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' },
+    }))
+    const model = createCodexModel('gpt-5.5', {
+      accessToken: 'access-token',
+      expiresAt: Date.now() + 60_000,
+      tokenType: 'Bearer',
+    }, CODEX_BASE_URL, baseFetch)
+
+    const result = await model.doStream(codexStreamOptions({
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'Generate an image' }] }],
       providerOptions: {
         codex: {
@@ -605,18 +772,8 @@ describe('codex provider helpers', () => {
         },
       },
       tools: [],
-    } as any)
-    const reader = result.stream.getReader()
-    const chunks: any[] = []
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        chunks.push(value)
-      }
-    } finally {
-      reader.releaseLock()
-    }
+    }))
+    const chunks = await readCodexChunks(result.stream)
 
     expect(chunks).toContainEqual({
       type: 'raw',
@@ -642,7 +799,7 @@ describe('codex provider helpers', () => {
   })
 
   it('streams function call argument deltas before the final tool call', async () => {
-    const baseFetch = vi.fn(async () => new Response([
+    const baseFetch = vi.fn<typeof globalThis.fetch>(async () => new Response([
       'data: {"type":"response.output_item.added","item":{"type":"function_call","id":"fc_item_1","call_id":"call_1","name":"edit"}}\n\n',
       'data: {"type":"response.function_call_arguments.delta","item_id":"fc_item_1","call_id":"call_1","delta":"{\\"path\\":\\"a.txt\\",\\"edits\\":[{\\"oldText\\":\\"old\\",\\"newText\\":\\"he"}\n\n',
       'data: {"type":"response.function_call_arguments.delta","item_id":"fc_item_1","call_id":"call_1","delta":"llo\\"}]}"}\n\n',
@@ -651,29 +808,19 @@ describe('codex provider helpers', () => {
     ].join(''), {
       status: 200,
       headers: { 'content-type': 'text/event-stream' },
-    })) as unknown as typeof globalThis.fetch
+    }))
     const model = createCodexModel('gpt-5.5', {
       accessToken: 'access-token',
       expiresAt: Date.now() + 60_000,
       tokenType: 'Bearer',
     }, CODEX_BASE_URL, baseFetch)
 
-    const result = await model.doStream({
+    const result = await model.doStream(codexStreamOptions({
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'Edit a file' }] }],
       providerOptions: { codex: { instructions: 'Instructions' } },
       tools: [],
-    } as any)
-    const reader = result.stream.getReader()
-    const chunks: any[] = []
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        chunks.push(value)
-      }
-    } finally {
-      reader.releaseLock()
-    }
+    }))
+    const chunks = await readCodexChunks(result.stream)
 
     expect(chunks).toEqual(expect.arrayContaining([
       { type: 'tool-input-start', id: 'call_1', toolName: 'edit' },
@@ -692,35 +839,25 @@ describe('codex provider helpers', () => {
   })
 
   it('falls back to a single argument payload when no argument deltas are sent', async () => {
-    const baseFetch = vi.fn(async () => new Response([
+    const baseFetch = vi.fn<typeof globalThis.fetch>(async () => new Response([
       'data: {"type":"response.output_item.done","item":{"type":"function_call","id":"fc_item_1","call_id":"call_1","name":"write","arguments":"{\\"path\\":\\"a.txt\\",\\"content\\":\\"hello\\"}"}}\n\n',
       'data: {"type":"response.completed","response":{"id":"resp_1","model":"gpt-5.5"}}\n\n',
     ].join(''), {
       status: 200,
       headers: { 'content-type': 'text/event-stream' },
-    })) as unknown as typeof globalThis.fetch
+    }))
     const model = createCodexModel('gpt-5.5', {
       accessToken: 'access-token',
       expiresAt: Date.now() + 60_000,
       tokenType: 'Bearer',
     }, CODEX_BASE_URL, baseFetch)
 
-    const result = await model.doStream({
+    const result = await model.doStream(codexStreamOptions({
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'Write a file' }] }],
       providerOptions: { codex: { instructions: 'Instructions' } },
       tools: [],
-    } as any)
-    const reader = result.stream.getReader()
-    const chunks: any[] = []
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        chunks.push(value)
-      }
-    } finally {
-      reader.releaseLock()
-    }
+    }))
+    const chunks = await readCodexChunks(result.stream)
 
     expect(chunks).toEqual(expect.arrayContaining([
       { type: 'tool-input-start', id: 'call_1', toolName: 'write' },
@@ -736,7 +873,7 @@ describe('codex provider helpers', () => {
   })
 
   it('emits completed reasoning item summaries when summary deltas are absent', async () => {
-    const baseFetch = vi.fn(async () => new Response([
+    const baseFetch = vi.fn<typeof globalThis.fetch>(async () => new Response([
       'data: {"type":"response.output_item.added","item":{"type":"reasoning","id":"reasoning_1","summary":[]}}\n\n',
       'data: {"type":"response.output_item.done","item":{"type":"reasoning","id":"reasoning_1","summary":[{"type":"summary_text","text":"finished summary"}],"content":[{"type":"reasoning_text","text":"raw hidden"}],"encrypted_content":"encrypted-reasoning"}}\n\n',
       'data: {"type":"response.output_text.delta","delta":"answer"}\n\n',
@@ -744,29 +881,19 @@ describe('codex provider helpers', () => {
     ].join(''), {
       status: 200,
       headers: { 'content-type': 'text/event-stream' },
-    })) as unknown as typeof globalThis.fetch
+    }))
     const model = createCodexModel('gpt-5.5', {
       accessToken: 'access-token',
       expiresAt: Date.now() + 60_000,
       tokenType: 'Bearer',
     }, CODEX_BASE_URL, baseFetch)
 
-    const result = await model.doStream({
+    const result = await model.doStream(codexStreamOptions({
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }],
       providerOptions: { codex: { instructions: 'Instructions' } },
       tools: [],
-    } as any)
-    const reader = result.stream.getReader()
-    const chunks: any[] = []
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        chunks.push(value)
-      }
-    } finally {
-      reader.releaseLock()
-    }
+    }))
+    const chunks = await readCodexChunks(result.stream)
 
     expect(chunks).toContainEqual({ type: 'reasoning-delta', id: 'reasoning-0', delta: 'finished summary' })
     expect(chunks).not.toContainEqual({ type: 'reasoning-delta', id: 'reasoning-0', delta: 'raw hidden' })
@@ -783,10 +910,10 @@ describe('codex provider helpers', () => {
 
   it('rewrites outbound /responses fetch bodies without touching other requests', async () => {
     const calls: Array<{ url: string; body?: string }> = []
-    const baseFetch = (async (input: any, init?: any) => {
-      calls.push({ url: String(input), body: init?.body })
+    const baseFetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      calls.push({ url: requestUrl(input), body: bodyText(init?.body) })
       return new Response('{}', { status: 200 })
-    }) as typeof globalThis.fetch
+    })
     const fetch = createCodexFetch(baseFetch)
 
     await fetch('https://chatgpt.com/backend-api/codex/responses', {
@@ -811,8 +938,8 @@ describe('codex provider helpers', () => {
   it('retries once with a repaired body when Codex rejects a request parameter', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const calls: string[] = []
-    const baseFetch = (async (_input: any, init?: any) => {
-      calls.push(init?.body)
+    const baseFetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+      calls.push(bodyText(init?.body) ?? '')
       if (calls.length === 1) {
         return new Response(JSON.stringify({
           error: {
@@ -822,7 +949,7 @@ describe('codex provider helpers', () => {
         }), { status: 400 })
       }
       return new Response('{}', { status: 200 })
-    }) as typeof globalThis.fetch
+    })
     const fetch = createCodexFetch(baseFetch)
 
     try {

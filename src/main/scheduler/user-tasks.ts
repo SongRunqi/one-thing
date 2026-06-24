@@ -13,6 +13,7 @@ import type {
   SchedulerUpdateTaskRequest,
   SchedulerUserTaskDTO,
 } from '../../shared/ipc.js'
+import { toJsonValue, type JsonValue } from '../../shared/json.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
 import { getEventBus } from '../events/index.js'
 import { getStreamEngineSafe } from '../engine/index.js'
@@ -540,9 +541,9 @@ export function genericRunDetailFromRecord(record: {
   skipped?: boolean
   skippedReason?: string
   error?: string
-  result?: unknown
+  result?: JsonValue
 }): SchedulerRunDetailDTO {
-  const result = record.result as { report?: unknown; memory?: unknown; timeline?: SchedulerRunTimelineEntryDTO[] } | undefined
+  const result = record.result as { report?: JsonValue; memory?: JsonValue; timeline?: SchedulerRunTimelineEntryDTO[] } | undefined
   const resultPreview = typeof result?.report === 'string'
     ? result.report
     : typeof result?.memory === 'string'
@@ -550,8 +551,10 @@ export function genericRunDetailFromRecord(record: {
       : record.result === undefined
         ? undefined
         : previewValue(record.result, 1000)
+  const jsonResult = toJsonValue(record.result)
   return {
     ...record,
+    ...(jsonResult !== undefined ? { result: jsonResult } : {}),
     status: record.skipped
       ? 'skipped'
       : record.ok

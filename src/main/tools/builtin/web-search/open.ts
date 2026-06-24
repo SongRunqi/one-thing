@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { Tool } from '../../core/tool.js'
 import { fetchSearchPage, type FetchedSearchPage } from './page-fetch.js'
+import { toJsonObject } from '../../../../shared/json.js'
 
 const WebOpenParameters = z.object({
   url: z.string().url().describe('The HTTP or HTTPS URL to open and read'),
@@ -17,7 +18,6 @@ const WebOpenParameters = z.object({
 })
 
 interface WebOpenMetadata {
-  [key: string]: unknown
   mode: 'open'
   phase: 'opening' | 'ready'
   query: string
@@ -90,11 +90,11 @@ ChatGPT-style web search workflow.`,
 
     ctx.updateResult?.({
       content: [{ type: 'text', text: `Opening ${args.url}...` }],
-      details: openingMetadata,
+      details: toJsonObject(openingMetadata),
     })
     ctx.metadata({
       title: `Opening: ${title}`,
-      metadata: openingMetadata,
+      metadata: toJsonObject(openingMetadata),
     })
 
     const page = await fetchSearchPage({
@@ -122,11 +122,11 @@ ChatGPT-style web search workflow.`,
 
     ctx.updateResult?.({
       content: [{ type: 'text', text: output }],
-      details: metadata,
+      details: toJsonObject(metadata),
     })
     ctx.metadata({
       title: page.status === 'ready' ? `Opened: ${page.title}` : `Could not open: ${title}`,
-      metadata,
+      metadata: toJsonObject(metadata),
     })
 
     return {

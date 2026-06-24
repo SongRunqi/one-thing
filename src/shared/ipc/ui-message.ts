@@ -1,19 +1,19 @@
 /**
  * UIMessage Module
- * UIMessage types (AI SDK 6.x compatible) for IPC communication
+ * UIMessage types for IPC communication.
  *
- * These types follow the AI SDK 6.x UIMessage structure but are defined
- * locally to allow custom extensions (Steps, Error parts) that aren't
- * part of the standard SDK types.
+ * These types are defined locally to support app-specific extensions such as
+ * steps and error parts.
  *
- * The types are designed to be compatible with AI SDK's convertToModelMessages()
- * when converting to model messages for API calls.
+ * The types are designed to be converted by our provider/runtime adapters when
+ * preparing model messages for API calls.
  */
 
 import type { Step, MessageAttachment } from './chat.js'
+import type { JsonObject, JsonValue } from '../json.js'
 
 /**
- * Tool Part state machine (matches AI SDK 6.x)
+ * Tool Part state machine.
  */
 export type ToolUIState =
   | 'input-streaming'    // Input is being streamed
@@ -22,7 +22,7 @@ export type ToolUIState =
   | 'output-error'       // Execution failed with error
 
 /**
- * Text Part (matches AI SDK 6.x TextUIPart)
+ * Text Part.
  */
 export interface TextUIPart {
   type: 'text'
@@ -33,7 +33,7 @@ export interface TextUIPart {
 }
 
 /**
- * Reasoning Part (matches AI SDK 6.x ReasoningUIPart)
+ * Reasoning Part.
  */
 export interface ReasoningUIPart {
   type: 'reasoning'
@@ -42,11 +42,11 @@ export interface ReasoningUIPart {
   /** Streaming state */
   state?: 'streaming' | 'done'
   /** Provider metadata */
-  providerMetadata?: Record<string, unknown>
+  providerMetadata?: JsonObject
 }
 
 /**
- * File Part (matches AI SDK 6.x FileUIPart)
+ * File Part.
  */
 export interface FileUIPart {
   type: 'file'
@@ -59,7 +59,7 @@ export interface FileUIPart {
 }
 
 /**
- * Tool Part (extends AI SDK 6.x ToolUIPart with custom fields)
+ * Tool Part with app-specific fields.
  */
 export interface ToolUIPart {
   /** Type format: 'tool-{toolName}' */
@@ -71,9 +71,9 @@ export interface ToolUIPart {
   /** State machine state */
   state: ToolUIState
   /** Tool input parameters */
-  input?: Record<string, unknown>
+  input?: JsonObject
   /** Tool output result */
-  output?: unknown
+  output?: JsonValue
   /** Error text */
   errorText?: string
   /** Provider executed flag */
@@ -89,7 +89,7 @@ export interface ToolUIPart {
 }
 
 /**
- * Step Start Part (matches AI SDK 6.x StepStartUIPart)
+ * Step Start Part.
  * Used to mark boundaries between multi-step tool calls
  */
 export interface StepStartUIPart {
@@ -121,7 +121,7 @@ export interface ErrorDataUIPart {
 }
 
 /**
- * All Part types union (compatible with AI SDK 6.x)
+ * All Part types union.
  */
 export type UIMessagePart =
   | TextUIPart
@@ -161,7 +161,7 @@ export interface MessageMetadata {
 }
 
 /**
- * UIMessage - unified message format (AI SDK 6.x compatible structure)
+ * UIMessage - unified message format.
  */
 export interface UIMessage<METADATA = MessageMetadata> {
   /** Unique message ID */
@@ -199,7 +199,7 @@ export interface UIMessagePartChunk {
 }
 
 /**
- * Token usage data from Vercel AI SDK
+ * Token usage data from provider runtimes.
  */
 export interface TokenUsage {
   inputTokens: number

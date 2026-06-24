@@ -3,6 +3,8 @@
  * MCP (Model Context Protocol) server-related type definitions for IPC communication
  */
 
+import type { JsonArray, JsonObject, JsonSchemaObject, JsonValue } from '../json.js'
+
 // MCP related types
 export type MCPTransportType = 'stdio' | 'sse'
 
@@ -26,7 +28,7 @@ export interface MCPToolInfo {
   description?: string
   inputSchema: {
     type: 'object'
-    properties?: Record<string, any>
+    properties?: Record<string, JsonSchemaObject>
     required?: string[]
   }
   serverId: string
@@ -140,7 +142,7 @@ export interface MCPGetToolsResponse {
 export interface MCPCallToolRequest {
   serverId: string
   toolName: string
-  arguments: Record<string, any>
+  arguments: JsonObject
 }
 
 export interface MCPCallToolResponse {
@@ -168,7 +170,7 @@ export interface MCPReadResourceRequest {
 
 export interface MCPReadResourceResponse {
   success: boolean
-  content?: any
+  content?: JsonValue
   error?: string
 }
 
@@ -186,7 +188,7 @@ export interface MCPGetPromptRequest {
 
 export interface MCPGetPromptResponse {
   success: boolean
-  messages?: any[]
+  messages?: JsonArray
   error?: string
 }
 
@@ -196,6 +198,6 @@ export interface MCPReadConfigFileRequest {
 
 export interface MCPReadConfigFileResponse {
   success: boolean
-  content?: any
+  content?: JsonValue
   error?: string
 }

@@ -52,6 +52,109 @@ describe('buildHistoryMessages', () => {
     expect(history[0]).toMatchObject({ role: 'user', content: 'user 1' })
     expect(history[1]).toMatchObject({ role: 'assistant', content: 'assistant 2' })
   })
+
+  it('caps retained message payload after a compact summary', () => {
+    const history = buildHistoryMessages(
+      [
+        message(1, 'user'),
+        message(2, 'assistant'),
+        { ...message(3, 'user'), content: `old retained ${'a'.repeat(140_000)}` },
+        { ...message(4, 'assistant'), content: `middle retained ${'b'.repeat(140_000)}` },
+        { ...message(5, 'user'), content: `latest retained ${'c'.repeat(140_000)}` },
+      ],
+      {
+        id: 's1',
+        summary: 'Earlier context',
+        summaryUpToMessageId: 'assistant-2',
+      },
+    )
+
+    const joined = JSON.stringify(history)
+    expect(joined).not.toContain('old retained')
+    expect(joined).toContain('middle retained')
+    expect(joined).toContain('latest retained')
+  })
+
+  it('summarizes oversized tool results in compacted retained history', () => {
+    const history = buildHistoryMessages(
+      [
+        message(1, 'user'),
+        message(2, 'assistant'),
+        {
+          ...message(3, 'assistant'),
+          toolCalls: [{
+            id: 'call_1',
+            toolId: 'read',
+            toolName: 'read',
+            arguments: { path: '/tmp/large.txt' },
+            status: 'completed',
+            result: {
+              title: 'Read large file',
+              output: 'x'.repeat(80_000),
+            },
+            timestamp: 3,
+          }],
+        },
+      ],
+      {
+        id: 's1',
+        summary: 'Earlier context',
+        summaryUpToMessageId: 'assistant-2',
+      },
+    )
+
+    const toolMessage = history.find(item => item.role === 'tool')
+    expect(toolMessage).toBeDefined()
+    expect(JSON.stringify(toolMessage)).not.toContain('x'.repeat(10_000))
+    expect(toolMessage).toMatchObject({
+      role: 'tool',
+      content: [{
+        result: {
+          truncated: true,
+          title: 'Read large file',
+          originalChars: expect.any(Number),
+        },
+      }],
+    })
+  })
+
+  it('summarizes oversized failed tool results in compacted retained history', () => {
+    const history = buildHistoryMessages(
+      [
+        message(1, 'user'),
+        message(2, 'assistant'),
+        {
+          ...message(3, 'assistant'),
+          toolCalls: [{
+            id: 'call_failed',
+            toolId: 'web_search',
+            toolName: 'web_search',
+            arguments: { query: 'docs' },
+            status: 'failed',
+            error: 'x'.repeat(80_000),
+            timestamp: 3,
+          }],
+        },
+      ],
+      {
+        id: 's1',
+        summary: 'Earlier context',
+        summaryUpToMessageId: 'assistant-2',
+      },
+    )
+
+    const toolMessage = history.find(item => item.role === 'tool')
+    expect(JSON.stringify(toolMessage)).not.toContain('x'.repeat(10_000))
+    expect(toolMessage).toMatchObject({
+      role: 'tool',
+      content: [{
+        result: {
+          truncated: true,
+          originalChars: expect.any(Number),
+        },
+      }],
+    })
+  })
 })
 
 describe('sanitizeToolResultForAI', () => {

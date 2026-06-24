@@ -1,57 +1,16 @@
 import { runAgentLoop } from './runner.js'
 import { agentEventsToProviderStreamChunks, type AgentProviderStreamChunk } from './provider-stream.js'
+import { AgentEventQueue } from './stream.js'
 import type {
   AgentLoopOptions,
   AgentLoopResult,
   AgentStreamEvent,
 } from './types.js'
 
-class AgentEventQueue implements AsyncIterable<AgentStreamEvent> {
-  private values: AgentStreamEvent[] = []
-  private closed = false
-  private error: unknown
-  private notify: (() => void) | undefined
-
-  push(event: AgentStreamEvent): void {
-    if (this.closed) return
-    this.values.push(event)
-    this.notify?.()
-    this.notify = undefined
-  }
-
-  close(): void {
-    this.closed = true
-    this.notify?.()
-    this.notify = undefined
-  }
-
-  fail(error: unknown): void {
-    this.error = error
-    this.closed = true
-    this.notify?.()
-    this.notify = undefined
-  }
-
-  async *[Symbol.asyncIterator](): AsyncIterator<AgentStreamEvent> {
-    while (true) {
-      const next = this.values.shift()
-      if (next) {
-        yield next
-        continue
-      }
-      if (this.error) throw this.error
-      if (this.closed) return
-      await new Promise<void>(resolve => {
-        this.notify = resolve
-      })
-    }
-  }
-}
-
 export async function* streamAgentLoopProviderChunks(
   options: AgentLoopOptions,
-): AsyncGenerator<AgentProviderStreamChunk, AgentLoopResult, unknown> {
-  const queue = new AgentEventQueue()
+): AsyncGenerator<AgentProviderStreamChunk, AgentLoopResult, void> {
+  const queue = new AgentEventQueue<AgentStreamEvent>()
   const onEvent = options.onEvent
   let result: AgentLoopResult | undefined
 
@@ -66,7 +25,7 @@ export async function* streamAgentLoopProviderChunks(
       })
       queue.close()
     } catch (error) {
-      queue.fail(error)
+      queue.fail(error instanceof Error ? error : new Error(String(error)))
     }
   })()
 

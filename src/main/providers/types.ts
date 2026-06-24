@@ -4,7 +4,6 @@
  * Types used to define AI providers in a plugin-like fashion.
  */
 
-import type { LanguageModel } from 'ai'
 import type { OAuthFlowType, OAuthToken, OpenRouterModel } from '../../shared/ipc.js'
 import type { ProviderAuthContext } from '../auth/types.js'
 
@@ -46,21 +45,39 @@ export interface ProviderConfig {
   authContext?: ProviderAuthContext
 }
 
-/**
- * Provider instance with model creation capability
- */
-export interface ProviderInstance {
-  createModel: (modelId: string) => LanguageModel
-}
-
 export type ProviderCallMode = 'stream' | 'generate'
 
+export interface ProviderToolSchema {
+  toJSONSchema?: () => object | null
+}
+
+export interface ProviderToolCallOption {
+  description?: string
+  inputSchema?: ProviderToolSchema | object
+  parameters?: object
+}
+
+export interface ProviderOptionsMap {
+  [providerId: string]: object | string | number | boolean | null | undefined
+}
+
+export type ProviderToolChoice =
+  | 'auto'
+  | 'none'
+  | 'required'
+  | { type: 'auto' }
+  | { type: 'tool'; toolName: string }
+  | {
+      type: 'function'
+      function: { name: string }
+    }
+
 export interface ProviderCallOptions {
-  messages?: any[]
-  providerOptions?: Record<string, any>
-  tools?: any
-  toolChoice?: any
-  [key: string]: any
+  messages?: object[]
+  providerOptions?: ProviderOptionsMap
+  tools?: Record<string, ProviderToolCallOption>
+  toolChoice?: ProviderToolChoice
+  [key: string]: string | number | boolean | null | undefined | object | object[] | Record<string, ProviderToolCallOption> | ProviderToolChoice | AbortSignal
 }
 
 export interface ProviderCallPreparationContext {
@@ -71,11 +88,6 @@ export interface ProviderCallPreparationContext {
 }
 
 /**
- * Factory function type for creating provider instances
- */
-export type ProviderCreator = (config: ProviderConfig) => ProviderInstance
-
-/**
  * Complete provider definition
  * This is what each provider file exports
  */
@@ -84,9 +96,7 @@ export interface ProviderDefinition {
   id: string
   /** Provider metadata for UI display */
   info: ProviderInfo
-  /** Factory function to create provider instances */
-  create: ProviderCreator
-  /** Optional provider-specific AI SDK call normalization before stream/generate. */
+  /** Optional provider-specific call normalization before stream/generate. */
   prepareCallOptions?: (
     options: ProviderCallOptions,
     context: ProviderCallPreparationContext,

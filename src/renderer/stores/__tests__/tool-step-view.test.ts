@@ -186,7 +186,7 @@ describe('buildToolStepView', () => {
     expect(second.streamingContent).toBe(first.streamingContent)
   })
 
-  it('truncates large streaming write previews but keeps total additions', () => {
+  it('truncates large streaming write previews to 160 rendered rows but keeps total additions', () => {
     const content = Array.from({ length: 220 }, (_, index) => `line ${index + 1}`).join('\n')
     const view = buildToolStepView(step({
       toolCall: tc({
@@ -197,9 +197,9 @@ describe('buildToolStepView', () => {
 
     expect(view.streamingContent?.additions).toBe(220)
     expect(view.streamingContent?.isTruncated).toBe(true)
-    expect(view.streamingContent?.omittedLines).toBe(60)
+    expect(view.streamingContent?.omittedLines).toBe(61)
     expect(view.streamingDiffLines.some(line => line.content.includes('lines omitted'))).toBe(true)
-    expect(view.streamingDiffLines.length).toBeLessThan(220)
+    expect(view.streamingDiffLines).toHaveLength(160)
   })
 
   it('renders streaming edit replacements as a real diff preview', () => {
@@ -243,6 +243,54 @@ describe('buildToolStepView', () => {
     expect(view.streamingDiffLines).toEqual([
       { class: 'diff-del', prefix: '-', content: 'remove me', oldNum: 1, newNum: '' },
     ])
+  })
+
+  it('keeps streaming edit line numbers continuous across replacements', () => {
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        toolId: 'edit',
+        toolName: 'edit',
+        status: 'input-streaming',
+        streamingArgs: JSON.stringify({
+          path: 'src/app.ts',
+          edits: [
+            { oldText: 'old one\n', newText: 'new one\nnew extra\n' },
+            { oldText: 'old two\n', newText: 'new two\n' },
+          ],
+        }),
+      }),
+    }))
+
+    const changedRows = view.streamingDiffLines.filter(line => line.class === 'diff-del' || line.class === 'diff-add')
+
+    expect(changedRows).toEqual([
+      { class: 'diff-del', prefix: '-', content: 'old one', oldNum: 1, newNum: '' },
+      { class: 'diff-add', prefix: '+', content: 'new one', oldNum: '', newNum: 1 },
+      { class: 'diff-add', prefix: '+', content: 'new extra', oldNum: '', newNum: 2 },
+      { class: 'diff-del', prefix: '-', content: 'old two', oldNum: 2, newNum: '' },
+      { class: 'diff-add', prefix: '+', content: 'new two', oldNum: '', newNum: 3 },
+    ])
+  })
+
+  it('truncates large streaming edit diffs to 160 rendered rows including the omission row', () => {
+    const oldText = Array.from({ length: 180 }, (_, index) => `old ${index + 1}`).join('\n')
+    const newText = Array.from({ length: 180 }, (_, index) => `new ${index + 1}`).join('\n')
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        toolId: 'edit',
+        toolName: 'edit',
+        status: 'input-streaming',
+        streamingArgs: JSON.stringify({
+          path: 'src/app.ts',
+          edits: [{ oldText, newText }],
+        }),
+      }),
+    }))
+
+    expect(view.streamingDiff?.additions).toBe(180)
+    expect(view.streamingDiff?.deletions).toBe(180)
+    expect(view.streamingDiffLines).toHaveLength(160)
+    expect(view.streamingDiffLines.some(line => line.content.includes('diff lines omitted'))).toBe(true)
   })
 
   it('extracts filePath from step.result payload if args.path is missing', () => {

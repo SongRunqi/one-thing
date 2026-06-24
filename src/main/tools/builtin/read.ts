@@ -12,6 +12,7 @@ import { z } from 'zod'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { Tool } from '../core/tool.js'
+import { toJsonObject } from '../../../shared/json.js'
 import { checkFileAccess, findReadSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
 import { classifySensitiveFile } from '../core/sensitive-files.js'
 
@@ -20,6 +21,13 @@ const DEFAULT_LIMIT = 2000
 const DEFAULT_MAX_BYTES = 50 * 1024
 // Binary file detection - check first N bytes
 const BINARY_CHECK_BYTES = 8192
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+}
 
 /**
  * Read Tool Metadata
@@ -32,8 +40,9 @@ export interface ReadMetadata {
   truncated: boolean
   isBinary: boolean
   fileSize: number
+  mimeType?: string
   truncation?: ReadTruncation
-  [key: string]: unknown
+  sensitive?: boolean
 }
 
 interface ReadTruncation {
@@ -169,11 +178,36 @@ function getExtension(targetPath: string): string {
 }
 
 /**
- * Check if file is an image supported by Pi's read tool contract.
+ * Detect images supported by Pi's read tool contract.
  */
-function isImageFile(targetPath: string): boolean {
-  const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
-  return imageExtensions.includes(getExtension(targetPath))
+function detectSupportedImageMimeType(buffer: Buffer): string | null {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return 'image/jpeg'
+  }
+
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return 'image/png'
+  }
+
+  const header = buffer.subarray(0, 12).toString('ascii')
+  if (header.startsWith('GIF87a') || header.startsWith('GIF89a')) return 'image/gif'
+  if (header.startsWith('RIFF') && header.slice(8, 12) === 'WEBP') return 'image/webp'
+
+  return null
+}
+
+function supportedImageMimeType(targetPath: string, buffer: Buffer): string | null {
+  return detectSupportedImageMimeType(buffer) ?? IMAGE_MIME_BY_EXTENSION[getExtension(targetPath)] ?? null
 }
 
 /**
@@ -276,8 +310,8 @@ export const ReadTool = Tool.define<typeof ReadParameters, ReadMetadata>('read',
     let stats
     try {
       stats = await fs.stat(resolvedPath)
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
         throw new Error(`File not found: ${resolvedPath}`)
       }
       throw error
@@ -289,36 +323,11 @@ export const ReadTool = Tool.define<typeof ReadParameters, ReadMetadata>('read',
       throw new Error(`Path is a directory, not a file: ${resolvedPath}. Use ls command via Bash tool to list directory contents.`)
     }
 
-    // Handle image files
-    if (isImageFile(resolvedPath)) {
-      ctx.updateResult?.({
-        content: [{ type: 'image', path: resolvedPath }],
-        details: { phase: 'ready', path: resolvedPath, fileSize: stats.size, isBinary: true },
-      })
-      return {
-        title: `Image: ${path.basename(resolvedPath)}`,
-        output: `[Image file: ${resolvedPath}]\nSize: ${stats.size} bytes\nThis is an image file. Content cannot be displayed as text.`,
-        metadata: {
-          path: resolvedPath,
-          lineCount: 0,
-          offset: 0,
-          limit: 0,
-          truncated: false,
-          isBinary: true,
-          fileSize: stats.size,
-        },
-        attachments: [{
-          type: 'image' as const,
-          path: resolvedPath,
-        }],
-      }
-    }
-
     // Handle PDF files
     if (isPdfFile(resolvedPath)) {
       ctx.updateResult?.({
         content: [{ type: 'file', path: resolvedPath }],
-        details: { phase: 'ready', path: resolvedPath, fileSize: stats.size, isBinary: true },
+        details: toJsonObject({ phase: 'ready', path: resolvedPath, fileSize: stats.size, isBinary: true }),
       })
       return {
         title: `PDF: ${path.basename(resolvedPath)}`,
@@ -343,11 +352,47 @@ export const ReadTool = Tool.define<typeof ReadParameters, ReadMetadata>('read',
     const buffer = await fs.readFile(resolvedPath)
     throwIfAborted()
 
+    // Handle image files
+    const imageMimeType = supportedImageMimeType(resolvedPath, buffer)
+    if (imageMimeType) {
+      const imageData = buffer.toString('base64')
+      const output = `[Image file: ${resolvedPath}]\nSize: ${stats.size} bytes\nMIME type: ${imageMimeType}\nThis image was attached for vision-capable models. Content cannot be displayed as text.`
+      const metadata: ReadMetadata = {
+        path: resolvedPath,
+        lineCount: 0,
+        offset: 0,
+        limit: 0,
+        truncated: false,
+        isBinary: true,
+        fileSize: stats.size,
+        mimeType: imageMimeType,
+      }
+
+      ctx.updateResult?.({
+        content: [
+          { type: 'text', text: output },
+          { type: 'image', path: resolvedPath, data: imageData, mimeType: imageMimeType },
+        ],
+        details: toJsonObject({ phase: 'ready', ...metadata }),
+      })
+      return {
+        title: `Image: ${path.basename(resolvedPath)}`,
+        output,
+        metadata,
+        attachments: [{
+          type: 'image' as const,
+          path: resolvedPath,
+          content: imageData,
+          mimeType: imageMimeType,
+        }],
+      }
+    }
+
     // Check if binary
     if (isBinaryBuffer(buffer)) {
       ctx.updateResult?.({
         content: [{ type: 'file', path: resolvedPath }],
-        details: { phase: 'ready', path: resolvedPath, fileSize: stats.size, isBinary: true },
+        details: toJsonObject({ phase: 'ready', path: resolvedPath, fileSize: stats.size, isBinary: true }),
       })
       return {
         title: `Binary: ${path.basename(resolvedPath)}`,
@@ -422,7 +467,7 @@ export const ReadTool = Tool.define<typeof ReadParameters, ReadMetadata>('read',
 
     ctx.updateResult?.({
       content: [{ type: 'text', text: output }],
-      details: { phase: 'ready', ...metadata },
+      details: toJsonObject({ phase: 'ready', ...metadata }),
     })
 
     return {

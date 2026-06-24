@@ -1,21 +1,25 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import type { ChatMessage } from '../../../shared/ipc.js'
+import type { ZodType } from 'zod'
+import type { ChatMessage, ThinkingEffort } from '../../../shared/ipc.js'
+import { toJsonObject, toJsonValue } from '../../../shared/json.js'
 import type { Trigger } from './index.js'
 import {
   isSkillReviewRunning,
   markSkillReviewRunning,
   recordSkillReviewCounter,
 } from './skill-review-state.js'
+import type { ProviderAuthContext } from '../../auth/types.js'
 import { generateChatResponse } from '../../providers/index.js'
 import { executeSkillManage, type SkillManageArgs } from '../../skills/manage.js'
 import { getSkillsForSession, invalidateSkillsCache } from '../../ipc/skills.js'
-import { createDeepSeekAgentProvider, runAgentLoop, type AgentMessage, type AgentTool } from '../../agent-loop/index.js'
+import { createDeepSeekAgentProvider, runAgentLoop, type AgentJsonObject, type AgentJsonValue, type AgentMessage, type AgentTool } from '../../agent-loop/index.js'
 import { getUserSkillsPath } from '../../skills/index.js'
 import { ReadTool } from '../../tools/builtin/read.js'
 import { WriteTool } from '../../tools/builtin/write.js'
 import { EditTool } from '../../tools/builtin/edit.js'
 import { zodToJsonSchema } from '../../tools/core/tool.js'
+import type { ToolContext } from '../../tools/core/tool.js'
 
 const MAX_REVIEW_MESSAGES = 16
 const MAX_TRANSCRIPT_CHARS = 12000
@@ -56,6 +60,17 @@ interface SkillFileAgentToolBundle {
   mutatedPaths: Set<string>
 }
 
+interface ReviewMessageContentPart {
+  type?: string
+  text?: string
+}
+
+type ReviewMessageContent = string | ReviewMessageContentPart[] | null | undefined
+
+interface SkillReviewProviderAuthExtension {
+  authContext?: ProviderAuthContext
+}
+
 interface ReviewDecision {
   actions?: ReviewAction[]
   rationale?: string
@@ -67,13 +82,13 @@ function isSkillReviewDisabledByEnv(): boolean {
 }
 
 function messageText(message: ChatMessage): string {
-  const content: unknown = message.content
+  const content = message.content as ReviewMessageContent
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
     return content
-      .map((part: any) => {
-        if (part?.type === 'text') return part.text
-        if (part?.text) return part.text
+      .map(part => {
+        if (part.type === 'text') return part.text ?? ''
+        if (part.text) return part.text
         return ''
       })
       .filter(Boolean)
@@ -342,7 +357,7 @@ function supportFilesForExistingUpdate(action: ReviewAction, skillName: string):
   return supportFiles
 }
 
-function agentToolError(error: unknown): { content: string; error: string } {
+function agentToolError(error: Error | string): { content: string; error: string } {
   return {
     content: '',
     error: error instanceof Error ? error.message : String(error),
@@ -382,19 +397,19 @@ function assertSkillToolPath(rawPath: string, ctx: Parameters<Trigger['execute']
   return resolved
 }
 
-function toolSchema(parameters: any): Record<string, unknown> {
+function toolSchema(parameters: ZodType): AgentJsonObject {
   const schema = zodToJsonSchema(parameters)
-  return {
+  return toJsonObject({
     type: 'object',
     properties: schema.properties,
     required: schema.required,
-  }
+  })
 }
 
 function createToolContext(
   ctx: Parameters<Trigger['execute']>[0],
   toolCallId: string,
-): any {
+): ToolContext {
   return {
     sessionId: ctx.sessionId,
     messageId: `skill-review:${ctx.sessionId}`,
@@ -525,9 +540,9 @@ function createSkillFileAgentTools(ctx: Parameters<Trigger['execute']>[0]): Skil
             ...parsed.data,
             path: resolvedPath,
           }, createToolContext(ctx, toolCtx.toolCallId))
-          return { content: result.output, data: { ...result.metadata, mutated: false, path: resolvedPath } }
+          return { content: result.output, data: toJsonValue({ ...result.metadata, mutated: false, path: resolvedPath }) }
         } catch (error) {
-          return agentToolError(error)
+          return agentToolError(error instanceof Error ? error : String(error))
         }
       },
     },
@@ -549,9 +564,9 @@ function createSkillFileAgentTools(ctx: Parameters<Trigger['execute']>[0]): Skil
             path: resolvedPath,
           }, createToolContext(ctx, toolCtx.toolCallId))
           mutatedPaths.add(resolvedPath)
-          return { content: result.output, data: { ...result.metadata, mutated: true, path: resolvedPath } }
+          return { content: result.output, data: toJsonValue({ ...result.metadata, mutated: true, path: resolvedPath }) }
         } catch (error) {
-          return agentToolError(error)
+          return agentToolError(error instanceof Error ? error : String(error))
         }
       },
     },
@@ -572,9 +587,9 @@ function createSkillFileAgentTools(ctx: Parameters<Trigger['execute']>[0]): Skil
             path: resolvedPath,
           }, createToolContext(ctx, toolCtx.toolCallId))
           mutatedPaths.add(resolvedPath)
-          return { content: result.output, data: { ...result.metadata, mutated: true, path: resolvedPath } }
+          return { content: result.output, data: toJsonValue({ ...result.metadata, mutated: true, path: resolvedPath }) }
         } catch (error) {
-          return agentToolError(error)
+          return agentToolError(error instanceof Error ? error : String(error))
         }
       },
     },
@@ -687,16 +702,25 @@ function isDeepSeekThinkingModel(modelId: string): boolean {
     /(^|[^a-z])v4/.test(lower)
 }
 
-function normalizeReasoningEffort(value: unknown): 'high' | 'max' | undefined {
+function normalizeReasoningEffort(value: ThinkingEffort | undefined): 'high' | 'max' | undefined {
   if (value === 'high' || value === 'max') return value
   if (value === 'low' || value === 'medium') return 'high'
   if (value === 'xhigh') return 'max'
   return undefined
 }
 
+function isMutatedToolResult(data: AgentJsonValue | undefined): boolean {
+  return Boolean(
+    data &&
+    typeof data === 'object' &&
+    !Array.isArray(data) &&
+    data.mutated === true,
+  )
+}
+
 async function runAgentSkillReview(ctx: Parameters<Trigger['execute']>[0]): Promise<void> {
   const model = ctx.providerConfig.model
-  const thinkingByModel = (ctx.providerConfig as any).thinkingByModel?.[model]
+  const thinkingByModel = ctx.providerConfig.thinkingByModel?.[model]
   const thinking =
     thinkingByModel === true
       ? 'enabled'
@@ -706,7 +730,7 @@ async function runAgentSkillReview(ctx: Parameters<Trigger['execute']>[0]): Prom
           ? 'enabled'
           : undefined
   const reasoningEffort = thinking === 'enabled'
-    ? normalizeReasoningEffort((ctx.providerConfig as any).thinkingEffortByModel?.[model]) ?? 'high'
+    ? normalizeReasoningEffort(ctx.providerConfig.thinkingEffortByModel?.[model]) ?? 'high'
     : undefined
   const provider = createDeepSeekAgentProvider({
     apiKey: ctx.providerConfig.apiKey ?? '',
@@ -737,8 +761,7 @@ async function runAgentSkillReview(ctx: Parameters<Trigger['execute']>[0]): Prom
   })
 
   const agentMutated = result.toolResults.some(toolResult => {
-    const metadata = toolResult.result.data as { mutated?: unknown } | undefined
-    return metadata?.mutated === true
+    return isMutatedToolResult(toolResult.result.data)
   })
   const completedSkillPackage = skillFileTools.mutatedPaths.size > 0
     ? ensureAgentReviewedSkillsComplete(skillFileTools.mutatedPaths, ctx.session.workingDirectory)
@@ -753,15 +776,16 @@ async function runAgentSkillReview(ctx: Parameters<Trigger['execute']>[0]): Prom
 }
 
 async function runJsonSkillReview(ctx: Parameters<Trigger['execute']>[0]): Promise<void> {
+  const providerConfig = ctx.providerConfig as typeof ctx.providerConfig & SkillReviewProviderAuthExtension
   const response = await generateChatResponse(
     ctx.providerId,
     {
-      apiKey: ctx.providerConfig.apiKey ?? '',
-      baseUrl: ctx.providerConfig.baseUrl,
-      model: ctx.providerConfig.model,
-      oauthToken: (ctx.providerConfig as any).oauthToken,
-      authContext: (ctx.providerConfig as any).authContext,
-    } as any,
+      apiKey: providerConfig.apiKey ?? '',
+      baseUrl: providerConfig.baseUrl,
+      model: providerConfig.model,
+      oauthToken: providerConfig.oauthToken,
+      authContext: providerConfig.authContext,
+    },
     buildReviewMessages(ctx),
     {
       temperature: 0.1,

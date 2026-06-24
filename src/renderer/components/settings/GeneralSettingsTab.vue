@@ -85,24 +85,6 @@
       </SettingsGroup>
     </SettingsSection>
 
-    <SettingsSection title="Agent Loop">
-      <SettingsGroup>
-        <SettingRow
-          label="Use agent loop streaming"
-          description="Routes supported providers through the new agent loop runtime."
-        >
-          <label class="native-toggle">
-            <input
-              type="checkbox"
-              aria-label="use agent loop streaming"
-              :checked="agentLoopStreamEnabled"
-              @change="updateAgentLoopStream(($event.target as HTMLInputElement).checked)"
-            >
-          </label>
-        </SettingRow>
-      </SettingsGroup>
-    </SettingsSection>
-
     <SettingsSection title="Context Compact">
       <SettingsGroup>
         <SettingRow
@@ -369,7 +351,6 @@ const currentTypographyDensity = computed<TypographyDensity>(() => (
 ))
 const currentFontEn = computed(() => props.settings.chat?.chatFontEn ?? DEFAULT_FONT_EN)
 const currentFontZh = computed(() => props.settings.chat?.chatFontZh ?? DEFAULT_FONT_ZH)
-const agentLoopStreamEnabled = computed(() => props.settings.chat?.agentLoopStream === true)
 const contextCompactEnabled = computed(() => props.settings.chat?.contextCompactEnabled !== false)
 const contextCompactThreshold = computed(() => props.settings.chat?.contextCompactThreshold ?? 85)
 const contextCompactKeepRecentTurns = computed(() => props.settings.chat?.contextCompactKeepRecentTurns ?? 6)
@@ -443,16 +424,6 @@ function updateFontZh(fontId: string) {
     chat: {
       ...props.settings.chat!,
       chatFontZh: fontId,
-    },
-  })
-}
-
-function updateAgentLoopStream(enabled: boolean) {
-  emit('update:settings', {
-    ...props.settings,
-    chat: {
-      ...props.settings.chat!,
-      agentLoopStream: enabled,
     },
   })
 }

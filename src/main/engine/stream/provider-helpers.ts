@@ -5,6 +5,8 @@
 
 import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '../../../shared/ipc.js'
+import type { JsonObject, JsonValue } from '../../../shared/json.js'
+import { toJsonObject } from '../../../shared/json.js'
 import { requiresOAuth } from '../../providers/index.js'
 import { oauthManager } from '../../providers/auth/oauth-manager.js'
 import { authService } from '../../auth/auth-service.js'
@@ -14,22 +16,51 @@ import { resolveProviderApiKey } from '../../providers/env.js'
 /**
  * Extract detailed error information from API responses
  */
-export function extractErrorDetails(error: any): string | undefined {
-  const bodyDetails = extractResponseBodyDetails(error?.responseBody) ||
-    extractResponseBodyDetails(error?.data?.responseBody)
+export interface ProviderErrorDetails {
+  message?: string
+  stack?: string
+  cause?: ProviderErrorDetails
+  responseBody?: string
+  data?: ProviderErrorData | string
+}
+
+interface ProviderErrorData extends JsonObject {
+  message?: string
+  type?: string
+  code?: string | number
+  statusCode?: string | number
+  responseBody?: string
+  requestBodyValues?: JsonValue
+  responseHeaders?: JsonValue
+  error?: ProviderNestedError | string
+}
+
+interface ProviderNestedError extends JsonObject {
+  message?: string
+  type?: string
+  code?: string | number
+}
+
+export function extractErrorDetails(error: ProviderErrorDetails | undefined): string | undefined {
+  if (!error) return undefined
+
+  const data = typeof error.data === 'object' && error.data !== null ? error.data : undefined
+  const bodyDetails = extractResponseBodyDetails(error.responseBody) ||
+    extractResponseBodyDetails(data?.responseBody)
   if (bodyDetails) return bodyDetails
 
-  // AI SDK wraps errors with additional context
+  // Provider runtimes may wrap errors with additional context.
   if (error.cause) {
     return extractErrorDetails(error.cause)
   }
 
   // For API errors with response data
   if (error.data) {
+    if (typeof error.data === 'string') return error.data
     const data = error.data
 
     // OpenAI error format: { error: { message: "...", type: "...", code: "..." } }
-    if (data.error?.message) {
+    if (typeof data.error === 'object' && data.error?.message) {
       const err = data.error
       let details = err.message
       if (err.type) details += ` (type: ${err.type})`
@@ -38,22 +69,18 @@ export function extractErrorDetails(error: any): string | undefined {
     }
 
     // Claude/Anthropic error format
-    if (data.type === 'error' && data.error) {
+    if (data.type === 'error' && typeof data.error === 'object') {
       const err = data.error
       return `${err.type}: ${err.message}`
     }
 
-    if (data.message) {
+    if (typeof data.message === 'string') {
       return data.message
     }
 
     if (data.responseBody) {
       const details = extractResponseBodyDetails(data.responseBody)
       if (details) return details
-    }
-
-    if (typeof data === 'string') {
-      return data
     }
 
     // Avoid surfacing full provider request snapshots in the UI/log payload.
@@ -72,14 +99,15 @@ export function extractErrorDetails(error: any): string | undefined {
   return error.message || error.stack
 }
 
-function extractResponseBodyDetails(body: unknown): string | undefined {
+function extractResponseBodyDetails(body: string | undefined): string | undefined {
   if (typeof body !== 'string' || !body.trim()) return undefined
   try {
-    const parsed = JSON.parse(body)
-    const message = parsed?.detail ||
-      parsed?.error?.message ||
-      parsed?.message ||
-      parsed?.error
+    const parsed = toJsonObject(JSON.parse(body) as JsonValue)
+    const error = parsed.error
+    const message = parsed.detail ||
+      (error && typeof error === 'object' && !Array.isArray(error) ? error.message : undefined) ||
+      parsed.message ||
+      error
     if (typeof message === 'string' && message.trim()) return message.trim()
   } catch {
     // Fall back to compact text below.

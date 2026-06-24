@@ -22,6 +22,7 @@ import type { ToolEffect, ToolPreview } from './core/tool-effect.js'
 import { zodToJsonSchema, isAsyncTool, Tool } from './core/tool.js'
 import { Permission } from '../permission/index.js'
 import { toolFailureText } from './core/tool-result.js'
+import { toJsonSchemaObject, type JsonObject } from '../../shared/json.js'
 
 // Static tool registry (Tool.define() tools)
 const toolRegistry: Map<string, ToolInfo> = new Map()
@@ -35,9 +36,84 @@ let initialized = false
 // Current init context for async tools
 let currentInitContext: InitContext | undefined
 
-function isPermissionRejectedError(error: unknown): error is Permission.RejectedError {
+type ToolMetadataPayload = NonNullable<Parameters<NonNullable<ToolExecutionContext['onMetadata']>>[0]['metadata']>
+type ToolParameterDefinition = ToolDefinition['parameters'][number]
+type ToolParameterType = ToolParameterDefinition['type']
+
+function isPermissionRejectedError(error: object | undefined): error is Permission.RejectedError {
   return error instanceof Permission.RejectedError ||
     (error instanceof Error && error.name === 'PermissionRejectedError')
+}
+
+function caughtErrorMessage(error: object | undefined, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message
+  if (error && 'message' in error && typeof error.message === 'string' && error.message) {
+    return error.message
+  }
+  return fallback
+}
+
+function toolParameterType(value: string | undefined): ToolParameterType {
+  return value === 'string' ||
+    value === 'number' ||
+    value === 'boolean' ||
+    value === 'object' ||
+    value === 'array'
+    ? value
+    : 'string'
+}
+
+function schemaObject(value: object | undefined): {
+  type?: string
+  description?: string
+  enum?: string[]
+} {
+  const type = value && 'type' in value && typeof value.type === 'string'
+    ? value.type
+    : undefined
+  const description = value && 'description' in value && typeof value.description === 'string'
+    ? value.description
+    : undefined
+  const enumValues = value && 'enum' in value && Array.isArray(value.enum)
+    ? value.enum.filter((item): item is string => typeof item === 'string')
+    : undefined
+
+  return {
+    type,
+    description,
+    enum: enumValues && enumValues.length > 0 ? enumValues : undefined,
+  }
+}
+
+function toolParameterFromSchema(
+  name: string,
+  prop: object | undefined,
+  required: boolean
+): ToolParameterDefinition {
+  const schema = schemaObject(prop)
+  return {
+    name,
+    type: toolParameterType(schema.type),
+    description: schema.description ?? '',
+    required,
+    enum: schema.enum,
+  }
+}
+
+function aiSchemaProperties(properties: ReturnType<typeof zodToJsonSchema>['properties']): AIToolSchema['parameters']['properties'] {
+  const result: AIToolSchema['parameters']['properties'] = {}
+  for (const [name, prop] of Object.entries(properties)) {
+    const propObject = prop && typeof prop === 'object' && !Array.isArray(prop)
+      ? prop
+      : undefined
+    const schema = schemaObject(propObject)
+    result[name] = {
+      type: toolParameterType(schema.type),
+      description: schema.description ?? '',
+      enum: schema.enum,
+    }
+  }
+  return result
 }
 
 export interface ToolAnalysisResult {
@@ -59,7 +135,7 @@ function toToolContext(context: ToolExecutionContext): ToolContext {
       if (context.onMetadata) {
         context.onMetadata({
           title: update.title,
-          metadata: update.metadata as Record<string, unknown>,
+          metadata: update.metadata as ToolMetadataPayload,
         })
       }
     },
@@ -73,7 +149,7 @@ function toToolContext(context: ToolExecutionContext): ToolContext {
   }
 }
 
-function toToolExecutionError(error: any): ToolExecutionResult {
+function toToolExecutionError(error: object | undefined): ToolExecutionResult {
   if (isPermissionRejectedError(error)) {
     return {
       success: false,
@@ -83,7 +159,7 @@ function toToolExecutionError(error: any): ToolExecutionResult {
     }
   }
 
-  return { success: false, error: error.message || 'Unknown error during tool execution' }
+  return { success: false, error: caughtErrorMessage(error, 'Unknown error during tool execution') }
 }
 
 /**
@@ -159,18 +235,10 @@ function toolInfoToDefinition(tool: ToolInfo): ToolDefinition {
   const parameters: ToolDefinition['parameters'] = []
 
   for (const [name, prop] of Object.entries(jsonSchema.properties)) {
-    const propObj = prop as Record<string, unknown>
-    const rawType = (propObj.type as string) || 'string'
-    const type = (['string', 'number', 'boolean', 'object', 'array'].includes(rawType)
-      ? rawType
-      : 'string') as 'string' | 'number' | 'boolean' | 'object' | 'array'
-    parameters.push({
-      name,
-      type,
-      description: (propObj.description as string) || '',
-      required: jsonSchema.required.includes(name),
-      enum: propObj.enum as string[] | undefined,
-    })
+    const propObject = prop && typeof prop === 'object' && !Array.isArray(prop)
+      ? prop
+      : undefined
+    parameters.push(toolParameterFromSchema(name, propObject, jsonSchema.required.includes(name)))
   }
 
   return {
@@ -178,7 +246,7 @@ function toolInfoToDefinition(tool: ToolInfo): ToolDefinition {
     name: tool.name,
     description: tool.description,
     parameters,
-    parameterSchema: jsonSchema,
+    parameterSchema: toJsonSchemaObject(jsonSchema),
     enabled: tool.enabled ?? true,
     autoExecute: tool.autoExecute ?? false,
     permissionGuard: tool.permissionGuard,
@@ -201,18 +269,10 @@ function asyncToolToDefinition(tool: ToolInfoAsync): ToolDefinition | null {
   const parameters: ToolDefinition['parameters'] = []
 
   for (const [name, prop] of Object.entries(jsonSchema.properties)) {
-    const propObj = prop as Record<string, unknown>
-    const rawType = (propObj.type as string) || 'string'
-    const type = (['string', 'number', 'boolean', 'object', 'array'].includes(rawType)
-      ? rawType
-      : 'string') as 'string' | 'number' | 'boolean' | 'object' | 'array'
-    parameters.push({
-      name,
-      type,
-      description: (propObj.description as string) || '',
-      required: jsonSchema.required.includes(name),
-      enum: propObj.enum as string[] | undefined,
-    })
+    const propObject = prop && typeof prop === 'object' && !Array.isArray(prop)
+      ? prop
+      : undefined
+    parameters.push(toolParameterFromSchema(name, propObject, jsonSchema.required.includes(name)))
   }
 
   return {
@@ -220,7 +280,7 @@ function asyncToolToDefinition(tool: ToolInfoAsync): ToolDefinition | null {
     name: tool.name,
     description: initResult.description,
     parameters,
-    parameterSchema: jsonSchema,
+    parameterSchema: toJsonSchemaObject(jsonSchema),
     enabled: tool.enabled ?? true,
     autoExecute: tool.autoExecute ?? false,
     permissionGuard: tool.permissionGuard,
@@ -371,7 +431,7 @@ export async function initializeAsyncTools(ctx?: InitContext): Promise<void> {
 }
 
 /**
- * Get tools formatted for AI SDK
+ * Get tools formatted for provider execution.
  * Returns a record of tool schemas keyed by tool name
  */
 export async function getToolsForAI(toolSettings?: Record<string, { enabled: boolean; autoExecute: boolean }>): Promise<Record<string, AIToolSchema>> {
@@ -388,7 +448,7 @@ export async function getToolsForAI(toolSettings?: Record<string, { enabled: boo
         description: tool.description,
         parameters: {
           type: 'object',
-          properties: jsonSchema.properties as Record<string, { type: string; description: string; enum?: string[] }>,
+          properties: aiSchemaProperties(jsonSchema.properties),
           required: jsonSchema.required,
         },
       }
@@ -411,7 +471,7 @@ export async function getToolsForAI(toolSettings?: Record<string, { enabled: boo
         description: initResult.description,
         parameters: {
           type: 'object',
-          properties: jsonSchema.properties as Record<string, { type: string; description: string; enum?: string[] }>,
+          properties: aiSchemaProperties(jsonSchema.properties),
           required: jsonSchema.required,
         },
       }
@@ -426,7 +486,7 @@ export async function getToolsForAI(toolSettings?: Record<string, { enabled: boo
  */
 export async function analyzeTool(
   toolId: string,
-  args: Record<string, any>,
+  args: JsonObject,
   context: ToolExecutionContext
 ): Promise<ToolAnalysisResult> {
   const staticTool = toolRegistry.get(toolId)
@@ -442,8 +502,9 @@ export async function analyzeTool(
       if (!staticTool.analyze) return { success: true, effects: [] }
       const result = await staticTool.analyze(parseResult.data, toToolContext(context))
       return { success: true, effects: result.effects, preview: result.preview }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Unknown error during tool analysis' }
+    } catch (error) {
+      const errorObject = error && typeof error === 'object' ? error : undefined
+      return { success: false, error: caughtErrorMessage(errorObject, 'Unknown error during tool analysis') }
     }
   }
 
@@ -464,8 +525,9 @@ export async function analyzeTool(
       if (!initResult.analyze) return { success: true, effects: [] }
       const result = await initResult.analyze(parseResult.data, toToolContext(context))
       return { success: true, effects: result.effects, preview: result.preview }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Unknown error during tool analysis' }
+    } catch (error) {
+      const errorObject = error && typeof error === 'object' ? error : undefined
+      return { success: false, error: caughtErrorMessage(errorObject, 'Unknown error during tool analysis') }
     }
   }
 
@@ -477,7 +539,7 @@ export async function analyzeTool(
  */
 export async function executeTool(
   toolId: string,
-  args: Record<string, any>,
+  args: JsonObject,
   context: ToolExecutionContext
 ): Promise<ToolExecutionResult> {
   // Try static tool
@@ -503,7 +565,7 @@ export async function executeTool(
           if (context.onMetadata) {
             context.onMetadata({
               title: update.title,
-              metadata: update.metadata as Record<string, unknown>,
+              metadata: update.metadata as ToolMetadataPayload,
             })
           }
         },
@@ -526,13 +588,14 @@ export async function executeTool(
           attachments: result.attachments,
         },
       }
-    } catch (error: any) {
-      if (isPermissionRejectedError(error)) {
+    } catch (error) {
+      const errorObject = error && typeof error === 'object' ? error : undefined
+      if (isPermissionRejectedError(errorObject)) {
         console.log(`[ToolRegistry] Tool "${toolId}" permission rejected`)
       } else {
         console.error(`[ToolRegistry] Tool "${toolId}" execution error:`, error)
       }
-      return toToolExecutionError(error)
+      return toToolExecutionError(errorObject)
     }
   }
 
@@ -564,7 +627,7 @@ export async function executeTool(
           if (context.onMetadata) {
             context.onMetadata({
               title: update.title,
-              metadata: update.metadata as Record<string, unknown>,
+              metadata: update.metadata as ToolMetadataPayload,
             })
           }
         },
@@ -587,13 +650,14 @@ export async function executeTool(
           attachments: result.attachments,
         },
       }
-    } catch (error: any) {
-      if (isPermissionRejectedError(error)) {
+    } catch (error) {
+      const errorObject = error && typeof error === 'object' ? error : undefined
+      if (isPermissionRejectedError(errorObject)) {
         console.log(`[ToolRegistry] Async Tool "${toolId}" permission rejected`)
       } else {
         console.error(`[ToolRegistry] Async Tool "${toolId}" execution error:`, error)
       }
-      return toToolExecutionError(error)
+      return toToolExecutionError(errorObject)
     }
   }
 
@@ -606,7 +670,7 @@ export async function executeTool(
 export function createToolCall(
   toolId: string,
   toolName: string,
-  args: Record<string, any>
+  args: JsonObject
 ): ToolCall {
   return {
     id: uuidv4(),

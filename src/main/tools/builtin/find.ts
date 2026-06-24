@@ -10,6 +10,7 @@ import { Tool } from '../core/tool.js'
 import { checkFileAccess, findSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
 import { Ripgrep } from '../../utils/ripgrep.js'
 import { DEFAULT_TEXT_MAX_BYTES, formatSize, truncateTextHead, type TextTruncationResult } from '../core/text-truncation.js'
+import { toJsonObject } from '../../../shared/json.js'
 
 const DEFAULT_LIMIT = 1000
 
@@ -20,7 +21,6 @@ export interface FindMetadata {
   truncated: boolean
   truncation?: TextTruncationResult
   resultLimitReached?: number
-  [key: string]: unknown
 }
 
 const FindParameters = z.object({
@@ -129,9 +129,10 @@ export const FindTool = Tool.define<typeof FindParameters, FindMetadata>('find',
           })
         }
       }
-    } catch (error: any) {
+    } catch (error) {
       if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
-      throw new Error(`Find failed: ${error.message}`)
+      const message = error instanceof Error ? error.message : 'unknown error'
+      throw new Error(`Find failed: ${message}`)
     }
 
     results.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
@@ -156,7 +157,7 @@ export const FindTool = Tool.define<typeof FindParameters, FindMetadata>('find',
 
     ctx.updateResult?.({
       content: [{ type: 'text', text: output }],
-      details: { phase: 'ready', ...metadata },
+      details: toJsonObject({ phase: 'ready', ...metadata }),
     })
 
     return {

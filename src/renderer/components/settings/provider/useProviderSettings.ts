@@ -58,7 +58,7 @@ export function useProviderSettings(
 
   // ──────────────── Temperature: per-model with provider/global fallbacks ────────────────
   //
-  // Resolution chain (mirrors the backend in tool-loop.ts):
+  // Resolution chain (mirrors backend stream parameter resolution):
   //   1. providers[viewing].temperatureByModel[activeModel]
   //   2. providers[viewing].temperature   (legacy per-provider)
   //   3. settings.ai.temperature           (global default)

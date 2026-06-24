@@ -4,9 +4,22 @@ export {
   isAgentLoopPauseForConfirmationError,
 } from './errors.js'
 export {
+  abortableAgentEvents,
+  AgentEventQueue,
   agentContentToText,
   collectAgentTurnFromStream,
+  createAgentAbortError,
+  runWithAgentAbort,
+  streamAgentProviderTurnEvents,
+  throwIfAgentAborted,
 } from './stream.js'
+export {
+  agentToolMessageContentToText,
+  agentToolMessageContentToStructuredPayload,
+  agentToolMessageContentForCapabilities,
+  agentToolResultToMessageContent,
+  agentToolResultToMessageContentForCapabilities,
+} from './tool-results.js'
 export {
   agentContentFromHistoryContent,
   agentMessagesFromHistory,
@@ -20,16 +33,23 @@ export {
 } from './prompts.js'
 export {
   TEXT_ONLY_AGENT_CAPABILITIES,
+  agentProviderCanRunTurn,
   agentSupportsInputModality,
   agentSupportsOutputModality,
   agentSupportsCapability,
+  agentSupportsStructuredToolResults,
+  agentSupportsToolResultModality,
   agentSupportsTools,
+  assertAgentProviderCanRunTurn,
   assertAgentMessagesSupportedByCapabilities,
   assertAgentOutputModalitiesSupportedByCapabilities,
   inputModalitiesFromAgentContent,
+  isAgentRunnableProvider,
+  isAgentStreamingProvider,
   providerSupportsCapability,
   providerSupportsInputModality,
   providerSupportsOutputModality,
+  providerSupportsToolResultModality,
   resolveAgentModelCapabilities,
 } from './capabilities.js'
 export {
@@ -50,6 +70,8 @@ export {
 export { createDeepSeekAgentProvider } from './providers/deepseek.js'
 export { createCodexAgentProvider } from './providers/codex.js'
 export { createOpenAICompatibleAgentProvider } from './providers/openai-compatible.js'
+export { createClaudeAgentProvider } from './providers/claude.js'
+export { createGeminiAgentProvider } from './providers/gemini.js'
 export { createACPAgentProvider } from './providers/acp.js'
 export {
   createAgentProviderFromRuntime,
@@ -57,17 +79,30 @@ export {
   isAgentProviderRuntimeSupported,
   registerAgentProviderRuntime,
 } from './providers/factory.js'
-export { agentToolsFromRegistry } from './tools.js'
+export {
+  agentModelToolsFromDefinitions,
+  agentToolDefinitionsFromSourceTools,
+  agentToolsFromRegistry,
+  agentToolsFromToolDefinitions,
+} from './tools.js'
+export {
+  createAIToolName,
+  getAIToolName,
+  resolveAIToolName,
+} from './tool-names.js'
 export type {
   AgentCapability,
   AgentAfterTurnHook,
   AgentAudioContentPart,
   AgentBeforeTurnHook,
   AgentContentPart,
+  AgentExecutableProvider,
   AgentFinishReason,
   AgentFileContentPart,
   AgentImageContentPart,
   AgentInputModality,
+  AgentJsonObject,
+  AgentJsonValue,
   AgentLoopOptions,
   AgentLoopResult,
   AgentLoopToolResult,
@@ -80,8 +115,10 @@ export type {
   AgentPromptInjectionContext,
   AgentPromptInjector,
   AgentRole,
+  AgentRunnableProvider,
   AgentSkillContext,
   AgentStreamEvent,
+  AgentStreamingProvider,
   AgentTextContentPart,
   AgentTool,
   AgentToolCall,
@@ -91,6 +128,7 @@ export type {
   AgentToolPartialResultUpdate,
   AgentToolPolicy,
   AgentToolResult,
+  AgentToolResultContentPart,
   AgentTurn,
   AgentTurnLifecycleContext,
   AgentTurnRequest,
@@ -102,6 +140,12 @@ export type {
   AgentHistoryContent,
   AgentHistoryMessage,
 } from './messages.js'
+export type {
+  AgentModelToolDefinition,
+  AgentSourceToolDefinition,
+  AgentToolExecutionAdapter,
+  AgentToolExecutionAdapterResult,
+} from './tools.js'
 export type {
   AgentLoopStreamChunk,
 } from './chunks.js'

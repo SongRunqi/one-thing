@@ -10,6 +10,7 @@ import { Tool } from '../../core/tool.js'
 import { braveProvider } from './providers/brave.js'
 import type { SearchProvider, SearchResponse } from './providers/types.js'
 import { fetchSearchPages, type FetchedSearchPage, type SearchPageRequest } from './page-fetch.js'
+import { toJsonObject } from '../../../../shared/json.js'
 
 // Available providers
 const providers: Record<string, SearchProvider> = {
@@ -62,7 +63,6 @@ interface WebSearchRun {
 }
 
 interface WebSearchMetadata {
-  [key: string]: unknown  // Index signature for ToolMetadata compatibility
   phase?: 'searching' | 'fetching_pages' | 'ready'
   query: string
   queries?: string[]
@@ -151,7 +151,7 @@ single-call search with automatic top-page extraction is preferred.`,
       })
       ctx.updateResult?.({
         content: [{ type: 'text', text }],
-        details: metadata,
+        details: toJsonObject(metadata),
       })
     }
 
@@ -242,13 +242,13 @@ single-call search with automatic top-page extraction is preferred.`,
 
     ctx.updateResult?.({
       content: [{ type: 'text', text: output }],
-      details: { phase: 'ready', ...resultMetadata },
+      details: toJsonObject({ phase: 'ready', ...resultMetadata }),
     })
 
     // Update metadata with results
     ctx.metadata({
       title: `Found ${allResults.length} results and ${resultMetadata.fetchedPageCount || 0} pages for: ${query}`,
-      metadata: resultMetadata,
+      metadata: toJsonObject(resultMetadata),
     })
 
     return {

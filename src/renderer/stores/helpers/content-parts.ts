@@ -1,6 +1,6 @@
 /**
  * Pure helpers for evolving a message's `contentParts` array as stream
- * chunks arrive. Each helper mutates `parts` in place; the caller is
+ * chunks arrive. Each helper mutates the `parts` array in place; the caller is
  * responsible for re-assigning `message.contentParts = [...parts]` (or
  * equivalent) to trigger Vue reactivity downstream.
  */
@@ -47,7 +47,10 @@ function appendOrMergeTurnTextPart(parts: ContentPart[], part: TurnTextPart): vo
 
   const last = parts[parts.length - 1]
   if (last && last.type === part.type && sameTurn(last, part)) {
-    last.content += part.content
+    parts[parts.length - 1] = {
+      ...last,
+      content: last.content + part.content,
+    }
   } else {
     parts.push(part)
   }

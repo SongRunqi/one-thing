@@ -5,12 +5,14 @@
  */
 
 import { ref, watch } from 'vue'
-import type { ChatSession, SessionMeta } from '@/types'
+import type { SessionMeta } from '@/types'
 import { useSessionsStore } from '@/stores/sessions'
 
 // Base session type for organizer - compatible with both metadata-only and full sessions
 // This allows the organizer to work with metadata loaded on startup (no messages)
-type SessionBase = SessionMeta & Partial<Pick<ChatSession, 'messages' | 'workingDirectory' | 'summary'>> & {
+type SessionBase = SessionMeta & {
+  workingDirectory?: string
+  summary?: string
   kind?: 'new-chat-draft'
 }
 
@@ -404,12 +406,7 @@ export function useSessionOrganizer() {
 
   // Get session preview text
   function getSessionPreview(session: SessionBase): string {
-    if (!session.messages || session.messages.length === 0) {
-      return 'No messages yet'
-    }
-    const lastMessage = session.messages[session.messages.length - 1]
-    const preview = lastMessage.content.slice(0, 50)
-    return preview.length < lastMessage.content.length ? preview + '...' : preview
+    return session.previewText || (session.messageCount ? '' : 'No messages yet')
   }
 
   // Format model ID for display (e.g. gpt-4o-2024-05-13 -> GPT-4o)

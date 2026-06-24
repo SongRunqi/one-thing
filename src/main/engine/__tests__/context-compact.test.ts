@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage, ChatSession } from '../../../shared/ipc.js'
-import { selectCompactPlan, shouldAutoCompactBeforeSend } from '../context-compact.js'
+import {
+  estimateSessionInputTokens,
+  formatMessagesForSummary,
+  normalizeContextSummaryOutput,
+  selectCompactPlan,
+  shouldAutoCompactBeforeSend,
+} from '../context-compact.js'
 
 function message(index: number, role: 'user' | 'assistant'): ChatMessage {
   return {
@@ -172,7 +178,7 @@ describe('shouldAutoCompactBeforeSend', () => {
     })).resolves.toBe(false)
   })
 
-  it('does not trigger from local message size when provider context is unknown', async () => {
+  it('triggers from local message size when provider context is unknown', async () => {
     const testSession = session([{
       ...message(1, 'user'),
       content: 'x'.repeat(10000),
@@ -182,6 +188,49 @@ describe('shouldAutoCompactBeforeSend', () => {
       session: testSession,
       modelContextLength: 100,
       thresholdPercent: 50,
-    })).resolves.toBe(false)
+    })).resolves.toBe(true)
+  })
+})
+
+describe('context compact summary helpers', () => {
+  it('estimates mixed CJK and ASCII text without provider usage', () => {
+    const testSession = session([{
+      ...message(1, 'user'),
+      content: 'hello '.repeat(100) + '你好'.repeat(50),
+    }])
+
+    expect(estimateSessionInputTokens(testSession)).toBeGreaterThan(100)
+  })
+
+  it('normalizes JSON returned inside a markdown fence', () => {
+    const normalized = normalizeContextSummaryOutput('```json\n{"goal":"Ship compact","completed":["tests"]}\n```')
+
+    expect(normalized).toBe(JSON.stringify({
+      goal: 'Ship compact',
+      completed: ['tests'],
+    }, null, 2))
+  })
+
+  it('includes bounded tool result context for the summarizer', () => {
+    const summaryInput = formatMessagesForSummary([{
+      ...message(1, 'assistant'),
+      toolCalls: [{
+        id: 'call_1',
+        toolId: 'read',
+        toolName: 'read',
+        arguments: { path: '/tmp/large.txt' },
+        status: 'completed',
+        result: {
+          title: 'Read large file',
+          output: 'important finding ' + 'x'.repeat(10000),
+          originalContent: 'do not include rollback content',
+        },
+        timestamp: 1,
+      }],
+    }])
+
+    expect(summaryInput).toContain('important finding')
+    expect(summaryInput).toContain('[truncated')
+    expect(summaryInput).not.toContain('do not include rollback content')
   })
 })

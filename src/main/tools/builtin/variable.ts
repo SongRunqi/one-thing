@@ -18,6 +18,7 @@ import {
   VariableError,
   type ContextVariable,
 } from '../../variables/index.js'
+import type { JsonObjectProperty } from '../../../shared/json.js'
 
 type VariableAction = 'list' | 'set' | 'append' | 'remove' | 'delete'
 
@@ -32,7 +33,7 @@ interface VariableMetadata {
     readonly?: boolean
     description?: string
   }>
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 const VariableParameters = z.object({
@@ -67,7 +68,7 @@ function renderForOutput(snapshot: ContextVariable[]): string {
   }).join('\n')
 }
 
-function rethrow(err: unknown): never {
+function rethrow(err: Error | object | string | number | boolean | null | undefined): never {
   if (err instanceof VariableError) {
     const e = new Error(`[${err.code}] ${err.message}`)
     e.name = err.name
@@ -159,7 +160,8 @@ Project directories (the "project_dirs" list) are managed by a separate tool —
         },
       }
     } catch (err) {
-      rethrow(err)
+      const caught = err instanceof Error || (err && typeof err === 'object') ? err : String(err)
+      rethrow(caught)
     }
   },
 })

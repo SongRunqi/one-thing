@@ -2,6 +2,10 @@ import * as crypto from 'crypto'
 import * as fs from 'fs/promises'
 import { diffLines } from 'diff'
 
+function hasErrorCode(error: Error | object | string | number | boolean | null | undefined, code: string): boolean {
+  return Boolean(error && typeof error === 'object' && 'code' in error && error.code === code)
+}
+
 export interface TextFileSnapshot {
   exists: boolean
   content: string
@@ -20,8 +24,9 @@ export async function readTextFileSnapshot(filePath: string): Promise<TextFileSn
       content,
       hash: hashTextFileSnapshot(true, content),
     }
-  } catch (error: any) {
-    if (error.code !== 'ENOENT') {
+  } catch (error) {
+    const caught = error instanceof Error || (error && typeof error === 'object') ? error : String(error)
+    if (!hasErrorCode(caught, 'ENOENT')) {
       throw error
     }
     return {

@@ -3,7 +3,7 @@ import type { AppSettings, ChatMessage, ChatSession, ProviderConfig } from '../.
 export interface BeforeContextCompactContext {
   sessionId: string
   providerId: string
-  configWithApiKey: Record<string, unknown>
+  configWithApiKey: ProviderConfig & { apiKey: string }
   settings: AppSettings
   keepRecentTurns?: number
   messagesToSummarize: ChatMessage[]

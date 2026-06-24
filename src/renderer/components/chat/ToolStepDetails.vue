@@ -1,5 +1,9 @@
 <template>
-  <div class="tool-step-details">
+  <div
+    ref="detailsRef"
+    class="tool-step-details"
+    @wheel="handleWheel"
+  >
     <div
       v-if="failedEditDetails"
       class="detail-section failed-edit-section"
@@ -202,6 +206,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { Check, X } from 'lucide-vue-next'
 import type { ToolPartialResult } from '@/types'
 import type { ToolStepView } from '@/stores/helpers/tool-step-view'
+import { chainWheelToScrollableAncestor, findScrollableWheelSource } from '@/utils/scroll-chain'
 import ToolDiffPreview from './ToolDiffPreview.vue'
 import ToolResultRenderer from './ToolResultRenderer.vue'
 
@@ -232,6 +237,7 @@ const props = defineProps<{
 }>()
 
 const streamingPreviewRef = ref<InstanceType<typeof ToolDiffPreview> | null>(null)
+const detailsRef = ref<HTMLElement | null>(null)
 
 const activeDiff = computed(() => props.view.diff || props.view.streamingDiff)
 const activeDiffLines = computed(() => props.view.diff ? props.view.diffLines : props.view.streamingDiffLines)
@@ -353,6 +359,10 @@ function formatEditText(value: unknown): string {
 
 function displayEditText(value: string): string {
   return value.length ? value : '(empty string)'
+}
+
+function handleWheel(event: WheelEvent) {
+  chainWheelToScrollableAncestor(event, findScrollableWheelSource(event, detailsRef.value))
 }
 
 function compactOutput(value: string): string {

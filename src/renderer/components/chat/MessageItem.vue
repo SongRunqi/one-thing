@@ -43,7 +43,7 @@
         <MessageThinking
           v-if="message.role === 'assistant'"
           :is-streaming="message.isStreaming || false"
-          :has-content="!!message.content || !!(message.toolCalls?.length) || !!(message.steps?.length)"
+          :has-content="messageHasContent"
           :reasoning="topReasoning"
           :thinking-start-time="message.thinkingStartTime"
           :thinking-time="message.thinkingTime"
@@ -212,6 +212,16 @@ const isHighlighted = computed(() => props.isHighlighted || false)
 const isLoadingMemory = computed(() => {
   if (!props.message.contentParts) return false
   return props.message.contentParts.some(part => part.type === 'loading-memory')
+})
+
+const messageHasContent = computed(() => {
+  if (props.message.content) return true
+  if (props.message.toolCalls?.length || props.message.steps?.length) return true
+  return props.message.contentParts?.some(part =>
+    part.type !== 'waiting' &&
+    part.type !== 'loading-memory' &&
+    part.type !== 'image-loading'
+  ) ?? false
 })
 
 const topReasoning = computed(() => {

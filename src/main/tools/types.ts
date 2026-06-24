@@ -8,6 +8,7 @@
  */
 
 import type { ToolDefinition, ToolCall, ToolParameter, ProviderConfig, ToolSettings, Step, SkillDefinition, ToolPartialResult, ToolResultContentPart } from '../../shared/ipc.js'
+import type { JsonObject, JsonSchemaObject, JsonValue } from '../../shared/json.js'
 import type { ToolEffect, ToolPreview } from './core/tool-effect.js'
 
 // Re-export shared types
@@ -18,7 +19,7 @@ export type { ToolDefinition, ToolCall, ToolParameter }
  */
 export interface ToolMetadataUpdate {
   title?: string
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
 }
 
 export type { ToolResultContentPart }
@@ -58,7 +59,7 @@ export interface ToolExecutionContext {
  */
 export interface ToolExecutionResult {
   success: boolean
-  data?: any
+  data?: object | JsonValue
   error?: string
   // For dangerous commands that need user confirmation
   requiresConfirmation?: boolean
@@ -74,7 +75,7 @@ export interface ToolExecutionResult {
  * Tool handler function type
  */
 export type ToolHandler = (
-  args: Record<string, any>,
+  args: JsonObject,
   context: ToolExecutionContext
 ) => Promise<ToolExecutionResult>
 
@@ -87,14 +88,14 @@ export interface RegisteredTool {
 }
 
 /**
- * Tool schema for AI SDK compatibility
- * Converts our ToolDefinition to the format expected by Vercel AI SDK
+ * Tool schema for provider runtime compatibility.
+ * Converts our ToolDefinition to the shared provider tool format.
  */
 export interface AIToolSchema {
   description: string
   parameters: {
     type: 'object'
-    properties: Record<string, {
+    properties: Record<string, JsonSchemaObject & {
       type: string
       description: string
       enum?: string[]
@@ -104,10 +105,10 @@ export interface AIToolSchema {
 }
 
 /**
- * Convert ToolDefinition to AI SDK tool schema
+ * Convert ToolDefinition to provider tool schema.
  */
 export function toAIToolSchema(tool: ToolDefinition): AIToolSchema {
-  const properties: Record<string, any> = {}
+  const properties: AIToolSchema['parameters']['properties'] = {}
   const required: string[] = []
 
   for (const param of tool.parameters) {

@@ -7,6 +7,7 @@
 import { z } from 'zod'
 import { Tool } from '../../core/tool.js'
 import { fetchSearchPage, type FetchedSearchPage } from './page-fetch.js'
+import { toJsonObject } from '../../../../shared/json.js'
 
 const WebFindParameters = z.object({
   url: z.string().url().describe('The HTTP or HTTPS URL to read and search within'),
@@ -32,7 +33,6 @@ interface WebFindMatch {
 }
 
 interface WebFindMetadata {
-  [key: string]: unknown
   mode: 'find'
   phase: 'opening' | 'ready'
   query: string
@@ -109,11 +109,11 @@ step in a ChatGPT-style web search workflow.`,
 
     ctx.updateResult?.({
       content: [{ type: 'text', text: `Searching within ${args.url} for "${args.pattern}"...` }],
-      details: openingMetadata,
+      details: toJsonObject(openingMetadata),
     })
     ctx.metadata({
       title: `Finding "${args.pattern}" in: ${title}`,
-      metadata: openingMetadata,
+      metadata: toJsonObject(openingMetadata),
     })
 
     const page = await fetchSearchPage({
@@ -149,11 +149,11 @@ step in a ChatGPT-style web search workflow.`,
 
     ctx.updateResult?.({
       content: [{ type: 'text', text: output }],
-      details: metadata,
+      details: toJsonObject(metadata),
     })
     ctx.metadata({
       title: `Found ${matches.length} ${matches.length === 1 ? 'match' : 'matches'} for: ${args.pattern}`,
-      metadata,
+      metadata: toJsonObject(metadata),
     })
 
     return {

@@ -18,36 +18,28 @@ import { v4 as uuidv4 } from 'uuid'
 import type { AppSettings, ChatMessage, MessageAttachment } from '../../shared/ipc.js'
 import type { SendMessageCommand, EditAndResendCommand, ResumeAfterConfirmCommand, RetryMessageCommand, InjectSteeringCommand, InjectFollowUpCommand, CompactContextCommand, AbortCommand } from '../../shared/events/session-commands.js'
 import type { EventBus } from '../events/event-bus.js'
-import type { ToolChatMessage } from '../providers/index.js'
 import { Permission } from '../permission/index.js'
 import * as store from '../store.js'
 import {
   getEffectiveProviderConfig,
   resolveProviderAuth,
   extractErrorDetails,
+  type ProviderErrorDetails,
   getProviderApiType,
 } from './stream/provider-helpers.js'
-import { isProviderSupported, requiresOAuth, convertToolDefinitionsForAI, generateChatTitle } from '../providers/index.js'
+import { isProviderSupported, requiresOAuth, generateChatTitle } from '../providers/index.js'
 import { buildHistoryMessages } from './stream/message-helpers.js'
 import { buildResumeHistoryAfterToolConfirmation } from './stream/resume-history.js'
 import { executeMessageStream, type ProviderConfigWithKey } from './stream/stream-executor.js'
-import { createStreamProcessor, type StreamContext } from './stream/stream-processor.js'
+import { type StreamContext } from './stream/stream-processor.js'
 import {
   executeAgentLoopStreamGeneration,
-  shouldUseAgentLoopStream,
 } from './stream/agent-loop-executor.js'
-import { runStream } from './stream/tool-loop.js'
-import { buildPrompt } from './prompt/index.js'
 import { getSkillsForSession } from '../ipc/skills.js'
-import { getEnabledToolsAsync, setInitContext, initializeAsyncTools } from '../tools/index.js'
-import { getMCPToolsForAI } from '../mcp/index.js'
 import { mediaLibraryService } from '../media/media-library-service.js'
 import * as modelRegistry from '../providers/model-registry.js'
-import { buildContextVariablesPromptText } from '../variables/index.js'
-import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
-import { getAIToolName } from '../providers/tool-name-alias.js'
-import { PendingMessageQueue, type PendingMessage } from './stream/message-queue.js'
-import { compactSessionContext, getContextCompactReason, type ContextCompactResult } from './context-compact.js'
+import { PendingMessageQueue } from './stream/message-queue.js'
+import { compactSessionContext, getContextCompactReason, shouldSkipAutoCompactForProviderUsageMismatch, type ContextCompactResult } from './context-compact.js'
 import { resolvePromptReferences } from '../prompts/resolver.js'
 
 /**
@@ -57,6 +49,28 @@ function generateTitleFromMessage(content: string, maxLength: number = 30): stri
   const cleaned = content.replace(/\s+/g, ' ').trim()
   if (cleaned.length <= maxLength) return cleaned
   return cleaned.slice(0, maxLength).trim() + '...'
+}
+
+interface StreamErrorInfo {
+  error: Error
+  message: string
+  details?: string
+  isAbortError: boolean
+}
+
+function normalizeStreamError(error: Error & Partial<ProviderErrorDetails>): StreamErrorInfo {
+  const providerDetails: ProviderErrorDetails = {
+    message: error.message,
+    stack: error.stack,
+    responseBody: error.responseBody,
+    data: error.data,
+  }
+  return {
+    error,
+    message: error.message || 'Streaming error',
+    details: extractErrorDetails(providerDetails),
+    isAbortError: error.name === 'AbortError',
+  }
 }
 
 export class StreamEngine {
@@ -283,9 +297,10 @@ export class StreamEngine {
         voiceConversation: userMessage.source === 'voice',
         speakMode: userMessage.source === 'voice',
       })
-    } catch (error: any) {
-      console.error('[StreamEngine] handleSendMessage error:', error)
-      this.emitStreamError(sessionId, error.message || 'Streaming error')
+    } catch (error) {
+      const streamError = normalizeStreamError(error instanceof Error ? error : new Error(String(error)))
+      console.error('[StreamEngine] handleSendMessage error:', streamError.error)
+      this.emitStreamError(sessionId, streamError.message)
     }
   }
 
@@ -421,9 +436,10 @@ export class StreamEngine {
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName: session?.name,
       })
-    } catch (error: any) {
-      console.error('[StreamEngine] handleEditAndResend error:', error)
-      this.emitStreamError(sessionId, error.message || 'Streaming error')
+    } catch (error) {
+      const streamError = normalizeStreamError(error instanceof Error ? error : new Error(String(error)))
+      console.error('[StreamEngine] handleEditAndResend error:', streamError.error)
+      this.emitStreamError(sessionId, streamError.message)
     }
   }
 
@@ -505,9 +521,10 @@ export class StreamEngine {
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName: session?.name,
       })
-    } catch (error: any) {
-      console.error('[StreamEngine] handleRetryMessage error:', error)
-      this.emitStreamError(sessionId, error.message || 'Streaming error')
+    } catch (error) {
+      const streamError = normalizeStreamError(error instanceof Error ? error : new Error(String(error)))
+      console.error('[StreamEngine] handleRetryMessage error:', streamError.error)
+      this.emitStreamError(sessionId, streamError.message)
     }
   }
 
@@ -537,103 +554,15 @@ export class StreamEngine {
         this.emitStreamError(sessionId, 'Assistant message not found')
         return
       }
-      const toolCalls = assistantMessage.toolCalls || []
-
       const historyMessages = buildHistoryMessages(session.messages, session)
       const historyWithoutCurrent = historyMessages.filter((_, idx) => {
         const msgCount = historyMessages.length
         return idx !== msgCount - 1 || historyMessages[idx].role !== 'assistant'
       })
 
-      // Load skills and set init context
-      const skillsSettings = settings.skills
-      const skillsEnabled = skillsSettings?.enableSkills !== false
-      const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
-
-      if (settings.tools?.enableToolCalls) {
-        setInitContext({
-          skills: enabledSkills.map(s => ({
-            id: s.id, name: s.name, description: s.description,
-            source: s.source, category: s.category, tags: s.tags, relatedSkills: s.relatedSkills,
-            conditions: s.conditions,
-            disableModelInvocation: s.disableModelInvocation,
-            platforms: s.platforms, path: s.path, directoryPath: s.directoryPath,
-            rootPath: s.rootPath, relativePath: s.relativePath,
-            enabled: s.enabled, instructions: s.instructions,
-            runtimeContext: s.runtimeContext,
-            files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
-          })),
-        })
-        await initializeAsyncTools()
-      }
-
-      const allEnabledTools = settings.tools?.enableToolCalls ? await getEnabledToolsAsync(settings.tools.tools) : []
-      const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
-      const mcpTools = settings.tools?.enableToolCalls ? getMCPToolsForAI(settings.tools.tools) : {}
-
-      const supportsTools = await modelRegistry.modelSupportsTools(configWithApiKey.model, providerId)
-      const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
-      const builtinToolsForAI = hasTools ? convertToolDefinitionsForAI(enabledTools) : {}
-      const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
-
-      const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
       const voiceConversation = [...session.messages]
         .reverse()
         .find(message => message.role === 'user')?.source === 'voice'
-      const requestMessages = await buildPrompt({
-        sessionId,
-        agentId: session.agentId,
-        providerId,
-        providerConfig: configWithApiKey as unknown as Record<string, unknown>,
-        settings,
-        hasTools,
-        skills: enabledSkills,
-        workingDirectory: session.workingDirectory,
-        workingDirectoryRoots: session.workingDirectoryRoots,
-        contextVariables: await buildContextVariablesPromptText(sessionId),
-        activeProject: projectVars.active,
-        knownProjects: projectVars.known,
-        toolNames: Object.keys(builtinToolsForAI),
-        mcpToolNames: Object.keys(mcpTools),
-        voiceConversation,
-        speakMode: voiceConversation,
-        historyMessages: [],
-      })
-      const { systemPrompt } = requestMessages
-
-      const conversationMessages = [...requestMessages.messages] as ToolChatMessage[]
-
-      for (const msg of historyWithoutCurrent) {
-        if (msg.role === 'user') {
-          conversationMessages.push({ role: 'user', content: msg.content })
-        } else if (msg.role === 'assistant') {
-          conversationMessages.push({
-            role: 'assistant', content: msg.content,
-            ...(msg.toolCalls && { toolCalls: msg.toolCalls }),
-            ...(msg.reasoningContent && { reasoningContent: msg.reasoningContent }),
-          })
-        } else if (msg.role === 'tool') {
-          conversationMessages.push({ role: 'tool', content: msg.content })
-        }
-      }
-
-      conversationMessages.push({
-        role: 'assistant',
-        content: assistantMessage.content || '',
-        toolCalls: toolCalls.map(tc => ({
-          toolCallId: tc.id, toolName: getAIToolName(tc.toolId || tc.toolName), args: tc.arguments,
-        })),
-        ...(assistantMessage.reasoning && { reasoningContent: assistantMessage.reasoning }),
-      })
-
-      conversationMessages.push({
-        role: 'tool',
-        content: toolCalls.map(tc => ({
-          type: 'tool-result' as const,
-          toolCallId: tc.id, toolName: getAIToolName(tc.toolId || tc.toolName),
-          result: tc.status === 'completed' ? tc.result : { error: tc.error },
-        })),
-      })
 
       this.eventBus?.emit(sessionId, { type: 'content:continuation', turnIndex: 1 })
         .catch(err => console.error('[StreamEngine] continuation emit error:', err))
@@ -652,79 +581,55 @@ export class StreamEngine {
         speakMode: voiceConversation,
       }
 
-      const processor = createStreamProcessor(ctx, {
-        content: assistantMessage.content || '',
-        reasoning: assistantMessage.reasoning || '',
-      })
-
       try {
-        if (shouldUseAgentLoopStream(ctx)) {
-          console.log('[StreamEngine] Resuming agent loop after confirmation')
-          const requestStartTime = Date.now()
-          const resumeHistoryMessages = buildResumeHistoryAfterToolConfirmation(historyWithoutCurrent, assistantMessage)
-
-          const result = await executeAgentLoopStreamGeneration(
-            ctx,
-            resumeHistoryMessages,
-            session.name,
-            {
-              initialContent: {
-                content: assistantMessage.content || '',
-                reasoning: assistantMessage.reasoning || '',
-              },
-            },
-          )
-
-          const requestDuration = (Date.now() - requestStartTime) / 1000
-          console.log(`[StreamEngine] Agent loop resume completed in ${requestDuration.toFixed(2)}s`)
-
-          if (!result.pausedForConfirmation) {
-            this.removeController(sessionId)
-          }
-          return
-        }
-
-        console.log('[StreamEngine] Resuming tool loop after confirmation')
+        console.log('[StreamEngine] Resuming agent loop after confirmation')
         const requestStartTime = Date.now()
+        const resumeHistoryMessages = buildResumeHistoryAfterToolConfirmation(historyWithoutCurrent, assistantMessage)
 
-        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, [], processor, enabledSkills, ctx.steeringQueue, ctx.followUpQueue)
+        const result = await executeAgentLoopStreamGeneration(
+          ctx,
+          resumeHistoryMessages,
+          session.name,
+          {
+            initialContent: {
+              content: assistantMessage.content || '',
+              reasoning: assistantMessage.reasoning || '',
+            },
+          },
+        )
 
         const requestDuration = (Date.now() - requestStartTime) / 1000
-        console.log(`[StreamEngine] Resume completed in ${requestDuration.toFixed(2)}s`)
+        console.log(`[StreamEngine] Agent loop resume completed in ${requestDuration.toFixed(2)}s`)
 
         if (!result.pausedForConfirmation) {
-          await processor.finalize()
-          this.eventBus?.emit(sessionId, {
-            type: 'stream:complete',
-            data: { sessionName: session.name },
-          }).catch(err => console.error('[StreamEngine] stream:complete emit error:', err))
           this.removeController(sessionId)
         }
-      } catch (error: any) {
-        const isAborted = error.name === 'AbortError' || abortController.signal.aborted
+      } catch (error) {
+        const streamError = normalizeStreamError(error instanceof Error ? error : new Error(String(error)))
+        const isAborted = streamError.isAbortError || abortController.signal.aborted
         if (isAborted) {
-          await processor.finalize()
           this.eventBus?.emit(sessionId, { type: 'stream:aborted', reason: 'User cancelled' })
             .catch(err => console.error('[StreamEngine] stream:aborted emit error:', err))
         } else {
-          console.error('[StreamEngine] Resume streaming error:', error)
+          console.error('[StreamEngine] Resume streaming error:', streamError.error)
           store.deleteMessage(sessionId, messageId)
           const errorMessage: ChatMessage = {
             id: `error-${Date.now()}`, role: 'error',
-            content: error.message || 'Streaming error', timestamp: Date.now(),
-            errorDetails: extractErrorDetails(error),
+            content: streamError.message, timestamp: Date.now(),
+            errorDetails: streamError.details,
           }
           store.addMessage(sessionId, errorMessage)
           this.eventBus?.emit(sessionId, {
             type: 'stream:error',
-            data: { error: error.message || 'Streaming error', errorDetails: extractErrorDetails(error) },
+            data: { error: streamError.message, errorDetails: streamError.details },
           }).catch(err => console.error('[StreamEngine] stream:error emit error:', err))
         }
         this.removeController(sessionId)
       }
-    } catch (error: any) {
-      console.error('[StreamEngine] handleResumeAfterConfirm error:', error)
-      this.emitStreamError(sessionId, error.message || 'Resume error')
+    } catch (error) {
+      const streamError = normalizeStreamError(error instanceof Error ? error : new Error(String(error)))
+      console.error('[StreamEngine] handleResumeAfterConfirm error:', streamError.error)
+      this.emitStreamError(sessionId, streamError.message || 'Resume error')
     }
   }
 
@@ -988,6 +893,21 @@ export class StreamEngine {
       const latestSession = store.getSession(sessionId)
       if (!latestSession) return true
 
+      if (shouldSkipAutoCompactForProviderUsageMismatch({
+        providerId,
+        session: latestSession,
+        modelContextLength,
+      })) {
+        console.warn('[StreamEngine] Skipping auto compact because provider usage exceeds registered model context length:', {
+          sessionId,
+          providerId,
+          model: configWithApiKey.model,
+          contextSize: latestSession.contextSize ?? latestSession.lastInputTokens ?? 0,
+          modelContextLength,
+        })
+        return true
+      }
+
       const reason = getContextCompactReason({
         session: latestSession,
         modelContextLength,
@@ -1106,7 +1026,7 @@ export class StreamEngine {
 
   private async emitMessageCreated(sessionId: string, message: ChatMessage): Promise<void> {
     await this.eventBus?.emit(sessionId, {
-      type: 'message:user-created',
+      type: 'message:created',
       message,
     })
   }

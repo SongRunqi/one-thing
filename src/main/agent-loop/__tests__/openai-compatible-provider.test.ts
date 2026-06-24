@@ -140,4 +140,39 @@ describe('OpenAI-compatible agent provider', () => {
       reasoning_content: 'previous thinking',
     })
   })
+
+  it('uses text fallbacks for media tool messages when the provider API expects text tool output', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
+      'data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
+      'data: [DONE]\n\n',
+    ]))
+    const provider = createOpenAICompatibleAgentProvider({
+      providerId: 'openai',
+      apiKey: 'test-key',
+      baseUrl: 'https://openai.test/v1',
+      defaultBaseUrl: 'https://api.openai.com/v1',
+      fetchImpl,
+      supportsVision: true,
+    })
+
+    await provider.runTurn!({
+      model: 'gpt-test',
+      messages: [{
+        role: 'tool',
+        toolCallId: 'call_1',
+        content: [
+          { type: 'text', text: 'screenshot captured' },
+          { type: 'image', image: 'data:image/png;base64,abc', mediaType: 'image/png' },
+        ],
+      }],
+      turn: 1,
+    })
+
+    const request = JSON.parse(fetchImpl.mock.calls[0][1].body)
+    expect(request.messages[0]).toEqual({
+      role: 'tool',
+      tool_call_id: 'call_1',
+      content: 'screenshot captured\n[Image: image/png data omitted: 25 chars]',
+    })
+  })
 })

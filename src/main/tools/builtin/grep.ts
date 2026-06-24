@@ -11,6 +11,7 @@ import { Tool } from '../core/tool.js'
 import { Ripgrep } from '../../utils/ripgrep.js'
 import { checkFileAccess, findSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
 import { DEFAULT_TEXT_MAX_BYTES, formatSize, truncateLine, truncateTextHead, type TextTruncationResult } from '../core/text-truncation.js'
+import { toJsonObject } from '../../../shared/json.js'
 
 const DEFAULT_LIMIT = 100
 const GREP_MAX_LINE_LENGTH = 2000
@@ -23,7 +24,6 @@ export interface GrepMetadata {
   truncation?: TextTruncationResult
   matchLimitReached?: number
   linesTruncated?: boolean
-  [key: string]: unknown
 }
 
 const GrepParameters = z.object({
@@ -124,8 +124,10 @@ export const GrepTool = Tool.define<typeof GrepParameters, GrepMetadata>('grep',
     let isDirectory = false
     try {
       isDirectory = (await fs.stat(searchPath)).isDirectory()
-    } catch (error: any) {
-      if (error.code === 'ENOENT') throw new Error(`Path not found: ${searchPath}`)
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+        throw new Error(`Path not found: ${searchPath}`)
+      }
       throw error
     }
 
@@ -171,9 +173,10 @@ export const GrepTool = Tool.define<typeof GrepParameters, GrepMetadata>('grep',
         ignoreCase: args.ignoreCase,
         literal: args.literal,
       })
-    } catch (error: any) {
+    } catch (error) {
       if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
-      throw new Error(`Grep search failed: ${error.message}`)
+      const message = error instanceof Error ? error.message : 'unknown error'
+      throw new Error(`Grep search failed: ${message}`)
     }
     throwIfAborted()
 
@@ -229,7 +232,7 @@ export const GrepTool = Tool.define<typeof GrepParameters, GrepMetadata>('grep',
 
     ctx.updateResult?.({
       content: [{ type: 'text', text: output }],
-      details: { phase: 'ready', ...metadata },
+      details: toJsonObject({ phase: 'ready', ...metadata }),
     })
 
     return {

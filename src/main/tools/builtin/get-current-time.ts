@@ -34,7 +34,8 @@ export const definition: ToolDefinition = {
 
 export const handler: ToolHandler = async (args) => {
   try {
-    const { timezone, format = 'full' } = args
+    const timezone = typeof args.timezone === 'string' ? args.timezone : undefined
+    const format = typeof args.format === 'string' ? args.format : 'full'
 
     const now = new Date()
     let options: Intl.DateTimeFormatOptions = {}
@@ -99,10 +100,10 @@ export const handler: ToolHandler = async (args) => {
         timezone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
       },
     }
-  } catch (error: any) {
+  } catch (error) {
     return {
       success: false,
-      error: error.message || 'Failed to get current time',
+      error: error instanceof Error ? error.message : 'Failed to get current time',
     }
   }
 }

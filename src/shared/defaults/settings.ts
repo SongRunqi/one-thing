@@ -29,6 +29,11 @@ import type { ProviderConfig, AISettings } from '../ipc/providers.js'
 import type { ToolSettings } from '../ipc/tools.js'
 import type { ACPSettings } from '../ipc/acp.js'
 
+type ProviderConfigWithLocalAddress = ProviderConfig & { localAddress?: string }
+type LegacySoulMemoryCaptureSettings = SoulMemoryCaptureSettings & {
+  mode?: SoulMemoryCaptureSettings['mode'] | 'ask'
+}
+
 // ============================================================================
 // Constants
 // ============================================================================
@@ -319,7 +324,7 @@ export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   contextCompactEnabled: true,
   contextCompactThreshold: 85,
   contextCompactKeepRecentTurns: 6,
-  agentLoopStream: false,
+  agentLoopStream: true,
 }
 
 // ============================================================================
@@ -570,6 +575,7 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
         20,
         DEFAULT_CHAT_SETTINGS.contextCompactKeepRecentTurns ?? 6,
       ),
+      agentLoopStream: true,
     },
     tools: {
       ...defaults.tools,
@@ -601,10 +607,10 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     skills: settings.skills,
   }
 
-  stripLegacyProviderLocalAddress(merged.ai.providers)
+  stripProviderLocalAddress(merged.ai.providers)
   if (Array.isArray(merged.ai.customProviders)) {
     for (const provider of merged.ai.customProviders) {
-      delete (provider as any).localAddress
+      delete (provider as ProviderConfigWithLocalAddress).localAddress
     }
   }
 
@@ -942,7 +948,7 @@ function normalizeSoulMemoryFlushSettings(
 function normalizeSoulMemoryCaptureSettings(
   settings?: SoulMemoryCaptureSettings,
 ): Required<SoulMemoryCaptureSettings> {
-  const rawMode = (settings as { mode?: unknown } | undefined)?.mode
+  const rawMode = (settings as LegacySoulMemoryCaptureSettings | undefined)?.mode
   const mode = rawMode === 'explicit-only' ||
     rawMode === 'auto' ||
     rawMode === 'off'
@@ -1137,24 +1143,24 @@ function normalizeSoulMemoryReadSettings(
   }
 }
 
-function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
+function clampNumber(value: number | null | undefined, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.max(min, Math.min(max, Math.round(value)))
 }
 
-function clampFraction(value: unknown, min: number, max: number, fallback: number): number {
+function clampFraction(value: number | null | undefined, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
   return Math.max(min, Math.min(max, value))
 }
 
-function normalizeTypographyDensity(value: unknown): GeneralSettings['typographyDensity'] {
+function normalizeTypographyDensity(
+  value: GeneralSettings['typographyDensity'] | string | null | undefined
+): GeneralSettings['typographyDensity'] {
   return value === 'comfortable' ? 'comfortable' : DEFAULT_GENERAL_SETTINGS.typographyDensity
 }
 
-function stripLegacyProviderLocalAddress(providers: Record<string, unknown>): void {
+function stripProviderLocalAddress(providers: Record<string, ProviderConfig>): void {
   for (const config of Object.values(providers)) {
-    if (config && typeof config === 'object') {
-      delete (config as any).localAddress
-    }
+    delete (config as ProviderConfigWithLocalAddress).localAddress
   }
 }

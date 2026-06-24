@@ -1,8 +1,11 @@
 import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
-import { agentContentToText, collectAgentTurnFromStream } from '../stream.js'
+import { collectAgentTurnFromStream } from '../stream.js'
+import { agentToolMessageContentToText } from '../tool-results.js'
+import { readJsonSseData } from './sse.js'
 import type {
   AgentContentPart,
   AgentFinishReason,
+  AgentJsonObject,
   AgentMessage,
   AgentMessageContent,
   AgentModelCapabilities,
@@ -23,6 +26,8 @@ export interface OpenAICompatibleAgentProviderOptions {
   baseUrl?: string
   defaultBaseUrl: string
   fetchImpl?: FetchFn
+  headers?: Record<string, string>
+  resolveAuth?: () => Promise<{ apiKey?: string; headers?: Record<string, string> }>
   supportsVision?: boolean
   supportsReasoning?: boolean
   supportsTools?: boolean
@@ -37,7 +42,7 @@ type OpenAICompatibleMessage =
     }
   | {
       role: 'user'
-      content: string | Array<Record<string, unknown>>
+      content: string | OpenAICompatibleUserContentPart[]
     }
   | {
       role: 'assistant'
@@ -63,8 +68,24 @@ interface OpenAICompatibleTool {
   function: {
     name: string
     description?: string
-    parameters?: Record<string, unknown>
+    parameters?: AgentJsonObject
   }
+}
+
+type OpenAICompatibleUserContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
+interface OpenAICompatibleRequestBody {
+  model: string
+  messages: OpenAICompatibleMessage[]
+  stream: true
+  stream_options: { include_usage: true }
+  tools?: OpenAICompatibleTool[]
+  tool_choice?: AgentToolChoice
+  max_tokens?: number
+  max_completion_tokens?: number
+  temperature?: number
 }
 
 interface OpenAICompatibleStreamChunk {
@@ -105,19 +126,11 @@ interface ToolCallAccumulator {
   started: boolean
 }
 
-function dataContentToImageUrl(data: unknown, mediaType?: string): string | undefined {
-  if (typeof data === 'string') {
-    if (data.startsWith('data:') || data.startsWith('http://') || data.startsWith('https://')) {
-      return data
-    }
-    return `data:${mediaType || 'image/png'};base64,${data}`
+function dataContentToImageUrl(data: string, mediaType?: string): string {
+  if (data.startsWith('data:') || data.startsWith('http://') || data.startsWith('https://')) {
+    return data
   }
-
-  if (data instanceof URL) return data.toString()
-  if (data instanceof Uint8Array) {
-    return `data:${mediaType || 'image/png'};base64,${Buffer.from(data).toString('base64')}`
-  }
-  return undefined
+  return `data:${mediaType || 'image/png'};base64,${data}`
 }
 
 function contentToText(content: AgentMessageContent): string {
@@ -134,7 +147,7 @@ function toUserContent(content: AgentMessageContent): OpenAICompatibleMessage & 
   if (typeof content === 'string') return { role: 'user', content }
   if (!Array.isArray(content)) return { role: 'user', content: '' }
 
-  const parts: Array<Record<string, unknown>> = []
+  const parts: OpenAICompatibleUserContentPart[] = []
   for (const part of content) {
     if (part.type === 'text') {
       parts.push({ type: 'text', text: part.text })
@@ -142,12 +155,12 @@ function toUserContent(content: AgentMessageContent): OpenAICompatibleMessage & 
     }
     if (part.type === 'image') {
       const imageUrl = dataContentToImageUrl(part.image, part.mediaType)
-      if (imageUrl) parts.push({ type: 'image_url', image_url: { url: imageUrl } })
+      parts.push({ type: 'image_url', image_url: { url: imageUrl } })
       continue
     }
     if (part.type === 'file' && part.mediaType.startsWith('image/')) {
       const imageUrl = dataContentToImageUrl(part.data, part.mediaType)
-      if (imageUrl) parts.push({ type: 'image_url', image_url: { url: imageUrl } })
+      parts.push({ type: 'image_url', image_url: { url: imageUrl } })
     }
   }
 
@@ -166,7 +179,7 @@ function toOpenAICompatibleMessages(
       return {
         role: 'tool',
         tool_call_id: message.toolCallId ?? '',
-        content: agentContentToText(message.content),
+        content: agentToolMessageContentToText(message.content),
       }
     }
 
@@ -263,103 +276,76 @@ async function* streamOpenAICompatibleResponse(
   response: Response,
   turn: number,
   providerId: string,
-): AsyncGenerator<AgentTurnStreamEvent, void, unknown> {
-  const reader = response.body?.getReader()
-  if (!reader) throw new Error(`${providerId} agent loop: response has no body`)
-
-  const decoder = new TextDecoder()
+): AsyncGenerator<AgentTurnStreamEvent, void, void> {
   const toolCalls = new Map<number, ToolCallAccumulator>()
-  let buffer = ''
   let usage: AgentUsage | undefined
   let finishReason: AgentFinishReason = 'unknown'
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+  for await (const chunk of readJsonSseData<OpenAICompatibleStreamChunk>(response, {
+    sourceName: `${providerId} agent loop`,
+    invalidMessage: 'invalid stream chunk',
+  })) {
+    if (chunk.error) {
+      throw new Error(`${providerId} agent loop error: ${chunk.error.message ?? 'unknown error'}`)
+    }
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
+    usage = usageFromChunk(chunk) ?? usage
+    const choice = chunk.choices?.[0]
+    const delta = choice?.delta
 
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data: ')) continue
-        if (trimmed === 'data: [DONE]') continue
+    const reasoning = delta?.reasoning_content ?? delta?.reasoning
+    if (reasoning) {
+      yield { type: 'reasoning-delta', turn, delta: reasoning }
+    }
 
-        const payload = trimmed.slice(6)
-        let chunk: OpenAICompatibleStreamChunk
-        try {
-          chunk = JSON.parse(payload) as OpenAICompatibleStreamChunk
-        } catch {
-          throw new Error(`${providerId} agent loop: invalid stream chunk: ${payload}`)
+    if (delta?.content) {
+      yield { type: 'text-delta', turn, delta: delta.content }
+    }
+
+    if (delta?.tool_calls) {
+      for (const toolCallDelta of delta.tool_calls) {
+        const index = toolCallDelta.index
+        let entry = toolCalls.get(index)
+        if (!entry) {
+          entry = {
+            id: toolCallDelta.id ?? `tool-${turn}-${index}`,
+            name: '',
+            arguments: '',
+            started: false,
+          }
+          toolCalls.set(index, entry)
         }
 
-        if (chunk.error) {
-          throw new Error(`${providerId} agent loop error: ${chunk.error.message ?? 'unknown error'}`)
-        }
+        if (toolCallDelta.id) entry.id = toolCallDelta.id
+        if (toolCallDelta.function?.name) entry.name += toolCallDelta.function.name
+        const argumentsDelta = toolCallDelta.function?.arguments ?? ''
+        if (argumentsDelta) entry.arguments += argumentsDelta
 
-        usage = usageFromChunk(chunk) ?? usage
-        const choice = chunk.choices?.[0]
-        const delta = choice?.delta
-
-        const reasoning = delta?.reasoning_content ?? delta?.reasoning
-        if (reasoning) {
-          yield { type: 'reasoning-delta', turn, delta: reasoning }
-        }
-
-        if (delta?.content) {
-          yield { type: 'text-delta', turn, delta: delta.content }
-        }
-
-        if (delta?.tool_calls) {
-          for (const toolCallDelta of delta.tool_calls) {
-            const index = toolCallDelta.index
-            let entry = toolCalls.get(index)
-            if (!entry) {
-              entry = {
-                id: toolCallDelta.id ?? `tool-${turn}-${index}`,
-                name: '',
-                arguments: '',
-                started: false,
-              }
-              toolCalls.set(index, entry)
-            }
-
-            if (toolCallDelta.id) entry.id = toolCallDelta.id
-            if (toolCallDelta.function?.name) entry.name += toolCallDelta.function.name
-            const argumentsDelta = toolCallDelta.function?.arguments ?? ''
-            if (argumentsDelta) entry.arguments += argumentsDelta
-
-            if (!entry.started && entry.name) {
-              entry.started = true
-              yield {
-                type: 'tool-call-start',
-                turn,
-                toolCallId: entry.id,
-                toolName: entry.name,
-              }
-            }
-
-            if (argumentsDelta && entry.name) {
-              yield {
-                type: 'tool-call-delta',
-                turn,
-                toolCallId: entry.id,
-                toolName: entry.name,
-                argumentsDelta,
-              }
-            }
+        if (!entry.started && entry.name) {
+          entry.started = true
+          yield {
+            type: 'tool-call-start',
+            turn,
+            toolCallId: entry.id,
+            toolName: entry.name,
           }
         }
 
-        if (choice?.finish_reason) {
-          finishReason = mapFinishReason(choice.finish_reason)
+        if (argumentsDelta && entry.name) {
+          yield {
+            type: 'tool-call-delta',
+            turn,
+            toolCallId: entry.id,
+            toolName: entry.name,
+            argumentsDelta,
+          }
         }
       }
     }
-  } finally {
-    reader.releaseLock()
+
+    if (choice?.finish_reason) {
+      finishReason = mapFinishReason(choice.finish_reason)
+    }
   }
 
   for (const [, entry] of [...toolCalls.entries()].sort(([a], [b]) => a - b)) {
@@ -400,9 +386,9 @@ export function createOpenAICompatibleAgentProvider(options: OpenAICompatibleAge
   const fetchImpl = options.fetchImpl ?? createRequiredAppFetch()
   const capabilities = buildCapabilities(options)
 
-  async function* streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, unknown> {
+  async function* streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
     const tools = toOpenAICompatibleTools(request.tools)
-    const body: Record<string, unknown> = {
+    const body: OpenAICompatibleRequestBody = {
       model: request.model,
       messages: toOpenAICompatibleMessages(request.messages, Boolean(options.includeAssistantReasoning)),
       stream: true,
@@ -420,12 +406,18 @@ export function createOpenAICompatibleAgentProvider(options: OpenAICompatibleAge
       body.temperature = request.temperature
     }
 
+    const resolvedAuth = options.resolveAuth ? await options.resolveAuth() : undefined
+    const apiKey = resolvedAuth?.apiKey ?? options.apiKey ?? ''
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      ...options.headers,
+      ...resolvedAuth?.headers,
+    }
+
     const response = await fetchImpl(`${baseUrl}/chat/completions`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${options.apiKey ?? ''}`,
-      },
+      headers,
       body: JSON.stringify(body),
       signal: request.abortSignal,
     })

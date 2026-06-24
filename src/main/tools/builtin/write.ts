@@ -20,6 +20,7 @@ import {
   readTextFileSnapshot,
   type TextFileSnapshot,
 } from './file-snapshot.js'
+import type { JsonObjectProperty } from '../../../shared/json.js'
 
 function filePermissionPattern(targetPath: string): string {
   return path.join(path.dirname(targetPath), '*')
@@ -44,7 +45,7 @@ export interface WriteResultMetadata {
   auditId?: string
   auditPath?: string
   afterContentHash?: string
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 export interface WriteMetadata extends WriteResultMetadata {
@@ -56,7 +57,7 @@ export interface WriteMetadata extends WriteResultMetadata {
   additions?: number
   deletions?: number
   originalContentHash?: string
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 interface WritePlan {

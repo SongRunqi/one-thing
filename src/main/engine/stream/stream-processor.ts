@@ -13,7 +13,23 @@ import { isMCPTool, parseMCPToolId, findMCPToolIdByShortName, MCPManager } from 
 import { resolveAIToolName } from '../../providers/tool-name-alias.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import type { PendingMessageQueue } from './message-queue.js'
-import type { AgentOutputModality } from '../../agent-loop/types.js'
+import type { AgentJsonObject, AgentOutputModality } from '../../agent-loop/types.js'
+import type { AgentRuntimeProviderConfig } from '../../providers/agent-runtime.js'
+
+export type StreamProviderConfig = ProviderConfig & AgentRuntimeProviderConfig
+
+export type StreamSenderPayload =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | object
+
+export interface StreamSender {
+  isDestroyed(): boolean
+  send(channel: string, ...args: StreamSenderPayload[]): void
+}
 
 // ============================================================
 // Active Streams Registry
@@ -54,7 +70,7 @@ export interface ResolvedTool {
  * @param args Optional tool arguments for context-aware resolution
  * @returns Resolved tool identity with full ID and display name
  */
-export function resolveToolIdentity(toolName: string, args: Record<string, any> = {}): ResolvedTool {
+export function resolveToolIdentity(toolName: string, args: AgentJsonObject = {}): ResolvedTool {
   const originalToolName = resolveAIToolName(toolName)
   let toolId = originalToolName
   let displayName = originalToolName
@@ -93,16 +109,16 @@ export function resolveToolIdentity(toolName: string, args: Record<string, any> 
  * Context for streaming operations
  */
 export interface StreamContext {
-  sender: Electron.WebContents
+  sender: StreamSender
   sessionId: string
   assistantMessageId: string
   abortSignal: AbortSignal
   settings: AppSettings
-  providerConfig: ProviderConfig
+  providerConfig: StreamProviderConfig
   providerId: string
   requestedOutputModalities?: AgentOutputModality[]
   toolSettings: ToolSettings | undefined
-  // Note: skills are passed separately to runStream/executeToolAndUpdate, not stored here
+  // Note: skills are resolved by the active stream runtime, not stored here.
   // Accumulated token usage across all turns (for statistics)
   accumulatedUsage?: { inputTokens: number; outputTokens: number; totalTokens: number; durationMs?: number }
   // Last turn's token usage (for context size - NOT accumulated)
@@ -129,7 +145,7 @@ export interface StreamProcessor {
   handleToolCallChunk(toolCallData: {
     toolCallId: string
     toolName: string
-    args: Record<string, any>
+    args: AgentJsonObject
   }, options?: { publish?: boolean }): ToolCall
   /** Handle streaming tool input start - creates a pending tool call */
   handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number, options?: { publish?: boolean }): void
@@ -152,7 +168,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
   const toolCalls: ToolCall[] = []
   const emitter = createEventOnlyEmitter(ctx)
 
-  // Buffer for streaming tool input (AI SDK v6 tool-call-streaming-start/delta)
+  // Buffer for streaming tool input start/delta events.
   // Maps toolCallId -> { toolName, argsText (accumulated JSON string), stepId }
   const toolInputBuffers = new Map<string, { toolName: string; argsText: string; stepId?: string; visible: boolean }>()
 
@@ -183,7 +199,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
     handleToolCallChunk(toolCallData: {
       toolCallId: string
       toolName: string
-      args: Record<string, any>
+      args: AgentJsonObject
     }, options: { publish?: boolean } = {}): ToolCall {
       const publish = options.publish !== false
       // Check if a placeholder already exists (from handleToolInputStart)
@@ -308,7 +324,7 @@ export function createStreamProcessor(ctx: StreamContext, initialContent?: { con
       }
 
       // Parse the accumulated JSON args
-      let args: Record<string, any> = {}
+      let args: AgentJsonObject = {}
       try {
         if (buffer.argsText.trim()) {
           args = JSON.parse(buffer.argsText)

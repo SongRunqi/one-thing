@@ -12,18 +12,17 @@
 
 import { z } from 'zod'
 import type { Step, ToolExecutionMode, ToolPartialResult, ToolRenderKind, ToolRenderShell, ToolResult as StructuredToolResult, ToolResultContentPart } from '../../../shared/ipc/index.js'
+import type { JsonObject, JsonObjectProperty, JsonSchemaObject, JsonValue } from '../../../shared/json.js'
 import type { ToolEffect, ToolPreview } from './tool-effect.js'
 
 /**
  * Tool metadata - arbitrary key-value pairs for real-time UI updates
  */
-export interface ToolMetadata {
-  [key: string]: unknown
-}
+export type ToolMetadata = object
 
 export type { ToolResultContentPart }
 export type ToolPartialResultUpdate = ToolPartialResult
-export type CanonicalToolResult<TDetails = Record<string, unknown> | undefined> = StructuredToolResult<TDetails>
+export type CanonicalToolResult<TDetails = JsonObject | undefined> = StructuredToolResult<TDetails>
 export type { ToolExecutionMode, ToolRenderKind, ToolRenderShell }
 
 /**
@@ -79,8 +78,6 @@ export interface InitContext {
     baseUrl?: string
     model: string
   }
-  /** Any additional context */
-  [key: string]: unknown
 }
 
 /**
@@ -135,6 +132,7 @@ export interface ToolResult<M extends ToolMetadata = ToolMetadata> {
     type: 'file' | 'image'
     path: string
     content?: string
+    mimeType?: string
   }>
 }
 
@@ -416,7 +414,7 @@ export namespace Tool {
    */
   export function validateArgs<P extends z.ZodType>(
     tool: ToolInfo<P>,
-    args: unknown
+    args: JsonValue | undefined
   ): z.infer<P> {
     return tool.parameters.parse(args)
   }
@@ -426,7 +424,7 @@ export namespace Tool {
    */
   export function safeValidateArgs<P extends z.ZodType>(
     tool: ToolInfo<P>,
-    args: unknown
+    args: JsonValue | undefined
   ): { success: true; data: z.infer<P> } | { success: false; error: z.ZodError } {
     const result = tool.parameters.safeParse(args)
     if (result.success) {
@@ -440,7 +438,7 @@ export namespace Tool {
    */
   export async function execute<P extends z.ZodType, M extends ToolMetadata>(
     tool: ToolInfo<P, M>,
-    args: unknown,
+    args: JsonValue | undefined,
     ctx: ToolContext<M>
   ): Promise<ToolResult<M>> {
     // Validate arguments
@@ -469,24 +467,41 @@ export namespace Tool {
   }
 }
 
+function jsonSchemaProperties(value: JsonObjectProperty): Record<string, JsonSchemaObject> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+
+  const properties: Record<string, JsonSchemaObject> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      properties[key] = item as JsonSchemaObject
+    }
+  }
+  return properties
+}
+
+function jsonSchemaRequired(value: JsonObjectProperty): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string')
+}
+
 /**
- * Convert Zod schema to JSON Schema for AI SDK compatibility
+ * Convert Zod schema to JSON Schema for provider tool schemas.
  * Uses Zod 4's native toJSONSchema() method
  */
 export function zodToJsonSchema(schema: z.ZodType): {
   type: 'object'
-  properties: Record<string, unknown>
+  properties: Record<string, JsonSchemaObject>
   required: string[]
 } {
   try {
     // Use Zod 4's native toJSONSchema() method
-    const schemaWithMethod = schema as z.ZodType & { toJSONSchema?: () => Record<string, unknown> }
+    const schemaWithMethod = schema as z.ZodType & { toJSONSchema?: () => JsonObject }
     if (typeof schemaWithMethod.toJSONSchema === 'function') {
-      const jsonSchema = schemaWithMethod.toJSONSchema()
+      const jsonSchema = schemaWithMethod.toJSONSchema() as JsonObject
       return {
         type: 'object',
-        properties: (jsonSchema.properties as Record<string, unknown>) || {},
-        required: (jsonSchema.required as string[]) || [],
+        properties: jsonSchemaProperties(jsonSchema.properties),
+        required: jsonSchemaRequired(jsonSchema.required),
       }
     }
 

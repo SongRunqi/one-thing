@@ -6,6 +6,7 @@ import { ReadTool } from '../read'
 import { Permission } from '../../../permission/index.js'
 import { resetVariablesStoreForTests } from '../../../variables/store/index.js'
 import { createDefaultVariablesFile } from '../../../variables/store/schema.js'
+import type { ToolContext } from '../../core/tool.js'
 
 vi.mock('../../../permission/index.js', () => ({
   Permission: {
@@ -13,7 +14,7 @@ vi.mock('../../../permission/index.js', () => ({
   },
 }))
 
-function createContext(workingDirectory: string, overrides: Record<string, unknown> = {}) {
+function createContext(workingDirectory: string, overrides: Partial<ToolContext> = {}): ToolContext {
   return {
     sessionId: 'test-session',
     messageId: 'test-message',
@@ -123,6 +124,36 @@ describe('ReadTool path API', () => {
     expect(updateResult).toHaveBeenLastCalledWith(expect.objectContaining({
       content: [{ type: 'text', text: result.output }],
       details: expect.objectContaining({ phase: 'ready', path: filePath }),
+    }))
+  })
+
+  it('returns image files as base64 image content for vision models', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'onething-read-image-'))
+    const filePath = path.join(dir, 'pixel.png')
+    const imageBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
+    await fs.writeFile(filePath, Buffer.from(imageBase64, 'base64'))
+    const updateResult = vi.fn()
+
+    const result = await ReadTool.execute({ path: 'pixel.png' }, createContext(dir, { updateResult }))
+
+    expect(result.output).toContain('MIME type: image/png')
+    expect(result.metadata).toMatchObject({
+      path: filePath,
+      isBinary: true,
+      mimeType: 'image/png',
+    })
+    expect(result.attachments).toEqual([{
+      type: 'image',
+      path: filePath,
+      content: imageBase64,
+      mimeType: 'image/png',
+    }])
+    expect(updateResult).toHaveBeenLastCalledWith(expect.objectContaining({
+      content: [
+        { type: 'text', text: result.output },
+        { type: 'image', path: filePath, data: imageBase64, mimeType: 'image/png' },
+      ],
+      details: expect.objectContaining({ phase: 'ready', path: filePath, mimeType: 'image/png' }),
     }))
   })
 

@@ -6,7 +6,7 @@ import {
 
 export const AGENT_LOOP_STREAM_ENV = 'ONETHING_AGENT_LOOP_STREAM'
 
-export type AgentLoopStreamEnabledBy = 'env' | 'settings' | 'off'
+export type AgentLoopStreamEnabledBy = 'env' | 'settings' | 'default'
 
 export interface AgentLoopStreamSelectionContext {
   providerId: string
@@ -29,20 +29,20 @@ function isEnabled(value: string | undefined): boolean {
 
 export function resolveAgentLoopStreamRoute(ctx: AgentLoopStreamSelectionContext): AgentLoopStreamRoute {
   const envEnabled = isEnabled(process.env[AGENT_LOOP_STREAM_ENV])
-  const settingsEnabled = ctx.settings?.chat?.agentLoopStream === true
+  const configured = ctx.settings?.chat?.agentLoopStream
+  const settingsEnabled = configured === true
   const enabledBy: AgentLoopStreamEnabledBy = envEnabled
     ? 'env'
     : settingsEnabled
       ? 'settings'
-      : 'off'
+      : 'default'
   const providerSupported = isAgentProviderRuntimeSupported(ctx.providerId)
-  const enabled = envEnabled || settingsEnabled
 
   return {
-    enabled,
+    enabled: true,
     enabledBy,
     providerSupported,
-    active: enabled && providerSupported,
+    active: providerSupported,
     supportedProviderIds: getSupportedAgentProviderRuntimeIds(),
   }
 }

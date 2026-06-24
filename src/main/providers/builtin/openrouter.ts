@@ -2,12 +2,9 @@
  * OpenRouter Provider Definition
  *
  * OpenRouter provides access to multiple AI models through a unified API.
- * Uses @ai-sdk/openai-compatible since OpenRouter is OpenAI-compatible.
  */
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { ProviderDefinition } from '../types.js'
-import { createBoundFetch } from '../bound-fetch.js'
 
 const openrouterProvider: ProviderDefinition = {
   id: 'openrouter',
@@ -24,17 +21,6 @@ const openrouterProvider: ProviderDefinition = {
     // All models fetched dynamically from OpenRouter API
   },
 
-  create: ({ apiKey }) => {
-    const provider = createOpenAICompatible({
-      name: 'openrouter',
-      apiKey,
-      baseURL: 'https://openrouter.ai/api/v1',
-      fetch: createBoundFetch(),
-    })
-    return {
-      createModel: (modelId: string) => provider(modelId),
-    }
-  },
 }
 
 export default openrouterProvider

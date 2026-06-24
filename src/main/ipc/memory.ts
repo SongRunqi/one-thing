@@ -1,5 +1,6 @@
 import { ipcMain, shell } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { toJsonObject } from '../../shared/json.js'
 import type {
   MemoryAppendRequest,
   MemoryCaptureDecisionRequest,
@@ -72,7 +73,7 @@ async function withMemoryIpcLog<T>(
     stage: 'request',
     status: 'started',
     runId,
-    request: request as Record<string, unknown> | undefined,
+    request: request ? toJsonObject(request) : undefined,
   })
   try {
     const result = await run()

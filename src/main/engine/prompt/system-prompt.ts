@@ -16,9 +16,10 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { SkillDefinition, AppSettings } from '../../../shared/ipc.js'
+import type { JsonObject, JsonObjectProperty } from '../../../shared/json.js'
 import { getMacOSAutomationDocsPath } from '../../stores/paths.js'
 import { getAgent } from '../../agents/index.js'
-import { collectPluginPromptContext } from './plugin-context.js'
+import { collectPluginPromptContext, type PromptProviderConfig } from './plugin-context.js'
 import type { PromptActiveProject, PromptKnownProjects } from './types.js'
 
 const AGENTS_MAX_BYTES = 32 * 1024
@@ -27,7 +28,7 @@ export interface BuildPromptContextOptions {
   sessionId?: string
   agentId?: string
   providerId?: string
-  providerConfig?: Record<string, unknown>
+  providerConfig?: PromptProviderConfig
   settings?: AppSettings
   hasTools: boolean
   skills: SkillDefinition[]
@@ -42,18 +43,21 @@ export interface BuildPromptContextOptions {
   voiceConversation?: boolean
 }
 
+type PromptMessageContent = JsonObjectProperty | object
+type PromptToolCall = { toolCallId: string; toolName: string; args: JsonObject }
+
 export type PromptRequestMessage =
-  | { role: 'system' | 'developer' | 'user'; content: unknown }
+  | { role: 'system' | 'developer' | 'user'; content: PromptMessageContent }
   | {
       role: 'assistant'
-      content: unknown
+      content: PromptMessageContent
       reasoningContent?: string
       codexEncryptedReasoning?: string[]
-      toolCalls?: Array<{ toolCallId: string; toolName: string; args: Record<string, unknown> }>
+      toolCalls?: PromptToolCall[]
     }
   | {
       role: 'tool'
-      content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: unknown }>
+      content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: PromptMessageContent }>
     }
 
 export interface BuildPromptOptions extends BuildPromptContextOptions {

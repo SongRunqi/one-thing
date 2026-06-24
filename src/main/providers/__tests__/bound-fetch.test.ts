@@ -1,16 +1,30 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { clearAppDispatcherCache, getAppDispatcher, shouldBypassProxy, validateProxyUrl } from '../bound-fetch.js'
 
-function getDispatcherOptions(dispatcher: unknown): Record<string, unknown> | undefined {
-  const optionsSymbol = Object.getOwnPropertySymbols(dispatcher as object)
-    .find(symbol => symbol.description === 'options')
-  return optionsSymbol ? (dispatcher as any)[optionsSymbol] : undefined
+type DispatcherOptions = {
+  bodyTimeout?: number
+  localAddress?: string
+  proxyTls?: {
+    localAddress?: string
+  }
 }
 
-function getProxyInnerAgent(dispatcher: unknown): unknown {
-  const proxyAgentSymbol = Object.getOwnPropertySymbols(dispatcher as object)
+type SymbolInspectable = {
+  [key: symbol]: object | DispatcherOptions | undefined
+}
+
+function getDispatcherOptions(dispatcher: object): DispatcherOptions | undefined {
+  const optionsSymbol = Object.getOwnPropertySymbols(dispatcher)
+    .find(symbol => symbol.description === 'options')
+  const value = optionsSymbol ? (dispatcher as SymbolInspectable)[optionsSymbol] : undefined
+  return value && typeof value === 'object' ? value as DispatcherOptions : undefined
+}
+
+function getProxyInnerAgent(dispatcher: object): object {
+  const proxyAgentSymbol = Object.getOwnPropertySymbols(dispatcher)
     .find(symbol => symbol.description === 'proxy agent')
-  return proxyAgentSymbol ? (dispatcher as any)[proxyAgentSymbol] : dispatcher
+  const value = proxyAgentSymbol ? (dispatcher as SymbolInspectable)[proxyAgentSymbol] : undefined
+  return value && typeof value === 'object' ? value : dispatcher
 }
 
 beforeEach(() => {
@@ -107,7 +121,7 @@ describe('dispatcher timeouts', () => {
       address: '192.168.1.23',
     })
 
-    expect((getDispatcherOptions(getProxyInnerAgent(dispatcher))?.proxyTls as any)?.localAddress).toBe('192.168.1.23')
+    expect(getDispatcherOptions(getProxyInnerAgent(dispatcher))?.proxyTls?.localAddress).toBe('192.168.1.23')
   })
 
   it('does not bind selected local address when proxy is loopback', () => {
@@ -119,6 +133,6 @@ describe('dispatcher timeouts', () => {
       address: '192.168.1.23',
     })
 
-    expect((getDispatcherOptions(getProxyInnerAgent(dispatcher))?.proxyTls as any)?.localAddress).toBeUndefined()
+    expect(getDispatcherOptions(getProxyInnerAgent(dispatcher))?.proxyTls?.localAddress).toBeUndefined()
   })
 })

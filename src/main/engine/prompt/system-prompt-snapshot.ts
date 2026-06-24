@@ -1,16 +1,26 @@
 import type {
   AppSettings,
+  OAuthToken,
+  ProviderConfig,
   SkillDefinition,
   SystemPromptSnapshot,
   ToolDefinition,
 } from '../../../shared/ipc.js'
+import type { ProviderAuthContext } from '../../auth/types.js'
 import * as store from '../../store.js'
+import {
+  agentSupportsTools,
+  resolveAgentModelCapabilities,
+} from '../../agent-loop/capabilities.js'
+import {
+  createAgentProviderFromRuntime,
+} from '../../agent-loop/providers/factory.js'
+import { agentToolDefinitionsFromSourceTools } from '../../agent-loop/tools.js'
 import { getAgent } from '../../agents/index.js'
 import { getSkillsForSession } from '../../ipc/skills.js'
-import { getMCPToolsForAI } from '../../mcp/index.js'
+import { getMCPRouterToolDefinition } from '../../mcp/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
 import {
-  convertToolDefinitionsForAI,
   isProviderSupported,
 } from '../../providers/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
@@ -24,17 +34,15 @@ import {
   setInitContext,
 } from '../../tools/index.js'
 import { buildContextVariablesPromptText } from '../../variables/index.js'
-import { getCodexNativeToolsForConfig } from '../stream/tool-loop.js'
+import { getCodexNativeToolsForConfig } from '../stream/codex-native-tools.js'
 import { resolveAgentLoopStreamRoute } from '../stream/agent-loop-selection.js'
 import { buildPrompt } from './system-prompt.js'
 
-type ProviderConfigWithAuth = Record<string, unknown> & {
-  model: string
-  selectedModels?: string[]
-  apiKey?: string
-  authContext?: unknown
-  oauthToken?: unknown
+type ProviderConfigWithAuth = ProviderConfig & {
+  authContext?: ProviderAuthContext
+  oauthToken?: OAuthToken
 }
+type PromptProviderConfigValue = string | number | boolean | null | undefined | object
 
 function skillForInit(skill: SkillDefinition) {
   return {
@@ -134,6 +142,50 @@ function nativeToolSnapshot(name: string) {
   }
 }
 
+function providerRuntimeApiType(providerConfig: ProviderConfigWithAuth): 'openai' | 'anthropic' | undefined {
+  const apiType = 'apiType' in providerConfig ? providerConfig.apiType : undefined
+  return apiType === 'openai' || apiType === 'anthropic' ? apiType : undefined
+}
+
+function providerConfigForPrompt(providerConfig: ProviderConfigWithAuth): Record<string, PromptProviderConfigValue> {
+  return { ...providerConfig }
+}
+
+async function resolveModelSupportsToolsForSnapshot(options: {
+  provider: Awaited<ReturnType<typeof resolveProviderForSnapshot>>
+  agentLoopActive: boolean
+  workingDirectory?: string
+  sessionId: string
+}): Promise<boolean> {
+  if (!options.provider.providerSupported) return false
+
+  if (options.agentLoopActive) {
+    const agentProvider = createAgentProviderFromRuntime(options.provider.providerId, {
+      apiKey: options.provider.providerConfig.apiKey,
+      baseUrl: typeof options.provider.providerConfig.baseUrl === 'string'
+        ? options.provider.providerConfig.baseUrl
+        : undefined,
+      model: options.provider.model,
+      apiType: providerRuntimeApiType(options.provider.providerConfig),
+      oauthToken: options.provider.providerConfig.oauthToken,
+      authContext: options.provider.providerConfig.authContext,
+      modelCapabilitiesByModel: options.provider.providerConfig.modelCapabilitiesByModel,
+      models: options.provider.providerConfig.models,
+    }, {
+      workingDirectory: options.workingDirectory,
+      localSessionId: options.sessionId,
+    })
+
+    if (agentProvider) {
+      const capabilities = await resolveAgentModelCapabilities(agentProvider, options.provider.model)
+      return agentSupportsTools(capabilities)
+    }
+  }
+
+  return modelRegistry.modelSupportsTools(options.provider.model, options.provider.providerId)
+    .catch(() => false)
+}
+
 function skillSnapshot(skill: SkillDefinition) {
   return {
     id: skill.id,
@@ -202,7 +254,9 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
   const skillsEnabled = settings.skills?.enableSkills !== false
   const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
 
-  if (settings.tools?.enableToolCalls) {
+  const enableToolCalls = settings.tools?.enableToolCalls !== false
+
+  if (enableToolCalls) {
     setInitContext({
       skills: enabledSkills.map(skillForInit),
       workingDirectory: session.workingDirectory,
@@ -219,13 +273,18 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     await initializeAsyncTools()
   }
 
-  const enableToolCalls = settings.tools?.enableToolCalls === true
   const allEnabledTools = enableToolCalls ? await getEnabledToolsAsync(settings.tools?.tools) : []
   const builtinTools = allEnabledTools.filter(tool => !tool.id.startsWith('mcp:'))
-  const mcpTools = enableToolCalls ? getMCPToolsForAI(settings.tools?.tools) : {}
-  const modelSupportsTools = provider.providerSupported
-    ? await modelRegistry.modelSupportsTools(provider.model, provider.providerId).catch(() => false)
-    : false
+  const mcpRouterTool = enableToolCalls ? getMCPRouterToolDefinition() : null
+  const mcpTools = mcpRouterTool && settings.tools?.tools?.[mcpRouterTool.id]?.enabled !== false
+    ? agentToolDefinitionsFromSourceTools([mcpRouterTool])
+    : {}
+  const modelSupportsTools = await resolveModelSupportsToolsForSnapshot({
+    provider,
+    agentLoopActive: agentLoopStream.active,
+    workingDirectory: session.workingDirectory,
+    sessionId,
+  })
   const codexNativeTools = await getCodexNativeToolsForConfig({
     providerId: provider.providerId,
     providerConfig: provider.providerConfig,
@@ -237,14 +296,14 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     Object.keys(mcpTools).length > 0 ||
     codexNativeTools.length > 0
   )
-  const builtinToolsForAI = hasTools ? convertToolDefinitionsForAI(builtinTools) : {}
+  const builtinToolDefinitions = hasTools ? agentToolDefinitionsFromSourceTools(builtinTools) : {}
   const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
   const agent = getAgent(session.agentId)
   const requestMessages = await buildPrompt({
     sessionId,
     agentId: session.agentId,
     providerId: provider.providerId,
-    providerConfig: provider.providerConfig,
+    providerConfig: providerConfigForPrompt(provider.providerConfig),
     settings,
     hasTools,
     skills: enabledSkills,
@@ -253,7 +312,7 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     contextVariables: await buildContextVariablesPromptText(sessionId),
     activeProject: projectVars.active,
     knownProjects: projectVars.known,
-    toolNames: [...Object.keys(builtinToolsForAI), ...codexNativeTools],
+    toolNames: [...Object.keys(builtinToolDefinitions), ...codexNativeTools],
     mcpToolNames: Object.keys(mcpTools),
     historyMessages: [],
   })
@@ -275,7 +334,7 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
       modelSupportsTools,
       hasTools,
       configuredCount: allEnabledTools.length + Object.keys(mcpTools).length + codexNativeTools.length,
-      modelFacingCount: Object.keys(builtinToolsForAI).length + Object.keys(mcpTools).length + codexNativeTools.length,
+      modelFacingCount: Object.keys(builtinToolDefinitions).length + Object.keys(mcpTools).length + codexNativeTools.length,
       builtin: builtinTools.map(toolSnapshot),
       mcp: Object.entries(mcpTools).map(([name, definition]) => mcpToolSnapshot(name, definition)),
       codexNative: codexNativeTools.map(nativeToolSnapshot),

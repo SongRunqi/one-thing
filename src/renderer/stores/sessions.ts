@@ -1,7 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import type {
-	ChatSession,
 	SessionDetails,
 	ContextVariable,
 	PermissionMode,
@@ -13,7 +12,7 @@ import { useSettingsStore } from "./settings";
 // Base session type for list display - can be metadata-only initially, then
 // hydrated with full activation details such as token/context fields.
 // This allows mixed loading: metadata on startup, full session after switching
-type SessionListItem = SessionDetails & Partial<Pick<ChatSession, "messages">>;
+type SessionListItem = SessionDetails;
 type NewChatDraft = SessionDetails & { readonly kind: "new-chat-draft" };
 type VisibleSessionListItem = SessionListItem | NewChatDraft;
 
@@ -26,6 +25,14 @@ const sessionNameAnimationTimers = new Map<
 	ReturnType<typeof setTimeout>
 >();
 const sessionNameAnimationTokens = new Map<string, number>();
+
+function caughtErrorMessage(error: object | undefined, fallback: string): string {
+	if (error instanceof Error && error.message) return error.message;
+	if (error && "message" in error && typeof error.message === "string" && error.message) {
+		return error.message;
+	}
+	return fallback;
+}
 
 export const useSessionsStore = defineStore("sessions", () => {
 	// Sessions list stores metadata-only items initially
@@ -391,10 +398,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 			// Sync model selection if session has a saved model (from cached config)
 			if (sessionDetails.lastProvider && sessionDetails.lastModel) {
-				settingsStore.updateAIProvider(sessionDetails.lastProvider as any);
+				settingsStore.updateAIProvider(sessionDetails.lastProvider);
 				settingsStore.updateModel(
 					sessionDetails.lastModel,
-					sessionDetails.lastProvider as any,
+					sessionDetails.lastProvider,
 				);
 			}
 
@@ -500,10 +507,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 				}
 
 				if (response.session.lastProvider && response.session.lastModel) {
-					settingsStore.updateAIProvider(response.session.lastProvider as any);
+					settingsStore.updateAIProvider(response.session.lastProvider);
 					settingsStore.updateModel(
 						response.session.lastModel,
-						response.session.lastProvider as any,
+						response.session.lastProvider,
 					);
 				}
 
@@ -808,11 +815,12 @@ export const useSessionsStore = defineStore("sessions", () => {
 				}
 			}
 			return response;
-		} catch (error: any) {
+		} catch (error) {
+			const errorObject = error && typeof error === "object" ? error : undefined;
 			console.error("Failed to update session agent:", error);
 			return {
 				success: false,
-				error: error?.message || "Failed to update session agent",
+				error: caughtErrorMessage(errorObject, "Failed to update session agent"),
 			};
 		}
 	}
@@ -842,11 +850,12 @@ export const useSessionsStore = defineStore("sessions", () => {
 				}
 			}
 			return response;
-		} catch (error: any) {
+		} catch (error) {
+			const errorObject = error && typeof error === "object" ? error : undefined;
 			console.error("Failed to update session permission mode:", error);
 			return {
 				success: false,
-				error: error?.message || "Failed to update session permission mode",
+				error: caughtErrorMessage(errorObject, "Failed to update session permission mode"),
 			};
 		}
 	}
@@ -880,11 +889,12 @@ export const useSessionsStore = defineStore("sessions", () => {
 				}
 			}
 			return response;
-		} catch (error: any) {
+		} catch (error) {
+			const errorObject = error && typeof error === "object" ? error : undefined;
 			console.error("Failed to update session model:", error);
 			return {
 				success: false,
-				error: error?.message || "Failed to update session model",
+				error: caughtErrorMessage(errorObject, "Failed to update session model"),
 			};
 		}
 	}
@@ -905,7 +915,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			totalTokens?: number;
 		},
 	): void {
-		const session = sessions.value.find((s) => s.id === sessionId) as any;
+		const session = sessions.value.find((s) => s.id === sessionId);
 		if (!session) return;
 		if (stats.contextSize !== undefined)
 			session.contextSize = stats.contextSize;
@@ -937,7 +947,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			variables?: ContextVariable[];
 		},
 	): void {
-		const session = sessions.value.find((s) => s.id === sessionId) as any;
+		const session = sessions.value.find((s) => s.id === sessionId);
 		if (session && payload.workingDirectory !== undefined) {
 			session.workingDirectory = payload.workingDirectory;
 		}

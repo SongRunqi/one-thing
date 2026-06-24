@@ -22,6 +22,7 @@ import {
   readTextFileSnapshot,
   type TextFileSnapshot,
 } from './file-snapshot.js'
+import type { JsonObjectProperty } from '../../../shared/json.js'
 
 function filePermissionPattern(targetPath: string): string {
   return path.join(path.dirname(targetPath), '*')
@@ -40,7 +41,7 @@ export interface EditMetadata {
   additions: number
   deletions: number
   originalContentHash?: string
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 interface EditPlan {
@@ -92,8 +93,9 @@ function buildEditPlan(
   let preview
   try {
     preview = previewExactEdits(snapshot.content, edits, resolvedPath)
-  } catch (error: any) {
-    throw new Error(`Failed to edit ${resolvedPath}: ${error.message}`)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Failed to edit ${resolvedPath}: ${message}`)
   }
 
   const { additions, deletions } = countLineChanges(preview.baseContent, preview.newContent)
@@ -264,8 +266,9 @@ export const EditTool = Tool.define<typeof EditParameters, EditMetadata>('edit',
         let revalidatedPlan: EditPlan
         try {
           revalidatedPlan = buildEditPlan(resolvedPath, edits, latestSnapshot)
-        } catch (error: any) {
-          throw new Error(`File changed after approval and the edit could not be re-applied to latest content: ${error.message}. Please retry.`)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          throw new Error(`File changed after approval and the edit could not be re-applied to latest content: ${message}. Please retry.`)
         }
 
         if (revalidatedPlan.diff !== approvedPlan.diff) {

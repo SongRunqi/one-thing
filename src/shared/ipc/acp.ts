@@ -2,6 +2,8 @@
  * ACP (Agent Client Protocol) settings and IPC types.
  */
 
+import type { JsonObject } from '../json.js'
+
 export type ACPConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
 export type ACPPermissionMode = 'allow' | 'reject'
@@ -19,7 +21,7 @@ export interface ACPAgentConfig {
   permissionMode?: ACPPermissionMode
   allowFileSystemAccess?: boolean
   allowTerminalAccess?: boolean
-  mcpServers?: unknown[]
+  mcpServers?: JsonObject[]
   connectTimeoutMs?: number
   promptTimeoutMs?: number
   idleTimeoutMs?: number

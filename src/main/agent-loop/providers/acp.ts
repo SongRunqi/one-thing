@@ -41,7 +41,7 @@ export function createACPAgentProvider(options: ACPAgentProviderOptions = {}): A
       supportsTools: false,
     },
 
-    async *streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, unknown> {
+    async *streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
       const prompt = latestUserPrompt(request)
       if (!prompt) throw new Error('ACP prompt is empty')
 
@@ -66,15 +66,15 @@ export function createACPAgentProvider(options: ACPAgentProviderOptions = {}): A
           continue
         }
 
-        const update = event.notification.update as any
+        const update = event.notification.update
         switch (update.sessionUpdate) {
           case 'agent_message_chunk':
-            if (update.content?.type === 'text' && update.content.text) {
+            if (update.content.type === 'text' && update.content.text) {
               yield { type: 'text-delta', turn: request.turn, delta: update.content.text }
             }
             break
           case 'agent_thought_chunk':
-            if (update.content?.type === 'text' && update.content.text) {
+            if (update.content.type === 'text' && update.content.text) {
               yield { type: 'reasoning-delta', turn: request.turn, delta: update.content.text }
             }
             break

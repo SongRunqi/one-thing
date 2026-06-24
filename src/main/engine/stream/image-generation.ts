@@ -3,10 +3,53 @@
  * Handles OpenAI DALL-E and Gemini image generation
  */
 
-import { experimental_generateImage as aiGenerateImage, generateText } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createAppFetch } from '../../providers/bound-fetch.js'
+
+type FetchFn = typeof globalThis.fetch
+
+interface OpenAIImageGenerationResponse {
+  data?: Array<{
+    b64_json?: string
+    revised_prompt?: string
+    url?: string
+  }>
+  b64_json?: string
+  revised_prompt?: string
+  url?: string
+  error?: {
+    message?: string
+  }
+}
+
+interface OpenAIImageGenerationRequest {
+  model: string
+  prompt: string
+  size: string
+  style?: string
+  quality?: string
+  response_format?: 'b64_json'
+}
+
+interface GeminiGenerateContentResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: Array<{
+        text?: string
+        inlineData?: {
+          data?: string
+          mimeType?: string
+        }
+        inline_data?: {
+          data?: string
+          mime_type?: string
+        }
+      }>
+    }
+  }>
+  error?: {
+    message?: string
+  }
+}
 
 /**
  * Normalize model ID for API call (for OpenAI image models)
@@ -32,8 +75,32 @@ export interface ImageGenerationResult {
   error?: string
 }
 
+function normalizeBaseUrl(baseUrl: string): string {
+  return (baseUrl || 'https://api.openai.com/v1').replace(/\/$/, '')
+}
+
+async function responseError(response: Response, fallback: string): Promise<string> {
+  const text = await response.text().catch(() => '')
+  if (!text) return fallback
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: string } }
+    return parsed.error?.message || text
+  } catch {
+    return text
+  }
+}
+
+async function fetchImageUrlAsBase64(url: string, fetchImpl: FetchFn): Promise<string> {
+  const response = await fetchImpl(url)
+  if (!response.ok) {
+    throw new Error(await responseError(response, `Failed to fetch generated image: ${response.status}`))
+  }
+  const buffer = Buffer.from(await response.arrayBuffer())
+  return buffer.toString('base64')
+}
+
 /**
- * Generate image using OpenAI DALL-E API via AI SDK
+ * Generate image using the OpenAI-compatible image generation REST API.
  */
 export async function generateImage(
   apiKey: string,
@@ -43,54 +110,67 @@ export async function generateImage(
   options: { size?: string; quality?: string; style?: string } = {}
 ): Promise<ImageGenerationResult> {
   try {
-    // Create OpenAI provider with custom settings
-    const openai = createOpenAI({
-      apiKey,
-      baseURL: baseUrl || 'https://api.openai.com/v1',
-      fetch: createAppFetch(),
-    })
-
-    // Build provider options based on model
-    const providerOptions: Record<string, any> = {}
-    if (model === 'dall-e-3') {
-      providerOptions.openai = {
-        style: options.style || 'vivid',
-        quality: options.quality || 'standard',
-      }
-    } else if (model.includes('gpt-image')) {
-      providerOptions.openai = {
-        quality: options.quality || 'auto',
-      }
+    const fetchImpl = createAppFetch()
+    const body: OpenAIImageGenerationRequest = {
+      model,
+      prompt,
+      size: options.size || '1024x1024',
     }
 
-    // Generate image using AI SDK
-    const result = await aiGenerateImage({
-      model: openai.image(model),
-      prompt,
-      size: (options.size || '1024x1024') as `${number}x${number}`,
-      providerOptions: Object.keys(providerOptions).length > 0 ? providerOptions : undefined,
-    })
+    if (model === 'dall-e-3') {
+      body.style = options.style || 'vivid'
+      body.quality = options.quality || 'standard'
+      body.response_format = 'b64_json'
+    } else if (model.includes('gpt-image')) {
+      body.quality = options.quality || 'auto'
+    } else {
+      body.response_format = 'b64_json'
+    }
 
-    // Get the first image
-    const image = result.image
+    const response = await fetchImpl(`${normalizeBaseUrl(baseUrl)}/images/generations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) {
+      throw new Error(await responseError(response, `OpenAI image API error: ${response.status}`))
+    }
+
+    const payload = await response.json() as OpenAIImageGenerationResponse
+    if (payload.error?.message) throw new Error(payload.error.message)
+
+    const first = payload.data?.[0] ?? payload
+    const imageBase64 = first.b64_json || (first.url
+      ? await fetchImageUrlAsBase64(first.url, fetchImpl)
+      : undefined)
+
+    if (!imageBase64) {
+      return {
+        success: false,
+        error: 'No image generated',
+      }
+    }
 
     return {
       success: true,
-      imageBase64: image.base64,
-      revisedPrompt: (result as any).providerMetadata?.openai?.revisedPrompt,
+      imageBase64,
+      revisedPrompt: first.revised_prompt,
     }
-  } catch (error: any) {
-    console.error('[Image Generation] Error:', error)
+  } catch (error) {
+    const imageError = error instanceof Error ? error : new Error(String(error))
+    console.error('[Image Generation] Error:', imageError)
     return {
       success: false,
-      error: error.message || 'Failed to generate image',
+      error: imageError.message || 'Failed to generate image',
     }
   }
 }
 
 /**
- * Generate image using Gemini API
- * Gemini 2.5 Flash Image uses generateText and returns images in result.files
+ * Generate image using Gemini's native image generation REST API.
  */
 export async function generateGeminiImage(
   apiKey: string,
@@ -99,34 +179,62 @@ export async function generateGeminiImage(
 ): Promise<ImageGenerationResult> {
   try {
     console.log(`[Gemini Image] Generating image with model: ${model}`)
-    const google = createGoogleGenerativeAI({ apiKey, fetch: createAppFetch() })
+    const fetchImpl = createAppFetch()
+    const encodedModel = encodeURIComponent(model)
+    const response = await fetchImpl(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodedModel}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{
+            role: 'user',
+            parts: [{ text: prompt }],
+          }],
+          generationConfig: {
+            responseModalities: ['TEXT', 'IMAGE'],
+          },
+        }),
+      },
+    )
+    if (!response.ok) {
+      throw new Error(await responseError(response, `Gemini image API error: ${response.status}`))
+    }
 
-    const result = await generateText({
-      model: google(model),
-      prompt,
-    })
+    const result = await response.json() as GeminiGenerateContentResponse
+    if (result.error?.message) throw new Error(result.error.message)
+    const parts = result.candidates?.flatMap(candidate => candidate.content?.parts ?? []) ?? []
+    console.log(`[Gemini Image] Response received, parts: ${parts.length}`)
 
-    console.log(`[Gemini Image] Response received, files: ${result.files?.length ?? 0}`)
-
-    // Extract image from result.files
-    if (result.files && result.files.length > 0) {
-      for (const file of result.files) {
-        if (file.mediaType?.startsWith('image/')) {
-          console.log(`[Gemini Image] Found image: ${file.mediaType}`)
-          return {
-            success: true,
-            imageBase64: file.base64,
+    for (const part of parts) {
+      const inlineData = part.inlineData ?? (part.inline_data
+        ? {
+            data: part.inline_data.data,
+            mimeType: part.inline_data.mime_type,
           }
+        : undefined)
+      if (inlineData?.data && inlineData.mimeType?.startsWith('image/')) {
+        console.log(`[Gemini Image] Found image: ${inlineData.mimeType}`)
+        return {
+          success: true,
+          imageBase64: inlineData.data,
         }
       }
     }
 
-    // No image in files - check if model returned text instead
-    if (result.text) {
-      console.log(`[Gemini Image] No image generated, got text: ${result.text.substring(0, 100)}...`)
+    const text = parts
+      .map(part => part.text)
+      .filter(Boolean)
+      .join('\n')
+
+    if (text) {
+      console.log(`[Gemini Image] No image generated, got text: ${text.substring(0, 100)}...`)
       return {
         success: false,
-        error: `Model returned text instead of image: ${result.text.substring(0, 200)}`,
+        error: `Model returned text instead of image: ${text.substring(0, 200)}`,
       }
     }
 
@@ -134,11 +242,12 @@ export async function generateGeminiImage(
       success: false,
       error: 'No image generated',
     }
-  } catch (error: any) {
-    console.error('[Gemini Image] Error:', error)
+  } catch (error) {
+    const imageError = error instanceof Error ? error : new Error(String(error))
+    console.error('[Gemini Image] Error:', imageError)
     return {
       success: false,
-      error: error.message || 'Failed to generate image',
+      error: imageError.message || 'Failed to generate image',
     }
   }
 }

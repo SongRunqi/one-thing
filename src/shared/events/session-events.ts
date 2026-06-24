@@ -9,6 +9,7 @@
  */
 
 import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ContextVariable, ThinkingEffort } from '../ipc.js'
+import type { JsonObject } from '../json.js'
 import type { StreamCompleteData, StreamErrorData } from '../../main/engine/stream/ipc-emitter.js'
 import type { SessionCommand } from './session-commands.js'
 
@@ -60,7 +61,7 @@ export interface ToolExecutionStartEvent {
   toolCallId: string
   stepId: string
   toolName: string
-  args: Record<string, unknown>
+  args: JsonObject
 }
 
 export interface ToolExecutionUpdateEvent {
@@ -163,9 +164,9 @@ export interface RequestMessageSnapshot {
 
 export interface RequestSnapshotEvent {
   type: 'request:snapshot'
-  /** Pre-flight snapshot of an outbound LLM request, captured by the
-   *  tool loop right before handing off to the AI SDK. The Inspector
-   *  panel keeps a small ring buffer of these per session. */
+  /** Pre-flight snapshot of an outbound model request, captured by the
+   *  stream runtime right before provider execution. The Inspector panel
+   *  keeps a small ring buffer of these per session. */
   snapshot: {
     timestamp: number
     providerId: string
@@ -200,7 +201,7 @@ export interface PermissionRequestEvent {
   permissionType: string
   title: string
   pattern?: string | string[]
-  metadata: Record<string, unknown>
+  metadata: JsonObject
   timeoutMs?: number
 }
 
@@ -220,7 +221,7 @@ export interface ToolExecutingEvent {
 export interface ToolMetadataEvent {
   type: 'tool:metadata'
   toolCallId: string
-  metadata: Record<string, unknown>
+  metadata: JsonObject
 }
 
 // ── Session events ──────────────────────────────
@@ -237,6 +238,11 @@ export interface MessageUserCreatedEvent {
   message: ChatMessage
 }
 
+export interface MessageCreatedEvent {
+  type: 'message:created'
+  message: ChatMessage
+}
+
 export interface MessageAssistantCreatedEvent {
   type: 'message:assistant-created'
   message: ChatMessage
@@ -245,7 +251,7 @@ export interface MessageAssistantCreatedEvent {
 export interface MessageUpdatedEvent {
   type: 'message:updated'
   messageId: string
-  updates: Record<string, unknown>
+  updates: Partial<ChatMessage>
 }
 
 export interface MessageDeletedEvent {
@@ -286,6 +292,7 @@ export type SessionEvent =
   | ToolExecutingEvent
   | ToolMetadataEvent
   | SessionRenamedEvent
+  | MessageCreatedEvent
   | MessageUserCreatedEvent
   | MessageAssistantCreatedEvent
   | MessageUpdatedEvent

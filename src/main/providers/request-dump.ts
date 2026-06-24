@@ -1,6 +1,7 @@
 import fsp from 'fs/promises'
 import path from 'path'
 import { getLogDir } from '../stores/paths.js'
+import type { JsonValue } from '../../shared/json.js'
 
 export type ProviderRequestDumpMode =
   | 'stream'
@@ -14,9 +15,19 @@ export interface ProviderRequestDumpPayload {
   providerId: string
   model: string
   mode: ProviderRequestDumpMode
-  metadata?: Record<string, unknown>
-  requestBody: unknown
+  metadata?: DumpRecord
+  requestBody: DumpValue
 }
+
+type DumpRecord = { [key: string]: DumpValue }
+type DumpValue =
+  | JsonValue
+  | DumpRecord
+  | DumpValue[]
+  | bigint
+  | Error
+  | object
+  | undefined
 
 function requestDumpDir(): string {
   return path.join(getLogDir(), 'provider-requests')
@@ -35,7 +46,7 @@ function safeFilenamePart(value: string): string {
   return sanitized || 'unknown'
 }
 
-function stringifyForDump(value: unknown): string {
+function stringifyForDump(value: DumpValue): string {
   const seen = new WeakSet<object>()
   return JSON.stringify(
     value,

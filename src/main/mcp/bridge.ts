@@ -2,7 +2,7 @@
  * MCP Tool Bridge
  *
  * Bridges MCP tools to the existing tool system, allowing them to be used
- * seamlessly with the Vercel AI SDK
+ * seamlessly with the provider runtime
  */
 
 import * as fs from 'fs'
@@ -13,6 +13,7 @@ import { unregisterTool, getAllTools } from '../tools/registry.js'
 import { getMCPToolsCatalogPath } from '../stores/paths.js'
 import { fuzzyFilter } from '../utils/fuzzy.js'
 import { z } from 'zod'
+import { toJsonSchemaObject, type JsonObject, type JsonSchemaObject, type JsonValue } from '../../shared/json.js'
 
 /**
  * Tools catalog version - incremented when catalog format changes
@@ -33,15 +34,26 @@ function isMCPRouterToolId(toolId: string): boolean {
   return toolId === MCP_ROUTER_TOOL_ID || toolId === LEGACY_MCP_ROUTER_TOOL_ID
 }
 
+function schemaStringEnum(schema: JsonSchemaObject): string[] | undefined {
+  const values = Array.isArray(schema.enum)
+    ? schema.enum.filter((item): item is string => typeof item === 'string')
+    : []
+  return values.length > 0 ? values : undefined
+}
+
+function schemaDescription(schema: JsonSchemaObject): string {
+  return typeof schema.description === 'string' ? schema.description : ''
+}
+
+function schemaDefault(schema: JsonSchemaObject): ToolParameter['default'] {
+  const value = schema.default
+  return value === undefined ? undefined : value
+}
+
 type ModelFacingToolDefinition = {
   description: string
   parameters: Array<{ name: string; type: string; description: string; required?: boolean; enum?: string[] }>
-  parameterSchema?: {
-    type?: string
-    properties?: Record<string, any>
-    required?: string[]
-    [key: string]: unknown
-  }
+  parameterSchema?: JsonSchemaObject
 }
 
 type MCPFunctionRef = {
@@ -248,14 +260,13 @@ export function mcpToolToToolDefinition(mcpTool: MCPToolInfo): ToolDefinition {
     const required = mcpTool.inputSchema.required || []
 
     for (const [name, schema] of Object.entries(mcpTool.inputSchema.properties)) {
-      const prop = schema as any
       parameters.push({
         name,
-        type: mapJsonSchemaType(prop.type),
-        description: prop.description || '',
+        type: mapJsonSchemaType(schema.type),
+        description: schemaDescription(schema),
         required: required.includes(name),
-        enum: prop.enum,
-        default: prop.default,
+        enum: schemaStringEnum(schema),
+        default: schemaDefault(schema),
       })
     }
   }
@@ -265,7 +276,7 @@ export function mcpToolToToolDefinition(mcpTool: MCPToolInfo): ToolDefinition {
     name: mcpTool.name,
     description: mcpTool.description || `MCP tool: ${mcpTool.name}`,
     parameters,
-    parameterSchema: mcpTool.inputSchema,
+    parameterSchema: toJsonSchemaObject(mcpTool.inputSchema),
     enabled: true,
     autoExecute: false, // MCP tools are opaque; execution asks for permission.
     permissionGuard: 'permission-gated',
@@ -291,7 +302,7 @@ export function getMCPRouterToolDefinition(): ToolDefinition | null {
       required: param.required,
       enum: param.enum,
     })),
-    parameterSchema: router.parameterSchema,
+    parameterSchema: toJsonSchemaObject(router.parameterSchema),
     enabled: true,
     autoExecute: false,
     permissionGuard: 'permission-gated',
@@ -332,19 +343,19 @@ function mapJsonSchemaType(jsonType: string | string[] | undefined): ToolParamet
 /**
  * Create a Zod schema from MCP tool input schema
  */
-export function mcpInputSchemaToZod(inputSchema: MCPToolInfo['inputSchema']): z.ZodObject<any> {
+export function mcpInputSchemaToZod(inputSchema: MCPToolInfo['inputSchema']): z.ZodObject<Record<string, z.ZodTypeAny>> {
   const shape: Record<string, z.ZodTypeAny> = {}
 
   if (inputSchema.properties) {
     const required = inputSchema.required || []
 
     for (const [name, propSchema] of Object.entries(inputSchema.properties)) {
-      const prop = propSchema as any
-      let zodType = jsonSchemaTypeToZod(prop)
+      let zodType = jsonSchemaTypeToZod(propSchema)
 
       // Add description
-      if (prop.description) {
-        zodType = zodType.describe(prop.description)
+      const description = schemaDescription(propSchema)
+      if (description) {
+        zodType = zodType.describe(description)
       }
 
       // Make optional if not required
@@ -362,15 +373,18 @@ export function mcpInputSchemaToZod(inputSchema: MCPToolInfo['inputSchema']): z.
 /**
  * Convert JSON Schema type to Zod type
  */
-function jsonSchemaTypeToZod(prop: any): z.ZodTypeAny {
+function jsonSchemaTypeToZod(prop: JsonSchemaObject): z.ZodTypeAny {
   const type = Array.isArray(prop.type)
     ? prop.type.find((t: string) => t !== 'null') || 'string'
     : prop.type || 'string'
 
   switch (type) {
     case 'string':
-      if (prop.enum) {
-        return z.enum(prop.enum as [string, ...string[]])
+      {
+        const enumValues = schemaStringEnum(prop)
+        if (enumValues) {
+          return z.enum(enumValues as [string, ...string[]])
+        }
       }
       return z.string()
 
@@ -385,7 +399,7 @@ function jsonSchemaTypeToZod(prop: any): z.ZodTypeAny {
       if (prop.items) {
         return z.array(jsonSchemaTypeToZod(prop.items))
       }
-      return z.array(z.any())
+      return z.array(z.custom<JsonValue>())
 
     case 'object':
       if (prop.properties) {
@@ -401,10 +415,10 @@ function jsonSchemaTypeToZod(prop: any): z.ZodTypeAny {
         }
         return z.object(nestedShape)
       }
-      return z.record(z.string(), z.any())
+      return z.record(z.string(), z.custom<JsonValue>())
 
     default:
-      return z.any()
+      return z.custom<JsonValue>()
   }
 }
 
@@ -472,10 +486,9 @@ export function generateToolsCatalog(): void {
 
         const required = tool.inputSchema.required || []
         for (const [name, prop] of Object.entries(tool.inputSchema.properties)) {
-          const propSchema = prop as any
           const isRequired = required.includes(name) ? '✓' : ''
-          const type = propSchema.type || 'any'
-          const desc = (propSchema.description || '').replace(/\|/g, '\\|').replace(/\n/g, ' ')
+          const type = prop.type || 'value'
+          const desc = schemaDescription(prop).replace(/\|/g, '\\|').replace(/\n/g, ' ')
           lines.push(`| ${name} | ${type} | ${isRequired} | ${desc} |`)
         }
         lines.push('')
@@ -520,7 +533,7 @@ function truncateDescription(desc: string, maxLength: number = 100): string {
 }
 
 /**
- * Get MCP tools formatted for Vercel AI SDK (same format as convertToolDefinitionsForAI)
+ * Get MCP tools formatted for provider execution.
  * Returns a record of tool definitions matching the format expected by streamChatResponseWithTools
  *
  * OPTIMIZED: Uses condensed descriptions when tools catalog is available.
@@ -653,7 +666,7 @@ export function isMCPTool(toolId: string): boolean {
  */
 function findToolByParameters(
   tools: MCPToolInfo[],
-  args: Record<string, any>
+  args: JsonObject
 ): MCPToolInfo | null {
   const argNames = Object.keys(args)
 
@@ -684,7 +697,7 @@ function findToolByParameters(
  */
 export function findMCPToolIdByShortName(
   shortName: string,
-  args?: Record<string, any>
+  args?: JsonObject
 ): string | null {
   // Sanitize the input name for comparison
   const sanitizedInput = sanitizeForToolName(shortName)
@@ -736,7 +749,7 @@ export function findMCPToolIdByShortName(
  */
 export async function executeMCPTool(
   toolId: string,
-  args: Record<string, any>,
+  args: JsonObject,
   options: { onPartialResult?: (text: string, phase: string) => void } = {},
 ): Promise<MCPToolCallResult> {
   if (isMCPRouterToolId(toolId)) {
@@ -781,7 +794,7 @@ export async function executeMCPTool(
 
     if (action === 'call') {
       const callArgs = args.arguments && typeof args.arguments === 'object' && !Array.isArray(args.arguments)
-        ? args.arguments as Record<string, any>
+        ? args.arguments
         : {}
       options.onPartialResult?.(`Calling MCP tool: ${ref.id}...`, 'calling')
       const result = await MCPManager.callTool(ref.serverId, ref.toolName, callArgs)

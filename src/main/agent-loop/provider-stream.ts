@@ -7,6 +7,7 @@ import type {
   AgentToolCall,
   AgentToolResult,
   AgentUsage,
+  AgentJsonObject,
 } from './types.js'
 
 export type AgentProviderStreamFinishReason =
@@ -21,7 +22,7 @@ export type AgentProviderStreamFinishReason =
 export interface AgentProviderToolCallChunk {
   toolCallId: string
   toolName: string
-  args: Record<string, unknown>
+  args: AgentJsonObject
 }
 
 export type AgentProviderStreamChunk =
@@ -69,11 +70,11 @@ export function mapAgentProviderFinishReason(
   }
 }
 
-export function safeParseAgentToolArguments(raw: string): Record<string, unknown> {
+export function safeParseAgentToolArguments(raw: string): AgentJsonObject {
   try {
     const parsed = JSON.parse(raw || '{}')
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? parsed
       : {}
   } catch {
     return {}
@@ -114,7 +115,7 @@ function resultChunk(
 export async function* agentEventsToProviderStreamChunks(
   events: AsyncIterable<AgentStreamEvent>,
   options: AgentProviderStreamAdapterOptions = {},
-): AsyncGenerator<AgentProviderStreamChunk, void, unknown> {
+): AsyncGenerator<AgentProviderStreamChunk, void, void> {
   const emitToolInputEndOnCompleteJson = options.emitToolInputEndOnCompleteJson ?? true
   const streamedToolInputs = new Map<string, ToolInputState>()
   const finishedTurns = new Set<number>()

@@ -5,8 +5,10 @@
  * To add a new provider:
  * 1. Create a new file in this directory (e.g., myprovider.ts)
  * 2. Export it from this file
+ * 3. Register a matching AgentProvider runtime in
+ *    src/main/agent-loop/providers/factory.ts
  *
- * That's it! The provider will be automatically registered.
+ * Built-in providers are expected to route through agent runtimes by default.
  */
 
 import openai from './openai.js'

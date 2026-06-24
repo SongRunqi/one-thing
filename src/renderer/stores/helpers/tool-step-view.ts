@@ -66,8 +66,9 @@ export interface BuildToolStepViewOptions {
 
 const STREAMING_CONTENT_CACHE_LIMIT = 80
 const STREAMING_PREVIEW_HEAD_LINES = 80
-const STREAMING_PREVIEW_TAIL_LINES = 80
-const STREAMING_PREVIEW_MAX_LINES = STREAMING_PREVIEW_HEAD_LINES + STREAMING_PREVIEW_TAIL_LINES
+const STREAMING_PREVIEW_MAX_LINES = 160
+const STREAMING_PREVIEW_TAIL_LINES = STREAMING_PREVIEW_MAX_LINES - STREAMING_PREVIEW_HEAD_LINES - 1
+const STREAMING_PREVIEW_KEPT_LINES = STREAMING_PREVIEW_HEAD_LINES + STREAMING_PREVIEW_TAIL_LINES
 
 const streamingContentCache = new Map<string, StreamingToolContent | null>()
 
@@ -377,6 +378,8 @@ function parseStreamingDiffLines(streamingContent: StreamingToolContent | null):
 
 function parseStreamingEditDiffLines(replacements: StreamingEditReplacement[]): ToolDiffLine[] {
   const result: ToolDiffLine[] = []
+  let oldLineNum = 1
+  let newLineNum = 1
 
   replacements.forEach((replacement, replacementIndex) => {
     if (replacementIndex > 0) {
@@ -389,8 +392,6 @@ function parseStreamingEditDiffLines(replacements: StreamingEditReplacement[]): 
       })
     }
 
-    let oldLineNum = 1
-    let newLineNum = 1
     for (const change of diffLines(replacement.oldText, replacement.newText)) {
       const lines = splitDisplayLines(change.value)
       if (change.removed) {
@@ -420,7 +421,7 @@ function parseStreamingEditDiffLines(replacements: StreamingEditReplacement[]): 
 
 function truncateStreamingDiffLines(lines: ToolDiffLine[]): ToolDiffLine[] {
   if (lines.length <= STREAMING_PREVIEW_MAX_LINES) return lines
-  const omittedLines = lines.length - STREAMING_PREVIEW_MAX_LINES
+  const omittedLines = lines.length - STREAMING_PREVIEW_KEPT_LINES
   return [
     ...lines.slice(0, STREAMING_PREVIEW_HEAD_LINES),
     {
@@ -747,7 +748,7 @@ function normalizeStreamingContent(content: StreamingToolContent): StreamingTool
     }
   }
 
-  const omittedLines = Math.max(0, lines.length - STREAMING_PREVIEW_MAX_LINES)
+  const omittedLines = Math.max(0, lines.length - STREAMING_PREVIEW_KEPT_LINES)
   return {
     ...content,
     content: [
@@ -789,7 +790,7 @@ function countStreamingEditChanges(replacements: StreamingEditReplacement[]): { 
   let deletions = 0
   for (const replacement of replacements) {
     for (const change of diffLines(replacement.oldText, replacement.newText)) {
-      const count = change.count ?? splitDisplayLines(change.value).length
+      const count = splitDisplayLines(change.value).length
       if (change.added) additions += count
       if (change.removed) deletions += count
     }

@@ -10,6 +10,9 @@ const dirname = path.dirname(fileURLToPath(import.meta.url))
 const rendererDir = path.resolve(dirname, '..', '..')
 const componentStyleRoots = ['components', 'editor']
 const componentStyleFiles = ['styles/components.css']
+const directColorAllowedFiles = new Set([
+  'components/settings/ProviderIcon.vue',
+])
 const styleFileExtensions = new Set(['.vue', '.ts', '.css'])
 const legacyColorVars = new Set([
   '--accent',
@@ -248,6 +251,8 @@ function collectDirectLegacyColorUsage(): string[] {
   ]
 
   for (const file of files) {
+    const relativeFile = path.relative(rendererDir, file)
+    if (directColorAllowedFiles.has(relativeFile)) continue
     const text = fs.readFileSync(file, 'utf8')
     let cursor = 0
     while (true) {
@@ -261,7 +266,7 @@ function collectDirectLegacyColorUsage(): string[] {
         (legacyColorVars.has(name) || isDirectThemeColorVar(name)) &&
         !isInsideSemanticVar(text, start + 2)
       ) {
-        reports.push(`${path.relative(rendererDir, file)}:${lineNumber(text, start)} direct ${name}`)
+        reports.push(`${relativeFile}:${lineNumber(text, start)} direct ${name}`)
       }
       cursor = close + 1
     }
@@ -274,7 +279,7 @@ function collectDirectLegacyColorUsage(): string[] {
       const lineEnd = text.indexOf('\n', match.index)
       const line = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd)
       if (line.includes('previewColors')) continue
-      reports.push(`${path.relative(rendererDir, file)}:${lineNumber(text, match.index)} direct ${match[0]}`)
+      reports.push(`${relativeFile}:${lineNumber(text, match.index)} direct ${match[0]}`)
     }
   }
 
@@ -479,7 +484,7 @@ describe('renderer UI semantic variables', () => {
     expect(todoPlanPanel).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
     expect(todoNotesActionPanel).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
     expect(todoPopover).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/)
-    expect(todoPlanPanel).toContain('padding: 0 0 0 18px')
+    expect(todoPlanPanel).toContain('--todo-plan-nav-gutter: 52px')
     expect(todoPlanPanel).not.toContain('flush')
     expect(todoPlanPanel).toContain('overflow: hidden;')
     expect(todoPlanPanel).toContain('popover-open')

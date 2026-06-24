@@ -9,69 +9,70 @@ import type { ChatMessage, MessageAttachment, ProviderConfig } from '../../share
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { v4 as uuidv4 } from 'uuid'
 import {
-  generateChatResponseWithReasoning,
   generateChatTitle,
   isProviderSupported,
   requiresOAuth,
-  convertToolDefinitionsForAI,
-  type ToolChatMessage,
 } from '../providers/index.js'
-import {
-  getEnabledToolsAsync,
-  setInitContext,
-  initializeAsyncTools,
-} from '../tools/index.js'
-import { getMCPToolsForAI } from '../mcp/index.js'
 import { getSkillsForSession } from './skills.js'
-import { triggerManager } from '../engine/triggers/index.js'
 import { Permission } from '../permission/index.js'
 import { mediaLibraryService } from '../media/media-library-service.js'
-import * as modelRegistry from '../providers/model-registry.js'
-import { buildContextVariablesPromptText } from '../variables/index.js'
-import { buildProjectDirsPromptVars } from '../project-dirs/index.js'
 
 // Import from chat sub-modules
-import {
-  sendUIMessageFinish,
-} from '../engine/stream/stream-helpers.js'
 import {
   executeMessageStream,
 } from '../engine/stream/stream-executor.js'
 import {
-  formatMessagesForLog,
-  buildMessageContent,
   buildHistoryMessages,
-  filterHistoryForNonToolAPI,
 } from '../engine/stream/message-helpers.js'
-import { buildPrompt } from '../engine/prompt/index.js'
 import {
   extractErrorDetails,
   getProviderConfig,
   resolveProviderAuth,
   getEffectiveProviderConfig,
   getProviderApiType,
+  type ProviderErrorDetails,
 } from '../engine/stream/provider-helpers.js'
 import {
   activeStreams,
-  createStreamProcessor,
-  type StreamContext,
 } from '../engine/stream/stream-processor.js'
 import type { ProviderConfigWithKey } from '../engine/stream/stream-executor.js'
-import {
-  executeToolAndUpdate,
-} from '../engine/stream/tool-execution.js'
 import { getStreamEngine } from '../engine/index.js'
-import {
-  runStream,
-  executeStreamGeneration,
-} from '../engine/stream/tool-loop.js'
 import { sanitizeMessagesForRenderer } from './message-sanitizer.js'
 import { resolvePromptReferences } from '../prompts/resolver.js'
 import { buildSystemPromptSnapshot } from '../engine/prompt/system-prompt-snapshot.js'
+import { getEventBus } from '../events/index.js'
 
 // ============================================
 // IPC Handlers
 // ============================================
+
+async function emitSessionEvent(sessionId: string, event: Parameters<ReturnType<typeof getEventBus>['emit']>[1]): Promise<void> {
+  try {
+    await getEventBus().emit(sessionId, event)
+  } catch (error) {
+    console.error('[ChatIPC] EventBus emit failed:', error)
+  }
+}
+
+function caughtErrorMessage(error: object | undefined, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message
+  if (error && 'message' in error && typeof error.message === 'string' && error.message) {
+    return error.message
+  }
+  return fallback
+}
+
+function caughtErrorDetails(error: object | undefined): string | undefined {
+  if (!error) return undefined
+  const details: ProviderErrorDetails = {
+    message: caughtErrorMessage(error, ''),
+    stack: error instanceof Error ? error.stack : undefined,
+    responseBody: 'responseBody' in error && typeof error.responseBody === 'string'
+      ? error.responseBody
+      : undefined,
+  }
+  return extractErrorDetails(details)
+}
 
 export function registerChatHandlers() {
   // 获取聊天历史
@@ -94,11 +95,12 @@ export function registerChatHandlers() {
         success: true,
         snapshot: await buildSystemPromptSnapshot(sessionId),
       }
-    } catch (error: any) {
+    } catch (error) {
+      const errorObject = error && typeof error === 'object' ? error : undefined
       console.error('[Chat] Failed to build system prompt snapshot:', error)
       return {
         success: false,
-        error: error?.message || 'Failed to build system prompt snapshot',
+        error: caughtErrorMessage(errorObject, 'Failed to build system prompt snapshot'),
       }
     }
   })
@@ -133,9 +135,8 @@ export function registerChatHandlers() {
             status: 'cancelled',
             toolCall: step.toolCall,
           })
-          sender.send(IPC_CHANNELS.STEP_UPDATED, {
-            sessionId: sid,
-            messageId: streamingMessage.id,
+          await emitSessionEvent(sid, {
+            type: 'step:updated',
             stepId: step.id,
             updates: { status: 'cancelled', toolCall: step.toolCall },
           })
@@ -145,10 +146,14 @@ export function registerChatHandlers() {
       // Mark message as not streaming and send complete
       store.updateMessageStreaming(sid, streamingMessage.id, false)
       await store.flushSessionSave(sid)
-      sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
+      await emitSessionEvent(sid, {
+        type: 'message:updated',
         messageId: streamingMessage.id,
-        sessionId: sid,
-        aborted: true,
+        updates: { isStreaming: false },
+      })
+      await emitSessionEvent(sid, {
+        type: 'stream:complete',
+        data: { aborted: true },
       })
     }
 
@@ -204,9 +209,16 @@ export function registerChatHandlers() {
 
   // Get active streaming sessions
   ipcMain.handle(IPC_CHANNELS.GET_ACTIVE_STREAMS, async () => {
+    let engineSessionIds: string[] = []
+    try {
+      engineSessionIds = getStreamEngine().getActiveSessionIds()
+    } catch {
+      // StreamEngine may not be initialized in legacy/bootstrap contexts.
+    }
+
     return {
       success: true,
-      sessionIds: Array.from(activeStreams.keys())
+      sessionIds: Array.from(new Set([...activeStreams.keys(), ...engineSessionIds]))
     }
   })
 
@@ -250,94 +262,8 @@ function resolveComposerReferencesForSession(sessionId: string, rawContent: stri
   }
 }
 
-// Edit a user message and resend to get new AI response
-async function handleEditAndResend(sessionId: string, messageId: string, newContent: string) {
-  try {
-    const { resolved: resolvedPromptRefs } = resolveComposerReferencesForSession(sessionId, newContent)
-    // Update the message and truncate messages after it
-    const updated = store.updateMessageAndTruncate(sessionId, messageId, resolvedPromptRefs.modelContent, {
-      contentParts: resolvedPromptRefs.contentParts ?? null,
-    })
-    if (!updated) {
-      return { success: false, error: 'Message not found' }
-    }
-
-    // Get settings and call AI
-    const settings = store.getSettings()
-    const providerId = settings.ai.provider
-    const providerConfig = getProviderConfig(settings)
-
-    const authContext = await resolveProviderAuth(providerId, providerConfig)
-    if (!authContext) {
-      const isOAuth = requiresOAuth(providerId)
-      return {
-        success: false,
-        error: isOAuth
-          ? `Not logged in to ${providerId}. Please login in settings.`
-          : 'API Key not configured. Please configure your AI settings.',
-      }
-    }
-
-    if (!isProviderSupported(providerId)) {
-      return {
-        success: false,
-        error: `Unsupported provider: ${providerId}`,
-      }
-    }
-
-    // Get the updated session with truncated messages to build history
-    const session = store.getSession(sessionId)
-    const historyMessages = buildHistoryMessages(session?.messages || [], session)
-
-    // Use AI SDK to generate response
-    const apiType = getProviderApiType(settings, providerId)
-    const response = await generateChatResponseWithReasoning(
-      providerId,
-      {
-        apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
-        authContext,
-        oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig?.oauthToken,
-        baseUrl: providerConfig?.baseUrl,
-        model: providerConfig?.model || '',
-        apiType,
-      },
-      filterHistoryForNonToolAPI(historyMessages),
-      {
-        temperature:
-          providerConfig?.temperatureByModel?.[providerConfig?.model ?? '']
-          ?? providerConfig?.temperature
-          ?? settings.ai.temperature,
-      }
-    )
-
-    const assistantMessage: ChatMessage = {
-      id: uuidv4(),
-      role: 'assistant',
-      model: providerConfig?.model,
-      content: response.text,
-      timestamp: Date.now(),
-      reasoning: response.reasoning,
-    }
-
-    // Save assistant message
-    store.addMessage(sessionId, assistantMessage)
-
-    return {
-      success: true,
-      assistantMessage,
-    }
-  } catch (error: any) {
-    console.error('Error editing and resending message:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to edit and resend message',
-      errorDetails: extractErrorDetails(error),
-    }
-  }
-}
-
-// Handle streaming edit and resend (similar to handleSendMessageStream but for edits)
-async function handleEditAndResendStream(sender: Electron.WebContents, sessionId: string, messageId: string, newContent: string) {
+// Handle streaming edit and resend (similar to _handleSendMessageStream but for edits)
+async function _handleEditAndResendStream(sender: Electron.WebContents, sessionId: string, messageId: string, newContent: string) {
   try {
     const { resolved: resolvedPromptRefs } = resolveComposerReferencesForSession(sessionId, newContent)
     // Update the message and truncate messages after it
@@ -412,18 +338,19 @@ async function handleEditAndResendStream(sender: Electron.WebContents, sessionId
           toolSettings: settings.tools,
           sessionName: session?.name,
         })
-      } catch (error: any) {
+      } catch (error) {
         console.error('[Backend] Error in edit/resend stream execution:', error)
       }
     })
 
     return initialResponse
-  } catch (error: any) {
+  } catch (error) {
+    const errorObject = error && typeof error === 'object' ? error : undefined
     console.error('Error in edit and resend stream:', error)
     return {
       success: false,
-      error: error.message || 'Failed to edit and resend message',
-      errorDetails: extractErrorDetails(error),
+      error: caughtErrorMessage(errorObject, 'Failed to edit and resend message'),
+      errorDetails: caughtErrorDetails(errorObject),
     }
   }
 }
@@ -441,114 +368,7 @@ function generateTitleFromMessage(content: string, maxLength: number = 30): stri
   return cleaned.slice(0, maxLength).trim() + '...'
 }
 
-async function handleSendMessage(sessionId: string, messageContent: string) {
-  try {
-    const { session, resolved: resolvedPromptRefs } = resolveComposerReferencesForSession(sessionId, messageContent)
-    // Get session to check if this is the first user message
-    const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
-
-    // For branch sessions, check if this is the first NEW user message (after inherited messages)
-    const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
-      !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
-
-    // Save user message - use same ID format as frontend
-    const userMessage: ChatMessage = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content: resolvedPromptRefs.modelContent,
-      timestamp: Date.now(),
-      contentParts: resolvedPromptRefs.contentParts,
-    }
-    console.log('[Backend] Created user message with id:', userMessage.id)
-
-    store.addMessage(sessionId, userMessage)
-
-    // Auto-rename session based on first user message
-    if (isFirstUserMessage || isBranchFirstMessage) {
-      const newTitle = generateTitleFromMessage(resolvedPromptRefs.displayContent)
-      store.renameSession(sessionId, newTitle)
-    }
-
-    // Get settings and call AI
-    const settings = store.getSettings()
-    const providerId = settings.ai.provider
-    const providerConfig = getProviderConfig(settings)
-
-    const authContext = await resolveProviderAuth(providerId, providerConfig)
-    if (!authContext) {
-      const isOAuth = requiresOAuth(providerId)
-      return {
-        success: false,
-        error: isOAuth
-          ? `Not logged in to ${providerId}. Please login in settings.`
-          : 'API Key not configured. Please configure your AI settings.',
-      }
-    }
-
-    if (!isProviderSupported(providerId)) {
-      return {
-        success: false,
-        error: `Unsupported provider: ${providerId}`,
-      }
-    }
-
-    // Build conversation history from session messages
-    const historyMessages = buildHistoryMessages(session?.messages || [], session)
-
-    // Use AI SDK to generate response
-    const apiType = getProviderApiType(settings, providerId)
-    const response = await generateChatResponseWithReasoning(
-      providerId,
-      {
-        apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
-        authContext,
-        oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig?.oauthToken,
-        baseUrl: providerConfig?.baseUrl,
-        model: providerConfig?.model || '',
-        apiType,
-      },
-      filterHistoryForNonToolAPI(historyMessages),
-      {
-        temperature:
-          providerConfig?.temperatureByModel?.[providerConfig?.model ?? '']
-          ?? providerConfig?.temperature
-          ?? settings.ai.temperature,
-      }
-    )
-
-    const assistantMessage: ChatMessage = {
-      id: uuidv4(),
-      role: 'assistant',
-      model: providerConfig?.model || '',
-      content: response.text,
-      timestamp: Date.now(),
-      reasoning: response.reasoning,
-    }
-
-    // Save assistant message
-    store.addMessage(sessionId, assistantMessage)
-
-    // Get updated session name if it was renamed
-    const updatedSession = store.getSession(sessionId)
-    const sessionName = updatedSession?.name
-
-    return {
-      success: true,
-      userMessage,
-      assistantMessage,
-      sessionName, // Include updated session name for UI update
-    }
-  } catch (error: any) {
-    console.error('Error sending message:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to send message',
-      errorDetails: extractErrorDetails(error),
-    }
-  }
-}
-
-// Generate chat title using AI SDK
+// Generate chat title
 async function handleGenerateTitle(userMessage: string) {
   try {
     const settings = store.getSettings()
@@ -590,7 +410,7 @@ async function handleGenerateTitle(userMessage: string) {
     )
 
     return { success: true, title }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error generating title:', error)
     // Fallback to simple truncation
     return {
@@ -601,7 +421,7 @@ async function handleGenerateTitle(userMessage: string) {
 }
 
 // Handle streaming message with event emitter
-async function handleSendMessageStream(sender: Electron.WebContents, sessionId: string, messageContent: string, attachments?: MessageAttachment[]) {
+async function _handleSendMessageStream(sender: Electron.WebContents, sessionId: string, messageContent: string, attachments?: MessageAttachment[]) {
   console.log(`[Backend] handleSendMessageStream called - BUILD_VERSION: 2025-01-05-v2`)
   try {
     const { session, resolved: resolvedPromptRefs } = resolveComposerReferencesForSession(sessionId, messageContent)
@@ -705,19 +525,20 @@ async function handleSendMessageStream(sender: Electron.WebContents, sessionId: 
           toolSettings: settings.tools,
           sessionName: updatedSessionForName?.name,
         })
-      } catch (error: any) {
+      } catch (error) {
         console.error('[Backend] Error in stream execution:', error)
       }
     })
 
     return initialResponse
 
-  } catch (error: any) {
+  } catch (error) {
+    const errorObject = error && typeof error === 'object' ? error : undefined
     console.error('Error starting stream:', error)
     return {
       success: false,
-      error: error.message || 'Failed to start streaming',
-      errorDetails: extractErrorDetails(error),
+      error: caughtErrorMessage(errorObject, 'Failed to start streaming'),
+      errorDetails: caughtErrorDetails(errorObject),
     }
   }
 }
@@ -727,19 +548,16 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
   try {
     console.log(`[Backend] Resuming after tool confirm for session: ${sessionId}, message: ${messageId}`)
 
-    // Get session
     const session = store.getSession(sessionId)
     if (!session) {
       return { success: false, error: 'Session not found' }
     }
 
-    // Find the assistant message with tool calls
     const assistantMessage = session.messages.find(m => m.id === messageId)
     if (!assistantMessage || assistantMessage.role !== 'assistant') {
       return { success: false, error: 'Assistant message not found' }
     }
 
-    // Check if there are completed tool calls to process
     const toolCalls = assistantMessage.toolCalls || []
     const completedToolCalls = toolCalls.filter(tc => tc.status === 'completed' || tc.status === 'failed')
     if (completedToolCalls.length === 0) {
@@ -753,263 +571,39 @@ async function handleResumeAfterToolConfirm(sender: Electron.WebContents, sessio
       return { success: false, error: 'Still have pending tool calls awaiting confirmation' }
     }
 
-    // Get settings and validate (use session-level model if available)
-    const settings = store.getSettings()
-    const { providerId, providerConfig, model: effectiveModel } = getEffectiveProviderConfig(settings, sessionId)
-
-    const configWithApiKey = await resolveConfigWithAuth(providerId, providerConfig, effectiveModel)
-    if (!configWithApiKey) {
-      const isOAuth = requiresOAuth(providerId)
-      return {
-        success: false,
-        error: isOAuth
-          ? `Not logged in to ${providerId}. Please login in settings.`
-          : 'API Key not configured',
-      }
-    }
-
-    if (!isProviderSupported(providerId)) {
-      return { success: false, error: `Unsupported provider: ${providerId}` }
-    }
-
-    // Build conversation messages for continuation
-    // We need to include history + assistant message with tool calls + tool results
-    const historyMessages = buildHistoryMessages(session.messages, session)
-
-    // Filter out the current assistant message from history (we'll add it with tool calls)
-    const historyWithoutCurrent = historyMessages.filter((_, idx) => {
-      // Remove the last assistant message if it matches our message
-      const msgCount = historyMessages.length
-      return idx !== msgCount - 1 || historyMessages[idx].role !== 'assistant'
+    await emitSessionEvent(sessionId, {
+      type: 'content:continuation',
     })
 
-    // Build tool-aware conversation messages
-    const conversationMessages: ToolChatMessage[] = []
-
-    // Load skills first so async skill tools can initialize with context
-    const skillsSettings = settings.skills
-    const skillsEnabled = skillsSettings?.enableSkills !== false
-    const enabledSkills = skillsEnabled ? getSkillsForSession(session.workingDirectory) : []
-
-    // Set init context for async tools
-    if (settings.tools?.enableToolCalls) {
-      setInitContext({
-        skills: enabledSkills.map(s => ({
-          id: s.id,
-          name: s.name,
-          description: s.description,
-          source: s.source,
-          category: s.category,
-          tags: s.tags,
-          relatedSkills: s.relatedSkills,
-          conditions: s.conditions,
-          disableModelInvocation: s.disableModelInvocation,
-          platforms: s.platforms,
-          path: s.path,
-          directoryPath: s.directoryPath,
-          rootPath: s.rootPath,
-          relativePath: s.relativePath,
-          enabled: s.enabled,
-          instructions: s.instructions,
-          files: s.files?.map(f => ({ name: f.name, path: f.path, type: f.type as 'markdown' | 'script' | 'template' | 'other' })),
-        })),
-      })
-      await initializeAsyncTools()
-    }
-
-    // Add system prompt
-    // Use async version to include tools with dynamic descriptions
-    // Pass toolSettings.tools to filter based on user's per-tool enabled settings
-    const allEnabledTools = settings.tools?.enableToolCalls ? await getEnabledToolsAsync(settings.tools.tools) : []
-    const enabledTools = allEnabledTools.filter(t => !t.id.startsWith('mcp:'))
-    const mcpTools = settings.tools?.enableToolCalls ? getMCPToolsForAI(settings.tools.tools) : {}
-
-    // Check if the current model supports tools using Models.dev tool_call field
-    const supportsTools = await modelRegistry.modelSupportsTools(providerConfig?.model || '', providerId)
-    if (!supportsTools) {
-      console.log(`[Chat] Model ${providerConfig?.model} does not support tools, skipping tool calls`)
-    }
-
-    const hasTools = supportsTools && (enabledTools.length > 0 || Object.keys(mcpTools).length > 0)
-    const builtinToolsForAI = hasTools ? convertToolDefinitionsForAI(enabledTools) : {}
-    const toolsForAI = hasTools ? { ...builtinToolsForAI, ...mcpTools } : {}
-
-    const projectVars = buildProjectDirsPromptVars(session.workingDirectory)
-    const requestMessages = await buildPrompt({
-      sessionId,
-      agentId: session.agentId,
-      providerId,
-      providerConfig: providerConfig as unknown as Record<string, unknown> | undefined,
-      settings,
-      hasTools,
-      skills: enabledSkills,
-      workingDirectory: session.workingDirectory,
-      workingDirectoryRoots: session.workingDirectoryRoots,
-      contextVariables: await buildContextVariablesPromptText(sessionId),
-      activeProject: projectVars.active,
-      knownProjects: projectVars.known,
-      toolNames: Object.keys(builtinToolsForAI),
-      mcpToolNames: Object.keys(mcpTools),
-      historyMessages: [],
-    })
-    const { systemPrompt } = requestMessages
-
-    conversationMessages.push(...(requestMessages.messages as ToolChatMessage[]))
-
-    // Add history messages (excluding current assistant message)
-    for (const msg of historyWithoutCurrent) {
-      if (msg.role === 'user') {
-        conversationMessages.push({ role: 'user', content: msg.content })
-      } else if (msg.role === 'assistant') {
-        conversationMessages.push({
-          role: 'assistant',
-          content: msg.content,
-          ...(msg.toolCalls && { toolCalls: msg.toolCalls }),
-          ...(msg.reasoningContent && { reasoningContent: msg.reasoningContent }),
-        })
-      } else if (msg.role === 'tool') {
-        conversationMessages.push({ role: 'tool', content: msg.content })
-      }
-    }
-
-    // Add the assistant message with tool calls
-    conversationMessages.push({
-      role: 'assistant',
-      content: assistantMessage.content || '',
-      toolCalls: toolCalls.map(tc => ({
-        toolCallId: tc.id,
-        toolName: tc.toolName,
-        args: tc.arguments,
-      })),
-      ...(assistantMessage.reasoning && { reasoningContent: assistantMessage.reasoning }),
-    })
-
-    // Add tool results
-    conversationMessages.push({
-      role: 'tool',
-      content: toolCalls.map(tc => ({
-        type: 'tool-result' as const,
-        toolCallId: tc.id,
-        toolName: tc.toolName,
-        result: tc.status === 'completed' ? tc.result : { error: tc.error },
-      })),
-    })
-
-    // Send continuation chunk immediately to show waiting indicator
-    sender.send(IPC_CHANNELS.STREAM_CHUNK, {
-      type: 'continuation',
-      content: '',
-      messageId,
-      sessionId,
-    })
-
-    // Start streaming continuation in background
     process.nextTick(async () => {
-      const abortController = new AbortController()
-      activeStreams.set(sessionId, abortController)
-
-      const ctx: StreamContext = {
-        sender,
-        sessionId,
-        assistantMessageId: messageId,
-        abortSignal: abortController.signal,
-        settings,
-        providerConfig: configWithApiKey,
-        providerId,
-        toolSettings: settings.tools,
-      }
-
-      // Initialize processor with existing message content to preserve it
-      const processor = createStreamProcessor(ctx, {
-        content: assistantMessage.content || '',
-        reasoning: assistantMessage.reasoning || '',
-      })
-
       try {
-        console.log('[Backend] Continuing tool loop after confirmation')
-
-        // Log request start
-        const requestStartTime = Date.now()
-        console.log('[Chat] ===== Resume Request Start =====')
-        console.log('[Chat] Time:', new Date(requestStartTime).toISOString())
-        console.log('[Chat] Provider:', providerId)
-        console.log('[Chat] Model:', configWithApiKey.model)
-        console.log('[Chat] System Prompt:', systemPrompt)
-        console.log('[Chat] Messages:', JSON.stringify(formatMessagesForLog(conversationMessages), null, 2))
-
-        // Continue the stream (resume after tool confirmation)
-        const result = await runStream(ctx, conversationMessages, systemPrompt, toolsForAI, [], processor, enabledSkills, undefined, undefined)
-
-        // Log request end
-        const requestEndTime = Date.now()
-        const requestDuration = (requestEndTime - requestStartTime) / 1000
-        console.log('[Chat] ===== Resume Request End =====')
-        console.log('[Chat] End Time:', new Date(requestEndTime).toISOString())
-        console.log('[Chat] Duration:', requestDuration.toFixed(2), 'seconds')
-
-        // Only finalize and send complete if not paused for another confirmation
-        if (!result.pausedForConfirmation) {
-          processor.finalize()
-          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-            messageId,
-            sessionId,
-            sessionName: session.name,
-          })
-          console.log('[Backend] Resume streaming complete')
-          // Only remove controller if stream completed
-          activeStreams.delete(sessionId)
-        } else {
-          console.log('[Backend] Resume paused for another tool confirmation')
-          // Keep controller in activeStreams for abort support
-        }
-
-      } catch (error: any) {
-        const isAborted = error.name === 'AbortError' || abortController.signal.aborted
-        if (isAborted) {
-          console.log('[Backend] Resume stream aborted by user')
-          processor.finalize()
-          sender.send(IPC_CHANNELS.STREAM_COMPLETE, {
-            messageId,
-            sessionId,
-            sessionName: session.name,
-            aborted: true,
-          })
-        } else {
-          console.error('[Backend] Resume streaming error:', error)
-
-          // Remove the failed assistant message from storage
-          store.deleteMessage(sessionId, messageId)
-
-          // Add an error message to the session (persisted)
-          const errorMessage: ChatMessage = {
-            id: `error-${Date.now()}`,
-            role: 'error',
-            content: error.message || 'Streaming error',
-            timestamp: Date.now(),
-            errorDetails: extractErrorDetails(error),
-          }
-          store.addMessage(sessionId, errorMessage)
-
-          sender.send(IPC_CHANNELS.STREAM_ERROR, {
-            messageId,
-            sessionId,
-            error: error.message || 'Streaming error',
-            errorDetails: extractErrorDetails(error),
-          })
-        }
-        // On error/abort, always remove controller
-        activeStreams.delete(sessionId)
+        await getStreamEngine().handleResumeAfterConfirm(
+          sessionId,
+          { type: 'command:resume-after-confirm', messageId },
+          sender,
+        )
+      } catch (error) {
+        const errorObject = error && typeof error === 'object' ? error : undefined
+        console.error('[Backend] StreamEngine resume-after-confirm error:', error)
+        await emitSessionEvent(sessionId, {
+          type: 'stream:error',
+          data: {
+            error: caughtErrorMessage(errorObject, 'Failed to resume streaming'),
+            errorDetails: caughtErrorDetails(errorObject),
+          },
+        })
       }
     })
 
     return { success: true }
 
-  } catch (error: any) {
+  } catch (error) {
+    const errorObject = error && typeof error === 'object' ? error : undefined
     console.error('Error resuming after tool confirm:', error)
     return {
       success: false,
-      error: error.message || 'Failed to resume streaming',
-      errorDetails: extractErrorDetails(error),
+      error: caughtErrorMessage(errorObject, 'Failed to resume streaming'),
+      errorDetails: caughtErrorDetails(errorObject),
     }
   }
 }

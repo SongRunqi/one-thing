@@ -1,5 +1,7 @@
 import type {
   AgentContentPart,
+  AgentJsonObject,
+  AgentJsonValue,
   AgentMessage,
   AgentMessageContent,
   AgentProviderData,
@@ -38,7 +40,7 @@ export type AgentHistoryMessage =
         arguments?: string
         toolCallId?: string
         toolName?: string
-        args?: Record<string, unknown>
+        args?: AgentJsonObject
       }>
     }
   | {
@@ -48,11 +50,11 @@ export type AgentHistoryMessage =
         type?: string
         toolCallId?: string
         toolName?: string
-        result?: unknown
+        result?: AgentJsonValue
       }>
     }
 
-function stringifyToolResult(result: unknown): string {
+function stringifyToolResult(result: AgentJsonValue | undefined): string {
   if (result == null) return ''
   if (typeof result === 'string') return result
   try {

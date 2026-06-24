@@ -66,4 +66,88 @@ describe('DeepSeek agent provider', () => {
     expect(events).toContain('reasoning-delta')
     expect(events).toContain('tool-call-done')
   })
+
+  it('sends thinking disabled for native-thinking DeepSeek models', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
+      'data: {"choices":[{"index":0,"delta":{"content":"answer"},"finish_reason":"stop"}],"usage":null}\n\n',
+      'data: [DONE]\n\n',
+    ]))
+    const provider = createDeepSeekAgentProvider({
+      apiKey: 'test-key',
+      baseUrl: 'https://deepseek.test',
+      fetchImpl,
+    })
+
+    const events: string[] = []
+    for await (const event of provider.streamTurn!({
+      model: 'deepseek-v4-pro',
+      messages: [{ role: 'user', content: 'no thinking please' }],
+      thinking: 'disabled',
+      reasoningEffort: 'max',
+      temperature: 0.1,
+      turn: 1,
+    })) {
+      events.push(event.type)
+    }
+
+    const request = JSON.parse(fetchImpl.mock.calls[0][1].body)
+    expect(request.thinking).toEqual({ type: 'disabled' })
+    expect(request.reasoning_effort).toBeUndefined()
+    expect(request.temperature).toBe(0.1)
+    expect(events).toContain('text-delta')
+  })
+
+  it('emits DeepSeek SSE deltas before the stream completes', async () => {
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+    let doneEnqueued = false
+    const encoder = new TextEncoder()
+    const body = new ReadableStream<Uint8Array>({
+      start(nextController) {
+        controller = nextController
+      },
+    })
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(body, { status: 200 }))
+    const provider = createDeepSeekAgentProvider({
+      apiKey: 'test-key',
+      baseUrl: 'https://deepseek.test',
+      fetchImpl,
+    })
+
+    const iterator = provider.streamTurn!({
+      model: 'deepseek-v4-pro',
+      messages: [{ role: 'user', content: 'stream incrementally' }],
+      thinking: 'enabled',
+      turn: 1,
+    })[Symbol.asyncIterator]()
+
+    controller?.enqueue(encoder.encode(
+      'data: {"choices":[{"index":0,"delta":{"reasoning_content":"think"},"finish_reason":null}],"usage":null}\n\n',
+    ))
+    expect(await iterator.next()).toEqual({
+      done: false,
+      value: { type: 'reasoning-delta', turn: 1, delta: 'think' },
+    })
+
+    controller?.enqueue(encoder.encode(
+      'data: {"choices":[{"index":0,"delta":{"content":"answer"},"finish_reason":null}],"usage":null}\n\n',
+    ))
+    expect(await iterator.next()).toEqual({
+      done: false,
+      value: { type: 'text-delta', turn: 1, delta: 'answer' },
+    })
+    expect(doneEnqueued).toBe(false)
+
+    doneEnqueued = true
+    controller?.enqueue(encoder.encode(
+      'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":null}\n\n',
+    ))
+    controller?.enqueue(encoder.encode('data: [DONE]\n\n'))
+    controller?.close()
+
+    expect(await iterator.next()).toEqual({
+      done: false,
+      value: { type: 'finish', turn: 1, finishReason: 'stop', usage: undefined },
+    })
+    expect(await iterator.next()).toEqual({ done: true, value: undefined })
+  })
 })

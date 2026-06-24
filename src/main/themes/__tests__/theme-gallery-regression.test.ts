@@ -172,8 +172,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#CCD0DA",
-            "sidebarActive": "#f9f0ff",
-            "tabActive": "#f9f0ff",
+            "sidebarActive": "#D6D9DE",
+            "tabActive": "#DFE0E4",
           },
           "surfaces": {
             "app": "#DCE0E8",
@@ -190,8 +190,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#313244",
-            "sidebarActive": "#211d31",
-            "tabActive": "#211d31",
+            "sidebarActive": "#1A1A25",
+            "tabActive": "#282838",
           },
           "surfaces": {
             "app": "#11111B",
@@ -208,8 +208,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#44475A",
-            "sidebarActive": "#2d2a3f",
-            "tabActive": "#2d2a3f",
+            "sidebarActive": "#2B2C36",
+            "tabActive": "#3E4151",
           },
           "surfaces": {
             "app": "#21222C",
@@ -226,8 +226,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#403E3C",
-            "sidebarActive": "#262c32",
-            "tabActive": "#262c32",
+            "sidebarActive": "#323130",
+            "tabActive": "#3E3D3B",
           },
           "surfaces": {
             "app": "#282726",
@@ -244,8 +244,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#161B22",
-            "sidebarActive": "#081223",
-            "tabActive": "#081223",
+            "sidebarActive": "#040B12",
+            "tabActive": "#1F242C",
           },
           "surfaces": {
             "app": "#010409",
@@ -262,8 +262,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#F6F8FA",
-            "sidebarActive": "#e6f6ff",
-            "tabActive": "#e6f6ff",
+            "sidebarActive": "#E5E7E9",
+            "tabActive": "#EEEEEE",
           },
           "surfaces": {
             "app": "#FFFFFF",
@@ -280,8 +280,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#3C3836",
-            "sidebarActive": "#2b2f2e",
-            "tabActive": "#2b2f2e",
+            "sidebarActive": "#323232",
+            "tabActive": "#474240",
           },
           "surfaces": {
             "app": "#282828",
@@ -298,8 +298,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#EBDBB2",
-            "sidebarActive": "#a5b8b8",
-            "tabActive": "#a5b8b8",
+            "sidebarActive": "#DBCBA2",
+            "tabActive": "#EAE0B7",
           },
           "surfaces": {
             "app": "#FBF1C7",
@@ -316,8 +316,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#434C5E",
-            "sidebarActive": "#323e4a",
-            "tabActive": "#323e4a",
+            "sidebarActive": "#383E4B",
+            "tabActive": "#464D5D",
           },
           "surfaces": {
             "app": "#2E3440",
@@ -334,8 +334,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#2C323C",
-            "sidebarActive": "#242f3d",
-            "tabActive": "#242f3d",
+            "sidebarActive": "#2B2F35",
+            "tabActive": "#363C47",
           },
           "surfaces": {
             "app": "#21252B",
@@ -352,8 +352,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#E5E5E6",
-            "sidebarActive": "#f0f7ff",
-            "tabActive": "#f0f7ff",
+            "sidebarActive": "#DFDFDF",
+            "tabActive": "#E9E9E9",
           },
           "surfaces": {
             "app": "#FAFAFA",
@@ -370,8 +370,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#1F1D2E",
-            "sidebarActive": "#272236",
-            "tabActive": "#272236",
+            "sidebarActive": "#22202E",
+            "tabActive": "#292738",
           },
           "surfaces": {
             "app": "#191724",
@@ -388,8 +388,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#073642",
-            "sidebarActive": "#023042",
-            "tabActive": "#023042",
+            "sidebarActive": "#0B3540",
+            "tabActive": "#15414D",
           },
           "surfaces": {
             "app": "#002B36",
@@ -406,8 +406,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "light",
           "states": {
             "composerFocus": "#EEE8D5",
-            "sidebarActive": "#f0fbff",
-            "tabActive": "#f0fbff",
+            "sidebarActive": "#DED8C5",
+            "tabActive": "#ECE5D3",
           },
           "surfaces": {
             "app": "#FDF6E3",
@@ -424,8 +424,8 @@ describe('built-in theme gallery regression', () => {
           "scheme": "dark",
           "states": {
             "composerFocus": "#414868",
-            "sidebarActive": "#1d2133",
-            "tabActive": "#1d2133",
+            "sidebarActive": "#1F1F28",
+            "tabActive": "#33384D",
           },
           "surfaces": {
             "app": "#16161E",

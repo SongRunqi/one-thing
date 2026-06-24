@@ -18,6 +18,26 @@ import type { StreamContext } from '../engine/stream/stream-processor.js'
 import type { IPCEmitter } from '../engine/stream/ipc-emitter.js'
 import { getEventBus, getStreamChannel } from './index.js'
 
+function shouldDebugStream(): boolean {
+  return process.env.ONETHING_DEBUG_STREAM === '1' || process.env.ONETHING_DEBUG_CODEX_STREAM === '1'
+}
+
+function logTime(): string {
+  return new Date().toISOString()
+}
+
+function previewText(value: string, maxLength = 240): string {
+  return value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
+}
+
+const debugLastPushAt = new Map<string, number>()
+
+function debugGapMs(key: string, now = Date.now()): number | undefined {
+  const previous = debugLastPushAt.get(key)
+  debugLastPushAt.set(key, now)
+  return previous === undefined ? undefined : now - previous
+}
+
 /**
  * Create an event-only emitter that sends to EventBus/StreamChannel.
  * IPCBridge translates these events to renderer IPC.
@@ -63,6 +83,18 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
       const s = stream()
       if (s) {
         try {
+          if (shouldDebugStream()) {
+            const key = `${sessionId}:${assistantMessageId}:text`
+            console.log('[EventOnlyEmitter] push text-delta', {
+              time: logTime(),
+              gapMs: debugGapMs(key),
+              sessionId,
+              assistantMessageId,
+              chars: text.length,
+              text: previewText(text),
+              turnIndex,
+            })
+          }
           s.push(sessionId, {
             type: 'text-delta',
             text,
@@ -79,6 +111,19 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
       const s = stream()
       if (s) {
         try {
+          if (shouldDebugStream()) {
+            const key = `${sessionId}:${assistantMessageId}:reasoning`
+            console.log('[EventOnlyEmitter] push reasoning-delta', {
+              time: logTime(),
+              gapMs: debugGapMs(key),
+              sessionId,
+              assistantMessageId,
+              chars: reasoning.length,
+              text: previewText(reasoning),
+              turnIndex,
+              placement,
+            })
+          }
           s.push(sessionId, {
             type: 'reasoning-delta',
             reasoning,

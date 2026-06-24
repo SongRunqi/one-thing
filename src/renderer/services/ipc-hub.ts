@@ -15,6 +15,30 @@ import type { SessionEventEnvelope } from '../../shared/events/index.js'
 
 let initialized = false
 
+function shouldDebugStream(): boolean {
+  try {
+    return localStorage.getItem('onething:debug-stream') === '1'
+  } catch {
+    return false
+  }
+}
+
+function logTime(): string {
+  return new Date().toISOString()
+}
+
+function previewText(value: unknown, maxLength = 240): string {
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, maxLength)
+}
+
+const debugLastChunkAt = new Map<string, number>()
+
+function debugGapMs(key: string, now = Date.now()): number | undefined {
+  const previous = debugLastChunkAt.get(key)
+  debugLastChunkAt.set(key, now)
+  return previous === undefined ? undefined : now - previous
+}
+
 export function initializeIPCHub() {
   if (initialized) {
     console.log('[IPC Hub] Already initialized, skipping')
@@ -31,10 +55,16 @@ export function initializeIPCHub() {
     switch (event.type) {
       // Stream lifecycle
       case 'stream:complete':
+        if (shouldDebugStream()) {
+          console.log('[IPC Hub] session:event stream:complete', { sessionId, event })
+        }
         store.handleStreamComplete({ sessionId, ...event.data })
         break
 
       case 'stream:error':
+        if (shouldDebugStream()) {
+          console.log('[IPC Hub] session:event stream:error', { sessionId, event })
+        }
         store.handleStreamError({ sessionId, ...event.data })
         break
 
@@ -43,6 +73,13 @@ export function initializeIPCHub() {
         break
 
       case 'stream:start':
+        if (shouldDebugStream()) {
+          console.log('[IPC Hub] session:event stream:start', {
+            time: logTime(),
+            sessionId,
+            messageId: event.messageId || event.assistantMessageId,
+          })
+        }
         store.handleStreamStarted({ sessionId, messageId: event.messageId || event.assistantMessageId })
         break
 
@@ -117,6 +154,10 @@ export function initializeIPCHub() {
         store.handleMessageCreated({ sessionId, message: (event as any).message })
         break
 
+      case 'message:created':
+        store.handleMessageCreated({ sessionId, message: (event as any).message })
+        break
+
       case 'message:assistant-created':
         store.handleAssistantCreated({ sessionId, message: (event as any).message })
         break
@@ -170,6 +211,24 @@ export function initializeIPCHub() {
   // Already batched by IPCBridge (16ms coalescing), so route directly to store.
   window.electronAPI.onSessionStream(({ sessionId, chunk }: { sessionId: string; chunk: any }) => {
     const store = useChatStore()
+    if (shouldDebugStream()) {
+      const text = typeof chunk.text === 'string'
+        ? chunk.text
+        : typeof chunk.reasoning === 'string'
+          ? chunk.reasoning
+          : typeof chunk.argsTextDelta === 'string'
+            ? chunk.argsTextDelta
+            : ''
+      console.log('[IPC Hub] session:stream chunk', {
+        time: logTime(),
+        gapMs: debugGapMs(`${sessionId}:${chunk.messageId}:${chunk.type}`),
+        sessionId,
+        messageId: chunk.messageId,
+        type: chunk.type,
+        chars: text.length,
+        text: previewText(text),
+      })
+    }
 
     switch (chunk.type) {
       case 'text-delta':

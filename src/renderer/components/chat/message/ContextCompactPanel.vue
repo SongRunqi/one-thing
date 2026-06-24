@@ -105,7 +105,48 @@ const meta = computed(() => {
     : 'Older messages summarized'
 })
 
-const renderedSummary = computed(() => renderMarkdown(props.summary, false))
+const renderedSummary = computed(() => renderMarkdown(formatSummaryForDisplay(props.summary), false))
+
+function formatSummaryForDisplay(summary: string): string {
+  try {
+    const parsed = JSON.parse(summary) as Record<string, unknown>
+    const sections = [
+      ['Goal', parsed.goal],
+      ['Completed', parsed.completed],
+      ['Pending', parsed.pending],
+      ['Key Findings', parsed.key_findings],
+      ['Decisions', parsed.decisions],
+      ['Artifacts', parsed.artifacts],
+    ]
+
+    const markdown = sections
+      .map(([label, value]) => formatSummarySection(String(label), value))
+      .filter(Boolean)
+      .join('\n\n')
+
+    return markdown || summary
+  } catch {
+    return summary
+  }
+}
+
+function formatSummarySection(label: string, value: unknown): string {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? `**${label}**\n${trimmed}` : ''
+  }
+
+  if (Array.isArray(value)) {
+    const items = value
+      .map(item => String(item ?? '').trim())
+      .filter(Boolean)
+    return items.length > 0
+      ? `**${label}**\n${items.map(item => `- ${item}`).join('\n')}`
+      : ''
+  }
+
+  return ''
+}
 </script>
 
 <style scoped>

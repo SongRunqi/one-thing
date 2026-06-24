@@ -7,6 +7,7 @@
 
 import { z } from 'zod'
 import { Tool } from '../core/tool.js'
+import type { JsonObjectProperty } from '../../../shared/json.js'
 
 type TimeAction = 'now' | 'convert' | 'diff' | 'add'
 type TimeFormat = 'full' | 'date' | 'time' | 'iso' | 'compact'
@@ -23,7 +24,7 @@ interface TimeMetadata {
   end?: TimePointMetadata
   difference?: DifferenceMetadata
   result?: TimePointMetadata
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 interface TimePointMetadata {
@@ -35,7 +36,7 @@ interface TimePointMetadata {
   formatted: string
   offset: string
   offsetMinutes: number
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 interface DifferenceMetadata {
@@ -47,7 +48,7 @@ interface DifferenceMetadata {
   human: string
   requestedUnit?: DurationUnit
   requestedValue?: number
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 type TimeZoneSpec = {

@@ -5,10 +5,10 @@
  * Requires two-step token exchange: GitHub OAuth -> Copilot completion token.
  */
 
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import type { ProviderDefinition } from '../types.js'
 import type { ModelInfo } from '../../../shared/ipc.js'
-import { createBoundFetch, createRequiredAppFetch } from '../bound-fetch.js'
+import { createRequiredAppFetch } from '../bound-fetch.js'
+import { toJsonObject, type JsonValue } from '../../../shared/json.js'
 
 // Cache for Copilot completion tokens
 interface CopilotToken {
@@ -26,6 +26,19 @@ interface CopilotModelsCache {
 
 let copilotModelsCache: CopilotModelsCache | null = null
 const MODELS_CACHE_TTL = 10 * 60 * 1000 // 10 minutes
+
+function modelInfoFromCopilotEntry(entry: JsonValue): ModelInfo | null {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
+  const id = entry.id
+  if (typeof id !== 'string' || !id) return null
+  const description = entry.description
+  return {
+    id,
+    name: id,
+    description: typeof description === 'string' ? description : getModelDescription(id),
+    type: 'chat',
+  }
+}
 
 /**
  * Exchange GitHub OAuth token for Copilot completion token
@@ -54,13 +67,17 @@ async function getCopilotCompletionToken(githubAccessToken: string): Promise<str
     throw new Error(`Failed to get Copilot token: ${response.status} ${error}`)
   }
 
-  const data = await response.json()
+  const data = toJsonObject(await response.json())
 
   // Cache the token
   copilotTokenCache.set(githubAccessToken, {
-    token: data.token,
-    expiresAt: Date.now() + (data.expires_in || 1800) * 1000, // Default 30 minutes
+    token: typeof data.token === 'string' ? data.token : '',
+    expiresAt: Date.now() + (typeof data.expires_in === 'number' ? data.expires_in : 1800) * 1000, // Default 30 minutes
   })
+
+  if (typeof data.token !== 'string' || !data.token) {
+    throw new Error('Failed to get Copilot token: response did not include a token')
+  }
 
   return data.token
 }
@@ -99,16 +116,12 @@ export async function fetchCopilotModels(githubAccessToken: string): Promise<Mod
       throw new Error(`Failed to fetch Copilot models: ${response.status}`)
     }
 
-    const data = await response.json()
+    const data = toJsonObject(await response.json())
 
     // Parse OpenAI-compatible response format
-    const models: ModelInfo[] = (data.data || []).map((m: any) => ({
-      id: m.id,
-      name: m.id, // Copilot uses id as name
-      description: m.description || getModelDescription(m.id),
-      // Additional capabilities info if available
-      type: 'chat' as const,
-    }))
+    const models: ModelInfo[] = Array.isArray(data.data)
+      ? data.data.map(modelInfoFromCopilotEntry).filter((model): model is ModelInfo => Boolean(model))
+      : []
 
     // Cache the results
     copilotModelsCache = {
@@ -228,39 +241,6 @@ const githubCopilotProvider: ProviderDefinition = {
     // Models: GitHub Copilot provides its own model list
   },
 
-  create: ({ apiKey, oauthToken }) => {
-    // Get GitHub access token from either:
-    // 1. oauthToken.accessToken (from registry async path)
-    // 2. apiKey (from chat.ts which fetches OAuth token and passes it as apiKey)
-    const githubToken = oauthToken?.accessToken || apiKey || ''
-
-    if (!githubToken) {
-      throw new Error('Not logged in to GitHub Copilot. Please login first.')
-    }
-
-    // We need to handle async token exchange
-    // For simplicity, we'll create provider with a placeholder and handle refresh in chat
-    // In production, we'd want a more sophisticated approach
-
-    // Create a wrapper that will get the real token when needed
-    const provider = createOpenAICompatible({
-      name: 'github-copilot',
-      apiKey: githubToken, // Will be replaced with Copilot token in headers
-      baseURL: 'https://api.individual.githubcopilot.com',
-      headers: {
-        'Editor-Version': 'vscode/1.85.1',
-        'Editor-Plugin-Version': 'copilot-chat/0.29.1',
-        'Copilot-Integration-Id': 'vscode-chat',
-        'User-Agent': 'onething/1.0',
-        'OpenAI-Intent': 'conversation-panel',
-      },
-      fetch: createBoundFetch(),
-    })
-
-    return {
-      createModel: (modelId: string) => provider(modelId),
-    }
-  },
 }
 
 export default githubCopilotProvider

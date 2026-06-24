@@ -11,6 +11,7 @@ import * as fs from 'fs/promises'
 import { Tool } from '../core/tool.js'
 import { Ripgrep } from '../../utils/ripgrep.js'
 import { checkFileAccess, expandPath } from '../core/sandbox.js'
+import type { JsonObjectProperty } from '../../../shared/json.js'
 
 // Maximum files to return
 const DEFAULT_LIMIT = 100
@@ -23,7 +24,7 @@ export interface GlobMetadata {
   searchPath: string
   count: number
   truncated: boolean
-  [key: string]: unknown
+  [key: string]: JsonObjectProperty
 }
 
 /**
@@ -128,9 +129,9 @@ Use this tool when you need to find files by name patterns.`,
         }
       }
       console.log(`[Glob] Search completed: found ${files.length} files in ${Date.now() - startTime}ms`)
-    } catch (error: any) {
+    } catch (error) {
       console.error(`[Glob] Search failed:`, error)
-      throw new Error(`Glob search failed: ${error.message}`)
+      throw new Error(`Glob search failed: ${error instanceof Error ? error.message : String(error)}`)
     }
 
     // Sort by modification time (newest first)

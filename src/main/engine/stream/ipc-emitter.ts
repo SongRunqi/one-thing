@@ -9,6 +9,7 @@
 
 import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart } from '../../../shared/ipc.js'
 import type { ReasoningPlacement } from '../../../shared/events/index.js'
+import type { JsonObject } from '../../../shared/json.js'
 
 /**
  * Data for stream completion event
@@ -65,7 +66,7 @@ export interface IPCEmitter {
   sendToolInputDelta(toolCallId: string, argsTextDelta: string): void
 
   /** Send tool execution start */
-  sendToolExecutionStart(toolCallId: string, stepId: string, toolName: string, args: Record<string, unknown>): void
+  sendToolExecutionStart(toolCallId: string, stepId: string, toolName: string, args: JsonObject): void
 
   /** Send structured partial tool result update */
   sendToolExecutionUpdate(toolCallId: string, stepId: string, partialResult: ToolPartialResult): void

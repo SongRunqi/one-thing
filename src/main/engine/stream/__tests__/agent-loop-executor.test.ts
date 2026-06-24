@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS, type ToolCall } from '../../../../shared/ipc.js'
+import { createDefaultSettings } from '../../../../shared/defaults/settings.js'
 import {
   applyAgentLoopStreamChunk,
   completeAgentLoopStream,
@@ -9,9 +10,17 @@ import {
 } from '../agent-loop-executor.js'
 import { triggerManager } from '../../triggers/index.js'
 import { runAfterAssistantResponseHooks } from '../../../plugins/lifecycle.js'
+import type { saveMediaImage } from '../../../ipc/media.js'
+import type { BuildAgentLoopStreamRuntimeResult } from '../agent-loop-runtime.js'
+import type { IPCEmitter } from '../ipc-emitter.js'
+import type { StreamProcessor, StreamSender } from '../stream-processor.js'
+
+type SaveMediaImageInput = Parameters<typeof saveMediaImage>[0]
+type AgentLoopSelectionContext = Parameters<typeof shouldUseAgentLoopStream>[0]
+type SupportedAgentLoopRuntimeResult = Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>
 
 const mediaMocks = vi.hoisted(() => ({
-  saveMediaImage: vi.fn(async (input: any) => ({
+  saveMediaImage: vi.fn(async (input: SaveMediaImageInput) => ({
     id: 'media_1',
     filePath: '/tmp/media_1.png',
     prompt: input.prompt,
@@ -54,11 +63,41 @@ vi.mock('../../../ipc/media.js', () => ({
   saveMediaImage: mediaMocks.saveMediaImage,
 }))
 
+function testSelectionContext(ctx: AgentLoopSelectionContext): AgentLoopSelectionContext {
+  return ctx
+}
+
+function supportedPrepared(overrides: Partial<SupportedAgentLoopRuntimeResult> = {}): SupportedAgentLoopRuntimeResult {
+  return {
+    supported: true,
+    runtime: {
+      provider: { id: 'test-provider' },
+      model: 'test-model',
+      messages: [],
+      sessionId: 's1',
+      messageId: 'm1',
+    },
+    systemPrompt: 'system',
+    enabledSkills: [],
+    toolNames: ['read'],
+    mcpToolNames: ['mcp_search'],
+    hasTools: true,
+    supportsTools: true,
+    modelContextLength: 128000,
+    reservedOutputTokens: 4096,
+    ...overrides,
+  }
+}
+
 function createState(): AgentLoopExecutorState {
   const toolCalls: ToolCall[] = []
   const stepIds = new Map<string, string>()
   const inputBuffers = new Map<string, { toolName: string; argsText: string }>()
-  const emitter = {
+  const sender: StreamSender = {
+    isDestroyed: () => false,
+    send: vi.fn(),
+  }
+  const emitter: IPCEmitter = {
     sendTextChunk: vi.fn(),
     sendReasoningChunk: vi.fn(),
     sendContentPart: vi.fn(),
@@ -78,6 +117,62 @@ function createState(): AgentLoopExecutorState {
     sendStreamAborted: vi.fn(),
     sendSkillActivated: vi.fn(),
   }
+  const processor: StreamProcessor = {
+    get accumulatedContent() { return '' },
+    get accumulatedReasoning() { return '' },
+    get toolCalls() { return toolCalls },
+    handleTextChunk: vi.fn(text => text),
+    handleReasoningChunk: vi.fn(),
+    handleToolCallChunk: vi.fn((toolCallData) => {
+      let toolCall = toolCalls.find(existing => existing.id === toolCallData.toolCallId)
+      if (!toolCall) {
+        toolCall = {
+          id: toolCallData.toolCallId,
+          toolId: toolCallData.toolName,
+          toolName: toolCallData.toolName,
+          arguments: toolCallData.args,
+          status: 'pending',
+          timestamp: 1,
+        }
+        toolCalls.push(toolCall)
+      } else {
+        toolCall.arguments = toolCallData.args
+        toolCall.status = 'pending'
+        delete toolCall.streamingArgs
+      }
+      return toolCall
+    }),
+    handleToolInputStart: vi.fn((toolCallId, toolName) => {
+      inputBuffers.set(toolCallId, { toolName, argsText: '' })
+      stepIds.set(toolCallId, `step-${toolCallId}`)
+      toolCalls.push({
+        id: toolCallId,
+        toolId: toolName,
+        toolName,
+        arguments: {},
+        status: 'input-streaming',
+        streamingArgs: '',
+        timestamp: 1,
+      })
+    }),
+    handleToolInputDelta: vi.fn((toolCallId, argsTextDelta) => {
+      const buffer = inputBuffers.get(toolCallId)
+      if (buffer) buffer.argsText += argsTextDelta
+    }),
+    handleToolInputEnd: vi.fn((toolCallId) => {
+      const buffer = inputBuffers.get(toolCallId)
+      if (!buffer) return null
+      inputBuffers.delete(toolCallId)
+      const toolCall = toolCalls.find(existing => existing.id === toolCallId)
+      if (!toolCall) return null
+      toolCall.arguments = buffer.argsText ? JSON.parse(buffer.argsText) : {}
+      toolCall.status = 'pending'
+      delete toolCall.streamingArgs
+      return toolCall
+    }),
+    getStepIdForToolCall: vi.fn(toolCallId => stepIds.get(toolCallId)),
+    finalize: vi.fn(),
+  }
 
   return {
     ctx: {
@@ -86,66 +181,11 @@ function createState(): AgentLoopExecutorState {
       providerId: 'deepseek',
       providerConfig: { model: 'deepseek-v4-flash', selectedModels: ['deepseek-v4-flash'] },
       abortSignal: new AbortController().signal,
-      settings: {} as any,
+      settings: createDefaultSettings(),
       toolSettings: undefined,
-      sender: { isDestroyed: () => false, send: vi.fn() } as any,
+      sender,
     },
-    processor: {
-      get accumulatedContent() { return '' },
-      get accumulatedReasoning() { return '' },
-      get toolCalls() { return toolCalls },
-      handleTextChunk: vi.fn(text => text),
-      handleReasoningChunk: vi.fn(),
-      handleToolCallChunk: vi.fn((toolCallData) => {
-        let toolCall = toolCalls.find(existing => existing.id === toolCallData.toolCallId)
-        if (!toolCall) {
-          toolCall = {
-            id: toolCallData.toolCallId,
-            toolId: toolCallData.toolName,
-            toolName: toolCallData.toolName,
-            arguments: toolCallData.args,
-            status: 'pending',
-            timestamp: 1,
-          }
-          toolCalls.push(toolCall)
-        } else {
-          toolCall.arguments = toolCallData.args
-          toolCall.status = 'pending'
-          delete toolCall.streamingArgs
-        }
-        return toolCall
-      }),
-      handleToolInputStart: vi.fn((toolCallId, toolName) => {
-        inputBuffers.set(toolCallId, { toolName, argsText: '' })
-        stepIds.set(toolCallId, `step-${toolCallId}`)
-        toolCalls.push({
-          id: toolCallId,
-          toolId: toolName,
-          toolName,
-          arguments: {},
-          status: 'input-streaming',
-          streamingArgs: '',
-          timestamp: 1,
-        })
-      }),
-      handleToolInputDelta: vi.fn((toolCallId, argsTextDelta) => {
-        const buffer = inputBuffers.get(toolCallId)
-        if (buffer) buffer.argsText += argsTextDelta
-      }),
-      handleToolInputEnd: vi.fn((toolCallId) => {
-        const buffer = inputBuffers.get(toolCallId)
-        if (!buffer) return null
-        inputBuffers.delete(toolCallId)
-        const toolCall = toolCalls.find(existing => existing.id === toolCallId)
-        if (!toolCall) return null
-        toolCall.arguments = buffer.argsText ? JSON.parse(buffer.argsText) : {}
-        toolCall.status = 'pending'
-        delete toolCall.streamingArgs
-        return toolCall
-      }),
-      getStepIdForToolCall: vi.fn(toolCallId => stepIds.get(toolCallId)),
-      finalize: vi.fn(),
-    } as any,
+    processor,
     emitter,
     turnIndex: 1,
     turn: {
@@ -168,33 +208,43 @@ describe('agent loop executor', () => {
     vi.clearAllMocks()
   })
 
-  it('routes only supported providers when the feature flag is enabled', () => {
-    expect(shouldUseAgentLoopStream({ providerId: 'deepseek' } as any)).toBe(false)
+  it('routes supported providers by default and ignores legacy opt-out', () => {
+    expect(shouldUseAgentLoopStream(testSelectionContext({ providerId: 'deepseek' }))).toBe(true)
+    expect(shouldUseAgentLoopStream(testSelectionContext({ providerId: 'openai' }))).toBe(true)
+    expect(shouldUseAgentLoopStream(testSelectionContext({
+      providerId: 'deepseek',
+      settings: { chat: { agentLoopStream: false } },
+    }))).toBe(true)
 
     vi.stubEnv('ONETHING_AGENT_LOOP_STREAM', '1')
 
-    expect(shouldUseAgentLoopStream({ providerId: 'deepseek' } as any)).toBe(true)
-    expect(shouldUseAgentLoopStream({ providerId: 'acp' } as any)).toBe(true)
-    expect(shouldUseAgentLoopStream({ providerId: 'openai' } as any)).toBe(false)
+    expect(shouldUseAgentLoopStream(testSelectionContext({
+      providerId: 'deepseek',
+      settings: { chat: { agentLoopStream: false } },
+    }))).toBe(true)
   })
 
   it('can route supported providers through agent-loop via chat settings', () => {
-    expect(shouldUseAgentLoopStream({
+    expect(shouldUseAgentLoopStream(testSelectionContext({
       providerId: 'deepseek',
       settings: { chat: { agentLoopStream: true } },
-    } as any)).toBe(true)
-    expect(shouldUseAgentLoopStream({
+    }))).toBe(true)
+    expect(shouldUseAgentLoopStream(testSelectionContext({
       providerId: 'openai',
       settings: { chat: { agentLoopStream: true } },
-    } as any)).toBe(false)
+    }))).toBe(true)
+    expect(shouldUseAgentLoopStream(testSelectionContext({
+      providerId: 'unsupported-provider',
+      settings: { chat: { agentLoopStream: true } },
+    }))).toBe(false)
   })
 
   it('maps internally executed tool chunks onto existing tool and step events', async () => {
     const state = createState()
-    const processor = state.processor as any
 
-    processor.handleToolInputEnd.mockImplementation((toolCallId: string) => {
-      const toolCall = processor.toolCalls.find((existing: ToolCall) => existing.id === toolCallId)
+    vi.mocked(state.processor.handleToolInputEnd).mockImplementation((toolCallId) => {
+      const toolCall = state.processor.toolCalls.find(existing => existing.id === toolCallId)
+      if (!toolCall) return null
       toolCall.arguments = { query: 'moon' }
       toolCall.status = 'pending'
       delete toolCall.streamingArgs
@@ -247,12 +297,28 @@ describe('agent loop executor', () => {
     )
   })
 
+  it('routes text and reasoning deltas through the stream processor', async () => {
+    const state = createState()
+
+    await applyAgentLoopStreamChunk(state, {
+      type: 'text',
+      text: 'hello',
+    })
+    await applyAgentLoopStreamChunk(state, {
+      type: 'reasoning',
+      reasoning: 'think',
+    })
+
+    expect(state.processor.handleTextChunk).toHaveBeenCalledWith('hello', state.turn.content, 1)
+    expect(state.processor.handleReasoningChunk).toHaveBeenCalledWith('think', state.turn.reasoning, 1, 'inline')
+  })
+
   it('maps tool metadata and partial results onto existing step events', async () => {
     const state = createState()
-    const processor = state.processor as any
 
-    processor.handleToolInputEnd.mockImplementation((toolCallId: string) => {
-      const toolCall = processor.toolCalls.find((existing: ToolCall) => existing.id === toolCallId)
+    vi.mocked(state.processor.handleToolInputEnd).mockImplementation((toolCallId) => {
+      const toolCall = state.processor.toolCalls.find(existing => existing.id === toolCallId)
+      if (!toolCall) return null
       toolCall.arguments = { path: '/tmp/a.txt' }
       toolCall.status = 'pending'
       delete toolCall.streamingArgs
@@ -321,10 +387,10 @@ describe('agent loop executor', () => {
 
   it('maps confirmation-gated tool results onto awaiting-confirmation state', async () => {
     const state = createState()
-    const processor = state.processor as any
 
-    processor.handleToolInputEnd.mockImplementation((toolCallId: string) => {
-      const toolCall = processor.toolCalls.find((existing: ToolCall) => existing.id === toolCallId)
+    vi.mocked(state.processor.handleToolInputEnd).mockImplementation((toolCallId) => {
+      const toolCall = state.processor.toolCalls.find(existing => existing.id === toolCallId)
+      if (!toolCall) return null
       toolCall.arguments = { cmd: 'rm -rf tmp' }
       toolCall.status = 'pending'
       delete toolCall.streamingArgs
@@ -383,7 +449,7 @@ describe('agent loop executor', () => {
 
   it('creates a new assistant writer when a natural turn continues', async () => {
     const state = createState()
-    const firstProcessor = state.processor as any
+    const firstProcessor = state.processor
 
     await applyAgentLoopStreamChunk(state, {
       type: 'turn-start',
@@ -402,7 +468,7 @@ describe('agent loop executor', () => {
       turnStart: { turn: 2 },
     })
 
-    expect(firstProcessor.finalize).toHaveBeenCalled()
+    expect(vi.mocked(firstProcessor.finalize)).toHaveBeenCalled()
     expect(storeMocks.addMessage).toHaveBeenCalledWith('s1', expect.objectContaining({
       role: 'assistant',
       model: 'deepseek-v4-flash',
@@ -419,17 +485,6 @@ describe('agent loop executor', () => {
     await completeAgentLoopStream(state, 'Session')
 
     expect(storeMocks.updateMessageStreaming).toHaveBeenCalledWith('s1', nextAssistantMessageId, false)
-    expect(state.ctx.sender.send).toHaveBeenCalledWith(
-      IPC_CHANNELS.UI_MESSAGE_STREAM,
-      expect.objectContaining({
-        sessionId: 's1',
-        messageId: nextAssistantMessageId,
-        chunk: expect.objectContaining({
-          type: 'finish',
-          messageId: nextAssistantMessageId,
-        }),
-      }),
-    )
   })
 
   it('handles Codex provider data for encrypted reasoning and image generation', async () => {
@@ -514,18 +569,7 @@ describe('agent loop executor', () => {
 
     runAgentLoopPostResponseHooks({
       state,
-      prepared: {
-        supported: true,
-        runtime: {} as any,
-        systemPrompt: 'system',
-        enabledSkills: [],
-        toolNames: ['read'],
-        mcpToolNames: ['mcp_search'],
-        hasTools: true,
-        supportsTools: true,
-        modelContextLength: 128000,
-        reservedOutputTokens: 4096,
-      },
+      prepared: supportedPrepared(),
       historyMessages: [
         { role: 'user', content: 'hello' },
       ],

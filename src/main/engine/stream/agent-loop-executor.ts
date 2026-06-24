@@ -1,6 +1,8 @@
 import * as store from '../../store.js'
 import { v4 as uuidv4 } from 'uuid'
-import { IPC_CHANNELS, type ContentPart, type ToolCall, type ToolPartialResult, type ToolResult } from '../../../shared/ipc.js'
+import { IPC_CHANNELS, type ContentPart, type Step, type ToolCall, type ToolPartialResult, type ToolResult } from '../../../shared/ipc.js'
+import type { JsonObject } from '../../../shared/json.js'
+import { toJsonObject, toJsonValue } from '../../../shared/json.js'
 import { getEventBus } from '../../events/index.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import {
@@ -8,6 +10,7 @@ import {
   streamAgentLoopProviderChunks,
   type AgentProviderData,
   type AgentProviderStreamChunk,
+  type AgentToolPartialResultUpdate,
   type AgentToolResult,
 } from '../../agent-loop/index.js'
 import type { HistoryMessage } from './message-helpers.js'
@@ -19,7 +22,6 @@ import {
   buildAgentLoopRuntimeFromStreamContext,
   type BuildAgentLoopStreamRuntimeResult,
 } from './agent-loop-runtime.js'
-import { sendUIMessageFinish } from './stream-helpers.js'
 import { updateSessionUsage } from '../../ipc/sessions.js'
 import { saveMediaImage } from '../../ipc/media.js'
 import { triggerManager, type TriggerContext } from '../triggers/index.js'
@@ -101,29 +103,20 @@ function structuredToolResult(result: AgentToolResult): ToolResult {
   return {
     content: [{ type: 'text', text: resultText(result) }],
     details: result.data && typeof result.data === 'object'
-      ? result.data as Record<string, unknown>
+      ? toJsonObject(result.data)
       : undefined,
   }
 }
 
-function textFromPartialResult(update: unknown): string {
-  if (!update || typeof update !== 'object') return String(update ?? '')
-  const content = (update as { content?: Array<{ type?: string; text?: string }> }).content
-  if (Array.isArray(content)) {
-    const text = content
-      .filter(part => part.type === 'text' && typeof part.text === 'string')
-      .map(part => part.text)
-      .join('')
-    if (text) return text
-  }
-  try {
-    return JSON.stringify(update)
-  } catch {
-    return String(update)
-  }
+function textFromPartialResult(update: AgentToolPartialResultUpdate): string {
+  const text = update.content
+    .filter(part => part.type === 'text' && typeof part.text === 'string')
+    .map(part => part.text)
+    .join('')
+  return text || JSON.stringify(update)
 }
 
-function changesFromMetadata(metadata: Record<string, unknown> | undefined): ToolCall['changes'] | undefined {
+function changesFromMetadata(metadata: JsonObject | undefined): ToolCall['changes'] | undefined {
   if (!metadata?.diff || !metadata.path) return undefined
   return {
     diff: String(metadata.diff),
@@ -261,7 +254,7 @@ function settleToolResult(
   toolCall.status = result.error
     ? executionData.aborted ? 'cancelled' : 'failed'
     : 'completed'
-  toolCall.result = result.data ?? result.content
+  toolCall.result = toJsonValue(result.data ?? result.content)
   toolCall.error = result.error
   toolCall.rejected = executionData.rejected || undefined
   toolCall.rejectionReason = executionData.rejectionReason
@@ -306,7 +299,7 @@ function applyToolMetadata(
   if (!stepId) return
 
   const toolCall = state.processor.toolCalls.find(existing => existing.id === toolCallId)
-  const metadataUpdates: Record<string, unknown> = {}
+  const metadataUpdates: Partial<Step> = {}
   if (update.title && typeof update.title === 'string') {
     metadataUpdates.title = update.title
   }
@@ -337,7 +330,7 @@ function applyToolPartialResult(
   const stepId = state.stepIdsByToolCallId.get(toolCallId)
   if (!stepId) return
 
-  const partialResult = update as ToolPartialResult
+  const partialResult: ToolPartialResult = update
   state.emitter.sendToolExecutionUpdate(toolCallId, stepId, partialResult)
   state.emitter.sendStepUpdated(stepId, {
     status: 'running',
@@ -515,18 +508,43 @@ export function runAgentLoopPostResponseHooks(options: {
   }).catch(err => console.error('[AgentLoopExecutor] Plugin after-response hook failed:', err))
 }
 
+async function emitFinalAssistantMessageUpdate(state: AgentLoopExecutorState): Promise<void> {
+  const updatedSession = store.getSession(state.ctx.sessionId)
+  const updatedMessage = updatedSession?.messages.find(message => message.id === state.ctx.assistantMessageId)
+  if (!updatedMessage) return
+
+  try {
+    await getEventBus().emit(state.ctx.sessionId, {
+      type: 'message:updated',
+      messageId: state.ctx.assistantMessageId,
+      updates: {
+        content: updatedMessage.content,
+        reasoning: updatedMessage.reasoning,
+        contentParts: updatedMessage.contentParts,
+        toolCalls: updatedMessage.toolCalls,
+        steps: updatedMessage.steps,
+        usage: updatedMessage.usage,
+        errorDetails: updatedMessage.errorDetails,
+        isStreaming: false,
+      },
+    })
+  } catch {
+    // Event system may not be initialized in tests.
+  }
+}
+
 export async function completeAgentLoopStream(
   state: AgentLoopExecutorState,
   sessionName?: string,
 ): Promise<void> {
   await state.processor.finalize()
   const updatedSession = store.getSession(state.ctx.sessionId)
+  await emitFinalAssistantMessageUpdate(state)
   state.emitter.sendStreamComplete({
     sessionName: updatedSession?.name || sessionName,
     usage: state.accumulatedUsage,
     lastTurnUsage: state.lastTurnUsage,
   })
-  sendUIMessageFinish(state.ctx.sender, state.ctx.sessionId, state.ctx.assistantMessageId, 'stop', state.accumulatedUsage)
 }
 
 export async function applyAgentLoopStreamChunk(
@@ -708,12 +726,13 @@ export async function executeAgentLoopStreamGeneration(
       historyMessages,
     })
     return { pausedForConfirmation: false }
-  } catch (error: any) {
-    if (isAgentLoopPauseForConfirmationError(error)) {
+  } catch (error) {
+    const caught = error instanceof Error ? error : new Error(String(error))
+    if (isAgentLoopPauseForConfirmationError(caught)) {
       return { pausedForConfirmation: true }
     }
 
-    const isAborted = error.name === 'AbortError' || ctx.abortSignal.aborted
+    const isAborted = caught.name === 'AbortError' || ctx.abortSignal.aborted
     await state.processor.finalize()
 
     if (isAborted) {
@@ -721,8 +740,9 @@ export async function executeAgentLoopStreamGeneration(
       return { pausedForConfirmation: false }
     }
 
-    const errorContent = error.message || 'Agent loop streaming error'
+    const errorContent = caught.message || 'Agent loop streaming error'
     store.updateMessageError(state.ctx.sessionId, state.ctx.assistantMessageId, errorContent)
+    await emitFinalAssistantMessageUpdate(state)
     state.emitter.sendStreamError({
       error: errorContent,
       preserved: true,

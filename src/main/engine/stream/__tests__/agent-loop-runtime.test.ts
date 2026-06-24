@@ -4,8 +4,9 @@ import {
   getAgentLoopTransientTail,
   getAgentLoopContextBlockReason,
 } from '../agent-loop-runtime.js'
+import type { ChatSession } from '../../../../shared/ipc.js'
 
-function sessionWithContextSize(contextSize: number) {
+function sessionWithContextSize(contextSize: number): ChatSession {
   return {
     id: 's1',
     name: 'Session',
@@ -13,7 +14,7 @@ function sessionWithContextSize(contextSize: number) {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     contextSize,
-  } as any
+  }
 }
 
 describe('agent loop stream runtime', () => {

@@ -7,8 +7,11 @@ import { createDeepSeekAgentProvider, runAgentLoop } from '../../../agent-loop/i
 import { getUserSkillsPath } from '../../../skills/index.js'
 import { executeSkillManage } from '../../../skills/manage.js'
 import { invalidateSkillsCache } from '../../../ipc/skills.js'
+import { createDefaultSettings } from '../../../../shared/defaults/settings.js'
+import type { ChatMessage, ProviderConfig } from '../../../../shared/ipc.js'
 import { createSkillReviewTrigger } from '../skill-review.js'
 import { clearSkillReviewState } from '../skill-review-state.js'
+import type { TriggerContext } from '../index.js'
 
 vi.mock('electron', () => ({
   app: { isPackaged: false },
@@ -56,16 +59,28 @@ afterEach(() => {
   restoreEnv()
 })
 
-function triggerContext(): Parameters<ReturnType<typeof createSkillReviewTrigger>['execute']>[0] {
-  const messages = [
-    { id: 'u1', role: 'user', content: 'Remember this reusable review workflow.' },
-    { id: 'a1', role: 'assistant', content: 'I will apply that workflow.' },
+function deepseekProviderConfig(): ProviderConfig {
+  return {
+    apiKey: 'deepseek-key',
+    baseUrl: 'https://deepseek.test',
+    model: 'deepseek-v4-pro',
+    selectedModels: ['deepseek-v4-pro'],
+  }
+}
+
+function triggerContext(): TriggerContext {
+  const messages: ChatMessage[] = [
+    { id: 'u1', role: 'user', content: 'Remember this reusable review workflow.', timestamp: 1 },
+    { id: 'a1', role: 'assistant', content: 'I will apply that workflow.', timestamp: 2 },
   ]
 
   return {
     sessionId: 's1',
     session: {
       id: 's1',
+      name: 'Skill Review',
+      createdAt: 1,
+      updatedAt: 1,
       workingDirectory: tmpDir,
       messages,
     },
@@ -73,12 +88,12 @@ function triggerContext(): Parameters<ReturnType<typeof createSkillReviewTrigger
     lastUserMessage: 'Remember this reusable review workflow.',
     lastAssistantMessage: 'I will apply that workflow.',
     providerId: 'mock-provider',
-    providerConfig: { model: 'mock-model' },
-    settings: {},
+    providerConfig: { model: 'mock-model', selectedModels: ['mock-model'] },
+    settings: createDefaultSettings(),
     toolIterations: 10,
     skillManageCalled: false,
     enabledToolNames: ['skill_manage'],
-  } as any
+  }
 }
 
 function createExistingSkill(name = 'review-workflow'): string {
@@ -255,11 +270,7 @@ describe('Hermes skill review trigger', () => {
 
     const ctx = triggerContext()
     ctx.providerId = 'deepseek'
-    ctx.providerConfig = {
-      apiKey: 'deepseek-key',
-      baseUrl: 'https://deepseek.test',
-      model: 'deepseek-v4-pro',
-    } as any
+    ctx.providerConfig = deepseekProviderConfig()
 
     await createSkillReviewTrigger().execute(ctx)
 
@@ -328,11 +339,7 @@ describe('Hermes skill review trigger', () => {
 
     const ctx = triggerContext()
     ctx.providerId = 'deepseek'
-    ctx.providerConfig = {
-      apiKey: 'deepseek-key',
-      baseUrl: 'https://deepseek.test',
-      model: 'deepseek-v4-pro',
-    } as any
+    ctx.providerConfig = deepseekProviderConfig()
 
     await createSkillReviewTrigger().execute(ctx)
 
@@ -374,11 +381,7 @@ describe('Hermes skill review trigger', () => {
 
     const ctx = triggerContext()
     ctx.providerId = 'deepseek'
-    ctx.providerConfig = {
-      apiKey: 'deepseek-key',
-      baseUrl: 'https://deepseek.test',
-      model: 'deepseek-v4-pro',
-    } as any
+    ctx.providerConfig = deepseekProviderConfig()
 
     await createSkillReviewTrigger().execute(ctx)
 

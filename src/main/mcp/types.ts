@@ -4,6 +4,8 @@
  * Type definitions for MCP client integration
  */
 
+import type { JsonObject, JsonSchemaObject } from '../../shared/json.js'
+
 /**
  * MCP Server transport type
  */
@@ -75,7 +77,7 @@ export interface MCPToolInfo {
   /** JSON Schema for input parameters */
   inputSchema: {
     type: 'object'
-    properties?: Record<string, any>
+    properties?: Record<string, JsonSchemaObject>
     required?: string[]
   }
   /** Server ID this tool belongs to */
@@ -125,7 +127,7 @@ export interface MCPToolCallRequest {
   /** Tool name */
   toolName: string
   /** Tool arguments */
-  arguments: Record<string, any>
+  arguments: JsonObject
 }
 
 /**

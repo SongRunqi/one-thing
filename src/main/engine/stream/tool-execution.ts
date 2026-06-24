@@ -6,6 +6,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import * as store from '../../store.js'
 import type { Step, StepType, SkillDefinition, ToolCall } from '../../../shared/ipc.js'
+import { toJsonValue, type JsonObject } from '../../../shared/json.js'
 import { analyzeTool, executeTool } from '../../tools/index.js'
 import { isMCPTool, executeMCPTool } from '../../mcp/index.js'
 import { Permission } from '../../permission/index.js'
@@ -13,21 +14,32 @@ import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate
 import type { StreamContext } from './stream-processor.js'
 import { createEventOnlyEmitter } from '../../events/event-only-emitter.js'
 import { enforcePermissionPolicy } from '../../tools/core/permission-policy.js'
-import { textFromToolResult, toolFailureText, toolResultToStructured } from '../../tools/core/tool-result.js'
+import { textFromToolResult, toolFailureText, toolResultToStructured, type ToolResultLike } from '../../tools/core/tool-result.js'
 import type { ToolEffect } from '../../tools/core/tool-effect.js'
 
-function isPermissionRejectedError(error: unknown): error is Permission.RejectedError {
+function isPermissionRejectedError(error: Error): error is Permission.RejectedError {
   return error instanceof Permission.RejectedError ||
-    (error instanceof Error && error.name === 'PermissionRejectedError')
+    error.name === 'PermissionRejectedError'
+}
+
+function toolResultObject(value: ToolExecutionResult['data']): ToolResultLike | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as ToolResultLike
+    : undefined
+}
+
+function streamableToolResult(value: ToolExecutionResult['data']): string | ToolResultLike | undefined {
+  if (typeof value === 'string') return value
+  return toolResultObject(value)
 }
 
 /**
  * Detect if a bash command is reading a skill file and extract skill name
  */
-export function detectSkillUsage(toolName: string, args: Record<string, any>): string | null {
+export function detectSkillUsage(toolName: string, args: JsonObject): string | null {
   if (toolName !== 'bash') return null
 
-  const command = args.command as string
+  const command = typeof args.command === 'string' ? args.command : ''
   if (!command) return null
 
   // Match patterns like:
@@ -43,9 +55,9 @@ export function detectSkillUsage(toolName: string, args: Record<string, any>): s
 /**
  * Determine step type from tool name and arguments
  */
-export function getStepType(toolName: string, args: Record<string, any>): StepType {
+export function getStepType(toolName: string, args: JsonObject): StepType {
   if (toolName === 'bash') {
-    const command = args.command as string || ''
+    const command = typeof args.command === 'string' ? args.command : ''
     // Check if it's reading a skill file
     if (command.match(/(?:cat|less|head|tail|more)\s+.*SKILL\.md/)) {
       return 'skill-read'
@@ -72,13 +84,13 @@ function textFromPartialResult(update: ToolPartialResultUpdate): string {
 /**
  * Generate a human-readable step title from tool name and arguments
  */
-export function generateStepTitle(toolName: string, args: Record<string, any>, skillName?: string | null): string {
+export function generateStepTitle(toolName: string, args: JsonObject, skillName?: string | null): string {
   if (skillName) {
     return `Reading ${skillName} skill documentation`
   }
 
   if (toolName === 'bash') {
-    const command = args.command as string || ''
+    const command = typeof args.command === 'string' ? args.command : ''
     // Show full command (CSS handles wrapping for long commands)
     return `Run: ${command}`
   }
@@ -117,7 +129,7 @@ export function generateStepTitle(toolName: string, args: Record<string, any>, s
  */
 export async function executeToolDirectly(
   toolName: string,
-  args: Record<string, any>,
+  args: JsonObject,
   context: {
     sessionId: string
     messageId: string
@@ -125,7 +137,7 @@ export async function executeToolDirectly(
     workingDirectory?: string  // Session's active working directory
     workingDirectoryRoots?: string[] // Additional sandbox roots
     abortSignal?: AbortSignal
-    onMetadata?: (update: { title?: string; metadata?: Record<string, unknown> }) => void
+    onMetadata?: ToolExecutionContext['onMetadata']
     onPartialResult?: (update: ToolPartialResultUpdate) => void
     // Step event callbacks for sub-agent tools (e.g., CustomAgent)
     onStepStart?: (step: Step) => void
@@ -153,8 +165,11 @@ export async function executeToolDirectly(
       const isMCPRouter = toolName === 'mcp_search' || toolName === 'tool_function'
       const isRouterReadOnly = isMCPRouter && args.action !== 'call'
       if (!isRouterReadOnly) {
-        const resourceName = isMCPRouter && (typeof args.tool === 'string' || typeof args.function === 'string')
-          ? (args.tool || args.function)
+        const routerResourceName = typeof args.tool === 'string'
+          ? args.tool
+          : typeof args.function === 'string' ? args.function : undefined
+        const resourceName = isMCPRouter && routerResourceName
+          ? routerResourceName
           : toolName
         const effects: ToolEffect[] = [{
           kind: 'mcp',
@@ -235,25 +250,26 @@ export async function executeToolDirectly(
     }
     const result = await executeTool(toolName, args, execContext)
     return result
-  } catch (error: any) {
-    if (isPermissionRejectedError(error)) {
+  } catch (error) {
+    const caught = error instanceof Error ? error : new Error(String(error))
+    if (isPermissionRejectedError(caught)) {
       console.log(`[DirectExec] Permission rejected for tool ${toolName}`)
       return {
         success: false,
-        error: toolFailureText({ error: error.message, rejected: true, rejectionReason: error.reason }),
+        error: toolFailureText({ error: caught.message, rejected: true, rejectionReason: caught.reason }),
         rejected: true,
-        rejectionReason: error.reason,
+        rejectionReason: caught.reason,
       }
     }
 
-    console.error(`[DirectExec] Tool execution error:`, error)
+    console.error(`[DirectExec] Tool execution error:`, caught)
     // Check if error is due to abort signal
     const isAborted = context.abortSignal?.aborted ||
-      error.message?.includes('cancelled') ||
-      error.message?.includes('aborted')
+      caught.message.includes('cancelled') ||
+      caught.message.includes('aborted')
     return {
       success: false,
-      error: error.message || 'Unknown error during tool execution',
+      error: caught.message || 'Unknown error during tool execution',
       aborted: isAborted,
     }
   }
@@ -285,7 +301,7 @@ export function createStep(
 export async function executeToolAndUpdate(
   ctx: StreamContext,
   toolCall: ToolCall,
-  toolCallData: { toolName: string; args: Record<string, any> },
+  toolCallData: { toolName: string; args: JsonObject },
   allToolCalls: ToolCall[],
   _skills: SkillDefinition[] = [],
   turnIndex?: number,
@@ -321,7 +337,7 @@ export async function executeToolAndUpdate(
   let existingStep: Step | undefined
   
   if (existingStepId) {
-    // Use the step ID from the stream processor (passed from tool-loop)
+    // Use the step ID from the stream processor.
     existingStep = message?.steps?.find(s => s.id === existingStepId)
   }
   if (!existingStep) {
@@ -491,7 +507,7 @@ export async function executeToolAndUpdate(
           rejectionReason: result.rejectionReason,
           status: result.aborted ? 'cancelled' : 'failed',
         })
-    toolCall.result = result.data
+    toolCall.result = toJsonValue(result.data)
     toolCall.error = finalError
     toolCall.rejected = result.rejected || undefined
     toolCall.rejectionReason = result.rejectionReason
@@ -500,9 +516,9 @@ export async function executeToolAndUpdate(
     const stepStatus = result.aborted ? 'cancelled' : (result.success ? 'completed' : 'failed')
     // Extract title from result.data if available (tools return title in data)
     // Only use if it's a string - avoid [object Object] display for arrays/objects
-    const rawTitle = result.data?.title
+    const rawTitle = toolResultObject(result.data)?.title
     const finalTitle = (typeof rawTitle === 'string' ? rawTitle : null) || step.title
-    const structuredResult = result.success ? toolResultToStructured(result.data) : undefined
+    const structuredResult = result.success ? toolResultToStructured(streamableToolResult(result.data)) : undefined
     emitter.sendToolExecutionEnd(toolCall.id, step.id, structuredResult, !result.success, finalError)
     emitter.sendStepUpdated(step.id, {
       status: stepStatus,

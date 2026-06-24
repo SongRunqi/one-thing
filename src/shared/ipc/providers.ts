@@ -3,6 +3,8 @@
  * AI Provider and model-related type definitions for IPC communication
  */
 
+import type { JsonObject } from '../json.js'
+
 // Provider IDs - can be extended by adding new providers
 export type AIProviderId = 'openai' | 'claude' | 'deepseek' | 'kimi' | 'zhipu' | 'gemini' | 'codex' | 'acp' | 'custom' | string
 
@@ -39,7 +41,7 @@ export interface OAuthToken {
   email?: string
   planType?: string
   isFedrampAccount?: boolean
-  providerMetadata?: Record<string, unknown>
+  providerMetadata?: JsonObject
 }
 
 /**
@@ -72,7 +74,7 @@ export interface OpenRouterModel {
   // model list newest-first in settings. Absent for custom-added or provider-direct
   // entries — those sort to the end.
   last_updated?: string
-  providerMetadata?: Record<string, unknown>
+  providerMetadata?: JsonObject
 }
 
 // Provider metadata for UI display
@@ -170,7 +172,7 @@ export interface ModelCapabilityEntry {
   /** Release date from models.dev (ISO format) */
   lastUpdated?: string
   /** Provider-specific metadata such as Codex reasoning levels and service tiers. */
-  providerMetadata?: Record<string, unknown>
+  providerMetadata?: JsonObject
 }
 
 export interface AISettings {

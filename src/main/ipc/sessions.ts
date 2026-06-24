@@ -15,7 +15,7 @@ import {
 /**
  * Update session usage (called from chat.ts when finish chunk is received)
  * Persists to disk for durability across app restarts
- * @param lastTurnUsage - Optional: the last turn's usage (for context size calculation in tool loops)
+ * @param lastTurnUsage - Optional: the last turn's usage for context size calculation
  */
 export function updateSessionUsage(
   sessionId: string,

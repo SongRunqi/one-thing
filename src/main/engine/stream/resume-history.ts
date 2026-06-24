@@ -1,6 +1,6 @@
 import type { ChatMessage, ToolCall } from '../../../shared/ipc.js'
 import { getAIToolName } from '../../providers/tool-name-alias.js'
-import type { HistoryMessage } from './message-helpers.js'
+import { sanitizeToolResultForAI, type HistoryMessage } from './message-helpers.js'
 
 type ResumeAssistantMessage = Pick<ChatMessage, 'content' | 'reasoning'> & {
   toolCalls?: ToolCall[]
@@ -29,7 +29,7 @@ export function buildResumeHistoryAfterToolConfirmation(
         type: 'tool-result' as const,
         toolCallId: tc.id,
         toolName: getAIToolName(tc.toolId || tc.toolName),
-        result: tc.status === 'completed' ? tc.result : { error: tc.error },
+        result: tc.status === 'completed' ? sanitizeToolResultForAI(tc.result) : { error: tc.error ?? null },
       })),
     },
   ]

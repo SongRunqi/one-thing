@@ -1,4 +1,35 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { AgentModelCapabilities, AgentProvider } from '../../../agent-loop/types.js'
+import type { ToolDefinition } from '../../../../shared/ipc.js'
+
+const deepseekTextCapabilities: AgentModelCapabilities = {
+  capabilities: ['text-input', 'text-output'],
+  inputModalities: ['text'],
+  outputModalities: ['text'],
+}
+
+const deepseekToolCapabilities: AgentModelCapabilities = {
+  capabilities: ['text-input', 'text-output', 'tool-calls'],
+  inputModalities: ['text'],
+  outputModalities: ['text'],
+}
+
+function deepseekProviderWithCapabilities(capabilities: AgentModelCapabilities): AgentProvider {
+  return {
+    id: 'deepseek',
+    capabilities,
+  }
+}
+
+const readToolDefinition: ToolDefinition = {
+  id: 'read',
+  name: 'Read',
+  description: 'Read files',
+  enabled: true,
+  autoExecute: false,
+  category: 'builtin',
+  parameters: [],
+}
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(() => ({
@@ -36,11 +67,13 @@ const mocks = vi.hoisted(() => ({
   modelSupportsTools: vi.fn(async () => false),
   getCodexNativeToolsForConfig: vi.fn(async () => []),
   getSkillsForSession: vi.fn(() => []),
-  getEnabledToolsAsync: vi.fn(async () => []),
+  getEnabledToolsAsync: vi.fn<() => Promise<ToolDefinition[]>>(async () => []),
   initializeAsyncTools: vi.fn(async () => undefined),
   setInitContext: vi.fn(),
-  getMCPToolsForAI: vi.fn(() => ({})),
-  convertToolDefinitionsForAI: vi.fn(() => ({})),
+  getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
+  createAgentProviderFromRuntime: vi.fn(() => deepseekProviderWithCapabilities(deepseekTextCapabilities)),
+  resolveAgentModelCapabilities: vi.fn(async (provider: AgentProvider) => provider.capabilities),
+  agentSupportsTools: vi.fn((capabilities: AgentModelCapabilities) => capabilities.capabilities.includes('tool-calls')),
   buildContextVariablesPromptText: vi.fn(async () => 'dynamic vars'),
   buildProjectDirsPromptVars: vi.fn(() => ({ active: undefined, known: [] })),
   buildPrompt: vi.fn(async () => ({
@@ -64,7 +97,6 @@ vi.mock('../../stream/provider-helpers.js', () => ({
 }))
 
 vi.mock('../../../providers/index.js', () => ({
-  convertToolDefinitionsForAI: mocks.convertToolDefinitionsForAI,
   isProviderSupported: mocks.isProviderSupported,
 }))
 
@@ -72,7 +104,7 @@ vi.mock('../../../providers/model-registry.js', () => ({
   modelSupportsTools: mocks.modelSupportsTools,
 }))
 
-vi.mock('../../stream/tool-loop.js', () => ({
+vi.mock('../../stream/codex-native-tools.js', () => ({
   getCodexNativeToolsForConfig: mocks.getCodexNativeToolsForConfig,
 }))
 
@@ -81,7 +113,18 @@ vi.mock('../../../ipc/skills.js', () => ({
 }))
 
 vi.mock('../../../mcp/index.js', () => ({
-  getMCPToolsForAI: mocks.getMCPToolsForAI,
+  getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
+}))
+
+vi.mock('../../../agent-loop/providers/factory.js', () => ({
+  createAgentProviderFromRuntime: mocks.createAgentProviderFromRuntime,
+  getSupportedAgentProviderRuntimeIds: vi.fn(() => ['deepseek', 'acp']),
+  isAgentProviderRuntimeSupported: vi.fn((providerId: string) => providerId === 'deepseek' || providerId === 'acp'),
+}))
+
+vi.mock('../../../agent-loop/capabilities.js', () => ({
+  resolveAgentModelCapabilities: mocks.resolveAgentModelCapabilities,
+  agentSupportsTools: mocks.agentSupportsTools,
 }))
 
 vi.mock('../../../tools/index.js', () => ({
@@ -132,12 +175,12 @@ describe('system prompt snapshot agent-loop route', () => {
 
   it('shows unsupported providers as enabled but inactive when the setting is on', async () => {
     mocks.getEffectiveProviderConfig.mockReturnValueOnce({
-      providerId: 'openai',
-      model: 'gpt-test',
+      providerId: 'unsupported-provider',
+      model: 'legacy-test',
       providerConfig: {
-        model: 'gpt-test',
-        selectedModels: ['gpt-test'],
-        baseUrl: 'https://api.openai.com/v1',
+        model: 'legacy-test',
+        selectedModels: ['legacy-test'],
+        baseUrl: 'https://legacy.test/v1',
       },
     })
 
@@ -149,5 +192,60 @@ describe('system prompt snapshot agent-loop route', () => {
       providerSupported: false,
       active: false,
     })
+  })
+
+  it('builds snapshot tool names from agent-loop tool definitions and MCP router tools', async () => {
+    mocks.getSettings.mockReturnValueOnce({
+      ai: {
+        provider: 'deepseek',
+        providers: {
+          deepseek: {
+            model: 'deepseek-v4-flash',
+            selectedModels: ['deepseek-v4-flash'],
+          },
+        },
+      },
+      chat: { agentLoopStream: true },
+      skills: { enableSkills: false },
+      tools: {
+        enableToolCalls: true,
+        tools: {
+          mcp_search: { enabled: true, autoExecute: false },
+        },
+      },
+    })
+    mocks.createAgentProviderFromRuntime.mockReturnValueOnce(
+      deepseekProviderWithCapabilities(deepseekToolCapabilities),
+    )
+    mocks.getEnabledToolsAsync.mockResolvedValueOnce([readToolDefinition])
+    mocks.getMCPRouterToolDefinition.mockReturnValueOnce({
+      id: 'mcp_search',
+      name: 'MCP Search',
+      description: 'Search MCP tools',
+      enabled: true,
+      autoExecute: false,
+      category: 'custom',
+      source: 'mcp',
+      parameters: [],
+    })
+
+    const snapshot = await buildSystemPromptSnapshot('s1')
+
+    expect(mocks.initializeAsyncTools).toHaveBeenCalled()
+    expect(mocks.modelSupportsTools).not.toHaveBeenCalled()
+    expect(mocks.buildPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      hasTools: true,
+      toolNames: ['read'],
+      mcpToolNames: ['mcp_search'],
+    }))
+    expect(snapshot.tools).toMatchObject({
+      enableToolCalls: true,
+      modelSupportsTools: true,
+      hasTools: true,
+      configuredCount: 2,
+      modelFacingCount: 2,
+    })
+    expect(snapshot.tools.builtin.map(tool => tool.modelFacingName)).toEqual(['read'])
+    expect(snapshot.tools.mcp.map(tool => tool.modelFacingName)).toEqual(['mcp_search'])
   })
 })

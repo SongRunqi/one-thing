@@ -2,9 +2,7 @@
  * Claude (Anthropic) Provider Definition
  */
 
-import { createAnthropic } from '@ai-sdk/anthropic'
 import type { ProviderDefinition } from '../types.js'
-import { createBoundFetch } from '../bound-fetch.js'
 
 const claudeProvider: ProviderDefinition = {
   id: 'claude',
@@ -21,16 +19,6 @@ const claudeProvider: ProviderDefinition = {
     // Models fetched dynamically from OpenRouter API
   },
 
-  create: ({ apiKey, baseUrl }) => {
-    const provider = createAnthropic({
-      apiKey,
-      baseURL: baseUrl || 'https://api.anthropic.com/v1',
-      fetch: createBoundFetch(),
-    })
-    return {
-      createModel: (modelId: string) => provider(modelId),
-    }
-  },
 }
 
 export default claudeProvider

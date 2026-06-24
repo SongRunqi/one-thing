@@ -1,17 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAgentLoop } from '../../../agent-loop/runner.js'
 import { PendingMessageQueue } from '../message-queue.js'
-import type { StreamContext } from '../stream-processor.js'
+import {
+  createDefaultSettings,
+  DEFAULT_SOUL_MEMORY_SETTINGS,
+} from '../../../../shared/defaults/settings.js'
+import type { AppSettings, SkillDefinition, ToolDefinition, ToolSettings } from '../../../../shared/ipc.js'
+import type {
+  AgentMessage,
+  AgentModelCapabilities,
+  AgentOutputModality,
+  AgentProvider,
+  AgentToolChoice,
+  AgentTurnRequest,
+  AgentTurnStreamEvent,
+} from '../../../agent-loop/types.js'
+import type { BuildPromptOptions } from '../../prompt/index.js'
+import type { HistoryMessage } from '../message-helpers.js'
+import type { IPCEmitter } from '../ipc-emitter.js'
+import type { StreamContext, StreamProviderConfig, StreamSender } from '../stream-processor.js'
 
-const mocks = vi.hoisted(() => ({
-  seenMessages: [] as unknown[],
-  seenRequests: [] as Array<{
-    requestedOutputModalities?: unknown
-    toolChoice?: unknown
-    tools?: unknown
-  }>,
-  promptInputs: [] as any[],
-  visionProvider: {
+interface SeenRequest {
+  requestedOutputModalities?: AgentOutputModality[]
+  toolChoice?: AgentToolChoice
+  tools?: string[]
+  thinking?: 'enabled' | 'disabled'
+  reasoningEffort?: 'high' | 'max'
+}
+
+interface TestVisionProvider extends AgentProvider {
+  capabilities: AgentModelCapabilities
+  streamTurn: (request: AgentTurnRequest) => AsyncIterable<AgentTurnStreamEvent>
+}
+
+function cloneAgentMessage(message: AgentMessage): AgentMessage {
+  return { ...message }
+}
+
+function createVisionProvider(): TestVisionProvider {
+  return {
     id: 'vision-runtime-provider',
     capabilities: {
       capabilities: ['text-input', 'vision-input', 'text-output', 'image-output', 'streaming'],
@@ -19,17 +46,123 @@ const mocks = vi.hoisted(() => ({
       outputModalities: ['text'],
       supportsStreaming: true,
     },
-    async *streamTurn(request: any) {
-      mocks.seenMessages.push(request.messages.map((message: any) => ({ ...message })))
+    async *streamTurn(request: AgentTurnRequest) {
+      mocks.seenMessages.push(request.messages.map(cloneAgentMessage))
       mocks.seenRequests.push({
         requestedOutputModalities: request.requestedOutputModalities,
         toolChoice: request.toolChoice,
-        tools: request.tools?.map((tool: any) => tool.name),
+        tools: request.tools?.map(tool => tool.name),
+        thinking: request.thinking,
+        reasoningEffort: request.reasoningEffort,
       })
       yield { type: 'text-delta', turn: request.turn, delta: 'vision ok' }
       yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
     },
-  },
+  }
+}
+
+function testSettings(toolCalls = false): AppSettings {
+  const settings = createDefaultSettings()
+  return {
+    ...settings,
+    skills: { enableSkills: false, skills: {} },
+    tools: {
+      ...settings.tools,
+      enableToolCalls: toolCalls,
+      tools: {},
+    },
+  }
+}
+
+function testToolSettings(enableToolCalls = false): ToolSettings {
+  return {
+    enableToolCalls,
+    tools: {},
+  }
+}
+
+function testSkill(): SkillDefinition {
+  return {
+    id: 'repo-skill',
+    name: 'repo-skill',
+    description: 'Repo workflow',
+    instructions: 'Inspect the repo first.',
+    source: 'user',
+    path: '/skills/repo-skill/SKILL.md',
+    directoryPath: '/skills/repo-skill',
+    enabled: true,
+  }
+}
+
+function activeMemorySettings(): AppSettings {
+  const settings = testSettings(false)
+  return {
+    ...settings,
+    general: {
+      ...settings.general,
+      soulMemory: {
+        ...DEFAULT_SOUL_MEMORY_SETTINGS,
+        enabled: true,
+        activeMemory: {
+          ...DEFAULT_SOUL_MEMORY_SETTINGS.activeMemory,
+          enabled: true,
+          timeoutMs: 4321,
+        },
+      },
+    },
+  }
+}
+
+function enableToolsForContext(context: StreamContext): void {
+  context.settings = testSettings(true)
+  context.toolSettings = testToolSettings(true)
+}
+
+function messageContents(turnIndex: number) {
+  return mocks.seenMessages[turnIndex].map(message => message.content)
+}
+
+function testProviderConfig(overrides: Partial<StreamProviderConfig> = {}): StreamProviderConfig {
+  return {
+    model: 'vision-model',
+    selectedModels: ['vision-model'],
+    apiKey: 'key',
+    ...overrides,
+  }
+}
+
+function testSender(): StreamSender {
+  return { isDestroyed: () => false, send: vi.fn() }
+}
+
+function testEmitter(): IPCEmitter {
+  return {
+    sendTextChunk: vi.fn(),
+    sendReasoningChunk: vi.fn(),
+    sendContentPart: vi.fn(),
+    sendContinuation: vi.fn(),
+    sendToolCall: vi.fn(),
+    sendToolResult: vi.fn(),
+    sendToolInputStart: vi.fn(),
+    sendToolInputDelta: vi.fn(),
+    sendToolExecutionStart: vi.fn(),
+    sendToolExecutionUpdate: vi.fn(),
+    sendToolExecutionEnd: vi.fn(),
+    sendContextSizeUpdate: vi.fn(),
+    sendStepAdded: vi.fn(),
+    sendStepUpdated: vi.fn(),
+    sendStreamComplete: vi.fn(),
+    sendStreamError: vi.fn(),
+    sendStreamAborted: vi.fn(),
+    sendSkillActivated: vi.fn(),
+  }
+}
+
+const mocks = vi.hoisted(() => ({
+  seenMessages: [] as AgentMessage[][],
+  seenRequests: [] as SeenRequest[],
+  promptInputs: [] as BuildPromptOptions[],
+  visionProvider: createVisionProvider(),
   addMessage: vi.fn(),
   emit: vi.fn(async () => undefined),
   getSession: vi.fn(() => ({
@@ -40,13 +173,11 @@ const mocks = vi.hoisted(() => ({
     updatedAt: 1,
     workingDirectory: '/tmp/project',
   })),
-  getSkillsForSession: vi.fn(() => []),
-  getMCPToolsForAI: vi.fn(() => ({})),
-  modelSupportsTools: vi.fn(async () => false),
+  getSkillsForSession: vi.fn<() => SkillDefinition[]>(() => []),
+  getMCPRouterToolDefinition: vi.fn<() => ToolDefinition | null>(() => null),
   getModelContextLength: vi.fn(async () => 128000),
   getModelMaxOutputTokens: vi.fn(async () => 8192),
-  convertToolDefinitionsForAI: vi.fn(() => ({})),
-  getEnabledToolsAsync: vi.fn(async () => []),
+  getEnabledToolsAsync: vi.fn<() => Promise<ToolDefinition[]>>(async () => []),
   initializeAsyncTools: vi.fn(async () => undefined),
   setInitContext: vi.fn(),
   buildContextVariablesPromptText: vi.fn(async () => ''),
@@ -64,17 +195,12 @@ vi.mock('../../../ipc/skills.js', () => ({
 }))
 
 vi.mock('../../../mcp/index.js', () => ({
-  getMCPToolsForAI: mocks.getMCPToolsForAI,
+  getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))
 
 vi.mock('../../../providers/model-registry.js', () => ({
-  modelSupportsTools: mocks.modelSupportsTools,
   getModelContextLength: mocks.getModelContextLength,
   getModelMaxOutputTokens: mocks.getModelMaxOutputTokens,
-}))
-
-vi.mock('../../../providers/index.js', () => ({
-  convertToolDefinitionsForAI: mocks.convertToolDefinitionsForAI,
 }))
 
 vi.mock('../../../tools/index.js', () => ({
@@ -134,11 +260,11 @@ function ctx(): StreamContext {
     sessionId: 's1',
     assistantMessageId: 'm1',
     abortSignal: new AbortController().signal,
-    settings: { chat: {}, skills: {}, tools: { enableToolCalls: false } } as any,
-    providerConfig: { model: 'vision-model', selectedModels: ['vision-model'], apiKey: 'key' } as any,
+    settings: testSettings(false),
+    providerConfig: testProviderConfig(),
     providerId: 'deepseek',
-    toolSettings: { enableToolCalls: false } as any,
-    sender: { isDestroyed: () => false, send: vi.fn() } as any,
+    toolSettings: testToolSettings(false),
+    sender: testSender(),
   }
 }
 
@@ -157,14 +283,14 @@ describe('agent loop stream runtime multimodal input', () => {
     ]
     const prepared = await buildAgentLoopRuntimeFromStreamContext(ctx(), [
       { role: 'user', content: imageContent },
-    ] as any)
+    ] satisfies HistoryMessage[])
 
     expect(prepared.supported).toBe(true)
     if (!prepared.supported) return
 
     const result = await runAgentLoop(prepared.runtime)
     expect(result.text).toBe('vision ok')
-    expect((mocks.seenMessages[0] as any)[1].content).toEqual(imageContent)
+    expect(mocks.seenMessages[0][1].content).toEqual(imageContent)
   })
 
   it('passes requested output modalities from stream context into provider turns', async () => {
@@ -173,7 +299,7 @@ describe('agent loop stream runtime multimodal input', () => {
 
     const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
       { role: 'user', content: 'draw this' },
-    ] as any)
+    ] satisfies HistoryMessage[])
 
     expect(prepared.supported).toBe(true)
     if (!prepared.supported) return
@@ -181,6 +307,30 @@ describe('agent loop stream runtime multimodal input', () => {
     await runAgentLoop(prepared.runtime)
 
     expect(mocks.seenRequests[0].requestedOutputModalities).toEqual(['image'])
+  })
+
+  it('passes DeepSeek native-thinking disabled from provider model settings into provider turns', async () => {
+    const context = ctx()
+    context.providerConfig = testProviderConfig({
+      model: 'deepseek-v4-pro',
+      selectedModels: ['deepseek-v4-pro'],
+      thinkingByModel: { 'deepseek-v4-pro': false },
+      thinkingEffortByModel: { 'deepseek-v4-pro': 'max' },
+    })
+
+    const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
+      { role: 'user', content: 'no thinking' },
+    ] satisfies HistoryMessage[])
+
+    expect(prepared.supported).toBe(true)
+    if (!prepared.supported) return
+
+    await runAgentLoop(prepared.runtime)
+
+    expect(mocks.seenRequests[0]).toMatchObject({
+      thinking: 'disabled',
+      reasoningEffort: undefined,
+    })
   })
 
   it('passes provider auth context into the agent provider runtime factory', async () => {
@@ -192,7 +342,7 @@ describe('agent loop stream runtime multimodal input', () => {
       accountId: 'acct_123',
     }
     context.providerId = 'codex'
-    context.providerConfig = {
+    context.providerConfig = testProviderConfig({
       model: 'gpt-5.5',
       selectedModels: ['gpt-5.5'],
       apiKey: 'api-key',
@@ -202,11 +352,11 @@ describe('agent loop stream runtime multimodal input', () => {
         token: oauthToken,
         account: { email: 'dev@example.test' },
       },
-    } as any
+    })
 
     const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
       { role: 'user', content: 'hello' },
-    ] as any)
+    ] satisfies HistoryMessage[])
 
     expect(prepared.supported).toBe(true)
     expect(createAgentProviderFromRuntime).toHaveBeenCalledWith(
@@ -227,54 +377,86 @@ describe('agent loop stream runtime multimodal input', () => {
     )
   })
 
+  it('uses provider-declared token limits for context budgeting before registry fallback', async () => {
+    const originalCapabilities = mocks.visionProvider.capabilities
+    ;mocks.visionProvider.capabilities = {
+      ...originalCapabilities,
+      maxInputTokens: 32000,
+      maxOutputTokens: 2000,
+    }
+
+    try {
+      const prepared = await buildAgentLoopRuntimeFromStreamContext(ctx(), [
+        { role: 'user', content: 'hello' },
+      ] satisfies HistoryMessage[])
+
+      expect(prepared.supported).toBe(true)
+      if (!prepared.supported) return
+
+      expect(prepared.modelContextLength).toBe(32000)
+      expect(prepared.reservedOutputTokens).toBe(1000)
+      expect(prepared.runtime.maxTokens).toBe(1000)
+      expect(mocks.getModelContextLength).not.toHaveBeenCalled()
+      expect(mocks.getModelMaxOutputTokens).not.toHaveBeenCalled()
+    } finally {
+      ;mocks.visionProvider.capabilities = originalCapabilities
+    }
+  })
+
+  it('rejects agent provider runtimes that do not implement a turn execution interface', async () => {
+    vi.mocked(createAgentProviderFromRuntime).mockReturnValueOnce({ id: 'incomplete-provider' })
+
+    const prepared = await buildAgentLoopRuntimeFromStreamContext(ctx(), [
+      { role: 'user', content: 'hello' },
+    ] satisfies HistoryMessage[])
+
+    expect(prepared).toMatchObject({
+      supported: false,
+      reason: 'Provider deepseek AgentProvider runtime does not implement streamTurn or runTurn',
+    })
+  })
+
   it('emits active-memory prompt loading indicators while building the initial prompt', async () => {
     const context = ctx()
-    context.settings = {
-      chat: {},
-      skills: {},
-      tools: { enableToolCalls: false },
-      general: {
-        soulMemory: {
-          enabled: true,
-          activeMemory: { enabled: true, timeoutMs: 4321 },
-        },
-      },
-    } as any
-    const emitter = {
-      sendContentPart: vi.fn(),
-    }
+    context.settings = activeMemorySettings()
+    const emitter = testEmitter()
 
     const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
       { role: 'user', content: 'hello' },
-    ] as any, { emitter: emitter as any })
+    ] satisfies HistoryMessage[], { emitter })
 
     expect(prepared.supported).toBe(true)
     expect(emitter.sendContentPart).toHaveBeenNthCalledWith(1, { type: 'loading-memory' })
     expect(emitter.sendContentPart).toHaveBeenNthCalledWith(2, { type: 'waiting' })
   })
 
-  it('keeps provider tool capability authoritative when building prompts and runtime tools', async () => {
-    mocks.modelSupportsTools.mockResolvedValueOnce(true)
-    mocks.getEnabledToolsAsync.mockResolvedValueOnce([{
-      id: 'lookup',
-      name: 'lookup',
-      description: 'Lookup facts',
-      parameters: [{
-        name: 'query',
-        type: 'string',
-        description: 'Search query',
-        required: true,
-      }],
-      enabled: true,
-    }] as any)
+  it('does not load or inject skills when skill settings are disabled', async () => {
+    mocks.getSkillsForSession.mockReturnValueOnce([testSkill()])
 
+    const prepared = await buildAgentLoopRuntimeFromStreamContext(ctx(), [
+      { role: 'user', content: 'hello' },
+    ] satisfies HistoryMessage[])
+
+    expect(prepared.supported).toBe(true)
+    if (!prepared.supported) return
+
+    expect(mocks.getSkillsForSession).not.toHaveBeenCalled()
+    expect(prepared.enabledSkills).toEqual([])
+    expect(prepared.runtime.skills).toEqual([])
+    expect(mocks.promptInputs[0].skills).toEqual([])
+
+    await runAgentLoop(prepared.runtime)
+
+    expect(messageContents(0)).toEqual(['system prompt', 'hello'])
+  })
+
+  it('does not load tools when provider capabilities do not advertise tool calls', async () => {
     const context = ctx()
-    context.settings = { chat: {}, skills: {}, tools: { enableToolCalls: true, tools: {} } } as any
-    context.toolSettings = { enableToolCalls: true, tools: {} } as any
+    enableToolsForContext(context)
 
     const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
       { role: 'user', content: 'hello' },
-    ] as any)
+    ] satisfies HistoryMessage[])
 
     expect(prepared.supported).toBe(true)
     if (!prepared.supported) return
@@ -286,8 +468,8 @@ describe('agent loop stream runtime multimodal input', () => {
       toolNames: [],
       mcpToolNames: [],
     })
-    expect(mocks.convertToolDefinitionsForAI).not.toHaveBeenCalled()
-
+    expect(mocks.getEnabledToolsAsync).not.toHaveBeenCalled()
+    expect(mocks.getMCPRouterToolDefinition).not.toHaveBeenCalled()
     await runAgentLoop(prepared.runtime)
 
     expect(mocks.seenRequests[0]).toMatchObject({
@@ -298,40 +480,42 @@ describe('agent loop stream runtime multimodal input', () => {
 
   it('includes MCP router tools in the agent-loop runtime when tools are enabled', async () => {
     const originalCapabilities = mocks.visionProvider.capabilities
-    ;(mocks.visionProvider as any).capabilities = {
+    ;mocks.visionProvider.capabilities = {
       ...originalCapabilities,
       capabilities: [...originalCapabilities.capabilities, 'tool-calls'],
       supportsTools: true,
     }
-    mocks.modelSupportsTools.mockResolvedValueOnce(true)
-    mocks.getEnabledToolsAsync.mockResolvedValueOnce([] as any)
-    mocks.getMCPToolsForAI.mockReturnValueOnce({
-      mcp_search: {
-        description: 'Search and call MCP tools',
-        parameters: [{
-          name: 'action',
-          type: 'string',
-          description: 'MCP action',
-          required: true,
-        }],
-        parameterSchema: {
-          type: 'object',
-          properties: {
-            action: { type: 'string' },
-          },
-          required: ['action'],
+    mocks.getEnabledToolsAsync.mockResolvedValueOnce([])
+    mocks.getMCPRouterToolDefinition.mockReturnValueOnce({
+      id: 'mcp_search',
+      name: 'MCP Search',
+      description: 'Search and call MCP tools',
+      category: 'custom',
+      source: 'mcp',
+      enabled: true,
+      autoExecute: false,
+      parameters: [{
+        name: 'action',
+        type: 'string',
+        description: 'MCP action',
+        required: true,
+      }],
+      parameterSchema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string' },
         },
+        required: ['action'],
       },
     })
 
     try {
       const context = ctx()
-      context.settings = { chat: {}, skills: {}, tools: { enableToolCalls: true, tools: {} } } as any
-      context.toolSettings = { enableToolCalls: true, tools: {} } as any
+      enableToolsForContext(context)
 
       const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
         { role: 'user', content: 'hello' },
-      ] as any)
+      ] satisfies HistoryMessage[])
 
       expect(prepared.supported).toBe(true)
       if (!prepared.supported) return
@@ -352,7 +536,7 @@ describe('agent loop stream runtime multimodal input', () => {
         tools: ['mcp_search'],
       })
     } finally {
-      ;(mocks.visionProvider as any).capabilities = originalCapabilities
+      ;mocks.visionProvider.capabilities = originalCapabilities
     }
   })
 
@@ -364,14 +548,14 @@ describe('agent loop stream runtime multimodal input', () => {
 
     const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
       { role: 'user', content: 'hello' },
-    ] as any)
+    ] satisfies HistoryMessage[])
 
     expect(prepared.supported).toBe(true)
     if (!prepared.supported) return
 
     await runAgentLoop(prepared.runtime)
 
-    expect((mocks.seenMessages[0] as any).map((message: any) => message.content)).toEqual([
+    expect(messageContents(0)).toEqual([
       'system prompt',
       'hello',
       'steer now',
@@ -395,7 +579,7 @@ describe('agent loop stream runtime multimodal input', () => {
 
     const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
       { role: 'user', content: 'hello' },
-    ] as any)
+    ] satisfies HistoryMessage[])
 
     expect(prepared.supported).toBe(true)
     if (!prepared.supported) return
@@ -403,7 +587,7 @@ describe('agent loop stream runtime multimodal input', () => {
     const result = await runAgentLoop(prepared.runtime)
 
     expect(result.turns).toBe(2)
-    expect((mocks.seenMessages[1] as any).map((message: any) => message.content)).toEqual([
+    expect(messageContents(1)).toEqual([
       'system prompt',
       'hello',
       'vision ok',
@@ -422,8 +606,8 @@ describe('agent loop stream runtime multimodal input', () => {
     followUpQueue.enqueue({ content: 'follow up', source: 'test', timestamp: 456 })
 
     const originalStreamTurn = mocks.visionProvider.streamTurn
-    mocks.visionProvider.streamTurn = async function* streamTurn(request: any) {
-      mocks.seenMessages.push(request.messages.map((message: any) => ({ ...message })))
+    mocks.visionProvider.streamTurn = async function* streamTurn(request: AgentTurnRequest) {
+      mocks.seenMessages.push(request.messages.map((message: AgentMessage) => ({ ...message })))
       if (request.turn === 1) {
         steeringQueue.enqueue({ content: 'late steering', source: 'test', timestamp: 789 })
       }
@@ -438,7 +622,7 @@ describe('agent loop stream runtime multimodal input', () => {
 
       const prepared = await buildAgentLoopRuntimeFromStreamContext(context, [
         { role: 'user', content: 'hello' },
-      ] as any)
+      ] satisfies HistoryMessage[])
 
       expect(prepared.supported).toBe(true)
       if (!prepared.supported) return
@@ -446,13 +630,13 @@ describe('agent loop stream runtime multimodal input', () => {
       const result = await runAgentLoop(prepared.runtime)
 
       expect(result.turns).toBe(3)
-      expect((mocks.seenMessages[1] as any).map((message: any) => message.content)).toEqual([
+      expect(messageContents(1)).toEqual([
         'system prompt',
         'hello',
         'turn 1',
         'late steering',
       ])
-      expect((mocks.seenMessages[2] as any).map((message: any) => message.content)).toEqual([
+      expect(messageContents(2)).toEqual([
         'system prompt',
         'hello',
         'turn 1',

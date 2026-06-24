@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import { toJsonObject, type JsonObject } from '../../shared/json.js'
 import type {
   CanonicalMemoryAuditEvent,
   CanonicalMemoryKind,
@@ -110,9 +111,9 @@ export function rowToCanonicalMemory(row: any): CanonicalMemoryRecord {
 }
 
 export function rowToCanonicalAuditEvent(row: any): CanonicalMemoryAuditEvent {
-  let payload: Record<string, unknown> = {}
+  let payload: JsonObject = {}
   try {
-    payload = JSON.parse(row.payload_json || '{}') as Record<string, unknown>
+    payload = toJsonObject(JSON.parse(row.payload_json || '{}'))
   } catch {
     payload = {}
   }
@@ -145,18 +146,19 @@ export function appendCanonicalAudit(
   database: Database.Database,
   memoryId: string,
   action: CanonicalMemoryAuditEvent['action'],
-  payload: Record<string, unknown>,
+  payload: object,
 ): void {
   const createdAt = Date.now()
+  const jsonPayload = toJsonObject(payload)
   database.prepare(`
     INSERT INTO memory_events (id, memory_id, action, created_at, payload_json)
     VALUES (?, ?, ?, ?, ?)
   `).run(
-    sha(`${memoryId}:${action}:${createdAt}:${JSON.stringify(payload)}`),
+    sha(`${memoryId}:${action}:${createdAt}:${JSON.stringify(jsonPayload)}`),
     memoryId,
     action,
     createdAt,
-    JSON.stringify(payload),
+    JSON.stringify(jsonPayload),
   )
 }
 

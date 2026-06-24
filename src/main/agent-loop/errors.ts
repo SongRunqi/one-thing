@@ -13,8 +13,8 @@ export class AgentLoopPauseForConfirmationError extends Error {
 }
 
 export function isAgentLoopPauseForConfirmationError(
-  error: unknown,
+  error: Error | { name?: string } | null | undefined,
 ): error is AgentLoopPauseForConfirmationError {
   return error instanceof AgentLoopPauseForConfirmationError
-    || (typeof error === 'object' && error !== null && (error as { name?: string }).name === 'AgentLoopPauseForConfirmationError')
+    || error?.name === 'AgentLoopPauseForConfirmationError'
 }

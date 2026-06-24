@@ -96,7 +96,7 @@ function setup(provider: 'codex' | 'deepseek' = 'codex', serviceTierByModel?: Re
 }
 
 async function openPanel(wrapper: ReturnType<typeof mount>) {
-  await wrapper.find('.think-select').trigger('click')
+  await wrapper.find('.app-select-control').trigger('click')
   await nextTick()
 }
 
@@ -105,8 +105,10 @@ function panelText(): string {
 }
 
 async function clickPanelOption(label: string) {
-  const options = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.think-option'))
-  const option = options.find((item) => item.textContent?.trim() === label)
+  const options = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.app-select-option'))
+  const option = options.find((item) =>
+    item.querySelector('.think-option-text')?.textContent?.trim() === label
+      || item.textContent?.trim() === label)
   expect(option).toBeTruthy()
   option?.click()
   await nextTick()

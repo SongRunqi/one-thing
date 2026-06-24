@@ -14,7 +14,7 @@
  * Replacer function type
  * Yields potential matches for the search string in the content
  */
-export type Replacer = (content: string, find: string) => Generator<string, void, unknown>
+export type Replacer = (content: string, find: string) => Generator<string, void, void>
 
 // Similarity thresholds for block anchor fallback matching
 const SINGLE_CANDIDATE_SIMILARITY_THRESHOLD = 0.0

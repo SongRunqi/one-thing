@@ -141,10 +141,10 @@ export const handler: ToolHandler = async (args) => {
         formatted: Number.isInteger(result) ? result.toString() : result.toFixed(10).replace(/\.?0+$/, ''),
       },
     }
-  } catch (error: any) {
+  } catch (error) {
     return {
       success: false,
-      error: error.message || 'Failed to evaluate expression',
+      error: error instanceof Error ? error.message : 'Failed to evaluate expression',
     }
   }
 }

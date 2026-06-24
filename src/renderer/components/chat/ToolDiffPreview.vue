@@ -4,6 +4,8 @@
       ref="diffContentRef"
       class="diff-content"
       :class="{ fixed: shouldUseFixedHeight, wrap }"
+      @scroll="handlePanelScroll"
+      @wheel="handlePanelWheel"
     >
       <div class="diff-lines">
         <template
@@ -41,6 +43,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import type { ToolDiffData, ToolDiffLine } from '@/stores/helpers/tool-step-view'
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
+import { chainWheelToScrollableAncestor } from '@/utils/scroll-chain'
 
 const props = defineProps<{
   diff?: ToolDiffData | null
@@ -64,6 +67,7 @@ const KEYWORDS = new Set([
 ])
 
 const diffContentRef = ref<HTMLElement | null>(null)
+const isPanelFollowing = ref(true)
 const isLive = computed(() =>
   props.status === 'streaming-input' || props.status === 'executing',
 )
@@ -152,9 +156,30 @@ function highlightCode(code: string): SyntaxSegment[] {
   return segments.length ? segments : [{ text: code }]
 }
 
+function isAtPanelBottom(element: HTMLElement): boolean {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= 1
+}
+
+function handlePanelScroll() {
+  const element = diffContentRef.value
+  if (!element) return
+  isPanelFollowing.value = isAtPanelBottom(element)
+}
+
+function handlePanelWheel(event: WheelEvent) {
+  const element = diffContentRef.value
+  if (!element) return
+  if (isLive.value && event.deltaY < 0) {
+    isPanelFollowing.value = false
+  }
+  chainWheelToScrollableAncestor(event, element)
+}
+
 function scrollToBottom() {
-  if (!diffContentRef.value) return
-  diffContentRef.value.scrollTop = diffContentRef.value.scrollHeight
+  const element = diffContentRef.value
+  if (!element || !isPanelFollowing.value) return
+  element.scrollTop = element.scrollHeight
+  isPanelFollowing.value = true
 }
 
 watch(
@@ -165,6 +190,13 @@ watch(
     scrollToBottom()
   },
   { flush: 'post' },
+)
+
+watch(
+  () => props.status,
+  () => {
+    isPanelFollowing.value = true
+  },
 )
 
 defineExpose({

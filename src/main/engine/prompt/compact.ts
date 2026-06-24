@@ -5,5 +5,27 @@
  */
 
 export function buildContextCompactPrompt(messages: string, previousSummary?: string): string {
-  return `You are a conversation summarization assistant. Please read the following conversation history and generate a structured summary.\n\n${previousSummary ? `## Existing Summary\n${previousSummary}\n\nUpdate and merge this existing summary with the additional conversation history below. Do not duplicate details.\n\n` : ''}## Conversation History\n${messages}\n\n## Task\nGenerate a summary that includes:\n1. **Main Topics**: What was primarily discussed\n2. **Key Decisions**: Important decisions or conclusions made\n3. **Context Information**: User preferences, conventions, important background\n4. **Ongoing Tasks**: Incomplete items or to-dos\n\n## Requirements\n- Output in clear Markdown format\n- Keep it within 500 words\n- Preserve all important technical details and context\n- Use third person description ("The user mentioned...", "The assistant suggested...")`
+  return `You are an AI agent context compaction assistant.
+Compress the conversation history into stable structured JSON. Return valid JSON only, with no Markdown fences and no extra text.
+
+Use this exact object shape:
+{
+  "goal": "The user's core goal in one sentence",
+  "completed": ["Completed steps, one sentence each"],
+  "pending": ["Unfinished steps that must not be dropped"],
+  "key_findings": ["Important facts, constraints, errors, or discoveries"],
+  "decisions": ["Important decisions plus the reason for each decision"],
+  "artifacts": ["Files, code, outputs, or references created or changed, including paths when available"]
+}
+
+Rules:
+- Preserve causal chains behind decisions, not only conclusions.
+- Preserve file names, paths, code-change intent, and test results.
+- Preserve errors, failed attempts, and retry reasons so the agent does not repeat them.
+- Never drop pending steps.
+- Merge with the existing summary when one is supplied, without duplicating details.
+- Keep each array concise, but prefer retaining important specifics over shortening aggressively.
+
+${previousSummary ? `Existing summary JSON or text:\n${previousSummary}\n\n` : ''}Conversation history to compact:
+${messages}`
 }

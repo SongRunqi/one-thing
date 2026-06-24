@@ -1,7 +1,9 @@
 <template>
   <div
+    ref="rendererRef"
     class="tool-result-renderer"
     :class="[`kind-${renderKind}`, { partial: isPartial, error: isError } ]"
+    @wheel="handleWheel"
   >
     <template v-if="isVariableResult">
       <div
@@ -99,6 +101,7 @@ import Button from '@/components/common/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { ChevronDown, Zap } from 'lucide-vue-next'
 import type { ToolPartialResult, ToolRenderKind } from '@/types'
+import { chainWheelToScrollableAncestor, findScrollableWheelSource } from '@/utils/scroll-chain'
 import WebSearchResultRenderer from './WebSearchResultRenderer.vue'
 
 interface VariableDetail {
@@ -181,6 +184,7 @@ const isWebSearchResult = computed(() =>
   ),
 )
 const visibleReadLineCount = ref(READ_LINES_PER_PAGE)
+const rendererRef = ref<HTMLElement | null>(null)
 const readLines = computed(() => textContent.value.split('\n'))
 const visibleReadText = computed(() =>
   readLines.value.slice(0, visibleReadLineCount.value).join('\n'),
@@ -216,6 +220,10 @@ const bashLines = computed<BashLine[]>(() => {
 
 function showMoreReadLines() {
   visibleReadLineCount.value += READ_LINES_PER_PAGE
+}
+
+function handleWheel(event: WheelEvent) {
+  chainWheelToScrollableAncestor(event, findScrollableWheelSource(event, rendererRef.value))
 }
 
 watch(

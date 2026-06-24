@@ -1,5 +1,6 @@
 import * as crypto from 'crypto'
 import * as path from 'path'
+import type { JsonObject } from '../../shared/json.js'
 import { getPermissionsDir, readJsonFile, writeJsonFile } from '../stores/paths.js'
 
 export type PermissionGrantScope = 'session' | 'workspace'
@@ -18,7 +19,7 @@ export interface PermissionGrant {
     toolCallId?: string
     title: string
   }
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
   revokedAt?: number
 }
 
@@ -29,7 +30,7 @@ export interface PermissionGrantInput {
   sessionId?: string
   workspaceRoot?: string
   createdFrom: PermissionGrant['createdFrom']
-  metadata?: Record<string, unknown>
+  metadata?: JsonObject
 }
 
 export interface PermissionGrantMatchInput {

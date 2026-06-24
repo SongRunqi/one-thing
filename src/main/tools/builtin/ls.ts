@@ -10,6 +10,7 @@ import * as path from 'path'
 import { Tool } from '../core/tool.js'
 import { checkFileAccess, findSandboxRootForPath, getSandboxBoundary, resolveToolPath } from '../core/sandbox.js'
 import { DEFAULT_TEXT_MAX_BYTES, formatSize, truncateTextHead, type TextTruncationResult } from '../core/text-truncation.js'
+import { toJsonObject } from '../../../shared/json.js'
 
 const DEFAULT_LIMIT = 500
 
@@ -19,7 +20,6 @@ export interface LsMetadata {
   truncated: boolean
   truncation?: TextTruncationResult
   entryLimitReached?: number
-  [key: string]: unknown
 }
 
 const LsParameters = z.object({
@@ -104,8 +104,10 @@ export const LsTool = Tool.define<typeof LsParameters, LsMetadata>('ls', {
     let stat
     try {
       stat = await fs.stat(dirPath)
-    } catch (error: any) {
-      if (error.code === 'ENOENT') throw new Error(`Path not found: ${dirPath}`)
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+        throw new Error(`Path not found: ${dirPath}`)
+      }
       throw error
     }
     throwIfAborted()
@@ -117,8 +119,9 @@ export const LsTool = Tool.define<typeof LsParameters, LsMetadata>('ls', {
     let entries: string[]
     try {
       entries = await fs.readdir(dirPath)
-    } catch (error: any) {
-      throw new Error(`Cannot read directory: ${error.message}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error'
+      throw new Error(`Cannot read directory: ${message}`)
     }
     throwIfAborted()
 
@@ -159,7 +162,7 @@ export const LsTool = Tool.define<typeof LsParameters, LsMetadata>('ls', {
 
     ctx.updateResult?.({
       content: [{ type: 'text', text: output }],
-      details: { phase: 'ready', ...metadata },
+      details: toJsonObject({ phase: 'ready', ...metadata }),
     })
 
     return {

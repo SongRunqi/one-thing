@@ -15,6 +15,7 @@ import type {
   MCPSettings,
   DEFAULT_MCP_SETTINGS,
 } from './types.js'
+import type { JsonArray, JsonObject, JsonValue } from '../../shared/json.js'
 
 /**
  * MCP Manager singleton
@@ -216,7 +217,7 @@ class MCPManagerClass {
   /**
    * Call a tool on a specific server
    */
-  async callTool(serverId: string, toolName: string, args: Record<string, any>): Promise<MCPToolCallResult> {
+  async callTool(serverId: string, toolName: string, args: JsonObject): Promise<MCPToolCallResult> {
     const client = this.clients.get(serverId)
     if (!client) {
       return {
@@ -238,7 +239,7 @@ class MCPManagerClass {
   /**
    * Find and call a tool by name (searches all servers)
    */
-  async callToolByName(toolName: string, args: Record<string, any>): Promise<MCPToolCallResult> {
+  async callToolByName(toolName: string, args: JsonObject): Promise<MCPToolCallResult> {
     // Find which server has this tool
     for (const client of this.clients.values()) {
       if (client.status !== 'connected') continue
@@ -258,7 +259,7 @@ class MCPManagerClass {
   /**
    * Read a resource
    */
-  async readResource(serverId: string, uri: string): Promise<{ success: boolean; content?: any; error?: string }> {
+  async readResource(serverId: string, uri: string): Promise<{ success: boolean; content?: JsonValue; error?: string }> {
     const client = this.clients.get(serverId)
     if (!client) {
       return {
@@ -273,7 +274,7 @@ class MCPManagerClass {
   /**
    * Get a prompt
    */
-  async getPrompt(serverId: string, name: string, args?: Record<string, string>): Promise<{ success: boolean; messages?: any[]; error?: string }> {
+  async getPrompt(serverId: string, name: string, args?: Record<string, string>): Promise<{ success: boolean; messages?: JsonArray; error?: string }> {
     const client = this.clients.get(serverId)
     if (!client) {
       return {

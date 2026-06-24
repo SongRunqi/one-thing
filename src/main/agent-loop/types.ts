@@ -1,3 +1,5 @@
+import type { JsonObject, JsonValue } from '../../shared/json.js'
+
 export type AgentRole = 'system' | 'user' | 'assistant' | 'tool'
 
 export type AgentInputModality = 'text' | 'image' | 'file' | 'audio' | 'video'
@@ -8,6 +10,7 @@ export type AgentCapability =
   | 'text-output'
   | 'streaming'
   | 'tool-calls'
+  | 'structured-tool-results'
   | 'reasoning'
   | 'vision-input'
   | 'file-input'
@@ -22,7 +25,9 @@ export interface AgentModelCapabilities {
   capabilities: AgentCapability[]
   inputModalities: AgentInputModality[]
   outputModalities: AgentOutputModality[]
+  toolResultModalities?: AgentInputModality[]
   supportsTools?: boolean
+  supportsStructuredToolResults?: boolean
   supportsReasoning?: boolean
   supportsStreaming?: boolean
   maxInputTokens?: number
@@ -68,6 +73,9 @@ export type AgentContentPart =
 
 export type AgentMessageContent = string | AgentContentPart[] | null
 
+export type AgentJsonValue = JsonValue
+export type AgentJsonObject = JsonObject
+
 export interface AgentToolCall {
   id: string
   name: string
@@ -86,7 +94,7 @@ export interface AgentMessage {
 export interface AgentToolResult {
   content: string
   error?: string
-  data?: unknown
+  data?: AgentJsonValue
   requiresConfirmation?: boolean
   commandType?: 'read-only' | 'dangerous' | 'forbidden'
   aborted?: boolean
@@ -117,10 +125,22 @@ export type AgentProviderData =
 
 export interface AgentToolMetadataUpdate {
   title?: string
-  metadata?: Record<string, unknown>
+  metadata?: AgentJsonObject
 }
 
-export type AgentToolPartialResultUpdate = unknown
+export interface AgentToolResultContentPart {
+  type: 'text' | 'image' | 'file'
+  text?: string
+  data?: string
+  mimeType?: string
+  path?: string
+}
+
+export interface AgentToolPartialResultUpdate {
+  content: AgentToolResultContentPart[]
+  details?: AgentJsonObject
+  terminate?: boolean
+}
 
 export interface AgentToolExecutionContext {
   sessionId: string
@@ -135,8 +155,8 @@ export interface AgentToolExecutionContext {
 export interface AgentTool {
   name: string
   description?: string
-  parameters: Record<string, unknown>
-  execute(args: Record<string, unknown>, ctx: AgentToolExecutionContext): Promise<AgentToolResult>
+  parameters: AgentJsonObject
+  execute(args: AgentJsonObject, ctx: AgentToolExecutionContext): Promise<AgentToolResult>
 }
 
 export interface AgentToolPolicy {
@@ -161,6 +181,7 @@ export interface AgentPromptInjectionContext {
   tools: AgentTool[]
   skills: AgentSkillContext[]
   workingDirectory?: string
+  abortSignal?: AbortSignal
 }
 
 export type AgentPromptInjector = (
@@ -175,6 +196,7 @@ export interface AgentTurnLifecycleContext {
   skills: AgentSkillContext[]
   turn: number
   workingDirectory?: string
+  abortSignal?: AbortSignal
 }
 
 export type AgentBeforeTurnHook = (
@@ -261,6 +283,16 @@ export interface AgentProvider {
   streamTurn?: (request: AgentTurnRequest) => AsyncIterable<AgentTurnStreamEvent>
   runTurn?: (request: AgentTurnRequest) => Promise<AgentTurn>
 }
+
+export interface AgentStreamingProvider extends AgentProvider {
+  streamTurn: (request: AgentTurnRequest) => AsyncIterable<AgentTurnStreamEvent>
+}
+
+export interface AgentRunnableProvider extends AgentProvider {
+  runTurn: (request: AgentTurnRequest) => Promise<AgentTurn>
+}
+
+export type AgentExecutableProvider = AgentStreamingProvider | AgentRunnableProvider
 
 export interface AgentLoopOptions {
   provider: AgentProvider

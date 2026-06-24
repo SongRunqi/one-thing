@@ -353,7 +353,7 @@ describe('content-parts helpers', () => {
       expect(parts.map(p => p.type)).toEqual(['text', 'waiting'])
     })
 
-    it('keeps waiting after data-steps for tool-loop continuation', () => {
+    it('keeps waiting after data-steps for generation continuation', () => {
       const parts: ContentPart[] = [{ type: 'data-steps', turnIndex: 1 }]
       pushWaiting(parts, 2)
       expect(parts).toEqual([

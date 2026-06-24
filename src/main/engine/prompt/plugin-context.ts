@@ -9,10 +9,13 @@ import type {
   PromptKnownProjects,
 } from './types.js'
 
+export type PromptProviderConfigValue = string | number | boolean | null | undefined | object
+export type PromptProviderConfig = Record<string, PromptProviderConfigValue>
+
 export interface PluginPromptContext {
   sessionId?: string
   providerId?: string
-  providerConfig?: Record<string, unknown>
+  providerConfig?: PromptProviderConfig
   settings?: AppSettings
   hasTools: boolean
   skills: SkillDefinition[]

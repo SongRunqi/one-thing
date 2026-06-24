@@ -1,3 +1,4 @@
+import type { JsonObject } from '../json.js'
 import type { SoulMemorySettings } from './settings.js'
 
 export type MemoryManagedFileKind = 'soul' | 'user' | 'memory' | 'dreams' | 'daily'
@@ -34,10 +35,10 @@ export interface MemoryDiagnosticLogEntry {
   durationMs?: number
   sessionId?: string
   runId?: string
-  request?: Record<string, unknown>
-  response?: Record<string, unknown>
-  error?: Record<string, unknown>
-  metadata?: Record<string, unknown>
+  request?: JsonObject
+  response?: JsonObject
+  error?: JsonObject
+  metadata?: JsonObject
 }
 
 export interface MemoryLogsListRequest {
@@ -321,7 +322,7 @@ export interface CanonicalMemoryAuditEvent {
   memoryId: string
   action: 'create' | 'update' | 'delete' | 'restore' | 'duplicate' | 'migrate' | 'conflict' | 'merge' | 'ignore'
   createdAt: number
-  payload: Record<string, unknown>
+  payload: JsonObject
 }
 
 export interface MemoryGraphEntity {
@@ -396,7 +397,7 @@ export interface MemoryGraphAuditEvent {
   memoryId: string
   action: CanonicalMemoryAuditEvent['action']
   createdAt: number
-  payload: Record<string, unknown>
+  payload: JsonObject
 }
 
 export interface MemoryGraphListRequest {

@@ -10,17 +10,9 @@ export const IPC_CHANNELS = {
   GENERATE_TITLE: 'chat:generate-title',
   GET_SYSTEM_PROMPT_SNAPSHOT: 'chat:get-system-prompt-snapshot',
 
-  // Streaming related
-  STREAM_CHUNK: 'chat:stream-chunk',
-  STREAM_REASONING_DELTA: 'chat:stream-reasoning-delta',
-  STREAM_TEXT_DELTA: 'chat:stream-text-delta',
-  STREAM_COMPLETE: 'chat:stream-complete',
-  STREAM_ERROR: 'chat:stream-error',
+  // Streaming control
   ABORT_STREAM: 'chat:abort-stream',
   GET_ACTIVE_STREAMS: 'chat:get-active-streams',
-
-  // UIMessage streaming (AI SDK 6.x compatible)
-  UI_MESSAGE_STREAM: 'chat:ui-message-stream',
 
   // Skill usage notification
   SKILL_ACTIVATED: 'chat:skill-activated',
@@ -121,8 +113,6 @@ export const IPC_CHANNELS = {
   BACKGROUND_JOBS_LIST: 'tools:background-jobs:list',
   BACKGROUND_JOBS_STOP: 'tools:background-jobs:stop',
   REFRESH_ASYNC_TOOLS: 'tools:refresh-async',
-  STREAM_TOOL_CALL: 'chat:stream-tool-call',
-  STREAM_TOOL_RESULT: 'chat:stream-tool-result',
   UPDATE_MESSAGE_THINKING_TIME: 'chat:update-thinking-time',
   RESUME_AFTER_TOOL_CONFIRM: 'chat:resume-after-tool-confirm',
 

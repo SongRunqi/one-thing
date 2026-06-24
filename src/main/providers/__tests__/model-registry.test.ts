@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings, ModelCapabilityEntry } from '../../../shared/ipc.js'
+import { createDefaultSettings } from '../../../shared/defaults/settings.js'
 
 const state = vi.hoisted(() => ({
   settings: {} as AppSettings,
@@ -50,28 +51,23 @@ function entry(
 describe('model registry metadata lookups', () => {
   beforeEach(() => {
     state.saveSettings.mockReset()
-    state.settings = {
-      ai: {
-        provider: 'openai',
-        temperature: 0.7,
-        providers: {
-          openai: {
-            model: 'shared-model',
-            selectedModels: ['shared-model'],
-            models: {
-              'shared-model': entry('shared-model', 'openai', 32000, 4096),
-            },
-          },
-          custom: {
-            model: 'shared-model',
-            selectedModels: ['shared-model'],
-            models: {
-              'shared-model': entry('shared-model', 'custom', 64000, 8192),
-            },
-          },
-        },
+    state.settings = createDefaultSettings()
+    state.settings.ai.provider = 'openai'
+    state.settings.ai.temperature = 0.7
+    state.settings.ai.providers.openai = {
+      model: 'shared-model',
+      selectedModels: ['shared-model'],
+      models: {
+        'shared-model': entry('shared-model', 'openai', 32000, 4096),
       },
-    } as unknown as AppSettings
+    }
+    state.settings.ai.providers.custom = {
+      model: 'shared-model',
+      selectedModels: ['shared-model'],
+      models: {
+        'shared-model': entry('shared-model', 'custom', 64000, 8192),
+      },
+    }
   })
 
   it('prefers the current provider when model ids collide', async () => {

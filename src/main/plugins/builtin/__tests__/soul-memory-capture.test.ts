@@ -9,6 +9,13 @@ import { __testing } from '../soul-memory.js'
 
 const tempDirs: string[] = []
 
+function localDateString(date = new Date()): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function makeWorkspace(
   soulMemory: Partial<ResolvedSoulMemorySettings> = {},
   root = path.join('/tmp', 'soul-memory-capture-test'),
@@ -246,7 +253,7 @@ describe('soul memory capture routing', () => {
       directoryMode: 'custom',
       customDirectory: root,
     }
-    const today = new Date().toISOString().slice(0, 10)
+    const today = localDateString()
     const dailyPath = path.join(root, 'memory', `${today}.md`)
     await fsp.mkdir(path.dirname(dailyPath), { recursive: true })
     await fsp.writeFile(dailyPath, [
@@ -411,7 +418,7 @@ describe('soul memory capture routing', () => {
         maxSourceFiles: 5,
       },
     } as any, root)
-    const today = new Date().toISOString().slice(0, 10)
+    const today = localDateString()
     await fsp.mkdir(path.join(root, 'memory', '.dreams'), { recursive: true })
     await fsp.writeFile(
       path.join(root, 'memory', `${today}.md`),

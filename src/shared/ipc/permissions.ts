@@ -3,6 +3,8 @@
  * Permission-related type definitions for IPC communication
  */
 
+import type { JsonObject } from '../json.js'
+
 // Permission related types
 export interface PermissionInfo {
   id: string
@@ -12,8 +14,9 @@ export interface PermissionInfo {
   messageId: string
   callId?: string
   title: string
-  metadata: Record<string, unknown>
+  metadata: JsonObject
   createdAt: number
+  targetChannel?: string
   /** Working directory for persistent directory-level permissions */
   workingDirectory?: string
 }

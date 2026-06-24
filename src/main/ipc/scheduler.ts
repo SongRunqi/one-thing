@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
+import { toJsonValue } from '../../shared/json.js'
 import type {
   SchedulerCreateTaskRequest,
   SchedulerDeleteTaskRequest,
@@ -57,7 +58,7 @@ export function registerSchedulerHandlers(): void {
         force: request.force ?? true,
       })
       if (!isUserSchedulerTask(request.id)) {
-        saveSchedulerRunDetail(genericRunDetailFromRecord(record))
+        saveSchedulerRunDetail(genericRunDetailFromRecord({ ...record, result: toJsonValue(record.result) }))
       }
       return { success: true, record }
     } catch (error) {
@@ -122,7 +123,7 @@ export function registerSchedulerHandlers(): void {
       const task = getScheduler().getStatus(request.taskId)
       const runs = (task?.recentRuns || [])
         .slice(0, Math.max(1, Math.min(50, Math.floor(request.limit || 50))))
-        .map(record => genericRunDetailFromRecord(record))
+        .map(record => genericRunDetailFromRecord({ ...record, result: toJsonValue(record.result) }))
       return { success: true, runs }
     } catch (error) {
       console.error('[SchedulerIPC] list-runs error:', error)
@@ -137,7 +138,7 @@ export function registerSchedulerHandlers(): void {
       const task = getScheduler().getStatus(request.taskId)
       const recent = task?.recentRuns?.find(record => record.runId === request.runId)
       if (!recent) return { success: false, error: `Scheduled run not found: ${request.runId}` }
-      return { success: true, run: genericRunDetailFromRecord(recent) }
+      return { success: true, run: genericRunDetailFromRecord({ ...recent, result: toJsonValue(recent.result) }) }
     } catch (error) {
       console.error('[SchedulerIPC] get-run error:', error)
       return { success: false, error: errorMessage(error) }

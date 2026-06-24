@@ -1,3 +1,8 @@
+import type { JsonObjectProperty } from '../../../shared/json.js'
+
+export type ToolEffectMetadataValue = JsonObjectProperty | object | object[]
+export type ToolEffectMetadata = Record<string, ToolEffectMetadataValue>
+
 export type ToolEffectKind =
   | 'read'
   | 'file_edit'
@@ -14,7 +19,7 @@ export interface ToolEffect {
   barrier: boolean
   external?: boolean
   sensitive?: boolean
-  metadata?: Record<string, unknown>
+  metadata?: ToolEffectMetadata
 }
 
 export interface ToolPreview {
@@ -23,7 +28,7 @@ export interface ToolPreview {
   path?: string
   additions?: number
   deletions?: number
-  metadata?: Record<string, unknown>
+  metadata?: ToolEffectMetadata
 }
 
 export function isBarrierEffect(effect: ToolEffect): boolean {

@@ -248,7 +248,7 @@ export interface ChatSettings {
   contextCompactEnabled?: boolean  // Enable automatic context compacting, default true
   contextCompactThreshold?: number  // Context usage % to trigger compacting, 50-100, default 85
   contextCompactKeepRecentTurns?: number  // Recent user/assistant turns to keep verbatim, default 6
-  agentLoopStream?: boolean        // Route supported providers through the agent-loop stream runtime, default false
+  agentLoopStream?: boolean        // Legacy compatibility flag; supported providers always use the agent-loop stream runtime
 }
 
 export interface ProxySettings {

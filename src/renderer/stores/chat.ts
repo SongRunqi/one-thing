@@ -7,7 +7,7 @@
  * - useChatSession composable 作为 per-session 视图
  */
 import { defineStore } from 'pinia'
-import { ref, computed, triggerRef } from 'vue'
+import { ref, shallowRef, computed, triggerRef } from 'vue'
 import { perfMark, perfMeasure } from '@/utils/perf'
 import type {
   ChatMessage,
@@ -15,6 +15,7 @@ import type {
   GetSessionUserMarkersResponse,
   MessageAttachment,
   Step,
+  ToolCall,
   ToolPartialResult,
   ToolResult,
   ContentPart,
@@ -38,6 +39,15 @@ import {
   upsertMessageToolCall,
 } from './helpers/tool-calls'
 import { rawTextFromPromptParts } from '@shared/prompt-references'
+import type { JsonObject } from '@shared/json'
+import type { RequestSnapshotEvent } from '../../shared/events/index.js'
+
+type RequestSnapshot = RequestSnapshotEvent['snapshot']
+type ImportMetaWithDebugEnv = ImportMeta & {
+  env?: {
+    VITE_DEBUG_TOOL_INPUT?: string
+  }
+}
 
 // Stream chunk type from IPC
 interface StreamChunk {
@@ -47,7 +57,7 @@ interface StreamChunk {
   messageId: string
   sessionId?: string
   reasoning?: string
-  toolCall?: any
+  toolCall?: ToolCall
   replace?: boolean
   // For streaming tool input (AI SDK v6)
   toolCallId?: string
@@ -99,7 +109,7 @@ interface StepUpdateData {
   sessionId: string
   messageId: string
   stepId: string
-  updates: any
+  updates: Partial<Step>
 }
 
 interface ToolExecutionStartData {
@@ -108,7 +118,7 @@ interface ToolExecutionStartData {
   toolCallId: string
   stepId: string
   toolName: string
-  args: Record<string, unknown>
+  args: JsonObject
 }
 
 interface ToolExecutionUpdateData {
@@ -144,7 +154,7 @@ interface PermissionRequestData {
   permissionType: string
   title: string
   pattern?: string | string[]
-  metadata: Record<string, unknown>
+  metadata: JsonObject
   canRespond: boolean
 }
 
@@ -162,7 +172,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // Messages per session
-  const sessionMessages = ref<Map<string, ChatMessage[]>>(new Map())
+  const sessionMessages = shallowRef<Map<string, ChatMessage[]>>(new Map())
 
   interface SessionMessagePageState {
     nextCursor: string | null
@@ -320,9 +330,15 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   const pendingScrollBump = new Set<string>()
-  const scheduleFrame = typeof requestAnimationFrame === 'function'
+  type ScheduledFrameHandle = number | ReturnType<typeof globalThis.setTimeout>
+  const scheduleFrame: (callback: FrameRequestCallback) => ScheduledFrameHandle = typeof requestAnimationFrame === 'function'
     ? requestAnimationFrame
-    : (cb: FrameRequestCallback) => setTimeout(() => cb(performance.now()), 16)
+    : (cb: FrameRequestCallback) => {
+        const timeout = typeof window?.setTimeout === 'function'
+          ? window.setTimeout.bind(window)
+          : globalThis.setTimeout
+        return timeout(() => cb(performance.now()), 16)
+      }
 
   function bumpScrollVersion(sessionId: string) {
     if (pendingScrollBump.has(sessionId)) return
@@ -335,7 +351,7 @@ export const useChatStore = defineStore('chat', () => {
 
   const TOOL_INPUT_DELTA_SEPARATOR = '\u0000'
   const pendingToolInputDeltas = new Map<string, string>()
-  let pendingToolInputFlushFrame: number | null = null
+  let pendingToolInputFlushFrame: ScheduledFrameHandle | null = null
 
   function toolInputDeltaKey(sessionId: string, messageId: string, toolCallId: string): string {
     return [sessionId, messageId, toolCallId].join(TOOL_INPUT_DELTA_SEPARATOR)
@@ -353,7 +369,7 @@ export const useChatStore = defineStore('chat', () => {
     pendingToolInputFlushFrame = scheduleFrame(() => {
       pendingToolInputFlushFrame = null
       flushToolInputDeltas()
-    }) as unknown as number
+    })
   }
 
   function flushToolInputDeltas(sessionId?: string, messageId?: string, toolCallId?: string) {
@@ -406,16 +422,16 @@ export const useChatStore = defineStore('chat', () => {
 
   // ============ Inspector — request snapshots ring buffer ============
   // Per-session list of the most recent outbound LLM requests (cap = 5).
-  // Populated from the `request:snapshot` event emitted by tool-loop.
+  // Populated from the `request:snapshot` event emitted by the stream runtime.
   // Used by ChatInspectorPanel's Request tab.
   const REQUEST_SNAPSHOT_CAP = 5
-  const sessionRequestSnapshots = ref<Map<string, any[]>>(new Map())
+  const sessionRequestSnapshots = ref<Map<string, RequestSnapshot[]>>(new Map())
 
-  function getRequestSnapshots(sessionId: string): any[] {
+  function getRequestSnapshots(sessionId: string): RequestSnapshot[] {
     return sessionRequestSnapshots.value.get(sessionId) ?? []
   }
 
-  function handleRequestSnapshot(data: { sessionId: string; snapshot: any }) {
+  function handleRequestSnapshot(data: { sessionId: string; snapshot: RequestSnapshot }) {
     const list = sessionRequestSnapshots.value.get(data.sessionId) ?? []
     const next = [...list, data.snapshot]
     if (next.length > REQUEST_SNAPSHOT_CAP) next.splice(0, next.length - REQUEST_SNAPSHOT_CAP)
@@ -562,6 +578,34 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(sessionMessages)
   }
 
+  function notifySessionMessagesChanged() {
+    triggerRef(sessionMessages)
+  }
+
+  function shouldDebugStream(): boolean {
+    try {
+      return localStorage.getItem('onething:debug-stream') === '1'
+    } catch {
+      return false
+    }
+  }
+
+  function logTime(): string {
+    return new Date().toISOString()
+  }
+
+  function previewText(value: string | undefined, maxLength = 240): string {
+    return (value ?? '').replace(/\s+/g, ' ').trim().slice(-maxLength)
+  }
+
+  const debugLastAppliedAt = new Map<string, number>()
+
+  function debugGapMs(key: string, now = Date.now()): number | undefined {
+    const previous = debugLastAppliedAt.get(key)
+    debugLastAppliedAt.set(key, now)
+    return previous === undefined ? undefined : now - previous
+  }
+
   function cachePendingPermissionRequest(data: PermissionRequestData): void {
     const requests = pendingPermissionRequests.get(data.sessionId) || []
     const existingIndex = requests.findIndex(req => req.requestId === data.requestId)
@@ -704,14 +748,14 @@ export const useChatStore = defineStore('chat', () => {
    * Handle stream chunk event
    */
   function handleStreamChunk(chunk: StreamChunk) {
-    const debugToolInput = (import.meta as any).env?.VITE_DEBUG_TOOL_INPUT === 'true'
+    const debugToolInput = (import.meta as ImportMetaWithDebugEnv).env?.VITE_DEBUG_TOOL_INPUT === 'true'
     if (debugToolInput && (chunk.type === 'tool_input_start' || chunk.type === 'tool_input_delta')) {
       console.log('[Chat Store] handleStreamChunk entry:', {
         type: chunk.type,
         sessionId: chunk.sessionId,
         messageId: chunk.messageId,
         toolCallId: chunk.toolCallId,
-        hasArgsTextDelta: !!(chunk as any).argsTextDelta
+        hasArgsTextDelta: Boolean(chunk.argsTextDelta)
       })
     }
 
@@ -816,9 +860,14 @@ export const useChatStore = defineStore('chat', () => {
         message.contentParts = [...parts]
       } else if (newPart.type === 'text') {
         // Finalized text block for the turn. Streaming text chunks have already
-        // built up the text, so nothing to add here — the content_part exists
-        // mainly to anchor data-steps ordering.
+        // built up the text on the hot path. If a provider only delivers the
+        // finalized content_part, use it as a display fallback so the message
+        // does not remain on the waiting indicator.
         popTrailingTransient(parts)
+        if (newPart.content && !(message.content || '').includes(newPart.content)) {
+          message.content = (message.content || '') + newPart.content
+          appendOrMergeText(parts, newPart.content, newPart.turnIndex)
+        }
         message.contentParts = [...parts]
       } else if (newPart.type === 'reasoning') {
         appendReasoningIfMissing(parts, newPart.content)
@@ -835,6 +884,23 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
+    messages[messageIndex] = { ...message }
+    setSessionMessages(sessionId, [...messages])
+    if (shouldDebugStream()) {
+      console.log('[Chat Store] applied stream chunk', {
+        time: logTime(),
+        gapMs: debugGapMs(`${sessionId}:${resolvedMsgId}:${chunk.type}`),
+        sessionId,
+        messageId: resolvedMsgId,
+        type: chunk.type,
+        contentChars: message.content?.length ?? 0,
+        contentTail: previewText(message.content),
+        reasoningChars: message.reasoning?.length ?? 0,
+        reasoningTail: previewText(message.reasoning),
+        partCount: message.contentParts?.length ?? 0,
+        isStreaming: message.isStreaming,
+      })
+    }
     perfMark('chunk-end')
     perfMeasure('handleStreamChunk', 'chunk-start', 'chunk-end')
     if (shouldBumpScroll) bumpScrollVersion(sessionId)
@@ -872,7 +938,7 @@ export const useChatStore = defineStore('chat', () => {
       try {
         const { useSessionsStore } = await import('./sessions')
         const sessionsStore = useSessionsStore()
-        const session = sessionsStore.sessions.find((s) => s.id === sessionId) as any
+        const session = sessionsStore.sessions.find((s) => s.id === sessionId)
         if (session) {
           sessionsStore.updateSessionTokenStats(sessionId, {
             totalInputTokens: (session.totalInputTokens ?? 0) + (data.usage.inputTokens ?? 0),
@@ -927,13 +993,14 @@ export const useChatStore = defineStore('chat', () => {
 
     const messages = getSessionMessagesRef(sessionId)
     const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
+    const errorText = data.errorDetails || data.error || 'Streaming error'
     if (resolvedMsgId) flushToolInputDeltas(sessionId, resolvedMsgId)
 
     if (data.preserved) {
       // Message content is preserved in backend — just attach error details and stop streaming
       const msg = resolveStreamingMessage(messages, resolvedMsgId)
       if (msg) {
-        msg.errorDetails = data.errorDetails
+        msg.errorDetails = errorText
         stopMessageStreaming(msg)
       }
     } else {
@@ -941,9 +1008,9 @@ export const useChatStore = defineStore('chat', () => {
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
         role: 'error',
-        content: data.error || 'Streaming error',
+        content: errorText,
         timestamp: Date.now(),
-        errorDetails: data.errorDetails,
+        errorDetails: errorText,
       }
       messages.push(errorMessage)
 
@@ -971,13 +1038,6 @@ export const useChatStore = defineStore('chat', () => {
     triggerRef(sessionGenerating)
     triggerRef(sessionLoading)
     triggerRef(activeStreams)
-  }
-
-  /**
-   * Find a step by ID in a nested step structure
-   */
-  function findStepById(steps: Step[], stepId: string): Step | null {
-    return steps.find(s => s.id === stepId) ?? null
   }
 
   /**
@@ -1316,9 +1376,9 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   /**
-   * Inject guidance into the active tool loop.
+   * Inject guidance into the active agent response.
    * The backend persists it as a user message and processes it before the next
-   * LLM call, without aborting the current stream.
+   * model call, without aborting the current stream.
    */
   async function steerMessage(sessionId: string, content: string) {
     await window.electronAPI.emitCommand(sessionId, {
@@ -1368,8 +1428,6 @@ export const useChatStore = defineStore('chat', () => {
     const message = messages.find(m => m.id === messageId)
     if (!message) return false
 
-    // If regenerating from an assistant message, use the assistant message ID directly
-    const targetMessageId = message.role === 'assistant' ? messageId : undefined
     if (message.role === 'assistant') {
       sessionLoading.value.set(sessionId, true)
       triggerRef(sessionLoading)
@@ -1602,18 +1660,7 @@ export const useChatStore = defineStore('chat', () => {
    * Updates the matching tool call and step in the session's messages
    * to show the permission confirmation UI.
    */
-  function handlePermissionRequest(data: {
-    sessionId: string
-    requestId: string
-    messageId: string
-    callId?: string
-    permissionType: string
-    title: string
-    pattern?: string | string[]
-    metadata: Record<string, unknown>
-    /** Whether this channel can respond (true for targetChannel match) */
-    canRespond: boolean
-  }) {
+  function handlePermissionRequest(data: PermissionRequestData) {
     applyPermissionRequest(data)
   }
 

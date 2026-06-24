@@ -1,11 +1,13 @@
+import type { JsonObject } from './json.js'
+
 export interface ToolFailureParameterSummary {
   summary: string
-  parameters: Record<string, unknown>
+  parameters: JsonObject
 }
 
 export function summarizeToolFailureParameters(
   toolName: string | undefined,
-  args: Record<string, unknown> | undefined,
+  args: JsonObject | undefined,
 ): ToolFailureParameterSummary | null {
   if (!args || Object.keys(args).length === 0) return null
 

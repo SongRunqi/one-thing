@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { StreamContext } from '../stream-processor.js'
+import { createDefaultSettings, DEFAULT_CHAT_SETTINGS } from '../../../../shared/defaults/settings.js'
+import type { StreamContext, StreamSender } from '../stream-processor.js'
 
 const emit = vi.fn(() => Promise.resolve())
 const getSession = vi.fn(() => ({
@@ -16,6 +17,7 @@ const compactSessionContext = vi.fn(() => Promise.resolve({
   retainedContextSize: 0,
 }))
 const getContextCompactReason = vi.fn()
+const shouldSkipAutoCompactForProviderUsageMismatch = vi.fn(() => false)
 
 vi.mock('../../../store.js', () => ({
   getSession,
@@ -28,26 +30,36 @@ vi.mock('../../../events/index.js', () => ({
 vi.mock('../../context-compact.js', () => ({
   compactSessionContext,
   getContextCompactReason,
+  shouldSkipAutoCompactForProviderUsageMismatch,
 }))
 
 const { maybeCompactAgentLoopContext } = await import('../agent-loop-runtime.js')
 
+function mockSender(): StreamSender {
+  return {
+    isDestroyed: () => false,
+    send: vi.fn(),
+  }
+}
+
 function ctx(): StreamContext {
+  const settings = createDefaultSettings()
+  settings.chat = {
+    ...DEFAULT_CHAT_SETTINGS,
+    contextCompactEnabled: true,
+    contextCompactKeepRecentTurns: 6,
+    contextCompactThreshold: 85,
+  }
+
   return {
     sessionId: 's1',
     assistantMessageId: 'm1',
     abortSignal: new AbortController().signal,
-    settings: {
-      chat: {
-        contextCompactEnabled: true,
-        contextCompactKeepRecentTurns: 6,
-        contextCompactThreshold: 85,
-      },
-    } as any,
+    settings,
     providerConfig: { model: 'deepseek-v4-flash', selectedModels: ['deepseek-v4-flash'] },
     providerId: 'deepseek',
     toolSettings: undefined,
-    sender: { isDestroyed: () => false, send: vi.fn() } as any,
+    sender: mockSender(),
   }
 }
 

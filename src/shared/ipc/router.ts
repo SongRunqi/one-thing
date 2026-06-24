@@ -17,12 +17,16 @@
  *   e.g., "memory-feedback" + "getStats" → "memory-feedback:get-stats"
  */
 
+import type { JsonValue } from '../json.js'
+
 // --- Core Types ---
 
+export type RoutePayload = JsonValue | void
+
 /** Route configuration - input/output types for a single IPC method */
-export interface RouteConfig {
-  input: unknown
-  output: unknown
+export interface RouteConfig<Input extends RoutePayload = RoutePayload, Output extends RoutePayload = RoutePayload> {
+  input: Input
+  output: Output
 }
 
 /** Domain routes - maps method names to their route configs */

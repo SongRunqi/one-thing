@@ -214,6 +214,8 @@ const EMPTY_BRANCHES: BranchInfo[] = []
 
 type NavMarker = UserMessageNavMarker
 type MessageScrollBehavior = 'auto' | 'instant' | 'smooth'
+type ExecutableToolCall = Pick<ToolCall, 'id' | 'toolId' | 'arguments'>
+type PermissionToolCall = Pick<ToolCall, 'id' | 'permissionId'>
 
 interface Props {
   messages: ChatMessage[]
@@ -256,7 +258,7 @@ let searchHighlightTimer: ReturnType<typeof setTimeout> | null = null
 // Reject reason dialog state
 const showRejectDialog = ref(false)
 const rejectReason = ref('')
-const pendingRejectToolCall = ref<any>(null)
+const pendingRejectToolCall = ref<PermissionToolCall | null>(null)
 const rejectReasonInputRef = ref<HTMLTextAreaElement | null>(null)
 
 // Get the effective session for this panel (props.sessionId or fallback to global)
@@ -1521,7 +1523,7 @@ watch(
             title: info.title,
             pattern: info.pattern,
             metadata: info.metadata,
-            canRespond: ((info as any).targetChannel || 'ipc') === 'ipc',
+            canRespond: (info.targetChannel || 'ipc') === 'ipc',
           })
         }
       }
@@ -1595,7 +1597,7 @@ function handleSuggestion(text: string) {
 }
 
 // Handle tool execution
-async function handleExecuteTool(toolCall: any) {
+async function handleExecuteTool(toolCall: ExecutableToolCall) {
   const currentSession = panelSession.value
   if (!currentSession) return
 
@@ -1665,7 +1667,7 @@ async function handleExecuteTool(toolCall: any) {
 // Handle tool confirmation (for permission-gated tool calls)
 type PermissionResponse = 'once' | 'session' | 'workdir'
 
-async function handleConfirmTool(toolCall: any, response: PermissionResponse = 'once') {
+async function handleConfirmTool(toolCall: PermissionToolCall, response: PermissionResponse = 'once') {
   const currentSession = panelSession.value
   if (!currentSession) return
 
@@ -1710,7 +1712,7 @@ async function handleConfirmTool(toolCall: any, response: PermissionResponse = '
 }
 
 // Open the reject reason dialog
-function openRejectDialog(toolCall: any) {
+function openRejectDialog(toolCall: PermissionToolCall) {
   pendingRejectToolCall.value = toolCall
   rejectReason.value = ''
   showRejectDialog.value = true
@@ -1736,7 +1738,7 @@ function cancelReject() {
 }
 
 // Handle tool rejection with optional reason
-async function handleRejectTool(toolCall: any, rejectReasonArg?: string) {
+async function handleRejectTool(toolCall: PermissionToolCall, rejectReasonArg?: string) {
   // Update the tool call status to cancelled/rejected
   const currentSession = panelSession.value
   if (!currentSession) return

@@ -9,11 +9,32 @@
 import * as undici from 'undici'
 import type { Dispatcher } from 'undici'
 import { isIP } from 'node:net'
+import type { SocketConnectOpts } from 'node:net'
 import { SocksClient } from 'socks'
 import type { NetworkInterfaceSettings, ProxySettings } from '../../shared/ipc.js'
 import { getSettings } from '../stores/settings.js'
 
 type FetchFn = typeof globalThis.fetch
+type AgentOptions = NonNullable<ConstructorParameters<typeof undici.Agent>[0]>
+type ProxyAgentOptions = Exclude<ConstructorParameters<typeof undici.ProxyAgent>[0], string | URL>
+type ProxyTlsOptions = {
+  localAddress?: string
+  timeout?: number | null
+}
+type ProxyDispatcherOptions = Omit<ProxyAgentOptions, 'uri' | 'proxyTls'> & {
+  proxyTls?: ProxyTlsOptions
+}
+type Socks5ProxyAgentOptions = NonNullable<ConstructorParameters<typeof undici.Socks5ProxyAgent>[1]>
+type Socks5ProxyAgentConstructor = typeof undici.Socks5ProxyAgent
+type FetchErrorDetails = {
+  code?: string
+  message?: string
+}
+type ErrorWithCause = Error & {
+  cause?: Error | FetchErrorDetails
+}
+type UndiciFetchInput = Parameters<typeof undici.fetch>[0]
+type UndiciFetchInit = NonNullable<Parameters<typeof undici.fetch>[1]>
 
 const dispatcherCache = new Map<string, Dispatcher>()
 // AI streams can legitimately pause for more than Undici's 300s default while
@@ -97,7 +118,7 @@ function hostnameMatchesRule(hostname: string, rule: string): boolean {
   return false
 }
 
-export function shouldBypassProxy(input: unknown, bypassRules?: string): boolean {
+export function shouldBypassProxy(input: RequestInfo | URL, bypassRules?: string): boolean {
   let url: URL
   try {
     url = input instanceof URL ? input : new URL(String(input))
@@ -115,7 +136,7 @@ function dispatcherKey(proxy: ProxySettings | undefined, networkInterface?: Netw
   return `direct#${localAddress}`
 }
 
-function createDispatcherOptions(networkInterface?: NetworkInterfaceSettings): Record<string, unknown> {
+function createDispatcherOptions(networkInterface?: NetworkInterfaceSettings): AgentOptions {
   return {
     bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
     ...(networkInterface?.address ? { localAddress: networkInterface.address } : {}),
@@ -142,7 +163,7 @@ function shouldBindProxyConnection(proxy: ProxySettings, networkInterface?: Netw
   }
 }
 
-function createProxyDispatcherOptions(proxy: ProxySettings, networkInterface?: NetworkInterfaceSettings): Record<string, unknown> {
+function createProxyDispatcherOptions(proxy: ProxySettings, networkInterface?: NetworkInterfaceSettings): ProxyDispatcherOptions {
   return {
     bodyTimeout: APP_FETCH_BODY_TIMEOUT_MS,
     ...(shouldBindProxyConnection(proxy, networkInterface)
@@ -151,14 +172,14 @@ function createProxyDispatcherOptions(proxy: ProxySettings, networkInterface?: N
   }
 }
 
-function createSocks5ProxyAgent(proxy: ProxySettings, options: Record<string, unknown>, networkInterface?: NetworkInterfaceSettings): Dispatcher {
-  const Socks5ProxyAgent = (undici as any).Socks5ProxyAgent
+function createSocks5ProxyAgent(proxy: ProxySettings, options: ProxyDispatcherOptions, networkInterface?: NetworkInterfaceSettings): Dispatcher {
+  const Socks5ProxyAgent: Socks5ProxyAgentConstructor = undici.Socks5ProxyAgent
   if (!Socks5ProxyAgent) {
     throw new Error('SOCKS5 proxy support is not available in this undici version.')
   }
 
   if (!shouldBindProxyConnection(proxy, networkInterface)) {
-    return new Socks5ProxyAgent(proxy.url, options)
+    return new Socks5ProxyAgent(proxy.url, options as Socks5ProxyAgentOptions)
   }
 
   const localAddress = networkInterface!.address
@@ -167,9 +188,9 @@ function createSocks5ProxyAgent(proxy: ProxySettings, options: Record<string, un
   const proxyPort = Number(proxyUrl.port) || 1080
   const username = proxyUrl.username ? decodeURIComponent(proxyUrl.username) : undefined
   const password = proxyUrl.password ? decodeURIComponent(proxyUrl.password) : undefined
-  const connectTimeout = Number((options.proxyTls as any)?.timeout ?? (options as any).connectTimeout ?? 10000)
+  const connectTimeout = Number(options.proxyTls?.timeout ?? 10000)
 
-  const BoundSocks5ProxyAgent = class extends (Socks5ProxyAgent as new (...args: any[]) => any) {
+  const BoundSocks5ProxyAgent = class extends Socks5ProxyAgent {
     async createSocks5Connection(targetHost: string, targetPort: number) {
       const result = await SocksClient.createConnection({
         command: 'connect',
@@ -187,14 +208,14 @@ function createSocks5ProxyAgent(proxy: ProxySettings, options: Record<string, un
         timeout: connectTimeout > 0 ? connectTimeout : 10000,
         socket_options: {
           localAddress,
-        } as any,
+        } as SocketConnectOpts,
       })
 
       return result.socket
     }
   }
 
-  return new BoundSocks5ProxyAgent(proxy.url, options) as unknown as Dispatcher
+  return new BoundSocks5ProxyAgent(proxy.url, options as Socks5ProxyAgentOptions)
 }
 
 export function getAppDispatcher(proxy?: ProxySettings, networkInterface?: NetworkInterfaceSettings): Dispatcher {
@@ -210,11 +231,11 @@ export function getAppDispatcher(proxy?: ProxySettings, networkInterface?: Netwo
       dispatcher = new undici.ProxyAgent({
         uri: proxy.url,
         ...proxyDispatcherOptions,
-      } as any)
+      } as ProxyAgentOptions)
     }
   } else {
     const dispatcherOptions = createDispatcherOptions(networkInterface)
-    dispatcher = new undici.Agent(dispatcherOptions as any)
+    dispatcher = new undici.Agent(dispatcherOptions)
   }
 
   if (!dispatcher) throw new Error('Failed to create app network dispatcher')
@@ -226,13 +247,46 @@ export function clearAppDispatcherCache(): void {
   dispatcherCache.clear()
 }
 
+function fetchInputToString(input: RequestInfo | URL): string {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.toString()
+  return input.url || String(input)
+}
+
+function errorToDetails(error: Error): FetchErrorDetails {
+  const withCode = error as Error & { code?: string }
+  return {
+    code: withCode.code,
+    message: error.message,
+  }
+}
+
+function errorCauseToDetails(error: Error): FetchErrorDetails | undefined {
+  const cause = (error as ErrorWithCause).cause
+  if (!cause || typeof cause !== 'object') {
+    return undefined
+  }
+  if (cause instanceof Error) {
+    const withCode = cause as Error & { code?: string }
+    return {
+      code: withCode.code,
+      message: cause.message,
+    }
+  }
+  const details = cause as FetchErrorDetails
+  return {
+    code: details.code,
+    message: details.message,
+  }
+}
+
 /**
  * Create a fetch using the app network settings.
  * The proxy setting is resolved at request time so cached provider instances
  * pick up proxy changes without needing to recreate their SDK clients first.
  */
 export function createAppFetch(options: { proxy?: ProxySettings; networkInterface?: NetworkInterfaceSettings } = {}): FetchFn {
-  return (async (input: any, init?: any) => {
+  const appFetch: FetchFn = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const proxy = getActiveProxySettings(options.proxy)
     const networkInterface = getActiveNetworkInterfaceSettings(options.networkInterface)
     const activeProxy = proxy && !shouldBypassProxy(input, proxy.bypassRules) ? proxy : undefined
@@ -242,24 +296,27 @@ export function createAppFetch(options: { proxy?: ProxySettings; networkInterfac
 
     const dispatcher = getAppDispatcher(activeProxy, networkInterface)
     try {
-      return await undici.fetch(input, { ...(init || {}), dispatcher })
-    } catch (error: any) {
-      const target = typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input?.url || String(input)
-      const cause = error?.cause
+      const undiciInit = { ...(init || {}), dispatcher } as UndiciFetchInit
+      const response = await undici.fetch(input as UndiciFetchInput, undiciInit)
+      return response as Response
+    } catch (error) {
+      const target = fetchInputToString(input)
+      const errorDetails = error instanceof Error
+        ? errorToDetails(error)
+        : { message: String(error) }
+      const causeDetails = error instanceof Error ? errorCauseToDetails(error) : undefined
       console.error('[Network] App fetch failed:', {
         target,
         proxy: activeProxy?.url,
         localAddress: networkInterface?.address,
-        code: cause?.code || error?.code,
-        message: cause?.message || error?.message,
+        code: causeDetails?.code || errorDetails.code,
+        message: causeDetails?.message || errorDetails.message,
       })
       throw error
     }
-  }) as unknown as FetchFn
+  }
+
+  return appFetch
 }
 
 export function createRequiredAppFetch(options: { proxy?: ProxySettings; networkInterface?: NetworkInterfaceSettings } = {}): FetchFn {

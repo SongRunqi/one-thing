@@ -1,7 +1,20 @@
 import { describe, expect, it, vi } from 'vitest'
 import { isAgentLoopPauseForConfirmationError } from '../errors.js'
 import { runAgentLoop } from '../runner.js'
-import type { AgentProvider, AgentTurn } from '../types.js'
+import type {
+  AgentMessage,
+  AgentMessageContent,
+  AgentProvider,
+  AgentStreamEvent,
+  AgentToolChoice,
+  AgentTurn,
+  AgentTurnRequest,
+} from '../types.js'
+
+type MessageSnapshot = Array<{
+  role: AgentMessage['role']
+  content: AgentMessageContent
+}>
 
 function withTimeout<T>(promise: Promise<T>, message = 'timed out waiting for abort'): Promise<T> {
   return Promise.race([
@@ -12,6 +25,7 @@ function withTimeout<T>(promise: Promise<T>, message = 'timed out waiting for ab
 
 describe('agent loop runner', () => {
   it('executes selected tools and feeds results into the next model turn', async () => {
+    const seenToolNames: string[][] = []
     const provider: AgentProvider = {
       id: 'fake',
       capabilities: {
@@ -20,7 +34,8 @@ describe('agent loop runner', () => {
         outputModalities: ['text'],
         supportsTools: true,
       },
-      runTurn: vi.fn(async request => {
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
+        seenToolNames.push(request.tools?.map(tool => tool.name) ?? [])
         if (request.turn === 1) {
           request.onEvent?.({ type: 'text-delta', turn: 1, delta: 'calling' })
           return {
@@ -82,8 +97,7 @@ describe('agent loop runner', () => {
     })
 
     expect(provider.runTurn).toHaveBeenCalledTimes(2)
-    expect((provider.runTurn as any).mock.calls[0][0].tools.map((tool: any) => tool.name))
-      .toEqual(['make_note'])
+    expect(seenToolNames[0]).toEqual(['make_note'])
     expect(execute).toHaveBeenCalledWith(
       { text: 'hello' },
       expect.objectContaining({ sessionId: 's1', messageId: 'm1', toolCallId: 'call_1' }),
@@ -94,8 +108,243 @@ describe('agent loop runner', () => {
     expect(events).toContain('tool-result')
   })
 
+  it('synthesizes missing stream events from runTurn results', async () => {
+    const usage = { inputTokens: 3, outputTokens: 4, totalTokens: 7 }
+    const providerData = {
+      provider: 'codex',
+      type: 'encrypted-reasoning',
+      encryptedContent: 'encrypted-payload',
+    } as const
+    const provider: AgentProvider = {
+      id: 'non-stream-provider',
+      capabilities: {
+        capabilities: ['text-input', 'text-output', 'reasoning'],
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+        supportsReasoning: true,
+      },
+      runTurn: vi.fn(async () => ({
+        message: {
+          role: 'assistant',
+          content: 'final text',
+          reasoningContent: 'quiet thought',
+          providerData: [providerData],
+        },
+        finishReason: 'stop',
+        usage,
+      } satisfies AgentTurn)),
+    }
+    const events: AgentStreamEvent[] = []
+
+    const result = await runAgentLoop({
+      provider,
+      model: 'non-stream-model',
+      messages: [{ role: 'user', content: 'hello' }],
+      sessionId: 's1',
+      messageId: 'm1',
+      onEvent(event) {
+        events.push(event)
+      },
+    })
+
+    expect(result.text).toBe('final text')
+    expect(events).toEqual([
+      { type: 'turn-start', turn: 1 },
+      { type: 'reasoning-delta', turn: 1, delta: 'quiet thought' },
+      { type: 'text-delta', turn: 1, delta: 'final text' },
+      { type: 'provider-data', turn: 1, providerData },
+      { type: 'finish', turn: 1, finishReason: 'stop', usage },
+      { type: 'turn-end', turn: 1, finishReason: 'stop', usage },
+    ])
+  })
+
+  it('completes partial runTurn stream events without duplicating emitted deltas', async () => {
+    const provider: AgentProvider = {
+      id: 'partially-streaming-run-turn-provider',
+      capabilities: {
+        capabilities: ['text-input', 'text-output'],
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+      },
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
+        request.onEvent?.({ type: 'text-delta', turn: request.turn, delta: 'already ' })
+        return {
+          message: {
+            role: 'assistant',
+            content: 'already streamed',
+          },
+          finishReason: 'stop',
+        } satisfies AgentTurn
+      }),
+    }
+    const events: AgentStreamEvent[] = []
+
+    await runAgentLoop({
+      provider,
+      model: 'partial-stream-model',
+      messages: [{ role: 'user', content: 'hello' }],
+      sessionId: 's1',
+      messageId: 'm1',
+      onEvent(event) {
+        events.push(event)
+      },
+    })
+
+    expect(events.filter(event => event.type === 'text-delta')).toEqual([
+      { type: 'text-delta', turn: 1, delta: 'already ' },
+      { type: 'text-delta', turn: 1, delta: 'streamed' },
+    ])
+    expect(events.filter(event => event.type === 'finish')).toEqual([
+      { type: 'finish', turn: 1, finishReason: 'stop', usage: undefined },
+    ])
+  })
+
+  it('preserves structured media tool results for capable providers', async () => {
+    const seenToolMessages: AgentMessage[] = []
+    const provider: AgentProvider = {
+      id: 'vision-tool-provider',
+      capabilities: {
+        capabilities: [
+          'text-input',
+          'vision-input',
+          'file-input',
+          'text-output',
+          'tool-calls',
+          'structured-tool-results',
+        ],
+        inputModalities: ['text', 'image', 'file'],
+        outputModalities: ['text'],
+        toolResultModalities: ['text', 'image'],
+        supportsTools: true,
+        supportsStructuredToolResults: true,
+      },
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
+        if (request.turn === 1) {
+          return {
+            message: {
+              role: 'assistant',
+              content: '',
+              toolCalls: [{
+                id: 'call_1',
+                name: 'screenshot',
+                arguments: '{}',
+              }],
+            },
+            finishReason: 'tool_calls',
+          } satisfies AgentTurn
+        }
+
+        const lastMessage = request.messages.at(-1)
+        if (lastMessage) seenToolMessages.push(lastMessage)
+        return {
+          message: {
+            role: 'assistant',
+            content: 'looked',
+          },
+          finishReason: 'stop',
+        } satisfies AgentTurn
+      }),
+    }
+
+    await runAgentLoop({
+      provider,
+      model: 'vision-tool-model',
+      messages: [{ role: 'user', content: 'inspect screen' }],
+      tools: [{
+        name: 'screenshot',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async () => ({
+          content: 'screenshot captured',
+          data: {
+            content: [
+              { type: 'image', data: 'data:image/png;base64,abc' },
+            ],
+          },
+        }),
+      }],
+      sessionId: 's1',
+      messageId: 'm1',
+    })
+
+    expect(seenToolMessages).toEqual([{
+      role: 'tool',
+      toolCallId: 'call_1',
+      content: [
+        { type: 'text', text: 'screenshot captured' },
+        { type: 'image', image: 'data:image/png;base64,abc', mediaType: 'image/png' },
+      ],
+    }])
+  })
+
+  it('downgrades media tool results to text for text-only providers', async () => {
+    const seenToolMessages: AgentMessage[] = []
+    const provider: AgentProvider = {
+      id: 'text-tool-provider',
+      capabilities: {
+        capabilities: ['text-input', 'text-output', 'tool-calls'],
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+        supportsTools: true,
+      },
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
+        if (request.turn === 1) {
+          return {
+            message: {
+              role: 'assistant',
+              content: '',
+              toolCalls: [{
+                id: 'call_1',
+                name: 'screenshot',
+                arguments: '{}',
+              }],
+            },
+            finishReason: 'tool_calls',
+          } satisfies AgentTurn
+        }
+
+        const lastMessage = request.messages.at(-1)
+        if (lastMessage) seenToolMessages.push(lastMessage)
+        return {
+          message: {
+            role: 'assistant',
+            content: 'summarized',
+          },
+          finishReason: 'stop',
+        } satisfies AgentTurn
+      }),
+    }
+
+    await runAgentLoop({
+      provider,
+      model: 'text-tool-model',
+      messages: [{ role: 'user', content: 'inspect screen' }],
+      tools: [{
+        name: 'screenshot',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async () => ({
+          content: 'screenshot captured',
+          data: {
+            content: [
+              { type: 'image', data: 'data:image/png;base64,abc' },
+            ],
+          },
+        }),
+      }],
+      sessionId: 's1',
+      messageId: 'm1',
+    })
+
+    expect(seenToolMessages).toEqual([{
+      role: 'tool',
+      toolCallId: 'call_1',
+      content: 'screenshot captured\n[Image: image/png data omitted: 25 chars]',
+    }])
+  })
+
   it('uses streamTurn providers with tool policy, skills, and prompt injectors', async () => {
-    const seenRequests: any[] = []
+    const seenToolNames: string[][] = []
+    const seenMessageContents: AgentMessageContent[][] = []
+    const seenToolChoices: Array<AgentToolChoice | undefined> = []
     const provider: AgentProvider = {
       id: 'stream-provider',
       capabilities: {
@@ -106,11 +355,9 @@ describe('agent loop runner', () => {
         supportsTools: true,
       },
       async *streamTurn(request) {
-        seenRequests.push({
-          ...request,
-          messages: request.messages.map(message => ({ ...message })),
-          tools: request.tools?.map(tool => ({ ...tool })),
-        })
+        seenToolNames.push(request.tools?.map(tool => tool.name) ?? [])
+        seenMessageContents.push(request.messages.map(message => message.content))
+        seenToolChoices.push(request.toolChoice)
         yield { type: 'text-delta', turn: request.turn, delta: 'ok' }
         yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
       },
@@ -153,13 +400,60 @@ describe('agent loop runner', () => {
     })
 
     expect(result.text).toBe('ok')
-    expect(seenRequests).toHaveLength(1)
-    expect(seenRequests[0].tools.map((tool: any) => tool.name)).toEqual(['enabled_tool', 'read'])
-    expect(seenRequests[0].toolChoice).toBe('auto')
-    expect(seenRequests[0].messages.map((message: any) => message.content)).toEqual([
+    expect(seenToolNames).toHaveLength(1)
+    expect(seenToolNames[0]).toEqual(['enabled_tool', 'read'])
+    expect(seenToolChoices[0]).toBe('auto')
+    expect(seenMessageContents[0]).toEqual([
       expect.stringContaining('daily-notes'),
       'dynamic context',
       'hello',
+    ])
+  })
+
+  it('passes abort signal to prompt injectors and lifecycle hooks', async () => {
+    const controller = new AbortController()
+    const seenSignals: Array<AbortSignal | undefined> = []
+    const provider: AgentProvider = {
+      id: 'hook-signal-provider',
+      capabilities: {
+        capabilities: ['text-input', 'text-output', 'streaming'],
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+        supportsStreaming: true,
+      },
+      async *streamTurn(request) {
+        expect(request.abortSignal).toBe(controller.signal)
+        yield { type: 'text-delta', turn: request.turn, delta: 'hook ok' }
+        yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+      },
+    }
+
+    const result = await runAgentLoop({
+      provider,
+      model: 'hook-signal-model',
+      messages: [{ role: 'user', content: 'hello' }],
+      promptInjectors: [
+        context => {
+          seenSignals.push(context.abortSignal)
+          return []
+        },
+      ],
+      beforeTurn(context) {
+        seenSignals.push(context.abortSignal)
+      },
+      afterTurn(context) {
+        seenSignals.push(context.abortSignal)
+      },
+      sessionId: 's1',
+      messageId: 'm1',
+      abortSignal: controller.signal,
+    })
+
+    expect(result.text).toBe('hook ok')
+    expect(seenSignals).toEqual([
+      controller.signal,
+      controller.signal,
+      controller.signal,
     ])
   })
 
@@ -192,7 +486,10 @@ describe('agent loop runner', () => {
   })
 
   it('keeps function tool choice only when the requested tool is available', async () => {
-    const seenRequests: any[] = []
+    const seenRequests: Array<{
+      tools: string[]
+      toolChoice: AgentToolChoice | undefined
+    }> = []
     const provider: AgentProvider = {
       id: 'tool-choice-provider',
       capabilities: {
@@ -201,9 +498,9 @@ describe('agent loop runner', () => {
         outputModalities: ['text'],
         supportsTools: true,
       },
-      runTurn: vi.fn(async request => {
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
         seenRequests.push({
-          tools: request.tools?.map((tool: any) => tool.name),
+          tools: request.tools?.map(tool => tool.name) ?? [],
           toolChoice: request.toolChoice,
         })
         return {
@@ -242,7 +539,10 @@ describe('agent loop runner', () => {
   })
 
   it('drops function tool choice when policy filters the requested tool out', async () => {
-    const seenRequests: any[] = []
+    const seenRequests: Array<{
+      tools: string[]
+      toolChoice: AgentToolChoice | undefined
+    }> = []
     const provider: AgentProvider = {
       id: 'blocked-tool-choice-provider',
       capabilities: {
@@ -251,9 +551,9 @@ describe('agent loop runner', () => {
         outputModalities: ['text'],
         supportsTools: true,
       },
-      runTurn: vi.fn(async request => {
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
         seenRequests.push({
-          tools: request.tools?.map((tool: any) => tool.name),
+          tools: request.tools?.map(tool => tool.name) ?? [],
           toolChoice: request.toolChoice,
         })
         return {
@@ -295,7 +595,7 @@ describe('agent loop runner', () => {
   })
 
   it('passes requested output modalities to providers that support them', async () => {
-    const seenRequests: any[] = []
+    const seenOutputModalities: Array<readonly string[] | undefined> = []
     const provider: AgentProvider = {
       id: 'image-provider',
       capabilities: {
@@ -303,8 +603,8 @@ describe('agent loop runner', () => {
         inputModalities: ['text'],
         outputModalities: ['text'],
       },
-      runTurn: vi.fn(async request => {
-        seenRequests.push(request)
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
+        seenOutputModalities.push(request.requestedOutputModalities)
         return {
           message: { role: 'assistant', content: 'image queued' },
           finishReason: 'stop',
@@ -322,7 +622,7 @@ describe('agent loop runner', () => {
     })
 
     expect(result.text).toBe('image queued')
-    expect(seenRequests[0].requestedOutputModalities).toEqual(['image'])
+    expect(seenOutputModalities[0]).toEqual(['image'])
   })
 
   it('rejects requested output modalities unsupported by the provider before provider execution', async () => {
@@ -376,7 +676,7 @@ describe('agent loop runner', () => {
     const controller = new AbortController()
     const provider: AgentProvider = {
       id: 'pending-provider',
-      runTurn: vi.fn(async request => {
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
         expect(request.abortSignal).toBe(controller.signal)
         setTimeout(() => controller.abort(), 0)
         return new Promise<AgentTurn>(() => {})
@@ -404,7 +704,7 @@ describe('agent loop runner', () => {
         outputModalities: ['text'],
         supportsTools: true,
       },
-      runTurn: vi.fn(async request => {
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
         if (request.turn !== 1) {
           return {
             message: { role: 'assistant', content: 'should not continue' },
@@ -425,7 +725,7 @@ describe('agent loop runner', () => {
         } satisfies AgentTurn
       }),
     }
-    const events: any[] = []
+    const events: AgentStreamEvent[] = []
 
     await expect(runAgentLoop({
       provider,
@@ -461,7 +761,7 @@ describe('agent loop runner', () => {
         outputModalities: ['text'],
         supportsTools: true,
       },
-      runTurn: vi.fn(async request => {
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
         if (request.turn !== 1) {
           return {
             message: { role: 'assistant', content: 'should not continue' },
@@ -485,9 +785,9 @@ describe('agent loop runner', () => {
     const execute = vi.fn(async (_args, ctx) => {
       expect(ctx.abortSignal).toBe(controller.signal)
       setTimeout(() => controller.abort(), 0)
-      return new Promise<any>(() => {})
+      return new Promise<never>(() => {})
     })
-    const events: any[] = []
+    const events: AgentStreamEvent[] = []
 
     await expect(withTimeout(runAgentLoop({
       provider,
@@ -512,7 +812,7 @@ describe('agent loop runner', () => {
   })
 
   it('can continue with messages returned by an after-turn hook', async () => {
-    const seenMessages: any[] = []
+    const seenMessages: MessageSnapshot[] = []
     const provider: AgentProvider = {
       id: 'after-turn-provider',
       capabilities: {
@@ -628,7 +928,7 @@ describe('agent loop runner', () => {
   })
 
   it('passes supported multimodal input through to capable providers', async () => {
-    const seenMessages: any[] = []
+    const seenMessages: AgentMessage[][] = []
     const provider: AgentProvider = {
       id: 'vision-provider',
       capabilities: {
@@ -661,7 +961,7 @@ describe('agent loop runner', () => {
   })
 
   it('can replace messages before a later provider turn', async () => {
-    const seenMessages: any[] = []
+    const seenMessages: MessageSnapshot[] = []
     const provider: AgentProvider = {
       id: 'compactable-provider',
       capabilities: {
@@ -755,7 +1055,7 @@ describe('agent loop runner', () => {
         yield { type: 'finish', turn: 2, finishReason: 'stop' }
       },
     }
-    const events: any[] = []
+    const events: AgentStreamEvent[] = []
 
     await runAgentLoop({
       provider,
@@ -806,7 +1106,7 @@ describe('agent loop runner', () => {
         outputModalities: ['text'],
         supportsTools: true,
       },
-      runTurn: vi.fn(async request => {
+      runTurn: vi.fn(async (request: AgentTurnRequest) => {
         expect(request.turn).toBe(1)
         return {
           message: {
@@ -822,9 +1122,9 @@ describe('agent loop runner', () => {
         } satisfies AgentTurn
       }),
     }
-    const events: any[] = []
+    const events: AgentStreamEvent[] = []
 
-    let error: unknown
+    let error: Error | undefined
     try {
       await runAgentLoop({
         provider,
@@ -847,7 +1147,7 @@ describe('agent loop runner', () => {
         },
       })
     } catch (caught) {
-      error = caught
+      error = caught instanceof Error ? caught : new Error(String(caught))
     }
 
     expect(isAgentLoopPauseForConfirmationError(error)).toBe(true)

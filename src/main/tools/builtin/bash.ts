@@ -14,6 +14,7 @@ import { z } from 'zod'
 import * as path from 'path'
 import * as os from 'os'
 import { Tool } from '../core/tool.js'
+import { toJsonObject } from '../../../shared/json.js'
 import { classifyBashCommand, classifyCommand, parseCommand, splitShellWords } from '../core/bash-classifier.js'
 import {
   DEFAULT_OUTPUT_MAX_BYTES,
@@ -41,7 +42,6 @@ export interface BashMetadata {
   output: string
   outputFilePath?: string
   description?: string
-  [key: string]: unknown
 }
 
 /**
@@ -66,6 +66,13 @@ function expandPath(dir: string): string {
     return dir.replace('~', os.homedir())
   }
   return dir
+}
+
+function configuredShellPath(): string | undefined {
+  const bashSettings = getSettings().tools?.bash
+  return bashSettings && 'shellPath' in bashSettings && typeof bashSettings.shellPath === 'string'
+    ? bashSettings.shellPath
+    : undefined
 }
 
 /**
@@ -320,10 +327,10 @@ To change the work directory for bash and file tools, use variable { action: "se
       const snapshot = output.snapshot({ persistIfTruncated: true })
       ctx.updateResult?.({
         content: [{ type: 'text', text: formatTruncatedOutput(snapshot, '') }],
-        details: {
+        details: toJsonObject({
           truncation: snapshot.truncation.truncated ? snapshot.truncation : undefined,
           ...(snapshot.fullOutputPath && { fullOutputPath: snapshot.fullOutputPath, outputFilePath: snapshot.fullOutputPath }),
-        },
+        }),
       })
     }
 
@@ -356,7 +363,7 @@ To change the work directory for bash and file tools, use variable { action: "se
     ctx.updateResult?.({ content: [], details: undefined })
 
     const ops = createLocalBashOperations({
-      shellPath: (getSettings().tools?.bash as any)?.shellPath,
+      shellPath: configuredShellPath(),
     })
 
     let aborted = false
@@ -368,7 +375,7 @@ To change the work directory for bash and file tools, use variable { action: "se
         signal: ctx.abortSignal,
         timeout: timeout || DEFAULT_TIMEOUT,
       })
-    } catch (error: any) {
+    } catch (error) {
       if (error instanceof Error && error.message === 'aborted') {
         aborted = true
         result = { exitCode: null }

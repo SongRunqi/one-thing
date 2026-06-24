@@ -6,16 +6,14 @@
  * Uses StreamEngine for AbortController lifecycle management.
  */
 
-import type { WebContents } from 'electron'
 import type { AppSettings, ProviderConfig, ToolSettings } from '../../../shared/ipc.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 import { processImageGenerationStream } from './image-stream.js'
-import { executeStreamGeneration, type StreamGenerationResult } from './tool-loop.js'
 import {
   executeAgentLoopStreamGeneration,
-  shouldUseAgentLoopStream,
+  type AgentLoopStreamGenerationResult,
 } from './agent-loop-executor.js'
-import { type StreamContext } from './stream-processor.js'
+import { type StreamContext, type StreamSender } from './stream-processor.js'
 import { getStreamEngine } from '../index.js'
 import type { HistoryMessage } from './message-helpers.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
@@ -36,7 +34,7 @@ export interface ProviderConfigWithKey extends ProviderConfig {
  * Parameters for unified stream execution
  */
 export interface StreamExecutionParams {
-  sender: WebContents
+  sender: StreamSender
   sessionId: string
   assistantMessageId: string
   messageContent: string  // The prompt (for image) or last user message (for context)
@@ -146,17 +144,11 @@ export async function executeMessageStream(
         followUpQueue: engine.getFollowUpQueue(sessionId),
       }
 
-      const result: StreamGenerationResult = shouldUseAgentLoopStream(ctx)
-        ? await executeAgentLoopStreamGeneration(
-            ctx,
-            historyMessages,
-            sessionName,
-          )
-        : await executeStreamGeneration(
-            ctx,
-            historyMessages,
-            sessionName
-          )
+      const result: AgentLoopStreamGenerationResult = await executeAgentLoopStreamGeneration(
+        ctx,
+        historyMessages,
+        sessionName,
+      )
 
       // Only remove controller if stream completed (not paused for confirmation)
       if (!result.pausedForConfirmation) {
@@ -169,7 +161,7 @@ export async function executeMessageStream(
         pausedForConfirmation: result.pausedForConfirmation,
       }
     }
-  } catch (error: any) {
+  } catch (error) {
     // On error, always remove controller
     console.error('[StreamExecutor] Error:', error)
     engine.removeController(sessionId)
