@@ -1,0 +1,482 @@
+import type { JsonObject } from '../json.js'
+import type { CoreReasoningPlacement } from './ipc-emitter.js'
+
+export interface CoreResolvedTool {
+  toolId: string
+  displayName: string
+  isMcp: boolean
+}
+
+export type CoreStreamToolCallStatus =
+  | 'pending'
+  | 'queued'
+  | 'executing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'input-streaming'
+
+export interface CoreStreamToolCallLike {
+  id: string
+  toolId: string
+  toolName: string
+  arguments: JsonObject
+  status: CoreStreamToolCallStatus
+  timestamp: number
+  streamingArgs?: string
+}
+
+export type CoreStreamStepType = 'command' | 'tool-call'
+
+export interface CoreStreamStepLike<TToolCall extends CoreStreamToolCallLike = CoreStreamToolCallLike> {
+  id: string
+  type: CoreStreamStepType
+  title: string
+  status: 'running'
+  timestamp: number
+  toolCallId: string
+  toolCall: TToolCall
+  turnIndex?: number
+}
+
+export interface CoreToolIdentityResolver {
+  normalizeToolName?: (toolName: string) => string
+  isMCPTool?: (toolId: string) => boolean
+  findMCPToolIdByShortName?: (shortName: string, args?: JsonObject) => string | null
+  parseMCPToolId?: (toolId: string) => { serverId: string; toolName: string } | null
+  getMCPServerName?: (serverId: string) => string | undefined
+}
+
+export function resolveToolIdentity(
+  toolName: string,
+  args: JsonObject = {},
+  resolver: CoreToolIdentityResolver = {},
+): CoreResolvedTool {
+  const originalToolName = resolver.normalizeToolName?.(toolName) ?? toolName
+  let toolId = originalToolName
+  let displayName = originalToolName
+  let isMcp = false
+
+  if (resolver.isMCPTool?.(originalToolName)) {
+    toolId = originalToolName
+    isMcp = true
+  } else {
+    const fullId = resolver.findMCPToolIdByShortName?.(originalToolName, args)
+    if (fullId) {
+      toolId = fullId
+      isMcp = true
+    }
+  }
+
+  if (isMcp) {
+    if (toolId === 'mcp_search' || toolId === 'tool_function') {
+      displayName = toolId
+      return { toolId, displayName, isMcp }
+    }
+    const parsed = resolver.parseMCPToolId?.(toolId)
+    if (parsed) {
+      displayName = resolver.getMCPServerName?.(parsed.serverId) || parsed.serverId
+    }
+  }
+
+  return { toolId, displayName, isMcp }
+}
+
+export function coreStepTypeForToolName(toolName: string): CoreStreamStepType {
+  return toolName.toLowerCase() === 'bash' ? 'command' : 'tool-call'
+}
+
+export function createCoreStreamToolCall(input: {
+  toolCallId: string
+  resolved: Pick<CoreResolvedTool, 'toolId' | 'displayName'>
+  args?: JsonObject
+  status?: CoreStreamToolCallStatus
+  streamingArgs?: string
+  timestamp?: number
+}): CoreStreamToolCallLike {
+  return {
+    id: input.toolCallId,
+    toolId: input.resolved.toolId,
+    toolName: input.resolved.displayName,
+    arguments: input.args ?? {},
+    status: input.status ?? 'pending',
+    ...(input.streamingArgs !== undefined ? { streamingArgs: input.streamingArgs } : {}),
+    timestamp: input.timestamp ?? Date.now(),
+  }
+}
+
+export function applyCoreToolCallChunk<TToolCall extends CoreStreamToolCallLike>(
+  toolCalls: TToolCall[],
+  input: {
+    toolCallId: string
+    resolved: Pick<CoreResolvedTool, 'toolId' | 'displayName'>
+    args: JsonObject
+    publish?: boolean
+    timestamp?: number
+  },
+): TToolCall {
+  const existingIndex = toolCalls.findIndex(toolCall => toolCall.id === input.toolCallId)
+
+  if (existingIndex >= 0) {
+    const toolCall = toolCalls[existingIndex]
+    toolCall.toolId = input.resolved.toolId
+    toolCall.toolName = input.resolved.displayName
+    toolCall.arguments = input.args
+    toolCall.status = 'pending'
+    delete toolCall.streamingArgs
+    return toolCall
+  }
+
+  const toolCall = createCoreStreamToolCall({
+    toolCallId: input.toolCallId,
+    resolved: input.resolved,
+    args: input.args,
+    status: 'pending',
+    timestamp: input.timestamp,
+  }) as TToolCall
+
+  if (input.publish !== false) {
+    toolCalls.push(toolCall)
+  }
+
+  return toolCall
+}
+
+export function createCoreToolInputStartArtifacts<TToolCall extends CoreStreamToolCallLike = CoreStreamToolCallLike>(
+  input: {
+    toolCallId: string
+    resolved: Pick<CoreResolvedTool, 'toolId' | 'displayName'>
+    stepId: string
+    rawToolName: string
+    turnIndex?: number
+    timestamp?: number
+  },
+): {
+  placeholderToolCall: TToolCall
+  placeholderStep: CoreStreamStepLike<TToolCall>
+  stepType: CoreStreamStepType
+} {
+  const timestamp = input.timestamp ?? Date.now()
+  const placeholderToolCall = createCoreStreamToolCall({
+    toolCallId: input.toolCallId,
+    resolved: input.resolved,
+    args: {},
+    status: 'input-streaming',
+    streamingArgs: '',
+    timestamp,
+  }) as TToolCall
+  const stepType = coreStepTypeForToolName(input.rawToolName)
+  return {
+    placeholderToolCall,
+    stepType,
+    placeholderStep: {
+      id: input.stepId,
+      type: stepType,
+      title: `调用工具: ${input.resolved.displayName}`,
+      status: 'running',
+      timestamp,
+      toolCallId: input.toolCallId,
+      toolCall: { ...placeholderToolCall },
+      ...(input.turnIndex !== undefined ? { turnIndex: input.turnIndex } : {}),
+    },
+  }
+}
+
+export interface CoreToolInputStartOptions {
+  stepId?: string
+  visible?: boolean
+}
+
+export interface CoreToolInputBufferEntry {
+  toolName: string
+  argsText: string
+  stepId?: string
+  visible: boolean
+}
+
+export type CoreToolInputFinishResult =
+  | {
+      ok: true
+      toolCallId: string
+      toolName: string
+      args: JsonObject
+      visible: boolean
+    }
+  | {
+      ok: false
+      toolCallId: string
+      rawArgsText: string
+      error: unknown
+    }
+
+export class CoreStreamingToolInputBuffer {
+  private readonly buffers = new Map<string, CoreToolInputBufferEntry>()
+
+  start(toolCallId: string, toolName: string, options: CoreToolInputStartOptions = {}): CoreToolInputBufferEntry {
+    const entry: CoreToolInputBufferEntry = {
+      toolName,
+      argsText: '',
+      stepId: options.visible === false ? undefined : options.stepId,
+      visible: options.visible !== false,
+    }
+    this.buffers.set(toolCallId, entry)
+    return entry
+  }
+
+  append(toolCallId: string, argsTextDelta: string): CoreToolInputBufferEntry | null {
+    const entry = this.buffers.get(toolCallId)
+    if (!entry) return null
+    entry.argsText += argsTextDelta
+    return entry
+  }
+
+  finish(toolCallId: string): CoreToolInputFinishResult | null {
+    const entry = this.buffers.get(toolCallId)
+    if (!entry) return null
+
+    let args: JsonObject = {}
+    try {
+      if (entry.argsText.trim()) {
+        args = JSON.parse(entry.argsText) as JsonObject
+      }
+    } catch (error) {
+      this.buffers.delete(toolCallId)
+      return {
+        ok: false,
+        toolCallId,
+        rawArgsText: entry.argsText,
+        error,
+      }
+    }
+
+    this.buffers.delete(toolCallId)
+    return {
+      ok: true,
+      toolCallId,
+      toolName: entry.toolName,
+      args,
+      visible: entry.visible,
+    }
+  }
+
+  getStepId(toolCallId: string): string | undefined {
+    return this.buffers.get(toolCallId)?.stepId
+  }
+
+  get(toolCallId: string): CoreToolInputBufferEntry | undefined {
+    return this.buffers.get(toolCallId)
+  }
+
+  clear(): void {
+    this.buffers.clear()
+  }
+}
+
+export interface CoreStreamProcessorStore<TToolCall extends CoreStreamToolCallLike> {
+  updateMessageContent(sessionId: string, assistantMessageId: string, content: string): void
+  updateMessageReasoning(sessionId: string, assistantMessageId: string, reasoning: string): void
+  updateMessageToolCalls(sessionId: string, assistantMessageId: string, toolCalls: TToolCall[]): void
+  updateMessageStreaming(sessionId: string, assistantMessageId: string, streaming: boolean): void
+  flushSessionSave(sessionId: string): Promise<void> | void
+}
+
+export interface CoreStreamProcessorEmitter<
+  TToolCall extends CoreStreamToolCallLike,
+  TStep,
+  TReasoningPlacement extends string = CoreReasoningPlacement,
+> {
+  sendTextChunk(text: string, turnIndex?: number): void
+  sendReasoningChunk(reasoning: string, turnIndex?: number, placement?: TReasoningPlacement): void
+  sendToolCall(toolCall: TToolCall): void
+  sendStepAdded(step: TStep): void
+  sendToolInputStart(toolCallId: string, displayName: string, toolCall: TToolCall): void
+  sendToolInputDelta(toolCallId: string, argsTextDelta: string): void
+}
+
+export interface CoreStreamProcessorLogger {
+  warn(message?: unknown, ...optionalParams: unknown[]): void
+  error(message?: unknown, ...optionalParams: unknown[]): void
+}
+
+export interface CoreStreamProcessorContext {
+  sessionId: string
+  assistantMessageId: string
+}
+
+export interface CreateCoreStreamProcessorOptions<
+  TToolCall extends CoreStreamToolCallLike = CoreStreamToolCallLike,
+  TStep = CoreStreamStepLike<TToolCall>,
+  TReasoningPlacement extends string = CoreReasoningPlacement,
+> {
+  ctx: CoreStreamProcessorContext
+  store: CoreStreamProcessorStore<TToolCall>
+  emitter: CoreStreamProcessorEmitter<TToolCall, TStep, TReasoningPlacement>
+  resolveToolIdentity: (toolName: string, args?: JsonObject) => CoreResolvedTool
+  createStepId: () => string
+  initialContent?: {
+    content?: string
+    reasoning?: string
+  }
+  logger?: CoreStreamProcessorLogger
+}
+
+export interface CoreStreamProcessor<
+  TToolCall extends CoreStreamToolCallLike = CoreStreamToolCallLike,
+  TReasoningPlacement extends string = CoreReasoningPlacement,
+> {
+  readonly accumulatedContent: string
+  readonly accumulatedReasoning: string
+  readonly toolCalls: TToolCall[]
+  handleTextChunk(text: string, turnContent?: { value: string }, turnIndex?: number): string
+  handleReasoningChunk(
+    reasoning: string,
+    turnReasoning?: { value: string },
+    turnIndex?: number,
+    placement?: TReasoningPlacement,
+  ): void
+  handleToolCallChunk(toolCallData: {
+    toolCallId: string
+    toolName: string
+    args: JsonObject
+  }, options?: { publish?: boolean }): TToolCall
+  handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number, options?: { publish?: boolean }): void
+  handleToolInputDelta(toolCallId: string, argsTextDelta: string): void
+  handleToolInputEnd(toolCallId: string): TToolCall | null
+  getStepIdForToolCall(toolCallId: string): string | undefined
+  finalize(): Promise<void>
+}
+
+export function createCoreStreamProcessor<
+  TToolCall extends CoreStreamToolCallLike = CoreStreamToolCallLike,
+  TStep = CoreStreamStepLike<TToolCall>,
+  TReasoningPlacement extends string = CoreReasoningPlacement,
+>(
+  options: CreateCoreStreamProcessorOptions<TToolCall, TStep, TReasoningPlacement>,
+): CoreStreamProcessor<TToolCall, TReasoningPlacement> {
+  const {
+    ctx,
+    store,
+    emitter,
+    createStepId,
+    initialContent,
+  } = options
+  const logger = options.logger ?? console
+  let accumulatedContent = initialContent?.content || ''
+  let accumulatedReasoning = initialContent?.reasoning || ''
+  const toolCalls: TToolCall[] = []
+  const toolInputBuffers = new CoreStreamingToolInputBuffer()
+
+  return {
+    get accumulatedContent() { return accumulatedContent },
+    get accumulatedReasoning() { return accumulatedReasoning },
+    get toolCalls() { return toolCalls },
+
+    handleTextChunk(text: string, turnContent?: { value: string }, turnIndex?: number): string {
+      if (!text) return ''
+
+      accumulatedContent += text
+      if (turnContent) turnContent.value += text
+      store.updateMessageContent(ctx.sessionId, ctx.assistantMessageId, accumulatedContent)
+      emitter.sendTextChunk(text, turnIndex)
+      return text
+    },
+
+    handleReasoningChunk(
+      reasoning: string,
+      turnReasoning?: { value: string },
+      turnIndex?: number,
+      placement: TReasoningPlacement = 'top' as TReasoningPlacement,
+    ): void {
+      accumulatedReasoning += reasoning
+      if (turnReasoning) turnReasoning.value += reasoning
+      if (placement === 'top') {
+        store.updateMessageReasoning(ctx.sessionId, ctx.assistantMessageId, accumulatedReasoning)
+      }
+      emitter.sendReasoningChunk(reasoning, turnIndex, placement)
+    },
+
+    handleToolCallChunk(toolCallData: {
+      toolCallId: string
+      toolName: string
+      args: JsonObject
+    }, handleOptions: { publish?: boolean } = {}): TToolCall {
+      const publish = handleOptions.publish !== false
+      const resolved = options.resolveToolIdentity(toolCallData.toolName, toolCallData.args)
+      const toolCall = applyCoreToolCallChunk(toolCalls, {
+        toolCallId: toolCallData.toolCallId,
+        resolved,
+        args: toolCallData.args,
+        publish,
+      })
+
+      if (publish) {
+        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+        emitter.sendToolCall(toolCall)
+      }
+
+      return toolCall
+    },
+
+    handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number, handleOptions: { publish?: boolean } = {}): void {
+      const visible = handleOptions.publish !== false
+      const resolved = options.resolveToolIdentity(toolName)
+      const stepId = createStepId()
+      const {
+        placeholderToolCall,
+        placeholderStep,
+      } = createCoreToolInputStartArtifacts<TToolCall>({
+        toolCallId,
+        resolved,
+        stepId,
+        rawToolName: toolName,
+        turnIndex,
+      })
+      if (visible) {
+        toolCalls.push(placeholderToolCall)
+      }
+
+      toolInputBuffers.start(toolCallId, toolName, { stepId, visible })
+
+      if (visible) {
+        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+        emitter.sendStepAdded(placeholderStep as TStep)
+        emitter.sendToolInputStart(toolCallId, resolved.displayName, placeholderToolCall)
+      }
+    },
+
+    handleToolInputDelta(toolCallId: string, argsTextDelta: string): void {
+      const buffer = toolInputBuffers.append(toolCallId, argsTextDelta)
+      if (buffer?.visible) {
+        emitter.sendToolInputDelta(toolCallId, argsTextDelta)
+      }
+    },
+
+    handleToolInputEnd(toolCallId: string): TToolCall | null {
+      const result = toolInputBuffers.finish(toolCallId)
+      if (!result) {
+        logger.warn(`[StreamProcessor] No buffer found for tool input end: ${toolCallId}`)
+        return null
+      }
+
+      if (!result.ok) {
+        logger.error('[StreamProcessor] Failed to parse tool args JSON:', result.error, result.rawArgsText)
+        return null
+      }
+
+      return this.handleToolCallChunk({
+        toolCallId,
+        toolName: result.toolName,
+        args: result.args,
+      }, { publish: result.visible })
+    },
+
+    getStepIdForToolCall(toolCallId: string): string | undefined {
+      return toolInputBuffers.getStepId(toolCallId)
+    },
+
+    async finalize(): Promise<void> {
+      store.updateMessageStreaming(ctx.sessionId, ctx.assistantMessageId, false)
+      await store.flushSessionSave(ctx.sessionId)
+    },
+  }
+}

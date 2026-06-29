@@ -1,0 +1,35 @@
+/**
+ * Search Everywhere - Electron IPC host facade.
+ */
+
+import { IPC_CHANNELS } from '@shared/ipc.js'
+import type { SearchRequest, SearchResponse } from '@shared/ipc/search.js'
+import {
+  closeOnethingSearchWindowForIpc,
+  executeOnethingSearchForIpc,
+} from '@onething/runtime/search'
+import { executeSearch } from '@main/search/providers.js'
+import { closeSearchWindow } from './window.js'
+import { registerElectronSearchIpcHandlers } from './window-actions.js'
+import { executeSearchActionFrom, toggleSearchWindowFrom } from './window-controller.js'
+
+export function registerSearchHandlers(): void {
+  registerElectronSearchIpcHandlers({
+    channels: {
+      toggleWindow: IPC_CHANNELS.SEARCH_WINDOW_TOGGLE,
+      closeWindow: IPC_CHANNELS.SEARCH_WINDOW_CLOSE,
+      query: IPC_CHANNELS.SEARCH_QUERY,
+      executeAction: IPC_CHANNELS.SEARCH_EXECUTE_ACTION,
+    },
+    toggleWindow: sourceWindow => toggleSearchWindowFrom(sourceWindow),
+    closeWindow: () => closeOnethingSearchWindowForIpc({ closeSearchWindow }),
+    query: (req): Promise<SearchResponse> =>
+      executeOnethingSearchForIpc({
+        request: req as SearchRequest,
+        executeSearch,
+      }),
+    executeAction: (sourceWindow, actionId) => executeSearchActionFrom(sourceWindow, actionId),
+  })
+
+  console.log('[Search] IPC handlers registered')
+}

@@ -1,0 +1,182 @@
+import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../../core/channel.js'
+import type { TelegramApiResponse, TelegramMessage, TelegramUpdate } from './types.js'
+
+export const DEFAULT_TELEGRAM_API_BASE_URL = 'https://api.telegram.org'
+
+const POLL_TIMEOUT_SECONDS = 35
+const POLL_ABORT_PADDING_MS = 5_000
+const ERROR_RETRY_MS = 3_000
+const MAX_TEXT_LENGTH = 4096
+
+type FetchLike = typeof fetch
+
+export interface TelegramChannelOptions {
+  botToken: string
+  apiBaseUrl?: string
+  pollTimeoutSeconds?: number
+  fetch?: FetchLike
+  logger?: {
+    error?: (...args: unknown[]) => void
+    warn?: (...args: unknown[]) => void
+  }
+}
+
+export class TelegramChannel implements Channel {
+  readonly id = 'telegram'
+  private readonly apiBaseUrl: string
+  private readonly pollTimeoutSeconds: number
+  private readonly fetchImpl: FetchLike
+  private readonly logger: Required<NonNullable<TelegramChannelOptions['logger']>>
+  private handler: ((msg: InboundMessage) => Promise<void>) | null = null
+  private running = false
+  private offset = 0
+  private abortController: AbortController | null = null
+  private loopPromise: Promise<void> | null = null
+
+  constructor(private readonly options: TelegramChannelOptions) {
+    if (!options.botToken.trim()) {
+      throw new Error('TelegramChannel requires TELEGRAM_BOT_TOKEN or GATEWAY_TELEGRAM_BOT_TOKEN')
+    }
+    this.apiBaseUrl = (options.apiBaseUrl || DEFAULT_TELEGRAM_API_BASE_URL).replace(/\/$/, '')
+    this.pollTimeoutSeconds = options.pollTimeoutSeconds ?? POLL_TIMEOUT_SECONDS
+    this.fetchImpl = options.fetch ?? fetch
+    this.logger = {
+      error: options.logger?.error ?? console.error,
+      warn: options.logger?.warn ?? console.warn,
+    }
+  }
+
+  async start(): Promise<void> {
+    if (this.running) return
+    this.running = true
+    this.loopPromise = this.loop()
+  }
+
+  async stop(): Promise<void> {
+    this.running = false
+    this.abortController?.abort()
+    await this.loopPromise
+    this.loopPromise = null
+  }
+
+  async send(msg: OutboundMessage): Promise<void> {
+    const text = msg.text.trim()
+    if (!text) return
+
+    for (const segment of splitText(text, MAX_TEXT_LENGTH)) {
+      await this.callTelegram('sendMessage', {
+        chat_id: msg.userId,
+        text: segment,
+      })
+    }
+  }
+
+  async typing(msg: TypingMessage): Promise<void> {
+    await this.callTelegram('sendChatAction', {
+      chat_id: msg.userId,
+      action: 'typing',
+    }).catch(error => {
+      this.logger.warn('[TelegramChannel] Failed to send typing:', error)
+    })
+  }
+
+  onMessage(handler: (msg: InboundMessage) => Promise<void>): void {
+    this.handler = handler
+  }
+
+  private async loop(): Promise<void> {
+    while (this.running) {
+      try {
+        const updates = await this.getUpdates()
+        for (const update of updates) {
+          this.offset = Math.max(this.offset, update.update_id + 1)
+          const inbound = telegramUpdateToInboundMessage(this.id, update)
+          if (!inbound) continue
+
+          try {
+            await this.handler?.(inbound)
+          } catch (error) {
+            this.logger.error('[TelegramChannel] Message handler failed:', error)
+          }
+        }
+      } catch (error) {
+        if (!this.running) return
+        if (isAbortError(error)) continue
+
+        this.logger.error('[TelegramChannel] Poll failed:', error)
+        await delay(ERROR_RETRY_MS)
+      }
+    }
+  }
+
+  private async getUpdates(): Promise<TelegramUpdate[]> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => {
+      controller.abort()
+    }, this.pollTimeoutSeconds * 1000 + POLL_ABORT_PADDING_MS)
+    this.abortController = controller
+
+    try {
+      const response = await this.callTelegram<TelegramUpdate[]>('getUpdates', {
+        offset: this.offset || undefined,
+        timeout: this.pollTimeoutSeconds,
+        allowed_updates: ['message'],
+      }, controller.signal)
+      return response
+    } finally {
+      clearTimeout(timeout)
+      if (this.abortController === controller) {
+        this.abortController = null
+      }
+    }
+  }
+
+  private async callTelegram<T = unknown>(
+    method: string,
+    body: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const response = await this.fetchImpl(`${this.apiBaseUrl}/bot${this.options.botToken}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    })
+    const data = await response.json().catch(() => ({})) as TelegramApiResponse<T>
+    if (!response.ok || data.ok !== true) {
+      throw new Error(`Telegram ${method} failed: ${data.description || response.statusText || response.status}`)
+    }
+    return data.result as T
+  }
+}
+
+export function telegramUpdateToInboundMessage(
+  channelId: string,
+  update: TelegramUpdate,
+): InboundMessage | null {
+  const message = update.message
+  if (!message?.text?.trim()) return null
+
+  return {
+    channelId,
+    userId: String(message.chat.id),
+    text: message.text,
+    raw: message,
+  }
+}
+
+function splitText(text: string, maxLength: number): string[] {
+  const segments: string[] = []
+  for (let index = 0; index < text.length; index += maxLength) {
+    segments.push(text.slice(index, index + maxLength))
+  }
+  return segments.length ? segments : ['']
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}

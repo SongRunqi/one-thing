@@ -1,0 +1,104 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { OnethingMediaLibraryService } from '../media-library-service.js'
+
+let tempDir: string
+let service: OnethingMediaLibraryService
+let indexPath: string
+let imagesDir: string
+let filesDir: string
+
+beforeEach(() => {
+  tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-runtime-media-'))
+  imagesDir = path.join(tempDir, 'images')
+  filesDir = path.join(tempDir, 'files')
+  indexPath = path.join(tempDir, 'index.json')
+  fs.mkdirSync(imagesDir, { recursive: true })
+  fs.mkdirSync(filesDir, { recursive: true })
+  service = new OnethingMediaLibraryService({ indexPath, imagesDir, filesDir })
+})
+
+afterEach(() => {
+  fs.rmSync(tempDir, { recursive: true, force: true })
+})
+
+describe('OnethingMediaLibraryService', () => {
+  it('projects legacy image items and skips missing files', async () => {
+    const existingFilePath = path.join(imagesDir, 'existing.png')
+    const missingFilePath = path.join(imagesDir, 'missing.png')
+    fs.writeFileSync(existingFilePath, Buffer.from('existing-image'))
+
+    fs.writeFileSync(indexPath, JSON.stringify({
+      version: 2,
+      assets: [
+        {
+          id: 'missing-image',
+          kind: 'image',
+          source: 'ai-generated',
+          mimeType: 'image/png',
+          size: 12,
+          fileName: 'missing.png',
+          filePath: missingFilePath,
+          links: [{ sessionId: 'session-2', messageId: 'message-2', role: 'assistant' }],
+          metadata: { prompt: 'missing prompt', model: 'gpt-image-1' },
+          createdAt: 2,
+          updatedAt: 2,
+        },
+        {
+          id: 'existing-image',
+          kind: 'image',
+          source: 'ai-generated',
+          mimeType: 'image/png',
+          size: 14,
+          fileName: 'existing.png',
+          filePath: existingFilePath,
+          links: [{ sessionId: 'session-1', messageId: 'message-1', role: 'assistant' }],
+          metadata: {
+            prompt: 'draw an existing image',
+            revisedPrompt: 'draw an existing image with warm light',
+            model: 'gpt-image-1',
+          },
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    }))
+
+    expect(service.listLegacyImages()).toEqual([
+      {
+        id: 'existing-image',
+        type: 'image',
+        filePath: existingFilePath,
+        prompt: 'draw an existing image',
+        revisedPrompt: 'draw an existing image with warm light',
+        model: 'gpt-image-1',
+        createdAt: 1,
+        sessionId: 'session-1',
+        messageId: 'message-1',
+      },
+    ])
+  })
+
+  it('saves generated images as legacy media items', async () => {
+    const item = await service.saveGeneratedImageAsLegacyItem({
+      base64: Buffer.from('generated-image').toString('base64'),
+      prompt: 'draw a bright desk',
+      revisedPrompt: 'draw a bright desk near a window',
+      model: 'gpt-image-1',
+      sessionId: 'session-3',
+      messageId: 'message-3',
+    })
+
+    expect(item).toMatchObject({
+      type: 'image',
+      prompt: 'draw a bright desk',
+      revisedPrompt: 'draw a bright desk near a window',
+      model: 'gpt-image-1',
+      sessionId: 'session-3',
+      messageId: 'message-3',
+    })
+    expect(fs.existsSync(item.filePath)).toBe(true)
+  })
+})

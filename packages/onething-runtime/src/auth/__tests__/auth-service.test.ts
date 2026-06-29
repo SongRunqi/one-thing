@@ -1,0 +1,151 @@
+import { describe, expect, it, vi } from 'vitest'
+import {
+  OnethingAuthService,
+  type OnethingAuthTokenStore,
+} from '../auth-service.js'
+import type {
+  OnethingAuthProviderDefinition,
+  OnethingOAuthToken,
+} from '../types.js'
+
+class MemoryTokenStore implements OnethingAuthTokenStore {
+  private readonly tokens = new Map<string, OnethingOAuthToken>()
+
+  constructor(private readonly now = () => Date.now()) {}
+
+  async getToken(providerId: string): Promise<OnethingOAuthToken | null> {
+    return this.tokens.get(providerId) ?? null
+  }
+
+  async saveToken(providerId: string, token: OnethingOAuthToken): Promise<void> {
+    this.tokens.set(providerId, token)
+  }
+
+  async deleteToken(providerId: string): Promise<void> {
+    this.tokens.delete(providerId)
+  }
+
+  isTokenExpired(token: OnethingOAuthToken): boolean {
+    return this.now() >= token.expiresAt
+  }
+}
+
+function jsonResponse(data: unknown, init: ResponseInit = {}): Response {
+  return new Response(JSON.stringify(data), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  })
+}
+
+describe('onething runtime auth service', () => {
+  it('falls back to api-key auth for providers without OAuth definitions', async () => {
+    const service = new OnethingAuthService({
+      tokenStore: new MemoryTokenStore(),
+      getDefinition: () => undefined,
+    })
+
+    await expect(service.resolveProviderAuth('custom', 'key')).resolves.toEqual({
+      kind: 'api-key',
+      apiKey: 'key',
+    })
+    await expect(service.resolveProviderAuth('custom')).resolves.toBeNull()
+  })
+
+  it('runs manual PKCE code exchange through injected fetch and token storage', async () => {
+    const tokenStore = new MemoryTokenStore(() => 1_000)
+    const fetchImpl = vi.fn(async () => jsonResponse({
+      access_token: 'access',
+      refresh_token: 'refresh',
+      expires_in: 3600,
+      token_type: 'Bearer',
+      scope: 'read',
+    }))
+    const service = new OnethingAuthService({
+      tokenStore,
+      fetch: fetchImpl as typeof fetch,
+      now: () => 1_000,
+    })
+
+    const started = await service.start('claude-code')
+    expect(started).toMatchObject({
+      success: true,
+      flowKind: 'manual-pkce',
+      requiresCodeEntry: true,
+    })
+
+    const completed = await service.completeManualCode(
+      'claude-code',
+      `manual-code#${started.state}`,
+      started.state || '',
+    )
+
+    expect(completed).toEqual({ success: true })
+    expect(fetchImpl).toHaveBeenCalledOnce()
+    await expect(tokenStore.getToken('claude-code')).resolves.toMatchObject({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      tokenType: 'Bearer',
+      scope: 'read',
+    })
+  })
+
+  it('runs device flow polling without owning any IM or Electron host code', async () => {
+    const definition: OnethingAuthProviderDefinition = {
+      providerId: 'device-test',
+      name: 'Device Test',
+      flowKind: 'device-code',
+      oauthFlow: 'device',
+      clientId: 'client-id',
+      tokenUrl: 'https://example.test/token',
+      deviceCodeUrl: 'https://example.test/device',
+      scopes: ['read'],
+    }
+    const tokenStore = new MemoryTokenStore(() => 1_000)
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({
+        device_code: 'device-code',
+        user_code: 'USER-CODE',
+        verification_uri: 'https://example.test/verify',
+        expires_in: 900,
+        interval: 5,
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        error: 'authorization_pending',
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        access_token: 'device-access',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }))
+    const service = new OnethingAuthService({
+      tokenStore,
+      fetch: fetchImpl as typeof fetch,
+      getDefinition: providerId => providerId === definition.providerId ? definition : undefined,
+      createId: () => `id-${fetchImpl.mock.calls.length}`,
+      now: () => 1_000,
+    })
+
+    const started = await service.start('device-test')
+    expect(started).toMatchObject({
+      success: true,
+      flowKind: 'device-code',
+      userCode: 'USER-CODE',
+      verificationUri: 'https://example.test/verify',
+    })
+
+    await expect(service.pollDeviceFlow('device-test', started.flowId)).resolves.toMatchObject({
+      success: true,
+      completed: false,
+      pollStatus: 'authorization_pending',
+    })
+    await expect(service.pollDeviceFlow('device-test', started.flowId)).resolves.toEqual({
+      success: true,
+      completed: true,
+    })
+    await expect(tokenStore.getToken('device-test')).resolves.toMatchObject({
+      accessToken: 'device-access',
+      tokenType: 'Bearer',
+    })
+  })
+})

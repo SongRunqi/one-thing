@@ -1,0 +1,12011 @@
+import fs from 'node:fs'
+import path from 'node:path'
+
+const root = process.cwd()
+
+const CORE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /require\(['"]electron['"]\)/,
+  /src\/main/,
+  /src\/shared/,
+  /shared\/ipc/,
+  /\.\.\/\.\.\/shared/,
+  /\.\.\/\.\.\/\.\.\/shared/,
+  /better-sqlite3/,
+  /@modelcontextprotocol\/sdk/,
+  /@agentclientprotocol\/sdk/,
+  /from\s+['"]zod['"]/,
+  /from\s+['"]diff['"]/,
+  /from\s+['"]uuid['"]/,
+]
+
+const HOST_BOUNDARY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /require\(['"]electron['"]\)/,
+  /src\/main/,
+  /src\/shared/,
+  /shared\/ipc/,
+  /\.\.\/\.\.\/shared/,
+  /\.\.\/\.\.\/\.\.\/shared/,
+]
+
+const MAIN_DIRECT_ELECTRON_IMPORT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /import\(['"]electron['"]\)/,
+  /require\(['"]electron['"]\)/,
+]
+
+const MAIN_APP_BOOTSTRAP_FORBIDDEN_PATTERNS: RegExp[] = [
+  /@onething\/electron-host\/app\/activate/,
+  /@onething\/electron-host\/app\/before-quit/,
+  /@onething\/electron-host\/app\/did-become-active/,
+  /@onething\/electron-host\/app\/ready/,
+  /@onething\/electron-host\/app\/window-all-closed/,
+  /@onething\/electron-host\/media\/protocol/,
+  /@onething\/electron-host\/power\/resume/,
+  /createAndBindElectronMainWindow/,
+  /registerElectronActivateHandler/,
+  /registerElectronBeforeQuitCleanup/,
+  /registerElectronDidBecomeActiveHandler/,
+  /configureElectronStorePathHost/,
+  /registerElectronReadyHandler/,
+  /registerElectronWindowAllClosedHandler/,
+  /registerElectronMediaProtocol/,
+  /registerElectronPowerResumeHandlers/,
+]
+
+const ELECTRON_MAIN_ENTRY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /index:\s*resolve\(__dirname,\s*['"]src\/main\/index\.ts['"]\)/,
+]
+
+const ELECTRON_PRELOAD_ENTRY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /index:\s*resolve\(__dirname,\s*['"]src\/preload\/index\.ts['"]\)/,
+]
+
+const GATEWAY_CORE_DEPENDENCY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]@onething\/core(?!\/gateway-runtime['"])(?:\/[^'"]*)?['"]/,
+]
+
+const GATEWAY_RUNTIME_DEPENDENCY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]@onething\/runtime['"]/,
+  /from\s+['"]@onething\/runtime\/[^'"]+['"]/,
+  /"@onething\/runtime"/,
+]
+
+const GATEWAY_STANDALONE_AGENT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /AgentEngine/,
+  /createOnethingRuntime/,
+  /createOnethingRuntimeFromStreamRuntime/,
+  /new\s+OnethingStreamEngine/,
+  /Standalone Gateway no longer creates its own AgentEngine/,
+]
+
+const GATEWAY_BRIDGE_TYPING_FORBIDDEN_PATTERNS: RegExp[] = [
+  /text:\s*['"]['"]/,
+  /typing placeholder/,
+]
+
+const GATEWAY_CHANNEL_SELECTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /gateway\.register\(new WechatChannel\(\)\)/,
+]
+
+const MAIN_RUNTIME_SOURCE_IMPORT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /packages\/onething-runtime\/src/,
+]
+
+const MAIN_CORE_SOURCE_IMPORT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /packages\/core\//,
+]
+
+const MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+\{\s*getEventBus\s*\}\s*=\s*await\s+import\(['"]\.\.\/events\/index\.js['"]\)/,
+  /const\s+result\s*=\s*await\s+eventBus\.emit\(sessionId,\s*command\)/,
+  /return\s+\{\s*success:\s*true,\s*result\s*\}/,
+  /\[IPC\]\s+session:command handler error/,
+  /Failed to handle command/,
+]
+
+const MAIN_SESSION_COMMAND_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /try\s*\{\s*\n\s*await\s+getEventBus\(\)\.emit\(sessionId,\s*event\)/,
+  /console\.error\(['"]\[ChatIPC\]\s+EventBus emit failed:/,
+]
+
+const MAIN_GATEWAY_SOURCE_IMPORT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /packages\/gateway\/src/,
+]
+
+const MAIN_GATEWAY_ENABLEMENT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /GATEWAY_CHANNELS/,
+  /GATEWAY_TELEGRAM_BOT_TOKEN/,
+  /TELEGRAM_BOT_TOKEN/,
+  /function\s+isTruthyGatewayValue/,
+  /function\s+isSupportedGatewayChannel/,
+]
+
+const MAIN_GATEWAY_LIFECYCLE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /let\s+gatewayRuntime/,
+  /let\s+starting/,
+  /await\s+import\(['"]@onething\/gateway['"]\)/,
+  /startGateway\(\{/,
+  /runtime:\s*getConversationRuntime\(\)/,
+  /runtime\.gateway\.stop\(\)/,
+  /\[Gateway\]\s+Started from Electron main process/,
+]
+
+const ELECTRON_GATEWAY_LIFECYCLE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"].*src\/main/,
+  /from\s+['"]@main\//,
+]
+
+const VOICE_RUNTIME_WINDOW_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /new\s+BrowserWindow\(/,
+  /let\s+runtimeWindow/,
+  /let\s+runtimeReady/,
+  /pendingCommands/,
+  /\.on\(['"]closed['"]/,
+  /\.loadURL\(/,
+  /\.loadFile\(/,
+  /webContents\.send\(IPC_CHANNELS\.VOICE_RUNTIME_COMMAND/,
+  /\.destroy\(\)/,
+]
+
+const VOICE_EVENT_BROADCAST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /BrowserWindow\.getAllWindows\(\)/,
+  /webContents\.send\(/,
+  /type\s+WebContents/,
+]
+
+const VOICE_TRAY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /new\s+Tray/,
+  /Menu\.buildFromTemplate/,
+  /nativeImage\.createFromPath/,
+  /nativeImage\.createEmpty/,
+  /app\.quit\(\)/,
+  /tray\.setContextMenu/,
+  /tray\?\.destroy/,
+  /mainWindow\.show\(\)/,
+  /mainWindow\.focus\(\)/,
+]
+
+const MAIN_MEDIA_PROTOCOL_FORBIDDEN_PATTERNS: RegExp[] = [
+  /protocol\.handle\(['"]media['"]/,
+  /media:\/\/['"]\.length/,
+  /pathToFileURL\(filePath\)/,
+  /net\.fetch\(pathToFileURL/,
+]
+
+const MAIN_LOGGING_ELECTRON_CAPTURE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /type\s+WebContents/,
+  /Electron\.Event/,
+  /app\.setAppLogsPath/,
+  /app\.on\(['"]web-contents-created['"]/,
+  /app\.off\(['"]web-contents-created['"]/,
+  /function\s+attachWebContentsLogging/,
+  /webContents\.on\(['"]console-message['"]/,
+  /renderer:\$\{webContents\.id\}/,
+]
+
+const MAIN_ACCESSIBILITY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /systemPreferences/,
+  /shell\.openExternal/,
+  /isTrustedAccessibilityClient/,
+  /x-apple\.systempreferences/,
+  /process\.platform\s*===\s*['"]darwin['"]/,
+  /process\.platform\s*!==\s*['"]darwin['"]/,
+]
+
+const MAIN_SHELL_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /from\s+['"]path['"]/,
+  /from\s+['"]os['"]/,
+  /@onething\/electron-host\/shell\/operations/,
+  /from\s+['"]electron['"].*\bshell\b/,
+  /from\s+['"]electron['"].*\bBrowserWindow\b/,
+  /openElectron(Path|External)/,
+  /shell\.openPath/,
+  /shell\.openExternal/,
+  /BrowserWindow\.fromWebContents/,
+  /setWindowButtonVisibility/,
+  /setWindowButtonPosition/,
+  /process\.platform\s*===\s*['"]darwin['"]/,
+]
+
+const MAIN_NETWORK_PROXY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /session\.defaultSession/,
+  /\.setProxy\(\{\s*mode:/,
+  /mode:\s*['"]fixed_servers['"]/,
+  /mode:\s*['"]direct['"]/,
+]
+
+const MAIN_GLOBAL_SHORTCUTS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /globalShortcut\./,
+  /registeredAccelerators/,
+  /function\s+normalizeKey/,
+  /function\s+unregisterWindowShortcuts/,
+  /function\s+registerWindowShortcut/,
+  /process\.platform\s*===\s*['"]darwin['"]/,
+]
+
+const MAIN_POWER_RESUME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /powerMonitor/,
+  /powerMonitor\.on\(['"]resume['"]/,
+  /powerMonitor\.on\(['"]unlock-screen['"]/,
+  /recoverMainWindowAfterSystemResume\(mainWindow,\s*['"]resume['"]\)/,
+  /recoverMainWindowAfterSystemResume\(mainWindow,\s*['"]unlock-screen['"]\)/,
+  /\[Window\]\s+Resume recovery failed/,
+  /\[Window\]\s+Unlock recovery failed/,
+]
+
+const MAIN_WINDOW_ALL_CLOSED_FORBIDDEN_PATTERNS: RegExp[] = [
+  /app\.on\(['"]window-all-closed['"]/,
+  /process\.platform\s*!==\s*['"]darwin['"]/,
+]
+
+const MAIN_DID_BECOME_ACTIVE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /app\.on\(['"]did-become-active['"]/,
+  /BrowserWindow\.getFocusedWindow\(\)/,
+  /isTodoPlanBrowserWindow\(focusedWindow\)/,
+]
+
+const MAIN_BEFORE_QUIT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /app\.on\(['"]before-quit['"]/,
+  /^\s*markVoiceQuitRequested\(\)/,
+  /^\s*getVoiceService\(\)\.shutdown\(\)/,
+  /^\s*await\s+shutdownGateway\(\)/,
+  /^\s*await\s+shutdownMCP\(\)/,
+  /^\s*await\s+shutdownACP\(\)/,
+  /^\s*killTrackedDetachedChildren\(\)/,
+  /^\s*shutdownStreamEngine\(\)/,
+  /^\s*Permission\.shutdown\(\)/,
+  /^\s*await\s+flushAllPendingSaves\(\)/,
+  /^\s*await\s+shutdownAppLogging\(\)/,
+]
+
+const MAIN_ACTIVATE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /app\.on\(['"]activate['"]/,
+  /if\s*\(mainWindow\s*===\s*null\)\s*\{/,
+  /^\s*if\s*\(shouldSuppressMainWindowActivation\(\)\)\s*\{/,
+  /^\s*mainWindow\s*=\s*createWindow\(\)/,
+  /^\s*attachVoiceTrayMainWindow\(mainWindow\)/,
+  /^\s*registerGlobalWindowShortcuts\(mainWindow\)/,
+  /^\s*initializeIPCBridge\(mainWindow\.webContents\)/,
+  /^\s*getStreamEngine\(\)\.bind\(mainWindow\.webContents\)/,
+  /^\s*activateMainWindow\(mainWindow\)/,
+]
+
+const MAIN_READY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /@main\/utils\/login-shell-env/,
+  /app\.on\(['"]ready['"]/,
+  /dialog\.showErrorBox/,
+  /app\.quit\(\)/,
+  /app\.isPackaged/,
+  /app\.getPath/,
+  /process\.resourcesPath/,
+]
+
+const MAIN_WINDOW_BINDING_FORBIDDEN_PATTERNS: RegExp[] = [
+  /^\s*mainWindow\s*=\s*createWindow\(\)/,
+  /^\s*attachVoiceTrayMainWindow\(mainWindow\)/,
+  /^\s*registerGlobalWindowShortcuts\(mainWindow\)/,
+  /^\s*initializeIPCBridge\(mainWindow\.webContents\)/,
+  /^\s*getStreamEngine\(\)\.bind\(mainWindow\.webContents\)/,
+  /^\s*mainWindow\.on\(['"]closed['"]/,
+  /^\s*getVoiceService\(\)\.attachMainWindow\(mainWindow\)/,
+  /^\s*warmSearchWindow\(mainWindow\)/,
+  /^\s*warmTodoPlanWindow\(\{/,
+]
+
+const WINDOW_APPLICATION_MENU_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"].*\bMenu\b/,
+  /from\s+['"]electron['"].*\bapp\b/,
+  /function\s+setupApplicationMenu/,
+  /MenuItemConstructorOptions/,
+  /Menu\.buildFromTemplate/,
+  /Menu\.setApplicationMenu/,
+  /app\.name/,
+]
+
+const WINDOW_SESSION_SECURITY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"].*\bsession\b/,
+  /\btype\s+Session\b/,
+  /function\s+setupContentSecurityPolicy/,
+  /function\s+setupMediaPermissions/,
+  /mediaPermissionHandlersRegistered/,
+  /session\.defaultSession/,
+  /webRequest\.onHeadersReceived/,
+  /setPermissionRequestHandler/,
+  /setPermissionCheckHandler/,
+]
+
+const WINDOW_EXTERNAL_LINKS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"].*\bshell\b/,
+  /shell\.openExternal/,
+  /webContents\.on\(['"]will-navigate['"]/,
+  /setWindowOpenHandler/,
+]
+
+const WINDOW_MAIN_RECOVERY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /MAIN_WINDOW_HEALTH_CHECK_SCRIPT/,
+  /MAIN_WINDOW_RELOAD_DEBOUNCE_MS/,
+  /type\s+MainWindowRendererHealth/,
+  /lastMainWindowRendererReloadAt/,
+  /function\s+reloadMainWindowRenderer/,
+  /function\s+requestMainWindowRepaint/,
+  /function\s+getMainWindowRendererHealth/,
+  /function\s+isHealthyMainWindowRenderer/,
+  /function\s+attachMainWindowRecovery/,
+  /mainWindow\.webContents\.on\(['"]did-fail-load['"]/,
+  /mainWindow\.webContents\.on\(['"]render-process-gone['"]/,
+  /executeJavaScript\(MAIN_WINDOW_HEALTH_CHECK_SCRIPT/,
+  /reloadIgnoringCache\(\)/,
+]
+
+const WINDOW_SETTINGS_WINDOW_FORBIDDEN_PATTERNS: RegExp[] = [
+  /new\s+BrowserWindow\(/,
+  /settingsWindow\.once\(['"]ready-to-show['"]/,
+  /settingsWindow\.on\(['"]closed['"]/,
+  /#\/settings/,
+  /settingsWindow\.loadURL/,
+  /settingsWindow\.loadFile/,
+  /settingsWindow\.webContents\.on\(['"]did-fail-load['"]/,
+]
+
+const WINDOW_IMAGE_PREVIEW_WINDOW_FORBIDDEN_PATTERNS: RegExp[] = [
+  /new\s+BrowserWindow\(/,
+  /imagePreviewWindow\.webContents\.send/,
+  /imagePreviewWindow\.webContents\.once\(['"]dom-ready['"]/,
+  /imagePreviewWindow\.once\(['"]ready-to-show['"]/,
+  /imagePreviewWindow\.on\(['"]closed['"]/,
+  /imagePreviewWindow\.loadURL/,
+  /imagePreviewWindow\.loadFile/,
+  /imagePreviewWindow\.restore\(\)/,
+  /imagePreviewWindow\.show\(\)/,
+  /imagePreviewWindow\.focus\(\)/,
+]
+
+const WINDOW_MAIN_WINDOW_FORBIDDEN_PATTERNS: RegExp[] = [
+  /new\s+BrowserWindow\(/,
+  /mainWindow\.once\(['"]ready-to-show['"]/,
+  /mainWindow\.on\(['"]resize['"]/,
+  /mainWindow\.on\(['"]move['"]/,
+  /mainWindow\.on\(['"]close['"]/,
+  /mainWindow\.maximize\(\)/,
+  /mainWindow\.webContents\.openDevTools\(\)/,
+]
+
+const WINDOW_TODO_PLAN_WINDOW_FORBIDDEN_PATTERNS: RegExp[] = [
+  /new\s+BrowserWindow\(/,
+  /todoPlanWindow\.once\(['"]ready-to-show['"]/,
+  /todoPlanWindow\.on\(['"]resize['"]/,
+  /todoPlanWindow\.on\(['"]move['"]/,
+  /todoPlanWindow\.on\(['"]close['"]/,
+  /todoPlanWindow\.on\(['"]closed['"]/,
+  /todoPlanWindow\.loadURL/,
+  /todoPlanWindow\.loadFile/,
+  /webPreferences:\s*\{/,
+]
+
+const WINDOW_MACOS_PANEL_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]\.\/native\/macos-panel(?:\.js)?['"]/,
+  /from\s+['"]\.\.\/native\/macos-panel(?:\.js)?['"]/,
+]
+
+const WINDOW_RENDERER_TARGETS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+isAppWebContents\b/,
+  /function\s+getRendererDevUrl\b/,
+  /mainWindow\.loadURL\(/,
+  /mainWindow\.loadFile\(/,
+]
+
+const WINDOW_STATE_PERSISTENCE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /interface\s+WindowState\b/,
+  /interface\s+WindowStateFile\b/,
+  /const\s+defaultWindowState\b/,
+  /const\s+defaultTodoPlanWindowState\b/,
+  /function\s+sanitizeWindowState\b/,
+  /readJsonFile<.*WindowState/,
+  /writeJsonFile\(getWindowStatePath\(\)/,
+]
+
+const WINDOW_ACTIVATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /suppressMainWindowActivationUntil/,
+  /AUXILIARY_CLOSE_ACTIVATION_SUPPRESSION_MS/,
+  /Date\.now\(\)\s*<\s*suppress/,
+  /mainWindow\.isMinimized\(\)/,
+  /mainWindow\.restore\(\)/,
+  /mainWindow\.show\(\)/,
+  /mainWindow\.focus\(\)/,
+]
+
+const WINDOW_VISIBILITY_SNAPSHOT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /interface\s+MainWindowVisibilitySnapshot/,
+  /function\s+isMainAppWindow\b/,
+  /BrowserWindow\.getAllWindows\(\)/,
+  /hiddenMainWindows/,
+  /for\s*\(const\s+delay\s+of\s+\[0,\s*80,\s*250,\s*600,\s*1200,\s*2400\]\)/,
+  /item\.window\.hide\(\)/,
+]
+
+const WINDOW_TODO_PLAN_PRESENTATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /interface\s+NormalizedTodoPlanWindowActionOptions/,
+  /function\s+shouldPreserveCurrentMacApp/,
+  /options\.activation\s*===\s*['"]preserve-current-app['"]/,
+  /BrowserWindow\.getFocusedWindow\(\)/,
+  /window\.showInactive\(\)/,
+  /window\.moveTop\(\)/,
+  /window\.show\(\)/,
+  /window\.focus\(\)/,
+  /isNonActivatingPanelFrontmost\(window\)\s*\|\|\s*window\.isFocused\(\)/,
+]
+
+const SEARCH_WINDOW_TARGET_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+AUXILIARY_HASH_PREFIXES/,
+  /function\s+isRendererWindowUrl\b/,
+  /function\s+isMainAppWindowUrl\b/,
+  /process\.env\.ELECTRON_RENDERER_URL/,
+]
+
+const SEARCH_WINDOW_LIFECYCLE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /new\s+BrowserWindow\(/,
+  /function\s+clearGuideHideTimer\b/,
+  /function\s+applySearchWindowConstraints\b/,
+  /function\s+getGuideParentWindow\b/,
+  /function\s+emitSearchWindowGuides\b/,
+  /function\s+updateSearchWindowGuides\b/,
+  /function\s+positionSearchWindow\b/,
+  /function\s+showSearchWindow\b/,
+  /function\s+createSearchWindow\b/,
+  /webContents\.send\(IPC_CHANNELS\.SEARCH_WINDOW/,
+  /\.once\(['"]ready-to-show['"]/,
+  /\.on\(['"]blur['"]/,
+  /\.on\(['"]move['"]/,
+  /\.on\(['"]resize['"]/,
+  /\.on\(['"]closed['"]/,
+  /\.loadURL\(/,
+  /\.loadFile\(/,
+  /\.setMinimumSize\(/,
+  /\.setMaximumSize\(/,
+  /\.setParentWindow\(/,
+  /\.setBounds\(/,
+  /\.show\(\)/,
+  /\.focus\(\)/,
+  /\.hide\(\)/,
+]
+
+const SEARCH_WINDOW_LAYOUT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"].*\.\/window-layout/,
+  /\bSearchWindowRectangle\b/,
+  /\bSearchWindowSizeConstraints\b/,
+  /DEFAULT_WIDTH_RATIO/,
+  /DEFAULT_HEIGHT_RATIO/,
+  /MAX_PARENT_WIDTH_RATIO/,
+  /MAX_PARENT_HEIGHT_RATIO/,
+  /DEFAULT_TOP_RATIO/,
+  /PARENT_EDGE_PADDING/,
+  /GUIDE_THRESHOLD/,
+  /\bSEARCH_WINDOW_MIN_WIDTH\b/,
+  /\bSEARCH_WINDOW_MIN_HEIGHT\b/,
+  /\bSEARCH_WINDOW_MAX_DEFAULT_WIDTH\b/,
+  /\bSEARCH_WINDOW_MAX_DEFAULT_HEIGHT\b/,
+  /function\s+clamp\b/,
+  /function\s+getSearchWindowSizeConstraints\b/,
+  /function\s+getDefaultSearchWindowBounds\b/,
+  /function\s+getSearchWindowGuideState\b/,
+]
+
+const SEARCH_WINDOW_ACTION_DELIVERY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /from\s+['"].*window-selection/,
+  /function\s+isMainAppWindow\b/,
+  /function\s+findMainAppWindow\b/,
+  /BrowserWindow\.getFocusedWindow\(\)/,
+  /BrowserWindow\.getAllWindows\(\)/,
+  /\.getParentWindow\(\)/,
+  /webContents\.send\(IPC_CHANNELS\.SEARCH_ACTION/,
+  /\.focus\(\)/,
+  /No main app window found for action/,
+]
+
+const SEARCH_IPC_WINDOW_SOURCE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+  /BrowserWindow\.fromWebContents/,
+]
+
+const MAIN_CORE_SYSTEM_DIRS = [
+  'src/main/agent-loop',
+  'src/main/engine',
+  'src/main/events',
+  'src/main/bridges',
+  'src/main/session',
+  'src/main/storage',
+  'src/main/stores',
+  'src/main/permission',
+  'src/main/mcp',
+  'src/main/plugins',
+  'src/main/tools',
+]
+
+const MAIN_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /require\(['"]electron['"]\)/,
+  /from\s+['"]node:fs['"]/,
+  /from\s+['"]node:fs\/promises['"]/,
+  /from\s+['"]node:path['"]/,
+  /from\s+['"]fs['"]/,
+  /from\s+['"]fs\/promises['"]/,
+  /from\s+['"]path['"]/,
+  /better-sqlite3/,
+  /@modelcontextprotocol\/sdk/,
+  /@agentclientprotocol\/sdk/,
+]
+
+const MAIN_ADAPTER_ALLOWLIST = new Map<string, RegExp[]>([
+  ['src/main/mcp/client.ts', [/@modelcontextprotocol\/sdk/]],
+])
+
+const CORE_PROMPT_ASSEMBLY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]node:fs['"]/,
+  /from\s+['"]node:os['"]/,
+  /from\s+['"]node:path['"]/,
+  /export\s+(async\s+)?function\s+buildPrompt/,
+  /export\s+(async\s+)?function\s+buildSystemPrompt/,
+  /export\s+function\s+loadAgentsMdInstructions/,
+  /AGENTS\.md/,
+  /Tool Guidelines:/,
+]
+
+const RUNTIME_STORAGE_PATH_CORE_PROXY_PATTERNS: RegExp[] = [
+  /get[A-Z][A-Za-z0-9]+Path\s+as\s+getCore/,
+  /get[A-Z][A-Za-z0-9]+Dir\s+as\s+getCore/,
+  /getStoreDirs\s+as\s+getCoreStoreDirs/,
+  /ensureStoreDirs\s+as\s+ensureCoreStoreDirs/,
+  /type\s+CoreStorePathOptions/,
+]
+
+const SHARED_BACKEND_STORE_LOCK_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]node:fs['"]/,
+  /from\s+['"]node:path['"]/,
+  /class\s+StoreLock/,
+  /class\s+LockConflictError/,
+  /function\s+readLockMeta/,
+  /function\s+isProcessAlive/,
+  /function\s+formatCliLockConflict/,
+  /function\s+formatDesktopLockConflict/,
+  /getStorePath/,
+  /getOnethingStorePath/,
+]
+
+const CORE_PERMISSION_FILE_STORAGE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /workspace-grants\.json/,
+  /PermissionGrantFileStorageAdapters/,
+  /PermissionGrantWorkspaceFile/,
+  /getPermissionWorkspaceGrantsPath/,
+  /createPermissionGrantFileStorage/,
+  /configurePermissionGrantFileStorage/,
+]
+
+const MAIN_PERMISSION_IPC_GRANTS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Failed to list permission grants/,
+  /Failed to revoke permission grant/,
+  /Failed to clear session grants/,
+  /Failed to clear workspace grants/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+  /request\.sessionId\s*\?\s*PermissionGrants\.listSessionGrants/,
+  /request\.workspaceRoot\s*\?\s*PermissionGrants\.listWorkspaceGrants/,
+  /PermissionGrants\.revokeGrant\(request\.id\)/,
+  /PermissionGrants\.clearSessionGrants\(request\.sessionId\)/,
+  /PermissionGrants\.clearWorkspaceGrants\(request\.workspaceRoot\)/,
+]
+
+const MAIN_PERMISSION_IPC_SESSION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Failed to get pending permissions/,
+  /Failed to clear session/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+  /const\s+pending\s*=\s*Permission\.getPending\(sessionId\)/,
+  /Permission\.clearSession\(sessionId\)/,
+  /return\s+\{\s*success:\s*true,\s*pending\s*\}/,
+]
+
+const MAIN_PERMISSION_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+]
+
+const MAIN_AGENTS_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /readJsonFile/,
+  /writeJsonFile/,
+  /DEFAULT_AGENT_NAME/,
+  /function\s+normalizeAgent/,
+  /function\s+normalizeFile/,
+]
+
+const MAIN_AGENTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+errorMessage/,
+  /console\.error\(\s*['"]\[AgentsIPC\]/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+  /id:\s*`agent-\$\{uuidv4\(\)\}`/,
+  /return\s+\{\s*success:\s*true,\s*agents:\s*listAgents\(\)\s*\}/,
+  /return\s+\{\s*success:\s*true,\s*agent\s*\}/,
+  /if\s*\(!agentId\)\s*throw new Error\('Agent id is required'\)/,
+  /if\s*\(agentId\s*===\s*DEFAULT_AGENT_ID\)\s*throw/,
+  /getSessionsList\(\)\.some/,
+  /Agent is used by one or more sessions/,
+  /^\s*deleteAgent\(agentId\)/,
+]
+
+const MAIN_AGENTS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+]
+
+const MAIN_APP_STATE_IPC_UI_SAVE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /saveAppState/,
+  /saveOnethingUiState\(getAppStatePath\(\),\s*uiState\)/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+  /const\s+state\s*=\s*getAppState\(\)/,
+  /state\.openTabs\s*=/,
+  /state\.activeTabIndex\s*=/,
+  /state\.sidebarCollapsed\s*=/,
+]
+
+const MAIN_APP_STATE_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+]
+
+const MAIN_SCHEDULER_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /SchedulerIPC/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+  /return\s+\{\s*success:\s*true,\s*tasks:\s*getScheduler\(\)\.list\(\)\s*\}/,
+  /const\s+task\s*=\s*getScheduler\(\)\.getStatus\(request\.id\)/,
+  /const\s+record\s*=\s*await\s+getScheduler\(\)\.runNow/,
+  /reason:\s*'manual'/,
+  /force:\s*request\.force\s*\?\?\s*true/,
+  /if\s*\(!isUserSchedulerTask\(request\.id\)\)/,
+  /Plugin scheduled tasks cannot be edited/,
+  /Plugin scheduled tasks cannot be deleted/,
+  /const\s+savedRuns\s*=\s*listSchedulerRunDetails/,
+  /Math\.max\(1,\s*Math\.min\(50/,
+  /recentRuns\?\.\find/,
+]
+
+const MAIN_SCHEDULER_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+]
+
+const MAIN_SCHEDULER_CORE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /SCHEDULER_STATE_VERSION/,
+  /SCHEDULER_HEARTBEAT_MS/,
+  /MAX_RUN_HISTORY/,
+  /type\s+StoredTaskState/,
+  /type\s+SchedulerStateFile/,
+  /type\s+InternalTask/,
+  /export\s+class\s+Scheduler/,
+  /randomUUID/,
+  /fs\.existsSync/,
+  /fs\.writeFileSync/,
+  /fs\.renameSync/,
+  /computeInitialNextRunAt/,
+  /computeFollowingNextRunAt/,
+  /private\s+async\s+tick/,
+  /private\s+async\s+runTask/,
+  /private\s+recordRun/,
+]
+
+const MAIN_SCHEDULER_RUN_HISTORY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /MAX_RUN_HISTORY_PER_TASK/,
+  /function\s+safeTaskFileName/,
+  /function\s+runHistoryPath/,
+  /function\s+readRuns/,
+  /function\s+writeRuns/,
+  /JSON\.parse\(line\)/,
+  /JSON\.stringify\(run\)/,
+  /fs\.readFileSync/,
+  /fs\.writeFileSync/,
+  /\.slice\(-MAX_RUN_HISTORY_PER_TASK\)/,
+]
+
+const MAIN_SCHEDULER_USER_TASK_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+readTasksFile/,
+  /function\s+writeTasksFile/,
+  /function\s+normalizeStoredTask/,
+  /function\s+normalizeSchedule/,
+  /function\s+validateTaskInput/,
+  /fs\.existsSync/,
+  /fs\.readFileSync/,
+  /fs\.writeFileSync/,
+  /fs\.renameSync/,
+  /JSON\.parse\(fs\.readFileSync/,
+  /JSON\.stringify\(\{\s*version:\s*1,\s*tasks:/,
+  /parseCronExpression\(expr\)/,
+  /isValidTimezone\(timezone\)/,
+  /agentExists\(agentId\)/,
+]
+
+const MAIN_SCHEDULER_RUN_DETAIL_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+previewValue/,
+  /function\s+toRunStep/,
+  /function\s+toRunToolCall/,
+  /export\s+function\s+genericRunDetailFromRecord/,
+  /const\s+resultPreview\s*=/,
+  /JSON\.stringify\(value\s*\?\?\s*''\)/,
+  /argumentsPreview:\s*previewValue/,
+  /resultPreview:\s*previewValue/,
+  /status:\s*record\.skipped/,
+]
+
+const MAIN_SCHEDULER_AGENT_TASK_RUNNER_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+terminal\s*=\s*new\s+Promise/,
+  /eventBus\.onAny\(sessionId,\s*\(envelope/,
+  /command:send-message/,
+  /permission:blocked/,
+  /Scheduled tasks can only use tools that were already authorized/,
+  /stream:complete/,
+  /stream:error/,
+  /stream:aborted/,
+  /getStreamEngineSafe\(\)\?\.abort/,
+  /store\.createSession\(sessionId/,
+  /assistantMessageId\s*=/,
+  /failedTool\s*=/,
+]
+
+const MAIN_FILES_IPC_LIST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+getNoteRootLabel/,
+  /function\s+getFileSearchRoots/,
+  /function\s+entryMatchesQuery/,
+  /const\s+files:\s*string\[\]/,
+  /const\s+entries:\s*FileSearchEntry\[\]/,
+  /const\s+searchRoots\s*=/,
+  /for await\s*\(const file of listFiles/,
+  /path\.join\(root\.path,\s*file\)/,
+  /entries\.slice\(0,\s*limit\)/,
+  /Failed to list files/,
+  /console\.error\(\s*['"]\[Files IPC\] Failed to list files/,
+]
+
+const MAIN_FILES_IPC_DIRS_LIST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /let\s+expandedPath/,
+  /const\s+pathStat/,
+  /let\s+dirToList/,
+  /filterPrefix/,
+  /const\s+dirs:\s*string\[\]\s*=/,
+  /entry\.name\.startsWith\('\.'\)/,
+  /dirs\.sort\(\(a,\s*b\)\s*=>\s*path\.basename/,
+  /Failed to list directories/,
+  /console\.error\(\s*['"]\[Files IPC\] Failed to list directories/,
+  /basePath:\s*''/,
+]
+
+const MAIN_FILES_IPC_FILE_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"].*\bshell\b/,
+  /shell\.showItemInFolder/,
+  /function\s+looksBinary/,
+  /const\s+isBinary\s*=/,
+  /Path is not a file/,
+  /File changed on disk\. Review before saving again\./,
+  /Math\.abs\(.*mtimeMs/,
+  /const\s+result:\s*DirectoryEntry\[\]/,
+  /entry\.name\s*===\s*'node_modules'/,
+  /entry\.name\s*===\s*'\.git'/,
+  /entry\.isDirectory\(\)\s*\?\s*'directory'/,
+  /result\.sort\(\(a,\s*b\)/,
+  /type:\s*stats\.isDirectory\(\)\s*\?\s*'directory'\s*:\s*'file'/,
+]
+
+const MAIN_FILES_IPC_MUTATION_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /await\s+fs\.writeFile\(request\.path/,
+  /await\s+fs\.mkdir\(request\.path/,
+  /await\s+fs\.rename\(request\.oldPath/,
+  /await\s+fs\.rm\(request\.path/,
+  /const\s+targetPath\s*=\s*request\.path/,
+  /Path is required/,
+  /Failed to create file/,
+  /Failed to create directory/,
+  /Failed to rename path/,
+  /Failed to delete path/,
+  /Failed to reveal path/,
+]
+
+const MAIN_FILES_IPC_ROLLBACK_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+\{\s*auditPath,\s*filePath,\s*originalContent,\s*isNew\s*\}/,
+  /File path or audit path is required/,
+  /Legacy rollback path/,
+  /restoredExists:\s*!isNew/,
+  /Failed to rollback file/,
+  /await\s+fs\.unlink\(filePath\)/,
+  /fs\.writeFile\(filePath,\s*originalContent/,
+]
+
+const MAIN_FILES_IPC_WATCH_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Workspace root is required/,
+  /recursive fs\.watch can overwhelm/,
+  /void request/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+]
+
+const MAIN_FILES_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_RIPGREP_UTIL_FORBIDDEN_PATTERNS: RegExp[] = [
+  /PLATFORM_CONFIG/,
+  /RIPGREP_VERSION/,
+  /downloadRipgrep/,
+  /extractTarGz/,
+  /extractZip/,
+  /BlobReader/,
+  /BlobWriter/,
+  /ZipReader/,
+  /spawn\(/,
+  /parseOnethingRipgrepSearchOutput\s*\(/,
+  /buildOnethingRipgrepFileListArgs\s*\(/,
+  /buildOnethingRipgrepSearchArgs\s*\(/,
+]
+
+const MAIN_TOOL_SANDBOX_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"](?:node:)?os['"]/,
+  /from\s+['"](?:node:)?path['"]/,
+  /joinPaths/,
+  /uniqueCorePaths/,
+  /checkCoreFileAccess/,
+  /expandCorePath/,
+  /findCore(Read)?SandboxRootForPath/,
+  /getCore(Read)?SandboxRoots/,
+  /getCoreSandboxBoundary/,
+  /isCorePathContained/,
+  /resolveCoreToolPath/,
+  /os\.homedir/,
+  /['"]Downloads['"]/,
+  /function\s+getConfiguredDefaultWorkingDirectory/,
+]
+
+const MAIN_TOOL_EDIT_ENGINE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]diff['"]/,
+  /createTwoFilesPatch/,
+  /prepareExactEditPreview/,
+  /applyExactEditsToNormalizedContent/,
+  /interface\s+ExactEditPreviewResult/,
+  /function\s+previewExactEdits/,
+]
+
+const MAIN_TOOL_REGISTRY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /new\s+HeadlessToolRegistry/,
+  /HeadlessToolRegistry</,
+  /import\s+\{[^}]*HeadlessToolRegistry/,
+  /class\s+OnethingToolRegistry/,
+  /zodToJsonSchema/,
+  /coreToolDefinitionFromJsonSchema/,
+  /coreProviderToolSchemaFromJsonSchema/,
+  /collectCoreToolDefinitionsWithAdapters/,
+  /collectCoreProviderToolSchemasWithAdapters/,
+  /filterCoreInjectableTools/,
+  /filterCoreEnabledTools/,
+  /resolveCoreToolExecutionMode/,
+  /analyzeCoreToolWithAdapters/,
+  /executeCoreToolWithAdapters/,
+  /coreToolContextFromHost/,
+  /isPermissionRejectedError/,
+  /PermissionRejectedError/,
+  /safeParse\(args\)/,
+  /formatValidationError/,
+  /createCoreToolCallShim/,
+]
+
+const MAIN_TOOL_TYPES_SCHEMA_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /JsonSchemaObject/,
+  /export\s+function\s+toAIToolSchema/,
+  /const\s+properties:\s*AIToolSchema/,
+  /for\s*\(\s*const\s+param\s+of\s+tool\.parameters\s*\)/,
+  /properties\[param\.name\]/,
+  /required\.push\(param\.name\)/,
+]
+
+const MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /require\(['"]electron['"]\)/,
+  /createRequire\b/,
+  /from\s+['"]node:fs['"]/,
+  /from\s+['"]node:fs\/promises['"]/,
+  /from\s+['"]node:os['"]/,
+  /from\s+['"]node:path['"]/,
+  /from\s+['"]fs['"]/,
+  /from\s+['"]fs\/promises['"]/,
+  /from\s+['"]os['"]/,
+  /from\s+['"]path['"]/,
+  /existsSync/,
+  /readFile/,
+  /writeFile/,
+  /oauth-tokens\.json/,
+  /function\s+getSafeStorage/,
+  /safeStorage/,
+]
+
+const MAIN_AUTH_SERVICE_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /require\(['"]electron['"]\)/,
+  /createRequire\b/,
+  /from\s+['"]uuid['"]/,
+  /flows\s*=\s*new Map/,
+  /providerFlowIds\s*=\s*new Map/,
+  /providerErrors\s*=\s*new Map/,
+  /startDeviceFlow/,
+  /completeAuthorizationCodeFlow/,
+  /buildAuthorizationUrl/,
+  /normalizeToken/,
+  /requireDefinition/,
+  /getFlow/,
+  /clearFlow/,
+  /FLOW_TIMEOUT_MS/,
+  /REFRESH_BUFFER_MS/,
+  /getElectronNetFetch/,
+  /function\s+getElectronNetFetch/,
+  /electron\.net/,
+  /net\?\.fetch/,
+]
+
+const MAIN_AUTH_CALLBACK_SERVER_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]node:http['"]/,
+  /from\s+['"]http['"]/,
+  /http\.createServer/,
+  /server\.listen/,
+  /servers\s*=\s*new Map/,
+  /registrations\s*=\s*new Map/,
+  /function\s+handleRequest/,
+  /writeCallbackPage/,
+  /Authorization Complete/,
+  /OAuth callback processing failed/,
+]
+
+const MAIN_OAUTH_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"].*\bBrowserWindow\b/,
+  /from\s+['"]electron['"].*\bshell\b/,
+  /BrowserWindow\.getAllWindows/,
+  /webContents\.send\(IPC_CHANNELS\.OAUTH_TOKEN_/,
+  /shell\.openExternal/,
+  /OAuth start failed/,
+  /Poll failed/,
+  /Refresh failed/,
+  /Status check failed/,
+  /Logout failed/,
+  /authService\.start\(request\.providerId\)/,
+  /authService\.pollDeviceFlow\(request\.providerId/,
+  /authService\.refreshToken\(request\.providerId\)/,
+  /authService\.getStatus\(request\.providerId\)/,
+  /authService\.deleteToken\(request\.providerId\)/,
+  /const\s+url\s*=\s*response\.authUrl\s*\|\|\s*response\.verificationUri/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+  /success:\s*false,\s*completed:\s*false/,
+  /isLoggedIn:\s*false/,
+]
+
+const MAIN_OAUTH_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_STREAM_RUNTIME_WIRING_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]@onething\/runtime['"]/,
+  /createOnethingProductStreamRuntime\s*</,
+  /createOnethingStreamEngineRuntime/,
+  /createOnethingStreamProviderAdapter/,
+  /StreamEngineProviderAdapter/,
+  /StreamEngineHistoryAdapter/,
+  /StreamEngineMediaAdapter/,
+  /StreamEnginePromptAdapter/,
+  /StreamEngineSkillsAdapter/,
+  /StreamEngineStreamsAdapter/,
+]
+
+const MAIN_HISTORY_HELPER_CORE_WIRING_FORBIDDEN_PATTERNS: RegExp[] = [
+  /buildHistoryMessages\s+as\s+buildCoreHistoryMessages/,
+  /buildResumeHistoryAfterToolConfirmation\s+as\s+buildCore/,
+  /filterHistoryForNonToolAPI\s+as\s+filterCore/,
+]
+
+const MAIN_AGENT_LOOP_RUNTIME_WIRING_FORBIDDEN_PATTERNS: RegExp[] = [
+  /agentLoopInitSkills/,
+  /message:user-created/,
+  /skillsForRefs/,
+  /enableSkills\s*!==\s*false/,
+]
+
+const MAIN_AGENT_LOOP_SELECTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /resolveAgentLoopStreamRoute\s+as\s+resolveCoreAgentLoopStreamRoute/,
+  /shouldUseAgentLoopStream\s+as\s+shouldUseCoreAgentLoopStream/,
+  /getSupportedAgentProviderRuntimeIds/,
+  /isAgentProviderRuntimeSupported/,
+]
+
+const MAIN_PROVIDER_REQUEST_DUMP_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]fs/,
+  /from\s+['"]node:fs/,
+  /from\s+['"]path['"]/,
+  /from\s+['"]node:path['"]/,
+  /requestDumpDir/,
+  /safeFilenamePart/,
+  /stringifyForDump/,
+  /ONETHING_DUMP_PROVIDER_REQUESTS/,
+]
+
+const MAIN_PROVIDER_REGISTRY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /new\s+Map\s*<\s*string\s*,\s*ProviderDefinition\s*>/,
+  /providers\.has\(/,
+  /providers\.set\(/,
+  /providers\.delete\(/,
+  /providers\.values\(/,
+  /providerId\.startsWith\(['"]custom-/,
+  /Provider \$\{definition\.id\} is already registered/,
+]
+
+const MAIN_PROVIDER_TYPES_FORBIDDEN_PATTERNS: RegExp[] = [
+  /export\s+interface\s+ProviderInfo\b/,
+  /export\s+interface\s+ProviderConfig\b/,
+  /export\s+interface\s+ProviderToolSchema\b/,
+  /export\s+interface\s+ProviderToolCallOption\b/,
+  /export\s+interface\s+ProviderOptionsMap\b/,
+  /export\s+interface\s+ProviderCallOptions\b/,
+  /export\s+interface\s+ProviderCallPreparationContext\b/,
+  /export\s+interface\s+ProviderDefinition\b/,
+  /export\s+type\s+ProviderCallMode\s*=\s*['"]/,
+  /\|\s+['"]required['"]\s*\n\s*\|\s+\{\s*type:\s*['"]auto['"]\s*\}/,
+]
+
+const MAIN_PROVIDERS_IPC_USAGE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+toUsageAccount/,
+  /providerId\s*!==\s*['"]codex['"]/,
+  /refreshTokenIfNeeded\(AIProvider\.Codex\)/,
+  /fetchCodexUsage\(token\)/,
+  /capturedAt:\s*Date\.now\(\)/,
+  /isFedramp:\s*token\.isFedrampAccount/,
+]
+
+const MAIN_PROVIDER_OAUTH_CONFIG_FORBIDDEN_PATTERNS: RegExp[] = [
+  /if\s*\(!requiresOAuth\(providerId\)\)/,
+  /oauthManager\.refreshTokenIfNeeded\(providerId\)/,
+  /Failed to get OAuth config for/,
+  /apiKey:\s*token\.accessToken/,
+]
+
+const MAIN_PROVIDER_FACADE_LOW_LEVEL_FORBIDDEN_PATTERNS: RegExp[] = [
+  /generateWithOnethingDeepSeekAgent/,
+  /generateOnethingChatResponseWithReasoning/,
+  /generateOnethingProviderChatTitle/,
+  /generateOnethingTextChatResponse/,
+  /mergeOnethingSystemMessagesForGenerateIfNeeded/,
+  /onethingToolChatMessagesFromUIMessages/,
+  /streamOnethingACPChatResponseWithTools/,
+  /streamOnethingDeepSeekAgentTurn/,
+  /runOnethingUtilityAgentTurn/,
+  /streamOnethingChatResponseWithReasoning/,
+  /streamOnethingChatResponseWithTools/,
+  /streamOnethingTextChatResponse/,
+  /streamOnethingAgentProviderToolTurn/,
+  /streamOnethingUtilityAgentTurn/,
+]
+
+const MAIN_PROVIDER_TITLE_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /buildOnethingChatTitleGenerationRequest/,
+  /cleanOnethingGeneratedChatTitle/,
+  /fallbackOnethingACPChatTitle/,
+  /debugPurpose:\s*['"]chat-title['"]/,
+]
+
+const MAIN_PROVIDER_TEXT_RESPONSE_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+result\s*=\s*await\s+generateChatResponseWithReasoning\(/,
+  /for await\s*\(const chunk of streamChatResponseWithReasoning\(/,
+  /chunk\.type === ["']text["'] && \(chunk\.text \|\| chunk\.reasoning\)/,
+]
+
+const MAIN_PROVIDER_GENERATE_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /if\s*\(isACPProvider\(providerId\)\)/,
+  /let\s+reasoning\s*=\s*["']/,
+  /for await\s*\(const chunk of streamACPChatResponseWithTools\(/,
+  /Provider \$\{providerId\} does not have an AgentProvider runtime for generate\./,
+]
+
+const MAIN_PROVIDER_STREAM_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+effectiveMessages\s*=\s*mergeSystemMessagesForGenerateIfNeeded\(/,
+  /for await\s*\(const chunk of streamDeepSeekAgentTurn\(/,
+  /yield\*\s+streamUtilityAgentTurn\(/,
+  /Provider \$\{providerId\} does not have an AgentProvider runtime for stream-reasoning\./,
+]
+
+const MAIN_PROVIDER_TOOL_STREAM_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+runtimeRoute\s*=\s*resolveProviderRuntimeRoute\(providerId,\s*config\)/,
+  /runtimeRoute\.kind === ["']acp["']/,
+  /runtimeRoute\.kind === ["']deepseek["']/,
+  /runtimeRoute\.kind === ["']agent["']/,
+  /Provider \$\{providerId\} does not have an AgentProvider runtime for stream-tools\./,
+  /Provider \$\{providerId\} does not have an AgentProvider runtime for stream-ui-messages\./,
+]
+
+const MAIN_PROVIDER_ACP_STREAM_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /getLatestUserMessageText\(messages\)/,
+  /ACP prompt is empty/,
+  /const\s+localSessionId\s*=\s*options\.debugSessionId/,
+  /event\.notification\.update/,
+  /mapACPStopReason\(event\.stopReason\)/,
+  /formatACPPlan\(update\)/,
+  /formatACPTool\(update\)/,
+]
+
+const MAIN_EMBEDDINGS_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /resolveSoulMemoryEmbeddingTarget/,
+  /function\s+configForProvider/,
+  /function\s+firstOpenAICompatibleCustom/,
+  /function\s+resolveConfiguredProvider/,
+  /function\s+resolveAutoProvider/,
+  /function\s+vectorsFromOpenAIResponse/,
+  /function\s+vectorsFromGeminiResponse/,
+  /function\s+embedOpenAICompatible/,
+  /function\s+embedGemini/,
+  /batchEmbedContents/,
+  /\}\/embeddings/,
+  /settings\.ai\.providers/,
+]
+
+const MAIN_DIRECT_TOOL_EXECUTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /executeCoreDirectTool/,
+  /createExecutionContext:\s*source\s*=>/,
+  /approvedAnalysis:\s*\{/,
+]
+
+const MAIN_TOOL_UPDATE_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /executeCoreToolAndUpdate/,
+  /toolResultToStructured/,
+  /toStructured:\s*value\s*=>/,
+  /toJsonValue/,
+  /formatFailure:\s*toolFailureText/,
+]
+
+const SHARED_TOOL_FAILURE_PARAMETERS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /interface\s+ToolFailureParameterSummary/,
+  /function\s+summarizeToolFailureParameters/,
+  /function\s+shortPath/,
+  /normalizedToolName\s*===\s*['"]edit['"]/,
+  /normalizedToolName\s*===\s*['"]bash['"]/,
+  /preferredKeys\s*=\s*\[/,
+]
+
+const SHARED_TOOL_ERRORS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+DEFAULT_PERMISSION_REJECTED_MESSAGE/,
+  /function\s+formatPermissionRejectedMessage/,
+  /trimmedReason/,
+  /Reason:\s*\$\{trimmedReason\}/,
+]
+
+const CORE_TOOL_RESULT_PERMISSION_ERROR_DUPLICATE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+DEFAULT_PERMISSION_REJECTED_MESSAGE\s*=/,
+  /function\s+formatPermissionRejectedMessage/,
+]
+
+const MAIN_STREAM_PROCESSOR_ADAPTER_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]@onething\/runtime['"]/,
+  /createCoreStreamProcessor/,
+  /createStepId:\s*createCoreId/,
+  /ctx:\s*\{\s*sessionId:\s*ctx\.sessionId/,
+]
+
+const MAIN_IMAGE_STREAM_ENTRY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /executeCoreImageGenerationStream/,
+]
+
+const MAIN_PROVIDERS_IPC_PRESENTATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Failed to get providers/,
+  /Failed to inspect provider environment variables/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+  /const\s+providers\s*=\s*getAvailableProviders\(\)/,
+  /providers,\s*\}/,
+  /status:\s*getProviderEnvStatus\(request\.providerId\)/,
+]
+
+const MAIN_PROVIDERS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_MODELS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_BOUND_FETCH_POLICY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]undici['"]/,
+  /from\s+['"]socks['"]/,
+  /SocksClient/,
+  /Socks5ProxyAgent/,
+  /dispatcherCache/,
+  /createDispatcherOptions/,
+  /createProxyDispatcherOptions/,
+  /createSocks5ProxyAgent/,
+  /new\s+undici\.(Agent|ProxyAgent)/,
+  /undici\.fetch/,
+  /getOnethingNetworkDispatcherCacheKey/,
+  /normalizeOnethingHostname/,
+  /normalizeOnethingProxySettings/,
+  /normalizeOnethingNetworkInterfaceSettings/,
+  /shouldBindOnethingProxyConnection/,
+  /function\s+normalizeProxySettings/,
+  /function\s+normalizeNetworkInterfaceSettings/,
+  /function\s+splitBypassRules/,
+  /function\s+hostnameMatchesRule/,
+  /function\s+dispatcherKey/,
+  /function\s+normalizeHostname/,
+  /function\s+isLoopbackHostname/,
+  /function\s+shouldBindProxyConnection/,
+]
+
+const MAIN_MODEL_REGISTRY_REFRESH_FORBIDDEN_PATTERNS: RegExp[] = [
+  /createOnethingModelEntriesFromModelsDev/,
+  /createOnethingModelEntriesFromOpenRouterModels/,
+  /getOnethingModelsDevProviderId/,
+  /ONETHING_MODELS_DEV_API/,
+  /modelsLastFetched\s*=/,
+  /Object\.keys\(providers\)\.filter/,
+  /No models\.dev data/,
+]
+
+const MAIN_MODELS_IPC_PRESENTATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /detectModelCapabilities/,
+  /function\s+mergeModelsById/,
+  /function\s+getConfiguredCodexModelIds/,
+  /Not logged in to GitHub Copilot/,
+  /request\.providerId\s*===/,
+  /const\s+inputModalities\s*=\s*\['text'\]/,
+  /const\s+outputModalities\s*=\s*\['text'\]/,
+  /context_length:\s*128000/,
+  /providerMetadata:\s*\{/,
+]
+
+const MAIN_MODELS_IPC_QUERY_PRESENTATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Failed to get all models/,
+  /Failed to search models/,
+  /Failed to refresh model registry/,
+  /Failed to get model name aliases/,
+  /Failed to get model display name/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+  /const\s+models\s*=\s*await\s+modelRegistry\.getAllModels\(\)/,
+  /const\s+models\s*=\s*await\s+modelRegistry\.searchModels/,
+  /await\s+modelRegistry\.forceRefresh\(\)/,
+  /const\s+aliases\s*=\s*modelRegistry\.getModelNameAliases\(\)/,
+  /const\s+displayName\s*=\s*modelRegistry\.getModelDisplayName/,
+  /return\s+\{\s*success:\s*true,\s*models\s*\}/,
+  /return\s+\{\s*success:\s*true,\s*aliases\s*\}/,
+  /return\s+\{\s*success:\s*true,\s*displayName\s*\}/,
+]
+
+const MAIN_MCP_IPC_SERVER_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /uuidv4/,
+  /config\.id\s*=\s*uuidv4\(\)/,
+  /mcpSettings\.servers\.push/,
+  /const\s+index\s*=\s*mcpSettings\.servers\.findIndex/,
+  /mcpSettings\.servers\[index\]\s*=\s*config/,
+  /mcpSettings\.servers\s*=\s*mcpSettings\.servers\.filter/,
+  /const\s+config\s*=\s*mcpSettings\.servers\.find/,
+  /JSON\.parse\(JSON\.stringify\(serverState\)\)/,
+  /status:\s*['"]disconnected['"]/,
+]
+
+const MAIN_MCP_IPC_CAPABILITY_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+tools\s*=\s*MCPManager\.getAllTools\(\)/,
+  /const\s+resources\s*=\s*MCPManager\.getAllResources\(\)/,
+  /const\s+prompts\s*=\s*MCPManager\.getAllPrompts\(\)/,
+  /const\s+result\s*=\s*await\s+MCPManager\.callTool/,
+  /const\s+result\s*=\s*await\s+MCPManager\.readResource/,
+  /const\s+result\s*=\s*await\s+MCPManager\.getPrompt/,
+  /content:\s*result\.content/,
+  /isError:\s*result\.isError/,
+  /messages:\s*result\.messages/,
+]
+
+const MAIN_MCP_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Failed to get servers/,
+  /Failed to add server/,
+  /Failed to update server/,
+  /Failed to remove server/,
+  /Failed to connect server/,
+  /Failed to disconnect server/,
+  /Failed to refresh server/,
+  /Failed to get tools/,
+  /Failed to call tool/,
+  /Failed to get resources/,
+  /Failed to read resource/,
+  /Failed to get prompts/,
+  /Failed to get prompt/,
+  /Failed to read config file/,
+  /File not found/,
+  /JSON\.parse\(content\)/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+]
+
+const MAIN_MCP_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_SESSIONS_IPC_BRANCH_FORBIDDEN_PATTERNS: RegExp[] = [
+  /createOnethingBranchSession</,
+  /parentSession\.messages\.findIndex/,
+  /branchName\s*=\s*`\$\{parentSession\.name\} \(Branch\)`/,
+  /inheritedMessages\s*=\s*parentSession\.messages/,
+  /\.slice\(0,\s*messageIndex\s*\+\s*1\)/,
+  /Message not found/,
+  /Parent session not found/,
+  /sanitizeOnethingSessionForRenderer/,
+  /Error creating branch/,
+  /Failed to create branch/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+]
+
+const MAIN_SESSIONS_IPC_UPDATE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+success\s*=\s*store\.updateSessionModel/,
+  /const\s+nextAgentId\s*=\s*agentId\s*\|\|/,
+  /Agent not found/,
+  /const\s+allowed:\s*PermissionMode\[\]/,
+  /Invalid permission mode/,
+]
+
+const MAIN_SESSIONS_IPC_WORKDIR_FORBIDDEN_PATTERNS: RegExp[] = [
+  /workingDirectory === null/,
+  /workingDirectory === ['"]{2}/,
+  /Not a directory:/,
+  /Directory does not exist:/,
+  /fs\.stat\(workingDirectory\)/,
+  /workdirGateway\.write\(sessionId,\s*workingDirectory/,
+]
+
+const MAIN_SESSIONS_IPC_SYSTEM_MARKER_FORBIDDEN_PATTERNS: RegExp[] = [
+  /session\.messages\.find/,
+  /m\.role === ['"]system['"]/,
+  /content\.includes\(['"]\\"type\\":/,
+  /removedId:\s*existing\.id/,
+]
+
+const MAIN_SESSIONS_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Failed to get sessions list/,
+  /Failed to activate session/,
+  /Failed to get messages/,
+  /Failed to get user markers/,
+  /Failed to get session token usage/,
+  /Failed to add message/,
+  /Failed to remove message/,
+  /return\s+\{\s*success:\s*false,\s*error:\s*['"]Session not found['"]\s*\}/,
+  /messageCount:\s*session\.messageCount\s*\?\?/,
+  /sanitizeOnethingMessagesForRenderer/,
+  /return\s+\{\s*success:\s*true,\s*session:\s*sanitizeOnethingSessionForRenderer\(session\)/,
+  /deletedCount:\s*result\.deletedIds\.length/,
+  /const\s+usage\s*=\s*getSessionUsage\(sessionId\)/,
+  /return\s+\{\s*success:\s*true,\s*usage\s*\}/,
+]
+
+const MAIN_SESSIONS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_SESSION_USAGE_FACADE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /store\.updateSessionTokenUsage\(sessionId,\s*usage,\s*lastTurnUsage\)/,
+  /totalInputTokens:\s*usage\?\.totalInputTokens\s*\?\?\s*0/,
+  /totalOutputTokens:\s*usage\?\.totalOutputTokens\s*\?\?\s*0/,
+  /totalTokens:\s*usage\?\.totalTokens\s*\?\?\s*0/,
+  /maxTokens:\s*128000/,
+  /lastInputTokens:\s*usage\?\.lastInputTokens\s*\?\?\s*0/,
+  /contextSize:\s*usage\?\.contextSize\s*\?\?\s*0/,
+  /No-op:\s*session file deletion handles this/,
+]
+
+const MAIN_SESSION_MESSAGE_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /applySessionAppendMessageWithAdapters/,
+  /applySessionDeleteMessageWithAdapters/,
+  /applySessionInsertMessageAfterWithAdapters/,
+  /applySessionMessageMutationWithAdapters/,
+  /applySessionMessageStepsUsageByTurnWithAdapters/,
+  /applySessionTruncateMessagesWithAdapters/,
+  /applySessionUpdateMessageAndTruncateWithAdapters/,
+  /patchSessionMessage/,
+  /appendSessionMessageContentPart/,
+  /addOrUpdateSessionMessageStep/,
+  /updateSessionMessageStep/,
+  /getSessionTokenUsageSnapshot/,
+  /pendingSqliteMessageSyncs/,
+  /function\s+syncMessageToSqliteIfReady/,
+  /function\s+logSubtractedMessageUsage/,
+]
+
+const MAIN_RENDERER_SANITIZER_FORBIDDEN_PATTERNS: RegExp[] = [
+  /message-sanitizer/,
+  /provider-data/,
+  /sanitizeContentParts/,
+  /contentParts.*filter/,
+]
+
+const MAIN_CHAT_IPC_LEGACY_STREAM_FORBIDDEN_PATTERNS: RegExp[] = [
+  /_handleSendMessageStream/,
+  /_handleEditAndResendStream/,
+  /executeMessageStream/,
+  /resolvePromptReferences/,
+  /buildHistoryMessages/,
+  /mediaLibraryService/,
+  /getEffectiveProviderConfig/,
+  /resolveConfigWithAuth/,
+]
+
+const MAIN_CHAT_IPC_TITLE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /settings\.tools\?\.toolCallModel/,
+  /settings\.ai\.providers/,
+  /configuredProviderId/,
+  /configuredModel/,
+  /userMessage\.slice\(0,\s*30\)/,
+  /return\s+\{\s*success:\s*true,\s*title:\s*result\.title\s*\}/,
+]
+
+const MAIN_CHAT_IPC_PROVIDER_ERROR_FORBIDDEN_PATTERNS: RegExp[] = [
+  /type\s+ProviderErrorDetails/,
+  /ProviderErrorDetails/,
+  /extractErrorDetails/,
+  /function\s+caughtErrorMessage/,
+  /function\s+caughtErrorDetails/,
+  /responseBody:\s*'responseBody'\s+in\s+error/,
+]
+
+const MAIN_CHAT_IPC_SESSION_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+session\s*=\s*store\.getSession\(sessionId\)/,
+  /session\.messages/,
+  /store\.updateMessageThinkingTime\(sessionId,\s*messageId,\s*thinkingTime\)/,
+  /const\s+updated\s*=\s*store\.updateMessageThinkingTime/,
+  /success:\s*updated/,
+]
+
+const MAIN_CHAT_IPC_ACTIVE_STREAMS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /let\s+engineSessionIds/,
+  /engineSessionIds\s*=\s*getStreamEngine\(\)\.getActiveSessionIds\(\)/,
+  /new Set\(\[\.\.\.activeStreams\.keys\(\),\s*\.\.\.engineSessionIds\]\)/,
+]
+
+const MAIN_CHAT_IPC_SYSTEM_PROMPT_SNAPSHOT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /snapshot:\s*await\s+buildSystemPromptSnapshot\(sessionId\)/,
+  /Failed to build system prompt snapshot/,
+  /\[Chat\]\s+Failed to build system prompt snapshot/,
+]
+
+const MAIN_CHAT_IPC_ABORT_CLEANUP_FORBIDDEN_PATTERNS: RegExp[] = [
+  /cancelOnethingStreamingStepsForAbort/,
+  /cancelPendingSteps/,
+  /awaiting-confirmation/,
+  /stream:complete/,
+  /step:updated/,
+  /streamingMessage/,
+  /step\.status/,
+  /step\.toolCall/,
+  /for\s*\(const\s+step/,
+  /activeStreams\.size\s*>\s*0/,
+  /activeStreams\.clear\(\)/,
+  /for\s*\(const\s+\[sid,\s*controller\]\s+of\s+activeStreams/,
+]
+
+const MAIN_CHAT_IPC_RESUME_CONFIRM_FORBIDDEN_PATTERNS: RegExp[] = [
+  /handleResumeAfterToolConfirm/,
+  /process\.nextTick/,
+  /Resuming after tool confirm for session/,
+  /completedToolCalls/,
+  /pendingToolCalls/,
+  /No completed tool calls to process/,
+  /Still have pending tool calls awaiting confirmation/,
+  /content:continuation/,
+  /Assistant message not found/,
+  /toolCalls\.filter/,
+]
+
+const MAIN_CHAT_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_TOOLS_IPC_TOOL_CALL_UPDATE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /message\.toolCalls\.map/,
+  /toolCalls\s*=\s*message\.toolCalls/,
+  /updates\.status\s*===/,
+  /awaiting-confirmation/,
+  /JSON\.stringify\(updates\.result\)/,
+  /toolCall:\s*\{\s*\.\.\.step\.toolCall/,
+  /Message or tool calls not found/,
+  /Failed to update tool call/,
+  /Error updating tool call/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+]
+
+const MAIN_TOOLS_IPC_LIST_PRESENTATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /sessionsList\.length/,
+  /firstSession/,
+  /allTools\s*=\s*await/,
+  /startsWith\(["']mcp:/,
+  /startsWith\(["']plugin:/,
+  /builtinTools/,
+  /mcpRouterTool/,
+  /source:\s*["']mcp["']/,
+  /Failed to get tools/,
+  /Error getting tools/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+  /success:\s*true,\s*tools/,
+]
+
+const MAIN_TOOLS_IPC_EXECUTION_CONTEXT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Get session's workingDirectory/,
+  /session\?\.workingDirectory/,
+  /workingDirectoryRoots\s*=\s*session/,
+  /const\s+context:\s*ToolExecutionContext/,
+  /executeTool\(toolId,\s*args,\s*context\)/,
+  /Failed to execute tool/,
+  /Error executing tool/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+]
+
+const MAIN_TOOLS_IPC_REFRESH_ASYNC_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Refreshing async tools/,
+  /setInitContext\(\{\s*workingDirectory/,
+  /await\s+initializeAsyncTools\(\)/,
+  /Failed to refresh async tools/,
+  /Error refreshing async tools/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+]
+
+const MAIN_TOOLS_IPC_BACKGROUND_JOBS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Cancel tool requested/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+  /success:\s*true,\s*jobs:/,
+  /success:\s*stopBackgroundJob/,
+  /Failed to list background jobs/,
+  /Failed to stop background job/,
+]
+
+const MAIN_TOOLS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_SETTINGS_IPC_SAVE_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"].*\b(dialog|BrowserWindow|nativeTheme)\b/,
+  /BrowserWindow\.getFocusedWindow/,
+  /BrowserWindow\.getAllWindows/,
+  /nativeTheme\.shouldUseDarkColors/,
+  /nativeTheme\.on\(['"]updated['"]/,
+  /dialog\.showOpenDialog/,
+  /webContents\.send\(IPC_CHANNELS\.(SYSTEM_THEME_CHANGED|SETTINGS_CHANGED)/,
+  /return\s+\{\s*success:\s*true,\s*settings:\s*store\.getSettings\(\)\s*\}/,
+  /return\s+\{\s*success:\s*true,\s*theme:\s*isDark\s*\?\s*['"]dark['"]\s*:\s*['"]light['"]\s*\}/,
+  /return\s+\{\s*success:\s*true,\s*interfaces:\s*listNetworkInterfaces\(\)\s*\}/,
+  /Failed to list network interfaces\./,
+  /store\.saveSettings\(settings\)/,
+  /const\s+normalizedSettings\s*=\s*store\.getSettings\(\)/,
+  /invalidateProviderCache\(\)/,
+  /applyNetworkProxySettings\(normalizedSettings\.network\?\.proxy\)/,
+  /MCPManager\.updateSettings\(normalizedSettings\.mcp/,
+  /ACPManager\.updateSettings\(normalizedSettings\.acp/,
+]
+
+const MAIN_SETTINGS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_ACP_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]uuid['"]/,
+  /errorMessage\(error/,
+  /normalizeConfig/,
+  /ACP agent command is required/,
+  /already exists/,
+  /not found/,
+  /acpSettings\.agents\.push/,
+  /acpSettings\.agents\s*=\s*acpSettings\.agents\.filter/,
+  /const\s+index\s*=\s*acpSettings\.agents\.findIndex/,
+  /acpSettings\.agents\[index\]\s*=\s*config/,
+  /return\s+\{\s*success:\s*false,\s*error:/,
+  /return\s+\{\s*success:\s*true,\s*agent:/,
+]
+
+const MAIN_ACP_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]child_process['"]/,
+  /from\s+['"]crypto['"]/,
+  /from\s+['"]fs['"]/,
+  /from\s+['"]path['"]/,
+  /from\s+['"]stream['"]/,
+  /@agentclientprotocol\/sdk/,
+  /BoundedAsyncQueue/,
+  /class\s+ACPClient/,
+  /class\s+ACPManagerClass/,
+  /spawn\(this\.config\.command/,
+  /ClientSideConnection/,
+  /ndJsonStream/,
+  /createTerminal/,
+  /readTextFile/,
+  /writeTextFile/,
+  /setInterval/,
+]
+
+const MAIN_ACP_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_PLUGINS_IPC_LIST_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /plugins\.map/,
+  /definition\.manifest\.name/,
+  /definition\.manifest\.version/,
+  /definition\.manifest\.description/,
+  /definition\.manifest\.author/,
+  /needsInstall:\s*p\.definition\.needsInstall/,
+  /commands:\s*p\.commands/,
+]
+
+const MAIN_PLUGINS_IPC_COMMAND_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /getPluginCommands\(\)\.values\(\)\)\.map/,
+  /command\.name\.replace/,
+  /description:\s*command\.description\s*\|\|/,
+  /usage:\s*command\.usage\s*\|\|/,
+]
+
+const MAIN_PLUGINS_IPC_COMMAND_EXECUTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /request\.commandName\.startsWith\(['"]\/['"]\)/,
+  /manager\.getCommandHandler\(commandName\)/,
+  /Unknown plugin command: \$\{commandName\}/,
+  /lastNotification/,
+  /command\.handler\(request\.args/,
+  /type:\s*['"]command:inject-steering['"]/,
+  /type:\s*['"]command:inject-followup['"]/,
+  /type:\s*['"]plugin:notification['"]/,
+  /source:\s*`plugin-command:\$\{commandName\}`/,
+  /cwd:\s*session\?\.workingDirectory/,
+  /lastNotification\s*\|\|\s*`\$\{commandName\} completed`/,
+]
+
+const MAIN_PLUGINS_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /Plugin system not initialized/,
+  /Failed to list plugins/,
+  /Failed to enable plugin/,
+  /Failed to disable plugin/,
+  /Failed to refresh plugins/,
+  /Failed to list plugin commands/,
+  /Failed to execute plugin command/,
+  /return\s+\{\s*success:\s*true/,
+  /success:\s*false,\s*error/,
+]
+
+const MAIN_PLUGINS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+]
+
+const MAIN_LOG_MONITOR_PLUGIN_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]zod['"]/,
+  /CORE_LOG_MONITOR_DEFAULT_/,
+  /CORE_LOG_MONITOR_MANIFEST/,
+  /createCoreLogMonitorFileDiskAdapters/,
+  /ensureCoreLogMonitorDirectory/,
+  /registerCoreLogMonitorPlugin/,
+  /searchToolParameters:\s*z\.object/,
+  /diskWriterOptions:/,
+]
+
+const MAIN_NOTE_SKILLS_PLUGIN_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"](?:node:)?fs['"]/,
+  /from\s+['"](?:node:)?os['"]/,
+  /from\s+['"](?:node:)?path['"]/,
+  /findObsidianVaultRoot/,
+  /readObsidianAppConfig/,
+  /resolveConfiguredNoteAttachmentDirectory/,
+  /resolveNoteSkillRootDirs/,
+  /buildNoteSkillRootDescriptors/,
+  /function\s+expandNoteSkillHome/,
+  /function\s+normalizeNoteSkillDir/,
+]
+
+const MAIN_SKILLS_IPC_RUNTIME_CACHE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /skillsCache\s*:/,
+  /skillsCache\s*=\s*loadAllSkills/,
+  /skillsCacheByDir/,
+  /loadProjectSkillsForDirectory/,
+  /function\s+applySkillSettings/,
+  /function\s+mergeSkillsByPriority/,
+  /function\s+getSkillsForDirectory/,
+  /Cache MISS/,
+  /skillsCache\.find/,
+]
+
+const MAIN_SKILLS_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"].*\bshell\b/,
+  /shell\.openPath/,
+  /Failed to get skills/,
+  /Failed to refresh skills/,
+  /File not found or not readable/,
+  /Failed to read skill file/,
+  /Failed to open skill directory/,
+  /Failed to create skill/,
+  /Failed to delete skill/,
+  /Failed to toggle skill/,
+  /Skill not found/,
+  /return\s+\{\s*success:\s*true/,
+  /success:\s*false/,
+  /settings\.skills\s*=\s*\{\s*enableSkills:\s*true,\s*skills:\s*\{\}\s*\}/,
+  /settings\.skills\.skills\[skillId\]\s*=\s*\{\s*enabled\s*\}/,
+]
+
+const MAIN_SKILLS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_SKILL_MANAGE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /createTwoFilesPatch/,
+  /parseYaml/,
+  /SKILL_NAME_PATTERN/,
+  /MAX_SUPPORT_FILE_BYTES/,
+  /function\s+validateSkillMarkdown/,
+  /function\s+planSkillManage/,
+  /function\s+createPlan/,
+  /function\s+editPlan/,
+  /function\s+patchPlan/,
+  /function\s+deletePlan/,
+  /function\s+writeFilePlan/,
+  /function\s+removeFilePlan/,
+  /function\s+supportFiles/,
+  /function\s+removeEmptyParentDirectories/,
+]
+
+const MAIN_SKILLS_LOADER_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /require\(['"]electron['"]\)/,
+  /createRequire\b/,
+  /app\.isPackaged/,
+  /process\.resourcesPath/,
+  /interface\s+SkillFrontmatter/,
+  /parseYaml/,
+  /function\s+parseFrontmatter/,
+  /function\s+scanSkillFiles/,
+  /function\s+skillIdFor/,
+  /function\s+loadSkillFromDirectory/,
+  /function\s+loadSkillsFromPath/,
+  /function\s+loadBuiltinSkills/,
+  /function\s+loadPluginRootSkills/,
+  /function\s+loadProjectSkillsForDirectoryWithPaths/,
+  /EXCLUDED_DIRECTORIES/,
+  /EXCLUDED_FILES/,
+  /ONETHING_SKILLS_CONFIG_FILENAME/,
+]
+
+const MAIN_SQLITE_REPOSITORY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /better-sqlite3/,
+  /createSessionDatabaseConnection/,
+  /CoreSqliteSessionMigrationTracker/,
+  /applySqliteSchemaMigrationsWithAdapters/,
+  /runSqliteSessionMigrationWithAdapters/,
+  /applySqliteFullSessionWritePlanWithAdapters/,
+  /importSqliteSessionIndexWithAdapters/,
+  /sqliteFullSessionWritePlan/,
+  /sqliteMessageParams/,
+  /sqliteSessionMetadataParams/,
+  /sqliteSessionInsertParams/,
+  /sqliteSessionUsageParams/,
+  /syncSqliteMessageWithReadyAdapters/,
+  /upsertSqliteMessageAndTruncateWithAdapters/,
+  /SQLITE_[A-Z0-9_]+_SQL/,
+  /SESSION_REPOSITORY_MIGRATIONS/,
+  /interface\s+MessageRow/,
+  /interface\s+SessionRow/,
+  /const\s+migrationTracker/,
+  /database\.prepare/,
+  /database\.transaction/,
+  /rowToMessage/,
+  /rowToSessionDetails/,
+]
+
+const MAIN_SESSIONS_SQLITE_FAILOVER_FORBIDDEN_PATTERNS: RegExp[] = [
+  /sqliteDisabledAfterError/,
+  /function\s+isSessionSqliteEnabled/,
+  /function\s+handleSqliteError/,
+  /function\s+runSqliteSideEffect/,
+  /SQLite unavailable during/,
+  /falling back to JSON sessions/,
+]
+
+const MAIN_MEDIA_PREVIEW_REGISTRY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /imagePreviewRecords\s*=\s*new Map/,
+  /IMAGE_PREVIEW_TTL_MS/,
+  /MAX_IMAGE_PREVIEW_RECORDS/,
+  /function\s+pruneImagePreviewRecords/,
+  /function\s+createImagePreviewRecord/,
+  /const\s+previewId\s*=\s*imagePreviewRegistry\.create/,
+  /openImagePreviewWindow\(\{\s*mode:\s*['"]single['"]/,
+  /openImagePreviewWindow\(\{\s*mode:\s*['"]gallery['"]/,
+  /srcPrefix:\s*data\.src\.substring/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+  /Image preview expired or was not found/,
+]
+
+const MAIN_MEDIA_IMAGE_DATA_URL_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]path['"]/,
+  /from\s+['"]node:path['"]/,
+  /path\.extname/,
+  /image\/jpeg/,
+  /image\/webp/,
+  /data:\$\{mimeType\};base64/,
+  /Failed to read image/,
+  /console\.error\(\s*['"]\[Media IPC\] Failed to read image/,
+]
+
+const MAIN_MEDIA_LEGACY_LIST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /mediaAssetToLegacyImage/,
+  /listAssets\(\{\s*kind:\s*['"]image['"]\s*\}\)/,
+  /fs\.existsSync\(asset\.filePath\)/,
+]
+
+const MAIN_MEDIA_SAVE_IMAGE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /mediaAssetToLegacyImage/,
+  /ingestGeneratedImage/,
+]
+
+const MAIN_MEDIA_LIBRARY_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /mediaLibraryService\.listAssets\(query\s*\|\|\s*\{\}\)/,
+  /success:\s*mediaLibraryService\.hideAsset\(id\)/,
+  /mediaLibraryService\.rebuildFromSessions\(getSessions\(\)\)/,
+  /sessions:\s*getSessions\(\)/,
+  /added:\s*0,\s*skipped:\s*0/,
+  /return\s+\{\s*success:\s*true,\s*\.\.\.result\s*\}/,
+  /mediaLibraryService\.getGallery\(data\.assetId/,
+  /return\s+mediaLibraryService\.listLegacyImages\(\)/,
+  /return\s+mediaLibraryService\.hideAsset\(id\)/,
+  /^\s*mediaLibraryService\.hideAllAssets\(\)/,
+]
+
+const MAIN_MEDIA_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_MARKDOWN_ASSET_SERVICE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /IMAGE_EXTENSIONS/,
+  /SKIP_SEARCH_DIRS/,
+  /VAULT_ASSET_INDEX_TTL_MS/,
+  /interface\s+ObsidianConfig/,
+  /interface\s+MarkdownContext/,
+  /function\s+markdownContext/,
+  /function\s+cleanRawTarget/,
+  /function\s+mimeTypeFromPath/,
+  /function\s+obsidianAttachmentDirectory/,
+  /function\s+attachmentDirectoryForContext/,
+  /function\s+candidatePaths/,
+  /function\s+buildVaultAssetIndex/,
+  /function\s+findObsidianAssetByBasename/,
+  /attachmentFolderPath/,
+  /useMarkdownLinks/,
+  /Buffer\.from\(file\.base64Data/,
+]
+
+const MAIN_MARKDOWN_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /success:\s*true/,
+  /code:\s*['"]INTERNAL['"]/,
+  /Failed to resolve Markdown asset/,
+  /Failed to save Markdown attachments/,
+]
+
+const MAIN_MARKDOWN_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+]
+
+const MAIN_THEMES_IPC_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /from\s+['"]electron['"].*\bshell\b/,
+  /shell\.openPath/,
+  /let\s+isInitialized/,
+  /initializeThemes\(\)/,
+  /loadCustomThemes\(\)/,
+  /getThemeList\(\)/,
+  /const\s+theme\s*=\s*getTheme/,
+  /const\s+cssVariables\s*=\s*applyTheme/,
+  /const\s+themes\s*=\s*refreshThemes/,
+  /const\s+themesPath\s*=\s*getThemesFolderPath/,
+  /Theme not found:/,
+  /Error opening themes folder/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+  /success:\s*false,\s*error/,
+]
+
+const MAIN_THEMES_INDEX_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]fs['"]/,
+  /from\s+['"]path['"]/,
+  /from\s+['"]os['"]/,
+  /builtinThemeMap/,
+  /customThemeMap/,
+  /function\s+getThemeDirs/,
+  /function\s+loadThemeFile/,
+  /function\s+detectColorScheme/,
+  /function\s+applyThemeInternal/,
+  /parseBase46Lua/,
+  /generateCSSVariables/,
+]
+
+const MAIN_THEMES_HELPER_IMPLEMENTATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /\.\.\/\.\.\/shared\/ipc\/themes/,
+  /from\s+['"]@ant-design\/colors['"]/,
+  /from\s+['"]culori['"]/,
+  /BASE46_HIGHLIGHT_ALIASES/,
+  /CSS_VAR_MAP/,
+  /SEMANTIC_HIGHLIGHT_TOKENS/,
+  /SEMANTIC_UI_TOKENS/,
+  /THEME_NEUTRAL_COLOR_TOKENS/,
+  /function\s+parseBase46Lua/,
+  /function\s+convertBase46ToTheme/,
+  /function\s+resolveTheme/,
+  /function\s+generateCSSVariables/,
+  /function\s+deriveSurfaceRoles/,
+  /interface\s+ThemeSurfaceRoleInput/,
+]
+
+const MAIN_WINDOW_THEME_SELECTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"].*\bnativeTheme\b/,
+  /nativeTheme\.shouldUseDarkColors/,
+  /function\s+getEffectiveTheme\b/,
+  /function\s+getEffectiveThemeId\b/,
+  /function\s+getEffectiveColorTheme\b/,
+  /settingsTheme\s*===\s*['"]system['"]/,
+  /general\?\.(darkThemeId|lightThemeId|themeId)/,
+  /DEFAULT_GENERAL_SETTINGS\.(darkThemeId|lightThemeId|themeId|colorTheme)/,
+]
+
+const MAIN_TODO_PLAN_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /from\s+['"]crypto['"]/,
+  /from\s+['"]node:crypto['"]/,
+  /from\s+['"]fs\/promises['"]/,
+  /from\s+['"]node:fs\/promises['"]/,
+  /BrowserWindow\.getAllWindows\(\)/,
+  /webContents\.send\(IPC_CHANNELS\.TODO_PLAN_CHANGED/,
+  /shell\.openPath/,
+  /createRequire/,
+  /function\s+getElectronModule/,
+  /function\s+countTasks/,
+  /function\s+safeSlug/,
+  /function\s+hashKey/,
+  /function\s+workspaceKey/,
+  /function\s+readDocument/,
+  /function\s+writeFileEnsured/,
+  /function\s+hasSubstantiveMarkdownContent/,
+  /workspace-ai-todo content is empty/,
+  /USER_NOTES_DIR/,
+  /WORKSPACES_DIR/,
+]
+
+const MAIN_TODO_PLAN_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /return\s+\{\s*success:\s*true,\s*snapshot:/,
+  /return\s+\{\s*success:\s*true,\s*document:/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+  /return\s+\{\s*success:\s*true,\s*pinned:/,
+  /Failed to read todo\/plan files/,
+  /Failed to create todo note/,
+  /Failed to update todo\/plan file/,
+  /Failed to rename todo note/,
+  /Failed to delete todo note/,
+  /Failed to open todo\/plan directory/,
+  /^\s*openTodoPlanWindow\(request\)/,
+  /^\s*hideTodoPlanWindow\(request\)/,
+  /^\s*toggleTodoPlanWindow\(request\)/,
+  /setTodoPlanWindowPinned\(request\.pinned\)/,
+]
+
+const MAIN_TODO_PLAN_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_VOICE_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /success:\s*true,\s*state:\s*getVoiceService\(\)\.getState\(\)/,
+  /Attach or record audio before testing ASR\./,
+  /ASR test failed\./,
+  /TTS test failed\./,
+  /Voice test succeeded\./,
+  /Failed to load TTS models\./,
+  /return\s+\{\s*success:\s*true,\s*transcript:/,
+  /return\s+\{\s*success:\s*true,\s*models:/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+  /const\s+transcript\s*=\s*await\s+transcribeUtterance/,
+  /const\s+result\s*=\s*await\s+getOpenRouterTTSModels/,
+  /^\s*getVoiceService\(\)\.handleRuntimeReady\(event\.sender\)/,
+  /^\s*getVoiceService\(\)\.handleRuntimeEvent\(runtimeEvent\)/,
+]
+
+const MAIN_VOICE_PROVIDER_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /https:\/\/api\.openai\.com\/v1\/audio/,
+  /https:\/\/openrouter\.ai\/api\/v1\/audio/,
+  /https:\/\/openrouter\.ai\/api\/v1\/models/,
+  /function\s+getOpenAIKey/,
+  /function\s+getOpenRouterKey/,
+  /function\s+base64ToBlob/,
+  /function\s+audioFormatFromMimeType/,
+  /function\s+streamSpeechEndpoint/,
+  /function\s+normalizeAudioMimeType/,
+  /OpenRouterSpeechModel/,
+  /response\.body\.getReader/,
+  /settings\.asr\.provider\s*===/,
+  /settings\.tts\.provider\s*===/,
+  /new\s+FormData\(/,
+]
+
+const MAIN_VOICE_SERVICE_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /\.\.\/\.\.\/shared\/voice/,
+  /shared\/voice\/segmenter/,
+  /shared\/voice\/tts-stream/,
+  /function\s+isWebSpeechWakeFailure/,
+  /function\s+normalizeVoiceError/,
+  /function\s+isMissingCloudTTSConfiguration/,
+  /function\s+getTTSModelName/,
+  /lastError:\s*status\s*===\s*['"]error['"]/,
+  /this\.state\.lastError\s*=/,
+  /this\.state\.lastMilestone\s*=/,
+  /at:\s*Date\.now\(\)/,
+  /OpenRouter transcription failed \(401\)/,
+  /OpenAI transcription failed \(401\)/,
+  /Qwen\/CosyVoice base URL is required/,
+  /Wake phrase listener could not access a microphone/,
+]
+
+const SHARED_STREAM_CHUNK_PROTOCOL_FORBIDDEN_PATTERNS: RegExp[] = [
+  /interface\s+TextDeltaChunk/,
+  /type\s+ReasoningPlacement\s*=/,
+  /interface\s+ReasoningDeltaChunk/,
+  /interface\s+ToolInputDeltaChunk/,
+  /type\s+StreamChunk\s*=/,
+]
+
+const SHARED_JSON_PROTOCOL_FORBIDDEN_PATTERNS: RegExp[] = [
+  /type\s+JsonPrimitive\s*=/,
+  /type\s+JsonValue\s*=/,
+  /type\s+JsonObjectProperty\s*=/,
+  /interface\s+JsonObject/,
+  /type\s+JsonArray\s*=/,
+  /interface\s+JsonSchemaObject/,
+  /function\s+isJsonObject/,
+  /function\s+parseJsonObject/,
+  /function\s+toJsonValue/,
+  /function\s+toJsonObject/,
+  /function\s+toJsonSchemaObject/,
+]
+
+const SHARED_IPC_ROUTER_FORBIDDEN_PATTERNS: RegExp[] = [
+  /type\s+RoutePayload\s*=/,
+  /interface\s+RouteConfig/,
+  /type\s+DomainRoutes\s*=/,
+  /interface\s+Router/,
+  /type\s+RouteHandlers\s*=/,
+  /type\s+RouteAPI\s*=/,
+  /function\s+toKebab/,
+  /function\s+getChannelName/,
+  /function\s+defineRouter/,
+]
+
+const SHARED_VOICE_TEXT_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+SENTENCE_END_RE/,
+  /function\s+findLowLatencyBreak/,
+  /function\s+applyTag/,
+  /return\s+chunk\.text\s*\|\|\s*chunk\.voiceSpeakText/,
+]
+
+const MAIN_VOICE_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_SEARCH_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /isSearchCategory/,
+  /const\s+category\s*=\s*isSearchCategory/,
+  /const\s+results\s*=\s*await\s+executeSearch/,
+  /return\s+\{\s*success:\s*true,\s*results\s*\}/,
+  /^\s*closeSearchWindow\(\)/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+]
+
+const SHARED_SEARCH_CATEGORY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /const\s+SEARCH_CATEGORIES\s*=\s*\[/,
+  /type\s+SearchCategory\s*=\s*typeof\s+SEARCH_CATEGORIES/,
+  /function\s+isSearchCategory/,
+  /SEARCH_CATEGORIES\.includes/,
+]
+
+const MAIN_SEARCH_PROVIDER_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /switch\s*\(category\)/,
+  /case\s+['"]all['"]/,
+  /const\s+includeDaily\s*=\s*Boolean\(normalizeQuery\(query\)\)/,
+  /const\s+\[chats,\s*messages,\s*files,\s*daily,\s*prompts,\s*actions\]/,
+  /query\.trim\(\)\.startsWith\(['"]\/['"]\)/,
+  /\[\.\.\.actions,\s*\.\.\.prompts,\s*\.\.\.chats/,
+  /\[\.\.\.chats,\s*\.\.\.prompts,\s*\.\.\.daily/,
+  /function\s+normalizeQuery/,
+  /function\s+searchChats/,
+  /function\s+searchMessages/,
+  /function\s+searchPrompts/,
+  /function\s+getSearchDirs/,
+  /async\s+function\s+searchFiles/,
+  /async\s+function\s+getDailyNoteProfiles/,
+  /async\s+function\s+searchDailyNotes/,
+  /DEFAULT_DAILY_FORMAT/,
+  /readObsidianDailyProfile/,
+  /formatDailyDate/,
+  /parseDateFromPath/,
+]
+
+const MAIN_HEADLESS_CLI_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /getSessionsList\(\)\.map\(session\s*=>\s*\(\{/,
+  /Object\.entries\(settings\.ai\.providers\s*\|\|\s*\{\}\)\.map/,
+  /settings\.ai\.providers\[providerId\]\s*=/,
+  /settings\.ai\.provider\s*=\s*providerId/,
+  /Object\.keys\(provider\.models\s*\|\|\s*\{\}\)/,
+  /tools\.map\(tool\s*=>\s*\(\{/,
+  /settings\.tools\.tools\[toolId\]\s*=/,
+  /settings\.tools\.permissionMode\s*=\s*mode/,
+]
+
+const MAIN_PROMPTS_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]zod['"]/,
+  /PROMPT_SCHEMA/,
+  /PROMPTS_FILE_SCHEMA/,
+  /interface\s+PromptsFile/,
+  /let\s+promptsCache/,
+  /let\s+promptsPathOverride/,
+  /function\s+normalizeTags/,
+  /function\s+cleanPrompt/,
+  /function\s+parsePromptsFile/,
+  /function\s+loadFromDisk/,
+  /function\s+saveToDisk/,
+  /function\s+getState/,
+  /function\s+persist/,
+  /crypto\.randomUUID\(\)/,
+]
+
+const MAIN_PROMPTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+errorMessage/,
+  /return\s+\{\s*success:\s*true,\s*prompts:\s*listPrompts\(\)\s*\}/,
+  /Prompt not found/,
+  /Title is required/,
+  /return\s+\{\s*success:\s*true,\s*prompt/,
+  /return\s+\{\s*success:\s*deletePrompt\(request\.id\)\s*\}/,
+  /Failed to list prompts/,
+  /Failed to read prompt/,
+  /Failed to create prompt/,
+  /Failed to update prompt/,
+  /Failed to delete prompt/,
+]
+
+const MAIN_PROMPTS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+]
+
+const MAIN_PROJECT_DIRS_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]crypto['"]/,
+  /from\s+['"]node:crypto['"]/,
+  /from\s+['"]fs['"]/,
+  /from\s+['"]node:fs['"]/,
+  /from\s+['"]os['"]/,
+  /from\s+['"]node:os['"]/,
+  /from\s+['"]zod['"]/,
+  /PROJECT_INDEX_SCHEMA/,
+  /PROJECT_SCHEMA/,
+  /class\s+ProjectsStore/,
+  /function\s+projectIdFromPath/,
+  /function\s+canonicalize/,
+  /function\s+loadIndex/,
+  /function\s+saveIndex/,
+  /function\s+loadProject/,
+  /function\s+saveProject/,
+  /function\s+deleteProject/,
+  /ROOT_DIR/,
+  /DATA_DIR/,
+  /buildProjectDirsPromptVars/,
+  /function\s+resolveActive/,
+  /function\s+resolveKnown/,
+]
+
+const MAIN_PROJECT_DIRS_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+toRecord/,
+  /function\s+toErrorPayload/,
+  /description:\s*project\?\.description\s*\?\?\s*['"]/,
+  /return\s+\{\s*success:\s*true,\s*entries\s*\}/,
+  /return\s+\{\s*success:\s*true,\s*project:/,
+  /No project for path/,
+  /code:\s*['"]NOT_FOUND['"]/,
+  /Unknown project-dirs error/,
+  /code:\s*['"]INTERNAL['"]/,
+]
+
+const MAIN_PROJECT_DIRS_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+]
+
+const MAIN_VARIABLES_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]zod['"]/,
+  /VARIABLES_FILE_SCHEMA/,
+  /GLOBAL_VARIABLE_SCHEMA/,
+  /class\s+VariablesStore/,
+  /function\s+createDefaultVariablesFile/,
+  /function\s+parseVariablesFile/,
+  /function\s+migrateReservedGlobals/,
+  /function\s+formatVariablesForPrompt/,
+  /function\s+assertValidName/,
+  /function\s+assertValidValue/,
+  /function\s+findDuplicateNames/,
+  /const\s+RESERVED_NAMES/,
+  /const\s+VARIABLE_LIMITS/,
+  /class\s+VariableError/,
+  /class\s+VariableRegistry/,
+  /class\s+CoreProvider/,
+  /class\s+NotesProvider/,
+  /class\s+SessionStoreProvider/,
+  /class\s+GlobalStoreProvider/,
+  /writeChains/,
+  /function\s+uniqueRoots/,
+  /resolveExistingDirectory/,
+  /interface\s+WorkdirGateway/,
+  /interface\s+NotesGateway/,
+  /interface\s+SessionStoreGateway/,
+  /interface\s+GlobalStoreGateway/,
+  /private\s+findClaimant/,
+  /private\s+serialize/,
+  /private\s+persistAndNotify/,
+]
+
+const MAIN_VARIABLES_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+toErrorPayload/,
+  /VariableError/,
+  /return\s+\{\s*success:\s*true,\s*variables\s*\}/,
+  /return\s+\{\s*success:\s*true,\s*variable\s*\}/,
+  /return\s+\{\s*success:\s*true\s*\}/,
+  /Unknown variable error/,
+  /code:\s*['"]INTERNAL['"]/,
+]
+
+const MAIN_VARIABLES_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+]
+
+const MAIN_MEMORY_REVIEW_FORBIDDEN_PATTERNS: RegExp[] = [
+  /countMemoryReviewUserTurns/,
+  /formatMemoryReviewConversation\s+as\s+formatCoreMemoryReviewConversation/,
+  /getMemoryReviewProgress\s+as\s+getCoreMemoryReviewProgress/,
+  /parseMemoryReviewModelResult\s+as\s+parseCoreMemoryReviewModelResult/,
+  /function\s+asCoreMessages/,
+  /function\s+countUserTurns/,
+  /function\s+getMemoryReviewProgress/,
+  /function\s+parseMemoryReviewModelResult/,
+  /function\s+formatMemoryReviewConversation/,
+  /coreApplyMemoryReviewCandidate/,
+  /coreBuildSoulMemoryReviewInputWithAdapters/,
+  /coreRunSoulMemoryReview/,
+  /coreResolveSoulMemoryPlainReviewFilePath/,
+  /memoryReviewLastTurnKey\s+as\s+coreMemoryReviewLastTurnKey/,
+  /splitHermesMemoryEntries/,
+  /readPlain:\s*target\s*=>\s*readPlainReviewFile\(workspace,\s*target\)/,
+  /readHermes:\s*async\s+target/,
+  /applyCandidate:\s*\(candidate,\s*minConfidence\)/,
+]
+
+const MAIN_MEMORY_HERMES_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]node:fs['"]/,
+  /from\s+['"]node:fs\/promises['"]/,
+  /CORE_HERMES_MEMORY_DELIMITER/,
+  /CORE_HERMES_USER_MEMORY_FILENAME/,
+  /CORE_HERMES_LONG_TERM_MEMORY_FILENAME/,
+  /function\s+getHermesMemoryFile/,
+  /function\s+splitHermesMemoryEntries/,
+  /function\s+readRaw/,
+  /function\s+readHermesMemoryFile/,
+  /function\s+addHermesMemoryEntry/,
+  /function\s+replaceHermesMemoryText/,
+  /function\s+removeHermesMemoryText/,
+  /function\s+getHermesMemoryStatus/,
+  /function\s+buildHermesMemoryPromptFragment/,
+]
+
+const MAIN_MEMORY_DIAGNOSTICS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]node:crypto['"]/,
+  /from\s+['"]node:fs['"]/,
+  /from\s+['"]node:fs\/promises['"]/,
+  /toJsonObject/,
+  /const\s+DEFAULT_CONFIG/,
+  /const\s+LEVEL_WEIGHT/,
+  /SENSITIVE_KEY_RE/,
+  /SENSITIVE_QUERY_RE/,
+  /MAX_BUFFER/,
+  /FLUSH_INTERVAL_MS/,
+  /CLEANUP_INTERVAL_MS/,
+  /function\s+dayKey/,
+  /function\s+safeJson/,
+  /function\s+sanitizeUrlForMemoryLog/,
+  /function\s+sanitizeForMemoryLog/,
+  /function\s+cleanError/,
+  /function\s+requestMeta/,
+  /function\s+responsePreview/,
+  /function\s+parseLogLine/,
+  /private\s+queueWrite/,
+  /private\s+flush/,
+  /private\s+ensureCleanupTimer/,
+  /private\s+listLogFiles/,
+  /private\s+readRecentEntries/,
+  /private\s+matches/,
+]
+
+const MAIN_MEMORY_TYPES_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"].*shared\/ipc/,
+  /interface\s+MemoryWorkspace/,
+  /interface\s+MemoryChunk/,
+  /interface\s+MemoryIndexFile/,
+  /interface\s+SearchHit/,
+  /type\s+CaptureCandidateKind/,
+  /interface\s+CaptureCandidate/,
+  /interface\s+CanonicalMemoryInput/,
+  /interface\s+CanonicalUpsertResult/,
+  /interface\s+GraphEvidenceInput/,
+  /interface\s+GraphEntityInput/,
+  /interface\s+GraphObservationInput/,
+  /interface\s+GraphRelationInput/,
+  /interface\s+GraphMergeResult/,
+  /interface\s+DreamingSource/,
+  /interface\s+IndexStatus/,
+  /import\('\.\.\/\.\.\/shared\/ipc\.js'\)/,
+]
+
+const MAIN_MEMORY_DATABASE_CANONICAL_GRAPH_FORBIDDEN_PATTERNS: RegExp[] = [
+  /better-sqlite3/,
+  /from\s+['"].*shared\/ipc/,
+  /from\s+['"].*shared\/json/,
+  /CREATE TABLE IF NOT EXISTS/,
+  /CREATE VIRTUAL TABLE/,
+  /canonical_memories/,
+  /memory_entities/,
+  /memory_observations/,
+  /memory_relations/,
+  /memory_possible_duplicates/,
+  /memory_events/,
+  /function\s+getDb/,
+  /function\s+ensureFtsTable/,
+  /function\s+ensureCanonicalFtsTable/,
+  /function\s+ensureGraphFtsTable/,
+  /function\s+syncCanonicalFts/,
+  /function\s+appendCanonicalAudit/,
+  /function\s+findCanonicalDuplicate/,
+  /function\s+upsertCanonicalMemory/,
+  /function\s+upsertCanonicalCandidates/,
+  /function\s+listCanonicalMemories/,
+  /function\s+buildCanonicalProfileSummary/,
+  /function\s+buildGraphProfileSummary/,
+  /function\s+appendMemoryEvent/,
+  /function\s+appendGraphEvidence/,
+  /function\s+syncGraphFts/,
+  /function\s+ensureUserSelfEntity/,
+  /function\s+upsertGraphEntity/,
+  /function\s+upsertGraphObservation/,
+  /function\s+upsertGraphRelation/,
+  /function\s+upsertGraphCandidates/,
+  /function\s+mergeGraphMemory/,
+]
+
+const MAIN_MEMORY_IPC_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"].*\bshell\b/,
+  /shell\.openPath/,
+  /toJsonObject/,
+  /function\s+errorMessage/,
+  /function\s+withMemoryIpcLog/,
+  /try\s*\{/,
+  /catch\s*\(error\)/,
+  /success:\s*false/,
+  /logMemoryDiagnostic\(\{/,
+  /stage:\s*'request'/,
+  /stage:\s*'response'/,
+  /status:\s*'started'/,
+  /status:\s*'error'/,
+]
+
+const MAIN_MEMORY_IPC_HOST_FORBIDDEN_PATTERNS: RegExp[] = [
+  /from\s+['"]electron['"]/,
+  /ipcMain\.handle/,
+  /Electron\.IpcMainInvokeEvent/,
+]
+
+const MAIN_SOUL_MEMORY_GRAPH_DECISION_FORBIDDEN_PATTERNS: RegExp[] = [
+  /function\s+applyGraphDecisionPlan/,
+  /CoreSoulMemoryGraphDeletePlan/,
+  /CoreSoulMemoryGraphDuplicateDecisionPlan/,
+  /corePlanSoulMemoryGraphEntityDelete/,
+  /corePlanSoulMemoryGraphObservationDelete/,
+  /corePlanSoulMemoryGraphRelationDelete/,
+  /corePlanSoulMemoryGraphDuplicateMerge/,
+  /corePlanSoulMemoryGraphDuplicateIgnore/,
+  /UPDATE memory_observations SET entity_id/,
+  /UPDATE memory_relations SET from_entity_id/,
+  /UPDATE memory_relations SET to_entity_id/,
+  /UPDATE memory_entities SET deleted_at/,
+  /UPDATE memory_observations SET status = \?/,
+  /UPDATE memory_relations SET status = \?/,
+  /DELETE FROM graph_memory_fts WHERE owner_id/,
+  /SELECT \* FROM memory_possible_duplicates WHERE id = \?/,
+  /SELECT \* FROM memory_events WHERE memory_id = \?/,
+  /appendMemoryEvent\(database,\s*event\.memoryId/,
+]
+
+const MAIN_SOUL_MEMORY_GRAPH_CANONICAL_SEARCH_FORBIDDEN_PATTERNS: RegExp[] = [
+  /async function searchGraphMemory/,
+  /async function searchCanonicalMemory/,
+  /coreBuildSoulMemoryGraphSearchHits/,
+  /coreBuildSoulMemoryCanonicalSearchHits/,
+  /graph_memory_fts/,
+  /canonical_memories_fts/,
+  /FROM memory_entities\s*\n\s*WHERE deleted_at IS NULL/,
+  /FROM memory_observations\s*\n\s*WHERE deleted_at IS NULL/,
+  /FROM memory_relations\s*\n\s*WHERE deleted_at IS NULL/,
+  /FROM canonical_memories\s*\n\s*WHERE deleted_at IS NULL/,
+  /SELECT m\.\*, bm25\(canonical_memories_fts\)/,
+  /SELECT owner_type, owner_id, content, bm25\(graph_memory_fts\)/,
+]
+
+const MAIN_SOUL_MEMORY_MARKDOWN_SEARCH_FORBIDDEN_PATTERNS: RegExp[] = [
+  /async function searchMarkdownMemoryChunks/,
+  /coreBuildSoulMemoryMarkdownSearchHits/,
+  /rowToSoulMemoryChunk/,
+  /CoreSoulMemoryIndexedChunkRow/,
+  /SELECT c\.\*, bm25\(chunks_fts\)/,
+  /FROM chunks_fts\s*\n\s*JOIN chunks c/,
+  /SELECT \* FROM chunks WHERE content LIKE/,
+  /SELECT \* FROM chunks WHERE embedding_json IS NOT NULL/,
+]
+
+const MAIN_SOUL_MEMORY_MARKDOWN_INDEX_FORBIDDEN_PATTERNS: RegExp[] = [
+  /async function listMemoryFiles/,
+  /coreCreateSoulMemoryDailyIndexFile/,
+  /coreCreateSoulMemoryRootMemoryIndexFile/,
+  /coreIsSoulMemoryIndexMarkdownFileName/,
+  /coreShouldSkipSoulMemoryIndexDirectoryName/,
+  /function readIndexCounts/,
+  /async function inspectIndexFreshness/,
+  /async function indexFile/,
+  /coreChunkSoulMemoryText/,
+  /corePlanSoulMemoryIndexFileWrite/,
+  /corePlanSoulMemoryIndexFreshness/,
+  /coreShouldSkipSoulMemoryIndexFileWrite/,
+  /SELECT hash, mtime_ms, size FROM files WHERE path = \?/,
+  /SELECT path, mtime_ms, size FROM files/,
+  /SELECT id FROM chunks WHERE path = \?/,
+  /DELETE FROM chunks WHERE id = \?/,
+  /DELETE FROM chunks_fts WHERE id = \?/,
+  /INSERT INTO chunks\s*\(/,
+  /INSERT INTO chunks_fts/,
+  /INSERT INTO files \(path, kind, absolute_path, mtime_ms, size, hash, indexed_at\)/,
+  /DELETE FROM files; DELETE FROM chunks; DELETE FROM chunks_fts;/,
+]
+
+const MAIN_SOUL_MEMORY_MANAGED_FILES_FORBIDDEN_PATTERNS: RegExp[] = [
+  /async function listManagedMemoryFiles/,
+  /coreListSoulMemoryManagedFilesWithAdapters/,
+  /coreReadSoulMemoryManagedFileWithAdapters/,
+  /coreSaveSoulMemoryManagedFileWithAdapters/,
+  /listSoulMemoryManagedFilesWithAdapters\s+as/,
+  /readSoulMemoryManagedFileWithAdapters\s+as/,
+  /saveSoulMemoryManagedFileWithAdapters\s+as/,
+]
+
+const MAIN_SOUL_MEMORY_DAILY_CONTEXT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /async function buildRecentDailyContextFragment/,
+  /coreBuildSoulMemoryRecentDailyContextFragmentWithAdapters/,
+  /buildSoulMemoryRecentDailyContextFragmentWithAdapters\s+as/,
+  /dateForDaysAgo:\s*dateStringDaysAgo/,
+  /readContent:\s*readLimited/,
+  /listEntries\(\)/,
+]
+
+const MAIN_SOUL_MEMORY_PROMPT_CONTEXT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /coreBuildSoulMemoryPromptFragments/,
+  /buildSoulMemoryPromptFragments\s+as/,
+  /buildHermesMemoryPromptFragment\(workspace,\s*maxChars\)/,
+  /buildGraphProfileSummary\(workspace\)/,
+  /runtimeBuildRecentDailyContextFragment/,
+  /rulesPrompt:\s*SOUL_MEMORY_RULES_PROMPT/,
+  /soulContent:\s*readLimited\(workspace\.soulPath,\s*maxChars\)/,
+]
+
+const MAIN_SOUL_MEMORY_ACTIVE_MEMORY_FORBIDDEN_PATTERNS: RegExp[] = [
+  /CoreSoulMemoryActiveMemoryRuntime/,
+  /activeMemoryRuntime/,
+  /coreRunSoulMemoryActiveMemoryRecall/,
+  /runSoulMemoryActiveMemoryRecall\s+as/,
+  /pluginEnabled:\s*resolved\.enabled/,
+  /searchMaxResults:\s*resolved\.search\.maxResults/,
+  /hash:\s*sha/,
+  /preview:\s*previewLine/,
+]
+
+const MAIN_SOUL_MEMORY_APPEND_NOTE_FORBIDDEN_PATTERNS: RegExp[] = [
+  /coreBuildSoulMemoryAppendPayload/,
+  /coreResolveSoulMemoryAppendTarget/,
+  /buildSoulMemoryAppendPayload\s+as/,
+  /resolveSoulMemoryAppendTarget\s+as/,
+  /operation:\s*'append-note'/,
+  /appendTextFile\(target\.absolutePath,\s*payload\.text\)/,
+  /contentHash:\s*sha\(payload\.content\)/,
+]
+
+const MAIN_SOUL_MEMORY_CAPTURE_INPUT_FORBIDDEN_PATTERNS: RegExp[] = [
+  /coreBuildSoulMemoryCaptureInputWithAdapters/,
+  /buildSoulMemoryCaptureInputWithAdapters\s+as/,
+  /readDailyContent:\s*\(\)\s*=>\s*readTextFileAsync\(workspace\.todayPath\)/,
+]
+
+const MAIN_SOUL_MEMORY_CAPTURE_RUN_FORBIDDEN_PATTERNS: RegExp[] = [
+  /coreRunSoulMemoryCapture/,
+  /runSoulMemoryCapture\s+as/,
+  /readDailyContent:\s*\(\)\s*=>\s*readTextFileIfExists\(workspace\.todayPath\)/,
+  /applyDailyActions:\s*candidates/,
+]
+
+const MAIN_SOUL_MEMORY_DAILY_CAPTURE_ACTIONS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /coreApplyDailyNoteCaptureActionsWithAdapters/,
+  /corePlanSoulMemoryDailyNoteAppend/,
+  /coreDedupeSoulMemoryDailyNoteBulletsWithAdapters/,
+  /applyDailyNoteCaptureActionsWithAdapters\s+as/,
+  /planSoulMemoryDailyNoteAppend\s+as/,
+  /dedupeSoulMemoryDailyNoteBulletsWithAdapters\s+as/,
+  /readMemoryContent:\s*\(\)\s*=>\s*readTextFileAsync\(workspace\.memoryPath\)/,
+  /writeDailyContent:\s*async\s+content/,
+  /operation:\s*'daily-note-actions'/,
+]
+
+const MAIN_SOUL_MEMORY_DREAMING_FORBIDDEN_PATTERNS: RegExp[] = [
+  /coreApplyDreamingMemoryActions/,
+  /coreBuildSoulMemoryExistingMemorySummary/,
+  /coreCollectSoulMemoryDailyDreamingSourcesWithAdapters/,
+  /coreRunSoulMemoryDreamingSweep/,
+  /applyDreamingMemoryActions\s+as\s+coreApplyDreamingMemoryActions/,
+  /buildSoulMemoryExistingMemorySummary\s+as\s+coreBuildSoulMemoryExistingMemorySummary/,
+  /collectSoulMemoryDailyDreamingSourcesWithAdapters\s+as\s+coreCollectSoulMemoryDailyDreamingSourcesWithAdapters/,
+  /runSoulMemoryDreamingSweep\s+as\s+coreRunSoulMemoryDreamingSweep/,
+  /statFile:\s*absolutePath\s*=>\s*statPath\(absolutePath\)/,
+  /readFile:\s*absolutePath\s*=>\s*readTextFileAsync\(absolutePath\)/,
+  /getExistingMemory:\s*\(\)\s*=>\s*buildDreamingExistingMemorySummary\(workspace\)/,
+  /applyMemoryActions:\s*\(result,\s*runAt\)/,
+  /operation:\s*'memory-actions'/,
+]
+
+const MAIN_SOUL_MEMORY_FLUSH_FORBIDDEN_PATTERNS: RegExp[] = [
+  /coreFormatSoulMemoryMessagesForFlush/,
+  /formatSoulMemoryMessagesForFlush\s+as/,
+  /const\s+formatted\s*=\s*coreFormatSoulMemoryMessagesForFlush/,
+  /CORE_SOUL_MEMORY_MEMORY_FLUSH_SYSTEM_PROMPT,\s*\n\s*\}/,
+  /operation:\s*'before-context-compact'/,
+  /stage:\s*'model-request'/,
+  /Flush model returned no daily-note-worthy bullets/,
+  /dedupeDailyNoteBullets\(workspace,\s*parseDailyNoteBullets\(output\)\)/,
+  /appendDailyNoteBullets\(\{/,
+]
+
+const MAIN_MEMORY_WORKSPACE_HELPERS_FORBIDDEN_PATTERNS: RegExp[] = [
+  /canonicalSoulMemoryTokens\s+as\s+coreCanonicalSoulMemoryTokens/,
+  /canonicalSoulMemoryKindFromCaptureKind\s+as\s+coreCanonicalSoulMemoryKindFromCaptureKind/,
+  /buildSoulMemoryFtsQuery\s+as\s+coreBuildSoulMemoryFtsQuery/,
+  /CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID/,
+  /cosineSoulMemoryVector\s+as\s+coreCosineSoulMemoryVector/,
+  /estimateSoulMemoryTokens\s+as\s+coreEstimateSoulMemoryTokens/,
+  /extractSoulMemoryCandidateValue\s+as\s+coreExtractSoulMemoryCandidateValue/,
+  /formatSoulMemoryDateString\s+as\s+coreFormatSoulMemoryDateString/,
+  /hashSoulMemoryText\s+as\s+coreHashSoulMemoryText/,
+  /isSoulMemoryIndexableMarkdownRelativePath\s+as\s+coreIsSoulMemoryIndexableMarkdownRelativePath/,
+  /normalizeSoulMemoryBulletText\s+as\s+coreNormalizeSoulMemoryBulletText/,
+  /normalizeSoulMemoryForDedupe\s+as\s+coreNormalizeSoulMemoryForDedupe/,
+  /normalizeSoulMemoryRelativePath\s+as\s+coreNormalizeSoulMemoryRelativePath/,
+  /previewSoulMemoryLine\s+as\s+corePreviewSoulMemoryLine/,
+  /slugifySoulMemoryKeyPart\s+as\s+coreSlugifySoulMemoryKeyPart/,
+  /soulMemoryAsBullet\s+as\s+coreSoulMemoryAsBullet/,
+  /soulMemoryTokenJaccard\s+as\s+coreSoulMemoryTokenJaccard/,
+  /truncateSoulMemoryText\s+as\s+coreTruncateSoulMemoryText/,
+  /readTextFileLimited/,
+  /writeTextFileAtomic/,
+  /writeTextFileIfMissing/,
+  /export\s+const\s+SOUL_MEMORY_PLUGIN_ID/,
+  /export\s+const\s+SOUL_MEMORY_RULES_PROMPT/,
+  /export\s+const\s+SOUL_TEMPLATE/,
+  /export\s+const\s+USER_SELF_ENTITY_ID/,
+  /function\s+normalizeMemoryRelativePath/,
+  /function\s+isIndexableMarkdownPath/,
+  /function\s+todayString/,
+  /function\s+dateString/,
+  /function\s+sha/,
+  /function\s+truncate/,
+  /function\s+estimateTokens/,
+  /function\s+writeIfMissing/,
+  /function\s+readLimited/,
+  /function\s+normalizeBulletText/,
+  /function\s+asBullet/,
+  /function\s+slugifyMemoryKeyPart/,
+  /function\s+sanitizeMemoryKey/,
+  /function\s+extractCandidateValue/,
+  /function\s+looksLikeNameValue/,
+  /function\s+canonicalTokens/,
+  /function\s+tokenJaccard/,
+  /function\s+normalizeForDedupe/,
+  /function\s+previewLine/,
+  /function\s+cosine/,
+  /function\s+ftsQuery/,
+]
+
+const CORE_TOOL_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
+  /executeCoreTimeTool/,
+  /parseCoreTimeInput/,
+  /resolveCoreTimezone/,
+  /CoreTimeArgs/,
+  /classifySensitiveFile/,
+  /SensitiveFileCategory/,
+  /SensitiveFileClassification/,
+  /createLocalBashOperations/,
+  /configureCoreBackgroundJobs/,
+  /BackgroundJob/,
+  /BashOperations/,
+  /BashSpawnContext/,
+  /BashSpawnHook/,
+  /ShellConfig/,
+  /killTrackedDetachedChildren/,
+  /killProcessTree/,
+  /listBackgroundJobs/,
+  /refreshBackgroundJob/,
+  /registerBackgroundJob/,
+  /stopBackgroundJob/,
+  /resolveSpawnContext/,
+  /trackDetachedChildPid/,
+  /untrackDetachedChildPid/,
+  /waitForChildProcess/,
+  /OutputAccumulator/,
+  /OutputSnapshot/,
+  /OutputTruncation/,
+  /DEFAULT_OUTPUT_MAX_BYTES/,
+  /DEFAULT_OUTPUT_MAX_LINES/,
+  /DEFAULT_TEXT_MAX_BYTES/,
+  /TextTruncationResult/,
+  /truncateTextHead/,
+  /truncateLine/,
+  /formatSize/,
+  /utf8Bytes/,
+  /withFileMutationQueue/,
+  /clearFileMutationQueuesForTests/,
+  /getFileMutationQueueSize/,
+  /readTextFileSnapshot/,
+  /hashTextFileSnapshot/,
+  /countLineChanges/,
+  /TextFileSnapshot/,
+  /recordFileMutationAudit/,
+  /readFileMutationAudit/,
+  /applyFileMutationUndo/,
+  /hashAuditContent/,
+  /FileMutationAuditRecord/,
+  /FileMutationOperation/,
+  /RecordFileMutationAuditInput/,
+  /RecordFileMutationAuditResult/,
+  /checkCoreFileAccess/,
+  /expandCorePath/,
+  /findCoreReadSandboxRootForPath/,
+  /findCoreSandboxRootForPath/,
+  /getCoreReadSandboxRoots/,
+  /getCoreSandboxBoundary/,
+  /getCoreSandboxRoots/,
+  /isCorePathContained/,
+  /resolveCoreToolPath/,
+  /uniqueCorePaths/,
+  /CoreFileAccessContext/,
+  /CoreFileAccessOptions/,
+  /CoreFileAccessTargetType/,
+  /CoreReadSandboxRootsOptions/,
+  /CoreSandboxBoundaryOptions/,
+  /CoreSandboxRootsOptions/,
+  /applyExactEditsToNormalizedContent/,
+  /prepareExactEditPreview/,
+  /detectLineEnding/,
+  /normalizeToLF/,
+  /restoreLineEndings/,
+  /stripBom/,
+  /ExactEdit/,
+  /ExactEditApplyResult/,
+  /ExactEditPreviewContentResult/,
+  /REPLACERS/,
+  /SimpleReplacer/,
+  /LineTrimmedReplacer/,
+  /BlockAnchorReplacer/,
+  /WhitespaceNormalizedReplacer/,
+  /IndentationFlexibleReplacer/,
+  /EscapeNormalizedReplacer/,
+  /TrimmedBoundaryReplacer/,
+  /ContextAwareReplacer/,
+  /MultiOccurrenceReplacer/,
+  /normalizeLineEndings/,
+  /trimDiff/,
+  /classifyBashCommand/,
+  /classifyCommand/,
+  /getCommandPattern/,
+  /parseCommand/,
+  /splitShellWords/,
+  /BashClassification/,
+  /BashPermissionDecision/,
+  /ClassifiedBashCommand/,
+]
+
+interface WalkFilesOptions {
+  includeTests?: boolean
+}
+
+function walkFiles(dir: string, output: string[] = [], options: WalkFilesOptions = {}): string[] {
+  if (!fs.existsSync(dir)) return output
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if ((!options.includeTests && entry.name === '__tests__')
+      || entry.name === 'node_modules'
+      || entry.name === '.git') continue
+    const fullPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      walkFiles(fullPath, output, options)
+    } else if (/\.(ts|tsx|js|mjs|cjs|json)$/.test(entry.name)) {
+      output.push(fullPath)
+    }
+  }
+  return output
+}
+
+function rel(filePath: string): string {
+  return path.relative(root, filePath).split(path.sep).join('/')
+}
+
+function matchingLines(filePath: string, patterns: RegExp[]): string[] {
+  const content = fs.readFileSync(filePath, 'utf-8')
+  return content
+    .split(/\r?\n/)
+    .map((line, index) => ({ line, lineNo: index + 1 }))
+    .filter(({ line }) => patterns.some(pattern => pattern.test(line)))
+    .map(({ line, lineNo }) => `${rel(filePath)}:${lineNo}: ${line.trim()}`)
+}
+
+function matchingTextLines(label: string, content: string, patterns: RegExp[], lineOffset = 0): string[] {
+  return content
+    .split(/\r?\n/)
+    .map((line, index) => ({ line, lineNo: index + 1 + lineOffset }))
+    .filter(({ line }) => patterns.some(pattern => pattern.test(line)))
+    .map(({ line, lineNo }) => `${label}:${lineNo}: ${line.trim()}`)
+}
+
+function isAllowedMainAdapterLine(line: string): boolean {
+  const [file] = line.split(':', 1)
+  const allowPatterns = MAIN_ADAPTER_ALLOWLIST.get(file)
+  return Boolean(allowPatterns?.some(pattern => pattern.test(line)))
+}
+
+function assertNoMatches(label: string, lines: string[]): void {
+  if (lines.length === 0) {
+    console.log(`[boundary] ok: ${label}`)
+    return
+  }
+
+  console.error(`[boundary] failed: ${label}`)
+  for (const line of lines) {
+    console.error(`  ${line}`)
+  }
+  process.exitCode = 1
+}
+
+function checkCoreForbiddenImports(): void {
+  const lines = walkFiles(path.join(root, 'packages/core'))
+    .flatMap(file => matchingLines(file, CORE_FORBIDDEN_PATTERNS))
+  assertNoMatches('packages/core has no Electron/main/shared/native npm forbidden imports', lines)
+}
+
+function checkRuntimeHostBoundary(): void {
+  const lines = walkFiles(path.join(root, 'packages/onething-runtime'))
+    .flatMap(file => matchingLines(file, HOST_BOUNDARY_FORBIDDEN_PATTERNS))
+  assertNoMatches('packages/onething-runtime has no Electron/main/shared IPC forbidden imports', lines)
+}
+
+function checkGatewayHostBoundary(): void {
+  const lines = walkFiles(path.join(root, 'packages/gateway'))
+    .flatMap(file => matchingLines(file, [
+      ...HOST_BOUNDARY_FORBIDDEN_PATTERNS,
+      ...GATEWAY_CORE_DEPENDENCY_FORBIDDEN_PATTERNS,
+      ...GATEWAY_RUNTIME_DEPENDENCY_FORBIDDEN_PATTERNS,
+    ]))
+  assertNoMatches('packages/gateway has no Electron/main/shared IPC forbidden imports', lines)
+}
+
+function checkCoreOwnsGatewayConversationRuntimeProtocol(): void {
+  const coreFile = path.join(root, 'packages/core/gateway-runtime.ts')
+  const corePackageFile = path.join(root, 'packages/core/package.json')
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/gateway-runtime.ts')
+  const runtimeEntrypointFile = path.join(root, 'packages/onething-runtime/src/runtime.ts')
+  const gatewayPackageFile = path.join(root, 'packages/gateway/package.json')
+  const tsconfigFile = path.join(root, 'tsconfig.json')
+  const viteConfigFile = path.join(root, 'electron.vite.config.ts')
+  const vitestConfigFile = path.join(root, 'vitest.config.ts')
+  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
+  const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeEntrypointContent = fs.existsSync(runtimeEntrypointFile) ? fs.readFileSync(runtimeEntrypointFile, 'utf-8') : ''
+  const gatewayPackageContent = fs.existsSync(gatewayPackageFile) ? fs.readFileSync(gatewayPackageFile, 'utf-8') : ''
+  const tsconfigContent = fs.existsSync(tsconfigFile) ? fs.readFileSync(tsconfigFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfigFile) ? fs.readFileSync(viteConfigFile, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfigFile) ? fs.readFileSync(vitestConfigFile, 'utf-8') : ''
+  const gatewayAndHostFiles = [
+    ...walkFiles(path.join(root, 'packages/gateway')),
+    path.join(root, 'apps/electron/src/gateway/lifecycle-controller.ts'),
+    path.join(root, 'src/main/engine/index.ts'),
+  ].filter(file => fs.existsSync(file))
+  const requiredCoreSymbols = [
+    'CoreConversationRuntime',
+    'CoreConversationRuntimeFactoryOptions',
+    'CoreConversationSendMessageCommand',
+    'CoreSessionRuntime',
+    'CoreStreamChannelLike',
+    'CoreTextStreamChunk',
+    'isCoreConversationRuntime',
+    'isCoreTextStreamChunk',
+  ]
+  const lines = [
+    ...(!fs.existsSync(coreFile)
+      ? [`${rel(coreFile)}: missing core-owned gateway conversation runtime protocol`]
+      : []),
+    ...requiredCoreSymbols
+      .filter(symbol => !coreContent.includes(symbol))
+      .map(symbol => `${rel(coreFile)}: missing core gateway conversation protocol symbol ${symbol}`),
+    ...(!corePackageContent.includes('"./gateway-runtime": "./gateway-runtime.ts"')
+      ? [`${rel(corePackageFile)}: missing @onething/core/gateway-runtime export`]
+      : []),
+    ...(!runtimeContent.includes('@onething/core/gateway-runtime')
+      ? [`${rel(runtimeFile)}: onething runtime gateway facade must re-export the core protocol`]
+      : []),
+    ...(!runtimeEntrypointContent.includes('@onething/core/gateway-runtime')
+      ? [`${rel(runtimeEntrypointFile)}: onething runtime entrypoint must import gateway protocol types from core`]
+      : []),
+    ...matchingLines(runtimeEntrypointFile, [
+      /type\s+OnethingConversationRuntime/,
+      /type\s+OnethingSessionRuntime/,
+      /type\s+OnethingStreamChannelLike/,
+    ]),
+    ...(!runtimeContent.includes('createOnethingConversationRuntimeFromStreamEngine')
+      ? [`${rel(runtimeFile)}: onething runtime gateway facade must own an onething-named conversation runtime factory`]
+      : []),
+    ...matchingLines(runtimeFile, [
+      /createCoreStreamConversationRuntime/,
+      /CoreStreamConversationRuntimeOptions/,
+    ]),
+    ...(gatewayPackageContent.includes('"@onething/runtime"')
+      ? [`${rel(gatewayPackageFile)}: gateway package must not depend on onething runtime implementation`]
+      : []),
+    ...(!gatewayPackageContent.includes('"@onething/core"')
+      ? [`${rel(gatewayPackageFile)}: gateway package must depend on core protocol types`]
+      : []),
+    ...(!tsconfigContent.includes('"@onething/core/gateway-runtime"')
+      ? [`${rel(tsconfigFile)}: missing @onething/core/gateway-runtime TS path`]
+      : []),
+    ...(!viteContent.includes('@onething/core/gateway-runtime')
+      ? [`${rel(viteConfigFile)}: missing @onething/core/gateway-runtime Vite alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/core/gateway-runtime')
+      ? [`${rel(vitestConfigFile)}: missing @onething/core/gateway-runtime Vitest alias`]
+      : []),
+    ...gatewayAndHostFiles.flatMap(file => matchingLines(file, [
+      /@onething\/runtime\/gateway/,
+      /function\s+isOnethingConversationRuntime/,
+      /function\s+isCoreTextStreamChunk/,
+      /type\s*===\s*['"]text-delta['"]/,
+    ])),
+  ]
+
+  assertNoMatches('packages/core owns gateway conversation runtime protocol', lines)
+}
+
+function checkGatewayLoadsRuntimeFromHostBoundary(): void {
+  const gatewayFile = path.join(root, 'packages/gateway/src/index.ts')
+  const content = fs.existsSync(gatewayFile) ? fs.readFileSync(gatewayFile, 'utf-8') : ''
+  const requiredSymbols = [
+    'ONETHING_GATEWAY_RUNTIME_MODULE',
+    'loadGatewayConversationRuntimeFromEnv',
+    'isCoreConversationRuntime',
+  ]
+  const lines = [
+    ...requiredSymbols
+      .filter(symbol => !content.includes(symbol))
+      .map(symbol => `${rel(gatewayFile)}: missing gateway runtime loader symbol ${symbol}`),
+    ...(fs.existsSync(gatewayFile)
+      ? matchingLines(gatewayFile, GATEWAY_STANDALONE_AGENT_FORBIDDEN_PATTERNS)
+      : ['packages/gateway/src/index.ts: missing gateway package entrypoint']),
+  ]
+
+  assertNoMatches('packages/gateway loads onething runtime from host instead of creating an agent', lines)
+}
+
+function checkGatewayUsesExplicitTypingSignal(): void {
+  const channelFile = path.join(root, 'packages/gateway/src/core/channel.ts')
+  const bridgeFile = path.join(root, 'packages/gateway/src/core/bridge.ts')
+  const channelContent = fs.existsSync(channelFile) ? fs.readFileSync(channelFile, 'utf-8') : ''
+  const bridgeContent = fs.existsSync(bridgeFile) ? fs.readFileSync(bridgeFile, 'utf-8') : ''
+  const lines = [
+    ...(!channelContent.includes('typing?(msg: TypingMessage)')
+      ? [`${rel(channelFile)}: missing explicit channel typing capability`]
+      : []),
+    ...(!bridgeContent.includes('channel.typing?.(msg)')
+      ? [`${rel(bridgeFile)}: missing explicit typing signal dispatch`]
+      : []),
+    ...(fs.existsSync(bridgeFile)
+      ? matchingLines(bridgeFile, GATEWAY_BRIDGE_TYPING_FORBIDDEN_PATTERNS)
+      : ['packages/gateway/src/core/bridge.ts: missing gateway bridge']),
+  ]
+
+  assertNoMatches('packages/gateway uses explicit typing signal instead of empty text messages', lines)
+}
+
+function checkGatewayRegistersConfiguredChannels(): void {
+  const gatewayFile = path.join(root, 'packages/gateway/src/index.ts')
+  const gatewayConfigFile = path.join(root, 'packages/gateway/src/config.ts')
+  const content = fs.existsSync(gatewayFile) ? fs.readFileSync(gatewayFile, 'utf-8') : ''
+  const configContent = fs.existsSync(gatewayConfigFile) ? fs.readFileSync(gatewayConfigFile, 'utf-8') : ''
+  const requiredGatewaySymbols = [
+    'TelegramChannel',
+    'createGatewayChannelsFromEnv',
+    'readGatewayChannelIdsFromEnv',
+    'for (const channel of channels)',
+  ]
+  const requiredConfigSymbols = [
+    'GATEWAY_CHANNELS',
+    'GATEWAY_TELEGRAM_BOT_TOKEN',
+  ]
+  const lines = [
+    ...requiredGatewaySymbols
+      .filter(symbol => !content.includes(symbol))
+      .map(symbol => `${rel(gatewayFile)}: missing configured gateway channel symbol ${symbol}`),
+    ...requiredConfigSymbols
+      .filter(symbol => !configContent.includes(symbol))
+      .map(symbol => `${rel(gatewayConfigFile)}: missing configured gateway channel config symbol ${symbol}`),
+    ...(fs.existsSync(gatewayFile)
+      ? matchingLines(gatewayFile, GATEWAY_CHANNEL_SELECTION_FORBIDDEN_PATTERNS)
+      : ['packages/gateway/src/index.ts: missing gateway entrypoint']),
+  ]
+
+  assertNoMatches('packages/gateway registers configured IM channels', lines)
+}
+
+function checkGatewayWechatQrStateHandling(): void {
+  const channelFile = path.join(root, 'packages/gateway/src/channels/wechat/index.ts')
+  const channelTestFile = path.join(root, 'packages/gateway/src/channels/wechat/__tests__/channel.test.ts')
+  const pollerTestFile = path.join(root, 'packages/gateway/src/channels/wechat/ilink/__tests__/poller.test.ts')
+  const channelContent = fs.existsSync(channelFile) ? fs.readFileSync(channelFile, 'utf-8') : ''
+  const channelTestContent = fs.existsSync(channelTestFile) ? fs.readFileSync(channelTestFile, 'utf-8') : ''
+  const pollerTestContent = fs.existsSync(pollerTestFile) ? fs.readFileSync(pollerTestFile, 'utf-8') : ''
+  const requiredChannelSymbols = [
+    'scaned_but_redirect',
+    'normalizeRedirectBaseUrl',
+    'need_verifycode',
+    'verify_code_blocked',
+    'auth.baseUrl',
+  ]
+  const requiredChannelTestSymbols = [
+    'follows QR login IDC redirects',
+    'pair-code verification',
+    'starts the poller with the saved auth base URL',
+  ]
+  const requiredPollerTestSymbols = [
+    'accepts getupdates responses that omit ret',
+    'sync_buf',
+    'get_updates_buf',
+  ]
+  const lines = [
+    ...(!fs.existsSync(channelFile)
+      ? [`${rel(channelFile)}: missing WeChat gateway channel`]
+      : []),
+    ...(!fs.existsSync(channelTestFile)
+      ? [`${rel(channelTestFile)}: missing WeChat channel QR-state tests`]
+      : []),
+    ...(!fs.existsSync(pollerTestFile)
+      ? [`${rel(pollerTestFile)}: missing WeChat poller optional-ret tests`]
+      : []),
+    ...requiredChannelSymbols
+      .filter(symbol => !channelContent.includes(symbol))
+      .map(symbol => `${rel(channelFile)}: missing official iLink QR-state handling symbol ${symbol}`),
+    ...requiredChannelTestSymbols
+      .filter(symbol => !channelTestContent.includes(symbol))
+      .map(symbol => `${rel(channelTestFile)}: missing WeChat channel QR-state test coverage ${symbol}`),
+    ...requiredPollerTestSymbols
+      .filter(symbol => !pollerTestContent.includes(symbol))
+      .map(symbol => `${rel(pollerTestFile)}: missing WeChat poller getupdates compatibility test coverage ${symbol}`),
+  ]
+
+  assertNoMatches('packages/gateway follows official WeChat iLink QR and getupdates compatibility', lines)
+}
+
+function checkGatewayOwnsEnablementConfig(): void {
+  const gatewayFile = path.join(root, 'packages/gateway/src/index.ts')
+  const gatewayConfigFile = path.join(root, 'packages/gateway/src/config.ts')
+  const gatewayPackageFile = path.join(root, 'packages/gateway/package.json')
+  const electronGatewayFile = path.join(root, 'apps/electron/src/gateway/lifecycle-controller.ts')
+  const mainFile = path.join(root, 'src/main/gateway/lifecycle.ts')
+  const gatewayContent = fs.existsSync(gatewayFile) ? fs.readFileSync(gatewayFile, 'utf-8') : ''
+  const gatewayConfigContent = fs.existsSync(gatewayConfigFile) ? fs.readFileSync(gatewayConfigFile, 'utf-8') : ''
+  const gatewayPackageContent = fs.existsSync(gatewayPackageFile) ? fs.readFileSync(gatewayPackageFile, 'utf-8') : ''
+  const electronGatewayContent = fs.existsSync(electronGatewayFile) ? fs.readFileSync(electronGatewayFile, 'utf-8') : ''
+  const tsconfigFile = path.join(root, 'tsconfig.json')
+  const viteConfigFile = path.join(root, 'electron.vite.config.ts')
+  const vitestConfigFile = path.join(root, 'vitest.config.ts')
+  const tsconfigContent = fs.existsSync(tsconfigFile) ? fs.readFileSync(tsconfigFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfigFile) ? fs.readFileSync(viteConfigFile, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfigFile) ? fs.readFileSync(vitestConfigFile, 'utf-8') : ''
+  const requiredGatewaySymbols = [
+    'isGatewayEnabledFromEnv',
+    'ONETHING_GATEWAY',
+    'GATEWAY_ENABLED',
+    'GATEWAY_CHANNELS',
+    'TELEGRAM_BOT_TOKEN',
+  ]
+  const lines = [
+    ...requiredGatewaySymbols
+      .filter(symbol => !gatewayConfigContent.includes(symbol))
+      .map(symbol => `${rel(gatewayConfigFile)}: missing gateway-owned enablement config symbol ${symbol}`),
+    ...(!gatewayContent.includes('./config.js')
+      ? [`${rel(gatewayFile)}: gateway entrypoint must re-export config from the lightweight config module`]
+      : []),
+    ...(!gatewayPackageContent.includes('"./config": "./src/config.ts"')
+      ? [`${rel(gatewayPackageFile)}: missing @onething/gateway/config export`]
+      : []),
+    ...(!tsconfigContent.includes('"@onething/gateway/config"')
+      ? [`${rel(tsconfigFile)}: missing @onething/gateway/config TS path`]
+      : []),
+    ...(!viteContent.includes('@onething/gateway/config')
+      ? [`${rel(viteConfigFile)}: missing @onething/gateway/config Vite alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/gateway/config')
+      ? [`${rel(vitestConfigFile)}: missing @onething/gateway/config Vitest alias`]
+      : []),
+    ...(!electronGatewayContent.includes('@onething/gateway/config')
+      ? [`${rel(electronGatewayFile)}: Electron gateway lifecycle must delegate enablement to @onething/gateway/config`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? [`${rel(mainFile)}: remove legacy gateway lifecycle adapter; use @onething/electron-host/gateway/lifecycle directly`]
+      : []),
+  ]
+
+  assertNoMatches('packages/gateway owns gateway enablement config', lines)
+}
+
+function checkElectronHostOwnsGatewayLifecycle(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronGatewayControllerFile = path.join(root, 'apps/electron/src/gateway/lifecycle-controller.ts')
+  const electronGatewayFile = path.join(root, 'apps/electron/src/gateway/lifecycle.ts')
+  const mainFile = path.join(root, 'src/main/gateway/lifecycle.ts')
+  const mainGatewayIpcFile = path.join(root, 'src/main/gateway/ipc.ts')
+  const mainSettingsIpcFile = path.join(root, 'src/main/ipc/settings.ts')
+  const tsconfigNode = path.join(root, 'tsconfig.node.json')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronGatewayControllerContent = fs.existsSync(electronGatewayControllerFile)
+    ? fs.readFileSync(electronGatewayControllerFile, 'utf-8')
+    : ''
+  const electronGatewayContent = fs.existsSync(electronGatewayFile) ? fs.readFileSync(electronGatewayFile, 'utf-8') : ''
+  const mainGatewayIpcContent = fs.existsSync(mainGatewayIpcFile) ? fs.readFileSync(mainGatewayIpcFile, 'utf-8') : ''
+  const mainSettingsIpcContent = fs.existsSync(mainSettingsIpcFile) ? fs.readFileSync(mainSettingsIpcFile, 'utf-8') : ''
+  const tsconfigContent = fs.existsSync(tsconfigNode) ? fs.readFileSync(tsconfigNode, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredControllerSymbols = [
+    'createElectronGatewayLifecycle',
+    'ElectronGatewayLifecycleOptions',
+    'startGateway',
+    'isGatewayEnabledFromEnv',
+    'shutdownGateway',
+  ]
+  const requiredHostSymbols = [
+    'configureGatewayLifecycle',
+    'createElectronGatewayLifecycle',
+    'initializeGateway',
+    'shutdownGateway',
+  ]
+  const lines = [
+    ...(!packageContent.includes('@onething/electron-host')
+      ? [`${rel(electronPackage)}: missing @onething/electron-host package`]
+      : []),
+    ...requiredControllerSymbols
+      .filter(symbol => !electronGatewayControllerContent.includes(symbol))
+      .map(symbol => `${rel(electronGatewayControllerFile)}: missing Electron-hosted gateway lifecycle controller symbol ${symbol}`),
+    ...requiredHostSymbols
+      .filter(symbol => !electronGatewayContent.includes(symbol))
+      .map(symbol => `${rel(electronGatewayFile)}: missing Electron-hosted gateway lifecycle facade symbol ${symbol}`),
+    ...(!mainGatewayIpcContent.includes('@onething/electron-host/gateway/lifecycle')
+      ? [`${rel(mainGatewayIpcFile)}: gateway IPC must import lifecycle operations from electron-host directly`]
+      : []),
+    ...(!mainSettingsIpcContent.includes('@onething/electron-host/gateway/lifecycle')
+      ? [`${rel(mainSettingsIpcFile)}: settings IPC must apply gateway settings through electron-host directly`]
+      : []),
+    ...(mainGatewayIpcContent.includes('./lifecycle')
+      ? [`${rel(mainGatewayIpcFile)}: gateway IPC must not import legacy ./lifecycle facade`]
+      : []),
+    ...(mainSettingsIpcContent.includes('../gateway/lifecycle')
+      ? [`${rel(mainSettingsIpcFile)}: settings IPC must not import legacy gateway lifecycle facade`]
+      : []),
+    ...(!tsconfigContent.includes('apps/electron/**/*')
+      ? [`${rel(tsconfigNode)}: missing apps/electron from node typecheck include`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/gateway/lifecycle')
+      ? [`${rel(viteConfig)}: missing electron-host package alias`]
+      : []),
+    ...(!vitestContent.includes('apps/**/*.test.ts')
+      ? [`${rel(vitestConfig)}: missing apps test include`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/gateway/lifecycle')
+      ? [`${rel(vitestConfig)}: missing electron-host test alias`]
+      : []),
+    ...(fs.existsSync(electronGatewayControllerFile)
+      ? matchingLines(electronGatewayControllerFile, ELECTRON_GATEWAY_LIFECYCLE_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/gateway/lifecycle.ts: missing Electron gateway lifecycle owner']),
+    ...(fs.existsSync(electronGatewayFile)
+      ? matchingLines(electronGatewayFile, ELECTRON_GATEWAY_LIFECYCLE_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/gateway/lifecycle.ts: missing Electron gateway lifecycle facade']),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_GATEWAY_LIFECYCLE_FORBIDDEN_PATTERNS)
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? [`${rel(mainFile)}: remove legacy gateway lifecycle facade; use @onething/electron-host/gateway/lifecycle directly`]
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron gateway lifecycle', lines)
+}
+
+function checkElectronHostOwnsVoiceRuntimeWindow(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronRuntimeControllerFile = path.join(root, 'apps/electron/src/voice/runtime-window-controller.ts')
+  const electronRuntimeFile = path.join(root, 'apps/electron/src/voice/runtime-window.ts')
+  const mainRuntimeFile = path.join(root, 'src/main/voice/runtime-window.ts')
+  const mainVoiceServiceFile = path.join(root, 'src/main/voice/service.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronRuntimeControllerContent = fs.existsSync(electronRuntimeControllerFile)
+    ? fs.readFileSync(electronRuntimeControllerFile, 'utf-8')
+    : ''
+  const electronRuntimeContent = fs.existsSync(electronRuntimeFile)
+    ? fs.readFileSync(electronRuntimeFile, 'utf-8')
+    : ''
+  const mainVoiceServiceContent = fs.existsSync(mainVoiceServiceFile) ? fs.readFileSync(mainVoiceServiceFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredControllerSymbols = [
+    'createElectronVoiceRuntimeWindowController',
+    'new BrowserWindow',
+    'loadURL',
+    'loadFile',
+    'webContents.send',
+    'pendingCommands',
+    'markReady',
+    'flushCommands',
+  ]
+  const requiredHostFacadeSymbols = [
+    'createElectronVoiceRuntimeWindowController',
+    'IPC_CHANNELS.VOICE_RUNTIME_COMMAND',
+    'getElectronRendererDevUrl',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./voice/runtime-window')
+      ? [`${rel(electronPackage)}: missing voice runtime-window export`]
+      : []),
+    ...requiredControllerSymbols
+      .filter(symbol => !electronRuntimeControllerContent.includes(symbol))
+      .map(symbol => `${rel(electronRuntimeControllerFile)}: missing Electron voice runtime-window controller symbol ${symbol}`),
+    ...requiredHostFacadeSymbols
+      .filter(symbol => !electronRuntimeContent.includes(symbol))
+      .map(symbol => `${rel(electronRuntimeFile)}: missing Electron voice runtime-window host facade symbol ${symbol}`),
+    ...(!mainVoiceServiceContent.includes('@onething/electron-host/voice/runtime-window')
+      ? [`${rel(mainVoiceServiceFile)}: voice service must import runtime window operations from electron-host directly`]
+      : []),
+    ...(mainVoiceServiceContent.includes('./runtime-window.js')
+      ? [`${rel(mainVoiceServiceFile)}: voice service must not import legacy runtime-window facade`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/voice/runtime-window')
+      ? [`${rel(viteConfig)}: missing electron voice runtime-window package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/voice/runtime-window')
+      ? [`${rel(vitestConfig)}: missing electron voice runtime-window test alias`]
+      : []),
+    ...(fs.existsSync(mainRuntimeFile)
+      ? [`${rel(mainRuntimeFile)}: remove legacy voice runtime-window facade; use @onething/electron-host/voice/runtime-window directly`]
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron voice runtime window', lines)
+}
+
+function checkElectronHostOwnsVoiceEventBroadcasting(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronEventsFile = path.join(root, 'apps/electron/src/voice/events.ts')
+  const mainVoiceServiceFile = path.join(root, 'src/main/voice/service.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronEventsContent = fs.existsSync(electronEventsFile) ? fs.readFileSync(electronEventsFile, 'utf-8') : ''
+  const mainVoiceServiceContent = fs.existsSync(mainVoiceServiceFile) ? fs.readFileSync(mainVoiceServiceFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'broadcastElectronVoiceMessage',
+    'sendElectronVoiceMessageToWindow',
+    'getElectronWebContentsId',
+    'BrowserWindow.getAllWindows',
+    'webContents.send',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/voice/events',
+    'broadcastElectronVoiceMessage',
+    'sendElectronVoiceMessageToWindow',
+    'getElectronWebContentsId',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./voice/events')
+      ? [`${rel(electronPackage)}: missing voice events export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronEventsContent.includes(symbol))
+      .map(symbol => `${rel(electronEventsFile)}: missing Electron voice event symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainVoiceServiceContent.includes(symbol))
+      .map(symbol => `${rel(mainVoiceServiceFile)}: missing voice event facade delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/voice/events')
+      ? [`${rel(viteConfig)}: missing electron voice events package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/voice/events')
+      ? [`${rel(vitestConfig)}: missing electron voice events test alias`]
+      : []),
+    ...(fs.existsSync(mainVoiceServiceFile)
+      ? matchingLines(mainVoiceServiceFile, VOICE_EVENT_BROADCAST_FORBIDDEN_PATTERNS)
+      : ['src/main/voice/service.ts: missing voice service']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron voice event broadcasting', lines)
+}
+
+function checkElectronHostOwnsVoiceTray(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronTrayControllerFile = path.join(root, 'apps/electron/src/voice/tray-controller.ts')
+  const electronTrayFile = path.join(root, 'apps/electron/src/voice/tray.ts')
+  const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const mainTrayFile = path.join(root, 'src/main/voice/tray.ts')
+  const mainVoiceServiceFile = path.join(root, 'src/main/voice/service.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronTrayControllerContent = fs.existsSync(electronTrayControllerFile)
+    ? fs.readFileSync(electronTrayControllerFile, 'utf-8')
+    : ''
+  const electronTrayContent = fs.existsSync(electronTrayFile) ? fs.readFileSync(electronTrayFile, 'utf-8') : ''
+  const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
+  const mainVoiceServiceContent = fs.existsSync(mainVoiceServiceFile) ? fs.readFileSync(mainVoiceServiceFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredControllerSymbols = [
+    'createElectronVoiceTrayController',
+    'new Tray',
+    'Menu.buildFromTemplate',
+    'nativeImage.createFromPath',
+    'nativeImage.createEmpty',
+    'app.quit',
+    'shouldHideMainWindowForVoice',
+  ]
+  const requiredHostFacadeSymbols = [
+    'createElectronVoiceTrayController',
+    'configureVoiceTray',
+    'getIconPath',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./voice/tray')
+      ? [`${rel(electronPackage)}: missing voice tray export`]
+      : []),
+    ...requiredControllerSymbols
+      .filter(symbol => !electronTrayControllerContent.includes(symbol))
+      .map(symbol => `${rel(electronTrayControllerFile)}: missing Electron voice tray controller symbol ${symbol}`),
+    ...requiredHostFacadeSymbols
+      .filter(symbol => !electronTrayContent.includes(symbol))
+      .map(symbol => `${rel(electronTrayFile)}: missing Electron voice tray host facade symbol ${symbol}`),
+    ...(electronTrayContent.includes('@main/')
+      ? [`${rel(electronTrayFile)}: Electron voice tray host must not import @main runtime modules`]
+      : []),
+    ...(!electronMainContent.includes('configureVoiceTray')
+      ? [`${rel(electronMainFile)}: Electron app bootstrap must configure voice tray from runtime settings`]
+      : []),
+    ...(!electronMainContent.includes('getSettings().voice')
+      ? [`${rel(electronMainFile)}: Electron app bootstrap must inject voice settings into electron-host tray`]
+      : []),
+    ...(!electronMainContent.includes('getVoiceServiceSafe()?.shutdown')
+      ? [`${rel(electronMainFile)}: Electron app bootstrap must inject voice shutdown into electron-host tray`]
+      : []),
+    ...(!mainVoiceServiceContent.includes('@onething/electron-host/voice/tray')
+      ? [`${rel(mainVoiceServiceFile)}: voice service must import tray updates from electron-host directly`]
+      : []),
+    ...(mainVoiceServiceContent.includes('./tray.js')
+      ? [`${rel(mainVoiceServiceFile)}: voice service must not import legacy voice tray facade`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/voice/tray')
+      ? [`${rel(viteConfig)}: missing electron voice tray package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/voice/tray')
+      ? [`${rel(vitestConfig)}: missing electron voice tray test alias`]
+      : []),
+    ...(fs.existsSync(mainTrayFile)
+      ? [`${rel(mainTrayFile)}: remove legacy voice tray facade; use @onething/electron-host/voice/tray directly`]
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron voice tray', lines)
+}
+
+function checkElectronHostOwnsVoiceIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronVoiceIpcFile = path.join(root, 'apps/electron/src/voice/ipc.ts')
+  const mainVoiceIpcFile = path.join(root, 'src/main/voice/ipc.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronVoiceIpcContent = fs.existsSync(electronVoiceIpcFile)
+    ? fs.readFileSync(electronVoiceIpcFile, 'utf-8')
+    : ''
+  const mainVoiceIpcContent = fs.existsSync(mainVoiceIpcFile) ? fs.readFileSync(mainVoiceIpcFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronVoiceIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronVoiceIpcChannels',
+    'ElectronVoiceIpcInvokeEvent',
+    'options.runtimeReady((event as ElectronVoiceIpcInvokeEvent).sender)',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/voice/ipc',
+    'registerElectronVoiceIpcHandlers',
+    'IPC_CHANNELS.VOICE_GET_STATE',
+    'IPC_CHANNELS.VOICE_START',
+    'IPC_CHANNELS.VOICE_STOP',
+    'IPC_CHANNELS.VOICE_SUBMIT_UTTERANCE',
+    'IPC_CHANNELS.VOICE_SUBMIT_TRANSCRIPT',
+    'IPC_CHANNELS.VOICE_SYNTHESIZE',
+    'IPC_CHANNELS.VOICE_TEST_ASR',
+    'IPC_CHANNELS.VOICE_TEST_TTS',
+    'IPC_CHANNELS.VOICE_GET_TTS_MODELS',
+    'IPC_CHANNELS.VOICE_RUNTIME_READY',
+    'IPC_CHANNELS.VOICE_RUNTIME_EVENT',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./voice/ipc')
+      ? [`${rel(electronPackage)}: missing voice IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronVoiceIpcContent.includes(symbol))
+      .map(symbol => `${rel(electronVoiceIpcFile)}: missing Electron voice IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainVoiceIpcContent.includes(symbol))
+      .map(symbol => `${rel(mainVoiceIpcFile)}: missing voice IPC host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/voice/ipc')
+      ? [`${rel(viteConfig)}: missing electron voice IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/voice/ipc')
+      ? [`${rel(vitestConfig)}: missing electron voice IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainVoiceIpcFile)
+      ? matchingLines(mainVoiceIpcFile, MAIN_VOICE_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/voice/ipc.ts: missing voice IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron voice IPC host operations', lines)
+}
+
+function checkElectronHostOwnsReadyHandler(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronReadyFile = path.join(root, 'apps/electron/src/app/ready.ts')
+  const electronLoginShellEnvFile = path.join(root, 'apps/electron/src/app/login-shell-env.ts')
+  const electronLoginShellEnvTestFile = path.join(root, 'apps/electron/src/app/__tests__/login-shell-env.test.ts')
+  const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const legacyLoginShellEnvFile = path.join(root, 'src/main/utils/login-shell-env.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronReadyContent = fs.existsSync(electronReadyFile) ? fs.readFileSync(electronReadyFile, 'utf-8') : ''
+  const electronLoginShellEnvContent = fs.existsSync(electronLoginShellEnvFile) ? fs.readFileSync(electronLoginShellEnvFile, 'utf-8') : ''
+  const electronLoginShellEnvTestContent = fs.existsSync(electronLoginShellEnvTestFile) ? fs.readFileSync(electronLoginShellEnvTestFile, 'utf-8') : ''
+  const legacyLoginShellEnvContent = fs.existsSync(legacyLoginShellEnvFile) ? fs.readFileSync(legacyLoginShellEnvFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredReadySymbols = [
+    'configureElectronStorePathHost',
+    'registerElectronReadyHandler',
+    'runElectronReady',
+    'hydratePackagedEnvironment',
+    'acquireDesktopStoreLock',
+    'formatDesktopStoreLockError',
+    'showErrorBox',
+    'electronApp.quit',
+  ]
+  const requiredLoginShellEnvSymbols = [
+    'hydrateProcessEnvFromLoginShell',
+    'parseLoginShellEnvOutput',
+    'mergeMissingEnv',
+    'spawn(',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./app/ready')
+      ? [`${rel(electronPackage)}: missing ready export`]
+      : []),
+    ...(!packageContent.includes('./app/login-shell-env')
+      ? [`${rel(electronPackage)}: missing login-shell-env export`]
+      : []),
+    ...requiredReadySymbols
+      .filter(symbol => !electronReadyContent.includes(symbol))
+      .map(symbol => `${rel(electronReadyFile)}: missing Electron ready symbol ${symbol}`),
+    ...requiredLoginShellEnvSymbols
+      .filter(symbol => !electronLoginShellEnvContent.includes(symbol))
+      .map(symbol => `${rel(electronLoginShellEnvFile)}: missing Electron login-shell env symbol ${symbol}`),
+    ...(!electronLoginShellEnvTestContent.includes('login shell environment helpers')
+      ? [`${rel(electronLoginShellEnvTestFile)}: missing Electron login-shell env test coverage`]
+      : []),
+    ...(!legacyLoginShellEnvContent.includes('@onething/electron-host/app/login-shell-env')
+      ? [`${rel(legacyLoginShellEnvFile)}: legacy login-shell env facade must delegate to Electron host`]
+      : []),
+    ...(!mainContent.includes('configureElectronStorePathHost({ configureStorePathHost })')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: main must delegate store path host configuration to apps/electron`]
+      : []),
+    ...(!mainContent.includes('@onething/electron-host/app/login-shell-env')
+      ? [`${rel(mainFile)}: main must import login-shell env hydration from apps/electron host`]
+      : []),
+    ...(!mainContent.includes('registerElectronReadyHandler')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: main must delegate ready handling to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/app/login-shell-env')
+      ? [`${rel(viteConfig)}: missing electron login-shell env package alias`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/app/ready')
+      ? [`${rel(viteConfig)}: missing electron ready package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/app/login-shell-env')
+      ? [`${rel(vitestConfig)}: missing electron login-shell env test alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/app/ready')
+      ? [`${rel(vitestConfig)}: missing electron ready test alias`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_READY_FORBIDDEN_PATTERNS)
+      : ['src/main/index.ts: missing Electron main entry']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron ready handler', lines)
+}
+
+function checkElectronHostOwnsActivateHandler(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronActivateFile = path.join(root, 'apps/electron/src/app/activate.ts')
+  const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronActivateContent = fs.existsSync(electronActivateFile) ? fs.readFileSync(electronActivateFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const singleQuoteActivateStart = mainContent.indexOf("app.on('activate'")
+  const doubleQuoteActivateStart = mainContent.indexOf('app.on("activate"')
+  const legacyActivateStart = singleQuoteActivateStart >= 0 ? singleQuoteActivateStart : doubleQuoteActivateStart
+  const legacyActivateLineOffset = legacyActivateStart >= 0
+    ? mainContent.slice(0, legacyActivateStart).split(/\r?\n/).length - 1
+    : 0
+  const requiredActivateSymbols = [
+    'registerElectronActivateHandler',
+    'handleElectronActivate',
+    'createAndBindElectronMainWindow',
+    'shouldSuppressMainWindowActivation',
+    'initializeIPCBridge',
+    'bindStreamEngine',
+    'warmTodoPlanWindow',
+    'activateMainWindow',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./app/activate')
+      ? [`${rel(electronPackage)}: missing activate export`]
+      : []),
+    ...requiredActivateSymbols
+      .filter(symbol => !electronActivateContent.includes(symbol))
+      .map(symbol => `${rel(electronActivateFile)}: missing Electron activate symbol ${symbol}`),
+    ...(!mainContent.includes('registerElectronActivateHandler')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: main must delegate activate handling to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/app/activate')
+      ? [`${rel(viteConfig)}: missing electron activate package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/app/activate')
+      ? [`${rel(vitestConfig)}: missing electron activate test alias`]
+      : []),
+    ...(fs.existsSync(mainFile) && legacyActivateStart >= 0
+      ? matchingTextLines(rel(mainFile), mainContent.slice(legacyActivateStart), MAIN_ACTIVATE_FORBIDDEN_PATTERNS, legacyActivateLineOffset)
+      : []),
+    ...(!fs.existsSync(mainFile)
+      ? ['src/main/index.ts: missing Electron main entry']
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron activate handler', lines)
+}
+
+function checkElectronHostOwnsMainWindowBinding(): void {
+  const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const lines = [
+    ...(!mainContent.includes('createAndBindElectronMainWindow(createElectronMainWindowOptions())')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: ready startup must use apps/electron main-window binding helper`]
+      : []),
+    ...(!mainContent.includes('registerElectronActivateHandler(createElectronMainWindowOptions())')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: activate handler must reuse the same apps/electron main-window binding options`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_WINDOW_BINDING_FORBIDDEN_PATTERNS)
+      : ['src/main/index.ts: missing Electron main entry']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron main-window binding', lines)
+}
+
+function checkElectronHostOwnsApplicationMenu(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronMenuFile = path.join(root, 'apps/electron/src/menu/application-menu.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronMenuContent = fs.existsSync(electronMenuFile) ? fs.readFileSync(electronMenuFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredMenuSymbols = [
+    'setupElectronApplicationMenu',
+    'ElectronApplicationMenuOptions',
+    'buildFromTemplate',
+    'setApplicationMenu',
+    'openSettingsWindow',
+    'menu:new-chat',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./menu/application-menu')
+      ? [`${rel(electronPackage)}: missing application menu export`]
+      : []),
+    ...requiredMenuSymbols
+      .filter(symbol => !electronMenuContent.includes(symbol))
+      .map(symbol => `${rel(electronMenuFile)}: missing Electron application-menu symbol ${symbol}`),
+    ...(!windowContent.includes('setupElectronApplicationMenu({ mainWindow, openSettingsWindow })')
+      ? [`${rel(windowFile)}: window creation must delegate application menu setup to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/menu/application-menu')
+      ? [`${rel(viteConfig)}: missing electron application menu package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/menu/application-menu')
+      ? [`${rel(vitestConfig)}: missing electron application menu test alias`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_APPLICATION_MENU_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron application menu', lines)
+}
+
+function checkElectronHostOwnsSessionSecurity(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSessionFile = path.join(root, 'apps/electron/src/window/session-security.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSessionContent = fs.existsSync(electronSessionFile) ? fs.readFileSync(electronSessionFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredSessionSymbols = [
+    'registerElectronContentSecurityPolicy',
+    'registerElectronMediaPermissions',
+    'onHeadersReceived',
+    'Content-Security-Policy',
+    'setPermissionRequestHandler',
+    'setPermissionCheckHandler',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/session-security')
+      ? [`${rel(electronPackage)}: missing session-security export`]
+      : []),
+    ...requiredSessionSymbols
+      .filter(symbol => !electronSessionContent.includes(symbol))
+      .map(symbol => `${rel(electronSessionFile)}: missing Electron session-security symbol ${symbol}`),
+    ...(!windowContent.includes('registerElectronContentSecurityPolicy()')
+      ? [`${rel(windowFile)}: window creation must delegate CSP setup to apps/electron`]
+      : []),
+    ...(!windowContent.includes('registerElectronMediaPermissions({')
+      ? [`${rel(windowFile)}: window creation must delegate media permissions to apps/electron`]
+      : []),
+    ...(!windowContent.includes('isElectronAppWebContents')
+      ? [`${rel(windowFile)}: media permission webContents checks must delegate to apps/electron renderer targets`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/session-security')
+      ? [`${rel(viteConfig)}: missing electron session-security package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/session-security')
+      ? [`${rel(vitestConfig)}: missing electron session-security test alias`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_SESSION_SECURITY_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron session security', lines)
+}
+
+function checkElectronHostOwnsExternalLinkHandling(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronExternalLinksFile = path.join(root, 'apps/electron/src/window/external-links.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronExternalLinksContent = fs.existsSync(electronExternalLinksFile) ? fs.readFileSync(electronExternalLinksFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredExternalLinkSymbols = [
+    'setupElectronExternalLinkHandling',
+    'openExternal',
+    'will-navigate',
+    'setWindowOpenHandler',
+    'isAppUrl',
+    "action: 'deny'",
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/external-links')
+      ? [`${rel(electronPackage)}: missing external-links export`]
+      : []),
+    ...requiredExternalLinkSymbols
+      .filter(symbol => !electronExternalLinksContent.includes(symbol))
+      .map(symbol => `${rel(electronExternalLinksFile)}: missing Electron external-links symbol ${symbol}`),
+    ...(!windowContent.includes('setupElectronExternalLinkHandling({')
+      ? [`${rel(windowFile)}: window creation must delegate external-link handling to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/external-links')
+      ? [`${rel(viteConfig)}: missing electron external-links package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/external-links')
+      ? [`${rel(vitestConfig)}: missing electron external-links test alias`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_EXTERNAL_LINKS_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron external-link handling', lines)
+}
+
+function checkElectronHostOwnsMainWindowRecovery(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronRecoveryFile = path.join(root, 'apps/electron/src/window/main-window-recovery.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronRecoveryContent = fs.existsSync(electronRecoveryFile) ? fs.readFileSync(electronRecoveryFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredRecoverySymbols = [
+    'attachElectronMainWindowRecovery',
+    'recoverElectronMainWindowAfterSystemResume',
+    'reloadElectronMainWindowRenderer',
+    'getElectronMainWindowRendererHealth',
+    'MAIN_WINDOW_RESUME_HEALTH_CHECK_DELAY_MS',
+    'did-fail-load',
+    'render-process-gone',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/main-window-recovery')
+      ? [`${rel(electronPackage)}: missing main-window-recovery export`]
+      : []),
+    ...requiredRecoverySymbols
+      .filter(symbol => !electronRecoveryContent.includes(symbol))
+      .map(symbol => `${rel(electronRecoveryFile)}: missing Electron main-window-recovery symbol ${symbol}`),
+    ...(!windowContent.includes('attachElectronMainWindowRecovery({ mainWindow, loadMainWindowContent })')
+      ? [`${rel(windowFile)}: main window creation must delegate renderer recovery to apps/electron`]
+      : []),
+    ...(!windowContent.includes('recoverElectronMainWindowAfterSystemResume({')
+      ? [`${rel(windowFile)}: resume recovery must delegate renderer recovery to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/main-window-recovery')
+      ? [`${rel(viteConfig)}: missing electron main-window-recovery package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/main-window-recovery')
+      ? [`${rel(vitestConfig)}: missing electron main-window-recovery test alias`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_MAIN_RECOVERY_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron main-window renderer recovery', lines)
+}
+
+function checkElectronHostOwnsSettingsWindow(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSettingsFile = path.join(root, 'apps/electron/src/window/settings-window.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSettingsContent = fs.existsSync(electronSettingsFile) ? fs.readFileSync(electronSettingsFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const settingsStart = windowContent.indexOf('export function openSettingsWindow')
+  const settingsEnd = windowContent.indexOf('export function openTodoPlanWindow', settingsStart)
+  const settingsRegion = settingsStart >= 0 && settingsEnd > settingsStart
+    ? windowContent.slice(settingsStart, settingsEnd)
+    : ''
+  const settingsLineOffset = settingsStart >= 0
+    ? windowContent.slice(0, settingsStart).split(/\r?\n/).length - 1
+    : 0
+  const requiredSettingsSymbols = [
+    'openElectronSettingsWindow',
+    'BrowserWindow',
+    'ready-to-show',
+    'setCurrentWindow',
+    '#/settings',
+    'did-fail-load',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/settings-window')
+      ? [`${rel(electronPackage)}: missing settings-window export`]
+      : []),
+    ...requiredSettingsSymbols
+      .filter(symbol => !electronSettingsContent.includes(symbol))
+      .map(symbol => `${rel(electronSettingsFile)}: missing Electron settings-window symbol ${symbol}`),
+    ...(!windowContent.includes('openElectronSettingsWindow({')
+      ? [`${rel(windowFile)}: settings window must delegate BrowserWindow setup to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/settings-window')
+      ? [`${rel(viteConfig)}: missing electron settings-window package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/settings-window')
+      ? [`${rel(vitestConfig)}: missing electron settings-window test alias`]
+      : []),
+    ...(settingsRegion
+      ? matchingTextLines(rel(windowFile), settingsRegion, WINDOW_SETTINGS_WINDOW_FORBIDDEN_PATTERNS, settingsLineOffset)
+      : [`${rel(windowFile)}: missing openSettingsWindow region`]),
+  ]
+
+  assertNoMatches('apps/electron owns Electron settings window', lines)
+}
+
+function checkElectronHostOwnsImagePreviewWindow(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronImagePreviewFile = path.join(root, 'apps/electron/src/window/image-preview-window.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronImagePreviewContent = fs.existsSync(electronImagePreviewFile) ? fs.readFileSync(electronImagePreviewFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const previewStart = windowContent.indexOf('export function openImagePreviewWindow')
+  const previewRegion = previewStart >= 0
+    ? windowContent.slice(previewStart)
+    : ''
+  const previewLineOffset = previewStart >= 0
+    ? windowContent.slice(0, previewStart).split(/\r?\n/).length - 1
+    : 0
+  const requiredPreviewSymbols = [
+    'openElectronImagePreviewWindow',
+    'BrowserWindow',
+    'dom-ready',
+    'ready-to-show',
+    'setCurrentWindow',
+    'updateChannel',
+    'routeHash',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/image-preview-window')
+      ? [`${rel(electronPackage)}: missing image-preview-window export`]
+      : []),
+    ...requiredPreviewSymbols
+      .filter(symbol => !electronImagePreviewContent.includes(symbol))
+      .map(symbol => `${rel(electronImagePreviewFile)}: missing Electron image-preview-window symbol ${symbol}`),
+    ...(!windowContent.includes('openElectronImagePreviewWindow({')
+      ? [`${rel(windowFile)}: image preview window must delegate BrowserWindow setup to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/image-preview-window')
+      ? [`${rel(viteConfig)}: missing electron image-preview-window package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/image-preview-window')
+      ? [`${rel(vitestConfig)}: missing electron image-preview-window test alias`]
+      : []),
+    ...(previewRegion
+      ? matchingTextLines(rel(windowFile), previewRegion, WINDOW_IMAGE_PREVIEW_WINDOW_FORBIDDEN_PATTERNS, previewLineOffset)
+      : [`${rel(windowFile)}: missing openImagePreviewWindow region`]),
+  ]
+
+  assertNoMatches('apps/electron owns Electron image preview window', lines)
+}
+
+function checkElectronHostOwnsMainWindowCreation(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronMainWindowFile = path.join(root, 'apps/electron/src/window/main-window.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronMainWindowContent = fs.existsSync(electronMainWindowFile) ? fs.readFileSync(electronMainWindowFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const createStart = windowContent.indexOf('export function createWindow')
+  const createEnd = windowContent.indexOf('// Keep track of the image preview window', createStart)
+  const createRegion = createStart >= 0 && createEnd > createStart
+    ? windowContent.slice(createStart, createEnd)
+    : ''
+  const createLineOffset = createStart >= 0
+    ? windowContent.slice(0, createStart).split(/\r?\n/).length - 1
+    : 0
+  const requiredMainWindowSymbols = [
+    'createElectronMainWindow',
+    'BrowserWindow',
+    'ready-to-show',
+    'shouldSuppressActivation',
+    'shouldHideForVoice',
+    'saveWindowState',
+    'openDevTools',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/main-window')
+      ? [`${rel(electronPackage)}: missing main-window export`]
+      : []),
+    ...requiredMainWindowSymbols
+      .filter(symbol => !electronMainWindowContent.includes(symbol))
+      .map(symbol => `${rel(electronMainWindowFile)}: missing Electron main-window symbol ${symbol}`),
+    ...(!windowContent.includes('createElectronMainWindow({')
+      ? [`${rel(windowFile)}: main window must delegate BrowserWindow setup to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/main-window')
+      ? [`${rel(viteConfig)}: missing electron main-window package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/main-window')
+      ? [`${rel(vitestConfig)}: missing electron main-window test alias`]
+      : []),
+    ...(createRegion
+      ? matchingTextLines(rel(windowFile), createRegion, WINDOW_MAIN_WINDOW_FORBIDDEN_PATTERNS, createLineOffset)
+      : [`${rel(windowFile)}: missing createWindow region`]),
+  ]
+
+  assertNoMatches('apps/electron owns Electron main window creation', lines)
+}
+
+function checkElectronHostOwnsTodoPlanWindowCreation(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronTodoFile = path.join(root, 'apps/electron/src/window/todo-plan-window.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronTodoContent = fs.existsSync(electronTodoFile) ? fs.readFileSync(electronTodoFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const todoStart = windowContent.indexOf('function createTodoPlanBrowserWindow')
+  const todoEnd = windowContent.indexOf('export function openSettingsWindow', todoStart)
+  const todoRegion = todoStart >= 0 && todoEnd > todoStart
+    ? windowContent.slice(todoStart, todoEnd)
+    : ''
+  const todoLineOffset = todoStart >= 0
+    ? windowContent.slice(0, todoStart).split(/\r?\n/).length - 1
+    : 0
+  const requiredTodoSymbols = [
+    'createElectronTodoPlanWindow',
+    'BrowserWindow',
+    'ready-to-show',
+    'onCreated',
+    'onReadyToShow',
+    'routeHash',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/todo-plan-window')
+      ? [`${rel(electronPackage)}: missing todo-plan-window export`]
+      : []),
+    ...requiredTodoSymbols
+      .filter(symbol => !electronTodoContent.includes(symbol))
+      .map(symbol => `${rel(electronTodoFile)}: missing Electron todo-plan-window symbol ${symbol}`),
+    ...(!windowContent.includes('createElectronTodoPlanWindow({')
+      ? [`${rel(windowFile)}: todo plan window must delegate BrowserWindow setup to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/todo-plan-window')
+      ? [`${rel(viteConfig)}: missing electron todo-plan-window package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/todo-plan-window')
+      ? [`${rel(vitestConfig)}: missing electron todo-plan-window test alias`]
+      : []),
+    ...(todoRegion
+      ? matchingTextLines(rel(windowFile), todoRegion, WINDOW_TODO_PLAN_WINDOW_FORBIDDEN_PATTERNS, todoLineOffset)
+      : [`${rel(windowFile)}: missing createTodoPlanBrowserWindow region`]),
+  ]
+
+  assertNoMatches('apps/electron owns Electron todo plan window creation', lines)
+}
+
+function checkElectronHostOwnsMacOSPanelBridge(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronPanelFile = path.join(root, 'apps/electron/src/window/macos-panel.ts')
+  const legacyPanelFile = path.join(root, 'src/main/native/macos-panel.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const todoWindowTestFile = path.join(root, 'src/main/__tests__/todo-plan-window.test.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronPanelContent = fs.existsSync(electronPanelFile) ? fs.readFileSync(electronPanelFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const todoWindowTestContent = fs.existsSync(todoWindowTestFile) ? fs.readFileSync(todoWindowTestFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredPanelSymbols = [
+    'configureNonActivatingPanel',
+    'showNonActivatingPanel',
+    'hideNonActivatingPanel',
+    'isNonActivatingPanelFrontmost',
+    'setNonActivatingPanelPinned',
+    'createRequire',
+    'process.resourcesPath',
+    'getNativeWindowHandle',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/macos-panel')
+      ? [`${rel(electronPackage)}: missing macOS panel export`]
+      : []),
+    ...requiredPanelSymbols
+      .filter(symbol => !electronPanelContent.includes(symbol))
+      .map(symbol => `${rel(electronPanelFile)}: missing Electron macOS panel bridge symbol ${symbol}`),
+    ...(!windowContent.includes('@onething/electron-host/window/macos-panel')
+      ? [`${rel(windowFile)}: window facade must import macOS panel bridge from apps/electron`]
+      : []),
+    ...(!todoWindowTestContent.includes('@onething/electron-host/window/macos-panel')
+      ? [`${rel(todoWindowTestFile)}: todo plan window test must mock the electron-host macOS panel bridge`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/macos-panel')
+      ? [`${rel(viteConfig)}: missing electron macOS panel package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/macos-panel')
+      ? [`${rel(vitestConfig)}: missing electron macOS panel test alias`]
+      : []),
+    ...(fs.existsSync(legacyPanelFile)
+      ? [`${rel(legacyPanelFile)}: macOS native panel bridge belongs in apps/electron`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_MACOS_PANEL_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+    ...(fs.existsSync(todoWindowTestFile)
+      ? matchingLines(todoWindowTestFile, WINDOW_MACOS_PANEL_FORBIDDEN_PATTERNS)
+      : ['src/main/__tests__/todo-plan-window.test.ts: missing todo plan window test']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron macOS native panel bridge', lines)
+}
+
+function checkElectronHostOwnsRendererTargets(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronTargetsFile = path.join(root, 'apps/electron/src/window/renderer-targets.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const searchTargetFile = path.join(root, 'src/main/search/window-target.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronTargetsContent = fs.existsSync(electronTargetsFile) ? fs.readFileSync(electronTargetsFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredTargetSymbols = [
+    'getElectronRendererDevUrl',
+    'isElectronRendererWindowUrl',
+    'isElectronMainAppWindowUrl',
+    'isElectronAppWebContents',
+    'loadElectronMainWindowContent',
+    'AUXILIARY_HASH_PREFIXES',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/renderer-targets')
+      ? [`${rel(electronPackage)}: missing renderer-targets export`]
+      : []),
+    ...requiredTargetSymbols
+      .filter(symbol => !electronTargetsContent.includes(symbol))
+      .map(symbol => `${rel(electronTargetsFile)}: missing Electron renderer target symbol ${symbol}`),
+    ...(!windowContent.includes('loadElectronMainWindowContent')
+      ? [`${rel(windowFile)}: main window content loading must delegate to apps/electron`]
+      : []),
+    ...(!windowContent.includes('isElectronAppWebContents')
+      ? [`${rel(windowFile)}: app webContents checks must delegate to apps/electron`]
+      : []),
+    ...(windowContent.includes('@main/search/window-target')
+      ? [`${rel(windowFile)}: main window must not route renderer-target checks through src/main/search/window-target.ts`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/renderer-targets')
+      ? [`${rel(viteConfig)}: missing electron renderer-targets package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/renderer-targets')
+      ? [`${rel(vitestConfig)}: missing electron renderer-targets test alias`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_RENDERER_TARGETS_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+    ...(fs.existsSync(searchTargetFile)
+      ? [`${rel(searchTargetFile)}: remove legacy search window target facade; use @onething/electron-host/window/renderer-targets directly`]
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron renderer URL targets and main window content loading', lines)
+}
+
+function checkElectronHostOwnsSearchWindowLifecycle(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSearchWindowControllerFile = path.join(root, 'apps/electron/src/window/search-window.ts')
+  const electronSearchWindowFile = path.join(root, 'apps/electron/src/search/window.ts')
+  const searchWindowFile = path.join(root, 'src/main/search/window.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSearchWindowControllerContent = fs.existsSync(electronSearchWindowControllerFile)
+    ? fs.readFileSync(electronSearchWindowControllerFile, 'utf-8')
+    : ''
+  const electronSearchWindowContent = fs.existsSync(electronSearchWindowFile)
+    ? fs.readFileSync(electronSearchWindowFile, 'utf-8')
+    : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredSearchWindowControllerSymbols = [
+    'createElectronSearchWindowController',
+    'getElectronSystemShouldUseDarkColors',
+    'new BrowserWindow',
+    'ready-to-show',
+    'webContents.send',
+    'loadURL',
+    'loadFile',
+  ]
+  const requiredHostFacadeSymbols = [
+    'createElectronSearchWindowController',
+    'getElectronSystemShouldUseDarkColors',
+    'getSearchWindowVisualOptions',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/search-window')
+      ? [`${rel(electronPackage)}: missing search-window export`]
+      : []),
+    ...(!packageContent.includes('./search/window')
+      ? [`${rel(electronPackage)}: missing search window aggregate export`]
+      : []),
+    ...requiredSearchWindowControllerSymbols
+      .filter(symbol => !electronSearchWindowControllerContent.includes(symbol))
+      .map(symbol => `${rel(electronSearchWindowControllerFile)}: missing Electron search-window symbol ${symbol}`),
+    ...requiredHostFacadeSymbols
+      .filter(symbol => !electronSearchWindowContent.includes(symbol))
+      .map(symbol => `${rel(electronSearchWindowFile)}: missing onething search-window host facade symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/window/search-window')
+      ? [`${rel(viteConfig)}: missing electron search-window package alias`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/search/window')
+      ? [`${rel(viteConfig)}: missing electron search window aggregate package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/search-window')
+      ? [`${rel(vitestConfig)}: missing electron search-window test alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/search/window')
+      ? [`${rel(vitestConfig)}: missing electron search window aggregate test alias`]
+      : []),
+    ...(fs.existsSync(searchWindowFile)
+      ? [`${rel(searchWindowFile)}: remove legacy search window facade; use @onething/electron-host/search/window directly`]
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron search window lifecycle', lines)
+}
+
+function checkElectronHostOwnsSearchWindowActionDelivery(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSearchActionsFile = path.join(root, 'apps/electron/src/search/window-actions.ts')
+  const electronSearchControllerFile = path.join(root, 'apps/electron/src/search/window-controller.ts')
+  const electronSearchIpcFile = path.join(root, 'apps/electron/src/search/ipc.ts')
+  const legacySelectionFile = path.join(root, 'src/main/search/window-selection.ts')
+  const searchControllerFile = path.join(root, 'src/main/search/window-controller.ts')
+  const searchIpcFile = path.join(root, 'src/main/search/ipc.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSearchActionsContent = fs.existsSync(electronSearchActionsFile)
+    ? fs.readFileSync(electronSearchActionsFile, 'utf-8')
+    : ''
+  const electronSearchControllerContent = fs.existsSync(electronSearchControllerFile)
+    ? fs.readFileSync(electronSearchControllerFile, 'utf-8')
+    : ''
+  const electronSearchIpcContent = fs.existsSync(electronSearchIpcFile)
+    ? fs.readFileSync(electronSearchIpcFile, 'utf-8')
+    : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'findElectronMainSearchWindow',
+    'getElectronSearchWindowFromWebContents',
+    'registerElectronSearchIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronSearchIpcChannels',
+    'toggleElectronSearchWindowFrom',
+    'executeElectronSearchActionFrom',
+    'BrowserWindow.fromWebContents',
+    'BrowserWindow.getFocusedWindow',
+    'BrowserWindow.getAllWindows',
+    'webContents.send',
+    'focus',
+  ]
+  const requiredControllerSymbols = [
+    '@onething/electron-host/search/window-actions',
+    'toggleElectronSearchWindowFrom',
+    'executeElectronSearchActionFrom',
+    'resolveActionId',
+  ]
+  const requiredIpcFacadeSymbols = [
+    'registerSearchHandlers',
+    'registerElectronSearchIpcHandlers',
+    'closeOnethingSearchWindowForIpc',
+    'executeOnethingSearchForIpc',
+    'toggleSearchWindowFrom',
+    'executeSearchActionFrom',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./search/window-actions')
+      ? [`${rel(electronPackage)}: missing search window-actions export`]
+      : []),
+    ...(!packageContent.includes('./search/window-controller')
+      ? [`${rel(electronPackage)}: missing search window-controller export`]
+      : []),
+    ...(!packageContent.includes('./search/ipc')
+      ? [`${rel(electronPackage)}: missing search IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronSearchActionsContent.includes(symbol))
+      .map(symbol => `${rel(electronSearchActionsFile)}: missing Electron search window-actions symbol ${symbol}`),
+    ...requiredControllerSymbols
+      .filter(symbol => !electronSearchControllerContent.includes(symbol))
+      .map(symbol => `${rel(electronSearchControllerFile)}: missing Electron search controller facade symbol ${symbol}`),
+    ...requiredIpcFacadeSymbols
+      .filter(symbol => !electronSearchIpcContent.includes(symbol))
+      .map(symbol => `${rel(electronSearchIpcFile)}: missing Electron search IPC host facade symbol ${symbol}`),
+    ...[
+      'IPC_CHANNELS.SEARCH_WINDOW_TOGGLE',
+      'IPC_CHANNELS.SEARCH_WINDOW_CLOSE',
+      'IPC_CHANNELS.SEARCH_QUERY',
+      'IPC_CHANNELS.SEARCH_EXECUTE_ACTION',
+    ]
+      .filter(symbol => !electronSearchIpcContent.includes(symbol))
+      .map(symbol => `${rel(electronSearchIpcFile)}: missing search IPC channel ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/search/window-actions')
+      ? [`${rel(viteConfig)}: missing electron search window-actions package alias`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/search/window-controller')
+      ? [`${rel(viteConfig)}: missing electron search window-controller package alias`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/search/ipc')
+      ? [`${rel(viteConfig)}: missing electron search IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/search/window-actions')
+      ? [`${rel(vitestConfig)}: missing electron search window-actions test alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/search/window-controller')
+      ? [`${rel(vitestConfig)}: missing electron search window-controller test alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/search/ipc')
+      ? [`${rel(vitestConfig)}: missing electron search IPC test alias`]
+      : []),
+    ...(fs.existsSync(legacySelectionFile)
+      ? [`${rel(legacySelectionFile)}: search main-window selection belongs in apps/electron`]
+      : []),
+    ...(fs.existsSync(searchControllerFile)
+      ? [`${rel(searchControllerFile)}: remove legacy search window controller facade; use @onething/electron-host/search/window-controller directly`]
+      : []),
+    ...(fs.existsSync(searchIpcFile)
+      ? [`${rel(searchIpcFile)}: remove legacy search IPC facade; use @onething/electron-host/search/ipc directly`]
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron search window action delivery', lines)
+}
+
+function checkElectronHostOwnsSearchWindowLayout(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronLayoutFile = path.join(root, 'apps/electron/src/window/search-window-layout.ts')
+  const electronSearchWindowFile = path.join(root, 'apps/electron/src/search/window.ts')
+  const legacyLayoutFile = path.join(root, 'src/main/search/window-layout.ts')
+  const searchWindowFile = path.join(root, 'src/main/search/window.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronLayoutContent = fs.existsSync(electronLayoutFile) ? fs.readFileSync(electronLayoutFile, 'utf-8') : ''
+  const electronSearchWindowContent = fs.existsSync(electronSearchWindowFile)
+    ? fs.readFileSync(electronSearchWindowFile, 'utf-8')
+    : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredLayoutSymbols = [
+    'ELECTRON_SEARCH_WINDOW_MIN_WIDTH',
+    'ELECTRON_SEARCH_WINDOW_MIN_HEIGHT',
+    'ELECTRON_SEARCH_WINDOW_MAX_DEFAULT_HEIGHT',
+    'getElectronSearchWindowSizeConstraints',
+    'getElectronDefaultSearchWindowBounds',
+    'getElectronSearchWindowGuideState',
+  ]
+  const requiredHostFacadeSymbols = [
+    '@onething/electron-host/window/search-window-layout',
+    'getElectronSearchWindowSizeConstraints',
+    'getElectronDefaultSearchWindowBounds',
+    'getElectronSearchWindowGuideState',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/search-window-layout')
+      ? [`${rel(electronPackage)}: missing search-window-layout export`]
+      : []),
+    ...requiredLayoutSymbols
+      .filter(symbol => !electronLayoutContent.includes(symbol))
+      .map(symbol => `${rel(electronLayoutFile)}: missing Electron search-window-layout symbol ${symbol}`),
+    ...requiredHostFacadeSymbols
+      .filter(symbol => !electronSearchWindowContent.includes(symbol))
+      .map(symbol => `${rel(electronSearchWindowFile)}: missing search-window layout host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/window/search-window-layout')
+      ? [`${rel(viteConfig)}: missing electron search-window-layout package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/search-window-layout')
+      ? [`${rel(vitestConfig)}: missing electron search-window-layout test alias`]
+      : []),
+    ...(fs.existsSync(legacyLayoutFile)
+      ? [`${rel(legacyLayoutFile)}: search window layout belongs in apps/electron`]
+      : []),
+    ...(fs.existsSync(searchWindowFile)
+      ? [`${rel(searchWindowFile)}: remove legacy search window facade; use @onething/electron-host/search/window directly`]
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron search window layout', lines)
+}
+
+function checkElectronHostOwnsWindowStatePersistence(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronWindowStateFile = path.join(root, 'apps/electron/src/window/window-state.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronWindowStateContent = fs.existsSync(electronWindowStateFile) ? fs.readFileSync(electronWindowStateFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredWindowStateSymbols = [
+    'ElectronWindowState',
+    'sanitizeElectronWindowState',
+    'readElectronWindowState',
+    'readElectronTodoPlanWindowState',
+    'saveElectronMainWindowState',
+    'saveElectronTodoPlanWindowState',
+  ]
+  const requiredFacadeSymbols = [
+    'getWindowStateOptions',
+    'readElectronWindowState',
+    'readElectronTodoPlanWindowState',
+    'saveElectronMainWindowState',
+    'saveElectronTodoPlanWindowState',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/window-state')
+      ? [`${rel(electronPackage)}: missing window-state export`]
+      : []),
+    ...requiredWindowStateSymbols
+      .filter(symbol => !electronWindowStateContent.includes(symbol))
+      .map(symbol => `${rel(electronWindowStateFile)}: missing Electron window-state symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !windowContent.includes(symbol))
+      .map(symbol => `${rel(windowFile)}: missing window-state facade delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/window/window-state')
+      ? [`${rel(viteConfig)}: missing electron window-state package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/window-state')
+      ? [`${rel(vitestConfig)}: missing electron window-state test alias`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_STATE_PERSISTENCE_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron window state persistence', lines)
+}
+
+function checkElectronHostOwnsMainWindowActivation(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronActivationFile = path.join(root, 'apps/electron/src/window/activation.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronActivationContent = fs.existsSync(electronActivationFile) ? fs.readFileSync(electronActivationFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredActivationSymbols = [
+    'createElectronMainWindowActivationController',
+    'suppressFromAuxiliaryWindow',
+    'shouldSuppressActivation',
+    'activateMainWindow',
+    'isMinimized',
+    'isVisible',
+    'focus',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/activation')
+      ? [`${rel(electronPackage)}: missing activation export`]
+      : []),
+    ...requiredActivationSymbols
+      .filter(symbol => !electronActivationContent.includes(symbol))
+      .map(symbol => `${rel(electronActivationFile)}: missing Electron activation symbol ${symbol}`),
+    ...(!windowContent.includes('createElectronMainWindowActivationController')
+      ? [`${rel(windowFile)}: main window activation must delegate to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window/activation')
+      ? [`${rel(viteConfig)}: missing electron activation package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/activation')
+      ? [`${rel(vitestConfig)}: missing electron activation test alias`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_ACTIVATION_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron main window activation semantics', lines)
+}
+
+function checkElectronHostOwnsWindowVisibilitySnapshots(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronVisibilityFile = path.join(root, 'apps/electron/src/window/window-visibility.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronVisibilityContent = fs.existsSync(electronVisibilityFile) ? fs.readFileSync(electronVisibilityFile, 'utf-8') : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredVisibilitySymbols = [
+    'ElectronMainWindowVisibilitySnapshot',
+    'isElectronMainAppWindow',
+    'captureElectronMainWindowVisibility',
+    'restoreElectronHiddenMainWindows',
+    'getAllWindows',
+    'restoreDelaysMs',
+  ]
+  const requiredFacadeSymbols = [
+    'captureElectronMainWindowVisibility',
+    'restoreElectronHiddenMainWindows',
+    'ElectronMainWindowVisibilitySnapshot',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/window-visibility')
+      ? [`${rel(electronPackage)}: missing window-visibility export`]
+      : []),
+    ...requiredVisibilitySymbols
+      .filter(symbol => !electronVisibilityContent.includes(symbol))
+      .map(symbol => `${rel(electronVisibilityFile)}: missing Electron window-visibility symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !windowContent.includes(symbol))
+      .map(symbol => `${rel(windowFile)}: missing window-visibility facade delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/window/window-visibility')
+      ? [`${rel(viteConfig)}: missing electron window-visibility package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/window-visibility')
+      ? [`${rel(vitestConfig)}: missing electron window-visibility test alias`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_VISIBILITY_SNAPSHOT_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron main window visibility snapshots', lines)
+}
+
+function checkElectronHostOwnsTodoPlanNotifications(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronNotificationsFile = path.join(root, 'apps/electron/src/todo-plan/notifications.ts')
+  const storeFile = path.join(root, 'src/main/todo-plan/store.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronNotificationsContent = fs.existsSync(electronNotificationsFile)
+    ? fs.readFileSync(electronNotificationsFile, 'utf-8')
+    : ''
+  const storeContent = fs.existsSync(storeFile) ? fs.readFileSync(storeFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'broadcastElectronTodoPlanChanged',
+    'revealElectronTodoPlanDirectory',
+    'BrowserWindow.getAllWindows',
+    'webContents.send',
+    'shell.openPath',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/todo-plan/notifications',
+    'broadcastElectronTodoPlanChanged',
+    'revealElectronTodoPlanDirectory',
+    'IPC_CHANNELS.TODO_PLAN_CHANGED',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./todo-plan/notifications')
+      ? [`${rel(electronPackage)}: missing todo-plan notifications export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronNotificationsContent.includes(symbol))
+      .map(symbol => `${rel(electronNotificationsFile)}: missing Electron todo-plan notification symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !storeContent.includes(symbol))
+      .map(symbol => `${rel(storeFile)}: missing todo-plan notification facade delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/todo-plan/notifications')
+      ? [`${rel(viteConfig)}: missing electron todo-plan notifications package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/todo-plan/notifications')
+      ? [`${rel(vitestConfig)}: missing electron todo-plan notifications test alias`]
+      : []),
+    ...(fs.existsSync(storeFile)
+      ? matchingLines(storeFile, MAIN_TODO_PLAN_STORE_FORBIDDEN_PATTERNS)
+      : ['src/main/todo-plan/store.ts: missing todo-plan store facade']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron todo-plan notifications', lines)
+}
+
+function checkElectronHostOwnsTodoPlanPresentation(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronPresentationFile = path.join(root, 'apps/electron/src/window/todo-plan-presentation.ts')
+  const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronPresentationContent = fs.existsSync(electronPresentationFile)
+    ? fs.readFileSync(electronPresentationFile, 'utf-8')
+    : ''
+  const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredPresentationSymbols = [
+    'normalizeElectronTodoPlanWindowActionOptions',
+    'shouldPreserveElectronCurrentMacApp',
+    'prepareElectronTodoPlanWindowAction',
+    'presentElectronTodoPlanWindow',
+    'isElectronTodoPlanWindowFrontmost',
+    'showInactive',
+    'moveTop',
+    'BrowserWindow.getFocusedWindow',
+  ]
+  const requiredFacadeSymbols = [
+    'normalizeElectronTodoPlanWindowActionOptions',
+    'prepareElectronTodoPlanWindowAction',
+    'presentElectronTodoPlanWindow',
+    'isElectronTodoPlanWindowFrontmost',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window/todo-plan-presentation')
+      ? [`${rel(electronPackage)}: missing todo-plan-presentation export`]
+      : []),
+    ...requiredPresentationSymbols
+      .filter(symbol => !electronPresentationContent.includes(symbol))
+      .map(symbol => `${rel(electronPresentationFile)}: missing Electron todo-plan-presentation symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !windowContent.includes(symbol))
+      .map(symbol => `${rel(windowFile)}: missing todo-plan presentation facade delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/window/todo-plan-presentation')
+      ? [`${rel(viteConfig)}: missing electron todo-plan-presentation package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window/todo-plan-presentation')
+      ? [`${rel(vitestConfig)}: missing electron todo-plan-presentation test alias`]
+      : []),
+    ...(fs.existsSync(windowFile)
+      ? matchingLines(windowFile, WINDOW_TODO_PLAN_PRESENTATION_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/window/index.ts: missing Electron window module']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron todo plan presentation strategy', lines)
+}
+
+function checkElectronHostOwnsWindowFacade(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const windowHostFile = path.join(root, 'apps/electron/src/window/index.ts')
+  const windowFacadeFile = path.join(root, 'src/main/window.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const windowHostContent = fs.existsSync(windowHostFile) ? fs.readFileSync(windowHostFile, 'utf-8') : ''
+  const windowFacadeContent = fs.existsSync(windowFacadeFile) ? fs.readFileSync(windowFacadeFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const facadeLines = windowFacadeContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredHostSymbols = [
+    'createWindow',
+    'openTodoPlanWindow',
+    'recoverMainWindowAfterSystemResume',
+    'setupElectronApplicationMenu',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./window')
+      ? [`${rel(electronPackage)}: missing window aggregate export`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/window')
+      ? [`${rel(viteConfig)}: missing electron window aggregate package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/window')
+      ? [`${rel(vitestConfig)}: missing electron window aggregate test alias`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !windowHostContent.includes(symbol))
+      .map(symbol => `${rel(windowHostFile)}: missing Electron window orchestration symbol ${symbol}`),
+    ...(!windowFacadeContent.includes('@onething/electron-host/window')
+      ? [`${rel(windowFacadeFile)}: legacy window facade must re-export apps/electron window orchestration`]
+      : []),
+    ...(facadeLines.length > 20
+      ? [`${rel(windowFacadeFile)}: legacy Electron window facade must stay thin`]
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron window facade', lines)
+}
+
+function checkElectronHostOwnsWindowAllClosedHandler(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronWindowFile = path.join(root, 'apps/electron/src/app/window-all-closed.ts')
+  const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronWindowContent = fs.existsSync(electronWindowFile) ? fs.readFileSync(electronWindowFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredWindowSymbols = [
+    'registerElectronWindowAllClosedHandler',
+    'window-all-closed',
+    'isVoiceKeepAliveEnabled',
+    'process.platform',
+    'electronApp.quit',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./app/window-all-closed')
+      ? [`${rel(electronPackage)}: missing window-all-closed export`]
+      : []),
+    ...requiredWindowSymbols
+      .filter(symbol => !electronWindowContent.includes(symbol))
+      .map(symbol => `${rel(electronWindowFile)}: missing Electron window-all-closed symbol ${symbol}`),
+    ...(!mainContent.includes('registerElectronWindowAllClosedHandler')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: main must delegate window-all-closed handling to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/app/window-all-closed')
+      ? [`${rel(viteConfig)}: missing electron window-all-closed package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/app/window-all-closed')
+      ? [`${rel(vitestConfig)}: missing electron window-all-closed test alias`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_WINDOW_ALL_CLOSED_FORBIDDEN_PATTERNS)
+      : ['src/main/index.ts: missing Electron main entry']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron window-all-closed handler', lines)
+}
+
+function checkElectronHostOwnsDidBecomeActiveHandler(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronActiveFile = path.join(root, 'apps/electron/src/app/did-become-active.ts')
+  const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronActiveContent = fs.existsSync(electronActiveFile) ? fs.readFileSync(electronActiveFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredActiveSymbols = [
+    'registerElectronDidBecomeActiveHandler',
+    'did-become-active',
+    'getFocusedWindow',
+    'isTodoPlanWindow',
+    'activateMainWindow',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./app/did-become-active')
+      ? [`${rel(electronPackage)}: missing did-become-active export`]
+      : []),
+    ...requiredActiveSymbols
+      .filter(symbol => !electronActiveContent.includes(symbol))
+      .map(symbol => `${rel(electronActiveFile)}: missing Electron did-become-active symbol ${symbol}`),
+    ...(!mainContent.includes('registerElectronDidBecomeActiveHandler')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: main must delegate did-become-active handling to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/app/did-become-active')
+      ? [`${rel(viteConfig)}: missing electron did-become-active package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/app/did-become-active')
+      ? [`${rel(vitestConfig)}: missing electron did-become-active test alias`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_DID_BECOME_ACTIVE_FORBIDDEN_PATTERNS)
+      : ['src/main/index.ts: missing Electron main entry']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron did-become-active handler', lines)
+}
+
+function checkElectronHostOwnsBeforeQuitCleanup(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronBeforeQuitFile = path.join(root, 'apps/electron/src/app/before-quit.ts')
+  const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronBeforeQuitContent = fs.existsSync(electronBeforeQuitFile) ? fs.readFileSync(electronBeforeQuitFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredBeforeQuitSymbols = [
+    'registerElectronBeforeQuitCleanup',
+    'before-quit',
+    'markVoiceQuitRequested',
+    'shutdownGateway',
+    'flushAllPendingSaves',
+    'releaseDesktopStoreLock',
+    'flushAllPendingSaves error',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./app/before-quit')
+      ? [`${rel(electronPackage)}: missing before-quit export`]
+      : []),
+    ...requiredBeforeQuitSymbols
+      .filter(symbol => !electronBeforeQuitContent.includes(symbol))
+      .map(symbol => `${rel(electronBeforeQuitFile)}: missing Electron before-quit symbol ${symbol}`),
+    ...(!mainContent.includes('registerElectronBeforeQuitCleanup')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: main must delegate before-quit cleanup to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/app/before-quit')
+      ? [`${rel(viteConfig)}: missing electron before-quit package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/app/before-quit')
+      ? [`${rel(vitestConfig)}: missing electron before-quit test alias`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_BEFORE_QUIT_FORBIDDEN_PATTERNS)
+      : ['src/main/index.ts: missing Electron main entry']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron before-quit cleanup', lines)
+}
+
+function checkElectronHostOwnsMediaProtocol(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronMediaFile = path.join(root, 'apps/electron/src/media/protocol.ts')
+  const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronMediaContent = fs.existsSync(electronMediaFile) ? fs.readFileSync(electronMediaFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredMediaSymbols = [
+    'registerElectronMediaProtocol',
+    'getMediaImagesDir',
+    'protocol.handle',
+    'net.fetch',
+    'pathToFileURL',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./media/protocol')
+      ? [`${rel(electronPackage)}: missing media protocol export`]
+      : []),
+    ...requiredMediaSymbols
+      .filter(symbol => !electronMediaContent.includes(symbol))
+      .map(symbol => `${rel(electronMediaFile)}: missing Electron media protocol symbol ${symbol}`),
+    ...(!mainContent.includes('registerElectronMediaProtocol({ getMediaImagesDir })')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: main must delegate media protocol registration to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/media/protocol')
+      ? [`${rel(viteConfig)}: missing electron media protocol package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/media/protocol')
+      ? [`${rel(vitestConfig)}: missing electron media protocol test alias`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MEDIA_PROTOCOL_FORBIDDEN_PATTERNS)
+      : ['src/main/index.ts: missing Electron main entry']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron media protocol registration', lines)
+}
+
+function checkElectronHostOwnsLoggingCapture(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronLoggingFile = path.join(root, 'apps/electron/src/logging/console-capture.ts')
+  const mainLoggingFile = path.join(root, 'src/main/logging/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronLoggingContent = fs.existsSync(electronLoggingFile) ? fs.readFileSync(electronLoggingFile, 'utf-8') : ''
+  const mainLoggingContent = fs.existsSync(mainLoggingFile) ? fs.readFileSync(mainLoggingFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'setElectronAppLogsPath',
+    'createElectronRendererConsoleCapture',
+    'web-contents-created',
+    'console-message',
+    'NUMERIC_RENDERER_LEVELS',
+    'renderer:${webContents.id}',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/logging/console-capture',
+    'setElectronAppLogsPath',
+    'createElectronRendererConsoleCapture',
+    'attachLoggingCapture',
+    'process.on',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./logging/console-capture')
+      ? [`${rel(electronPackage)}: missing logging console-capture export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronLoggingContent.includes(symbol))
+      .map(symbol => `${rel(electronLoggingFile)}: missing Electron logging capture symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainLoggingContent.includes(symbol))
+      .map(symbol => `${rel(mainLoggingFile)}: missing logging capture facade delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/logging/console-capture')
+      ? [`${rel(viteConfig)}: missing electron logging capture package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/logging/console-capture')
+      ? [`${rel(vitestConfig)}: missing electron logging capture test alias`]
+      : []),
+    ...(fs.existsSync(mainLoggingFile)
+      ? matchingLines(mainLoggingFile, MAIN_LOGGING_ELECTRON_CAPTURE_FORBIDDEN_PATTERNS)
+      : ['src/main/logging/index.ts: missing logging facade']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron logging capture', lines)
+}
+
+function checkElectronHostOwnsAccessibilityPermissions(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronAccessibilityFile = path.join(root, 'apps/electron/src/accessibility/permissions.ts')
+  const mainAccessibilityFile = path.join(root, 'src/main/utils/accessibility.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronAccessibilityContent = fs.existsSync(electronAccessibilityFile) ? fs.readFileSync(electronAccessibilityFile, 'utf-8') : ''
+  const mainAccessibilityContent = fs.existsSync(mainAccessibilityFile) ? fs.readFileSync(mainAccessibilityFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'systemPreferences',
+    'shell',
+    'checkElectronAccessibilityPermission',
+    'getElectronAccessibilityPermissionError',
+    'openElectronAccessibilitySettings',
+    'checkElectronScreenRecordingPermission',
+    'getElectronAutomationPermissionStatus',
+    'isTrustedAccessibilityClient',
+    'x-apple.systempreferences',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/accessibility/permissions',
+    'checkElectronAccessibilityPermission',
+    'getElectronAccessibilityPermissionError',
+    'openElectronAccessibilitySettings',
+    'checkElectronScreenRecordingPermission',
+    'getElectronAutomationPermissionStatus',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./accessibility/permissions')
+      ? [`${rel(electronPackage)}: missing accessibility permissions export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronAccessibilityContent.includes(symbol))
+      .map(symbol => `${rel(electronAccessibilityFile)}: missing Electron accessibility symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainAccessibilityContent.includes(symbol))
+      .map(symbol => `${rel(mainAccessibilityFile)}: missing accessibility facade delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/accessibility/permissions')
+      ? [`${rel(viteConfig)}: missing electron accessibility package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/accessibility/permissions')
+      ? [`${rel(vitestConfig)}: missing electron accessibility test alias`]
+      : []),
+    ...(fs.existsSync(mainAccessibilityFile)
+      ? matchingLines(mainAccessibilityFile, MAIN_ACCESSIBILITY_FORBIDDEN_PATTERNS)
+      : ['src/main/utils/accessibility.ts: missing accessibility facade']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron accessibility permissions', lines)
+}
+
+function checkElectronHostOwnsShellOperations(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronShellFile = path.join(root, 'apps/electron/src/shell/operations.ts')
+  const electronShellIpcControllerFile = path.join(root, 'apps/electron/src/ipc/shell-controller.ts')
+  const electronShellIpcFile = path.join(root, 'apps/electron/src/ipc/shell.ts')
+  const mainShellFile = path.join(root, 'src/main/ipc/shell.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronShellContent = fs.existsSync(electronShellFile) ? fs.readFileSync(electronShellFile, 'utf-8') : ''
+  const electronShellIpcControllerContent = fs.existsSync(electronShellIpcControllerFile)
+    ? fs.readFileSync(electronShellIpcControllerFile, 'utf-8')
+    : ''
+  const electronShellIpcContent = fs.existsSync(electronShellIpcFile) ? fs.readFileSync(electronShellIpcFile, 'utf-8') : ''
+  const mainShellContent = fs.existsSync(mainShellFile) ? fs.readFileSync(mainShellFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'BrowserWindow',
+    'shell',
+    'openElectronPath',
+    'openElectronExternal',
+    'revealElectronPath',
+    'setElectronWindowButtonVisibility',
+    'openPath',
+    'openExternal',
+    'showItemInFolder',
+    'fromWebContents',
+    'setWindowButtonVisibility',
+    'setWindowButtonPosition',
+  ]
+  const requiredIpcHostSymbols = [
+    'registerElectronShellIpcHandlers',
+    'ipcMain',
+    'openElectronPath',
+    'openElectronExternal',
+    'setElectronWindowButtonVisibility',
+    'shell:open-path',
+    'shell:open-external',
+    'app:get-data-path',
+    'window:set-button-visibility',
+    'getDataPath',
+  ]
+  const requiredHostFacadeSymbols = [
+    'registerShellHandlers',
+    'registerElectronShellIpcHandlers',
+    'getStorePath',
+  ]
+  const requiredLegacyFacadeSymbols = [
+    '@onething/electron-host/ipc/shell',
+    'registerShellHandlers',
+  ]
+  const mainShellFacadeLines = mainShellContent.split('\n').filter(line => line.trim().length > 0)
+  const lines = [
+    ...(!packageContent.includes('./shell/operations')
+      ? [`${rel(electronPackage)}: missing shell operations export`]
+      : []),
+    ...(!packageContent.includes('./ipc/shell')
+      ? [`${rel(electronPackage)}: missing shell IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronShellContent.includes(symbol))
+      .map(symbol => `${rel(electronShellFile)}: missing Electron shell operation symbol ${symbol}`),
+    ...requiredIpcHostSymbols
+      .filter(symbol => !electronShellIpcControllerContent.includes(symbol))
+      .map(symbol => `${rel(electronShellIpcControllerFile)}: missing Electron shell IPC controller symbol ${symbol}`),
+    ...requiredHostFacadeSymbols
+      .filter(symbol => !electronShellIpcContent.includes(symbol))
+      .map(symbol => `${rel(electronShellIpcFile)}: missing Electron shell IPC host facade symbol ${symbol}`),
+    ...requiredLegacyFacadeSymbols
+      .filter(symbol => !mainShellContent.includes(symbol))
+      .map(symbol => `${rel(mainShellFile)}: missing shell IPC legacy facade delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/shell/operations')
+      ? [`${rel(viteConfig)}: missing electron shell operations package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/shell/operations')
+      ? [`${rel(vitestConfig)}: missing electron shell operations test alias`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/ipc/shell')
+      ? [`${rel(viteConfig)}: missing electron shell IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/shell')
+      ? [`${rel(vitestConfig)}: missing electron shell IPC test alias`]
+      : []),
+    ...(mainShellFacadeLines.length > 6
+      ? [`${rel(mainShellFile)}: legacy shell IPC facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainShellFile)
+      ? matchingLines(mainShellFile, MAIN_SHELL_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/shell.ts: missing shell IPC facade']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron shell operations', lines)
+}
+
+function checkElectronHostOwnsOAuthEvents(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronOAuthFile = path.join(root, 'apps/electron/src/oauth/events.ts')
+  const mainOAuthFile = path.join(root, 'src/main/ipc/oauth.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronOAuthContent = fs.existsSync(electronOAuthFile) ? fs.readFileSync(electronOAuthFile, 'utf-8') : ''
+  const mainOAuthContent = fs.existsSync(mainOAuthFile) ? fs.readFileSync(mainOAuthFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'BrowserWindow',
+    'BrowserWindow.getAllWindows',
+    'broadcastElectronOAuthTokenRefreshed',
+    'broadcastElectronOAuthTokenExpired',
+    'webContents.send',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/oauth/events',
+    'broadcastElectronOAuthTokenRefreshed',
+    'broadcastElectronOAuthTokenExpired',
+    'IPC_CHANNELS.OAUTH_TOKEN_REFRESHED',
+    'IPC_CHANNELS.OAUTH_TOKEN_EXPIRED',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./oauth/events')
+      ? [`${rel(electronPackage)}: missing OAuth events export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronOAuthContent.includes(symbol))
+      .map(symbol => `${rel(electronOAuthFile)}: missing Electron OAuth event symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainOAuthContent.includes(symbol))
+      .map(symbol => `${rel(mainOAuthFile)}: missing OAuth IPC event delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/oauth/events')
+      ? [`${rel(viteConfig)}: missing electron OAuth events package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/oauth/events')
+      ? [`${rel(vitestConfig)}: missing electron OAuth events test alias`]
+      : []),
+    ...(fs.existsSync(mainOAuthFile)
+      ? matchingLines(mainOAuthFile, MAIN_OAUTH_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/oauth.ts: missing OAuth IPC facade']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron OAuth event broadcasting', lines)
+}
+
+function checkElectronHostOwnsOAuthIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronOAuthIpcFile = path.join(root, 'apps/electron/src/ipc/oauth.ts')
+  const mainOAuthFile = path.join(root, 'src/main/ipc/oauth.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronOAuthIpcContent = fs.existsSync(electronOAuthIpcFile)
+    ? fs.readFileSync(electronOAuthIpcFile, 'utf-8')
+    : ''
+  const mainOAuthContent = fs.existsSync(mainOAuthFile) ? fs.readFileSync(mainOAuthFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronOAuthIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronOAuthIpcChannels',
+    'ElectronOAuthProviderRequest',
+    'ElectronOAuthCallbackRequest',
+    'ElectronOAuthDevicePollRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/oauth',
+    'registerElectronOAuthIpcHandlers',
+    'IPC_CHANNELS.OAUTH_START',
+    'IPC_CHANNELS.OAUTH_CALLBACK',
+    'IPC_CHANNELS.OAUTH_DEVICE_POLL',
+    'IPC_CHANNELS.OAUTH_REFRESH',
+    'IPC_CHANNELS.OAUTH_STATUS',
+    'IPC_CHANNELS.OAUTH_LOGOUT',
+    'startOnethingOAuthForIpc',
+    'completeOnethingOAuthCallbackForIpc',
+    'pollOnethingOAuthDeviceFlowForIpc',
+    'refreshOnethingOAuthForIpc',
+    'getOnethingOAuthStatusForIpc',
+    'logoutOnethingOAuthForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/oauth')
+      ? [`${rel(electronPackage)}: missing OAuth IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronOAuthIpcContent.includes(symbol))
+      .map(symbol => `${rel(electronOAuthIpcFile)}: missing Electron OAuth IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainOAuthContent.includes(symbol))
+      .map(symbol => `${rel(mainOAuthFile)}: missing OAuth IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/oauth')
+      ? [`${rel(viteConfig)}: missing electron OAuth IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/oauth')
+      ? [`${rel(vitestConfig)}: missing electron OAuth IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainOAuthFile)
+      ? matchingLines(mainOAuthFile, MAIN_OAUTH_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/oauth.ts: missing OAuth IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron OAuth IPC host operations', lines)
+}
+
+function checkElectronHostOwnsSettingsIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSettingsFile = path.join(root, 'apps/electron/src/settings/ipc-host.ts')
+  const mainSettingsFile = path.join(root, 'src/main/ipc/settings.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSettingsContent = fs.existsSync(electronSettingsFile) ? fs.readFileSync(electronSettingsFile, 'utf-8') : ''
+  const mainSettingsContent = fs.existsSync(mainSettingsFile) ? fs.readFileSync(mainSettingsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'BrowserWindow',
+    'dialog',
+    'ipcMain',
+    'nativeTheme',
+    'registerElectronSettingsIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronSettingsIpcChannels',
+    'getElectronShouldUseDarkColors',
+    'registerElectronSystemThemeChangedBroadcast',
+    'broadcastElectronSettingsChanged',
+    'showElectronOpenDialog',
+    'BrowserWindow.getAllWindows',
+    'BrowserWindow.getFocusedWindow',
+    'dialog.showOpenDialog',
+    'nativeTheme.on',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/settings/ipc-host',
+    'registerElectronSettingsIpcHandlers',
+    'getElectronShouldUseDarkColors',
+    'registerElectronSystemThemeChangedBroadcast',
+    'broadcastElectronSettingsChanged',
+    'showElectronOpenDialog',
+    'IPC_CHANNELS.OPEN_SETTINGS_WINDOW',
+    'IPC_CHANNELS.GET_SETTINGS',
+    'IPC_CHANNELS.GET_SYSTEM_THEME',
+    'IPC_CHANNELS.SAVE_SETTINGS',
+    'IPC_CHANNELS.TEST_PROXY',
+    'IPC_CHANNELS.GET_NETWORK_INTERFACES',
+    'IPC_CHANNELS.SHOW_OPEN_DIALOG',
+    'IPC_CHANNELS.SYSTEM_THEME_CHANGED',
+    'IPC_CHANNELS.SETTINGS_CHANGED',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./settings/ipc-host')
+      ? [`${rel(electronPackage)}: missing settings IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronSettingsContent.includes(symbol))
+      .map(symbol => `${rel(electronSettingsFile)}: missing Electron settings IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainSettingsContent.includes(symbol))
+      .map(symbol => `${rel(mainSettingsFile)}: missing settings IPC host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/settings/ipc-host')
+      ? [`${rel(viteConfig)}: missing electron settings IPC host package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/settings/ipc-host')
+      ? [`${rel(vitestConfig)}: missing electron settings IPC host test alias`]
+      : []),
+    ...(fs.existsSync(mainSettingsFile)
+      ? [
+          ...matchingLines(mainSettingsFile, MAIN_SETTINGS_IPC_SAVE_ORCHESTRATION_FORBIDDEN_PATTERNS),
+          ...matchingLines(mainSettingsFile, MAIN_SETTINGS_IPC_HOST_FORBIDDEN_PATTERNS),
+        ]
+      : ['src/main/ipc/settings.ts: missing settings IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron settings IPC host operations', lines)
+}
+
+function checkElectronHostOwnsAppStateIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronAppStateControllerFile = path.join(root, 'apps/electron/src/ipc/app-state-controller.ts')
+  const electronAppStateFile = path.join(root, 'apps/electron/src/ipc/app-state.ts')
+  const mainAppStateFile = path.join(root, 'src/main/ipc/app-state.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronAppStateControllerContent = fs.existsSync(electronAppStateControllerFile)
+    ? fs.readFileSync(electronAppStateControllerFile, 'utf-8')
+    : ''
+  const electronAppStateContent = fs.existsSync(electronAppStateFile) ? fs.readFileSync(electronAppStateFile, 'utf-8') : ''
+  const mainAppStateContent = fs.existsSync(mainAppStateFile) ? fs.readFileSync(mainAppStateFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronAppStateIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'getAppState',
+    'saveUiState',
+    'OnethingUiStatePatch',
+  ]
+  const requiredHostFacadeSymbols = [
+    'registerAppStateHandlers',
+    'registerElectronAppStateIpcHandlers',
+    'IPC_CHANNELS.GET_APP_STATE',
+    'IPC_CHANNELS.SAVE_UI_STATE',
+    'saveOnethingUiStateForIpc',
+  ]
+  const requiredLegacyFacadeSymbols = [
+    '@onething/electron-host/ipc/app-state',
+    'registerAppStateHandlers',
+  ]
+  const mainAppStateFacadeLines = mainAppStateContent.split('\n').filter(line => line.trim().length > 0)
+  const lines = [
+    ...(!packageContent.includes('./ipc/app-state')
+      ? [`${rel(electronPackage)}: missing app-state IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronAppStateControllerContent.includes(symbol))
+      .map(symbol => `${rel(electronAppStateControllerFile)}: missing Electron app-state IPC controller symbol ${symbol}`),
+    ...requiredHostFacadeSymbols
+      .filter(symbol => !electronAppStateContent.includes(symbol))
+      .map(symbol => `${rel(electronAppStateFile)}: missing Electron app-state IPC host facade symbol ${symbol}`),
+    ...requiredLegacyFacadeSymbols
+      .filter(symbol => !mainAppStateContent.includes(symbol))
+      .map(symbol => `${rel(mainAppStateFile)}: missing app-state IPC legacy facade symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/app-state')
+      ? [`${rel(viteConfig)}: missing electron app-state IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/app-state')
+      ? [`${rel(vitestConfig)}: missing electron app-state IPC test alias`]
+      : []),
+    ...(mainAppStateFacadeLines.length > 6
+      ? [`${rel(mainAppStateFile)}: legacy app-state IPC facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainAppStateFile)
+      ? matchingLines(mainAppStateFile, MAIN_APP_STATE_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/app-state.ts: missing app-state IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron app-state IPC host operations', lines)
+}
+
+function checkElectronHostOwnsVariablesIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronVariablesControllerFile = path.join(root, 'apps/electron/src/ipc/variables-controller.ts')
+  const electronVariablesFile = path.join(root, 'apps/electron/src/ipc/variables.ts')
+  const mainVariablesFile = path.join(root, 'src/main/variables/ipc.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronVariablesControllerContent = fs.existsSync(electronVariablesControllerFile)
+    ? fs.readFileSync(electronVariablesControllerFile, 'utf-8')
+    : ''
+  const electronVariablesContent = fs.existsSync(electronVariablesFile) ? fs.readFileSync(electronVariablesFile, 'utf-8') : ''
+  const mainVariablesContent = fs.existsSync(mainVariablesFile) ? fs.readFileSync(mainVariablesFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronVariablesIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'VariablesListRequest',
+    'VariablesSetRequest',
+    'VariablesDeleteRequest',
+  ]
+  const requiredHostFacadeSymbols = [
+    'registerVariableHandlers',
+    'registerElectronVariablesIpcHandlers',
+    'IPC_CHANNELS.VARIABLES_LIST',
+    'IPC_CHANNELS.VARIABLES_SET',
+    'IPC_CHANNELS.VARIABLES_DELETE',
+    'listOnethingVariablesForIpc',
+    'setOnethingVariableForIpc',
+    'deleteOnethingVariableForIpc',
+  ]
+  const requiredLegacyFacadeSymbols = [
+    '@onething/electron-host/ipc/variables',
+    'registerVariableHandlers',
+  ]
+  const mainVariablesFacadeLines = mainVariablesContent.split('\n').filter(line => line.trim().length > 0)
+  const lines = [
+    ...(!packageContent.includes('./ipc/variables')
+      ? [`${rel(electronPackage)}: missing variables IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronVariablesControllerContent.includes(symbol))
+      .map(symbol => `${rel(electronVariablesControllerFile)}: missing Electron variables IPC controller symbol ${symbol}`),
+    ...requiredHostFacadeSymbols
+      .filter(symbol => !electronVariablesContent.includes(symbol))
+      .map(symbol => `${rel(electronVariablesFile)}: missing Electron variables IPC host facade symbol ${symbol}`),
+    ...requiredLegacyFacadeSymbols
+      .filter(symbol => !mainVariablesContent.includes(symbol))
+      .map(symbol => `${rel(mainVariablesFile)}: missing variables IPC legacy facade symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/variables')
+      ? [`${rel(viteConfig)}: missing electron variables IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/variables')
+      ? [`${rel(vitestConfig)}: missing electron variables IPC test alias`]
+      : []),
+    ...(mainVariablesFacadeLines.length > 6
+      ? [`${rel(mainVariablesFile)}: legacy variables IPC facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainVariablesFile)
+      ? matchingLines(mainVariablesFile, MAIN_VARIABLES_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/variables/ipc.ts: missing variables IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron variables IPC host operations', lines)
+}
+
+function checkElectronHostOwnsProjectDirsIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronProjectDirsControllerFile = path.join(root, 'apps/electron/src/ipc/project-dirs-controller.ts')
+  const electronProjectDirsFile = path.join(root, 'apps/electron/src/ipc/project-dirs.ts')
+  const mainProjectDirsFile = path.join(root, 'src/main/project-dirs/ipc.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronProjectDirsControllerContent = fs.existsSync(electronProjectDirsControllerFile)
+    ? fs.readFileSync(electronProjectDirsControllerFile, 'utf-8')
+    : ''
+  const electronProjectDirsContent = fs.existsSync(electronProjectDirsFile) ? fs.readFileSync(electronProjectDirsFile, 'utf-8') : ''
+  const mainProjectDirsContent = fs.existsSync(mainProjectDirsFile) ? fs.readFileSync(mainProjectDirsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronProjectDirsIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ProjectDirsGetRequest',
+    'ProjectDirsAddRequest',
+    'ProjectDirsUpdateRequest',
+    'ProjectDirsRemoveRequest',
+  ]
+  const requiredHostFacadeSymbols = [
+    'registerProjectDirsHandlers',
+    'registerElectronProjectDirsIpcHandlers',
+    'IPC_CHANNELS.PROJECT_DIRS_LIST',
+    'IPC_CHANNELS.PROJECT_DIRS_GET',
+    'IPC_CHANNELS.PROJECT_DIRS_ADD',
+    'IPC_CHANNELS.PROJECT_DIRS_UPDATE',
+    'IPC_CHANNELS.PROJECT_DIRS_REMOVE',
+    'listOnethingProjectDirsForIpc',
+    'getOnethingProjectDirForIpc',
+    'addOnethingProjectDirForIpc',
+    'updateOnethingProjectDirForIpc',
+    'removeOnethingProjectDirForIpc',
+  ]
+  const requiredLegacyFacadeSymbols = [
+    '@onething/electron-host/ipc/project-dirs',
+    'registerProjectDirsHandlers',
+  ]
+  const mainProjectDirsFacadeLines = mainProjectDirsContent.split('\n').filter(line => line.trim().length > 0)
+  const lines = [
+    ...(!packageContent.includes('./ipc/project-dirs')
+      ? [`${rel(electronPackage)}: missing project-dirs IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronProjectDirsControllerContent.includes(symbol))
+      .map(symbol => `${rel(electronProjectDirsControllerFile)}: missing Electron project-dirs IPC controller symbol ${symbol}`),
+    ...requiredHostFacadeSymbols
+      .filter(symbol => !electronProjectDirsContent.includes(symbol))
+      .map(symbol => `${rel(electronProjectDirsFile)}: missing Electron project-dirs IPC host facade symbol ${symbol}`),
+    ...requiredLegacyFacadeSymbols
+      .filter(symbol => !mainProjectDirsContent.includes(symbol))
+      .map(symbol => `${rel(mainProjectDirsFile)}: missing project-dirs IPC legacy facade symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/project-dirs')
+      ? [`${rel(viteConfig)}: missing electron project-dirs IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/project-dirs')
+      ? [`${rel(vitestConfig)}: missing electron project-dirs IPC test alias`]
+      : []),
+    ...(mainProjectDirsFacadeLines.length > 6
+      ? [`${rel(mainProjectDirsFile)}: legacy project-dirs IPC facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainProjectDirsFile)
+      ? matchingLines(mainProjectDirsFile, MAIN_PROJECT_DIRS_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/project-dirs/ipc.ts: missing project-dirs IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron project-dirs IPC host operations', lines)
+}
+
+function checkElectronHostOwnsAgentsIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronAgentsFile = path.join(root, 'apps/electron/src/ipc/agents.ts')
+  const mainAgentsFile = path.join(root, 'src/main/ipc/agents.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronAgentsContent = fs.existsSync(electronAgentsFile) ? fs.readFileSync(electronAgentsFile, 'utf-8') : ''
+  const mainAgentsContent = fs.existsSync(mainAgentsFile) ? fs.readFileSync(mainAgentsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronAgentsIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronAgentCreateRequest',
+    'ElectronAgentUpdateRequest',
+    'ElectronAgentDeleteRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/agents',
+    'registerElectronAgentsIpcHandlers',
+    'IPC_CHANNELS.AGENTS_LIST',
+    'IPC_CHANNELS.AGENTS_CREATE',
+    'IPC_CHANNELS.AGENTS_UPDATE',
+    'IPC_CHANNELS.AGENTS_DELETE',
+    'listOnethingAgentsForIpc',
+    'createOnethingAgentFromRequestForIpc',
+    'updateOnethingAgentFromRequestForIpc',
+    'deleteOnethingAgentFromRequestForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/agents')
+      ? [`${rel(electronPackage)}: missing agents IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronAgentsContent.includes(symbol))
+      .map(symbol => `${rel(electronAgentsFile)}: missing Electron agents IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainAgentsContent.includes(symbol))
+      .map(symbol => `${rel(mainAgentsFile)}: missing agents IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/agents')
+      ? [`${rel(viteConfig)}: missing electron agents IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/agents')
+      ? [`${rel(vitestConfig)}: missing electron agents IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainAgentsFile)
+      ? matchingLines(mainAgentsFile, MAIN_AGENTS_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/agents.ts: missing agents IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron agents IPC host operations', lines)
+}
+
+function checkElectronHostOwnsPromptsIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronPromptsFile = path.join(root, 'apps/electron/src/ipc/prompts.ts')
+  const mainPromptsFile = path.join(root, 'src/main/prompts/ipc.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronPromptsContent = fs.existsSync(electronPromptsFile) ? fs.readFileSync(electronPromptsFile, 'utf-8') : ''
+  const mainPromptsContent = fs.existsSync(mainPromptsFile) ? fs.readFileSync(mainPromptsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronPromptsIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronPromptGetRequest',
+    'ElectronPromptCreateRequest',
+    'ElectronPromptUpdateRequest',
+    'ElectronPromptDeleteRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/prompts',
+    'registerElectronPromptsIpcHandlers',
+    'IPC_CHANNELS.PROMPTS_LIST',
+    'IPC_CHANNELS.PROMPTS_GET',
+    'IPC_CHANNELS.PROMPTS_CREATE',
+    'IPC_CHANNELS.PROMPTS_UPDATE',
+    'IPC_CHANNELS.PROMPTS_DELETE',
+    'listOnethingPromptsForIpc',
+    'getOnethingPromptForIpc',
+    'createOnethingPromptForIpc',
+    'updateOnethingPromptForIpc',
+    'deleteOnethingPromptForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/prompts')
+      ? [`${rel(electronPackage)}: missing prompts IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronPromptsContent.includes(symbol))
+      .map(symbol => `${rel(electronPromptsFile)}: missing Electron prompts IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainPromptsContent.includes(symbol))
+      .map(symbol => `${rel(mainPromptsFile)}: missing prompts IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/prompts')
+      ? [`${rel(viteConfig)}: missing electron prompts IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/prompts')
+      ? [`${rel(vitestConfig)}: missing electron prompts IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainPromptsFile)
+      ? matchingLines(mainPromptsFile, MAIN_PROMPTS_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/prompts/ipc.ts: missing prompts IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron prompts IPC host operations', lines)
+}
+
+function checkElectronHostOwnsSchedulerIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSchedulerFile = path.join(root, 'apps/electron/src/ipc/scheduler.ts')
+  const mainSchedulerFile = path.join(root, 'src/main/ipc/scheduler.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSchedulerContent = fs.existsSync(electronSchedulerFile) ? fs.readFileSync(electronSchedulerFile, 'utf-8') : ''
+  const mainSchedulerContent = fs.existsSync(mainSchedulerFile) ? fs.readFileSync(mainSchedulerFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronSchedulerIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronSchedulerGetRequest',
+    'ElectronSchedulerRunNowRequest',
+    'ElectronSchedulerSetEnabledRequest',
+    'ElectronSchedulerCreateTaskRequest',
+    'ElectronSchedulerUpdateTaskRequest',
+    'ElectronSchedulerDeleteTaskRequest',
+    'ElectronSchedulerListRunsRequest',
+    'ElectronSchedulerGetRunRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/scheduler',
+    'registerElectronSchedulerIpcHandlers',
+    'IPC_CHANNELS.SCHEDULER_LIST',
+    'IPC_CHANNELS.SCHEDULER_GET',
+    'IPC_CHANNELS.SCHEDULER_RUN_NOW',
+    'IPC_CHANNELS.SCHEDULER_SET_ENABLED',
+    'IPC_CHANNELS.SCHEDULER_CREATE_TASK',
+    'IPC_CHANNELS.SCHEDULER_UPDATE_TASK',
+    'IPC_CHANNELS.SCHEDULER_DELETE_TASK',
+    'IPC_CHANNELS.SCHEDULER_LIST_RUNS',
+    'IPC_CHANNELS.SCHEDULER_GET_RUN',
+    'listOnethingSchedulerTasksForIpc',
+    'getOnethingSchedulerTaskForIpc',
+    'runOnethingSchedulerTaskNowForIpc',
+    'setOnethingSchedulerTaskEnabledForIpc',
+    'createOnethingUserSchedulerTaskForIpc',
+    'updateOnethingUserSchedulerTaskForIpc',
+    'deleteOnethingUserSchedulerTaskForIpc',
+    'listOnethingSchedulerRunsForIpc',
+    'getOnethingSchedulerRunForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/scheduler')
+      ? [`${rel(electronPackage)}: missing scheduler IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronSchedulerContent.includes(symbol))
+      .map(symbol => `${rel(electronSchedulerFile)}: missing Electron scheduler IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainSchedulerContent.includes(symbol))
+      .map(symbol => `${rel(mainSchedulerFile)}: missing scheduler IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/scheduler')
+      ? [`${rel(viteConfig)}: missing electron scheduler IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/scheduler')
+      ? [`${rel(vitestConfig)}: missing electron scheduler IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainSchedulerFile)
+      ? matchingLines(mainSchedulerFile, MAIN_SCHEDULER_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/scheduler.ts: missing scheduler IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron scheduler IPC host operations', lines)
+}
+
+function checkElectronHostOwnsMarkdownIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronMarkdownFile = path.join(root, 'apps/electron/src/ipc/markdown.ts')
+  const mainMarkdownFile = path.join(root, 'src/main/ipc/markdown.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronMarkdownContent = fs.existsSync(electronMarkdownFile) ? fs.readFileSync(electronMarkdownFile, 'utf-8') : ''
+  const mainMarkdownContent = fs.existsSync(mainMarkdownFile) ? fs.readFileSync(mainMarkdownFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronMarkdownIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronMarkdownResolveAssetRequest',
+    'ElectronMarkdownSaveAttachmentsRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/markdown',
+    'registerElectronMarkdownIpcHandlers',
+    'IPC_CHANNELS.MARKDOWN_RESOLVE_ASSET',
+    'IPC_CHANNELS.MARKDOWN_SAVE_ATTACHMENTS',
+    'resolveOnethingMarkdownAssetForIpc',
+    'saveOnethingMarkdownAttachmentsForIpc',
+    'resolveMarkdownAsset',
+    'saveMarkdownAttachments',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/markdown')
+      ? [`${rel(electronPackage)}: missing markdown IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronMarkdownContent.includes(symbol))
+      .map(symbol => `${rel(electronMarkdownFile)}: missing Electron markdown IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainMarkdownContent.includes(symbol))
+      .map(symbol => `${rel(mainMarkdownFile)}: missing markdown IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/markdown')
+      ? [`${rel(viteConfig)}: missing electron markdown IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/markdown')
+      ? [`${rel(vitestConfig)}: missing electron markdown IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainMarkdownFile)
+      ? matchingLines(mainMarkdownFile, MAIN_MARKDOWN_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/markdown.ts: missing markdown IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron markdown IPC host operations', lines)
+}
+
+function checkElectronHostOwnsPermissionIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronPermissionFile = path.join(root, 'apps/electron/src/ipc/permission.ts')
+  const mainPermissionFile = path.join(root, 'src/main/ipc/permission.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronPermissionContent = fs.existsSync(electronPermissionFile) ? fs.readFileSync(electronPermissionFile, 'utf-8') : ''
+  const mainPermissionContent = fs.existsSync(mainPermissionFile) ? fs.readFileSync(mainPermissionFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronPermissionIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronPermissionSessionId',
+    'ElectronPermissionListGrantsRequest',
+    'ElectronPermissionRevokeGrantRequest',
+    'ElectronPermissionClearSessionGrantsRequest',
+    'ElectronPermissionClearWorkspaceGrantsRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/permission',
+    'registerElectronPermissionIpcHandlers',
+    'IPC_CHANNELS.PERMISSION_GET_PENDING',
+    'IPC_CHANNELS.PERMISSION_CLEAR_SESSION',
+    'IPC_CHANNELS.PERMISSION_LIST_GRANTS',
+    'IPC_CHANNELS.PERMISSION_REVOKE_GRANT',
+    'IPC_CHANNELS.PERMISSION_CLEAR_SESSION_GRANTS',
+    'IPC_CHANNELS.PERMISSION_CLEAR_WORKSPACE_GRANTS',
+    'getOnethingPendingPermissionsForIpc',
+    'clearOnethingPermissionSessionForIpc',
+    'listOnethingPermissionGrantsForIpc',
+    'revokeOnethingPermissionGrantForIpc',
+    'clearOnethingSessionPermissionGrantsForIpc',
+    'clearOnethingWorkspacePermissionGrantsForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/permission')
+      ? [`${rel(electronPackage)}: missing permission IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronPermissionContent.includes(symbol))
+      .map(symbol => `${rel(electronPermissionFile)}: missing Electron permission IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainPermissionContent.includes(symbol))
+      .map(symbol => `${rel(mainPermissionFile)}: missing permission IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/permission')
+      ? [`${rel(viteConfig)}: missing electron permission IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/permission')
+      ? [`${rel(vitestConfig)}: missing electron permission IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainPermissionFile)
+      ? matchingLines(mainPermissionFile, MAIN_PERMISSION_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/permission.ts: missing permission IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron permission IPC host operations', lines)
+}
+
+function checkElectronHostOwnsPluginsIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronPluginsFile = path.join(root, 'apps/electron/src/ipc/plugins.ts')
+  const mainPluginsFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronPluginsContent = fs.existsSync(electronPluginsFile) ? fs.readFileSync(electronPluginsFile, 'utf-8') : ''
+  const mainPluginsContent = fs.existsSync(mainPluginsFile) ? fs.readFileSync(mainPluginsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronPluginsIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronPluginToggleRequest',
+    'ElectronPluginExecuteCommandRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/plugins',
+    'registerElectronPluginsIpcHandlers',
+    'IPC_CHANNELS.PLUGINS_LIST',
+    'IPC_CHANNELS.PLUGINS_ENABLE',
+    'IPC_CHANNELS.PLUGINS_DISABLE',
+    'IPC_CHANNELS.PLUGINS_REFRESH',
+    'IPC_CHANNELS.PLUGINS_COMMANDS',
+    'IPC_CHANNELS.PLUGINS_EXECUTE_COMMAND',
+    'listOnethingPluginsForIpc',
+    'enableOnethingPluginForIpc',
+    'disableOnethingPluginForIpc',
+    'refreshOnethingPluginsForIpc',
+    'listOnethingPluginCommandsForIpc',
+    'executeOnethingPluginCommandForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/plugins')
+      ? [`${rel(electronPackage)}: missing plugins IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronPluginsContent.includes(symbol))
+      .map(symbol => `${rel(electronPluginsFile)}: missing Electron plugins IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainPluginsContent.includes(symbol))
+      .map(symbol => `${rel(mainPluginsFile)}: missing plugins IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/plugins')
+      ? [`${rel(viteConfig)}: missing electron plugins IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/plugins')
+      ? [`${rel(vitestConfig)}: missing electron plugins IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainPluginsFile)
+      ? matchingLines(mainPluginsFile, MAIN_PLUGINS_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron plugins IPC host operations', lines)
+}
+
+function checkElectronHostOwnsThemesIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronThemesFile = path.join(root, 'apps/electron/src/ipc/themes.ts')
+  const mainThemesFile = path.join(root, 'src/main/ipc/themes.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronThemesContent = fs.existsSync(electronThemesFile) ? fs.readFileSync(electronThemesFile, 'utf-8') : ''
+  const mainThemesContent = fs.existsSync(mainThemesFile) ? fs.readFileSync(mainThemesFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronThemesIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'openElectronPath',
+    'ElectronThemeFolderOpener',
+    'ElectronThemeMode',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/themes',
+    'registerElectronThemesIpcHandlers',
+    'IPC_CHANNELS.THEME_GET_ALL',
+    'IPC_CHANNELS.THEME_GET',
+    'IPC_CHANNELS.THEME_APPLY',
+    'IPC_CHANNELS.THEME_REFRESH',
+    'IPC_CHANNELS.THEME_OPEN_FOLDER',
+    'defaultOnethingThemeRuntime',
+    'listThemes',
+    'getTheme',
+    'applyTheme',
+    'refreshThemes',
+    'openThemesFolder',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/themes')
+      ? [`${rel(electronPackage)}: missing themes IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronThemesContent.includes(symbol))
+      .map(symbol => `${rel(electronThemesFile)}: missing Electron themes IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainThemesContent.includes(symbol))
+      .map(symbol => `${rel(mainThemesFile)}: missing themes IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/themes')
+      ? [`${rel(viteConfig)}: missing electron themes IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/themes')
+      ? [`${rel(vitestConfig)}: missing electron themes IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainThemesFile)
+      ? matchingLines(mainThemesFile, MAIN_THEMES_IPC_RUNTIME_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/themes.ts: missing themes IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron themes IPC host operations', lines)
+}
+
+function checkElectronHostOwnsProvidersIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronProvidersFile = path.join(root, 'apps/electron/src/ipc/providers.ts')
+  const mainProvidersFile = path.join(root, 'src/main/ipc/providers.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronProvidersContent = fs.existsSync(electronProvidersFile) ? fs.readFileSync(electronProvidersFile, 'utf-8') : ''
+  const mainProvidersContent = fs.existsSync(mainProvidersFile) ? fs.readFileSync(mainProvidersFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronProvidersIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronProviderUsageRequest',
+    'ElectronProviderEnvStatusRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/providers',
+    'registerElectronProvidersIpcHandlers',
+    'IPC_CHANNELS.GET_PROVIDERS',
+    'IPC_CHANNELS.GET_PROVIDER_USAGE',
+    'IPC_CHANNELS.GET_PROVIDER_ENV_STATUS',
+    'listOnethingProvidersForIpc',
+    'getOnethingProviderUsage',
+    'inspectOnethingProviderEnvStatusForIpc',
+    'handleGetProviderUsage',
+    'handleGetProviderEnvStatus',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/providers')
+      ? [`${rel(electronPackage)}: missing providers IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronProvidersContent.includes(symbol))
+      .map(symbol => `${rel(electronProvidersFile)}: missing Electron providers IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainProvidersContent.includes(symbol))
+      .map(symbol => `${rel(mainProvidersFile)}: missing providers IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/providers')
+      ? [`${rel(viteConfig)}: missing electron providers IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/providers')
+      ? [`${rel(vitestConfig)}: missing electron providers IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainProvidersFile)
+      ? matchingLines(mainProvidersFile, MAIN_PROVIDERS_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/providers.ts: missing providers IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron providers IPC host operations', lines)
+}
+
+function checkElectronHostOwnsModelsIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronModelsFile = path.join(root, 'apps/electron/src/ipc/models.ts')
+  const mainModelsFile = path.join(root, 'src/main/ipc/models.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronModelsContent = fs.existsSync(electronModelsFile) ? fs.readFileSync(electronModelsFile, 'utf-8') : ''
+  const mainModelsContent = fs.existsSync(mainModelsFile) ? fs.readFileSync(mainModelsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronModelsIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronModelsWithCapabilitiesRequest',
+    'ElectronModelsSearchRequest',
+    'ElectronModelDisplayNameRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/models',
+    'registerElectronModelsIpcHandlers',
+    'IPC_CHANNELS.GET_MODELS_WITH_CAPABILITIES',
+    'IPC_CHANNELS.GET_ALL_MODELS',
+    'IPC_CHANNELS.SEARCH_MODELS',
+    'IPC_CHANNELS.REFRESH_MODEL_REGISTRY',
+    'IPC_CHANNELS.GET_MODEL_NAME_ALIASES',
+    'IPC_CHANNELS.GET_MODEL_DISPLAY_NAME',
+    'getOnethingModelsWithCapabilities',
+    'getAllOnethingModelRegistryModelsForIpc',
+    'searchOnethingModelRegistryForIpc',
+    'refreshOnethingModelRegistryForIpc',
+    'getOnethingModelRegistryNameAliasesForIpc',
+    'getOnethingModelRegistryDisplayNameForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/models')
+      ? [`${rel(electronPackage)}: missing models IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronModelsContent.includes(symbol))
+      .map(symbol => `${rel(electronModelsFile)}: missing Electron models IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainModelsContent.includes(symbol))
+      .map(symbol => `${rel(mainModelsFile)}: missing models IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/models')
+      ? [`${rel(viteConfig)}: missing electron models IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/models')
+      ? [`${rel(vitestConfig)}: missing electron models IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainModelsFile)
+      ? matchingLines(mainModelsFile, MAIN_MODELS_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/models.ts: missing models IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron models IPC host operations', lines)
+}
+
+function checkElectronHostOwnsMcpIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronMcpFile = path.join(root, 'apps/electron/src/ipc/mcp.ts')
+  const mainMcpFile = path.join(root, 'src/main/ipc/mcp.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronMcpContent = fs.existsSync(electronMcpFile) ? fs.readFileSync(electronMcpFile, 'utf-8') : ''
+  const mainMcpContent = fs.existsSync(mainMcpFile) ? fs.readFileSync(mainMcpFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronMCPIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronMCPIpcChannels',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/mcp',
+    'registerElectronMCPIpcHandlers',
+    'IPC_CHANNELS.MCP_GET_SERVERS',
+    'IPC_CHANNELS.MCP_ADD_SERVER',
+    'IPC_CHANNELS.MCP_UPDATE_SERVER',
+    'IPC_CHANNELS.MCP_REMOVE_SERVER',
+    'IPC_CHANNELS.MCP_CONNECT_SERVER',
+    'IPC_CHANNELS.MCP_DISCONNECT_SERVER',
+    'IPC_CHANNELS.MCP_REFRESH_SERVER',
+    'IPC_CHANNELS.MCP_GET_TOOLS',
+    'IPC_CHANNELS.MCP_CALL_TOOL',
+    'IPC_CHANNELS.MCP_GET_RESOURCES',
+    'IPC_CHANNELS.MCP_READ_RESOURCE',
+    'IPC_CHANNELS.MCP_GET_PROMPTS',
+    'IPC_CHANNELS.MCP_GET_PROMPT',
+    'IPC_CHANNELS.MCP_READ_CONFIG_FILE',
+    'getOnethingMCPServersForIpc',
+    'addOnethingMCPServerForIpc',
+    'updateOnethingMCPServerForIpc',
+    'removeOnethingMCPServerForIpc',
+    'connectOnethingMCPServerForIpc',
+    'disconnectOnethingMCPServerForIpc',
+    'refreshOnethingMCPServerForIpc',
+    'listOnethingMCPToolsForIpc',
+    'callOnethingMCPToolForIpc',
+    'listOnethingMCPResourcesForIpc',
+    'readOnethingMCPResourceForIpc',
+    'listOnethingMCPPromptsForIpc',
+    'getOnethingMCPPromptForIpc',
+    'readOnethingMCPConfigFileForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/mcp')
+      ? [`${rel(electronPackage)}: missing MCP IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronMcpContent.includes(symbol))
+      .map(symbol => `${rel(electronMcpFile)}: missing Electron MCP IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainMcpContent.includes(symbol))
+      .map(symbol => `${rel(mainMcpFile)}: missing MCP IPC host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/mcp')
+      ? [`${rel(viteConfig)}: missing electron MCP IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/mcp')
+      ? [`${rel(vitestConfig)}: missing electron MCP IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainMcpFile)
+      ? matchingLines(mainMcpFile, MAIN_MCP_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron MCP IPC host operations', lines)
+}
+
+function checkElectronHostOwnsAcpIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronAcpFile = path.join(root, 'apps/electron/src/ipc/acp.ts')
+  const mainAcpFile = path.join(root, 'src/main/ipc/acp.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronAcpContent = fs.existsSync(electronAcpFile) ? fs.readFileSync(electronAcpFile, 'utf-8') : ''
+  const mainAcpContent = fs.existsSync(mainAcpFile) ? fs.readFileSync(mainAcpFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronACPIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronACPIpcChannels',
+    'ElectronACPAgentConfigRequest',
+    'ElectronACPAgentIdRequest',
+    'ElectronACPCancelSessionRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/acp',
+    'registerElectronACPIpcHandlers',
+    'IPC_CHANNELS.ACP_GET_AGENTS',
+    'IPC_CHANNELS.ACP_ADD_AGENT',
+    'IPC_CHANNELS.ACP_UPDATE_AGENT',
+    'IPC_CHANNELS.ACP_REMOVE_AGENT',
+    'IPC_CHANNELS.ACP_CONNECT_AGENT',
+    'IPC_CHANNELS.ACP_DISCONNECT_AGENT',
+    'IPC_CHANNELS.ACP_REFRESH_AGENT',
+    'IPC_CHANNELS.ACP_CANCEL_SESSION',
+    'getOnethingACPAgentsForIpc',
+    'addOnethingACPAgentForIpc',
+    'updateOnethingACPAgentForIpc',
+    'removeOnethingACPAgentForIpc',
+    'connectOnethingACPAgentForIpc',
+    'disconnectOnethingACPAgentForIpc',
+    'refreshOnethingACPAgentForIpc',
+    'cancelOnethingACPSessionForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/acp')
+      ? [`${rel(electronPackage)}: missing ACP IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronAcpContent.includes(symbol))
+      .map(symbol => `${rel(electronAcpFile)}: missing Electron ACP IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainAcpContent.includes(symbol))
+      .map(symbol => `${rel(mainAcpFile)}: missing ACP IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/acp')
+      ? [`${rel(viteConfig)}: missing electron ACP IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/acp')
+      ? [`${rel(vitestConfig)}: missing electron ACP IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainAcpFile)
+      ? matchingLines(mainAcpFile, MAIN_ACP_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/acp.ts: missing ACP IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron ACP IPC host operations', lines)
+}
+
+function checkElectronHostOwnsMediaIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronMediaFile = path.join(root, 'apps/electron/src/ipc/media.ts')
+  const mainMediaFile = path.join(root, 'src/main/ipc/media.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronMediaContent = fs.existsSync(electronMediaFile) ? fs.readFileSync(electronMediaFile, 'utf-8') : ''
+  const mainMediaContent = fs.existsSync(mainMediaFile) ? fs.readFileSync(mainMediaFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronMediaIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronMediaIpcChannels',
+    'ElectronMediaGalleryRequest',
+    'ElectronMediaSaveImageRequest',
+    'ElectronImagePreviewRequest',
+    'ElectronImageGalleryRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/media',
+    'registerElectronMediaIpcHandlers',
+    'IPC_CHANNELS.LIST_MEDIA_ASSETS',
+    'IPC_CHANNELS.HIDE_MEDIA_ASSET',
+    'IPC_CHANNELS.REBUILD_MEDIA_LIBRARY',
+    'IPC_CHANNELS.GET_MEDIA_GALLERY',
+    'IPC_CHANNELS.OPEN_IMAGE_PREVIEW',
+    'IPC_CHANNELS.GET_IMAGE_PREVIEW',
+    'IPC_CHANNELS.OPEN_IMAGE_GALLERY',
+    'media:save-image',
+    'media:load-all',
+    'media:delete',
+    'media:clear-all',
+    'media:read-image-base64',
+    'listOnethingMediaAssets',
+    'hideOnethingMediaAsset',
+    'rebuildOnethingMediaLibraryForIpc',
+    'getOnethingMediaGallery',
+    'listOnethingLegacyMediaImages',
+    'deleteOnethingMediaItem',
+    'clearOnethingMediaLibrary',
+    'openOnethingImagePreviewForIpc',
+    'openOnethingImageGalleryForIpc',
+    'readOnethingImageFileDataUrlForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/media')
+      ? [`${rel(electronPackage)}: missing media IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronMediaContent.includes(symbol))
+      .map(symbol => `${rel(electronMediaFile)}: missing Electron media IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainMediaContent.includes(symbol))
+      .map(symbol => `${rel(mainMediaFile)}: missing media IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/media')
+      ? [`${rel(viteConfig)}: missing electron media IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/media')
+      ? [`${rel(vitestConfig)}: missing electron media IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainMediaFile)
+      ? matchingLines(mainMediaFile, MAIN_MEDIA_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron media IPC host operations', lines)
+}
+
+function checkElectronHostOwnsTodoPlanIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronTodoPlanFile = path.join(root, 'apps/electron/src/ipc/todo-plan.ts')
+  const mainTodoPlanFile = path.join(root, 'src/main/todo-plan/ipc.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronTodoPlanContent = fs.existsSync(electronTodoPlanFile) ? fs.readFileSync(electronTodoPlanFile, 'utf-8') : ''
+  const mainTodoPlanContent = fs.existsSync(mainTodoPlanFile) ? fs.readFileSync(mainTodoPlanFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronTodoPlanIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronTodoPlanIpcChannels',
+    'ElectronTodoPlanPinnedRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/todo-plan',
+    'registerElectronTodoPlanIpcHandlers',
+    'IPC_CHANNELS.TODO_PLAN_GET',
+    'IPC_CHANNELS.TODO_PLAN_CREATE',
+    'IPC_CHANNELS.TODO_PLAN_UPDATE',
+    'IPC_CHANNELS.TODO_PLAN_RENAME',
+    'IPC_CHANNELS.TODO_PLAN_DELETE',
+    'IPC_CHANNELS.TODO_PLAN_REVEAL_DIRECTORY',
+    'IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW',
+    'IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW',
+    'IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW',
+    'IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED',
+    'getOnethingTodoPlanForIpc',
+    'createOnethingTodoNoteForIpc',
+    'updateOnethingTodoPlanDocumentForIpc',
+    'renameOnethingTodoNoteForIpc',
+    'deleteOnethingTodoNoteForIpc',
+    'revealOnethingTodoPlanDirectoryForIpc',
+    'runOnethingTodoPlanWindowActionForIpc',
+    'setOnethingTodoPlanWindowPinnedForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/todo-plan')
+      ? [`${rel(electronPackage)}: missing todo-plan IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronTodoPlanContent.includes(symbol))
+      .map(symbol => `${rel(electronTodoPlanFile)}: missing Electron todo-plan IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainTodoPlanContent.includes(symbol))
+      .map(symbol => `${rel(mainTodoPlanFile)}: missing todo-plan IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/todo-plan')
+      ? [`${rel(viteConfig)}: missing electron todo-plan IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/todo-plan')
+      ? [`${rel(vitestConfig)}: missing electron todo-plan IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainTodoPlanFile)
+      ? matchingLines(mainTodoPlanFile, MAIN_TODO_PLAN_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/todo-plan/ipc.ts: missing todo-plan IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron todo-plan IPC host operations', lines)
+}
+
+function checkElectronHostOwnsToolsIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronToolsFile = path.join(root, 'apps/electron/src/ipc/tools.ts')
+  const mainToolsFile = path.join(root, 'src/main/ipc/tools.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronToolsContent = fs.existsSync(electronToolsFile) ? fs.readFileSync(electronToolsFile, 'utf-8') : ''
+  const mainToolsContent = fs.existsSync(mainToolsFile) ? fs.readFileSync(mainToolsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronToolsIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronToolsIpcChannels',
+    'ElectronToolCancelRequest',
+    'ElectronBackgroundJobsListRequest',
+    'ElectronBackgroundJobsStopRequest',
+    'ElectronRefreshAsyncToolsRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/tools',
+    'registerElectronToolsIpcHandlers',
+    'IPC_CHANNELS.GET_TOOLS',
+    'IPC_CHANNELS.EXECUTE_TOOL',
+    'IPC_CHANNELS.CANCEL_TOOL',
+    'IPC_CHANNELS.BACKGROUND_JOBS_LIST',
+    'IPC_CHANNELS.BACKGROUND_JOBS_STOP',
+    'IPC_CHANNELS.REFRESH_ASYNC_TOOLS',
+    'IPC_CHANNELS.UPDATE_TOOL_CALL',
+    'listOnethingSettingsToolsForIpc',
+    'executeOnethingToolWithSessionContextForIpc',
+    'cancelOnethingToolForIpc',
+    'listOnethingBackgroundJobsForIpc',
+    'stopOnethingBackgroundJobForIpc',
+    'refreshOnethingAsyncToolsForIpc',
+    'applyOnethingToolCallUpdateForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/tools')
+      ? [`${rel(electronPackage)}: missing tools IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronToolsContent.includes(symbol))
+      .map(symbol => `${rel(electronToolsFile)}: missing Electron tools IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainToolsContent.includes(symbol))
+      .map(symbol => `${rel(mainToolsFile)}: missing tools IPC host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/tools')
+      ? [`${rel(viteConfig)}: missing electron tools IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/tools')
+      ? [`${rel(vitestConfig)}: missing electron tools IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainToolsFile)
+      ? matchingLines(mainToolsFile, MAIN_TOOLS_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron tools IPC host operations', lines)
+}
+
+function checkElectronHostOwnsSkillsIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSkillsFile = path.join(root, 'apps/electron/src/ipc/skills.ts')
+  const mainSkillsFile = path.join(root, 'src/main/ipc/skills.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSkillsContent = fs.existsSync(electronSkillsFile) ? fs.readFileSync(electronSkillsFile, 'utf-8') : ''
+  const mainSkillsContent = fs.existsSync(mainSkillsFile) ? fs.readFileSync(mainSkillsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronSkillsIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronSkillsIpcChannels',
+    'ElectronSkillsGetAllRequest',
+    'ElectronSkillReadFileRequest',
+    'ElectronSkillOpenDirectoryRequest',
+    'ElectronSkillDeleteRequest',
+    'ElectronSkillToggleEnabledRequest',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/skills',
+    'registerElectronSkillsIpcHandlers',
+    'IPC_CHANNELS.SKILLS_GET_ALL',
+    'IPC_CHANNELS.SKILLS_REFRESH',
+    'IPC_CHANNELS.SKILLS_READ_FILE',
+    'IPC_CHANNELS.SKILLS_OPEN_DIRECTORY',
+    'IPC_CHANNELS.SKILLS_CREATE',
+    'IPC_CHANNELS.SKILLS_DELETE',
+    'IPC_CHANNELS.SKILLS_TOGGLE_ENABLED',
+    'listOnethingSkillsForIpc',
+    'refreshOnethingSkillsForIpc',
+    'readOnethingSkillFileForIpc',
+    'openOnethingSkillDirectoryForIpc',
+    'createOnethingSkillForIpc',
+    'deleteOnethingSkillForIpc',
+    'toggleOnethingSkillEnabledForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/skills')
+      ? [`${rel(electronPackage)}: missing skills IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronSkillsContent.includes(symbol))
+      .map(symbol => `${rel(electronSkillsFile)}: missing Electron skills IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainSkillsContent.includes(symbol))
+      .map(symbol => `${rel(mainSkillsFile)}: missing skills IPC host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/skills')
+      ? [`${rel(viteConfig)}: missing electron skills IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/skills')
+      ? [`${rel(vitestConfig)}: missing electron skills IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainSkillsFile)
+      ? matchingLines(mainSkillsFile, MAIN_SKILLS_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/skills.ts: missing skills IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron skills IPC host operations', lines)
+}
+
+function checkElectronHostOwnsAuthElectronAdapters(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronAuthFetchFile = path.join(root, 'apps/electron/src/auth/auth-fetch.ts')
+  const electronAuthFile = path.join(root, 'apps/electron/src/auth/electron-auth.ts')
+  const electronTokenStoreFile = path.join(root, 'apps/electron/src/auth/token-store.ts')
+  const mainAuthFile = path.join(root, 'src/main/auth/auth-service.ts')
+  const mainTokenStoreFile = path.join(root, 'src/main/auth/token-store.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronAuthFetchContent = fs.existsSync(electronAuthFetchFile)
+    ? fs.readFileSync(electronAuthFetchFile, 'utf-8')
+    : ''
+  const electronAuthContent = fs.existsSync(electronAuthFile) ? fs.readFileSync(electronAuthFile, 'utf-8') : ''
+  const electronTokenStoreContent = fs.existsSync(electronTokenStoreFile)
+    ? fs.readFileSync(electronTokenStoreFile, 'utf-8')
+    : ''
+  const mainAuthContent = fs.existsSync(mainAuthFile) ? fs.readFileSync(mainAuthFile, 'utf-8') : ''
+  const mainTokenStoreContent = fs.existsSync(mainTokenStoreFile) ? fs.readFileSync(mainTokenStoreFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'createRequire',
+    "require('electron')",
+    'resolveElectronNetFetch',
+    'getElectronNetFetch',
+    'electronNet?.fetch',
+    'resolveElectronSafeStorage',
+    'getElectronSafeStorage',
+    'safeStorage',
+  ]
+  const requiredAuthFetchHostSymbols = [
+    'createElectronAuthFetch',
+    'getElectronNetFetch',
+    'fallbackFetch',
+    'getElectronFetch',
+    'net.fetch failed; falling back to app fetch',
+  ]
+  const requiredAuthFacadeSymbols = [
+    '@onething/electron-host/auth/auth-fetch',
+    'createElectronAuthFetch',
+    'createRequiredAppFetch',
+  ]
+  const requiredTokenStoreHostFacadeSymbols = [
+    'getDefaultOnethingTokenFilePath',
+    'OnethingTokenStore',
+    'getElectronSafeStorage',
+    'cryptoAdapter: getElectronSafeStorage',
+    'OAuthToken',
+  ]
+  const requiredTokenStoreLegacyFacadeSymbols = [
+    '@onething/electron-host/auth/token-store',
+    'TokenStore',
+    'tokenStore',
+  ]
+  const mainTokenStoreFacadeLines = mainTokenStoreContent.split('\n').filter(line => line.trim().length > 0)
+  const lines = [
+    ...(!packageContent.includes('./auth/auth-fetch')
+      ? [`${rel(electronPackage)}: missing auth fetch host export`]
+      : []),
+    ...(!packageContent.includes('./auth/electron-auth')
+      ? [`${rel(electronPackage)}: missing auth electron adapter export`]
+      : []),
+    ...(!packageContent.includes('./auth/token-store')
+      ? [`${rel(electronPackage)}: missing auth token-store host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronAuthContent.includes(symbol))
+      .map(symbol => `${rel(electronAuthFile)}: missing Electron auth adapter symbol ${symbol}`),
+    ...requiredAuthFetchHostSymbols
+      .filter(symbol => !electronAuthFetchContent.includes(symbol))
+      .map(symbol => `${rel(electronAuthFetchFile)}: missing Electron auth fetch host symbol ${symbol}`),
+    ...requiredAuthFacadeSymbols
+      .filter(symbol => !mainAuthContent.includes(symbol))
+      .map(symbol => `${rel(mainAuthFile)}: missing auth service facade delegation ${symbol}`),
+    ...requiredTokenStoreHostFacadeSymbols
+      .filter(symbol => !electronTokenStoreContent.includes(symbol))
+      .map(symbol => `${rel(electronTokenStoreFile)}: missing Electron token store host facade symbol ${symbol}`),
+    ...requiredTokenStoreLegacyFacadeSymbols
+      .filter(symbol => !mainTokenStoreContent.includes(symbol))
+      .map(symbol => `${rel(mainTokenStoreFile)}: missing token store legacy facade symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/auth/auth-fetch')
+      ? [`${rel(viteConfig)}: missing electron auth fetch package alias`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/auth/electron-auth')
+      ? [`${rel(viteConfig)}: missing electron auth adapter package alias`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/auth/token-store')
+      ? [`${rel(viteConfig)}: missing electron token-store package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/auth/auth-fetch')
+      ? [`${rel(vitestConfig)}: missing electron auth fetch test alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/auth/electron-auth')
+      ? [`${rel(vitestConfig)}: missing electron auth adapter test alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/auth/token-store')
+      ? [`${rel(vitestConfig)}: missing electron token-store test alias`]
+      : []),
+    ...(mainTokenStoreFacadeLines.length > 6
+      ? [`${rel(mainTokenStoreFile)}: legacy token store facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainAuthFile)
+      ? matchingLines(mainAuthFile, MAIN_AUTH_SERVICE_RUNTIME_FORBIDDEN_PATTERNS)
+      : ['src/main/auth/auth-service.ts: missing auth service facade']),
+    ...(fs.existsSync(mainTokenStoreFile)
+      ? matchingLines(mainTokenStoreFile, MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS)
+      : ['src/main/auth/token-store.ts: missing token store facade']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron auth adapters', lines)
+}
+
+function checkElectronHostOwnsSkillsEnvironment(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSkillsFile = path.join(root, 'apps/electron/src/skills/environment.ts')
+  const mainSkillsFile = path.join(root, 'src/main/skills/loader.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSkillsContent = fs.existsSync(electronSkillsFile) ? fs.readFileSync(electronSkillsFile, 'utf-8') : ''
+  const mainSkillsContent = fs.existsSync(mainSkillsFile) ? fs.readFileSync(mainSkillsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'createRequire',
+    "require('electron')",
+    'resolveElectronAppIsPackaged',
+    'getElectronAppIsPackaged',
+    'getElectronResourcesPath',
+    'process.resourcesPath',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/skills/environment',
+    'getElectronAppIsPackaged',
+    'getElectronResourcesPath',
+    'isPackaged: getElectronAppIsPackaged',
+    'getResourcesPath: getElectronResourcesPath',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./skills/environment')
+      ? [`${rel(electronPackage)}: missing skills environment export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronSkillsContent.includes(symbol))
+      .map(symbol => `${rel(electronSkillsFile)}: missing Electron skills environment symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainSkillsContent.includes(symbol))
+      .map(symbol => `${rel(mainSkillsFile)}: missing skills loader environment delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/skills/environment')
+      ? [`${rel(viteConfig)}: missing electron skills environment package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/skills/environment')
+      ? [`${rel(vitestConfig)}: missing electron skills environment test alias`]
+      : []),
+    ...(fs.existsSync(mainSkillsFile)
+      ? matchingLines(mainSkillsFile, MAIN_SKILLS_LOADER_FORBIDDEN_PATTERNS)
+      : ['src/main/skills/loader.ts: missing skills loader facade']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron skills environment', lines)
+}
+
+function checkElectronHostOwnsNetworkProxy(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronProxyFile = path.join(root, 'apps/electron/src/network/proxy.ts')
+  const mainProxyFile = path.join(root, 'src/main/network/proxy.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronProxyContent = fs.existsSync(electronProxyFile) ? fs.readFileSync(electronProxyFile, 'utf-8') : ''
+  const mainProxyContent = fs.existsSync(mainProxyFile) ? fs.readFileSync(mainProxyFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'applyElectronNetworkProxySettings',
+    'session.defaultSession',
+    'setProxy',
+    'fixed_servers',
+    'direct',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/network/proxy',
+    'applyElectronNetworkProxySettings',
+    'buildElectronProxyRules',
+    'clearAppDispatcherCache',
+    'validateProxyUrl',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./network/proxy')
+      ? [`${rel(electronPackage)}: missing network proxy export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronProxyContent.includes(symbol))
+      .map(symbol => `${rel(electronProxyFile)}: missing Electron network proxy symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainProxyContent.includes(symbol))
+      .map(symbol => `${rel(mainProxyFile)}: missing network proxy facade delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/network/proxy')
+      ? [`${rel(viteConfig)}: missing electron network proxy package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/network/proxy')
+      ? [`${rel(vitestConfig)}: missing electron network proxy test alias`]
+      : []),
+    ...(fs.existsSync(mainProxyFile)
+      ? matchingLines(mainProxyFile, MAIN_NETWORK_PROXY_FORBIDDEN_PATTERNS)
+      : ['src/main/network/proxy.ts: missing network proxy facade']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron network proxy application', lines)
+}
+
+function checkElectronHostOwnsGlobalShortcuts(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronShortcutsFile = path.join(root, 'apps/electron/src/shortcuts/global-shortcuts.ts')
+  const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const mainShortcutsFile = path.join(root, 'src/main/shortcuts/global-shortcuts.ts')
+  const mainSettingsIpcFile = path.join(root, 'src/main/ipc/settings.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronShortcutsContent = fs.existsSync(electronShortcutsFile)
+    ? fs.readFileSync(electronShortcutsFile, 'utf-8')
+    : ''
+  const mainSettingsIpcContent = fs.existsSync(mainSettingsIpcFile) ? fs.readFileSync(mainSettingsIpcFile, 'utf-8') : ''
+  const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'configureGlobalWindowShortcuts',
+    'createElectronGlobalShortcutController',
+    'globalShortcut',
+    'shortcutToAccelerator',
+    'registerGlobalWindowShortcuts',
+    'unregisterGlobalWindowShortcuts',
+    'normalizeKey',
+    'registeredAccelerators',
+  ]
+  const requiredHostFacadeSymbols = [
+    'createElectronGlobalShortcutController',
+    'toggleTodoPlanWindow',
+    'preserve-current-app',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./shortcuts/global-shortcuts')
+      ? [`${rel(electronPackage)}: missing global shortcuts export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronShortcutsContent.includes(symbol))
+      .map(symbol => `${rel(electronShortcutsFile)}: missing Electron global shortcuts symbol ${symbol}`),
+    ...requiredHostFacadeSymbols
+      .filter(symbol => !electronShortcutsContent.includes(symbol))
+      .map(symbol => `${rel(electronShortcutsFile)}: missing Electron global shortcuts host facade symbol ${symbol}`),
+    ...(electronShortcutsContent.includes('@main/')
+      ? [`${rel(electronShortcutsFile)}: Electron global shortcuts host must not import @main runtime modules`]
+      : []),
+    ...(!electronMainContent.includes('configureGlobalWindowShortcuts')
+      ? [`${rel(electronMainFile)}: Electron app bootstrap must configure global shortcuts from runtime settings`]
+      : []),
+    ...(!electronMainContent.includes('getSettings().general?.shortcuts')
+      ? [`${rel(electronMainFile)}: Electron app bootstrap must inject shortcut settings into electron-host`]
+      : []),
+    ...(!mainSettingsIpcContent.includes('@onething/electron-host/shortcuts/global-shortcuts')
+      ? [`${rel(mainSettingsIpcFile)}: settings IPC must import global shortcuts from electron-host directly`]
+      : []),
+    ...(mainSettingsIpcContent.includes('../shortcuts/global-shortcuts')
+      ? [`${rel(mainSettingsIpcFile)}: settings IPC must not import legacy global shortcuts facade`]
+      : []),
+    ...(!electronMainContent.includes('@onething/electron-host/shortcuts/global-shortcuts')
+      ? [`${rel(electronMainFile)}: Electron app bootstrap must import global shortcuts from electron-host`]
+      : []),
+    ...(electronMainContent.includes('@main/shortcuts/global-shortcuts')
+      ? [`${rel(electronMainFile)}: Electron app bootstrap must not import global shortcuts through legacy @main facade`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/shortcuts/global-shortcuts')
+      ? [`${rel(viteConfig)}: missing electron global shortcuts package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/shortcuts/global-shortcuts')
+      ? [`${rel(vitestConfig)}: missing electron global shortcuts test alias`]
+      : []),
+    ...(fs.existsSync(mainShortcutsFile)
+      ? [`${rel(mainShortcutsFile)}: remove legacy global shortcuts facade; use @onething/electron-host/shortcuts/global-shortcuts directly`]
+      : []),
+  ]
+
+  assertNoMatches('apps/electron owns Electron global shortcuts', lines)
+}
+
+function checkElectronHostOwnsPowerResumeHandlers(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronPowerFile = path.join(root, 'apps/electron/src/power/resume.ts')
+  const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronPowerContent = fs.existsSync(electronPowerFile) ? fs.readFileSync(electronPowerFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredPowerSymbols = [
+    'registerElectronPowerResumeHandlers',
+    'powerMonitor',
+    'unlock-screen',
+    'recoverMainWindow',
+    'Resume',
+    'Unlock',
+    'recovery failed',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./power/resume')
+      ? [`${rel(electronPackage)}: missing power resume export`]
+      : []),
+    ...requiredPowerSymbols
+      .filter(symbol => !electronPowerContent.includes(symbol))
+      .map(symbol => `${rel(electronPowerFile)}: missing Electron power resume symbol ${symbol}`),
+    ...(!mainContent.includes('registerElectronPowerResumeHandlers')
+      && !mainContent.includes('registerElectronAppBootstrap')
+      ? [`${rel(mainFile)}: main must delegate power resume handlers to apps/electron`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/power/resume')
+      ? [`${rel(viteConfig)}: missing electron power resume package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/power/resume')
+      ? [`${rel(vitestConfig)}: missing electron power resume test alias`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_POWER_RESUME_FORBIDDEN_PATTERNS)
+      : ['src/main/index.ts: missing Electron main entry']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron power resume handlers', lines)
+}
+
+function checkElectronHostOwnsAppBootstrap(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronBootstrapFile = path.join(root, 'apps/electron/src/app/bootstrap.ts')
+  const mainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronBootstrapContent = fs.existsSync(electronBootstrapFile)
+    ? fs.readFileSync(electronBootstrapFile, 'utf-8')
+    : ''
+  const mainProcessContent = fs.existsSync(mainProcessFile) ? fs.readFileSync(mainProcessFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronAppBootstrap',
+    'configureElectronStorePathHost',
+    'registerElectronReadyHandler',
+    'createAndBindElectronMainWindow',
+    'registerElectronActivateHandler',
+    'registerElectronDidBecomeActiveHandler',
+    'registerElectronWindowAllClosedHandler',
+    'registerElectronBeforeQuitCleanup',
+    'registerElectronMediaProtocol',
+    'registerElectronPowerResumeHandlers',
+  ]
+  const requiredMainSymbols = [
+    '@onething/electron-host/app/bootstrap',
+    'registerElectronAppBootstrap',
+    'storePathHost',
+    'createMainWindowOptions',
+    'afterMainWindowCreated',
+    'startPostWindowServices',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./app/bootstrap')
+      ? [`${rel(electronPackage)}: missing Electron app bootstrap export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronBootstrapContent.includes(symbol))
+      .map(symbol => `${rel(electronBootstrapFile)}: missing Electron app bootstrap symbol ${symbol}`),
+    ...requiredMainSymbols
+      .filter(symbol => !mainProcessContent.includes(symbol))
+      .map(symbol => `${rel(mainProcessFile)}: missing Electron app bootstrap delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/app/bootstrap')
+      ? [`${rel(viteConfig)}: missing electron app bootstrap package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/app/bootstrap')
+      ? [`${rel(vitestConfig)}: missing electron app bootstrap test alias`]
+      : []),
+    ...(fs.existsSync(mainProcessFile)
+      ? matchingLines(mainProcessFile, MAIN_APP_BOOTSTRAP_FORBIDDEN_PATTERNS)
+      : ['apps/electron/src/app/main-process.ts: missing Electron main process implementation']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron app lifecycle bootstrap', lines)
+}
+
+function checkElectronHostOwnsMainEntry(): void {
+  const electronMainFile = path.join(root, 'apps/electron/src/main.ts')
+  const electronMainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const mainFile = path.join(root, 'src/main/index.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
+  const electronMainProcessContent = fs.existsSync(electronMainProcessFile) ? fs.readFileSync(electronMainProcessFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const lines = [
+    ...(!electronMainContent.includes('startOnethingElectronMain')
+      ? [`${rel(electronMainFile)}: missing Electron-hosted main entry startup call`]
+      : []),
+    ...(!electronMainContent.includes('./app/main-process.js')
+      ? [`${rel(electronMainFile)}: Electron main entry must start apps/electron app/main-process`]
+      : []),
+    ...(!electronMainProcessContent.includes('export function startOnethingElectronMain')
+      ? [`${rel(electronMainProcessFile)}: missing callable onething Electron main process export`]
+      : []),
+    ...(!mainContent.includes('@onething/electron-host/app/main-process')
+      ? [`${rel(mainFile)}: legacy Electron main facade must re-export app/main-process`]
+      : []),
+    ...(mainLines.length > 5
+      ? [`${rel(mainFile)}: legacy Electron main facade must stay thin`]
+      : []),
+    ...(!viteContent.includes("index: resolve(__dirname, 'apps/electron/src/main.ts')")
+      ? [`${rel(viteConfig)}: Electron main input must point at apps/electron/src/main.ts`]
+      : []),
+    ...(!viteContent.includes('@onething/electron-host/app/main-process')
+      ? [`${rel(viteConfig)}: missing electron app main-process package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/app/main-process')
+      ? [`${rel(vitestConfig)}: missing electron app main-process test alias`]
+      : []),
+    ...(fs.existsSync(viteConfig)
+      ? matchingLines(viteConfig, ELECTRON_MAIN_ENTRY_FORBIDDEN_PATTERNS)
+      : ['electron.vite.config.ts: missing Electron Vite config']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron main process entrypoint', lines)
+}
+
+function checkElectronHostOwnsPreloadEntry(): void {
+  const electronPreloadFile = path.join(root, 'apps/electron/src/preload.ts')
+  const preloadBridgeFile = path.join(root, 'apps/electron/src/preload/bridge.ts')
+  const legacyPreloadDir = path.join(root, 'src/preload')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const electronPreloadContent = fs.existsSync(electronPreloadFile) ? fs.readFileSync(electronPreloadFile, 'utf-8') : ''
+  const preloadBridgeContent = fs.existsSync(preloadBridgeFile) ? fs.readFileSync(preloadBridgeFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const legacyPreloadFiles = walkFiles(legacyPreloadDir)
+    .filter(file => !rel(file).split('/').some(part => part.startsWith('.')))
+  const lines = [
+    ...(!electronPreloadContent.includes('installOnethingPreloadBridge')
+      ? [`${rel(electronPreloadFile)}: missing Electron-hosted preload bridge install call`]
+      : []),
+    ...(!electronPreloadContent.includes('./preload/bridge.js')
+      ? [`${rel(electronPreloadFile)}: Electron preload entry must install the apps/electron preload bridge`]
+      : []),
+    ...(!preloadBridgeContent.includes('export function installOnethingPreloadBridge')
+      ? [`${rel(preloadBridgeFile)}: missing callable onething preload bridge export`]
+      : []),
+    ...(!viteContent.includes("index: resolve(__dirname, 'apps/electron/src/preload.ts')")
+      ? [`${rel(viteConfig)}: Electron preload input must point at apps/electron/src/preload.ts`]
+      : []),
+    ...(!/preload:\s*\{[\s\S]*?resolve:\s*\{[\s\S]*?\.\.\.onethingPackageAliases/.test(viteContent)
+      ? [`${rel(viteConfig)}: Electron preload build must resolve onething package aliases`]
+      : []),
+    ...(fs.existsSync(viteConfig)
+      ? matchingLines(viteConfig, ELECTRON_PRELOAD_ENTRY_FORBIDDEN_PATTERNS)
+      : ['electron.vite.config.ts: missing Electron Vite config']),
+    ...legacyPreloadFiles.map(file => `${rel(file)}: Electron preload implementation must live under apps/electron/src/preload`),
+  ]
+
+  assertNoMatches('apps/electron owns Electron preload entrypoint', lines)
+}
+
+function checkMainUsesRuntimePackageImports(): void {
+  const lines = walkFiles(path.join(root, 'src/main'), [], { includeTests: true })
+    .flatMap(file => matchingLines(file, MAIN_RUNTIME_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
+  assertNoMatches('Electron main and tests import onething-runtime via package public entrypoints', lines)
+}
+
+function checkRuntimeSubpathAliasesCoverSourceImports(): void {
+  const sourceRoots = [
+    path.join(root, 'src/main'),
+    path.join(root, 'src/renderer'),
+    path.join(root, 'apps/electron/src'),
+    path.join(root, 'packages/gateway/src'),
+  ]
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const specifiers = new Set<string>()
+
+  for (const sourceRoot of sourceRoots) {
+    for (const file of walkFiles(sourceRoot)) {
+      const content = fs.readFileSync(file, 'utf-8')
+      for (const match of content.matchAll(/@onething\/runtime\/[A-Za-z0-9_/-]+/g)) {
+        specifiers.add(match[0])
+      }
+    }
+  }
+
+  const lines = [...specifiers].sort().flatMap(specifier => {
+    const missing = []
+    if (!viteContent.includes(`find: '${specifier}'`)) {
+      missing.push(`${rel(viteConfig)}: missing Vite alias for ${specifier}`)
+    }
+    if (!vitestContent.includes(`'${specifier}'`)) {
+      missing.push(`${rel(vitestConfig)}: missing Vitest alias for ${specifier}`)
+    }
+    return missing
+  })
+
+  assertNoMatches('Vite/Vitest aliases cover used @onething/runtime subpaths', lines)
+}
+
+function checkMainFacadesUseElectronHostImports(): void {
+  const lines = walkFiles(path.join(root, 'src/main'))
+    .flatMap(file => matchingLines(file, MAIN_DIRECT_ELECTRON_IMPORT_FORBIDDEN_PATTERNS))
+  assertNoMatches('Electron main facades use apps/electron host imports instead of direct electron imports', lines)
+}
+
+function checkMainUsesCorePackageImports(): void {
+  const lines = walkFiles(path.join(root, 'src/main'), [], { includeTests: true })
+    .flatMap(file => matchingLines(file, MAIN_CORE_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
+  assertNoMatches('Electron main and tests import headless core via package public entrypoints', lines)
+}
+
+function checkMainUsesGatewayPackageImports(): void {
+  const lines = walkFiles(path.join(root, 'src/main'), [], { includeTests: true })
+    .flatMap(file => matchingLines(file, MAIN_GATEWAY_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
+  assertNoMatches('Electron main and tests import gateway via package public entrypoints', lines)
+}
+
+function checkCorePackageDependencies(): void {
+  const packagePath = path.join(root, 'packages/core/package.json')
+  const parsed = JSON.parse(fs.readFileSync(packagePath, 'utf-8')) as {
+    dependencies?: Record<string, string>
+  }
+  const allowed = new Set(['@anthropic-ai/sdk'])
+  const dependencyNames = Object.keys(parsed.dependencies ?? {})
+  const disallowed = dependencyNames.filter(name => !allowed.has(name))
+  assertNoMatches(
+    'packages/core package dependencies are limited to approved runtime dependencies',
+    disallowed.map(name => `${rel(packagePath)}: dependency ${name}`),
+  )
+}
+
+function checkMainCoreSystemAdapters(): void {
+  const lines = MAIN_CORE_SYSTEM_DIRS
+    .flatMap(dir => walkFiles(path.join(root, dir)))
+    .flatMap(file => matchingLines(file, MAIN_FORBIDDEN_IMPORT_PATTERNS))
+    .filter(line => !isAllowedMainAdapterLine(line))
+  assertNoMatches('main core-system directories only keep explicit adapter imports', lines)
+}
+
+function checkCorePublicExports(): void {
+  const indexPath = path.join(root, 'packages/core/index.ts')
+  const content = fs.readFileSync(indexPath, 'utf-8')
+  const required = [
+    'AgentEngine',
+    'EventBus',
+    'ContextManager',
+    'CoreStreamEngine',
+    'HeadlessStreamEngine',
+    'HeadlessMCPManager',
+    'CorePluginManager',
+  ]
+  const missing = required.filter(symbol => !content.includes(symbol))
+  assertNoMatches(
+    'packages/core/index.ts exports required public core interfaces',
+    missing.map(symbol => `${rel(indexPath)}: missing ${symbol}`),
+  )
+}
+
+function checkCoreToolHelperTestsLiveInCorePackage(): void {
+  const requiredCoreTests = [
+    'packages/core/tools/__tests__/registry.test.ts',
+    'packages/core/tools/__tests__/permission-guards.test.ts',
+    'packages/core/tools/__tests__/tool-result.test.ts',
+  ]
+  const forbiddenMainTests = [
+    'src/main/tools/__tests__/core-registry.test.ts',
+    'src/main/tools/__tests__/core-permission-guards.test.ts',
+    'src/main/tools/__tests__/core-tool-result.test.ts',
+  ]
+  const lines = [
+    ...requiredCoreTests
+      .filter(file => !fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: missing core package tool helper test`),
+    ...forbiddenMainTests
+      .filter(file => fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: core tool helper tests belong in packages/core/tools/__tests__`),
+  ]
+
+  assertNoMatches('packages/core owns core tool helper tests', lines)
+}
+
+function checkCoreOwnsToolSchemaProjection(): void {
+  const coreRegistryFile = path.join(root, 'packages/core/tools/registry.ts')
+  const coreIndexFile = path.join(root, 'packages/core/tools/index.ts')
+  const coreTestFile = path.join(root, 'packages/core/tools/__tests__/registry.test.ts')
+  const mainTypesFile = path.join(root, 'src/main/tools/types.ts')
+  const coreRegistryContent = fs.existsSync(coreRegistryFile) ? fs.readFileSync(coreRegistryFile, 'utf-8') : ''
+  const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
+  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
+  const mainTypesContent = fs.existsSync(mainTypesFile) ? fs.readFileSync(mainTypesFile, 'utf-8') : ''
+  const requiredCoreSymbols = [
+    'CoreProviderToolSchemaFromParametersInput',
+    'coreProviderToolSchemaFromParameters',
+  ]
+  const lines = [
+    ...requiredCoreSymbols
+      .filter(symbol => !coreRegistryContent.includes(symbol))
+      .map(symbol => `${rel(coreRegistryFile)}: missing core-owned tool schema projection symbol ${symbol}`),
+    ...requiredCoreSymbols
+      .filter(symbol => !coreIndexContent.includes(symbol))
+      .map(symbol => `${rel(coreIndexFile)}: missing core tools public export ${symbol}`),
+    ...(!coreTestContent.includes('coreProviderToolSchemaFromParameters')
+      ? [`${rel(coreTestFile)}: missing core-owned parameter schema projection coverage`]
+      : []),
+    ...(!mainTypesContent.includes('coreProviderToolSchemaFromParameters as toAIToolSchema')
+      ? [`${rel(mainTypesFile)}: toAIToolSchema must be a core schema projection facade`]
+      : []),
+    ...(fs.existsSync(mainTypesFile)
+      ? matchingLines(mainTypesFile, MAIN_TOOL_TYPES_SCHEMA_PROJECTION_FORBIDDEN_PATTERNS)
+      : [`${rel(mainTypesFile)}: missing main tools type facade`]),
+  ]
+
+  assertNoMatches('packages/core owns legacy tool schema projection', lines)
+}
+
+function checkCoreOwnsToolFailureParameterSummary(): void {
+  const coreFile = path.join(root, 'packages/core/tools/tool-result.ts')
+  const coreIndexFile = path.join(root, 'packages/core/tools/index.ts')
+  const coreRootIndexFile = path.join(root, 'packages/core/index.ts')
+  const coreTestFile = path.join(root, 'packages/core/tools/__tests__/tool-result.test.ts')
+  const sharedFile = path.join(root, 'src/shared/tool-failure-params.ts')
+  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
+  const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
+  const coreRootIndexContent = fs.existsSync(coreRootIndexFile) ? fs.readFileSync(coreRootIndexFile, 'utf-8') : ''
+  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
+  const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const requiredSymbols = [
+    'ToolFailureParameterSummary',
+    'summarizeToolFailureParameters',
+  ]
+  const lines = [
+    ...requiredSymbols
+      .filter(symbol => !coreContent.includes(symbol))
+      .map(symbol => `${rel(coreFile)}: missing core-owned tool failure parameter symbol ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreIndexContent.includes(symbol))
+      .map(symbol => `${rel(coreIndexFile)}: missing public core tools failure parameter export ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreRootIndexContent.includes(symbol))
+      .map(symbol => `${rel(coreRootIndexFile)}: missing public root core failure parameter export ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreTestContent.includes(symbol))
+      .map(symbol => `${rel(coreTestFile)}: missing core failure parameter test coverage for ${symbol}`),
+    ...(!sharedContent.includes('@onething/core/tools')
+      ? [`${rel(sharedFile)}: legacy shared tool failure parameters must re-export core tools protocol`]
+      : []),
+    ...(/from\s+['"]@onething\/core['"]/.test(sharedContent)
+      ? [`${rel(sharedFile)}: legacy shared tool failure parameters must not import broad core root entrypoint`]
+      : []),
+    ...(fs.existsSync(sharedFile)
+      ? matchingLines(sharedFile, SHARED_TOOL_FAILURE_PARAMETERS_FORBIDDEN_PATTERNS)
+      : [`${rel(sharedFile)}: missing legacy tool failure parameter facade`]),
+  ]
+
+  assertNoMatches('packages/core owns tool failure parameter summary', lines)
+}
+
+function checkCoreOwnsToolPermissionErrorText(): void {
+  const coreFile = path.join(root, 'packages/core/permission/index.ts')
+  const coreRootIndexFile = path.join(root, 'packages/core/index.ts')
+  const coreTestFile = path.join(root, 'packages/core/permission/__tests__/permission-errors.test.ts')
+  const coreToolResultFile = path.join(root, 'packages/core/tools/tool-result.ts')
+  const sharedFile = path.join(root, 'src/shared/tool-errors.ts')
+  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
+  const coreRootIndexContent = fs.existsSync(coreRootIndexFile) ? fs.readFileSync(coreRootIndexFile, 'utf-8') : ''
+  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
+  const coreToolResultContent = fs.existsSync(coreToolResultFile) ? fs.readFileSync(coreToolResultFile, 'utf-8') : ''
+  const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const requiredSymbols = [
+    'DEFAULT_PERMISSION_REJECTED_MESSAGE',
+    'formatPermissionRejectedMessage',
+  ]
+  const lines = [
+    ...requiredSymbols
+      .filter(symbol => !coreContent.includes(symbol))
+      .map(symbol => `${rel(coreFile)}: missing core-owned tool permission error text ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreRootIndexContent.includes(symbol))
+      .map(symbol => `${rel(coreRootIndexFile)}: missing root core permission error text export ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreTestContent.includes(symbol))
+      .map(symbol => `${rel(coreTestFile)}: missing permission error text test coverage for ${symbol}`),
+    ...(!coreToolResultContent.includes("from '../permission/index.js'")
+      ? [`${rel(coreToolResultFile)}: tool failure text must reuse core permission error text`]
+      : []),
+    ...(fs.existsSync(coreToolResultFile)
+      ? matchingLines(coreToolResultFile, CORE_TOOL_RESULT_PERMISSION_ERROR_DUPLICATE_FORBIDDEN_PATTERNS)
+      : [`${rel(coreToolResultFile)}: missing core tool result helper`]),
+    ...(!sharedContent.includes('@onething/core/permission')
+      ? [`${rel(sharedFile)}: legacy shared tool errors must re-export core permission protocol`]
+      : []),
+    ...(fs.existsSync(sharedFile)
+      ? matchingLines(sharedFile, SHARED_TOOL_ERRORS_FORBIDDEN_PATTERNS)
+      : [`${rel(sharedFile)}: missing legacy tool errors facade`]),
+  ]
+
+  assertNoMatches('packages/core owns tool permission error text', lines)
+}
+
+function checkRuntimeToolHelperTestsLiveInRuntimePackage(): void {
+  const requiredRuntimeTests = [
+    'packages/onething-runtime/src/tools/__tests__/bash-runtime.test.ts',
+    'packages/onething-runtime/src/tools/__tests__/file-snapshot.test.ts',
+    'packages/onething-runtime/src/tools/__tests__/sandbox.test.ts',
+    'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts',
+  ]
+  const forbiddenMainTests = [
+    'src/main/tools/__tests__/core-bash-runtime.test.ts',
+    'src/main/tools/__tests__/core-file-snapshot.test.ts',
+    'src/main/tools/__tests__/core-sandbox.test.ts',
+    'src/main/tools/__tests__/core-time.test.ts',
+  ]
+  const timeTest = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts')
+  const timeContent = fs.existsSync(timeTest) ? fs.readFileSync(timeTest, 'utf-8') : ''
+  const lines = [
+    ...requiredRuntimeTests
+      .filter(file => !fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: missing runtime package tool helper test`),
+    ...forbiddenMainTests
+      .filter(file => fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: runtime tool helper tests belong in packages/onething-runtime`),
+    ...(!timeContent.includes('owns fixed offset parsing and core time conversion without host adapters')
+      ? [`${rel(timeTest)}: missing runtime-owned direct time engine coverage`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns runtime tool helper tests', lines)
+}
+
+function checkCoreOwnsSessionCommandIpcOperation(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/core/events/ipc-operations.ts'),
+    path.join(root, 'packages/core/events/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/ipc/handlers.ts')
+  const chatFile = path.join(root, 'src/main/ipc/chat.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'emitCoreSessionCommandForIpc',
+    'emitCoreSessionEventSafely',
+    'CoreSessionCommandEmitterLike',
+    'CoreSessionCommandIpcResult',
+    'CoreSessionEventEmitterLike',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing core-owned session command IPC operation`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/core/events/ipc-operations.ts: missing core-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/handlers.ts: missing IPC handler adapter']),
+    ...(fs.existsSync(chatFile)
+      ? matchingLines(chatFile, MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+  ]
+
+  assertNoMatches('packages/core owns session command/event IPC projections', lines)
+}
+
+function checkCoreOwnsStreamChunkProtocol(): void {
+  const coreFile = path.join(root, 'packages/core/events/stream-chunks.ts')
+  const coreIndexFile = path.join(root, 'packages/core/events/index.ts')
+  const coreTestFile = path.join(root, 'packages/core/events/__tests__/stream-chunks.test.ts')
+  const sharedFile = path.join(root, 'src/shared/events/stream-chunks.ts')
+  const webTsconfigFile = path.join(root, 'tsconfig.web.json')
+  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
+  const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
+  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
+  const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const webTsconfigContent = fs.existsSync(webTsconfigFile) ? fs.readFileSync(webTsconfigFile, 'utf-8') : ''
+  const requiredSymbols = [
+    'TextDeltaChunk',
+    'ReasoningPlacement',
+    'ReasoningDeltaChunk',
+    'ToolInputDeltaChunk',
+    'StreamChunk',
+  ]
+  const lines = [
+    ...(!fs.existsSync(coreFile)
+      ? [`${rel(coreFile)}: missing core-owned stream chunk protocol`]
+      : []),
+    ...(!fs.existsSync(coreTestFile)
+      ? [`${rel(coreTestFile)}: missing core-owned stream chunk protocol tests`]
+      : []),
+    ...requiredSymbols
+      .filter(symbol => !coreContent.includes(symbol))
+      .map(symbol => `${rel(coreFile)}: missing core-owned stream chunk symbol ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreIndexContent.includes(symbol))
+      .map(symbol => `${rel(coreIndexFile)}: missing public core stream chunk export ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreTestContent.includes(symbol))
+      .map(symbol => `${rel(coreTestFile)}: missing stream chunk protocol test coverage for ${symbol}`),
+    ...(!sharedContent.includes('@onething/core/events')
+      ? [`${rel(sharedFile)}: legacy shared stream chunks must re-export core event protocol`]
+      : []),
+    ...(!webTsconfigContent.includes('"@onething/core/*"')
+      ? [`${rel(webTsconfigFile)}: web typecheck must resolve @onething/core event protocol imports`]
+      : []),
+    ...(fs.existsSync(sharedFile)
+      ? matchingLines(sharedFile, SHARED_STREAM_CHUNK_PROTOCOL_FORBIDDEN_PATTERNS)
+      : [`${rel(sharedFile)}: missing legacy stream chunk facade`]),
+  ]
+
+  assertNoMatches('packages/core owns stream chunk protocol', lines)
+}
+
+function checkCoreOwnsJsonProtocol(): void {
+  const coreFile = path.join(root, 'packages/core/json.ts')
+  const coreIndexFile = path.join(root, 'packages/core/index.ts')
+  const corePackageFile = path.join(root, 'packages/core/package.json')
+  const coreTestFile = path.join(root, 'packages/core/__tests__/json.test.ts')
+  const sharedFile = path.join(root, 'src/shared/json.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
+  const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
+  const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
+  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
+  const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredSymbols = [
+    'JsonPrimitive',
+    'JsonValue',
+    'JsonObjectProperty',
+    'JsonObject',
+    'JsonArray',
+    'JsonSchemaObject',
+    'isJsonObject',
+    'parseJsonObject',
+    'toJsonValue',
+    'toJsonObject',
+    'toJsonSchemaObject',
+  ]
+  const lines = [
+    ...(!fs.existsSync(coreFile)
+      ? [`${rel(coreFile)}: missing core-owned JSON protocol`]
+      : []),
+    ...(!fs.existsSync(coreTestFile)
+      ? [`${rel(coreTestFile)}: missing core-owned JSON protocol tests`]
+      : []),
+    ...requiredSymbols
+      .filter(symbol => !coreContent.includes(symbol))
+      .map(symbol => `${rel(coreFile)}: missing core-owned JSON protocol symbol ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreIndexContent.includes(symbol))
+      .map(symbol => `${rel(coreIndexFile)}: missing public core JSON protocol export ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreTestContent.includes(symbol))
+      .map(symbol => `${rel(coreTestFile)}: missing JSON protocol test coverage for ${symbol}`),
+    ...(!corePackageContent.includes('"./json": "./json.ts"')
+      ? [`${rel(corePackageFile)}: missing public @onething/core/json export`]
+      : []),
+    ...(!sharedContent.includes('@onething/core/json')
+      ? [`${rel(sharedFile)}: legacy shared JSON protocol must re-export core JSON protocol`]
+      : []),
+    ...(/from\s+['"]@onething\/core['"]/.test(sharedContent)
+      ? [`${rel(sharedFile)}: legacy shared JSON protocol must not import broad core root entrypoint`]
+      : []),
+    ...(!viteContent.includes('@onething/core/json')
+      ? [`${rel(viteConfig)}: missing @onething/core/json build alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/core/json')
+      ? [`${rel(vitestConfig)}: missing @onething/core/json test alias`]
+      : []),
+    ...(fs.existsSync(sharedFile)
+      ? matchingLines(sharedFile, SHARED_JSON_PROTOCOL_FORBIDDEN_PATTERNS)
+      : [`${rel(sharedFile)}: missing legacy JSON protocol facade`]),
+  ]
+
+  assertNoMatches('packages/core owns JSON protocol', lines)
+}
+
+function checkCoreOwnsIpcRouterProtocol(): void {
+  const coreFile = path.join(root, 'packages/core/ipc/index.ts')
+  const coreIndexFile = path.join(root, 'packages/core/index.ts')
+  const corePackageFile = path.join(root, 'packages/core/package.json')
+  const coreTestFile = path.join(root, 'packages/core/ipc/__tests__/router.test.ts')
+  const sharedFile = path.join(root, 'src/shared/ipc/router.ts')
+  const legacySharedTestFile = path.join(root, 'src/shared/ipc/__tests__/router.test.ts')
+  const preloadCreateApiFile = path.join(root, 'apps/electron/src/preload/create-api.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
+  const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
+  const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
+  const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
+  const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const preloadCreateApiContent = fs.existsSync(preloadCreateApiFile) ? fs.readFileSync(preloadCreateApiFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredSymbols = [
+    'RoutePayload',
+    'RouteConfig',
+    'DomainRoutes',
+    'Router',
+    'RouteHandlers',
+    'RouteAPI',
+    'getChannelName',
+    'defineRouter',
+  ]
+  const requiredTestCoverage = [
+    'getChannelName',
+    'defineRouter',
+    'preserves legacy channel naming compatibility',
+  ]
+  const lines = [
+    ...(!fs.existsSync(coreFile)
+      ? [`${rel(coreFile)}: missing core-owned IPC router protocol`]
+      : []),
+    ...(!fs.existsSync(coreTestFile)
+      ? [`${rel(coreTestFile)}: missing core-owned IPC router protocol tests`]
+      : []),
+    ...requiredSymbols
+      .filter(symbol => !coreContent.includes(symbol))
+      .map(symbol => `${rel(coreFile)}: missing core-owned IPC router symbol ${symbol}`),
+    ...requiredSymbols
+      .filter(symbol => !coreIndexContent.includes(symbol))
+      .map(symbol => `${rel(coreIndexFile)}: missing public core IPC router export ${symbol}`),
+    ...requiredTestCoverage
+      .filter(symbol => !coreTestContent.includes(symbol))
+      .map(symbol => `${rel(coreTestFile)}: missing IPC router protocol test coverage for ${symbol}`),
+    ...(!corePackageContent.includes('"./ipc": "./ipc/index.ts"')
+      ? [`${rel(corePackageFile)}: missing public @onething/core/ipc export`]
+      : []),
+    ...(!sharedContent.includes('@onething/core/ipc')
+      ? [`${rel(sharedFile)}: legacy shared IPC router must re-export core protocol`]
+      : []),
+    ...(fs.existsSync(sharedFile)
+      ? matchingLines(sharedFile, SHARED_IPC_ROUTER_FORBIDDEN_PATTERNS)
+      : [`${rel(sharedFile)}: missing legacy IPC router facade`]),
+    ...(fs.existsSync(legacySharedTestFile)
+      ? [`${rel(legacySharedTestFile)}: IPC router protocol tests must live in packages/core`]
+      : []),
+    ...(!preloadCreateApiContent.includes('@onething/core/ipc')
+      ? [`${rel(preloadCreateApiFile)}: Electron preload API factory must import IPC router protocol from @onething/core/ipc`]
+      : []),
+    ...(preloadCreateApiContent.includes('src/shared/ipc/router') || preloadCreateApiContent.includes('../../shared/ipc/router')
+      ? [`${rel(preloadCreateApiFile)}: Electron preload API factory must not import legacy shared IPC router protocol`]
+      : []),
+    ...(!viteContent.includes("'@onething/core/ipc'") && !viteContent.includes('"@onething/core/ipc"')
+      ? [`${rel(viteConfig)}: missing @onething/core/ipc build alias`]
+      : []),
+    ...(!vitestContent.includes("'@onething/core/ipc'") && !vitestContent.includes('"@onething/core/ipc"')
+      ? [`${rel(vitestConfig)}: missing @onething/core/ipc test alias`]
+      : []),
+  ]
+
+  assertNoMatches('packages/core owns IPC router protocol', lines)
+}
+
+function checkElectronHostOwnsSessionCommandIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSessionCommandFile = path.join(root, 'apps/electron/src/ipc/session-command.ts')
+  const mainFile = path.join(root, 'src/main/ipc/handlers.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSessionCommandContent = fs.existsSync(electronSessionCommandFile)
+    ? fs.readFileSync(electronSessionCommandFile, 'utf-8')
+    : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronSessionCommandIpcHandler',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronSessionCommandRequest',
+    'RegisterElectronSessionCommandIpcHandlerOptions',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/session-command',
+    'registerElectronSessionCommandIpcHandler',
+    'IPC_CHANNELS.SESSION_COMMAND',
+    'emitCoreSessionCommandForIpc',
+    'getEventBus()',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/session-command')
+      ? [`${rel(electronPackage)}: missing session-command IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronSessionCommandContent.includes(symbol))
+      .map(symbol => `${rel(electronSessionCommandFile)}: missing Electron session-command IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainContent.includes(symbol))
+      .map(symbol => `${rel(mainFile)}: missing session-command IPC adapter symbol ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/session-command')
+      ? [`${rel(viteConfig)}: missing electron session-command IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/session-command')
+      ? [`${rel(vitestConfig)}: missing electron session-command IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SESSION_COMMAND_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/handlers.ts: missing IPC handler adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron session-command IPC host operations', lines)
+}
+
+function checkElectronHostOwnsChatIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronChatFile = path.join(root, 'apps/electron/src/ipc/chat.ts')
+  const mainChatFile = path.join(root, 'src/main/ipc/chat.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronChatContent = fs.existsSync(electronChatFile) ? fs.readFileSync(electronChatFile, 'utf-8') : ''
+  const mainChatContent = fs.existsSync(mainChatFile) ? fs.readFileSync(mainChatFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronChatIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronChatIpcChannels',
+    'ElectronChatIpcInvokeEvent',
+    'options.resumeAfterToolConfirm(request, (event as ElectronChatIpcInvokeEvent).sender)',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/chat',
+    'registerElectronChatIpcHandlers',
+    'IPC_CHANNELS.GET_CHAT_HISTORY',
+    'IPC_CHANNELS.GENERATE_TITLE',
+    'IPC_CHANNELS.GET_SYSTEM_PROMPT_SNAPSHOT',
+    'IPC_CHANNELS.UPDATE_MESSAGE_THINKING_TIME',
+    'IPC_CHANNELS.ABORT_STREAM',
+    'IPC_CHANNELS.GET_ACTIVE_STREAMS',
+    'IPC_CHANNELS.RESUME_AFTER_TOOL_CONFIRM',
+    'getOnethingChatHistoryForIpc',
+    'generateOnethingChatTitleForIpc',
+    'buildOnethingSystemPromptSnapshotForIpc',
+    'updateOnethingMessageThinkingTimeForIpc',
+    'abortOnethingStreamsForIpc',
+    'listOnethingActiveStreamsForIpc',
+    'resumeOnethingAfterToolConfirmationForIpc',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/chat')
+      ? [`${rel(electronPackage)}: missing chat IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronChatContent.includes(symbol))
+      .map(symbol => `${rel(electronChatFile)}: missing Electron chat IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainChatContent.includes(symbol))
+      .map(symbol => `${rel(mainChatFile)}: missing chat IPC host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/chat')
+      ? [`${rel(viteConfig)}: missing electron chat IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/chat')
+      ? [`${rel(vitestConfig)}: missing electron chat IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainChatFile)
+      ? matchingLines(mainChatFile, MAIN_CHAT_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron chat IPC host operations', lines)
+}
+
+function checkElectronHostOwnsFilesIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronFilesFile = path.join(root, 'apps/electron/src/ipc/files.ts')
+  const mainFilesFile = path.join(root, 'src/main/ipc/files.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronFilesContent = fs.existsSync(electronFilesFile) ? fs.readFileSync(electronFilesFile, 'utf-8') : ''
+  const mainFilesContent = fs.existsSync(mainFilesFile) ? fs.readFileSync(mainFilesFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronFilesIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronFilesIpcChannels',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/files',
+    'registerElectronFilesIpcHandlers',
+    'IPC_CHANNELS.FILES_LIST',
+    'IPC_CHANNELS.FILE_ROLLBACK',
+    'IPC_CHANNELS.DIRS_LIST',
+    'IPC_CHANNELS.FILE_READ_CONTENT',
+    'IPC_CHANNELS.FILE_SAVE_CONTENT',
+    'IPC_CHANNELS.FILE_LIST_DIRECTORY',
+    'IPC_CHANNELS.FILE_STAT',
+    'IPC_CHANNELS.FILE_CREATE',
+    'IPC_CHANNELS.FILE_CREATE_DIRECTORY',
+    'IPC_CHANNELS.FILE_RENAME',
+    'IPC_CHANNELS.FILE_DELETE',
+    'IPC_CHANNELS.FILE_REVEAL',
+    'IPC_CHANNELS.FILE_WATCH_START',
+    'IPC_CHANNELS.FILE_WATCH_STOP',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/files')
+      ? [`${rel(electronPackage)}: missing files IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronFilesContent.includes(symbol))
+      .map(symbol => `${rel(electronFilesFile)}: missing Electron files IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainFilesContent.includes(symbol))
+      .map(symbol => `${rel(mainFilesFile)}: missing files IPC host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/files')
+      ? [`${rel(viteConfig)}: missing electron files IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/files')
+      ? [`${rel(vitestConfig)}: missing electron files IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainFilesFile)
+      ? matchingLines(mainFilesFile, MAIN_FILES_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron files IPC host operations', lines)
+}
+
+function checkElectronHostOwnsSessionsIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronSessionsFile = path.join(root, 'apps/electron/src/ipc/sessions.ts')
+  const mainSessionsFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronSessionsContent = fs.existsSync(electronSessionsFile)
+    ? fs.readFileSync(electronSessionsFile, 'utf-8')
+    : ''
+  const mainSessionsContent = fs.existsSync(mainSessionsFile) ? fs.readFileSync(mainSessionsFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronSessionIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronSessionIpcHandlerDefinition',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/sessions',
+    'registerElectronSessionIpcHandlers',
+    'IPC_CHANNELS.GET_SESSIONS',
+    'IPC_CHANNELS.GET_SESSIONS_LIST',
+    'IPC_CHANNELS.ACTIVATE_SESSION',
+    'IPC_CHANNELS.GET_SESSION_MESSAGES',
+    'IPC_CHANNELS.GET_SESSION_MESSAGES_PAGE',
+    'IPC_CHANNELS.GET_SESSION_USER_MARKERS',
+    'IPC_CHANNELS.CREATE_SESSION',
+    'IPC_CHANNELS.SWITCH_SESSION',
+    'IPC_CHANNELS.GET_SESSION',
+    'IPC_CHANNELS.DELETE_SESSION',
+    'IPC_CHANNELS.RENAME_SESSION',
+    'IPC_CHANNELS.UPDATE_SESSION_PIN',
+    'IPC_CHANNELS.UPDATE_SESSION_ARCHIVED',
+    'IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY',
+    'IPC_CHANNELS.UPDATE_SESSION_MODEL',
+    'IPC_CHANNELS.UPDATE_SESSION_AGENT',
+    'IPC_CHANNELS.UPDATE_SESSION_PERMISSION_MODE',
+    'IPC_CHANNELS.CREATE_BRANCH',
+    'IPC_CHANNELS.GET_SESSION_TOKEN_USAGE',
+    'add-system-message',
+    'remove-files-changed-message',
+    'remove-git-status-message',
+    'remove-message',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/sessions')
+      ? [`${rel(electronPackage)}: missing sessions IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronSessionsContent.includes(symbol))
+      .map(symbol => `${rel(electronSessionsFile)}: missing Electron sessions IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainSessionsContent.includes(symbol))
+      .map(symbol => `${rel(mainSessionsFile)}: missing sessions IPC host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/sessions')
+      ? [`${rel(viteConfig)}: missing electron sessions IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/sessions')
+      ? [`${rel(vitestConfig)}: missing electron sessions IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainSessionsFile)
+      ? matchingLines(mainSessionsFile, MAIN_SESSIONS_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron sessions IPC host operations', lines)
+}
+
+function checkElectronHostOwnsMemoryIpcHost(): void {
+  const electronPackage = path.join(root, 'apps/electron/package.json')
+  const electronMemoryFile = path.join(root, 'apps/electron/src/ipc/memory.ts')
+  const mainMemoryFile = path.join(root, 'src/main/ipc/memory.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
+  const electronMemoryContent = fs.existsSync(electronMemoryFile)
+    ? fs.readFileSync(electronMemoryFile, 'utf-8')
+    : ''
+  const mainMemoryContent = fs.existsSync(mainMemoryFile) ? fs.readFileSync(mainMemoryFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredHostSymbols = [
+    'registerElectronMemoryIpcHandlers',
+    'options.ipcMain ?? ipcMain',
+    'host.handle',
+    'ElectronMemoryIpcHandlerDefinition',
+  ]
+  const requiredFacadeSymbols = [
+    '@onething/electron-host/ipc/memory',
+    'registerElectronMemoryIpcHandlers',
+    'IPC_CHANNELS.MEMORY_OVERVIEW',
+    'IPC_CHANNELS.MEMORY_READ',
+    'IPC_CHANNELS.MEMORY_SEARCH',
+    'IPC_CHANNELS.MEMORY_APPEND',
+    'IPC_CHANNELS.MEMORY_SAVE_FILE',
+    'IPC_CHANNELS.MEMORY_INDEX',
+    'IPC_CHANNELS.MEMORY_RUN_DREAMING',
+    'IPC_CHANNELS.MEMORY_CAPTURE_SAVE',
+    'IPC_CHANNELS.MEMORY_CAPTURE_DISCARD',
+    'IPC_CHANNELS.MEMORY_PROFILE_LIST',
+    'IPC_CHANNELS.MEMORY_PROFILE_SEARCH',
+    'IPC_CHANNELS.MEMORY_PROFILE_UPSERT',
+    'IPC_CHANNELS.MEMORY_PROFILE_DELETE',
+    'IPC_CHANNELS.MEMORY_PROFILE_AUDIT',
+    'IPC_CHANNELS.MEMORY_PROFILE_EXPORT',
+    'IPC_CHANNELS.MEMORY_GRAPH_OVERVIEW',
+    'IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_LIST',
+    'IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_UPSERT',
+    'IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_DELETE',
+    'IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_LIST',
+    'IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_UPSERT',
+    'IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_DELETE',
+    'IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_LIST',
+    'IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_UPSERT',
+    'IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_DELETE',
+    'IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_LIST',
+    'IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_MERGE',
+    'IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_IGNORE',
+    'IPC_CHANNELS.MEMORY_GRAPH_AUDIT',
+    'IPC_CHANNELS.MEMORY_LOGS_LIST',
+    'IPC_CHANNELS.MEMORY_LOGS_STATS',
+    'IPC_CHANNELS.MEMORY_LOGS_OPEN_FOLDER',
+    'IPC_CHANNELS.MEMORY_LOGS_CLEANUP',
+  ]
+  const lines = [
+    ...(!packageContent.includes('./ipc/memory')
+      ? [`${rel(electronPackage)}: missing memory IPC host export`]
+      : []),
+    ...requiredHostSymbols
+      .filter(symbol => !electronMemoryContent.includes(symbol))
+      .map(symbol => `${rel(electronMemoryFile)}: missing Electron memory IPC host symbol ${symbol}`),
+    ...requiredFacadeSymbols
+      .filter(symbol => !mainMemoryContent.includes(symbol))
+      .map(symbol => `${rel(mainMemoryFile)}: missing memory IPC host delegation ${symbol}`),
+    ...(!viteContent.includes('@onething/electron-host/ipc/memory')
+      ? [`${rel(viteConfig)}: missing electron memory IPC package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/electron-host/ipc/memory')
+      ? [`${rel(vitestConfig)}: missing electron memory IPC test alias`]
+      : []),
+    ...(fs.existsSync(mainMemoryFile)
+      ? matchingLines(mainMemoryFile, MAIN_MEMORY_IPC_HOST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/memory.ts: missing memory IPC adapter']),
+  ]
+
+  assertNoMatches('apps/electron owns Electron memory IPC host operations', lines)
+}
+
+function checkCorePromptAssemblyOwnedByRuntime(): void {
+  const files = [
+    path.join(root, 'packages/core/engine/system-prompt.ts'),
+    path.join(root, 'packages/core/engine/index.ts'),
+  ]
+  const removedFiles = [
+    'packages/core/engine/system-prompt-snapshot.ts',
+  ].filter(file => fs.existsSync(path.join(root, file)))
+  const lines = [
+    ...files
+      .filter(file => fs.existsSync(file))
+      .flatMap(file => matchingLines(file, CORE_PROMPT_ASSEMBLY_FORBIDDEN_PATTERNS)),
+    ...removedFiles.map(file => `${file}: prompt snapshot assembly belongs in packages/onething-runtime`),
+  ]
+  assertNoMatches('packages/core keeps prompt assembly out of the headless boundary', lines)
+}
+
+function checkCorePromptContextRegistryOwnedByRuntime(): void {
+  const removedFiles = [
+    'packages/core/engine/plugin-context.ts',
+    'packages/core/storage/app-state.ts',
+  ].filter(file => fs.existsSync(path.join(root, file)))
+
+  assertNoMatches(
+    'packages/core keeps runtime registries and app state out of the headless boundary',
+    removedFiles.map(file => `${file}: runtime-owned state belongs in packages/onething-runtime`),
+  )
+}
+
+function checkRuntimeOwnsOnethingStoragePaths(): void {
+  const file = path.join(root, 'packages/onething-runtime/src/storage/paths.ts')
+  const lines = fs.existsSync(file)
+    ? matchingLines(file, RUNTIME_STORAGE_PATH_CORE_PROXY_PATTERNS)
+    : [`packages/onething-runtime/src/storage/paths.ts: missing runtime storage path contract`]
+
+  assertNoMatches('packages/onething-runtime owns onething storage path construction', lines)
+}
+
+function checkRuntimeOwnsStoreLock(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/storage/store-lock.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/storage/index.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/storage/__tests__/store-lock.test.ts')
+  const sharedFile = path.join(root, 'src/shared/backend/store-lock.ts')
+  const sharedTestFile = path.join(root, 'src/shared/backend/__tests__/store-lock.test.ts')
+  const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
+  const sharedContent = fs.existsSync(sharedFile) ? fs.readFileSync(sharedFile, 'utf-8') : ''
+  const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'StoreLock',
+    'LockConflictError',
+    'readLockMeta',
+    'formatCliLockConflict',
+    'formatDesktopLockConflict',
+    'getOnethingStorePath',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned store lock`]
+      : []),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime-owned store lock tests`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned store lock symbol ${symbol}`),
+    ...['StoreLock', 'LockConflictError', 'formatCliLockConflict']
+      .filter(symbol => !runtimeTestContent.includes(symbol))
+      .map(symbol => `${rel(runtimeTestFile)}: missing runtime store lock test coverage for ${symbol}`),
+    ...(!runtimeIndexContent.includes("./store-lock.js")
+      ? [`${rel(runtimeIndexFile)}: missing store lock public export`]
+      : []),
+    ...(!sharedContent.includes('@onething/runtime/storage')
+      ? [`${rel(sharedFile)}: legacy shared store lock must re-export runtime storage`]
+      : []),
+    ...(fs.existsSync(sharedFile)
+      ? matchingLines(sharedFile, SHARED_BACKEND_STORE_LOCK_FORBIDDEN_PATTERNS)
+      : [`${rel(sharedFile)}: missing legacy store lock facade`]),
+    ...(fs.existsSync(sharedTestFile)
+      ? [`${rel(sharedTestFile)}: store lock tests belong in packages/onething-runtime/src/storage/__tests__`]
+      : []),
+    ...(!electronMainContent.includes('@onething/runtime/storage')
+      ? [`${rel(electronMainFile)}: Electron host must import store lock from runtime storage public API`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns store lock runtime', lines)
+}
+
+function checkRuntimeOwnsPermissionGrantFileStorage(): void {
+  const file = path.join(root, 'packages/core/permission/permission-grants.ts')
+  const lines = fs.existsSync(file)
+    ? matchingLines(file, CORE_PERMISSION_FILE_STORAGE_FORBIDDEN_PATTERNS)
+    : []
+
+  assertNoMatches('packages/onething-runtime owns permission grant file storage layout', lines)
+}
+
+function checkRuntimeOwnsPermissionGrantsIpcPresentation(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/permissions/permission-grants-presentation.ts')
+  const mainFile = path.join(root, 'src/main/ipc/permission.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'listOnethingPermissionGrants',
+    'listOnethingPermissionGrantsForIpc',
+    'revokeOnethingPermissionGrant',
+    'revokeOnethingPermissionGrantForIpc',
+    'clearOnethingSessionPermissionGrants',
+    'clearOnethingSessionPermissionGrantsForIpc',
+    'clearOnethingWorkspacePermissionGrants',
+    'clearOnethingWorkspacePermissionGrantsForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PERMISSION_IPC_GRANTS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/permission.ts: missing permission IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns permission grants IPC presentation', lines)
+}
+
+function checkRuntimeOwnsPermissionSessionIpcPresentation(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/permissions/permission-session-presentation.ts')
+  const mainFile = path.join(root, 'src/main/ipc/permission.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'getOnethingPendingPermissions',
+    'getOnethingPendingPermissionsForIpc',
+    'clearOnethingPermissionSession',
+    'clearOnethingPermissionSessionForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PERMISSION_IPC_SESSION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/permission.ts: missing permission IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns permission session IPC presentation', lines)
+}
+
+function checkRuntimeOwnsAuthTokenStorage(): void {
+  const runtimeFile = 'packages/onething-runtime/src/auth/token-store.ts'
+  const mainFile = path.join(root, 'src/main/auth/token-store.ts')
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const mainFacadeLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const lines = [
+    ...(!fs.existsSync(path.join(root, runtimeFile))
+      ? [`${runtimeFile}: missing runtime-owned OAuth token store`]
+      : []),
+    ...(!mainContent.includes('@onething/electron-host/auth/token-store')
+      ? [`${rel(mainFile)}: token store legacy facade must delegate to electron host token-store`]
+      : []),
+    ...(mainFacadeLines.length > 6
+      ? [`${rel(mainFile)}: legacy token store facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS)
+      : ['src/main/auth/token-store.ts: missing Electron safeStorage adapter facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns OAuth token storage layout', lines)
+}
+
+function checkRuntimeOwnsAuthServiceFlow(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/auth/auth-service.ts')
+  const runtimeFactoryFile = path.join(root, 'packages/onething-runtime/src/auth/service-factory.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/auth/index.ts')
+  const mainFile = path.join(root, 'src/main/auth/auth-service.ts')
+  const runtimeFactoryContent = fs.existsSync(runtimeFactoryFile) ? fs.readFileSync(runtimeFactoryFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const requiredRuntimeFactorySymbols = [
+    'OnethingAuthRuntimeOptions',
+    'createOnethingAuthServiceOptions',
+    'createOnethingAuthService',
+    'getAuthProviderDefinition',
+    'callbackServerManager',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned OAuth service flow`]
+      : []),
+    ...(!fs.existsSync(runtimeFactoryFile)
+      ? [`${rel(runtimeFactoryFile)}: missing runtime-owned OAuth service factory`]
+      : []),
+    ...requiredRuntimeFactorySymbols
+      .filter(symbol => !runtimeFactoryContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFactoryFile)}: missing runtime auth service factory symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('createOnethingAuthServiceOptions')
+      ? [`${rel(runtimeIndexFile)}: missing auth service factory public export`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_AUTH_SERVICE_RUNTIME_FORBIDDEN_PATTERNS)
+      : ['src/main/auth/auth-service.ts: missing Electron auth adapter facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns OAuth service flow orchestration', lines)
+}
+
+function checkRuntimeOwnsAuthCallbackServer(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/auth/callback-server.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/auth/index.ts')
+  const mainFile = path.join(root, 'src/main/auth/callback-server.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const mainFacadeLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredRuntimeSymbols = [
+    'CallbackServerManager',
+    'callbackServerManager',
+    'OnethingAuthCallbackRegistration',
+    'http.createServer',
+    'registerFlow',
+    'unregisterState',
+    'cleanup',
+    'writeCallbackPage',
+  ]
+  const requiredMainFacadeSymbols = [
+    '@onething/runtime/auth',
+    'CallbackServerManager',
+    'callbackServerManager',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned OAuth callback server`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned OAuth callback server symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('callbackServerManager')
+      ? [`${rel(runtimeIndexFile)}: missing auth callback server public export`]
+      : []),
+    ...requiredMainFacadeSymbols
+      .filter(symbol => !mainContent.includes(symbol))
+      .map(symbol => `${rel(mainFile)}: missing callback server legacy facade symbol ${symbol}`),
+    ...(mainFacadeLines.length > 6
+      ? [`${rel(mainFile)}: legacy auth callback-server facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_AUTH_CALLBACK_SERVER_FORBIDDEN_PATTERNS)
+      : ['src/main/auth/callback-server.ts: missing callback server legacy facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns OAuth callback server', lines)
+}
+
+function checkRuntimeOwnsOAuthIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/auth/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/oauth.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'startOnethingOAuthForIpc',
+    'completeOnethingOAuthCallbackForIpc',
+    'pollOnethingOAuthDeviceFlowForIpc',
+    'refreshOnethingOAuthForIpc',
+    'getOnethingOAuthStatusForIpc',
+    'logoutOnethingOAuthForIpc',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned OAuth IPC operations`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned OAuth IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_OAUTH_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/oauth.ts: missing OAuth IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns OAuth IPC operations', lines)
+}
+
+function checkRuntimeOwnsStreamRuntimeWiring(): void {
+  const runtimeFile = 'packages/onething-runtime/src/product-stream-runtime.ts'
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/index.ts')
+  const mainFile = path.join(root, 'src/main/engine/stream-engine-runtime.ts')
+  const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
+    ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
+    : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'OnethingProductStreamRuntimeHostAdapters',
+    'createOnethingProductStreamRuntimeFromHostAdapters',
+  ]
+  const lines = [
+    ...(!fs.existsSync(path.join(root, runtimeFile))
+      ? [`${runtimeFile}: missing runtime-owned onething product stream runtime builder`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${runtimeFile}: missing runtime-owned product stream host adapter symbol ${symbol}`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeIndexContent.includes(symbol))
+      .map(symbol => `${rel(runtimeIndexFile)}: missing public product stream host adapter export ${symbol}`),
+    ...(!mainContent.includes('createOnethingProductStreamRuntimeFromHostAdapters')
+      ? [`${rel(mainFile)}: main stream runtime facade must delegate host adapter assembly to packages/onething-runtime`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_STREAM_RUNTIME_WIRING_FORBIDDEN_PATTERNS)
+      : ['src/main/engine/stream-engine-runtime.ts: missing Electron stream runtime adapter facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns stream runtime wiring', lines)
+}
+
+function checkRuntimeOwnsHistoryHelperWiring(): void {
+  const mainFiles = [
+    path.join(root, 'src/main/engine/stream/message-helpers.ts'),
+    path.join(root, 'src/main/engine/stream/resume-history.ts'),
+  ]
+  const lines = mainFiles.flatMap(file => fs.existsSync(file)
+    ? matchingLines(file, MAIN_HISTORY_HELPER_CORE_WIRING_FORBIDDEN_PATTERNS)
+    : []
+  )
+
+  assertNoMatches('packages/onething-runtime owns onething history helper wiring', lines)
+}
+
+function checkRuntimeOwnsAgentLoopRuntimeWiring(): void {
+  const file = path.join(root, 'src/main/engine/stream/agent-loop-runtime.ts')
+  const lines = fs.existsSync(file)
+    ? matchingLines(file, MAIN_AGENT_LOOP_RUNTIME_WIRING_FORBIDDEN_PATTERNS)
+    : []
+
+  assertNoMatches('packages/onething-runtime owns agent-loop runtime adapter wiring', lines)
+}
+
+function checkRuntimeOwnsAgentLoopSelection(): void {
+  const runtimeFile = 'packages/onething-runtime/src/agent-loop/selection.ts'
+  const mainFile = path.join(root, 'src/main/engine/stream/agent-loop-selection.ts')
+  const lines = [
+    ...(!fs.existsSync(path.join(root, runtimeFile))
+      ? [`${runtimeFile}: missing runtime-owned onething agent-loop stream selection`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_AGENT_LOOP_SELECTION_FORBIDDEN_PATTERNS)
+      : ['src/main/engine/stream/agent-loop-selection.ts: missing Electron selection facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns onething agent-loop stream selection', lines)
+}
+
+function checkCoreOwnsAgentLoopPureFacades(): void {
+  const mainIndexFile = path.join(root, 'src/main/agent-loop/index.ts')
+  const mainIndexContent = fs.existsSync(mainIndexFile) ? fs.readFileSync(mainIndexFile, 'utf-8') : ''
+  const removedMainFacades = [
+    'src/main/agent-loop/bridge.ts',
+    'src/main/agent-loop/capabilities.ts',
+    'src/main/agent-loop/chunks.ts',
+    'src/main/agent-loop/errors.ts',
+    'src/main/agent-loop/messages.ts',
+    'src/main/agent-loop/prompts.ts',
+    'src/main/agent-loop/provider-stream.ts',
+    'src/main/agent-loop/runner.ts',
+    'src/main/agent-loop/stream.ts',
+    'src/main/agent-loop/tool-names.ts',
+    'src/main/agent-loop/tool-results.ts',
+    'src/main/agent-loop/types.ts',
+    'src/main/agent-loop/providers/sse.ts',
+  ]
+  const lines = removedMainFacades
+    .filter(file => fs.existsSync(path.join(root, file)))
+    .map(file => `${file}: agent-loop facade should be removed; import @onething/core/agent-loop or @onething/runtime/agent-loop/providers directly`)
+    .concat(mainIndexContent.includes("@onething/core/agent-loop")
+      ? [`${rel(mainIndexFile)}: agent-loop index should only export Electron host adapters; import @onething/core/agent-loop directly for core APIs`]
+      : [])
+
+  assertNoMatches('packages/core owns pure agent-loop facades', lines)
+}
+
+function checkRuntimeOwnsProviderRequestDump(): void {
+  const runtimeFile = 'packages/onething-runtime/src/providers/request-dump.ts'
+  const mainFile = path.join(root, 'src/main/providers/request-dump.ts')
+  const lines = [
+    ...(!fs.existsSync(path.join(root, runtimeFile))
+      ? [`${runtimeFile}: missing runtime-owned provider request dump implementation`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_REQUEST_DUMP_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/request-dump.ts: missing main provider request dump facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider request dump implementation', lines)
+}
+
+function checkRuntimeOwnsProviderRegistry(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/registry.ts')
+  const mainFile = path.join(root, 'src/main/providers/registry.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'OnethingProviderRegistryDefinition',
+    'OnethingProviderRegistry',
+    'createProviderRegistry',
+    'invalidateProviderCache',
+    'isProviderSupported',
+    'requiresSystemMerge',
+    'requiresOAuth',
+  ]
+  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned provider registry`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider registry symbol ${symbol}`),
+    ...(!mainContent.includes('@onething/runtime/providers')
+      ? [`${rel(mainFile)}: provider registry facade must delegate to @onething/runtime/providers`]
+      : []),
+    ...(mainLines.length > 100
+      ? [`${rel(mainFile)}: provider registry facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_REGISTRY_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/registry.ts: missing provider registry facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider registry', lines)
+}
+
+function checkRuntimeOwnsProviderDefinitionTypes(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-definition.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/providers/index.ts')
+  const mainFile = path.join(root, 'src/main/providers/types.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'OnethingProviderInfo',
+    'OnethingProviderConfig',
+    'OnethingProviderCallOptions',
+    'OnethingProviderCallPreparationContext',
+    'OnethingProviderDefinition',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned provider definition types`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider definition type ${symbol}`),
+    ...(!runtimeIndexContent.includes('./provider-definition.js')
+      ? [`${rel(runtimeIndexFile)}: missing provider definition public export`]
+      : []),
+    ...(!mainContent.includes('@onething/runtime/providers')
+      ? [`${rel(mainFile)}: provider type facade must delegate to @onething/runtime/providers`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_TYPES_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/types.ts: missing provider type facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider definition types', lines)
+}
+
+function checkRuntimeOwnsProviderOauthConfigResolution(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/oauth-config.ts')
+  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'resolveOnethingOAuthProviderConfig',
+    'refreshTokenIfNeeded',
+    'requiresOAuth',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider OAuth config resolution ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_OAUTH_CONFIG_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/index.ts: missing provider facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider OAuth config resolution', lines)
+}
+
+function checkRuntimeOwnsProviderFacadeOrchestration(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-facade.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/providers/__tests__/provider-facade.test.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/providers/index.ts')
+  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'createOnethingProviderFacade',
+    'OnethingProviderFacadeAdapters',
+    'streamChatResponseWithTools',
+    'generateChatResponseWithReasoning',
+    'streamChatWithUIMessages',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned provider facade orchestration`]
+      : []),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime-owned provider facade tests`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider facade symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('./provider-facade.js')
+      ? [`${rel(runtimeIndexFile)}: missing provider facade public export`]
+      : []),
+    ...(!mainContent.includes('createOnethingProviderFacade')
+      ? [`${rel(mainFile)}: main provider facade must delegate orchestration to createOnethingProviderFacade`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_FACADE_LOW_LEVEL_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/index.ts: missing provider facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider facade orchestration', lines)
+}
+
+function checkRuntimeOwnsProviderTitleOrchestration(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
+  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'generateOnethingProviderChatTitle',
+    'buildOnethingChatTitleGenerationRequest',
+    'cleanOnethingGeneratedChatTitle',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider title orchestration ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_TITLE_ORCHESTRATION_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/index.ts: missing provider facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider title orchestration', lines)
+}
+
+function checkRuntimeOwnsProviderTextResponseProjection(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
+  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'generateOnethingTextChatResponse',
+    'streamOnethingTextChatResponse',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider text response projection ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_TEXT_RESPONSE_PROJECTION_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/index.ts: missing provider facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider text response projection', lines)
+}
+
+function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
+  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'generateOnethingChatResponseWithReasoning',
+    'streamACPResponse',
+    'resolveRuntimeRoute',
+    'mergeMessagesForGenerate',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider generate-with-reasoning orchestration ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_GENERATE_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/index.ts: missing provider facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider generate-with-reasoning orchestration', lines)
+}
+
+function checkRuntimeOwnsProviderStreamReasoningOrchestration(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
+  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'streamOnethingChatResponseWithReasoning',
+    'streamDeepSeekTurn',
+    'streamUtilityAgentTurn',
+    'stream-reasoning',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider stream-with-reasoning orchestration ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_STREAM_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/index.ts: missing provider facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider stream-with-reasoning orchestration', lines)
+}
+
+function checkRuntimeOwnsProviderToolStreamOrchestration(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
+  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'streamOnethingChatResponseWithTools',
+    'OnethingProviderToolStreamMode',
+    'streamAgentToolTurn',
+    'streamACPResponse',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider tool-stream orchestration ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_TOOL_STREAM_ORCHESTRATION_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/index.ts: missing provider facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider tool-stream orchestration', lines)
+}
+
+function checkRuntimeOwnsProviderAcpStreamProjection(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
+  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'streamOnethingACPChatResponseWithTools',
+    'projectOnethingACPPromptStreamEvent',
+    'getLatestOnethingUserMessageText',
+    'mapOnethingACPStopReason',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ACP stream projection ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDER_ACP_STREAM_PROJECTION_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/index.ts: missing provider facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider ACP stream projection', lines)
+}
+
+function checkRuntimeOwnsEmbeddingProviderRuntime(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/embeddings/index.ts')
+  const runtimeDefaultsFile = path.join(root, 'packages/onething-runtime/src/embeddings/defaults.ts')
+  const runtimePackage = path.join(root, 'packages/onething-runtime/package.json')
+  const rootRuntimeIndexFile = path.join(root, 'packages/onething-runtime/src/index.ts')
+  const sharedDefaultsFile = path.join(root, 'src/shared/embeddings/defaults.ts')
+  const mainFile = path.join(root, 'src/main/embeddings/index.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeDefaultsContent = fs.existsSync(runtimeDefaultsFile) ? fs.readFileSync(runtimeDefaultsFile, 'utf-8') : ''
+  const runtimePackageContent = fs.existsSync(runtimePackage) ? fs.readFileSync(runtimePackage, 'utf-8') : ''
+  const rootRuntimeIndexContent = fs.existsSync(rootRuntimeIndexFile) ? fs.readFileSync(rootRuntimeIndexFile, 'utf-8') : ''
+  const sharedDefaultsContent = fs.existsSync(sharedDefaultsFile) ? fs.readFileSync(sharedDefaultsFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredRuntimeSymbols = [
+    'embedOnethingTexts',
+    'vectorsFromOnethingOpenAIEmbeddingResponse',
+    'vectorsFromOnethingGeminiEmbeddingResponse',
+    'OnethingEmbeddingRuntimeAdapters',
+    'resolveSoulMemoryEmbeddingTarget',
+  ]
+  const requiredDefaultsSymbols = [
+    'SOUL_MEMORY_EMBEDDING_PROVIDER_DEFAULTS',
+    'resolveSoulMemoryEmbeddingTarget',
+    'findOpenAICompatibleCustomEmbeddingProvider',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned embeddings runtime`]
+      : []),
+    ...(!fs.existsSync(runtimeDefaultsFile)
+      ? [`${rel(runtimeDefaultsFile)}: missing runtime-owned embedding defaults`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned embedding symbol ${symbol}`),
+    ...requiredDefaultsSymbols
+      .filter(symbol => !runtimeDefaultsContent.includes(symbol))
+      .map(symbol => `${rel(runtimeDefaultsFile)}: missing runtime-owned embedding default symbol ${symbol}`),
+    ...(!runtimePackageContent.includes('"./embeddings"')
+      ? [`${rel(runtimePackage)}: missing @onething/runtime embeddings package export`]
+      : []),
+    ...(!rootRuntimeIndexContent.includes('./embeddings/index.js')
+      ? [`${rel(rootRuntimeIndexFile)}: missing root runtime embeddings public export`]
+      : []),
+    ...(!sharedDefaultsContent.includes('@onething/runtime/embeddings/defaults')
+      ? [`${rel(sharedDefaultsFile)}: shared embedding defaults must re-export runtime defaults`]
+      : []),
+    ...(!mainContent.includes('embedOnethingTexts')
+      ? [`${rel(mainFile)}: main embeddings facade must delegate to embedOnethingTexts`]
+      : []),
+    ...(mainLines.length > 35
+      ? [`${rel(mainFile)}: main embeddings facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_EMBEDDINGS_RUNTIME_FORBIDDEN_PATTERNS)
+      : ['src/main/embeddings/index.ts: missing embeddings facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns embedding provider runtime', lines)
+}
+
+function checkRuntimeOwnsAcpIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/acp/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/acp.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'normalizeOnethingACPAgentConfig',
+    'getOnethingACPAgentsForIpc',
+    'addOnethingACPAgentForIpc',
+    'updateOnethingACPAgentForIpc',
+    'removeOnethingACPAgentForIpc',
+    'connectOnethingACPAgentForIpc',
+    'disconnectOnethingACPAgentForIpc',
+    'refreshOnethingACPAgentForIpc',
+    'cancelOnethingACPSessionForIpc',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned ACP IPC operations`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ACP IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_ACP_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/acp.ts: missing ACP IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns ACP IPC operations', lines)
+}
+
+function checkRuntimeOwnsAcpClientRuntime(): void {
+  const runtimeClientFile = path.join(root, 'packages/onething-runtime/src/acp/client.ts')
+  const runtimeManagerFile = path.join(root, 'packages/onething-runtime/src/acp/manager.ts')
+  const runtimeTypesFile = path.join(root, 'packages/onething-runtime/src/acp/types.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/acp/index.ts')
+  const mainFiles = [
+    path.join(root, 'src/main/acp/client.ts'),
+    path.join(root, 'src/main/acp/manager.ts'),
+    path.join(root, 'src/main/acp/types.ts'),
+    path.join(root, 'src/main/acp/index.ts'),
+  ]
+  const runtimeClientContent = fs.existsSync(runtimeClientFile) ? fs.readFileSync(runtimeClientFile, 'utf-8') : ''
+  const runtimeManagerContent = fs.existsSync(runtimeManagerFile) ? fs.readFileSync(runtimeManagerFile, 'utf-8') : ''
+  const runtimeTypesContent = fs.existsSync(runtimeTypesFile) ? fs.readFileSync(runtimeTypesFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const requiredClientSymbols = [
+    'ACPClient',
+    'ClientSideConnection',
+    'ndJsonStream',
+    'streamPrompt',
+    'createTerminal',
+    'requestPermission',
+  ]
+  const requiredManagerSymbols = [
+    'ACPManager',
+    'ACPManagerClass',
+    'syncClients',
+    'streamPrompt',
+    'ensureCleanupTimer',
+  ]
+  const requiredTypeSymbols = [
+    'ACPAgentConfig',
+    'ACPAgentState',
+    'ACPSettings',
+    'ACPPromptStreamEvent',
+    'ACPPromptStreamOptions',
+  ]
+  const mainFacadeLines = mainFiles.flatMap(file => {
+    const content = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : ''
+    const lines = content.split('\n').filter(line => line.trim().length > 0)
+    return [
+      ...(!content.includes('@onething/runtime/acp')
+        ? [`${rel(file)}: ACP legacy facade must delegate to @onething/runtime/acp`]
+        : []),
+      ...(lines.length > 12
+        ? [`${rel(file)}: ACP legacy facade must stay thin`]
+        : []),
+      ...matchingLines(file, MAIN_ACP_RUNTIME_FORBIDDEN_PATTERNS),
+    ]
+  })
+  const lines = [
+    ...(!fs.existsSync(runtimeClientFile)
+      ? [`${rel(runtimeClientFile)}: missing runtime ACP client`]
+      : []),
+    ...(!fs.existsSync(runtimeManagerFile)
+      ? [`${rel(runtimeManagerFile)}: missing runtime ACP manager`]
+      : []),
+    ...(!fs.existsSync(runtimeTypesFile)
+      ? [`${rel(runtimeTypesFile)}: missing runtime ACP types`]
+      : []),
+    ...requiredClientSymbols
+      .filter(symbol => !runtimeClientContent.includes(symbol))
+      .map(symbol => `${rel(runtimeClientFile)}: missing runtime ACP client symbol ${symbol}`),
+    ...requiredManagerSymbols
+      .filter(symbol => !runtimeManagerContent.includes(symbol))
+      .map(symbol => `${rel(runtimeManagerFile)}: missing runtime ACP manager symbol ${symbol}`),
+    ...requiredTypeSymbols
+      .filter(symbol => !runtimeTypesContent.includes(symbol))
+      .map(symbol => `${rel(runtimeTypesFile)}: missing runtime ACP type symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('ACPClient') || !runtimeIndexContent.includes('ACPManager')
+      ? [`${rel(runtimeIndexFile)}: missing ACP runtime public exports`]
+      : []),
+    ...mainFacadeLines,
+  ]
+
+  assertNoMatches('packages/onething-runtime owns ACP client runtime', lines)
+}
+
+function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/direct-tool-execution.ts')
+  const mainFile = path.join(root, 'src/main/engine/stream/tool-execution.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'executeOnethingDirectTool',
+    'createOnethingDirectToolExecutionContext',
+    'executeCoreDirectTool',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned direct tool execution adapter ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_DIRECT_TOOL_EXECUTION_FORBIDDEN_PATTERNS)
+      : ['src/main/engine/stream/tool-execution.ts: missing tool execution facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns direct tool execution adapter', lines)
+}
+
+function checkRuntimeOwnsToolUpdateOrchestration(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-execution.ts')
+  const mainFile = path.join(root, 'src/main/engine/stream/tool-execution.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'executeOnethingToolAndUpdate',
+    'executeCoreToolAndUpdate',
+    'toolResultToStructured',
+    'toJsonValue',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tool update orchestration ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_TOOL_UPDATE_ORCHESTRATION_FORBIDDEN_PATTERNS)
+      : ['src/main/engine/stream/tool-execution.ts: missing tool execution facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns tool update orchestration', lines)
+}
+
+function checkRuntimeOwnsStreamProcessorAdapter(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/stream-processor.ts')
+  const mainFile = path.join(root, 'src/main/engine/stream/stream-processor.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'createOnethingStreamProcessor',
+    'createCoreStreamProcessor',
+    'createCoreId',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned stream processor adapter ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_STREAM_PROCESSOR_ADAPTER_FORBIDDEN_PATTERNS)
+      : ['src/main/engine/stream/stream-processor.ts: missing stream processor facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns stream processor adapter', lines)
+}
+
+function checkRuntimeOwnsImageStreamEntryPoint(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/image-generation.ts')
+  const mainFile = path.join(root, 'src/main/engine/stream/image-stream.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'executeOnethingImageGenerationStream',
+    'executeCoreImageGenerationStream',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned image stream entry point ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_IMAGE_STREAM_ENTRY_FORBIDDEN_PATTERNS)
+      : ['src/main/engine/stream/image-stream.ts: missing image stream facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns image stream entry point', lines)
+}
+
+function checkRuntimeOwnsProvidersIpcUsageFlow(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-usage.ts')
+  const mainFile = path.join(root, 'src/main/ipc/providers.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('getOnethingProviderUsage')
+      ? [`${rel(runtimeFile)}: missing runtime-owned provider usage flow`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDERS_IPC_USAGE_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/providers.ts: missing providers IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider usage flow', lines)
+}
+
+function checkRuntimeOwnsProvidersIpcPresentation(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-presentation.ts')
+  const mainFile = path.join(root, 'src/main/ipc/providers.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'listOnethingProviders',
+    'listOnethingProvidersForIpc',
+    'inspectOnethingProviderEnvStatus',
+    'inspectOnethingProviderEnvStatusForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROVIDERS_IPC_PRESENTATION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/providers.ts: missing providers IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider IPC presentation', lines)
+}
+
+function checkRuntimeOwnsNetworkPolicy(): void {
+  const runtimeFile = 'packages/onething-runtime/src/providers/network.ts'
+  const runtimeBoundFetchFile = 'packages/onething-runtime/src/providers/bound-fetch.ts'
+  const runtimeBoundFetchTestFile = 'packages/onething-runtime/src/providers/__tests__/bound-fetch.test.ts'
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/providers/index.ts')
+  const mainFile = path.join(root, 'src/main/providers/bound-fetch.ts')
+  const runtimeBoundFetchContent = fs.existsSync(path.join(root, runtimeBoundFetchFile))
+    ? fs.readFileSync(path.join(root, runtimeBoundFetchFile), 'utf-8')
+    : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'createOnethingAppFetch',
+    'createRequiredOnethingAppFetch',
+    'createOnethingBoundFetch',
+    'getOnethingAppDispatcher',
+    'clearOnethingAppDispatcherCache',
+    'shouldBypassOnethingAppProxy',
+    'validateOnethingAppProxyUrl',
+  ]
+  const lines = [
+    ...(!fs.existsSync(path.join(root, runtimeFile))
+      ? [`${runtimeFile}: missing runtime-owned provider network policy helpers`]
+      : []),
+    ...(!fs.existsSync(path.join(root, runtimeBoundFetchFile))
+      ? [`${runtimeBoundFetchFile}: missing runtime-owned provider bound fetch implementation`]
+      : []),
+    ...(!fs.existsSync(path.join(root, runtimeBoundFetchTestFile))
+      ? [`${runtimeBoundFetchTestFile}: missing runtime-owned provider bound fetch tests`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeBoundFetchContent.includes(symbol))
+      .map(symbol => `${runtimeBoundFetchFile}: missing runtime-owned ${symbol}`),
+    ...(!runtimeIndexContent.includes("export * from './bound-fetch.js'")
+      ? ['packages/onething-runtime/src/providers/index.ts: missing bound-fetch export']
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_BOUND_FETCH_POLICY_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/bound-fetch.ts: missing main network fetch adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns provider network policy and bound fetch runtime', lines)
+}
+
+function checkRuntimeOwnsModelRegistryRefresh(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/model-registry.ts')
+  const mainFile = path.join(root, 'src/main/providers/model-registry.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'saveOnethingProviderModels',
+    'refreshOnethingProviderModels',
+    'refreshAllOnethingProviderModels',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MODEL_REGISTRY_REFRESH_FORBIDDEN_PATTERNS)
+      : ['src/main/providers/model-registry.ts: missing main model registry facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns model registry refresh orchestration', lines)
+}
+
+function checkRuntimeOwnsModelsIpcPresentation(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/model-registry.ts')
+  const mainFile = path.join(root, 'src/main/ipc/models.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'mergeOnethingModelsById',
+    'getConfiguredOnethingFallbackModels',
+    'copilotModelInfoToOnethingOpenRouterModel',
+    'fetchOnethingGitHubCopilotModelsWithAuth',
+    'acpAgentsToOnethingOpenRouterModels',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MODELS_IPC_PRESENTATION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/models.ts: missing models IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns models IPC presentation helpers', lines)
+}
+
+function checkRuntimeOwnsModelQueryIpcPresentation(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/model-query-presentation.ts')
+  const mainFile = path.join(root, 'src/main/ipc/models.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'getAllOnethingModelRegistryModels',
+    'getAllOnethingModelRegistryModelsForIpc',
+    'searchOnethingModelRegistry',
+    'searchOnethingModelRegistryForIpc',
+    'refreshOnethingModelRegistry',
+    'refreshOnethingModelRegistryForIpc',
+    'getOnethingModelRegistryNameAliases',
+    'getOnethingModelRegistryNameAliasesForIpc',
+    'getOnethingModelRegistryDisplayName',
+    'getOnethingModelRegistryDisplayNameForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MODELS_IPC_QUERY_PRESENTATION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/models.ts: missing models IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns model query IPC presentation', lines)
+}
+
+function checkRuntimeOwnsMcpServerOrchestration(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/mcp/server-orchestration.ts')
+  const mainFile = path.join(root, 'src/main/ipc/mcp.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'addOnethingMCPServer',
+    'updateOnethingMCPServer',
+    'removeOnethingMCPServer',
+    'connectOnethingMCPServer',
+    'disconnectOnethingMCPServer',
+    'refreshOnethingMCPServer',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MCP_IPC_SERVER_ORCHESTRATION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns MCP server orchestration', lines)
+}
+
+function checkRuntimeOwnsMcpCapabilityOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/mcp/capability-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/mcp.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'listOnethingMCPTools',
+    'callOnethingMCPTool',
+    'listOnethingMCPResources',
+    'readOnethingMCPResource',
+    'listOnethingMCPPrompts',
+    'getOnethingMCPPrompt',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MCP_IPC_CAPABILITY_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns MCP capability operation projection', lines)
+}
+
+function checkRuntimeOwnsMcpIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/mcp/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/mcp.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'getOnethingMCPServersForIpc',
+    'addOnethingMCPServerForIpc',
+    'updateOnethingMCPServerForIpc',
+    'removeOnethingMCPServerForIpc',
+    'connectOnethingMCPServerForIpc',
+    'disconnectOnethingMCPServerForIpc',
+    'refreshOnethingMCPServerForIpc',
+    'listOnethingMCPToolsForIpc',
+    'callOnethingMCPToolForIpc',
+    'listOnethingMCPResourcesForIpc',
+    'readOnethingMCPResourceForIpc',
+    'listOnethingMCPPromptsForIpc',
+    'getOnethingMCPPromptForIpc',
+    'readOnethingMCPConfigFileForIpc',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned MCP IPC operations`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned MCP IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MCP_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns MCP IPC operations', lines)
+}
+
+function checkRuntimeOwnsSessionBranchCreation(): void {
+  const runtimeFile = 'packages/onething-runtime/src/sessions/branching.ts'
+  const runtimeIpcFile = 'packages/onething-runtime/src/sessions/ipc-operations.ts'
+  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
+    ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
+    : ''
+  const runtimeIpcContent = fs.existsSync(path.join(root, runtimeIpcFile))
+    ? fs.readFileSync(path.join(root, runtimeIpcFile), 'utf-8')
+    : ''
+  const lines = [
+    ...(!fs.existsSync(path.join(root, runtimeFile))
+      ? [`${runtimeFile}: missing runtime-owned session branch orchestration`]
+      : []),
+    ...(!runtimeContent.includes('createOnethingBranchSession')
+      ? [`${runtimeFile}: missing runtime-owned session branch orchestration createOnethingBranchSession`]
+      : []),
+    ...(!runtimeIpcContent.includes('createOnethingBranchSessionForIpc')
+      ? [`${runtimeIpcFile}: missing runtime-owned session branch IPC operation createOnethingBranchSessionForIpc`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SESSIONS_IPC_BRANCH_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns session branch creation orchestration', lines)
+}
+
+function checkRuntimeOwnsSessionUpdateFlows(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/session-updates.ts')
+  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'updateOnethingSessionModel',
+    'updateOnethingSessionAgent',
+    'updateOnethingSessionPermissionMode',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SESSIONS_IPC_UPDATE_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns session update flows', lines)
+}
+
+function checkRuntimeOwnsSessionMessageRuntime(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/session-message-runtime.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/sessions/__tests__/session-message-runtime.test.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/sessions/index.ts')
+  const mainStoreFile = path.join(root, 'src/main/stores/sessions.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainStoreContent = fs.existsSync(mainStoreFile) ? fs.readFileSync(mainStoreFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'createOnethingSessionMessageRuntime',
+    'OnethingSessionMessageRuntime',
+    'syncMessageToSqliteIfReady',
+    'updateMessageAndTruncate',
+    'updateStepsUsageByTurn',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned session message runtime`]
+      : []),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime-owned session message runtime tests`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned session message runtime symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('./session-message-runtime.js')
+      ? [`${rel(runtimeIndexFile)}: missing session message runtime public export`]
+      : []),
+    ...(!mainStoreContent.includes('createOnethingSessionMessageRuntime')
+      ? [`${rel(mainStoreFile)}: main sessions facade must delegate message mutations to createOnethingSessionMessageRuntime`]
+      : []),
+    ...(fs.existsSync(mainStoreFile)
+      ? matchingLines(mainStoreFile, MAIN_SESSION_MESSAGE_RUNTIME_FORBIDDEN_PATTERNS)
+      : ['src/main/stores/sessions.ts: missing sessions store facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns session message mutation runtime', lines)
+}
+
+function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/working-directory.ts')
+  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('updateOnethingSessionWorkingDirectory')
+      ? [`${rel(runtimeFile)}: missing runtime-owned session working directory flow`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SESSIONS_IPC_WORKDIR_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns session working directory flow', lines)
+}
+
+function checkRuntimeOwnsSessionSystemMarkerFlow(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/system-messages.ts')
+  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('removeOnethingSystemMarkerMessage')
+      ? [`${rel(runtimeFile)}: missing runtime-owned session system marker flow`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SESSIONS_IPC_SYSTEM_MARKER_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns session system marker flow', lines)
+}
+
+function checkRuntimeOwnsSessionIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/ipc-operations.ts')
+  const runtimeUsageFile = path.join(root, 'packages/onething-runtime/src/sessions/session-usage.ts')
+  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const usageFile = path.join(root, 'src/main/session/usage.ts')
+  const runtimeContent = [
+    runtimeFile,
+    runtimeUsageFile,
+  ].map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '').join('\n')
+  const requiredRuntimeSymbols = [
+    'ONETHING_SESSION_NOT_FOUND',
+    'listOnethingSessionsForIpc',
+    'activateOnethingSessionForIpc',
+    'getOnethingSessionMessagesForIpc',
+    'getOnethingSessionMessagesPageForIpc',
+    'listOnethingSessionUserMarkersForIpc',
+    'createOnethingSessionForIpc',
+    'switchOnethingSessionForIpc',
+    'getOnethingSessionForIpc',
+    'deleteOnethingSessionForIpc',
+    'renameOnethingSessionForIpc',
+    'updateOnethingSessionPinForIpc',
+    'updateOnethingSessionArchivedForIpc',
+    'normalizeOnethingSessionTokenUsage',
+    'updateOnethingSessionUsage',
+    'getOnethingSessionUsage',
+    'clearOnethingSessionUsage',
+    'getOnethingSessionTokenUsageForIpc',
+    'addOnethingSystemMessageForIpc',
+    'removeOnethingMessageForIpc',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned session IPC operations`]
+      : []),
+    ...(!fs.existsSync(runtimeUsageFile)
+      ? [`${rel(runtimeUsageFile)}: missing runtime-owned session usage operations`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned session IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SESSIONS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+    ...(fs.existsSync(usageFile)
+      ? matchingLines(usageFile, MAIN_SESSION_USAGE_FACADE_FORBIDDEN_PATTERNS)
+      : ['src/main/session/usage.ts: missing session usage adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns session IPC operations', lines)
+}
+
+function checkRuntimeOwnsRendererMessageSanitizer(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/renderer-sanitizer.ts')
+  const mainFiles = [
+    path.join(root, 'src/main/ipc/message-sanitizer.ts'),
+    path.join(root, 'src/main/ipc/chat.ts'),
+    path.join(root, 'src/main/ipc/sessions.ts'),
+  ]
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('sanitizeOnethingSessionForRenderer')
+      ? [`${rel(runtimeFile)}: missing runtime-owned renderer message sanitizer`]
+      : []),
+    ...mainFiles.flatMap(file => fs.existsSync(file)
+      ? matchingLines(file, MAIN_RENDERER_SANITIZER_FORBIDDEN_PATTERNS)
+      : []
+    ),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns renderer-safe message projection', lines)
+}
+
+function checkChatIpcDoesNotOwnLegacyStreamFlow(): void {
+  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const lines = fs.existsSync(mainFile)
+    ? matchingLines(mainFile, MAIN_CHAT_IPC_LEGACY_STREAM_FORBIDDEN_PATTERNS)
+    : ['src/main/ipc/chat.ts: missing chat IPC adapter']
+
+  assertNoMatches('chat IPC delegates stream orchestration to EventBus/StreamEngine runtime', lines)
+}
+
+function checkRuntimeOwnsChatTitleGenerationFlow(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-runtime.ts')
+  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('generateOnethingChatTitle')
+      ? [`${rel(runtimeFile)}: missing runtime-owned chat title generation flow`]
+      : []),
+    ...(!runtimeContent.includes('generateOnethingChatTitleForIpc')
+      ? [`${rel(runtimeFile)}: missing runtime-owned chat title IPC projection`]
+      : []),
+    ...(!runtimeContent.includes('getOnethingCaughtErrorMessage')
+      ? [`${rel(runtimeFile)}: missing runtime-owned caught error message helper`]
+      : []),
+    ...(!runtimeContent.includes('extractOnethingCaughtErrorDetails')
+      ? [`${rel(runtimeFile)}: missing runtime-owned caught error details helper`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? [
+          ...matchingLines(mainFile, MAIN_CHAT_IPC_TITLE_FORBIDDEN_PATTERNS),
+          ...matchingLines(mainFile, MAIN_CHAT_IPC_PROVIDER_ERROR_FORBIDDEN_PATTERNS),
+        ]
+      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns chat title generation flow', lines)
+}
+
+function checkRuntimeOwnsChatSessionIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'getOnethingChatHistoryForIpc',
+    'updateOnethingMessageThinkingTimeForIpc',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned chat session IPC operations`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned chat session IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_CHAT_IPC_SESSION_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns chat session IPC operations', lines)
+}
+
+function checkRuntimeOwnsChatActiveStreamListing(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/stream-abort.ts')
+  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('listOnethingActiveStreamsForIpc')
+      ? [`${rel(runtimeFile)}: missing runtime-owned active stream listing projection`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_CHAT_IPC_ACTIVE_STREAMS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns active stream listing projection', lines)
+}
+
+function checkRuntimeOwnsChatAbortCleanupFlow(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/stream-abort.ts')
+  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('cancelOnethingStreamingStepsForAbort')
+      ? [`${rel(runtimeFile)}: missing runtime-owned chat abort cleanup flow`]
+      : []),
+    ...(!runtimeContent.includes('abortOnethingStreamsForIpc')
+      ? [`${rel(runtimeFile)}: missing runtime-owned chat abort IPC orchestration`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_CHAT_IPC_ABORT_CLEANUP_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns chat abort cleanup flow', lines)
+}
+
+function checkRuntimeOwnsResumeAfterToolConfirmationFlow(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/tool-confirmation.ts')
+  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('resumeOnethingAfterToolConfirmation')
+      ? [`${rel(runtimeFile)}: missing runtime-owned resume-after-tool-confirmation flow`]
+      : []),
+    ...(!runtimeContent.includes('resumeOnethingAfterToolConfirmationForIpc')
+      ? [`${rel(runtimeFile)}: missing runtime-owned resume-after-tool-confirmation IPC wrapper`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_CHAT_IPC_RESUME_CONFIRM_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns resume-after-tool-confirmation flow', lines)
+}
+
+function checkRuntimeOwnsToolCallStateProjection(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-call-state.ts')
+  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'applyOnethingToolCallUpdate',
+    'applyOnethingToolCallUpdateForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tool call state projection ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_TOOLS_IPC_TOOL_CALL_UPDATE_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns tool call state projection', lines)
+}
+
+function checkRuntimeOwnsToolRegistryRuntime(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/registry.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/registry.test.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
+  const mainFile = path.join(root, 'src/main/tools/registry.ts')
+  const mainTestFile = path.join(root, 'src/main/tools/__tests__/registry.test.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const mainTestContent = fs.existsSync(mainTestFile) ? fs.readFileSync(mainTestFile, 'utf-8') : ''
+  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredRuntimeSymbols = [
+    'OnethingToolRegistry',
+    'createOnethingToolRegistry',
+    'OnethingToolExecutionContext',
+    'OnethingToolDefinition',
+    'analyzeTool',
+    'executeTool',
+    'getToolsForAI',
+    'canAutoExecute',
+    'initializeToolRegistry',
+  ]
+  const requiredRuntimeTestSnippets = [
+    'owns tool definition projection including nested JSON schema',
+    'owns execution mode compatibility and async initialized overrides',
+    'owns permission rejection and ordinary execution error projection',
+    'owns injectable tool filtering and auto-execute permission gates',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned tool registry`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime tool registry symbol ${symbol}`),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime tool registry tests`]
+      : []),
+    ...requiredRuntimeTestSnippets
+      .filter(snippet => !runtimeTestContent.includes(snippet))
+      .map(snippet => `${rel(runtimeTestFile)}: missing runtime registry behavior coverage "${snippet}"`),
+    ...(!runtimeIndexContent.includes('./registry.js')
+      ? [`${rel(runtimeIndexFile)}: missing registry public export`]
+      : []),
+    ...(!mainContent.includes('@onething/runtime/tools')
+      ? [`${rel(mainFile)}: tool registry facade must delegate to runtime tools`]
+      : []),
+    ...(mainLines.length > 180
+      ? [`${rel(mainFile)}: tool registry facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_TOOL_REGISTRY_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing tool registry main facade`]),
+    ...(!mainTestContent.includes('tool registry main facade')
+      ? [`${rel(mainTestFile)}: main registry test must stay focused on facade behavior`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns tool registry runtime', lines)
+}
+
+function checkRuntimeOwnsToolsIpcListPresentation(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-list-presentation.ts')
+  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'listOnethingSettingsTools',
+    'listOnethingSettingsToolsForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned settings-visible tool list projection ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_TOOLS_IPC_LIST_PRESENTATION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns settings-visible tool list projection', lines)
+}
+
+function checkRuntimeOwnsToolsIpcExecutionContext(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-execution-context.ts')
+  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'executeOnethingToolWithSessionContext',
+    'executeOnethingToolWithSessionContextForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tool execution context assembly ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_TOOLS_IPC_EXECUTION_CONTEXT_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns tool execution context assembly', lines)
+}
+
+function checkRuntimeOwnsToolsIpcAsyncRefresh(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-refresh.ts')
+  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'refreshOnethingAsyncTools',
+    'refreshOnethingAsyncToolsForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned async tool refresh flow ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_TOOLS_IPC_REFRESH_ASYNC_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns async tool refresh flow', lines)
+}
+
+function checkRuntimeOwnsToolsIpcBackgroundJobs(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'cancelOnethingToolForIpc',
+    'listOnethingBackgroundJobsForIpc',
+    'stopOnethingBackgroundJobForIpc',
+    'Failed to list background jobs',
+    'Failed to stop background job',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tools IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_TOOLS_IPC_BACKGROUND_JOBS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns tools background-job IPC operations', lines)
+}
+
+function checkRuntimeOwnsSettingsSaveOrchestration(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/settings/settings-save.ts')
+  const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/settings/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/settings.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
+  const requiredRuntimeIpcSymbols = [
+    'getOnethingSettingsForIpc',
+    'saveOnethingSettingsWithRuntimeEffectsForIpc',
+    'getOnethingSystemThemeForIpc',
+    'listOnethingNetworkInterfacesForIpc',
+  ]
+  const lines = [
+    ...(!runtimeContent.includes('saveOnethingSettingsWithRuntimeEffects')
+      ? [`${rel(runtimeFile)}: missing runtime-owned settings save orchestration`]
+      : []),
+    ...requiredRuntimeIpcSymbols
+      .filter(symbol => !runtimeIpcContent.includes(symbol))
+      .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned settings IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SETTINGS_IPC_SAVE_ORCHESTRATION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/settings.ts: missing settings IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns settings save orchestration', lines)
+}
+
+function checkRuntimeOwnsPluginsIpcListProjection(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/plugin-list.ts')
+  const mainFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('projectOnethingPluginsForRenderer')
+      ? [`${rel(runtimeFile)}: missing runtime-owned plugin list projection`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PLUGINS_IPC_LIST_PROJECTION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns plugin list projection', lines)
+}
+
+function checkRuntimeOwnsPluginsIpcCommandProjection(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/plugin-list.ts')
+  const mainFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('projectOnethingPluginCommandsForRenderer')
+      ? [`${rel(runtimeFile)}: missing runtime-owned plugin command projection`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PLUGINS_IPC_COMMAND_PROJECTION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns plugin command projection', lines)
+}
+
+function checkRuntimeOwnsPluginCommandExecution(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/plugin-command-execution.ts')
+  const mainFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'normalizeOnethingPluginCommandName',
+    'executeOnethingPluginCommand',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PLUGINS_IPC_COMMAND_EXECUTION_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns plugin command execution orchestration', lines)
+}
+
+function checkRuntimeOwnsPluginsIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'ONETHING_PLUGIN_SYSTEM_NOT_INITIALIZED',
+    'listOnethingPluginsForIpc',
+    'enableOnethingPluginForIpc',
+    'disableOnethingPluginForIpc',
+    'refreshOnethingPluginsForIpc',
+    'listOnethingPluginCommandsForIpc',
+    'executeOnethingPluginCommandForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned plugin IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PLUGINS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns plugin IPC operations', lines)
+}
+
+function checkRuntimeOwnsLogMonitorPlugin(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/log-monitor.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/plugins/index.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/plugins/__tests__/log-monitor.test.ts')
+  const mainFile = path.join(root, 'src/main/plugins/builtin/log-monitor.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredRuntimeSymbols = [
+    'ONETHING_LOG_MONITOR_MANIFEST',
+    'createOnethingLogMonitorSearchToolParameters',
+    'registerOnethingLogMonitorPlugin',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned log-monitor plugin`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime log-monitor symbol ${symbol}`),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime log-monitor tests`]
+      : []),
+    ...(!runtimeIndexContent.includes('./log-monitor.js')
+      ? [`${rel(runtimeIndexFile)}: missing log-monitor public export`]
+      : []),
+    ...(!mainContent.includes('@onething/runtime/plugins')
+      ? [`${rel(mainFile)}: log-monitor facade must delegate to runtime plugins`]
+      : []),
+    ...(mainLines.length > 25
+      ? [`${rel(mainFile)}: log-monitor facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_LOG_MONITOR_PLUGIN_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing log-monitor plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns log-monitor plugin registration', lines)
+}
+
+function checkRuntimeOwnsNoteSkillsPlugin(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/note-skills.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/plugins/index.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/plugins/__tests__/note-skills.test.ts')
+  const removedMainRuntimeTest = path.join(root, 'src/main/plugins/__tests__/core-note-skills.test.ts')
+  const mainFile = path.join(root, 'src/main/plugins/builtin/note-skills.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredRuntimeSymbols = [
+    'ONETHING_NOTE_SKILLS_MANIFEST',
+    'buildNoteSkillInstructionContext',
+    'buildNoteSkillRootDescriptors',
+    'registerOnethingNoteSkillsPlugin',
+    'resolveNoteSkillRootDirs',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned note-skills plugin`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime note-skills symbol ${symbol}`),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime note-skills tests`]
+      : []),
+    ...(fs.existsSync(removedMainRuntimeTest)
+      ? [`${rel(removedMainRuntimeTest)}: runtime note-skills tests belong under packages/onething-runtime`]
+      : []),
+    ...(!runtimeIndexContent.includes('./note-skills.js')
+      ? [`${rel(runtimeIndexFile)}: missing note-skills public export`]
+      : []),
+    ...(!mainContent.includes('@onething/runtime/plugins')
+      ? [`${rel(mainFile)}: note-skills facade must delegate to runtime plugins`]
+      : []),
+    ...(mainLines.length > 55
+      ? [`${rel(mainFile)}: note-skills facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_NOTE_SKILLS_PLUGIN_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing note-skills plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns note-skills plugin runtime', lines)
+}
+
+function checkRuntimeOwnsSkillsRuntimeCache(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/session-skills.ts')
+  const mainFile = path.join(root, 'src/main/ipc/skills.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('OnethingSessionSkillsRuntime')
+      ? [`${rel(runtimeFile)}: missing runtime-owned session skill cache service`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SKILLS_IPC_RUNTIME_CACHE_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/skills.ts: missing skills IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns skills runtime cache and settings projection', lines)
+}
+
+function checkRuntimeOwnsSkillsIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/skills.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'listOnethingSkillsForIpc',
+    'refreshOnethingSkillsForIpc',
+    'readOnethingSkillFileForIpc',
+    'openOnethingSkillDirectoryForIpc',
+    'createOnethingSkillForIpc',
+    'deleteOnethingSkillForIpc',
+    'toggleOnethingSkillEnabledForIpc',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned skills IPC operations`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned skills IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SKILLS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/skills.ts: missing skills IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns skills IPC operations', lines)
+}
+
+function checkRuntimeOwnsSkillManageOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/manage.ts')
+  const mainFile = path.join(root, 'src/main/skills/manage.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'configureOnethingSkillManageRuntime',
+    'executeSkillManage',
+    'previewSkillManage',
+    'isSkillManageMutation',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SKILL_MANAGE_FORBIDDEN_PATTERNS)
+      : ['src/main/skills/manage.ts: missing skill_manage runtime adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns skill_manage operations', lines)
+}
+
+function checkRuntimeOwnsSkillsLoader(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/loader.ts')
+  const mainFile = path.join(root, 'src/main/skills/loader.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'configureOnethingSkillsLoaderRuntime',
+    'loadAllSkills',
+    'loadProjectSkillsForDirectory',
+    'loadSkillsFromPath',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SKILLS_LOADER_FORBIDDEN_PATTERNS)
+      : ['src/main/skills/loader.ts: missing skills loader runtime adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns skills loader operations', lines)
+}
+
+function checkRuntimeOwnsSqliteSessionRepository(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/sqlite-repository.ts')
+  const mainFile = path.join(root, 'src/main/stores/session-repository/sqlite-repository.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'configureOnethingSqliteSessionRepositoryRuntime',
+    'initializeSqliteSessionRepository',
+    'syncFullSessionToSqlite',
+    'migrateSessionToSqliteNow',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(!mainContent.includes('@onething/runtime/sessions')
+      ? ['src/main/stores/session-repository/sqlite-repository.ts: missing runtime sqlite repository adapter import']
+      : []),
+    ...(fs.existsSync(path.join(root, 'src/main/stores/session-repository/sqlite-driver.ts'))
+      ? ['src/main/stores/session-repository/sqlite-driver.ts: SQLite driver implementation belongs in packages/onething-runtime']
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SQLITE_REPOSITORY_FORBIDDEN_PATTERNS)
+      : ['src/main/stores/session-repository/sqlite-repository.ts: missing sqlite repository runtime adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns SQLite session repository operations', lines)
+}
+
+function checkRuntimeOwnsSessionSqliteFailoverPolicy(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/resilient-sqlite-adapters.ts')
+  const mainFile = path.join(root, 'src/main/stores/sessions.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'createOnethingResilientSessionSqliteAdapters',
+    'disabledAfterError',
+    'falling back to JSON sessions',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned SQLite failover policy ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SESSIONS_SQLITE_FAILOVER_FORBIDDEN_PATTERNS)
+      : ['src/main/stores/sessions.ts: missing session store adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns session SQLite failover policy', lines)
+}
+
+function checkRuntimeOwnsMediaPreviewRegistry(): void {
+  const runtimeFile = 'packages/onething-runtime/src/media/image-preview-registry.ts'
+  const mainFile = path.join(root, 'src/main/ipc/media.ts')
+  const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
+    ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
+    : ''
+  const lines = [
+    ...(!fs.existsSync(path.join(root, runtimeFile))
+      ? [`${runtimeFile}: missing runtime-owned image preview registry`]
+      : []),
+    ...(!runtimeContent.includes('openOnethingImagePreviewForIpc')
+      ? [`${runtimeFile}: missing runtime-owned image preview IPC opener`]
+      : []),
+    ...(!runtimeContent.includes('openOnethingImageGalleryForIpc')
+      ? [`${runtimeFile}: missing runtime-owned image gallery IPC opener`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MEDIA_PREVIEW_REGISTRY_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns image preview registry', lines)
+}
+
+function checkRuntimeOwnsMediaImageDataUrl(): void {
+  const runtimeFile = 'packages/onething-runtime/src/media/image-file-data-url.ts'
+  const mainFile = path.join(root, 'src/main/ipc/media.ts')
+  const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
+    ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
+    : ''
+  const lines = [
+    ...(!fs.existsSync(path.join(root, runtimeFile))
+      ? [`${runtimeFile}: missing runtime-owned image file data URL helper`]
+      : []),
+    ...(!runtimeContent.includes('readOnethingImageFileDataUrlForIpc')
+      ? [`${runtimeFile}: missing runtime-owned image file data URL IPC helper`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MEDIA_IMAGE_DATA_URL_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns image file data URL helper', lines)
+}
+
+function checkRuntimeOwnsMediaLegacyList(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/media-library-service.ts')
+  const mainFile = path.join(root, 'src/main/ipc/media.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('listLegacyImages')
+      ? [`${rel(runtimeFile)}: missing runtime-owned legacy image list helper`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MEDIA_LEGACY_LIST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns legacy media image list projection', lines)
+}
+
+function checkRuntimeOwnsMediaGeneratedImageLegacySave(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/media-library-service.ts')
+  const mainFile = path.join(root, 'src/main/media/save-image.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const lines = [
+    ...(!runtimeContent.includes('saveGeneratedImageAsLegacyItem')
+      ? [`${rel(runtimeFile)}: missing runtime-owned generated image legacy save helper`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MEDIA_SAVE_IMAGE_FORBIDDEN_PATTERNS)
+      : ['src/main/media/save-image.ts: missing media save adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns generated image legacy save projection', lines)
+}
+
+function checkRuntimeOwnsMediaLibraryIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/media-library-presentation.ts')
+  const mainFile = path.join(root, 'src/main/ipc/media.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'listOnethingMediaAssets',
+    'hideOnethingMediaAsset',
+    'rebuildOnethingMediaLibrary',
+    'rebuildOnethingMediaLibraryForIpc',
+    'getOnethingMediaGallery',
+    'listOnethingLegacyMediaImages',
+    'deleteOnethingMediaItem',
+    'clearOnethingMediaLibrary',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MEDIA_LIBRARY_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns media library IPC operations', lines)
+}
+
+function checkRuntimeOwnsMarkdownAssetService(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/markdown/asset-service.ts')
+  const mainFile = path.join(root, 'src/main/markdown/asset-service.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'resolveOnethingMarkdownAsset',
+    'saveOnethingMarkdownAttachments',
+    'OnethingMarkdownAssetServiceAdapters',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MARKDOWN_ASSET_SERVICE_FORBIDDEN_PATTERNS)
+      : ['src/main/markdown/asset-service.ts: missing markdown asset adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns Markdown asset service', lines)
+}
+
+function checkRuntimeOwnsMarkdownIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/markdown/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/markdown.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'resolveOnethingMarkdownAssetForIpc',
+    'saveOnethingMarkdownAttachmentsForIpc',
+    'Failed to resolve Markdown asset',
+    'Failed to save Markdown attachments',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned Markdown IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MARKDOWN_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/markdown.ts: missing Markdown IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns Markdown IPC operations', lines)
+}
+
+function checkRuntimeOwnsThemeRuntime(): void {
+  const runtimeFiles = [
+    'packages/onething-runtime/src/themes/index.ts',
+    'packages/onething-runtime/src/themes/theme-runtime.ts',
+    'packages/onething-runtime/src/themes/types.ts',
+    'packages/onething-runtime/src/themes/window-theme.ts',
+  ]
+  const mainFiles = [
+    path.join(root, 'src/main/ipc/themes.ts'),
+    path.join(root, 'src/main/themes/index.ts'),
+    path.join(root, 'apps/electron/src/window/index.ts'),
+  ]
+  const mainHelperFiles = [
+    path.join(root, 'src/main/themes/base46-parser.ts'),
+    path.join(root, 'src/main/themes/css-mapper.ts'),
+    path.join(root, 'src/main/themes/resolver.ts'),
+    path.join(root, 'src/main/themes/role-mapping.ts'),
+  ]
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(path.join(root, file)) ? fs.readFileSync(path.join(root, file), 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'OnethingThemeRuntime',
+    'defaultOnethingThemeRuntime',
+    'initializeThemes',
+    'loadCustomThemes',
+    'applyTheme',
+    'refreshThemes',
+    'openThemesFolder',
+    'resolveOnethingWindowThemeSelection',
+    'resolveOnethingThemeMode',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(path.join(root, file)))
+      .map(file => `${file}: missing runtime-owned theme module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/themes/theme-runtime.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFiles[0])
+      ? matchingLines(mainFiles[0], MAIN_THEMES_IPC_RUNTIME_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/themes.ts: missing themes IPC adapter']),
+    ...(fs.existsSync(mainFiles[1])
+      ? [`${rel(mainFiles[1])}: themes facade should be removed; import @onething/runtime/themes directly`]
+      : []),
+    ...(!fs.existsSync(mainFiles[2])
+      ? ['apps/electron/src/window/index.ts: missing Electron window module']
+      : []),
+    ...(fs.existsSync(mainFiles[2]) && !fs.readFileSync(mainFiles[2], 'utf-8').includes('resolveOnethingWindowThemeSelection')
+      ? ['apps/electron/src/window/index.ts: window theme selection must delegate to packages/onething-runtime']
+      : []),
+    ...(fs.existsSync(mainFiles[2])
+      ? matchingLines(mainFiles[2], MAIN_WINDOW_THEME_SELECTION_FORBIDDEN_PATTERNS)
+      : []),
+    ...mainHelperFiles.flatMap(file => fs.existsSync(file)
+      ? [`${rel(file)}: themes helper facade should be removed; import @onething/runtime/themes/* directly`]
+      : []
+    ),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns theme runtime', lines)
+}
+
+function checkRuntimeOwnsTodoPlanStore(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/todo-plan/store.ts')
+  const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/todo-plan/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/todo-plan/store.ts')
+  const mainIpcFile = path.join(root, 'src/main/todo-plan/ipc.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'OnethingTodoPlanStore',
+    'readSnapshot',
+    'createUserNote',
+    'updateDocument',
+    'renameUserNote',
+    'deleteUserNote',
+  ]
+  const requiredRuntimeIpcSymbols = [
+    'getOnethingTodoPlanForIpc',
+    'createOnethingTodoNoteForIpc',
+    'updateOnethingTodoPlanDocumentForIpc',
+    'renameOnethingTodoNoteForIpc',
+    'deleteOnethingTodoNoteForIpc',
+    'revealOnethingTodoPlanDirectoryForIpc',
+    'runOnethingTodoPlanWindowActionForIpc',
+    'setOnethingTodoPlanWindowPinnedForIpc',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned todo-plan store`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(!fs.existsSync(runtimeIpcFile)
+      ? [`${rel(runtimeIpcFile)}: missing runtime-owned todo-plan IPC operations`]
+      : []),
+    ...requiredRuntimeIpcSymbols
+      .filter(symbol => !runtimeIpcContent.includes(symbol))
+      .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned todo-plan IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_TODO_PLAN_STORE_FORBIDDEN_PATTERNS)
+      : ['src/main/todo-plan/store.ts: missing todo-plan store facade']),
+    ...(fs.existsSync(mainIpcFile)
+      ? matchingLines(mainIpcFile, MAIN_TODO_PLAN_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/todo-plan/ipc.ts: missing todo-plan IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns todo-plan store', lines)
+}
+
+function checkRuntimeOwnsVoiceIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/voice/ipc.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'getOnethingVoiceStateForIpc',
+    'testOnethingVoiceASRForIpc',
+    'testOnethingVoiceTTSForIpc',
+    'listOnethingVoiceTTSModelsForIpc',
+    'acknowledgeOnethingVoiceRuntimeReadyForIpc',
+    'handleOnethingVoiceRuntimeEventForIpc',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned voice IPC operations`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned voice IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_VOICE_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/voice/ipc.ts: missing voice IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns voice IPC operations', lines)
+}
+
+function checkRuntimeOwnsVoiceProviderRuntime(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/providers.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
+  const runtimePackage = path.join(root, 'packages/onething-runtime/package.json')
+  const mainFile = path.join(root, 'src/main/voice/providers.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const runtimePackageContent = fs.existsSync(runtimePackage) ? fs.readFileSync(runtimePackage, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredRuntimeSymbols = [
+    'transcribeOnethingUtterance',
+    'getOnethingVoiceInputConfigurationError',
+    'getOnethingOpenRouterTTSModels',
+    'synthesizeOnethingSpeech',
+    'streamSynthesizeOnethingSpeech',
+    'OnethingVoiceProviderRuntimeAdapters',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned voice provider runtime`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned voice provider symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('./providers.js')
+      ? [`${rel(runtimeIndexFile)}: missing voice provider runtime public export`]
+      : []),
+    ...(!runtimePackageContent.includes('"./voice/*"')
+      ? [`${rel(runtimePackage)}: missing @onething/runtime voice wildcard package export`]
+      : []),
+    ...(!mainContent.includes('@onething/runtime/voice/providers')
+      ? [`${rel(mainFile)}: main voice providers facade must delegate to runtime voice providers`]
+      : []),
+    ...(!viteContent.includes('@onething/runtime/voice/providers')
+      ? [`${rel(viteConfig)}: missing runtime voice providers package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/runtime/voice/providers')
+      ? [`${rel(vitestConfig)}: missing runtime voice providers test alias`]
+      : []),
+    ...(mainLines.length > 70
+      ? [`${rel(mainFile)}: main voice providers facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_VOICE_PROVIDER_RUNTIME_FORBIDDEN_PATTERNS)
+      : ['src/main/voice/providers.ts: missing voice providers facade']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns voice provider runtime', lines)
+}
+
+function checkRuntimeOwnsVoiceServicePolicy(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/service-runtime.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/voice/__tests__/service-runtime.test.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
+  const mainFile = path.join(root, 'src/main/voice/service.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'normalizeOnethingVoiceError',
+    'isOnethingMissingCloudTTSConfiguration',
+    'getOnethingTTSModelName',
+    'isOnethingWebSpeechWakeFailure',
+    'applyOnethingVoiceWakeFailureFallback',
+    'applyOnethingVoiceRuntimeStatus',
+    'applyOnethingVoiceRuntimeError',
+    'createOnethingVoiceLatencyMilestone',
+    'applyOnethingVoiceRuntimeMilestone',
+  ]
+  const requiredMainDelegations = [
+    '@onething/runtime/voice',
+    'normalizeOnethingVoiceError',
+    'isOnethingMissingCloudTTSConfiguration',
+    'getOnethingTTSModelName',
+    'applyOnethingVoiceWakeFailureFallback',
+    'applyOnethingVoiceRuntimeStatus',
+    'applyOnethingVoiceRuntimeError',
+    'createOnethingVoiceLatencyMilestone',
+    'applyOnethingVoiceRuntimeMilestone',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned voice service policy`]
+      : []),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime-owned voice service policy tests`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned voice service policy symbol ${symbol}`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeTestContent.includes(symbol))
+      .map(symbol => `${rel(runtimeTestFile)}: missing voice service policy test coverage for ${symbol}`),
+    ...(!runtimeIndexContent.includes('./service-runtime.js')
+      ? [`${rel(runtimeIndexFile)}: missing voice service runtime public export`]
+      : []),
+    ...requiredMainDelegations
+      .filter(symbol => !mainContent.includes(symbol))
+      .map(symbol => `${rel(mainFile)}: main voice service must delegate ${symbol} to runtime voice service policy`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_VOICE_SERVICE_RUNTIME_FORBIDDEN_PATTERNS)
+      : ['src/main/voice/service.ts: missing voice service adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns voice service policy', lines)
+}
+
+function checkRuntimeOwnsVoiceTextProcessing(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/text.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/voice/__tests__/text.test.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
+  const mainFile = path.join(root, 'src/main/voice/service.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const sharedFiles = [
+    path.join(root, 'src/shared/voice/segmenter.ts'),
+    path.join(root, 'src/shared/voice/tts-stream.ts'),
+    path.join(root, 'src/shared/voice/speak-markup.ts'),
+  ]
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const sharedContent = sharedFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'splitOnethingSpeakableSentences',
+    'getOnethingSpeakableTextFromDelta',
+    'createOnethingSpeakMarkupFilter',
+    'getOnethingProtocolSpeakText',
+  ]
+  const requiredMainDelegations = [
+    'splitOnethingSpeakableSentences',
+    'getOnethingSpeakableTextFromDelta',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned voice text processing`]
+      : []),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime-owned voice text processing tests`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned voice text symbol ${symbol}`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeTestContent.includes(symbol))
+      .map(symbol => `${rel(runtimeTestFile)}: missing voice text test coverage for ${symbol}`),
+    ...(!runtimeIndexContent.includes('./text.js')
+      ? [`${rel(runtimeIndexFile)}: missing voice text public export`]
+      : []),
+    ...requiredMainDelegations
+      .filter(symbol => !mainContent.includes(symbol))
+      .map(symbol => `${rel(mainFile)}: main voice service must delegate voice text processing ${symbol} to runtime`),
+    ...(!sharedContent.includes('@onething/runtime/voice/text')
+      ? ['src/shared/voice: legacy shared voice files must re-export browser-safe runtime voice text helpers']
+      : []),
+    ...(/from\s+['"]@onething\/runtime\/voice['"]/.test(sharedContent)
+      ? ['src/shared/voice: renderer-facing voice text facades must not import Node-capable runtime voice entrypoint']
+      : []),
+    ...(!viteContent.includes('@onething/runtime/voice/text')
+      ? [`${rel(viteConfig)}: missing browser-safe @onething/runtime/voice/text build alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/runtime/voice/text')
+      ? [`${rel(vitestConfig)}: missing browser-safe @onething/runtime/voice/text test alias`]
+      : []),
+    ...sharedFiles.flatMap(file => fs.existsSync(file)
+      ? matchingLines(file, SHARED_VOICE_TEXT_RUNTIME_FORBIDDEN_PATTERNS)
+      : [`${rel(file)}: missing legacy voice text facade`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns voice text processing', lines)
+}
+
+function checkRuntimeOwnsSearchIpcOperations(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/search/protocol.ts'),
+    path.join(root, 'packages/onething-runtime/src/search/ipc-operations.ts'),
+    path.join(root, 'packages/onething-runtime/src/search/providers.ts'),
+    path.join(root, 'packages/onething-runtime/src/search/search-runtime.ts'),
+  ]
+  const mainIpcFile = path.join(root, 'src/main/search/ipc.ts')
+  const mainProviderFile = path.join(root, 'src/main/search/providers.ts')
+  const sharedSearchFile = path.join(root, 'src/shared/ipc/search.ts')
+  const sharedSearchTestFile = path.join(root, 'src/shared/ipc/__tests__/search.test.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const mainProviderContent = fs.existsSync(mainProviderFile) ? fs.readFileSync(mainProviderFile, 'utf-8') : ''
+  const mainProviderLines = mainProviderContent.split('\n').filter(line => line.trim().length > 0)
+  const sharedSearchContent = fs.existsSync(sharedSearchFile) ? fs.readFileSync(sharedSearchFile, 'utf-8') : ''
+  const sharedSearchTestContent = fs.existsSync(sharedSearchTestFile) ? fs.readFileSync(sharedSearchTestFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'ONETHING_SEARCH_CATEGORIES',
+    'isOnethingSearchCategory',
+    'normalizeOnethingSearchCategory',
+    'executeOnethingSearchForIpc',
+    'closeOnethingSearchWindowForIpc',
+    'executeOnethingSearch',
+    'OnethingSearchRuntimeAdapters',
+    'isOnethingCommandSearchQuery',
+    'OnethingSearchProvidersAdapters',
+    'createOnethingSearchProviders',
+    'configureOnethingSearchProviders',
+    'createDailyNote',
+    'searchDailyNotes',
+    'formatDailyDate',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned search operation module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/search: missing runtime-owned search operation ${symbol}`),
+    ...(fs.existsSync(mainIpcFile)
+      ? [`${rel(mainIpcFile)}: remove legacy search IPC adapter; register @onething/electron-host/search/ipc directly`]
+      : []),
+    ...(fs.existsSync(mainProviderFile)
+      ? matchingLines(mainProviderFile, MAIN_SEARCH_PROVIDER_ORCHESTRATION_FORBIDDEN_PATTERNS)
+      : ['src/main/search/providers.ts: missing search provider adapter']),
+    ...(!mainProviderContent.includes('@onething/runtime/search')
+      ? [`${rel(mainProviderFile)}: search provider facade must delegate to @onething/runtime/search`]
+      : []),
+    ...(!mainProviderContent.includes('OnethingSearchCategory')
+      ? [`${rel(mainProviderFile)}: search provider facade must use runtime search category type`]
+      : []),
+    ...(mainProviderLines.length > 50
+      ? [`${rel(mainProviderFile)}: search provider facade must stay thin`]
+      : []),
+    ...(!sharedSearchContent.includes('@onething/runtime/search/protocol')
+      ? [`${rel(sharedSearchFile)}: shared search category protocol must re-export browser-safe runtime search protocol`]
+      : []),
+    ...(/from\s+['"]@onething\/runtime\/search['"]/.test(sharedSearchContent)
+      ? [`${rel(sharedSearchFile)}: renderer-facing search IPC facade must not import Node-only runtime search entrypoint`]
+      : []),
+    ...(!viteContent.includes('@onething/runtime/search/protocol')
+      ? [`${rel(viteConfig)}: missing browser-safe @onething/runtime/search/protocol build alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/runtime/search/protocol')
+      ? [`${rel(vitestConfig)}: missing browser-safe @onething/runtime/search/protocol test alias`]
+      : []),
+    ...(fs.existsSync(sharedSearchFile)
+      ? matchingLines(sharedSearchFile, SHARED_SEARCH_CATEGORY_FORBIDDEN_PATTERNS)
+      : [`${rel(sharedSearchFile)}: missing legacy search IPC facade`]),
+    ...(!sharedSearchTestContent.includes('re-exports the runtime-owned search category protocol')
+      ? [`${rel(sharedSearchTestFile)}: missing shared search category facade coverage`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns search IPC and provider orchestration', lines)
+}
+
+function checkRuntimeOwnsHeadlessCliProjections(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/headless/cli-projections.ts')
+  const mainFile = path.join(root, 'src/main/headless/backend.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'listOnethingHeadlessSessionSummaries',
+    'listOnethingHeadlessProviderSummaries',
+    'upsertOnethingHeadlessProviderConfig',
+    'useOnethingHeadlessProvider',
+    'listOnethingHeadlessProviderModels',
+    'listOnethingHeadlessToolSummaries',
+    'updateOnethingHeadlessToolSetting',
+    'setOnethingHeadlessPermissionMode',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned headless CLI projection module`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned headless CLI projection ${symbol}`),
+    ...(!viteContent.includes('@onething/runtime/headless')
+      ? [`${rel(viteConfig)}: missing runtime headless package alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/runtime/headless')
+      ? [`${rel(vitestConfig)}: missing runtime headless test alias`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_HEADLESS_CLI_PROJECTION_FORBIDDEN_PATTERNS)
+      : ['src/main/headless/backend.ts: missing headless backend adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns headless CLI projections', lines)
+}
+
+function checkRuntimeOwnsPromptsStore(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/prompts/store.ts')
+  const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/prompts/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/prompts/store.ts')
+  const mainIpcFile = path.join(root, 'src/main/prompts/ipc.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'OnethingPromptStore',
+    'list()',
+    'create(request',
+    'update(request',
+    'delete(id',
+    'setPathForTests',
+  ]
+  const requiredRuntimeIpcSymbols = [
+    'listOnethingPromptsForIpc',
+    'getOnethingPromptForIpc',
+    'createOnethingPromptForIpc',
+    'updateOnethingPromptForIpc',
+    'deleteOnethingPromptForIpc',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned prompts store`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(!fs.existsSync(runtimeIpcFile)
+      ? [`${rel(runtimeIpcFile)}: missing runtime-owned prompts IPC operations`]
+      : []),
+    ...requiredRuntimeIpcSymbols
+      .filter(symbol => !runtimeIpcContent.includes(symbol))
+      .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned prompts IPC operation ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_PROMPTS_STORE_FORBIDDEN_PATTERNS)
+      : ['src/main/prompts/store.ts: missing prompts store facade']),
+    ...(fs.existsSync(mainIpcFile)
+      ? matchingLines(mainIpcFile, MAIN_PROMPTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/prompts/ipc.ts: missing prompts IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns prompts store', lines)
+}
+
+function checkRuntimeOwnsSystemPromptSnapshot(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/prompts/system-prompt-snapshot.ts'),
+    path.join(root, 'packages/onething-runtime/src/prompts/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/engine/prompt/system-prompt-snapshot.ts')
+  const chatIpcFile = path.join(root, 'src/main/ipc/chat.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'buildSystemPromptSnapshotWithAdapters',
+    'toolSnapshot',
+    'mcpToolSnapshot',
+    'nativeToolSnapshot',
+    'skillSnapshot',
+    'providerConfigForPrompt',
+    'buildOnethingSystemPromptSnapshotForIpc',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned system prompt snapshot module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/prompts/system-prompt-snapshot.ts: missing runtime-owned ${symbol}`),
+    ...(mainContent.includes("from '../../../../packages/core/engine/index.js'") && mainContent.includes('buildSystemPromptSnapshotWithAdapters')
+      ? [`${rel(mainFile)}: system prompt snapshot adapter should import runtime-owned builder`]
+      : []),
+    ...(fs.existsSync(chatIpcFile)
+      ? matchingLines(chatIpcFile, MAIN_CHAT_IPC_SYSTEM_PROMPT_SNAPSHOT_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns system prompt snapshot assembly', lines)
+}
+
+function checkRuntimeOwnsProjectDirsStore(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/project-dirs/store.ts'),
+    path.join(root, 'packages/onething-runtime/src/project-dirs/persistence.ts'),
+    path.join(root, 'packages/onething-runtime/src/project-dirs/id.ts'),
+    path.join(root, 'packages/onething-runtime/src/project-dirs/prompt.ts'),
+    path.join(root, 'packages/onething-runtime/src/project-dirs/types.ts'),
+    path.join(root, 'packages/onething-runtime/src/project-dirs/ipc-operations.ts'),
+  ]
+  const mainFiles = [
+    path.join(root, 'src/main/project-dirs/store/index.ts'),
+    path.join(root, 'src/main/project-dirs/store/persistence.ts'),
+    path.join(root, 'src/main/project-dirs/store/id.ts'),
+    path.join(root, 'src/main/project-dirs/prompt.ts'),
+    path.join(root, 'src/main/project-dirs/types.ts'),
+  ]
+  const mainIpcFile = path.join(root, 'src/main/project-dirs/ipc.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'ProjectsStore',
+    'projectIdFromPath',
+    'loadIndex',
+    'saveProject',
+    'buildProjectDirsPromptVars',
+    'parseProjectIndex',
+    'listOnethingProjectDirsForIpc',
+    'getOnethingProjectDirForIpc',
+    'addOnethingProjectDirForIpc',
+    'updateOnethingProjectDirForIpc',
+    'removeOnethingProjectDirForIpc',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned project-dirs module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/project-dirs: missing runtime-owned ${symbol}`),
+    ...mainFiles.flatMap(file => fs.existsSync(file)
+      ? [`${rel(file)}: project-dirs store/prompt facade should be removed; import @onething/runtime/project-dirs directly`]
+      : []
+    ),
+    ...(fs.existsSync(mainIpcFile)
+      ? matchingLines(mainIpcFile, MAIN_PROJECT_DIRS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/project-dirs/ipc.ts: missing project-dirs IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns project-dirs store and prompt helpers', lines)
+}
+
+function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/variables/store.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/schema.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/format.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/validation.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/types.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/ipc-operations.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/registry.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/providers/core.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/providers/notes.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/providers/session-store.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/providers/global-store.ts'),
+    path.join(root, 'packages/onething-runtime/src/variables/providers/index.ts'),
+  ]
+  const mainStoreFile = path.join(root, 'src/main/variables/store/index.ts')
+  const removedMainFacadeFiles = [
+    path.join(root, 'src/main/variables/store/schema.ts'),
+    path.join(root, 'src/main/variables/format.ts'),
+    path.join(root, 'src/main/variables/validation.ts'),
+    path.join(root, 'src/main/variables/types.ts'),
+    path.join(root, 'src/main/variables/registry.ts'),
+    path.join(root, 'src/main/variables/providers/core.ts'),
+    path.join(root, 'src/main/variables/providers/notes.ts'),
+    path.join(root, 'src/main/variables/providers/session-store.ts'),
+    path.join(root, 'src/main/variables/providers/global-store.ts'),
+  ]
+  const mainIpcFile = path.join(root, 'src/main/variables/ipc.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'VariablesStore',
+    'createDefaultVariablesFile',
+    'parseVariablesFile',
+    'formatVariablesForPrompt',
+    'assertValidName',
+    'VariableError',
+    'listOnethingVariablesForIpc',
+    'setOnethingVariableForIpc',
+    'deleteOnethingVariableForIpc',
+    'variableIpcError',
+    'VariableRegistry',
+    'getVariableRegistry',
+    'CoreProvider',
+    'NotesProvider',
+    'SessionStoreProvider',
+    'GlobalStoreProvider',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned variables module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/variables: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainStoreFile)
+      ? matchingLines(mainStoreFile, MAIN_VARIABLES_RUNTIME_FORBIDDEN_PATTERNS)
+      : ['src/main/variables/store/index.ts: missing variables store host adapter']),
+    ...removedMainFacadeFiles.flatMap(file => fs.existsSync(file)
+      ? [`${rel(file)}: variables facade should be removed; import @onething/runtime/variables directly`]
+      : []
+    ),
+    ...(fs.existsSync(mainIpcFile)
+      ? matchingLines(mainIpcFile, MAIN_VARIABLES_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/variables/ipc.ts: missing variables IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns variables store and pure helpers', lines)
+}
+
+function checkRuntimeOwnsMemoryReviewHelpers(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/review.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/memory/review.ts')
+  const pluginFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'MemoryReviewMessageLike',
+    'countUserTurns',
+    'getMemoryReviewProgress',
+    'parseMemoryReviewModelResult',
+    'formatMemoryReviewConversation',
+    'getPlainReviewFile',
+    'readPlainReviewFile',
+    'buildMemoryReviewInput',
+    'applyMemoryReviewCandidate',
+    'runMemoryReview',
+    'coreBuildSoulMemoryReviewInputWithAdapters',
+    'coreApplyMemoryReviewCandidate',
+    'coreRunSoulMemoryReview',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned memory review module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? [`${rel(mainFile)}: memory review facade should be removed; import @onething/runtime/memory/review directly`]
+      : []),
+    ...(fs.existsSync(pluginFile)
+      ? matchingLines(pluginFile, MAIN_MEMORY_REVIEW_FORBIDDEN_PATTERNS)
+      : [`${rel(pluginFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns memory review helpers', lines)
+}
+
+function checkRuntimeOwnsHermesFileMemory(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/hermes-file-memory.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/memory/hermes-file-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'HermesMemoryWorkspaceLike',
+    'getHermesMemoryFile',
+    'splitHermesMemoryEntries',
+    'readHermesMemoryFile',
+    'addHermesMemoryEntry',
+    'replaceHermesMemoryText',
+    'removeHermesMemoryText',
+    'getHermesMemoryStatus',
+    'buildHermesMemoryPromptFragment',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned Hermes file memory module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? [`${rel(mainFile)}: Hermes file memory facade should be removed; import @onething/runtime/memory/hermes-file-memory directly`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns Hermes file memory operations', lines)
+}
+
+function checkRuntimeOwnsMemoryDiagnosticsLogger(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/diagnostics-logger.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/memory/diagnostics-logger.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'MemoryDiagnosticsLogger',
+    'sanitizeUrlForMemoryLog',
+    'sanitizeForMemoryLog',
+    'createMemoryDiagnosticsFetch',
+    'configureMemoryDiagnosticsLogger',
+    'logMemoryDiagnostic',
+    'MemoryDiagnosticsLoggerOptions',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned memory diagnostics logger module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MEMORY_DIAGNOSTICS_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing memory diagnostics logger adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns memory diagnostics logger service', lines)
+}
+
+function checkRuntimeOwnsMemoryTypes(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/types.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/memory/types.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'ResolvedSoulMemorySettings',
+    'MemoryWorkspace',
+    'CaptureCandidate',
+    'CanonicalMemoryInput',
+    'CanonicalMemoryRecord',
+    'GraphMergeResult',
+    'MemoryGraphEntity',
+    'MemoryGraphObservation',
+    'MemoryGraphRelation',
+    'IndexStatus',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned memory types module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? [`${rel(mainFile)}: memory types facade should be removed; import @onething/runtime/memory/types directly`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns memory runtime type contracts', lines)
+}
+
+function checkRuntimeOwnsMemoryDatabaseCanonicalGraph(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/database.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/canonical.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/graph.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFiles = [
+    path.join(root, 'src/main/memory/database.ts'),
+    path.join(root, 'src/main/memory/canonical.ts'),
+    path.join(root, 'src/main/memory/graph.ts'),
+  ]
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'getDb',
+    'getFtsTokenizer',
+    'upsertCanonicalMemory',
+    'upsertCanonicalCandidates',
+    'listCanonicalMemories',
+    'deleteCanonicalMemory',
+    'getCanonicalMemoryAudit',
+    'searchCanonicalMemory',
+    'buildCanonicalProfileSummary',
+    'buildGraphProfileSummary',
+    'upsertGraphEntity',
+    'upsertGraphObservation',
+    'upsertGraphRelation',
+    'upsertGraphCandidates',
+    'mergeGraphMemory',
+    'searchGraphMemory',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned memory database/canonical/graph module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
+    ...mainFiles.flatMap(file => fs.existsSync(file)
+      ? [`${rel(file)}: memory database/canonical/graph facade should be removed; import @onething/runtime/memory/* directly`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns memory database, canonical, and graph operations', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryGraphDecisionOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/memory/graph.ts')
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'applyGraphDecisionPlan',
+    'deleteGraphEntity',
+    'deleteGraphObservation',
+    'deleteGraphRelation',
+    'mergeGraphDuplicate',
+    'ignoreGraphDuplicate',
+    'getGraphAudit',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned graph decision operations`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/graph.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_GRAPH_DECISION_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory graph decision operations', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryGraphCanonicalSearch(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/graph.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/canonical.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'searchGraphMemory',
+    'searchCanonicalMemory',
+    'coreBuildSoulMemoryGraphSearchHits',
+    'coreBuildSoulMemoryCanonicalSearchHits',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned graph/canonical search module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_GRAPH_CANONICAL_SEARCH_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory graph and canonical search operations', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryMarkdownSearch(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/search.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'searchMarkdownMemoryChunks',
+    'rowToMemoryChunk',
+    'coreBuildSoulMemoryMarkdownSearchHits',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned markdown search module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/search.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_MARKDOWN_SEARCH_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory markdown search operations', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryMarkdownIndexPersistence(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/indexer.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'indexMemoryFile',
+    'listMemoryIndexFiles',
+    'inspectMemoryIndexFreshness',
+    'readMemoryIndexCounts',
+    'deleteMemoryIndexPaths',
+    'clearMemoryIndex',
+    'corePlanSoulMemoryIndexFileWrite',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned markdown index persistence module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/indexer.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_MARKDOWN_INDEX_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory markdown index persistence', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryManagedFiles(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/managed-files.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'listManagedMemoryFiles',
+    'readManagedMemoryFile',
+    'saveManagedMemoryFile',
+    'coreListSoulMemoryManagedFilesWithAdapters',
+    'coreReadSoulMemoryManagedFileWithAdapters',
+    'coreSaveSoulMemoryManagedFileWithAdapters',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned managed-files module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/managed-files.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_MANAGED_FILES_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory managed file operations', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryDailyContext(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/daily-context.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'buildRecentDailyContextFragment',
+    'coreBuildSoulMemoryRecentDailyContextFragmentWithAdapters',
+    'dateStringDaysAgo',
+    'readLimited',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned daily-context module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/daily-context.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_DAILY_CONTEXT_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory daily context prompt assembly', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryPromptContext(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/prompt-context.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'buildSoulMemoryPromptContext',
+    'coreBuildSoulMemoryPromptFragments',
+    'buildHermesMemoryPromptFragment',
+    'buildGraphProfileSummary',
+    'buildRecentDailyContextFragment',
+    'SOUL_MEMORY_RULES_PROMPT',
+    'readLimited',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned prompt-context module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/prompt-context.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_PROMPT_CONTEXT_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory prompt context assembly', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryActiveMemoryRecall(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/active-memory.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'runMemoryActiveMemoryRecall',
+    'coreRunSoulMemoryActiveMemoryRecall',
+    'CoreSoulMemoryActiveMemoryRuntime',
+    'coreFormatSoulMemoryHits',
+    'searchMaxResults',
+    'hash: sha',
+    'preview: previewLine',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned active-memory module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/active-memory.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_ACTIVE_MEMORY_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory active memory recall', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryAppendNote(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/append.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'appendMemoryNote',
+    'coreBuildSoulMemoryAppendPayload',
+    'coreResolveSoulMemoryAppendTarget',
+    'appendTextFile',
+    'append-note',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned append module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/append.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_APPEND_NOTE_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory append note operations', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryCaptureInput(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/capture-actions.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'buildMemoryCaptureInput',
+    'coreBuildSoulMemoryCaptureInputWithAdapters',
+    'CoreSoulMemoryCaptureInputContext',
+    'readTextFileAsync',
+    'dailyRelativePath',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned capture input module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/capture-actions.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_CAPTURE_INPUT_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory capture input prompt assembly', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryCaptureRun(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/capture-actions.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'runMemoryCapture',
+    'coreRunSoulMemoryCapture',
+    'readTextFileIfExists',
+    'applyDailyActions',
+    'hash: sha',
+    'preview: previewLine',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned capture run module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/capture-actions.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_CAPTURE_RUN_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory capture run orchestration', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryDailyCaptureActions(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/capture-actions.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'applyDailyNoteCaptureActions',
+    'appendDailyNoteCaptureBullets',
+    'dedupeDailyNoteCaptureBullets',
+    'coreApplyDailyNoteCaptureActionsWithAdapters',
+    'corePlanSoulMemoryDailyNoteAppend',
+    'coreDedupeSoulMemoryDailyNoteBulletsWithAdapters',
+    'readTextFileAsync',
+    'replaceFileAtomic',
+    'daily-note-actions',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned daily capture actions module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/capture-actions.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_DAILY_CAPTURE_ACTIONS_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory daily capture action operations', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryDreamingOperations(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/dreaming.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'collectDailyDreamingSources',
+    'collectDreamingSources',
+    'buildDreamingExistingMemorySummary',
+    'applyDreamingMemoryActions',
+    'runMemoryDreamingSweep',
+    'coreCollectSoulMemoryDailyDreamingSourcesWithAdapters',
+    'coreBuildSoulMemoryExistingMemorySummary',
+    'coreApplyDreamingMemoryActions',
+    'coreRunSoulMemoryDreamingSweep',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned dreaming module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/dreaming.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_DREAMING_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory dreaming operations', lines)
+}
+
+function checkRuntimeOwnsSoulMemoryFlushOperations(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/flush.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'runMemoryFlush',
+    'coreFormatSoulMemoryMessagesForFlush',
+    'CORE_SOUL_MEMORY_MEMORY_FLUSH_SYSTEM_PROMPT',
+    'coreParseDailyNoteBullets',
+    'dedupeDailyNoteCaptureBullets',
+    'appendDailyNoteCaptureBullets',
+    'before-context-compact',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned flush module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory/flush.ts: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SOUL_MEMORY_FLUSH_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing soul-memory plugin adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns soul-memory memory flush operations', lines)
+}
+
+function checkRuntimeOwnsMemoryIpcPresentation(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/ipc.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/ipc/memory.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'createOnethingMemoryIpcHandlers',
+    'OnethingMemoryIpcAdapters',
+    'OnethingMemoryIpcHandlers',
+    'withMemoryIpcLog',
+    'logsOpenFolder',
+    'graphEntitiesUpsert',
+    'captureDiscard',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned memory IPC presentation module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MEMORY_IPC_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing memory IPC adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns memory IPC presentation and logging flow', lines)
+}
+
+function checkRuntimeOwnsMemoryWorkspaceHelpers(): void {
+  const runtimeFiles = [
+    path.join(root, 'packages/onething-runtime/src/memory/workspace.ts'),
+    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
+  ]
+  const mainFile = path.join(root, 'src/main/memory/workspace.ts')
+  const runtimeContent = runtimeFiles
+    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
+    .join('\n')
+  const requiredRuntimeSymbols = [
+    'SOUL_MEMORY_PLUGIN_ID',
+    'SOUL_MEMORY_RULES_PROMPT',
+    'normalizeMemoryRelativePath',
+    'isIndexableMarkdownPath',
+    'dateStringDaysAgo',
+    'sanitizeAgentPathSegment',
+    'writeIfMissing',
+    'readLimited',
+    'normalizeBulletText',
+    'canonicalKindFromCaptureKind',
+    'isDurableCandidate',
+    'normalizeForDedupe',
+    'replaceFileAtomic',
+  ]
+  const lines = [
+    ...runtimeFiles
+      .filter(file => !fs.existsSync(file))
+      .map(file => `${rel(file)}: missing runtime-owned memory workspace helper module`),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_MEMORY_WORKSPACE_HELPERS_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing memory workspace adapter`]),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns memory workspace pure helpers', lines)
+}
+
+function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
+  const runtimeStoreFile = path.join(root, 'packages/onething-runtime/src/agents/store.ts')
+  const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/agents/ipc-operations.ts')
+  const mainStoreFile = path.join(root, 'src/main/agents/store.ts')
+  const mainIpcFile = path.join(root, 'src/main/ipc/agents.ts')
+  const runtimeContent = [
+    fs.existsSync(runtimeStoreFile) ? fs.readFileSync(runtimeStoreFile, 'utf-8') : '',
+    fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : '',
+  ].join('\n')
+  const requiredRuntimeSymbols = [
+    'createOnethingAgentStore',
+    'listOnethingAgents',
+    'listOnethingAgentsForIpc',
+    'createOnethingAgentFromRequest',
+    'createOnethingAgentFromRequestForIpc',
+    'updateOnethingAgentFromRequest',
+    'updateOnethingAgentFromRequestForIpc',
+    'deleteOnethingAgentFromRequest',
+    'deleteOnethingAgentFromRequestForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainStoreFile)
+      ? matchingLines(mainStoreFile, MAIN_AGENTS_STORE_FORBIDDEN_PATTERNS)
+      : ['src/main/agents/store.ts: missing agent store adapter']),
+    ...(fs.existsSync(mainIpcFile)
+      ? matchingLines(mainIpcFile, MAIN_AGENTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/agents.ts: missing agents IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns agents store and IPC operations', lines)
+}
+
+function checkRuntimeOwnsAppStateUiSave(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/storage/app-state.ts')
+  const mainFile = path.join(root, 'src/main/ipc/app-state.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'mergeOnethingUiState',
+    'saveOnethingUiState',
+    'saveOnethingUiStateForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_APP_STATE_IPC_UI_SAVE_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/app-state.ts: missing app-state IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns app-state UI save flow', lines)
+}
+
+function checkRuntimeOwnsSchedulerIpcOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/ipc-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/scheduler.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'listOnethingSchedulerTasks',
+    'listOnethingSchedulerTasksForIpc',
+    'getOnethingSchedulerTask',
+    'getOnethingSchedulerTaskForIpc',
+    'runOnethingSchedulerTaskNow',
+    'runOnethingSchedulerTaskNowForIpc',
+    'setOnethingSchedulerTaskEnabled',
+    'setOnethingSchedulerTaskEnabledForIpc',
+    'createOnethingUserSchedulerTask',
+    'createOnethingUserSchedulerTaskForIpc',
+    'updateOnethingUserSchedulerTask',
+    'updateOnethingUserSchedulerTaskForIpc',
+    'deleteOnethingUserSchedulerTask',
+    'deleteOnethingUserSchedulerTaskForIpc',
+    'listOnethingSchedulerRuns',
+    'listOnethingSchedulerRunsForIpc',
+    'getOnethingSchedulerRun',
+    'getOnethingSchedulerRunForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SCHEDULER_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/scheduler.ts: missing scheduler IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns scheduler IPC operations', lines)
+}
+
+function checkRuntimeOwnsSchedulerCore(): void {
+  const runtimeSchedulerFile = path.join(root, 'packages/onething-runtime/src/scheduler/scheduler.ts')
+  const runtimeCronFile = path.join(root, 'packages/onething-runtime/src/scheduler/cron.ts')
+  const runtimeTypesFile = path.join(root, 'packages/onething-runtime/src/scheduler/types.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
+  const mainSchedulerFile = path.join(root, 'src/main/scheduler/index.ts')
+  const mainCronFile = path.join(root, 'src/main/scheduler/cron.ts')
+  const mainTypesFile = path.join(root, 'src/main/scheduler/types.ts')
+  const runtimeSchedulerContent = fs.existsSync(runtimeSchedulerFile) ? fs.readFileSync(runtimeSchedulerFile, 'utf-8') : ''
+  const runtimeCronContent = fs.existsSync(runtimeCronFile) ? fs.readFileSync(runtimeCronFile, 'utf-8') : ''
+  const runtimeTypesContent = fs.existsSync(runtimeTypesFile) ? fs.readFileSync(runtimeTypesFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainSchedulerContent = fs.existsSync(mainSchedulerFile) ? fs.readFileSync(mainSchedulerFile, 'utf-8') : ''
+  const mainCronContent = fs.existsSync(mainCronFile) ? fs.readFileSync(mainCronFile, 'utf-8') : ''
+  const mainTypesContent = fs.existsSync(mainTypesFile) ? fs.readFileSync(mainTypesFile, 'utf-8') : ''
+  const requiredRuntimeSchedulerSymbols = [
+    'export class Scheduler',
+    'SchedulerOptions',
+    'configureOnethingScheduler',
+    'getOnethingScheduler',
+    'resetOnethingSchedulerForTests',
+  ]
+  const requiredRuntimeCronSymbols = [
+    'parseCronExpression',
+    'nextCronRunAt',
+    'currentCronRunAt',
+    'cronRunKey',
+  ]
+  const requiredRuntimeTypeSymbols = [
+    'SchedulerTaskRegistration',
+    'SchedulerTaskSnapshot',
+    'SchedulerRunRecord',
+  ]
+  const requiredRuntimeIndexExports = [
+    './cron.js',
+    './scheduler.js',
+    './types.js',
+  ]
+  const lines = [
+    ...requiredRuntimeSchedulerSymbols
+      .filter(symbol => !runtimeSchedulerContent.includes(symbol))
+      .map(symbol => `${rel(runtimeSchedulerFile)}: missing runtime-owned scheduler symbol ${symbol}`),
+    ...requiredRuntimeCronSymbols
+      .filter(symbol => !runtimeCronContent.includes(symbol))
+      .map(symbol => `${rel(runtimeCronFile)}: missing runtime-owned cron symbol ${symbol}`),
+    ...requiredRuntimeTypeSymbols
+      .filter(symbol => !runtimeTypesContent.includes(symbol))
+      .map(symbol => `${rel(runtimeTypesFile)}: missing runtime-owned scheduler type ${symbol}`),
+    ...requiredRuntimeIndexExports
+      .filter(symbol => !runtimeIndexContent.includes(symbol))
+      .map(symbol => `${rel(runtimeIndexFile)}: missing scheduler public export ${symbol}`),
+    ...(
+      runtimeSchedulerContent.includes('../stores/paths.js') || runtimeSchedulerContent.includes('src/main') || runtimeSchedulerContent.includes('@main/')
+        ? [`${rel(runtimeSchedulerFile)}: runtime scheduler must not import main/store path globals`]
+        : []
+    ),
+    ...(
+      mainSchedulerContent.includes('@onething/runtime/scheduler') && mainSchedulerContent.includes('configureOnethingScheduler')
+        ? []
+        : [`${rel(mainSchedulerFile)}: main scheduler facade must configure @onething/runtime/scheduler`]
+    ),
+    ...(
+      mainCronContent.includes('@onething/runtime/scheduler')
+        ? []
+        : [`${rel(mainCronFile)}: main scheduler cron facade must re-export @onething/runtime/scheduler`]
+    ),
+    ...(
+      mainTypesContent.includes('@onething/runtime/scheduler')
+        ? []
+        : [`${rel(mainTypesFile)}: main scheduler types facade must re-export @onething/runtime/scheduler`]
+    ),
+    ...(fs.existsSync(mainSchedulerFile)
+      ? matchingLines(mainSchedulerFile, MAIN_SCHEDULER_CORE_FORBIDDEN_PATTERNS)
+      : ['src/main/scheduler/index.ts: missing scheduler core adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns scheduler core runtime', lines)
+}
+
+function checkRuntimeOwnsSchedulerRunHistory(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/run-history.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
+  const mainFile = path.join(root, 'src/main/scheduler/run-history.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'OnethingSchedulerRunHistory',
+    'SchedulerRunDetailLike',
+    'safeSchedulerRunTaskFileName',
+    'getSchedulerRunHistoryPath',
+    'MAX_ONETHING_SCHEDULER_RUN_HISTORY_PER_TASK',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned scheduler run-history symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('./run-history.js')
+      ? [`${rel(runtimeIndexFile)}: missing scheduler run-history public export`]
+      : []),
+    ...(
+      mainContent.includes('@onething/runtime/scheduler') && mainContent.includes('OnethingSchedulerRunHistory')
+        ? []
+        : [`${rel(mainFile)}: main scheduler run-history facade must use @onething/runtime/scheduler`]
+    ),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SCHEDULER_RUN_HISTORY_FORBIDDEN_PATTERNS)
+      : ['src/main/scheduler/run-history.ts: missing scheduler run-history adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns scheduler run-history storage', lines)
+}
+
+function checkRuntimeOwnsSchedulerUserTaskStore(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/user-tasks.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
+  const mainFile = path.join(root, 'src/main/scheduler/user-tasks.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'OnethingSchedulerUserTaskStore',
+    'OnethingSchedulerUserTask',
+    'OnethingSchedulerCreateTaskRequest',
+    'OnethingSchedulerUpdateTaskRequest',
+    'normalizeOnethingSchedulerUserTaskSchedule',
+    'previewOnethingSchedulerPrompt',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned scheduler user-task symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('./user-tasks.js')
+      ? [`${rel(runtimeIndexFile)}: missing scheduler user-task public export`]
+      : []),
+    ...(
+      mainContent.includes('@onething/runtime/scheduler')
+        && mainContent.includes('OnethingSchedulerUserTaskStore')
+        && mainContent.includes('previewOnethingSchedulerPrompt')
+        ? []
+        : [`${rel(mainFile)}: main scheduler user-tasks adapter must use @onething/runtime/scheduler user-task store`]
+    ),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SCHEDULER_USER_TASK_STORE_FORBIDDEN_PATTERNS)
+      : ['src/main/scheduler/user-tasks.ts: missing scheduler user-tasks adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns scheduler user-task store', lines)
+}
+
+function checkRuntimeOwnsSchedulerRunDetailProjection(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/run-detail.ts')
+  const runtimeRunnerFile = path.join(root, 'packages/onething-runtime/src/scheduler/agent-task-runner.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
+  const mainUserTasksFile = path.join(root, 'src/main/scheduler/user-tasks.ts')
+  const mainIpcFile = path.join(root, 'src/main/ipc/scheduler.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeRunnerContent = fs.existsSync(runtimeRunnerFile) ? fs.readFileSync(runtimeRunnerFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainUserTasksContent = fs.existsSync(mainUserTasksFile) ? fs.readFileSync(mainUserTasksFile, 'utf-8') : ''
+  const mainIpcContent = fs.existsSync(mainIpcFile) ? fs.readFileSync(mainIpcFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'createOnethingSchedulerTimelineEntry',
+    'toOnethingSchedulerRunStep',
+    'toOnethingSchedulerRunToolCall',
+    'finishOnethingSchedulerRunDetail',
+    'createOnethingSchedulerRunDetailFromRecord',
+    'previewOnethingSchedulerRunValue',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned scheduler run-detail symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('./run-detail.js')
+      ? [`${rel(runtimeIndexFile)}: missing scheduler run-detail public export`]
+      : []),
+    ...(
+      runtimeRunnerContent.includes('createOnethingSchedulerTimelineEntry')
+        && runtimeRunnerContent.includes('toOnethingSchedulerRunStep')
+        && runtimeRunnerContent.includes('toOnethingSchedulerRunToolCall')
+        && runtimeRunnerContent.includes('finishOnethingSchedulerRunDetail')
+        ? []
+        : [`${rel(runtimeRunnerFile)}: scheduler agent task runner must build run-detail projection with runtime helpers`]
+    ),
+    ...(
+      mainUserTasksContent.includes('runOnethingSchedulerAgentTask')
+        && mainUserTasksContent.includes('saveRunDetail')
+        ? []
+        : [`${rel(mainUserTasksFile)}: main scheduler user-tasks must delegate run-detail projection through runtime agent task runner`]
+    ),
+    ...(
+      mainIpcContent.includes('createOnethingSchedulerRunDetailFromRecord')
+        ? []
+        : [`${rel(mainIpcFile)}: scheduler IPC must delegate generic run detail projection to runtime`]
+    ),
+    ...(fs.existsSync(mainUserTasksFile)
+      ? matchingLines(mainUserTasksFile, MAIN_SCHEDULER_RUN_DETAIL_FORBIDDEN_PATTERNS)
+      : ['src/main/scheduler/user-tasks.ts: missing scheduler user-tasks adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns scheduler run-detail projection', lines)
+}
+
+function checkRuntimeOwnsSchedulerAgentTaskRunner(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/agent-task-runner.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
+  const mainFile = path.join(root, 'src/main/scheduler/user-tasks.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'runOnethingSchedulerAgentTask',
+    'OnethingSchedulerAgentTaskRunnerOptions',
+    'OnethingSchedulerAgentTaskEventBus',
+    'OnethingSchedulerAgentTaskSessionStore',
+    'OnethingSchedulerAgentTaskStreamHost',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned scheduler agent task runner symbol ${symbol}`),
+    ...(!runtimeIndexContent.includes('./agent-task-runner.js')
+      ? [`${rel(runtimeIndexFile)}: missing scheduler agent-task runner public export`]
+      : []),
+    ...(
+      mainContent.includes('runOnethingSchedulerAgentTask')
+        ? []
+        : [`${rel(mainFile)}: main scheduler user-tasks must delegate agent task execution to runtime`]
+    ),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_SCHEDULER_AGENT_TASK_RUNNER_FORBIDDEN_PATTERNS)
+      : ['src/main/scheduler/user-tasks.ts: missing scheduler user-tasks adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns scheduler agent task runner', lines)
+}
+
+function checkRuntimeOwnsFilesListIpcOperation(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-search.ts')
+  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'resolveOnethingFileSearchRoots',
+    'listOnethingFileSearchEntries',
+    'listOnethingFileSearchEntriesForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_FILES_IPC_LIST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns files list IPC operation', lines)
+}
+
+function checkRuntimeOwnsDirsListIpcOperation(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/directory-listing.ts')
+  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'expandOnethingDirectoryBasePath',
+    'listOnethingDirectoriesForCompletion',
+    'listOnethingDirectoriesForCompletionForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_FILES_IPC_DIRS_LIST_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns dirs list IPC operation', lines)
+}
+
+function checkRuntimeOwnsFileContentAndDirectoryOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'readOnethingFileContent',
+    'saveOnethingFileContent',
+    'listOnethingDirectory',
+    'statOnethingPath',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_FILES_IPC_FILE_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns file content and directory operations', lines)
+}
+
+function checkRuntimeOwnsFileMutationOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-operations.ts')
+  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'createOnethingFile',
+    'createOnethingDirectory',
+    'renameOnethingPath',
+    'deleteOnethingPath',
+    'revealOnethingPath',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_FILES_IPC_MUTATION_OPERATIONS_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns file mutation operations', lines)
+}
+
+function checkRuntimeOwnsFileRollbackOperation(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-rollback.ts')
+  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'rollbackOnethingFile',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_FILES_IPC_ROLLBACK_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns file rollback operation', lines)
+}
+
+function checkRuntimeOwnsFileWatchOperations(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-watch.ts')
+  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'startOnethingFileWatchForIpc',
+    'stopOnethingFileWatchForIpc',
+  ]
+  const lines = [
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_FILES_IPC_WATCH_FORBIDDEN_PATTERNS)
+      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns file watch IPC operations', lines)
+}
+
+function checkRuntimeOwnsRipgrepFileSearchRuntime(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/ripgrep.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/files/index.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/files/__tests__/ripgrep.test.ts')
+  const mainFile = path.join(root, 'src/main/utils/ripgrep.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredRuntimeSymbols = [
+    'configureOnethingRipgrepRuntime',
+    'getOnethingRipgrepPath',
+    'listOnethingRipgrepFiles',
+    'searchOnethingRipgrep',
+    'parseOnethingRipgrepSearchOutput',
+    'buildOnethingRipgrepFileListArgs',
+    'buildOnethingRipgrepSearchArgs',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned ripgrep implementation`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime ripgrep symbol ${symbol}`),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime ripgrep tests`]
+      : []),
+    ...(!runtimeIndexContent.includes('./ripgrep.js')
+      ? [`${rel(runtimeIndexFile)}: missing ripgrep public export`]
+      : []),
+    ...(!mainContent.includes('@onething/runtime/files/ripgrep')
+      ? [`${rel(mainFile)}: ripgrep facade must delegate to runtime ripgrep`]
+      : []),
+    ...(mainLines.length > 40
+      ? [`${rel(mainFile)}: ripgrep facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_RIPGREP_UTIL_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing ripgrep main facade`]),
+    ...(!viteContent.includes('@onething/runtime/files/ripgrep')
+      ? [`${rel(viteConfig)}: missing ripgrep runtime alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/runtime/files/ripgrep')
+      ? [`${rel(vitestConfig)}: missing ripgrep runtime test alias`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns ripgrep file search runtime', lines)
+}
+
+function checkRuntimeOwnsToolSandboxRuntime(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/sandbox-runtime.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/sandbox-runtime.test.ts')
+  const mainFile = path.join(root, 'src/main/tools/core/sandbox.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredRuntimeSymbols = [
+    'configureOnethingToolSandboxRuntime',
+    'getOnethingDefaultReadRoots',
+    'getOnethingDownloadsDirectory',
+    'getOnethingReadSandboxRoots',
+    'checkOnethingFileAccess',
+    'resolveOnethingToolPath',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned tool sandbox runtime`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime tool sandbox symbol ${symbol}`),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime tool sandbox tests`]
+      : []),
+    ...(!runtimeIndexContent.includes('./sandbox-runtime.js')
+      ? [`${rel(runtimeIndexFile)}: missing sandbox-runtime public export`]
+      : []),
+    ...(!mainContent.includes('@onething/runtime/tools/sandbox-runtime')
+      ? [`${rel(mainFile)}: sandbox facade must delegate to runtime sandbox-runtime`]
+      : []),
+    ...(mainLines.length > 70
+      ? [`${rel(mainFile)}: sandbox facade must stay thin`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? matchingLines(mainFile, MAIN_TOOL_SANDBOX_FORBIDDEN_PATTERNS)
+      : [`${rel(mainFile)}: missing sandbox main facade`]),
+    ...(!viteContent.includes('@onething/runtime/tools/sandbox-runtime')
+      ? [`${rel(viteConfig)}: missing sandbox-runtime alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/runtime/tools/sandbox-runtime')
+      ? [`${rel(vitestConfig)}: missing sandbox-runtime test alias`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns tool sandbox runtime', lines)
+}
+
+function checkRuntimeOwnsToolEditEngine(): void {
+  const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/edit-engine.ts')
+  const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
+  const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/edit-engine.test.ts')
+  const mainFile = path.join(root, 'src/main/tools/core/edit-engine.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
+  const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const requiredRuntimeSymbols = [
+    'ExactEditPreviewResult',
+    'applyExactEditsToNormalizedContent',
+    'prepareExactEditPreview',
+    'previewExactEdits',
+  ]
+  const lines = [
+    ...(!fs.existsSync(runtimeFile)
+      ? [`${rel(runtimeFile)}: missing runtime-owned edit engine`]
+      : []),
+    ...requiredRuntimeSymbols
+      .filter(symbol => !runtimeContent.includes(symbol))
+      .map(symbol => `${rel(runtimeFile)}: missing runtime edit-engine symbol ${symbol}`),
+    ...(!fs.existsSync(runtimeTestFile)
+      ? [`${rel(runtimeTestFile)}: missing runtime edit-engine tests`]
+      : []),
+    ...(!runtimeIndexContent.includes('./edit-engine.js')
+      ? [`${rel(runtimeIndexFile)}: missing edit-engine public export`]
+      : []),
+    ...(fs.existsSync(mainFile)
+      ? [
+          `${rel(mainFile)}: edit-engine facade should be removed; import @onething/runtime/tools/edit-engine directly`,
+          ...matchingLines(mainFile, MAIN_TOOL_EDIT_ENGINE_FORBIDDEN_PATTERNS),
+        ]
+      : []),
+    ...(!viteContent.includes('@onething/runtime/tools/edit-engine')
+      ? [`${rel(viteConfig)}: missing edit-engine runtime alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/runtime/tools/edit-engine')
+      ? [`${rel(vitestConfig)}: missing edit-engine runtime test alias`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns tool edit engine', lines)
+}
+
+function checkRuntimeOwnsConcreteBuiltinTools(): void {
+  const removedFiles = [
+    'packages/core/tools/time.ts',
+    'src/main/tools/builtin/get-current-time.ts',
+    'src/main/tools/builtin/fart.ts',
+    'src/main/tools/builtin/time.ts',
+    'src/main/tools/core/bash-classifier.ts',
+    'src/main/tools/core/edit-engine.ts',
+    'src/main/tools/core/file-mutation-audit.ts',
+    'src/main/tools/core/file-mutation-queue.ts',
+    'src/main/tools/core/output-accumulator.ts',
+    'src/main/tools/core/sensitive-files.ts',
+    'src/main/tools/core/text-truncation.ts',
+    'src/main/tools/core/tool-effect.ts',
+    'src/main/tools/core/tool-result.ts',
+    'packages/core/tools/sensitive-files.ts',
+    'packages/core/tools/background-jobs.ts',
+    'packages/core/tools/bash-executor.ts',
+    'packages/core/tools/output-accumulator.ts',
+    'packages/core/tools/text-truncation.ts',
+    'packages/core/tools/file-mutation-queue.ts',
+    'packages/core/tools/file-snapshot.ts',
+    'packages/core/tools/file-mutation-audit.ts',
+    'packages/core/tools/sandbox.ts',
+    'packages/core/tools/edit-engine.ts',
+    'packages/core/tools/replacers.ts',
+    'packages/core/tools/bash-classifier.ts',
+  ].filter(file => fs.existsSync(path.join(root, file)))
+  const publicExportPaths = [
+    path.join(root, 'packages/core/tools/index.ts'),
+    path.join(root, 'packages/core/index.ts'),
+  ]
+  const runtimeToolsIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
+  const runtimeTimeFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/time.ts')
+  const runtimeTimeRuntimeFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/time-runtime.ts')
+  const runtimeTimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts')
+  const runtimeCalculatorFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/calculator.ts')
+  const runtimeCalculatorTestFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/calculator.test.ts')
+  const mainCalculatorFile = path.join(root, 'src/main/tools/builtin/calculator.ts')
+  const mainBuiltinIndexFile = path.join(root, 'src/main/tools/builtin/index.ts')
+  const mainHeadlessFile = path.join(root, 'src/main/tools/builtin/headless.ts')
+  const viteConfig = path.join(root, 'electron.vite.config.ts')
+  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const runtimeToolsIndexContent = fs.existsSync(runtimeToolsIndexFile) ? fs.readFileSync(runtimeToolsIndexFile, 'utf-8') : ''
+  const runtimeTimeContent = fs.existsSync(runtimeTimeFile) ? fs.readFileSync(runtimeTimeFile, 'utf-8') : ''
+  const runtimeTimeRuntimeContent = fs.existsSync(runtimeTimeRuntimeFile) ? fs.readFileSync(runtimeTimeRuntimeFile, 'utf-8') : ''
+  const runtimeCalculatorContent = fs.existsSync(runtimeCalculatorFile) ? fs.readFileSync(runtimeCalculatorFile, 'utf-8') : ''
+  const mainCalculatorContent = fs.existsSync(mainCalculatorFile) ? fs.readFileSync(mainCalculatorFile, 'utf-8') : ''
+  const mainBuiltinIndexContent = fs.existsSync(mainBuiltinIndexFile) ? fs.readFileSync(mainBuiltinIndexFile, 'utf-8') : ''
+  const mainHeadlessContent = fs.existsSync(mainHeadlessFile) ? fs.readFileSync(mainHeadlessFile, 'utf-8') : ''
+  const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
+  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const mainCalculatorLines = mainCalculatorContent.split('\n').filter(line => line.trim().length > 0)
+  const requiredTimeSymbols = [
+    'TimeTool',
+    'executeCoreTimeTool',
+    'resolveCoreTimezone',
+  ]
+  const requiredCalculatorSymbols = [
+    'CalculatorTool',
+    'evaluateCalculatorExpression',
+    'executeCalculatorExpression',
+  ]
+  const lines = [
+    ...removedFiles.map(file => `${file}: concrete builtin tools belong in packages/onething-runtime`),
+    ...publicExportPaths.flatMap(file => fs.existsSync(file)
+      ? matchingLines(file, CORE_TOOL_RUNTIME_FORBIDDEN_PATTERNS)
+      : []
+    ),
+    ...(!fs.existsSync(runtimeTimeFile)
+      ? [`${rel(runtimeTimeFile)}: missing runtime-owned time tool`]
+      : []),
+    ...requiredTimeSymbols
+      .filter(symbol => !`${runtimeTimeContent}\n${runtimeTimeRuntimeContent}`.includes(symbol))
+      .map(symbol => `${rel(runtimeTimeFile)}: missing runtime time symbol ${symbol}`),
+    ...(!fs.existsSync(runtimeTimeTestFile)
+      ? [`${rel(runtimeTimeTestFile)}: missing runtime time tests`]
+      : []),
+    ...(!runtimeToolsIndexContent.includes('./builtin/time.js')
+      ? [`${rel(runtimeToolsIndexFile)}: missing time public export`]
+      : []),
+    ...(!runtimeToolsIndexContent.includes('./builtin/time-runtime.js')
+      ? [`${rel(runtimeToolsIndexFile)}: missing time runtime public export`]
+      : []),
+    ...(!fs.existsSync(runtimeCalculatorFile)
+      ? [`${rel(runtimeCalculatorFile)}: missing runtime-owned calculator tool`]
+      : []),
+    ...requiredCalculatorSymbols
+      .filter(symbol => !runtimeCalculatorContent.includes(symbol))
+      .map(symbol => `${rel(runtimeCalculatorFile)}: missing runtime calculator symbol ${symbol}`),
+    ...(!fs.existsSync(runtimeCalculatorTestFile)
+      ? [`${rel(runtimeCalculatorTestFile)}: missing runtime calculator tests`]
+      : []),
+    ...(!runtimeToolsIndexContent.includes('./builtin/calculator.js')
+      ? [`${rel(runtimeToolsIndexFile)}: missing calculator public export`]
+      : []),
+    ...(!mainCalculatorContent.includes('@onething/runtime/tools/builtin/calculator')
+      ? [`${rel(mainCalculatorFile)}: calculator facade must delegate to runtime calculator`]
+      : []),
+    ...(mainCalculatorLines.length > 60
+      ? [`${rel(mainCalculatorFile)}: calculator facade must stay thin`]
+      : []),
+    ...(/function\s+safeEvaluate|const\s+mathFunctions|new\s+Function/.test(mainCalculatorContent)
+      ? [`${rel(mainCalculatorFile)}: calculator implementation must stay in runtime`]
+      : []),
+    ...(!mainBuiltinIndexContent.includes('CalculatorTool')
+      ? [`${rel(mainBuiltinIndexFile)}: desktop builtins must register CalculatorTool`]
+      : []),
+    ...(!mainBuiltinIndexContent.includes('TimeTool')
+      ? [`${rel(mainBuiltinIndexFile)}: desktop builtins must register TimeTool`]
+      : []),
+    ...(!mainHeadlessContent.includes('CalculatorTool')
+      ? [`${rel(mainHeadlessFile)}: headless builtins must register CalculatorTool`]
+      : []),
+    ...(!mainHeadlessContent.includes('TimeTool')
+      ? [`${rel(mainHeadlessFile)}: headless builtins must register TimeTool`]
+      : []),
+    ...(!viteContent.includes('@onething/runtime/tools/builtin/calculator')
+      ? [`${rel(viteConfig)}: missing calculator runtime alias`]
+      : []),
+    ...(!vitestContent.includes('@onething/runtime/tools/builtin/calculator')
+      ? [`${rel(vitestConfig)}: missing calculator runtime test alias`]
+      : []),
+  ]
+
+  assertNoMatches('packages/onething-runtime owns concrete builtin tool implementations', lines)
+}
+
+checkCoreForbiddenImports()
+checkRuntimeHostBoundary()
+checkGatewayHostBoundary()
+checkCoreOwnsGatewayConversationRuntimeProtocol()
+checkGatewayLoadsRuntimeFromHostBoundary()
+checkGatewayUsesExplicitTypingSignal()
+checkGatewayRegistersConfiguredChannels()
+checkGatewayWechatQrStateHandling()
+checkGatewayOwnsEnablementConfig()
+checkElectronHostOwnsGatewayLifecycle()
+checkElectronHostOwnsVoiceRuntimeWindow()
+checkElectronHostOwnsVoiceEventBroadcasting()
+checkElectronHostOwnsVoiceTray()
+checkElectronHostOwnsVoiceIpcHost()
+checkElectronHostOwnsReadyHandler()
+checkElectronHostOwnsActivateHandler()
+checkElectronHostOwnsMainWindowBinding()
+checkElectronHostOwnsApplicationMenu()
+checkElectronHostOwnsSessionSecurity()
+checkElectronHostOwnsExternalLinkHandling()
+checkElectronHostOwnsMainWindowRecovery()
+checkElectronHostOwnsSettingsWindow()
+checkElectronHostOwnsImagePreviewWindow()
+checkElectronHostOwnsMainWindowCreation()
+checkElectronHostOwnsTodoPlanWindowCreation()
+checkElectronHostOwnsMacOSPanelBridge()
+checkElectronHostOwnsRendererTargets()
+checkElectronHostOwnsSearchWindowLayout()
+checkElectronHostOwnsSearchWindowLifecycle()
+checkElectronHostOwnsSearchWindowActionDelivery()
+checkElectronHostOwnsWindowStatePersistence()
+checkElectronHostOwnsMainWindowActivation()
+checkElectronHostOwnsWindowVisibilitySnapshots()
+checkElectronHostOwnsTodoPlanNotifications()
+checkElectronHostOwnsTodoPlanPresentation()
+checkElectronHostOwnsWindowFacade()
+checkElectronHostOwnsBeforeQuitCleanup()
+checkElectronHostOwnsDidBecomeActiveHandler()
+checkElectronHostOwnsWindowAllClosedHandler()
+checkElectronHostOwnsMediaProtocol()
+checkElectronHostOwnsLoggingCapture()
+checkElectronHostOwnsAccessibilityPermissions()
+checkElectronHostOwnsShellOperations()
+checkElectronHostOwnsOAuthEvents()
+checkElectronHostOwnsOAuthIpcHost()
+checkElectronHostOwnsSettingsIpcHost()
+checkElectronHostOwnsAppStateIpcHost()
+checkElectronHostOwnsVariablesIpcHost()
+checkElectronHostOwnsProjectDirsIpcHost()
+checkElectronHostOwnsAgentsIpcHost()
+checkElectronHostOwnsPromptsIpcHost()
+checkElectronHostOwnsSchedulerIpcHost()
+checkElectronHostOwnsMarkdownIpcHost()
+checkElectronHostOwnsPermissionIpcHost()
+checkElectronHostOwnsPluginsIpcHost()
+checkElectronHostOwnsThemesIpcHost()
+checkElectronHostOwnsProvidersIpcHost()
+checkElectronHostOwnsModelsIpcHost()
+checkElectronHostOwnsMemoryIpcHost()
+checkElectronHostOwnsMcpIpcHost()
+checkElectronHostOwnsAcpIpcHost()
+checkElectronHostOwnsMediaIpcHost()
+checkElectronHostOwnsTodoPlanIpcHost()
+checkElectronHostOwnsToolsIpcHost()
+checkElectronHostOwnsSkillsIpcHost()
+checkElectronHostOwnsAuthElectronAdapters()
+checkElectronHostOwnsSkillsEnvironment()
+checkElectronHostOwnsNetworkProxy()
+checkElectronHostOwnsGlobalShortcuts()
+checkElectronHostOwnsPowerResumeHandlers()
+checkElectronHostOwnsAppBootstrap()
+checkElectronHostOwnsMainEntry()
+checkElectronHostOwnsPreloadEntry()
+checkMainUsesRuntimePackageImports()
+checkRuntimeSubpathAliasesCoverSourceImports()
+checkMainFacadesUseElectronHostImports()
+checkMainUsesCorePackageImports()
+checkMainUsesGatewayPackageImports()
+checkCorePackageDependencies()
+checkMainCoreSystemAdapters()
+checkCorePublicExports()
+checkCoreToolHelperTestsLiveInCorePackage()
+checkCoreOwnsToolSchemaProjection()
+checkCoreOwnsToolFailureParameterSummary()
+checkCoreOwnsToolPermissionErrorText()
+checkRuntimeToolHelperTestsLiveInRuntimePackage()
+checkCoreOwnsSessionCommandIpcOperation()
+checkCoreOwnsJsonProtocol()
+checkCoreOwnsIpcRouterProtocol()
+checkCoreOwnsStreamChunkProtocol()
+checkElectronHostOwnsSessionCommandIpcHost()
+checkElectronHostOwnsChatIpcHost()
+checkElectronHostOwnsFilesIpcHost()
+checkElectronHostOwnsSessionsIpcHost()
+checkCorePromptAssemblyOwnedByRuntime()
+checkCorePromptContextRegistryOwnedByRuntime()
+checkRuntimeOwnsOnethingStoragePaths()
+checkRuntimeOwnsStoreLock()
+checkRuntimeOwnsPermissionGrantFileStorage()
+checkRuntimeOwnsPermissionGrantsIpcPresentation()
+checkRuntimeOwnsPermissionSessionIpcPresentation()
+checkRuntimeOwnsAuthTokenStorage()
+checkRuntimeOwnsAuthServiceFlow()
+checkRuntimeOwnsAuthCallbackServer()
+checkRuntimeOwnsOAuthIpcOperations()
+checkRuntimeOwnsStreamRuntimeWiring()
+checkRuntimeOwnsHistoryHelperWiring()
+checkRuntimeOwnsAgentLoopRuntimeWiring()
+checkRuntimeOwnsAgentLoopSelection()
+checkCoreOwnsAgentLoopPureFacades()
+checkRuntimeOwnsProviderRequestDump()
+checkRuntimeOwnsProviderRegistry()
+checkRuntimeOwnsProviderDefinitionTypes()
+checkRuntimeOwnsProviderOauthConfigResolution()
+checkRuntimeOwnsProviderFacadeOrchestration()
+checkRuntimeOwnsProviderTitleOrchestration()
+checkRuntimeOwnsProviderTextResponseProjection()
+checkRuntimeOwnsProviderGenerateReasoningOrchestration()
+checkRuntimeOwnsProviderStreamReasoningOrchestration()
+checkRuntimeOwnsProviderToolStreamOrchestration()
+checkRuntimeOwnsProviderAcpStreamProjection()
+checkRuntimeOwnsEmbeddingProviderRuntime()
+checkRuntimeOwnsAcpIpcOperations()
+checkRuntimeOwnsAcpClientRuntime()
+checkRuntimeOwnsDirectToolExecutionAdapter()
+checkRuntimeOwnsToolUpdateOrchestration()
+checkRuntimeOwnsStreamProcessorAdapter()
+checkRuntimeOwnsImageStreamEntryPoint()
+checkRuntimeOwnsProvidersIpcUsageFlow()
+checkRuntimeOwnsProvidersIpcPresentation()
+checkRuntimeOwnsNetworkPolicy()
+checkRuntimeOwnsModelRegistryRefresh()
+checkRuntimeOwnsModelsIpcPresentation()
+checkRuntimeOwnsModelQueryIpcPresentation()
+checkRuntimeOwnsMcpServerOrchestration()
+checkRuntimeOwnsMcpCapabilityOperations()
+checkRuntimeOwnsMcpIpcOperations()
+checkRuntimeOwnsSessionBranchCreation()
+checkRuntimeOwnsSessionUpdateFlows()
+checkRuntimeOwnsSessionMessageRuntime()
+checkRuntimeOwnsSessionWorkingDirectoryFlow()
+checkRuntimeOwnsSessionSystemMarkerFlow()
+checkRuntimeOwnsSessionIpcOperations()
+checkRuntimeOwnsRendererMessageSanitizer()
+checkChatIpcDoesNotOwnLegacyStreamFlow()
+checkRuntimeOwnsChatTitleGenerationFlow()
+checkRuntimeOwnsChatSessionIpcOperations()
+checkRuntimeOwnsChatActiveStreamListing()
+checkRuntimeOwnsChatAbortCleanupFlow()
+checkRuntimeOwnsResumeAfterToolConfirmationFlow()
+checkRuntimeOwnsToolRegistryRuntime()
+checkRuntimeOwnsToolCallStateProjection()
+checkRuntimeOwnsToolsIpcListPresentation()
+checkRuntimeOwnsToolsIpcExecutionContext()
+checkRuntimeOwnsToolsIpcAsyncRefresh()
+checkRuntimeOwnsToolsIpcBackgroundJobs()
+checkRuntimeOwnsSettingsSaveOrchestration()
+checkRuntimeOwnsPluginsIpcListProjection()
+checkRuntimeOwnsPluginsIpcCommandProjection()
+checkRuntimeOwnsPluginCommandExecution()
+checkRuntimeOwnsPluginsIpcOperations()
+checkRuntimeOwnsLogMonitorPlugin()
+checkRuntimeOwnsNoteSkillsPlugin()
+checkRuntimeOwnsSkillsRuntimeCache()
+checkRuntimeOwnsSkillsIpcOperations()
+checkRuntimeOwnsSkillManageOperations()
+checkRuntimeOwnsSkillsLoader()
+checkRuntimeOwnsSqliteSessionRepository()
+checkRuntimeOwnsSessionSqliteFailoverPolicy()
+checkRuntimeOwnsMediaPreviewRegistry()
+checkRuntimeOwnsMediaImageDataUrl()
+checkRuntimeOwnsMediaLegacyList()
+checkRuntimeOwnsMediaGeneratedImageLegacySave()
+checkRuntimeOwnsMediaLibraryIpcOperations()
+checkRuntimeOwnsMarkdownAssetService()
+checkRuntimeOwnsMarkdownIpcOperations()
+checkRuntimeOwnsThemeRuntime()
+checkRuntimeOwnsTodoPlanStore()
+checkRuntimeOwnsVoiceIpcOperations()
+checkRuntimeOwnsVoiceProviderRuntime()
+checkRuntimeOwnsVoiceServicePolicy()
+checkRuntimeOwnsVoiceTextProcessing()
+checkRuntimeOwnsSearchIpcOperations()
+checkRuntimeOwnsHeadlessCliProjections()
+checkRuntimeOwnsPromptsStore()
+checkRuntimeOwnsSystemPromptSnapshot()
+checkRuntimeOwnsProjectDirsStore()
+checkRuntimeOwnsVariablesStoreAndHelpers()
+checkRuntimeOwnsMemoryReviewHelpers()
+checkRuntimeOwnsHermesFileMemory()
+checkRuntimeOwnsMemoryDiagnosticsLogger()
+checkRuntimeOwnsMemoryTypes()
+checkRuntimeOwnsMemoryDatabaseCanonicalGraph()
+checkRuntimeOwnsSoulMemoryGraphDecisionOperations()
+checkRuntimeOwnsSoulMemoryGraphCanonicalSearch()
+checkRuntimeOwnsSoulMemoryMarkdownSearch()
+checkRuntimeOwnsSoulMemoryMarkdownIndexPersistence()
+checkRuntimeOwnsSoulMemoryManagedFiles()
+checkRuntimeOwnsSoulMemoryDailyContext()
+checkRuntimeOwnsSoulMemoryPromptContext()
+checkRuntimeOwnsSoulMemoryActiveMemoryRecall()
+checkRuntimeOwnsSoulMemoryAppendNote()
+checkRuntimeOwnsSoulMemoryCaptureInput()
+checkRuntimeOwnsSoulMemoryCaptureRun()
+checkRuntimeOwnsSoulMemoryDailyCaptureActions()
+checkRuntimeOwnsSoulMemoryDreamingOperations()
+checkRuntimeOwnsSoulMemoryFlushOperations()
+checkRuntimeOwnsMemoryIpcPresentation()
+checkRuntimeOwnsMemoryWorkspaceHelpers()
+checkRuntimeOwnsAgentsStoreAndIpcOperations()
+checkRuntimeOwnsAppStateUiSave()
+checkRuntimeOwnsSchedulerIpcOperations()
+checkRuntimeOwnsSchedulerCore()
+checkRuntimeOwnsSchedulerRunHistory()
+checkRuntimeOwnsSchedulerUserTaskStore()
+checkRuntimeOwnsSchedulerRunDetailProjection()
+checkRuntimeOwnsSchedulerAgentTaskRunner()
+checkRuntimeOwnsFilesListIpcOperation()
+checkRuntimeOwnsDirsListIpcOperation()
+checkRuntimeOwnsFileContentAndDirectoryOperations()
+checkRuntimeOwnsFileMutationOperations()
+checkRuntimeOwnsFileRollbackOperation()
+checkRuntimeOwnsFileWatchOperations()
+checkRuntimeOwnsRipgrepFileSearchRuntime()
+checkRuntimeOwnsToolSandboxRuntime()
+checkRuntimeOwnsToolEditEngine()
+checkRuntimeOwnsConcreteBuiltinTools()
+
+if (!process.exitCode) {
+  console.log('[boundary] ok: headless core boundary checks passed')
+}

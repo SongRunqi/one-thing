@@ -1,0 +1,28 @@
+{
+  "name": "@onething/core",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./index.ts",
+    "./agent": "./agent/index.ts",
+    "./agent-loop": "./agent-loop/index.ts",
+    "./context": "./context/index.ts",
+    "./engine": "./engine/index.ts",
+    "./events": "./events/index.ts",
+    "./gateway-runtime": "./gateway-runtime.ts",
+    "./http": "./http/index.ts",
+    "./ipc": "./ipc/index.ts",
+    "./json": "./json.ts",
+    "./mcp": "./mcp/index.ts",
+    "./plugins": "./plugins/index.ts",
+    "./providers": "./providers/index.ts",
+    "./permission": "./permission/index.ts",
+    "./storage": "./storage/index.ts",
+    "./tools": "./tools/index.ts",
+    "./session": "./session/index.ts",
+    "./session/storage": "./session/storage/index.ts",
+    "./slash-commands": "./slash-commands.ts"
+  },
+  "dependencies": {}
+}

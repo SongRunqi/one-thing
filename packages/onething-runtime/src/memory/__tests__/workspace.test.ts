@@ -1,0 +1,74 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import {
+  CAPTURE_MAX_PENDING,
+  SCOPED_DREAMING_SCHEDULER_TASK_ID,
+  SOUL_MEMORY_PLUGIN_ID,
+  asBullet,
+  canonicalKindFromCaptureKind,
+  cosine,
+  dateString,
+  estimateTokens,
+  ftsQuery,
+  isDurableCandidate,
+  isIndexableMarkdownPath,
+  normalizeForDedupe,
+  normalizeMemoryRelativePath,
+  readLimited,
+  sanitizeAgentPathSegment,
+  sanitizeMemoryKey,
+  sha,
+  tokenJaccard,
+  writeIfMissing,
+} from '../workspace.js'
+
+const tempDirs: string[] = []
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+describe('runtime memory workspace helpers', () => {
+  it('exposes stable soul-memory constants', () => {
+    expect(SOUL_MEMORY_PLUGIN_ID).toBe('soul-memory')
+    expect(SCOPED_DREAMING_SCHEDULER_TASK_ID).toBe('plugin:soul-memory:memory-dreaming-promotion')
+    expect(CAPTURE_MAX_PENDING).toBe(20)
+  })
+
+  it('normalizes paths, keys, bullets, and date strings', () => {
+    expect(dateString(new Date('2026-06-10T12:00:00Z'))).toBe('2026-06-10')
+    expect(normalizeMemoryRelativePath('memory/../MEMORY.md')).toBe('memory/../MEMORY.md')
+    expect(isIndexableMarkdownPath('memory/2026-06-10.md')).toBe(true)
+    expect(isIndexableMarkdownPath('image.png')).toBe(false)
+    expect(sanitizeAgentPathSegment('../Agent X')).toBe('___Agent_X')
+    expect(sanitizeMemoryKey('User Likes: Tea')).toBe('user.likes.tea')
+    expect(asBullet('  hello  ')).toBe('- hello')
+  })
+
+  it('keeps capture and dedupe helpers runtime-owned', () => {
+    expect(canonicalKindFromCaptureKind('summary')).toBe('fact')
+    expect(isDurableCandidate({ kind: 'preference' })).toBe(true)
+    expect(isDurableCandidate({ kind: 'ignore' })).toBe(false)
+    expect(normalizeForDedupe('Hello, WORLD!')).toBe('hello, world!')
+    expect(estimateTokens('one two three')).toBeGreaterThan(0)
+    expect(sha('abc')).toMatch(/^[a-f0-9]{64}$/)
+    expect(tokenJaccard('alpha beta', 'alpha gamma')).toBeGreaterThan(0)
+    expect(cosine([1, 0], [1, 0])).toBe(1)
+    expect(ftsQuery('hello world')).toContain('hello')
+  })
+
+  it('wraps generic storage helpers without main-process dependencies', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-memory-workspace-'))
+    tempDirs.push(root)
+    const file = path.join(root, 'note.md')
+
+    await writeIfMissing(file, 'abcdef')
+    await writeIfMissing(file, 'ignored')
+
+    expect(readLimited(file, 20)).toBe('abcdef')
+  })
+})

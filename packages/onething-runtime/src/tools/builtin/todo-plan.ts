@@ -1,0 +1,205 @@
+import { z } from 'zod'
+import type { JsonObject } from '@onething/core'
+import { Tool } from '../tool.js'
+
+export type RuntimeTodoPlanScope = 'user-note' | 'workspace-ai-todo'
+
+export interface RuntimeTodoPlanContext {
+  sessionId?: string
+  workingDirectory?: string
+}
+
+export interface RuntimeTodoPlanDocument {
+  id: string
+  scope: RuntimeTodoPlanScope
+  title: string
+  role?: 'user' | 'assistant' | 'plan'
+  filePath?: string
+  content: string
+  updatedAt?: number
+  totalTasks: number
+}
+
+export interface RuntimeTodoPlanSnapshot {
+  directory: string
+  userNotes: RuntimeTodoPlanDocument[]
+  workspaceAiTodo?: RuntimeTodoPlanDocument
+}
+
+export interface RuntimeTodoPlanUpdateRequest extends RuntimeTodoPlanContext {
+  scope: RuntimeTodoPlanScope
+  id?: string
+  content: string
+}
+
+export interface RuntimeTodoPlanAdapters {
+  readSnapshot(context: RuntimeTodoPlanContext): Promise<RuntimeTodoPlanSnapshot> | RuntimeTodoPlanSnapshot
+  createUserNote(title: string, content?: string): Promise<RuntimeTodoPlanDocument> | RuntimeTodoPlanDocument
+  updateDocument(request: RuntimeTodoPlanUpdateRequest): Promise<RuntimeTodoPlanDocument> | RuntimeTodoPlanDocument
+  renameUserNote(id: string, title: string): Promise<RuntimeTodoPlanDocument> | RuntimeTodoPlanDocument
+  deleteUserNote(id: string): Promise<void> | void
+}
+
+interface TodoMetadata extends JsonObject {
+  id?: string
+  scope?: RuntimeTodoPlanScope | 'user-note'
+  directory?: string
+  userNoteCount?: number
+}
+
+export const TodoPlanParameters = z.object({
+  action: z.enum(['list', 'create', 'update', 'rename', 'delete'])
+    .describe('List, create, update, rename, or delete todo markdown documents.'),
+  scope: z.enum(['user-note', 'workspace-ai-todo']).optional()
+    .describe('Target scope. user-note is global user notes, workspace-ai-todo is per-work-directory AI work tracking and follow-up work.'),
+  id: z.string().optional()
+    .describe('User note id for update/rename/delete. Not needed for workspace-ai-todo.'),
+  title: z.string().optional()
+    .describe('Title for creating or renaming a user note.'),
+  content: z.string().optional()
+    .describe('Complete markdown content for create/update. Preserve useful existing items unless intentionally changing them.'),
+})
+
+export function createTodoPlanTool(adapters: RuntimeTodoPlanAdapters): Tool.Info<typeof TodoPlanParameters, TodoMetadata> {
+  return Tool.define<typeof TodoPlanParameters, TodoMetadata>('todo', {
+    name: 'Todo',
+    description: `Read or update the todo panel shown in the chat UI.
+
+Scopes:
+- user-note: global user-owned markdown todo notes. Use these to help the user remember their own tasks, commitments, reminders, errands, meeting notes, and personal/project notes.
+- workspace-ai-todo: one assistant-owned todo list per workspace. Use this as the only AI work-tracking surface in the same work directory.
+
+Workspace AI Todo convention:
+- Preserve existing useful items and update the complete markdown document when changing it.
+- In active autonomy mode, use workspace-ai-todo proactively for multi-step coding, debugging, research, or follow-up work: update it when you outline or revise the work, complete a meaningful step, discover a new blocker, or leave unfinished work.
+- In active autonomy mode, also use user-note proactively when the user clearly asks you to remember, track, or add something to their todo/notes, or when they state a concrete future task/commitment that should be preserved.
+- If the target user note is unclear, list notes first and update the most relevant note or create a concise new one. Ask before writing only when intent is ambiguous.
+
+Every todo call must include action. To replace the workspace AI todo markdown, call todo with action="update", scope="workspace-ai-todo", and content="...".
+
+All documents are markdown and render live in the todo card and detached window.`,
+    category: 'builtin',
+    enabled: true,
+    autoExecute: true,
+    permissionGuard: 'safe',
+    executionMode: 'sequential',
+    renderKind: 'text',
+    parameters: TodoPlanParameters,
+
+    async execute(args, ctx) {
+      ctx.updateResult?.({
+        content: [{ type: 'text', text: `Running todo ${args.action}...` }],
+        details: { phase: 'running', action: args.action, scope: args.scope, id: args.id },
+      })
+
+      if (args.action === 'list') {
+        const snapshot = await adapters.readSnapshot({
+          sessionId: ctx.sessionId,
+          workingDirectory: ctx.workingDirectory,
+        })
+        const workspaceAiTodoText = snapshot.workspaceAiTodo
+          ? `Tasks: ${snapshot.workspaceAiTodo.totalTasks}\n\n${snapshot.workspaceAiTodo.content}`
+          : 'Not created yet. It will be created only after workspace-ai-todo is explicitly written with content.'
+        const parts = [
+          '# User Notes',
+          ...snapshot.userNotes.map(note => `## ${note.title}\nID: ${note.id}\nTasks: ${note.totalTasks}\n\n${note.content}`),
+          '# Workspace AI Todo',
+          workspaceAiTodoText,
+        ]
+        ctx.metadata({
+          title: 'Listed todo',
+          metadata: {
+            directory: snapshot.directory,
+            userNoteCount: snapshot.userNotes.length,
+          },
+        })
+        return {
+          title: 'Todo',
+          output: parts.join('\n\n---\n\n'),
+          metadata: {
+            directory: snapshot.directory,
+            userNoteCount: snapshot.userNotes.length,
+          },
+        }
+      }
+
+      if (args.action === 'create') {
+        const scope = args.scope || 'user-note'
+        if (scope === 'user-note') {
+          if (!args.title) throw new Error('title is required for create')
+          const document = await adapters.createUserNote(args.title, args.content)
+          ctx.metadata({ title: `Created ${document.title}`, metadata: { id: document.id } })
+          return {
+            title: `Created ${document.title}`,
+            output: `${document.title} created with id ${document.id}`,
+            metadata: { id: document.id, scope: document.scope },
+          }
+        }
+
+        if (args.content === undefined) throw new Error('content is required when creating workspace-ai-todo')
+        const document = await adapters.updateDocument({
+          scope,
+          content: args.content,
+          sessionId: ctx.sessionId,
+          workingDirectory: ctx.workingDirectory,
+        })
+        ctx.metadata({
+          title: `Created ${document.title}`,
+          metadata: { id: document.id, scope: document.scope },
+        })
+        return {
+          title: `Created ${document.title}`,
+          output: `${document.title} created`,
+          metadata: { id: document.id, scope: document.scope },
+        }
+      }
+
+      if (args.action === 'rename') {
+        if (!args.id) throw new Error('id is required for rename')
+        if (!args.title) throw new Error('title is required for rename')
+        const document = await adapters.renameUserNote(args.id, args.title)
+        ctx.metadata({ title: `Renamed ${document.title}`, metadata: { id: document.id } })
+        return {
+          title: `Renamed ${document.title}`,
+          output: `Renamed user note to ${document.title}`,
+          metadata: { id: document.id, scope: document.scope },
+        }
+      }
+
+      if (args.action === 'delete') {
+        if (!args.id) throw new Error('id is required for delete')
+        await adapters.deleteUserNote(args.id)
+        ctx.metadata({ title: 'Deleted user todo note', metadata: { id: args.id } })
+        return {
+          title: 'Deleted user todo note',
+          output: `Deleted user note ${args.id}`,
+          metadata: { id: args.id, scope: 'user-note' },
+        }
+      }
+
+      if (!args.scope) throw new Error('scope is required for update')
+      if (args.content === undefined) throw new Error('content is required for update')
+      const document = await adapters.updateDocument({
+        scope: args.scope,
+        id: args.id,
+        content: args.content,
+        sessionId: ctx.sessionId,
+        workingDirectory: ctx.workingDirectory,
+      })
+      ctx.metadata({
+        title: `Updated ${document.title}`,
+        metadata: { id: document.id, scope: document.scope },
+      })
+      return {
+        title: `Updated ${document.title}`,
+        output: `${document.title} updated`,
+        metadata: { id: document.id, scope: document.scope },
+      }
+    },
+
+    formatValidationError(error) {
+      const issues = error.issues.map((issue) => `- ${issue.path.join('.')}: ${issue.message}`)
+      return `Invalid todo parameters:\n${issues.join('\n')}\n\nUsage: todo({ action: "list" | "create" | "update" | "rename" | "delete", scope?: "user-note" | "workspace-ai-todo", id?: string, title?: string, content?: string }). action is always required; for workspace-ai-todo content replacement use action="update".`
+    },
+  })
+}
