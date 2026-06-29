@@ -36,6 +36,7 @@ import {
 } from './helpers/content-parts'
 import {
   linkStepsToToolCalls,
+  mergeToolCall,
   upsertMessageToolCall,
 } from './helpers/tool-calls'
 import { rawTextFromPromptParts } from '@shared/prompt-references'
@@ -213,6 +214,7 @@ export const useChatStore = defineStore('chat', () => {
   // Chunks can arrive before the assistant-created event during HMR/replay or
   // very tight event timing. Keep them until the target message exists.
   const pendingStreamChunks = new Map<string, Map<string, StreamChunk[]>>()
+  const pendingContinuationWaits = new Map<string, Map<string, { turnIndex?: number }>>()
 
   function normalizeComposerDraft(draft: Partial<ComposerDraft>): ComposerDraft {
     return {
@@ -297,6 +299,28 @@ export const useChatStore = defineStore('chat', () => {
     byMessage.delete(messageId)
     byMessage.delete('__active__')
     if (byMessage.size === 0) pendingStreamChunks.delete(sessionId)
+  }
+
+  function rememberPendingContinuationWait(sessionId: string, messageId: string, turnIndex?: number): void {
+    if (!messageId) return
+    let byMessage = pendingContinuationWaits.get(sessionId)
+    if (!byMessage) {
+      byMessage = new Map()
+      pendingContinuationWaits.set(sessionId, byMessage)
+    }
+    byMessage.set(messageId, { turnIndex })
+  }
+
+  function clearPendingContinuationWait(sessionId: string, messageId?: string): void {
+    if (!messageId) {
+      pendingContinuationWaits.delete(sessionId)
+      return
+    }
+
+    const byMessage = pendingContinuationWaits.get(sessionId)
+    if (!byMessage) return
+    byMessage.delete(messageId)
+    if (byMessage.size === 0) pendingContinuationWaits.delete(sessionId)
   }
 
   function resolveStreamingMessage(messages: ChatMessage[], messageId?: string): ChatMessage | undefined {
@@ -686,6 +710,74 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function cancelPendingPermissionsForAbort(
+    sessionId: string,
+    messages: ChatMessage[],
+    messageId?: string,
+  ): boolean {
+    pendingPermissionRequests.delete(sessionId)
+
+    let changed = false
+    const now = Date.now()
+    for (const message of messages) {
+      if (messageId && message.id !== messageId) continue
+
+      let toolCallChanged = false
+      for (const toolCall of message.toolCalls || []) {
+        if (!toolCall.requiresConfirmation) continue
+        toolCall.requiresConfirmation = false
+        toolCall.canRespond = false
+        toolCall.status = 'cancelled'
+        toolCall.endTime = toolCall.endTime ?? now
+        toolCall.error = toolCall.error || 'Permission request cancelled because the stream was stopped.'
+        toolCallChanged = true
+        changed = true
+      }
+
+      if (!message.steps) continue
+      if (toolCallChanged) {
+        linkStepsToToolCalls(message)
+        message.steps = [...message.steps]
+      }
+      let stepsChanged = false
+      for (const step of message.steps) {
+        const linkedToolCall = step.toolCallId
+          ? message.toolCalls?.find(tc => tc.id === step.toolCallId)
+          : step.toolCall
+        const shouldCancelStep =
+          step.status === 'awaiting-confirmation' ||
+          Boolean(step.toolCall?.requiresConfirmation) ||
+          Boolean(linkedToolCall?.requiresConfirmation)
+        if (!shouldCancelStep) continue
+
+        step.status = 'cancelled'
+        step.error = step.error || 'Permission request cancelled because the stream was stopped.'
+        if (linkedToolCall) {
+          linkedToolCall.requiresConfirmation = false
+          linkedToolCall.canRespond = false
+          linkedToolCall.status = 'cancelled'
+          linkedToolCall.endTime = linkedToolCall.endTime ?? now
+          linkedToolCall.error = linkedToolCall.error || step.error
+          step.toolCall = linkedToolCall
+        } else if (step.toolCall) {
+          step.toolCall.requiresConfirmation = false
+          step.toolCall.canRespond = false
+          step.toolCall.status = 'cancelled'
+          step.toolCall.endTime = step.toolCall.endTime ?? now
+          step.toolCall.error = step.toolCall.error || step.error
+        }
+        stepsChanged = true
+        changed = true
+      }
+      if (stepsChanged) {
+        linkStepsToToolCalls(message)
+        message.steps = [...message.steps]
+      }
+    }
+
+    return changed
+  }
+
   function setSessionPageState(
     sessionId: string,
     page: GetSessionMessagesPageResponse,
@@ -740,6 +832,69 @@ export const useChatStore = defineStore('chat', () => {
       sessionMessages.value.set(sessionId, messages)
     }
     return messages
+  }
+
+  function isActiveStepStatus(status: Step['status']): boolean {
+    return status === 'running' || status === 'awaiting-confirmation' || status === 'pending'
+  }
+
+  function isActiveToolCallStatus(status: ToolCall['status']): boolean {
+    return status === 'executing' ||
+      status === 'input-streaming' ||
+      status === 'pending' ||
+      status === 'queued'
+  }
+
+  function isStepInContinuationScope(step: Step, continuationTurnIndex?: number): boolean {
+    if (continuationTurnIndex === undefined) return true
+    if (step.turnIndex === undefined) return true
+    return step.turnIndex === continuationTurnIndex - 1
+  }
+
+  function hasActiveToolWork(message: ChatMessage, continuationTurnIndex?: number): boolean {
+    if (message.steps?.some(step =>
+      isActiveStepStatus(step.status) &&
+      isStepInContinuationScope(step, continuationTurnIndex),
+    )) {
+      return true
+    }
+
+    return Boolean(message.toolCalls?.some(toolCall => {
+      if (!isActiveToolCallStatus(toolCall.status)) return false
+      if (continuationTurnIndex === undefined) return true
+
+      const relatedSteps = message.steps?.filter(step => step.toolCallId === toolCall.id) ?? []
+      if (relatedSteps.length === 0) return true
+
+      return relatedSteps.some(step =>
+        isActiveStepStatus(step.status) &&
+        isStepInContinuationScope(step, continuationTurnIndex),
+      )
+    }))
+  }
+
+  function flushPendingContinuationWait(sessionId: string, messageId?: string): boolean {
+    const resolvedMsgId = resolveMessageId(sessionId, messageId)
+    if (!resolvedMsgId) return false
+
+    const pending = pendingContinuationWaits.get(sessionId)?.get(resolvedMsgId)
+    if (!pending) return false
+
+    const messages = getSessionMessagesRef(sessionId)
+    const message = messages.find(m => m.id === resolvedMsgId)
+    if (!message || message.isStreaming === false) {
+      clearPendingContinuationWait(sessionId, resolvedMsgId)
+      return false
+    }
+    if (hasActiveToolWork(message, pending.turnIndex)) return false
+
+    if (!message.contentParts) message.contentParts = []
+    pushWaiting(message.contentParts, pending.turnIndex)
+    message.contentParts = [...message.contentParts]
+    clearPendingContinuationWait(sessionId, resolvedMsgId)
+    setSessionMessages(sessionId, [...messages])
+    bumpScrollVersion(sessionId)
+    return true
   }
 
   // ============ Event Handlers (Called by IPC Hub) ============
@@ -820,8 +975,14 @@ export const useChatStore = defineStore('chat', () => {
         applyPendingPermissionRequests(sessionId, message.id)
       }
     } else if (chunk.type === 'continuation') {
-      pushWaiting(parts, chunk.turnIndex)
-      message.contentParts = [...parts]
+      if (hasActiveToolWork(message, chunk.turnIndex)) {
+        rememberPendingContinuationWait(sessionId, resolvedMsgId, chunk.turnIndex)
+        shouldBumpScroll = false
+      } else {
+        clearPendingContinuationWait(sessionId, resolvedMsgId)
+        pushWaiting(parts, chunk.turnIndex)
+        message.contentParts = [...parts]
+      }
     } else if (chunk.type === 'replace') {
       message.content = chunk.content
       message.contentParts = chunk.content ? [{ type: 'text', content: chunk.content }] : []
@@ -879,8 +1040,14 @@ export const useChatStore = defineStore('chat', () => {
         pushLoadingMemory(parts)
         message.contentParts = [...parts]
       } else if (newPart.type === 'waiting') {
-        pushWaiting(parts, newPart.turnIndex)
-        message.contentParts = [...parts]
+        if (hasActiveToolWork(message, newPart.turnIndex)) {
+          rememberPendingContinuationWait(sessionId, resolvedMsgId, newPart.turnIndex)
+          shouldBumpScroll = false
+        } else {
+          clearPendingContinuationWait(sessionId, resolvedMsgId)
+          pushWaiting(parts, newPart.turnIndex)
+          message.contentParts = [...parts]
+        }
       }
     }
 
@@ -922,6 +1089,9 @@ export const useChatStore = defineStore('chat', () => {
     const messages = getSessionMessagesRef(sessionId)
     const resolvedMsgId = resolveMessageId(sessionId, data.messageId)
     const message = resolveStreamingMessage(messages, resolvedMsgId)
+    const cancelledPermissions = data.aborted
+      ? cancelPendingPermissionsForAbort(sessionId, messages, resolvedMsgId || undefined)
+      : false
     if (message) {
       flushPendingStreamChunks(sessionId, message.id)
       flushToolInputDeltas(sessionId, message.id)
@@ -930,6 +1100,9 @@ export const useChatStore = defineStore('chat', () => {
     } else {
       clearPendingStreamChunks(sessionId, resolvedMsgId)
       clearToolInputDeltas(sessionId, resolvedMsgId)
+      if (cancelledPermissions) {
+        setSessionMessages(sessionId, [...messages])
+      }
     }
 
     // Fold the turn's usage into the session-level token stats so the
@@ -956,6 +1129,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionLoading.value.set(sessionId, false)
     activeStreams.value.delete(sessionId)
     clearPendingStreamChunks(sessionId)
+    clearPendingContinuationWait(sessionId)
     clearToolInputDeltas(sessionId)
     triggerRef(sessionGenerating)
     triggerRef(sessionLoading)
@@ -1034,6 +1208,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionLoading.value.set(sessionId, false)
     activeStreams.value.delete(sessionId)
     clearPendingStreamChunks(sessionId)
+    clearPendingContinuationWait(sessionId)
     clearToolInputDeltas(sessionId)
     triggerRef(sessionGenerating)
     triggerRef(sessionLoading)
@@ -1098,8 +1273,10 @@ export const useChatStore = defineStore('chat', () => {
     if (!message?.steps) return
     flushToolInputDeltas(sessionId, message.id, updates?.toolCallId)
 
-    // First try top-level steps
-    const stepIndex = message.steps.findIndex(s => s.id === stepId)
+    const updatedToolCallId = updates?.toolCallId ?? updates?.toolCall?.id
+    const stepIndex = message.steps.findIndex(s =>
+      s.id === stepId || (!!updatedToolCallId && s.toolCallId === updatedToolCallId),
+    )
     if (stepIndex !== -1) {
       message.steps[stepIndex] = { ...message.steps[stepIndex], ...updates }
       // Re-link in case the update payload included a fresh `toolCall` clone.
@@ -1133,8 +1310,52 @@ export const useChatStore = defineStore('chat', () => {
     bumpScrollVersion(sessionId)
   }
 
+  function patchMessageToolCall(sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>): void {
+    const messages = getSessionMessagesRef(sessionId)
+    const resolvedMsgId = resolveMessageId(sessionId, messageId)
+    const message = messages.find(m => m.id === resolvedMsgId)
+    if (!message) return
+
+    let toolCall = message.toolCalls?.find(tc => tc.id === toolCallId)
+    if (!toolCall) {
+      const stepToolCall = message.steps?.find(step => step.toolCallId === toolCallId)?.toolCall
+      if (stepToolCall) {
+        if (!message.toolCalls) message.toolCalls = []
+        message.toolCalls.push(stepToolCall)
+        toolCall = stepToolCall
+      }
+    }
+    if (!toolCall) return
+
+    mergeToolCall(toolCall, updates)
+    linkStepsToToolCalls(message)
+    message.toolCalls = [...(message.toolCalls || [])]
+    if (message.steps) message.steps = [...message.steps]
+    setSessionMessages(sessionId, [...messages])
+    bumpScrollVersion(sessionId)
+  }
+
+  function clearMessageTransientIndicators(sessionId: string, messageId: string): void {
+    const messages = getSessionMessagesRef(sessionId)
+    const resolvedMsgId = resolveMessageId(sessionId, messageId)
+    const message = messages.find(m => m.id === resolvedMsgId)
+    if (!message?.contentParts?.length) return
+
+    const nextParts = [...message.contentParts]
+    if (!removeTransientIndicators(nextParts)) return
+
+    message.contentParts = nextParts
+    setSessionMessages(sessionId, [...messages])
+    bumpScrollVersion(sessionId)
+  }
+
   function handleToolExecutionStart(data: ToolExecutionStartData) {
     patchStep(data.sessionId, data.messageId, data.stepId, data.toolCallId, { status: 'running' })
+    patchMessageToolCall(data.sessionId, data.messageId, data.toolCallId, {
+      status: 'executing',
+      startTime: Date.now(),
+    })
+    clearMessageTransientIndicators(data.sessionId, data.messageId)
   }
 
   function handleToolExecutionUpdate(data: ToolExecutionUpdateData) {
@@ -1146,11 +1367,19 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function handleToolExecutionEnd(data: ToolExecutionEndData) {
+    patchMessageToolCall(data.sessionId, data.messageId, data.toolCallId, {
+      status: data.isError ? 'failed' : 'completed',
+      endTime: Date.now(),
+      result: data.result as ToolCall['result'],
+      ...(data.isError ? { error: data.error } : {}),
+    })
     patchStep(data.sessionId, data.messageId, data.stepId, data.toolCallId, {
+      status: data.isError ? 'failed' : 'completed',
       partialResult: data.result,
       partialResultIsPartial: false,
       ...(data.isError ? { error: data.error } : {}),
     })
+    flushPendingContinuationWait(data.sessionId, data.messageId)
   }
 
   /**
@@ -1463,14 +1692,20 @@ export const useChatStore = defineStore('chat', () => {
             let updatedSteps = message.steps
             if (updatedSteps) {
               updatedSteps = updatedSteps.map(step => {
-                if (step.status === 'running') {
-                  if (step.toolCall) step.toolCall.status = 'cancelled'
+                if (step.status === 'running' || step.status === 'awaiting-confirmation') {
+                  if (step.toolCall) {
+                    step.toolCall.status = 'cancelled'
+                    step.toolCall.requiresConfirmation = false
+                    step.toolCall.canRespond = false
+                  }
                   return { ...step, status: 'cancelled' as const }
                 }
                 return step
               })
             }
-            messages[messageIndex] = { ...message, isStreaming: false, steps: updatedSteps }
+            message.steps = updatedSteps
+            cancelPendingPermissionsForAbort(sessionId, messages, currentMessageId)
+            messages[messageIndex] = { ...message, isStreaming: false }
             setSessionMessages(sessionId, [...messages])
           }
         }
@@ -1478,6 +1713,7 @@ export const useChatStore = defineStore('chat', () => {
         // Clear states
         sessionGenerating.value.set(sessionId, false)
         activeStreams.value.delete(sessionId)
+        clearPendingContinuationWait(sessionId, currentMessageId)
         triggerRef(sessionGenerating)
         triggerRef(activeStreams)
       }
@@ -1500,9 +1736,12 @@ export const useChatStore = defineStore('chat', () => {
       // waiting/loading indicator. This covers the case where a continuation's
       // early waiting was emitted on a turn message that then gets finalized
       // (e.g. when context compaction starts a fresh assistant message).
-      if (updates.isStreaming === false && merged.contentParts) {
-        const cleaned = [...merged.contentParts]
-        if (removeTransientIndicators(cleaned)) merged.contentParts = cleaned
+      if (updates.isStreaming === false) {
+        if (merged.contentParts) {
+          const cleaned = [...merged.contentParts]
+          if (removeTransientIndicators(cleaned)) merged.contentParts = cleaned
+        }
+        clearPendingContinuationWait(sessionId, messageId)
       }
       messages[messageIndex] = merged
       setSessionMessages(sessionId, [...messages])
@@ -1525,6 +1764,7 @@ export const useChatStore = defineStore('chat', () => {
   function clearSessionMessages(sessionId: string) {
     sessionMessages.value.set(sessionId, [])
     sessionSnapshots.delete(sessionId)
+    clearPendingContinuationWait(sessionId)
     triggerRef(sessionMessages)
   }
 

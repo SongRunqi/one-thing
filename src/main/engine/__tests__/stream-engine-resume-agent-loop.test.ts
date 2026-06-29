@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { WebContents } from 'electron'
-import type { ChatSession, ToolDefinition } from '../../../shared/ipc.js'
+import type { ChatMessage, ChatSession, ToolDefinition } from '../../../shared/ipc.js'
 import type { ResumeAfterConfirmCommand } from '../../../shared/events/session-commands.js'
 import { EventBus } from '../../events/event-bus.js'
 
@@ -78,11 +78,39 @@ vi.mock('../stream/agent-loop-executor.js', () => ({
   executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
 }))
 
+vi.mock('../stream-engine-runtime.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../stream-engine-runtime.js')>()
+  return {
+    ...actual,
+    createMainStreamEngineRuntime: () => {
+      const runtime = actual.createMainStreamEngineRuntime()
+      return {
+        ...runtime,
+        provider: {
+          ...runtime.provider,
+          getEffectiveConfig: mocks.getEffectiveProviderConfig,
+          resolveAuth: mocks.resolveProviderAuth,
+          isSupported: () => true,
+          requiresOAuth: () => false,
+        },
+        streams: {
+          ...runtime.streams,
+          executeAgentLoopStreamGeneration: mocks.executeAgentLoopStreamGeneration,
+        },
+      }
+    },
+  }
+})
+
 vi.mock('../prompt/index.js', () => ({
   buildPrompt: mocks.buildPrompt,
 }))
 
 vi.mock('../../ipc/skills.js', () => ({
+  getSkillsForSession: mocks.getSkillsForSession,
+}))
+
+vi.mock('../../skills/session-skills.js', () => ({
   getSkillsForSession: mocks.getSkillsForSession,
 }))
 
@@ -254,6 +282,36 @@ describe('StreamEngine resume-after-confirm agent-loop path', () => {
     expect(abortSubscription?.[0]).toBe('command:abort')
     expect(typeof abortSubscription?.[1]).toBe('function')
     expect(abortSubscription?.[2]).toBe('StreamEngine')
+  })
+
+  it('persists and emits steering user messages immediately', () => {
+    mocks.getSession.mockReturnValue(session())
+    const engine = new StreamEngine()
+    engine.setEventBus(mocks.eventBus as unknown as EventBus)
+
+    engine.steerMessage('s1', 'steer now', 'user')
+
+    expect(mocks.addMessage).toHaveBeenCalledWith('s1', expect.objectContaining({
+      role: 'user',
+      content: 'steer now',
+      source: 'user',
+    }))
+    const addedMessage = mocks.addMessage.mock.calls[0][1] as ChatMessage
+    expect(mocks.eventBus.emit).toHaveBeenCalledWith('s1', {
+      type: 'message:user-created',
+      message: addedMessage,
+    })
+
+    const queued = engine.getSteeringQueue('s1').drain()
+    expect(queued).toHaveLength(1)
+    expect(queued[0]).toMatchObject({
+      content: 'steer now',
+      source: 'user',
+      timestamp: addedMessage.timestamp,
+      id: addedMessage.id,
+      modelContent: 'steer now',
+      persisted: true,
+    })
   })
 
   it('aborts active streams and clears queued agent messages', () => {

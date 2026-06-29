@@ -92,7 +92,7 @@ describe('provider usage IPC helpers', () => {
   })
 
   it('reports provider env status without returning the API key value', async () => {
-    process.env.OPENAI_API_KEY = 'secret-env-key'
+    process.env.OPENAI_API_KEY = 'secret-env-key-1234'
 
     const response = await handleGetProviderEnvStatus({} as any, {
       providerId: 'openai',
@@ -104,12 +104,13 @@ describe('provider usage IPC helpers', () => {
         providerId: 'openai',
         detectedEnvVar: 'OPENAI_API_KEY',
         resolvedEnvVar: 'OPENAI_API_KEY',
+        keyPreview: 'secret••••1234',
       },
     })
     expect(response.status?.candidates).toContainEqual({
       name: 'OPENAI_API_KEY',
       isSet: true,
     })
-    expect(JSON.stringify(response)).not.toContain('secret-env-key')
+    expect(JSON.stringify(response)).not.toContain('secret-env-key-1234')
   })
 })

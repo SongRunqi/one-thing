@@ -1,4 +1,3 @@
-import { BrowserWindow, type WebContents } from 'electron'
 import { randomUUID } from 'crypto'
 import {
   IPC_CHANNELS,
@@ -19,8 +18,6 @@ import {
 import { getEventBus, getStreamChannel } from '../events/index.js'
 import type { StreamChunk } from '../../shared/events/index.js'
 import type { Unsubscribe } from '../events/types.js'
-import { splitSpeakableSentences } from '../../shared/voice/segmenter.js'
-import { getSpeakableTextFromDelta } from '../../shared/voice/tts-stream.js'
 import { getStreamEngineSafe } from '../engine/index.js'
 import { getCurrentSessionId } from '../stores/app-state.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
@@ -28,14 +25,33 @@ import { agentExists } from '../agents/index.js'
 import { updateSessionAgent } from '../stores/sessions.js'
 import { getVoiceInputConfigurationError, streamSynthesizeSpeech, transcribeUtterance } from './providers.js'
 import {
+  applyOnethingVoiceRuntimeError,
+  applyOnethingVoiceRuntimeMilestone,
+  applyOnethingVoiceRuntimeStatus,
+  applyOnethingVoiceWakeFailureFallback,
+  createOnethingVoiceLatencyMilestone,
+  getOnethingSpeakableTextFromDelta,
+  getOnethingTTSModelName,
+  isOnethingMissingCloudTTSConfiguration,
+  normalizeOnethingVoiceError,
+  splitOnethingSpeakableSentences,
+} from '@onething/runtime/voice'
+import {
+  broadcastElectronVoiceMessage,
+  getElectronWebContentsId,
+  sendElectronVoiceMessageToWindow,
+  type ElectronVoiceMessageWebContents,
+  type ElectronVoiceMessageWindow,
+} from '@onething/electron-host/voice/events'
+import {
   destroyVoiceRuntimeWindow,
   ensureVoiceRuntimeWindow,
   flushVoiceRuntimeCommands,
   isVoiceRuntimeReady,
   markVoiceRuntimeReady,
   sendVoiceRuntimeCommand,
-} from './runtime-window.js'
-import { updateVoiceTray } from './tray.js'
+} from '@onething/electron-host/voice/runtime-window'
+import { updateVoiceTray } from '@onething/electron-host/voice/tray'
 
 interface VoiceReplyPlaybackTurn {
   id: number
@@ -45,6 +61,9 @@ interface VoiceReplyPlaybackTurn {
   unsubscribeStream?: Unsubscribe
   unsubscribeEvents?: Unsubscribe
 }
+
+type VoiceWebContents = ElectronVoiceMessageWebContents
+type VoiceWindow = ElectronVoiceMessageWindow
 
 class VoiceService {
   private state: VoiceRuntimeState = {
@@ -79,7 +98,7 @@ class VoiceService {
     updateVoiceTray()
   }
 
-  attachMainWindow(window: BrowserWindow): void {
+  attachMainWindow(window: VoiceWindow): void {
     if (this.state.enabled) {
       ensureVoiceRuntimeWindow()
     }
@@ -154,7 +173,7 @@ class VoiceService {
         durationMs: request.durationMs,
       })
     } catch (error: any) {
-      const message = normalizeVoiceError(error, 'Voice transcription failed.')
+      const message = normalizeOnethingVoiceError(error, 'Voice transcription failed.')
       this.setError(message)
       return { success: false, error: message }
     }
@@ -207,7 +226,7 @@ class VoiceService {
       this.emit({ type: 'submitted', sessionId: request.sessionId, transcriptId, text })
       return { success: true, transcript: text, transcriptId }
     } catch (error: any) {
-      const message = normalizeVoiceError(error, 'Voice transcript submission failed.')
+      const message = normalizeOnethingVoiceError(error, 'Voice transcript submission failed.')
       this.setError(message)
       return { success: false, error: message }
     }
@@ -229,7 +248,7 @@ class VoiceService {
       this.emitMilestone('tts-request-start', {
         requestId,
         provider: settings.tts.provider,
-        model: getTTSModelName(settings),
+        model: getOnethingTTSModelName(settings),
       })
 
       if (settings.tts.provider === 'system-tts') {
@@ -255,7 +274,7 @@ class VoiceService {
               requestId,
               elapsedMs: Date.now() - startedAt,
               provider: settings.tts.provider,
-              model: getTTSModelName(settings),
+              model: getOnethingTTSModelName(settings),
             })
             sendVoiceRuntimeCommand({
               type: 'play-audio-stream-start',
@@ -278,7 +297,7 @@ class VoiceService {
                 requestId,
                 elapsedMs: Date.now() - startedAt,
                 provider: settings.tts.provider,
-                model: getTTSModelName(settings),
+                model: getOnethingTTSModelName(settings),
               })
             }
             sendVoiceRuntimeCommand({
@@ -294,7 +313,7 @@ class VoiceService {
             requestId,
             elapsedMs: Date.now() - startedAt,
             provider: settings.tts.provider,
-            model: getTTSModelName(settings),
+            model: getOnethingTTSModelName(settings),
           })
         }
       } catch (error: any) {
@@ -305,7 +324,7 @@ class VoiceService {
             error: error?.message || 'Voice synthesis stream failed.',
           })
         }
-        if (isMissingCloudTTSConfiguration(error)) {
+        if (isOnethingMissingCloudTTSConfiguration(error)) {
           this.speakWithSystemRuntime(text, requestId, settings)
           return { success: true, requestId, mimeType: 'text/plain' }
         }
@@ -313,7 +332,7 @@ class VoiceService {
       }
       return { success: true, requestId, mimeType: streamMimeType }
     } catch (error: any) {
-      const message = normalizeVoiceError(error, 'Voice synthesis failed.')
+      const message = normalizeOnethingVoiceError(error, 'Voice synthesis failed.')
       this.setError(message)
       return { success: false, error: message }
     }
@@ -331,7 +350,7 @@ class VoiceService {
     })
   }
 
-  handleRuntimeReady(sender: WebContents): void {
+  handleRuntimeReady(sender: VoiceWebContents): void {
     markVoiceRuntimeReady()
     this.state.runtimeReady = true
     this.emit({ type: 'runtime-ready' }, sender)
@@ -358,7 +377,7 @@ class VoiceService {
         this.emit(event)
         break
       case 'latency-milestone':
-        this.state.lastMilestone = event.milestone
+        this.state = applyOnethingVoiceRuntimeMilestone(this.state, event.milestone)
         this.emit(event)
         break
       case 'playback-start':
@@ -392,20 +411,21 @@ class VoiceService {
   }
 
   private setStatus(status: VoiceRuntimeStatus): void {
-    this.state = {
-      ...this.state,
+    this.state = applyOnethingVoiceRuntimeStatus(this.state, {
       status,
-      enabled: Boolean(getSettings().voice?.enabled),
+      voiceEnabled: Boolean(getSettings().voice?.enabled),
       runtimeReady: isVoiceRuntimeReady(),
-      updatedAt: Date.now(),
-      lastError: status === 'error' ? this.state.lastError : undefined,
-    }
+    })
     this.emit({ type: 'state', state: this.getState() })
   }
 
   private setError(error: string): void {
-    this.state.lastError = error
-    this.setStatus('error')
+    this.state = applyOnethingVoiceRuntimeError(this.state, {
+      error,
+      voiceEnabled: Boolean(getSettings().voice?.enabled),
+      runtimeReady: isVoiceRuntimeReady(),
+    })
+    this.emit({ type: 'state', state: this.getState() })
     this.emit({ type: 'error', error, recoverable: true })
   }
 
@@ -413,12 +433,8 @@ class VoiceService {
     name: VoiceLatencyMilestoneName,
     milestone: Omit<VoiceLatencyMilestone, 'name' | 'at'> = {},
   ): void {
-    const nextMilestone: VoiceLatencyMilestone = {
-      ...milestone,
-      name,
-      at: Date.now(),
-    }
-    this.state.lastMilestone = nextMilestone
+    const nextMilestone: VoiceLatencyMilestone = createOnethingVoiceLatencyMilestone(name, milestone)
+    this.state = applyOnethingVoiceRuntimeMilestone(this.state, nextMilestone)
     this.emit({ type: 'latency-milestone', milestone: nextMilestone })
   }
 
@@ -451,7 +467,7 @@ class VoiceService {
     if (chunk.type !== 'text-delta') return
     if (!getSettings().voice?.tts.autoSpeak) return
 
-    const speakText = getSpeakableTextFromDelta(chunk)
+    const speakText = getOnethingSpeakableTextFromDelta(chunk)
     if (!speakText) return
 
     turn.buffer += speakText
@@ -462,7 +478,7 @@ class VoiceService {
   private flushReplySpeech(turn: VoiceReplyPlaybackTurn, force: boolean): void {
     if (this.replyPlayback?.id !== turn.id || !turn.buffer) return
 
-    const result = splitSpeakableSentences(turn.buffer, {
+    const result = splitOnethingSpeakableSentences(turn.buffer, {
       force,
       lowLatency: !force,
       minSoftChars: 12,
@@ -524,113 +540,52 @@ class VoiceService {
   }
 
   private fallbackToMicButtonForWakeError(error: string): boolean {
-    if (!isWebSpeechWakeFailure(error)) return false
-
     const settings = getSettings()
-    const voice = settings.voice
-    if (!voice?.enabled || !voice.alwaysOn || !voice.wake.enabled) {
-      return false
-    }
-
-    const nextSettings: AppSettings = {
-      ...settings,
-      voice: {
-        ...voice,
-        alwaysOn: false,
-        wake: {
-          ...voice.wake,
-          enabled: false,
-        },
-      },
-    }
+    const fallback = applyOnethingVoiceWakeFailureFallback(settings, error)
+    if (!fallback.applied) return false
+    const nextSettings = fallback.settings
 
     saveSettings(nextSettings)
     sendVoiceRuntimeCommand({ type: 'stop', reason: 'wake-unavailable' })
-    BrowserWindow.getAllWindows().forEach(win => {
-      win.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, nextSettings)
+    broadcastElectronVoiceMessage({
+      channel: IPC_CHANNELS.SETTINGS_CHANGED,
+      payload: nextSettings,
     })
     updateVoiceTray()
     return true
   }
 
-  private emit(event: VoiceEvent, exceptSender?: WebContents): void {
+  private emit(event: VoiceEvent, exceptSender?: VoiceWebContents): void {
+    const exceptWebContentsId = getElectronWebContentsId(exceptSender)
     if (event.type !== 'state') {
-      BrowserWindow.getAllWindows().forEach(win => {
-        if (!win.isDestroyed() && win.webContents.id !== exceptSender?.id) {
-          win.webContents.send(IPC_CHANNELS.VOICE_EVENT, event)
-        }
+      broadcastElectronVoiceMessage({
+        channel: IPC_CHANNELS.VOICE_EVENT,
+        payload: event,
+        exceptWebContentsId,
       })
     }
 
     const stateEvent: VoiceEvent = { type: 'state', state: this.getState() }
-    BrowserWindow.getAllWindows().forEach(win => {
-      if (!win.isDestroyed() && win.webContents.id !== exceptSender?.id) {
-        win.webContents.send(IPC_CHANNELS.VOICE_EVENT, event.type === 'state' ? event : stateEvent)
-      }
+    broadcastElectronVoiceMessage({
+      channel: IPC_CHANNELS.VOICE_EVENT,
+      payload: event.type === 'state' ? event : stateEvent,
+      exceptWebContentsId,
     })
   }
 
-  private broadcastState(target?: BrowserWindow): void {
+  private broadcastState(target?: VoiceWindow): void {
     const event: VoiceEvent = { type: 'state', state: this.getState() }
-    if (target && !target.isDestroyed()) {
-      target.webContents.send(IPC_CHANNELS.VOICE_EVENT, event)
+    if (sendElectronVoiceMessageToWindow(target, IPC_CHANNELS.VOICE_EVENT, event)) {
       return
     }
-    BrowserWindow.getAllWindows().forEach(win => {
-      if (!win.isDestroyed()) win.webContents.send(IPC_CHANNELS.VOICE_EVENT, event)
+    broadcastElectronVoiceMessage({
+      channel: IPC_CHANNELS.VOICE_EVENT,
+      payload: event,
     })
   }
 }
 
 let service: VoiceService | null = null
-
-function isWebSpeechWakeFailure(error: string): boolean {
-  return error.includes('Browser speech wake is not supported in the desktop app')
-    || error.includes('Wake phrase needs the local wake engine setup first')
-    || error.includes('The local wake engine does not know')
-    || error.includes('Local wake engine failed')
-    || error.includes('Web Speech wake phrase listener needs Chromium speech service')
-    || error.includes('Wake phrase microphone permission was denied')
-    || error.includes('Wake phrase listener could not access a microphone')
-    || error.includes('Web Speech wake word listener needs Chromium speech service')
-    || error.includes('Wake word microphone permission was denied')
-    || error.includes('Wake word listener could not access a microphone')
-}
-
-function normalizeVoiceError(error: any, fallback: string): string {
-  const message = String(error?.message || error || fallback)
-  if (message.includes('OpenRouter transcription failed (401)') || message.includes('OpenRouter transcription failed (403)')) {
-    return 'OpenRouter rejected the API key. Check the key in Voice settings.'
-  }
-  if (message.includes('OpenAI transcription failed (401)') || message.includes('OpenAI transcription failed (403)')) {
-    return 'OpenAI rejected the API key selected in Advanced voice settings.'
-  }
-  if (message.includes('transcription returned an empty transcript')) {
-    return 'No speech was detected. Try the mic button again.'
-  }
-  if (message.includes('TimeoutError') || message.includes('aborted') || message.includes('timed out')) {
-    return 'Voice transcription timed out. Please try again.'
-  }
-  if (message.includes('getUserMedia') || message.includes('Permission denied') || message.includes('NotAllowedError')) {
-    return 'Microphone access was blocked. Allow microphone access and try again.'
-  }
-  return message
-}
-
-function isMissingCloudTTSConfiguration(error: any): boolean {
-  const message = String(error?.message || error || '')
-  return message.includes('OpenAI API key is required for voice TTS')
-    || message.includes('OpenRouter API key is required for voice TTS')
-    || message.includes('Qwen/CosyVoice base URL is required')
-    || message.includes('Qwen/CosyVoice API key is required')
-}
-
-function getTTSModelName(settings: VoiceSettings): string {
-  if (settings.tts.provider === 'openrouter-tts') return settings.tts.openrouter.model
-  if (settings.tts.provider === 'openai-tts') return settings.tts.openai.model
-  if (settings.tts.provider === 'qwen-tts') return settings.tts.qwen.model
-  return settings.tts.system.voice || 'system'
-}
 
 export function getVoiceService(): VoiceService {
   if (!service) service = new VoiceService()

@@ -19,11 +19,11 @@ import { GrepTool } from './grep.js'
 import { FindTool } from './find.js'
 import { LsTool } from './ls.js'
 import { SkillManageTool, SkillsListTool, SkillViewTool } from './skill.js'
-import { FartTool } from './fart.js'
 import { VariableTool } from './variable.js'
 import { TodoPlanTool } from './todo-plan.js'
-import { TimeTool } from './time.js'
+import { CalculatorTool } from './calculator.js'
 import { ProjectDirsTool } from '../../project-dirs/index.js'
+import { FartTool, TimeTool } from '@onething/runtime/tools'
 
 // Web search
 import { WebSearchTool } from './web-search/index.js'
@@ -44,6 +44,7 @@ const builtinTools = [
   VariableTool,
   TodoPlanTool,
   TimeTool,
+  CalculatorTool,
   ProjectDirsTool,
   FartTool,
   // Web tools

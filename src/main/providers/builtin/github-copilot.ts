@@ -5,10 +5,15 @@
  * Requires two-step token exchange: GitHub OAuth -> Copilot completion token.
  */
 
-import type { ProviderDefinition } from '../types.js'
 import type { ModelInfo } from '../../../shared/ipc.js'
 import { createRequiredAppFetch } from '../bound-fetch.js'
-import { toJsonObject, type JsonValue } from '../../../shared/json.js'
+import { toJsonObject } from '../../../shared/json.js'
+import {
+  detectCopilotModelCapabilities,
+  githubCopilotBuiltinProvider,
+  modelInfoFromCopilotEntry,
+  type OnethingCopilotModelCapabilities,
+} from '@onething/runtime/providers'
 
 // Cache for Copilot completion tokens
 interface CopilotToken {
@@ -27,19 +32,6 @@ interface CopilotModelsCache {
 let copilotModelsCache: CopilotModelsCache | null = null
 const MODELS_CACHE_TTL = 10 * 60 * 1000 // 10 minutes
 
-function modelInfoFromCopilotEntry(entry: JsonValue): ModelInfo | null {
-  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null
-  const id = entry.id
-  if (typeof id !== 'string' || !id) return null
-  const description = entry.description
-  return {
-    id,
-    name: id,
-    description: typeof description === 'string' ? description : getModelDescription(id),
-    type: 'chat',
-  }
-}
-
 /**
  * Exchange GitHub OAuth token for Copilot completion token
  */
@@ -51,7 +43,7 @@ async function getCopilotCompletionToken(githubAccessToken: string): Promise<str
   }
 
   // Request new Copilot token
-  const response = await createRequiredAppFetch()('https://api.github.com/copilot_internal/v2/token', {
+  const response = await createRequiredAppFetch({ policy: 'auth' })('https://api.github.com/copilot_internal/v2/token', {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${githubAccessToken}`,
@@ -97,7 +89,7 @@ export async function fetchCopilotModels(githubAccessToken: string): Promise<Mod
     const copilotToken = await getCopilotCompletionToken(githubAccessToken)
 
     // Fetch models from Copilot API
-    const response = await createRequiredAppFetch()('https://api.githubcopilot.com/models', {
+    const response = await createRequiredAppFetch({ policy: 'default' })('https://api.githubcopilot.com/models', {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${copilotToken}`,
@@ -137,85 +129,8 @@ export async function fetchCopilotModels(githubAccessToken: string): Promise<Mod
   }
 }
 
-/**
- * Get a friendly description for known Copilot models
- */
-function getModelDescription(modelId: string): string {
-  const descriptions: Record<string, string> = {
-    'gpt-4o': 'Most capable OpenAI model',
-    'gpt-4o-mini': 'Fast and affordable',
-    'gpt-4.1': 'Latest GPT-4 update',
-    'gpt-4-turbo': 'GPT-4 Turbo with vision',
-    'o1': 'Deep reasoning model',
-    'o1-mini': 'Reasoning, cost-effective',
-    'o1-preview': 'Reasoning preview',
-    'o3': 'Advanced reasoning',
-    'o3-mini': 'Advanced reasoning, fast',
-    'o4-mini': 'Latest reasoning, fast',
-    'claude-3.5-sonnet': 'Anthropic Claude 3.5 Sonnet',
-    'claude-3.7-sonnet': 'Anthropic Claude 3.7 Sonnet',
-    'claude-sonnet-4': 'Anthropic Claude Sonnet 4',
-    'gemini-1.5-pro': 'Google Gemini 1.5 Pro',
-    'gemini-2.0-flash': 'Google Gemini 2.0 Flash',
-    'gemini-2.0-flash-001': 'Google Gemini 2.0 Flash',
-  }
-  return descriptions[modelId] || 'GitHub Copilot model'
-}
-
-/**
- * Detect model capabilities based on model ID
- */
-export interface ModelCapabilities {
-  hasVision: boolean        // Can accept image input
-  hasImageGeneration: boolean // Can generate images
-  hasTools: boolean         // Supports function calling
-  hasReasoning: boolean     // Is a reasoning model (o1, o3, etc.)
-  contextLength: number     // Context window size
-}
-
-export function detectModelCapabilities(modelId: string): ModelCapabilities {
-  const id = modelId.toLowerCase()
-
-  // Vision models (can accept image input)
-  const visionModels = [
-    'gpt-4o', 'gpt-4-turbo', 'gpt-4-vision', 'gpt-4.1',
-    'claude-3', 'claude-3.5', 'claude-3.7', 'claude-sonnet-4', 'claude-opus',
-    'gemini-1.5', 'gemini-2', 'gemini-pro-vision',
-  ]
-  const hasVision = visionModels.some(v => id.includes(v.toLowerCase()))
-
-  // Image generation models
-  const imageGenModels = ['dall-e', 'dalle', 'gpt-image', 'imagen']
-  const hasImageGeneration = imageGenModels.some(v => id.includes(v.toLowerCase()))
-
-  // Tool/function calling support
-  const noToolsModels = ['o1-preview', 'o1-mini'] // Some o1 variants don't support tools
-  const hasTools = !noToolsModels.some(v => id.includes(v.toLowerCase())) &&
-                   !hasImageGeneration // Image gen models don't use tools
-
-  // Reasoning models
-  const reasoningIndicators = ['o1', 'o3', 'o4', 'deepseek-r1', 'reasoner']
-  const hasReasoning = reasoningIndicators.some(v => id.includes(v.toLowerCase()))
-
-  // Context length estimation based on model
-  let contextLength = 128000 // Default
-  if (id.includes('gpt-4o')) contextLength = 128000
-  else if (id.includes('gpt-4-turbo')) contextLength = 128000
-  else if (id.includes('gpt-4.1')) contextLength = 1000000 // 1M context
-  else if (id.includes('claude-3.5') || id.includes('claude-3.7')) contextLength = 200000
-  else if (id.includes('claude-sonnet-4') || id.includes('claude-opus')) contextLength = 200000
-  else if (id.includes('gemini-1.5-pro')) contextLength = 2000000 // 2M context
-  else if (id.includes('gemini-2')) contextLength = 1000000
-  else if (id.includes('o1') || id.includes('o3')) contextLength = 200000
-
-  return {
-    hasVision,
-    hasImageGeneration,
-    hasTools,
-    hasReasoning,
-    contextLength,
-  }
-}
+export type ModelCapabilities = OnethingCopilotModelCapabilities
+export const detectModelCapabilities = detectCopilotModelCapabilities
 
 /**
  * Clear the models cache (useful when token changes)
@@ -224,23 +139,4 @@ export function clearCopilotModelsCache(): void {
   copilotModelsCache = null
 }
 
-const githubCopilotProvider: ProviderDefinition = {
-  id: 'github-copilot',
-
-  info: {
-    id: 'github-copilot',
-    name: 'GitHub Copilot',
-    description: 'Use GitHub Copilot with your subscription via OAuth Device Flow',
-    defaultBaseUrl: 'https://api.individual.githubcopilot.com',
-    defaultModel: 'gpt-4o',
-    icon: 'github',
-    supportsCustomBaseUrl: false,
-    requiresApiKey: false,
-    requiresOAuth: true,
-    oauthFlow: 'device',
-    // Models: GitHub Copilot provides its own model list
-  },
-
-}
-
-export default githubCopilotProvider
+export default githubCopilotBuiltinProvider

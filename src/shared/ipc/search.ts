@@ -2,17 +2,19 @@
  * Search Everywhere — shared types
  */
 
-export const SEARCH_CATEGORIES = ['all', 'chats', 'messages', 'actions', 'files', 'daily', 'prompts'] as const
+export {
+  ONETHING_SEARCH_CATEGORIES as SEARCH_CATEGORIES,
+  isOnethingSearchCategory as isSearchCategory,
+} from '@onething/runtime/search/protocol'
+export type {
+  OnethingSearchCategory as SearchCategory,
+} from '@onething/runtime/search/protocol'
 
-export type SearchCategory = typeof SEARCH_CATEGORIES[number]
-
-export function isSearchCategory(value: string): value is SearchCategory {
-  return SEARCH_CATEGORIES.includes(value as SearchCategory)
-}
+import type { OnethingSearchCategory } from '@onething/runtime/search/protocol'
 
 export interface SearchRequest {
   query: string
-  category: SearchCategory
+  category: OnethingSearchCategory
   limit?: number
 }
 

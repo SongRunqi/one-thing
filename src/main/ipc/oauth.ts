@@ -5,7 +5,25 @@
  * behavior lives in src/main/auth/.
  */
 
-import { BrowserWindow, ipcMain, shell } from 'electron'
+import { openElectronExternal } from '@onething/electron-host/shell/operations'
+import {
+  broadcastElectronOAuthTokenExpired,
+  broadcastElectronOAuthTokenRefreshed,
+} from '@onething/electron-host/oauth/events'
+import {
+  registerElectronOAuthIpcHandlers,
+  type ElectronOAuthCallbackRequest,
+  type ElectronOAuthDevicePollRequest,
+  type ElectronOAuthProviderRequest,
+} from '@onething/electron-host/ipc/oauth'
+import {
+  completeOnethingOAuthCallbackForIpc,
+  getOnethingOAuthStatusForIpc,
+  logoutOnethingOAuthForIpc,
+  pollOnethingOAuthDeviceFlowForIpc,
+  refreshOnethingOAuthForIpc,
+  startOnethingOAuthForIpc,
+} from '@onething/runtime/auth'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type {
   OAuthCallbackRequest,
@@ -22,15 +40,18 @@ import type {
 import { authService } from '../auth/auth-service.js'
 
 function notifyTokenRefreshed(providerId: string): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(IPC_CHANNELS.OAUTH_TOKEN_REFRESHED, { providerId })
-  }
+  broadcastElectronOAuthTokenRefreshed({
+    channel: IPC_CHANNELS.OAUTH_TOKEN_REFRESHED,
+    providerId,
+  })
 }
 
 function notifyTokenExpired(providerId: string, error?: string): void {
-  for (const win of BrowserWindow.getAllWindows()) {
-    win.webContents.send(IPC_CHANNELS.OAUTH_TOKEN_EXPIRED, { providerId, error })
-  }
+  broadcastElectronOAuthTokenExpired({
+    channel: IPC_CHANNELS.OAUTH_TOKEN_EXPIRED,
+    providerId,
+    error,
+  })
 }
 
 let listenersRegistered = false
@@ -50,99 +71,70 @@ function registerAuthServiceListeners(): void {
 export function registerOAuthHandlers(): void {
   registerAuthServiceListeners()
 
-  ipcMain.handle(
-    IPC_CHANNELS.OAUTH_START,
-    async (_event, request: OAuthStartRequest): Promise<OAuthStartResponse> => {
-      try {
-        const response = await authService.start(request.providerId)
-        if (response.success) {
-          const url = response.authUrl || response.verificationUri
-          if (url) {
-            shell.openExternal(url)
-          }
-        }
-        return response
-      } catch (error) {
-        console.error('[OAuth] Start failed:', error)
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'OAuth start failed',
-        }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.OAUTH_CALLBACK,
-    async (_event, request: OAuthCallbackRequest): Promise<OAuthCallbackResponse> => {
-      return authService.completeManualCode(request.providerId, request.code, request.state)
-    }
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.OAUTH_DEVICE_POLL,
-    async (_event, request: OAuthDevicePollRequest): Promise<OAuthDevicePollResponse> => {
-      try {
-        return await authService.pollDeviceFlow(request.providerId, request.flowId || request.deviceCode)
-      } catch (error) {
-        console.error('[OAuth] Device poll failed:', error)
-        return {
-          success: false,
-          completed: false,
-          error: error instanceof Error ? error.message : 'Poll failed',
-        }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.OAUTH_REFRESH,
-    async (_event, request: { providerId: string }): Promise<{ success: boolean; error?: string }> => {
-      try {
-        await authService.refreshToken(request.providerId)
-        return { success: true }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Refresh failed'
-        console.error('[OAuth] Refresh failed:', error)
-        notifyTokenExpired(request.providerId, message)
-        return { success: false, error: message }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.OAUTH_STATUS,
-    async (_event, request: OAuthStatusRequest): Promise<OAuthStatusResponse> => {
-      try {
-        return await authService.getStatus(request.providerId)
-      } catch (error) {
-        console.error('[OAuth] Status check failed:', error)
-        return {
-          success: false,
-          providerId: request.providerId,
-          isLoggedIn: false,
-          isExpired: false,
-          error: error instanceof Error ? error.message : 'Status check failed',
-        }
-      }
-    }
-  )
-
-  ipcMain.handle(
-    IPC_CHANNELS.OAUTH_LOGOUT,
-    async (_event, request: OAuthLogoutRequest): Promise<OAuthLogoutResponse> => {
-      try {
-        await authService.deleteToken(request.providerId)
-        return { success: true }
-      } catch (error) {
-        console.error('[OAuth] Logout failed:', error)
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Logout failed',
-        }
-      }
-    }
-  )
+  registerElectronOAuthIpcHandlers({
+    channels: {
+      start: IPC_CHANNELS.OAUTH_START,
+      callback: IPC_CHANNELS.OAUTH_CALLBACK,
+      devicePoll: IPC_CHANNELS.OAUTH_DEVICE_POLL,
+      refresh: IPC_CHANNELS.OAUTH_REFRESH,
+      status: IPC_CHANNELS.OAUTH_STATUS,
+      logout: IPC_CHANNELS.OAUTH_LOGOUT,
+    },
+    start: async (request: ElectronOAuthProviderRequest): Promise<OAuthStartResponse> => {
+      const typedRequest = request as OAuthStartRequest
+      return startOnethingOAuthForIpc({
+        providerId: typedRequest.providerId,
+        start: providerId => authService.start(providerId),
+        openExternal: url => openElectronExternal(url).then(() => undefined),
+        logger: console,
+      })
+    },
+    callback: async (request: ElectronOAuthCallbackRequest): Promise<OAuthCallbackResponse> => {
+      const typedRequest = request as OAuthCallbackRequest
+      return completeOnethingOAuthCallbackForIpc({
+        providerId: typedRequest.providerId,
+        code: typedRequest.code,
+        state: typedRequest.state,
+        completeManualCode: (providerId, code, state) =>
+          authService.completeManualCode(providerId, code, state),
+        logger: console,
+      })
+    },
+    devicePoll: async (request: ElectronOAuthDevicePollRequest): Promise<OAuthDevicePollResponse> => {
+      const typedRequest = request as OAuthDevicePollRequest
+      return pollOnethingOAuthDeviceFlowForIpc({
+        providerId: typedRequest.providerId,
+        flowId: typedRequest.flowId,
+        deviceCode: typedRequest.deviceCode,
+        pollDeviceFlow: (providerId, flowId) => authService.pollDeviceFlow(providerId, flowId),
+        logger: console,
+      })
+    },
+    refresh: async (request: ElectronOAuthProviderRequest): Promise<{ success: boolean; error?: string }> => {
+      return refreshOnethingOAuthForIpc({
+        providerId: request.providerId,
+        refreshToken: providerId => authService.refreshToken(providerId),
+        notifyTokenExpired,
+        logger: console,
+      })
+    },
+    status: async (request: ElectronOAuthProviderRequest): Promise<OAuthStatusResponse> => {
+      const typedRequest = request as OAuthStatusRequest
+      return getOnethingOAuthStatusForIpc({
+        providerId: typedRequest.providerId,
+        getStatus: providerId => authService.getStatus(providerId),
+        logger: console,
+      })
+    },
+    logout: async (request: ElectronOAuthProviderRequest): Promise<OAuthLogoutResponse> => {
+      const typedRequest = request as OAuthLogoutRequest
+      return logoutOnethingOAuthForIpc({
+        providerId: typedRequest.providerId,
+        deleteToken: providerId => authService.deleteToken(providerId),
+        logger: console,
+      })
+    },
+  })
 }
 
 export function cleanupOAuth(): void {

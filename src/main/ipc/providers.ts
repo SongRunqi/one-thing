@@ -1,4 +1,13 @@
-import { ipcMain } from 'electron'
+import {
+  registerElectronProvidersIpcHandlers,
+  type ElectronProviderEnvStatusRequest,
+  type ElectronProviderUsageRequest,
+} from '@onething/electron-host/ipc/providers'
+import {
+  getOnethingProviderUsage,
+  inspectOnethingProviderEnvStatusForIpc,
+  listOnethingProvidersForIpc,
+} from '@onething/runtime/providers'
 import { AIProvider, IPC_CHANNELS } from '../../shared/ipc.js'
 import type {
   GetProviderEnvStatusRequest,
@@ -11,78 +20,64 @@ import { fetchCodexUsage } from '../providers/builtin/codex.js'
 import { getAvailableProviders } from '../providers/index.js'
 import { getProviderEnvStatus } from '../providers/env.js'
 
-function toUsageAccount(token: Awaited<ReturnType<typeof authService.refreshTokenIfNeeded>>): ProviderUsageResponse['account'] {
-  return {
-    id: token.accountId,
-    email: token.email,
-    planType: token.planType,
-    isFedramp: token.isFedrampAccount,
-  }
+function providerUsageRequest(
+  requestOrEvent: ProviderUsageRequest | unknown,
+  request?: ProviderUsageRequest,
+): ProviderUsageRequest {
+  return (request ?? requestOrEvent) as ProviderUsageRequest
+}
+
+function providerEnvStatusRequest(
+  requestOrEvent: GetProviderEnvStatusRequest | unknown,
+  request?: GetProviderEnvStatusRequest,
+): GetProviderEnvStatusRequest {
+  return (request ?? requestOrEvent) as GetProviderEnvStatusRequest
 }
 
 export async function handleGetProviderUsage(
-  _event: Electron.IpcMainInvokeEvent,
-  request: ProviderUsageRequest,
+  requestOrEvent: ProviderUsageRequest | unknown,
+  maybeRequest?: ProviderUsageRequest,
 ): Promise<ProviderUsageResponse> {
-  const providerId = request.providerId
-  if (providerId !== 'codex' && providerId !== AIProvider.Codex) {
-    return { success: true, providerId, unsupported: true }
-  }
-
-  try {
-    const token = await authService.refreshTokenIfNeeded(AIProvider.Codex)
-    const usage = await fetchCodexUsage(token)
-    return {
-      success: true,
-      providerId: AIProvider.Codex,
-      capturedAt: Date.now(),
-      account: toUsageAccount(token),
-      usage,
-    }
-  } catch (error: any) {
-    return {
-      success: false,
-      providerId: AIProvider.Codex,
-      error: error?.message || 'Failed to fetch provider usage',
-    }
-  }
+  const request = providerUsageRequest(requestOrEvent, maybeRequest)
+  return getOnethingProviderUsage({
+    providerId: request.providerId,
+    codexProviderIds: ['codex', AIProvider.Codex],
+    canonicalCodexProviderId: AIProvider.Codex,
+    refreshTokenIfNeeded: providerId => authService.refreshTokenIfNeeded(providerId),
+    fetchCodexUsage,
+  }) as Promise<ProviderUsageResponse>
 }
 
 export async function handleGetProviderEnvStatus(
-  _event: Electron.IpcMainInvokeEvent,
-  request: GetProviderEnvStatusRequest,
+  requestOrEvent: GetProviderEnvStatusRequest | unknown,
+  maybeRequest?: GetProviderEnvStatusRequest,
 ): Promise<GetProviderEnvStatusResponse> {
-  try {
-    return {
-      success: true,
-      status: getProviderEnvStatus(request.providerId),
-    }
-  } catch (error: any) {
-    return {
-      success: false,
-      error: error?.message || 'Failed to inspect provider environment variables',
-    }
-  }
+  const request = providerEnvStatusRequest(requestOrEvent, maybeRequest)
+  return inspectOnethingProviderEnvStatusForIpc({
+    providerId: request.providerId,
+    getProviderEnvStatus,
+    logger: console,
+  }) as Promise<GetProviderEnvStatusResponse>
 }
 
 export function registerProvidersHandlers() {
-  // Get all available providers
-  ipcMain.handle(IPC_CHANNELS.GET_PROVIDERS, async () => {
-    try {
-      const providers = getAvailableProviders()
-      return {
-        success: true,
-        providers,
-      }
-    } catch (error: any) {
-      console.error('Error getting providers:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to get providers',
-      }
-    }
+  registerElectronProvidersIpcHandlers({
+    channels: {
+      list: IPC_CHANNELS.GET_PROVIDERS,
+      usage: IPC_CHANNELS.GET_PROVIDER_USAGE,
+      envStatus: IPC_CHANNELS.GET_PROVIDER_ENV_STATUS,
+    },
+    listProviders: () => {
+      return listOnethingProvidersForIpc({
+        getAvailableProviders,
+        logger: console,
+      })
+    },
+    getUsage: (request: ElectronProviderUsageRequest) => {
+      return handleGetProviderUsage(request)
+    },
+    getEnvStatus: (request: ElectronProviderEnvStatusRequest) => {
+      return handleGetProviderEnvStatus(request)
+    },
   })
-
-  ipcMain.handle(IPC_CHANNELS.GET_PROVIDER_USAGE, handleGetProviderUsage)
-  ipcMain.handle(IPC_CHANNELS.GET_PROVIDER_ENV_STATUS, handleGetProviderEnvStatus)
 }

@@ -169,29 +169,41 @@ vi.mock('electron', () => ({
   nativeTheme: { shouldUseDarkColors: false },
 }))
 
-vi.mock('../stores/paths.js', () => ({
-  getWindowStatePath: vi.fn(() => '/tmp/window-state.json'),
-  getMediaIndexPath: vi.fn(() => '/tmp/media/index.json'),
-  getMediaImagesDir: vi.fn(() => '/tmp/media/images'),
-  getMediaFilesDir: vi.fn(() => '/tmp/media/files'),
-  readJsonFile: mocks.readJsonFile,
-  writeJsonFile: mocks.writeJsonFile,
-}))
+vi.mock('../stores/paths.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../stores/paths.js')>()
+  return {
+    ...actual,
+    getWindowStatePath: vi.fn(() => '/tmp/window-state.json'),
+    getMediaIndexPath: vi.fn(() => '/tmp/media/index.json'),
+    getMediaImagesDir: vi.fn(() => '/tmp/media/images'),
+    getMediaFilesDir: vi.fn(() => '/tmp/media/files'),
+    getPermissionsDir: vi.fn(() => '/tmp/permissions'),
+    getSessionsDir: vi.fn(() => '/tmp/sessions'),
+    getSessionPath: vi.fn((sessionId: string) => `/tmp/sessions/${sessionId}.json`),
+    getSessionDatabasePath: vi.fn(() => '/tmp/sessions.sqlite'),
+    readJsonFile: mocks.readJsonFile,
+    writeJsonFile: mocks.writeJsonFile,
+    writeJsonFileAsync: vi.fn(async () => undefined),
+    deleteJsonFile: vi.fn(() => undefined),
+  }
+})
 
 vi.mock('../stores/settings.js', () => ({
   getSettings: mocks.getSettings,
 }))
 
-vi.mock('../themes/index.js', () => ({
+vi.mock('@onething/runtime/themes', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@onething/runtime/themes')>()),
   getThemeBackgroundColor: vi.fn(() => '#111111'),
   initializeThemes: vi.fn(),
 }))
 
-vi.mock('../search/window-target.js', () => ({
-  isMainAppWindowUrl: mocks.isMainAppWindowUrl,
+vi.mock('@onething/electron-host/window/renderer-targets', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@onething/electron-host/window/renderer-targets')>()),
+  isElectronMainAppWindowUrl: mocks.isMainAppWindowUrl,
 }))
 
-vi.mock('../native/macos-panel.js', () => ({
+vi.mock('@onething/electron-host/window/macos-panel', () => ({
   configureNonActivatingPanel: mocks.configureNonActivatingPanel,
   showNonActivatingPanel: mocks.showNonActivatingPanel,
   hideNonActivatingPanel: mocks.hideNonActivatingPanel,

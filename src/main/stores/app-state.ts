@@ -1,52 +1,38 @@
-import { getAppStatePath, readJsonFile, writeJsonFile } from './paths.js'
+import { getAppStatePath } from './paths.js'
+import {
+  getOnethingCurrentSessionId,
+  getOnethingCurrentWorkspaceId,
+  readOnethingAppState,
+  setOnethingCurrentSessionId,
+  setOnethingCurrentWorkspaceId,
+  writeOnethingAppState,
+  type OnethingAppState,
+  type OnethingSerializedTab,
+} from '@onething/runtime/storage'
 
-export interface SerializedTab {
-  type: 'chat' | 'file' | 'workbench'
-  sessionId?: string
-  filePath?: string
-  initialFilePath?: string
-  activeFilePath?: string
-  workspaceRoot?: string
-  title?: string
-}
-
-export interface AppState {
-  currentSessionId: string
-  currentWorkspaceId: string | null  // null = default mode (no workspace)
-  openTabs?: SerializedTab[]
-  activeTabIndex?: number
-  sidebarCollapsed?: boolean
-}
-
-const defaultAppState: AppState = {
-  currentSessionId: '',
-  currentWorkspaceId: null,
-}
+export interface SerializedTab extends OnethingSerializedTab {}
+export interface AppState extends OnethingAppState {}
 
 export function getAppState(): AppState {
-  return readJsonFile(getAppStatePath(), defaultAppState)
+  return readOnethingAppState(getAppStatePath()) as AppState
 }
 
 export function saveAppState(state: AppState): void {
-  writeJsonFile(getAppStatePath(), state)
+  writeOnethingAppState(getAppStatePath(), state)
 }
 
 export function getCurrentSessionId(): string {
-  return getAppState().currentSessionId
+  return getOnethingCurrentSessionId(getAppStatePath())
 }
 
 export function setCurrentSessionId(sessionId: string): void {
-  const state = getAppState()
-  state.currentSessionId = sessionId
-  saveAppState(state)
+  setOnethingCurrentSessionId(getAppStatePath(), sessionId)
 }
 
 export function getCurrentWorkspaceId(): string | null {
-  return getAppState().currentWorkspaceId ?? null
+  return getOnethingCurrentWorkspaceId(getAppStatePath())
 }
 
 export function setCurrentWorkspaceId(workspaceId: string | null): void {
-  const state = getAppState()
-  state.currentWorkspaceId = workspaceId
-  saveAppState(state)
+  setOnethingCurrentWorkspaceId(getAppStatePath(), workspaceId)
 }

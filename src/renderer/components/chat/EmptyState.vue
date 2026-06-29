@@ -7,21 +7,18 @@
 
 <script setup lang="ts">
 /**
- * EmptyState - Dynamic Holiday Theme Loader
+ * EmptyState - Holiday Theme Loader
  *
  * Automatically switches between holiday themes based on the current date.
- * Uses async component loading for code splitting.
  */
 
-import { computed, defineAsyncComponent, type Component } from 'vue'
+import { computed, type Component } from 'vue'
+import DefaultTheme from './empty-state-themes/DefaultTheme.vue'
+import NewYearTheme from './empty-state-themes/NewYearTheme.vue'
 import { useHolidayTheme } from './empty-state-themes/useHolidayTheme'
 import type { HolidayId } from './empty-state-themes'
 
 const { currentHoliday } = useHolidayTheme()
-
-// Async-loaded for code splitting.
-const DefaultTheme = defineAsyncComponent(() => import('./empty-state-themes/DefaultTheme.vue'))
-const NewYearTheme = defineAsyncComponent(() => import('./empty-state-themes/NewYearTheme.vue'))
 
 // Only holidays with a dedicated visual are mapped. Any holiday without a
 // bespoke theme (and `default`) falls through to DefaultTheme below, so we

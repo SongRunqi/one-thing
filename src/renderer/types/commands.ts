@@ -25,6 +25,8 @@ export interface CommandResult {
   message?: string
   /** Error message if failed */
   error?: string
+  /** Session that the invoking UI should switch to after success */
+  switchToSessionId?: string
 }
 
 /**
@@ -39,6 +41,10 @@ export interface CommandDefinition {
   description: string
   /** Usage pattern, e.g., '/cd <path>' */
   usage: string
+  /** Optional label shown in the command picker */
+  displayLabel?: string
+  /** Optional text inserted when selected from the command picker */
+  insertText?: string
   /** Whether the composer should clear as soon as the command is submitted */
   consumesInputImmediately?: boolean
   /** Execute the command */

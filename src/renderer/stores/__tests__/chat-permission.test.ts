@@ -113,4 +113,51 @@ describe('chat store permission ordering', () => {
     const message = store.sessionMessages.get('s1')![0]
     expect(message.toolCalls![0].streamingArgs).toBe('{"path":"src/a.ts"')
   })
+
+  it('clears pending permission UI state when generation is stopped', async () => {
+    const abortStream = vi.fn(async () => ({ success: true }))
+    vi.stubGlobal('window', { electronAPI: { abortStream } })
+    const store = useChatStore()
+    store.handleAssistantCreated({
+      sessionId: 's1',
+      message: assistantMessage({
+        toolCalls: [{
+          id: 'tc1',
+          toolId: 'bash',
+          toolName: 'bash',
+          arguments: { command: 'rm -rf tmp' },
+          status: 'pending',
+          timestamp: 0,
+          permissionId: 'p1',
+          canRespond: true,
+          requiresConfirmation: true,
+        }],
+        steps: [{
+          id: 'step1',
+          type: 'tool-call',
+          title: 'Run command',
+          status: 'awaiting-confirmation',
+          timestamp: 0,
+          toolCallId: 'tc1',
+        }],
+      }),
+    })
+    store.handleStreamStarted({ sessionId: 's1', messageId: 'm1' })
+
+    await expect(store.stopGeneration('s1')).resolves.toBe(true)
+
+    const message = store.sessionMessages.get('s1')![0]
+    expect(message.toolCalls![0]).toMatchObject({
+      status: 'cancelled',
+      requiresConfirmation: false,
+      canRespond: false,
+    })
+    expect(message.steps![0]).toMatchObject({
+      status: 'cancelled',
+      toolCall: expect.objectContaining({
+        status: 'cancelled',
+        requiresConfirmation: false,
+      }),
+    })
+  })
 })

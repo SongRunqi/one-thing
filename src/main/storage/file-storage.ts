@@ -1,22 +1,9 @@
-/**
- * File-based Storage Implementation
- *
- * Simplified after memory system removal.
- */
-
-import type { IStorageProvider } from './interfaces.js'
+import { CoreFileStorageProvider } from '@onething/core/storage'
 import { ensureStoreDirs } from '../stores/paths.js'
 
-// ============================================
-// File Storage Provider
-// ============================================
-
-export class FileStorageProvider implements IStorageProvider {
+export class FileStorageProvider extends CoreFileStorageProvider {
   async initialize(): Promise<void> {
     ensureStoreDirs()
-  }
-
-  async close(): Promise<void> {
-    // File storage doesn't need cleanup
+    await super.initialize()
   }
 }

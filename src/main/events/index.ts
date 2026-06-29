@@ -10,14 +10,11 @@
  *   bus.emit(sessionId, { type: 'stream:start', assistantMessageId })
  */
 
-import type { WebContents } from 'electron'
 import { EventBus } from './event-bus.js'
 import { StreamChannel } from './stream-channel.js'
-import { IPCBridge } from '../bridges/ipc-bridge.js'
 
 let eventBus: EventBus | null = null
 let streamChannel: StreamChannel | null = null
-let ipcBridge: IPCBridge | null = null
 
 /**
  * Get the singleton EventBus instance.
@@ -56,38 +53,6 @@ export function initializeEventSystem(): void {
   console.log('[EventSystem] Initialized (EventBus + StreamChannel)')
 }
 
-// ── IPCBridge lifecycle ──────────────────────────
-
-/**
- * Initialize the IPCBridge for a BrowserWindow.
- * Called after createWindow() in app.on('ready') and app.on('activate').
- */
-export function initializeIPCBridge(sender: WebContents): void {
-  if (!ipcBridge) {
-    ipcBridge = new IPCBridge()
-  }
-  ipcBridge.bind(sender)
-  console.log('[EventSystem] IPCBridge initialized')
-}
-
-/**
- * Get the singleton IPCBridge instance.
- */
-export function getIPCBridge(): IPCBridge | null {
-  return ipcBridge
-}
-
-/**
- * Shut down the IPCBridge. Called when the BrowserWindow closes.
- */
-export function shutdownIPCBridge(): void {
-  if (ipcBridge) {
-    ipcBridge.unbind()
-    ipcBridge = null
-  }
-  console.log('[EventSystem] IPCBridge shut down')
-}
-
 /**
  * Shut down the event system. Called from app.on('before-quit').
  */
@@ -108,4 +73,3 @@ export function shutdownEventSystem(): void {
 export { EventBus } from './event-bus.js'
 export { StreamChannel } from './stream-channel.js'
 export { RingBuffer } from './ring-buffer.js'
-export { IPCBridge } from '../bridges/ipc-bridge.js'

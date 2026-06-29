@@ -49,12 +49,14 @@ import type {
   ShortcutSettings,
   EditorSettings,
   ChatSettings,
-  NetworkAddressFamily,
-  NetworkInterfaceOption,
-  NetworkInterfaceSettings,
-  GetNetworkInterfacesResponse,
   ProxySettings,
   NetworkSettings,
+  GatewayStatus,
+  GatewayGetStatusResponse,
+  GatewayStartRequest,
+  GatewayStartResponse,
+  GatewayStopResponse,
+  GatewayWechatLogoutResponse,
   VoiceEndpointingMode,
   VoiceEvent,
   VoiceLatencyMilestone,
@@ -332,12 +334,14 @@ export type {
   ShortcutSettings,
   EditorSettings,
   ChatSettings,
-  NetworkAddressFamily,
-  NetworkInterfaceOption,
-  NetworkInterfaceSettings,
-  GetNetworkInterfacesResponse,
   ProxySettings,
   NetworkSettings,
+  GatewayStatus,
+  GatewayGetStatusResponse,
+  GatewayStartRequest,
+  GatewayStartResponse,
+  GatewayStopResponse,
+  GatewayWechatLogoutResponse,
   VoiceEndpointingMode,
   VoiceEvent,
   VoiceLatencyMilestone,
@@ -543,6 +547,10 @@ export interface ElectronAPI {
   saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
   openSettingsWindow: () => Promise<{ success: boolean }>
   onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
+  gatewayGetStatus: () => Promise<GatewayGetStatusResponse>
+  gatewayStart: (request?: GatewayStartRequest) => Promise<GatewayStartResponse>
+  gatewayStop: () => Promise<GatewayStopResponse>
+  gatewayWechatLogout: () => Promise<GatewayWechatLogoutResponse>
   voiceGetState: () => Promise<VoiceGetStateResponse>
   voiceStart: (request?: VoiceStartRequest) => Promise<{ success: boolean; error?: string }>
   voiceStop: (request?: VoiceStopRequest) => Promise<{ success: boolean; error?: string }>
@@ -557,8 +565,7 @@ export interface ElectronAPI {
   voiceRuntimeEvent: (event: VoiceEvent) => Promise<{ success: boolean }>
   onVoiceRuntimeCommand: (callback: (command: VoiceRuntimeCommand) => void) => () => void
   getSystemTheme: () => Promise<{ success: boolean; theme?: 'light' | 'dark' }>
-  getNetworkInterfaces: () => Promise<GetNetworkInterfacesResponse>
-  testProxy: (proxy: ProxySettings, networkInterface?: NetworkInterfaceSettings) => Promise<{ success: boolean; error?: string; status?: number }>
+  testProxy: (proxy: ProxySettings) => Promise<{ success: boolean; error?: string; status?: number }>
   onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void
   // Agent methods
   listAgents: () => Promise<AgentsListResponse>

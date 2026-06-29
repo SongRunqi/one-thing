@@ -186,7 +186,7 @@ describe('buildToolStepView', () => {
     expect(second.streamingContent).toBe(first.streamingContent)
   })
 
-  it('truncates large streaming write previews to 160 rendered rows but keeps total additions', () => {
+  it('renders all rows for large streaming write previews without the 160 row cap', () => {
     const content = Array.from({ length: 220 }, (_, index) => `line ${index + 1}`).join('\n')
     const view = buildToolStepView(step({
       toolCall: tc({
@@ -196,10 +196,23 @@ describe('buildToolStepView', () => {
     }))
 
     expect(view.streamingContent?.additions).toBe(220)
-    expect(view.streamingContent?.isTruncated).toBe(true)
-    expect(view.streamingContent?.omittedLines).toBe(61)
-    expect(view.streamingDiffLines.some(line => line.content.includes('lines omitted'))).toBe(true)
-    expect(view.streamingDiffLines).toHaveLength(160)
+    expect(view.streamingContent?.isTruncated).toBe(false)
+    expect(view.streamingContent?.omittedLines).toBe(0)
+    expect(view.streamingDiffLines.some(line => line.content.includes('lines omitted'))).toBe(false)
+    expect(view.streamingDiffLines).toHaveLength(220)
+  })
+
+  it('keeps streaming write rendered rows aligned with additions for trailing newlines', () => {
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        status: 'input-streaming',
+        streamingArgs: JSON.stringify({ path: 'src/newline.ts', content: 'line 1\nline 2\n' }),
+      }),
+    }))
+
+    expect(view.streamingContent?.additions).toBe(2)
+    expect(view.streamingDiffLines).toHaveLength(2)
+    expect(view.streamingDiffLines.map(line => line.content)).toEqual(['line 1', 'line 2'])
   })
 
   it('renders streaming edit replacements as a real diff preview', () => {
@@ -272,7 +285,7 @@ describe('buildToolStepView', () => {
     ])
   })
 
-  it('truncates large streaming edit diffs to 160 rendered rows including the omission row', () => {
+  it('renders all rows for large streaming edit diffs without the 160 row cap', () => {
     const oldText = Array.from({ length: 180 }, (_, index) => `old ${index + 1}`).join('\n')
     const newText = Array.from({ length: 180 }, (_, index) => `new ${index + 1}`).join('\n')
     const view = buildToolStepView(step({
@@ -289,8 +302,8 @@ describe('buildToolStepView', () => {
 
     expect(view.streamingDiff?.additions).toBe(180)
     expect(view.streamingDiff?.deletions).toBe(180)
-    expect(view.streamingDiffLines).toHaveLength(160)
-    expect(view.streamingDiffLines.some(line => line.content.includes('diff lines omitted'))).toBe(true)
+    expect(view.streamingDiffLines).toHaveLength(360)
+    expect(view.streamingDiffLines.some(line => line.content.includes('diff lines omitted'))).toBe(false)
   })
 
   it('extracts filePath from step.result payload if args.path is missing', () => {

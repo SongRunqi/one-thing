@@ -7,8 +7,25 @@
  * - Cancel a tool execution
  */
 
-import { ipcMain } from "electron";
-import { IPC_CHANNELS, type ToolDefinition } from "../../shared/ipc.js";
+import {
+	registerElectronToolsIpcHandlers,
+	type ElectronBackgroundJobsListRequest,
+	type ElectronBackgroundJobsStopRequest,
+	type ElectronRefreshAsyncToolsRequest,
+	type ElectronToolCancelRequest,
+} from "@onething/electron-host/ipc/tools";
+import {
+	applyOnethingToolCallUpdateForIpc,
+	cancelOnethingToolForIpc,
+	executeOnethingToolWithSessionContextForIpc,
+	listOnethingBackgroundJobsForIpc,
+	listOnethingSettingsToolsForIpc,
+	type OnethingToolCallStateLike,
+	refreshOnethingAsyncToolsForIpc,
+	stopOnethingBackgroundJobForIpc,
+} from "@onething/runtime/tools";
+import { IPC_CHANNELS } from "../../shared/ipc.js";
+import type { JsonObject } from "../../shared/json.js";
 import {
 	getAllToolsAsync,
 	executeTool,
@@ -18,7 +35,6 @@ import {
 	initializeAsyncTools,
 } from "../tools/index.js";
 import { getMCPRouterToolDefinition } from "../mcp/index.js";
-import type { ToolExecutionContext } from "../tools/index.js";
 import {
 	listBackgroundJobs,
 	stopBackgroundJob,
@@ -34,227 +50,97 @@ export function registerToolHandlers() {
 		initializeToolRegistry();
 	}
 
-	// Get settings-visible tools. Uses async version to include tools with
-	// dynamic descriptions, plus the MCP router tool when MCP functions exist.
-	ipcMain.handle(IPC_CHANNELS.GET_TOOLS, async () => {
-		try {
-			// Set init context for async tools
-			// Use the first session's working directory, or current directory if no sessions
-			const sessionsList = store.getSessionsList();
-			const firstSession =
-				sessionsList.length > 0
-					? store.getSession(sessionsList[0].id)
-					: undefined;
-			const workingDirectory = firstSession?.workingDirectory ?? process.cwd();
-			const workingDirectoryRoots = firstSession?.workingDirectoryRoots ?? [];
-
-			setInitContext({
-				workingDirectory,
-				workingDirectoryRoots,
-			} as any);
-
-			// Get all tools (static + async) and filter out legacy per-MCP-tool IDs.
-			const allTools = await getAllToolsAsync();
-			const builtinTools: ToolDefinition[] = allTools
-				.filter((t) => !t.id.startsWith("mcp:"))
-				.map((t) => ({
-					...t,
-					source: t.id.startsWith("plugin:") ? "plugin" as const : "builtin" as const,
-				}));
-			const mcpRouterTool = getMCPRouterToolDefinition();
-			if (mcpRouterTool && !builtinTools.some((tool) => tool.id === mcpRouterTool.id)) {
-				builtinTools.push({
-					...mcpRouterTool,
-					source: "mcp" as const,
-				});
-			}
-
-			return {
-				success: true,
-				tools: builtinTools,
+	registerElectronToolsIpcHandlers({
+		channels: {
+			getTools: IPC_CHANNELS.GET_TOOLS,
+			executeTool: IPC_CHANNELS.EXECUTE_TOOL,
+			cancelTool: IPC_CHANNELS.CANCEL_TOOL,
+			backgroundJobsList: IPC_CHANNELS.BACKGROUND_JOBS_LIST,
+			backgroundJobsStop: IPC_CHANNELS.BACKGROUND_JOBS_STOP,
+			refreshAsyncTools: IPC_CHANNELS.REFRESH_ASYNC_TOOLS,
+			updateToolCall: IPC_CHANNELS.UPDATE_TOOL_CALL,
+		},
+		getTools: async () => {
+			return listOnethingSettingsToolsForIpc({
+				getSessionsList: () => store.getSessionsList(),
+				getSession: (sessionId) => store.getSession(sessionId),
+				getAllToolsAsync,
+				getMCPRouterToolDefinition,
+				setInitContext: (context) =>
+					setInitContext(context as Parameters<typeof setInitContext>[0]),
+				cwd: () => process.cwd(),
+				logger: console,
+			});
+		},
+		executeTool: async (request: unknown) => {
+			const { toolId, arguments: args, messageId, sessionId } = request as {
+				toolId: string
+				arguments: JsonObject
+				messageId: string
+				sessionId: string
 			};
-		} catch (error: any) {
-			console.error("[Tools IPC] Error getting tools:", error);
-			return {
-				success: false,
-				error: error.message || "Failed to get tools",
-			};
-		}
-	});
-
-	// Execute a tool
-	ipcMain.handle(IPC_CHANNELS.EXECUTE_TOOL, async (_event, request) => {
-		try {
-			const { toolId, arguments: args, messageId, sessionId } = request;
-
-			// Get session's workingDirectory for sandbox boundary
-			const session = store.getSession(sessionId);
-			const workingDirectory = session?.workingDirectory;
-			const workingDirectoryRoots = session?.workingDirectoryRoots;
-
-			const context: ToolExecutionContext = {
+			return executeOnethingToolWithSessionContextForIpc({
+				toolId,
+				args,
 				sessionId,
 				messageId,
-				workingDirectory,
-				workingDirectoryRoots,
-			};
-
-			const result = await executeTool(toolId, args, context);
-
-			return {
-				success: result.success,
-				result: result.data,
-				error: result.error,
-			};
-		} catch (error: any) {
-			console.error("[Tools IPC] Error executing tool:", error);
-			return {
-				success: false,
-				error: error.message || "Failed to execute tool",
-			};
-		}
-	});
-
-	// Cancel a tool execution (placeholder for future implementation)
-	ipcMain.handle(IPC_CHANNELS.CANCEL_TOOL, async (_event, { toolCallId }) => {
-		// TODO: Implement tool cancellation if needed
-		console.log("[Tools IPC] Cancel tool requested:", toolCallId);
-		return {
-			success: true,
-		};
-	});
-
-	ipcMain.handle(IPC_CHANNELS.BACKGROUND_JOBS_LIST, async (_event, { includeInactive } = {}) => {
-		try {
-			return { success: true, jobs: listBackgroundJobs({ includeInactive }) };
-		} catch (error: any) {
-			console.error("[Tools IPC] Error listing background jobs:", error);
-			return {
-				success: false,
-				error: error.message || "Failed to list background jobs",
-			};
-		}
-	});
-
-	ipcMain.handle(
-		IPC_CHANNELS.BACKGROUND_JOBS_STOP,
-		async (_event, { jobId }) => {
-			try {
-				return { success: stopBackgroundJob(jobId) };
-			} catch (error: any) {
-				console.error("[Tools IPC] Error stopping background job:", error);
-				return {
-					success: false,
-					error: error.message || "Failed to stop background job",
-				};
-			}
-		},
-	);
-
-	// Refresh async tools (re-initialize with new context)
-	// Used to update the tool list when context changes
-	ipcMain.handle(
-		IPC_CHANNELS.REFRESH_ASYNC_TOOLS,
-		async (_event, { workingDirectory }) => {
-			try {
-				console.log(
-					"[Tools IPC] Refreshing async tools, workingDirectory:",
-					workingDirectory,
-				);
-				// Reset init context to invalidate all async tool caches
-				setInitContext({ workingDirectory } as any);
-				// Re-initialize all async tools
-				await initializeAsyncTools();
-				return { success: true };
-			} catch (error: any) {
-				console.error("[Tools IPC] Error refreshing async tools:", error);
-				return {
-					success: false,
-					error: error.message || "Failed to refresh async tools",
-				};
-			}
-		},
-	);
-
-	// Update a tool call (status, timing, result)
-	ipcMain.handle(IPC_CHANNELS.UPDATE_TOOL_CALL, async (_event, request) => {
-		try {
-			const { sessionId, messageId, toolCallId, updates } = request;
-
-			// Get current session and find message
-			const session = store.getSession(sessionId);
-			if (!session) {
-				return { success: false, error: "Session not found" };
-			}
-
-			const message = session.messages.find((m) => m.id === messageId);
-			if (!message || !message.toolCalls) {
-				return { success: false, error: "Message or tool calls not found" };
-			}
-
-			// Find and update the tool call
-			const toolCalls = message.toolCalls.map((tc) => {
-				if (tc.id === toolCallId) {
-					return { ...tc, ...updates };
-				}
-				return tc;
+				getSession: (id) => store.getSession(id),
+				executeTool: (id, toolArgs, context) =>
+					executeTool(
+						id,
+						toolArgs,
+						context as Parameters<typeof executeTool>[2],
+					),
+				logger: console,
 			});
-
-			// Save tool calls to store
-			store.updateMessageToolCalls(sessionId, messageId, toolCalls);
-
-			// Also update the corresponding step if it exists
-			if (message.steps) {
-				const step = message.steps.find((s) => s.toolCallId === toolCallId);
-				if (step) {
-					// Map toolCall status to step status
-					let stepStatus:
-						| "pending"
-						| "running"
-						| "completed"
-						| "failed"
-						| "awaiting-confirmation"
-						| "cancelled" = step.status;
-					if (updates.status === "executing") {
-						stepStatus = "running";
-					} else if (updates.status === "completed") {
-						stepStatus = "completed";
-					} else if (updates.status === "failed") {
-						stepStatus = "failed";
-					} else if (updates.status === "cancelled") {
-						stepStatus = "cancelled";
-					} else if (
-						updates.status === "pending" &&
-						updates.requiresConfirmation
-					) {
-						stepStatus = "awaiting-confirmation";
-					}
-
-					// Update step
-					store.updateMessageStep(sessionId, messageId, step.id, {
-						status: stepStatus,
-						result:
-							typeof updates.result === "string"
-								? updates.result
-								: updates.result
-									? JSON.stringify(updates.result)
-									: undefined,
-						error: updates.error,
-						rejected: updates.rejected,
-						rejectionReason: updates.rejectionReason,
-						toolCall: { ...step.toolCall, ...updates } as any,
-					});
-				}
-			}
-
-			return { success: true };
-		} catch (error: any) {
-			console.error("[Tools IPC] Error updating tool call:", error);
-			return {
-				success: false,
-				error: error.message || "Failed to update tool call",
+		},
+		cancelTool: async ({ toolCallId }: ElectronToolCancelRequest) => {
+			return cancelOnethingToolForIpc({ toolCallId, logger: console });
+		},
+		backgroundJobsList: async ({ includeInactive }: ElectronBackgroundJobsListRequest = {}) => {
+			return listOnethingBackgroundJobsForIpc({ includeInactive, listJobs: listBackgroundJobs });
+		},
+		backgroundJobsStop: async ({ jobId }: ElectronBackgroundJobsStopRequest) => {
+			return stopOnethingBackgroundJobForIpc({ jobId, stopJob: stopBackgroundJob });
+		},
+		refreshAsyncTools: async ({ workingDirectory }: ElectronRefreshAsyncToolsRequest) => {
+			return refreshOnethingAsyncToolsForIpc({
+				workingDirectory,
+				setInitContext: (context) =>
+					setInitContext(context as Parameters<typeof setInitContext>[0]),
+				initializeAsyncTools,
+				logger: console,
+			});
+		},
+		updateToolCall: async (request: unknown) => {
+			const { sessionId, messageId, toolCallId, updates } = request as {
+				sessionId: string
+				messageId: string
+				toolCallId: string
+				updates: Partial<OnethingToolCallStateLike>
 			};
-		}
+			return applyOnethingToolCallUpdateForIpc({
+				sessionId,
+				messageId,
+				toolCallId,
+				updates,
+				getSession: (id) => store.getSession(id),
+				updateMessageToolCalls: (id, targetMessageId, toolCalls) =>
+					store.updateMessageToolCalls(
+						id,
+						targetMessageId,
+						toolCalls as Parameters<typeof store.updateMessageToolCalls>[2],
+					),
+				updateMessageStep: (id, targetMessageId, stepId, stepUpdates) =>
+					store.updateMessageStep(
+						id,
+						targetMessageId,
+						stepId,
+						stepUpdates as Parameters<typeof store.updateMessageStep>[3],
+					),
+				logger: console,
+			});
+		},
 	});
 
 	console.log("[Tools IPC] Handlers registered");

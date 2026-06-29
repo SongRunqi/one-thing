@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { isAgentLoopPauseForConfirmationError } from '../errors.js'
-import { runAgentLoop } from '../runner.js'
+import { isAgentLoopPauseForConfirmationError, runAgentLoop } from '@onething/core/agent-loop'
 import type {
   AgentMessage,
   AgentMessageContent,
@@ -9,7 +8,7 @@ import type {
   AgentToolChoice,
   AgentTurn,
   AgentTurnRequest,
-} from '../types.js'
+} from '@onething/core/agent-loop'
 
 type MessageSnapshot = Array<{
   role: AgentMessage['role']

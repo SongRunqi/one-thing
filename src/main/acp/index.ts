@@ -1,5 +1,4 @@
-export { ACPManager } from './manager.js'
-export { ACPClient } from './client.js'
+export { ACPClient, ACPManager } from '@onething/runtime/acp'
 export type {
   ACPAgentConfig,
   ACPAgentState,
@@ -8,5 +7,4 @@ export type {
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
   ACPSettings,
-} from './types.js'
-
+} from '@onething/runtime/acp'

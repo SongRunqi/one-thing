@@ -7,6 +7,7 @@ import { AIProvider } from '../ipc/providers.js'
 import { DEFAULT_AGENT_ID } from '../ipc/agents.js'
 import type {
   AppSettings,
+  ChannelSettings,
   GeneralSettings,
   ChatSettings,
   EditorSettings,
@@ -202,7 +203,8 @@ export const DEFAULT_PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
   },
   [AIProvider.Zhipu]: {
     apiKey: '',
-    model: 'glm-4-flash',
+    zhipuApiMode: 'standard',
+    model: 'glm-5.2',
     selectedModels: [],
     enabled: false,
   },
@@ -414,12 +416,6 @@ export const DEFAULT_ACP_SETTINGS: ACPSettings = {
 }
 
 export const DEFAULT_NETWORK_SETTINGS: NetworkSettings = {
-  networkInterface: {
-    enabled: false,
-    address: '',
-    id: '',
-    name: '',
-  },
   proxy: {
     enabled: false,
     url: '',
@@ -499,6 +495,12 @@ export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   },
 }
 
+export const DEFAULT_CHANNEL_SETTINGS: ChannelSettings = {
+  wechat: {
+    enabled: false,
+  },
+}
+
 // ============================================================================
 // Complete Default Settings Factory
 // ============================================================================
@@ -516,6 +518,7 @@ export function createDefaultSettings(): AppSettings {
     tools: JSON.parse(JSON.stringify(DEFAULT_TOOL_SETTINGS)),
     voice: JSON.parse(JSON.stringify(DEFAULT_VOICE_SETTINGS)),
     network: JSON.parse(JSON.stringify(DEFAULT_NETWORK_SETTINGS)),
+    channels: JSON.parse(JSON.stringify(DEFAULT_CHANNEL_SETTINGS)),
     acp: JSON.parse(JSON.stringify(DEFAULT_ACP_SETTINGS)),
   }
 }
@@ -591,17 +594,13 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     },
     network: {
       ...defaults.network!,
-      ...settings.network,
-      networkInterface: {
-        ...defaults.network!.networkInterface,
-        ...settings.network?.networkInterface,
-      },
       proxy: {
         ...defaults.network!.proxy,
         ...settings.network?.proxy,
       },
     },
     voice: normalizeVoiceSettings(settings.voice),
+    channels: normalizeChannelSettings(settings.channels),
     mcp: settings.mcp,
     acp: normalizeACPSettings(settings.acp),
     skills: settings.skills,
@@ -615,6 +614,16 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
   }
 
   return merged as AppSettings
+}
+
+function normalizeChannelSettings(settings?: Partial<ChannelSettings>): ChannelSettings {
+  return {
+    wechat: {
+      ...DEFAULT_CHANNEL_SETTINGS.wechat,
+      ...settings?.wechat,
+      enabled: settings?.wechat?.enabled ?? DEFAULT_CHANNEL_SETTINGS.wechat.enabled,
+    },
+  }
 }
 
 export function normalizeACPSettings(settings?: ACPSettings): ACPSettings {

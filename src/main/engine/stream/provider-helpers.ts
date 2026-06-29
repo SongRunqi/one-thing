@@ -5,122 +5,38 @@
 
 import * as store from '../../store.js'
 import type { AppSettings, ProviderConfig, CustomProviderConfig } from '../../../shared/ipc.js'
-import type { JsonObject, JsonValue } from '../../../shared/json.js'
-import { toJsonObject } from '../../../shared/json.js'
 import { requiresOAuth } from '../../providers/index.js'
 import { oauthManager } from '../../providers/auth/oauth-manager.js'
 import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
 import { resolveProviderApiKey } from '../../providers/env.js'
+import {
+  extractOnethingProviderErrorDetails,
+  getEffectiveOnethingProviderConfig,
+  getOnethingApiKeyForProvider,
+  getOnethingCredentialsError,
+  getOnethingCustomProviderConfig,
+  getOnethingProviderApiType,
+  getOnethingProviderConfig,
+  resolveOnethingProviderAuth,
+  resolveOnethingProviderConfigForChat,
+  type OnethingProviderErrorDetails,
+} from '@onething/runtime/providers'
 
 /**
  * Extract detailed error information from API responses
  */
-export interface ProviderErrorDetails {
-  message?: string
-  stack?: string
-  cause?: ProviderErrorDetails
-  responseBody?: string
-  data?: ProviderErrorData | string
-}
-
-interface ProviderErrorData extends JsonObject {
-  message?: string
-  type?: string
-  code?: string | number
-  statusCode?: string | number
-  responseBody?: string
-  requestBodyValues?: JsonValue
-  responseHeaders?: JsonValue
-  error?: ProviderNestedError | string
-}
-
-interface ProviderNestedError extends JsonObject {
-  message?: string
-  type?: string
-  code?: string | number
-}
+export type ProviderErrorDetails = OnethingProviderErrorDetails
 
 export function extractErrorDetails(error: ProviderErrorDetails | undefined): string | undefined {
-  if (!error) return undefined
-
-  const data = typeof error.data === 'object' && error.data !== null ? error.data : undefined
-  const bodyDetails = extractResponseBodyDetails(error.responseBody) ||
-    extractResponseBodyDetails(data?.responseBody)
-  if (bodyDetails) return bodyDetails
-
-  // Provider runtimes may wrap errors with additional context.
-  if (error.cause) {
-    return extractErrorDetails(error.cause)
-  }
-
-  // For API errors with response data
-  if (error.data) {
-    if (typeof error.data === 'string') return error.data
-    const data = error.data
-
-    // OpenAI error format: { error: { message: "...", type: "...", code: "..." } }
-    if (typeof data.error === 'object' && data.error?.message) {
-      const err = data.error
-      let details = err.message
-      if (err.type) details += ` (type: ${err.type})`
-      if (err.code) details += ` (code: ${err.code})`
-      return details
-    }
-
-    // Claude/Anthropic error format
-    if (data.type === 'error' && typeof data.error === 'object') {
-      const err = data.error
-      return `${err.type}: ${err.message}`
-    }
-
-    if (typeof data.message === 'string') {
-      return data.message
-    }
-
-    if (data.responseBody) {
-      const details = extractResponseBodyDetails(data.responseBody)
-      if (details) return details
-    }
-
-    // Avoid surfacing full provider request snapshots in the UI/log payload.
-    if (data.requestBodyValues || data.responseHeaders || data.statusCode) {
-      return data.message || `Provider API request failed${data.statusCode ? ` (${data.statusCode})` : ''}`
-    }
-
-    try {
-      return JSON.stringify(data, null, 2)
-    } catch {
-      return undefined
-    }
-  }
-
-  // Return message or stack trace
-  return error.message || error.stack
-}
-
-function extractResponseBodyDetails(body: string | undefined): string | undefined {
-  if (typeof body !== 'string' || !body.trim()) return undefined
-  try {
-    const parsed = toJsonObject(JSON.parse(body) as JsonValue)
-    const error = parsed.error
-    const message = parsed.detail ||
-      (error && typeof error === 'object' && !Array.isArray(error) ? error.message : undefined) ||
-      parsed.message ||
-      error
-    if (typeof message === 'string' && message.trim()) return message.trim()
-  } catch {
-    // Fall back to compact text below.
-  }
-  const compact = body.replace(/\s+/g, ' ').trim()
-  return compact || undefined
+  return extractOnethingProviderErrorDetails(error)
 }
 
 /**
  * Get current provider config from settings
  */
 export function getProviderConfig(settings: AppSettings): ProviderConfig | undefined {
-  return settings.ai.providers[settings.ai.provider]
+  return getOnethingProviderConfig(settings)
 }
 
 /**
@@ -129,23 +45,12 @@ export function getProviderConfig(settings: AppSettings): ProviderConfig | undef
  * For regular providers, returns the configured API key
  */
 export async function getApiKeyForProvider(providerId: string, providerConfig: ProviderConfig | undefined): Promise<string | null> {
-  if (providerId === 'acp') {
-    return ''
-  }
-
-  // Check if this is an OAuth provider
-  if (requiresOAuth(providerId)) {
-    try {
-      const token = await oauthManager.refreshTokenIfNeeded(providerId)
-      return token.accessToken
-    } catch (error) {
-      console.error(`Failed to get OAuth token for ${providerId}:`, error)
-      return null
-    }
-  }
-
-  // Regular provider - use manual API key, or an environment variable when configured/detected.
-  return resolveProviderApiKey(providerId, providerConfig)
+  return getOnethingApiKeyForProvider<ProviderConfig>(providerId, providerConfig, {
+    isOAuthProvider: requiresOAuth,
+    refreshOAuthToken: id => oauthManager.refreshTokenIfNeeded(id),
+    resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
+    logger: console,
+  })
 }
 
 /**
@@ -155,21 +60,13 @@ export async function resolveProviderAuth(
   providerId: string,
   providerConfig: ProviderConfig | undefined,
 ): Promise<ProviderAuthContext | null> {
-  if (providerId === 'acp') {
-    return { kind: 'api-key', apiKey: '' }
-  }
-
-  if (requiresOAuth(providerId)) {
-    try {
-      return await authService.resolveProviderAuth(providerId, resolveProviderApiKey(providerId, providerConfig) ?? undefined)
-    } catch (error) {
-      console.error(`Failed to resolve OAuth credentials for ${providerId}:`, error)
-      return null
-    }
-  }
-
-  const apiKey = resolveProviderApiKey(providerId, providerConfig) || ''
-  return apiKey ? { kind: 'api-key', apiKey } : null
+  return resolveOnethingProviderAuth<ProviderConfig, ProviderAuthContext>(providerId, providerConfig, {
+    isOAuthProvider: requiresOAuth,
+    resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
+    resolveOAuthAuth: (id, apiKey) => authService.resolveProviderAuth(id, apiKey),
+    createApiKeyAuth: apiKey => ({ kind: 'api-key', apiKey }),
+    logger: console,
+  })
 }
 
 /**
@@ -187,52 +84,23 @@ export function getEffectiveProviderConfig(
   settings: AppSettings,
   sessionId: string
 ): { providerId: string; providerConfig: ProviderConfig | undefined; model: string } {
-  const session = store.getSession(sessionId)
-
-  // If session has saved provider/model, use those
-  if (session?.lastProvider && session?.lastModel) {
-    const providerId = session.lastProvider
-    const providerConfig = settings.ai.providers[providerId]
-
-    if (providerConfig) {
-      // Return a modified config with the session's model
-      return {
-        providerId,
-        providerConfig: {
-          ...providerConfig,
-          model: session.lastModel,
-        },
-        model: session.lastModel,
-      }
-    }
-  }
-
-  // Fall back to global settings
-  const providerId = settings.ai.provider
-  const providerConfig = settings.ai.providers[providerId]
-  return {
-    providerId,
-    providerConfig,
-    model: providerConfig?.model || '',
-  }
+  return getEffectiveOnethingProviderConfig(settings, sessionId, {
+    getSession: id => store.getSession(id),
+  })
 }
 
 /**
  * Get custom provider config by ID
  */
 export function getCustomProviderConfig(settings: AppSettings, providerId: string): CustomProviderConfig | undefined {
-  return settings.ai.customProviders?.find(p => p.id === providerId)
+  return getOnethingCustomProviderConfig<ProviderConfig, CustomProviderConfig>(settings, providerId)
 }
 
 /**
  * Get apiType for a provider
  */
 export function getProviderApiType(settings: AppSettings, providerId: string): 'openai' | 'anthropic' | undefined {
-  if (providerId.startsWith('custom-')) {
-    const customProvider = getCustomProviderConfig(settings, providerId)
-    return customProvider?.apiType
-  }
-  return undefined
+  return getOnethingProviderApiType(settings, providerId)
 }
 
 // ============================================================================
@@ -261,48 +129,24 @@ export async function getProviderConfigForChat(
   sessionId: string
 ): Promise<ResolvedProviderConfig | null> {
   const settings = store.getSettings()
-  const session = store.getSession(sessionId)
-  if (session?.lastProvider && session?.lastModel) {
-    const providerConfig = settings.ai.providers[session.lastProvider]
-    const authContext = await resolveProviderAuth(session.lastProvider, providerConfig)
-
-    if (authContext) {
-      return {
-        providerId: session.lastProvider,
-        model: session.lastModel,
-        apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
-        authContext,
-        baseUrl: providerConfig?.baseUrl,
-        temperature: providerConfig?.temperature ?? settings.ai.temperature,
-      }
-    }
-  }
-
-  // 3. Fall back to global settings
-  const providerId = settings.ai.provider
-  const providerConfig = settings.ai.providers[providerId]
-  const authContext = await resolveProviderAuth(providerId, providerConfig)
-
-  if (!authContext) {
-    return null
-  }
-
-  return {
-    providerId,
-    model: providerConfig?.model || '',
-    apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
-    authContext,
-    baseUrl: providerConfig?.baseUrl,
-    temperature: providerConfig?.temperature ?? settings.ai.temperature,
-  }
+  const resolved = await resolveOnethingProviderConfigForChat<ProviderConfig, ProviderAuthContext>({
+    sessionId,
+    settings,
+    adapters: {
+      getSession: id => store.getSession(id),
+      isOAuthProvider: requiresOAuth,
+      resolveApiKey: (id, config) => resolveProviderApiKey(id, config),
+      resolveOAuthAuth: (id, apiKey) => authService.resolveProviderAuth(id, apiKey),
+      createApiKeyAuth: apiKey => ({ kind: 'api-key', apiKey }),
+      logger: console,
+    },
+  })
+  return resolved as ResolvedProviderConfig | null
 }
 
 /**
  * Check if credentials are missing and provide appropriate error message
  */
 export function getCredentialsError(providerId: string): string {
-  if (requiresOAuth(providerId)) {
-    return `Not logged in to ${providerId}. Please login in settings.`
-  }
-  return 'API Key not configured. Please configure your AI settings.'
+  return getOnethingCredentialsError(providerId, { isOAuthProvider: requiresOAuth })
 }

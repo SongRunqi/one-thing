@@ -1,464 +1,206 @@
 /**
  * MCP IPC Handlers
  *
- * Handles IPC communication for MCP operations
+ * Electron owns IPC registration and host adapters. Runtime-owned MCP
+ * operations shape responses, errors, settings mutations, and capability
+ * projections.
  */
 
-import { ipcMain } from 'electron'
-import { v4 as uuidv4 } from 'uuid'
+import { registerElectronMCPIpcHandlers } from '@onething/electron-host/ipc/mcp'
+import * as fs from 'fs'
+import {
+  addOnethingMCPServerForIpc,
+  callOnethingMCPToolForIpc,
+  connectOnethingMCPServerForIpc,
+  disconnectOnethingMCPServerForIpc,
+  getOnethingMCPPromptForIpc,
+  getOnethingMCPServersForIpc,
+  listOnethingMCPPromptsForIpc,
+  listOnethingMCPResourcesForIpc,
+  listOnethingMCPToolsForIpc,
+  readOnethingMCPConfigFileForIpc,
+  readOnethingMCPResourceForIpc,
+  refreshOnethingMCPServerForIpc,
+  removeOnethingMCPServerForIpc,
+  updateOnethingMCPServerForIpc,
+} from '@onething/runtime/mcp'
 import {
   IPC_CHANNELS,
-  type MCPServerConfig,
-  type MCPGetServersResponse,
   type MCPAddServerRequest,
   type MCPAddServerResponse,
-  type MCPUpdateServerRequest,
-  type MCPUpdateServerResponse,
-  type MCPRemoveServerRequest,
-  type MCPRemoveServerResponse,
+  type MCPCallToolRequest,
+  type MCPCallToolResponse,
   type MCPConnectServerRequest,
   type MCPConnectServerResponse,
   type MCPDisconnectServerRequest,
   type MCPDisconnectServerResponse,
-  type MCPRefreshServerRequest,
-  type MCPRefreshServerResponse,
-  type MCPGetToolsResponse,
-  type MCPCallToolRequest,
-  type MCPCallToolResponse,
-  type MCPGetResourcesResponse,
-  type MCPReadResourceRequest,
-  type MCPReadResourceResponse,
-  type MCPGetPromptsResponse,
   type MCPGetPromptRequest,
   type MCPGetPromptResponse,
+  type MCPGetPromptsResponse,
+  type MCPGetResourcesResponse,
+  type MCPGetServersResponse,
+  type MCPGetToolsResponse,
   type MCPReadConfigFileRequest,
   type MCPReadConfigFileResponse,
+  type MCPReadResourceRequest,
+  type MCPReadResourceResponse,
+  type MCPRefreshServerRequest,
+  type MCPRefreshServerResponse,
+  type MCPRemoveServerRequest,
+  type MCPRemoveServerResponse,
+  type MCPServerConfig,
+  type MCPUpdateServerRequest,
+  type MCPUpdateServerResponse,
 } from '../../shared/ipc.js'
-import * as fs from 'fs'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
 
-/**
- * Get MCP settings from app settings
- */
 function getMCPSettings() {
   const settings = getSettings()
   return settings.mcp || { enabled: true, servers: [] }
 }
 
-/**
- * Save MCP settings to app settings
- */
 async function saveMCPSettings(mcpSettings: { enabled: boolean; servers: MCPServerConfig[] }) {
   const settings = getSettings()
   settings.mcp = mcpSettings
   await saveSettings(settings)
 }
 
-/**
- * Handle get servers
- */
-async function handleGetServers(): Promise<MCPGetServersResponse> {
-  try {
-    const servers = MCPManager.getServerStates()
-    return {
-      success: true,
-      servers,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to get servers:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to get servers',
-    }
+function mcpServerAdapters() {
+  return {
+    getSettings: getMCPSettings,
+    saveSettings: saveMCPSettings,
+    manager: MCPManager,
+    registerTools: registerMCPTools,
+    logger: console,
   }
 }
 
-/**
- * Handle add server
- */
-async function handleAddServer(request: MCPAddServerRequest): Promise<MCPAddServerResponse> {
-  try {
-    const { config } = request
-
-    // Ensure ID is set
-    if (!config.id) {
-      config.id = uuidv4()
-    }
-
-    // Get current settings and add server
-    const mcpSettings = getMCPSettings()
-    mcpSettings.servers.push(config)
-    await saveMCPSettings(mcpSettings)
-
-    // Connect if enabled
-    if (config.enabled) {
-      await MCPManager.connectServer(config)
-      // Re-register MCP tools
-      await registerMCPTools()
-    }
-
-    const serverState = MCPManager.getServerState(config.id)
-
-    // Create a clean copy for IPC serialization
-    const cleanState = serverState ? JSON.parse(JSON.stringify(serverState)) : {
-      config,
-      status: 'disconnected',
-      tools: [],
-      resources: [],
-      prompts: [],
-    }
-
-    return {
-      success: true,
-      server: cleanState,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to add server:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to add server',
-    }
-  }
-}
-
-/**
- * Handle update server
- */
-async function handleUpdateServer(request: MCPUpdateServerRequest): Promise<MCPUpdateServerResponse> {
-  try {
-    const { config } = request
-
-    // Update settings
-    const mcpSettings = getMCPSettings()
-    const index = mcpSettings.servers.findIndex(s => s.id === config.id)
-
-    if (index === -1) {
-      return {
-        success: false,
-        error: 'Server not found',
-      }
-    }
-
-    mcpSettings.servers[index] = config
-    await saveMCPSettings(mcpSettings)
-
-    // Update manager
-    await MCPManager.updateSettings(mcpSettings)
-
-    // Re-register MCP tools
-    await registerMCPTools()
-
-    const serverState = MCPManager.getServerState(config.id)
-
-    return {
-      success: true,
-      server: serverState,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to update server:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to update server',
-    }
-  }
-}
-
-/**
- * Handle remove server
- */
-async function handleRemoveServer(request: MCPRemoveServerRequest): Promise<MCPRemoveServerResponse> {
-  try {
-    const { serverId } = request
-
-    // Remove server (disconnect and remove from clients list)
-    await MCPManager.removeServer(serverId)
-
-    // Update settings
-    const mcpSettings = getMCPSettings()
-    mcpSettings.servers = mcpSettings.servers.filter(s => s.id !== serverId)
-    await saveMCPSettings(mcpSettings)
-
-    // Re-register MCP tools
-    await registerMCPTools()
-
-    return { success: true }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to remove server:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to remove server',
-    }
-  }
-}
-
-/**
- * Handle connect server
- */
-async function handleConnectServer(request: MCPConnectServerRequest): Promise<MCPConnectServerResponse> {
-  try {
-    const { serverId } = request
-
-    const mcpSettings = getMCPSettings()
-    const config = mcpSettings.servers.find(s => s.id === serverId)
-
-    if (!config) {
-      return {
-        success: false,
-        error: 'Server not found',
-      }
-    }
-
-    await MCPManager.connectServer(config)
-
-    // Re-register MCP tools
-    await registerMCPTools()
-
-    const serverState = MCPManager.getServerState(serverId)
-
-    return {
-      success: true,
-      server: serverState,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to connect server:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to connect server',
-    }
-  }
-}
-
-/**
- * Handle disconnect server
- */
-async function handleDisconnectServer(request: MCPDisconnectServerRequest): Promise<MCPDisconnectServerResponse> {
-  try {
-    const { serverId } = request
-
-    await MCPManager.disconnectServer(serverId)
-
-    // Re-register MCP tools
-    await registerMCPTools()
-
-    return { success: true }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to disconnect server:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to disconnect server',
-    }
-  }
-}
-
-/**
- * Handle refresh server
- */
-async function handleRefreshServer(request: MCPRefreshServerRequest): Promise<MCPRefreshServerResponse> {
-  try {
-    const { serverId } = request
-
-    await MCPManager.refreshServer(serverId)
-
-    // Re-register MCP tools
-    await registerMCPTools()
-
-    const serverState = MCPManager.getServerState(serverId)
-
-    return {
-      success: true,
-      server: serverState,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to refresh server:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to refresh server',
-    }
-  }
-}
-
-/**
- * Handle get tools
- */
-async function handleGetTools(): Promise<MCPGetToolsResponse> {
-  try {
-    const tools = MCPManager.getAllTools()
-    return {
-      success: true,
-      tools,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to get tools:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to get tools',
-    }
-  }
-}
-
-/**
- * Handle call tool
- */
-async function handleCallTool(request: MCPCallToolRequest): Promise<MCPCallToolResponse> {
-  try {
-    const { serverId, toolName, arguments: args } = request
-
-    const result = await MCPManager.callTool(serverId, toolName, args)
-
-    return {
-      success: result.success,
-      content: result.content,
-      error: result.error,
-      isError: result.isError,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to call tool:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to call tool',
-    }
-  }
-}
-
-/**
- * Handle get resources
- */
-async function handleGetResources(): Promise<MCPGetResourcesResponse> {
-  try {
-    const resources = MCPManager.getAllResources()
-    return {
-      success: true,
-      resources,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to get resources:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to get resources',
-    }
-  }
-}
-
-/**
- * Handle read resource
- */
-async function handleReadResource(request: MCPReadResourceRequest): Promise<MCPReadResourceResponse> {
-  try {
-    const { serverId, uri } = request
-
-    const result = await MCPManager.readResource(serverId, uri)
-
-    return {
-      success: result.success,
-      content: result.content,
-      error: result.error,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to read resource:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to read resource',
-    }
-  }
-}
-
-/**
- * Handle get prompts
- */
-async function handleGetPrompts(): Promise<MCPGetPromptsResponse> {
-  try {
-    const prompts = MCPManager.getAllPrompts()
-    return {
-      success: true,
-      prompts,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to get prompts:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to get prompts',
-    }
-  }
-}
-
-/**
- * Handle get prompt
- */
-async function handleGetPrompt(request: MCPGetPromptRequest): Promise<MCPGetPromptResponse> {
-  try {
-    const { serverId, name, arguments: args } = request
-
-    const result = await MCPManager.getPrompt(serverId, name, args)
-
-    return {
-      success: result.success,
-      messages: result.messages,
-      error: result.error,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to get prompt:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to get prompt',
-    }
-  }
-}
-
-/**
- * Handle read config file (for importing MCP configurations)
- */
-async function handleReadConfigFile(request: MCPReadConfigFileRequest): Promise<MCPReadConfigFileResponse> {
-  try {
-    const { filePath } = request
-
-    if (!fs.existsSync(filePath)) {
-      return {
-        success: false,
-        error: 'File not found',
-      }
-    }
-
-    const content = fs.readFileSync(filePath, 'utf-8')
-    const parsed = JSON.parse(content)
-
-    return {
-      success: true,
-      content: parsed,
-    }
-  } catch (error: any) {
-    console.error('[MCP IPC] Failed to read config file:', error)
-    return {
-      success: false,
-      error: error.message || 'Failed to read config file',
-    }
-  }
-}
-
-/**
- * Register all MCP IPC handlers
- */
 export function registerMCPHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.MCP_GET_SERVERS, handleGetServers)
-  ipcMain.handle(IPC_CHANNELS.MCP_ADD_SERVER, (_event, request: MCPAddServerRequest) => handleAddServer(request))
-  ipcMain.handle(IPC_CHANNELS.MCP_UPDATE_SERVER, (_event, request: MCPUpdateServerRequest) => handleUpdateServer(request))
-  ipcMain.handle(IPC_CHANNELS.MCP_REMOVE_SERVER, (_event, request: MCPRemoveServerRequest) => handleRemoveServer(request))
-  ipcMain.handle(IPC_CHANNELS.MCP_CONNECT_SERVER, (_event, request: MCPConnectServerRequest) => handleConnectServer(request))
-  ipcMain.handle(IPC_CHANNELS.MCP_DISCONNECT_SERVER, (_event, request: MCPDisconnectServerRequest) => handleDisconnectServer(request))
-  ipcMain.handle(IPC_CHANNELS.MCP_REFRESH_SERVER, (_event, request: MCPRefreshServerRequest) => handleRefreshServer(request))
-  ipcMain.handle(IPC_CHANNELS.MCP_GET_TOOLS, handleGetTools)
-  ipcMain.handle(IPC_CHANNELS.MCP_CALL_TOOL, (_event, request: MCPCallToolRequest) => handleCallTool(request))
-  ipcMain.handle(IPC_CHANNELS.MCP_GET_RESOURCES, handleGetResources)
-  ipcMain.handle(IPC_CHANNELS.MCP_READ_RESOURCE, (_event, request: MCPReadResourceRequest) => handleReadResource(request))
-  ipcMain.handle(IPC_CHANNELS.MCP_GET_PROMPTS, handleGetPrompts)
-  ipcMain.handle(IPC_CHANNELS.MCP_GET_PROMPT, (_event, request: MCPGetPromptRequest) => handleGetPrompt(request))
-  ipcMain.handle(IPC_CHANNELS.MCP_READ_CONFIG_FILE, (_event, request: MCPReadConfigFileRequest) => handleReadConfigFile(request))
-
+  registerElectronMCPIpcHandlers({
+    channels: {
+      getServers: IPC_CHANNELS.MCP_GET_SERVERS,
+      addServer: IPC_CHANNELS.MCP_ADD_SERVER,
+      updateServer: IPC_CHANNELS.MCP_UPDATE_SERVER,
+      removeServer: IPC_CHANNELS.MCP_REMOVE_SERVER,
+      connectServer: IPC_CHANNELS.MCP_CONNECT_SERVER,
+      disconnectServer: IPC_CHANNELS.MCP_DISCONNECT_SERVER,
+      refreshServer: IPC_CHANNELS.MCP_REFRESH_SERVER,
+      getTools: IPC_CHANNELS.MCP_GET_TOOLS,
+      callTool: IPC_CHANNELS.MCP_CALL_TOOL,
+      getResources: IPC_CHANNELS.MCP_GET_RESOURCES,
+      readResource: IPC_CHANNELS.MCP_READ_RESOURCE,
+      getPrompts: IPC_CHANNELS.MCP_GET_PROMPTS,
+      getPrompt: IPC_CHANNELS.MCP_GET_PROMPT,
+      readConfigFile: IPC_CHANNELS.MCP_READ_CONFIG_FILE,
+    },
+    getServers: async (): Promise<MCPGetServersResponse> => {
+      return getOnethingMCPServersForIpc({
+        getServerStates: () => MCPManager.getServerStates(),
+        logger: console,
+      })
+    },
+    addServer: async (request: unknown): Promise<MCPAddServerResponse> => {
+      const typedRequest = request as MCPAddServerRequest
+      return addOnethingMCPServerForIpc({
+        ...mcpServerAdapters(),
+        config: typedRequest.config,
+      }) as Promise<MCPAddServerResponse>
+    },
+    updateServer: async (request: unknown): Promise<MCPUpdateServerResponse> => {
+      const typedRequest = request as MCPUpdateServerRequest
+      return updateOnethingMCPServerForIpc({
+        ...mcpServerAdapters(),
+        config: typedRequest.config,
+      }) as Promise<MCPUpdateServerResponse>
+    },
+    removeServer: async (request: unknown): Promise<MCPRemoveServerResponse> => {
+      const typedRequest = request as MCPRemoveServerRequest
+      return removeOnethingMCPServerForIpc({
+        ...mcpServerAdapters(),
+        serverId: typedRequest.serverId,
+      })
+    },
+    connectServer: async (request: unknown): Promise<MCPConnectServerResponse> => {
+      const typedRequest = request as MCPConnectServerRequest
+      return connectOnethingMCPServerForIpc({
+        ...mcpServerAdapters(),
+        serverId: typedRequest.serverId,
+      }) as Promise<MCPConnectServerResponse>
+    },
+    disconnectServer: async (request: unknown): Promise<MCPDisconnectServerResponse> => {
+      const typedRequest = request as MCPDisconnectServerRequest
+      return disconnectOnethingMCPServerForIpc({
+        ...mcpServerAdapters(),
+        serverId: typedRequest.serverId,
+      })
+    },
+    refreshServer: async (request: unknown): Promise<MCPRefreshServerResponse> => {
+      const typedRequest = request as MCPRefreshServerRequest
+      return refreshOnethingMCPServerForIpc({
+        ...mcpServerAdapters(),
+        serverId: typedRequest.serverId,
+      }) as Promise<MCPRefreshServerResponse>
+    },
+    getTools: async (): Promise<MCPGetToolsResponse> => {
+      return listOnethingMCPToolsForIpc({
+        getAllTools: () => MCPManager.getAllTools(),
+        logger: console,
+      })
+    },
+    callTool: async (request: unknown): Promise<MCPCallToolResponse> => {
+      const typedRequest = request as MCPCallToolRequest
+      return callOnethingMCPToolForIpc({
+        serverId: typedRequest.serverId,
+        toolName: typedRequest.toolName,
+        args: typedRequest.arguments,
+        callTool: (serverId, toolName, args) => MCPManager.callTool(serverId, toolName, args),
+        logger: console,
+      }) as Promise<MCPCallToolResponse>
+    },
+    getResources: async (): Promise<MCPGetResourcesResponse> => {
+      return listOnethingMCPResourcesForIpc({
+        getAllResources: () => MCPManager.getAllResources(),
+        logger: console,
+      })
+    },
+    readResource: async (request: unknown): Promise<MCPReadResourceResponse> => {
+      const typedRequest = request as MCPReadResourceRequest
+      return readOnethingMCPResourceForIpc({
+        serverId: typedRequest.serverId,
+        uri: typedRequest.uri,
+        readResource: (serverId, uri) => MCPManager.readResource(serverId, uri),
+        logger: console,
+      }) as Promise<MCPReadResourceResponse>
+    },
+    getPrompts: async (): Promise<MCPGetPromptsResponse> => {
+      return listOnethingMCPPromptsForIpc({
+        getAllPrompts: () => MCPManager.getAllPrompts(),
+        logger: console,
+      })
+    },
+    getPrompt: async (request: unknown): Promise<MCPGetPromptResponse> => {
+      const typedRequest = request as MCPGetPromptRequest
+      return getOnethingMCPPromptForIpc({
+        serverId: typedRequest.serverId,
+        name: typedRequest.name,
+        args: typedRequest.arguments,
+        getPrompt: (serverId, name, args) => MCPManager.getPrompt(serverId, name, args),
+        logger: console,
+      }) as Promise<MCPGetPromptResponse>
+    },
+    readConfigFile: async (request: unknown): Promise<MCPReadConfigFileResponse> => {
+      const typedRequest = request as MCPReadConfigFileRequest
+      return readOnethingMCPConfigFileForIpc({
+        filePath: typedRequest.filePath,
+        fileExists: filePath => fs.existsSync(filePath),
+        readTextFile: filePath => fs.readFileSync(filePath, 'utf-8'),
+        logger: console,
+      }) as Promise<MCPReadConfigFileResponse>
+    },
+  })
 }
 
-/**
- * Initialize MCP system
- */
 export async function initializeMCP(): Promise<void> {
   const mcpSettings = getMCPSettings()
   await MCPManager.initialize(mcpSettings)
@@ -470,9 +212,6 @@ export async function initializeMCP(): Promise<void> {
   }
 }
 
-/**
- * Shutdown MCP system
- */
 export async function shutdownMCP(): Promise<void> {
   await MCPManager.shutdown()
 }

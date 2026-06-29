@@ -471,6 +471,7 @@ interface Props {
 interface Emits {
   (e: 'sendMessage', message: string, mode?: 'send' | 'steer' | 'followup', attachments?: MessageAttachment[]): void
   (e: 'stopGeneration'): void
+  (e: 'switchSession', sessionId: string): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -1260,6 +1261,9 @@ async function sendMessage() {
             updateComposerHeight()
             editorRef.value?.focus()
           })
+        }
+        if (result.switchToSessionId) {
+          emit('switchSession', result.switchToSessionId)
         }
       } else {
         showCommandFeedback('error', result.error || `/${commandId} failed`)

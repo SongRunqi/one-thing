@@ -4,6 +4,11 @@
  * Provides a unified interface for MCP functionality
  */
 
+export type {
+  MCPClientFactory,
+  MCPClientLike,
+} from '@onething/core/mcp'
+
 // Export types
 export type {
   MCPTransportType,

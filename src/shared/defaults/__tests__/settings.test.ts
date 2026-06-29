@@ -353,22 +353,15 @@ describe('network settings defaults', () => {
     expect(settings.network?.proxy.enabled).toBe(false)
     expect(settings.network?.proxy.url).toBe('')
     expect(settings.network?.proxy.bypassRules).toContain('localhost')
-    expect(settings.network?.networkInterface).toEqual({
-      enabled: false,
-      address: '',
-      id: '',
-      name: '',
-    })
   })
 
   it('merges proxy settings for older settings files', () => {
     const settings = mergeWithDefaults({})
 
     expect(settings.network?.proxy.enabled).toBe(false)
-    expect(settings.network?.networkInterface.enabled).toBe(false)
   })
 
-  it('preserves selected network interface settings when merging', () => {
+  it('drops legacy selected network interface settings when merging', () => {
     const settings = mergeSettings({
       network: {
         networkInterface: {
@@ -385,13 +378,7 @@ describe('network settings defaults', () => {
       },
     })
 
-    expect(settings.network?.networkInterface).toMatchObject({
-      enabled: true,
-      id: 'en0:IPv4:192.168.1.23',
-      name: 'en0',
-      address: '192.168.1.23',
-      family: 'IPv4',
-    })
+    expect('networkInterface' in settings.network!).toBe(false)
   })
 })
 

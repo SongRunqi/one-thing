@@ -1637,25 +1637,25 @@ function formatShortDate(ms?: number): string {
 }
 
 .notes-list-surface {
-  flex: 0 0 56%;
+  flex: 1 1 clamp(220px, 42%, 520px);
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  min-width: 500px;
-  max-width: 760px;
+  min-width: min(220px, 100%);
+  max-width: min(560px, 58%);
   overflow: hidden;
   background: transparent;
   border-right: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 50%, transparent);
 }
 
 .viewer {
-  flex: 1;
+  flex: 1 1 0;
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-width: min(260px, 100%);
   overflow: hidden;
   background: transparent;
 }
@@ -2220,10 +2220,10 @@ function formatShortDate(ms?: number): string {
 }
 
 .memory-page-shell .notes-list-surface {
-  flex: 0 0 56% !important;
+  flex: 1 1 clamp(220px, 42%, 520px) !important;
   width: auto;
-  min-width: 500px;
-  max-width: 760px;
+  min-width: min(220px, 100%);
+  max-width: min(560px, 58%);
   height: 100%;
   min-height: 0;
   display: flex;

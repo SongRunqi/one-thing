@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage } from '../../../shared/ipc.js'
-import { buildHistoryMessages, sanitizeToolResultForAI } from '../stream/message-helpers.js'
+import {
+  buildHistoryMessages,
+  filterHistoryForNonToolAPI,
+  sanitizeToolResultForAI,
+} from '../stream/message-helpers.js'
 
 function message(index: number, role: 'user' | 'assistant'): ChatMessage {
   return {
@@ -194,5 +198,26 @@ describe('sanitizeToolResultForAI', () => {
         },
       ],
     })
+  })
+})
+
+describe('filterHistoryForNonToolAPI', () => {
+  it('keeps user and assistant messages through the runtime sessions facade', () => {
+    expect(filterHistoryForNonToolAPI([
+      { role: 'user', content: 'hello' },
+      {
+        role: 'tool',
+        content: [{
+          type: 'tool-result',
+          toolCallId: 'call_1',
+          toolName: 'read',
+          result: { output: 'ok' },
+        }],
+      },
+      { role: 'assistant', content: 'done', reasoningContent: 'read completed' },
+    ])).toEqual([
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'done', reasoningContent: 'read completed' },
+    ])
   })
 })

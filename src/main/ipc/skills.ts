@@ -4,243 +4,133 @@
  * Handles IPC communication for Hermes Agent SKILL.md operations
  */
 
-import { ipcMain, shell } from 'electron'
-import { IPC_CHANNELS } from '../../shared/ipc.js'
-import type { SkillDefinition, SkillSource } from '../../shared/ipc.js'
+import { openElectronPath } from '@onething/electron-host/shell/operations'
 import {
-  loadAllSkills,
-  loadProjectSkillsForDirectory,
+  registerElectronSkillsIpcHandlers,
+  type ElectronSkillDeleteRequest,
+  type ElectronSkillOpenDirectoryRequest,
+  type ElectronSkillReadFileRequest,
+  type ElectronSkillToggleEnabledRequest,
+  type ElectronSkillsGetAllRequest,
+} from '@onething/electron-host/ipc/skills'
+import {
+  createOnethingSkillForIpc,
+  deleteOnethingSkillForIpc,
+  listOnethingSkillsForIpc,
+  openOnethingSkillDirectoryForIpc,
+  readOnethingSkillFileForIpc,
+  refreshOnethingSkillsForIpc,
+  type SkillSource,
+  toggleOnethingSkillEnabledForIpc,
+} from '@onething/runtime/skills'
+import { IPC_CHANNELS } from '../../shared/ipc.js'
+import type { SkillDefinition } from '../../shared/ipc.js'
+import {
   createSkill,
   deleteSkill,
   readSkillFile,
-  ensureSkillsDirectories,
   getUserSkillsPath,
 } from '../skills/index.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
+import {
+  getAllSkillsForDisplay,
+  getSkillsForSession as getRuntimeSkillsForSession,
+  initializeSessionSkills,
+  invalidateSessionSkillsCache,
+} from '../skills/session-skills.js'
 
-// Cache of loaded skills (for IPC handlers - global skills without workingDirectory)
-let skillsCache: SkillDefinition[] = []
-let isInitialized = false
-
-// ============ Skills 内存缓存 (按 workingDirectory) ============
-// 缓存在切换 workDir 或手动刷新时失效，无 TTL
-const skillsCacheByDir = new Map<string, SkillDefinition[]>()
+let skillsIpcInitialized = false
 
 /**
  * Initialize the skill system
  */
 export async function initializeSkills(): Promise<void> {
-  if (isInitialized) return
-
-  // Ensure skills directories exist
-  ensureSkillsDirectories()
-
-  // Load all skills
-  skillsCache = loadAllSkills()
-
-  // Apply enabled state from settings
-  const settings = getSettings()
-  if (settings.skills?.skills) {
-    for (const skill of skillsCache) {
-      const skillSettings = settings.skills.skills[skill.id]
-      if (skillSettings !== undefined) {
-        skill.enabled = skillSettings.enabled
-      }
-    }
-  }
-
-  isInitialized = true
-  console.log('[Skills IPC] Initialized with', skillsCache.length, 'skills')
+  if (skillsIpcInitialized) return
+  await initializeSessionSkills()
+  skillsIpcInitialized = true
+  console.log('[Skills IPC] Initialized')
 }
 
 /**
  * Register all skill-related IPC handlers
  */
 export function registerSkillHandlers() {
-  // Get all available skills
-  ipcMain.handle(IPC_CHANNELS.SKILLS_GET_ALL, async (_event, request?: { workingDirectory?: string }) => {
-    try {
-      if (!isInitialized) {
-        await initializeSkills()
+  registerElectronSkillsIpcHandlers({
+    channels: {
+      getAll: IPC_CHANNELS.SKILLS_GET_ALL,
+      refresh: IPC_CHANNELS.SKILLS_REFRESH,
+      readFile: IPC_CHANNELS.SKILLS_READ_FILE,
+      openDirectory: IPC_CHANNELS.SKILLS_OPEN_DIRECTORY,
+      create: IPC_CHANNELS.SKILLS_CREATE,
+      delete: IPC_CHANNELS.SKILLS_DELETE,
+      toggleEnabled: IPC_CHANNELS.SKILLS_TOGGLE_ENABLED,
+    },
+    getAll: async (request?: ElectronSkillsGetAllRequest) => {
+      return listOnethingSkillsForIpc({
+        workingDirectory: request?.workingDirectory,
+        ensureInitialized: initializeSkills,
+        listSkills: options => getAllSkillsForDisplay(options),
+        logger: console,
+      })
+    },
+    refresh: async () => {
+      return refreshOnethingSkillsForIpc({
+        invalidateSkillsCache,
+        listSkills: options => getAllSkillsForDisplay(options),
+        logger: console,
+      })
+    },
+    readFile: async (request: ElectronSkillReadFileRequest) => {
+      return readOnethingSkillFileForIpc({
+        skillId: request.skillId,
+        fileName: request.fileName,
+        readSkillFile,
+        logger: console,
+      })
+    },
+    openDirectory: async (request?: ElectronSkillOpenDirectoryRequest) => {
+      return openOnethingSkillDirectoryForIpc({
+        skillId: request?.skillId,
+        listSkills: options => getAllSkillsForDisplay(options),
+        getUserSkillsPath,
+        openPath: path => openElectronPath(path),
+        logger: console,
+      })
+    },
+    create: async (request: unknown) => {
+      const typedRequest = request as {
+        name: string
+        description: string
+        instructions: string
+        source: SkillSource
       }
-      const workingDirectory = request?.workingDirectory
-      const skills = workingDirectory
-        ? getSkillsForDirectory(workingDirectory, false)
-        : applySkillSettings(skillsCache, false)
-
-      return {
-        success: true,
-        skills,
-      }
-    } catch (error: any) {
-      console.error('[Skills IPC] Error getting skills:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to get skills',
-      }
-    }
-  })
-
-  // Refresh skills from filesystem
-  ipcMain.handle(IPC_CHANNELS.SKILLS_REFRESH, async () => {
-    try {
-      // 清除所有缓存，强制重新加载
-      invalidateSkillsCache()
-
-      skillsCache = loadAllSkills()
-
-      // Apply enabled state from settings
-      const settings = getSettings()
-      if (settings.skills?.skills) {
-        for (const skill of skillsCache) {
-          const skillSettings = settings.skills.skills[skill.id]
-          if (skillSettings !== undefined) {
-            skill.enabled = skillSettings.enabled
-          }
-        }
-      }
-
-      return {
-        success: true,
-        skills: skillsCache,
-      }
-    } catch (error: any) {
-      console.error('[Skills IPC] Error refreshing skills:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to refresh skills',
-      }
-    }
-  })
-
-  // Read a file from a skill directory
-  ipcMain.handle(IPC_CHANNELS.SKILLS_READ_FILE, async (_event, request) => {
-    try {
-      const { skillId, fileName } = request
-      const content = readSkillFile(skillId, fileName)
-
-      if (content === null) {
-        return {
-          success: false,
-          error: 'File not found or not readable',
-        }
-      }
-
-      return {
-        success: true,
-        content,
-      }
-    } catch (error: any) {
-      console.error('[Skills IPC] Error reading skill file:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to read skill file',
-      }
-    }
-  })
-
-  // Open skill directory in file manager
-  ipcMain.handle(IPC_CHANNELS.SKILLS_OPEN_DIRECTORY, async (_event, request) => {
-    try {
-      const { skillId } = request
-      const skill = skillsCache.find(s => s.id === skillId)
-
-      if (!skill) {
-        // If no skill specified, open user skills directory
-        await shell.openPath(getUserSkillsPath())
-        return { success: true }
-      }
-
-      await shell.openPath(skill.directoryPath)
-      return { success: true }
-    } catch (error: any) {
-      console.error('[Skills IPC] Error opening skill directory:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to open skill directory',
-      }
-    }
-  })
-
-  // Create a new skill
-  ipcMain.handle(IPC_CHANNELS.SKILLS_CREATE, async (_event, request) => {
-    try {
-      const { name, description, instructions, source } = request
-
-      const skill = createSkill(name, description, instructions, source as SkillSource)
-      skillsCache.push(skill)
-
-      // 清除所有缓存，因为新 skill 可能在任何 workDir 下可见
-      invalidateSkillsCache()
-
-      return {
-        success: true,
-        skill,
-      }
-    } catch (error: any) {
-      console.error('[Skills IPC] Error creating skill:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to create skill',
-      }
-    }
-  })
-
-  // Delete a skill
-  ipcMain.handle(IPC_CHANNELS.SKILLS_DELETE, async (_event, request) => {
-    try {
-      const { skillId } = request
-      const deleted = deleteSkill(skillId)
-
-      if (deleted) {
-        skillsCache = skillsCache.filter(s => s.id !== skillId)
-        // 清除所有缓存
-        invalidateSkillsCache()
-      }
-
-      return {
-        success: deleted,
-        error: deleted ? undefined : 'Skill not found',
-      }
-    } catch (error: any) {
-      console.error('[Skills IPC] Error deleting skill:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to delete skill',
-      }
-    }
-  })
-
-  // Toggle skill enabled state
-  ipcMain.handle(IPC_CHANNELS.SKILLS_TOGGLE_ENABLED, async (_event, request) => {
-    try {
-      const { skillId, enabled } = request
-
-      // Update cache
-      const skill = skillsCache.find(s => s.id === skillId)
-      if (skill) {
-        skill.enabled = enabled
-      }
-
-      // Update settings
-      const settings = getSettings()
-      if (!settings.skills) {
-        settings.skills = { enableSkills: true, skills: {} }
-      }
-      if (!settings.skills.skills) {
-        settings.skills.skills = {}
-      }
-      settings.skills.skills[skillId] = { enabled }
-      await saveSettings(settings)
-
-      return { success: true }
-    } catch (error: any) {
-      console.error('[Skills IPC] Error toggling skill:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to toggle skill',
-      }
-    }
+      return createOnethingSkillForIpc({
+        name: typedRequest.name,
+        description: typedRequest.description,
+        instructions: typedRequest.instructions,
+        source: typedRequest.source,
+        createSkill,
+        invalidateSkillsCache,
+        logger: console,
+      })
+    },
+    delete: async (request: ElectronSkillDeleteRequest) => {
+      return deleteOnethingSkillForIpc({
+        skillId: request.skillId,
+        deleteSkill,
+        invalidateSkillsCache,
+        logger: console,
+      })
+    },
+    toggleEnabled: async (request: ElectronSkillToggleEnabledRequest) => {
+      return toggleOnethingSkillEnabledForIpc({
+        skillId: request.skillId,
+        enabled: request.enabled,
+        getSettings,
+        saveSettings,
+        logger: console,
+      })
+    },
   })
 
   console.log('[Skills IPC] Handlers registered')
@@ -251,55 +141,18 @@ export function registerSkillHandlers() {
  * @deprecated Use getSkillsForSession for session-aware skill loading
  */
 export function getLoadedSkills(): SkillDefinition[] {
-  return skillsCache.filter(s => s.enabled)
-}
-
-/**
- * Apply enabled state from settings to skills (creates a copy to avoid mutating cache)
- */
-function applySkillSettings(skills: SkillDefinition[], enabledOnly = true): SkillDefinition[] {
-  const settings = getSettings()
-  // 复制数组避免修改缓存
-  const result = skills.map(s => ({ ...s }))
-
-  if (settings.skills?.skills) {
-    for (const skill of result) {
-      const skillSettings = settings.skills.skills[skill.id]
-      if (skillSettings !== undefined) {
-        skill.enabled = skillSettings.enabled
-      }
-    }
-  }
-  return enabledOnly ? result.filter(s => s.enabled) : result
-}
-
-function mergeSkillsByPriority(...skillGroups: SkillDefinition[][]): SkillDefinition[] {
-  const seenNames = new Set<string>()
-  const merged: SkillDefinition[] = []
-  for (const group of skillGroups) {
-    for (const skill of group) {
-      if (seenNames.has(skill.name)) continue
-      seenNames.add(skill.name)
-      merged.push(skill)
-    }
-  }
-  return merged
+  return getAllSkillsForDisplay({ enabledOnly: true })
 }
 
 /**
  * Invalidate skills cache for a specific workingDirectory or all caches
  */
 export function invalidateSkillsCache(workingDirectory?: string): void {
-  if (workingDirectory) {
-    skillsCacheByDir.delete(workingDirectory)
-    console.log(`[Skills] Cache invalidated for: ${workingDirectory}`)
-  } else {
-    skillsCacheByDir.clear()
-    if (isInitialized) {
-      skillsCache = loadAllSkills()
-    }
-    console.log('[Skills] All caches invalidated')
-  }
+  invalidateSessionSkillsCache(workingDirectory)
+  console.log(workingDirectory
+    ? `[Skills] Cache invalidated for: ${workingDirectory}`
+    : '[Skills] All caches invalidated'
+  )
 }
 
 /**
@@ -310,25 +163,5 @@ export function invalidateSkillsCache(workingDirectory?: string): void {
  * @returns Array of enabled skills (user + project + plugin)
  */
 export function getSkillsForSession(workingDirectory?: string): SkillDefinition[] {
-  return getSkillsForDirectory(workingDirectory, true)
-}
-
-function getSkillsForDirectory(workingDirectory?: string, enabledOnly = true): SkillDefinition[] {
-  const cacheKey = workingDirectory || '__global__'
-  const cached = skillsCacheByDir.get(cacheKey)
-
-  // 有缓存直接返回（应用设置后）
-  if (cached) {
-    return applySkillSettings(cached, enabledOnly)
-  }
-
-  // 缓存不存在，加载并缓存。When the global cache is already warm, only
-  // scan project skill roots for session-specific working directories.
-  console.log(`[Skills] Cache MISS for: ${cacheKey} - loading from filesystem`)
-  const allSkills = workingDirectory && isInitialized
-    ? mergeSkillsByPriority(loadProjectSkillsForDirectory(workingDirectory), skillsCache)
-    : loadAllSkills(workingDirectory)
-  skillsCacheByDir.set(cacheKey, allSkills)
-
-  return applySkillSettings(allSkills, enabledOnly)
+  return getRuntimeSkillsForSession(workingDirectory)
 }

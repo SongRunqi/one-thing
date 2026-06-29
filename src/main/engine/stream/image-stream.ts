@@ -8,15 +8,16 @@
 
 import { IPC_CHANNELS } from '../../../shared/ipc.js'
 import * as store from '../../store.js'
-import { saveMediaImage } from '../../ipc/media.js'
+import { saveMediaImage } from '../../media/save-image.js'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
 import {
-  normalizeImageModelId,
   generateImage,
   generateGeminiImage,
-  type ImageGenerationResult,
 } from './image-generation.js'
 import type { StreamSender } from './stream-processor.js'
+import {
+  executeOnethingImageGenerationStream,
+} from '@onething/runtime/media'
 
 export interface ImageStreamParams {
   sender: StreamSender
@@ -51,120 +52,47 @@ export async function processImageGenerationStream(
     sessionName,
   } = params
 
-  console.log(`[ImageStream] Processing image generation for model: ${model}`)
-
   // Lazy-get event system singletons
   let eventBus: ReturnType<typeof getEventBus> | null = null
   let streamChannel: ReturnType<typeof getStreamChannel> | null = null
   try { eventBus = getEventBus() } catch { /* not initialized */ }
   try { streamChannel = getStreamChannel() } catch { /* not initialized */ }
 
-  // Emit stream:start so IPCBridge can track this session's messageId
-  eventBus?.emit(sessionId, {
-    type: 'stream:start',
-    messageId: assistantMessageId,
+  return executeOnethingImageGenerationStream({
+    sessionId,
     assistantMessageId,
+    prompt,
+    providerId,
+    apiKey,
     model,
-  }).catch(err => console.error('[ImageStream] stream:start emit error:', err))
-
-  // Show a transient skeleton in the assistant message while the provider works.
-  eventBus?.emit(sessionId, {
-    type: 'content:part',
-    part: { type: 'image-loading', label: 'Generating image' },
-  }).catch(err => console.error('[ImageStream] image-loading content:part emit error:', err))
-
-  let result: ImageGenerationResult
-  let modelForDisplay: string
-
-  // Use provider ID to determine which image generation API to use
-  if (providerId === 'gemini') {
-    console.log(`[ImageStream] Using Gemini image generation`)
-    modelForDisplay = model
-    result = await generateGeminiImage(apiKey, model, prompt)
-  } else {
-    // OpenAI-compatible image generation (DALL-E, etc.)
-    const normalizedModel = normalizeImageModelId(model)
-    console.log(`[ImageStream] Using OpenAI image generation: ${normalizedModel}`)
-    modelForDisplay = normalizedModel
-    result = await generateImage(
-      apiKey,
-      baseUrl || 'https://api.openai.com/v1',
-      normalizedModel,
-      prompt
-    )
-  }
-
-  if (result.success && result.imageBase64) {
-    // Save image to media storage
-    const mediaItem = await saveMediaImage({
-      base64: result.imageBase64,
-      prompt: prompt,
-      revisedPrompt: result.revisedPrompt,
-      model: modelForDisplay,
-      sessionId,
-      messageId: assistantMessageId,
-    })
-    console.log('[ImageStream] Image saved to media:', mediaItem.id)
-
-    // Format the response
-    let responseContent = ''
-    if (result.revisedPrompt && result.revisedPrompt !== prompt) {
-      responseContent += `**优化后的提示词:** ${result.revisedPrompt}\n\n`
-    }
-    // Use base64 data URL for displaying in message
-    // Store mediaId in alt text for gallery lookup
-    const imageDataUrl = `data:image/png;base64,${result.imageBase64}`
-    responseContent += `![Generated Image|mediaId:${mediaItem.id}](${imageDataUrl})`
-
-    // Update message
-    store.updateMessageContent(sessionId, assistantMessageId, responseContent)
-    store.addMessageContentPart(sessionId, assistantMessageId, { type: 'text', content: responseContent })
-    store.updateMessageStreaming(sessionId, assistantMessageId, false)
-    await store.flushSessionSave(sessionId)
-
-    // Send the real image markdown; the renderer reducer pops the skeleton first.
-    streamChannel?.push(sessionId, { type: 'text-delta', text: responseContent })
-    eventBus?.emit(sessionId, {
-      type: 'content:part',
-      part: { type: 'text', content: responseContent },
-    }).catch(err => console.error('[ImageStream] content:part emit error:', err))
-
-    // Notify frontend about the generated image (non-streaming one-off notification)
-    // This stays as direct sender.send — it's outside the event system scope
-    if (!sender.isDestroyed()) {
-      sender.send(IPC_CHANNELS.IMAGE_GENERATED, {
-        id: mediaItem.id,
-        mediaId: mediaItem.id,
-        filePath: mediaItem.filePath,
-        prompt: prompt,
-        revisedPrompt: result.revisedPrompt,
-        model: modelForDisplay,
-        sessionId,
-        messageId: assistantMessageId,
-        createdAt: mediaItem.createdAt,
-      })
-    }
-
-    // Send stream complete via EventBus
-    eventBus?.emit(sessionId, {
-      type: 'stream:complete',
-      data: { sessionName },
-    }).catch(err => console.error('[ImageStream] stream:complete emit error:', err))
-
-    console.log('[ImageStream] Image generation complete')
-    return true
-  } else {
-    // Handle error
-    const errorContent = `图片生成失败: ${result.error || '未知错误'}`
-    store.updateMessageContent(sessionId, assistantMessageId, errorContent)
-    store.updateMessageStreaming(sessionId, assistantMessageId, false)
-    await store.flushSessionSave(sessionId)
-
-    eventBus?.emit(sessionId, {
-      type: 'stream:error',
-      data: { error: result.error || 'Image generation failed' },
-    }).catch(err => console.error('[ImageStream] stream:error emit error:', err))
-
-    return true // Still handled (as error)
-  }
+    baseUrl,
+    sessionName,
+    emitEvent: async (targetSessionId, event) => {
+      try {
+        await eventBus?.emit(targetSessionId, event)
+      } catch (err) {
+        console.error(`[ImageStream] ${event.type} emit error:`, err)
+      }
+    },
+    pushStreamChunk: (targetSessionId, chunk) => {
+      // Send the real image markdown; the renderer reducer pops the skeleton first.
+      streamChannel?.push(targetSessionId, chunk)
+    },
+    generateGeminiImage: input => generateGeminiImage(input.apiKey, input.model, input.prompt),
+    generateOpenAIImage: input => generateImage(input.apiKey, input.baseUrl, input.model, input.prompt),
+    saveMediaImage,
+    store: {
+      updateMessageContent: store.updateMessageContent,
+      addMessageContentPart: store.addMessageContentPart,
+      updateMessageStreaming: store.updateMessageStreaming,
+      flushSessionSave: store.flushSessionSave,
+    },
+    notifyImageGenerated: notification => {
+      // IMAGE_GENERATED is a one-off renderer notification outside EventBus.
+      if (!sender.isDestroyed()) {
+        sender.send(IPC_CHANNELS.IMAGE_GENERATED, notification)
+      }
+    },
+    logger: console,
+  })
 }

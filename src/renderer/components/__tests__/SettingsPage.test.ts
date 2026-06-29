@@ -44,6 +44,9 @@ function appSettings() {
         bypassRules: '',
       },
     },
+    channels: {
+      wechat: { enabled: false },
+    },
     mcp: { enabled: true, servers: [] },
     skills: { enableSkills: true, skills: {} },
   }
@@ -64,6 +67,7 @@ function mountSettingsPage() {
         AIProviderTab: { template: '<div class="stub-providers">providers tab</div>' },
         ToolsSettingsTab: { template: '<div class="stub-tools">tools tab</div>' },
         NetworkSettingsTab: { template: '<div class="stub-network">network tab</div>' },
+        ChannelsSettingsTab: { template: '<div class="stub-channels">channels tab</div>' },
         ShortcutsSettingsTab: { template: '<div class="stub-shortcuts">shortcuts tab</div>' },
         MCPSettingsPanel: { template: '<div class="stub-mcp">mcp tab</div>' },
         SkillsSettingsPanel: { template: '<div class="stub-skills">skills tab</div>' },

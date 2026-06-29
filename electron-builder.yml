@@ -28,6 +28,10 @@ extraResources:
     to: docs
     filter:
       - "**/*"
+  - from: resources/skills
+    to: skills
+    filter:
+      - "**/*"
   - from: resources/native
     to: native
     filter:

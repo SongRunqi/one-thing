@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { runAgentLoop } from '../../../agent-loop/runner.js'
+import { runAgentLoop } from '@onething/core/agent-loop'
 import { PendingMessageQueue } from '../message-queue.js'
 import {
   createDefaultSettings,
@@ -14,7 +14,7 @@ import type {
   AgentToolChoice,
   AgentTurnRequest,
   AgentTurnStreamEvent,
-} from '../../../agent-loop/types.js'
+} from '@onething/core/agent-loop'
 import type { BuildPromptOptions } from '../../prompt/index.js'
 import type { HistoryMessage } from '../message-helpers.js'
 import type { IPCEmitter } from '../ipc-emitter.js'
@@ -230,8 +230,7 @@ vi.mock('../../../project-dirs/index.js', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 
-vi.mock('../../../agent-loop/providers/factory.js', () => ({
-  isAgentProviderRuntimeSupported: vi.fn(() => true),
+vi.mock('../../../providers/agent-runtime.js', () => ({
   createAgentProviderFromRuntime: vi.fn(() => mocks.visionProvider),
 }))
 
@@ -253,7 +252,7 @@ vi.mock('../../../prompts/resolver.js', () => ({
 }))
 
 const { buildAgentLoopRuntimeFromStreamContext } = await import('../agent-loop-runtime.js')
-const { createAgentProviderFromRuntime } = await import('../../../agent-loop/providers/factory.js')
+const { createAgentProviderFromRuntime } = await import('../../../providers/agent-runtime.js')
 
 function ctx(): StreamContext {
   return {

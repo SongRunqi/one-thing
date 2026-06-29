@@ -3,16 +3,48 @@
  * Manages available commands for the "/" command system
  */
 
-import type { CommandDefinition } from '@/types/commands'
+import { useSessionsStore } from '@/stores/sessions'
+import type { CommandDefinition, CommandResult } from '@/types/commands'
+import {
+  CHANGE_DIRECTORY_SLASH_COMMAND,
+  COMPACT_CONTEXT_SLASH_COMMAND,
+  NEW_SESSION_SLASH_COMMAND,
+} from '@onething/core/slash-commands'
 /**
  * All registered commands
  */
 const commands: CommandDefinition[] = [
   {
-    id: 'cd',
-    name: 'Change Directory',
-    description: 'Change the working directory for this session',
-    usage: '/cd <path>',
+    id: NEW_SESSION_SLASH_COMMAND.id,
+    name: NEW_SESSION_SLASH_COMMAND.name,
+    description: NEW_SESSION_SLASH_COMMAND.description,
+    usage: NEW_SESSION_SLASH_COMMAND.usage,
+    displayLabel: NEW_SESSION_SLASH_COMMAND.displayLabel,
+    insertText: NEW_SESSION_SLASH_COMMAND.insertText,
+    async execute(context) {
+      if (context.rawArgs.trim()) {
+        return { success: false, error: `Usage: ${NEW_SESSION_SLASH_COMMAND.usage}` }
+      }
+
+      const sessionsStore = useSessionsStore()
+      const session = await sessionsStore.createSessionWithoutSwitch('New Chat')
+      if (!session) {
+        return { success: false, error: 'Failed to create new session' }
+      }
+      return {
+        success: true,
+        message: 'New session opened',
+        switchToSessionId: session.id,
+      }
+    },
+  },
+  {
+    id: CHANGE_DIRECTORY_SLASH_COMMAND.id,
+    name: CHANGE_DIRECTORY_SLASH_COMMAND.name,
+    description: CHANGE_DIRECTORY_SLASH_COMMAND.description,
+    usage: CHANGE_DIRECTORY_SLASH_COMMAND.usage,
+    displayLabel: CHANGE_DIRECTORY_SLASH_COMMAND.displayLabel,
+    insertText: CHANGE_DIRECTORY_SLASH_COMMAND.insertText,
     async execute(context) {
       let nextDirectory = context.rawArgs.trim()
 
@@ -42,10 +74,12 @@ const commands: CommandDefinition[] = [
     },
   },
   {
-    id: 'compact',
-    name: 'Compact Context',
-    description: 'Summarize older conversation history to reduce context usage',
-    usage: '/compact',
+    id: COMPACT_CONTEXT_SLASH_COMMAND.id,
+    name: COMPACT_CONTEXT_SLASH_COMMAND.name,
+    description: COMPACT_CONTEXT_SLASH_COMMAND.description,
+    usage: COMPACT_CONTEXT_SLASH_COMMAND.usage,
+    displayLabel: COMPACT_CONTEXT_SLASH_COMMAND.displayLabel,
+    insertText: COMPACT_CONTEXT_SLASH_COMMAND.insertText,
     consumesInputImmediately: true,
     async execute(context) {
       const requestId = globalThis.crypto?.randomUUID?.() || `compact-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -201,7 +235,7 @@ export function filterCommands(query: string): CommandDefinition[] {
 export async function executeCommand(
   id: string,
   context: { sessionId: string; args?: string }
-): Promise<{ success: boolean; message?: string; error?: string }> {
+): Promise<CommandResult> {
   let command = findCommand(id)
   if (!command) {
     await refreshPluginCommands()

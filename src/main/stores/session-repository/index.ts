@@ -4,14 +4,11 @@ export {
   encodeMessagePageCursor,
   getMessagesPageFromArray,
   getUserMessageMarkersFromArray,
-} from './pagination.js'
-export { getMessagesPageFromJsonFile } from './json-message-page.js'
-export {
   SESSION_REPOSITORY_MIGRATIONS,
   getLatestSessionRepositorySchemaVersion,
-} from './sqlite-schema.js'
+} from '@onething/core/session'
+export { getMessagesPageFromJsonFile } from './json-message-page.js'
 export {
-  getSessionDatabasePath,
   getSqliteMessagesPage,
   getSqliteSessionDetails,
   getSqliteUserMessageMarkers,
@@ -20,3 +17,4 @@ export {
   migrateSessionToSqliteNow,
   scheduleSessionSqliteMigration,
 } from './sqlite-repository.js'
+export { getSessionDatabasePath } from '../paths.js'

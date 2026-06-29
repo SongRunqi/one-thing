@@ -420,19 +420,29 @@ export type {
   SoulMemorySettings,
   GeneralSettings,
   ChatSettings,
-  NetworkAddressFamily,
-  NetworkInterfaceOption,
-  NetworkInterfaceSettings,
   NetworkSettings,
   ProxySettings,
+  WechatChannelSettings,
+  ChannelSettings,
   AppSettings,
   GetSettingsResponse,
   SaveSettingsRequest,
   SaveSettingsResponse,
-  GetNetworkInterfacesResponse,
   TestProxyRequest,
   TestProxyResponse,
 } from './settings.js'
+
+export type {
+  GatewayChannelId,
+  GatewayWechatLoginStatus,
+  GatewayWechatStatus,
+  GatewayStatus,
+  GatewayGetStatusResponse,
+  GatewayStartRequest,
+  GatewayStartResponse,
+  GatewayStopResponse,
+  GatewayWechatLogoutResponse,
+} from './gateway.js'
 
 // Theme types
 export type {

@@ -1,6 +1,15 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"],
+  "include": [
+    "electron.vite.config.*",
+    "packages/core/**/*",
+    "packages/onething-runtime/**/*",
+    "packages/gateway/**/*",
+    "apps/electron/**/*",
+    "scripts/gateway-smoke-test.ts",
+    "src/main/**/*",
+    "src/shared/**/*"
+  ],
   "compilerOptions": {
     "composite": true,
     "noEmit": true,

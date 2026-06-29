@@ -130,6 +130,7 @@
           :session-id="effectiveSessionId"
           @send-message="handleSendMessage"
           @stop-generation="handleStopGeneration"
+          @switch-session="handleSwitchSession"
         />
       </div>
     </Teleport>
@@ -164,6 +165,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   splitWithBranch: [sessionId: string]
   openFile: [filePath: string]
+  switchSession: [sessionId: string]
 }>()
 
 const sessionsStore = useSessionsStore()
@@ -669,6 +671,10 @@ async function handleSendMessage(
 
 async function handleStopGeneration() {
   await chatStopGeneration()
+}
+
+function handleSwitchSession(sessionId: string) {
+  emit('switchSession', sessionId)
 }
 
 function handleSetQuotedText(text: string) {

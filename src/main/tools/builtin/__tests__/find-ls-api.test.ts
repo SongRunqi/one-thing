@@ -3,6 +3,7 @@ import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
 import { FindTool } from '../find.js'
+import { GlobTool } from '../glob.js'
 import { LsTool } from '../ls.js'
 
 const dirs: string[] = []
@@ -97,5 +98,24 @@ describe('FindTool Pi-style API', () => {
       metadata: expect.objectContaining({ path: external }),
     })
     expect(analysis.preview).toMatchObject({ path: external })
+  })
+})
+
+describe('GlobTool Pi-style API', () => {
+  it('finds files by glob and returns absolute paths', async () => {
+    const dir = await tempDir('onething-glob')
+    await fs.mkdir(path.join(dir, 'src'))
+    await fs.writeFile(path.join(dir, 'src', 'a.ts'), 'a', 'utf-8')
+    await fs.writeFile(path.join(dir, 'src', 'b.js'), 'b', 'utf-8')
+
+    const result = await GlobTool.execute({ pattern: '**/*.ts' }, createContext(dir))
+
+    expect(result.output).toBe(path.join(dir, 'src', 'a.ts'))
+    expect(result.metadata).toMatchObject({
+      pattern: '**/*.ts',
+      searchPath: dir,
+      count: 1,
+      truncated: false,
+    })
   })
 })

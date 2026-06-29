@@ -1,19 +1,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '../../../shared/defaults/settings.js'
 
-const mocks = vi.hoisted(() => ({
+const mocks = {
   settings: null as any,
   commands: [] as any[],
   windows: [] as any[],
   eventHandler: null as any,
   streamHandler: null as any,
-  sendVoiceRuntimeCommand: vi.fn((command: any) => {
-    mocks.commands.push(command)
-  }),
+  sendVoiceRuntimeCommand: vi.fn(),
   transcribeUtterance: vi.fn(),
   streamSynthesizeSpeech: vi.fn(),
   getVoiceInputConfigurationError: vi.fn(() => null),
-}))
+}
+
+mocks.sendVoiceRuntimeCommand.mockImplementation((command: any) => {
+  mocks.commands.push(command)
+})
 
 vi.mock('electron', () => ({
   BrowserWindow: {
@@ -58,7 +60,7 @@ vi.mock('../../stores/sessions.js', () => ({
   updateSessionAgent: vi.fn(),
 }))
 
-vi.mock('../runtime-window.js', () => ({
+vi.mock('@onething/electron-host/voice/runtime-window', () => ({
   destroyVoiceRuntimeWindow: vi.fn(),
   ensureVoiceRuntimeWindow: vi.fn(),
   flushVoiceRuntimeCommands: vi.fn(),
@@ -67,7 +69,7 @@ vi.mock('../runtime-window.js', () => ({
   sendVoiceRuntimeCommand: mocks.sendVoiceRuntimeCommand,
 }))
 
-vi.mock('../tray.js', () => ({
+vi.mock('@onething/electron-host/voice/tray', () => ({
   updateVoiceTray: vi.fn(),
 }))
 
@@ -78,8 +80,7 @@ vi.mock('../providers.js', () => ({
 }))
 
 describe('voice service TTS', () => {
-  beforeEach(() => {
-    vi.resetModules()
+  beforeEach(async () => {
     vi.clearAllMocks()
     mocks.commands = []
     mocks.windows = []
@@ -100,6 +101,11 @@ describe('voice service TTS', () => {
       await handlers.onChunk?.(new Uint8Array([1, 2, 3]))
       return { mimeType: 'audio/mpeg' }
     })
+    const { getVoiceServiceSafe } = await import('../service.js')
+    getVoiceServiceSafe()?.shutdown()
+    mocks.commands = []
+    mocks.eventHandler = null
+    mocks.streamHandler = null
   })
 
   afterEach(() => {
@@ -334,7 +340,7 @@ describe('voice service TTS', () => {
       type: 'speak-text',
     }))
 
-    await vi.advanceTimersByTimeAsync(650)
+    vi.advanceTimersByTime(650)
     await Promise.resolve()
     await Promise.resolve()
 

@@ -5,10 +5,10 @@ import {
   agentToolsFromRegistry,
   agentToolsFromToolDefinitions,
 } from '../tools.js'
-import { resolveAIToolName } from '../tool-names.js'
+import { resolveAIToolName } from '@onething/core/agent-loop'
 import { resolveAIToolName as resolveProviderAIToolName } from '../../providers/tool-name-alias.js'
 import type { ToolSettings } from '../../../shared/ipc/tools.js'
-import type { AgentJsonObject, AgentToolExecutionContext } from '../types.js'
+import type { AgentJsonObject, AgentToolExecutionContext } from '@onething/core/agent-loop'
 
 interface SeenToolExecution {
   toolName: string

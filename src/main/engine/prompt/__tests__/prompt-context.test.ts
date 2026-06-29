@@ -131,19 +131,25 @@ describe('Pi-style prompt builder', () => {
   })
 
   it('includes plugin prompt providers as plain developer sections without diffing', async () => {
-    const unregister = registerPromptContextProvider('test-plugin', 'memory', async () => ({
+    const seen: Array<{ providerId?: string; model?: string }> = []
+    const unregister = registerPromptContextProvider('test-plugin', 'memory', async context => {
+      seen.push({ providerId: context.providerId, model: context.model })
+      return {
       role: 'developer',
       source: 'plugins/test-plugin/memory',
       content: 'Plugin memory context',
-    }))
+      }
+    })
     const result = await buildPrompt({
       ...baseOptions(),
       providerId: 'codex',
+      model: 'gpt-5-codex',
       historyMessages: [],
     })
     unregister()
 
     expect(result.messages.some(message => String(message.content).includes('Plugin memory context'))).toBe(true)
+    expect(seen).toEqual([{ providerId: 'codex', model: 'gpt-5-codex' }])
   })
 
   it('normalizes plugin user-role context to developer so only real history is user', async () => {

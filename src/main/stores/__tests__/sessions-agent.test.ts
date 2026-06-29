@@ -12,6 +12,8 @@ vi.mock('electron', () => ({
 }))
 
 vi.mock('../session-repository/sqlite-repository.js', () => ({
+  deleteSqliteMessage: vi.fn(),
+  deleteSqliteMessageAndAfter: vi.fn(),
   deleteSqliteSessions: vi.fn(),
   getSqliteMessagesPage: vi.fn(() => undefined),
   getSqliteSessionDetails: vi.fn(() => undefined),
@@ -24,6 +26,7 @@ vi.mock('../session-repository/sqlite-repository.js', () => ({
   syncSqliteSessionMetadata: vi.fn(),
   syncSqliteSessionUsage: vi.fn(),
   syncSqliteSessionVariables: vi.fn(),
+  upsertSqliteMessageAndTruncate: vi.fn(),
 }))
 
 let previousHome: string | undefined

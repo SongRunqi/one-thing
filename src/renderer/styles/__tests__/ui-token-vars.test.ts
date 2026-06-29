@@ -3,8 +3,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { describe, expect, it } from 'vitest'
 import type { Theme } from '../../../shared/ipc/themes.js'
-import { contrastRatio, parseCssColor } from '../../../main/themes/role-mapping.js'
-import { resolveTheme, resolveThemeUI } from '../../../main/themes/resolver.js'
+import { contrastRatio, parseCssColor } from '@onething/runtime/themes/role-mapping'
+import { resolveTheme, resolveThemeUI } from '@onething/runtime/themes/resolver'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const rendererDir = path.resolve(dirname, '..', '..')

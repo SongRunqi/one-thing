@@ -5,13 +5,19 @@
  */
 
 export type {
+  CoreBuildPromptOptions,
+  CoreBuildPromptResult,
+  CorePromptRequestMessage,
+} from '@onething/core/engine'
+
+export type {
   OSType,
   TemplateSkill,
 } from './types.js'
 
 export {
   buildContextCompactPrompt,
-} from './compact.js'
+} from '@onething/core/engine'
 
 export {
   buildPrompt,

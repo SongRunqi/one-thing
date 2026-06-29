@@ -6,60 +6,51 @@
  */
 
 import { builtinProviders } from './builtin/index.js'
+import { createProviderRegistry } from '@onething/runtime/providers'
 import type { ProviderDefinition, ProviderInfo } from './types.js'
 
-// Registry storage
-const providers = new Map<string, ProviderDefinition>()
+const registry = createProviderRegistry<ProviderDefinition>(builtinProviders)
 
 /**
  * Invalidate provider cache for a specific provider or all providers
  */
 export function invalidateProviderCache(providerId?: string): void {
-  if (providerId) {
-    console.log(`[Provider] Cache invalidated for: ${providerId}`)
-  } else {
-    console.log('[Provider] All caches invalidated')
-  }
+  registry.invalidateProviderCache(providerId)
 }
 
 /**
  * Initialize the registry with built-in providers
  */
 export function initializeRegistry(): void {
-  for (const provider of builtinProviders) {
-    registerProvider(provider)
-  }
+  registry.initialize()
 }
 
 /**
  * Register a provider definition
  */
 export function registerProvider(definition: ProviderDefinition): void {
-  if (providers.has(definition.id)) {
-    console.warn(`Provider ${definition.id} is already registered. Overwriting.`)
-  }
-  providers.set(definition.id, definition)
+  registry.registerProvider(definition)
 }
 
 /**
  * Unregister a provider
  */
 export function unregisterProvider(providerId: string): boolean {
-  return providers.delete(providerId)
+  return registry.unregisterProvider(providerId)
 }
 
 /**
  * Get all registered provider info (for UI display)
  */
 export function getAvailableProviders(): ProviderInfo[] {
-  return Array.from(providers.values()).map(p => p.info)
+  return registry.getAvailableProviders()
 }
 
 /**
  * Get provider info by ID
  */
 export function getProviderInfo(providerId: string): ProviderInfo | undefined {
-  return providers.get(providerId)?.info
+  return registry.getProviderInfo(providerId)
 }
 
 /**
@@ -67,7 +58,7 @@ export function getProviderInfo(providerId: string): ProviderInfo | undefined {
  * Note: Custom providers (IDs starting with 'custom-') are dynamically supported
  */
 export function isProviderSupported(providerId: string): boolean {
-  return providers.has(providerId) || providerId.startsWith('custom-')
+  return registry.isProviderSupported(providerId)
 }
 
 /**
@@ -75,23 +66,21 @@ export function isProviderSupported(providerId: string): boolean {
  * Some APIs (like Zhipu) don't support system role when using tools
  */
 export function requiresSystemMerge(providerId: string): boolean {
-  const definition = providers.get(providerId)
-  return definition?.requiresSystemMerge === true
+  return registry.requiresSystemMerge(providerId)
 }
 
 /**
  * Check if a provider requires OAuth
  */
 export function requiresOAuth(providerId: string): boolean {
-  const definition = providers.get(providerId)
-  return definition?.info.requiresOAuth === true
+  return registry.requiresOAuth(providerId)
 }
 
 /**
  * Get the provider definition
  */
 export function getProviderDefinition(providerId: string): ProviderDefinition | undefined {
-  return providers.get(providerId)
+  return registry.getProviderDefinition(providerId)
 }
 
 // Export types for convenience

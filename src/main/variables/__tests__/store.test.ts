@@ -7,7 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetVariablesStoreForTests } from '../store/index.js'
-import { createDefaultVariablesFile } from '../store/schema.js'
+import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 
 const persistence = vi.hoisted(() => ({
   saved: undefined as unknown,

@@ -6,7 +6,7 @@ import {
   registerAgentProviderRuntime,
 } from '../providers/factory.js'
 import { builtinProviders } from '../../providers/builtin/index.js'
-import type { AgentTurnStreamEvent } from '../types.js'
+import type { AgentTurnStreamEvent } from '@onething/core/agent-loop'
 
 describe('agent provider runtime factory', () => {
   const emptyFetch: typeof globalThis.fetch = async () => new Response('')

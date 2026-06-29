@@ -10,10 +10,23 @@
 
 import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ContextVariable, ThinkingEffort } from '../ipc.js'
 import type { JsonObject } from '../json.js'
-import type { StreamCompleteData, StreamErrorData } from '../../main/engine/stream/ipc-emitter.js'
 import type { SessionCommand } from './session-commands.js'
 
 // ── Stream lifecycle ────────────────────────────
+
+export interface StreamCompleteData {
+  sessionName?: string
+  usage?: { inputTokens: number; outputTokens: number; totalTokens: number; durationMs?: number }
+  lastTurnUsage?: { inputTokens: number; outputTokens: number }
+  aborted?: boolean
+  error?: string
+}
+
+export interface StreamErrorData {
+  error: string
+  errorDetails?: string
+  preserved?: boolean
+}
 
 export interface StreamStartEvent {
   type: 'stream:start'

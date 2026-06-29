@@ -64,6 +64,7 @@
           :outline-rail-target="!sidePanelCollapsed ? chatSideOutlineTarget : null"
           @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
           @open-file="handleOpenFile"
+          @switch-session="(sessionId) => emit('switchSession', sessionId)"
         />
       </div>
 
@@ -151,6 +152,7 @@ const emit = defineEmits<{
   createNewChat: []
   toggleInspector: []
   openFile: [filePath: string]
+  switchSession: [sessionId: string]
 }>()
 
 const sessionsStore = useSessionsStore()

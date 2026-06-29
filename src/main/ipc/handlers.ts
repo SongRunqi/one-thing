@@ -1,4 +1,8 @@
-import { ipcMain } from 'electron'
+import { emitCoreSessionCommandForIpc } from '@onething/core/events'
+import {
+  registerElectronSessionCommandIpcHandler,
+  type ElectronSessionCommandRequest,
+} from '@onething/electron-host/ipc/session-command'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { registerChatHandlers } from './chat.js'
 import { registerSessionHandlers } from './sessions.js'
@@ -15,18 +19,20 @@ import { registerPermissionHandlers } from './permission.js'
 import { registerOAuthHandlers, cleanupOAuth } from './oauth.js'
 import { registerThemeHandlers, initializeThemeSystem } from './themes.js'
 import { registerVariableHandlers } from '../variables/ipc.js'
-import { registerProjectDirsHandlers } from '../project-dirs/index.js'
+import { registerProjectDirsHandlers } from '../project-dirs/ipc.js'
 import { registerPluginHandlers } from './plugins.js'
 import { registerPromptHandlers } from '../prompts/ipc.js'
 import { registerMemoryHandlers } from './memory.js'
 import { registerSchedulerHandlers } from './scheduler.js'
 import { registerFilesHandlers } from './files.js'
 import { registerMarkdownHandlers } from './markdown.js'
-import { registerSearchHandlers } from '../search/index.js'
+import { registerSearchHandlers } from '@onething/electron-host/search/ipc'
 import { registerAppStateHandlers } from './app-state.js'
 import { registerTodoPlanHandlers } from '../todo-plan/ipc.js'
 import { registerVoiceHandlers } from '../voice/ipc.js'
 import { registerACPHandlers, initializeACP, shutdownACP } from './acp.js'
+import { registerGatewayHandlers } from '../gateway/ipc.js'
+import { getEventBus } from '../events/index.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -56,6 +62,7 @@ export function initializeIPC() {
   registerTodoPlanHandlers()
   registerVoiceHandlers()
   registerACPHandlers()
+  registerGatewayHandlers()
   registerCommandHandler()
 }
 
@@ -65,16 +72,16 @@ export function initializeIPC() {
  * subscribed systems (Permission, StreamEngine, etc.).
  */
 function registerCommandHandler() {
-  ipcMain.handle(IPC_CHANNELS.SESSION_COMMAND, async (_event, { sessionId, command }) => {
-    try {
-      const { getEventBus } = await import('../events/index.js')
-      const eventBus = getEventBus()
-      const result = await eventBus.emit(sessionId, command)
-      return { success: true, result }
-    } catch (error: any) {
-      console.error('[IPC] session:command handler error:', error)
-      return { success: false, error: error.message || 'Failed to handle command' }
-    }
+  registerElectronSessionCommandIpcHandler({
+    channel: IPC_CHANNELS.SESSION_COMMAND,
+    handleCommand: async ({ sessionId, command }: ElectronSessionCommandRequest) => {
+      return emitCoreSessionCommandForIpc({
+        sessionId,
+        command: command as Parameters<ReturnType<typeof getEventBus>['emit']>[1],
+        eventBus: getEventBus(),
+        logger: console,
+      })
+    },
   })
   console.log('[IPC] session:command handler registered')
 }

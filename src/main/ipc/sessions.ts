@@ -1,379 +1,346 @@
-import { ipcMain } from 'electron'
+import { registerElectronSessionIpcHandlers } from '@onething/electron-host/ipc/sessions'
 import { v4 as uuidv4 } from 'uuid'
 import fs from 'node:fs/promises'
+import {
+  activateOnethingSessionForIpc,
+  addOnethingSystemMessageForIpc,
+  createOnethingBranchSessionForIpc,
+  createOnethingSessionForIpc,
+  deleteOnethingSessionForIpc,
+  getOnethingSessionForIpc,
+  getOnethingSessionMessagesForIpc,
+  getOnethingSessionMessagesPageForIpc,
+  getOnethingSessionTokenUsageForIpc,
+  listOnethingSessionsForIpc,
+  listOnethingSessionUserMarkersForIpc,
+  removeOnethingMessageForIpc,
+  removeOnethingSystemMarkerMessageForIpc,
+  renameOnethingSessionForIpc,
+  switchOnethingSessionForIpc,
+  updateOnethingSessionAgent,
+  updateOnethingSessionArchivedForIpc,
+  updateOnethingSessionModel,
+  updateOnethingSessionPinForIpc,
+  updateOnethingSessionPermissionMode,
+  updateOnethingSessionWorkingDirectory,
+} from '@onething/runtime/sessions'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
-import type { TokenUsage, SessionTokenUsage } from '../../shared/ipc.js'
+import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest } from '../../shared/ipc.js'
 import * as store from '../store.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
 import type { PermissionMode } from '../../shared/ipc.js'
 import { workdirGateway } from '../variables/gateways.js'
 import {
-  sanitizeMessagesForRenderer,
-  sanitizeSessionForRenderer,
-} from './message-sanitizer.js'
+  clearSessionUsage,
+  getSessionUsage,
+  updateSessionUsage,
+} from '../session/usage.js'
 
-/**
- * Update session usage (called from chat.ts when finish chunk is received)
- * Persists to disk for durability across app restarts
- * @param lastTurnUsage - Optional: the last turn's usage for context size calculation
- */
-export function updateSessionUsage(
-  sessionId: string,
-  usage: TokenUsage,
-  lastTurnUsage?: { inputTokens: number; outputTokens: number }
-): void {
-  store.updateSessionTokenUsage(sessionId, usage, lastTurnUsage)
-}
-
-/**
- * Get session usage from persisted storage
- */
-export function getSessionUsage(sessionId: string): SessionTokenUsage {
-  const usage = store.getSessionTokenUsage(sessionId)
-  return {
-    totalInputTokens: usage?.totalInputTokens ?? 0,
-    totalOutputTokens: usage?.totalOutputTokens ?? 0,
-    totalTokens: usage?.totalTokens ?? 0,
-    maxTokens: 128000, // Not used anymore, context length comes from model
-    lastInputTokens: usage?.lastInputTokens ?? 0,
-    contextSize: usage?.contextSize ?? 0,
-  }
-}
-
-/**
- * Clear session usage (called when session is deleted)
- * Note: Session deletion already removes the session file with its usage data
- */
-export function clearSessionUsage(_sessionId: string): void {
-  // No-op: session file deletion handles this
-}
+export { clearSessionUsage, getSessionUsage, updateSessionUsage } from '../session/usage.js'
 
 export function registerSessionHandlers() {
-  // 获取所有会话
-  ipcMain.handle(IPC_CHANNELS.GET_SESSIONS, async () => {
-    return { success: true, sessions: store.getSessionsList() }
-  })
-
-  // ============================================================================
-  // Optimized Session Loading (Phase 4: Metadata Separation)
-  // ============================================================================
-
-  // 获取会话列表（仅元数据，不含消息）- 用于快速启动
-  ipcMain.handle(IPC_CHANNELS.GET_SESSIONS_LIST, async () => {
-    try {
-      const sessions = store.getSessionsList()
-      return { success: true, sessions }
-    } catch (error: any) {
-      console.error('[Sessions] Failed to get sessions list:', error)
-      return { success: false, error: error.message || 'Failed to get sessions list' }
-    }
-  })
-
-  // 激活会话（返回详情，不含消息）- 用于会话切换时获取元数据
-  ipcMain.handle(IPC_CHANNELS.ACTIVATE_SESSION, async (_event, { sessionId }) => {
-    try {
-      const session = store.getSessionDetails(sessionId)
-      if (!session) {
-        return { success: false, error: 'Session not found' }
-      }
-
-      store.setCurrentSessionId(sessionId)
-      return {
-        success: true,
-        session,
-        messageCount: session.messageCount ?? 0,
-      }
-    } catch (error: any) {
-      console.error('[Sessions] Failed to activate session:', error)
-      return { success: false, error: error.message || 'Failed to activate session' }
-    }
-  })
-
-  // 获取会话消息（按需加载）- 仅在需要显示消息时调用
-  ipcMain.handle(IPC_CHANNELS.GET_SESSION_MESSAGES, async (_event, { sessionId }) => {
-    try {
-      const messages = store.getSessionMessages(sessionId)
-      if (!messages) {
-        return { success: false, error: 'Session not found' }
-      }
-      return { success: true, messages: sanitizeMessagesForRenderer(messages) }
-    } catch (error: any) {
-      console.error('[Sessions] Failed to get session messages:', error)
-      return { success: false, error: error.message || 'Failed to get messages' }
-    }
-  })
-
-  // 获取会话消息分页（当前由 JSON 存储切片实现，后续切换为 SQLite cursor 查询）
-  ipcMain.handle(IPC_CHANNELS.GET_SESSION_MESSAGES_PAGE, async (_event, request) => {
-    const start = performance.now()
-    try {
-      const response = store.getSessionMessagesPage(request)
-      console.info('[Perf][SessionPage][ipc]', {
-        sessionId: request.sessionId,
-        totalMs: Math.round(performance.now() - start),
-        messages: response.messages?.length ?? 0,
-        success: response.success,
-      })
-      return response.success
-        ? {
-            ...response,
-            messages: sanitizeMessagesForRenderer(response.messages),
+  registerElectronSessionIpcHandlers({
+    handlers: [
+      {
+        channel: IPC_CHANNELS.GET_SESSIONS,
+        handle: async () => listOnethingSessionsForIpc({
+          listSessions: () => store.getSessionsList(),
+          logger: console,
+        }),
+      },
+      {
+        channel: IPC_CHANNELS.GET_SESSIONS_LIST,
+        handle: async () => listOnethingSessionsForIpc({
+          listSessions: () => store.getSessionsList(),
+          logger: console,
+        }),
+      },
+      {
+        channel: IPC_CHANNELS.ACTIVATE_SESSION,
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          return activateOnethingSessionForIpc({
+            sessionId,
+            getSessionDetails: id => store.getSessionDetails(id),
+            setCurrentSessionId: id => store.setCurrentSessionId(id),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.GET_SESSION_MESSAGES,
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          return getOnethingSessionMessagesForIpc({
+            sessionId,
+            getSessionMessages: id => store.getSessionMessages(id),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.GET_SESSION_MESSAGES_PAGE,
+        handle: async (request) => {
+          const typedRequest = request as GetSessionMessagesPageRequest
+          const start = performance.now()
+          const response = await getOnethingSessionMessagesPageForIpc({
+            request: typedRequest,
+            getSessionMessagesPage: nextRequest =>
+              store.getSessionMessagesPage(nextRequest as GetSessionMessagesPageRequest),
+            logger: console,
+          })
+          if (response.success) {
+            console.info('[Perf][SessionPage][ipc]', {
+              sessionId: typedRequest.sessionId,
+              totalMs: Math.round(performance.now() - start),
+              messages: response.messages?.length ?? 0,
+              success: true,
+            })
+          } else {
+            console.info('[Perf][SessionPage][ipc]', {
+              sessionId: typedRequest.sessionId,
+              totalMs: Math.round(performance.now() - start),
+              failed: true,
+            })
           }
-        : response
-    } catch (error: any) {
-      console.error('[Sessions] Failed to get session messages page:', error)
-      console.info('[Perf][SessionPage][ipc]', {
-        sessionId: request.sessionId,
-        totalMs: Math.round(performance.now() - start),
-        failed: true,
-      })
-      return { success: false, error: error.message || 'Failed to get message page' }
-    }
-  })
-
-  // 获取用户消息导航标记（轻量数据，不返回完整消息体）
-  ipcMain.handle(IPC_CHANNELS.GET_SESSION_USER_MARKERS, async (_event, { sessionId }) => {
-    try {
-      const markers = store.getSessionUserMessageMarkers(sessionId)
-      if (!markers) {
-        return { success: false, error: 'Session not found' }
-      }
-      return { success: true, markers }
-    } catch (error: any) {
-      console.error('[Sessions] Failed to get user message markers:', error)
-      return { success: false, error: error.message || 'Failed to get user markers' }
-    }
-  })
-
-  // 创建新会话
-  ipcMain.handle(IPC_CHANNELS.CREATE_SESSION, async (_event, { name }) => {
-    const sessionId = uuidv4()
-    const session = store.createSession(sessionId, name || 'New Chat')
-    return { success: true, session: sanitizeSessionForRenderer(session) }
-  })
-
-  // 切换会话
-  ipcMain.handle(IPC_CHANNELS.SWITCH_SESSION, async (_event, { sessionId }) => {
-    const session = store.getSession(sessionId)
-    if (!session) {
-      return { success: false, error: 'Session not found' }
-    }
-
-    store.setCurrentSessionId(sessionId)
-    return { success: true, session: sanitizeSessionForRenderer(session) }
-  })
-
-  // 获取单个会话（不切换）
-  ipcMain.handle(IPC_CHANNELS.GET_SESSION, async (_event, { sessionId }) => {
-    const session = store.getSession(sessionId)
-    if (!session) {
-      return { success: false, error: 'Session not found' }
-    }
-    return { success: true, session: sanitizeSessionForRenderer(session) }
-  })
-
-  // 删除会话 (包括级联删除子会话)
-  ipcMain.handle(IPC_CHANNELS.DELETE_SESSION, async (_event, { sessionId }) => {
-    const result = store.deleteSession(sessionId)
-    return {
-      success: true,
-      parentSessionId: result.parentSessionId,
-      deletedCount: result.deletedIds.length,
-    }
-  })
-
-  // 重命名会话
-  ipcMain.handle(IPC_CHANNELS.RENAME_SESSION, async (_event, { sessionId, newName }) => {
-    store.renameSession(sessionId, newName)
-    return { success: true }
-  })
-
-  // 置顶/取消置顶会话
-  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_PIN, async (_event, { sessionId, isPinned }) => {
-    store.updateSessionPin(sessionId, isPinned)
-    return { success: true }
-  })
-
-  // 归档/取消归档会话
-  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_ARCHIVED, async (_event, { sessionId, isArchived, archivedAt }) => {
-    store.updateSessionArchived(sessionId, isArchived, archivedAt)
-    return { success: true }
-  })
-
-  // 更新会话工作目录 (sandbox boundary)
-  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY, async (_event, { sessionId, workingDirectory }) => {
-    // 如果是清除目录，直接执行（跳过 fs.stat；空字符串清空合法）
-    if (workingDirectory === null || workingDirectory === '') {
-      // Cast: gateway expects a string for the path, but accepts ''
-      // semantics through the underlying store mutator.
-      await workdirGateway.write(sessionId, workingDirectory ?? '')
-      return { success: true }
-    }
-
-    // 验证目录是否存在
-    try {
-      const stat = await fs.stat(workingDirectory)
-      if (!stat.isDirectory()) {
-        return { success: false, error: `Not a directory: ${workingDirectory}` }
-      }
-    } catch {
-      return { success: false, error: `Directory does not exist: ${workingDirectory}` }
-    }
-
-    await workdirGateway.write(sessionId, workingDirectory)
-    return { success: true }
-  })
-
-  // 更新会话模型
-  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_MODEL, async (_event, { sessionId, provider, model }) => {
-    const success = store.updateSessionModel(sessionId, provider, model)
-    if (!success) {
-      return { success: false, error: 'Session not found' }
-    }
-    return { success: true }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_AGENT, async (_event, { sessionId, agentId }) => {
-    const nextAgentId = agentId || DEFAULT_AGENT_ID
-    if (!agentExists(nextAgentId)) {
-      return { success: false, error: 'Agent not found' }
-    }
-    const success = store.updateSessionAgent(sessionId, nextAgentId)
-    if (!success) {
-      return { success: false, error: 'Session not found' }
-    }
-    return { success: true }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.UPDATE_SESSION_PERMISSION_MODE, async (_event, { sessionId, permissionMode }) => {
-    const allowed: PermissionMode[] = ['normal', 'auto-accept-edits', 'dangerously-allow-all']
-    if (!allowed.includes(permissionMode)) {
-      return { success: false, error: 'Invalid permission mode' }
-    }
-    const success = store.updateSessionPermissionMode(sessionId, permissionMode)
-    if (!success) {
-      return { success: false, error: 'Session not found' }
-    }
-    return { success: true }
-  })
-
-  // 创建分支会话
-  ipcMain.handle(
-    IPC_CHANNELS.CREATE_BRANCH,
-    async (_event, { parentSessionId, branchFromMessageId }) => {
-      try {
-        const parentSession = store.getSession(parentSessionId)
-        if (!parentSession) {
-          return { success: false, error: 'Parent session not found' }
-        }
-
-        // Find the message index to branch from
-        const messageIndex = parentSession.messages.findIndex(
-          (m) => m.id === branchFromMessageId
-        )
-        if (messageIndex === -1) {
-          return { success: false, error: 'Message not found' }
-        }
-
-        // Copy messages up to and including the branch point
-        const inheritedMessages = parentSession.messages
-          .slice(0, messageIndex + 1)
-          .map((m) => ({ ...m })) // Deep copy
-
-        // Create branch session with inherited messages
-        const branchId = uuidv4()
-        const branchName = `${parentSession.name} (Branch)`
-        const branchSession = store.createBranchSession(
-          branchId,
-          branchName,
-          parentSessionId,
-          branchFromMessageId,
-          inheritedMessages
-        )
-
-        return { success: true, session: sanitizeSessionForRenderer(branchSession) }
-      } catch (error: any) {
-        console.error('Error creating branch:', error)
-        return { success: false, error: error.message || 'Failed to create branch' }
-      }
-    }
-  )
-
-  // 获取会话的 token 使用统计
-  ipcMain.handle(IPC_CHANNELS.GET_SESSION_TOKEN_USAGE, async (_event, sessionId: string) => {
-    const usage = getSessionUsage(sessionId)
-    return { success: true, usage }
-  })
-
-  // Add a system message to a session (for /files command persistence)
-  ipcMain.handle('add-system-message', async (_event, { sessionId, message }) => {
-    try {
-      store.addMessage(sessionId, message)
-      return { success: true }
-    } catch (error: any) {
-      console.error('[Sessions] Failed to add system message:', error)
-      return { success: false, error: error.message || 'Failed to add message' }
-    }
-  })
-
-  // Remove existing files-changed message from a session (to keep only one)
-  ipcMain.handle('remove-files-changed-message', async (_event, { sessionId }) => {
-    try {
-      const session = store.getSession(sessionId)
-      if (!session) {
-        return { success: false, error: 'Session not found' }
-      }
-
-      // Find existing files-changed message
-      const existing = session.messages.find(
-        (m) => m.role === 'system' && m.content.includes('"type":"files-changed"')
-      )
-
-      if (existing) {
-        store.deleteMessage(sessionId, existing.id)
-        return { success: true, removedId: existing.id }
-      }
-
-      return { success: true, removedId: null }
-    } catch (error: any) {
-      console.error('[Sessions] Failed to remove files-changed message:', error)
-      return { success: false, error: error.message || 'Failed to remove message' }
-    }
-  })
-
-  // Remove existing git-status message from a session (to keep only one)
-  ipcMain.handle('remove-git-status-message', async (_event, { sessionId }) => {
-    try {
-      const session = store.getSession(sessionId)
-      if (!session) {
-        return { success: false, error: 'Session not found' }
-      }
-
-      // Find existing git-status message
-      const existing = session.messages.find(
-        (m) => m.role === 'system' && m.content.includes('"type":"git-status"')
-      )
-
-      if (existing) {
-        store.deleteMessage(sessionId, existing.id)
-        return { success: true, removedId: existing.id }
-      }
-
-      return { success: true, removedId: null }
-    } catch (error: any) {
-      console.error('[Sessions] Failed to remove git-status message:', error)
-      return { success: false, error: error.message || 'Failed to remove message' }
-    }
-  })
-
-  // Generic remove message by ID (for close button functionality)
-  ipcMain.handle('remove-message', async (_event, { sessionId, messageId }) => {
-    try {
-      store.deleteMessage(sessionId, messageId)
-      return { success: true }
-    } catch (error: any) {
-      console.error('[Sessions] Failed to remove message:', error)
-      return { success: false, error: error.message || 'Failed to remove message' }
-    }
+          return response
+        },
+      },
+      {
+        channel: IPC_CHANNELS.GET_SESSION_USER_MARKERS,
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          return listOnethingSessionUserMarkersForIpc({
+            sessionId,
+            getSessionUserMessageMarkers: id => store.getSessionUserMessageMarkers(id),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.CREATE_SESSION,
+        handle: async (request) => {
+          const { name } = request as { name?: string }
+          return createOnethingSessionForIpc({
+            sessionId: uuidv4(),
+            name,
+            createSession: (id, nextName) => store.createSession(id, nextName),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.SWITCH_SESSION,
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          return switchOnethingSessionForIpc({
+            sessionId,
+            getSession: id => store.getSession(id),
+            setCurrentSessionId: id => store.setCurrentSessionId(id),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.GET_SESSION,
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          return getOnethingSessionForIpc({
+            sessionId,
+            getSession: id => store.getSession(id),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.DELETE_SESSION,
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          return deleteOnethingSessionForIpc({
+            sessionId,
+            deleteSession: id => store.deleteSession(id),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.RENAME_SESSION,
+        handle: async (request) => {
+          const { sessionId, newName } = request as { sessionId: string; newName: string }
+          return renameOnethingSessionForIpc({
+            sessionId,
+            newName,
+            renameSession: (id, nextName) => store.renameSession(id, nextName),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.UPDATE_SESSION_PIN,
+        handle: async (request) => {
+          const { sessionId, isPinned } = request as { sessionId: string; isPinned: boolean }
+          return updateOnethingSessionPinForIpc({
+            sessionId,
+            isPinned,
+            updateSessionPin: (id, nextPinned) => store.updateSessionPin(id, nextPinned),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.UPDATE_SESSION_ARCHIVED,
+        handle: async (request) => {
+          const { sessionId, isArchived, archivedAt } = request as {
+            sessionId: string
+            isArchived: boolean
+            archivedAt?: number
+          }
+          return updateOnethingSessionArchivedForIpc({
+            sessionId,
+            isArchived,
+            archivedAt,
+            updateSessionArchived: (id, nextArchived, nextArchivedAt) =>
+              store.updateSessionArchived(id, nextArchived, nextArchivedAt),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.UPDATE_SESSION_WORKING_DIRECTORY,
+        handle: async (request) => {
+          const { sessionId, workingDirectory } = request as { sessionId: string; workingDirectory: string | null }
+          return updateOnethingSessionWorkingDirectory({
+            sessionId,
+            workingDirectory,
+            isDirectory: async path => (await fs.stat(path)).isDirectory(),
+            writeWorkingDirectory: (id, nextWorkingDirectory) =>
+              workdirGateway.write(id, nextWorkingDirectory),
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.UPDATE_SESSION_MODEL,
+        handle: async (request) => {
+          const { sessionId, provider, model } = request as { sessionId: string; provider: string; model: string }
+          return updateOnethingSessionModel({
+            sessionId,
+            provider,
+            model,
+            updateSessionModel: (id, nextProvider, nextModel) =>
+              store.updateSessionModel(id, nextProvider, nextModel),
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.UPDATE_SESSION_AGENT,
+        handle: async (request) => {
+          const { sessionId, agentId } = request as { sessionId: string; agentId?: string }
+          return updateOnethingSessionAgent({
+            sessionId,
+            agentId,
+            defaultAgentId: DEFAULT_AGENT_ID,
+            agentExists,
+            updateSessionAgent: (id, nextAgentId) =>
+              store.updateSessionAgent(id, nextAgentId),
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.UPDATE_SESSION_PERMISSION_MODE,
+        handle: async (request) => {
+          const { sessionId, permissionMode } = request as { sessionId: string; permissionMode: PermissionMode }
+          return updateOnethingSessionPermissionMode<PermissionMode>({
+            sessionId,
+            permissionMode,
+            allowedPermissionModes: ['normal', 'auto-accept-edits', 'dangerously-allow-all'],
+            updateSessionPermissionMode: (id, nextPermissionMode) =>
+              store.updateSessionPermissionMode(id, nextPermissionMode),
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.CREATE_BRANCH,
+        handle: async (request) => {
+          const { parentSessionId, branchFromMessageId } = request as {
+            parentSessionId: string
+            branchFromMessageId: string
+          }
+          return createOnethingBranchSessionForIpc<ChatSession, ChatMessage, ChatSession>({
+            parentSessionId,
+            branchFromMessageId,
+            adapters: {
+              createId: uuidv4,
+              getSession: id => store.getSession(id),
+              createBranchSession: input => store.createBranchSession(
+                input.branchId,
+                input.branchName,
+                input.parentSessionId,
+                input.branchFromMessageId,
+                input.inheritedMessages
+              ),
+            },
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.GET_SESSION_TOKEN_USAGE,
+        handle: async (sessionId) => getOnethingSessionTokenUsageForIpc({
+          sessionId: sessionId as string,
+          getSessionTokenUsage: id => store.getSessionTokenUsage(id),
+          logger: console,
+        }),
+      },
+      {
+        channel: 'add-system-message',
+        handle: async (request) => {
+          const { sessionId, message } = request as { sessionId: string; message: ChatMessage }
+          return addOnethingSystemMessageForIpc({
+            sessionId,
+            message,
+            addMessage: (id, nextMessage) => store.addMessage(id, nextMessage),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: 'remove-files-changed-message',
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          return removeOnethingSystemMarkerMessageForIpc({
+            sessionId,
+            markerType: 'files-changed',
+            getSession: id => store.getSession(id),
+            deleteMessage: (id, messageId) => store.deleteMessage(id, messageId),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: 'remove-git-status-message',
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          return removeOnethingSystemMarkerMessageForIpc({
+            sessionId,
+            markerType: 'git-status',
+            getSession: id => store.getSession(id),
+            deleteMessage: (id, messageId) => store.deleteMessage(id, messageId),
+            logger: console,
+          })
+        },
+      },
+      {
+        channel: 'remove-message',
+        handle: async (request) => {
+          const { sessionId, messageId } = request as { sessionId: string; messageId: string }
+          return removeOnethingMessageForIpc({
+            sessionId,
+            messageId,
+            deleteMessage: (id, nextMessageId) => store.deleteMessage(id, nextMessageId),
+            logger: console,
+          })
+        },
+      },
+    ],
   })
 }

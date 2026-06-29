@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isMainAppWindowUrl } from '../window-target'
+import { isElectronMainAppWindowUrl as isMainAppWindowUrl } from '@onething/electron-host/window/renderer-targets'
 
 describe('Search Everywhere window targeting', () => {
   it('accepts the main app route', () => {

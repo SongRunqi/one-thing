@@ -1,5 +1,7 @@
-import { session } from 'electron'
-import type { NetworkInterfaceSettings, ProxySettings, TestProxyResponse } from '../../shared/ipc.js'
+import type { ProxySettings, TestProxyResponse } from '../../shared/ipc.js'
+import {
+  applyElectronNetworkProxySettings,
+} from '@onething/electron-host/network/proxy'
 import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '../providers/bound-fetch.js'
 import { getSettings } from '../stores/settings.js'
 
@@ -27,7 +29,7 @@ export async function applyNetworkProxySettings(proxy: ProxySettings = getSettin
   clearAppDispatcherCache()
 
   if (!proxy.enabled) {
-    await session.defaultSession.setProxy({ mode: 'direct' })
+    await applyElectronNetworkProxySettings({ enabled: false })
     return
   }
 
@@ -36,18 +38,18 @@ export async function applyNetworkProxySettings(proxy: ProxySettings = getSettin
     proxyRules = buildElectronProxyRules(proxy)
   } catch (error: any) {
     console.warn('[Network] Invalid proxy settings; Electron proxy was not applied:', error.message)
-    await session.defaultSession.setProxy({ mode: 'direct' })
+    await applyElectronNetworkProxySettings({ enabled: false })
     return
   }
 
-  await session.defaultSession.setProxy({
-    mode: 'fixed_servers',
+  await applyElectronNetworkProxySettings({
+    enabled: true,
     proxyRules,
     proxyBypassRules: normalizeBypassRules(proxy.bypassRules),
   })
 }
 
-export async function testProxy(proxy: ProxySettings, networkInterface?: NetworkInterfaceSettings): Promise<TestProxyResponse> {
+export async function testProxy(proxy: ProxySettings): Promise<TestProxyResponse> {
   if (!proxy.enabled) {
     return { success: false, error: 'Proxy is disabled.' }
   }
@@ -59,11 +61,11 @@ export async function testProxy(proxy: ProxySettings, networkInterface?: Network
 
   try {
     const fetchImpl = createRequiredAppFetch({
+      policy: 'default',
       proxy: {
         ...proxy,
         url: validated.normalizedUrl,
       },
-      networkInterface,
     })
     const response = await fetchImpl('https://www.gstatic.com/generate_204', {
       method: 'GET',

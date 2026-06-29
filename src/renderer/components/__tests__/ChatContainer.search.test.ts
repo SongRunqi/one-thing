@@ -31,6 +31,7 @@ vi.mock('@/components/chat/ChatWindow.vue', () => ({
   default: {
     name: 'ChatWindow',
     props: ['sessionId'],
+    emits: ['switchSession'],
     setup(_props: unknown, { expose }: { expose: (exposed: Record<string, unknown>) => void }) {
       expose({
         focusInput: vi.fn(),
@@ -39,7 +40,7 @@ vi.mock('@/components/chat/ChatWindow.vue', () => ({
       })
       return {}
     },
-    template: '<div class="mock-chat-window" />',
+    template: '<button class="mock-chat-window" @click="$emit(\'switchSession\', \'session-new\')">{{ sessionId }}</button>',
   },
 }))
 
@@ -85,5 +86,39 @@ describe('ChatContainer search navigation', () => {
     expect(result).toBe(true)
     expect(mocks.chatStore.loadMessagesAround).toHaveBeenCalledWith('session-1', 'target-message')
     expect(mocks.chatWindowScrollToMessage).toHaveBeenCalledWith('target-message')
+  })
+
+  it('switches the active main panel when a child command creates a new session', async () => {
+    const wrapper = mount(ChatContainer)
+    await settle()
+
+    await wrapper.find('.mock-chat-window').trigger('click')
+    await settle()
+
+    expect(mocks.sessionsStore.switchSession).toHaveBeenCalledWith('session-new')
+    expect(wrapper.find('.mock-chat-window').text()).toBe('session-new')
+  })
+
+  it('switches only the invoking split panel for a child new-session command', async () => {
+    const wrapper = mount(ChatContainer)
+    await settle()
+
+    const vm = wrapper.vm as unknown as {
+      splitPanel: (panelId: string, sessionId: string) => void
+    }
+    vm.splitPanel('main', 'session-2')
+    await settle()
+
+    const panels = wrapper.findAll('.mock-chat-window')
+    expect(panels).toHaveLength(2)
+
+    await panels[1].trigger('click')
+    await settle()
+
+    expect(mocks.sessionsStore.switchSession).not.toHaveBeenCalled()
+    expect(wrapper.findAll('.mock-chat-window').map(panel => panel.text())).toEqual([
+      'session-1',
+      'session-new',
+    ])
   })
 })

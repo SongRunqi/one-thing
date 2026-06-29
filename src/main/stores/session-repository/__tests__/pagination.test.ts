@@ -5,6 +5,10 @@ import {
   getMessagesPageFromArray,
   getUserMessageMarkersFromArray,
 } from '../pagination.js'
+import {
+  resolveSessionMessagesPage,
+  resolveSessionUserMessageMarkers,
+} from '@onething/core/session'
 
 function message(index: number, role: ChatMessage['role'] = 'assistant'): ChatMessage {
   return {
@@ -124,5 +128,86 @@ describe('session message pagination', () => {
       ['msg-6', 6],
       ['msg-9', 9],
     ])
+  })
+
+  it('resolves page sources and migration scheduling in core', () => {
+    const request = { sessionId: 's1', limit: 2 }
+    const sqlite = resolveSessionMessagesPage<ChatMessage>({
+      request,
+      getSqlitePage: () => ({
+        success: true,
+        messages: [message(1)],
+      }),
+      getJsonByteScanPage: () => {
+        throw new Error('json byte-scan should be lazy')
+      },
+    })
+    expect(sqlite).toMatchObject({
+      source: 'sqlite',
+      shouldScheduleMigration: false,
+      response: { success: true },
+    })
+
+    const byteScan = resolveSessionMessagesPage<ChatMessage>({
+      request,
+      getJsonByteScanPage: () => ({
+        success: true,
+        messages: [message(2)],
+      }),
+    })
+    expect(byteScan).toMatchObject({
+      source: 'json-byte-scan',
+      shouldScheduleMigration: true,
+    })
+
+    const fullFallback = resolveSessionMessagesPage<ChatMessage>({
+      request,
+      getSessionMessages: () => messages,
+    })
+    expect(fullFallback).toMatchObject({
+      source: 'json-full-fallback',
+      shouldScheduleMigration: true,
+      response: { success: true, totalCount: 10 },
+    })
+    expect(fullFallback.response.messages?.map(item => item.id)).toEqual(['msg-9', 'msg-10'])
+
+    expect(resolveSessionMessagesPage<ChatMessage>({
+      request,
+      getSessionMessages: () => undefined,
+    })).toMatchObject({
+      source: 'missing',
+      shouldScheduleMigration: false,
+      response: { success: false, error: 'Session not found' },
+    })
+  })
+
+  it('resolves user message marker sources and migration scheduling in core', () => {
+    const sqliteMarkers = resolveSessionUserMessageMarkers<ChatMessage>({
+      getSqliteMarkers: () => [{ id: 'msg-3', seq: 3, timestamp: 3, preview: 'message 3' }],
+      getSessionMessages: () => {
+        throw new Error('session messages should be lazy')
+      },
+    })
+    expect(sqliteMarkers).toEqual({
+      markers: [{ id: 'msg-3', seq: 3, timestamp: 3, preview: 'message 3' }],
+      source: 'sqlite',
+      shouldScheduleMigration: false,
+    })
+
+    const fallback = resolveSessionUserMessageMarkers<ChatMessage>({
+      getSessionMessages: () => messages,
+    })
+    expect(fallback).toMatchObject({
+      source: 'json-full-fallback',
+      shouldScheduleMigration: true,
+    })
+    expect(fallback.markers?.map(marker => marker.id)).toEqual(['msg-3', 'msg-6', 'msg-9'])
+
+    expect(resolveSessionUserMessageMarkers<ChatMessage>({
+      getSessionMessages: () => undefined,
+    })).toEqual({
+      source: 'missing',
+      shouldScheduleMigration: false,
+    })
   })
 })

@@ -15,6 +15,11 @@ Current date: 2026-06-09",
     "role": "system",
   },
   {
+    "content": "# Runtime Context
+- Provider ID: codex",
+    "role": "developer",
+  },
+  {
     "content": "# Work Directory
 Current work directory: /repo (/repo)
 
@@ -48,6 +53,9 @@ Tool Guidelines:
 
 Current date: 2026-06-09
 
+# Runtime Context
+- Provider ID: codex
+
 # Work Directory
 Current work directory: /repo (/repo)
 
@@ -76,6 +84,9 @@ Current date: 2026-06-09
 
 Be precise and cite sources.
 
+# Runtime Context
+- Provider ID: openai
+
 You are running on macOS. Use Unix/Bash-compatible syntax with forward slashes (/) for paths.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
@@ -92,6 +103,9 @@ Tool Guidelines:
 - Show file paths clearly when working with files.
 
 Current date: 2026-06-09
+
+# Runtime Context
+- Provider ID: openai
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -114,6 +128,9 @@ Tool Guidelines:
 - Show file paths clearly when working with files.
 
 Current date: 2026-06-09
+
+# Runtime Context
+- Provider ID: openai
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -174,6 +191,9 @@ Tool Guidelines:
 
 Current date: 2026-06-09
 
+# Runtime Context
+- Provider ID: openai
+
 # Work Directory
 Current work directory: /repo (/repo)
 Additional work directories:
@@ -232,6 +252,9 @@ Write naturally for listening: short sentences, conversational wording, and clea
 Avoid long lists, raw paths, logs, code blocks, dense citations, or implementation details unless the user explicitly needs them.
 If tool work or detailed output is needed, give a brief spoken-friendly summary first, then keep any detailed text compact and scannable.
 Do not output special speech markup tags. Write the actual reply text directly.
+
+# Runtime Context
+- Provider ID: openai
 
 You are running on macOS. Use Unix/Bash-compatible syntax with forward slashes (/) for paths.
 

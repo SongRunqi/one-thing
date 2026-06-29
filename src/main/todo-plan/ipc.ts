@@ -1,4 +1,7 @@
-import { ipcMain } from 'electron'
+import {
+  registerElectronTodoPlanIpcHandlers,
+  type ElectronTodoPlanPinnedRequest,
+} from '@onething/electron-host/ipc/todo-plan'
 import {
   IPC_CHANNELS,
   type TodoPlanCreateRequest,
@@ -10,6 +13,16 @@ import {
 } from '../../shared/ipc.js'
 import { hideTodoPlanWindow, openTodoPlanWindow, setTodoPlanWindowPinned, toggleTodoPlanWindow } from '../window.js'
 import {
+  createOnethingTodoNoteForIpc,
+  deleteOnethingTodoNoteForIpc,
+  getOnethingTodoPlanForIpc,
+  renameOnethingTodoNoteForIpc,
+  revealOnethingTodoPlanDirectoryForIpc,
+  runOnethingTodoPlanWindowActionForIpc,
+  setOnethingTodoPlanWindowPinnedForIpc,
+  updateOnethingTodoPlanDocumentForIpc,
+} from '@onething/runtime/todo-plan'
+import {
   createUserTodoNote,
   deleteUserTodoNote,
   readTodoPlanSnapshot,
@@ -19,72 +32,65 @@ import {
 } from './store.js'
 
 export function registerTodoPlanHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_GET, async (_event, request?: TodoPlanGetRequest) => {
-    try {
-      return { success: true, snapshot: await readTodoPlanSnapshot(request || {}) }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Failed to read todo/plan files' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_CREATE, async (_event, request: TodoPlanCreateRequest) => {
-    try {
-      return { success: true, document: await createUserTodoNote(request.title, request.content) }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Failed to create todo note' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_UPDATE, async (_event, request: TodoPlanUpdateRequest) => {
-    try {
-      return { success: true, document: await updateTodoPlanDocument(request) }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Failed to update todo/plan file' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_RENAME, async (_event, request: TodoPlanRenameRequest) => {
-    try {
-      return { success: true, document: await renameUserTodoNote(request.id, request.title) }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Failed to rename todo note' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_DELETE, async (_event, request: TodoPlanDeleteRequest) => {
-    try {
-      await deleteUserTodoNote(request.id)
-      return { success: true }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Failed to delete todo note' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_REVEAL_DIRECTORY, async () => {
-    try {
-      await revealTodoPlanDirectory()
-      return { success: true }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Failed to open todo/plan directory' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW, async (_event, request?: TodoPlanWindowActionRequest) => {
-    openTodoPlanWindow(request)
-    return { success: true }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW, async (_event, request?: TodoPlanWindowActionRequest) => {
-    hideTodoPlanWindow(request)
-    return { success: true }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW, async (_event, request?: TodoPlanWindowActionRequest) => {
-    toggleTodoPlanWindow(request)
-    return { success: true }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED, async (_event, request: { pinned: boolean }) => {
-    return { success: true, pinned: setTodoPlanWindowPinned(request.pinned) }
+  registerElectronTodoPlanIpcHandlers({
+    channels: {
+      get: IPC_CHANNELS.TODO_PLAN_GET,
+      create: IPC_CHANNELS.TODO_PLAN_CREATE,
+      update: IPC_CHANNELS.TODO_PLAN_UPDATE,
+      rename: IPC_CHANNELS.TODO_PLAN_RENAME,
+      delete: IPC_CHANNELS.TODO_PLAN_DELETE,
+      revealDirectory: IPC_CHANNELS.TODO_PLAN_REVEAL_DIRECTORY,
+      openWindow: IPC_CHANNELS.TODO_PLAN_OPEN_WINDOW,
+      hideWindow: IPC_CHANNELS.TODO_PLAN_HIDE_WINDOW,
+      toggleWindow: IPC_CHANNELS.TODO_PLAN_TOGGLE_WINDOW,
+      setWindowPinned: IPC_CHANNELS.TODO_PLAN_SET_WINDOW_PINNED,
+    },
+    get: request =>
+      getOnethingTodoPlanForIpc({
+        request: request as TodoPlanGetRequest | undefined,
+        readSnapshot: readTodoPlanSnapshot,
+      }),
+    create: request =>
+      createOnethingTodoNoteForIpc({
+        request: request as TodoPlanCreateRequest,
+        createUserNote: createUserTodoNote,
+      }),
+    update: request =>
+      updateOnethingTodoPlanDocumentForIpc({
+        request: request as TodoPlanUpdateRequest,
+        updateDocument: updateTodoPlanDocument,
+      }),
+    rename: request =>
+      renameOnethingTodoNoteForIpc({
+        request: request as TodoPlanRenameRequest,
+        renameUserNote: renameUserTodoNote,
+      }),
+    delete: request =>
+      deleteOnethingTodoNoteForIpc({
+        request: request as TodoPlanDeleteRequest,
+        deleteUserNote: deleteUserTodoNote,
+      }),
+    revealDirectory: () =>
+      revealOnethingTodoPlanDirectoryForIpc({ revealDirectory: revealTodoPlanDirectory }),
+    openWindow: request =>
+      runOnethingTodoPlanWindowActionForIpc({
+        request: request as TodoPlanWindowActionRequest | undefined,
+        action: openTodoPlanWindow,
+      }),
+    hideWindow: request =>
+      runOnethingTodoPlanWindowActionForIpc({
+        request: request as TodoPlanWindowActionRequest | undefined,
+        action: hideTodoPlanWindow,
+      }),
+    toggleWindow: request =>
+      runOnethingTodoPlanWindowActionForIpc({
+        request: request as TodoPlanWindowActionRequest | undefined,
+        action: toggleTodoPlanWindow,
+      }),
+    setWindowPinned: (request: ElectronTodoPlanPinnedRequest) =>
+      setOnethingTodoPlanWindowPinnedForIpc({
+        pinned: request.pinned,
+        setPinned: setTodoPlanWindowPinned,
+      }),
   })
 }

@@ -181,6 +181,12 @@
               @update:settings="handleSettingsUpdate"
             />
 
+            <ChannelsSettingsTab
+              v-else-if="activeTab === 'channels'"
+              :settings="localSettings"
+              @update:settings="handleSettingsUpdate"
+            />
+
             <MemorySettingsTab
               v-else-if="activeTab === 'memory'"
               :settings="localSettings"
@@ -254,6 +260,7 @@ import {
   Boxes,
   Brain,
   Code2,
+  MessageCircle,
   Globe2,
   Keyboard,
   Mic,
@@ -276,6 +283,7 @@ import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import NetworkSettingsTab from './settings/NetworkSettingsTab.vue'
 import VoiceSettingsTab from './settings/VoiceSettingsTab.vue'
+import ChannelsSettingsTab from './settings/ChannelsSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import { MCPSettingsPanel } from './settings/mcp'
 import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
@@ -334,9 +342,9 @@ const navItems = [
   {
     id: 'network',
     label: 'Network',
-    hint: 'Network interface and proxy routing',
+    hint: 'Proxy routing',
     icon: Globe2,
-    sections: ['Network Interface', 'Network Proxy'],
+    sections: ['Network Proxy'],
   },
   {
     id: 'voice',
@@ -344,6 +352,13 @@ const navItems = [
     hint: 'Mic input, transcription, and speech playback',
     icon: Mic,
     sections: ['Voice Input', 'Advanced Recording', 'Speech Providers'],
+  },
+  {
+    id: 'channels',
+    label: 'Channels',
+    hint: 'IM gateways and login state',
+    icon: MessageCircle,
+    sections: ['Channels', 'Runtime', 'WeChat login', 'Sessions'],
   },
   {
     id: 'memory',

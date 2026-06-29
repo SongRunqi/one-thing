@@ -16,10 +16,10 @@ import * as store from '../store.js'
 import { getProjectsStore } from '../project-dirs/index.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import { getVariablesStore } from './store/index.js'
-import type { GlobalStoreGateway } from './providers/global-store.js'
-import type { SessionStoreGateway } from './providers/session-store.js'
-import type { WorkdirGateway } from './providers/core.js'
-import type { NoteVarName, NotesGateway } from './providers/notes.js'
+import type { GlobalStoreGateway } from '@onething/runtime/variables/providers/global-store'
+import type { SessionStoreGateway } from '@onething/runtime/variables/providers/session-store'
+import type { WorkdirGateway } from '@onething/runtime/variables/providers/core'
+import type { NoteVarName, NotesGateway } from '@onething/runtime/variables/providers/notes'
 
 // ── Workdir gateway ─────────────────────────────────
 

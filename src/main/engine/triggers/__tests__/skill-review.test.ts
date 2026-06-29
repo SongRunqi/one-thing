@@ -3,7 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { generateChatResponse } from '../../../providers/index.js'
-import { createDeepSeekAgentProvider, runAgentLoop } from '../../../agent-loop/index.js'
+import { runAgentLoop } from '@onething/core/agent-loop'
+import { createDeepSeekAgentProvider } from '@onething/runtime/agent-loop/providers'
 import { getUserSkillsPath } from '../../../skills/index.js'
 import { executeSkillManage } from '../../../skills/manage.js'
 import { invalidateSkillsCache } from '../../../ipc/skills.js'
@@ -23,11 +24,18 @@ vi.mock('../../../providers/index.js', () => ({
   generateChatResponse: vi.fn(),
 }))
 
-vi.mock('../../../agent-loop/index.js', async importOriginal => {
-  const actual = await importOriginal<typeof import('../../../agent-loop/index.js')>()
+vi.mock('@onething/runtime/agent-loop/providers', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/runtime/agent-loop/providers')>()
   return {
     ...actual,
     createDeepSeekAgentProvider: vi.fn(() => ({ id: 'deepseek', runTurn: vi.fn() })),
+  }
+})
+
+vi.mock('@onething/core/agent-loop', async importOriginal => {
+  const actual = await importOriginal<typeof import('@onething/core/agent-loop')>()
+  return {
+    ...actual,
     runAgentLoop: vi.fn(),
   }
 })
@@ -274,10 +282,10 @@ describe('Hermes skill review trigger', () => {
 
     await createSkillReviewTrigger().execute(ctx)
 
-    expect(createDeepSeekAgentProvider).toHaveBeenCalledWith({
+    expect(createDeepSeekAgentProvider).toHaveBeenCalledWith(expect.objectContaining({
       apiKey: 'deepseek-key',
       baseUrl: 'https://deepseek.test',
-    })
+    }))
     expect(runAgentLoop).toHaveBeenCalledTimes(1)
     expect(generateChatResponse).not.toHaveBeenCalled()
 

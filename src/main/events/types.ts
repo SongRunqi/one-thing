@@ -1,46 +1,32 @@
-/**
- * Event System Internal Types
- *
- * These types define the handler signatures used by EventBus and StreamChannel.
- * They are internal to the main process — renderer never sees these.
- */
+import type {
+  GlobalEvent,
+  GlobalEventEnvelope,
+  SessionEvent,
+  SessionEventEnvelope,
+  StreamChunk,
+} from '../../shared/events/index.js'
+import type {
+  EmitResult as CoreEmitResult,
+  GlobalObserveHandler as CoreGlobalObserveHandler,
+  InterceptHandler as CoreInterceptHandler,
+  InterceptResult,
+  ObserveHandler as CoreObserveHandler,
+  StreamChunkHandler as CoreStreamChunkHandler,
+  TypedObserveHandler as CoreTypedObserveHandler,
+  Unsubscribe,
+} from '@onething/core/events'
 
-import type { SessionEventEnvelope, GlobalEventEnvelope, SessionEvent, StreamChunk } from '../../shared/events/index.js'
+export type { Unsubscribe, InterceptResult }
 
-/** Unsubscribe function returned by on/onAny/onGlobal */
-export type Unsubscribe = () => void
-
-/** Handler for observing committed events */
-export type ObserveHandler = (envelope: SessionEventEnvelope) => void
-
-/** Handler for observing events by type */
-export type TypedObserveHandler<T extends SessionEvent['type']> = (
-  envelope: SessionEventEnvelope & { event: Extract<SessionEvent, { type: T }> }
-) => void
-
-/** Handler for observing global events */
-export type GlobalObserveHandler = (envelope: GlobalEventEnvelope) => void
-
-/** Handler for stream chunks */
-export type StreamChunkHandler = (chunk: StreamChunk) => void
-
-/**
- * Intercept handler — can modify or suppress an event before it's committed.
- * Phase 1: no interceptors are registered, so this is a pass-through.
- */
-export type InterceptHandler = (
-  event: SessionEvent,
-  sessionId: string
-) => InterceptResult | Promise<InterceptResult>
-
-export interface InterceptResult {
-  /** If true, the event is suppressed (not committed or fanned out) */
-  suppress?: boolean
-  /** Optional replacement event. If provided, replaces the original. */
-  replacement?: SessionEvent
-}
-
-export interface EmitResult {
-  /** The envelope that was committed (or null if suppressed) */
-  envelope: SessionEventEnvelope | null
+export type ObserveHandler = CoreObserveHandler<SessionEvent>
+export type TypedObserveHandler<T extends SessionEvent['type']> = CoreTypedObserveHandler<SessionEvent, T>
+export type GlobalObserveHandler = CoreGlobalObserveHandler<GlobalEvent>
+export type StreamChunkHandler = CoreStreamChunkHandler<StreamChunk>
+export type InterceptHandler = CoreInterceptHandler<SessionEvent>
+export type EmitResult = CoreEmitResult<SessionEvent>
+export type {
+  GlobalEventEnvelope,
+  SessionEventEnvelope,
+  SessionEvent,
+  StreamChunk,
 }

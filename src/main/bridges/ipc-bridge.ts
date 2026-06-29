@@ -15,11 +15,16 @@
  *   the session:event for stream:complete is sent, ensuring no tokens are lost.
  */
 
-import type { WebContents } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { ReasoningPlacement, SessionEventEnvelope, StreamChunk } from '../../shared/events/index.js'
 import type { Unsubscribe } from '../events/types.js'
 import { getEventBus, getStreamChannel } from '../events/index.js'
+
+export interface IPCBridgeSender {
+  isDestroyed(): boolean
+  send(channel: string, payload: unknown): void
+  on(event: 'destroyed', listener: () => void): void
+}
 
 function shouldDebugStream(): boolean {
   return process.env.ONETHING_DEBUG_STREAM === '1' || process.env.ONETHING_DEBUG_CODEX_STREAM === '1'
@@ -130,15 +135,15 @@ interface BridgeSessionState {
 
 export class IPCBridge {
   private sessions = new Map<string, BridgeSessionState>()
-  private sender: WebContents | null = null
+  private sender: IPCBridgeSender | null = null
   private unsubEventBus: Unsubscribe | null = null
 
   /**
-   * Bind to a BrowserWindow's WebContents.
+   * Bind to a renderer sender.
    * Subscribes to EventBus for all session events.
    * Auto-cleans up when sender is destroyed.
    */
-  bind(sender: WebContents): void {
+  bind(sender: IPCBridgeSender): void {
     this.unbind() // clean up any previous binding
 
     this.sender = sender

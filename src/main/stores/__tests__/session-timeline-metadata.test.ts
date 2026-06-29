@@ -3,6 +3,7 @@ import type { ChatMessage, ChatSession } from '../../../shared/ipc.js'
 import {
   deriveRetainedContextSize,
   repairSessionTimelineMetadata,
+  sanitizeSessionOnStartup,
 } from '../sessions.js'
 
 function user(index: number): ChatMessage {
@@ -95,6 +96,28 @@ describe('session timeline metadata repair', () => {
     expect(deriveRetainedContextSize(session([user(1), assistantMessage]))).toBe(140)
   })
 
+  it('does not derive context from accumulated tool-loop assistant usage without step usage', () => {
+    const assistantMessage = assistant(2, 4606545)
+    assistantMessage.toolCalls = [
+      {
+        id: 'call-1',
+        toolName: 'bash',
+        toolId: 'bash',
+        status: 'completed',
+        arguments: {},
+      } as NonNullable<ChatMessage['toolCalls']>[number],
+    ]
+
+    const testSession = session([user(1), assistantMessage])
+    testSession.contextSize = 4606545
+    testSession.lastInputTokens = 4606545
+
+    expect(deriveRetainedContextSize(testSession)).toBe(0)
+    expect(repairSessionTimelineMetadata(testSession)).toBe(true)
+    expect(testSession.contextSize).toBe(0)
+    expect(testSession.lastInputTokens).toBe(0)
+  })
+
   it('ignores provider usage before a valid summary anchor when recomputing context', () => {
     const testSession = session([user(1), assistant(2, 300), user(3)], 'assistant-2')
     testSession.contextSize = 999
@@ -126,5 +149,29 @@ describe('session timeline metadata repair', () => {
     expect(repairSessionTimelineMetadata(testSession, { recomputeContextSize: true })).toBe(true)
     expect(testSession.contextSize).toBe(0)
     expect(testSession.lastInputTokens).toBe(0)
+  })
+
+  it('marks stale context compact markers as failed on startup', () => {
+    const compactingMessage: ChatMessage = {
+      id: 'compact-1',
+      role: 'system',
+      content: JSON.stringify({
+        type: 'context-compact',
+        status: 'compacting',
+        summary: '',
+        compactedMessageCount: 40,
+      }),
+      timestamp: 1,
+    }
+    const testSession = session([user(1), compactingMessage])
+
+    expect(sanitizeSessionOnStartup(testSession)).toBe(true)
+    expect(JSON.parse(compactingMessage.content)).toEqual({
+      type: 'context-compact',
+      status: 'failed',
+      summary: '',
+      error: 'Context compact was interrupted before completion.',
+      compactedMessageCount: 40,
+    })
   })
 })

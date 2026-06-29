@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { AgentModelCapabilities, AgentProvider } from '../../../agent-loop/types.js'
+import type { AgentModelCapabilities, AgentProvider } from '@onething/core/agent-loop'
 import type { ToolDefinition } from '../../../../shared/ipc.js'
 
 const deepseekTextCapabilities: AgentModelCapabilities = {
@@ -116,13 +116,12 @@ vi.mock('../../../mcp/index.js', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))
 
-vi.mock('../../../agent-loop/providers/factory.js', () => ({
+vi.mock('../../../providers/agent-runtime.js', () => ({
   createAgentProviderFromRuntime: mocks.createAgentProviderFromRuntime,
-  getSupportedAgentProviderRuntimeIds: vi.fn(() => ['deepseek', 'acp']),
-  isAgentProviderRuntimeSupported: vi.fn((providerId: string) => providerId === 'deepseek' || providerId === 'acp'),
 }))
 
-vi.mock('../../../agent-loop/capabilities.js', () => ({
+vi.mock('@onething/core/agent-loop', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/core/agent-loop')>(),
   resolveAgentModelCapabilities: mocks.resolveAgentModelCapabilities,
   agentSupportsTools: mocks.agentSupportsTools,
 }))

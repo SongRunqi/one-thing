@@ -4,8 +4,8 @@ import {
   isCompleteAgentToolArguments,
   mapAgentProviderFinishReason,
   safeParseAgentToolArguments,
-} from '../provider-stream.js'
-import type { AgentStreamEvent } from '../types.js'
+} from '@onething/core/agent-loop'
+import type { AgentStreamEvent } from '@onething/core/agent-loop'
 
 async function collect(events: AgentStreamEvent[]) {
   const chunks = []

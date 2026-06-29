@@ -79,6 +79,7 @@
             @create-new-chat="$emit('create-new-chat')"
             @toggle-inspector="$emit('toggle-inspector')"
             @open-file="$emit('open-file', $event)"
+            @switch-session="switchPanelSession(panel.id, $event)"
           />
         </SplitterPanel>
       </Splitter>
@@ -355,6 +356,16 @@ function splitPanel(panelId: string, sessionId: string) {
     size: panels.value[index].size
   }
   panels.value.splice(index + 1, 0, newPanel)
+}
+
+async function switchPanelSession(panelId: string, sessionId: string) {
+  const panel = panels.value.find(p => p.id === panelId)
+  if (!panel) return
+
+  panel.sessionId = sessionId
+  if (panel.id === panels.value[0]?.id) {
+    await sessionsStore.switchSession(sessionId)
+  }
 }
 
 // Close panel

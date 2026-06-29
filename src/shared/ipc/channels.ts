@@ -74,6 +74,12 @@ export const IPC_CHANNELS = {
   VOICE_RUNTIME_EVENT: 'voice:runtime-event',
   VOICE_RUNTIME_READY: 'voice:runtime-ready',
 
+  // Gateway / IM channel related
+  GATEWAY_GET_STATUS: 'gateway:get-status',
+  GATEWAY_START: 'gateway:start',
+  GATEWAY_STOP: 'gateway:stop',
+  GATEWAY_WECHAT_LOGOUT: 'gateway:wechat-logout',
+
   // Agents related
   AGENTS_LIST: 'agents:list',
   AGENTS_CREATE: 'agents:create',
@@ -88,7 +94,6 @@ export const IPC_CHANNELS = {
   PROMPTS_DELETE: 'prompts:delete',
 
   // Network related
-  GET_NETWORK_INTERFACES: 'network:get-interfaces',
   TEST_PROXY: 'network:test-proxy',
 
   // Models related (read from settings.json modelRegistry)

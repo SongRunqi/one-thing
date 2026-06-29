@@ -1,8 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { streamAgentLoopProviderChunks } from '../bridge.js'
-import { isAgentLoopPauseForConfirmationError } from '../errors.js'
-import type { AgentProviderStreamChunk } from '../provider-stream.js'
-import type { AgentProvider, AgentTurn } from '../types.js'
+import { isAgentLoopPauseForConfirmationError, streamAgentLoopProviderChunks } from '@onething/core/agent-loop'
+import type { AgentProvider, AgentProviderStreamChunk, AgentTurn } from '@onething/core/agent-loop'
 
 function withTimeout<T>(promise: Promise<T>, message = 'timed out waiting for bridge abort'): Promise<T> {
   return Promise.race([
@@ -74,7 +72,6 @@ describe('agent loop bridge', () => {
       { type: 'tool-input-start', toolInputStart: { toolCallId: 'call_1', toolName: 'lookup' } },
       { type: 'tool-input-delta', toolInputDelta: { toolCallId: 'call_1', argsTextDelta: '{"query":"moon"}' } },
       { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1' } },
-      { type: 'finish', finishReason: 'tool-calls', usage: undefined },
       {
         type: 'tool-result',
         toolResult: {
@@ -82,6 +79,7 @@ describe('agent loop bridge', () => {
           result: { content: 'result: moon' },
         },
       },
+      { type: 'finish', finishReason: 'tool-calls', usage: undefined },
       { type: 'turn-start', turnStart: { turn: 2 } },
       { type: 'text', text: 'done' },
       { type: 'finish', finishReason: 'stop', usage: undefined },
@@ -158,7 +156,6 @@ describe('agent loop bridge', () => {
       { type: 'tool-input-start', toolInputStart: { toolCallId: 'call_1', toolName: 'lookup' } },
       { type: 'tool-input-delta', toolInputDelta: { toolCallId: 'call_1', argsTextDelta: '{"query":"sun"}' } },
       { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1' } },
-      { type: 'finish', finishReason: 'tool-calls', usage: undefined },
       {
         type: 'tool-result',
         toolResult: {
@@ -166,6 +163,7 @@ describe('agent loop bridge', () => {
           result: { content: 'result: sun' },
         },
       },
+      { type: 'finish', finishReason: 'tool-calls', usage: undefined },
       { type: 'turn-start', turnStart: { turn: 2 } },
       { type: 'text', text: 'done' },
       { type: 'finish', finishReason: 'stop', usage: undefined },
@@ -230,7 +228,6 @@ describe('agent loop bridge', () => {
           args: { cmd: 'rm -rf tmp' },
         },
       },
-      { type: 'finish', finishReason: 'tool-calls', usage: undefined },
       {
         type: 'tool-result',
         toolResult: {

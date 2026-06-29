@@ -151,6 +151,7 @@ export function initializeIPCHub() {
 
       // Message lifecycle events (event-driven message creation)
       case 'message:user-created':
+        refreshGatewaySessionList(sessionId)
         store.handleMessageCreated({ sessionId, message: (event as any).message })
         break
 
@@ -246,4 +247,16 @@ export function initializeIPCHub() {
   })
 
   console.log('[IPC Hub] Unified listeners registered (session:event + session:stream)')
+}
+
+function refreshGatewaySessionList(sessionId: string): void {
+  if (!sessionId.startsWith('gateway:')) return
+
+  import('@/stores/sessions').then(({ useSessionsStore }) => {
+    const sessionsStore = useSessionsStore()
+    if (sessionsStore.getSessionItem(sessionId)) return
+    void sessionsStore.loadSessions()
+  }).catch(error => {
+    console.error('[IPC Hub] Failed to refresh gateway session list:', error)
+  })
 }

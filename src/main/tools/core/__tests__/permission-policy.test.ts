@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ToolEffect } from '../tool-effect'
+import type { ToolEffect } from '@onething/core/tools'
 import { decidePermission } from '../permission-policy'
 
 vi.mock('../../../permission/permission-grants.js', () => ({

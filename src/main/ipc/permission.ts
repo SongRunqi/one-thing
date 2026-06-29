@@ -8,7 +8,22 @@
  * affinity validation.
  */
 
-import { ipcMain } from 'electron'
+import {
+  registerElectronPermissionIpcHandlers,
+  type ElectronPermissionClearSessionGrantsRequest,
+  type ElectronPermissionClearWorkspaceGrantsRequest,
+  type ElectronPermissionListGrantsRequest,
+  type ElectronPermissionRevokeGrantRequest,
+  type ElectronPermissionSessionId,
+} from '@onething/electron-host/ipc/permission'
+import {
+  clearOnethingPermissionSessionForIpc,
+  clearOnethingSessionPermissionGrantsForIpc,
+  clearOnethingWorkspacePermissionGrantsForIpc,
+  getOnethingPendingPermissionsForIpc,
+  listOnethingPermissionGrantsForIpc,
+  revokeOnethingPermissionGrantForIpc,
+} from '@onething/runtime/permissions'
 import { Permission } from '../permission/index.js'
 import * as PermissionGrants from '../permission/permission-grants.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
@@ -20,74 +35,59 @@ export function registerPermissionHandlers(): void {
   // Permission responses go through SESSION_COMMAND → EventBus →
   // Permission.initialize() subscription, which validates channel affinity.
 
-  // Get pending permissions for a session (used for session switch recovery)
-  ipcMain.handle(IPC_CHANNELS.PERMISSION_GET_PENDING, async (_event, sessionId: string) => {
-    try {
-      const pending = Permission.getPending(sessionId)
-      return { success: true, pending }
-    } catch (error: any) {
-      console.error('[Permission IPC] Error getting pending permissions:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to get pending permissions',
-      }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.PERMISSION_LIST_GRANTS, async (_event, request: { sessionId?: string; workspaceRoot?: string }) => {
-    try {
-      return {
-        success: true,
-        sessionGrants: request.sessionId ? PermissionGrants.listSessionGrants(request.sessionId) : [],
-        workspaceGrants: request.workspaceRoot ? PermissionGrants.listWorkspaceGrants(request.workspaceRoot) : [],
-      }
-    } catch (error: any) {
-      console.error('[Permission IPC] Error listing grants:', error)
-      return { success: false, error: error.message || 'Failed to list permission grants' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.PERMISSION_REVOKE_GRANT, async (_event, request: { id: string }) => {
-    try {
-      return { success: PermissionGrants.revokeGrant(request.id) }
-    } catch (error: any) {
-      console.error('[Permission IPC] Error revoking grant:', error)
-      return { success: false, error: error.message || 'Failed to revoke permission grant' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.PERMISSION_CLEAR_SESSION_GRANTS, async (_event, request: { sessionId: string }) => {
-    try {
-      PermissionGrants.clearSessionGrants(request.sessionId)
-      return { success: true }
-    } catch (error: any) {
-      console.error('[Permission IPC] Error clearing session grants:', error)
-      return { success: false, error: error.message || 'Failed to clear session grants' }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.PERMISSION_CLEAR_WORKSPACE_GRANTS, async (_event, request: { workspaceRoot: string }) => {
-    try {
-      PermissionGrants.clearWorkspaceGrants(request.workspaceRoot)
-      return { success: true }
-    } catch (error: any) {
-      console.error('[Permission IPC] Error clearing workspace grants:', error)
-      return { success: false, error: error.message || 'Failed to clear workspace grants' }
-    }
-  })
-
-  // Clear session permissions
-  ipcMain.handle(IPC_CHANNELS.PERMISSION_CLEAR_SESSION, async (_event, sessionId: string) => {
-    try {
-      Permission.clearSession(sessionId)
-      return { success: true }
-    } catch (error: any) {
-      console.error('[Permission IPC] Error clearing session:', error)
-      return {
-        success: false,
-        error: error.message || 'Failed to clear session',
-      }
-    }
+  registerElectronPermissionIpcHandlers({
+    channels: {
+      getPending: IPC_CHANNELS.PERMISSION_GET_PENDING,
+      clearSession: IPC_CHANNELS.PERMISSION_CLEAR_SESSION,
+      listGrants: IPC_CHANNELS.PERMISSION_LIST_GRANTS,
+      revokeGrant: IPC_CHANNELS.PERMISSION_REVOKE_GRANT,
+      clearSessionGrants: IPC_CHANNELS.PERMISSION_CLEAR_SESSION_GRANTS,
+      clearWorkspaceGrants: IPC_CHANNELS.PERMISSION_CLEAR_WORKSPACE_GRANTS,
+    },
+    getPending: (sessionId: ElectronPermissionSessionId) => {
+      return getOnethingPendingPermissionsForIpc({
+        sessionId,
+        getPending: Permission.getPending,
+        logger: console,
+      })
+    },
+    listGrants: (request: ElectronPermissionListGrantsRequest) => {
+      return listOnethingPermissionGrantsForIpc({
+        sessionId: request.sessionId,
+        workspaceRoot: request.workspaceRoot,
+        listSessionGrants: PermissionGrants.listSessionGrants,
+        listWorkspaceGrants: PermissionGrants.listWorkspaceGrants,
+        logger: console,
+      })
+    },
+    revokeGrant: (request: ElectronPermissionRevokeGrantRequest) => {
+      return revokeOnethingPermissionGrantForIpc({
+        id: request.id,
+        revokeGrant: PermissionGrants.revokeGrant,
+        logger: console,
+      })
+    },
+    clearSessionGrants: (request: ElectronPermissionClearSessionGrantsRequest) => {
+      return clearOnethingSessionPermissionGrantsForIpc({
+        sessionId: request.sessionId,
+        clearSessionGrants: PermissionGrants.clearSessionGrants,
+        logger: console,
+      })
+    },
+    clearWorkspaceGrants: (request: ElectronPermissionClearWorkspaceGrantsRequest) => {
+      return clearOnethingWorkspacePermissionGrantsForIpc({
+        workspaceRoot: request.workspaceRoot,
+        clearWorkspaceGrants: PermissionGrants.clearWorkspaceGrants,
+        logger: console,
+      })
+    },
+    clearSession: (sessionId: ElectronPermissionSessionId) => {
+      return clearOnethingPermissionSessionForIpc({
+        sessionId,
+        clearSession: Permission.clearSession,
+        logger: console,
+      })
+    },
   })
 
   console.log('[Permission IPC] Handlers registered')

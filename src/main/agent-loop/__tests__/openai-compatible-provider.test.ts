@@ -141,6 +141,31 @@ describe('OpenAI-compatible agent provider', () => {
     })
   })
 
+  it('attaches response bodies to API errors for downstream detail extraction', async () => {
+    const body = JSON.stringify({ error: { code: '1000', message: '身份验证失败。' } })
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(body, { status: 401 }))
+    const provider = createOpenAICompatibleAgentProvider({
+      providerId: 'zhipu',
+      apiKey: 'test-key',
+      baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+      fetchImpl,
+    })
+
+    await expect(provider.runTurn!({
+      model: 'glm-5.2',
+      messages: [{ role: 'user', content: 'hello' }],
+      turn: 1,
+    })).rejects.toMatchObject({
+      responseBody: body,
+      data: {
+        providerId: 'zhipu',
+        statusCode: 401,
+        responseBody: body,
+      },
+    })
+  })
+
   it('uses text fallbacks for media tool messages when the provider API expects text tool output', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
       'data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',

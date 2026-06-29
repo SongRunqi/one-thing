@@ -6,9 +6,7 @@
 
 import type { IStorageProvider, StorageConfig, StorageType } from './interfaces.js'
 import { FileStorageProvider } from './file-storage.js'
-
-let storageInstance: IStorageProvider | null = null
-let currentStorageType: StorageType = 'file'
+import { HeadlessStorageManager } from '@onething/core/storage'
 
 function createStorageProvider(config: StorageConfig): IStorageProvider {
   switch (config.type) {
@@ -18,40 +16,25 @@ function createStorageProvider(config: StorageConfig): IStorageProvider {
   }
 }
 
+const storageManager = new HeadlessStorageManager(createStorageProvider)
+
 export async function initializeStorage(
   type: StorageType = 'file'
 ): Promise<IStorageProvider> {
-  if (storageInstance && currentStorageType === type) {
-    return storageInstance
+  const alreadyInitialized = Boolean(storageManager.instance) && storageManager.type === type
+  const storage = await storageManager.initializeStorage(type)
+  if (!alreadyInitialized) {
+    console.log(`[Storage] Initialized with ${type} backend`)
   }
-
-  if (storageInstance) {
-    await storageInstance.close()
-  }
-
-  const config: StorageConfig = { type }
-  storageInstance = createStorageProvider(config)
-  currentStorageType = type
-  await storageInstance.initialize()
-
-  console.log(`[Storage] Initialized with ${type} backend`)
-  return storageInstance
+  return storage
 }
 
 export function getStorage(): IStorageProvider {
-  if (!storageInstance) {
-    storageInstance = new FileStorageProvider()
-    currentStorageType = 'file'
-    storageInstance.initialize().catch(console.error)
-  }
-  return storageInstance
+  return storageManager.getStorage({ onInitializeError: console.error })
 }
 
 export async function closeStorage(): Promise<void> {
-  if (storageInstance) {
-    await storageInstance.close()
-    storageInstance = null
-  }
+  await storageManager.closeStorage()
 }
 
 export * from './interfaces.js'

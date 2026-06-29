@@ -8,8 +8,9 @@
  */
 
 import type { ToolDefinition, ToolCall, ToolParameter, ProviderConfig, ToolSettings, Step, SkillDefinition, ToolPartialResult, ToolResultContentPart } from '../../shared/ipc.js'
-import type { JsonObject, JsonSchemaObject, JsonValue } from '../../shared/json.js'
-import type { ToolEffect, ToolPreview } from './core/tool-effect.js'
+import type { JsonObject, JsonValue } from '../../shared/json.js'
+import type { CoreProviderToolSchema } from '@onething/core/tools'
+import type { ToolEffect, ToolPreview } from '@onething/core/tools'
 
 // Re-export shared types
 export type { ToolDefinition, ToolCall, ToolParameter }
@@ -87,49 +88,5 @@ export interface RegisteredTool {
   handler: ToolHandler
 }
 
-/**
- * Tool schema for provider runtime compatibility.
- * Converts our ToolDefinition to the shared provider tool format.
- */
-export interface AIToolSchema {
-  description: string
-  parameters: {
-    type: 'object'
-    properties: Record<string, JsonSchemaObject & {
-      type: string
-      description: string
-      enum?: string[]
-    }>
-    required: string[]
-  }
-}
-
-/**
- * Convert ToolDefinition to provider tool schema.
- */
-export function toAIToolSchema(tool: ToolDefinition): AIToolSchema {
-  const properties: AIToolSchema['parameters']['properties'] = {}
-  const required: string[] = []
-
-  for (const param of tool.parameters) {
-    properties[param.name] = {
-      type: param.type === 'array' ? 'array' : param.type === 'object' ? 'object' : param.type,
-      description: param.description,
-    }
-    if (param.enum) {
-      properties[param.name].enum = param.enum
-    }
-    if (param.required) {
-      required.push(param.name)
-    }
-  }
-
-  return {
-    description: tool.description,
-    parameters: {
-      type: 'object',
-      properties,
-      required,
-    },
-  }
-}
+export type AIToolSchema = CoreProviderToolSchema
+export { coreProviderToolSchemaFromParameters as toAIToolSchema } from '@onething/core/tools'

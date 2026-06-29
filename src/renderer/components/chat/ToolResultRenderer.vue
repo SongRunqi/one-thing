@@ -335,9 +335,9 @@ watch(
   border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
   border-radius: 6px;
   background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 42%, transparent);
-  color: var(--ui-tool-text-fg, var(--tool-ink));
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-mono);
-  font-size: var(--tool-font-size-title);
+  font-size: var(--tool-font-size-body);
   font-weight: 400;
   line-height: var(--tool-code-line-height);
 }
@@ -346,18 +346,18 @@ watch(
   display: flex;
   align-items: baseline;
   flex-shrink: 0;
-  min-height: calc(var(--tool-font-size-title) * var(--tool-code-line-height));
+  min-height: calc(var(--tool-font-size-body) * var(--tool-code-line-height));
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .bash-line.blank {
-  min-height: calc(var(--tool-font-size-title) * 0.65);
+  min-height: calc(var(--tool-font-size-body) * 0.65);
 }
 
 .bash-line.command {
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
-  font-weight: 500;
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  font-weight: 400;
 }
 
 .bash-line.result {

@@ -10,7 +10,7 @@ import {
 } from '../agent-loop-executor.js'
 import { triggerManager } from '../../triggers/index.js'
 import { runAfterAssistantResponseHooks } from '../../../plugins/lifecycle.js'
-import type { saveMediaImage } from '../../../ipc/media.js'
+import type { saveMediaImage } from '../../../media/save-image.js'
 import type { BuildAgentLoopStreamRuntimeResult } from '../agent-loop-runtime.js'
 import type { IPCEmitter } from '../ipc-emitter.js'
 import type { StreamProcessor, StreamSender } from '../stream-processor.js'
@@ -42,6 +42,10 @@ const storeMocks = vi.hoisted(() => ({
   updateMessageContent: vi.fn(),
   updateMessageReasoning: vi.fn(),
   updateMessageStreaming: vi.fn(),
+  addMessageStep: vi.fn(),
+  updateMessageStep: vi.fn(),
+  updateSessionContextSize: vi.fn(),
+  updateMessageSkill: vi.fn(),
   flushSessionSave: vi.fn(async () => undefined),
 }))
 
@@ -59,7 +63,7 @@ vi.mock('../../../plugins/lifecycle.js', () => ({
   runAfterAssistantResponseHooks: vi.fn(() => Promise.resolve()),
 }))
 
-vi.mock('../../../ipc/media.js', () => ({
+vi.mock('../../../media/save-image.js', () => ({
   saveMediaImage: mediaMocks.saveMediaImage,
 }))
 
@@ -520,8 +524,11 @@ describe('agent loop executor', () => {
 
     expect(state.turn.orderedParts[0]).toEqual({
       type: 'provider-data',
-      provider: 'codex',
-      encryptedReasoning: 'encrypted-payload',
+      providerData: {
+        provider: 'codex',
+        type: 'encrypted-reasoning',
+        encryptedContent: 'encrypted-payload',
+      },
       turnIndex: 1,
     })
     expect(state.emitter.sendContentPart).toHaveBeenCalledWith({

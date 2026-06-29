@@ -5,7 +5,13 @@
  * This module provides helpers to check and guide users through permission setup.
  */
 
-import { systemPreferences, shell } from 'electron'
+import {
+  checkElectronAccessibilityPermission,
+  checkElectronScreenRecordingPermission,
+  getElectronAccessibilityPermissionError,
+  getElectronAutomationPermissionStatus,
+  openElectronAccessibilitySettings,
+} from '@onething/electron-host/accessibility/permissions'
 
 /**
  * Check if the app has accessibility permission (macOS only)
@@ -15,41 +21,21 @@ import { systemPreferences, shell } from 'electron'
  * @returns true if permission is granted or not on macOS
  */
 export function checkAccessibilityPermission(promptUser = false): boolean {
-  if (process.platform !== 'darwin') {
-    return true
-  }
-
-  return systemPreferences.isTrustedAccessibilityClient(promptUser)
+  return checkElectronAccessibilityPermission(promptUser)
 }
 
 /**
  * Get a user-friendly error message for accessibility permission
  */
 export function getAccessibilityPermissionError(): string {
-  if (process.platform === 'darwin') {
-    return (
-      'Accessibility permission required.\n\n' +
-      'To enable mouse/keyboard control:\n' +
-      '1. Open System Settings > Privacy & Security > Accessibility\n' +
-      '2. Click the lock to make changes\n' +
-      '3. Add this application to the allowed list\n' +
-      '4. Restart the application after granting permission'
-    )
-  }
-
-  return 'Accessibility permission is not available on this platform.'
+  return getElectronAccessibilityPermissionError()
 }
 
 /**
  * Open the accessibility settings panel (macOS only)
  */
 export async function openAccessibilitySettings(): Promise<void> {
-  if (process.platform === 'darwin') {
-    // Opens System Preferences/Settings to the Accessibility pane
-    await shell.openExternal(
-      'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
-    )
-  }
+  await openElectronAccessibilitySettings()
 }
 
 /**
@@ -57,14 +43,7 @@ export async function openAccessibilitySettings(): Promise<void> {
  * Required for screenshot functionality on macOS Catalina+
  */
 export function checkScreenRecordingPermission(): boolean {
-  if (process.platform !== 'darwin') {
-    return true
-  }
-
-  // On macOS, screen recording permission is checked implicitly
-  // when using desktopCapturer. There's no direct API to check it.
-  // The permission dialog appears automatically when needed.
-  return true
+  return checkElectronScreenRecordingPermission()
 }
 
 /**
@@ -77,9 +56,5 @@ export interface PermissionStatus {
 }
 
 export function getAutomationPermissionStatus(promptUser = false): PermissionStatus {
-  return {
-    accessibility: checkAccessibilityPermission(promptUser),
-    screenRecording: checkScreenRecordingPermission(),
-    platform: process.platform,
-  }
+  return getElectronAutomationPermissionStatus(promptUser)
 }

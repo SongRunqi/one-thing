@@ -21,7 +21,7 @@ import {
 } from '../sandbox'
 import { getSettings } from '../../../stores/settings.js'
 import { resetVariablesStoreForTests } from '../../../variables/store/index.js'
-import { createDefaultVariablesFile } from '../../../variables/store/schema.js'
+import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 
 describe('sandbox', () => {
   beforeEach(() => {

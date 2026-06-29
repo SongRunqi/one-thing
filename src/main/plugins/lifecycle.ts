@@ -1,67 +1,40 @@
 import type { AppSettings, ChatMessage, ChatSession, ProviderConfig } from '../../shared/ipc.js'
+import {
+  CorePluginLifecycleRegistry,
+  type CoreAfterAssistantResponseContext,
+  type CoreAfterAssistantResponseHook,
+  type CoreBeforeContextCompactContext,
+  type CoreBeforeContextCompactHook,
+} from '@onething/core/plugins'
 
-export interface BeforeContextCompactContext {
-  sessionId: string
-  providerId: string
-  configWithApiKey: ProviderConfig & { apiKey: string }
-  settings: AppSettings
-  keepRecentTurns?: number
-  messagesToSummarize: ChatMessage[]
-}
+export interface BeforeContextCompactContext extends CoreBeforeContextCompactContext<
+  AppSettings,
+  ChatMessage,
+  ProviderConfig & { apiKey: string }
+> {}
 
-export type BeforeContextCompactHook = (
-  context: BeforeContextCompactContext,
-) => Promise<void> | void
+export type BeforeContextCompactHook = CoreBeforeContextCompactHook<BeforeContextCompactContext>
 
-export interface AfterAssistantResponseContext {
-  sessionId: string
-  assistantMessageId: string
-  session: ChatSession
-  messages: ChatMessage[]
-  lastUserMessage: string
-  lastAssistantMessage: string
-  providerId: string
-  providerConfig: ProviderConfig
-  settings: AppSettings
-}
+export interface AfterAssistantResponseContext extends CoreAfterAssistantResponseContext<
+  AppSettings,
+  ChatSession,
+  ChatMessage,
+  ProviderConfig
+> {}
 
-export type AfterAssistantResponseHook = (
-  context: AfterAssistantResponseContext,
-) => Promise<void> | void
+export type AfterAssistantResponseHook = CoreAfterAssistantResponseHook<AfterAssistantResponseContext>
 
-interface RegisteredBeforeCompactHook {
-  pluginId: string
-  hookId: string
-  hook: BeforeContextCompactHook
-}
-
-interface RegisteredAfterResponseHook {
-  pluginId: string
-  hookId: string
-  hook: AfterAssistantResponseHook
-}
-
-const beforeCompactHooks = new Map<string, RegisteredBeforeCompactHook>()
-const afterResponseHooks = new Map<string, RegisteredAfterResponseHook>()
-
-function key(pluginId: string, hookId: string): string {
-  return `${pluginId}:${hookId.trim() || 'default'}`
-}
+const lifecycleRegistry = new CorePluginLifecycleRegistry<
+  BeforeContextCompactContext,
+  AfterAssistantResponseContext
+>()
 
 export function registerBeforeContextCompactHook(
   pluginId: string,
   hookId: string,
   hook: BeforeContextCompactHook,
 ): () => void {
-  const hookKey = key(pluginId, hookId)
-  beforeCompactHooks.set(hookKey, {
-    pluginId,
-    hookId,
-    hook,
-  })
-  return () => {
-    beforeCompactHooks.delete(hookKey)
-  }
+  return lifecycleRegistry.registerBeforeContextCompactHook(pluginId, hookId, hook)
 }
 
 export function registerAfterAssistantResponseHook(
@@ -69,50 +42,21 @@ export function registerAfterAssistantResponseHook(
   hookId: string,
   hook: AfterAssistantResponseHook,
 ): () => void {
-  const hookKey = key(pluginId, hookId)
-  afterResponseHooks.set(hookKey, {
-    pluginId,
-    hookId,
-    hook,
-  })
-  return () => {
-    afterResponseHooks.delete(hookKey)
-  }
+  return lifecycleRegistry.registerAfterAssistantResponseHook(pluginId, hookId, hook)
 }
 
 export async function runBeforeContextCompactHooks(
   context: BeforeContextCompactContext,
 ): Promise<void> {
-  for (const item of beforeCompactHooks.values()) {
-    try {
-      await item.hook(context)
-    } catch (error) {
-      console.error(`[PluginLifecycle] beforeContextCompact failed for "${item.pluginId}/${item.hookId}":`, error)
-    }
-  }
+  await lifecycleRegistry.runBeforeContextCompactHooks(context)
 }
 
 export async function runAfterAssistantResponseHooks(
   context: AfterAssistantResponseContext,
 ): Promise<void> {
-  for (const item of afterResponseHooks.values()) {
-    try {
-      await item.hook(context)
-    } catch (error) {
-      console.error(`[PluginLifecycle] afterAssistantResponse failed for "${item.pluginId}/${item.hookId}":`, error)
-    }
-  }
+  await lifecycleRegistry.runAfterAssistantResponseHooks(context)
 }
 
 export function clearLifecycleHooksForPlugin(pluginId: string): void {
-  for (const item of beforeCompactHooks.values()) {
-    if (item.pluginId === pluginId) {
-      beforeCompactHooks.delete(key(item.pluginId, item.hookId))
-    }
-  }
-  for (const item of afterResponseHooks.values()) {
-    if (item.pluginId === pluginId) {
-      afterResponseHooks.delete(key(item.pluginId, item.hookId))
-    }
-  }
+  lifecycleRegistry.clearLifecycleHooksForPlugin(pluginId)
 }

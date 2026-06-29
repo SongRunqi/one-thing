@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { JsonObject } from '../../../shared/json.js'
 import { Permission } from '../../permission/index.js'
 import { enforcePermissionPolicy } from '../../tools/core/permission-policy.js'
-import type { ToolEffect } from '../../tools/core/tool-effect.js'
+import type { ToolEffect } from '@onething/core/tools'
 
 vi.mock('../../permission/index.js', () => {
   class RejectedError extends Error {

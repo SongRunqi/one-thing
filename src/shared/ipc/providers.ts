@@ -94,10 +94,13 @@ export interface ProviderInfo {
   models?: OpenRouterModel[]
 }
 
+export type ZhipuApiMode = 'standard' | 'coding-plan'
+
 // Per-provider configuration
 export interface ProviderConfig {
   apiKey?: string           // Optional for OAuth providers
   baseUrl?: string
+  zhipuApiMode?: ZhipuApiMode
   model: string             // Currently active model
   selectedModels: string[]  // List of models user has selected/enabled for quick switching
   enabled?: boolean         // Whether this provider is shown in the chat model selector
@@ -262,6 +265,7 @@ export interface ProviderEnvStatus {
   providerId: string
   detectedEnvVar?: string
   resolvedEnvVar?: string
+  keyPreview?: string
   candidates: ProviderEnvVarCandidate[]
 }
 

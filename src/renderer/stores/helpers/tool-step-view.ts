@@ -65,10 +65,6 @@ export interface BuildToolStepViewOptions {
 }
 
 const STREAMING_CONTENT_CACHE_LIMIT = 80
-const STREAMING_PREVIEW_HEAD_LINES = 80
-const STREAMING_PREVIEW_MAX_LINES = 160
-const STREAMING_PREVIEW_TAIL_LINES = STREAMING_PREVIEW_MAX_LINES - STREAMING_PREVIEW_HEAD_LINES - 1
-const STREAMING_PREVIEW_KEPT_LINES = STREAMING_PREVIEW_HEAD_LINES + STREAMING_PREVIEW_TAIL_LINES
 
 const streamingContentCache = new Map<string, StreamingToolContent | null>()
 
@@ -356,22 +352,13 @@ function parseStreamingDiffLines(streamingContent: StreamingToolContent | null):
   }
   if (!streamingContent.content) return []
 
-  const lines = streamingContent.content.split('\n')
+  const lines = splitDisplayLines(streamingContent.content)
   const result: ToolDiffLine[] = lines.map((line, index) => ({
     class: 'diff-add',
     prefix: '+',
     content: line,
     newNum: index + 1,
   }))
-
-  if (streamingContent.isTruncated && streamingContent.omittedLines) {
-    result.splice(STREAMING_PREVIEW_HEAD_LINES, 0, {
-      class: 'diff-hunk',
-      prefix: '',
-      content: `... ${streamingContent.omittedLines} lines omitted while streaming ...`,
-      newNum: '',
-    })
-  }
 
   return result
 }
@@ -416,23 +403,7 @@ function parseStreamingEditDiffLines(replacements: StreamingEditReplacement[]): 
     }
   })
 
-  return truncateStreamingDiffLines(result)
-}
-
-function truncateStreamingDiffLines(lines: ToolDiffLine[]): ToolDiffLine[] {
-  if (lines.length <= STREAMING_PREVIEW_MAX_LINES) return lines
-  const omittedLines = lines.length - STREAMING_PREVIEW_KEPT_LINES
-  return [
-    ...lines.slice(0, STREAMING_PREVIEW_HEAD_LINES),
-    {
-      class: 'diff-hunk',
-      prefix: '',
-      content: `... ${omittedLines} diff lines omitted while streaming ...`,
-      oldNum: '',
-      newNum: '',
-    },
-    ...lines.slice(-STREAMING_PREVIEW_TAIL_LINES),
-  ]
+  return result
 }
 
 export function getResultText(step: Step): string | null {
@@ -729,35 +700,11 @@ function hashString(value: string): string {
 }
 
 function normalizeStreamingContent(content: StreamingToolContent): StreamingToolContent {
-  if (content.kind === 'edit') {
-    return {
-      ...content,
-      totalLines: countAddedLines(content.content),
-      isTruncated: false,
-      omittedLines: 0,
-    }
-  }
-
-  const lines = content.content ? content.content.split('\n') : []
-  if (lines.length <= STREAMING_PREVIEW_MAX_LINES) {
-    return {
-      ...content,
-      totalLines: lines.length,
-      isTruncated: false,
-      omittedLines: 0,
-    }
-  }
-
-  const omittedLines = Math.max(0, lines.length - STREAMING_PREVIEW_KEPT_LINES)
   return {
     ...content,
-    content: [
-      ...lines.slice(0, STREAMING_PREVIEW_HEAD_LINES),
-      ...lines.slice(-STREAMING_PREVIEW_TAIL_LINES),
-    ].join('\n'),
-    totalLines: lines.length,
-    isTruncated: true,
-    omittedLines,
+    totalLines: countAddedLines(content.content),
+    isTruncated: false,
+    omittedLines: 0,
   }
 }
 

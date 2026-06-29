@@ -5,10 +5,40 @@
  * functions called from main/index.ts.
  */
 
-import { getEventBus } from '../events/index.js'
-import { StreamEngine } from './stream-engine.js'
+import type { StreamChunk } from '../../shared/events/index.js'
+import type { CoreStreamEngineRuntime as CoreRuntime } from '@onething/core/engine'
+import {
+  createOnethingRuntimeFromStreamRuntime,
+  type OnethingRuntime,
+} from '@onething/runtime/runtime'
+import type { CoreConversationRuntime } from '@onething/core/gateway-runtime'
+import { getEventBus, getStreamChannel } from '../events/index.js'
+import {
+  StreamEngine,
+  type StreamSender,
+} from './stream-engine.js'
+import {
+  createMainStreamEngineRuntime,
+} from './stream-engine-runtime.js'
+import {
+  getSessionManager,
+} from '../session/index.js'
+import * as store from '../store.js'
+
+export type {
+  CoreStreamEngineOptions,
+  CoreStreamEngineRuntime,
+} from '@onething/core/engine'
 
 let streamEngine: StreamEngine | null = null
+let onethingRuntime: MainOnethingRuntime | null = null
+
+export type MainOnethingRuntime = OnethingRuntime<
+  ReturnType<typeof getEventBus>,
+  StreamSender,
+  StreamChunk,
+  StreamEngine
+>
 
 /**
  * Get the singleton StreamEngine instance.
@@ -29,6 +59,17 @@ export function getStreamEngineSafe(): StreamEngine | null {
   return streamEngine
 }
 
+export function getOnethingRuntime(): MainOnethingRuntime {
+  if (!onethingRuntime) {
+    throw new Error('[OnethingRuntime] Not initialized. Call initializeStreamEngine() after initializeEventSystem().')
+  }
+  return onethingRuntime
+}
+
+export function getConversationRuntime(): CoreConversationRuntime<StreamChunk> {
+  return getOnethingRuntime().conversationRuntime
+}
+
 /**
  * Initialize the StreamEngine. Called after initializeSessionLayer().
  */
@@ -38,9 +79,31 @@ export function initializeStreamEngine(): void {
     return
   }
 
-  streamEngine = new StreamEngine()
+  const streamRuntime = createMainStreamEngineRuntime()
+  const engine = new StreamEngine(streamRuntime)
+  streamEngine = engine
+
   try {
-    streamEngine.setEventBus(getEventBus())
+    onethingRuntime = createOnethingRuntimeFromStreamRuntime<
+      ReturnType<typeof getEventBus>,
+      StreamSender,
+      StreamChunk,
+      StreamEngine
+    >({
+      streamRuntime: streamRuntime as unknown as CoreRuntime,
+      eventBus: getEventBus(),
+      streamChannel: getStreamChannel(),
+      createEngine: () => engine,
+      sessionRuntime: {
+        ensureSession: sessionId => {
+          ensurePersistentGatewaySession(sessionId)
+          getSessionManager().getOrCreate(sessionId)
+        },
+        destroySession: sessionId => {
+          getSessionManager().destroySession(sessionId)
+        },
+      },
+    })
   } catch {
     // EventBus may not be initialized yet in test scenarios
   }
@@ -55,7 +118,26 @@ export function shutdownStreamEngine(): void {
     streamEngine.shutdown()
     streamEngine = null
   }
+  onethingRuntime = null
 }
 
 // Re-export for direct use
 export { StreamEngine } from './stream-engine.js'
+
+function ensurePersistentGatewaySession(sessionId: string): void {
+  if (!sessionId.startsWith('gateway:') || store.getSession(sessionId)) return
+
+  const currentSessionId = store.getCurrentSessionId()
+  store.createSession(sessionId, createGatewaySessionName(sessionId))
+  if (currentSessionId) {
+    store.setCurrentSessionId(currentSessionId)
+  }
+}
+
+function createGatewaySessionName(sessionId: string): string {
+  const [, channelId, userId] = /^gateway:([^:]+):(.+)$/.exec(sessionId) ?? []
+  if (!channelId || !userId) return sessionId
+
+  const channelName = channelId === 'wechat' ? 'WeChat' : channelId
+  return `${channelName} - ${userId}`
+}

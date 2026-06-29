@@ -1,21 +1,33 @@
-import { ipcMain } from 'electron'
+import {
+  registerElectronSchedulerIpcHandlers,
+  type ElectronSchedulerCreateTaskRequest,
+  type ElectronSchedulerDeleteTaskRequest,
+  type ElectronSchedulerGetRequest,
+  type ElectronSchedulerGetRunRequest,
+  type ElectronSchedulerListRunsRequest,
+  type ElectronSchedulerRunNowRequest,
+  type ElectronSchedulerSetEnabledRequest,
+  type ElectronSchedulerUpdateTaskRequest,
+} from '@onething/electron-host/ipc/scheduler'
+import {
+  createOnethingSchedulerRunDetailFromRecord,
+  createOnethingUserSchedulerTaskForIpc,
+  deleteOnethingUserSchedulerTaskForIpc,
+  getOnethingSchedulerRunForIpc,
+  getOnethingSchedulerTaskForIpc,
+  listOnethingSchedulerRunsForIpc,
+  listOnethingSchedulerTasksForIpc,
+  runOnethingSchedulerTaskNowForIpc,
+  setOnethingSchedulerTaskEnabledForIpc,
+  updateOnethingUserSchedulerTaskForIpc,
+} from '@onething/runtime/scheduler'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import { toJsonValue } from '../../shared/json.js'
-import type {
-  SchedulerCreateTaskRequest,
-  SchedulerDeleteTaskRequest,
-  SchedulerGetRequest,
-  SchedulerGetRunRequest,
-  SchedulerListRunsRequest,
-  SchedulerRunNowRequest,
-  SchedulerSetEnabledRequest,
-  SchedulerUpdateTaskRequest,
-} from '../../shared/ipc.js'
 import { getScheduler } from '../scheduler/index.js'
+import type { SchedulerRunRecord } from '../scheduler/types.js'
 import {
   createUserSchedulerTask,
   deleteUserSchedulerTask,
-  genericRunDetailFromRecord,
   isUserSchedulerTask,
   setUserSchedulerTaskEnabled,
   updateUserSchedulerTask,
@@ -26,122 +38,98 @@ import {
   saveSchedulerRunDetail,
 } from '../scheduler/run-history.js'
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 export function registerSchedulerHandlers(): void {
-  ipcMain.handle(IPC_CHANNELS.SCHEDULER_LIST, async () => {
-    try {
-      return { success: true, tasks: getScheduler().list() }
-    } catch (error) {
-      console.error('[SchedulerIPC] list error:', error)
-      return { success: false, error: errorMessage(error) }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SCHEDULER_GET, async (_event, request: SchedulerGetRequest) => {
-    try {
-      const task = getScheduler().getStatus(request.id)
-      if (!task) return { success: false, error: `Scheduled task not found: ${request.id}` }
-      return { success: true, task }
-    } catch (error) {
-      console.error('[SchedulerIPC] get error:', error)
-      return { success: false, error: errorMessage(error) }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SCHEDULER_RUN_NOW, async (_event, request: SchedulerRunNowRequest) => {
-    try {
-      const record = await getScheduler().runNow(request.id, {
-        reason: 'manual',
-        force: request.force ?? true,
+  registerElectronSchedulerIpcHandlers({
+    channels: {
+      list: IPC_CHANNELS.SCHEDULER_LIST,
+      get: IPC_CHANNELS.SCHEDULER_GET,
+      runNow: IPC_CHANNELS.SCHEDULER_RUN_NOW,
+      setEnabled: IPC_CHANNELS.SCHEDULER_SET_ENABLED,
+      createTask: IPC_CHANNELS.SCHEDULER_CREATE_TASK,
+      updateTask: IPC_CHANNELS.SCHEDULER_UPDATE_TASK,
+      deleteTask: IPC_CHANNELS.SCHEDULER_DELETE_TASK,
+      listRuns: IPC_CHANNELS.SCHEDULER_LIST_RUNS,
+      getRun: IPC_CHANNELS.SCHEDULER_GET_RUN,
+    },
+    listTasks: () => {
+      return listOnethingSchedulerTasksForIpc({
+        listTasks: () => getScheduler().list(),
+        logger: console,
       })
-      if (!isUserSchedulerTask(request.id)) {
-        saveSchedulerRunDetail(genericRunDetailFromRecord({ ...record, result: toJsonValue(record.result) }))
-      }
-      return { success: true, record }
-    } catch (error) {
-      console.error('[SchedulerIPC] run-now error:', error)
-      return { success: false, error: errorMessage(error) }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SCHEDULER_SET_ENABLED, async (_event, request: SchedulerSetEnabledRequest) => {
-    try {
-      const task = isUserSchedulerTask(request.id)
-        ? setUserSchedulerTaskEnabled(request.id, request.enabled)
-        : getScheduler().setEnabled(request.id, request.enabled)
-      if (!task) return { success: false, error: `Scheduled task not found: ${request.id}` }
-      return { success: true, task }
-    } catch (error) {
-      console.error('[SchedulerIPC] set-enabled error:', error)
-      return { success: false, error: errorMessage(error) }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SCHEDULER_CREATE_TASK, async (_event, request: SchedulerCreateTaskRequest) => {
-    try {
-      return { success: true, task: createUserSchedulerTask(request) }
-    } catch (error) {
-      console.error('[SchedulerIPC] create-task error:', error)
-      return { success: false, error: errorMessage(error) }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SCHEDULER_UPDATE_TASK, async (_event, request: SchedulerUpdateTaskRequest) => {
-    try {
-      if (!isUserSchedulerTask(request.id)) {
-        return { success: false, error: 'Plugin scheduled tasks cannot be edited.' }
-      }
-      return { success: true, task: updateUserSchedulerTask(request) }
-    } catch (error) {
-      console.error('[SchedulerIPC] update-task error:', error)
-      return { success: false, error: errorMessage(error) }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SCHEDULER_DELETE_TASK, async (_event, request: SchedulerDeleteTaskRequest) => {
-    try {
-      if (!isUserSchedulerTask(request.id)) {
-        return { success: false, error: 'Plugin scheduled tasks cannot be deleted.' }
-      }
-      deleteUserSchedulerTask(request.id)
-      return { success: true }
-    } catch (error) {
-      console.error('[SchedulerIPC] delete-task error:', error)
-      return { success: false, error: errorMessage(error) }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SCHEDULER_LIST_RUNS, async (_event, request: SchedulerListRunsRequest) => {
-    try {
-      const savedRuns = listSchedulerRunDetails(request.taskId, request.limit)
-      if (savedRuns.length > 0) {
-        return { success: true, runs: savedRuns }
-      }
-      const task = getScheduler().getStatus(request.taskId)
-      const runs = (task?.recentRuns || [])
-        .slice(0, Math.max(1, Math.min(50, Math.floor(request.limit || 50))))
-        .map(record => genericRunDetailFromRecord({ ...record, result: toJsonValue(record.result) }))
-      return { success: true, runs }
-    } catch (error) {
-      console.error('[SchedulerIPC] list-runs error:', error)
-      return { success: false, error: errorMessage(error) }
-    }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SCHEDULER_GET_RUN, async (_event, request: SchedulerGetRunRequest) => {
-    try {
-      const saved = getSchedulerRunDetail(request.taskId, request.runId)
-      if (saved) return { success: true, run: saved }
-      const task = getScheduler().getStatus(request.taskId)
-      const recent = task?.recentRuns?.find(record => record.runId === request.runId)
-      if (!recent) return { success: false, error: `Scheduled run not found: ${request.runId}` }
-      return { success: true, run: genericRunDetailFromRecord({ ...recent, result: toJsonValue(recent.result) }) }
-    } catch (error) {
-      console.error('[SchedulerIPC] get-run error:', error)
-      return { success: false, error: errorMessage(error) }
-    }
+    },
+    getTask: (request: ElectronSchedulerGetRequest) => {
+      return getOnethingSchedulerTaskForIpc({
+        id: request.id,
+        getTaskStatus: id => getScheduler().getStatus(id),
+        logger: console,
+      })
+    },
+    runNow: (request: ElectronSchedulerRunNowRequest) => {
+      return runOnethingSchedulerTaskNowForIpc({
+        id: request.id,
+        force: request.force,
+        runNow: (id, options) => getScheduler().runNow(id, options),
+        isUserTask: isUserSchedulerTask,
+        toRunDetail: record =>
+          createOnethingSchedulerRunDetailFromRecord({ ...record, result: toJsonValue(record.result) }),
+        saveRunDetail: saveSchedulerRunDetail,
+        logger: console,
+      })
+    },
+    setEnabled: (request: ElectronSchedulerSetEnabledRequest) => {
+      return setOnethingSchedulerTaskEnabledForIpc({
+        id: request.id,
+        enabled: request.enabled,
+        isUserTask: isUserSchedulerTask,
+        setUserTaskEnabled: setUserSchedulerTaskEnabled,
+        setSchedulerTaskEnabled: (id, enabled) => getScheduler().setEnabled(id, enabled),
+        logger: console,
+      })
+    },
+    createTask: (request: ElectronSchedulerCreateTaskRequest) => {
+      return createOnethingUserSchedulerTaskForIpc({
+        request,
+        createUserTask: createUserSchedulerTask,
+        logger: console,
+      })
+    },
+    updateTask: (request: ElectronSchedulerUpdateTaskRequest) => {
+      return updateOnethingUserSchedulerTaskForIpc({
+        request,
+        isUserTask: isUserSchedulerTask,
+        updateUserTask: updateUserSchedulerTask,
+        logger: console,
+      })
+    },
+    deleteTask: (request: ElectronSchedulerDeleteTaskRequest) => {
+      return deleteOnethingUserSchedulerTaskForIpc({
+        id: request.id,
+        isUserTask: isUserSchedulerTask,
+        deleteUserTask: deleteUserSchedulerTask,
+        logger: console,
+      })
+    },
+    listRuns: (request: ElectronSchedulerListRunsRequest) => {
+      return listOnethingSchedulerRunsForIpc({
+        taskId: request.taskId,
+        limit: request.limit,
+        listSavedRuns: listSchedulerRunDetails,
+        getTaskStatus: taskId => getScheduler().getStatus(taskId),
+        toRunDetail: (record: SchedulerRunRecord) =>
+          createOnethingSchedulerRunDetailFromRecord({ ...record, result: toJsonValue(record.result) }),
+        logger: console,
+      })
+    },
+    getRun: (request: ElectronSchedulerGetRunRequest) => {
+      return getOnethingSchedulerRunForIpc({
+        taskId: request.taskId,
+        runId: request.runId,
+        getSavedRun: getSchedulerRunDetail,
+        getTaskStatus: taskId => getScheduler().getStatus(taskId),
+        toRunDetail: (record: SchedulerRunRecord) =>
+          createOnethingSchedulerRunDetailFromRecord({ ...record, result: toJsonValue(record.result) }),
+        logger: console,
+      })
+    },
   })
 }

@@ -1,11 +1,45 @@
-import { v4 as uuidv4 } from 'uuid'
 import type { AppSettings, ChatMessage, ChatSession } from '../../shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from '../providers/index.js'
-import { buildContextCompactPrompt } from './prompt/index.js'
 import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '../plugins/lifecycle.js'
 import * as store from '../store.js'
-import { sanitizeToolResultForAI } from './stream/message-helpers.js'
+import {
+  buildContextCompactCompletedContent,
+  buildContextCompactFailedContent,
+  buildContextCompactSummaryMessages,
+  buildContextUsageSnapshot,
+  createCoreId,
+  createContextCompactMessage,
+  DEFAULT_KEEP_RECENT_TURNS,
+  formatMessagesForSummary,
+  normalizeContextCompactError,
+  selectCompactPlan,
+  shouldSkipAutoCompactForProviderUsageMismatch as shouldSkipAutoCompactForProviderUsageMismatchByUsage,
+  SUMMARY_MAX_OUTPUT_TOKENS,
+  summarizeContextInChunks,
+} from '@onething/core/engine'
+import { buildHistoryMessages } from './stream/message-helpers.js'
+import * as modelRegistry from '../providers/model-registry.js'
+export {
+  estimateCurrentInputTokens,
+  estimateSessionInputTokens,
+  estimateTextTokens,
+  formatMessagesForSummary,
+  getContextCompactReason,
+  normalizeContextSummaryOutput,
+  selectCompactPlan,
+  shouldAutoCompactBeforeSend,
+} from '@onething/core/engine'
+
+export function shouldSkipAutoCompactForProviderUsageMismatch(options: {
+  providerId: string
+  session: Pick<ChatSession, 'contextSize' | 'lastInputTokens'>
+  modelContextLength: number
+  inputTokens?: number
+}): boolean {
+  if (options.providerId !== 'codex') return false
+  return shouldSkipAutoCompactForProviderUsageMismatchByUsage(options)
+}
 
 export interface ContextCompactResult {
   success: boolean
@@ -15,75 +49,6 @@ export interface ContextCompactResult {
   compactedThroughMessageId?: string
   retainedContextSize?: number
   error?: string
-}
-
-interface CompactPlan {
-  cutoffIndex: number
-  cutoffMessage: ChatMessage
-  messagesToSummarize: ChatMessage[]
-  previousSummary?: string
-}
-
-const DEFAULT_KEEP_RECENT_TURNS = 6
-const SUMMARY_MAX_OUTPUT_TOKENS = 1600
-const MAX_CHUNK_CHARS = 80000
-const SUMMARY_TOOL_RESULT_MAX_CHARS = 6000
-
-export function selectCompactPlan(
-  session: ChatSession,
-  keepRecentTurns = DEFAULT_KEEP_RECENT_TURNS,
-): CompactPlan | null {
-  const messages = session.messages.filter(m => m.role === 'user' || m.role === 'assistant')
-  if (messages.length === 0) return null
-
-  let userTurnsSeen = 0
-  let recentStartMessageId: string | undefined
-
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') {
-      userTurnsSeen++
-      if (userTurnsSeen >= keepRecentTurns) {
-        recentStartMessageId = messages[i].id
-        break
-      }
-    }
-  }
-
-  if (!recentStartMessageId) return null
-
-  const recentStartIndex = session.messages.findIndex(m => m.id === recentStartMessageId)
-  const cutoffIndex = recentStartIndex - 1
-  if (cutoffIndex < 0) return null
-
-  const cutoffMessage = session.messages[cutoffIndex]
-  let previousSummaryIndex = -1
-  let previousSummary: string | undefined
-  if (session.summary && session.summaryUpToMessageId) {
-    previousSummaryIndex = session.messages.findIndex(m => m.id === session.summaryUpToMessageId)
-    if (previousSummaryIndex === -1) {
-      console.warn('[ContextCompact] Ignoring summary with missing anchor:', {
-        sessionId: session.id,
-        summaryUpToMessageId: session.summaryUpToMessageId,
-      })
-    } else {
-      previousSummary = session.summary
-    }
-  }
-
-  if (previousSummaryIndex >= cutoffIndex) return null
-
-  const messagesToSummarize = session.messages
-    .slice(previousSummaryIndex + 1, cutoffIndex + 1)
-    .filter(m => m.role === 'user' || m.role === 'assistant')
-
-  if (messagesToSummarize.length === 0) return null
-
-  return {
-    cutoffIndex,
-    cutoffMessage,
-    messagesToSummarize,
-    previousSummary,
-  }
 }
 
 export async function compactSessionContext(options: {
@@ -109,17 +74,11 @@ export async function compactSessionContext(options: {
     }
   }
 
-  const compactMessage: ChatMessage = {
-    id: uuidv4(),
-    role: 'system',
-    content: JSON.stringify({
-      type: 'context-compact',
-      status: 'compacting',
-      summary: '',
-      compactedMessageCount: plan.messagesToSummarize.length,
-    }),
+  const compactMessage = createContextCompactMessage({
+    id: createCoreId(),
     timestamp: Date.now(),
-  }
+    compactedMessageCount: plan.messagesToSummarize.length,
+  }) as ChatMessage
 
   store.insertMessageAfter(options.sessionId, plan.cutoffMessage.id, compactMessage)
   await options.onMessageCreated?.(compactMessage)
@@ -146,19 +105,17 @@ export async function compactSessionContext(options: {
       previousSummary: plan.previousSummary,
     })
 
-    const finalContent = JSON.stringify({
-      type: 'context-compact',
-      status: 'completed',
-      summary,
-      compactedMessageCount: plan.messagesToSummarize.length,
-    })
+    const finalContent = buildContextCompactCompletedContent(summary, plan.messagesToSummarize.length)
 
     store.updateSessionSummary(options.sessionId, summary, plan.cutoffMessage.id)
-    // A compact changes the prompt shape. The previous provider input-token count
-    // no longer describes the next request, so clear it until the provider reports
-    // fresh usage for the next turn.
-    store.updateSessionContextSize(options.sessionId, 0)
     store.updateMessageContent(options.sessionId, compactMessage.id, finalContent)
+    const retainedContextSize = await computeRetainedContextSizeAfterCompact({
+      sessionId: options.sessionId,
+      providerId: options.providerId,
+      configWithApiKey: options.configWithApiKey,
+      settings: options.settings,
+    })
+    store.updateSessionContextSize(options.sessionId, retainedContextSize, 'context-compact-retained-usage')
     await options.onMessageUpdated?.(compactMessage.id, { content: finalContent })
 
     return {
@@ -166,20 +123,12 @@ export async function compactSessionContext(options: {
       summary,
       message: { ...compactMessage, content: finalContent },
       compactedThroughMessageId: plan.cutoffMessage.id,
-      retainedContextSize: 0,
+      retainedContextSize,
     }
   } catch (error) {
     console.error('[ContextCompact] Failed to compact session:', error)
-    const errorMessage = error instanceof Error && error.message
-      ? error.message
-      : 'Failed to compact context'
-    const failedContent = JSON.stringify({
-      type: 'context-compact',
-      status: 'failed',
-      summary: '',
-      error: errorMessage,
-      compactedMessageCount: plan.messagesToSummarize.length,
-    })
+    const errorMessage = normalizeContextCompactError(error)
+    const failedContent = buildContextCompactFailedContent(errorMessage, plan.messagesToSummarize.length)
     store.updateMessageContent(options.sessionId, compactMessage.id, failedContent)
     await options.onMessageUpdated?.(compactMessage.id, { content: failedContent })
 
@@ -191,99 +140,52 @@ export async function compactSessionContext(options: {
   }
 }
 
-export async function shouldAutoCompactBeforeSend(options: {
-  session: ChatSession
-  modelContextLength: number
-  thresholdPercent: number
-  reservedOutputTokens?: number
-}): Promise<boolean> {
-  return getContextCompactReason(options) !== null
-}
-
-export function getContextCompactReason(options: {
-  session: ChatSession
-  modelContextLength: number
-  thresholdPercent: number
-  reservedOutputTokens?: number
-}): 'threshold' | 'hard-limit' | null {
-  const threshold = Math.max(50, Math.min(100, options.thresholdPercent || 85))
-  const contextLength = options.modelContextLength > 0 ? options.modelContextLength : 128000
-  const inputContextSize = estimateCurrentInputTokens(options.session)
-  if (inputContextSize <= 0) return null
-
-  const reservedOutputTokens = Math.max(0, options.reservedOutputTokens || 0)
-  const thresholdHit = inputContextSize >= Math.floor(contextLength * (threshold / 100))
-  const hardLimitSafetyMargin = Math.min(2048, Math.floor(contextLength * 0.01))
-  const hardLimitRisk = inputContextSize + reservedOutputTokens >= contextLength - hardLimitSafetyMargin
-
-  if (hardLimitRisk) return 'hard-limit'
-  if (thresholdHit) return 'threshold'
-  return null
-}
-
-export function estimateCurrentInputTokens(session: ChatSession): number {
-  const providerInputTokens = Math.max(
-    0,
-    session.contextSize ?? 0,
-    session.lastInputTokens ?? 0,
-  )
-  const estimatedInputTokens = estimateSessionInputTokens(session)
-  return Math.max(providerInputTokens, estimatedInputTokens)
-}
-
-export function estimateSessionInputTokens(
-  session: Pick<ChatSession, 'messages' | 'summary' | 'summaryUpToMessageId'>,
-): number {
-  const parts: string[] = []
-
-  if (session.summary && session.summaryUpToMessageId) {
-    parts.push(`[Conversation History Summary]\n${session.summary}`)
-  }
-
-  const summaryIndex = session.summary && session.summaryUpToMessageId
-    ? session.messages.findIndex(message => message.id === session.summaryUpToMessageId)
-    : -1
-  const messages = summaryIndex >= 0
-    ? session.messages.slice(summaryIndex + 1)
-    : session.messages
-
-  for (const message of messages) {
-    if (message.role !== 'user' && message.role !== 'assistant') continue
-    if (message.isStreaming) continue
-
-    parts.push(`${message.role}: ${message.content || ''}`)
-    if (message.reasoning) {
-      parts.push(`reasoning: ${message.reasoning}`)
-    }
-    if (message.attachments?.length) {
-      parts.push(`attachments: ${message.attachments.map(attachment =>
-        `${attachment.fileName} (${attachment.mimeType}, ${attachment.size} bytes)`,
-      ).join('; ')}`)
-    }
-    if (message.toolCalls?.length) {
-      parts.push(`toolCalls: ${formatToolCallsForSummary(message.toolCalls)}`)
-    }
-  }
-
-  return estimateTextTokens(parts.join('\n\n'))
-}
-
-export function estimateTextTokens(text: string): number {
-  if (!text) return 0
-  const cjkCount = (text.match(/[\u4e00-\u9fff]/g) || []).length
-  const nonCjkCount = Math.max(0, text.length - cjkCount)
-  return Math.ceil(cjkCount / 1.8 + nonCjkCount / 4)
-}
-
-export function shouldSkipAutoCompactForProviderUsageMismatch(options: {
+async function computeRetainedContextSizeAfterCompact(options: {
+  sessionId: string
   providerId: string
-  session: ChatSession
-  modelContextLength: number
-}): boolean {
-  if (options.providerId !== 'codex') return false
-  if (!Number.isFinite(options.modelContextLength) || options.modelContextLength <= 0) return false
-  const inputContextSize = options.session.contextSize ?? options.session.lastInputTokens ?? 0
-  return inputContextSize > options.modelContextLength
+  configWithApiKey: ProviderConfigWithKey
+  settings: AppSettings
+}): Promise<number> {
+  const session = store.getSession(options.sessionId)
+  if (!session) return 0
+
+  let modelContextLength = 128000
+  let reservedOutputTokens = options.settings.chat?.maxTokens || 4096
+  try {
+    modelContextLength = await modelRegistry.getModelContextLength(options.configWithApiKey.model, options.providerId)
+    const modelMaxOutputTokens = await modelRegistry.getModelMaxOutputTokens(options.configWithApiKey.model, options.providerId)
+    const perModelOverride = options.configWithApiKey.maxOutputByModel?.[options.configWithApiKey.model]
+    const halfDefault = modelMaxOutputTokens > 0 ? Math.max(1, Math.floor(modelMaxOutputTokens / 2)) : 0
+    const requested = perModelOverride ?? (halfDefault > 0 ? halfDefault : reservedOutputTokens)
+    reservedOutputTokens = modelMaxOutputTokens > 0 ? Math.min(requested, modelMaxOutputTokens) : requested
+  } catch (error) {
+    console.warn('[ContextCompact] Failed to resolve model context budget after compact:', error)
+  }
+
+  const historyMessages = buildHistoryMessages(session.messages, session)
+  const usage = buildContextUsageSnapshot({
+    session,
+    historyMessages,
+    modelContextLength,
+    thresholdPercent: options.settings.chat?.contextCompactThreshold ?? 85,
+    reservedOutputTokens,
+    providerId: options.providerId,
+    model: options.configWithApiKey.model,
+  })
+
+  console.log('[ContextCompact] retained usage after compact', {
+    sessionId: options.sessionId,
+    providerId: options.providerId,
+    model: options.configWithApiKey.model,
+    visibleInputTokens: usage.visibleInputTokens,
+    providerInputTokens: usage.providerInputTokens,
+    requestEstimatedInputTokens: usage.requestEstimatedInputTokens,
+    modelContextLength: usage.modelContextLength,
+    reservedOutputTokens: usage.reservedOutputTokens,
+    source: usage.source,
+  })
+
+  return usage.visibleInputTokens
 }
 
 async function summarizeInChunks(options: {
@@ -293,122 +195,19 @@ async function summarizeInChunks(options: {
   messages: string
   previousSummary?: string
 }): Promise<string> {
-  const chunks = chunkText(options.messages, MAX_CHUNK_CHARS)
-  let summary = options.previousSummary || ''
-
-  for (const chunk of chunks) {
-    const prompt = buildContextCompactPrompt(chunk, summary || undefined)
-    const nextSummary = await generateChatResponse(
-      options.providerId,
-      options.configWithApiKey,
-      [
+  return summarizeContextInChunks({
+    messages: options.messages,
+    previousSummary: options.previousSummary,
+    summarizeChunk: async ({ chunk, previousSummary }) => {
+      return generateChatResponse(
+        options.providerId,
+        options.configWithApiKey,
+        buildContextCompactSummaryMessages({ chunk, previousSummary }),
         {
-          role: 'system',
-          content: 'You summarize chat history for context compaction. Return only valid JSON matching the requested schema.',
+          temperature: 0,
+          maxTokens: SUMMARY_MAX_OUTPUT_TOKENS,
         },
-        { role: 'user', content: prompt },
-      ],
-      {
-        temperature: 0,
-        maxTokens: SUMMARY_MAX_OUTPUT_TOKENS,
-      },
-    )
-    summary = normalizeContextSummaryOutput(nextSummary)
-  }
-
-  return summary.trim()
-}
-
-export function normalizeContextSummaryOutput(value: string): string {
-  const trimmed = value.trim()
-  if (!trimmed) return ''
-
-  const withoutFence = trimmed
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim()
-
-  try {
-    return JSON.stringify(JSON.parse(withoutFence), null, 2)
-  } catch {
-    const start = withoutFence.indexOf('{')
-    const end = withoutFence.lastIndexOf('}')
-    if (start >= 0 && end > start) {
-      const candidate = withoutFence.slice(start, end + 1)
-      try {
-        return JSON.stringify(JSON.parse(candidate), null, 2)
-      } catch {
-        // Fall through to returning the raw text.
-      }
-    }
-  }
-
-  return trimmed
-}
-
-export function formatMessagesForSummary(messages: ChatMessage[]): string {
-  return messages.map((message, index) => {
-    const label = message.role === 'user' ? 'User' : 'Assistant'
-    const parts = [`### ${index + 1}. ${label}`, message.content || '(empty)']
-
-    if (message.reasoning) {
-      parts.push(`Reasoning summary source:\n${message.reasoning}`)
-    }
-
-    if (message.toolCalls?.length) {
-      parts.push(`Tool calls:\n${formatToolCallsForSummary(message.toolCalls)}`)
-    }
-
-    if (message.attachments?.length) {
-      parts.push(`Attachments:\n${message.attachments.map(a => `- ${a.fileName} (${a.mimeType}, ${a.size} bytes)`).join('\n')}`)
-    }
-
-    return parts.join('\n\n')
-  }).join('\n\n---\n\n')
-}
-
-function formatToolCallsForSummary(toolCalls: NonNullable<ChatMessage['toolCalls']>): string {
-  return toolCalls.map(tc => {
-    const status = tc.status ? ` (${tc.status})` : ''
-    const lines = [`- ${tc.toolName || tc.toolId}${status}: ${safeJsonForSummary(tc.arguments || {})}`]
-    const result = formatToolCallResultForSummary(tc)
-    if (result) {
-      lines.push(`  result: ${result}`)
-    }
-    return lines.join('\n')
-  }).join('\n')
-}
-
-function formatToolCallResultForSummary(toolCall: NonNullable<ChatMessage['toolCalls']>[number]): string {
-  if (toolCall.status === 'failed' || toolCall.status === 'cancelled') {
-    return compactSummaryText(toolCall.error || toolCall.rejectionReason || 'Tool did not complete.')
-  }
-
-  if (toolCall.status !== 'completed') return ''
-  const sanitized = sanitizeToolResultForAI(toolCall.result)
-  return compactSummaryText(safeJsonForSummary(sanitized))
-}
-
-function safeJsonForSummary(value: unknown): string {
-  try {
-    return typeof value === 'string' ? value : JSON.stringify(value)
-  } catch {
-    return String(value)
-  }
-}
-
-function compactSummaryText(value: string): string {
-  const normalized = value.replace(/\s+/g, ' ').trim()
-  if (normalized.length <= SUMMARY_TOOL_RESULT_MAX_CHARS) return normalized
-  return `${normalized.slice(0, SUMMARY_TOOL_RESULT_MAX_CHARS).trimEnd()} [truncated ${normalized.length - SUMMARY_TOOL_RESULT_MAX_CHARS} chars]`
-}
-
-function chunkText(text: string, maxChars: number): string[] {
-  if (text.length <= maxChars) return [text]
-
-  const chunks: string[] = []
-  for (let start = 0; start < text.length; start += maxChars) {
-    chunks.push(text.slice(start, start + maxChars))
-  }
-  return chunks
+      )
+    },
+  })
 }

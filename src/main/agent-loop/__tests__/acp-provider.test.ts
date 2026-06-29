@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ACPPromptStreamEvent, ACPPromptStreamOptions } from '../../acp/index.js'
 import { createACPAgentProvider } from '../providers/acp.js'
-import type { AgentTurnStreamEvent } from '../types.js'
+import type { AgentTurnStreamEvent } from '@onething/core/agent-loop'
 
 interface ACPStreamCall {
   agentId: string

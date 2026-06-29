@@ -3,8 +3,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createDefaultSettings, normalizeSoulMemorySettings } from '../../../../shared/defaults/settings.js'
-import { HERMES_MEMORY_DELIMITER } from '../../../memory/hermes-file-memory.js'
-import type { MemoryWorkspace, ResolvedSoulMemorySettings } from '../../../memory/types.js'
+import { HERMES_MEMORY_DELIMITER } from '@onething/runtime/memory/hermes-file-memory'
+import type { MemoryWorkspace, ResolvedSoulMemorySettings } from '@onething/runtime/memory/types'
 import { __testing } from '../soul-memory.js'
 
 const tempDirs: string[] = []

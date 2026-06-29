@@ -56,7 +56,7 @@ import {
   streamChatWithUIMessages,
 } from '../index.js'
 import { registerAgentProviderRuntime } from '../../agent-loop/index.js'
-import type { AgentTurn, AgentTurnRequest } from '../../agent-loop/index.js'
+import type { AgentTurn, AgentTurnRequest } from '@onething/core/agent-loop'
 
 function streamResponse(chunks: string[]): Response {
   const encoder = new TextEncoder()

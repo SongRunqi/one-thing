@@ -889,6 +889,9 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 
 .node-target-chip.command-chip {
   max-width: 100%;
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  font-size: 10.5px;
+  font-weight: 400;
 }
 
 .node-target-name.file-link {
@@ -906,6 +909,14 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 32%, transparent);
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.operation-row.has-details:hover .node-target-chip.command-chip,
+.operation-row.is-expanded .node-target-chip.command-chip,
+.operation-list.single .node-target-chip.command-chip,
+.operation-list.single .operation-row.has-details:hover .node-target-chip.command-chip,
+.operation-list.single .operation-row:focus-within .node-target-chip.command-chip {
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
 }
 
 .operation-row.is-expanded .node-action,

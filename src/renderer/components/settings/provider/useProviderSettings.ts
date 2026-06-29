@@ -11,6 +11,9 @@ import { useProviderAuth } from './useProviderAuth'
 
 export type { OAuthStatus, DeviceFlowInfo, CodeEntryInfo } from './useProviderAuth'
 
+const ZHIPU_STANDARD_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4'
+const ZHIPU_CODING_PLAN_BASE_URL = 'https://open.bigmodel.cn/api/coding/paas/v4'
+
 export function useProviderSettings(
   props: { settings: AppSettings; providers: ProviderInfo[] },
   emit: (event: 'update:settings', settings: AppSettings) => void
@@ -116,6 +119,15 @@ export function useProviderSettings(
   })
 
   const isACPProvider = computed(() => viewingProvider.value === 'acp')
+  const isZhipuProvider = computed(() => viewingProvider.value === 'zhipu')
+
+  const currentZhipuApiMode = computed(() => {
+    const config = props.settings.ai.providers.zhipu
+    if (config?.zhipuApiMode === 'coding-plan' || config?.zhipuApiMode === 'standard') {
+      return config.zhipuApiMode
+    }
+    return config?.baseUrl?.includes('/api/coding/paas/v4') ? 'coding-plan' : 'standard'
+  })
 
   const currentProviderEnvStatus = computed(() => {
     return providerEnvStatuses.value[viewingProvider.value]
@@ -129,6 +141,10 @@ export function useProviderSettings(
     return currentProviderEnvStatus.value?.resolvedEnvVar ||
       currentProviderEnvStatus.value?.candidates[0]?.name ||
       ''
+  })
+
+  const currentProviderEnvKeyPreview = computed(() => {
+    return currentProviderEnvStatus.value?.keyPreview || ''
   })
 
   const providerAuth = useProviderAuth(viewingProvider, isOAuthProvider, async (providerId) => {
@@ -248,6 +264,19 @@ export function useProviderSettings(
   function updateProviderBaseUrl(baseUrl: string) {
     const providers = { ...props.settings.ai.providers }
     providers[viewingProvider.value] = { ...providers[viewingProvider.value], baseUrl }
+    updateSettings({ ai: { ...props.settings.ai, providers } })
+  }
+
+  function updateZhipuApiMode(mode: string) {
+    const zhipuApiMode = mode === 'coding-plan' ? 'coding-plan' : 'standard'
+    const providers = { ...props.settings.ai.providers }
+    providers.zhipu = {
+      ...providers.zhipu,
+      zhipuApiMode,
+      baseUrl: zhipuApiMode === 'coding-plan'
+        ? ZHIPU_CODING_PLAN_BASE_URL
+        : ZHIPU_STANDARD_BASE_URL,
+    }
     updateSettings({ ai: { ...props.settings.ai, providers } })
   }
 
@@ -760,10 +789,13 @@ export function useProviderSettings(
     filteredModels,
     isOAuthProvider,
     isACPProvider,
+    isZhipuProvider,
+    currentZhipuApiMode,
     currentACPAgent,
     currentACPAgentState,
     currentProviderUsesEnvApiKey,
     currentProviderEnvVarName,
+    currentProviderEnvKeyPreview,
     enabledProviders,
     defaultProviderSelectedModels,
     defaultProviderModel,
@@ -783,6 +815,7 @@ export function useProviderSettings(
     formatContextLength,
     updateProviderApiKey,
     updateProviderBaseUrl,
+    updateZhipuApiMode,
     updateProviderTemperature,
     resetProviderTemperature,
     updateModelMaxOutput,

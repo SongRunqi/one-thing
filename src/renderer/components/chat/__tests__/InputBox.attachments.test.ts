@@ -4,6 +4,7 @@ import { nextTick, reactive } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import InputBox from "../InputBox.vue";
 import { createDefaultSettings } from "../../../../shared/defaults/settings";
+import { findCommand } from "@/services/commands";
 
 const mocks = vi.hoisted(() => ({
 	settingsStore: null as any,
@@ -166,6 +167,7 @@ async function setComposerValue(wrapper: VueWrapper, value: string) {
 
 describe("InputBox paste attachments", () => {
 	beforeEach(() => {
+		vi.mocked(findCommand).mockReturnValue(undefined);
 		const baseSettings = createDefaultSettings();
 		baseSettings.ai.provider = "openai";
 		baseSettings.ai.providers.openai.model = "gpt-vision";
@@ -511,6 +513,28 @@ describe("InputBox paste attachments", () => {
 		await settle();
 
 		expect(wrapper.emitted("sendMessage")?.[0]?.[0]).toBe("/cd /repo");
+	});
+
+	it("emits the target session when a slash command creates a new session", async () => {
+		vi.mocked(findCommand).mockReturnValue({
+			id: "new",
+			name: "New Session",
+			description: "Start a new chat session",
+			usage: "/new",
+			execute: vi.fn().mockResolvedValue({
+				success: true,
+				message: "New session opened",
+				switchToSessionId: "session-new",
+			}),
+		});
+		const wrapper = mountInputBox();
+
+		await setComposerValue(wrapper, "/new");
+		await wrapper.find(".send-btn").trigger("click");
+		await settle();
+
+		expect(wrapper.emitted("switchSession")?.[0]).toEqual(["session-new"]);
+		expect(wrapper.find("textarea").element).toHaveProperty("value", "");
 	});
 
 	it("keeps the voice button clickable and repairs an incomplete advanced ASR choice", async () => {

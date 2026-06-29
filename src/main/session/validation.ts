@@ -15,8 +15,12 @@
 
 import * as store from '../store.js'
 import type { EventBus } from '../events/event-bus.js'
-import type { SessionManager } from './session-manager.js'
 import type { Unsubscribe } from '../events/types.js'
+import {
+  formatSessionValidationResult,
+  type SessionManager,
+  validateSessionStateConsistency,
+} from '@onething/core/session'
 
 const isDev = process.env.NODE_ENV !== 'production'
 
@@ -32,7 +36,10 @@ export function setupValidation(
     const sessionId = envelope.sessionId
     const session = sessionManager.get(sessionId)
     if (!session) {
-      console.warn(`[Validation] Session ${sessionId} not found in SessionManager`)
+      console.warn(formatSessionValidationResult(validateSessionStateConsistency({
+        sessionId,
+        storeSessionExists: false,
+      })))
       return
     }
 
@@ -41,33 +48,27 @@ export function setupValidation(
     // Get the store's version of the assistant message
     const storeSession = store.getSession(sessionId)
     if (!storeSession) {
-      console.warn(`[Validation] Session ${sessionId} not found in store`)
+      console.warn(formatSessionValidationResult(validateSessionStateConsistency({
+        sessionId,
+        state,
+        storeSessionExists: false,
+      })))
       return
     }
 
     const storeMessage = storeSession.messages.find(m => m.id === state.activeMessageId)
-    if (!storeMessage) {
-      console.warn(`[Validation] Message ${state.activeMessageId} not found in store for session ${sessionId}`)
-      return
-    }
 
-    const storeContent = storeMessage.content || ''
-    const eventContent = state.accumulatedContent
+    const result = validateSessionStateConsistency({
+      sessionId,
+      state,
+      storeSessionExists: true,
+      storeMessageContent: storeMessage ? (storeMessage.content || '') : undefined,
+    })
 
-    // Compare content (allow minor whitespace differences)
-    if (storeContent.trim() !== eventContent.trim()) {
-      console.warn(
-        `[Validation] Content MISMATCH for session ${sessionId}:\n` +
-        `  Store length: ${storeContent.length}\n` +
-        `  Event length: ${eventContent.length}\n` +
-        `  Store preview: ${storeContent.slice(0, 100)}...\n` +
-        `  Event preview: ${eventContent.slice(0, 100)}...`
-      )
+    if (result.status === 'consistent') {
+      console.log(formatSessionValidationResult(result))
     } else {
-      console.log(
-        `[Validation] Session ${sessionId} state consistent ` +
-        `(${state.eventCount} events, ${state.chunkCount} chunks, ${eventContent.length} chars)`
-      )
+      console.warn(formatSessionValidationResult(result))
     }
   }, 'Validation')
 }

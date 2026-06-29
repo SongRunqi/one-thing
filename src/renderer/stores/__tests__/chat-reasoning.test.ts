@@ -2,7 +2,7 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useChatStore } from '../chat'
-import type { ChatMessage } from '@/types'
+import type { ChatMessage, Step, ToolCall } from '@/types'
 
 function assistantMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -12,6 +12,32 @@ function assistantMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
     timestamp: 0,
     isStreaming: true,
     contentParts: [],
+    ...overrides,
+  }
+}
+
+function toolCall(overrides: Partial<ToolCall> = {}): ToolCall {
+  return {
+    id: 'tc1',
+    toolId: 'read',
+    toolName: 'read',
+    arguments: {},
+    status: 'executing',
+    timestamp: 0,
+    ...overrides,
+  }
+}
+
+function toolStep(call: ToolCall, overrides: Partial<Step> = {}): Step {
+  return {
+    id: 'step1',
+    type: 'tool-call',
+    title: 'Reading file',
+    status: 'running',
+    timestamp: 0,
+    turnIndex: 1,
+    toolCallId: call.id,
+    toolCall: call,
     ...overrides,
   }
 }
@@ -145,6 +171,115 @@ describe('chat store memory loading status', () => {
 
     message = store.getSessionState('s1').messages.value[0]
     expect(message.contentParts).toEqual([{ type: 'waiting' }])
+  })
+
+  it('shows deferred continuation waiting after the active tool finishes', () => {
+    const store = useChatStore()
+    const call = toolCall()
+    store.setMessagesFromSession('s1', [
+      assistantMessage({
+        toolCalls: [call],
+        steps: [toolStep(call)],
+        contentParts: [{ type: 'data-steps', turnIndex: 1 }],
+      }),
+    ])
+
+    store.handleStreamChunk({
+      type: 'continuation',
+      sessionId: 's1',
+      messageId: 'm1',
+      content: '',
+      turnIndex: 2,
+    })
+
+    let message = store.getSessionState('s1').messages.value[0]
+    expect(message.contentParts).toEqual([{ type: 'data-steps', turnIndex: 1 }])
+
+    store.handleToolExecutionEnd({
+      sessionId: 's1',
+      messageId: 'm1',
+      stepId: 'step1',
+      toolCallId: 'tc1',
+      result: { content: [{ type: 'text', text: 'done' }] },
+    })
+
+    message = store.getSessionState('s1').messages.value[0]
+    expect(message.steps?.[0].status).toBe('completed')
+    expect(message.toolCalls?.[0].status).toBe('completed')
+    expect(message.contentParts).toEqual([
+      { type: 'data-steps', turnIndex: 1 },
+      { type: 'waiting', turnIndex: 2 },
+    ])
+  })
+
+  it('ignores stale active tool state from older turns when flushing continuation waiting', () => {
+    const store = useChatStore()
+    const staleCall = toolCall({
+      id: 'tc-stale',
+      status: 'input-streaming',
+    })
+    const currentCall = toolCall({
+      id: 'tc-current',
+      status: 'executing',
+    })
+
+    store.setMessagesFromSession('s1', [
+      assistantMessage({
+        toolCalls: [staleCall, currentCall],
+        steps: [
+          toolStep(staleCall, {
+            id: 'step-stale',
+            status: 'running',
+            turnIndex: 1,
+            toolCallId: 'tc-stale',
+          }),
+          toolStep(currentCall, {
+            id: 'step-current',
+            status: 'running',
+            turnIndex: 18,
+            toolCallId: 'tc-current',
+          }),
+        ],
+        contentParts: [
+          { type: 'data-steps', turnIndex: 1 },
+          { type: 'data-steps', turnIndex: 18 },
+        ],
+      }),
+    ])
+    store.handleStreamStarted({ sessionId: 's1', messageId: 'm1' })
+
+    store.handleStreamChunk({
+      type: 'continuation',
+      sessionId: 's1',
+      messageId: '',
+      content: '',
+      turnIndex: 19,
+    })
+
+    let message = store.getSessionState('s1').messages.value[0]
+    expect(message.contentParts).toEqual([
+      { type: 'data-steps', turnIndex: 1 },
+      { type: 'data-steps', turnIndex: 18 },
+    ])
+
+    store.handleToolExecutionEnd({
+      sessionId: 's1',
+      messageId: '',
+      stepId: 'step-current',
+      toolCallId: 'tc-current',
+      result: { content: [{ type: 'text', text: 'done' }] },
+    })
+
+    message = store.getSessionState('s1').messages.value[0]
+    expect(message.steps?.find(step => step.id === 'step-stale')?.status).toBe('running')
+    expect(message.toolCalls?.find(call => call.id === 'tc-stale')?.status).toBe('input-streaming')
+    expect(message.steps?.find(step => step.id === 'step-current')?.status).toBe('completed')
+    expect(message.toolCalls?.find(call => call.id === 'tc-current')?.status).toBe('completed')
+    expect(message.contentParts).toEqual([
+      { type: 'data-steps', turnIndex: 1 },
+      { type: 'data-steps', turnIndex: 18 },
+      { type: 'waiting', turnIndex: 19 },
+    ])
   })
 
   it('uses finalized text content parts when no text delta arrived', () => {

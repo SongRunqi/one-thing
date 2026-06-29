@@ -8,6 +8,24 @@
  */
 
 import type { z } from 'zod'
+import type {
+  CorePluginAPI,
+  CorePluginCommandContext,
+  CorePluginCommandDefinition,
+  CorePluginDefinition,
+  CorePluginEntry,
+  CorePluginEventHandler,
+  CorePluginSchedulerAPI,
+  CorePluginStoreShape,
+  CorePluginStoreData,
+  CorePluginToolContext,
+  CorePluginToolDefinition,
+  CorePluginToolResult,
+  MinimalCorePluginUI,
+  PluginManifest,
+  PluginSettings,
+  PluginSource,
+} from '@onething/core/plugins'
 import type { ToolMetadata, ToolContext as CoreToolContext } from '../tools/core/tool.js'
 import type { ToolInfo, ToolInfoAsync } from '../tools/core/tool.js'
 import type { PluginSkillRootProvider } from '../skills/plugin-roots.js'
@@ -29,207 +47,83 @@ import type {
   SchedulerTaskSnapshot,
 } from '../scheduler/types.js'
 
-// ── Plugin Manifest ─────────────────────────────
-
-export interface PluginManifest {
-  /** Plugin identifier (directory name if omitted) */
-  name: string
-  /** Semantic version */
-  version: string
-  /** Human-readable description */
-  description?: string
-  /** Entry file (defaults to "plugin-entry.ts") */
-  entry?: string
-  /** Author */
-  author?: string
-  /** Minimum app version required */
-  minAppVersion?: string
+export type {
+  CorePluginDefinition,
+  CorePluginAPI,
+  CorePluginCommandContext,
+  CorePluginCommandDefinition,
+  CorePluginEntry,
+  CorePluginEventHandler,
+  CorePluginSchedulerAPI,
+  CorePluginStoreShape,
+  CorePluginStoreData,
+  CorePluginToolContext,
+  CorePluginToolDefinition,
+  CorePluginToolResult,
+  MinimalCorePluginUI,
+  PluginManifest,
+  PluginSettings,
+  PluginSource,
 }
 
 // ── Plugin Definition (loaded plugin) ──────────
 
-export interface PluginDefinition {
-  /** Unique ID (directory name) */
-  id: string
-  /** Where this plugin comes from */
-  source?: 'builtin' | 'user'
-  /** Resolved manifest */
-  manifest: PluginManifest
-  /** Absolute path to plugin directory */
-  dirPath: string
-  /** Absolute path to entry file */
-  entryPath: string
-  /** Statically bundled entry for built-in plugins */
-  entry?: PluginEntry
-  /** Whether the plugin is currently enabled */
-  enabled: boolean
-  /** Whether `npm install` needs to run before loading */
-  needsInstall?: boolean
-  /** Load errors, if any */
-  error?: string
-}
+export interface PluginDefinition extends CorePluginDefinition<PluginEntry> {}
 
 // ── Plugin Store (per-plugin persistent key-value) ──
 
-export interface PluginStoreData {
-  [key: string]: unknown
-}
+export interface PluginStoreData extends CorePluginStoreData {}
 
 // ── Tool Definition (simplified for plugins) ───
 
 export interface PluginToolDefinition<
   P extends z.ZodType = z.ZodType,
   M extends ToolMetadata = ToolMetadata,
-> {
-  /** Unique tool name (used in LLM tool calls) */
-  name: string
-  /** Description for LLM */
-  description: string
-  /** Zod parameter schema */
-  parameters: P
-  /** Execute the tool */
-  execute(args: z.infer<P>, ctx: PluginToolContext<M>): Promise<PluginToolResult<M>>
-  /** Optional: permission guard (default: 'permission-gated') */
-  permissionGuard?: 'safe' | 'sandboxed' | 'internal-check' | 'permission-gated' | 'external'
-}
+> extends CorePluginToolDefinition<P, z.infer<P>, PluginToolContext<M>, PluginToolResult<M>> {}
 
-export interface PluginToolContext<M extends ToolMetadata = ToolMetadata> {
-  /** Session ID this tool call belongs to */
-  sessionId: string
-  /** Message ID */
-  messageId: string
-  /** Tool call ID */
-  toolCallId: string
-  /** Working directory (sandbox boundary) */
-  workingDirectory?: string
-  /** Abort signal */
-  abortSignal?: AbortSignal
-  /** Stream metadata updates to UI */
-  metadata(input: { title?: string; metadata?: Partial<M> }): void
-}
+export interface PluginToolContext<M extends ToolMetadata = ToolMetadata> extends CorePluginToolContext<M> {}
 
-export interface PluginToolResult<M extends ToolMetadata = ToolMetadata> {
-  /** Short title */
-  title: string
-  /** Output shown to the LLM */
-  output: string
-  /** Extra metadata for UI */
-  metadata: M
-}
+export interface PluginToolResult<M extends ToolMetadata = ToolMetadata> extends CorePluginToolResult<M> {}
 
 // ── Command Definition ─────────────────────────
 
-export interface PluginCommandDefinition {
-  /** Command name (with or without leading /) */
-  name: string
-  /** Description shown in command picker */
-  description?: string
-  /** Usage shown in command picker */
-  usage?: string
-  /** Execute the command */
-  handler(args: string, ctx: PluginCommandContext): Promise<void>
-}
+export interface PluginCommandDefinition extends CorePluginCommandDefinition<PluginCommandContext> {}
 
-export interface PluginCommandContext {
-  sessionId: string
-  cwd?: string
-  /** Inject a steering message (interrupts current turn) */
-  steer(content: string): void
-  /** Queue a follow-up message (waits for agent to stop) */
-  followUp(content: string): void
-  /** Show a notification to the user */
-  notify(message: string, level?: 'info' | 'warn' | 'error'): void
-  /** Execute a shell command */
-  exec(command: string, args?: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }>
-}
+export interface PluginCommandContext extends CorePluginCommandContext {}
 
 export type PluginScheduledTaskRegistration = Omit<SchedulerTaskRegistration, 'pluginId'>
 
-export interface PluginSchedulerAPI {
-  register(task: PluginScheduledTaskRegistration): SchedulerTaskHandle
-  getStatus(id: string): SchedulerTaskSnapshot | undefined
-  list(): SchedulerTaskSnapshot[]
-  refresh(id: string): SchedulerTaskSnapshot | undefined
-  runNow(id: string, options?: SchedulerRunOptions): Promise<SchedulerRunRecord>
-  setEnabled(id: string, enabled: boolean): SchedulerTaskSnapshot | undefined
-}
+export interface PluginSchedulerAPI
+  extends CorePluginSchedulerAPI<
+    PluginScheduledTaskRegistration,
+    SchedulerTaskHandle,
+    SchedulerTaskSnapshot,
+    SchedulerRunOptions,
+    SchedulerRunRecord
+  > {}
 
 // ── Plugin API (the "pi" object passed to plugin entry) ──
 
-export interface PluginAPI {
-  /** Plugin ID (set by loader) */
-  readonly id: string
-
-  // ── Tool Registration ──
-  /** Register a tool the LLM can call */
+export interface PluginAPI
+  extends CorePluginAPI<
+    PluginToolDefinition,
+    PluginEventHandler,
+    Omit<PluginCommandDefinition, 'name'>,
+    PluginPromptContextProvider,
+    BeforeContextCompactHook,
+    AfterAssistantResponseHook,
+    PluginSkillRootProvider,
+    PluginStore,
+    PluginSchedulerAPI,
+    MinimalPluginUI
+  > {
   registerTool<P extends z.ZodType, M extends ToolMetadata>(
     tool: PluginToolDefinition<P, M>,
   ): void
-
-  // ── Event Subscription ──
-  /**
-   * Subscribe to session events.
-   * Handler receives the event envelope (with sessionId, sequence, etc.).
-   * Use this to react to tool calls, stream lifecycle, etc.
-   */
-  on(eventType: string, handler: PluginEventHandler): () => void
-
-  // ── Message Injection (steering/followUp) ──
-  /**
-   * Inject a steering message during streaming.
-   * Interrupts after the current turn ends.
-   */
-  steer(sessionId: string, content: string): void
-
-  /**
-   * Queue a follow-up message.
-   * Only fires after the agent would naturally stop.
-   */
-  followUp(sessionId: string, content: string): void
-
-  // ── Command Registration ──
-  /** Register a slash command */
-  registerCommand(name: string, options: Omit<PluginCommandDefinition, 'name'>): void
-
-  /**
-   * Register an async provider that contributes prompt context fragments
-   * immediately before a request prompt is built.
-   */
-  registerPromptContextProvider(
-    id: string,
-    provider: PluginPromptContextProvider,
-  ): void
-
-  /** Register a lifecycle hook that runs before session context compaction. */
-  beforeContextCompact(id: string, hook: BeforeContextCompactHook): void
-
-  /** Register a lifecycle hook that runs after an assistant response finishes. */
-  afterAssistantResponse(id: string, hook: AfterAssistantResponseHook): void
-
-  /** Register additional filesystem roots that expose SKILL.md-based skills. */
-  registerSkillRoot(provider: PluginSkillRootProvider): void
-
-  /** Register cleanup work to run when the plugin is disabled or reloaded. */
-  onDispose(callback: () => void): void
-
-  // ── Persistent Storage ──
-  /** Scoped key-value store (persisted per-plugin) */
-  store: PluginStore
-
-  /** Register and inspect durable host-managed scheduled tasks. */
-  scheduler: PluginSchedulerAPI
-
-  // ── UI (minimal v1) ──
-  ui: MinimalPluginUI
 }
 
 /** Event handler receives the full SessionEventEnvelope */
-export type PluginEventHandler = (envelope: {
-  sessionId: string
-  sequence: number
-  timestamp: number
-  event: { type: string; [key: string]: unknown }
-}) => Promise<void> | void
+export type PluginEventHandler = CorePluginEventHandler
 
 export type {
   PluginPromptContext,
@@ -247,21 +141,13 @@ export type {
 
 // ── Plugin Store ───────────────────────────────
 
-export interface PluginStore {
-  get<T = unknown>(key: string): T | undefined
-  set<T = unknown>(key: string, value: T): void
-  delete(key: string): void
-  keys(): string[]
-}
+export interface PluginStore extends CorePluginStoreShape {}
 
 // ── Minimal UI (v1) ────────────────────────────
 
-export interface MinimalPluginUI {
-  /** Send a notification to the renderer */
-  notify(message: string, level?: 'info' | 'warn' | 'error'): void
-}
+export interface MinimalPluginUI extends MinimalCorePluginUI {}
 
 // ── Plugin Entry ───────────────────────────────
 
 /** Function exported by plugin-entry.ts */
-export type PluginEntry = (api: PluginAPI) => void | Promise<void>
+export type PluginEntry = CorePluginEntry<PluginAPI>

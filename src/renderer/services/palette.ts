@@ -59,10 +59,16 @@ export function getPaletteItems(
   const commandItems: PaletteItem[] = getCommands().map(command => ({
     id: `command:${command.id}`,
     type: 'command',
-    title: `/${command.id}`,
+    title: command.displayLabel || `/${command.id}`,
     description: command.description,
     usage: command.usage,
-    keywords: [command.id, command.name, command.description],
+    keywords: [
+      command.id,
+      command.name,
+      command.description,
+      command.usage,
+      command.displayLabel || '',
+    ],
     command,
   }))
 

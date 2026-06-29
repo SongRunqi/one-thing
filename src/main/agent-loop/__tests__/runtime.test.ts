@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { agentEventToChunk } from '../chunks.js'
+import { agentEventToChunk, runAgentLoop } from '@onething/core/agent-loop'
 import { buildAgentLoopRuntime } from '../runtime.js'
-import { runAgentLoop } from '../runner.js'
-import type { AgentMessage, AgentMessageContent, AgentProvider, AgentToolChoice } from '../types.js'
+import type { AgentMessage, AgentMessageContent, AgentProvider, AgentToolChoice } from '@onething/core/agent-loop'
 
 interface SeenRuntimeRequest {
   messages: AgentMessage[]

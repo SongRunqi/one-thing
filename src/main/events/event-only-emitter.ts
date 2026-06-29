@@ -1,226 +1,61 @@
 /**
  * Event-Only Emitter
  *
- * Phase 2 replacement for DualWriteEmitter. Same IPCEmitter interface, but:
- * - Store mutations are kept for methods with side effects (sendStepAdded,
- *   sendStepUpdated, sendSkillActivated)
- * - EventBus.emit() is called for all structured events
- * - StreamChannel.push() is called for text-delta, reasoning-delta,
- *   tool-input-delta
- * - NO sender.send() — IPCBridge handles all IPC translation
- *
- * Previously skipped events (compact, skill) now emit to EventBus.
+ * Main-process wrapper around the core event-only emitter. The core factory
+ * owns IPCEmitter-to-EventBus/StreamChannel mapping; this file only injects
+ * main singletons and store side effects.
  */
 
 import * as store from '../store.js'
-import type { SessionEvent } from '../../shared/events/index.js'
+import type { SessionEvent, StreamChunk } from '../../shared/events/index.js'
+import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from '../../shared/ipc.js'
 import type { StreamContext } from '../engine/stream/stream-processor.js'
-import type { IPCEmitter } from '../engine/stream/ipc-emitter.js'
+import type { IPCEmitter, StreamCompleteData, StreamErrorData } from '../engine/stream/ipc-emitter.js'
+import { createCoreEventOnlyEmitter } from '@onething/core/engine'
 import { getEventBus, getStreamChannel } from './index.js'
 
 function shouldDebugStream(): boolean {
   return process.env.ONETHING_DEBUG_STREAM === '1' || process.env.ONETHING_DEBUG_CODEX_STREAM === '1'
 }
 
-function logTime(): string {
-  return new Date().toISOString()
-}
-
-function previewText(value: string, maxLength = 240): string {
-  return value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
-}
-
-const debugLastPushAt = new Map<string, number>()
-
-function debugGapMs(key: string, now = Date.now()): number | undefined {
-  const previous = debugLastPushAt.get(key)
-  debugLastPushAt.set(key, now)
-  return previous === undefined ? undefined : now - previous
-}
-
 /**
  * Create an event-only emitter that sends to EventBus/StreamChannel.
  * IPCBridge translates these events to renderer IPC.
- *
- * Drop-in replacement for createDualWriteEmitter(ctx).
  */
 export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
   const sessionId = ctx.sessionId
   const assistantMessageId = ctx.assistantMessageId
 
-  // Lazy-get singletons
-  let eventBus: ReturnType<typeof getEventBus> | null = null
-  let streamChannel: ReturnType<typeof getStreamChannel> | null = null
-
-  function bus() {
-    if (!eventBus) {
-      try { eventBus = getEventBus() } catch { /* not initialized */ }
-    }
-    return eventBus
-  }
-
-  function stream() {
-    if (!streamChannel) {
-      try { streamChannel = getStreamChannel() } catch { /* not initialized */ }
-    }
-    return streamChannel
-  }
-
-  /** Fire-and-forget emit to EventBus */
-  function emitSafe(event: SessionEvent): void {
-    const b = bus()
-    if (b) {
-      b.emit(sessionId, event).catch(err => {
-        console.error('[EventOnlyEmitter] EventBus emit error:', err)
-      })
-    }
-  }
-
-  return {
-    // ── Stream Chunks → StreamChannel ───────────
-
-    sendTextChunk(text, turnIndex, voiceSpeakText) {
-      const s = stream()
-      if (s) {
-        try {
-          if (shouldDebugStream()) {
-            const key = `${sessionId}:${assistantMessageId}:text`
-            console.log('[EventOnlyEmitter] push text-delta', {
-              time: logTime(),
-              gapMs: debugGapMs(key),
-              sessionId,
-              assistantMessageId,
-              chars: text.length,
-              text: previewText(text),
-              turnIndex,
-            })
-          }
-          s.push(sessionId, {
-            type: 'text-delta',
-            text,
-            ...(turnIndex !== undefined ? { turnIndex } : {}),
-            ...(voiceSpeakText !== undefined ? { voiceSpeakText } : {}),
-          })
-        } catch (err) {
-          console.error('[EventOnlyEmitter] StreamChannel error:', err)
-        }
+  return createCoreEventOnlyEmitter<
+    Step,
+    ToolCall,
+    ToolPartialResult,
+    ToolResult,
+    ContentPart,
+    StreamCompleteData,
+    StreamErrorData
+  >({
+    sessionId,
+    assistantMessageId,
+    getEventBus: () => {
+      const eventBus = getEventBus()
+      return {
+        emit: (targetSessionId, event) => eventBus.emit(targetSessionId, event as SessionEvent),
       }
     },
-
-    sendReasoningChunk(reasoning, turnIndex, placement) {
-      const s = stream()
-      if (s) {
-        try {
-          if (shouldDebugStream()) {
-            const key = `${sessionId}:${assistantMessageId}:reasoning`
-            console.log('[EventOnlyEmitter] push reasoning-delta', {
-              time: logTime(),
-              gapMs: debugGapMs(key),
-              sessionId,
-              assistantMessageId,
-              chars: reasoning.length,
-              text: previewText(reasoning),
-              turnIndex,
-              placement,
-            })
-          }
-          s.push(sessionId, {
-            type: 'reasoning-delta',
-            reasoning,
-            ...(turnIndex !== undefined ? { turnIndex } : {}),
-            ...(placement ? { placement } : {}),
-          })
-        } catch (err) {
-          console.error('[EventOnlyEmitter] StreamChannel error:', err)
-        }
+    getStreamChannel: () => {
+      const streamChannel = getStreamChannel()
+      return {
+        push: (targetSessionId, chunk) => streamChannel.push(targetSessionId, chunk as StreamChunk),
       }
     },
-
-    sendToolInputDelta(toolCallId, argsTextDelta) {
-      const s = stream()
-      if (s) {
-        try { s.push(sessionId, { type: 'tool-input-delta', toolCallId, argsTextDelta }) } catch (err) {
-          console.error('[EventOnlyEmitter] StreamChannel error:', err)
-        }
-      }
+    store: {
+      addMessageStep: store.addMessageStep,
+      updateMessageStep: store.updateMessageStep,
+      updateSessionContextSize: (targetSessionId, contextSize) =>
+        store.updateSessionContextSize(targetSessionId, contextSize, 'provider-finish'),
+      updateMessageSkill: store.updateMessageSkill,
     },
-
-    // ── Tool lifecycle → EventBus ───────────────
-
-    sendToolCall(toolCall) {
-      emitSafe({ type: 'tool:call', toolCall })
-    },
-
-    sendToolResult(toolCall) {
-      emitSafe({ type: 'tool:result', toolCall })
-    },
-
-    sendToolInputStart(toolCallId, toolName, toolCall) {
-      emitSafe({ type: 'tool:input-start', toolCallId, toolName, toolCall })
-    },
-
-    sendToolExecutionStart(toolCallId, stepId, toolName, args) {
-      emitSafe({ type: 'tool:execution-start', toolCallId, stepId, toolName, args })
-    },
-
-    sendToolExecutionUpdate(toolCallId, stepId, partialResult) {
-      emitSafe({ type: 'tool:execution-update', toolCallId, stepId, partialResult })
-    },
-
-    sendToolExecutionEnd(toolCallId, stepId, result, isError, error) {
-      emitSafe({ type: 'tool:execution-end', toolCallId, stepId, result, isError, error })
-    },
-
-    // ── Content → EventBus ──────────────────────
-
-    sendContentPart(part) {
-      emitSafe({ type: 'content:part', part })
-    },
-
-    sendContinuation(turnIndex?) {
-      emitSafe({ type: 'content:continuation', turnIndex })
-    },
-
-    // ── Step → Store + EventBus ─────────────────
-    // Store mutations are kept here because these methods have side effects
-
-    sendStepAdded(step) {
-      store.addMessageStep(sessionId, assistantMessageId, step)
-      emitSafe({ type: 'step:added', step })
-    },
-
-    sendStepUpdated(stepId, updates) {
-      store.updateMessageStep(sessionId, assistantMessageId, stepId, updates)
-      emitSafe({ type: 'step:updated', stepId, updates })
-    },
-
-    // ── Session → EventBus ──────────────────────
-
-    sendStreamComplete(data) {
-      emitSafe({ type: 'stream:complete', data })
-    },
-
-    sendStreamError(data) {
-      emitSafe({ type: 'stream:error', data })
-    },
-
-    sendStreamAborted(reason) {
-      emitSafe({ type: 'stream:aborted', reason })
-    },
-
-    // ── Context → EventBus ──────────────────────
-
-    sendContextSizeUpdate(contextSize) {
-      store.updateSessionContextSize(sessionId, contextSize)
-      emitSafe({ type: 'context:size-updated', contextSize })
-    },
-
-    // ── Skill → Store + EventBus ────────────────
-    // Store mutation kept (updateMessageSkill)
-
-    sendSkillActivated(skillName) {
-      store.updateMessageSkill(sessionId, assistantMessageId, skillName)
-      emitSafe({ type: 'skill:activated', skillName })
-    },
-  }
+    debugStream: shouldDebugStream,
+  })
 }

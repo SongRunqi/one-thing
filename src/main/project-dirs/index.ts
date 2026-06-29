@@ -5,7 +5,7 @@
  *   - getProjectsStore()     : read/write access (re-exported)
  *   - buildProjectDirsPromptVars : prompt rendering helpers
  *   - ProjectDirsTool        : AI tool registration target
- *   - registerProjectDirsHandlers : IPC wiring
+ *   - IPC wiring lives in ./ipc.js to keep this public module headless-safe
  *
  * The module owns its own storage (`~/.onething/project-dirs/`) and
  * has no dependency on the variables subsystem. Cross-module wiring
@@ -13,7 +13,7 @@
  * explicit import — see src/main/variables/gateways.ts.
  */
 
-import { getProjectsStore } from './store/index.js'
+import { getProjectsStore } from '@onething/runtime/project-dirs/store'
 
 let bootstrapped = false
 
@@ -24,13 +24,12 @@ export function bootstrapProjectDirs(): void {
   console.log('[project-dirs] subsystem bootstrapped')
 }
 
-export { getProjectsStore } from './store/index.js'
-export { buildProjectDirsPromptVars } from './prompt.js'
+export { getProjectsStore } from '@onething/runtime/project-dirs/store'
+export { buildProjectDirsPromptVars } from '@onething/runtime/project-dirs/prompt'
 export type {
   ProjectDirsPromptVars,
   ActiveProjectVars,
   KnownProjectsVars,
-} from './prompt.js'
+} from '@onething/runtime/project-dirs/prompt'
 export { ProjectDirsTool } from './tool.js'
-export { registerProjectDirsHandlers } from './ipc.js'
-export type { Project, ProjectIndexEntry, ProjectId } from './types.js'
+export type { Project, ProjectIndexEntry, ProjectId } from '@onething/runtime/project-dirs'

@@ -11,33 +11,21 @@
  * Built-in providers are expected to route through agent runtimes by default.
  */
 
-import openai from './openai.js'
-import claude from './claude.js'
-import deepseek from './deepseek.js'
-import kimi from './kimi.js'
-import zhipu from './zhipu.js'
-import openrouter from './openrouter.js'
-import gemini from './gemini.js'
-import claudeCode from './claude-code.js'
-import githubCopilot from './github-copilot.js'
+import {
+  acpBuiltinProvider,
+  ONETHING_CODEX_PROVIDER_ID,
+  onethingPortableBuiltinProviders,
+} from '@onething/runtime/providers'
 import codex from './codex.js'
-import acp from './acp.js'
 
 import type { ProviderDefinition } from '../types.js'
 
 // All built-in providers
 export const builtinProviders: ProviderDefinition[] = [
-  openai,
-  claude,
-  deepseek,
-  kimi,
-  zhipu,
-  openrouter,
-  gemini,
-  claudeCode,
-  githubCopilot,
+  ...onethingPortableBuiltinProviders
+    .filter(provider => provider.id !== ONETHING_CODEX_PROVIDER_ID) as ProviderDefinition[],
   codex,
-  acp,
+  acpBuiltinProvider as ProviderDefinition,
 ]
 
 export default builtinProviders

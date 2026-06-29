@@ -1,6 +1,9 @@
 import type { InitContext } from '../tools/core/tool.js'
 import type { ToolExecutionContext } from '../tools/types.js'
 import type { ToolSettings } from '../../shared/ipc.js'
+import {
+  buildAgentLoopRuntime as buildCoreAgentLoopRuntime,
+} from '@onething/core/agent-loop'
 import type {
   AgentLoopOptions,
   AgentAfterTurnHook,
@@ -12,8 +15,7 @@ import type {
   AgentSkillContext,
   AgentTool,
   AgentToolPolicy,
-} from './types.js'
-import { createSystemPromptInjector } from './prompts.js'
+} from '@onething/core/agent-loop'
 import { agentToolsFromRegistry } from './tools.js'
 
 export interface AgentRegistryToolRuntimeOptions {
@@ -71,26 +73,23 @@ export async function buildAgentLoopRuntime(
     ...registryTools,
     ...(toolOptions.tools ?? []),
   ]
-  const promptInjectors = [
-    ...(options.prompt?.systemPrompt ? [createSystemPromptInjector(options.prompt.systemPrompt)] : []),
-    ...(options.prompt?.injectors ?? []),
-  ]
 
-  return {
+  return buildCoreAgentLoopRuntime({
     provider: options.provider,
     model: options.model,
     messages: options.messages,
     requestedOutputModalities: options.requestedOutputModalities,
-    tools,
-    toolPolicy: toolOptions.policy,
-    selectedToolNames: toolOptions.selectedToolNames,
-    skills: options.skills,
-    injectSkillPrompts: options.prompt?.injectSkills,
-    promptInjectors,
     sessionId: options.sessionId,
     messageId: options.messageId,
     workingDirectory: options.workingDirectory,
     abortSignal: options.abortSignal,
+    tools: {
+      tools,
+      policy: toolOptions.policy,
+      selectedToolNames: toolOptions.selectedToolNames,
+    },
+    skills: options.skills,
+    prompt: options.prompt,
     temperature: options.temperature,
     maxTokens: options.maxTokens,
     thinking: options.thinking,
@@ -99,5 +98,5 @@ export async function buildAgentLoopRuntime(
     beforeTurn: options.beforeTurn,
     afterTurn: options.afterTurn,
     onEvent: options.onEvent,
-  }
+  })
 }

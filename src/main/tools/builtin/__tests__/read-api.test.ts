@@ -5,7 +5,7 @@ import * as path from 'path'
 import { ReadTool } from '../read'
 import { Permission } from '../../../permission/index.js'
 import { resetVariablesStoreForTests } from '../../../variables/store/index.js'
-import { createDefaultVariablesFile } from '../../../variables/store/schema.js'
+import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 import type { ToolContext } from '../../core/tool.js'
 
 vi.mock('../../../permission/index.js', () => ({

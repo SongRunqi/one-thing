@@ -1,404 +1,169 @@
-import * as store from "../../store.js";
-import { getEventBus } from "../../events/index.js";
-import type {
-	ContentPart,
-	SkillDefinition,
-	Step,
-	ToolCall,
-} from "../../../shared/ipc.js";
-import type { JsonObject, JsonValue } from "../../../shared/json.js";
-import type { StreamContext, StreamProcessor } from "./stream-processor.js";
-import type { IPCEmitter } from "./ipc-emitter.js";
-import { executeToolAndUpdate } from "./tool-execution.js";
-import { ToolExecutionScheduler } from "./tool-execution-scheduler.js";
+import * as store from '../../store.js'
+import { getEventBus } from '../../events/index.js'
+import type { SkillDefinition, ToolCall } from '../../../shared/ipc.js'
+import type { JsonObject } from '../../../shared/json.js'
+import type { StreamContext, StreamProcessor } from './stream-processor.js'
+import type { IPCEmitter } from './ipc-emitter.js'
+import { executeToolAndUpdate } from './tool-execution.js'
+import {
+  CoreToolOrchestrator,
+  planToolCallArtifactRemoval,
+} from '@onething/core/engine'
 
-interface ToolExecutionJob {
-	toolCall: ToolCall;
-	promise: Promise<void>;
-	settled: boolean;
-	barrier: boolean;
-	published: boolean;
+interface ToolCallData {
+  toolName: string
+  args: JsonObject
 }
 
 export interface ToolOrchestratorOptions {
-	ctx: StreamContext;
-	processor: StreamProcessor;
-	enabledSkills: SkillDefinition[];
-	turnIndex: number;
-	turnToolCalls: ToolCall[];
-	emitter: IPCEmitter;
-	beforeFirstTool: () => void;
+  ctx: StreamContext
+  processor: StreamProcessor
+  enabledSkills: SkillDefinition[]
+  turnIndex: number
+  turnToolCalls: ToolCall[]
+  emitter: IPCEmitter
+  beforeFirstTool: () => void
 }
 
 /**
- * Per-turn tool orchestration skeleton.
+ * Main-process adapter for core tool orchestration.
  *
- * Owns duplicate detection, queued status, scheduling, and execution jobs.
- * Tool execution now performs centralized analyze → PermissionPolicy → execute
- * before side effects, so barrier scheduling and permission lifecycle share one
- * backend-controlled path.
+ * Core owns duplicate detection, queue hiding, barrier ordering, and tail
+ * discard decisions. Main only wires those decisions to store/EventBus/emitter
+ * side effects and concrete tool execution.
  */
 export class ToolOrchestrator {
-	private readonly ctx: StreamContext;
-	private readonly processor: StreamProcessor;
-	private readonly enabledSkills: SkillDefinition[];
-	private readonly turnIndex: number;
-	private readonly turnToolCalls: ToolCall[];
-	private readonly emitter: IPCEmitter;
-	private readonly beforeFirstTool: () => void;
-	private readonly executedToolCallIds = new Set<string>();
-	private readonly jobs: ToolExecutionJob[] = [];
-	private readonly discardedToolCallIds = new Set<string>();
-	private readonly toolSignatureCounts = new Map<string, number>();
-	private readonly scheduler = new ToolExecutionScheduler();
-	private stoppedByFailedToolCallId: string | null = null;
+  private readonly ctx: StreamContext
+  private readonly processor: StreamProcessor
+  private readonly enabledSkills: SkillDefinition[]
+  private readonly turnIndex: number
+  private readonly turnToolCalls: ToolCall[]
+  private readonly emitter: IPCEmitter
+  private readonly beforeFirstTool: () => void
+  private readonly core: CoreToolOrchestrator<ToolCall, ToolCallData>
 
-	constructor(options: ToolOrchestratorOptions) {
-		this.ctx = options.ctx;
-		this.processor = options.processor;
-		this.enabledSkills = options.enabledSkills;
-		this.turnIndex = options.turnIndex;
-		this.turnToolCalls = options.turnToolCalls;
-		this.emitter = options.emitter;
-		this.beforeFirstTool = options.beforeFirstTool;
-	}
+  constructor(options: ToolOrchestratorOptions) {
+    this.ctx = options.ctx
+    this.processor = options.processor
+    this.enabledSkills = options.enabledSkills
+    this.turnIndex = options.turnIndex
+    this.turnToolCalls = options.turnToolCalls
+    this.emitter = options.emitter
+    this.beforeFirstTool = options.beforeFirstTool
 
-	hasExecuted(toolCallId: string): boolean {
-		return this.executedToolCallIds.has(toolCallId);
-	}
+    this.core = new CoreToolOrchestrator<ToolCall, ToolCallData>({
+      toolCalls: this.processor.toolCalls,
+      turnToolCalls: this.turnToolCalls,
+      beforeFirstTool: this.beforeFirstTool,
+      executeTool: (toolCall, toolCallData, existingStepId) => executeToolAndUpdate(
+        this.ctx,
+        toolCall,
+        toolCallData,
+        this.processor.toolCalls,
+        this.enabledSkills,
+        this.turnIndex,
+        existingStepId,
+      ),
+      updateToolCalls: () => this.updateToolCalls(),
+      emitToolCall: (toolCall) => this.emitter.sendToolCall(toolCall),
+      emitToolResult: (toolCall) => this.emitter.sendToolResult(toolCall),
+      removeToolCallArtifacts: (ids) => this.removeToolCallArtifacts(ids),
+      emitToolCallRemovalUpdate: () => this.emitToolCallRemovalUpdate(),
+      logger: {
+        info: (...args) => console.log(...args),
+        error: (...args) => console.error(...args),
+      },
+    })
+  }
 
-	get jobCount(): number {
-		return this.jobs.length;
-	}
+  hasExecuted(toolCallId: string): boolean {
+    return this.core.hasExecuted(toolCallId)
+  }
 
-	shouldDeferNewToolCall(): boolean {
-		return this.hasUnsettledJob() || this.stoppedByFailedToolCallId !== null;
-	}
+  get jobCount(): number {
+    return this.core.jobCount
+  }
 
-	start(
-		toolCall: ToolCall,
-		toolCallData: { toolName: string; args: JsonObject },
-		existingStepId?: string,
-	): void {
-		if (this.executedToolCallIds.has(toolCall.id)) return;
+  shouldDeferNewToolCall(): boolean {
+    return this.core.shouldDeferNewToolCall()
+  }
 
-		this.beforeFirstTool();
-		this.executedToolCallIds.add(toolCall.id);
+  start(
+    toolCall: ToolCall,
+    toolCallData: ToolCallData,
+    existingStepId?: string,
+  ): void {
+    this.core.start(toolCall, toolCallData, existingStepId)
+  }
 
-		const shouldDiscardImmediately = this.stoppedByFailedToolCallId !== null;
-		const hiddenBehindBarrier =
-			this.hasUnsettledJob() || shouldDiscardImmediately;
-		const isBarrier = true;
+  async waitForAll(): Promise<void> {
+    await this.core.waitForAll()
+  }
 
-		if (shouldDiscardImmediately) {
-			this.discardedToolCallIds.add(toolCall.id);
-			this.executedToolCallIds.delete(toolCall.id);
-			this.unpublishToolCall(toolCall.id);
-			return;
-		}
+  private updateToolCalls(): void {
+    store.updateMessageToolCalls(
+      this.ctx.sessionId,
+      this.ctx.assistantMessageId,
+      this.processor.toolCalls,
+    )
+  }
 
-		const doomLoop = this.checkDoomLoop(toolCallData);
-		if (doomLoop.detected) {
-			this.publishToolCall(toolCall, false);
-			toolCall.status = "failed";
-			toolCall.error = doomLoop.message;
-			toolCall.endTime = Date.now();
-			store.updateMessageToolCalls(
-				this.ctx.sessionId,
-				this.ctx.assistantMessageId,
-				this.processor.toolCalls,
-			);
-			this.emitter.sendToolCall(toolCall);
-			this.emitter.sendToolResult(toolCall);
-			return;
-		}
+  private removeToolCallArtifacts(ids: Set<string>): boolean {
+    const session = store.getSession(this.ctx.sessionId)
+    const message = session?.messages.find(
+      (m) => m.id === this.ctx.assistantMessageId,
+    )
+    const plan = planToolCallArtifactRemoval({
+      message,
+      ids,
+      toolCalls: this.processor.toolCalls,
+    })
+    if (!plan.removed) return false
 
-		if (hiddenBehindBarrier) {
-			this.unpublishToolCall(toolCall.id);
-		} else {
-			this.publishToolCall(toolCall, false);
-		}
+    if (plan.hadSteps) {
+      store.updateMessageSteps(
+        this.ctx.sessionId,
+        this.ctx.assistantMessageId,
+        plan.nextSteps,
+      )
+    }
+    if (plan.hadContentParts) {
+      store.updateMessageContentParts(
+        this.ctx.sessionId,
+        this.ctx.assistantMessageId,
+        plan.nextContentParts,
+      )
+    }
 
-		const job: ToolExecutionJob = {
-			toolCall,
-			settled: false,
-			barrier: isBarrier,
-			published: !hiddenBehindBarrier,
-			promise: Promise.resolve(),
-		};
+    try {
+      getEventBus()
+        .emit(this.ctx.sessionId, {
+          type: 'message:updated',
+          messageId: this.ctx.assistantMessageId,
+          updates: plan.updates ?? { toolCalls: [...this.processor.toolCalls] },
+        })
+        .catch((err) =>
+          console.error('[ToolOrchestrator] message:updated emit error:', err),
+        )
+    } catch (err) {
+      console.error('[ToolOrchestrator] remove artifacts emit error:', err)
+    }
+    return true
+  }
 
-		job.promise = this.scheduler.enqueue(
-			async () => {
-				if (this.discardedToolCallIds.has(toolCall.id)) {
-					job.settled = true;
-					return;
-				}
-
-				try {
-					if (!job.published) {
-						this.publishToolCall(toolCall, false);
-						job.published = true;
-					}
-
-					await executeToolAndUpdate(
-						this.ctx,
-						toolCall,
-						toolCallData,
-						this.processor.toolCalls,
-						this.enabledSkills,
-						this.turnIndex,
-						existingStepId,
-					);
-					if (shouldStopAfterTool(toolCall)) {
-						this.stoppedByFailedToolCallId = toolCall.id;
-						this.discardQueuedTailAfter(
-							toolCall.id,
-							toolCall.rejected ? "rejected" : toolCall.status,
-						);
-					}
-				} catch (err) {
-					console.error("[ToolOrchestrator] tool execution job error:", err);
-				} finally {
-					job.settled = true;
-				}
-			},
-			{ barrier: isBarrier },
-		);
-
-		this.jobs.push(job);
-	}
-
-	private hasUnsettledJob(): boolean {
-		return this.jobs.some((job) => !job.settled);
-	}
-
-	private publishToolCall(toolCall: ToolCall, emitQueued: boolean): void {
-		if (
-			!this.processor.toolCalls.some((existing) => existing.id === toolCall.id)
-		) {
-			this.processor.toolCalls.push(toolCall);
-		}
-		if (!this.turnToolCalls.some((existing) => existing.id === toolCall.id)) {
-			this.turnToolCalls.push(toolCall);
-		}
-		if (emitQueued) {
-			toolCall.status = "queued";
-			this.emitter.sendToolCall(toolCall);
-		}
-		store.updateMessageToolCalls(
-			this.ctx.sessionId,
-			this.ctx.assistantMessageId,
-			this.processor.toolCalls,
-		);
-	}
-
-	private unpublishToolCall(toolCallId: string): void {
-		const ids = new Set([toolCallId]);
-		const removedProcessorToolCalls = removeToolCallsById(
-			this.processor.toolCalls,
-			ids,
-		);
-		removeToolCallsById(this.turnToolCalls, ids);
-
-		// If a tool call was hidden from the start (publish:false), there is
-		// nothing to remove from the store or renderer. Emitting a no-op
-		// message:updated here is actively harmful: permission:request state is
-		// applied optimistically in the renderer while Permission.ask() is
-		// awaiting a response, and a stale backend snapshot can wipe the visible
-		// Ask Permission UI.
-		const removedArtifacts = this.removeToolCallArtifacts(ids);
-		if (removedProcessorToolCalls === 0 && !removedArtifacts) return;
-
-		store.updateMessageToolCalls(
-			this.ctx.sessionId,
-			this.ctx.assistantMessageId,
-			this.processor.toolCalls,
-		);
-		if (!removedArtifacts) {
-			this.emitToolCallRemovalUpdate();
-		}
-	}
-
-	private removeToolCallArtifacts(ids: Set<string>): boolean {
-		const session = store.getSession(this.ctx.sessionId);
-		const message = session?.messages.find(
-			(m) => m.id === this.ctx.assistantMessageId,
-		);
-		const hadSteps =
-			message?.steps?.some(
-				(step) => !!step.toolCallId && ids.has(step.toolCallId),
-			) ?? false;
-		const hadContentParts =
-			message?.contentParts?.some(
-				(part) =>
-					part.type === "tool-call" &&
-					part.toolCalls.some((toolCall) => ids.has(toolCall.id)),
-			) ?? false;
-
-		if (!hadSteps && !hadContentParts) return false;
-
-		const nextSteps = hadSteps ? filterSteps(message?.steps, ids) : undefined;
-		const nextParts = hadContentParts
-			? filterContentParts(message?.contentParts, ids)
-			: undefined;
-
-		if (hadSteps) {
-			store.updateMessageSteps(
-				this.ctx.sessionId,
-				this.ctx.assistantMessageId,
-				nextSteps,
-			);
-		}
-		if (hadContentParts) {
-			store.updateMessageContentParts(
-				this.ctx.sessionId,
-				this.ctx.assistantMessageId,
-				nextParts,
-			);
-		}
-
-		try {
-			getEventBus()
-				.emit(this.ctx.sessionId, {
-					type: "message:updated",
-					messageId: this.ctx.assistantMessageId,
-					updates: {
-						toolCalls: [...this.processor.toolCalls],
-						...(hadSteps ? { steps: nextSteps } : {}),
-						...(hadContentParts ? { contentParts: nextParts } : {}),
-					},
-				})
-				.catch((err) =>
-					console.error("[ToolOrchestrator] message:updated emit error:", err),
-				);
-		} catch (err) {
-			console.error("[ToolOrchestrator] remove artifacts emit error:", err);
-		}
-		return true;
-	}
-
-	private emitToolCallRemovalUpdate(): void {
-		try {
-			getEventBus()
-				.emit(this.ctx.sessionId, {
-					type: "message:updated",
-					messageId: this.ctx.assistantMessageId,
-					updates: { toolCalls: [...this.processor.toolCalls] },
-				})
-				.catch((err) =>
-					console.error("[ToolOrchestrator] message:updated emit error:", err),
-				);
-		} catch (err) {
-			console.error("[ToolOrchestrator] tool call removal emit error:", err);
-		}
-	}
-
-	private checkDoomLoop(toolCallData: {
-		toolName: string;
-		args: JsonObject;
-	}): { detected: boolean; message?: string } {
-		const signature = `${toolCallData.toolName.toLowerCase()}:${stableStringify(toolCallData.args)}`;
-		const count = (this.toolSignatureCounts.get(signature) || 0) + 1;
-		this.toolSignatureCounts.set(signature, count);
-
-		if (count >= 4) {
-			return {
-				detected: true,
-				message: `Repeated identical tool call detected (${toolCallData.toolName}, ${count} times). Stop and reassess instead of retrying the same arguments.`,
-			};
-		}
-
-		return { detected: false };
-	}
-
-	private discardQueuedTailAfter(toolCallId: string, reason: string): void {
-		const index = this.jobs.findIndex((job) => job.toolCall.id === toolCallId);
-		if (index < 0) return;
-
-		const tailIds = this.jobs
-			.slice(index + 1)
-			.filter(
-				(job) =>
-					!job.settled && (!job.published || job.toolCall.status === "queued"),
-			)
-			.map((job) => job.toolCall.id);
-
-		if (tailIds.length === 0) return;
-
-		for (const id of tailIds) {
-			this.discardedToolCallIds.add(id);
-			this.executedToolCallIds.delete(id);
-		}
-
-		const tailIdSet = new Set(tailIds);
-		removeToolCallsById(this.processor.toolCalls, tailIdSet);
-		removeToolCallsById(this.turnToolCalls, tailIdSet);
-
-		store.updateMessageToolCalls(
-			this.ctx.sessionId,
-			this.ctx.assistantMessageId,
-			this.processor.toolCalls,
-		);
-		this.removeToolCallArtifacts(tailIdSet);
-
-		console.log(
-			`[ToolOrchestrator] Discarded ${tailIds.length} queued tool(s) after ${reason} tool ${toolCallId}`,
-		);
-	}
-
-	async waitForAll(): Promise<void> {
-		if (this.jobs.length === 0) return;
-		await Promise.allSettled(this.jobs.map((job) => job.promise));
-	}
-}
-
-function shouldStopAfterTool(toolCall: ToolCall): boolean {
-	return Boolean(toolCall.rejected) || toolCall.status === "cancelled";
-}
-
-function stableStringify(value: JsonValue | undefined): string {
-	if (value === null || typeof value !== "object") {
-		return JSON.stringify(value) ?? "undefined";
-	}
-	if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-	const object = value as JsonObject;
-	return `{${Object.keys(object)
-		.sort()
-		.map((key) => `${JSON.stringify(key)}:${stableStringify(object[key])}`)
-		.join(",")}}`;
-}
-
-function removeToolCallsById(toolCalls: ToolCall[], ids: Set<string>): number {
-	let removed = 0;
-	for (let i = toolCalls.length - 1; i >= 0; i--) {
-		if (ids.has(toolCalls[i].id)) {
-			toolCalls.splice(i, 1);
-			removed++;
-		}
-	}
-	return removed;
-}
-
-function filterSteps(
-	steps: Step[] | undefined,
-	ids: Set<string>,
-): Step[] | undefined {
-	if (!steps) return undefined;
-	return steps.filter((step) => !step.toolCallId || !ids.has(step.toolCallId));
-}
-
-function filterContentParts(
-	parts: ContentPart[] | undefined,
-	ids: Set<string>,
-): ContentPart[] | undefined {
-	if (!parts) return undefined;
-	return parts
-		.map((part) => {
-			if (part.type !== "tool-call") return part;
-			return {
-				...part,
-				toolCalls: part.toolCalls.filter((toolCall) => !ids.has(toolCall.id)),
-			};
-		})
-		.filter((part) => part.type !== "tool-call" || part.toolCalls.length > 0);
+  private emitToolCallRemovalUpdate(): void {
+    try {
+      getEventBus()
+        .emit(this.ctx.sessionId, {
+          type: 'message:updated',
+          messageId: this.ctx.assistantMessageId,
+          updates: { toolCalls: [...this.processor.toolCalls] },
+        })
+        .catch((err) =>
+          console.error('[ToolOrchestrator] message:updated emit error:', err),
+        )
+    } catch (err) {
+      console.error('[ToolOrchestrator] tool call removal emit error:', err)
+    }
+  }
 }

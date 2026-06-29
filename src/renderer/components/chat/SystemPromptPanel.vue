@@ -709,7 +709,8 @@ onBeforeUnmount(() => {
   gap: 8px;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .system-prompt-state {

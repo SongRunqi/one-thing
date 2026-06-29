@@ -3,7 +3,7 @@ import {
   agentContentFromHistoryContent,
   agentMessagesFromHistory,
   agentToolCallsFromHistory,
-} from '../messages.js'
+} from '@onething/core/agent-loop'
 
 describe('agent loop message conversion', () => {
   it('preserves multimodal user content as agent content parts', () => {
@@ -66,7 +66,11 @@ describe('agent loop message conversion', () => {
         role: 'assistant',
         content: 'answer',
         reasoningContent: 'summary',
-        codexEncryptedReasoning: ['encrypted-1', ''],
+        providerData: [{
+          provider: 'codex',
+          type: 'encrypted-reasoning',
+          encryptedContent: 'encrypted-1',
+        }],
       },
     ])).toEqual([
       {

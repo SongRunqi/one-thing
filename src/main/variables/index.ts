@@ -21,13 +21,14 @@
 import * as fs from 'fs/promises'
 import { getEventBus } from '../events/index.js'
 import { expandPath } from '../tools/core/sandbox.js'
-import { CoreProvider } from './providers/core.js'
-import { GlobalStoreProvider } from './providers/global-store.js'
-import { NotesProvider } from './providers/notes.js'
-import { SessionStoreProvider } from './providers/session-store.js'
-import { getVariableRegistry } from './registry.js'
+import { enforcePermissionPolicy } from '../tools/core/permission-policy.js'
+import { CoreProvider } from '@onething/runtime/variables/providers/core'
+import { GlobalStoreProvider } from '@onething/runtime/variables/providers/global-store'
+import { NotesProvider } from '@onething/runtime/variables/providers/notes'
+import { SessionStoreProvider } from '@onething/runtime/variables/providers/session-store'
+import { getVariableRegistry } from '@onething/runtime/variables/registry'
 import { getVariablesStore } from './store/index.js'
-import type { VariableProvider } from './types.js'
+import type { VariableProvider } from '@onething/runtime/variables'
 import {
   notesGateway,
   globalStoreGateway,
@@ -37,8 +38,8 @@ import {
   notifySessionVariablesChanged,
   notifyWorkdirChanged,
 } from './gateways.js'
-import { formatVariablesForPrompt } from './format.js'
-import type { ContextVariable, VariableContext } from './types.js'
+import { formatVariablesForPrompt } from '@onething/runtime/variables/format'
+import type { ContextVariable, VariableContext } from '@onething/runtime/variables'
 
 let bootstrapped = false
 let unsubscribeBridge: (() => void) | null = null
@@ -51,7 +52,7 @@ export function bootstrapVariableSystem(): void {
   getVariablesStore().initialize()
 
   const registry = getVariableRegistry()
-  registry.register(new CoreProvider(workdirGateway))
+  registry.register(new CoreProvider(workdirGateway, { enforcePermission: enforcePermissionPolicy }))
   registry.register(new NotesProvider(notesGateway))
   registry.register(new GlobalStoreProvider(globalStoreGateway))
   registry.register(new SessionStoreProvider(sessionStoreGateway))
@@ -141,10 +142,15 @@ export function registerVariableProvider(provider: VariableProvider): void {
 }
 
 // Re-exports for ergonomic imports at call sites.
-export { getVariableRegistry } from './registry.js'
-export { formatVariablesForPrompt } from './format.js'
-export { VariableError } from './types.js'
-export type { ContextVariable, VariableContext, VariableProvider, SetInput } from './types.js'
+export { getVariableRegistry } from '@onething/runtime/variables/registry'
+export { formatVariablesForPrompt } from '@onething/runtime/variables/format'
+export { VariableError } from '@onething/runtime/variables'
+export type {
+  ContextVariable,
+  SetInput,
+  VariableContext,
+  VariableProvider,
+} from '@onething/runtime/variables'
 export {
   notifyNotesDirChanged,
   notifySessionVariablesChanged,

@@ -602,7 +602,7 @@ export function usePickerOrchestration(
     }
 
     if (item.type === 'command' && item.command) {
-      replaceActiveTrigger(`/${item.command.id} `, 'command')
+      replaceActiveTrigger(item.command.insertText || `/${item.command.id} `, 'command')
     }
 
     if (item.type === 'prompt' && item.prompt) {

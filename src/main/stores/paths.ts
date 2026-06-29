@@ -1,261 +1,234 @@
-import { createRequire } from 'module'
-import path from 'path'
-import os from 'os'
-import fs from 'fs'
-import fsp from 'fs/promises'
+import {
+  ensureOnethingStoreDirs,
+  getOnethingAgentsDir,
+  getOnethingAgentsPath,
+  getOnethingAppStatePath,
+  getOnethingDebugDir,
+  getOnethingDocsDir,
+  getOnethingFileMutationsDir,
+  getOnethingLastSystemPromptDebugPath,
+  getOnethingLogDir,
+  getOnethingMCPToolsCatalogPath,
+  getOnethingMacOSAutomationDocsPath,
+  getOnethingMediaDir,
+  getOnethingMediaFilesDir,
+  getOnethingMediaImagesDir,
+  getOnethingMediaIndexPath,
+  getOnethingPermissionsDir,
+  getOnethingPluginDataDir,
+  getOnethingPromptsPath,
+  getOnethingSchedulerDir,
+  getOnethingSchedulerRunsDir,
+  getOnethingSchedulerTasksPath,
+  getOnethingScreenshotsDir,
+  getOnethingSessionDatabasePath,
+  getOnethingSessionPath,
+  getOnethingSessionsDir,
+  getOnethingSettingsPath,
+  getOnethingStoreDirs,
+  getOnethingStorePath,
+  getOnethingToolOutputPath,
+  getOnethingToolOutputsDir,
+  getOnethingToolUsageDocsPath,
+  getOnethingUserProfileDir,
+  getOnethingUserProfilePath,
+  getOnethingVariablesPath,
+  getOnethingWindowStatePath,
+  getOnethingWorkspaceAvatarPath,
+  getOnethingWorkspaceAvatarsDir,
+  getOnethingWorkspacePath,
+  getOnethingWorkspacesDir,
+  type OnethingStorePathOptions,
+} from '@onething/runtime/storage'
 
-const require = createRequire(import.meta.url)
-const electronModule = (() => {
-  try {
-    return require('electron') as any
-  } catch {
-    return null
-  }
-})()
-const electronApp = typeof electronModule === 'object' ? electronModule?.app : null
+export {
+  deleteJsonFile,
+  ensureDir,
+  generateToolOutputFilename,
+  readJsonFile,
+  writeJsonFile,
+  writeJsonFileAsync,
+} from '@onething/core/storage'
 
-// Get the user data directory for storing app data
-export function getStorePath(): string {
-  return path.join(os.homedir(), '.onething')
+interface StorePathHost {
+  isPackaged?: boolean
+  resourcesPath?: string
 }
 
-export function getLogDir(): string {
-  return path.join(getStorePath(), 'log')
+let storePathHost: StorePathHost = {}
+
+export function configureStorePathHost(host: StorePathHost): void {
+  storePathHost = host
 }
 
-export function getSettingsPath(): string {
-  return path.join(getStorePath(), 'settings.json')
+export function getStorePath(options?: OnethingStorePathOptions): string {
+  return getOnethingStorePath(options)
 }
 
-export function getAgentsDir(): string {
-  return path.join(getStorePath(), 'agents')
+export function getLogDir(options?: OnethingStorePathOptions): string {
+  return getOnethingLogDir(options)
 }
 
-export function getAgentsPath(): string {
-  return path.join(getStorePath(), 'agents.json')
+export function getDebugDir(options?: OnethingStorePathOptions): string {
+  return getOnethingDebugDir(options)
 }
 
-export function getVariablesPath(): string {
-  return path.join(getStorePath(), 'variables.json')
+export function getLastSystemPromptDebugPath(options?: OnethingStorePathOptions): string {
+  return getOnethingLastSystemPromptDebugPath(options)
 }
 
-export function getPromptsPath(): string {
-  return path.join(getStorePath(), 'prompts.json')
+export function getSettingsPath(options?: OnethingStorePathOptions): string {
+  return getOnethingSettingsPath(options)
 }
 
-export function getAppStatePath(): string {
-  return path.join(getStorePath(), 'app-state.json')
+export function getAgentsDir(options?: OnethingStorePathOptions): string {
+  return getOnethingAgentsDir(options)
 }
 
-export function getWindowStatePath(): string {
-  return path.join(getStorePath(), 'window-state.json')
+export function getAgentsPath(options?: OnethingStorePathOptions): string {
+  return getOnethingAgentsPath(options)
 }
 
-export function getSessionsDir(): string {
-  return path.join(getStorePath(), 'sessions')
+export function getVariablesPath(options?: OnethingStorePathOptions): string {
+  return getOnethingVariablesPath(options)
 }
 
-export function getSessionPath(sessionId: string): string {
-  return path.join(getSessionsDir(), `${sessionId}.json`)
+export function getPromptsPath(options?: OnethingStorePathOptions): string {
+  return getOnethingPromptsPath(options)
 }
 
-export function getWorkspacesDir(): string {
-  return path.join(getStorePath(), 'workspaces')
+export function getAppStatePath(options?: OnethingStorePathOptions): string {
+  return getOnethingAppStatePath(options)
 }
 
-export function getWorkspacePath(workspaceId: string): string {
-  return path.join(getWorkspacesDir(), `${workspaceId}.json`)
+export function getWindowStatePath(options?: OnethingStorePathOptions): string {
+  return getOnethingWindowStatePath(options)
 }
 
-export function getWorkspaceAvatarsDir(): string {
-  return path.join(getWorkspacesDir(), 'avatars')
+export function getSessionsDir(options?: OnethingStorePathOptions): string {
+  return getOnethingSessionsDir(options)
 }
 
-export function getWorkspaceAvatarPath(workspaceId: string, extension: string): string {
-  return path.join(getWorkspaceAvatarsDir(), `${workspaceId}.${extension}`)
+export function getSessionPath(sessionId: string, options?: OnethingStorePathOptions): string {
+  return getOnethingSessionPath(sessionId, options)
 }
 
-// User Profile paths
-export function getUserProfileDir(): string {
-  return path.join(getStorePath(), 'user-profile')
+export function getSessionDatabasePath(options?: OnethingStorePathOptions): string {
+  return getOnethingSessionDatabasePath(options)
 }
 
-export function getUserProfilePath(): string {
-  return path.join(getUserProfileDir(), 'profile.json')
+export function getWorkspacesDir(options?: OnethingStorePathOptions): string {
+  return getOnethingWorkspacesDir(options)
 }
 
-// Screenshots directory (for automation screenshot captures)
-export function getScreenshotsDir(): string {
-  return path.join(getStorePath(), 'screenshots')
+export function getWorkspacePath(workspaceId: string, options?: OnethingStorePathOptions): string {
+  return getOnethingWorkspacePath(workspaceId, options)
 }
 
-// Media paths for generated images
-export function getMediaDir(): string {
-  return path.join(getStorePath(), 'media')
+export function getWorkspaceAvatarsDir(options?: OnethingStorePathOptions): string {
+  return getOnethingWorkspaceAvatarsDir(options)
 }
 
-export function getMediaImagesDir(): string {
-  return path.join(getMediaDir(), 'images')
+export function getWorkspaceAvatarPath(
+  workspaceId: string,
+  extension: string,
+  options?: OnethingStorePathOptions,
+): string {
+  return getOnethingWorkspaceAvatarPath(workspaceId, extension, options)
 }
 
-export function getMediaFilesDir(): string {
-  return path.join(getMediaDir(), 'files')
+export function getUserProfileDir(options?: OnethingStorePathOptions): string {
+  return getOnethingUserProfileDir(options)
 }
 
-export function getMediaIndexPath(): string {
-  return path.join(getMediaDir(), 'index.json')
+export function getUserProfilePath(options?: OnethingStorePathOptions): string {
+  return getOnethingUserProfilePath(options)
 }
 
-// Scheduler paths
-export function getSchedulerDir(): string {
-  return path.join(getStorePath(), 'scheduler')
+export function getScreenshotsDir(options?: OnethingStorePathOptions): string {
+  return getOnethingScreenshotsDir(options)
 }
 
-export function getSchedulerTasksPath(): string {
-  return path.join(getSchedulerDir(), 'tasks.json')
+export function getMediaDir(options?: OnethingStorePathOptions): string {
+  return getOnethingMediaDir(options)
 }
 
-export function getSchedulerRunsDir(): string {
-  return path.join(getSchedulerDir(), 'runs')
+export function getMediaImagesDir(options?: OnethingStorePathOptions): string {
+  return getOnethingMediaImagesDir(options)
 }
 
-// Tool outputs directory (for large outputs that exceed inline limits)
-export function getToolOutputsDir(): string {
-  return path.join(getStorePath(), 'tool-outputs')
+export function getMediaFilesDir(options?: OnethingStorePathOptions): string {
+  return getOnethingMediaFilesDir(options)
 }
 
-// File mutation audit snapshots (for future undo/rollback UI)
-export function getFileMutationsDir(): string {
-  return path.join(getStorePath(), 'file-mutations')
+export function getMediaIndexPath(options?: OnethingStorePathOptions): string {
+  return getOnethingMediaIndexPath(options)
 }
 
-export function getToolOutputPath(filename: string): string {
-  return path.join(getToolOutputsDir(), filename)
+export function getSchedulerDir(options?: OnethingStorePathOptions): string {
+  return getOnethingSchedulerDir(options)
 }
 
-// Generate a unique filename for tool output
-export function generateToolOutputFilename(toolName: string, sessionId?: string): string {
-  const timestamp = Date.now()
-  const random = Math.random().toString(36).substring(2, 8)
-  const prefix = sessionId ? `${sessionId.slice(0, 8)}_` : ''
-  return `${prefix}${toolName}_${timestamp}_${random}.txt`
+export function getSchedulerTasksPath(options?: OnethingStorePathOptions): string {
+  return getOnethingSchedulerTasksPath(options)
 }
 
-// MCP Tools catalog file (contains full tool descriptions for AI reference)
-export function getMCPToolsCatalogPath(): string {
-  return path.join(getStorePath(), 'mcp-tools-catalog.md')
+export function getSchedulerRunsDir(options?: OnethingStorePathOptions): string {
+  return getOnethingSchedulerRunsDir(options)
 }
 
-// Get the bundled docs directory path (for reference documentation)
+export function getToolOutputsDir(options?: OnethingStorePathOptions): string {
+  return getOnethingToolOutputsDir(options)
+}
+
+export function getFileMutationsDir(options?: OnethingStorePathOptions): string {
+  return getOnethingFileMutationsDir(options)
+}
+
+export function getToolOutputPath(filename: string, options?: OnethingStorePathOptions): string {
+  return getOnethingToolOutputPath(filename, options)
+}
+
+export function getMCPToolsCatalogPath(options?: OnethingStorePathOptions): string {
+  return getOnethingMCPToolsCatalogPath(options)
+}
+
+export function getPluginDataDir(options?: OnethingStorePathOptions): string {
+  return getOnethingPluginDataDir(options)
+}
+
+export function getPermissionsDir(options?: OnethingStorePathOptions): string {
+  return getOnethingPermissionsDir(options)
+}
+
+export function getStoreDirs(options?: OnethingStorePathOptions): string[] {
+  return getOnethingStoreDirs(options)
+}
+
 export function getDocsDir(): string {
-  // In production, docs are bundled in resources/docs
-  // In development, they're in resources/docs relative to project root
-  if (electronApp?.isPackaged) {
-    return path.join(process.resourcesPath, 'docs')
-  }
-  // Development: use process.cwd() which is the project root when using electron-vite
-  return path.join(process.cwd(), 'resources', 'docs')
+  return getOnethingDocsDir({
+    isPackaged: Boolean(storePathHost.isPackaged),
+    resourcesPath: storePathHost.resourcesPath || process.resourcesPath,
+    cwd: process.cwd(),
+  })
 }
 
 export function getMacOSAutomationDocsPath(): string {
-  return path.join(getDocsDir(), 'macos-automation.md')
+  return getOnethingMacOSAutomationDocsPath({
+    isPackaged: Boolean(storePathHost.isPackaged),
+    resourcesPath: storePathHost.resourcesPath || process.resourcesPath,
+    cwd: process.cwd(),
+  })
 }
 
 export function getToolUsageDocsPath(): string {
-  return path.join(getDocsDir(), 'tool-usage-guide.md')
+  return getOnethingToolUsageDocsPath({
+    isPackaged: Boolean(storePathHost.isPackaged),
+    resourcesPath: storePathHost.resourcesPath || process.resourcesPath,
+    cwd: process.cwd(),
+  })
 }
 
-// Permissions directory (for persistent working-directory permissions)
-export function getPermissionsDir(): string {
-  return path.join(getStorePath(), 'permissions')
-}
-
-// Helper to ensure a directory exists
-export function ensureDir(dir: string): void {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true })
-  }
-}
-
-// Ensure all necessary directories exist
 export function ensureStoreDirs(): void {
-  const dirs = [
-    getStorePath(),
-    getLogDir(),
-    getAgentsDir(),
-    getSessionsDir(),
-    getWorkspacesDir(),
-    getWorkspaceAvatarsDir(),
-    getUserProfileDir(),
-    getScreenshotsDir(),
-    getMediaDir(),
-    getMediaImagesDir(),
-    getMediaFilesDir(),
-    getSchedulerDir(),
-    getSchedulerRunsDir(),
-    getToolOutputsDir(),
-    getFileMutationsDir(),
-    getPermissionsDir(),
-  ]
-
-  for (const dir of dirs) {
-    ensureDir(dir)
-  }
-}
-
-// Helper to read JSON file safely
-export function readJsonFile<T>(filePath: string, defaultValue: T): T {
-  try {
-    if (fs.existsSync(filePath)) {
-      const content = fs.readFileSync(filePath, 'utf-8').trim()
-      // Return default for empty files
-      if (!content) {
-        return defaultValue
-      }
-      return JSON.parse(content) as T
-    }
-  } catch (error) {
-    console.warn(`Failed to parse ${path.basename(filePath)}, using defaults`)
-  }
-  return defaultValue
-}
-
-// Helper to write JSON file safely
-// Uses atomic write (tmp + rename) to prevent corruption on crash
-export function writeJsonFile<T>(filePath: string, data: T): void {
-  try {
-    const dir = path.dirname(filePath)
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true })
-    }
-    const tmpPath = filePath + '.tmp'
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
-    fs.renameSync(tmpPath, filePath)
-  } catch (error) {
-    console.error(`Error writing ${filePath}:`, error)
-    throw error
-  }
-}
-
-// Async variant — avoids blocking the event loop during streaming writes
-// Uses atomic write (tmp + rename) to prevent corruption on crash
-export async function writeJsonFileAsync<T>(filePath: string, data: T): Promise<void> {
-  const dir = path.dirname(filePath)
-  await fsp.mkdir(dir, { recursive: true })
-  const tmpPath = filePath + '.tmp'
-  await fsp.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
-  await fsp.rename(tmpPath, filePath)
-}
-
-// Helper to delete file safely
-export function deleteJsonFile(filePath: string): boolean {
-  try {
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath)
-      return true
-    }
-  } catch (error) {
-    console.error(`Error deleting ${filePath}:`, error)
-  }
-  return false
+  ensureOnethingStoreDirs()
 }

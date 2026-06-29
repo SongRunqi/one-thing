@@ -250,9 +250,9 @@ onUnmounted(() => {
 .thinking-status-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
-  min-height: 22px;
+  min-height: 18px;
   color: var(--thinking-fg);
 }
 
@@ -262,8 +262,8 @@ onUnmounted(() => {
 
 .thinking-text {
   color: currentColor;
-  font-size: 13px;
-  font-weight: 560;
+  font-size: 12px;
+  font-weight: 520;
 }
 
 .thinking-text.flowing {
@@ -308,7 +308,7 @@ onUnmounted(() => {
 
 .thinking-time {
   color: color-mix(in srgb, var(--thinking-fg) 76%, transparent);
-  font-size: 12px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 

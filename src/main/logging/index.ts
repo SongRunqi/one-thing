@@ -1,5 +1,9 @@
-import { app, type WebContents } from 'electron'
 import { formatWithOptions } from 'node:util'
+import {
+  createElectronRendererConsoleCapture,
+  setElectronAppLogsPath,
+  type ElectronRendererConsoleCapture,
+} from '@onething/electron-host/logging/console-capture'
 import { ensureDir, getLogDir } from '../stores/paths.js'
 import { RollingFileLogger, type AppLogLevel } from './rolling-file-logger.js'
 
@@ -21,26 +25,9 @@ const METHOD_LEVEL: Record<ConsoleMethod, AppLogLevel> = {
   error: 'error',
 }
 
-const NUMERIC_RENDERER_LEVELS: Record<number, AppLogLevel> = {
-  0: 'debug',
-  1: 'info',
-  2: 'warn',
-  3: 'error',
-}
-
-const STRING_RENDERER_LEVELS: Record<string, AppLogLevel> = {
-  debug: 'debug',
-  info: 'info',
-  warning: 'warn',
-  warn: 'warn',
-  error: 'error',
-}
-
-const attachedWebContents = new WeakSet<WebContents>()
-
 let consolePatched = false
 let initialized = false
-let webContentsCreatedHandler: ((event: Electron.Event, webContents: WebContents) => void) | null = null
+let rendererConsoleCapture: ElectronRendererConsoleCapture | null = null
 let warningHandler: ((warning: Error) => void) | null = null
 let uncaughtMonitorHandler: ((error: Error, origin: NodeJS.UncaughtExceptionOrigin) => void) | null = null
 let exitHandler: (() => void) | null = null
@@ -84,18 +71,18 @@ export function initializeAppLogging(): void {
 
   const logDir = getLogDir()
   ensureDir(logDir)
-  app.setAppLogsPath(logDir)
+  setElectronAppLogsPath(logDir)
   appLogger.start()
   patchProcessOutput()
   patchConsole()
-  attachElectronConsoleCapture()
+  attachLoggingCapture()
 
   console.info('[Logging] Writing logs to:', logDir)
 }
 
 export async function shutdownAppLogging(): Promise<void> {
   if (!initialized) return
-  detachElectronConsoleCapture()
+  detachLoggingCapture()
   await appLogger.shutdown()
   detachProcessExitFlush()
   restoreConsole()
@@ -188,9 +175,11 @@ function formatConsoleArgs(args: unknown[]): string {
   )
 }
 
-function attachElectronConsoleCapture(): void {
-  webContentsCreatedHandler = (_event, webContents) => attachWebContentsLogging(webContents)
-  app.on('web-contents-created', webContentsCreatedHandler)
+function attachLoggingCapture(): void {
+  rendererConsoleCapture = createElectronRendererConsoleCapture({
+    log: entry => appLogger.log(entry),
+  })
+  rendererConsoleCapture.attach()
 
   warningHandler = (warning) => {
     appLogger.log({
@@ -218,11 +207,10 @@ function attachElectronConsoleCapture(): void {
   process.on('exit', exitHandler)
 }
 
-function detachElectronConsoleCapture(): void {
-  if (webContentsCreatedHandler) {
-    app.off('web-contents-created', webContentsCreatedHandler)
-    webContentsCreatedHandler = null
-  }
+function detachLoggingCapture(): void {
+  rendererConsoleCapture?.detach()
+  rendererConsoleCapture = null
+
   if (warningHandler) {
     process.off('warning', warningHandler)
     warningHandler = null
@@ -237,38 +225,4 @@ function detachProcessExitFlush(): void {
   if (!exitHandler) return
   process.off('exit', exitHandler)
   exitHandler = null
-}
-
-function attachWebContentsLogging(webContents: WebContents): void {
-  if (attachedWebContents.has(webContents)) return
-  attachedWebContents.add(webContents)
-
-  webContents.on('console-message', (event, legacyLevel, legacyMessage, legacyLine, legacySourceId) => {
-    const details = event as Electron.Event & {
-      level?: string
-      message?: string
-      lineNumber?: number
-      sourceId?: string
-    }
-    const message = typeof details.message === 'string' ? details.message : legacyMessage
-    if (!message) return
-
-    const rawLevel = typeof details.level === 'string' ? details.level : legacyLevel
-    const level = typeof rawLevel === 'number'
-      ? NUMERIC_RENDERER_LEVELS[rawLevel] ?? 'info'
-      : STRING_RENDERER_LEVELS[rawLevel] ?? 'info'
-    const lineNumber = typeof details.lineNumber === 'number' ? details.lineNumber : legacyLine
-    const sourceId = details.sourceId || legacySourceId
-
-    appLogger.log({
-      level,
-      source: `renderer:${webContents.id}`,
-      message,
-      metadata: {
-        ...(sourceId ? { sourceId } : {}),
-        ...(lineNumber ? { lineNumber } : {}),
-        url: webContents.getURL(),
-      },
-    })
-  })
 }

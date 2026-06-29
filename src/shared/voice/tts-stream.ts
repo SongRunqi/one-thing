@@ -1,8 +1,4 @@
-export interface SpeakableTextDelta {
-  text?: string
-  voiceSpeakText?: string
-}
-
-export function getSpeakableTextFromDelta(chunk: SpeakableTextDelta): string {
-  return chunk.text || chunk.voiceSpeakText || ''
-}
+export {
+  getOnethingSpeakableTextFromDelta as getSpeakableTextFromDelta,
+  type OnethingSpeakableTextDelta as SpeakableTextDelta,
+} from '@onething/runtime/voice/text'

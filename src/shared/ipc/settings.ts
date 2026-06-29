@@ -257,29 +257,16 @@ export interface ProxySettings {
   bypassRules?: string
 }
 
-export type NetworkAddressFamily = 'IPv4' | 'IPv6'
-
-export interface NetworkInterfaceOption {
-  id: string
-  name: string
-  address: string
-  family: NetworkAddressFamily
-  internal: boolean
-  mac?: string
-  cidr?: string | null
-}
-
-export interface NetworkInterfaceSettings {
-  enabled: boolean
-  address: string
-  id?: string
-  name?: string
-  family?: NetworkAddressFamily
-}
-
 export interface NetworkSettings {
   proxy: ProxySettings
-  networkInterface: NetworkInterfaceSettings
+}
+
+export interface WechatChannelSettings {
+  enabled: boolean
+}
+
+export interface ChannelSettings {
+  wechat: WechatChannelSettings
 }
 
 export interface AppSettings {
@@ -290,6 +277,7 @@ export interface AppSettings {
   chat?: ChatSettings
   tools: ToolSettings
   network?: NetworkSettings
+  channels?: ChannelSettings
   mcp?: MCPSettings
   acp?: ACPSettings
   skills?: SkillSettings
@@ -312,17 +300,10 @@ export interface SaveSettingsResponse {
 
 export interface TestProxyRequest {
   proxy: ProxySettings
-  networkInterface?: NetworkInterfaceSettings
 }
 
 export interface TestProxyResponse {
   success: boolean
   error?: string
   status?: number
-}
-
-export interface GetNetworkInterfacesResponse {
-  success: boolean
-  interfaces?: NetworkInterfaceOption[]
-  error?: string
 }

@@ -1,3 +1,14 @@
+import {
+  clearPromptContextProvidersForPlugin as clearRuntimePromptContextProvidersForPlugin,
+  collectPluginPromptContext as collectRuntimePluginPromptContext,
+  getPromptContextProviderCount as getRuntimePromptContextProviderCount,
+  registerPromptContextProvider as registerRuntimePromptContextProvider,
+  type OnethingPluginPromptContext,
+  type OnethingPluginPromptContextFragmentInput,
+  type OnethingPluginPromptContextProvider,
+  type OnethingPromptProviderConfig,
+  type OnethingPromptProviderConfigValue,
+} from '@onething/runtime/prompts'
 import type {
   AppSettings,
   PromptContextFragment,
@@ -9,29 +20,18 @@ import type {
   PromptKnownProjects,
 } from './types.js'
 
-export type PromptProviderConfigValue = string | number | boolean | null | undefined | object
-export type PromptProviderConfig = Record<string, PromptProviderConfigValue>
+export type PromptProviderConfigValue = OnethingPromptProviderConfigValue
+export type PromptProviderConfig = OnethingPromptProviderConfig
 
-export interface PluginPromptContext {
-  sessionId?: string
-  providerId?: string
-  providerConfig?: PromptProviderConfig
+export interface PluginPromptContext extends Omit<OnethingPluginPromptContext, 'settings' | 'skills' | 'activeProject' | 'knownProjects'> {
   settings?: AppSettings
-  hasTools: boolean
   skills: SkillDefinition[]
-  workingDirectory?: string
-  workingDirectoryRoots?: string[]
-  contextVariables?: string
   activeProject?: PromptActiveProject
   knownProjects?: PromptKnownProjects
-  toolNames?: string[]
-  mcpToolNames?: string[]
 }
 
-export interface PluginPromptContextFragmentInput {
+export interface PluginPromptContextFragmentInput extends Omit<OnethingPluginPromptContextFragmentInput, 'role'> {
   role: PromptContextRole
-  source?: string
-  content: string
 }
 
 export type PluginPromptContextProvider = (
@@ -44,85 +44,32 @@ export type PluginPromptContextProvider = (
   | null
   | undefined
 
-interface RegisteredProvider {
-  pluginId: string
-  providerId: string
-  provider: PluginPromptContextProvider
-}
-
-const providers = new Map<string, RegisteredProvider>()
-
-function normalizeInjectedRole(_role: PromptContextRole): PromptContextRole {
-  // Plugin prompt context is app/plugin-provided context, never a real chat
-  // message from the user. Keep the public type backwards-compatible, but
-  // normalize all plugin fragments to developer before they enter prompt
-  // sections/debug snapshots.
-  return 'developer'
-}
-
-function key(pluginId: string, providerId: string): string {
-  return `${pluginId}:${providerId}`
-}
-
-function normalizeProviderId(value: string): string {
-  return value.trim().replace(/^\/+/, '') || 'default'
-}
-
 export function registerPromptContextProvider(
   pluginId: string,
   providerId: string,
   provider: PluginPromptContextProvider,
 ): () => void {
-  const normalizedId = normalizeProviderId(providerId)
-  const providerKey = key(pluginId, normalizedId)
-  providers.set(providerKey, { pluginId, providerId: normalizedId, provider })
+  return registerRuntimePromptContextProvider(pluginId, providerId, provider as OnethingPluginPromptContextProvider)
+}
 
-  return () => {
-    providers.delete(providerKey)
-  }
+export function clearPromptContextProvidersForPlugin(pluginId: string): void {
+  clearRuntimePromptContextProvidersForPlugin(pluginId)
+}
+
+export function getPromptContextProviderCount(): number {
+  return getRuntimePromptContextProviderCount()
 }
 
 export async function collectPluginPromptContext(
   context: PluginPromptContext,
 ): Promise<PluginPromptContextFragmentInput[]> {
-  const fragments: PluginPromptContextFragmentInput[] = []
-
-  for (const item of providers.values()) {
-    try {
-      const result = await item.provider(context)
-      const entries = Array.isArray(result) ? result : [result]
-      for (const entry of entries) {
-        if (!entry) continue
-        if (typeof entry === 'string') {
-          fragments.push({
-            role: 'developer',
-            source: `plugins/${item.pluginId}/${item.providerId}`,
-            content: entry,
-          })
-          continue
-        }
-        fragments.push({
-          role: normalizeInjectedRole(entry.role),
-          source: entry.source || `plugins/${item.pluginId}/${item.providerId}`,
-          content: entry.content,
-        })
-      }
-    } catch (error) {
-      console.error(`[PluginPromptContext] Provider "${item.pluginId}/${item.providerId}" failed:`, error)
-    }
-  }
-
-  return fragments
+  return collectRuntimePluginPromptContext(context, {
+    onProviderError(providerRef, error) {
+      console.error(`[PluginPromptContext] Provider "${providerRef}" failed:`, error)
+    },
+  }) as Promise<PluginPromptContextFragmentInput[]>
 }
 
-export function clearPromptContextProvidersForPlugin(pluginId: string): void {
-  for (const item of providers.values()) {
-    if (item.pluginId === pluginId) {
-      providers.delete(key(item.pluginId, item.providerId))
-    }
-  }
-}
-
-export function getPromptContextProviderCount(): number {
-  return providers.size
+export type {
+  PromptContextFragment,
 }

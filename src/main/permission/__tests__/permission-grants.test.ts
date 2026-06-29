@@ -20,6 +20,46 @@ describe('permission grants', () => {
     resetPermissionGrantsForTests()
   })
 
+  it('builds workspace grant file storage from onething runtime adapter rules', async () => {
+    const {
+      createPermissionGrantFileStorage,
+      getPermissionWorkspaceGrantsPath,
+    } = await import('../permission-grants')
+    let stored: unknown = { grants: [] }
+    const touchedPaths: string[] = []
+    const storage = createPermissionGrantFileStorage({
+      getPermissionsDir: () => '/tmp/onething-permissions-test',
+      readJsonFile: (filePath, defaultValue) => {
+        touchedPaths.push(filePath)
+        return stored as typeof defaultValue
+      },
+      writeJsonFile: (filePath, next) => {
+        touchedPaths.push(filePath)
+        stored = next
+      },
+    })
+
+    expect(getPermissionWorkspaceGrantsPath(() => '/tmp/onething-permissions-test'))
+      .toBe('/tmp/onething-permissions-test/workspace-grants.json')
+
+    storage.saveWorkspaceGrants([{
+      id: 'g1',
+      scope: 'workspace',
+      type: 'bash',
+      pattern: 'git *',
+      workspaceRoot: '/repo',
+      createdAt: 1,
+      updatedAt: 1,
+      createdFrom: { messageId: 'm1', title: 'git' },
+    }])
+
+    expect(storage.loadWorkspaceGrants()).toHaveLength(1)
+    expect(touchedPaths).toEqual([
+      '/tmp/onething-permissions-test/workspace-grants.json',
+      '/tmp/onething-permissions-test/workspace-grants.json',
+    ])
+  })
+
   it('matches session grants only within the same session', async () => {
     const { addGrant, matchGrant } = await import('../permission-grants')
     const grant = addGrant({

@@ -159,7 +159,7 @@ html[data-theme="light"] .md-body img:hover {
 	);
 	--md-code-header-min-height: 22px;
 	--md-code-header-padding: 0 8px 0 10px;
-	--md-code-header-bg: color-mix(in srgb, var(--ui-surface-code-header-bg, var(--bg-code-header)) 28%, var(--ui-surface-code-block-bg, var(--bg-code-block)) 72%);
+	--md-code-header-bg: var(--ui-surface-code-header-bg, var(--bg-code-header, var(--md-code-block-bg)));
 	--md-code-header-border: 1px solid color-mix(in srgb, var(--ui-surface-code-block-border, var(--border-code, var(--border))) 20%, transparent);
 	--md-code-lang-font-size: var(--type-caption-size);
 	--md-code-lang-line-height: var(--type-code-line-height-px);

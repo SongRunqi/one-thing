@@ -67,6 +67,7 @@ export {
   createToolCall,
   canAutoExecute,
   getToolExecutionMode,
+  initializeHeadlessToolRegistry,
   initializeToolRegistry,
   isInitialized,
   // Async tool support
@@ -75,7 +76,7 @@ export {
   initializeAsyncTools,
 } from './registry.js'
 
-export { toolResultToStructured, textFromToolResult, isCanonicalToolResult } from './core/tool-result.js'
+export { toolResultToStructured, textFromToolResult, isCanonicalToolResult } from '@onething/core/tools'
 
 // Re-export permission system
 export { Permission } from '../permission/index.js'

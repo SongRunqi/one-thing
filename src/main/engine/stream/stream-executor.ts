@@ -1,7 +1,7 @@
 /**
  * Stream Executor Module
  * Unified entry point for message streaming
- * Automatically detects image generation vs text streaming
+ * Routes host-specific special streams before falling back to text streaming
  *
  * Uses StreamEngine for AbortController lifecycle management.
  */
@@ -17,7 +17,10 @@ import { type StreamContext, type StreamSender } from './stream-processor.js'
 import { getStreamEngine } from '../index.js'
 import type { HistoryMessage } from './message-helpers.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
-import type { AgentOutputModality } from '../../agent-loop/types.js'
+import type { AgentOutputModality } from '@onething/core/agent-loop'
+import {
+  executeCoreMessageStream,
+} from '@onething/core/engine'
 
 // Re-export for convenience
 export type { HistoryMessage }
@@ -27,6 +30,7 @@ export type { HistoryMessage }
  */
 export interface ProviderConfigWithKey extends ProviderConfig {
   apiKey: string
+  model: string
   authContext?: ProviderAuthContext
 }
 
@@ -60,7 +64,7 @@ export interface StreamExecutionResult {
 
 /**
  * Unified stream execution entry point
- * Automatically detects whether to use image generation or text streaming
+ * Automatically detects whether to use a host-specific special stream or text streaming
  *
  * @param params Stream execution parameters
  * @param abortController Optional abort controller for cancellation
@@ -70,101 +74,28 @@ export async function executeMessageStream(
   params: StreamExecutionParams,
   abortController?: AbortController
 ): Promise<StreamExecutionResult> {
-  const {
-    sender,
-    sessionId,
-    assistantMessageId,
-    messageContent,
-    historyMessages,
-    configWithApiKey,
-    providerId,
-    requestedOutputModalities,
-    settings,
-    toolSettings,
-    sessionName,
-    voiceConversation,
-    speakMode,
-  } = params
-
   const engine = getStreamEngine()
+  const result = await executeCoreMessageStream({
+    params,
+    controller: abortController,
+    createController: () => new AbortController(),
+    registry: {
+      registerController: (sessionId, controller) => engine.registerController(sessionId, controller),
+      removeController: sessionId => engine.removeController(sessionId),
+      getSteeringQueue: sessionId => engine.getSteeringQueue(sessionId),
+      getFollowUpQueue: sessionId => engine.getFollowUpQueue(sessionId),
+    },
+    supportsSpecialStream: (model, providerId) =>
+      modelRegistry.modelSupportsImageGeneration(model, providerId),
+    processSpecialStream: input => processImageGenerationStream(input),
+    executeTextStream: (ctx, historyMessages, sessionName): Promise<AgentLoopStreamGenerationResult> =>
+      executeAgentLoopStreamGeneration(ctx as StreamContext, historyMessages, sessionName),
+    logger: console,
+  })
 
-  // Create abort controller if not provided
-  const controller = abortController || new AbortController()
-  // registerController aborts any existing stream for this session first
-  engine.registerController(sessionId, controller)
-
-  try {
-    // Check if this is an image generation model
-    const supportsImageGen = await modelRegistry.modelSupportsImageGeneration(
-      configWithApiKey.model,
-      providerId
-    )
-
-    if (supportsImageGen) {
-      console.log(`[StreamExecutor] Detected image generation model: ${configWithApiKey.model}`)
-
-      // Process image generation
-      const handled = await processImageGenerationStream({
-        sender,
-        sessionId,
-        assistantMessageId,
-        prompt: messageContent,
-        providerId,
-        apiKey: configWithApiKey.apiKey,
-        model: configWithApiKey.model,
-        baseUrl: configWithApiKey.baseUrl,
-        sessionName,
-      })
-
-      // Image generation always completes (no pause for confirmation)
-      engine.removeController(sessionId)
-
-      return {
-        handled,
-        isImageGeneration: true,
-        pausedForConfirmation: false,
-      }
-    } else {
-      // Normal text streaming
-      console.log(`[StreamExecutor] Using text streaming for model: ${configWithApiKey.model}`)
-
-      const ctx: StreamContext = {
-        sender,
-        sessionId,
-        assistantMessageId,
-        abortSignal: controller.signal,
-        settings,
-        providerConfig: configWithApiKey,
-        providerId,
-        requestedOutputModalities,
-        toolSettings,
-        voiceConversation,
-        speakMode: speakMode ?? voiceConversation,
-        steeringQueue: engine.getSteeringQueue(sessionId),
-        followUpQueue: engine.getFollowUpQueue(sessionId),
-      }
-
-      const result: AgentLoopStreamGenerationResult = await executeAgentLoopStreamGeneration(
-        ctx,
-        historyMessages,
-        sessionName,
-      )
-
-      // Only remove controller if stream completed (not paused for confirmation)
-      if (!result.pausedForConfirmation) {
-        engine.removeController(sessionId)
-      }
-
-      return {
-        handled: true,
-        isImageGeneration: false,
-        pausedForConfirmation: result.pausedForConfirmation,
-      }
-    }
-  } catch (error) {
-    // On error, always remove controller
-    console.error('[StreamExecutor] Error:', error)
-    engine.removeController(sessionId)
-    throw error
+  return {
+    handled: result.handled,
+    isImageGeneration: result.usedSpecialStream,
+    pausedForConfirmation: result.pausedForConfirmation,
   }
 }

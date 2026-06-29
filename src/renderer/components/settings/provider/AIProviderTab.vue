@@ -286,6 +286,9 @@
                         >
                           <Terminal :size="12" />
                           Env {{ providerSettings.currentProviderEnvVarName.value }}
+                          <span v-if="providerSettings.currentProviderEnvKeyPreview.value">
+                            · {{ providerSettings.currentProviderEnvKeyPreview.value }}
+                          </span>
                         </span>
                       </span>
                       <Input
@@ -310,6 +313,25 @@
                         aria-label="Base URL"
                         @update:model-value="providerSettings.updateProviderBaseUrl"
                       />
+                    </div>
+                    <div
+                      v-if="providerSettings.isZhipuProvider.value"
+                      class="settings-row"
+                    >
+                      <span class="row-label">API mode</span>
+                      <select
+                        class="row-select"
+                        :value="providerSettings.currentZhipuApiMode.value"
+                        aria-label="Zhipu API mode"
+                        @change="providerSettings.updateZhipuApiMode(($event.target as HTMLSelectElement).value)"
+                      >
+                        <option value="standard">
+                          Standard
+                        </option>
+                        <option value="coding-plan">
+                          Coding Plan
+                        </option>
+                      </select>
                     </div>
                   </div>
                 </section>
@@ -520,11 +542,13 @@ function providerKeyPreview(providerId: string): string {
   const key = config?.apiKey?.trim()
   const envStatus = providerSettings.getProviderEnvStatus(providerId)
   const envVar = envStatus?.resolvedEnvVar
+  const envPreview = envStatus?.keyPreview
 
   if (providerId === 'acp') return 'Local agent'
   if (provider?.requiresOAuth) return 'Subscription'
   if (providerSettings.providerUsesEnvApiKey(providerId)) {
-    return envVar ? `Env ${envVar}` : 'Env missing'
+    if (!envVar) return 'Env missing'
+    return envPreview ? `Env ${envVar} · ${envPreview}` : `Env ${envVar}`
   }
   if (key) {
     const head = key.slice(0, Math.min(6, key.length))

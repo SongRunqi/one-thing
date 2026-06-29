@@ -9,7 +9,7 @@ import type {
   AgentProvider,
   AgentTool,
   AgentTurnRequest,
-} from '../../../agent-loop/index.js'
+} from '@onething/core/agent-loop'
 import type { JsonObject } from '../../../../shared/json.js'
 import type { HistoryMessage } from '../message-helpers.js'
 import type { BuildPromptOptions } from '../../prompt/index.js'
@@ -144,6 +144,7 @@ const mocks = vi.hoisted(() => ({
     updateMessageReasoning: vi.fn(),
     updateMessageToolCalls: vi.fn(),
     updateMessageUsage: vi.fn(),
+    updateStepsUsageByTurn: vi.fn(),
     updateMessageStreaming: vi.fn(),
     updateMessageError: vi.fn(),
     updateSessionContextSize: vi.fn(),
@@ -199,6 +200,10 @@ vi.mock('../../../ipc/sessions.js', () => ({
   updateSessionUsage: mocks.updateSessionUsage,
 }))
 
+vi.mock('../../../session/usage.js', () => ({
+  updateSessionUsage: mocks.updateSessionUsage,
+}))
+
 vi.mock('../../triggers/index.js', () => ({
   triggerManager: {
     runPostResponse: mocks.triggerRunPostResponse,
@@ -210,6 +215,10 @@ vi.mock('../../../plugins/lifecycle.js', () => ({
 }))
 
 vi.mock('../../../ipc/skills.js', () => ({
+  getSkillsForSession: mocks.getSkillsForSession,
+}))
+
+vi.mock('../../../skills/session-skills.js', () => ({
   getSkillsForSession: mocks.getSkillsForSession,
 }))
 

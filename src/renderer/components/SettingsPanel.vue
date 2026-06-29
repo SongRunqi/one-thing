@@ -407,18 +407,18 @@ function initializeSettings() {
       [AIProviderEnum.Claude]: { apiKey: '', model: 'claude-sonnet-4-5-20250929', selectedModels: ['claude-sonnet-4-5-20250929'] },
       [AIProviderEnum.DeepSeek]: { apiKey: '', model: 'deepseek-chat', selectedModels: ['deepseek-chat', 'deepseek-reasoner'] },
       [AIProviderEnum.Kimi]: { apiKey: '', model: 'moonshot-v1-8k', selectedModels: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'] },
-      [AIProviderEnum.Zhipu]: { apiKey: '', model: 'glm-4-flash', selectedModels: ['glm-4-flash', 'glm-4-plus', 'glm-4'] },
+      [AIProviderEnum.Zhipu]: { apiKey: '', zhipuApiMode: 'standard', model: 'glm-5.2', selectedModels: ['glm-5.2', 'glm-5.1', 'glm-5'] },
       [AIProviderEnum.Custom]: { apiKey: '', baseUrl: '', model: '', selectedModels: [] },
     }
   }
 
   // Ensure all built-in providers have config
-  const defaultProviderConfigs: Record<string, { apiKey: string; model: string; selectedModels: string[]; baseUrl?: string }> = {
+  const defaultProviderConfigs: Record<string, { apiKey: string; model: string; selectedModels: string[]; baseUrl?: string; zhipuApiMode?: 'standard' | 'coding-plan' }> = {
     [AIProviderEnum.OpenAI]: { apiKey: '', model: 'gpt-4', selectedModels: ['gpt-4', 'gpt-4o', 'gpt-3.5-turbo'] },
     [AIProviderEnum.Claude]: { apiKey: '', model: 'claude-sonnet-4-5-20250929', selectedModels: ['claude-sonnet-4-5-20250929', 'claude-3-5-haiku-20241022'] },
     [AIProviderEnum.DeepSeek]: { apiKey: '', model: 'deepseek-chat', selectedModels: ['deepseek-chat', 'deepseek-reasoner'] },
     [AIProviderEnum.Kimi]: { apiKey: '', model: 'moonshot-v1-8k', selectedModels: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'] },
-    [AIProviderEnum.Zhipu]: { apiKey: '', model: 'glm-4-flash', selectedModels: ['glm-4-flash', 'glm-4-plus', 'glm-4'] },
+    [AIProviderEnum.Zhipu]: { apiKey: '', zhipuApiMode: 'standard', model: 'glm-5.2', selectedModels: ['glm-5.2', 'glm-5.1', 'glm-5'] },
     [AIProviderEnum.Custom]: { apiKey: '', baseUrl: '', model: '', selectedModels: [] },
   }
 
@@ -426,6 +426,13 @@ function initializeSettings() {
     if (!localSettings.value.ai.providers[providerId]) {
       localSettings.value.ai.providers[providerId] = { ...defaultConfig }
     }
+  }
+
+  const zhipuConfig = localSettings.value.ai.providers[AIProviderEnum.Zhipu]
+  if (zhipuConfig && !zhipuConfig.zhipuApiMode) {
+    zhipuConfig.zhipuApiMode = zhipuConfig.baseUrl?.includes('/api/coding/paas/v4')
+      ? 'coding-plan'
+      : 'standard'
   }
 
   // Ensure selectedModels exists for each provider
@@ -464,12 +471,6 @@ function initializeSettings() {
   // Ensure network settings exist
   if (!localSettings.value.network) {
     localSettings.value.network = {
-      networkInterface: {
-        enabled: false,
-        address: '',
-        id: '',
-        name: '',
-      },
       proxy: {
         enabled: false,
         url: '',
@@ -482,14 +483,6 @@ function initializeSettings() {
         enabled: false,
         url: '',
         bypassRules: 'localhost;127.0.0.1;::1;*.local',
-      }
-    }
-    if (!localSettings.value.network.networkInterface) {
-      localSettings.value.network.networkInterface = {
-        enabled: false,
-        address: '',
-        id: '',
-        name: '',
       }
     }
   }
@@ -553,7 +546,7 @@ const providers = computed<ProviderInfo[]>(() => {
     { id: 'claude', name: 'Claude', icon: 'claude', description: 'Claude 3.5, Claude 3 and other Anthropic models', defaultBaseUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-3-5-sonnet-20241022', supportsCustomBaseUrl: true, requiresApiKey: true },
     { id: 'deepseek', name: 'DeepSeek', icon: 'deepseek', description: 'DeepSeek-V3, DeepSeek-R1 and other DeepSeek models', defaultBaseUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat', supportsCustomBaseUrl: true, requiresApiKey: true },
     { id: 'kimi', name: 'Kimi', icon: 'kimi', description: 'Moonshot AI Kimi models with long context support', defaultBaseUrl: 'https://api.moonshot.cn/v1', defaultModel: 'moonshot-v1-8k', supportsCustomBaseUrl: true, requiresApiKey: true },
-    { id: 'zhipu', name: 'Zhipu GLM', icon: 'zhipu', description: 'GLM-4, GLM-3 and other Zhipu AI models', defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-flash', supportsCustomBaseUrl: true, requiresApiKey: true },
+    { id: 'zhipu', name: 'Zhipu GLM', icon: 'zhipu', description: 'GLM-5.2 and other Zhipu AI models', defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-5.2', supportsCustomBaseUrl: true, requiresApiKey: true },
     { id: 'custom', name: 'Custom', icon: 'custom', description: 'OpenAI-compatible API endpoint', defaultBaseUrl: '', defaultModel: '', supportsCustomBaseUrl: true, requiresApiKey: true },
   ]
 })

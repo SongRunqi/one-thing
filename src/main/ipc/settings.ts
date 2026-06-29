@@ -1,90 +1,87 @@
-import { ipcMain, dialog, BrowserWindow, nativeTheme } from 'electron'
-import { IPC_CHANNELS } from '../../shared/ipc.js'
+import {
+  broadcastElectronSettingsChanged,
+  getElectronShouldUseDarkColors,
+  registerElectronSettingsIpcHandlers,
+  registerElectronSystemThemeChangedBroadcast,
+  showElectronOpenDialog,
+  type ElectronSettingsIpcEvent,
+} from '@onething/electron-host/settings/ipc-host'
+import {
+  getOnethingSettingsForIpc,
+  getOnethingSystemThemeForIpc,
+  saveOnethingSettingsWithRuntimeEffectsForIpc,
+} from '@onething/runtime/settings'
+import { IPC_CHANNELS, type SaveSettingsRequest, type TestProxyRequest } from '../../shared/ipc.js'
 import * as store from '../store.js'
 import { openSettingsWindow } from '../window.js'
 import { invalidateProviderCache } from '../providers/registry.js'
 import { applyNetworkProxySettings, testProxy } from '../network/proxy.js'
-import { listNetworkInterfaces } from '../network/interfaces.js'
-import { registerGlobalWindowShortcuts } from '../shortcuts/global-shortcuts.js'
+import { registerGlobalWindowShortcuts } from '@onething/electron-host/shortcuts/global-shortcuts'
 import { getVoiceServiceSafe } from '../voice/service.js'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
 import { ACPManager } from '../acp/index.js'
+import { applyGatewaySettings } from '@onething/electron-host/gateway/lifecycle'
+
+async function saveSettingsFromIpc(settings: SaveSettingsRequest, event: ElectronSettingsIpcEvent) {
+  const result = await saveOnethingSettingsWithRuntimeEffectsForIpc({
+    settings,
+    saveSettings: nextSettings => store.saveSettings(nextSettings),
+    getSettings: () => store.getSettings(),
+    invalidateProviderCache,
+    applyNetworkProxySettings,
+    registerGlobalWindowShortcuts,
+    applyVoiceSettings: normalizedSettings =>
+      getVoiceServiceSafe()?.applySettings(normalizedSettings),
+    updateMCPSettings: nextSettings => MCPManager.updateSettings(nextSettings),
+    registerMCPTools,
+    updateACPSettings: nextSettings => ACPManager.updateSettings(nextSettings),
+    defaultMCPSettings: { enabled: true, servers: [] },
+    defaultACPSettings: { enabled: true, agents: [] },
+    logger: console,
+  })
+  if (!result.success) return result
+  const normalizedSettings = result.settings
+  await applyGatewaySettings(normalizedSettings).catch(error => {
+    console.error('[Gateway] Failed to apply channel settings:', error)
+  })
+
+  broadcastElectronSettingsChanged({
+    channel: IPC_CHANNELS.SETTINGS_CHANGED,
+    settings: normalizedSettings,
+    exceptWebContentsId: event.sender?.id,
+  })
+  return result
+}
 
 export function registerSettingsHandlers() {
-  // Open settings window
-  ipcMain.handle(IPC_CHANNELS.OPEN_SETTINGS_WINDOW, async () => {
-    const parentWindow = BrowserWindow.getFocusedWindow() || undefined
-    openSettingsWindow(parentWindow)
-    return { success: true }
+  registerElectronSystemThemeChangedBroadcast({
+    channel: IPC_CHANNELS.SYSTEM_THEME_CHANGED,
   })
 
-  // 获取设置
-  ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, async () => {
-    return { success: true, settings: store.getSettings() }
-  })
-
-  // 获取系统主题
-  ipcMain.handle(IPC_CHANNELS.GET_SYSTEM_THEME, async () => {
-    // nativeTheme.shouldUseDarkColors returns true if the OS is in dark mode
-    const isDark = nativeTheme.shouldUseDarkColors
-    return { success: true, theme: isDark ? 'dark' : 'light' }
-  })
-
-  // 监听系统主题变化
-  nativeTheme.on('updated', () => {
-    const isDark = nativeTheme.shouldUseDarkColors
-    const theme = isDark ? 'dark' : 'light'
-    // Broadcast to all windows
-    BrowserWindow.getAllWindows().forEach(win => {
-      win.webContents.send(IPC_CHANNELS.SYSTEM_THEME_CHANGED, theme)
-    })
-  })
-
-  // 保存设置
-  ipcMain.handle(IPC_CHANNELS.SAVE_SETTINGS, async (event, settings) => {
-    store.saveSettings(settings)
-    const normalizedSettings = store.getSettings()
-
-    // Invalidate provider cache so new API keys / base URLs take effect immediately
-    invalidateProviderCache()
-    await applyNetworkProxySettings(normalizedSettings.network?.proxy)
-    registerGlobalWindowShortcuts()
-    getVoiceServiceSafe()?.applySettings(normalizedSettings)
-    await MCPManager.updateSettings(normalizedSettings.mcp || { enabled: true, servers: [] })
-    await registerMCPTools()
-    ACPManager.updateSettings(normalizedSettings.acp || { enabled: true, agents: [] })
-
-    // Get the sender's webContents ID to exclude from broadcast
-    const senderWebContentsId = event.sender.id
-
-    // Broadcast settings change to OTHER windows (exclude sender to prevent race condition)
-    // The sender already updated its local state, so it doesn't need the broadcast
-    BrowserWindow.getAllWindows().forEach(win => {
-      if (win.webContents.id !== senderWebContentsId) {
-        win.webContents.send(IPC_CHANNELS.SETTINGS_CHANGED, normalizedSettings)
-      }
-    })
-    return { success: true, settings: normalizedSettings }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TEST_PROXY, async (_event, request) => {
-    return testProxy(request.proxy, request.networkInterface)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.GET_NETWORK_INTERFACES, async () => {
-    try {
-      return { success: true, interfaces: listNetworkInterfaces() }
-    } catch (error: any) {
-      return { success: false, error: error.message || 'Failed to list network interfaces.' }
-    }
-  })
-
-  // 显示打开目录对话框
-  ipcMain.handle(IPC_CHANNELS.SHOW_OPEN_DIALOG, async (_event, options) => {
-    const focusedWindow = BrowserWindow.getFocusedWindow()
-    if (focusedWindow) {
-      return dialog.showOpenDialog(focusedWindow, options)
-    }
-    return dialog.showOpenDialog(options)
+  registerElectronSettingsIpcHandlers({
+    channels: {
+      openWindow: IPC_CHANNELS.OPEN_SETTINGS_WINDOW,
+      getSettings: IPC_CHANNELS.GET_SETTINGS,
+      getSystemTheme: IPC_CHANNELS.GET_SYSTEM_THEME,
+      saveSettings: IPC_CHANNELS.SAVE_SETTINGS,
+      testProxy: IPC_CHANNELS.TEST_PROXY,
+      showOpenDialog: IPC_CHANNELS.SHOW_OPEN_DIALOG,
+    },
+    openSettingsWindow: () => {
+      openSettingsWindow()
+      return { success: true }
+    },
+    getSettings: () =>
+      getOnethingSettingsForIpc({
+        getSettings: () => store.getSettings(),
+        logger: console,
+      }),
+    getSystemTheme: () => getOnethingSystemThemeForIpc(getElectronShouldUseDarkColors()),
+    saveSettings: (settings, event) => saveSettingsFromIpc(settings as SaveSettingsRequest, event),
+    testProxy: request => {
+      const typedRequest = request as TestProxyRequest
+      return testProxy(typedRequest.proxy)
+    },
+    showOpenDialog: options => showElectronOpenDialog(options),
   })
 }

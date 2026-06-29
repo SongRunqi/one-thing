@@ -12,7 +12,7 @@ import {
   createDefaultVariablesFile,
   parseVariablesFile,
   type VariablesFile,
-} from './schema.js'
+} from '@onething/runtime/variables/schema'
 
 export function loadFromDisk(): VariablesFile {
   const fallback = createDefaultVariablesFile()
