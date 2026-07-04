@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Theme } from '../types.js'
 import { generateCSSVariables } from '../css-mapper.js'
+import { colorMeetsContrast } from '../role-mapping.js'
 import { resolveTheme, resolveThemeHighlights } from '../resolver.js'
 
 function makeTheme(overrides: Partial<Theme> = {}): Theme {
@@ -78,16 +79,18 @@ describe('theme highlight groups', () => {
   it('derives highlight CSS variables from legacy text.code tokens', () => {
     const theme = makeTheme()
     const resolvedTheme = resolveTheme(theme, 'dark')
-    const resolvedHighlights = resolveThemeHighlights(theme, 'dark', resolvedTheme)
+    const codeBlockBg = resolvedTheme['bg.code.block']
+    const resolvedHighlights = resolveThemeHighlights(theme, 'dark', resolvedTheme, codeBlockBg)
     const cssVariables = generateCSSVariables(resolvedTheme, resolvedHighlights)
 
-    expect(resolvedHighlights['syntax.keyword'].fg).toBe('#aa00aa')
+    expect(resolvedHighlights['syntax.keyword'].fg).not.toBe('#aa00aa')
+    expect(colorMeetsContrast(resolvedHighlights['syntax.keyword'].fg, codeBlockBg, 4)).toBe(true)
     expect(resolvedHighlights['syntax.comment'].fontStyle).toBe('italic')
-    expect(cssVariables['--hg-syntax-keyword-fg']).toBe('#aa00aa')
+    expect(cssVariables['--hg-syntax-keyword-fg']).toBe(resolvedHighlights['syntax.keyword'].fg)
     expect(cssVariables['--hg-syntax-comment-font-style']).toBe('italic')
-    expect(cssVariables['--text-code-keyword']).toBe('#aa00aa')
-    expect(cssVariables['--hljs-keyword']).toBe('#aa00aa')
-    expect(cssVariables['--syntax-keyword']).toBe('#aa00aa')
+    expect(cssVariables['--text-code-keyword']).toBe(resolvedHighlights['syntax.keyword'].fg)
+    expect(cssVariables['--hljs-keyword']).toBe(resolvedHighlights['syntax.keyword'].fg)
+    expect(cssVariables['--syntax-keyword']).toBe(resolvedHighlights['syntax.keyword'].fg)
   })
 
   it('resolves semantic tokens, linked groups, aliases, font styles, and circular fallback', () => {
@@ -112,7 +115,8 @@ describe('theme highlight groups', () => {
     })
 
     const resolvedTheme = resolveTheme(theme, 'dark')
-    const resolvedHighlights = resolveThemeHighlights(theme, 'dark', resolvedTheme)
+    const codeBlockBg = resolvedTheme['bg.code.block']
+    const resolvedHighlights = resolveThemeHighlights(theme, 'dark', resolvedTheme, codeBlockBg)
     const cssVariables = generateCSSVariables(resolvedTheme, resolvedHighlights)
 
     expect(resolvedHighlights['syntax.keyword'].fg).toBe('#ff00ff')
@@ -122,7 +126,8 @@ describe('theme highlight groups', () => {
       bg: '#080808',
       fontStyle: 'italic underline',
     })
-    expect(resolvedHighlights['syntax.punctuation'].fg).toBe('#666666')
+    expect(resolvedHighlights['syntax.punctuation'].fg).not.toBe('#666666')
+    expect(colorMeetsContrast(resolvedHighlights['syntax.punctuation'].fg, codeBlockBg, 3.5)).toBe(true)
     expect(cssVariables['--hg-syntax-keyword-font-style']).toBe('italic')
     expect(cssVariables['--hg-syntax-keyword-font-weight']).toBe('700')
     expect(cssVariables['--hg-syntax-comment-text-decoration']).toBe('underline')

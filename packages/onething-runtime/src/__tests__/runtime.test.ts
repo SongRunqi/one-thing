@@ -86,6 +86,7 @@ function createHarness() {
   }
   let nextId = 0
   let now = 1000
+  const setSessionPermissionMode = vi.fn()
 
   const executeMessageStream = vi.fn(async (options: Record<string, unknown>) => {
     streamChannel.push(options.sessionId as string, {
@@ -176,6 +177,11 @@ function createHarness() {
       getContextCompactReason: () => null,
       shouldSkipAutoCompactForProviderUsageMismatch: () => false,
     },
+    sessionRuntime: {
+      ensureSession: vi.fn(),
+      destroySession: vi.fn(),
+      setSessionPermissionMode,
+    },
   })
 
   return {
@@ -183,6 +189,7 @@ function createHarness() {
     executeMessageStream,
     runtime,
     session,
+    setSessionPermissionMode,
   }
 }
 
@@ -239,6 +246,63 @@ describe('createOnethingRuntime', () => {
     expect(executeMessageStream).toHaveBeenCalledWith(expect.objectContaining({
       messageContent: 'from-event-bus:repo-skill',
     }))
+  })
+
+  it('exposes gateway permissions through the conversation runtime', async () => {
+    const { eventBus, runtime, session, setSessionPermissionMode } = createHarness()
+    const permissions = runtime.conversationRuntime.permissions
+    expect(permissions).toBeDefined()
+    if (!permissions) throw new Error('permissions surface missing')
+
+    const requests: unknown[] = []
+    const unsubscribeRequest = permissions.onPermissionRequest(session.id, request => {
+      requests.push(request)
+    })
+
+    await eventBus.emit(session.id, {
+      type: 'permission:request',
+      requestId: 'request-1',
+      targetChannel: 'wechat',
+      toolCallId: 'tool-1',
+      messageId: 'message-1',
+      permissionType: 'bash',
+      title: 'Run bash',
+      metadata: { command: 'ls' },
+    })
+    unsubscribeRequest()
+
+    expect(requests).toEqual([expect.objectContaining({
+      sessionId: session.id,
+      requestId: 'request-1',
+      targetChannel: 'wechat',
+      toolCallId: 'tool-1',
+      permissionType: 'bash',
+      title: 'Run bash',
+      metadata: { command: 'ls' },
+    })])
+
+    const commands: TestEvent[] = []
+    const unsubscribeCommand = eventBus.onAnySession('command:permission-respond', envelope => {
+      commands.push(envelope.event)
+    })
+    await permissions.respondPermission({
+      sessionId: session.id,
+      requestId: 'request-1',
+      channel: 'wechat',
+      decision: 'once',
+    })
+    unsubscribeCommand()
+
+    expect(commands).toEqual([expect.objectContaining({
+      type: 'command:permission-respond',
+      channel: 'wechat',
+      requestId: 'request-1',
+      decision: 'once',
+    })])
+
+    permissions.setSessionPermissionMode(session.id, 'auto-accept-edits')
+
+    expect(setSessionPermissionMode).toHaveBeenCalledWith(session.id, 'auto-accept-edits')
   })
 })
 

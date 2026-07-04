@@ -27,6 +27,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   for (const scheduler of schedulers.splice(0)) {
     scheduler.dispose()
   }
@@ -132,5 +133,28 @@ describe('Scheduler', () => {
       enabled: false,
       lastError: expect.stringMatching(/5-field/),
     })
+  })
+
+  it('lists task snapshots without writing scheduler state for every task', () => {
+    const scheduler = createScheduler()
+
+    scheduler.register({
+      id: 'task-a',
+      schedule: { kind: 'interval', everyMs: 60_000 },
+      run: vi.fn(),
+    })
+    scheduler.register({
+      id: 'task-b',
+      schedule: { kind: 'interval', everyMs: 120_000 },
+      run: vi.fn(),
+    })
+
+    const writeSpy = vi.spyOn(fs, 'writeFileSync')
+    writeSpy.mockClear()
+
+    expect(scheduler.list().map(task => task.id)).toEqual(['task-a', 'task-b'])
+    expect(writeSpy).not.toHaveBeenCalled()
+
+    writeSpy.mockRestore()
   })
 })

@@ -8,9 +8,11 @@ import {
   resolveTheme,
   resolveThemeHighlights,
   resolveThemeUI,
+  SURFACE_GUARD_MIN_DELTA_L,
   THEME_STATUS_COLOR_TOKENS,
 } from '../resolver.js'
 import { CSS_VAR_MAP, generateCSSVariables } from '../css-mapper.js'
+import { guaranteeMinAbsDeltaL, guaranteeMinDeltaL } from '../role-mapping.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const builtinThemeDir = path.resolve(dirname, '../builtin')
@@ -336,6 +338,57 @@ describe('built-in theme text contrast', () => {
         contrastRatio(resolveColorOver(resolvedUI['ui.tabBar.itemActive'].fg, tabBarSurface), tabActiveSurface),
         `${themeName} tab active item contrast`
       ).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('keeps composer and user bubble surfaces solid and visibly raised from the chat surface', () => {
+    for (const fileName of builtinThemeFiles) {
+      const theme = loadBuiltinTheme(fileName)
+      const modes: Array<'light' | 'dark'> = theme.colorScheme === 'light'
+        ? ['light']
+        : theme.colorScheme === 'dark'
+          ? ['dark']
+          : ['light', 'dark']
+
+      for (const mode of modes) {
+        const resolvedTheme = resolveTheme(theme, mode)
+        const resolvedUI = resolveThemeUI(theme, mode, resolvedTheme)
+        const label = `${theme.name} (${mode})`
+        const chatBg = resolvedUI['ui.surface.chat'].bg
+
+        // 0.005 tolerance: the guard's bump round-trips through 8-bit hex,
+        // which can shave up to ~0.003 off the requested OKLCH delta.
+        // The composer must be raised in the mode's direction (directional
+        // guard); the bubble may sit on either side of the chat surface.
+        const raisedSurfaces = [
+          ['composer input', resolvedUI['ui.surface.input'].bg, SURFACE_GUARD_MIN_DELTA_L.input - 0.005, guaranteeMinDeltaL],
+          ['user bubble solid', resolvedUI['ui.message.userSolid'].bg, SURFACE_GUARD_MIN_DELTA_L.userBubble - 0.005, guaranteeMinAbsDeltaL],
+        ] as const
+
+        for (const [surfaceLabel, surface, minDelta, guard] of raisedSurfaces) {
+          // Gradients here would make color-mix()/gradient stops in components
+          // invalid at computed-value time, collapsing the background entirely.
+          const surfaceColor = parseCssColor(surface)
+          expect(
+            surfaceColor,
+            `${label} ${surfaceLabel} surface should be a solid color, got ${surface}`
+          ).not.toBeNull()
+
+          // Re-applying the resolver's lightness guard must be a no-op,
+          // i.e. the surface already sits visibly off the chat background.
+          expect(
+            guard(chatBg, surface, minDelta, mode === 'dark'),
+            `${label} ${surfaceLabel} surface should be visibly raised from the chat surface`
+          ).toBe(surface)
+
+          // Independent metric so a broken guard implementation can't
+          // self-certify: the surfaces must also differ in plain RGB terms.
+          expect(
+            colorDistance(surfaceColor!, resolveColorOver(chatBg, '#ffffff')),
+            `${label} ${surfaceLabel} surface should differ from the chat surface in RGB`
+          ).toBeGreaterThanOrEqual(8)
+        }
+      }
     }
   })
 

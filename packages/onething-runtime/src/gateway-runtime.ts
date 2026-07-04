@@ -1,7 +1,12 @@
 import type { StreamChunkBase } from '@onething/core/events'
 import type {
+  CoreConversationEventBusLike,
+  CoreConversationEventEnvelopeLike,
   CoreConversationRuntime,
   CoreConversationRuntimeFactoryOptions,
+  CorePermissionRequestEvent,
+  CorePermissionSurface,
+  CoreSessionRuntime,
 } from '@onething/core/gateway-runtime'
 export {
   isCoreConversationRuntime as isOnethingConversationRuntime,
@@ -9,6 +14,10 @@ export {
 } from '@onething/core/gateway-runtime'
 export type {
   CoreConversationRuntime as OnethingConversationRuntime,
+  CorePermissionDecision as OnethingPermissionDecision,
+  CorePermissionMode as OnethingPermissionMode,
+  CorePermissionRequestEvent as OnethingPermissionRequestEvent,
+  CorePermissionSurface as OnethingPermissionSurface,
   CoreSendMessageOptions as OnethingSendMessageOptions,
   CoreSessionRuntime as OnethingSessionRuntime,
   CoreStreamChannelLike as OnethingStreamChannelLike,
@@ -30,9 +39,11 @@ export function createOnethingConversationRuntimeFromStreamEngine<TChunk extends
     ensureSession() {},
     destroySession() {},
   }
+  const permissions = createPermissionSurface(options.eventBus, sessionRuntime)
 
   return {
     streamChannel: options.streamChannel,
+    permissions,
     ensureSession(sessionId) {
       sessionRuntime.ensureSession(sessionId)
     },
@@ -54,4 +65,75 @@ export function createOnethingConversationRuntimeFromStreamEngine<TChunk extends
       )
     },
   }
+}
+
+function createPermissionSurface(
+  eventBus: Partial<CoreConversationEventBusLike> | undefined,
+  sessionRuntime: CoreSessionRuntime,
+): CorePermissionSurface | undefined {
+  if (!isPermissionEventBus(eventBus)) return undefined
+
+  return {
+    onPermissionRequest(sessionId, handler) {
+      return eventBus.onAny(sessionId, (envelope) => {
+        const request = permissionRequestFromEvent(sessionId, envelope.event)
+        if (!request) return
+        handler(request)
+      }, 'GatewayPermissions')
+    },
+    async respondPermission(input) {
+      await eventBus.emit(input.sessionId, {
+        type: 'command:permission-respond',
+        channel: input.channel,
+        requestId: input.requestId,
+        decision: input.decision,
+        rejectReason: input.rejectReason,
+      })
+    },
+    setSessionPermissionMode(sessionId, mode) {
+      sessionRuntime.setSessionPermissionMode?.(sessionId, mode)
+    },
+  }
+}
+
+function isPermissionEventBus(
+  eventBus: Partial<CoreConversationEventBusLike> | undefined,
+): eventBus is CoreConversationEventBusLike {
+  return !!eventBus
+    && typeof eventBus.onAny === 'function'
+    && typeof eventBus.emit === 'function'
+}
+
+function permissionRequestFromEvent(
+  sessionId: string,
+  event: CoreConversationEventEnvelopeLike['event'],
+): CorePermissionRequestEvent | null {
+  if (event.type !== 'permission:request') return null
+  if (typeof event.requestId !== 'string') return null
+  if (typeof event.targetChannel !== 'string') return null
+  if (typeof event.permissionType !== 'string') return null
+  if (typeof event.title !== 'string') return null
+
+  return {
+    sessionId,
+    requestId: event.requestId,
+    targetChannel: event.targetChannel,
+    permissionType: event.permissionType,
+    title: event.title,
+    toolCallId: typeof event.toolCallId === 'string' ? event.toolCallId : undefined,
+    pattern: toPattern(event.pattern),
+    metadata: toJsonObject(event.metadata),
+    timeoutMs: typeof event.timeoutMs === 'number' ? event.timeoutMs : undefined,
+  }
+}
+
+function toPattern(value: unknown): string | string[] | undefined {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value) && value.every(item => typeof item === 'string')) return value
+  return undefined
+}
+
+function toJsonObject(value: unknown): CorePermissionRequestEvent['metadata'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return value as CorePermissionRequestEvent['metadata']
 }

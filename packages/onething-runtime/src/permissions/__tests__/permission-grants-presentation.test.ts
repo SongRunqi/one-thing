@@ -49,6 +49,35 @@ describe('permission grants presentation', () => {
     expect(listWorkspaceGrants).toHaveBeenCalledWith('/repo')
   })
 
+  it('passes owner scope to workspace grant adapters when provided', async () => {
+    const listSessionGrants = vi.fn(() => [])
+    const listWorkspaceGrants = vi.fn(() => [])
+    const clearWorkspaceGrants = vi.fn()
+
+    await listOnethingPermissionGrants({
+      workspaceRoot: '/repo',
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+      listSessionGrants,
+      listWorkspaceGrants,
+    })
+    await clearOnethingWorkspacePermissionGrants({
+      workspaceRoot: '/repo',
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+      clearWorkspaceGrants,
+    })
+
+    expect(listWorkspaceGrants).toHaveBeenCalledWith('/repo', {
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+    })
+    expect(clearWorkspaceGrants).toHaveBeenCalledWith('/repo', {
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+    })
+  })
+
   it('wraps revoke and clear grant operations in stable runtime results', async () => {
     const revokeGrant = vi.fn(async () => false)
     const clearSessionGrants = vi.fn()

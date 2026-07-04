@@ -96,6 +96,20 @@ export interface CoreReviewDecision {
   rationale?: string
 }
 
+export type CoreSkillReviewTargetAction = 'none' | 'create' | 'update'
+
+export interface CoreSkillReviewTargetDecision {
+  action?: string
+  name?: string
+  reason?: string
+}
+
+export interface CoreNormalizedSkillReviewTarget {
+  action: CoreSkillReviewTargetAction
+  name?: string
+  reason?: string
+}
+
 export interface CoreSkillReviewPromptMessage {
   role: 'system' | 'user'
   content: string
@@ -122,6 +136,8 @@ export interface CoreAgentSkillReviewPromptOptions extends CoreSkillReviewPrompt
 
 export interface CoreSkillReviewThinkingConfig {
   model: string
+  thinking?: boolean
+  thinkingEffort?: unknown
   thinkingByModel?: Record<string, boolean | undefined>
   thinkingEffortByModel?: Record<string, unknown>
 }
@@ -343,6 +359,51 @@ export function parseReviewDecision(raw: string): CoreReviewDecision {
   }
 }
 
+export function parseSkillReviewTargetDecision(raw: string): CoreSkillReviewTargetDecision {
+  const text = stripJsonFence(raw)
+  try {
+    return JSON.parse(text) as CoreSkillReviewTargetDecision
+  } catch {
+    const start = text.indexOf('{')
+    const end = text.lastIndexOf('}')
+    if (start >= 0 && end > start) {
+      return JSON.parse(text.slice(start, end + 1)) as CoreSkillReviewTargetDecision
+    }
+    throw new Error('Skill review target decision did not return JSON')
+  }
+}
+
+export function normalizeSkillReviewTargetName(rawName: string | undefined): string | undefined {
+  const name = rawName
+    ?.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[._-]+|[._-]+$/g, '')
+    .slice(0, 64)
+  return name || undefined
+}
+
+export function normalizeSkillReviewTargetDecision(
+  decision: CoreSkillReviewTargetDecision,
+): CoreNormalizedSkillReviewTarget {
+  const rawAction = decision.action?.trim().toLowerCase()
+  const action = rawAction === 'create' || rawAction === 'update'
+    ? rawAction
+    : 'none'
+  const name = normalizeSkillReviewTargetName(decision.name)
+  if (action === 'none' || !name) {
+    return {
+      action: 'none',
+      reason: decision.reason,
+    }
+  }
+  return {
+    action,
+    name,
+    reason: decision.reason,
+  }
+}
+
 export function formatSkillReviewVisibleSkillSummary(
   skills: readonly CoreSkillReviewVisibleSkill[],
 ): string {
@@ -383,6 +444,38 @@ export function collectSkillReviewMutableRoots(
     }
   }
   return [...roots]
+}
+
+export function buildSkillReviewTargetMessages(
+  options: CoreSkillReviewPromptOptions,
+): CoreSkillReviewPromptMessage[] {
+  const system = [
+    'You are a background Hermes skill-review planner.',
+    'The user-facing assistant response has already been delivered; do not answer the user.',
+    'Decide whether the recent conversation revealed a durable, reusable procedure that should become or update a Hermes SKILL.md skill.',
+    'Be conservative. Do not create or update a skill for one-off facts, transient debugging details, secrets, credentials, or project-specific trivia.',
+    'Return strict JSON only with this shape: {"action":"none"|"create"|"update","name":"lowercase-name","reason":"short reason"}.',
+    'Use action "update" only when the best target is an existing user/project skill from the visible skills list.',
+    'Use action "create" only when no existing visible skill is an appropriate target; name must be lowercase and filesystem-safe.',
+    'Use action "none" when no durable skill should be created or updated.',
+    'Do not include skill instructions, supporting file paths, markdown content, or implementation details.',
+  ].join('\n')
+
+  const user = [
+    `Session id: ${options.sessionId}`,
+    options.workingDirectory ? `Working directory: ${options.workingDirectory}` : 'Working directory: [none]',
+    '',
+    'Visible skills:',
+    options.visibleSkillSummary,
+    '',
+    'Recent transcript:',
+    options.transcript,
+  ].join('\n')
+
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: user },
+  ]
 }
 
 export function buildSkillReviewMessages(
@@ -427,10 +520,11 @@ export function buildAgentSkillReviewMessages(
     'Decide whether the recent conversation revealed a durable, reusable procedure that should become a Hermes skill.',
     'Be conservative. Do not create a skill for one-off facts, transient debugging details, secrets, credentials, or project-specific trivia.',
     'Use the read, write, and edit tools to create, update, or rewrite skill files directly. Do not use skill_manage for updates.',
-    'Before updating or rewriting an existing skill, read its current SKILL.md. Preserve useful existing instructions unless the new durable workflow truly supersedes them.',
+    'Before updating or rewriting an existing skill, read its current SKILL.md and any relevant supporting files, then edit the source files into the current best version.',
+    'Do not create background-review-update.md or numbered background review update files. If a new support file is truly needed, choose a semantic filename that describes its durable content.',
     'A complete skill is a directory with SKILL.md plus at least one supporting file under references/, templates/, scripts/, or assets/.',
     'Use references/ for durable notes, checklists, examples, and procedure detail; templates/ for reusable user-facing formats; scripts/ only for executable helpers; assets/ only for static resources.',
-    'Every tool path must be inside one of the mutable skill roots listed in the user message. Use absolute paths when possible.',
+    'Every tool path must be inside one of the writable target roots listed in the user message. Use absolute paths when possible.',
     'When no skill should be created or updated, do not call tools and return {"changed":false,"summary":"no durable skill update"}.',
     'After all necessary tool calls, return strict JSON: {"changed":true|false,"summary":"..."}',
   ].join('\n')
@@ -442,7 +536,7 @@ export function buildAgentSkillReviewMessages(
     'Visible skills:',
     options.visibleSkillSummary,
     '',
-    'Mutable skill roots:',
+    'Writable target roots:',
     options.mutableSkillRoots.map(root => `- ${root}`).join('\n'),
     '',
     'Recent transcript:',
@@ -458,6 +552,20 @@ export function buildAgentSkillReviewMessages(
 export function getSkillReviewAgentThinkingOptions(
   config: CoreSkillReviewThinkingConfig,
 ): CoreSkillReviewThinkingOptions {
+  if (config.thinking === false) {
+    return {
+      thinking: 'disabled',
+      reasoningEffort: undefined,
+    }
+  }
+
+  if (config.thinking === true) {
+    return {
+      thinking: 'enabled',
+      reasoningEffort: normalizeReasoningEffort(config.thinkingEffort) ?? 'high',
+    }
+  }
+
   const thinkingByModel = config.thinkingByModel?.[config.model]
   const thinking =
     thinkingByModel === true
@@ -505,6 +613,7 @@ export function buildSkillReviewFileAgentTools(
   options: BuildSkillReviewFileAgentToolsOptions,
 ): CoreSkillReviewFileAgentToolBundle {
   const mutatedPaths = new Set<string>()
+  const readPaths = new Set<string>()
   const buildTool = (
     name: CoreSkillReviewFileToolName,
     mutate: boolean,
@@ -520,10 +629,16 @@ export function buildSkillReviewFileAgentTools(
         if (!parsed.success) return { content: '', error: parsed.error }
         try {
           const resolvedPath = options.resolvePath(parsed.data.path)
+          if (name === 'edit' && !readPaths.has(resolvedPath)) {
+            return agentToolError(`Background skill review must read a file before editing it: ${resolvedPath}`)
+          }
           const result = await adapter.execute({
             ...parsed.data,
             path: resolvedPath,
           }, toolCtx)
+          if (name === 'read') {
+            readPaths.add(resolvedPath)
+          }
           if (mutate) {
             mutatedPaths.add(resolvedPath)
           }
@@ -730,7 +845,7 @@ export function defaultUpdateSupportFile(
   reason?: string,
 ): CoreSkillReviewManageArgs {
   const content = [
-    '# Background Review Update',
+    '# Review Notes',
     '',
     `Description: ${description}`,
     reason?.trim() ? `Reason captured: ${reason.trim()}` : '',
@@ -743,7 +858,7 @@ export function defaultUpdateSupportFile(
 
   return {
     action: 'write_file',
-    file_path: 'references/background-review-update.md',
+    file_path: 'references/review-notes.md',
     file_content: content,
   }
 }
@@ -806,7 +921,7 @@ export function slugFromText(text: string | undefined): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48)
-  return slug || 'background-review-update'
+  return slug || 'review-notes'
 }
 
 export interface UniqueSkillSupportFilePathOptions {
@@ -874,15 +989,7 @@ export function supportFilesForExistingUpdate(
   action: CoreReviewAction,
   skillName: string,
 ): CoreSkillReviewManageArgs[] {
-  const supportFiles = supportFileActions(action, skillName)
-  const description = action.description?.trim() || `Background review update for ${skillName}`
-  const instructions = action.instructions?.trim() || action.content?.trim()
-
-  if (supportFiles.length === 0 && instructions) {
-    supportFiles.push(defaultUpdateSupportFile(description, instructions, action.reason))
-  }
-
-  return supportFiles
+  return supportFileActions(action, skillName)
 }
 
 export function agentToolError(error: Error | string): { content: string; error: string } {
@@ -917,7 +1024,7 @@ export function planAgentReviewedSkillCompletion(input: {
 
   if (supportFiles.length === 0) {
     const supportPath = input.procedureFileExists
-      ? 'references/background-review-notes.md'
+      ? 'references/review-notes.md'
       : 'references/procedure.md'
     supportFileToCreate = {
       path: supportPath,
@@ -998,7 +1105,6 @@ export async function applySkillReviewDecisionWithAdapters<
   let mutated = false
   const skippedOwnedSkills: string[] = []
   const supportFilesWritten: string[] = []
-  const reservedSupportFilesBySkill = new Map<string, Set<string>>()
 
   for (const action of actions) {
     const skillName = action.skill.name ?? ''
@@ -1014,54 +1120,9 @@ export async function applySkillReviewDecisionWithAdapters<
     }
 
     if (mutable) {
-      const reserved = reservedSupportFilesBySkill.get(skillName) ?? new Set<string>()
-      reservedSupportFilesBySkill.set(skillName, reserved)
-      const updates = supportFilesForExistingUpdate({
-        action: 'update',
-        name: skillName,
-        description: action.skill.description,
-        instructions: action.skill.instructions,
-        content: action.skill.content,
-        reason: action.skill.reason,
-        files: action.supportFiles.map(file => ({
-          file_path: file.file_path ?? file.filePath,
-          content: file.file_content ?? file.fileContent ?? file.content,
-        })),
-      }, skillName)
-      const updateFiles = uniqueSkillSupportFileActions({
-        skillName,
-        supportFiles: updates,
-        reserved,
-        exists: options.supportFileExists
-          ? filePath => options.supportFileExists?.(mutable, filePath) ?? false
-          : undefined,
-        now: options.now,
-      })
-      const writtenPaths: string[] = []
-
-      for (const supportFile of updateFiles) {
-        const written = await options.executeSkillManage(supportFile)
-        mutated = mutated || written.mutated
-        if (written.success) {
-          const supportPath = supportFile.file_path ?? supportFile.filePath
-          if (supportPath) {
-            writtenPaths.push(supportPath)
-            supportFilesWritten.push(supportPath)
-          }
-          options.logger?.log?.(`[SkillReview] ${written.title ?? 'Support update'}: ${written.path ?? ''}`)
-        } else {
-          options.logger?.warn?.(`[SkillReview] Support update failed: ${written.error ?? written.output}`)
-        }
-      }
-
-      if (writtenPaths.length > 0) {
-        const referenced = await options.appendSkillSupportReferences(skillName, writtenPaths)
-        mutated = mutated || referenced.mutated
-        if (!referenced.success) {
-          options.logger?.warn?.(`[SkillReview] Support reference update failed for ${skillName}: ${referenced.error}`)
-        }
-      }
-
+      options.logger?.warn?.(
+        `[SkillReview] Skipping JSON update for existing skill ${skillName}; automatic updates must use the background file-editing agent.`,
+      )
       continue
     }
 

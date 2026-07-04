@@ -11,6 +11,7 @@ import {
   THEME_NEUTRAL_COLOR_TOKENS,
 } from './resolver.js'
 import type { ResolvedHighlightStyle, ResolvedUIStyle, ThemeNeutralColorToken } from './resolver.js'
+import { guaranteeMinMixOpacity } from './role-mapping.js'
 
 /**
  * Maps theme property paths to CSS variable names
@@ -389,9 +390,9 @@ const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleF
   'ui.text.faint': {
     fg: ['--text-faint'],
   },
-  'ui.text.placeholder': {
-    fg: ['--text-input-placeholder'],
-  },
+  // ui.text.placeholder intentionally has no legacy alias: ui.editor.placeholder
+  // owns --text-input-placeholder because its value is contrast-repaired
+  // against the composer input surface, which is where the var is consumed.
   'ui.text.disabled': {
     fg: ['--text-input-disabled', '--text-btn-disabled'],
   },
@@ -416,8 +417,16 @@ const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleF
   'ui.border.focus': {
     border: ['--border-input-focus'],
   },
-  'ui.border.selected': {
-    border: ['--border-accent'],
+  // ui.border.selected intentionally has no legacy alias: --border-accent is
+  // owned by ui.action.primary (the plain accent border consumers expect).
+  'ui.table.headerBg': {
+    bg: ['--ui-table-header-bg'],
+  },
+  'ui.table.rowBg': {
+    bg: ['--ui-table-row-bg'],
+  },
+  'ui.table.border': {
+    border: ['--ui-table-border'],
   },
   'ui.action.primary': {
     bg: ['--bg-btn-primary'],
@@ -460,7 +469,9 @@ const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleF
     bg: ['--bg-active', '--active', '--overlay-active'],
   },
   'ui.state.selected': {
-    bg: ['--bg-selected', '--session-highlight'],
+    // --session-highlight is owned by ui.sidebar.itemActive (its only consumer
+    // is the sidebar active session fallback chain).
+    bg: ['--bg-selected'],
   },
   'ui.state.selectedHover': {
     bg: ['--bg-selected-hover'],
@@ -484,7 +495,6 @@ const UI_LEGACY_VAR_MAP: Partial<Record<SemanticUIToken, Partial<Record<UIStyleF
   'ui.sidebar.itemActive': {
     fg: ['--text-sidebar-item-active'],
     bg: ['--session-highlight'],
-    border: ['--border-accent'],
   },
   'ui.sidebar.itemMuted': {
     fg: ['--text-sidebar-muted', '--text-sidebar-count'],
@@ -755,6 +765,11 @@ function addUICSSVariables(
   result: Record<string, string>,
   resolvedUI: Record<SemanticUIToken, ResolvedUIStyle>
 ): void {
+  // Two UI tokens writing different values to the same legacy variable means
+  // last-writer-wins by iteration order — the class of bug where --bg-input
+  // silently diverged from ui.surface.input. Surface it instead of hiding it.
+  const legacyWriters = new Map<string, { token: SemanticUIToken; value: string }>()
+
   for (const [token, style] of Object.entries(resolvedUI) as Array<[SemanticUIToken, ResolvedUIStyle]>) {
     for (const field of ['fg', 'bg', 'border', 'ring', 'shadow'] as UIStyleField[]) {
       const value = style[field]
@@ -764,9 +779,43 @@ function addUICSSVariables(
 
       const legacyVars = UI_LEGACY_VAR_MAP[token]?.[field] || []
       for (const cssVar of legacyVars) {
+        const previous = legacyWriters.get(cssVar)
+        if (previous && previous.value !== value) {
+          console.warn(
+            `[ThemeManager] Conflicting legacy CSS variable ${cssVar}: ` +
+            `${previous.token} wrote ${previous.value}, ${token} overwrites with ${value}`
+          )
+        }
+        legacyWriters.set(cssVar, { token, value })
         result[cssVar] = value
       }
     }
+  }
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100) / 100}%`
+}
+
+function addTableMixCSSVariables(result: Record<string, string>): void {
+  const tableBg = result['--ui-surface-chat-bg'] || result['--ui-surface-app-bg'] || result['--panel'] || result['--bg']
+  const primaryText = result['--ui-text-primary-fg'] || result['--text']
+  const mutedText = result['--ui-text-muted-fg'] || result['--muted'] || primaryText
+  if (!tableBg || !primaryText) return
+
+  result['--app-table-head-mix-percent'] = formatPercent(
+    guaranteeMinMixOpacity(primaryText, tableBg, 4, 0.02)
+  )
+  result['--app-table-border-mix-percent'] = formatPercent(
+    guaranteeMinMixOpacity(primaryText, tableBg, 5, 0.02)
+  )
+  result['--app-table-strong-border-mix-percent'] = formatPercent(
+    guaranteeMinMixOpacity(primaryText, tableBg, 7, 0.028)
+  )
+  if (mutedText) {
+    result['--app-table-stripe-mix-percent'] = formatPercent(
+      guaranteeMinMixOpacity(mutedText, tableBg, 5, 0.014)
+    )
   }
 }
 
@@ -816,6 +865,8 @@ export function generateCSSVariables(
   if (resolvedUI) {
     addUICSSVariables(result, resolvedUI)
   }
+
+  addTableMixCSSVariables(result)
 
   // Generate RGB triplet variables for transparency patterns
   // These are used in rgba(var(--bg-rgb), opacity) patterns

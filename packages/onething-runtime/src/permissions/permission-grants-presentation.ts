@@ -7,8 +7,10 @@ export interface OnethingPermissionIpcLogger {
 export interface ListOnethingPermissionGrantsOptions<TGrant = unknown> {
   sessionId?: string
   workspaceRoot?: string
+  userId?: string
+  workspaceId?: string
   listSessionGrants(sessionId: string): MaybePromise<TGrant[]>
-  listWorkspaceGrants(workspaceRoot: string): MaybePromise<TGrant[]>
+  listWorkspaceGrants(workspaceRoot: string, owner?: { userId?: string; workspaceId?: string }): MaybePromise<TGrant[]>
 }
 
 export interface ListOnethingPermissionGrantsResult<TGrant = unknown> {
@@ -20,13 +22,16 @@ export interface ListOnethingPermissionGrantsResult<TGrant = unknown> {
 export async function listOnethingPermissionGrants<TGrant = unknown>(
   options: ListOnethingPermissionGrantsOptions<TGrant>,
 ): Promise<ListOnethingPermissionGrantsResult<TGrant>> {
+  const owner = ownerFromOptions(options)
   return {
     success: true,
     sessionGrants: options.sessionId
       ? await options.listSessionGrants(options.sessionId)
       : [],
     workspaceGrants: options.workspaceRoot
-      ? await options.listWorkspaceGrants(options.workspaceRoot)
+      ? owner
+        ? await options.listWorkspaceGrants(options.workspaceRoot, owner)
+        : await options.listWorkspaceGrants(options.workspaceRoot)
       : [],
   }
 }
@@ -75,7 +80,9 @@ export interface ClearOnethingSessionPermissionGrantsOptions {
 
 export interface ClearOnethingWorkspacePermissionGrantsOptions {
   workspaceRoot: string
-  clearWorkspaceGrants(workspaceRoot: string): MaybePromise<void>
+  userId?: string
+  workspaceId?: string
+  clearWorkspaceGrants(workspaceRoot: string, owner?: { userId?: string; workspaceId?: string }): MaybePromise<void>
 }
 
 export interface ClearOnethingPermissionGrantsResult {
@@ -102,8 +109,19 @@ export async function clearOnethingSessionPermissionGrantsForIpc(
 export async function clearOnethingWorkspacePermissionGrants(
   options: ClearOnethingWorkspacePermissionGrantsOptions,
 ): Promise<ClearOnethingPermissionGrantsResult> {
-  await options.clearWorkspaceGrants(options.workspaceRoot)
+  const owner = ownerFromOptions(options)
+  if (owner) {
+    await options.clearWorkspaceGrants(options.workspaceRoot, owner)
+  } else {
+    await options.clearWorkspaceGrants(options.workspaceRoot)
+  }
   return { success: true }
+}
+
+function ownerFromOptions(options: { userId?: string; workspaceId?: string }): { userId?: string; workspaceId?: string } | undefined {
+  return options.userId || options.workspaceId
+    ? { userId: options.userId, workspaceId: options.workspaceId }
+    : undefined
 }
 
 export async function clearOnethingWorkspacePermissionGrantsForIpc(

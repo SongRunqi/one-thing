@@ -157,6 +157,7 @@ export function createOnethingRuntimeFromStreamRuntime<
     streamChannel: options.streamChannel,
     sender,
     sessionRuntime: options.sessionRuntime,
+    eventBus: options.eventBus,
   })
 
   return {

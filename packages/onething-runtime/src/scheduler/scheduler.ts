@@ -72,6 +72,16 @@ type InternalTask = SchedulerTaskRegistration & {
   id: string
 }
 
+interface SchedulerRefreshOptions {
+  persist?: boolean
+  reschedule?: boolean
+}
+
+interface SchedulerRefreshResult {
+  snapshot?: SchedulerTaskSnapshot
+  changed: boolean
+}
+
 function normalizeSchedule(schedule: SchedulerSchedule): SchedulerSchedule {
   if (schedule.kind === 'cron') {
     const expr = schedule.expr.trim()
@@ -179,9 +189,18 @@ export class Scheduler {
 
   list(): SchedulerTaskSnapshot[] {
     this.ensureLoaded()
-    return Array.from(this.tasks.keys())
-      .map(id => this.refresh(id))
+    let changed = false
+    const snapshots = Array.from(this.tasks.keys())
+      .map(id => {
+        const result = this.refreshTask(id, { persist: false, reschedule: false })
+        changed = changed || result.changed
+        return result.snapshot
+      })
       .filter((snapshot): snapshot is SchedulerTaskSnapshot => Boolean(snapshot))
+
+    if (changed) this.save()
+    this.rescheduleTimer()
+    return snapshots
   }
 
   getStatus(id: string): SchedulerTaskSnapshot | undefined {
@@ -190,10 +209,21 @@ export class Scheduler {
   }
 
   refresh(id: string): SchedulerTaskSnapshot | undefined {
+    return this.refreshTask(id).snapshot
+  }
+
+  private refreshTask(id: string, options: SchedulerRefreshOptions = {}): SchedulerRefreshResult {
     this.ensureLoaded()
     const task = this.tasks.get(id)
-    if (!task) return undefined
+    if (!task) return { changed: false }
     const state = this.getOrCreateState(id)
+    const previous = {
+      enabled: state.enabled,
+      scheduleKey: state.scheduleKey,
+      nextRunAt: state.nextRunAt,
+      lastError: state.lastError,
+      lastErrorAt: state.lastErrorAt,
+    }
 
     let schedule: SchedulerSchedule | undefined
     let enabled = false
@@ -217,17 +247,30 @@ export class Scheduler {
       state.nextRunAt = nextRunAt
       if (changed) delete state.lastError
     } catch (error) {
+      const message = cleanError(error)
       state.enabled = false
       state.schedule = undefined
       state.scheduleKey = undefined
       state.nextRunAt = undefined
-      state.lastError = cleanError(error)
-      state.lastErrorAt = this.nowMs()
+      if (state.lastError !== message) {
+        state.lastErrorAt = this.nowMs()
+      }
+      state.lastError = message
     }
 
-    this.save()
-    this.rescheduleTimer()
-    return this.snapshot(task, state)
+    const changed =
+      previous.enabled !== state.enabled ||
+      previous.scheduleKey !== state.scheduleKey ||
+      previous.nextRunAt !== state.nextRunAt ||
+      previous.lastError !== state.lastError ||
+      previous.lastErrorAt !== state.lastErrorAt
+
+    if (changed && options.persist !== false) this.save()
+    if (options.reschedule !== false) this.rescheduleTimer()
+    return {
+      snapshot: this.snapshot(task, state),
+      changed,
+    }
   }
 
   async runNow(id: string, options: SchedulerRunOptions = {}): Promise<SchedulerRunRecord> {

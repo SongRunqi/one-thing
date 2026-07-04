@@ -16,6 +16,7 @@ import {
 } from './resolver.js'
 import { generateCSSVariables } from './css-mapper.js'
 import { parseBase46Lua, convertBase46ToTheme } from './base46-parser.js'
+import type { ThemeDebugData } from './theme-debug.js'
 
 export type {
   ApplyThemeResponse,
@@ -316,7 +317,8 @@ export function getThemeBackgroundColor(
  */
 export function applyTheme(
   themeId: string,
-  mode: 'dark' | 'light'
+  mode: 'dark' | 'light',
+  onDebug?: (data: ThemeDebugData) => void
 ): Record<string, string> {
   const theme = getTheme(themeId)
   if (!theme) {
@@ -325,10 +327,10 @@ export function applyTheme(
     if (!defaultTheme) {
       throw new Error(`Default theme ${DEFAULT_THEME_ID} not found`)
     }
-    return applyThemeInternal(defaultTheme, mode)
+    return applyThemeInternal(defaultTheme, mode, DEFAULT_THEME_ID, onDebug)
   }
 
-  return applyThemeInternal(theme, mode)
+  return applyThemeInternal(theme, mode, themeId, onDebug)
 }
 
 /**
@@ -336,12 +338,19 @@ export function applyTheme(
  */
 function applyThemeInternal(
   theme: Theme,
-  mode: 'dark' | 'light'
+  mode: 'dark' | 'light',
+  themeId: string,
+  onDebug?: (data: ThemeDebugData) => void
 ): Record<string, string> {
   // Resolve all color references
   const resolvedColors = resolveTheme(theme, mode)
-  const resolvedHighlights = resolveThemeHighlights(theme, mode, resolvedColors)
   const resolvedUI = resolveThemeUI(theme, mode, resolvedColors)
+  const resolvedHighlights = resolveThemeHighlights(
+    theme,
+    mode,
+    resolvedColors,
+    resolvedUI['ui.surface.codeBlock'].bg
+  )
   const colorScaleDiagnostics = resolveThemeColorScaleDiagnostics(resolvedColors, mode)
 
   console.log('[ThemeManager] Neutral text semantics', JSON.stringify({
@@ -361,6 +370,8 @@ function applyThemeInternal(
     primary: colorScaleDiagnostics.primary,
     status: colorScaleDiagnostics.status,
   }, null, 2))
+
+  onDebug?.({ themeId, mode, resolvedUI })
 
   // Map to CSS variables
   const cssVariables = generateCSSVariables(resolvedColors, resolvedHighlights, resolvedUI)

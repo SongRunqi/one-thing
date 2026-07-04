@@ -1,33 +1,33 @@
 import {
+  agentSupportsTools,
+  resolveAgentModelCapabilities,
   runAgentLoop,
+  type AgentProvider,
   type AgentJsonObject,
   type AgentToolExecutionContext,
 } from '@onething/core/agent-loop'
 import { toJsonObject } from '@onething/core'
-import { createDeepSeekAgentProvider } from '../agent-loop/providers/index.js'
+import path from 'path'
 import {
-  MAX_SKILL_ACTIONS,
   SUPPORT_FILE_ROOTS,
-  appendSkillSupportReferencesWithAdapters,
-  applySkillReviewDecisionWithAdapters,
   assertSkillReviewToolPath,
   buildSkillReviewAgentRunPlan,
   buildSkillReviewFileAgentTools,
-  buildSkillReviewMessages,
-  collectSkillReviewMutableRoots,
+  buildSkillReviewTargetMessages,
   ensureAgentReviewedSkillsCompleteWithAdapters,
   findMutableSkillReviewSkill,
   findSkillReviewVisibleSkill,
   formatSkillReviewVisibleSkillSummary,
   hasSkillReviewAgentMutation,
   isMutatedToolResult,
+  normalizeSkillReviewTargetDecision,
+  parseSkillReviewTargetDecision,
   skillReviewTranscriptFromMessages,
   type CoreSkillReviewExecutionResult,
   type CoreSkillReviewFileToolAdapter,
   type CoreSkillReviewManageArgs,
   type CoreSkillReviewMessage,
   type CoreSkillReviewPromptMessage,
-  type CoreSkillReviewSupportReferenceResult,
   type CoreSkillReviewVisibleSkill,
 } from './skill-review-core.js'
 import type { CoreSkillReviewSettings } from './skill-review-state-core.js'
@@ -67,6 +67,16 @@ export interface OnethingSkillReviewProviderConfigLike {
   thinkingEffortByModel?: Record<string, unknown>
 }
 
+export interface OnethingSkillReviewAgentProviderRef {
+  provider: AgentProvider
+  providerId: string
+  model: string
+  thinking?: boolean
+  thinkingEffort?: unknown
+  thinkingByModel?: Record<string, boolean | undefined>
+  thinkingEffortByModel?: Record<string, unknown>
+}
+
 export type OnethingSkillReviewContext<
   TSettings extends CoreSkillReviewSettings = CoreSkillReviewSettings,
   TSession extends OnethingSkillReviewSessionLike = OnethingSkillReviewSessionLike,
@@ -93,13 +103,6 @@ export interface CreateOnethingSkillReviewFileToolAdaptersOptions {
   toToolContext(toolCtx: AgentToolExecutionContext): Tool.Context
 }
 
-export interface OnethingSkillReviewGenerateOptions {
-  temperature: number
-  maxTokens: number
-  debugPurpose: string
-  debugSessionId: string
-}
-
 export interface OnethingSkillReviewProviderRequestDump {
   providerId: string
   model: string
@@ -121,22 +124,17 @@ export interface OnethingSkillReviewAdapters<
     options: { workingDirectory?: string },
   ): CoreSkillReviewExecutionResult | Promise<CoreSkillReviewExecutionResult>
   invalidateSkillsCache?(): void | Promise<void>
-  generateChatResponse(
-    providerId: string,
-    providerConfig: {
-      apiKey: string
-      baseUrl?: string
-      model: string
-      oauthToken?: unknown
-      authContext?: unknown
-    },
-    messages: CoreSkillReviewPromptMessage[],
-    options: OnethingSkillReviewGenerateOptions,
-  ): Promise<string>
-  fetchImpl?(): typeof globalThis.fetch
+  createAgentProvider(ctx: TContext): Promise<OnethingSkillReviewAgentProviderRef | undefined> | OnethingSkillReviewAgentProviderRef | undefined
   requestDumper?(request: OnethingSkillReviewProviderRequestDump): Promise<string | undefined>
   fileTools: OnethingSkillReviewFileToolAdapters<TContext>
   logger?: Pick<Console, 'log' | 'warn' | 'error'>
+}
+
+interface SkillReviewTarget {
+  action: 'create' | 'update'
+  name: string
+  mutableRoots: string[]
+  pathBase: string
 }
 
 type SkillReviewTrigger = CoreTrigger<OnethingSkillReviewContext>
@@ -212,49 +210,19 @@ function mutableSkill<TContext extends OnethingSkillReviewContext>(
   return findMutableSkillReviewSkill(adapters.getVisibleSkills(workingDirectory), name)
 }
 
-function supportFileExists(skill: CoreSkillReviewVisibleSkill, filePath: string): boolean {
-  return pathExistsInDir(skill.directoryPath, filePath)
-}
-
-function appendSkillSupportReferences<TContext extends OnethingSkillReviewContext>(
-  adapters: OnethingSkillReviewAdapters<TContext>,
-  skillName: string,
-  supportPaths: string[],
-  workingDirectory?: string,
-): Promise<CoreSkillReviewSupportReferenceResult> {
-  return appendSkillSupportReferencesWithAdapters({
-    skillName,
-    supportPaths,
-    readSkill: name => adapters.executeSkillManage({ action: 'read', name }, { workingDirectory }),
-    editSkill: (name, content) => adapters.executeSkillManage({
-      action: 'edit',
-      name,
-      content,
-    }, { workingDirectory }),
-  })
-}
-
-function mutableSkillRoots<TContext extends OnethingSkillReviewContext>(
-  adapters: OnethingSkillReviewAdapters<TContext>,
-  workingDirectory?: string,
-): string[] {
-  return collectSkillReviewMutableRoots(
-    adapters.getUserSkillsPath(),
-    adapters.getVisibleSkills(workingDirectory),
-  )
-}
-
 function assertSkillToolPath<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
   rawPath: string,
   ctx: TContext,
+  pathBase: string,
+  mutableRoots: string[],
 ): string {
   return assertSkillReviewToolPath({
     rawPath,
-    workingDirectory: ctx.session.workingDirectory,
+    workingDirectory: pathBase,
     userSkillsPath: adapters.getUserSkillsPath(),
     homeDir: adapters.homeDir?.(),
-    mutableRoots: mutableSkillRoots(adapters, ctx.session.workingDirectory),
+    mutableRoots,
   })
 }
 
@@ -265,11 +233,12 @@ function listSkillSupportFiles(skillDir: string): string[] {
 function ensureAgentReviewedSkillsComplete<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
   mutatedPaths: Set<string>,
+  mutableRoots: string[],
   workingDirectory?: string,
 ): boolean {
   return ensureAgentReviewedSkillsCompleteWithAdapters({
     mutatedPaths,
-    mutableRoots: mutableSkillRoots(adapters, workingDirectory),
+    mutableRoots,
     adapters: {
       isSkillFile: isFile,
       readSkillFile: readTextFile,
@@ -284,63 +253,133 @@ function ensureAgentReviewedSkillsComplete<TContext extends OnethingSkillReviewC
 function resolveFileToolAdapters<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
   ctx: TContext,
+  mutableRoots: string[],
 ): Record<'read' | 'write' | 'edit', CoreSkillReviewFileToolAdapter> {
   const fileTools = adapters.fileTools
   return typeof fileTools === 'function'
-    ? fileTools(ctx, { mutableRoots: mutableSkillRoots(adapters, ctx.session.workingDirectory) })
+    ? fileTools(ctx, { mutableRoots })
     : fileTools
 }
 
 function createSkillFileAgentTools<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
   ctx: TContext,
+  target: SkillReviewTarget,
 ) {
   return buildSkillReviewFileAgentTools({
     userSkillsRoot: adapters.getUserSkillsPath(),
-    resolvePath: rawPath => assertSkillToolPath(adapters, rawPath, ctx),
-    adapters: resolveFileToolAdapters(adapters, ctx),
+    resolvePath: rawPath => assertSkillToolPath(adapters, rawPath, ctx, target.pathBase, target.mutableRoots),
+    adapters: resolveFileToolAdapters(adapters, ctx, target.mutableRoots),
   })
 }
 
-function buildReviewMessages<TContext extends OnethingSkillReviewContext>(
+function buildTargetReviewMessages<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
   ctx: TContext,
 ): CoreSkillReviewPromptMessage[] {
   const workingDirectory = ctx.session.workingDirectory
-  return buildSkillReviewMessages({
+  return buildSkillReviewTargetMessages({
     sessionId: ctx.sessionId,
     workingDirectory,
     visibleSkillSummary: userSkillSummary(adapters, workingDirectory),
     transcript: skillReviewTranscriptFromMessages(ctx.messages as CoreSkillReviewMessage[]),
   })
+}
+
+function resolveSkillReviewTarget<TContext extends OnethingSkillReviewContext>(
+  adapters: OnethingSkillReviewAdapters<TContext>,
+  ctx: TContext,
+  rawDecision: string,
+): SkillReviewTarget | undefined {
+  const logger = getLogger(adapters)
+  let decision
+  try {
+    decision = normalizeSkillReviewTargetDecision(parseSkillReviewTargetDecision(rawDecision))
+  } catch (error) {
+    logger.warn(`[SkillReview] Target planning failed: ${error instanceof Error ? error.message : String(error)}`)
+    return undefined
+  }
+
+  if (decision.action === 'none') return undefined
+
+  const workingDirectory = ctx.session.workingDirectory
+  const existing = visibleSkill(adapters, decision.name ?? '', workingDirectory)
+  const mutable = mutableSkill(adapters, decision.name ?? '', workingDirectory)
+
+  if (decision.action === 'update' || existing) {
+    if (!mutable) {
+      logger.warn(`[SkillReview] Skipping ${decision.action} for ${decision.name}; target skill is not mutable or not visible.`)
+      return undefined
+    }
+    return {
+      action: 'update',
+      name: mutable.name,
+      mutableRoots: [path.resolve(mutable.directoryPath)],
+      pathBase: path.resolve(mutable.directoryPath),
+    }
+  }
+
+  const targetName = decision.name
+  if (!targetName) return undefined
+
+  const skillRoot = path.resolve(adapters.getUserSkillsPath(), targetName)
+  return {
+    action: 'create',
+    name: targetName,
+    mutableRoots: [skillRoot],
+    pathBase: skillRoot,
+  }
+}
+
+async function planSkillReviewTarget<TContext extends OnethingSkillReviewContext>(
+  adapters: OnethingSkillReviewAdapters<TContext>,
+  ctx: TContext,
+  agentProvider: OnethingSkillReviewAgentProviderRef,
+): Promise<SkillReviewTarget | undefined> {
+  const result = await runAgentLoop({
+    provider: agentProvider.provider,
+    model: agentProvider.model,
+    messages: buildTargetReviewMessages(adapters, ctx),
+    tools: [],
+    selectedToolNames: [],
+    maxTurns: 1,
+    temperature: 0.1,
+    maxTokens: 800,
+    thinking: agentProvider.thinking === true ? 'enabled' : agentProvider.thinking === false ? 'disabled' : undefined,
+    reasoningEffort: agentProvider.thinking === true
+      ? (agentProvider.thinkingEffort === 'max' ? 'max' : 'high')
+      : undefined,
+    sessionId: ctx.sessionId,
+    messageId: `skill-review-target:${ctx.sessionId}`,
+    workingDirectory: ctx.session.workingDirectory,
+  })
+
+  return resolveSkillReviewTarget(adapters, ctx, result.text)
 }
 
 async function runAgentSkillReview<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
   ctx: TContext,
+  agentProvider: OnethingSkillReviewAgentProviderRef,
+  target: SkillReviewTarget,
 ): Promise<void> {
-  const model = ctx.providerConfig.model
   const workingDirectory = ctx.session.workingDirectory
   const runPlan = buildSkillReviewAgentRunPlan({
-    model,
-    thinkingByModel: ctx.providerConfig.thinkingByModel,
-    thinkingEffortByModel: ctx.providerConfig.thinkingEffortByModel,
+    model: agentProvider.model,
+    thinking: agentProvider.thinking,
+    thinkingEffort: agentProvider.thinkingEffort,
+    thinkingByModel: agentProvider.thinkingByModel,
+    thinkingEffortByModel: agentProvider.thinkingEffortByModel,
     sessionId: ctx.sessionId,
     workingDirectory,
     visibleSkillSummary: userSkillSummary(adapters, workingDirectory),
-    mutableSkillRoots: mutableSkillRoots(adapters, workingDirectory),
+    mutableSkillRoots: target.mutableRoots,
     transcript: skillReviewTranscriptFromMessages(ctx.messages as CoreSkillReviewMessage[]),
   })
-  const provider = createDeepSeekAgentProvider({
-    apiKey: ctx.providerConfig.apiKey ?? '',
-    baseUrl: ctx.providerConfig.baseUrl,
-    fetchImpl: adapters.fetchImpl?.(),
-    requestDumper: adapters.requestDumper as Parameters<typeof createDeepSeekAgentProvider>[0]['requestDumper'],
-  })
-  const skillFileTools = createSkillFileAgentTools(adapters, ctx)
+  const skillFileTools = createSkillFileAgentTools(adapters, ctx, target)
 
   const result = await runAgentLoop({
-    provider,
+    provider: agentProvider.provider,
     model: runPlan.model,
     messages: runPlan.messages,
     tools: skillFileTools.tools,
@@ -365,7 +404,12 @@ async function runAgentSkillReview<TContext extends OnethingSkillReviewContext>(
     return isMutatedToolResult(toolResult.result.data)
   })
   const completedSkillPackage = skillFileTools.mutatedPaths.size > 0
-    ? ensureAgentReviewedSkillsComplete(adapters, skillFileTools.mutatedPaths, ctx.session.workingDirectory)
+    ? ensureAgentReviewedSkillsComplete(
+      adapters,
+      skillFileTools.mutatedPaths,
+      target.mutableRoots,
+      ctx.session.workingDirectory,
+    )
     : false
   const mutated = hasSkillReviewAgentMutation({
     agentMutated,
@@ -380,57 +424,30 @@ async function runAgentSkillReview<TContext extends OnethingSkillReviewContext>(
   }
 }
 
-async function runJsonSkillReview<TContext extends OnethingSkillReviewContext>(
-  adapters: OnethingSkillReviewAdapters<TContext>,
-  ctx: TContext,
-): Promise<void> {
-  const response = await adapters.generateChatResponse(
-    ctx.providerId,
-    {
-      apiKey: ctx.providerConfig.apiKey ?? '',
-      baseUrl: ctx.providerConfig.baseUrl,
-      model: ctx.providerConfig.model,
-      oauthToken: ctx.providerConfig.oauthToken,
-      authContext: ctx.providerConfig.authContext,
-    },
-    buildReviewMessages(adapters, ctx),
-    {
-      temperature: 0.1,
-      maxTokens: 3200,
-      debugPurpose: 'skill-review',
-      debugSessionId: ctx.sessionId,
-    },
-  )
-
-  const result = await applySkillReviewDecisionWithAdapters({
-    response,
-    maxActions: MAX_SKILL_ACTIONS,
-    findVisibleSkill: name => visibleSkill(adapters, name, ctx.session.workingDirectory),
-    findMutableSkill: name => mutableSkill(adapters, name, ctx.session.workingDirectory),
-    supportFileExists,
-    executeSkillManage: args =>
-      adapters.executeSkillManage(args, { workingDirectory: ctx.session.workingDirectory }),
-    appendSkillSupportReferences: (skillName, supportPaths) =>
-      appendSkillSupportReferences(adapters, skillName, supportPaths, ctx.session.workingDirectory),
-    invalidateSkillsCache: adapters.invalidateSkillsCache,
-    logger: getLogger(adapters),
-  })
-
-  if (result.actionCount === 0) {
-    getLogger(adapters).log(`[SkillReview] No skill changes for session ${ctx.sessionId}`)
-  }
-}
-
 export async function runOnethingSkillReview<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
   ctx: TContext,
 ): Promise<void> {
-  if (ctx.providerId === 'deepseek') {
-    await runAgentSkillReview(adapters, ctx)
+  const logger = getLogger(adapters)
+  const agentProvider = await adapters.createAgentProvider(ctx)
+  if (!agentProvider) {
+    logger.log(`[SkillReview] Skipping review for session ${ctx.sessionId}; no tool-call agent provider is configured.`)
     return
   }
 
-  await runJsonSkillReview(adapters, ctx)
+  const capabilities = await resolveAgentModelCapabilities(agentProvider.provider, agentProvider.model)
+  if (!agentSupportsTools(capabilities)) {
+    logger.warn(`[SkillReview] Skipping review for session ${ctx.sessionId}; tool provider ${agentProvider.providerId}/${agentProvider.model} does not support tool calls.`)
+    return
+  }
+
+  const target = await planSkillReviewTarget(adapters, ctx, agentProvider)
+  if (!target) {
+    logger.log(`[SkillReview] No skill changes for session ${ctx.sessionId}`)
+    return
+  }
+
+  await runAgentSkillReview(adapters, ctx, agentProvider, target)
 }
 
 export function createOnethingSkillReviewTrigger<TContext extends OnethingSkillReviewContext>(

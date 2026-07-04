@@ -123,6 +123,12 @@ export interface OnethingMediaIngestGeneratedImageInput {
   messageId: string
 }
 
+interface IngestMediaAssetResult {
+  asset?: OnethingMediaAsset
+  created: boolean
+  changed: boolean
+}
+
 function mimeToExtension(mimeType: string, fallbackName?: string): string {
   const existing = fallbackName ? extnamePath(fallbackName) : ''
   if (existing) return existing
@@ -232,6 +238,8 @@ export function mediaAssetToLegacyImage(asset: OnethingMediaAsset): OnethingLega
 }
 
 export class OnethingMediaLibraryService {
+  private indexCache: OnethingMediaLibraryIndex | null = null
+
   constructor(private readonly paths: OnethingMediaLibraryPaths) {}
 
   listAssets(query: OnethingMediaQuery = {}): OnethingMediaAsset[] {
@@ -307,52 +315,10 @@ export class OnethingMediaLibraryService {
   }
 
   ingestAttachment(input: OnethingMediaIngestAttachmentInput): OnethingMediaAsset | undefined {
-    const attachment = input.attachment
-    const kind = kindFromAttachment(attachment)
-    const source: OnethingMediaSource = input.role === 'user' ? 'user-upload' : 'external'
-    const link: OnethingMediaAssetLink = {
-      sessionId: input.sessionId,
-      messageId: input.messageId,
-      attachmentId: attachment.id,
-      role: input.role,
-    }
-
-    if (!attachment.base64Data) {
-      return this.upsertMetadataOnlyAsset({
-        kind,
-        source,
-        fileName: attachment.fileName,
-        mimeType: attachment.mimeType,
-        size: attachment.size,
-        width: attachment.width,
-        height: attachment.height,
-        link,
-      })
-    }
-
-    const buffer = base64ToBuffer(attachment.base64Data)
-    const contentHash = hashBuffer(buffer)
-    const existing = this.findByHash(kind, source, contentHash)
-    if (existing) {
-      const index = this.loadIndex()
-      const asset = index.assets.find(item => item.id === existing.id)
-      if (!asset) return existing
-      mergeLink(asset, link)
-      this.saveIndex(index)
-      return asset
-    }
-
-    return this.createStoredAsset({
-      kind,
-      source,
-      buffer,
-      mimeType: attachment.mimeType,
-      fileName: attachment.fileName,
-      width: attachment.width,
-      height: attachment.height,
-      link,
-      contentHash,
-    })
+    const index = this.loadIndex()
+    const result = this.ingestAttachmentIntoIndex(index, input)
+    if (result.changed) this.saveIndex(index)
+    return result.asset
   }
 
   async ingestGeneratedImage(input: OnethingMediaIngestGeneratedImageInput): Promise<OnethingMediaAsset> {
@@ -441,24 +407,25 @@ export class OnethingMediaLibraryService {
   rebuildFromSessions(sessions: OnethingMediaSession[]): { added: number; skipped: number } {
     let added = 0
     let skipped = 0
+    let changed = false
+    const index = this.loadIndex()
 
     for (const session of sessions) {
       for (const message of session.messages) {
         for (const attachment of message.attachments ?? []) {
           try {
-            const before = this.loadIndex().assets.length
-            const asset = this.ingestAttachment({
+            const result = this.ingestAttachmentIntoIndex(index, {
               sessionId: session.id,
               messageId: message.id,
               role: message.role,
               attachment,
             })
-            if (!asset) {
+            changed = changed || result.changed
+            if (!result.asset) {
               skipped += 1
               continue
             }
-            const after = this.loadIndex().assets.length
-            if (after > before) added += 1
+            if (result.created) added += 1
             else skipped += 1
           } catch (error) {
             console.warn('[MediaLibrary] Failed to backfill attachment:', {
@@ -474,7 +441,64 @@ export class OnethingMediaLibraryService {
       }
     }
 
+    if (changed) this.saveIndex(index)
     return { added, skipped }
+  }
+
+  private ingestAttachmentIntoIndex(
+    index: OnethingMediaLibraryIndex,
+    input: OnethingMediaIngestAttachmentInput,
+  ): IngestMediaAssetResult {
+    const attachment = input.attachment
+    const kind = kindFromAttachment(attachment)
+    const source: OnethingMediaSource = input.role === 'user' ? 'user-upload' : 'external'
+    const link: OnethingMediaAssetLink = {
+      sessionId: input.sessionId,
+      messageId: input.messageId,
+      attachmentId: attachment.id,
+      role: input.role,
+    }
+
+    if (!attachment.base64Data) {
+      return this.upsertMetadataOnlyAssetIntoIndex(index, {
+        kind,
+        source,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        size: attachment.size,
+        width: attachment.width,
+        height: attachment.height,
+        link,
+      })
+    }
+
+    const buffer = base64ToBuffer(attachment.base64Data)
+    const contentHash = hashBuffer(buffer)
+    const existing = this.findByHashInIndex(index, kind, source, contentHash)
+    if (existing) {
+      const changed = mergeLink(existing, link)
+      return {
+        asset: existing,
+        created: false,
+        changed,
+      }
+    }
+
+    return {
+      asset: this.createStoredAssetInIndex(index, {
+        kind,
+        source,
+        buffer,
+        mimeType: attachment.mimeType,
+        fileName: attachment.fileName,
+        width: attachment.width,
+        height: attachment.height,
+        link,
+        contentHash,
+      }),
+      created: true,
+      changed: true,
+    }
   }
 
   private upsertMetadataOnlyAsset(input: {
@@ -488,6 +512,25 @@ export class OnethingMediaLibraryService {
     link: OnethingMediaAssetLink
   }): OnethingMediaAsset {
     const index = this.loadIndex()
+    const result = this.upsertMetadataOnlyAssetIntoIndex(index, input)
+    if (result.changed) this.saveIndex(index)
+    if (!result.asset) throw new Error('Failed to create media asset')
+    return result.asset
+  }
+
+  private upsertMetadataOnlyAssetIntoIndex(
+    index: OnethingMediaLibraryIndex,
+    input: {
+      kind: OnethingMediaKind
+      source: OnethingMediaSource
+      fileName: string
+      mimeType: string
+      size: number
+      width?: number
+      height?: number
+      link: OnethingMediaAssetLink
+    },
+  ): IngestMediaAssetResult {
     const existing = index.assets.find(asset =>
       asset.source === input.source &&
       asset.kind === input.kind &&
@@ -496,7 +539,13 @@ export class OnethingMediaLibraryService {
       asset.links.some(link => linkKey(link) === linkKey(input.link))
     )
 
-    if (existing) return existing
+    if (existing) {
+      return {
+        asset: existing,
+        created: false,
+        changed: false,
+      }
+    }
 
     const now = Date.now()
     const asset: OnethingMediaAsset = {
@@ -513,8 +562,11 @@ export class OnethingMediaLibraryService {
       updatedAt: now,
     }
     index.assets.unshift(asset)
-    this.saveIndex(index)
-    return asset
+    return {
+      asset,
+      created: true,
+      changed: true,
+    }
   }
 
   private createStoredAsset(input: {
@@ -530,6 +582,26 @@ export class OnethingMediaLibraryService {
     metadata?: OnethingMediaAsset['metadata']
   }): OnethingMediaAsset {
     const index = this.loadIndex()
+    const asset = this.createStoredAssetInIndex(index, input)
+    this.saveIndex(index)
+    return asset
+  }
+
+  private createStoredAssetInIndex(
+    index: OnethingMediaLibraryIndex,
+    input: {
+      kind: OnethingMediaKind
+      source: OnethingMediaSource
+      buffer: Buffer
+      mimeType: string
+      fileName?: string
+      width?: number
+      height?: number
+      link: OnethingMediaAssetLink
+      contentHash: string
+      metadata?: OnethingMediaAsset['metadata']
+    },
+  ): OnethingMediaAsset {
     const id = createMediaId()
     const extension = mimeToExtension(input.mimeType, input.fileName)
     const fileName = input.fileName || `${id}${extension}`
@@ -558,7 +630,6 @@ export class OnethingMediaLibraryService {
     }
 
     index.assets.unshift(asset)
-    this.saveIndex(index)
     return asset
   }
 
@@ -567,7 +638,16 @@ export class OnethingMediaLibraryService {
     source: OnethingMediaSource,
     contentHash: string,
   ): OnethingMediaAsset | undefined {
-    return this.loadIndex().assets.find(asset =>
+    return this.findByHashInIndex(this.loadIndex(), kind, source, contentHash)
+  }
+
+  private findByHashInIndex(
+    index: OnethingMediaLibraryIndex,
+    kind: OnethingMediaKind,
+    source: OnethingMediaSource,
+    contentHash: string,
+  ): OnethingMediaAsset | undefined {
+    return index.assets.find(asset =>
       asset.kind === kind &&
       asset.source === source &&
       asset.contentHash === contentHash
@@ -575,19 +655,22 @@ export class OnethingMediaLibraryService {
   }
 
   private loadIndex(): OnethingMediaLibraryIndex {
+    if (this.indexCache) return this.indexCache
+
     ensureDir(dirnamePath(this.paths.indexPath))
     ensureDir(this.paths.imagesDir)
     ensureDir(this.paths.filesDir)
 
     const raw = readJsonFile<unknown>(this.paths.indexPath, { version: 2, assets: [] })
     if (isMediaLibraryIndex(raw)) {
-      return {
+      this.indexCache = {
         version: 2,
         assets: raw.assets.map(asset => ({
           ...asset,
           links: Array.isArray(asset.links) ? asset.links : [],
         })),
       }
+      return this.indexCache
     }
 
     if (isLegacyIndex(raw)) {
@@ -596,10 +679,12 @@ export class OnethingMediaLibraryService {
       return migrated
     }
 
-    return { version: 2, assets: [] }
+    this.indexCache = { version: 2, assets: [] }
+    return this.indexCache
   }
 
   private saveIndex(index: OnethingMediaLibraryIndex): void {
+    this.indexCache = index
     writeJsonFile(this.paths.indexPath, {
       version: 2,
       assets: index.assets,

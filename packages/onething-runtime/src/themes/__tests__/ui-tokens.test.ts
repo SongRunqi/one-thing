@@ -339,12 +339,14 @@ describe('theme UI semantic tokens', () => {
       disabledText: expectedNeutralText.disabledText,
       baseBorder: '#303030',
       lightBorder: '#282828',
-      baseFill: '#202020',
+      // Neutral fills are anchored onto the derived surface roles, so they
+      // must match the resolved UI surfaces rather than the raw theme values.
+      baseFill: resolvedUI['ui.surface.panel'].bg,
       blankFill: 'transparent',
       basicBlack: '#000000',
       basicWhite: '#FFFFFF',
-      pageBackground: '#101010',
-      baseBackground: '#181818',
+      pageBackground: resolvedUI['ui.surface.app'].bg,
+      baseBackground: resolvedUI['ui.surface.chat'].bg,
       overlayBackground: '#202020',
     })
 
@@ -367,8 +369,9 @@ describe('theme UI semantic tokens', () => {
     expect(cssVariables['--text-color-regular']).toBe(expectedNeutralText.regularText)
     expect(cssVariables['--color-neutral-base-border']).toBe('#303030')
     expect(cssVariables['--border-color-base']).toBe('#303030')
-    expect(cssVariables['--color-neutral-base-fill']).toBe('#202020')
-    expect(cssVariables['--fill-color-base']).toBe('#202020')
+    // Anchored onto the derived panel surface, not the raw theme fill.
+    expect(cssVariables['--color-neutral-base-fill']).toBe(resolvedUI['ui.surface.panel'].bg)
+    expect(cssVariables['--fill-color-base']).toBe(resolvedUI['ui.surface.panel'].bg)
     expect(cssVariables['--color-neutral-page-background']).toBe('#101010')
     expect(cssVariables['--bg-color-page']).toBe('#101010')
     expect(cssVariables['--ui-action-primary-bg']).toBe('#3388dd')
@@ -631,6 +634,7 @@ describe('theme UI semantic tokens', () => {
       resolvedUI['ui.state.selected'].border,
       'dark'
     )!
+    const cssVariables = generateCSSVariables(resolvedTheme, undefined, resolvedUI)
 
     expect(resolvedUI['ui.accent.primary'].fg).toBe('#123abc')
     expect(resolvedUI['ui.action.primary']).toMatchObject({
@@ -667,6 +671,14 @@ describe('theme UI semantic tokens', () => {
     expect(resolvedUI['ui.message.thinking'].fg).toBe(expectedNeutralText.secondaryText)
     expect(resolvedUI['ui.border.default'].border).toBe('#444444')
     expect(resolvedUI['ui.border.subtle'].border).toBe('#333333')
+    expect(resolvedUI['ui.table.headerBg'].bg).toBeTruthy()
+    expect(resolvedUI['ui.table.rowBg'].bg).toBe('transparent')
+    expect(resolvedUI['ui.table.border'].border).toBeTruthy()
+    expect(cssVariables['--ui-table-header-bg']).toBe(resolvedUI['ui.table.headerBg'].bg)
+    expect(cssVariables['--ui-table-row-bg']).toBe('transparent')
+    expect(cssVariables['--ui-table-border']).toBe(resolvedUI['ui.table.border'].border)
+    expect(cssVariables['--app-table-head-mix-percent']).toMatch(/%$/)
+    expect(cssVariables['--app-table-border-mix-percent']).toMatch(/%$/)
     expect(resolvedUI['ui.surface.app'].bg).toBe('#080808')
     expect(resolvedUI['ui.surface.chat'].bg).toBe('#242424')
     expect(resolvedUI['ui.tool.surface']).toMatchObject({
@@ -675,7 +687,9 @@ describe('theme UI semantic tokens', () => {
     })
     expect(resolvedUI['ui.editor.text']).toMatchObject({
       fg: expectedNeutralText.primaryText,
-      bg: '#1c1c1c',
+      // Shares the composer surface, which is always raised from chat in the
+      // mode's direction — even when the theme authors a recessed input.
+      bg: resolvedUI['ui.surface.input'].bg,
       border: '#444444',
     })
   })
@@ -903,9 +917,24 @@ describe('theme UI semantic tokens', () => {
     expect(resolvedUI['ui.surface.app'].bg).not.toBe(resolvedUI['ui.surface.chat'].bg)
     expect(resolvedUI['ui.surface.app'].bg).toBe(resolvedUI['ui.sidebar.surface'].bg)
     expect(resolvedUI['ui.sidebar.surface'].bg).not.toBe(resolvedUI['ui.surface.chat'].bg)
-    expect(resolvedUI['ui.surface.panel'].bg).toBe(resolvedUI['ui.surface.chat'].bg)
+    expect(resolvedUI['ui.surface.panel'].bg).not.toBe(resolvedUI['ui.surface.chat'].bg)
     expect(resolvedUI['ui.tabBar.surface'].bg).toBe(resolvedUI['ui.surface.chat'].bg)
     expect(resolvedUI['ui.tabBar.surface'].bg).not.toBe(resolvedUI['ui.sidebar.surface'].bg)
     expect(resolvedUI['ui.surface.elevated'].bg).not.toBe(resolvedUI['ui.surface.panel'].bg)
+  })
+
+  it('keeps explicit menu and elevated roles out of the floating surface', () => {
+    const theme = makeTheme()
+    theme.defs.floatBright = '#6f7a90'
+    theme.theme.bg.elevated = 'panel'
+    theme.theme.bg.floating = 'floatBright'
+    theme.theme.bg.menu = 'panel'
+
+    const resolvedTheme = resolveTheme(theme, 'dark')
+    const resolvedUI = resolveThemeUI(theme, 'dark', resolvedTheme)
+
+    expect(resolvedUI['ui.surface.floating'].bg).toBe('#6f7a90')
+    expect(resolvedUI['ui.surface.elevated'].bg).not.toBe('#6f7a90')
+    expect(resolvedUI['ui.surface.menu'].bg).not.toBe('#6f7a90')
   })
 })

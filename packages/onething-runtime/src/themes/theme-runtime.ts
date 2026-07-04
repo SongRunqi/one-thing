@@ -1,3 +1,6 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import type {
   ApplyThemeResponse,
   GetThemeResponse,
@@ -15,6 +18,7 @@ import {
   loadCustomThemes,
   refreshThemes,
 } from './index.js'
+import { buildThemeDebugReport, type ThemeDebugData } from './theme-debug.js'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -56,7 +60,18 @@ export class OnethingThemeRuntime {
   async applyTheme(themeId: string, mode: 'dark' | 'light'): Promise<ApplyThemeResponse> {
     try {
       await this.initialize()
-      return { success: true, cssVariables: applyTheme(themeId, mode) }
+      const debugCallback = (data: ThemeDebugData) => {
+        try {
+          const dir = path.join(os.homedir(), '.onething', 'debug', 'theme-tokens')
+          fs.mkdirSync(dir, { recursive: true })
+          fs.writeFileSync(
+            path.join(dir, `${data.themeId}-${data.mode}.json`),
+            JSON.stringify(buildThemeDebugReport(data), null, 2),
+            'utf-8'
+          )
+        } catch { /* silent — debug writes must never crash theme loading */ }
+      }
+      return { success: true, cssVariables: applyTheme(themeId, mode, debugCallback) }
     } catch (error) {
       return { success: false, error: errorMessage(error) }
     }

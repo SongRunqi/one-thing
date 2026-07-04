@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OnethingMediaLibraryService } from '../media-library-service.js'
 
 let tempDir: string
@@ -21,6 +21,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   fs.rmSync(tempDir, { recursive: true, force: true })
 })
 
@@ -100,5 +101,73 @@ describe('OnethingMediaLibraryService', () => {
       messageId: 'message-3',
     })
     expect(fs.existsSync(item.filePath)).toBe(true)
+  })
+
+  it('rebuilds from message attachments with a single index write', () => {
+    const writeSpy = vi.spyOn(fs, 'writeFileSync')
+
+    const result = service.rebuildFromSessions([
+      {
+        id: 'session-1',
+        messages: [
+          {
+            id: 'message-1',
+            role: 'user',
+            attachments: [
+              {
+                id: 'attachment-1',
+                fileName: 'notes.pdf',
+                mimeType: 'application/pdf',
+                mediaType: 'document',
+                size: 128,
+              },
+              {
+                id: 'attachment-2',
+                fileName: 'clip.mp4',
+                mimeType: 'video/mp4',
+                mediaType: 'video',
+                size: 256,
+              },
+            ],
+          },
+        ],
+      },
+    ])
+
+    const indexWrites = writeSpy.mock.calls.filter(call => String(call[0]).endsWith('index.json.tmp'))
+    expect(result).toEqual({ added: 2, skipped: 0 })
+    expect(indexWrites).toHaveLength(1)
+
+    writeSpy.mockClear()
+    expect(service.rebuildFromSessions([
+      {
+        id: 'session-1',
+        messages: [
+          {
+            id: 'message-1',
+            role: 'user',
+            attachments: [
+              {
+                id: 'attachment-1',
+                fileName: 'notes.pdf',
+                mimeType: 'application/pdf',
+                mediaType: 'document',
+                size: 128,
+              },
+              {
+                id: 'attachment-2',
+                fileName: 'clip.mp4',
+                mimeType: 'video/mp4',
+                mediaType: 'video',
+                size: 256,
+              },
+            ],
+          },
+        ],
+      },
+    ])).toEqual({ added: 0, skipped: 2 })
+    expect(writeSpy.mock.calls.filter(call => String(call[0]).endsWith('index.json.tmp'))).toHaveLength(0)
+
+    writeSpy.mockRestore()
   })
 })

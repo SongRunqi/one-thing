@@ -106,10 +106,16 @@ export function createOnethingAgentStore(options: CreateOnethingAgentStoreOption
   const now = options.now ?? (() => Date.now())
 
   function loadFile(): OnethingAgentsFile {
-    return normalizeFile(
-      readJsonFile<unknown>(options.agentsPath, { version: 1, agents: [] }),
-      now(),
-    )
+    return loadFileWithPersistHint().file
+  }
+
+  function loadFileWithPersistHint(): { file: OnethingAgentsFile; shouldPersist: boolean } {
+    const raw = readJsonFile<unknown | null>(options.agentsPath, null)
+    const file = normalizeFile(raw, now())
+    return {
+      file,
+      shouldPersist: JSON.stringify(raw) !== JSON.stringify(file),
+    }
   }
 
   function saveFile(file: OnethingAgentsFile): void {
@@ -118,8 +124,8 @@ export function createOnethingAgentStore(options: CreateOnethingAgentStoreOption
 
   return {
     listAgents() {
-      const file = loadFile()
-      saveFile(file)
+      const { file, shouldPersist } = loadFileWithPersistHint()
+      if (shouldPersist) saveFile(file)
       return file.agents
     },
 

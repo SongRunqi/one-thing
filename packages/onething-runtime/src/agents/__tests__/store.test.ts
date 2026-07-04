@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_ONETHING_AGENT_ID,
   createOnethingAgentStore,
@@ -18,6 +18,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   fs.rmSync(tempDir, { recursive: true, force: true })
 })
 
@@ -84,5 +85,18 @@ describe('createOnethingAgentStore', () => {
 
     expect(store.agentExists(created.id)).toBe(false)
     expect(store.listAgents().map(agent => agent.id)).toEqual([DEFAULT_ONETHING_AGENT_ID])
+  })
+
+  it('does not rewrite the agents file on repeated list reads', () => {
+    const store = createStore()
+    store.listAgents()
+
+    const writeSpy = vi.spyOn(fs, 'writeFileSync')
+    writeSpy.mockClear()
+
+    expect(store.listAgents()).toHaveLength(1)
+    expect(writeSpy).not.toHaveBeenCalled()
+
+    writeSpy.mockRestore()
   })
 })

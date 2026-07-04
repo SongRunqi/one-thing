@@ -7038,6 +7038,7 @@ export interface CoreSoulMemoryManagedFileInput {
   size: number
   mtimeMs: number
   content: string
+  lineCount?: number
   maxPreviewChars?: number
 }
 
@@ -7083,9 +7084,18 @@ export interface ListSoulMemoryManagedFilesWithAdaptersOptions extends CoreSoulM
     absolutePath: string,
     candidate: CoreSoulMemoryManagedFileCandidate,
   ) => CoreMaybePromise<CoreSoulMemoryManagedFileStat | null | undefined>
+  countLines?: (
+    absolutePath: string,
+    candidate: CoreSoulMemoryManagedFileCandidate,
+  ) => CoreMaybePromise<number>
   readFile: (
     absolutePath: string,
     candidate: CoreSoulMemoryManagedFileCandidate,
+  ) => CoreMaybePromise<string>
+  readPreviewFile?: (
+    absolutePath: string,
+    candidate: CoreSoulMemoryManagedFileCandidate,
+    maxChars: number,
   ) => CoreMaybePromise<string>
 }
 
@@ -7094,9 +7104,18 @@ export interface DescribeSoulMemoryManagedFileWithAdaptersOptions extends CoreSo
     absolutePath: string,
     candidate: CoreSoulMemoryManagedFileCandidate,
   ) => CoreMaybePromise<CoreSoulMemoryManagedFileStat | null | undefined>
+  countLines?: (
+    absolutePath: string,
+    candidate: CoreSoulMemoryManagedFileCandidate,
+  ) => CoreMaybePromise<number>
   readFile: (
     absolutePath: string,
     candidate: CoreSoulMemoryManagedFileCandidate,
+  ) => CoreMaybePromise<string>
+  readPreviewFile?: (
+    absolutePath: string,
+    candidate: CoreSoulMemoryManagedFileCandidate,
+    maxChars: number,
   ) => CoreMaybePromise<string>
 }
 
@@ -7166,7 +7185,7 @@ export function resolveSoulMemoryManagedFileMetadata(
 
 export function describeSoulMemoryManagedFile(input: CoreSoulMemoryManagedFileInput): CoreSoulMemoryManagedFile {
   const content = input.content
-  const lineCount = content.length === 0 ? 0 : content.split(/\r?\n/).length
+  const lineCount = input.lineCount ?? (content.length === 0 ? 0 : content.split(/\r?\n/).length)
   const previewSource = content
     .replace(/^#\s+[^\n]+\n+/, '')
     .split(/\r?\n/)
@@ -7198,7 +7217,15 @@ export async function describeSoulMemoryManagedFileWithAdapters(
   const stat = await Promise.resolve(options.statFile(options.absolutePath, candidate)).catch(() => null)
   if (!stat || stat.isFile?.() === false) return null
 
-  const content = await Promise.resolve(options.readFile(options.absolutePath, candidate)).catch(() => '')
+  const previewReadChars = 8_192
+  const content = await Promise.resolve(
+    options.readPreviewFile
+      ? options.readPreviewFile(options.absolutePath, candidate, previewReadChars)
+      : options.readFile(options.absolutePath, candidate),
+  ).catch(() => '')
+  const lineCount = options.readPreviewFile && options.countLines
+    ? await Promise.resolve(options.countLines(options.absolutePath, candidate)).catch(() => undefined)
+    : undefined
   return describeSoulMemoryManagedFile({
     absolutePath: options.absolutePath,
     relativePath: options.relativePath,
@@ -7207,6 +7234,7 @@ export async function describeSoulMemoryManagedFileWithAdapters(
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     content,
+    ...(typeof lineCount === 'number' ? { lineCount } : {}),
   })
 }
 
@@ -7217,7 +7245,9 @@ export async function listSoulMemoryManagedFilesWithAdapters(
   const files = await Promise.all(candidates.map(candidate => describeSoulMemoryManagedFileWithAdapters({
     ...candidate,
     statFile: options.statFile,
+    countLines: options.countLines,
     readFile: options.readFile,
+    readPreviewFile: options.readPreviewFile,
   })))
 
   return sortManagedMemoryFiles(files.filter((file): file is CoreSoulMemoryManagedFile => Boolean(file)))

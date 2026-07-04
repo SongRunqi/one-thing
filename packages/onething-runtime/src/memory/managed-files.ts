@@ -1,10 +1,11 @@
+import { createReadStream } from 'node:fs'
+import { open } from 'node:fs/promises'
+import { createInterface } from 'node:readline'
 import {
   readTextFileAsync,
   statPath,
   writeTextFileAtomic,
 } from '@onething/core/storage'
-import type { MemoryWorkspace } from './types.js'
-import { listMemoryIndexFiles } from './indexer.js'
 import {
   listSoulMemoryManagedFilesWithAdapters as coreListSoulMemoryManagedFilesWithAdapters,
   readSoulMemoryManagedFileWithAdapters as coreReadSoulMemoryManagedFileWithAdapters,
@@ -13,6 +14,35 @@ import {
   type CoreSoulMemoryManagedFile,
   type CoreSoulMemoryResolvedPath,
 } from '../plugins/index.js'
+import type { MemoryWorkspace } from './types.js'
+import { listMemoryIndexFiles } from './indexer.js'
+
+async function readTextFilePrefix(filePath: string, maxBytes: number): Promise<string> {
+  if (maxBytes <= 0) return ''
+  const file = await open(filePath, 'r')
+  try {
+    const buffer = Buffer.alloc(maxBytes)
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0)
+    return buffer.subarray(0, bytesRead).toString('utf-8')
+  } finally {
+    await file.close()
+  }
+}
+
+async function countTextFileLines(filePath: string): Promise<number> {
+  let lineCount = 0
+  const input = createReadStream(filePath, { encoding: 'utf8' })
+  const lines = createInterface({ input, crlfDelay: Infinity })
+  try {
+    for await (const _line of lines) {
+      lineCount += 1
+    }
+    return lineCount
+  } finally {
+    lines.close()
+    input.destroy()
+  }
+}
 
 export async function listManagedMemoryFiles(
   workspace: MemoryWorkspace,
@@ -25,7 +55,9 @@ export async function listManagedMemoryFiles(
     dreamsPath: workspace.dreamsPath,
     indexedFiles,
     statFile: absolutePath => statPath(absolutePath),
+    countLines: absolutePath => countTextFileLines(absolutePath),
     readFile: absolutePath => readTextFileAsync(absolutePath),
+    readPreviewFile: (absolutePath, _candidate, maxChars) => readTextFilePrefix(absolutePath, maxChars),
   })
 }
 

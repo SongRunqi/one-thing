@@ -308,6 +308,33 @@ export function mixCssColors(
   })
 }
 
+export function guaranteeMinMixOpacity(
+  baseColor: string | undefined,
+  backgroundColor: string | undefined,
+  currentPercent: number,
+  minPerceivedDelta = 0.02
+): number {
+  if (!baseColor || !backgroundColor) return currentPercent
+
+  const baseOklch = toOklch(baseColor)
+  const backgroundOklch = toOklch(backgroundColor)
+  if (
+    !baseOklch
+    || !backgroundOklch
+    || !isFiniteNumber(baseOklch.l)
+    || !isFiniteNumber(backgroundOklch.l)
+  ) {
+    return currentPercent
+  }
+
+  const current = Math.min(100, Math.max(0, currentPercent))
+  const fullDelta = Math.abs(baseOklch.l - backgroundOklch.l)
+  if (fullDelta === 0 || !Number.isFinite(fullDelta)) return current
+  if (fullDelta * (current / 100) >= minPerceivedDelta) return current
+
+  return Math.min(100, Math.max(current, (minPerceivedDelta / fullDelta) * 100))
+}
+
 export function rgbaFromCssColor(value: string | undefined, alpha: number, fallbackRgb = '67, 133, 190'): string {
   const color = parseCssColor(value)
   if (!color) return `rgba(${fallbackRgb}, ${alpha})`
@@ -360,8 +387,50 @@ export function guaranteeMinDeltaL(
   const direction = isDark ? 1 : -1
   const delta = direction * (candidateOklch.lightness - anchorOklch.lightness)
   if (delta >= minDelta) return candidate
-  const newL = clampUnit(anchorOklch.lightness + direction * minDelta)
+  // +0.003 buffer: oklchColor() round-trips through 8-bit hex, losing up to ~0.002 in OKLCH l
+  const newL = clampUnit(anchorOklch.lightness + direction * (minDelta + 0.003))
   return oklchColor(newL, candidateOklch.chroma, candidateOklch.hue) ?? candidate
+}
+
+function absDeltaL(anchor: string, candidate: string | undefined): number | null {
+  const anchorOklch = parseOklchColor(anchor)
+  const candidateOklch = parseOklchColor(candidate)
+  if (!anchorOklch || !candidateOklch) return null
+  return Math.abs(candidateOklch.lightness - anchorOklch.lightness)
+}
+
+/**
+ * Like guaranteeMinDeltaL, but keeps theme-authored surfaces that are already
+ * `minDelta` apart in either direction (e.g. a deliberately recessed input that
+ * sits darker than the chat surface in dark mode). When a bump is needed it
+ * preserves the author's layering direction, falling back to the mode's raised
+ * direction only on exact ties or when clamping prevents reaching the delta.
+ * Non-opaque candidates are left alone: their painted lightness depends on
+ * what they composite over, so an OKLCH-L comparison would be meaningless.
+ */
+export function guaranteeMinAbsDeltaL(
+  anchor: string | undefined,
+  candidate: string | undefined,
+  minDelta: number,
+  isDark: boolean
+): string | undefined {
+  if (!candidate || !anchor) return candidate
+  const parsedCandidate = parseCssColor(candidate)
+  if (parsedCandidate && parsedCandidate.alpha < 0.999) return candidate
+  const anchorOklch = parseOklchColor(anchor)
+  const candidateOklch = parseOklchColor(candidate)
+  if (!anchorOklch || !candidateOklch) return candidate
+
+  const delta = candidateOklch.lightness - anchorOklch.lightness
+  if (Math.abs(delta) >= minDelta) return candidate
+
+  const preferredDirection = delta === 0 ? isDark : delta > 0
+  const bumped = guaranteeMinDeltaL(anchor, candidate, minDelta, preferredDirection)
+  const bumpedDelta = bumped === undefined ? null : absDeltaL(anchor, bumped)
+  if (bumpedDelta !== null && bumpedDelta >= minDelta - 0.005) return bumped
+
+  // Clamping at the L extremes blocked the preferred direction; push the other way.
+  return guaranteeMinDeltaL(anchor, candidate, minDelta, !preferredDirection)
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -965,12 +1034,12 @@ export function deriveSurfaceRoles(input: ThemeSurfaceRoleInput): ThemeSurfaceRo
       4
     )
 
-  let elevatedBg = firstDefinedColor(input.elevated, input.floating, panelBg) || panelBg
+  let elevatedBg = firstDefinedColor(input.elevated, panelBg) || panelBg
   elevatedBg = input.colorScheme === 'dark'
     ? ensureDistinctSurface(
       elevatedBg,
       panelBg,
-      [input.elevated, input.floating],
+      [input.elevated],
       primaryText,
       0.075,
       6

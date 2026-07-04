@@ -65,6 +65,7 @@ export type {
   PermissionGrant,
   PermissionGrantInput,
   PermissionGrantMatchInput,
+  PermissionGrantOwner,
   PermissionGrantMatcher,
   PermissionGrantScope,
   PermissionGrantStorage,
