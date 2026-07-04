@@ -32,6 +32,8 @@ export interface PermissionEventBusLike {
     title: string
     pattern?: string | string[]
     metadata: JsonObject
+    userId?: string
+    workspaceId?: string
   }): Promise<unknown>
 }
 
@@ -55,6 +57,8 @@ export namespace Permission {
     createdAt: number
     workingDirectory?: string
     targetChannel?: string
+    userId?: string
+    workspaceId?: string
   }
 
   export type Response = 'once' | 'session' | 'workdir' | 'reject'
@@ -156,6 +160,8 @@ export namespace Permission {
     messageId: Info['messageId']
     metadata: Info['metadata']
     workingDirectory?: string
+    userId?: string
+    workspaceId?: string
   }): Promise<void> {
     const session = getSession(input.sessionId)
     const targetChannel = channelResolver ? channelResolver(input.sessionId) : 'ipc'
@@ -171,6 +177,8 @@ export namespace Permission {
       createdAt: Date.now(),
       workingDirectory: input.workingDirectory,
       targetChannel,
+      userId: input.userId,
+      workspaceId: input.workspaceId,
     }
 
     console.log('[Permission] Asking permission:', info.id, info.type, info.pattern, 'targetChannel:', targetChannel)
@@ -189,6 +197,8 @@ export namespace Permission {
           title: info.title,
           pattern: info.pattern,
           metadata: info.metadata,
+          userId: info.userId,
+          workspaceId: info.workspaceId,
         }).catch(err => console.error('[Permission] EventBus emit error:', err))
       } else {
         console.warn('[Permission] EventBus not initialized, permission request will hang')
@@ -234,6 +244,8 @@ export namespace Permission {
         type: pending.info.type,
         pattern: pending.info.pattern ?? pending.info.type,
         workspaceRoot: pending.info.workingDirectory,
+        userId: pending.info.userId,
+        workspaceId: pending.info.workspaceId,
         createdFrom: {
           messageId: pending.info.messageId,
           toolCallId: pending.info.callId,
@@ -248,6 +260,8 @@ export namespace Permission {
             pattern: other.info.pattern,
             sessionId: input.sessionId,
             workspaceRoot: other.info.workingDirectory,
+            userId: other.info.userId,
+            workspaceId: other.info.workspaceId,
           })
           if (otherGrant) {
             session.pending.delete(id)
@@ -263,6 +277,8 @@ export namespace Permission {
         type: pending.info.type,
         pattern: pending.info.pattern ?? pending.info.type,
         sessionId: input.sessionId,
+        userId: pending.info.userId,
+        workspaceId: pending.info.workspaceId,
         createdFrom: {
           messageId: pending.info.messageId,
           toolCallId: pending.info.callId,
@@ -276,6 +292,8 @@ export namespace Permission {
           pattern: other.info.pattern,
           sessionId: input.sessionId,
           workspaceRoot: other.info.workingDirectory,
+          userId: other.info.userId,
+          workspaceId: other.info.workspaceId,
         })
         if (otherGrant) {
           session.pending.delete(id)

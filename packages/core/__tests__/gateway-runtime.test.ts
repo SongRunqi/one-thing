@@ -22,6 +22,14 @@ describe('gateway runtime protocol', () => {
     }
 
     expect(isCoreConversationRuntime(runtime)).toBe(true)
+    expect(isCoreConversationRuntime({
+      ...runtime,
+      permissions: {
+        onPermissionRequest: vi.fn(),
+        respondPermission: vi.fn(),
+        setSessionPermissionMode: vi.fn(),
+      },
+    })).toBe(true)
     expect(isCoreConversationRuntime({ ...runtime, streamChannel: {} })).toBe(false)
     expect(isCoreConversationRuntime({ ...runtime, sendMessage: undefined })).toBe(false)
   })

@@ -1,0 +1,772 @@
+import type { JsonObject } from './json.js'
+
+export type RuntimeUnsubscribe = () => void
+
+export interface RuntimeMutationResult {
+  success: boolean
+  error?: string
+}
+
+export interface RuntimeEventEnvelope<TEvent = unknown> {
+  sessionId: string
+  sequence?: number
+  event: TEvent
+}
+
+export interface RuntimeStreamPayload<TChunk = unknown> {
+  sessionId: string
+  chunk: TChunk
+}
+
+export interface RuntimeRequestContext {
+  userId: string
+  workspaceId: string
+  roles?: string[]
+  authToken?: string
+  origin?: string
+}
+
+export interface RuntimeHostCapabilities {
+  localFileSystem: boolean
+  workspaceFileSystem: boolean
+  nativeWindowControls: boolean
+  shellTools: boolean
+  clipboardWrite: boolean
+  desktopWindows: boolean
+  globalMenuEvents: boolean
+}
+
+export interface RuntimeEventSubscribeOptions {
+  afterSeq?: number
+  signal?: AbortSignal
+}
+
+export interface RuntimeCapabilitiesAdapter<TCapabilities = RuntimeHostCapabilities> {
+  get(context?: RuntimeRequestContext): Promise<TCapabilities>
+}
+
+export interface RuntimeAppStateAdapter<TAppState = unknown, TUIState = unknown> {
+  get(context?: RuntimeRequestContext): Promise<TAppState>
+  saveUIState?(uiState: TUIState, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+}
+
+export interface RuntimeSessionsAdapter<
+  TSessionList = unknown,
+  TSession = unknown,
+  TCreateSessionInput = string,
+  TSessionPatch = JsonObject,
+> {
+  list(context?: RuntimeRequestContext): Promise<TSessionList>
+  create(input: TCreateSessionInput, context?: RuntimeRequestContext): Promise<TSession>
+  get?(sessionId: string, context?: RuntimeRequestContext): Promise<TSession>
+  activate?(sessionId: string, context?: RuntimeRequestContext): Promise<TSession>
+  delete?(sessionId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  rename?(sessionId: string, name: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  createBranch?(parentSessionId: string, branchFromMessageId: string, context?: RuntimeRequestContext): Promise<unknown>
+  update?(sessionId: string, patch: TSessionPatch, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+}
+
+export interface RuntimeMessagesAdapter<TPageRequest = unknown, TPageResponse = unknown, TMarkersResponse = unknown> {
+  page(request: TPageRequest, context?: RuntimeRequestContext): Promise<TPageResponse>
+  userMarkers?(sessionId: string, context?: RuntimeRequestContext): Promise<TMarkersResponse>
+}
+
+export interface RuntimeChatAdapter<
+  TMessage = unknown,
+  TSystemMessage = unknown,
+> {
+  getHistory?(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
+  generateTitle?(message: string, context?: RuntimeRequestContext): Promise<unknown>
+  getMessages?(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
+  getTokenUsage?(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
+  updateSessionPin?(sessionId: string, isPinned: boolean, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  addSystemMessage?(sessionId: string, message: TSystemMessage, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  removeSystemMarkerMessage?(sessionId: string, markerType: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  removeMessage?(sessionId: string, messageId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  updateMessageThinkingTime?(sessionId: string, messageId: string, thinkingTime: number, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+}
+
+export interface RuntimeCommandsAdapter<TCommand = unknown, TResult = RuntimeMutationResult> {
+  emit(sessionId: string, command: TCommand, context?: RuntimeRequestContext): Promise<TResult>
+}
+
+export interface RuntimeEventsAdapter<TEvent = unknown> {
+  subscribe(
+    sessionId: string,
+    handler: (envelope: RuntimeEventEnvelope<TEvent>) => void,
+    options?: RuntimeEventSubscribeOptions,
+    context?: RuntimeRequestContext,
+  ): RuntimeUnsubscribe
+}
+
+export interface RuntimeStreamsAdapter<TChunk = unknown> {
+  subscribe(
+    sessionId: string,
+    handler: (payload: RuntimeStreamPayload<TChunk>) => void,
+    options?: RuntimeEventSubscribeOptions,
+    context?: RuntimeRequestContext,
+  ): RuntimeUnsubscribe
+  abort?(sessionId?: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  active?(context?: RuntimeRequestContext): Promise<string[]>
+}
+
+export interface RuntimePermissionsAdapter<TPermissionResponse = unknown> {
+  respond(requestId: string, response: TPermissionResponse, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  getPending?(sessionId: string, context?: RuntimeRequestContext): Promise<{
+    success: boolean
+    pending?: unknown[]
+    error?: string
+  }>
+  clearSession?(sessionId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  listGrants?(options: {
+    sessionId?: string
+    workspaceRoot?: string
+    userId?: string
+    workspaceId?: string
+  }, context?: RuntimeRequestContext): Promise<{
+    success: boolean
+    sessionGrants?: unknown[]
+    workspaceGrants?: unknown[]
+    error?: string
+  }>
+  revokeGrant?(id: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  clearSessionGrants?(sessionId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  clearWorkspaceGrants?(workspaceRoot: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+}
+
+export interface RuntimeSettingsAdapter<TSettings = unknown, TSettingsUpdateResult = TSettings> {
+  get(context?: RuntimeRequestContext): Promise<TSettings>
+  update(settings: TSettings, context?: RuntimeRequestContext): Promise<TSettingsUpdateResult>
+}
+
+export interface RuntimeNetworkAdapter<TProxySettings = unknown, TTestProxyResponse = RuntimeMutationResult> {
+  testProxy(proxy: TProxySettings, context?: RuntimeRequestContext): Promise<TTestProxyResponse>
+}
+
+export interface RuntimeSearchAdapter<TSearchRequest = unknown, TSearchResponse = unknown, TSearchActionResponse = RuntimeMutationResult> {
+  query(request: TSearchRequest, context?: RuntimeRequestContext): Promise<TSearchResponse>
+  executeAction(actionId: string, context?: RuntimeRequestContext): Promise<TSearchActionResponse>
+}
+
+export interface RuntimeThemesAdapter {
+  getThemes(context?: RuntimeRequestContext): Promise<unknown>
+  getTheme(themeId: string, context?: RuntimeRequestContext): Promise<unknown>
+  applyTheme(themeId: string, mode: 'dark' | 'light', context?: RuntimeRequestContext): Promise<unknown>
+  refreshThemes(projectPath?: string, context?: RuntimeRequestContext): Promise<unknown>
+  openThemesFolder?(context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+}
+
+export interface RuntimePromptsAdapter {
+  getSystemPromptSnapshot(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
+  list?(context?: RuntimeRequestContext): Promise<unknown>
+  get?(request: { id: string }, context?: RuntimeRequestContext): Promise<unknown>
+  create?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  update?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  delete?(request: { id: string }, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+}
+
+export interface RuntimeFilesAdapter {
+  listFiles?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  listDirs?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  readContent?(path: string, maxSize?: number, context?: RuntimeRequestContext): Promise<unknown>
+  saveContent?(path: string, content: string, expectedMtimeMs?: number, context?: RuntimeRequestContext): Promise<unknown>
+  rollback?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  listDirectory?(path: string, context?: RuntimeRequestContext): Promise<unknown>
+  stat?(path: string, context?: RuntimeRequestContext): Promise<unknown>
+  createFile?(path: string, content?: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  createDirectory?(path: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  renamePath?(oldPath: string, newPath: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  deletePath?(path: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  revealPath?(path: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  watchWorkspace?(root: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  unwatchWorkspace?(root: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  subscribeWorkspaceFileChanged?(
+    handler: (payload: unknown) => void,
+    context?: RuntimeRequestContext,
+  ): RuntimeUnsubscribe
+}
+
+export interface RuntimeMarkdownAdapter {
+  resolveAsset?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  saveAttachments?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+}
+
+export interface RuntimeProjectDirsAdapter {
+  list?(context?: RuntimeRequestContext): Promise<unknown>
+  get?(path: string, context?: RuntimeRequestContext): Promise<unknown>
+  add?(path: string, description?: string, context?: RuntimeRequestContext): Promise<unknown>
+  update?(path: string, description: string, context?: RuntimeRequestContext): Promise<unknown>
+  remove?(path: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+}
+
+export interface RuntimeVariablesAdapter<
+  TListRequest = unknown,
+  TSetRequest = unknown,
+  TDeleteRequest = unknown,
+> {
+  list(request: TListRequest, context?: RuntimeRequestContext): Promise<unknown>
+  set?(request: TSetRequest, context?: RuntimeRequestContext): Promise<unknown>
+  delete?(request: TDeleteRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+}
+
+export interface RuntimeMediaAdapter {
+  saveImage?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  loadAll?(context?: RuntimeRequestContext): Promise<unknown>
+  delete?(id: string, context?: RuntimeRequestContext): Promise<unknown>
+  clearAll?(context?: RuntimeRequestContext): Promise<unknown>
+  readImageBase64?(filePath: string, context?: RuntimeRequestContext): Promise<unknown>
+  listAssets?(query?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  hideAsset?(id: string, context?: RuntimeRequestContext): Promise<unknown>
+  rebuildLibrary?(context?: RuntimeRequestContext): Promise<unknown>
+  getGallery?(assetId: string, query?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  openPreview?(src: string, alt?: string, context?: RuntimeRequestContext): Promise<unknown>
+  getPreview?(previewId: string, context?: RuntimeRequestContext): Promise<unknown>
+  openGallery?(mediaId: string, context?: RuntimeRequestContext): Promise<unknown>
+  resolveFile?(fileName: string, context?: RuntimeRequestContext): Promise<{ success: boolean; path?: string; mimeType?: string; error?: string }>
+  subscribeImageGenerated?(
+    handler: (payload: unknown) => void,
+    context?: RuntimeRequestContext,
+  ): RuntimeUnsubscribe
+}
+
+export interface RuntimeMemoryAdapter {
+  overview?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  read?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  search?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  append?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  saveFile?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  rebuildIndex?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  profileList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  profileSearch?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  profileUpsert?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  profileDelete?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  profileAudit?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  profileExport?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  graphOverview?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  graphEntitiesList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  graphEntitiesUpsert?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  graphEntitiesDelete?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  graphObservationsList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  graphObservationsUpsert?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  graphObservationsDelete?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  graphRelationsList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  graphRelationsUpsert?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  graphRelationsDelete?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  graphDuplicatesList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  graphDuplicatesMerge?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  graphDuplicatesIgnore?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  graphAudit?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  logsList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  logsStats?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  logsOpenFolder?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  logsCleanup?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  runDreaming?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  captureSave?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  captureDiscard?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+}
+
+export interface RuntimeTodoPlanAdapter<
+  TGetRequest = unknown,
+  TCreateRequest = unknown,
+  TUpdateRequest = unknown,
+  TRenameRequest = unknown,
+  TDeleteRequest = unknown,
+  TChangedPayload = unknown,
+> {
+  get(request?: TGetRequest, context?: RuntimeRequestContext): Promise<unknown>
+  createNote?(request: TCreateRequest, context?: RuntimeRequestContext): Promise<unknown>
+  update?(request: TUpdateRequest, context?: RuntimeRequestContext): Promise<unknown>
+  renameNote?(request: TRenameRequest, context?: RuntimeRequestContext): Promise<unknown>
+  deleteNote?(request: TDeleteRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  revealDirectory?(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  subscribeChanged?(
+    handler: (payload: TChangedPayload) => void,
+    context?: RuntimeRequestContext,
+  ): RuntimeUnsubscribe
+}
+
+export interface RuntimeSchedulerAdapter<
+  TGetRequest = unknown,
+  TRunNowRequest = unknown,
+  TSetEnabledRequest = unknown,
+  TCreateTaskRequest = unknown,
+  TUpdateTaskRequest = unknown,
+  TDeleteTaskRequest = unknown,
+  TListRunsRequest = unknown,
+  TGetRunRequest = unknown,
+> {
+  listTasks(context?: RuntimeRequestContext): Promise<unknown>
+  getTask?(request: TGetRequest, context?: RuntimeRequestContext): Promise<unknown>
+  runTaskNow?(request: TRunNowRequest, context?: RuntimeRequestContext): Promise<unknown>
+  setTaskEnabled?(request: TSetEnabledRequest, context?: RuntimeRequestContext): Promise<unknown>
+  createTask?(request: TCreateTaskRequest, context?: RuntimeRequestContext): Promise<unknown>
+  updateTask?(request: TUpdateTaskRequest, context?: RuntimeRequestContext): Promise<unknown>
+  deleteTask?(request: TDeleteTaskRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  listRuns?(request: TListRunsRequest, context?: RuntimeRequestContext): Promise<unknown>
+  getRun?(request: TGetRunRequest, context?: RuntimeRequestContext): Promise<unknown>
+}
+
+export interface RuntimeAgentsAdapter<
+  TCreateRequest = unknown,
+  TUpdateRequest = unknown,
+  TDeleteRequest = unknown,
+> {
+  list(context?: RuntimeRequestContext): Promise<unknown>
+  create?(request: TCreateRequest, context?: RuntimeRequestContext): Promise<unknown>
+  update?(request: TUpdateRequest, context?: RuntimeRequestContext): Promise<unknown>
+  delete?(request: TDeleteRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+}
+
+export interface RuntimeSkillsAdapter {
+  list?(workingDirectory?: string, context?: RuntimeRequestContext): Promise<unknown>
+  refresh?(context?: RuntimeRequestContext): Promise<unknown>
+  readFile?(skillId: string, fileName: string, context?: RuntimeRequestContext): Promise<unknown>
+  openDirectory?(skillId?: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  create?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  delete?(skillId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  toggleEnabled?(skillId: string, enabled: boolean, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  execute?(skillId: string, options: unknown, context?: RuntimeRequestContext): Promise<unknown>
+}
+
+export interface RuntimePluginsAdapter {
+  list?(context?: RuntimeRequestContext): Promise<unknown>
+  enable?(pluginId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  disable?(pluginId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  refresh?(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  commands?(context?: RuntimeRequestContext): Promise<unknown>
+  executeCommand?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+}
+
+export interface RuntimeOAuthTokenEvent {
+  type: 'oauth:token-refreshed' | 'oauth:token-expired'
+  providerId: string
+  error?: string
+}
+
+export interface RuntimeOAuthAdapter {
+  start(providerId: string, context?: RuntimeRequestContext): Promise<unknown>
+  callback(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  devicePoll(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  refresh(providerId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  status(providerId: string, context?: RuntimeRequestContext): Promise<unknown>
+  logout(providerId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  subscribe?(handler: (event: RuntimeOAuthTokenEvent) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
+}
+
+export interface RuntimeGatewayAdapter {
+  getStatus(context?: RuntimeRequestContext): Promise<unknown>
+  start(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  stop(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  wechatLogout(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+}
+
+export interface RuntimeVoiceAdapter {
+  getState(context?: RuntimeRequestContext): Promise<unknown>
+  start(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  stop(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  submitUtterance(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  submitTranscript(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  synthesize(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  testASR(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  testTTS(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  getTTSModels(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  runtimeReady(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  runtimeEvent(event: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  subscribeEvents?(handler: (event: unknown) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
+  subscribeRuntimeCommands?(handler: (command: unknown) => void, context?: RuntimeRequestContext): RuntimeUnsubscribe
+}
+
+export interface RuntimeACPAdapter {
+  getAgents(context?: RuntimeRequestContext): Promise<unknown>
+  addAgent(config: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  updateAgent(config: unknown, context?: RuntimeRequestContext): Promise<unknown>
+  removeAgent(agentId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  connectAgent(agentId: string, context?: RuntimeRequestContext): Promise<unknown>
+  disconnectAgent(agentId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  refreshAgent(agentId: string, context?: RuntimeRequestContext): Promise<unknown>
+  cancelSession(
+    sessionId: string,
+    agentId?: string,
+    context?: RuntimeRequestContext,
+  ): Promise<RuntimeMutationResult | unknown>
+}
+
+export interface RuntimeProvidersAdapter {
+  list(context?: RuntimeRequestContext): Promise<unknown>
+  usage(providerId: string, context?: RuntimeRequestContext): Promise<unknown>
+  envStatus(providerId: string, context?: RuntimeRequestContext): Promise<unknown>
+  getModelsWithCapabilities(providerId: string, options?: { forceRefresh?: boolean }, context?: RuntimeRequestContext): Promise<unknown>
+  getAllModels(context?: RuntimeRequestContext): Promise<unknown>
+  searchModels(query: string, providerId?: string, context?: RuntimeRequestContext): Promise<unknown>
+  refreshModelRegistry(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  getModelNameAliases(context?: RuntimeRequestContext): Promise<unknown>
+  getModelDisplayName(modelId: string, context?: RuntimeRequestContext): Promise<unknown>
+}
+
+export interface RuntimeToolsAdapter<
+  TTool = unknown,
+  TExecuteArgs = JsonObject,
+  TExecuteResult = RuntimeMutationResult,
+  TBackgroundJob = unknown,
+  TToolCallUpdate = unknown,
+> {
+  getTools(context?: RuntimeRequestContext): Promise<{ success: boolean; tools?: TTool[]; error?: string }>
+  executeTool(
+    toolId: string,
+    args: TExecuteArgs,
+    messageId: string,
+    sessionId: string,
+    context?: RuntimeRequestContext,
+  ): Promise<TExecuteResult>
+  cancelTool?(toolCallId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  updateToolCall?(
+    sessionId: string,
+    messageId: string,
+    toolCallId: string,
+    updates: TToolCallUpdate,
+    context?: RuntimeRequestContext,
+  ): Promise<RuntimeMutationResult>
+  listBackgroundJobs?(options?: { includeInactive?: boolean }, context?: RuntimeRequestContext): Promise<{
+    success: boolean
+    jobs?: TBackgroundJob[]
+    error?: string
+  }>
+  stopBackgroundJob?(jobId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+}
+
+export interface RuntimeMCPAdapter<
+  TServerConfig = unknown,
+  TServerState = unknown,
+  TTool = unknown,
+  TResource = unknown,
+  TPrompt = unknown,
+  TToolCallArgs = unknown,
+  TToolCallResult = unknown,
+  TResourceReadResult = unknown,
+  TPromptResult = unknown,
+  TConfigFileResult = unknown,
+  TMutationResult = RuntimeMutationResult,
+> {
+  getServers(context?: RuntimeRequestContext): Promise<{ success: boolean; servers?: TServerState[]; error?: string }>
+  addServer(config: TServerConfig, context?: RuntimeRequestContext): Promise<TMutationResult>
+  updateServer(config: TServerConfig, context?: RuntimeRequestContext): Promise<TMutationResult>
+  removeServer(serverId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  connectServer(serverId: string, context?: RuntimeRequestContext): Promise<TMutationResult>
+  disconnectServer(serverId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
+  refreshServer(serverId: string, context?: RuntimeRequestContext): Promise<TMutationResult>
+  getTools?(context?: RuntimeRequestContext): Promise<{ success: boolean; tools?: TTool[]; error?: string }>
+  callTool?(serverId: string, toolName: string, args: TToolCallArgs, context?: RuntimeRequestContext): Promise<TToolCallResult>
+  getResources?(context?: RuntimeRequestContext): Promise<{ success: boolean; resources?: TResource[]; error?: string }>
+  readResource?(serverId: string, uri: string, context?: RuntimeRequestContext): Promise<TResourceReadResult>
+  getPrompts?(context?: RuntimeRequestContext): Promise<{ success: boolean; prompts?: TPrompt[]; error?: string }>
+  getPrompt?(serverId: string, name: string, args?: Record<string, string>, context?: RuntimeRequestContext): Promise<TPromptResult>
+  readConfigFile?(filePath: string, context?: RuntimeRequestContext): Promise<TConfigFileResult>
+}
+
+export interface OnethingRuntimeFacadeOptions<
+  TAppState = unknown,
+  TUIState = unknown,
+  TSessionList = unknown,
+  TSession = unknown,
+  TCreateSessionInput = string,
+  TSessionPatch = JsonObject,
+  TMessagePageRequest = unknown,
+  TMessagePageResponse = unknown,
+  TUserMarkersResponse = unknown,
+  TCommand = unknown,
+  TCommandResult = RuntimeMutationResult,
+  TEvent = unknown,
+  TChunk = unknown,
+  TPermissionResponse = unknown,
+  TSettings = unknown,
+  TSettingsUpdateResult = TSettings,
+  THostCapabilities = RuntimeHostCapabilities,
+  TMCPServerConfig = unknown,
+  TMCPServerState = unknown,
+  TMCPTool = unknown,
+  TMCPResource = unknown,
+  TMCPPrompt = unknown,
+  TMCPToolCallArgs = unknown,
+  TMCPToolCallResult = unknown,
+  TMCPResourceReadResult = unknown,
+  TMCPPromptResult = unknown,
+  TMCPConfigFileResult = unknown,
+  TMCPMutationResult = RuntimeMutationResult,
+  TTool = unknown,
+  TToolExecuteArgs = JsonObject,
+  TToolExecuteResult = RuntimeMutationResult,
+  TBackgroundJob = unknown,
+  TToolCallUpdate = unknown,
+> {
+  capabilities?: RuntimeCapabilitiesAdapter<THostCapabilities>
+  appState?: RuntimeAppStateAdapter<TAppState, TUIState>
+  sessions: RuntimeSessionsAdapter<TSessionList, TSession, TCreateSessionInput, TSessionPatch>
+  messages?: RuntimeMessagesAdapter<TMessagePageRequest, TMessagePageResponse, TUserMarkersResponse>
+  chat?: RuntimeChatAdapter
+  commands: RuntimeCommandsAdapter<TCommand, TCommandResult>
+  events: RuntimeEventsAdapter<TEvent>
+  streams?: RuntimeStreamsAdapter<TChunk>
+  permissions?: RuntimePermissionsAdapter<TPermissionResponse>
+  settings?: RuntimeSettingsAdapter<TSettings, TSettingsUpdateResult>
+  network?: RuntimeNetworkAdapter
+  search?: RuntimeSearchAdapter
+  themes?: RuntimeThemesAdapter
+  prompts?: RuntimePromptsAdapter
+  files?: RuntimeFilesAdapter
+  markdown?: RuntimeMarkdownAdapter
+  projectDirs?: RuntimeProjectDirsAdapter
+  variables?: RuntimeVariablesAdapter
+  media?: RuntimeMediaAdapter
+  memory?: RuntimeMemoryAdapter
+  todoPlan?: RuntimeTodoPlanAdapter
+  scheduler?: RuntimeSchedulerAdapter
+  agents?: RuntimeAgentsAdapter
+  skills?: RuntimeSkillsAdapter
+  plugins?: RuntimePluginsAdapter
+  oauth?: RuntimeOAuthAdapter
+  gateway?: RuntimeGatewayAdapter
+  voice?: RuntimeVoiceAdapter
+  acp?: RuntimeACPAdapter
+  providers?: RuntimeProvidersAdapter
+  tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
+  mcp?: RuntimeMCPAdapter<
+    TMCPServerConfig,
+    TMCPServerState,
+    TMCPTool,
+    TMCPResource,
+    TMCPPrompt,
+    TMCPToolCallArgs,
+    TMCPToolCallResult,
+    TMCPResourceReadResult,
+    TMCPPromptResult,
+    TMCPConfigFileResult,
+    TMCPMutationResult
+  >
+  shutdown?: () => void | Promise<void>
+}
+
+export interface OnethingRuntimeFacade<
+  TAppState = unknown,
+  TUIState = unknown,
+  TSessionList = unknown,
+  TSession = unknown,
+  TCreateSessionInput = string,
+  TSessionPatch = JsonObject,
+  TMessagePageRequest = unknown,
+  TMessagePageResponse = unknown,
+  TUserMarkersResponse = unknown,
+  TCommand = unknown,
+  TCommandResult = RuntimeMutationResult,
+  TEvent = unknown,
+  TChunk = unknown,
+  TPermissionResponse = unknown,
+  TSettings = unknown,
+  TSettingsUpdateResult = TSettings,
+  THostCapabilities = RuntimeHostCapabilities,
+  TMCPServerConfig = unknown,
+  TMCPServerState = unknown,
+  TMCPTool = unknown,
+  TMCPResource = unknown,
+  TMCPPrompt = unknown,
+  TMCPToolCallArgs = unknown,
+  TMCPToolCallResult = unknown,
+  TMCPResourceReadResult = unknown,
+  TMCPPromptResult = unknown,
+  TMCPConfigFileResult = unknown,
+  TMCPMutationResult = RuntimeMutationResult,
+  TTool = unknown,
+  TToolExecuteArgs = JsonObject,
+  TToolExecuteResult = RuntimeMutationResult,
+  TBackgroundJob = unknown,
+  TToolCallUpdate = unknown,
+> {
+  readonly capabilities?: RuntimeCapabilitiesAdapter<THostCapabilities>
+  readonly appState?: RuntimeAppStateAdapter<TAppState, TUIState>
+  readonly sessions: RuntimeSessionsAdapter<TSessionList, TSession, TCreateSessionInput, TSessionPatch>
+  readonly messages?: RuntimeMessagesAdapter<TMessagePageRequest, TMessagePageResponse, TUserMarkersResponse>
+  readonly chat?: RuntimeChatAdapter
+  readonly commands: RuntimeCommandsAdapter<TCommand, TCommandResult>
+  readonly events: RuntimeEventsAdapter<TEvent>
+  readonly streams?: RuntimeStreamsAdapter<TChunk>
+  readonly permissions?: RuntimePermissionsAdapter<TPermissionResponse>
+  readonly settings?: RuntimeSettingsAdapter<TSettings, TSettingsUpdateResult>
+  readonly network?: RuntimeNetworkAdapter
+  readonly search?: RuntimeSearchAdapter
+  readonly themes?: RuntimeThemesAdapter
+  readonly prompts?: RuntimePromptsAdapter
+  readonly files?: RuntimeFilesAdapter
+  readonly markdown?: RuntimeMarkdownAdapter
+  readonly projectDirs?: RuntimeProjectDirsAdapter
+  readonly variables?: RuntimeVariablesAdapter
+  readonly media?: RuntimeMediaAdapter
+  readonly memory?: RuntimeMemoryAdapter
+  readonly todoPlan?: RuntimeTodoPlanAdapter
+  readonly scheduler?: RuntimeSchedulerAdapter
+  readonly agents?: RuntimeAgentsAdapter
+  readonly skills?: RuntimeSkillsAdapter
+  readonly plugins?: RuntimePluginsAdapter
+  readonly oauth?: RuntimeOAuthAdapter
+  readonly gateway?: RuntimeGatewayAdapter
+  readonly voice?: RuntimeVoiceAdapter
+  readonly acp?: RuntimeACPAdapter
+  readonly providers?: RuntimeProvidersAdapter
+  readonly tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
+  readonly mcp?: RuntimeMCPAdapter<
+    TMCPServerConfig,
+    TMCPServerState,
+    TMCPTool,
+    TMCPResource,
+    TMCPPrompt,
+    TMCPToolCallArgs,
+    TMCPToolCallResult,
+    TMCPResourceReadResult,
+    TMCPPromptResult,
+    TMCPConfigFileResult,
+    TMCPMutationResult
+  >
+  shutdown(): Promise<void>
+}
+
+export function createOnethingRuntimeFacade<
+  TAppState = unknown,
+  TUIState = unknown,
+  TSessionList = unknown,
+  TSession = unknown,
+  TCreateSessionInput = string,
+  TSessionPatch = JsonObject,
+  TMessagePageRequest = unknown,
+  TMessagePageResponse = unknown,
+  TUserMarkersResponse = unknown,
+  TCommand = unknown,
+  TCommandResult = RuntimeMutationResult,
+  TEvent = unknown,
+  TChunk = unknown,
+  TPermissionResponse = unknown,
+  TSettings = unknown,
+  TSettingsUpdateResult = TSettings,
+  THostCapabilities = RuntimeHostCapabilities,
+  TMCPServerConfig = unknown,
+  TMCPServerState = unknown,
+  TMCPTool = unknown,
+  TMCPResource = unknown,
+  TMCPPrompt = unknown,
+  TMCPToolCallArgs = unknown,
+  TMCPToolCallResult = unknown,
+  TMCPResourceReadResult = unknown,
+  TMCPPromptResult = unknown,
+  TMCPConfigFileResult = unknown,
+  TMCPMutationResult = RuntimeMutationResult,
+  TTool = unknown,
+  TToolExecuteArgs = JsonObject,
+  TToolExecuteResult = RuntimeMutationResult,
+  TBackgroundJob = unknown,
+  TToolCallUpdate = unknown,
+>(
+  options: OnethingRuntimeFacadeOptions<
+    TAppState,
+    TUIState,
+    TSessionList,
+    TSession,
+    TCreateSessionInput,
+    TSessionPatch,
+    TMessagePageRequest,
+    TMessagePageResponse,
+    TUserMarkersResponse,
+    TCommand,
+    TCommandResult,
+    TEvent,
+    TChunk,
+    TPermissionResponse,
+    TSettings,
+    TSettingsUpdateResult,
+    THostCapabilities,
+    TMCPServerConfig,
+    TMCPServerState,
+    TMCPTool,
+    TMCPResource,
+    TMCPPrompt,
+    TMCPToolCallArgs,
+    TMCPToolCallResult,
+    TMCPResourceReadResult,
+    TMCPPromptResult,
+    TMCPConfigFileResult,
+    TMCPMutationResult,
+    TTool,
+    TToolExecuteArgs,
+    TToolExecuteResult,
+    TBackgroundJob,
+    TToolCallUpdate
+  >,
+): OnethingRuntimeFacade<
+  TAppState,
+  TUIState,
+  TSessionList,
+  TSession,
+  TCreateSessionInput,
+  TSessionPatch,
+  TMessagePageRequest,
+  TMessagePageResponse,
+  TUserMarkersResponse,
+  TCommand,
+  TCommandResult,
+  TEvent,
+  TChunk,
+  TPermissionResponse,
+  TSettings,
+  TSettingsUpdateResult,
+  THostCapabilities,
+  TMCPServerConfig,
+  TMCPServerState,
+  TMCPTool,
+  TMCPResource,
+  TMCPPrompt,
+  TMCPToolCallArgs,
+  TMCPToolCallResult,
+  TMCPResourceReadResult,
+  TMCPPromptResult,
+  TMCPConfigFileResult,
+  TMCPMutationResult,
+  TTool,
+  TToolExecuteArgs,
+  TToolExecuteResult,
+  TBackgroundJob,
+  TToolCallUpdate
+> {
+  return Object.freeze({
+    capabilities: options.capabilities ? Object.freeze({ ...options.capabilities }) : undefined,
+    appState: options.appState,
+    sessions: Object.freeze({ ...options.sessions }),
+    messages: options.messages ? Object.freeze({ ...options.messages }) : undefined,
+    chat: options.chat ? Object.freeze({ ...options.chat }) : undefined,
+    commands: Object.freeze({ ...options.commands }),
+    events: Object.freeze({ ...options.events }),
+    streams: options.streams ? Object.freeze({ ...options.streams }) : undefined,
+    permissions: options.permissions ? Object.freeze({ ...options.permissions }) : undefined,
+    settings: options.settings ? Object.freeze({ ...options.settings }) : undefined,
+    network: options.network ? Object.freeze({ ...options.network }) : undefined,
+    search: options.search ? Object.freeze({ ...options.search }) : undefined,
+    themes: options.themes ? Object.freeze({ ...options.themes }) : undefined,
+    prompts: options.prompts ? Object.freeze({ ...options.prompts }) : undefined,
+    files: options.files ? Object.freeze({ ...options.files }) : undefined,
+    markdown: options.markdown ? Object.freeze({ ...options.markdown }) : undefined,
+    projectDirs: options.projectDirs ? Object.freeze({ ...options.projectDirs }) : undefined,
+    variables: options.variables ? Object.freeze({ ...options.variables }) : undefined,
+    media: options.media ? Object.freeze({ ...options.media }) : undefined,
+    memory: options.memory ? Object.freeze({ ...options.memory }) : undefined,
+    todoPlan: options.todoPlan ? Object.freeze({ ...options.todoPlan }) : undefined,
+    scheduler: options.scheduler ? Object.freeze({ ...options.scheduler }) : undefined,
+    agents: options.agents ? Object.freeze({ ...options.agents }) : undefined,
+    skills: options.skills ? Object.freeze({ ...options.skills }) : undefined,
+    plugins: options.plugins ? Object.freeze({ ...options.plugins }) : undefined,
+    oauth: options.oauth ? Object.freeze({ ...options.oauth }) : undefined,
+    gateway: options.gateway ? Object.freeze({ ...options.gateway }) : undefined,
+    voice: options.voice ? Object.freeze({ ...options.voice }) : undefined,
+    acp: options.acp ? Object.freeze({ ...options.acp }) : undefined,
+    providers: options.providers ? Object.freeze({ ...options.providers }) : undefined,
+    tools: options.tools ? Object.freeze({ ...options.tools }) : undefined,
+    mcp: options.mcp ? Object.freeze({ ...options.mcp }) : undefined,
+    async shutdown() {
+      await options.shutdown?.()
+    },
+  })
+}

@@ -275,6 +275,7 @@ export type {
   PermissionGrant,
   PermissionGrantInput,
   PermissionGrantMatchInput,
+  PermissionGrantOwner,
   PermissionGrantScope,
   PermissionGrantStorage,
   PermissionPolicyDecision,
@@ -397,9 +398,15 @@ export {
 } from './gateway-runtime.js'
 export type {
   CoreConversationEngineLike,
+  CoreConversationEventBusLike,
+  CoreConversationEventEnvelopeLike,
   CoreConversationRuntime,
   CoreConversationRuntimeFactoryOptions,
   CoreConversationSendMessageCommand,
+  CorePermissionDecision,
+  CorePermissionMode,
+  CorePermissionRequestEvent,
+  CorePermissionSurface,
   CoreSendMessageOptions,
   CoreSessionRuntime,
   CoreStreamChannelLike,
@@ -569,3 +576,32 @@ export type {
   SharedSlashCommandDefinition,
   SharedSlashCommandParseResult,
 } from './slash-commands.js'
+
+export {
+  createOnethingRuntimeFacade,
+} from './runtime-facade.js'
+export type {
+  OnethingRuntimeFacade,
+  OnethingRuntimeFacadeOptions,
+  RuntimeACPAdapter,
+  RuntimeAppStateAdapter,
+  RuntimeCapabilitiesAdapter,
+  RuntimeCommandsAdapter,
+  RuntimeEventEnvelope,
+  RuntimeEventsAdapter,
+  RuntimeEventSubscribeOptions,
+  RuntimeGatewayAdapter,
+  RuntimeHostCapabilities,
+  RuntimeMessagesAdapter,
+  RuntimeMutationResult,
+  RuntimeOAuthAdapter,
+  RuntimeOAuthTokenEvent,
+  RuntimePermissionsAdapter,
+  RuntimeRequestContext,
+  RuntimeSessionsAdapter,
+  RuntimeSettingsAdapter,
+  RuntimeStreamPayload,
+  RuntimeStreamsAdapter,
+  RuntimeUnsubscribe,
+  RuntimeVoiceAdapter,
+} from './runtime-facade.js'

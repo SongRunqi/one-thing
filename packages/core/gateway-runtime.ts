@@ -24,6 +24,52 @@ export interface CoreSendMessageOptions {
   attachments?: JsonObject[]
 }
 
+export type CorePermissionDecision = 'once' | 'session' | 'workdir' | 'reject'
+export type CorePermissionMode = 'normal' | 'auto-accept-edits' | 'dangerously-allow-all'
+
+export interface CorePermissionRequestEvent {
+  sessionId: string
+  requestId: string
+  targetChannel: string
+  permissionType: string
+  title: string
+  toolCallId?: string
+  pattern?: string | string[]
+  metadata: JsonObject
+  timeoutMs?: number
+}
+
+export interface CorePermissionSurface {
+  onPermissionRequest(
+    sessionId: string,
+    handler: (req: CorePermissionRequestEvent) => void,
+  ): Unsubscribe
+  respondPermission(input: {
+    sessionId: string
+    requestId: string
+    channel: string
+    decision: CorePermissionDecision
+    rejectReason?: string
+  }): Promise<void>
+  setSessionPermissionMode(sessionId: string, mode: CorePermissionMode): void
+}
+
+export interface CoreConversationEventEnvelopeLike {
+  event: {
+    type: string
+    [key: string]: unknown
+  }
+}
+
+export interface CoreConversationEventBusLike {
+  onAny(
+    sessionId: string,
+    handler: (envelope: CoreConversationEventEnvelopeLike) => void,
+    label?: string,
+  ): Unsubscribe
+  emit(sessionId: string, event: { type: string; [key: string]: unknown }): Promise<unknown>
+}
+
 export interface CoreConversationSendMessageCommand {
   type: 'command:send-message'
   channel?: string
@@ -35,11 +81,13 @@ export interface CoreConversationSendMessageCommand {
 export interface CoreSessionRuntime {
   ensureSession(sessionId: string): void
   destroySession(sessionId: string): void
+  setSessionPermissionMode?(sessionId: string, mode: CorePermissionMode): void
 }
 
 export interface CoreConversationRuntime<TChunk extends StreamChunkBase = StreamChunkBase>
   extends CoreSessionRuntime {
   readonly streamChannel: CoreStreamChannelLike<TChunk>
+  readonly permissions?: CorePermissionSurface
   sendMessage(options: CoreSendMessageOptions): Promise<void>
 }
 
@@ -59,6 +107,7 @@ export interface CoreConversationRuntimeFactoryOptions<
   streamChannel: CoreStreamChannelLike<TChunk>
   sender?: TSender
   sessionRuntime?: CoreSessionRuntime
+  eventBus?: Partial<CoreConversationEventBusLike>
 }
 
 export function isCoreTextStreamChunk(chunk: unknown): chunk is CoreTextStreamChunk {

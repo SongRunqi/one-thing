@@ -11,6 +11,8 @@ export interface PermissionGrant {
   pattern: string | string[]
   sessionId?: string
   workspaceRoot?: string
+  userId?: string
+  workspaceId?: string
   createdAt: number
   updatedAt: number
   createdFrom: {
@@ -28,6 +30,8 @@ export interface PermissionGrantInput {
   pattern: string | string[]
   sessionId?: string
   workspaceRoot?: string
+  userId?: string
+  workspaceId?: string
   createdFrom: PermissionGrant['createdFrom']
   metadata?: JsonObject
 }
@@ -37,6 +41,13 @@ export interface PermissionGrantMatchInput {
   pattern?: string | string[]
   sessionId?: string
   workspaceRoot?: string
+  userId?: string
+  workspaceId?: string
+}
+
+export interface PermissionGrantOwner {
+  userId?: string
+  workspaceId?: string
 }
 
 export interface PermissionGrantStorage {
@@ -63,6 +74,11 @@ function normalizeRoot(root?: string): string | undefined {
   return root ? path.resolve(root) : undefined
 }
 
+function normalizeOwnerId(value?: string): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed || undefined
+}
+
 function toPatterns(pattern?: string | string[], type?: string): string[] {
   if (pattern === undefined) return type ? [type] : []
   return Array.isArray(pattern) ? pattern : [pattern]
@@ -83,10 +99,24 @@ function grantMatches(grant: PermissionGrant, input: PermissionGrantMatchInput):
   if (grant.type !== input.type) return false
   if (grant.scope === 'session' && grant.sessionId !== input.sessionId) return false
   if (grant.scope === 'workspace' && normalizeRoot(grant.workspaceRoot) !== normalizeRoot(input.workspaceRoot)) return false
+  if (!ownerMatches(grant, input)) return false
 
   const requested = toPatterns(input.pattern, input.type)
   const granted = toPatterns(grant.pattern, grant.type)
   return requested.every(key => granted.some(pattern => matchWildcard(key, pattern)))
+}
+
+function ownerMatches(grant: PermissionGrant, input: PermissionGrantMatchInput): boolean {
+  const grantUserId = normalizeOwnerId(grant.userId)
+  const grantWorkspaceId = normalizeOwnerId(grant.workspaceId)
+  const inputUserId = normalizeOwnerId(input.userId)
+  const inputWorkspaceId = normalizeOwnerId(input.workspaceId)
+  const grantHasOwner = grantUserId !== undefined || grantWorkspaceId !== undefined
+  const inputHasOwner = inputUserId !== undefined || inputWorkspaceId !== undefined
+
+  if (!grantHasOwner && !inputHasOwner) return true
+  if (!grantHasOwner || !inputHasOwner) return false
+  return grantUserId === inputUserId && grantWorkspaceId === inputWorkspaceId
 }
 
 function loadWorkspaceGrants(): PermissionGrant[] {
@@ -108,6 +138,8 @@ export function addGrant(input: PermissionGrantInput): PermissionGrant {
     pattern: input.pattern,
     sessionId: input.scope === 'session' ? input.sessionId : undefined,
     workspaceRoot: input.scope === 'workspace' ? normalizeRoot(input.workspaceRoot) : undefined,
+    userId: normalizeOwnerId(input.userId),
+    workspaceId: normalizeOwnerId(input.workspaceId),
     createdAt: now,
     updatedAt: now,
     createdFrom: input.createdFrom,
@@ -175,14 +207,30 @@ export function listSessionGrants(sessionId: string): PermissionGrant[] {
   return [...(sessionGrants.get(sessionId) ?? [])]
 }
 
-export function listWorkspaceGrants(workspaceRoot: string): PermissionGrant[] {
+export function listWorkspaceGrants(workspaceRoot: string, owner: PermissionGrantOwner = {}): PermissionGrant[] {
   const root = normalizeRoot(workspaceRoot)
-  return loadWorkspaceGrants().filter(grant => normalizeRoot(grant.workspaceRoot) === root)
+  return loadWorkspaceGrants().filter(grant => (
+    normalizeRoot(grant.workspaceRoot) === root &&
+    ownerMatches(grant, {
+      type: grant.type,
+      workspaceRoot,
+      userId: owner.userId,
+      workspaceId: owner.workspaceId,
+    })
+  ))
 }
 
-export function clearWorkspaceGrants(workspaceRoot: string): void {
+export function clearWorkspaceGrants(workspaceRoot: string, owner: PermissionGrantOwner = {}): void {
   const root = normalizeRoot(workspaceRoot)
-  workspaceGrantsCache = loadWorkspaceGrants().filter(grant => normalizeRoot(grant.workspaceRoot) !== root)
+  workspaceGrantsCache = loadWorkspaceGrants().filter(grant => (
+    normalizeRoot(grant.workspaceRoot) !== root ||
+    !ownerMatches(grant, {
+      type: grant.type,
+      workspaceRoot,
+      userId: owner.userId,
+      workspaceId: owner.workspaceId,
+    })
+  ))
   saveWorkspaceGrants()
 }
 

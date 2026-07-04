@@ -18,6 +18,7 @@
     "./plugins": "./plugins/index.ts",
     "./providers": "./providers/index.ts",
     "./permission": "./permission/index.ts",
+    "./runtime-facade": "./runtime-facade.ts",
     "./storage": "./storage/index.ts",
     "./tools": "./tools/index.ts",
     "./session": "./session/index.ts",

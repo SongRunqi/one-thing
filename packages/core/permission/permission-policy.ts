@@ -34,6 +34,8 @@ export interface PermissionPolicyInput {
   mode: PermissionPolicyMode
   effects: PermissionEffect[]
   workspaceRoot?: string
+  userId?: string
+  workspaceId?: string
   grantMatcher?: PermissionGrantMatcher
 }
 
@@ -45,6 +47,8 @@ export interface EnforcePermissionPolicyInput {
   effects: PermissionEffect[]
   preview?: PermissionPreview
   workspaceRoot?: string
+  userId?: string
+  workspaceId?: string
   grantMatcher?: PermissionGrantMatcher
   permissionBridge?: PermissionBridge
 }
@@ -92,6 +96,8 @@ export function decidePermission(input: PermissionPolicyInput): PermissionPolicy
       pattern: effectPattern(effect),
       sessionId: input.sessionId,
       workspaceRoot: input.workspaceRoot,
+      userId: input.userId,
+      workspaceId: input.workspaceId,
     }),
   }))
 
@@ -129,6 +135,8 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
       mode,
       effects: [effect],
       workspaceRoot: input.workspaceRoot,
+      userId: input.userId,
+      workspaceId: input.workspaceId,
       grantMatcher: input.grantMatcher,
     })
 
@@ -146,6 +154,8 @@ export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInpu
       callId: input.toolCallId,
       title: titleForEffect(input, effect),
       workingDirectory: input.workspaceRoot,
+      userId: input.userId,
+      workspaceId: input.workspaceId,
       metadata: toJsonObject({
         toolName: input.toolName,
         ...(input.preview?.metadata ?? {}),

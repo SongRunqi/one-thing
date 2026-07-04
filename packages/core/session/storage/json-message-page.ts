@@ -134,6 +134,14 @@ function collectMessageSlices(json: string, arrayStart: number, arrayEnd: number
   return slices
 }
 
+function isEscapedQuote(json: string, quoteIndex: number): boolean {
+  let slashCount = 0
+  for (let i = quoteIndex - 1; i >= 0 && json[i] === '\\'; i--) {
+    slashCount++
+  }
+  return slashCount % 2 === 1
+}
+
 function cursorFor(sessionId: string, slice: MessageSlice | undefined, includeAnchor: boolean): string | null {
   if (!slice) return null
   return encodeMessagePageCursor({ sessionId, seq: slice.seq, includeAnchor })
@@ -236,25 +244,18 @@ function collectSlicesBackward(
   let objectDepth = 0
   let objectEnd = -1
   let inString = false
-  let escaped = false
 
   for (let i = fromIndex; i > lowerBound && slices.length < limit; i--) {
     const ch = json[i]
 
-    if (inString) {
-      if (escaped) {
-        escaped = false
-      } else if (ch === '\\') {
-        escaped = true
-      } else if (ch === '"') {
-        inString = false
-      }
+    if (ch === '"' && !isEscapedQuote(json, i)) {
+      inString = !inString
       continue
     }
 
-    if (ch === '"') {
-      inString = true
-    } else if (ch === '}') {
+    if (inString) continue
+
+    if (ch === '}') {
       if (objectDepth === 0) objectEnd = i + 1
       objectDepth++
     } else if (ch === '{') {
@@ -270,7 +271,7 @@ function collectSlicesBackward(
 }
 
 function hasObjectBefore(json: string, arrayStart: number, byteStart: number): boolean {
-  return json.lastIndexOf('{', byteStart - 1) > arrayStart
+  return collectSlicesBackward(json, byteStart - 1, arrayStart, 1).length > 0
 }
 
 function fastTailPage<TMessage extends StoredChatMessage>(
