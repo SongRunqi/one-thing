@@ -34,9 +34,24 @@ describe('permission-policy', () => {
     const grants = await import('../../../permission/permission-grants.js')
     ;(grants.matchGrant as any).mockReturnValue({ id: 'g1' } as any)
 
-    expect(decidePermission({ sessionId: 's1', mode: 'normal', effects: [bashEffect], workspaceRoot: '/repo' })).toMatchObject({
+    expect(decidePermission({
+      sessionId: 's1',
+      mode: 'normal',
+      effects: [bashEffect],
+      workspaceRoot: '/repo',
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+    })).toMatchObject({
       decision: 'allow',
       grantId: 'g1',
+    })
+    expect(grants.matchGrant).toHaveBeenCalledWith({
+      type: 'bash',
+      pattern: ['rm *'],
+      sessionId: 's1',
+      workspaceRoot: '/repo',
+      userId: 'alice',
+      workspaceId: 'workspace-a',
     })
   })
 

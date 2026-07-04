@@ -8,13 +8,4 @@ export {
   getLatestSessionRepositorySchemaVersion,
 } from '@onething/core/session'
 export { getMessagesPageFromJsonFile } from './json-message-page.js'
-export {
-  getSqliteMessagesPage,
-  getSqliteSessionDetails,
-  getSqliteUserMessageMarkers,
-  importSessionIndexToSqlite,
-  initializeSqliteSessionRepository,
-  migrateSessionToSqliteNow,
-  scheduleSessionSqliteMigration,
-} from './sqlite-repository.js'
 export { getSessionDatabasePath } from '../paths.js'

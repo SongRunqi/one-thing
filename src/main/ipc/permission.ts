@@ -55,6 +55,8 @@ export function registerPermissionHandlers(): void {
       return listOnethingPermissionGrantsForIpc({
         sessionId: request.sessionId,
         workspaceRoot: request.workspaceRoot,
+        userId: request.userId,
+        workspaceId: request.workspaceId,
         listSessionGrants: PermissionGrants.listSessionGrants,
         listWorkspaceGrants: PermissionGrants.listWorkspaceGrants,
         logger: console,
@@ -77,6 +79,8 @@ export function registerPermissionHandlers(): void {
     clearWorkspaceGrants: (request: ElectronPermissionClearWorkspaceGrantsRequest) => {
       return clearOnethingWorkspacePermissionGrantsForIpc({
         workspaceRoot: request.workspaceRoot,
+        userId: request.userId,
+        workspaceId: request.workspaceId,
         clearWorkspaceGrants: PermissionGrants.clearWorkspaceGrants,
         logger: console,
       })

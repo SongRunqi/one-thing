@@ -215,6 +215,8 @@ export interface PermissionRequestEvent {
   title: string
   pattern?: string | string[]
   metadata: JsonObject
+  userId?: string
+  workspaceId?: string
   timeoutMs?: number
 }
 

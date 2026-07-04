@@ -53,8 +53,8 @@ function registerUserTask(task: SchedulerUserTaskDTO): SchedulerTaskSnapshotDTO 
     promptPreview: previewOnethingSchedulerPrompt(task.prompt),
     workingDirectory: task.workingDirectory,
     tags: ['agent', 'user'],
-    enabled: () => getUserTask(task.id)?.enabled ?? false,
-    schedule: () => getUserTask(task.id)?.schedule ?? null,
+    enabled: () => task.enabled,
+    schedule: () => task.schedule,
     timeoutMs: USER_TASK_TIMEOUT_MS,
     run: context => runAgentTask(task.id, context),
   })

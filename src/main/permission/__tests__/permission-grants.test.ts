@@ -88,6 +88,80 @@ describe('permission grants', () => {
     expect(matchGrant({ type: 'file_write', pattern: '/repo/a.ts', workspaceRoot: '/other' })).toBeUndefined()
   })
 
+  it('isolates owner-scoped workspace grants by user and workspace id', async () => {
+    const { addGrant, clearWorkspaceGrants, listWorkspaceGrants, matchGrant } = await import('../permission-grants')
+    const aliceGrant = addGrant({
+      scope: 'workspace',
+      type: 'bash',
+      pattern: 'npm test',
+      workspaceRoot: '/repo',
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+      createdFrom: { messageId: 'm1', title: 'test' },
+    })
+    const bobGrant = addGrant({
+      scope: 'workspace',
+      type: 'bash',
+      pattern: 'npm test',
+      workspaceRoot: '/repo',
+      userId: 'bob',
+      workspaceId: 'workspace-a',
+      createdFrom: { messageId: 'm2', title: 'test' },
+    })
+
+    expect(matchGrant({
+      type: 'bash',
+      pattern: 'npm test',
+      workspaceRoot: '/repo',
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+    })?.id).toBe(aliceGrant.id)
+    expect(matchGrant({
+      type: 'bash',
+      pattern: 'npm test',
+      workspaceRoot: '/repo',
+      userId: 'bob',
+      workspaceId: 'workspace-a',
+    })?.id).toBe(bobGrant.id)
+    expect(matchGrant({
+      type: 'bash',
+      pattern: 'npm test',
+      workspaceRoot: '/repo',
+      userId: 'alice',
+      workspaceId: 'workspace-b',
+    })).toBeUndefined()
+    expect(matchGrant({
+      type: 'bash',
+      pattern: 'npm test',
+      workspaceRoot: '/repo',
+    })).toBeUndefined()
+
+    expect(listWorkspaceGrants('/repo', {
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+    }).map(grant => grant.id)).toEqual([aliceGrant.id])
+
+    clearWorkspaceGrants('/repo', {
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+    })
+
+    expect(matchGrant({
+      type: 'bash',
+      pattern: 'npm test',
+      workspaceRoot: '/repo',
+      userId: 'alice',
+      workspaceId: 'workspace-a',
+    })).toBeUndefined()
+    expect(matchGrant({
+      type: 'bash',
+      pattern: 'npm test',
+      workspaceRoot: '/repo',
+      userId: 'bob',
+      workspaceId: 'workspace-a',
+    })?.id).toBe(bobGrant.id)
+  })
+
   it('supports revoke and clear session grants', async () => {
     const { addGrant, clearSessionGrants, listSessionGrants, matchGrant, revokeGrant } = await import('../permission-grants')
     const grant = addGrant({

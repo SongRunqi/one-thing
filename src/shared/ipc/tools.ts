@@ -90,8 +90,9 @@ export interface ToolCall {
   rejected?: boolean         // True when the user rejected permission for this call
   rejectionReason?: string   // Optional user-provided rejection reason
   timestamp: number
-  startTime?: number         // Execution start timestamp
-  endTime?: number           // Execution end timestamp
+  startTime?: number         // Execution start timestamp (Date.now, integer ms)
+  endTime?: number           // Execution end timestamp (Date.now, integer ms)
+  durationMs?: number        // High-resolution execution duration (performance.now delta, float ms)
   // For dangerous commands that need user confirmation
   requiresConfirmation?: boolean
   commandType?: 'read-only' | 'dangerous' | 'forbidden'

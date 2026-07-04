@@ -6,6 +6,7 @@ import {
   getUserMessageMarkersFromArray,
 } from '../pagination.js'
 import {
+  getMessagesPageFromJson,
   resolveSessionMessagesPage,
   resolveSessionUserMessageMarkers,
 } from '@onething/core/session'
@@ -128,6 +129,35 @@ describe('session message pagination', () => {
       ['msg-6', 6],
       ['msg-9', 9],
     ])
+  })
+
+  it('byte-scans tail pages when message content contains escaped quotes and braces', () => {
+    const trickyMessages = [
+      message(1, 'user'),
+      {
+        ...message(2),
+        content: 'plain middle message',
+      },
+      {
+        ...message(3),
+        content: 'tool result contains "json": {"closing":"}","nested":{"value":"ok"}}',
+      },
+      {
+        ...message(4),
+        content: 'tail content with escaped "quotes" before {"a":"b"} and a lone } brace',
+      },
+      message(5),
+    ]
+
+    const page = getMessagesPageFromJson<ChatMessage>({
+      sessionId: 's1',
+      anchor: 'tail',
+      limit: 2,
+    }, JSON.stringify({ id: 's1', messages: trickyMessages }, null, 2))
+
+    expect(page?.success).toBe(true)
+    expect(page?.messages?.map(item => item.id)).toEqual(['msg-4', 'msg-5'])
+    expect(page?.messages?.[0]?.content).toContain('escaped "quotes"')
   })
 
   it('resolves page sources and migration scheduling in core', () => {

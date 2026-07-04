@@ -6,25 +6,22 @@ import {
   createOnethingSkillReviewFileToolAdapters,
   createOnethingSkillReviewTrigger,
 } from '@onething/runtime/triggers'
-import type { ProviderAuthContext } from '../../auth/types.js'
-import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
-import { generateChatResponse } from '../../providers/index.js'
-import { dumpProviderRequest } from '../../providers/request-dump.js'
+import { createAgentProviderFromRuntime } from '../../agent-loop/index.js'
 import { getUserSkillsPath } from '../../skills/index.js'
 import { executeSkillManage, type SkillManageArgs } from '../../skills/manage.js'
 import {
   getSkillsForSession,
   invalidateSessionSkillsCache as invalidateSkillsCache,
 } from '../../skills/session-skills.js'
+import {
+  getProviderApiType,
+  resolveProviderAuth,
+} from '../stream/provider-helpers.js'
 import { ReadTool } from '../../tools/builtin/read.js'
 import { WriteTool } from '../../tools/builtin/write.js'
 import { EditTool } from '../../tools/builtin/edit.js'
 import type { ToolContext } from '../../tools/core/tool.js'
 import type { Trigger, TriggerContext } from './index.js'
-
-interface SkillReviewProviderAuthExtension {
-  authContext?: ProviderAuthContext
-}
 
 function isSkillReviewDisabledByEnv(): boolean {
   return process.env.ONETHING_DISABLE_SKILL_REVIEW === '1' ||
@@ -72,6 +69,42 @@ function createMainSkillReviewFileToolAdapters(
   })
 }
 
+async function createSkillReviewAgentProvider(ctx: TriggerContext) {
+  const toolCallModel = ctx.settings.tools?.toolCallModel
+  const providerId = toolCallModel?.providerId?.trim()
+  const model = toolCallModel?.model?.trim()
+  if (!providerId || !model) return undefined
+
+  const providerConfig = ctx.settings.ai.providers[providerId]
+  if (!providerConfig) return undefined
+
+  const authContext = await resolveProviderAuth(providerId, providerConfig)
+  if (!authContext) return undefined
+
+  const provider = createAgentProviderFromRuntime(providerId, {
+    ...providerConfig,
+    model,
+    apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
+    authContext,
+    oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig.oauthToken,
+    apiType: getProviderApiType(ctx.settings, providerId),
+  }, {
+    workingDirectory: ctx.session.workingDirectory,
+    localSessionId: ctx.sessionId,
+  })
+  if (!provider) return undefined
+
+  return {
+    provider,
+    providerId,
+    model,
+    thinking: typeof toolCallModel?.thinking === 'boolean' ? toolCallModel.thinking : undefined,
+    thinkingEffort: toolCallModel?.thinkingEffort,
+    thinkingByModel: providerConfig.thinkingByModel,
+    thinkingEffortByModel: providerConfig.thinkingEffortByModel,
+  }
+}
+
 export function createSkillReviewTrigger(): Trigger {
   return createOnethingSkillReviewTrigger<TriggerContext>({
     isDisabled: isSkillReviewDisabledByEnv,
@@ -81,15 +114,7 @@ export function createSkillReviewTrigger(): Trigger {
     executeSkillManage: (args, options) =>
       executeSkillManage(asSkillManageArgs(args), { workingDirectory: options.workingDirectory }),
     invalidateSkillsCache,
-    generateChatResponse: (providerId, providerConfig, messages, options) =>
-      generateChatResponse(
-        providerId,
-        providerConfig as Parameters<typeof generateChatResponse>[1] & SkillReviewProviderAuthExtension,
-        messages,
-        options,
-      ),
-    fetchImpl: createRequiredAppFetch,
-    requestDumper: dumpProviderRequest as never,
+    createAgentProvider: createSkillReviewAgentProvider,
     fileTools: (ctx, options) => createMainSkillReviewFileToolAdapters(ctx, options.mutableRoots),
     logger: console,
   }) as Trigger

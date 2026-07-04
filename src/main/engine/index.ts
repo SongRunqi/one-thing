@@ -102,6 +102,9 @@ export function initializeStreamEngine(): void {
         destroySession: sessionId => {
           getSessionManager().destroySession(sessionId)
         },
+        setSessionPermissionMode: (sessionId, mode) => {
+          store.updateSessionPermissionMode(sessionId, mode)
+        },
       },
     })
   } catch {

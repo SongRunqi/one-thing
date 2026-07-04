@@ -7,6 +7,7 @@ import {
   buildSkillReviewFileAgentTools,
   buildSkillReviewAgentRunPlan,
   buildSkillReviewMessages,
+  buildSkillReviewTargetMessages,
   collectAgentReviewedSkillDirectories,
   collectSkillReviewMutableRoots,
   clearSkillReviewState,
@@ -29,15 +30,17 @@ import {
   normalizeReasoningEffort,
   normalizeReviewAction,
   normalizeSkillReviewDecisionActions,
+  normalizeSkillReviewTargetDecision,
+  normalizeSkillReviewTargetName,
   normalizeSupportFilePath,
   parseReviewDecision,
+  parseSkillReviewTargetDecision,
   planAgentReviewedSkillCompletion,
   resolveSkillReviewToolPath,
   recordSkillReviewCounter,
   skillReviewMessageText,
   skillReviewTranscriptFromMessages,
   supportFileActions,
-  supportFilesForExistingUpdate,
   uniqueSkillSupportFileActions,
   uniqueSkillSupportFilePath,
 } from '@onething/runtime/triggers'
@@ -130,7 +133,7 @@ describe('onething runtime skill-review helpers', () => {
     ])
   })
 
-  it('builds DeepSeek agent review prompts with mutable roots', () => {
+  it('builds agent review prompts with writable target roots', () => {
     const messages = buildAgentSkillReviewMessages({
       sessionId: 's1',
       visibleSkillSummary: 'No installed skills are visible.',
@@ -140,6 +143,7 @@ describe('onething runtime skill-review helpers', () => {
 
     expect(messages[0].content).toContain('Use the read, write, and edit tools')
     expect(messages[0].content).toContain('Do not use skill_manage for updates.')
+    expect(messages[0].content).toContain('Do not create background-review-update.md')
     expect(messages[1].content).toContain('Working directory: [none]')
     expect(messages[1].content).toContain('- /tmp/skills')
     expect(messages[1].content).toContain('- /tmp/project/.onething/skills')
@@ -150,6 +154,27 @@ describe('onething runtime skill-review helpers', () => {
     expect(parseReviewDecision('Here is the decision: {"actions":[{"action":"create"}]} done.'))
       .toEqual({ actions: [{ action: 'create' }] })
     expect(() => parseReviewDecision('no json here')).toThrow('Skill review did not return JSON')
+  })
+
+  it('builds and parses target-only skill review decisions', () => {
+    const messages = buildSkillReviewTargetMessages({
+      sessionId: 's1',
+      workingDirectory: '/tmp/project',
+      visibleSkillSummary: '- review-workflow [user] Use when reviewing.',
+      transcript: 'USER: please remember this workflow',
+    })
+
+    expect(messages[0].content).toContain('"action":"none"|"create"|"update"')
+    expect(messages[0].content).toContain('Do not include skill instructions')
+    expect(parseSkillReviewTargetDecision('```json\n{"action":"update","name":"Review Workflow"}\n```'))
+      .toEqual({ action: 'update', name: 'Review Workflow' })
+    expect(normalizeSkillReviewTargetName('Review Workflow!')).toBe('review-workflow')
+    expect(normalizeSkillReviewTargetDecision({ action: 'update', name: 'Review Workflow!' }))
+      .toEqual({ action: 'update', name: 'review-workflow', reason: undefined })
+    expect(normalizeSkillReviewTargetDecision({ action: 'update' })).toEqual({
+      action: 'none',
+      reason: undefined,
+    })
   })
 
   it('normalizes support file actions with safe relative support paths only', () => {
@@ -204,21 +229,6 @@ describe('onething runtime skill-review helpers', () => {
       file_path: 'references/procedure.md',
     })
 
-    const updateFiles = supportFilesForExistingUpdate({
-      action: 'edit',
-      name: 'review-workflow',
-      description: 'Use when updating.',
-      content: 'Add this durable update.',
-    }, 'review-workflow')
-
-    expect(updateFiles).toEqual([
-      expect.objectContaining({
-        action: 'write_file',
-        file_path: 'references/background-review-update.md',
-        file_content: expect.stringContaining('Add this durable update.'),
-      }),
-    ])
-
     expect(normalizeSkillReviewDecisionActions({
       actions: [
         { action: 'noop', name: 'bad' },
@@ -262,7 +272,6 @@ describe('onething runtime skill-review helpers', () => {
         directoryPath: '/system/system-owned',
       },
     ]
-    const existingSupportFiles = new Set(['references/background-review-update.md'])
     const executed: unknown[] = []
     const references: Array<{ skillName: string; paths: string[] }> = []
     let invalidated = 0
@@ -297,7 +306,7 @@ describe('onething runtime skill-review helpers', () => {
       maxActions: 3,
       findVisibleSkill: name => skills.find(skill => skill.name === name),
       findMutableSkill: name => skills.find(skill => skill.name === name && skill.source === 'user'),
-      supportFileExists: (_skill, filePath) => existingSupportFiles.has(filePath),
+      supportFileExists: () => false,
       executeSkillManage: args => {
         executed.push(args)
         return {
@@ -325,15 +334,9 @@ describe('onething runtime skill-review helpers', () => {
       skippedOwnedSkills: ['system-owned'],
     })
     expect(result.supportFilesWritten).toEqual([
-      'references/background-review-update-2.md',
       'references/custom.md',
     ])
     expect(executed).toEqual([
-      expect.objectContaining({
-        action: 'write_file',
-        name: 'owned',
-        file_path: 'references/background-review-update-2.md',
-      }),
       expect.objectContaining({
         action: 'create',
         name: 'new-skill',
@@ -344,11 +347,10 @@ describe('onething runtime skill-review helpers', () => {
         file_path: 'references/custom.md',
       }),
     ])
-    expect(references).toEqual([
-      { skillName: 'owned', paths: ['references/background-review-update-2.md'] },
-    ])
+    expect(references).toEqual([])
     expect(invalidated).toBe(1)
-    expect(warnings[0]?.[0]).toContain('Skipping system-owned skill system-owned')
+    expect(warnings[0]?.[0]).toContain('Skipping JSON update for existing skill owned')
+    expect(warnings[1]?.[0]).toContain('Skipping system-owned skill system-owned')
   })
 
   it('generates unique support file paths without filesystem access', () => {
@@ -363,14 +365,14 @@ describe('onething runtime skill-review helpers', () => {
 
     const full = new Set(Array.from({ length: 1000 }, (_, index) => {
       const suffix = index === 0 ? '' : `-${index + 1}`
-      return `references/background-review-update${suffix}.md`
+      return `references/review-notes${suffix}.md`
     }))
     expect(uniqueSkillSupportFilePath({
       requestedPath: '../bad.md',
       fallbackText: '',
       reserved: full,
       now: () => 12345,
-    })).toBe('references/background-review-update-12345.md')
+    })).toBe('references/review-notes-12345.md')
   })
 
   it('rewrites support file actions to unique skill-owned write actions', () => {
@@ -532,7 +534,7 @@ describe('onething runtime skill-review helpers', () => {
     })
     expect(plan.temperature).toBeUndefined()
     expect(plan.messages[0].content).toContain('background Hermes skill-review agent')
-    expect(plan.messages[1].content).toContain('Mutable skill roots:')
+    expect(plan.messages[1].content).toContain('Writable target roots:')
 
     const nonThinkingPlan = buildSkillReviewAgentRunPlan({
       model: 'deepseek-chat',
@@ -728,7 +730,7 @@ describe('onething runtime skill-review helpers', () => {
       skillContent: 'Use this workflow.',
       supportFiles: [],
       procedureFileExists: true,
-    }).supportFileToCreate?.path).toBe('references/background-review-notes.md')
+    }).supportFileToCreate?.path).toBe('references/review-notes.md')
 
     expect(planAgentReviewedSkillCompletion({
       skillName: 'review-workflow',

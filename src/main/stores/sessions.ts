@@ -24,28 +24,10 @@ import { getCurrentSessionId, setCurrentSessionId } from './app-state.js'
 import { getSettings } from './settings.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import {
-  createOnethingResilientSessionSqliteAdapters,
   createOnethingSessionMessageRuntime,
   createOnethingSessionRepository,
   type OnethingSessionMessageRuntime,
 } from '@onething/runtime/sessions'
-import {
-  deleteSqliteMessage as rawDeleteSqliteMessage,
-  deleteSqliteMessageAndAfter as rawDeleteSqliteMessageAndAfter,
-  deleteSqliteSessions as rawDeleteSqliteSessions,
-  getSqliteMessagesPage as rawGetSqliteMessagesPage,
-  getSqliteSessionDetails as rawGetSqliteSessionDetails,
-  getSqliteUserMessageMarkers as rawGetSqliteUserMessageMarkers,
-  importSessionIndexToSqlite as rawImportSessionIndexToSqlite,
-  isSqliteSessionReady as rawIsSqliteSessionReady,
-  scheduleSessionSqliteMigration as rawScheduleSessionSqliteMigration,
-  syncFullSessionToSqlite as rawSyncFullSessionToSqlite,
-  syncSqliteMessage as rawSyncSqliteMessage,
-  syncSqliteSessionMetadata as rawSyncSqliteSessionMetadata,
-  syncSqliteSessionUsage as rawSyncSqliteSessionUsage,
-  syncSqliteSessionVariables as rawSyncSqliteSessionVariables,
-  upsertSqliteMessageAndTruncate as rawUpsertSqliteMessageAndTruncate,
-} from './session-repository/sqlite-repository.js'
 import {
   CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID,
   deriveRetainedContextSize,
@@ -65,7 +47,6 @@ export {
 // 策略:更新内存缓存后,用 300ms 节流把脏 session 异步写盘。
 // 同一 session 的多次写入在 promise 链上串行化,避免旧异步写盖新数据。
 // 关键生命周期(finalize / delete / 应用退出)会强制 flush。
-const SQLITE_STREAM_SYNC_THROTTLE_MS = 1000
 let sessionMessageRuntime: OnethingSessionMessageRuntime<
   ChatSession,
   ChatMessage,
@@ -74,38 +55,6 @@ let sessionMessageRuntime: OnethingSessionMessageRuntime<
   ContentPart,
   ToolCall
 > | undefined
-
-function cancelPendingSqliteMessageSyncs(sessionId: string): void {
-  sessionMessageRuntime?.cancelPendingSqliteMessageSyncs(sessionId)
-}
-
-const sqliteSessionAdapters = createOnethingResilientSessionSqliteAdapters<
-  ChatSession,
-  ChatMessage,
-  SessionMeta,
-  SessionDetails,
-  UserMessageMarker
->({
-  adapters: {
-    importSessionIndex: rawImportSessionIndexToSqlite,
-    getSessionDetails: rawGetSqliteSessionDetails,
-    getMessagesPage: rawGetSqliteMessagesPage,
-    getUserMessageMarkers: rawGetSqliteUserMessageMarkers,
-    isSessionReady: rawIsSqliteSessionReady,
-    scheduleMigration: rawScheduleSessionSqliteMigration,
-    syncFullSession: rawSyncFullSessionToSqlite,
-    syncSessionMetadata: rawSyncSqliteSessionMetadata,
-    syncSessionUsage: rawSyncSqliteSessionUsage,
-    syncSessionVariables: rawSyncSqliteSessionVariables,
-    deleteSessions: rawDeleteSqliteSessions,
-    syncMessage: rawSyncSqliteMessage,
-    deleteMessage: rawDeleteSqliteMessage,
-    deleteMessageAndAfter: rawDeleteSqliteMessageAndAfter,
-    upsertMessageAndTruncate: rawUpsertSqliteMessageAndTruncate,
-  },
-  isEnabled: () => process.env.ONETHING_HEADLESS !== '1',
-  logger: console,
-})
 
 const sessionRepository = createOnethingSessionRepository<
   ChatSession,
@@ -125,8 +74,6 @@ const sessionRepository = createOnethingSessionRepository<
   setCurrentSessionId,
   getDefaultWorkingDirectory: () => getSettings().tools?.bash?.defaultWorkingDirectory,
   expandPath,
-  cancelPendingSideEffects: cancelPendingSqliteMessageSyncs,
-  sqlite: sqliteSessionAdapters,
   logger: console,
 })
 
@@ -145,18 +92,6 @@ sessionMessageRuntime = createOnethingSessionMessageRuntime<
     syncSessionToSqliteIfReady: session => sessionRepository.syncSessionToSqliteIfReady(session),
     updateSessionsIndexMeta: (sessionId, update) => sessionRepository.updateSessionsIndexMeta(sessionId, update),
   },
-  sqlite: {
-    isSessionReady: sessionId => sqliteSessionAdapters.isSessionReady?.(sessionId) ?? false,
-    scheduleMigration: sessionId => sqliteSessionAdapters.scheduleMigration?.(sessionId),
-    syncMessage: (sessionId, message, seq) => sqliteSessionAdapters.syncMessage?.(sessionId, message, seq),
-    syncSessionMetadata: session => sqliteSessionAdapters.syncSessionMetadata?.(session),
-    syncSessionUsage: session => sqliteSessionAdapters.syncSessionUsage?.(session),
-    deleteMessage: (sessionId, messageId) => sqliteSessionAdapters.deleteMessage?.(sessionId, messageId),
-    deleteMessageAndAfter: (sessionId, messageId) => sqliteSessionAdapters.deleteMessageAndAfter?.(sessionId, messageId),
-    upsertMessageAndTruncate: (sessionId, message, seq) =>
-      sqliteSessionAdapters.upsertMessageAndTruncate?.(sessionId, message, seq),
-  },
-  streamSyncThrottleMs: SQLITE_STREAM_SYNC_THROTTLE_MS,
   now: Date.now,
   logger: console,
 })
@@ -169,63 +104,73 @@ function updateSessionsIndexMeta(
 }
 
 function importSessionIndexToSqlite(index: SessionMeta[]): void {
-  sqliteSessionAdapters.importSessionIndex?.(index)
+  void index
 }
 
 function getSqliteSessionDetails(sessionId: string): SessionDetails | undefined {
-  return sqliteSessionAdapters.getSessionDetails?.(sessionId)
+  void sessionId
+  return undefined
 }
 
 function getSqliteMessagesPage(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse | undefined {
-  return sqliteSessionAdapters.getMessagesPage?.(request) as GetSessionMessagesPageResponse | undefined
+  void request
+  return undefined
 }
 
 function getSqliteUserMessageMarkers(sessionId: string): UserMessageMarker[] | undefined {
-  return sqliteSessionAdapters.getUserMessageMarkers?.(sessionId)
+  void sessionId
+  return undefined
 }
 
 function isSqliteSessionReady(sessionId: string): boolean {
-  return sqliteSessionAdapters.isSessionReady?.(sessionId) ?? false
+  void sessionId
+  return false
 }
 
 function scheduleSessionSqliteMigration(sessionId: string): void {
-  sqliteSessionAdapters.scheduleMigration?.(sessionId)
+  void sessionId
 }
 
 function syncFullSessionToSqlite(session: ChatSession): void {
-  sqliteSessionAdapters.syncFullSession?.(session)
+  void session
 }
 
 function syncSqliteMessage(sessionId: string, message: ChatMessage, seq: number): void {
-  sqliteSessionAdapters.syncMessage?.(sessionId, message, seq)
+  void sessionId
+  void message
+  void seq
 }
 
 function syncSqliteSessionMetadata(session: ChatSession): void {
-  sqliteSessionAdapters.syncSessionMetadata?.(session)
+  void session
 }
 
 function syncSqliteSessionUsage(session: ChatSession): void {
-  sqliteSessionAdapters.syncSessionUsage?.(session)
+  void session
 }
 
 function syncSqliteSessionVariables(session: ChatSession): void {
-  sqliteSessionAdapters.syncSessionVariables?.(session)
+  void session
 }
 
 function deleteSqliteSessions(sessionIds: string[]): void {
-  sqliteSessionAdapters.deleteSessions?.(sessionIds)
+  void sessionIds
 }
 
 function deleteSqliteMessage(sessionId: string, messageId: string): void {
-  sqliteSessionAdapters.deleteMessage?.(sessionId, messageId)
+  void sessionId
+  void messageId
 }
 
 function deleteSqliteMessageAndAfter(sessionId: string, messageId: string): void {
-  sqliteSessionAdapters.deleteMessageAndAfter?.(sessionId, messageId)
+  void sessionId
+  void messageId
 }
 
 function upsertSqliteMessageAndTruncate(sessionId: string, message: ChatMessage, seq: number): void {
-  sqliteSessionAdapters.upsertMessageAndTruncate?.(sessionId, message, seq)
+  void sessionId
+  void message
+  void seq
 }
 
 /**

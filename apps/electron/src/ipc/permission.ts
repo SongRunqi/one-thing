@@ -21,6 +21,8 @@ export type ElectronPermissionSessionId = string
 export interface ElectronPermissionListGrantsRequest {
   sessionId?: string
   workspaceRoot?: string
+  userId?: string
+  workspaceId?: string
 }
 
 export interface ElectronPermissionRevokeGrantRequest {
@@ -33,6 +35,8 @@ export interface ElectronPermissionClearSessionGrantsRequest {
 
 export interface ElectronPermissionClearWorkspaceGrantsRequest {
   workspaceRoot: string
+  userId?: string
+  workspaceId?: string
 }
 
 export interface RegisterElectronPermissionIpcHandlersOptions {

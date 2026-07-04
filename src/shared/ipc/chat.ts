@@ -171,6 +171,7 @@ export interface SessionDetails extends SessionMeta {
   totalInputTokens?: number
   totalOutputTokens?: number
   totalTokens?: number
+  maxTokens?: number
   lastInputTokens?: number
   contextSize?: number
 }
@@ -207,6 +208,7 @@ export interface ChatSession {
   totalInputTokens?: number     // Accumulated input tokens for this session
   totalOutputTokens?: number    // Accumulated output tokens for this session
   totalTokens?: number          // Accumulated total tokens for this session
+  maxTokens?: number            // Session context/token budget limit
   lastInputTokens?: number      // Last request's input tokens
   contextSize?: number          // Current context window size (last turn's input tokens)
 }

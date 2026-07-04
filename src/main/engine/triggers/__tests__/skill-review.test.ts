@@ -2,9 +2,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { generateChatResponse } from '../../../providers/index.js'
-import { runAgentLoop } from '@onething/core/agent-loop'
-import { createDeepSeekAgentProvider } from '@onething/runtime/agent-loop/providers'
+import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onething/core/agent-loop'
+import { createAgentProviderFromRuntime } from '../../../agent-loop/index.js'
 import { getUserSkillsPath } from '../../../skills/index.js'
 import { executeSkillManage } from '../../../skills/manage.js'
 import { invalidateSkillsCache } from '../../../ipc/skills.js'
@@ -20,15 +19,22 @@ vi.mock('electron', () => ({
   shell: { openPath: vi.fn() },
 }))
 
-vi.mock('../../../providers/index.js', () => ({
-  generateChatResponse: vi.fn(),
-}))
-
-vi.mock('@onething/runtime/agent-loop/providers', async importOriginal => {
-  const actual = await importOriginal<typeof import('@onething/runtime/agent-loop/providers')>()
+vi.mock('../../../agent-loop/index.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../agent-loop/index.js')>()
   return {
     ...actual,
-    createDeepSeekAgentProvider: vi.fn(() => ({ id: 'deepseek', runTurn: vi.fn() })),
+    createAgentProviderFromRuntime: vi.fn(() => ({
+      id: 'tool-provider',
+      capabilities: {
+        capabilities: ['text-input', 'text-output', 'streaming', 'tool-calls', 'structured-tool-results'],
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+        supportsTools: true,
+        supportsStructuredToolResults: true,
+        supportsStreaming: true,
+      },
+      runTurn: vi.fn(),
+    })),
   }
 })
 
@@ -54,9 +60,19 @@ beforeEach(() => {
   restoreEnv()
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-skill-review-'))
   process.env.HOME = tmpDir
-  vi.mocked(generateChatResponse).mockReset()
-  vi.mocked(createDeepSeekAgentProvider).mockReset()
-  vi.mocked(createDeepSeekAgentProvider).mockReturnValue({ id: 'deepseek', runTurn: vi.fn() })
+  vi.mocked(createAgentProviderFromRuntime).mockClear()
+  vi.mocked(createAgentProviderFromRuntime).mockReturnValue({
+    id: 'tool-provider',
+    capabilities: {
+      capabilities: ['text-input', 'text-output', 'streaming', 'tool-calls', 'structured-tool-results'],
+      inputModalities: ['text'],
+      outputModalities: ['text'],
+      supportsTools: true,
+      supportsStructuredToolResults: true,
+      supportsStreaming: true,
+    },
+    runTurn: vi.fn(),
+  })
   vi.mocked(runAgentLoop).mockReset()
 })
 
@@ -81,6 +97,14 @@ function triggerContext(): TriggerContext {
     { id: 'u1', role: 'user', content: 'Remember this reusable review workflow.', timestamp: 1 },
     { id: 'a1', role: 'assistant', content: 'I will apply that workflow.', timestamp: 2 },
   ]
+  const settings = createDefaultSettings()
+  settings.tools.toolCallModel = {
+    providerId: 'deepseek',
+    model: 'deepseek-v4-pro',
+    thinking: true,
+    thinkingEffort: 'medium',
+  }
+  settings.ai.providers.deepseek = deepseekProviderConfig()
 
   return {
     sessionId: 's1',
@@ -97,7 +121,7 @@ function triggerContext(): TriggerContext {
     lastAssistantMessage: 'I will apply that workflow.',
     providerId: 'mock-provider',
     providerConfig: { model: 'mock-model', selectedModels: ['mock-model'] },
-    settings: createDefaultSettings(),
+    settings,
     toolIterations: 10,
     skillManageCalled: false,
     enabledToolNames: ['skill_manage'],
@@ -124,109 +148,44 @@ function createExistingSkill(name = 'review-workflow'): string {
   return content
 }
 
+function agentLoopResult(
+  options: { messages: AgentLoopOptions['messages'] },
+  text: string,
+  toolResults: AgentLoopResult['toolResults'] = [],
+): AgentLoopResult {
+  return {
+    messages: options.messages,
+    text,
+    reasoning: 'reviewed',
+    finishReason: 'stop',
+    turns: 1,
+    toolResults,
+  }
+}
+
+function mockTargetThenAgent(
+  target: { action: 'none' | 'create' | 'update'; name?: string },
+  runAgent: (options: Parameters<typeof runAgentLoop>[0]) => Promise<ReturnType<typeof agentLoopResult>>,
+): void {
+  vi.mocked(runAgentLoop)
+    .mockImplementationOnce(async options => {
+      expect(options.tools).toEqual([])
+      expect(options.messages[0].content).toContain('skill-review planner')
+      return agentLoopResult(options, JSON.stringify(target))
+    })
+    .mockImplementationOnce(runAgent as never)
+}
+
 describe('Hermes skill review trigger', () => {
-  it('creates a complete skill package with supporting files', async () => {
-    vi.mocked(generateChatResponse).mockResolvedValue(JSON.stringify({
-      actions: [{
-        action: 'create',
-        name: 'review-workflow',
-        description: 'Use when preserving a reusable review workflow.',
-        instructions: 'Load the checklist before reviewing and apply the summary template.',
-        files: [
-          {
-            file_path: 'references/checklist.md',
-            content: '# Review Checklist\n\n- Confirm scope\n- Check risks',
-          },
-          {
-            file_path: 'templates/summary.md',
-            content: '## Findings\n\n## Verification',
-          },
-        ],
-        reason: 'The user asked to preserve a reusable review workflow.',
-      }],
-    }))
-
-    await createSkillReviewTrigger().execute(triggerContext())
-
-    const skillDir = path.join(getUserSkillsPath(), 'review-workflow')
-    const skillMarkdown = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')
-
-    expect(skillMarkdown).toContain('name: "review-workflow"')
-    expect(skillMarkdown).toContain('references/checklist.md')
-    expect(skillMarkdown).toContain('templates/summary.md')
-    expect(fs.readFileSync(path.join(skillDir, 'references', 'checklist.md'), 'utf-8'))
-      .toContain('Confirm scope')
-    expect(fs.readFileSync(path.join(skillDir, 'templates', 'summary.md'), 'utf-8'))
-      .toContain('## Verification')
-  })
-
-  it('adds a default reference file when a create action omits supporting files', async () => {
-    vi.mocked(generateChatResponse).mockResolvedValue(JSON.stringify({
-      actions: [{
-        action: 'create',
-        name: 'fallback-workflow',
-        description: 'Use when preserving a small reusable workflow.',
-        instructions: 'Follow the compact workflow every time.',
-        reason: 'The workflow should be reusable.',
-      }],
-    }))
-
-    await createSkillReviewTrigger().execute(triggerContext())
-
-    const skillDir = path.join(getUserSkillsPath(), 'fallback-workflow')
-    const skillMarkdown = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')
-    const procedure = fs.readFileSync(path.join(skillDir, 'references', 'procedure.md'), 'utf-8')
-
-    expect(skillMarkdown).toContain('references/procedure.md')
-    expect(procedure).toContain('Follow the compact workflow every time.')
-  })
-
-  it('updates an existing skill during JSON background review without overwriting SKILL.md', async () => {
-    const original = createExistingSkill('review-workflow')
-    vi.mocked(generateChatResponse).mockResolvedValue(JSON.stringify({
-      actions: [
-        {
-          action: 'create',
-          name: 'review-workflow',
-          description: 'Use when preserving a newer workflow.',
-          instructions: 'Replacement text that must not overwrite the existing SKILL.md.',
-          files: [{
-            file_path: 'references/new.md',
-            content: 'This should not be written to an existing skill.',
-          }],
-        },
-        {
-          action: 'edit',
-          name: 'review-workflow',
-          description: 'Use when editing a newer workflow.',
-          instructions: 'Another replacement that must be ignored.',
-        },
-      ],
-    }))
-
-    await createSkillReviewTrigger().execute(triggerContext())
-
-    const skillDir = path.join(getUserSkillsPath(), 'review-workflow')
-    const skillMarkdown = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')
-
-    expect(skillMarkdown).toContain(original.trim())
-    expect(skillMarkdown).toContain('references/new.md')
-    expect(skillMarkdown).toContain('references/background-review-update.md')
-    expect(skillMarkdown).not.toContain('Replacement text')
-    expect(fs.readFileSync(path.join(skillDir, 'references', 'new.md'), 'utf-8'))
-      .toContain('This should not be written to an existing skill.')
-    expect(fs.readFileSync(path.join(skillDir, 'references', 'background-review-update.md'), 'utf-8'))
-      .toContain('Another replacement that must be ignored.')
-  })
-
-  it('uses the independent agent loop with file tools for DeepSeek review', async () => {
-    vi.mocked(runAgentLoop).mockImplementation(async options => {
+  it('uses the configured tool provider and creates a complete skill package with file tools', async () => {
+    mockTargetThenAgent({ action: 'create', name: 'agent-workflow' }, async options => {
       expect(options.model).toBe('deepseek-v4-pro')
       expect(options.thinking).toBe('enabled')
       expect(options.reasoningEffort).toBe('high')
       expect(options.selectedToolNames).toEqual(['read', 'write', 'edit'])
       expect(options.tools?.map(tool => tool.name)).toEqual(['read', 'write', 'edit'])
-      expect(options.messages[0].content).toContain('Use the read, write, and edit tools')
+      expect(options.messages[0].content).toContain('Do not create background-review-update.md')
+
       const writeTool = options.tools?.find(tool => tool.name === 'write')
       const skillDir = path.join(getUserSkillsPath(), 'agent-workflow')
       const skillResult = await writeTool?.execute({
@@ -255,39 +214,30 @@ describe('Hermes skill review trigger', () => {
         toolCallId: 'call_2',
         workingDirectory: tmpDir,
       })
+
       expect(skillResult?.error).toBeUndefined()
       expect(supportResult?.error).toBeUndefined()
-      return {
-        messages: options.messages,
-        text: '{"changed":true}',
-        reasoning: 'reviewed',
-        finishReason: 'stop',
-        turns: 1,
-        toolResults: [
-          {
-            toolCall: { id: 'call_1', name: 'write', arguments: '{}' },
-            result: skillResult!,
-          },
-          {
-            toolCall: { id: 'call_2', name: 'write', arguments: '{}' },
-            result: supportResult!,
-          },
-        ],
-      }
+      return agentLoopResult(options, '{"changed":true}', [
+        { toolCall: { id: 'call_1', name: 'write', arguments: '{}' }, result: skillResult! },
+        { toolCall: { id: 'call_2', name: 'write', arguments: '{}' }, result: supportResult! },
+      ])
     })
 
-    const ctx = triggerContext()
-    ctx.providerId = 'deepseek'
-    ctx.providerConfig = deepseekProviderConfig()
+    await createSkillReviewTrigger().execute(triggerContext())
 
-    await createSkillReviewTrigger().execute(ctx)
-
-    expect(createDeepSeekAgentProvider).toHaveBeenCalledWith(expect.objectContaining({
-      apiKey: 'deepseek-key',
-      baseUrl: 'https://deepseek.test',
-    }))
-    expect(runAgentLoop).toHaveBeenCalledTimes(1)
-    expect(generateChatResponse).not.toHaveBeenCalled()
+    expect(createAgentProviderFromRuntime).toHaveBeenCalledWith(
+      'deepseek',
+      expect.objectContaining({
+        apiKey: 'deepseek-key',
+        baseUrl: 'https://deepseek.test',
+        model: 'deepseek-v4-pro',
+      }),
+      expect.objectContaining({
+        workingDirectory: tmpDir,
+        localSessionId: 's1',
+      }),
+    )
+    expect(runAgentLoop).toHaveBeenCalledTimes(2)
 
     const skillDir = path.join(getUserSkillsPath(), 'agent-workflow')
     const skillMarkdown = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')
@@ -297,12 +247,74 @@ describe('Hermes skill review trigger', () => {
     expect(procedure).toContain('Capture the reusable workflow')
   })
 
-  it('updates an existing skill through the DeepSeek agent loop without overwriting SKILL.md', async () => {
-    const original = createExistingSkill('agent-workflow')
-    vi.mocked(runAgentLoop).mockImplementation(async options => {
+  it('uses provider per-model thinking settings when the tool model does not override them', async () => {
+    const ctx = triggerContext()
+    ctx.settings.tools.toolCallModel = {
+      providerId: 'deepseek',
+      model: 'deepseek-v4-pro',
+    }
+    ctx.settings.ai.providers.deepseek = {
+      ...deepseekProviderConfig(),
+      thinkingByModel: { 'deepseek-v4-pro': true },
+      thinkingEffortByModel: { 'deepseek-v4-pro': 'max' },
+    }
+
+    mockTargetThenAgent({ action: 'create', name: 'thinking-workflow' }, async options => {
+      expect(options.thinking).toBe('enabled')
+      expect(options.reasoningEffort).toBe('max')
+      return agentLoopResult(options, '{"changed":false}')
+    })
+
+    await createSkillReviewTrigger().execute(ctx)
+
+    expect(runAgentLoop).toHaveBeenCalledTimes(2)
+    expect(vi.mocked(runAgentLoop).mock.calls[0]?.[0].thinking).toBeUndefined()
+  })
+
+  it('completes an agent-created skill package when the agent omits supporting files', async () => {
+    mockTargetThenAgent({ action: 'create', name: 'fallback-workflow' }, async options => {
+      const writeTool = options.tools?.find(tool => tool.name === 'write')
+      const skillDir = path.join(getUserSkillsPath(), 'fallback-workflow')
+      const skillResult = await writeTool?.execute({
+        path: path.join(skillDir, 'SKILL.md'),
+        content: [
+          '---',
+          'name: "fallback-workflow"',
+          'description: "Use when preserving a small reusable workflow."',
+          '---',
+          '',
+          'Follow the compact workflow every time.',
+          '',
+        ].join('\n'),
+      }, {
+        sessionId: 's1',
+        messageId: 'm1',
+        toolCallId: 'call_1',
+        workingDirectory: tmpDir,
+      })
+
+      expect(skillResult?.error).toBeUndefined()
+      return agentLoopResult(options, '{"changed":true}', [
+        { toolCall: { id: 'call_1', name: 'write', arguments: '{}' }, result: skillResult! },
+      ])
+    })
+
+    await createSkillReviewTrigger().execute(triggerContext())
+
+    const skillDir = path.join(getUserSkillsPath(), 'fallback-workflow')
+    const skillMarkdown = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')
+    const procedure = fs.readFileSync(path.join(skillDir, 'references', 'procedure.md'), 'utf-8')
+
+    expect(skillMarkdown).toContain('references/procedure.md')
+    expect(procedure).toContain('fallback-workflow')
+  })
+
+  it('updates an existing skill source file through the tool provider agent without creating background update files', async () => {
+    const original = createExistingSkill('review-workflow')
+    mockTargetThenAgent({ action: 'update', name: 'review-workflow' }, async options => {
       const readTool = options.tools?.find(tool => tool.name === 'read')
       const editTool = options.tools?.find(tool => tool.name === 'edit')
-      const skillPath = path.join(getUserSkillsPath(), 'agent-workflow', 'SKILL.md')
+      const skillPath = path.join(getUserSkillsPath(), 'review-workflow', 'SKILL.md')
       const readResult = await readTool?.execute({
         path: skillPath,
       }, {
@@ -326,42 +338,57 @@ describe('Hermes skill review trigger', () => {
 
       expect(readResult?.error).toBeUndefined()
       expect(editResult?.error).toBeUndefined()
-      return {
-        messages: options.messages,
-        text: '{"changed":true}',
-        reasoning: 'reviewed',
-        finishReason: 'stop',
-        turns: 1,
-        toolResults: [
-          {
-            toolCall: { id: 'call_1', name: 'read', arguments: '{}' },
-            result: readResult!,
-          },
-          {
-            toolCall: { id: 'call_2', name: 'edit', arguments: '{}' },
-            result: editResult!,
-          },
-        ],
-      }
+      return agentLoopResult(options, '{"changed":true}', [
+        { toolCall: { id: 'call_1', name: 'read', arguments: '{}' }, result: readResult! },
+        { toolCall: { id: 'call_2', name: 'edit', arguments: '{}' }, result: editResult! },
+      ])
     })
 
-    const ctx = triggerContext()
-    ctx.providerId = 'deepseek'
-    ctx.providerConfig = deepseekProviderConfig()
+    await createSkillReviewTrigger().execute(triggerContext())
 
-    await createSkillReviewTrigger().execute(ctx)
-
-    const skillDir = path.join(getUserSkillsPath(), 'agent-workflow')
+    const skillDir = path.join(getUserSkillsPath(), 'review-workflow')
     const skillMarkdown = fs.readFileSync(path.join(skillDir, 'SKILL.md'), 'utf-8')
 
     expect(skillMarkdown).toContain(original.trim())
     expect(skillMarkdown).toContain('New reusable detail captured by automatic review.')
+    expect(fs.existsSync(path.join(skillDir, 'references', 'background-review-update.md'))).toBe(false)
+    expect(fs.readdirSync(skillDir, { recursive: true }).join('\n')).not.toContain('background-review-update')
   })
 
-  it('rejects DeepSeek background review file tools outside mutable skill roots', async () => {
+  it('requires read before editing an existing skill file', async () => {
+    createExistingSkill('review-workflow')
+    mockTargetThenAgent({ action: 'update', name: 'review-workflow' }, async options => {
+      const editTool = options.tools?.find(tool => tool.name === 'edit')
+      const skillPath = path.join(getUserSkillsPath(), 'review-workflow', 'SKILL.md')
+      const editResult = await editTool?.execute({
+        path: skillPath,
+        edits: [{
+          oldText: 'Original durable instruction that must survive automatic review.',
+          newText: 'New text',
+        }],
+      }, {
+        sessionId: 's1',
+        messageId: 'm1',
+        toolCallId: 'call_1',
+        workingDirectory: tmpDir,
+      })
+
+      expect(editResult?.error).toContain('must read a file before editing')
+      return agentLoopResult(options, '{"changed":false}', [
+        { toolCall: { id: 'call_1', name: 'edit', arguments: '{}' }, result: editResult! },
+      ])
+    })
+
+    await createSkillReviewTrigger().execute(triggerContext())
+
+    const skillMarkdown = fs.readFileSync(path.join(getUserSkillsPath(), 'review-workflow', 'SKILL.md'), 'utf-8')
+    expect(skillMarkdown).toContain('Original durable instruction')
+  })
+
+  it('rejects background review file tools outside the selected target skill root', async () => {
     const original = createExistingSkill('agent-workflow')
     const outsidePath = path.join(os.tmpdir(), `outside-skill-review-${path.basename(tmpDir)}.md`)
-    vi.mocked(runAgentLoop).mockImplementation(async options => {
+    mockTargetThenAgent({ action: 'update', name: 'agent-workflow' }, async options => {
       const writeTool = options.tools?.find(tool => tool.name === 'write')
       const toolResult = await writeTool?.execute({
         path: outsidePath,
@@ -374,27 +401,30 @@ describe('Hermes skill review trigger', () => {
       })
 
       expect(toolResult?.error).toContain('can only access mutable skill directories')
-      return {
-        messages: options.messages,
-        text: '{"changed":false}',
-        reasoning: 'reviewed',
-        finishReason: 'stop',
-        turns: 1,
-        toolResults: [{
-          toolCall: { id: 'call_1', name: 'write', arguments: '{}' },
-          result: toolResult!,
-        }],
-      }
+      return agentLoopResult(options, '{"changed":false}', [
+        { toolCall: { id: 'call_1', name: 'write', arguments: '{}' }, result: toolResult! },
+      ])
     })
 
-    const ctx = triggerContext()
-    ctx.providerId = 'deepseek'
-    ctx.providerConfig = deepseekProviderConfig()
-
-    await createSkillReviewTrigger().execute(ctx)
+    await createSkillReviewTrigger().execute(triggerContext())
 
     const skillMarkdown = fs.readFileSync(path.join(getUserSkillsPath(), 'agent-workflow', 'SKILL.md'), 'utf-8')
     expect(skillMarkdown).toBe(original)
     expect(fs.existsSync(outsidePath)).toBe(false)
+  })
+
+  it('skips review when the tool provider is not configured', async () => {
+    const ctx = triggerContext()
+    ctx.settings.tools.toolCallModel = {
+      providerId: '',
+      model: '',
+      thinking: false,
+      thinkingEffort: 'medium',
+    }
+
+    await createSkillReviewTrigger().execute(ctx)
+
+    expect(createAgentProviderFromRuntime).not.toHaveBeenCalled()
+    expect(runAgentLoop).not.toHaveBeenCalled()
   })
 })

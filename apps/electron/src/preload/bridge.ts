@@ -104,6 +104,8 @@ const electronAPI = {
 	listPermissionGrants: (options: {
 		sessionId?: string;
 		workspaceRoot?: string;
+		userId?: string;
+		workspaceId?: string;
 	}) => ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_LIST_GRANTS, options),
 	revokePermissionGrant: (id: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.PERMISSION_REVOKE_GRANT, { id }),

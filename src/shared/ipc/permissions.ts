@@ -19,6 +19,8 @@ export interface PermissionInfo {
   targetChannel?: string
   /** Working directory for persistent directory-level permissions */
   workingDirectory?: string
+  userId?: string
+  workspaceId?: string
 }
 
 /**

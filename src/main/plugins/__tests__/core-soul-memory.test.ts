@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   applyDailyNoteLineRemove,
   applyDailyNoteLineReplace,
@@ -4287,6 +4287,33 @@ describe('onething runtime soul-memory helpers', () => {
       mtimeMs: 50,
       preview: 'Steady voice',
     })
+
+    const readFullMemoryFile = vi.fn(() => '# Soul\n\nFull content should stay lazy')
+    const readPreviewMemoryFile = vi.fn(() => '# Soul\n\nPreview only')
+    const countMemoryLines = vi.fn(() => 123)
+    await expect(describeSoulMemoryManagedFileWithAdapters({
+      absolutePath: '/repo/memory-root/SOUL.md',
+      relativePath: 'SOUL.md',
+      kind: 'soul',
+      statFile: () => ({ isFile: () => true, size: 4096, mtimeMs: 51 }),
+      countLines: countMemoryLines,
+      readFile: readFullMemoryFile,
+      readPreviewFile: readPreviewMemoryFile,
+    })).resolves.toMatchObject({
+      relativePath: 'SOUL.md',
+      lineCount: 123,
+      preview: 'Preview only',
+    })
+    expect(countMemoryLines).toHaveBeenCalledWith(
+      '/repo/memory-root/SOUL.md',
+      expect.objectContaining({ relativePath: 'SOUL.md', kind: 'soul' }),
+    )
+    expect(readPreviewMemoryFile).toHaveBeenCalledWith(
+      '/repo/memory-root/SOUL.md',
+      expect.objectContaining({ relativePath: 'SOUL.md', kind: 'soul' }),
+      8192,
+    )
+    expect(readFullMemoryFile).not.toHaveBeenCalled()
 
     await expect(listSoulMemoryManagedFilesWithAdapters({
       soulPath: '/repo/memory-root/SOUL.md',
