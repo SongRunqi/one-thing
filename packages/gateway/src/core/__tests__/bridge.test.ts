@@ -1,5 +1,11 @@
-import type { CoreConversationRuntime, CoreTextStreamChunk } from '@onething/core/gateway-runtime'
-import { describe, expect, it, vi } from 'vitest'
+import type {
+  CoreConversationRuntime,
+  CorePermissionMode,
+  CorePermissionRequestEvent,
+  CorePermissionSurface,
+  CoreTextStreamChunk,
+} from '@onething/core/gateway-runtime'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from '../channel.js'
 import { GatewayBridge, type GatewayCommandProvider } from '../bridge.js'
 import { Allowlist } from '../middleware/allowlist.js'
@@ -9,7 +15,9 @@ import { GatewaySessionRegistry } from '../session-registry.js'
 class MockChannel implements Channel {
   readonly id = 'mock'
   readonly sent: OutboundMessage[] = []
+  readonly sendAttempts: OutboundMessage[] = []
   readonly typingSignals: TypingMessage[] = []
+  failSendAtCall?: number
   private handler: ((msg: InboundMessage) => Promise<void>) | null = null
 
   async start(): Promise<void> {}
@@ -17,6 +25,11 @@ class MockChannel implements Channel {
   async stop(): Promise<void> {}
 
   async send(msg: OutboundMessage): Promise<void> {
+    const callIndex = this.sendAttempts.length
+    this.sendAttempts.push(msg)
+    if (this.failSendAtCall === callIndex) {
+      throw new Error('sendmessage ret=-2')
+    }
     this.sent.push(msg)
   }
 
@@ -55,22 +68,88 @@ class MockStreamChannel {
   }
 }
 
+type MockSendMessageOptions = { sessionId: string; content: string; channel?: string; source?: string }
+type MockResponder = (runtime: MockRuntime, options: MockSendMessageOptions) => Promise<void> | void
+type PermissionResponse = Parameters<CorePermissionSurface['respondPermission']>[0]
+
+class MockPermissionSurface implements CorePermissionSurface {
+  readonly responses: PermissionResponse[] = []
+  readonly modes: Array<{ sessionId: string; mode: CorePermissionMode }> = []
+  onRespond?: (input: PermissionResponse) => void
+  private readonly handlers = new Map<string, Set<(req: CorePermissionRequestEvent) => void>>()
+
+  onPermissionRequest(sessionId: string, handler: (req: CorePermissionRequestEvent) => void): () => void {
+    const handlers = this.handlers.get(sessionId) ?? new Set()
+    handlers.add(handler)
+    this.handlers.set(sessionId, handlers)
+    return () => {
+      handlers.delete(handler)
+    }
+  }
+
+  respondPermission = vi.fn(async (input: PermissionResponse) => {
+    this.responses.push(input)
+    this.onRespond?.(input)
+  })
+
+  setSessionPermissionMode = vi.fn((sessionId: string, mode: CorePermissionMode) => {
+    this.modes.push({ sessionId, mode })
+  })
+
+  emitRequest(
+    sessionId: string,
+    request: Partial<CorePermissionRequestEvent> & Pick<CorePermissionRequestEvent, 'requestId' | 'title'>,
+  ): void {
+    const fullRequest: CorePermissionRequestEvent = {
+      sessionId,
+      requestId: request.requestId,
+      targetChannel: request.targetChannel ?? 'mock',
+      permissionType: request.permissionType ?? 'bash',
+      title: request.title,
+      toolCallId: request.toolCallId,
+      pattern: request.pattern,
+      metadata: request.metadata ?? {},
+      timeoutMs: request.timeoutMs,
+    }
+    for (const handler of this.handlers.get(sessionId) ?? []) {
+      handler(fullRequest)
+    }
+  }
+}
+
 class MockRuntime implements CoreConversationRuntime<CoreTextStreamChunk> {
   readonly streamChannel = new MockStreamChannel()
   readonly ensureSession = vi.fn()
   readonly destroySession = vi.fn()
-  readonly messages: Array<{ sessionId: string; content: string; channel?: string; source?: string }> = []
+  readonly messages: MockSendMessageOptions[] = []
+  readonly permissions?: MockPermissionSurface
 
-  async sendMessage(options: { sessionId: string; content: string; channel?: string; source?: string }): Promise<void> {
+  constructor(private readonly responder?: MockResponder, permissions?: MockPermissionSurface) {
+    this.permissions = permissions
+  }
+
+  async sendMessage(options: MockSendMessageOptions): Promise<void> {
     this.messages.push(options)
-    this.streamChannel.push(options.sessionId, {
+    if (this.responder) {
+      await this.responder(this, options)
+      return
+    }
+    this.pushText(options.sessionId, `Echo: ${options.content}`)
+  }
+
+  pushText(sessionId: string, text: string): void {
+    this.streamChannel.push(sessionId, {
       type: 'text-delta',
-      text: `Echo: ${options.content}`,
+      text,
     })
   }
 }
 
 describe('GatewayBridge', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('sends typing as an explicit channel signal, not an empty text message', async () => {
     const runtime = new MockRuntime()
     const channel = new MockChannel()
@@ -90,9 +169,372 @@ describe('GatewayBridge', () => {
       raw,
     })
 
-    expect(channel.typingSignals).toEqual([{ userId: 'user-1', raw }])
+    expect(channel.typingSignals).toEqual([
+      { userId: 'user-1', raw },
+      { userId: 'user-1', raw, status: 'cancel' },
+    ])
     expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Echo: hello', raw }])
     expect(channel.sent.every(msg => msg.text.trim().length > 0)).toBe(true)
+  })
+
+  it('forwards permission requests to the channel and consumes approval replies', async () => {
+    const permissions = new MockPermissionSurface()
+    let allowPermission!: () => void
+    const permissionAllowed = new Promise<void>(resolve => {
+      allowPermission = resolve
+    })
+    permissions.onRespond = () => {
+      allowPermission()
+    }
+    const runtime = new MockRuntime(async (mockRuntime, options) => {
+      permissions.emitRequest(options.sessionId, {
+        requestId: 'request-1',
+        targetChannel: 'mock',
+        title: '运行 bash',
+      })
+      await permissionAllowed
+      mockRuntime.pushText(options.sessionId, '工具完成')
+    }, permissions)
+    const channel = new MockChannel()
+    const raw = { from_user_id: 'user-1', context_token: 'token-1' }
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 1 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+      permissionConfig: { mode: 'remote-approval', timeoutMs: 300_000 },
+    })
+    bridge.register(channel)
+
+    const handlePromise = bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: '需要工具',
+      raw,
+    })
+    await waitForCall(() => channel.sent.some(message => message.text.includes('AI 想执行：运行 bash')))
+
+    expect(channel.sent[0]?.text).toContain('AI 想执行：运行 bash')
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: '1',
+      raw,
+    })
+    await handlePromise
+
+    expect(runtime.messages.map(message => message.content)).toEqual(['需要工具'])
+    expect(permissions.responses).toEqual([expect.objectContaining({
+      sessionId: 'gateway:mock:user-1',
+      requestId: 'request-1',
+      channel: 'mock',
+      decision: 'once',
+    })])
+    expect(channel.sent.map(message => message.text)).toContain('已允许一次。')
+    expect(channel.sent.map(message => message.text)).toContain('工具完成')
+    expect(channel.sent.map(message => message.text)).not.toContain('请求太频繁，请稍后再试。')
+  })
+
+  it('consumes approval replies when the inbound reply user id differs from the original request', async () => {
+    const permissions = new MockPermissionSurface()
+    let allowPermission!: () => void
+    const permissionAllowed = new Promise<void>(resolve => {
+      allowPermission = resolve
+    })
+    permissions.onRespond = () => {
+      allowPermission()
+    }
+    const runtime = new MockRuntime(async (mockRuntime, options) => {
+      permissions.emitRequest(options.sessionId, {
+        requestId: 'request-1',
+        targetChannel: 'mock',
+        title: 'Create tmp.md',
+      })
+      await permissionAllowed
+      mockRuntime.pushText(options.sessionId, 'done')
+    }, permissions)
+    const channel = new MockChannel()
+    const raw = { from_user_id: 'user-1', context_token: 'token-1' }
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 1 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+      permissionConfig: { mode: 'remote-approval', timeoutMs: 300_000 },
+    })
+    bridge.register(channel)
+
+    const handlePromise = bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: 'create a tmp.md',
+      raw,
+    })
+    await waitForCall(() => channel.sent.some(message => message.text.includes('AI 想执行：Create tmp.md')))
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'reply-user',
+      text: '１',
+      raw: { from_user_id: 'reply-user', context_token: 'token-1' },
+    })
+    await handlePromise
+
+    expect(runtime.messages.map(message => message.content)).toEqual(['create a tmp.md'])
+    expect(permissions.responses).toEqual([expect.objectContaining({
+      sessionId: 'gateway:mock:user-1',
+      requestId: 'request-1',
+      channel: 'mock',
+      decision: 'once',
+    })])
+    expect(channel.sent.map(message => message.text)).toContain('已允许一次。')
+    expect(channel.sent.map(message => message.text)).toContain('done')
+  })
+
+  it('applies configured automatic permission modes to gateway sessions', async () => {
+    const permissions = new MockPermissionSurface()
+    const runtime = new MockRuntime(undefined, permissions)
+    const channel = new MockChannel()
+    const raw = { from_user_id: 'user-1', context_token: 'token-1' }
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+      permissionConfig: { mode: 'auto-accept-edits', timeoutMs: 300_000 },
+    })
+    bridge.register(channel)
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: 'hello',
+      raw,
+    })
+
+    expect(permissions.setSessionPermissionMode).toHaveBeenCalledWith(
+      'gateway:mock:user-1',
+      'auto-accept-edits',
+    )
+    expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Echo: hello', raw }])
+  })
+
+  it('serializes normal messages for one gateway conversation', async () => {
+    const releaseFirst = createDeferred<void>()
+    const runtime = new MockRuntime(async (mockRuntime, options) => {
+      if (options.content === 'first') {
+        await releaseFirst.promise
+      }
+      mockRuntime.pushText(options.sessionId, `done ${options.content}`)
+    })
+    const channel = new MockChannel()
+    const raw = { from_user_id: 'user-1', context_token: 'token-1' }
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+    })
+    bridge.register(channel)
+
+    const first = bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: 'first',
+      raw,
+    })
+    await waitForCall(() => runtime.messages.length === 1)
+    const second = bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: 'second',
+      raw,
+    })
+    await flushPromises()
+
+    expect(runtime.messages.map(message => message.content)).toEqual(['first'])
+
+    releaseFirst.resolve()
+    await Promise.all([first, second])
+
+    expect(runtime.messages.map(message => message.content)).toEqual(['first', 'second'])
+    expect(channel.sent.map(message => message.text)).toEqual(['done first', 'done second'])
+  })
+
+  it('does not block other gateway users behind a pending conversation', async () => {
+    const releaseFirst = createDeferred<void>()
+    const runtime = new MockRuntime(async (mockRuntime, options) => {
+      if (options.content === 'slow') {
+        await releaseFirst.promise
+      }
+      mockRuntime.pushText(options.sessionId, `done ${options.content}`)
+    })
+    const channel = new MockChannel()
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+    })
+    bridge.register(channel)
+
+    const slow = bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: 'slow',
+      raw: { from_user_id: 'user-1' },
+    })
+    await waitForCall(() => runtime.messages.length === 1)
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-2',
+      text: 'fast',
+      raw: { from_user_id: 'user-2' },
+    })
+
+    expect(runtime.messages.map(message => message.content)).toEqual(['slow', 'fast'])
+    expect(channel.sent.map(message => message.text)).toEqual(['done fast'])
+
+    releaseFirst.resolve()
+    await slow
+
+    expect(channel.sent.map(message => message.text)).toEqual(['done fast', 'done slow'])
+  })
+
+  it('cleans up a pending permission when the stream aborts and consumes a late approval reply', async () => {
+    const permissions = new MockPermissionSurface()
+    const channel = new MockChannel()
+    const raw = { from_user_id: 'user-1', context_token: 'token-1' }
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const runtime = new MockRuntime(async (_mockRuntime, options) => {
+      permissions.emitRequest(options.sessionId, {
+        requestId: 'request-1',
+        targetChannel: 'mock',
+        title: '写文件',
+      })
+      await waitForCall(() => channel.sent.some(message => message.text.includes('AI 想执行：写文件')))
+      throw new Error('stream aborted')
+    }, permissions)
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+      permissionConfig: { mode: 'remote-approval', timeoutMs: 300_000 },
+    })
+    bridge.register(channel)
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: 'needs tool',
+      raw,
+    })
+    await waitForCall(() => channel.sent.some(message => message.text === '审批已失效，请重新发送请求。'))
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: '1',
+      raw,
+    })
+
+    expect(runtime.messages.map(message => message.content)).toEqual(['needs tool'])
+    expect(permissions.responses).toEqual([])
+    expect(channel.sent.map(message => message.text)).toContain('审批已失效，请重新发送请求。')
+    expect(errorSpy).toHaveBeenCalledWith('[GatewayBridge] Message handling failed:', expect.any(Error))
+  })
+
+  it('streams soft-sized plain text segments before the final flush', async () => {
+    const readyText = `${'内容'.repeat(260)}。`
+    const runtime = new MockRuntime((mockRuntime, options) => {
+      mockRuntime.pushText(options.sessionId, readyText)
+      mockRuntime.pushText(options.sessionId, '第二句')
+    })
+    const channel = new MockChannel()
+    const raw = { from_user_id: 'user-1', context_token: 'token-1' }
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+    })
+    bridge.register(channel)
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: 'hello',
+      raw,
+    })
+
+    expect(channel.sent.map(message => message.text)).toEqual([readyText, '第二句'])
+  })
+
+  it('does not send unbalanced markdown while streaming code fences', async () => {
+    const runtime = new MockRuntime((mockRuntime, options) => {
+      mockRuntime.pushText(options.sessionId, '说明：\n```ts\n')
+      mockRuntime.pushText(options.sessionId, 'const value = 1\n')
+      mockRuntime.pushText(options.sessionId, '```\n收尾')
+    })
+    const channel = new MockChannel()
+    const raw = { from_user_id: 'user-1', context_token: 'token-1' }
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+    })
+    bridge.register(channel)
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: 'hello',
+      raw,
+    })
+
+    const texts = channel.sent.map(message => message.text)
+    expect(texts).toEqual(['说明：\n```ts\nconst value = 1\n```\n收尾'])
+    expect(texts.every(hasBalancedFenceMarkers)).toBe(true)
+  })
+
+  it('stops sending queued outbound segments after a flush failure', async () => {
+    const first = `${'甲'.repeat(500)}。`
+    const second = `${'乙'.repeat(500)}。`
+    const runtime = new MockRuntime((mockRuntime, options) => {
+      mockRuntime.pushText(options.sessionId, first)
+      mockRuntime.pushText(options.sessionId, second)
+      mockRuntime.pushText(options.sessionId, '尾巴')
+    })
+    const channel = new MockChannel()
+    channel.failSendAtCall = 1
+    const raw = { from_user_id: 'user-1', context_token: 'token-1' }
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+    })
+    bridge.register(channel)
+
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      text: 'hello',
+      raw,
+    })
+
+    expect(channel.sendAttempts.map(message => message.text)).toEqual([first, second])
+    expect(channel.sent.map(message => message.text)).toEqual([first])
+    expect(channel.typingSignals.at(-1)).toEqual({ userId: 'user-1', raw, status: 'cancel' })
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Aborted outbound text flush after send failure; dropped 1 segment(s), 2 char(s).'),
+      expect.any(Error),
+    )
   })
 
   it('handles /new as a channel command and routes following messages to the new session', async () => {
@@ -303,3 +745,30 @@ describe('GatewayBridge', () => {
     expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Echo: /skill explain this', raw }])
   })
 })
+
+function hasBalancedFenceMarkers(text: string): boolean {
+  const matches = text.match(/^```/gm) ?? []
+  return matches.length % 2 === 0
+}
+
+async function waitForCall(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    if (predicate()) return
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+}
+
+async function flushPromises(): Promise<void> {
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
+function createDeferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (error: unknown) => void } {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, resolve, reject }
+}

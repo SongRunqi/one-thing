@@ -72,6 +72,8 @@ export class TelegramChannel implements Channel {
   }
 
   async typing(msg: TypingMessage): Promise<void> {
+    if (msg.status === 'cancel') return
+
     await this.callTelegram('sendChatAction', {
       chat_id: msg.userId,
       action: 'typing',

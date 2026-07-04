@@ -66,6 +66,11 @@ describe('TelegramChannel', () => {
       userId: '42',
       raw: {},
     })
+    await channel.typing({
+      userId: '42',
+      raw: {},
+      status: 'cancel',
+    })
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock.mock.calls[0][0]).toBe('https://telegram.example/bottelegram-token/sendMessage')

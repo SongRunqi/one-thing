@@ -107,6 +107,47 @@ describe('WechatChannel', () => {
       }),
     })
   })
+
+  it('maps typing cancel signals to iLink sendtyping status 2', async () => {
+    const sendTyping = vi.fn(async () => {})
+    const channel = new WechatChannel({
+      loadAuthState: vi.fn(async () => ({
+        botToken: 'saved-token',
+        baseUrl: 'https://saved.weixin.example',
+      })),
+      createPoller: vi.fn(() => ({
+        start: vi.fn(async () => {}),
+        stop: vi.fn(async () => {}),
+      })),
+      sendTyping,
+      logger: silentLogger(),
+    })
+    await channel.start()
+
+    const raw: WeixinMessage = {
+      from_user_id: 'wechat-user',
+      context_token: 'context-token',
+      item_list: [{ type: 1, text_item: { text: 'hello' } }],
+    }
+
+    await channel.typing({ userId: 'wechat-user', raw })
+    await channel.typing({ userId: 'wechat-user', raw, status: 'cancel' })
+
+    expect(sendTyping).toHaveBeenNthCalledWith(
+      1,
+      { botToken: 'saved-token', baseUrl: 'https://saved.weixin.example' },
+      'wechat-user',
+      'context-token',
+      1,
+    )
+    expect(sendTyping).toHaveBeenNthCalledWith(
+      2,
+      { botToken: 'saved-token', baseUrl: 'https://saved.weixin.example' },
+      'wechat-user',
+      'context-token',
+      2,
+    )
+  })
 })
 
 function silentLogger(): Pick<Console, 'log' | 'warn' | 'error'> {

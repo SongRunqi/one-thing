@@ -15,6 +15,13 @@ export type {
   GatewayCommandProvider,
 } from './bridge.js'
 export {
+  GatewayPermissionCoordinator,
+} from './permission-coordinator.js'
+export type {
+  GatewayPermissionCoordinatorOptions,
+  GatewayPermissionWatchInput,
+} from './permission-coordinator.js'
+export {
   Gateway,
 } from './gateway.js'
 export {

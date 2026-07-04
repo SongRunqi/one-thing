@@ -193,7 +193,12 @@ export class WechatChannel implements Channel {
 
   private async trySendTyping(msg: TypingMessage): Promise<void> {
     if (!this.auth || !isWeixinMessage(msg.raw)) return
-    await (this.options.sendTyping ?? sendTyping)(this.auth, msg.userId, msg.raw.context_token)
+    await (this.options.sendTyping ?? sendTyping)(
+      this.auth,
+      msg.userId,
+      msg.raw.context_token,
+      msg.status === 'cancel' ? 2 : 1,
+    )
   }
 
   private emitAuthEvent(event: WechatAuthEvent): void {

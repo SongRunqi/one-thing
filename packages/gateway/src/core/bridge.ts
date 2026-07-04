@@ -8,9 +8,16 @@ import {
   NEW_SESSION_SLASH_COMMAND,
   parseSharedSlashCommand,
 } from '@onething/core/slash-commands'
+import type { GatewayPermissionConfig } from '../config.js'
 import type { Channel, InboundMessage, OutboundMessage, TypingMessage } from './channel.js'
+import {
+  GATEWAY_STREAM_FLUSH_INTERVAL_MS,
+  GATEWAY_STREAM_IDLE_MS,
+  MarkdownSafeOutboundBuffer,
+} from './markdown-safe-outbound-buffer.js'
 import type { Allowlist } from './middleware/allowlist.js'
 import type { RateLimiter } from './middleware/rate-limiter.js'
+import { GatewayPermissionCoordinator } from './permission-coordinator.js'
 import type { GatewaySessionRegistry } from './session-registry.js'
 
 export interface GatewayBridgeOptions {
@@ -19,6 +26,7 @@ export interface GatewayBridgeOptions {
   registry: GatewaySessionRegistry
   runtime: CoreConversationRuntime
   commandProvider?: GatewayCommandProvider
+  permissionConfig?: GatewayPermissionConfig
 }
 
 export interface GatewayCommandInfo {
@@ -48,8 +56,21 @@ export interface GatewayCommandProvider {
 
 export class GatewayBridge {
   private readonly channels = new Map<string, Channel>()
+  private readonly permissionCoordinator?: GatewayPermissionCoordinator
+  private readonly conversationQueues = new Map<string, Promise<void>>()
 
-  constructor(private readonly options: GatewayBridgeOptions) {}
+  constructor(private readonly options: GatewayBridgeOptions) {
+    if (options.permissionConfig?.mode === 'remote-approval') {
+      if (options.runtime.permissions) {
+        this.permissionCoordinator = new GatewayPermissionCoordinator({
+          permissions: options.runtime.permissions,
+          timeoutMs: options.permissionConfig.timeoutMs,
+        })
+      } else {
+        console.warn('[GatewayBridge] Remote permission approval configured, but runtime does not expose permissions.')
+      }
+    }
+  }
 
   register(channel: Channel): void {
     this.channels.set(channel.id, channel)
@@ -75,6 +96,32 @@ export class GatewayBridge {
       return
     }
 
+    if (this.permissionCoordinator
+      && await this.permissionCoordinator.tryHandleReply(msg.channelId, msg.userId, msg.text)) {
+      return
+    }
+
+    return this.enqueueConversationMessage(channel, msg)
+  }
+
+  private enqueueConversationMessage(channel: Channel, msg: InboundMessage): Promise<void> {
+    const key = conversationQueueKey(msg.channelId, msg.userId)
+    const previous = this.conversationQueues.get(key) ?? Promise.resolve()
+    const task = previous
+      .catch(() => {})
+      .then(() => this.handleQueuedMessage(channel, msg))
+
+    this.conversationQueues.set(key, task)
+    task.finally(() => {
+      if (this.conversationQueues.get(key) === task) {
+        this.conversationQueues.delete(key)
+      }
+    }).catch(() => {})
+
+    return task
+  }
+
+  private async handleQueuedMessage(channel: Channel, msg: InboundMessage): Promise<void> {
     if (!this.options.rateLimiter.check(msg.userId)) {
       await this.send(channel, {
         userId: msg.userId,
@@ -95,6 +142,10 @@ export class GatewayBridge {
     }
 
     const session = this.options.registry.getOrCreate(msg.channelId, msg.userId)
+    const permissionMode = this.options.permissionConfig?.mode
+    if (isGatewayAutoPermissionMode(permissionMode)) {
+      this.options.runtime.permissions?.setSessionPermissionMode(session.coreSessionId, permissionMode)
+    }
 
     await this.typing(channel, {
       userId: msg.userId,
@@ -103,42 +154,78 @@ export class GatewayBridge {
       console.warn('[GatewayBridge] Failed to send typing signal:', error)
     })
 
-    let buffer = ''
+    const buffer = new MarkdownSafeOutboundBuffer()
     let lastFlushAt = Date.now()
     let sendChain = Promise.resolve()
+    let aborted = false
+    let abortError: unknown
+    let droppedSegmentCount = 0
+    let droppedCharCount = 0
 
-    const enqueueFlush = (): void => {
-      const text = buffer.trim()
-      buffer = ''
+    const enqueueSegments = (segments: string[]): void => {
+      if (!segments.length) return
+      if (aborted) {
+        recordDroppedSegments(segments)
+        return
+      }
       lastFlushAt = Date.now()
 
-      if (!text) return
+      for (const text of segments) {
+        sendChain = sendChain
+          .then(async () => {
+            if (aborted) {
+              recordDroppedSegments([text])
+              return
+            }
+            try {
+              await this.send(channel, {
+                userId: msg.userId,
+                text,
+                raw: msg.raw,
+              })
+            } catch (error) {
+              aborted = true
+              abortError = error
+            }
+          })
+      }
+    }
 
-      sendChain = sendChain
-        .then(() => this.send(channel, {
-          userId: msg.userId,
-          text,
-          raw: msg.raw,
-        }))
-        .catch(error => {
-          console.error('[GatewayBridge] Failed to flush outbound text:', error)
-        })
+    const recordDroppedSegments = (segments: string[]): void => {
+      droppedSegmentCount += segments.length
+      droppedCharCount += segments.reduce((total, text) => total + text.length, 0)
+    }
+
+    const logAbortSummary = (): void => {
+      if (!aborted) return
+      console.error(
+        `[GatewayBridge] Aborted outbound text flush after send failure; `
+        + `dropped ${droppedSegmentCount} segment(s), ${droppedCharCount} char(s).`,
+        abortError,
+      )
     }
 
     const timer = setInterval(() => {
-      if (buffer.trim() && Date.now() - lastFlushAt >= 3000) {
-        enqueueFlush()
+      if (buffer.hasPending() && Date.now() - lastFlushAt >= GATEWAY_STREAM_IDLE_MS) {
+        enqueueSegments(buffer.takeReadySegments({ idle: true }))
       }
-    }, 250)
+    }, GATEWAY_STREAM_FLUSH_INTERVAL_MS)
 
     const unsubscribe = this.options.runtime.streamChannel.subscribe(session.coreSessionId, (chunk) => {
       if (!isCoreTextStreamChunk(chunk)) return
-      buffer += chunk.text
-
-      if (shouldFlush(buffer, lastFlushAt)) {
-        enqueueFlush()
-      }
+      buffer.append(chunk.text)
+      enqueueSegments(buffer.takeReadySegments())
     })
+    const unwatchPermission = this.permissionCoordinator?.watch({
+      sessionId: session.coreSessionId,
+      channelId: msg.channelId,
+      userId: msg.userId,
+      sendText: text => this.send(channel, {
+        userId: msg.userId,
+        text,
+        raw: msg.raw,
+      }),
+    }) ?? (() => {})
 
     try {
       await this.options.runtime.sendMessage({
@@ -147,11 +234,13 @@ export class GatewayBridge {
         channel: msg.channelId,
         source: 'gateway',
       })
-      enqueueFlush()
+      enqueueSegments(buffer.flushFinal())
       await sendChain
+      logAbortSummary()
     } catch (error) {
       console.error('[GatewayBridge] Message handling failed:', error)
       await sendChain
+      logAbortSummary()
       await this.send(channel, {
         userId: msg.userId,
         text: '处理时遇到错误，请稍后重试。',
@@ -160,6 +249,14 @@ export class GatewayBridge {
     } finally {
       clearInterval(timer)
       unsubscribe()
+      unwatchPermission()
+      await this.typing(channel, {
+        userId: msg.userId,
+        raw: msg.raw,
+        status: 'cancel',
+      }).catch(error => {
+        console.warn('[GatewayBridge] Failed to cancel typing signal:', error)
+      })
     }
   }
 
@@ -243,12 +340,6 @@ export class GatewayBridge {
   }
 }
 
-function shouldFlush(buffer: string, lastFlushAt: number): boolean {
-  if (buffer.length > 500) return true
-  if (buffer.length > 100 && /[。.!！?？\n]/.test(buffer)) return true
-  return Date.now() - lastFlushAt > 3000
-}
-
 function parseExternalSlashInvocation(text: string): { id: string; args: string } | null {
   const trimmed = text.trim()
   if (!trimmed.startsWith('/') && !trimmed.startsWith('／')) return null
@@ -272,4 +363,14 @@ function commandMatches(command: GatewayCommandInfo, id: string): boolean {
     command.name.replace(/^\//, ''),
   ]
   return candidates.some(candidate => candidate.toLowerCase() === id)
+}
+
+function conversationQueueKey(channelId: string, userId: string): string {
+  return `${channelId}:${userId}`
+}
+
+function isGatewayAutoPermissionMode(
+  mode: GatewayPermissionConfig['mode'] | undefined,
+): mode is 'auto-accept-edits' | 'dangerously-allow-all' {
+  return mode === 'auto-accept-edits' || mode === 'dangerously-allow-all'
 }

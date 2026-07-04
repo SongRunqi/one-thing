@@ -14,6 +14,7 @@ export interface OutboundMessage {
 export interface TypingMessage {
   userId: string
   raw: unknown
+  status?: 'typing' | 'cancel'
 }
 
 export interface Channel {

@@ -10,8 +10,11 @@ export class Gateway {
   register(channel: Channel): this {
     this.channels.push(channel)
     this.bridge.register(channel)
-    channel.onMessage(async (msg) => {
-      await this.bridge.handle(msg)
+    channel.onMessage((msg) => {
+      void this.bridge.handle(msg).catch(error => {
+        console.error('[Gateway] Message handling failed:', error)
+      })
+      return Promise.resolve()
     })
     return this
   }

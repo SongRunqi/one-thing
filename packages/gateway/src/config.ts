@@ -1,6 +1,14 @@
 import type { AllowlistConfig } from './core/index.js'
 
 export type GatewayChannelId = 'wechat' | 'telegram'
+export type GatewayPermissionMode = 'remote-approval' | 'auto-accept-edits' | 'dangerously-allow-all'
+
+export interface GatewayPermissionConfig {
+  mode: GatewayPermissionMode
+  timeoutMs: number
+}
+
+const DEFAULT_GATEWAY_PERMISSION_TIMEOUT_MS = 300_000
 
 export function isGatewayEnabledFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
   const explicit = env.ONETHING_GATEWAY ?? env.GATEWAY_ENABLED
@@ -53,6 +61,13 @@ export function readAllowlistConfigFromEnv(env: NodeJS.ProcessEnv): AllowlistCon
   return { mode: 'open' }
 }
 
+export function readGatewayPermissionConfigFromEnv(env: NodeJS.ProcessEnv): GatewayPermissionConfig {
+  return {
+    mode: readGatewayPermissionMode(env.GATEWAY_PERMISSION_MODE),
+    timeoutMs: readPositiveInteger(env.GATEWAY_PERMISSION_TIMEOUT_MS, DEFAULT_GATEWAY_PERMISSION_TIMEOUT_MS),
+  }
+}
+
 export function readTelegramBotToken(env: NodeJS.ProcessEnv, required = true): string {
   const token = env.GATEWAY_TELEGRAM_BOT_TOKEN ?? env.TELEGRAM_BOT_TOKEN ?? ''
   if (required && !token.trim()) {
@@ -73,6 +88,18 @@ function readDefaultGatewayChannelIdsFromEnv(env: NodeJS.ProcessEnv): GatewayCha
 
 function isSupportedGatewayChannelId(channel: string): channel is GatewayChannelId {
   return channel === 'wechat' || channel === 'telegram'
+}
+
+function readGatewayPermissionMode(value: string | undefined): GatewayPermissionMode {
+  const mode = value?.trim().toLowerCase() || 'remote-approval'
+  if (isGatewayPermissionMode(mode)) return mode
+  throw new Error('Unsupported GATEWAY_PERMISSION_MODE "' + value + '". Supported modes: remote-approval, auto-accept-edits, dangerously-allow-all.')
+}
+
+function isGatewayPermissionMode(value: string): value is GatewayPermissionMode {
+  return value === 'remote-approval'
+    || value === 'auto-accept-edits'
+    || value === 'dangerously-allow-all'
 }
 
 function isTruthyGatewayValue(value: string): boolean {

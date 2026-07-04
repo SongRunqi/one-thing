@@ -9,6 +9,7 @@ import { WechatChannel } from './channels/wechat/index.js'
 import {
   readAllowlistConfigFromEnv,
   readGatewayChannelIdsFromEnv,
+  readGatewayPermissionConfigFromEnv,
   readPositiveInteger,
   readTelegramBotToken,
 } from './config.js'
@@ -35,9 +36,12 @@ export type {
 export {
   isGatewayEnabledFromEnv,
   readGatewayChannelIdsFromEnv,
+  readGatewayPermissionConfigFromEnv,
 } from './config.js'
 export type {
   GatewayChannelId,
+  GatewayPermissionConfig,
+  GatewayPermissionMode,
 } from './config.js'
 export {
   Allowlist,
@@ -93,6 +97,7 @@ export async function startGateway(options: StartGatewayOptions): Promise<Gatewa
     registry,
     runtime: options.runtime,
     commandProvider: options.commandProvider,
+    permissionConfig: readGatewayPermissionConfigFromEnv(env),
   })
   const gateway = new Gateway(bridge)
   const channels = options.channels ?? createGatewayChannelsFromEnv(env)
