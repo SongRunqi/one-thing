@@ -16,7 +16,6 @@ const compactSessionContext = vi.fn(() => Promise.resolve({
   summary: 'compacted',
   retainedContextSize: 0,
 }))
-const getContextCompactReason = vi.fn()
 const shouldSkipAutoCompactForProviderUsageMismatch = vi.fn(() => false)
 
 vi.mock('../../../store.js', () => ({
@@ -29,7 +28,6 @@ vi.mock('../../../events/index.js', () => ({
 
 vi.mock('../../context-compact.js', () => ({
   compactSessionContext,
-  getContextCompactReason,
   shouldSkipAutoCompactForProviderUsageMismatch,
 }))
 
@@ -65,9 +63,6 @@ function ctx(): StreamContext {
 
 describe('agent loop runtime compaction', () => {
   it('runs compact and returns rebuilt messages before a later turn', async () => {
-    getContextCompactReason
-      .mockReturnValueOnce('threshold')
-      .mockReturnValueOnce(null)
     const rebuilt = [{ role: 'system' as const, content: 'rebuilt summary' }]
     const rebuildMessages = vi.fn(async () => rebuilt)
 
@@ -75,7 +70,9 @@ describe('agent loop runtime compaction', () => {
       ctx: ctx(),
       turn: 2,
       messages: [
-        { role: 'user', content: 'hello' },
+        // Long enough that the request estimate crosses 85% of the
+        // 10000-token model context and triggers the threshold reason.
+        { role: 'user', content: 'hello '.repeat(10000) },
         { role: 'assistant', content: '', toolCalls: [{ id: 'call_1', name: 'read', arguments: '{}' }] },
         { role: 'tool', toolCallId: 'call_1', content: 'tool result' },
       ],
