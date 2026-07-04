@@ -903,7 +903,7 @@ const props = withDefaults(defineProps<{
 })
 
 function getSchedulerApi() {
-  return window.electronAPI ?? platformApi
+  return platformApi
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {

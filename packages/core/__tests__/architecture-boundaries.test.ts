@@ -29,6 +29,31 @@ describe('architecture boundaries', () => {
     ])).toEqual([])
   })
 
+  it('keeps packages/core at the bottom of the package hierarchy', () => {
+    expect(findForbiddenReferences('packages/core', [
+      importOf('@onething/runtime'),
+      importOf('@onething/gateway'),
+    ])).toEqual([])
+  })
+
+  it('keeps packages/onething-runtime free of Electron, hosts, and gateway', () => {
+    expect(findForbiddenReferences('packages/onething-runtime', [
+      ...hostOnlyPatterns,
+      /window\.electronAPI/,
+      appSourceImportPattern,
+      importOf('@onething/gateway'),
+    ])).toEqual([])
+  })
+
+  it('keeps packages/gateway depending on core only', () => {
+    expect(findForbiddenReferences('packages/gateway', [
+      ...hostOnlyPatterns,
+      /window\.electronAPI/,
+      appSourceImportPattern,
+      importOf('@onething/runtime'),
+    ])).toEqual([])
+  })
+
   it('keeps renderer product code behind platformApi instead of direct IPC', () => {
     expect(findForbiddenReferences('src/renderer', [
       /window\.electronAPI/,
@@ -49,7 +74,23 @@ describe('architecture boundaries', () => {
     expect(findForbiddenReferences('apps/web', hostOnlyPatterns)).toEqual([])
     expect(findForbiddenReferences('apps/server', hostOnlyPatterns)).toEqual([])
   })
+
+  it('keeps apps/server off Electron app source (src/shared stays allowed)', () => {
+    // apps/web intentionally builds src/renderer via vite aliases, so this
+    // rule applies to the server host only.
+    expect(findForbiddenReferences('apps/server', [
+      appSourceImportPattern,
+    ])).toEqual([])
+  })
 })
+
+/** Matches import/require/export-from of `src/main|renderer|preload` from any relative depth. */
+const appSourceImportPattern = /(?:from\s+['"]|import\s*\(\s*['"]|require\s*\(\s*['"])[^'"]*src\/(?:main|renderer|preload)\//
+
+function importOf(packageName: string): RegExp {
+  const escaped = packageName.replace(/[/\\^$.*+?()[\]{}|]/g, '\\$&')
+  return new RegExp(`(?:from\\s+['"]|import\\s*\\(\\s*['"]|require\\s*\\(\\s*['"])${escaped}(?:/|['"])`)
+}
 
 const hostOnlyPatterns = [
   /from\s+['"]electron['"]/,
