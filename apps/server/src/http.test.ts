@@ -1,0 +1,4323 @@
+import { once } from 'node:events'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import type { Server } from 'node:http'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createOnethingRuntimeFacade } from '@onething/core'
+import type { CorePluginCommandContext } from '@onething/core/plugins'
+import { resetPermissionGrantsForTests } from '@onething/core/permission'
+import { createDefaultSettings } from '../../../src/shared/defaults/settings.js'
+import type { MCPServerConfig, MCPServerState } from '../../../src/shared/ipc/mcp.js'
+import type { AppSettings } from '../../../src/shared/ipc/settings.js'
+import { createOnethingHttpServer } from './http.js'
+import {
+  SERVER_REDACTED_SECRET,
+  createDevelopmentOnethingServerRuntime,
+  mergeServerSettingsUpdate,
+  sanitizeSettingsForClient,
+  type OnethingServerRuntime,
+} from './runtime.js'
+
+const servers: Server[] = []
+const runtimes: OnethingServerRuntime[] = []
+const tempDirs: string[] = []
+const originalOnethingStorePath = process.env.ONETHING_STORE_PATH
+
+type SettingsResponse = { success: boolean; settings?: AppSettings; error?: string }
+
+beforeEach(async () => {
+  process.env.ONETHING_STORE_PATH = await createTempDir('onething-test-store-')
+})
+
+afterEach(async () => {
+  await Promise.all(servers.map(server => new Promise<void>((resolve, reject) => {
+    server.close(error => {
+      if (error) reject(error)
+      else resolve()
+    })
+  })))
+  servers.length = 0
+  for (const runtime of runtimes) runtime.shutdown()
+  runtimes.length = 0
+  resetPermissionGrantsForTests()
+  await Promise.all(tempDirs.map(path => rm(path, { recursive: true, force: true })))
+  tempDirs.length = 0
+  if (originalOnethingStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+  else process.env.ONETHING_STORE_PATH = originalOnethingStorePath
+})
+
+describe('createOnethingHttpServer', () => {
+  it('exposes web-safe runtime capabilities', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const response = await fetch(`${baseUrl(server)}/api/capabilities`)
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({
+      localFileSystem: false,
+      workspaceFileSystem: true,
+      nativeWindowControls: false,
+      shellTools: false,
+      clipboardWrite: false,
+      desktopWindows: false,
+      globalMenuEvents: false,
+    })
+  })
+
+  it('exposes active stream ids through the runtime facade', async () => {
+    const active = vi.fn(async () => ['session-1'])
+    const runtime = createOnethingRuntimeFacade({
+      sessions: {
+        list: async () => ({ success: true, sessions: [] }),
+        create: async (name: string) => ({ id: 'session-1', name }),
+      },
+      commands: {
+        emit: async () => ({ success: true }),
+      },
+      events: {
+        subscribe: () => () => {},
+      },
+      streams: {
+        subscribe: () => () => {},
+        active,
+      },
+    })
+    const server = await listen(createOnethingHttpServer({ runtime }))
+
+    await expect(fetchJson(`${baseUrl(server)}/api/streams/active`, {
+      headers: contextHeaders('alice', 'streams-workspace'),
+    })).resolves.toEqual({
+      success: true,
+      streams: ['session-1'],
+    })
+    expect(active).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'streams-workspace',
+    }))
+  })
+
+  it('routes proxy tests through the network runtime facade with owner context', async () => {
+    const testProxy = vi.fn(async () => ({ success: false, error: 'Proxy is disabled.' }))
+    const runtime = createOnethingRuntimeFacade({
+      sessions: {
+        list: async () => ({ success: true, sessions: [] }),
+        create: async (name: string) => ({ id: 'session-1', name }),
+      },
+      commands: {
+        emit: async () => ({ success: true }),
+      },
+      events: {
+        subscribe: () => () => {},
+      },
+      network: {
+        testProxy,
+      },
+    })
+    const server = await listen(createOnethingHttpServer({ runtime }))
+    const headers = contextHeaders('alice', 'network-workspace')
+
+    await expect(fetchJson(`${baseUrl(server)}/api/network/test-proxy`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        proxy: {
+          enabled: false,
+          url: '',
+        },
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Proxy is disabled.',
+    })
+
+    expect(testProxy).toHaveBeenCalledWith({
+      enabled: false,
+      url: '',
+    }, expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'network-workspace',
+    }))
+  })
+
+  it('routes search requests through the search runtime facade with owner context', async () => {
+    const query = vi.fn(async request => ({ success: true, results: [{ id: 'action:1', request }] }))
+    const executeAction = vi.fn(async actionId => ({ success: true, actionId }))
+    const runtime = createOnethingRuntimeFacade({
+      sessions: {
+        list: async () => ({ success: true, sessions: [] }),
+        create: async (name: string) => ({ id: 'session-1', name }),
+      },
+      commands: {
+        emit: async () => ({ success: true }),
+      },
+      events: {
+        subscribe: () => () => {},
+      },
+      search: {
+        query,
+        executeAction,
+      },
+    })
+    const server = await listen(createOnethingHttpServer({ runtime }))
+    const headers = contextHeaders('alice', 'search-workspace')
+
+    await expect(fetchJson(`${baseUrl(server)}/api/search/query`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: 'settings',
+        category: 'actions',
+        limit: 5,
+      }),
+    })).resolves.toEqual({
+      success: true,
+      results: [{
+        id: 'action:1',
+        request: {
+          query: 'settings',
+          category: 'actions',
+          limit: 5,
+        },
+      }],
+    })
+
+    await expect(fetchJson(`${baseUrl(server)}/api/search/actions`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({ actionId: 'open-settings' }),
+    })).resolves.toEqual({
+      success: true,
+      actionId: 'open-settings',
+    })
+
+    expect(query).toHaveBeenCalledWith({
+      query: 'settings',
+      category: 'actions',
+      limit: 5,
+    }, expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'search-workspace',
+    }))
+    expect(executeAction).toHaveBeenCalledWith('open-settings', expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'search-workspace',
+    }))
+  })
+
+  it('executes web-safe plugin commands through the development runtime with session ownership checks', async () => {
+    const dataRoot = await createTempDir('onething-plugin-data-')
+    const workspaceRoot = await createTempDir('onething-plugin-workspace-')
+    const handler = vi.fn(async (args: string, ctx: CorePluginCommandContext) => {
+      ctx.notify(`demo:${args}`)
+      ctx.followUp('follow up from plugin')
+      const execResult = await ctx.exec('echo', ['blocked'])
+      ctx.notify(`exec:${execResult.exitCode}`, 'warn')
+    })
+    const serverRuntime = createDevelopmentOnethingServerRuntime({
+      dataRoot,
+      workspaceRoot,
+      pluginCommands: [{
+        name: '/demo',
+        description: 'Run demo',
+        usage: '/demo <arg>',
+        handler,
+      }],
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'plugin-workspace')
+    const bobHeaders = contextHeaders('bob', 'plugin-workspace')
+    const created = await createSession(baseUrlValue, 'Plugin session', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    await expect(fetchJson(`${baseUrlValue}/api/plugins/commands`, {
+      headers: aliceHeaders,
+    })).resolves.toEqual({
+      success: true,
+      commands: [{
+        id: 'demo',
+        name: '/demo',
+        description: 'Run demo',
+        usage: '/demo <arg>',
+      }],
+    })
+
+    const executed = await fetchJson(`${baseUrlValue}/api/plugins/execute-command`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        commandName: 'demo',
+        args: '--fast',
+        sessionId,
+      }),
+    })
+    expect(executed).toEqual({
+      success: true,
+      message: 'exec:126',
+    })
+    expect(handler).toHaveBeenCalledWith('--fast', expect.objectContaining({
+      sessionId,
+      cwd: expect.stringContaining('plugin-workspace'),
+    }))
+
+    const bobAttempt = await fetchJson(`${baseUrlValue}/api/plugins/execute-command`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        commandName: 'demo',
+        args: '--fast',
+        sessionId,
+      }),
+    })
+    expect(bobAttempt).toEqual({
+      success: false,
+      error: 'Session not found',
+    })
+    expect(handler).toHaveBeenCalledTimes(1)
+  })
+
+  it('serves owner-scoped OAuth device flow through the development runtime', async () => {
+    const dataRoot = await createTempDir('onething-oauth-data-')
+    const workspaceRoot = await createTempDir('onething-oauth-workspace-')
+    const oauthFetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const body = String(init?.body ?? '')
+      if (body.includes('device_code=device-1')) {
+        return new Response(JSON.stringify({
+          access_token: 'access-1',
+          refresh_token: 'refresh-1',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      if (body.includes('grant_type=refresh_token')) {
+        return new Response(JSON.stringify({
+          access_token: 'access-2',
+          refresh_token: 'refresh-2',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+      return new Response(JSON.stringify({
+        device_code: 'device-1',
+        user_code: 'USER-CODE',
+        verification_uri: 'https://github.com/login/device',
+        expires_in: 900,
+        interval: 1,
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    const serverRuntime = createDevelopmentOnethingServerRuntime({
+      dataRoot,
+      workspaceRoot,
+      oauthFetch,
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'oauth-workspace')
+    const bobHeaders = contextHeaders('bob', 'oauth-workspace')
+
+    const started = await fetchJson(`${baseUrlValue}/api/oauth/start`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ providerId: 'github-copilot' }),
+    })
+    expect(started).toMatchObject({
+      success: true,
+      flowKind: 'device-code',
+      flowId: expect.any(String),
+      userCode: 'USER-CODE',
+      verificationUri: 'https://github.com/login/device',
+      pollIntervalMs: 1000,
+    })
+
+    const pendingStatus = await fetchJson(`${baseUrlValue}/api/oauth/status`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ providerId: 'github-copilot' }),
+    })
+    expect(pendingStatus).toMatchObject({
+      success: true,
+      providerId: 'github-copilot',
+      isLoggedIn: false,
+    })
+
+    const polled = await fetchJson(`${baseUrlValue}/api/oauth/device-poll`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ providerId: 'github-copilot', flowId: started.flowId }),
+    })
+    expect(polled).toEqual({ success: true, completed: true })
+
+    const aliceStatus = await fetchJson(`${baseUrlValue}/api/oauth/status`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ providerId: 'github-copilot' }),
+    })
+    expect(aliceStatus).toMatchObject({
+      success: true,
+      providerId: 'github-copilot',
+      isLoggedIn: true,
+      isExpired: false,
+      canRefresh: true,
+    })
+
+    const bobStatus = await fetchJson(`${baseUrlValue}/api/oauth/status`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ providerId: 'github-copilot' }),
+    })
+    expect(bobStatus).toMatchObject({
+      success: true,
+      providerId: 'github-copilot',
+      isLoggedIn: false,
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/oauth/refresh`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ providerId: 'github-copilot' }),
+    })).resolves.toEqual({ success: true })
+
+    await expect(fetchJson(`${baseUrlValue}/api/oauth/logout`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ providerId: 'github-copilot' }),
+    })).resolves.toEqual({ success: true })
+
+    const afterLogout = await fetchJson(`${baseUrlValue}/api/oauth/status`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ providerId: 'github-copilot' }),
+    })
+    expect(afterLogout).toMatchObject({
+      success: true,
+      providerId: 'github-copilot',
+      isLoggedIn: false,
+    })
+  })
+
+  it('serves owner-scoped gateway status while refusing server-side channel starts', async () => {
+    const dataRoot = await createTempDir('onething-gateway-data-')
+    const workspaceRoot = await createTempDir('onething-gateway-workspace-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({
+      dataRoot,
+      workspaceRoot,
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'gateway-workspace')
+    const bobHeaders = contextHeaders('bob', 'gateway-workspace')
+    const aliceJsonHeaders = { ...aliceHeaders, 'content-type': 'application/json' }
+
+    const initial = await fetchJson(`${baseUrlValue}/api/gateway/status`, {
+      headers: aliceHeaders,
+    })
+    expect(initial).toMatchObject({
+      success: true,
+      status: {
+        running: false,
+        enabled: false,
+        wechat: {
+          enabled: false,
+          running: false,
+          loggedIn: false,
+          loginStatus: 'idle',
+        },
+      },
+    })
+
+    await fetchJson(`${baseUrlValue}/api/settings`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({ channels: { wechat: { enabled: true } } }),
+    })
+
+    const aliceEnabled = await fetchJson(`${baseUrlValue}/api/gateway/status`, {
+      headers: aliceHeaders,
+    })
+    expect(aliceEnabled).toMatchObject({
+      success: true,
+      status: {
+        running: false,
+        enabled: true,
+        wechat: {
+          enabled: true,
+          running: false,
+          loggedIn: false,
+        },
+      },
+    })
+
+    const bobStatus = await fetchJson(`${baseUrlValue}/api/gateway/status`, {
+      headers: bobHeaders,
+    })
+    expect(bobStatus).toMatchObject({
+      success: true,
+      status: {
+        enabled: false,
+        wechat: { enabled: false },
+      },
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/gateway/start`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({ channel: 'wechat' }),
+    })).resolves.toMatchObject({
+      success: false,
+      error: 'Gateway channels are disabled in the web server runtime.',
+      status: {
+        enabled: true,
+        running: false,
+        wechat: {
+          enabled: true,
+          running: false,
+          loginStatus: 'error',
+          lastError: 'Gateway channels are disabled in the web server runtime.',
+        },
+      },
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/gateway/stop`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+    })).resolves.toMatchObject({
+      success: true,
+      status: {
+        enabled: true,
+        running: false,
+        wechat: { enabled: true, running: false },
+      },
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/gateway/wechat/logout`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+    })).resolves.toMatchObject({
+      success: false,
+      error: 'Gateway channels are disabled in the web server runtime.',
+    })
+  })
+
+  it('serves web-safe voice endpoints with explicit unavailable responses', async () => {
+    const dataRoot = await createTempDir('onething-voice-data-')
+    const workspaceRoot = await createTempDir('onething-voice-workspace-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({
+      dataRoot,
+      workspaceRoot,
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const headers = contextHeaders('alice', 'voice-workspace')
+    const jsonHeaders = { ...headers, 'content-type': 'application/json' }
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/state`, {
+      headers,
+    })).resolves.toMatchObject({
+      success: true,
+      state: {
+        status: 'disabled',
+        enabled: false,
+        runtimeReady: false,
+      },
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/start`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1', reason: 'manual' }),
+    })).resolves.toMatchObject({
+      success: false,
+      error: 'Voice runtime is not available in the web server runtime.',
+      state: {
+        status: 'error',
+        enabled: false,
+        runtimeReady: false,
+        lastError: 'Voice runtime is not available in the web server runtime.',
+      },
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/stop`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ reason: 'manual' }),
+    })).resolves.toEqual({ success: true })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/submit-utterance`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ audioBase64: 'audio', mimeType: 'audio/webm' }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Voice runtime is not available in the web server runtime.',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/submit-transcript`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        text: 'hello',
+        asrProvider: 'openai-transcribe',
+        asrModel: 'whisper-1',
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Voice runtime is not available in the web server runtime.',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/synthesize`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ text: 'hello' }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Voice runtime is not available in the web server runtime.',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/test-asr`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ audioBase64: 'audio', mimeType: 'audio/webm' }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Voice runtime is not available in the web server runtime.',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/test-tts`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ text: 'hello' }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Voice runtime is not available in the web server runtime.',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/tts-models`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ force: true }),
+    })).resolves.toMatchObject({
+      success: true,
+      models: [],
+      fetchedAt: expect.any(Number),
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/runtime-ready`, {
+      method: 'POST',
+      headers: jsonHeaders,
+    })).resolves.toEqual({
+      success: false,
+      error: 'Voice runtime is not available in the web server runtime.',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/voice/runtime-event`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ type: 'runtime-ready' }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Voice runtime is not available in the web server runtime.',
+    })
+
+    const voiceEvents = await fetch(`${baseUrlValue}/api/voice/events`, { headers })
+    expect(voiceEvents.headers.get('content-type')).toContain('text/event-stream')
+    await expect(readFirstChunk(voiceEvents)).resolves.toBe('\n')
+
+    const runtimeCommands = await fetch(`${baseUrlValue}/api/voice/runtime-commands`, { headers })
+    expect(runtimeCommands.headers.get('content-type')).toContain('text/event-stream')
+    await expect(readFirstChunk(runtimeCommands)).resolves.toBe('\n')
+  })
+
+  it('serves owner-scoped ACP configuration while refusing server-side agent connections', async () => {
+    const dataRoot = await createTempDir('onething-acp-data-')
+    const workspaceRoot = await createTempDir('onething-acp-workspace-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({
+      dataRoot,
+      workspaceRoot,
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'acp-workspace')
+    const bobHeaders = contextHeaders('bob', 'acp-workspace')
+    const aliceJsonHeaders = { ...aliceHeaders, 'content-type': 'application/json' }
+
+    const added = await fetchJson(`${baseUrlValue}/api/acp/agents`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({
+        config: {
+          id: 'web-acp',
+          name: 'Web ACP',
+          command: 'web-acp',
+          args: ['--safe'],
+          enabled: true,
+        },
+      }),
+    })
+    expect(added).toMatchObject({
+      success: true,
+      agent: {
+        config: {
+          id: 'web-acp',
+          name: 'Web ACP',
+          command: 'web-acp',
+          args: ['--safe'],
+          enabled: true,
+        },
+        status: 'disconnected',
+        sessionCount: 0,
+        activePromptCount: 0,
+      },
+    })
+
+    const aliceAgents = await fetchJson(`${baseUrlValue}/api/acp/agents`, {
+      headers: aliceHeaders,
+    })
+    expect(aliceAgents.success).toBe(true)
+    expect(aliceAgents.agents.some((agent: any) => agent.config.id === 'web-acp')).toBe(true)
+
+    const bobAgents = await fetchJson(`${baseUrlValue}/api/acp/agents`, {
+      headers: bobHeaders,
+    })
+    expect(bobAgents.success).toBe(true)
+    expect(bobAgents.agents.some((agent: any) => agent.config.id === 'web-acp')).toBe(false)
+
+    const updated = await fetchJson(`${baseUrlValue}/api/acp/agents/update`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({
+        config: {
+          id: 'web-acp',
+          name: 'Updated Web ACP',
+          command: 'web-acp',
+          args: ['--safe', '--updated'],
+          enabled: true,
+        },
+      }),
+    })
+    expect(updated).toMatchObject({
+      success: true,
+      agent: {
+        config: {
+          id: 'web-acp',
+          name: 'Updated Web ACP',
+          args: ['--safe', '--updated'],
+        },
+        status: 'disconnected',
+      },
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/acp/agents/connect`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({ agentId: 'web-acp' }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'ACP agent connections are disabled in the web server runtime.',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/acp/agents/refresh`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({ agentId: 'web-acp' }),
+    })).resolves.toMatchObject({
+      success: true,
+      agent: {
+        config: { id: 'web-acp' },
+        status: 'disconnected',
+      },
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/acp/agents/disconnect`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({ agentId: 'web-acp' }),
+    })).resolves.toEqual({ success: true })
+
+    await expect(fetchJson(`${baseUrlValue}/api/acp/sessions/cancel`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1', agentId: 'web-acp' }),
+    })).resolves.toEqual({ success: true })
+
+    await expect(fetchJson(`${baseUrlValue}/api/acp/agents/remove`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({ agentId: 'web-acp' }),
+    })).resolves.toEqual({ success: true })
+
+    const afterRemove = await fetchJson(`${baseUrlValue}/api/acp/agents`, {
+      headers: aliceHeaders,
+    })
+    expect(afterRemove.agents.some((agent: any) => agent.config.id === 'web-acp')).toBe(false)
+  })
+
+  it('serves owner-scoped memory profile and graph state through the development runtime', async () => {
+    const dataRoot = await createTempDir('onething-memory-data-')
+    const workspaceRoot = await createTempDir('onething-memory-workspace-')
+    const promotedDreamingMemory = 'Web runtime dreaming promoted a durable note.'
+    const generateDreaming = vi.fn(async () => JSON.stringify({
+      action: 'dream',
+      confidence: 0.95,
+      memories: [
+        {
+          action: 'add',
+          confidence: 0.95,
+          content: promotedDreamingMemory,
+        },
+      ],
+      memory: `- ${promotedDreamingMemory}`,
+    }))
+    const serverRuntime = createDevelopmentOnethingServerRuntime({
+      dataRoot,
+      workspaceRoot,
+      memoryDreamingGenerateText: generateDreaming,
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'memory-workspace')
+    const bobHeaders = contextHeaders('bob', 'memory-workspace')
+
+    const alicePluginDataDir = join(dataRoot, 'owners', 'alice', 'memory-workspace', 'plugin-data')
+    await mkdir(alicePluginDataDir, { recursive: true })
+    await writeFile(join(alicePluginDataDir, 'soul-memory.json'), JSON.stringify({
+      pendingCaptures: [
+        {
+          id: 'capture-save',
+          sessionId: 'session-1',
+          agentId: 'default',
+          createdAt: Date.now(),
+          target: 'daily',
+          heading: 'Captured notes',
+          content: 'Pending capture saved from the web runtime.',
+          confidence: 0.9,
+          explicit: true,
+          userPreview: 'User asked to remember a web runtime note.',
+          assistantPreview: 'Assistant acknowledged the memory.',
+        },
+        {
+          id: 'capture-discard',
+          sessionId: 'session-1',
+          agentId: 'default',
+          createdAt: Date.now() - 1,
+          target: 'daily',
+          heading: 'Captured notes',
+          content: 'Pending capture discarded from the web runtime.',
+          confidence: 0.7,
+          explicit: false,
+          userPreview: 'Discard me.',
+          assistantPreview: 'Discarded.',
+        },
+      ],
+    }), 'utf-8')
+
+    const overview = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(overview.success).toBe(true)
+    expect(overview.overview.root).toContain(dataRoot)
+
+    const managedText = `Durable web memory ${Date.now()}`
+    const savedFile = await fetchJson(`${baseUrlValue}/api/memory/save-file`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        path: 'MEMORY.md',
+        content: `# Memory\n\n- ${managedText}\n`,
+      }),
+    })
+    expect(savedFile.success).toBe(true)
+    expect(savedFile.file.relativePath).toBe('MEMORY.md')
+
+    const readFileResponse = await fetchJson(`${baseUrlValue}/api/memory/read`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'MEMORY.md', full: true }),
+    })
+    expect(readFileResponse.success).toBe(true)
+    expect(readFileResponse.file.text).toContain(managedText)
+
+    const indexResponse = await fetchJson(`${baseUrlValue}/api/memory/index`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(indexResponse.success).toBe(true)
+    expect(indexResponse.status.indexedFiles).toBeGreaterThan(0)
+
+    const searchResponse = await fetchJson(`${baseUrlValue}/api/memory/search`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ query: managedText }),
+    })
+    expect(searchResponse.success).toBe(true)
+    expect(searchResponse.hits.some((hit: { content: string }) => hit.content.includes(managedText))).toBe(true)
+
+    const bobSearchResponse = await fetchJson(`${baseUrlValue}/api/memory/search`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ query: managedText }),
+    })
+    expect(bobSearchResponse).toEqual({ success: true, hits: [] })
+
+    const appended = await fetchJson(`${baseUrlValue}/api/memory/append`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        content: 'Appended from the web runtime.',
+        heading: 'Runtime notes',
+      }),
+    })
+    expect(appended.success).toBe(true)
+    expect(appended.target.relativePath).toMatch(/^memory\/\d{4}-\d{2}-\d{2}\.md$/)
+
+    const overviewWithCaptures = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(overviewWithCaptures.success).toBe(true)
+    expect(overviewWithCaptures.overview.pendingCaptures.map((capture: { id: string }) => capture.id)).toEqual([
+      'capture-save',
+      'capture-discard',
+    ])
+
+    const bobOverviewWithCaptures = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(bobOverviewWithCaptures.success).toBe(true)
+    expect(bobOverviewWithCaptures.overview.pendingCaptures).toEqual([])
+
+    const savedCapture = await fetchJson(`${baseUrlValue}/api/memory/capture/save`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'capture-save' }),
+    })
+    expect(savedCapture.success).toBe(true)
+    expect(savedCapture.target.relativePath).toMatch(/^memory\/\d{4}-\d{2}-\d{2}\.md$/)
+
+    const savedCaptureFile = await fetchJson(`${baseUrlValue}/api/memory/read`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: savedCapture.target.relativePath, full: true }),
+    })
+    expect(savedCaptureFile.success).toBe(true)
+    expect(savedCaptureFile.file.text).toContain('Pending capture saved from the web runtime.')
+
+    const discardedCapture = await fetchJson(`${baseUrlValue}/api/memory/capture/discard`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'capture-discard' }),
+    })
+    expect(discardedCapture).toEqual({ success: true })
+
+    const overviewAfterDecisions = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(overviewAfterDecisions.overview.pendingCaptures).toEqual([])
+
+    const dreamingRun = await fetchJson(`${baseUrlValue}/api/memory/dreaming/run`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ agentId: 'default' }),
+    })
+    expect(dreamingRun.success).toBe(true)
+    expect(dreamingRun.result).toMatchObject({
+      status: 'applied',
+      applied: 1,
+    })
+    expect(dreamingRun.result.sourceFiles.some((file: string) => /^memory\/\d{4}-\d{2}-\d{2}\.md$/.test(file))).toBe(true)
+    expect(generateDreaming).toHaveBeenCalledWith(expect.objectContaining({
+      provider: expect.objectContaining({
+        providerId: 'local',
+        model: 'local-echo',
+      }),
+      context: expect.objectContaining({
+        userId: 'alice',
+        workspaceId: 'memory-workspace',
+      }),
+    }))
+
+    const memoryAfterDreaming = await fetchJson(`${baseUrlValue}/api/memory/read`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'MEMORY.md', full: true }),
+    })
+    expect(memoryAfterDreaming.success).toBe(true)
+    expect(memoryAfterDreaming.file.text).toContain(promotedDreamingMemory)
+
+    const overviewAfterDreaming = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(overviewAfterDreaming.overview.status.lastDreamingStatus).toBe('applied')
+    expect(overviewAfterDreaming.overview.status.lastDreamingApplied).toBe(1)
+    expect(overviewAfterDreaming.overview.dreaming.lastStatus).toBe('applied')
+    expect(overviewAfterDreaming.overview.dreaming.lastApplied).toBe(1)
+
+    const createdProfile = await fetchJson(`${baseUrlValue}/api/memory/profile/upsert`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        kind: 'preference',
+        value: 'likes concise answers',
+        confidence: 0.9,
+      }),
+    })
+    expect(createdProfile.success).toBe(true)
+    expect(createdProfile.memory.value).toBe('likes concise answers')
+
+    const aliceProfiles = await fetchJson(`${baseUrlValue}/api/memory/profile/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(aliceProfiles.memories.map((memory: { value: string }) => memory.value)).toContain('likes concise answers')
+
+    const bobProfiles = await fetchJson(`${baseUrlValue}/api/memory/profile/list`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(bobProfiles).toEqual({ success: true, memories: [] })
+
+    const profileAudit = await fetchJson(`${baseUrlValue}/api/memory/profile/audit`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: createdProfile.memory.id }),
+    })
+    expect(profileAudit.success).toBe(true)
+    expect(profileAudit.events.length).toBeGreaterThan(0)
+
+    const exportedProfile = await fetchJson(`${baseUrlValue}/api/memory/profile/export`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(exportedProfile.success).toBe(true)
+    expect(exportedProfile.markdown).toContain('likes concise answers')
+
+    const projectEntity = await fetchJson(`${baseUrlValue}/api/memory/graph/entities/upsert`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        entityType: 'project',
+        name: 'web-runtime',
+        displayName: 'Web runtime',
+      }),
+    })
+    expect(projectEntity.success).toBe(true)
+    expect(projectEntity.entity.displayName).toBe('Web runtime')
+
+    const aliceEntities = await fetchJson(`${baseUrlValue}/api/memory/graph/entities/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ query: 'web-runtime' }),
+    })
+    expect(aliceEntities.entities.map((entity: { id: string }) => entity.id)).toContain(projectEntity.entity.id)
+
+    const bobEntities = await fetchJson(`${baseUrlValue}/api/memory/graph/entities/list`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ query: 'web-runtime' }),
+    })
+    expect(bobEntities).toEqual({ success: true, entities: [] })
+
+    const logStats = await fetchJson(`${baseUrlValue}/api/memory/logs/stats`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(logStats.success).toBe(true)
+    expect(logStats.stats.entriesInBuffer).toBeGreaterThan(0)
+    expect(logStats.stats.bySubsystem.ipc).toBeGreaterThan(0)
+
+    const logList = await fetchJson(`${baseUrlValue}/api/memory/logs/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ subsystem: 'ipc', limit: 5 }),
+    })
+    expect(logList.success).toBe(true)
+    expect(logList.entries.some((entry: { operation: string }) => entry.operation === 'graph-entity-upsert')).toBe(true)
+
+    const openedLogFolder = await fetchJson(`${baseUrlValue}/api/memory/logs/open-folder`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(openedLogFolder.success).toBe(true)
+    expect(openedLogFolder.logDir).toContain(dataRoot)
+
+    const cleanup = await fetchJson(`${baseUrlValue}/api/memory/logs/cleanup`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    })
+    expect(cleanup.success).toBe(true)
+    expect(Array.isArray(cleanup.deleted)).toBe(true)
+  })
+
+  it('serves owner-scoped plugin catalog state through the development runtime', async () => {
+    const dataRoot = await createTempDir('onething-plugin-data-')
+    const workspaceRoot = await createTempDir('onething-plugin-workspace-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({
+      dataRoot,
+      workspaceRoot,
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'plugin-workspace')
+    const bobHeaders = contextHeaders('bob', 'plugin-workspace')
+    const aliceJsonHeaders = { ...aliceHeaders, 'content-type': 'application/json' }
+
+    const alicePlugins = await fetchJson(`${baseUrlValue}/api/plugins`, {
+      headers: aliceHeaders,
+    })
+    expect(alicePlugins.success).toBe(true)
+    expect(alicePlugins.plugins.map((plugin: { id: string }) => plugin.id)).toEqual(
+      expect.arrayContaining(['log-monitor', 'note-skills', 'soul-memory']),
+    )
+    expect(alicePlugins.plugins.find((plugin: { id: string }) => plugin.id === 'soul-memory')).toEqual(
+      expect.objectContaining({
+        enabled: true,
+        loaded: false,
+        commands: [],
+      }),
+    )
+
+    await expect(fetchJson(`${baseUrlValue}/api/plugins/disable`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({ pluginId: 'soul-memory' }),
+    })).resolves.toEqual({ success: true })
+
+    const aliceAfterDisable = await fetchJson(`${baseUrlValue}/api/plugins`, {
+      headers: aliceHeaders,
+    })
+    expect(aliceAfterDisable.plugins.find((plugin: { id: string }) => plugin.id === 'soul-memory')).toEqual(
+      expect.objectContaining({ enabled: false }),
+    )
+
+    const bobPlugins = await fetchJson(`${baseUrlValue}/api/plugins`, {
+      headers: bobHeaders,
+    })
+    expect(bobPlugins.plugins.find((plugin: { id: string }) => plugin.id === 'soul-memory')).toEqual(
+      expect.objectContaining({ enabled: true }),
+    )
+
+    await expect(fetchJson(`${baseUrlValue}/api/plugins/enable`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+      body: JSON.stringify({ pluginId: 'soul-memory' }),
+    })).resolves.toEqual({ success: true })
+
+    const aliceAfterEnable = await fetchJson(`${baseUrlValue}/api/plugins`, {
+      headers: aliceHeaders,
+    })
+    expect(aliceAfterEnable.plugins.find((plugin: { id: string }) => plugin.id === 'soul-memory')).toEqual(
+      expect.objectContaining({ enabled: true }),
+    )
+
+    await expect(fetchJson(`${baseUrlValue}/api/plugins/refresh`, {
+      method: 'POST',
+      headers: aliceJsonHeaders,
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/plugins/commands`, {
+      headers: aliceHeaders,
+    })).resolves.toEqual({
+      success: true,
+      commands: [],
+    })
+  })
+
+  it('routes scheduler requests through the runtime facade with owner context', async () => {
+    const listTasks = vi.fn(async () => ({ success: true, tasks: [] }))
+    const getTask = vi.fn(async request => ({ success: true, task: { id: request.id } }))
+    const runTaskNow = vi.fn(async request => ({ success: true, record: { taskId: request.id } }))
+    const setTaskEnabled = vi.fn(async request => ({ success: true, task: { id: request.id, enabled: request.enabled } }))
+    const createTask = vi.fn(async request => ({ success: true, task: { id: 'task-1', ...request } }))
+    const updateTask = vi.fn(async request => ({ success: true, task: request }))
+    const deleteTask = vi.fn(async () => ({ success: true }))
+    const listRuns = vi.fn(async () => ({ success: true, runs: [] }))
+    const getRun = vi.fn(async request => ({ success: true, run: { runId: request.runId } }))
+    const runtime = createOnethingRuntimeFacade({
+      sessions: {
+        list: async () => ({ success: true, sessions: [] }),
+        create: async (name: string) => ({ id: 'session-1', name }),
+      },
+      commands: {
+        emit: async () => ({ success: true }),
+      },
+      events: {
+        subscribe: () => () => {},
+      },
+      scheduler: {
+        listTasks,
+        getTask,
+        runTaskNow,
+        setTaskEnabled,
+        createTask,
+        updateTask,
+        deleteTask,
+        listRuns,
+        getRun,
+      },
+    })
+    const server = await listen(createOnethingHttpServer({ runtime }))
+    const baseUrlValue = baseUrl(server)
+    const headers = contextHeaders('alice', 'scheduler-workspace')
+    const jsonHeaders = { ...headers, 'content-type': 'application/json' }
+
+    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks`, { headers })).resolves.toEqual({
+      success: true,
+      tasks: [],
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/get`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ id: 'task-1' }),
+    })).resolves.toEqual({ success: true, task: { id: 'task-1' } })
+    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/run-now`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ id: 'task-1', force: true }),
+    })).resolves.toEqual({ success: true, record: { taskId: 'task-1' } })
+    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/enabled`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ id: 'task-1', enabled: false }),
+    })).resolves.toEqual({ success: true, task: { id: 'task-1', enabled: false } })
+    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ name: 'Task' }),
+    })).resolves.toEqual({ success: true, task: { id: 'task-1', name: 'Task' } })
+    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/update`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ id: 'task-1', name: 'Updated' }),
+    })).resolves.toEqual({ success: true, task: { id: 'task-1', name: 'Updated' } })
+    await expect(fetchJson(`${baseUrlValue}/api/scheduler/tasks/delete`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ id: 'task-1' }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/scheduler/runs`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ taskId: 'task-1', limit: 10 }),
+    })).resolves.toEqual({ success: true, runs: [] })
+    await expect(fetchJson(`${baseUrlValue}/api/scheduler/runs/get`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ taskId: 'task-1', runId: 'run-1' }),
+    })).resolves.toEqual({ success: true, run: { runId: 'run-1' } })
+
+    expect(listTasks).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'scheduler-workspace',
+    }))
+    expect(createTask).toHaveBeenCalledWith({ name: 'Task' }, expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'scheduler-workspace',
+    }))
+    expect(getRun).toHaveBeenCalledWith({ taskId: 'task-1', runId: 'run-1' }, expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'scheduler-workspace',
+    }))
+  })
+
+  it('routes chat requests through the runtime facade with owner context', async () => {
+    const getHistory = vi.fn(async (sessionId: string) => ({
+      success: true,
+      messages: [{ id: 'user-1', sessionId, role: 'user', content: 'hello', timestamp: 1 }],
+    }))
+    const generateTitle = vi.fn(async (message: string) => ({ success: true, title: message.slice(0, 20) }))
+    const getMessages = vi.fn(async (sessionId: string) => ({
+      success: true,
+      messages: [{ id: 'assistant-1', sessionId, role: 'assistant', content: 'hi', timestamp: 2 }],
+    }))
+    const getTokenUsage = vi.fn(async () => ({
+      success: true,
+      usage: {
+        totalInputTokens: 1,
+        totalOutputTokens: 2,
+        totalTokens: 3,
+        maxTokens: 128000,
+        lastInputTokens: 1,
+        contextSize: 1,
+      },
+    }))
+    const updateSessionPin = vi.fn(async () => ({ success: true }))
+    const addSystemMessage = vi.fn(async () => ({ success: true }))
+    const removeSystemMarkerMessage = vi.fn(async () => ({ success: true, removedId: 'system-1' }))
+    const removeMessage = vi.fn(async () => ({ success: true }))
+    const updateMessageThinkingTime = vi.fn(async () => ({ success: true }))
+    const runtime = createOnethingRuntimeFacade({
+      sessions: {
+        list: async () => ({ success: true, sessions: [] }),
+        create: async (name: string) => ({ id: 'session-1', name }),
+      },
+      chat: {
+        getHistory,
+        generateTitle,
+        getMessages,
+        getTokenUsage,
+        updateSessionPin,
+        addSystemMessage,
+        removeSystemMarkerMessage,
+        removeMessage,
+        updateMessageThinkingTime,
+      },
+      commands: {
+        emit: async () => ({ success: true }),
+      },
+      events: {
+        subscribe: () => () => {},
+      },
+    })
+    const server = await listen(createOnethingHttpServer({ runtime }))
+    const baseUrlValue = baseUrl(server)
+    const headers = contextHeaders('alice', 'chat-workspace')
+    const jsonHeaders = { ...headers, 'content-type': 'application/json' }
+
+    await expect(fetchJson(`${baseUrlValue}/api/chat/history`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1' }),
+    })).resolves.toEqual({
+      success: true,
+      messages: [{ id: 'user-1', sessionId: 'session-1', role: 'user', content: 'hello', timestamp: 1 }],
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/chat/title`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ message: 'Hello web runtime' }),
+    })).resolves.toEqual({ success: true, title: 'Hello web runtime' })
+    await expect(fetchJson(`${baseUrlValue}/api/chat/messages`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1' }),
+    })).resolves.toEqual({
+      success: true,
+      messages: [{ id: 'assistant-1', sessionId: 'session-1', role: 'assistant', content: 'hi', timestamp: 2 }],
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/chat/token-usage`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1' }),
+    })).resolves.toEqual({
+      success: true,
+      usage: {
+        totalInputTokens: 1,
+        totalOutputTokens: 2,
+        totalTokens: 3,
+        maxTokens: 128000,
+        lastInputTokens: 1,
+        contextSize: 1,
+      },
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/chat/update-session-pin`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1', isPinned: true }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/chat/add-system-message`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        sessionId: 'session-1',
+        message: { id: 'system-1', role: 'system', content: '{"type":"files-changed"}', timestamp: 1 },
+      }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/chat/remove-system-marker`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1', markerType: 'files-changed' }),
+    })).resolves.toEqual({ success: true, removedId: 'system-1' })
+    await expect(fetchJson(`${baseUrlValue}/api/chat/remove-message`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1', messageId: 'message-1' }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/chat/update-thinking-time`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1', messageId: 'message-1', thinkingTime: 2.5 }),
+    })).resolves.toEqual({ success: true })
+
+    expect(getHistory).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'chat-workspace',
+    }))
+    expect(generateTitle).toHaveBeenCalledWith('Hello web runtime', expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'chat-workspace',
+    }))
+    expect(updateSessionPin).toHaveBeenCalledWith('session-1', true, expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'chat-workspace',
+    }))
+    expect(removeSystemMarkerMessage).toHaveBeenCalledWith('session-1', 'files-changed', expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'chat-workspace',
+    }))
+    expect(updateMessageThinkingTime).toHaveBeenCalledWith('session-1', 'message-1', 2.5, expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'chat-workspace',
+    }))
+  })
+
+  it('routes branch creation through the sessions runtime facade with owner context', async () => {
+    const createBranch = vi.fn(async (parentSessionId: string, branchFromMessageId: string) => ({
+      success: true,
+      session: {
+        id: 'session-branch',
+        parentSessionId,
+        branchFromMessageId,
+        name: 'Branch',
+      },
+    }))
+    const runtime = createOnethingRuntimeFacade({
+      sessions: {
+        list: async () => ({ success: true, sessions: [] }),
+        create: async (name: string) => ({ id: 'session-1', name }),
+        createBranch,
+      },
+      commands: {
+        emit: async () => ({ success: true }),
+      },
+      events: {
+        subscribe: () => () => {},
+      },
+    })
+    const server = await listen(createOnethingHttpServer({ runtime }))
+    const headers = contextHeaders('alice', 'branch-workspace')
+
+    await expect(fetchJson(`${baseUrl(server)}/api/sessions/branch`, {
+      method: 'POST',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        parentSessionId: 'session-1',
+        branchFromMessageId: 'message-1',
+      }),
+    })).resolves.toEqual({
+      success: true,
+      session: {
+        id: 'session-branch',
+        parentSessionId: 'session-1',
+        branchFromMessageId: 'message-1',
+        name: 'Branch',
+      },
+    })
+
+    expect(createBranch).toHaveBeenCalledWith('session-1', 'message-1', expect.objectContaining({
+      userId: 'alice',
+      workspaceId: 'branch-workspace',
+    }))
+  })
+
+  it('exposes development chat operations over HTTP with owner isolation', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'chat-dev-workspace')
+    const bobHeaders = contextHeaders('bob', 'chat-dev-workspace')
+    const jsonHeaders = { ...aliceHeaders, 'content-type': 'application/json' }
+    const created = await createSession(baseUrlValue, 'Chat ops', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    const title = await fetchJson(`${baseUrlValue}/api/chat/title`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ message: 'Build a web runtime architecture for onething' }),
+    })
+    expect(title).toEqual(expect.objectContaining({
+      success: true,
+      title: expect.any(String),
+    }))
+
+    await expect(fetchJson(`${baseUrlValue}/api/chat/add-system-message`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        sessionId,
+        message: {
+          id: 'system-files',
+          role: 'system',
+          content: '{"type":"files-changed","paths":["src/main.ts"]}',
+          timestamp: 1,
+        },
+      }),
+    })).resolves.toEqual({ success: true })
+
+    await expect(fetchJson(`${baseUrlValue}/api/chat/messages`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId }),
+    })).resolves.toEqual({
+      success: true,
+      messages: [
+        expect.objectContaining({
+          id: 'system-files',
+          sessionId,
+          role: 'system',
+          content: '{"type":"files-changed","paths":["src/main.ts"]}',
+        }),
+      ],
+    })
+
+    const branch = await fetchJson(`${baseUrlValue}/api/sessions/branch`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        parentSessionId: sessionId,
+        branchFromMessageId: 'system-files',
+      }),
+    })
+    expect(branch).toEqual(expect.objectContaining({
+      success: true,
+      session: expect.objectContaining({
+        parentSessionId: sessionId,
+        branchFromMessageId: 'system-files',
+        messages: [
+          expect.objectContaining({
+            role: 'system',
+            sessionId: expect.any(String),
+            content: '{"type":"files-changed","paths":["src/main.ts"]}',
+          }),
+        ],
+      }),
+    }))
+    expect(branch.session.id).not.toBe(sessionId)
+    expect(branch.session.messages[0].id).not.toBe('system-files')
+    expect(branch.session.messages[0].sessionId).toBe(branch.session.id)
+
+    await expect(fetchJson(`${baseUrlValue}/api/sessions/branch`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        parentSessionId: sessionId,
+        branchFromMessageId: 'system-files',
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Parent session not found',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/chat/update-thinking-time`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId, messageId: 'system-files', thinkingTime: 1.25 }),
+    })).resolves.toEqual({ success: true })
+
+    await expect(fetchJson(`${baseUrlValue}/api/chat/remove-system-marker`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId, markerType: 'files-changed' }),
+    })).resolves.toEqual({ success: true, removedId: 'system-files' })
+
+    await expect(fetchJson(`${baseUrlValue}/api/chat/messages`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId }),
+    })).resolves.toEqual({ success: true, messages: [] })
+
+    await expect(fetchJson(`${baseUrlValue}/api/chat/update-session-pin`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId, isPinned: true }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/max-tokens`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ maxTokens: 200000 }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      session: expect.objectContaining({
+        id: sessionId,
+        maxTokens: 200000,
+      }),
+    }))
+    await expect(fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/max-tokens`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ maxTokens: 300000 }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Session not found',
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/max-tokens`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ maxTokens: 0 }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Max tokens must be a positive number.',
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}`, {
+      headers: aliceHeaders,
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      session: expect.objectContaining({ id: sessionId, isPinned: true, maxTokens: 200000 }),
+    }))
+
+    await (serverRuntime.eventBus as any).emit(sessionId!, {
+      type: 'stream:complete',
+      data: {
+        usage: { inputTokens: 4, outputTokens: 5, totalTokens: 9 },
+      },
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/chat/token-usage`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId }),
+    })).resolves.toEqual({
+      success: true,
+      usage: {
+        totalInputTokens: 4,
+        totalOutputTokens: 5,
+        totalTokens: 9,
+        maxTokens: 200000,
+        lastInputTokens: 4,
+        contextSize: 4,
+      },
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/chat/token-usage`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Session not found',
+    })
+  })
+
+  it('searches owner-scoped server runtime data and resolves web search actions', async () => {
+    const workspaceRoot = await createTempDir('onething-server-search-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'search-dev-workspace')
+    const bobHeaders = contextHeaders('bob', 'search-dev-workspace')
+    const created = await createSession(baseUrlValue, 'Searchable Alpha', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    await expect(fetchJson(`${baseUrlValue}/api/search/query`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: 'Searchable',
+        category: 'chats',
+        limit: 5,
+      }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      results: expect.arrayContaining([
+        expect.objectContaining({
+          type: 'chat',
+          sessionId,
+          title: 'Searchable Alpha',
+        }),
+      ]),
+    }))
+
+    await expect(fetchJson(`${baseUrlValue}/api/search/query`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        query: 'Searchable',
+        category: 'chats',
+        limit: 5,
+      }),
+    })).resolves.toEqual({
+      success: true,
+      results: [],
+    })
+
+    const notePath = join(workspaceRoot, 'alice', 'search-dev-workspace', 'notes', 'today.md')
+    await expect(fetchJson(`${baseUrlValue}/api/search/actions`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        actionId: `create-daily-note:${encodeURIComponent(notePath)}`,
+      }),
+    })).resolves.toEqual({
+      success: true,
+      actionId: `open-file:${notePath}`,
+    })
+    await expect(readFile(notePath, 'utf8')).resolves.toContain('# ')
+  })
+
+  it('exposes workspace-scoped file routes for the web runtime', async () => {
+    const workspaceRoot = await createTempDir('onething-server-files-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'files-workspace')
+    const bobHeaders = contextHeaders('bob', 'files-workspace')
+    const created = await createSession(baseUrlValue, 'Files session', aliceHeaders)
+    const workspaceDir = created.session?.workingDirectory
+    expect(workspaceDir).toBeTruthy()
+
+    const srcDir = join(workspaceDir!, 'src')
+    const draftPath = join(srcDir, 'demo.txt')
+    const renamedPath = join(srcDir, 'main.txt')
+
+    const fileEvents = await fetch(`${baseUrlValue}/api/files/watch/events`, { headers: aliceHeaders })
+    expect(fileEvents.status).toBe(200)
+    await expect(fetchJson(`${baseUrlValue}/api/files/watch/start`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ root: workspaceDir }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/files/watch/start`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ root: workspaceDir }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Workspace watch root must stay inside the workspace sandbox root.',
+    })
+    const watchedPath = join(workspaceDir!, 'watched.txt')
+    await writeFile(watchedPath, 'watch me\n', 'utf8')
+    const watchEventText = await readUntil(
+      fileEvents,
+      text => text.includes('workspace:file-changed') && text.includes('watched.txt'),
+    )
+    expect(watchEventText).toContain('workspace:file-changed')
+    expect(watchEventText).toContain(watchedPath)
+    await expect(fetchJson(`${baseUrlValue}/api/files/watch/stop`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ root: workspaceDir }),
+    })).resolves.toEqual({ success: true })
+
+    await expect(fetchJson(`${baseUrlValue}/api/files/create-directory`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: srcDir }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/files/create`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: draftPath, content: 'hello web\n' }),
+    })).resolves.toEqual({ success: true })
+
+    const readResult = await fetchJson(`${baseUrlValue}/api/files/read`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: draftPath }),
+    })
+    expect(readResult).toEqual(expect.objectContaining({
+      success: true,
+      content: 'hello web\n',
+      encoding: 'utf-8',
+      isBinary: false,
+    }))
+
+    await expect(fetchJson(`${baseUrlValue}/api/files/save`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        path: draftPath,
+        content: 'updated web\n',
+        expectedMtimeMs: readResult.mtimeMs,
+      }),
+    })).resolves.toEqual(expect.objectContaining({ success: true }))
+    await expect(fetchJson(`${baseUrlValue}/api/files/rollback`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        filePath: draftPath,
+        originalContent: 'hello web\n',
+        isNew: false,
+      }),
+    })).resolves.toEqual({
+      success: true,
+      filePath: draftPath,
+      restoredExists: true,
+    })
+    await expect(readFile(draftPath, 'utf8')).resolves.toBe('hello web\n')
+    await expect(fetchJson(`${baseUrlValue}/api/files/rollback`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        filePath: draftPath,
+        originalContent: 'bob should not write\n',
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Rollback file path must stay inside the workspace sandbox root.',
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/files/stat`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: draftPath }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      type: 'file',
+    }))
+    await expect(fetchJson(`${baseUrlValue}/api/files/list-directory`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: workspaceDir }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      entries: expect.arrayContaining([
+        expect.objectContaining({ name: 'src', path: srcDir, type: 'directory' }),
+      ]),
+    }))
+    await expect(fetchJson(`${baseUrlValue}/api/files/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ cwd: workspaceDir, query: 'demo', limit: 10 }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      files: expect.arrayContaining([draftPath]),
+    }))
+    await expect(fetchJson(`${baseUrlValue}/api/dirs/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ basePath: workspaceDir, query: 's', limit: 10 }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      dirs: expect.arrayContaining([srcDir]),
+    }))
+
+    await expect(fetchJson(`${baseUrlValue}/api/files/read`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: draftPath }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'File path must stay inside the workspace sandbox root.',
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/files/read`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: '../escape.txt' }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'File path must stay inside the workspace sandbox root.',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/files/rename`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ oldPath: draftPath, newPath: renamedPath }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/files/delete`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: renamedPath }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/files/reveal`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: srcDir }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Revealing local files is not available in the web server runtime.',
+    })
+  })
+
+  it('exposes sandboxed Markdown asset routes for the web runtime', async () => {
+    const workspaceRoot = await createTempDir('onething-server-markdown-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'markdown-workspace')
+    const bobHeaders = contextHeaders('bob', 'markdown-workspace')
+    const created = await createSession(baseUrlValue, 'Markdown session', aliceHeaders)
+    const workspaceDir = created.session?.workingDirectory
+    expect(workspaceDir).toBeTruthy()
+
+    const documentPath = join(workspaceDir!, 'docs', 'readme.md')
+    const imagePath = join(workspaceDir!, 'image.png')
+    await mkdir(join(workspaceDir!, 'docs'), { recursive: true })
+    await writeFile(documentPath, '# Readme\n![image](image.png)\n', 'utf8')
+    await writeFile(imagePath, Buffer.from('image-bytes'))
+
+    await expect(fetchJson(`${baseUrlValue}/api/markdown/resolve-asset`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        documentPath,
+        workspaceRoot: workspaceDir,
+        rawTarget: 'image.png',
+      }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      asset: expect.objectContaining({
+        kind: 'image',
+        absolutePath: imagePath,
+        fileName: 'image.png',
+        dataUrl: expect.stringMatching(/^data:image\/png;base64,/),
+      }),
+    }))
+
+    await expect(fetchJson(`${baseUrlValue}/api/markdown/save-attachments`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        documentPath,
+        workspaceRoot: workspaceDir,
+        files: [{
+          fileName: 'clip.png',
+          mimeType: 'image/png',
+          base64Data: Buffer.from('clip-bytes').toString('base64'),
+        }],
+      }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      insertText: '![clip](../clip.png)',
+      attachments: [
+        expect.objectContaining({
+          fileName: 'clip.png',
+          absolutePath: join(workspaceDir!, 'clip.png'),
+        }),
+      ],
+    }))
+
+    await expect(fetchJson(`${baseUrlValue}/api/markdown/resolve-asset`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        documentPath,
+        workspaceRoot: workspaceDir,
+        rawTarget: '../escape.png',
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Markdown asset target must stay inside the workspace sandbox root.',
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/markdown/resolve-asset`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        documentPath,
+        workspaceRoot: workspaceDir,
+        rawTarget: 'image.png',
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Markdown document path must stay inside the workspace sandbox root.',
+    })
+  })
+
+  it('exposes owner-scoped variables and emits session variable updates', async () => {
+    const workspaceRoot = await createTempDir('onething-server-variables-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'variables-workspace')
+    const bobHeaders = contextHeaders('bob', 'variables-workspace')
+    const created = await createSession(baseUrlValue, 'Variables session', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    const events = await fetch(`${baseUrlValue}/api/events`, { headers: aliceHeaders })
+    expect(events.status).toBe(200)
+
+    await expect(fetchJson(`${baseUrlValue}/api/variables/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      variables: expect.arrayContaining([
+        expect.objectContaining({ name: 'workdir', scope: 'session' }),
+        expect.objectContaining({ name: 'ai_note_dir', scope: 'global' }),
+      ]),
+    }))
+
+    await expect(fetchJson(`${baseUrlValue}/api/variables/set`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sessionId,
+        name: 'topic',
+        value: 'web variables',
+        description: 'Current topic',
+        scope: 'session',
+      }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      variable: expect.objectContaining({
+        name: 'topic',
+        value: 'web variables',
+        scope: 'session',
+      }),
+    }))
+
+    const eventText = await readUntil(events, text => text.includes('session:variables-updated'))
+    expect(eventText).toContain('session:variables-updated')
+
+    await expect(fetchJson(`${baseUrlValue}/api/variables/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      variables: expect.arrayContaining([
+        expect.objectContaining({ name: 'topic', value: 'web variables', scope: 'session' }),
+      ]),
+    }))
+
+    await expect(fetchJson(`${baseUrlValue}/api/variables/list`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })).resolves.toEqual({
+      success: false,
+      variables: [],
+      error: 'Session not found',
+      code: 'NOT_FOUND',
+    })
+
+    await expect(fetchJson(`${baseUrlValue}/api/variables/delete`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId, name: 'topic' }),
+    })).resolves.toEqual({ success: true })
+  })
+
+  it('manages owner-scoped project directories inside the web workspace sandbox', async () => {
+    const workspaceRoot = await createTempDir('onething-server-project-dirs-')
+    const dataRoot = await createTempDir('onething-server-project-dirs-data-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot, dataRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'project-workspace')
+    const bobHeaders = contextHeaders('bob', 'project-workspace')
+    const created = await createSession(baseUrlValue, 'Project dirs session', aliceHeaders)
+    const workspaceDir = created.session?.workingDirectory
+    expect(workspaceDir).toBeTruthy()
+
+    const projectPath = join(workspaceDir!, 'project-a')
+    await mkdir(projectPath, { recursive: true })
+
+    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: projectPath, description: 'Alpha project' }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      project: expect.objectContaining({
+        path: projectPath,
+        description: 'Alpha project',
+      }),
+    }))
+    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
+      headers: aliceHeaders,
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      entries: [
+        expect.objectContaining({
+          path: projectPath,
+          description: 'Alpha project',
+        }),
+      ],
+    }))
+    await expect(fetchJson(`${baseUrlValue}/api/project-dirs/get`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: projectPath }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      project: expect.objectContaining({
+        path: projectPath,
+        description: 'Alpha project',
+      }),
+    }))
+    await expect(fetchJson(`${baseUrlValue}/api/project-dirs/update`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: projectPath, description: 'Updated project' }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      project: expect.objectContaining({
+        path: projectPath,
+        description: 'Updated project',
+      }),
+    }))
+    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
+      headers: bobHeaders,
+    })).resolves.toEqual({
+      success: true,
+      entries: [],
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: '../outside', description: 'Outside' }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Project directory path must stay inside the workspace sandbox root.',
+      code: 'WORKSPACE_PATH',
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/project-dirs/remove`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: projectPath }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/project-dirs`, {
+      headers: aliceHeaders,
+    })).resolves.toEqual({
+      success: true,
+      entries: [],
+    })
+  })
+
+  it('manages owner-scoped media assets and serves web-safe media files', async () => {
+    const dataRoot = await createTempDir('onething-server-media-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const aliceHeaders = contextHeaders('alice', 'media-workspace')
+    const bobHeaders = contextHeaders('bob', 'media-workspace')
+    const created = await createSession(baseUrlValue, 'Media session', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    const mediaEvents = await fetch(`${baseUrlValue}/api/media/events`, { headers: aliceHeaders })
+    expect(mediaEvents.status).toBe(200)
+
+    const saved = await fetchJson(`${baseUrlValue}/api/media/save-image`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        base64: Buffer.from('image-bytes').toString('base64'),
+        prompt: 'A saved image',
+        model: 'local-image',
+        sessionId,
+        messageId: 'message-1',
+      }),
+    })
+    expect(saved).toEqual(expect.objectContaining({
+      id: expect.any(String),
+      filePath: expect.stringMatching(/^\/api\/media\/file\//),
+      prompt: 'A saved image',
+    }))
+    const eventText = await readUntil(
+      mediaEvents,
+      text => text.includes('media:image-generated') && text.includes(saved.id),
+    )
+    expect(eventText).toContain('media:image-generated')
+    expect(eventText).toContain('/api/media/file/')
+
+    await expect(fetchJson(`${baseUrlValue}/api/media/assets?kind=image`, {
+      headers: aliceHeaders,
+    })).resolves.toEqual([
+      expect.objectContaining({
+        id: saved.id,
+        filePath: saved.filePath,
+        kind: 'image',
+        metadata: expect.objectContaining({ prompt: 'A saved image' }),
+      }),
+    ])
+    await expect(fetchJson(`${baseUrlValue}/api/media/gallery`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ assetId: saved.id, query: { kind: 'image' } }),
+    })).resolves.toEqual({
+      images: [
+        expect.objectContaining({
+          id: saved.id,
+          filePath: saved.filePath,
+        }),
+      ],
+      currentIndex: 0,
+    })
+    await expect(fetchJson(`${baseUrlValue}/api/media/preview/open`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ src: saved.filePath, alt: 'Preview' }),
+    })).resolves.toEqual(expect.objectContaining({
+      success: true,
+      previewId: expect.any(String),
+    }))
+
+    const mediaFileResponse = await fetch(`${baseUrlValue}${saved.filePath}`, { headers: aliceHeaders })
+    expect(mediaFileResponse.status).toBe(200)
+    expect(mediaFileResponse.headers.get('content-type')).toBe('image/png')
+    expect(await mediaFileResponse.text()).toBe('image-bytes')
+
+    await expect(fetchJson(`${baseUrlValue}/api/media/assets?kind=image`, {
+      headers: bobHeaders,
+    })).resolves.toEqual([])
+    const bobFileResponse = await fetch(`${baseUrlValue}${saved.filePath}`, { headers: bobHeaders })
+    expect(bobFileResponse.status).toBe(404)
+
+    await expect(fetchJson(`${baseUrlValue}/api/media/assets/hide`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: saved.id }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrlValue}/api/media/assets?kind=image`, {
+      headers: aliceHeaders,
+    })).resolves.toEqual([])
+  })
+
+  it('routes command POSTs through the runtime facade', async () => {
+    const emit = vi.fn(async (sessionId: string, command: unknown) => ({
+      success: true,
+      result: { sessionId, command },
+    }))
+    const server = await listen(createOnethingHttpServer({
+      runtime: createOnethingRuntimeFacade({
+        sessions: {
+          list: vi.fn(async () => []),
+          create: vi.fn(async () => ({ id: 'session-1' })),
+        },
+        commands: { emit },
+        events: {
+          subscribe: vi.fn(() => () => {}),
+        },
+      }),
+    }))
+
+    const response = await fetch(`${baseUrl(server)}/api/sessions/session-1/commands`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'command:send-message', content: 'hello' }),
+    })
+
+    await expect(response.json()).resolves.toEqual({
+      success: true,
+      result: {
+        sessionId: 'session-1',
+        command: { type: 'command:send-message', content: 'hello' },
+      },
+    })
+    expect(emit).toHaveBeenCalledWith('session-1', {
+      type: 'command:send-message',
+      content: 'hello',
+    }, expect.objectContaining({
+      userId: 'local-user',
+      workspaceId: 'default',
+    }))
+  })
+
+  it('streams runtime events as SSE session:event messages', async () => {
+    const unsubscribe = vi.fn()
+    const subscribe = vi.fn((_sessionId, handler) => {
+      handler({
+        sessionId: 'session-1',
+        sequence: 8,
+        event: { type: 'stream:start' },
+      })
+      return unsubscribe
+    })
+    const server = await listen(createOnethingHttpServer({
+      runtime: createOnethingRuntimeFacade({
+        sessions: {
+          list: vi.fn(async () => []),
+          create: vi.fn(async () => ({ id: 'session-1' })),
+        },
+        commands: {
+          emit: vi.fn(async () => ({ success: true })),
+        },
+        events: { subscribe },
+      }),
+    }))
+
+    const response = await fetch(`${baseUrl(server)}/api/events?sessionId=session-1&after=7`)
+    expect(response.status).toBe(200)
+    const chunk = await readFirstChunk(response)
+
+    expect(chunk).toContain('event: session:event')
+    expect(chunk).toContain('"sequence":8')
+    expect(subscribe).toHaveBeenCalledWith('session-1', expect.any(Function), { afterSeq: 7 }, expect.objectContaining({
+      userId: 'local-user',
+      workspaceId: 'default',
+    }))
+  })
+
+  it('supports per-session SSE routes with replay cursors', async () => {
+    const unsubscribe = vi.fn()
+    const subscribe = vi.fn((_sessionId, handler) => {
+      handler({
+        sessionId: 'session-1',
+        sequence: 12,
+        event: { type: 'content:part', data: { text: 'replayed' } },
+      })
+      return unsubscribe
+    })
+    const server = await listen(createOnethingHttpServer({
+      runtime: createOnethingRuntimeFacade({
+        sessions: {
+          list: vi.fn(async () => []),
+          create: vi.fn(async () => ({ id: 'session-1' })),
+        },
+        commands: {
+          emit: vi.fn(async () => ({ success: true })),
+        },
+        events: { subscribe },
+      }),
+    }))
+
+    const response = await fetch(`${baseUrl(server)}/api/sessions/session-1/events?after=11`)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('x-accel-buffering')).toBe('no')
+    const chunk = await readFirstChunk(response)
+
+    expect(chunk).toContain('event: session:event')
+    expect(chunk).toContain('"sequence":12')
+    expect(chunk).toContain('replayed')
+    expect(subscribe).toHaveBeenCalledWith('session-1', expect.any(Function), { afterSeq: 11 }, expect.objectContaining({
+      userId: 'local-user',
+      workspaceId: 'default',
+    }))
+  })
+
+  it('allows browser auth and workspace headers in CORS preflight responses', async () => {
+    const server = await listen(createOnethingHttpServer({
+      corsOrigin: 'http://localhost:5173',
+      runtime: createOnethingRuntimeFacade({
+        sessions: {
+          list: vi.fn(async () => []),
+          create: vi.fn(async () => ({ id: 'session-1' })),
+        },
+        commands: {
+          emit: vi.fn(async () => ({ success: true })),
+        },
+        events: {
+          subscribe: vi.fn(() => () => {}),
+        },
+      }),
+    }))
+
+    const response = await fetch(`${baseUrl(server)}/api/sessions`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-headers': 'authorization,x-onething-user-id,x-onething-workspace-id',
+      },
+    })
+
+    expect(response.status).toBe(204)
+    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:5173')
+    expect(response.headers.get('access-control-allow-headers')).toContain('authorization')
+    expect(response.headers.get('access-control-allow-headers')).toContain('x-onething-user-id')
+    expect(response.headers.get('access-control-allow-headers')).toContain('x-onething-workspace-id')
+  })
+
+  it('routes theme REST calls through the runtime facade', async () => {
+    const getThemes = vi.fn(async () => ({ success: true, themes: [{ id: 'flexoki' }] }))
+    const getTheme = vi.fn(async (themeId: string) => ({ success: true, theme: { id: themeId } }))
+    const applyTheme = vi.fn(async (themeId: string, mode: 'dark' | 'light') => ({
+      success: true,
+      cssVariables: { '--theme-id': themeId, '--theme-mode': mode },
+    }))
+    const refreshThemes = vi.fn(async (projectPath?: string) => ({ success: true, themes: [], projectPath }))
+    const openThemesFolder = vi.fn(async () => ({ success: false, error: 'not available' }))
+    const server = await listen(createOnethingHttpServer({
+      runtime: createOnethingRuntimeFacade({
+        sessions: {
+          list: vi.fn(async () => []),
+          create: vi.fn(async () => ({ id: 'session-1' })),
+        },
+        commands: {
+          emit: vi.fn(async () => ({ success: true })),
+        },
+        events: {
+          subscribe: vi.fn(() => () => {}),
+        },
+        themes: {
+          getThemes,
+          getTheme,
+          applyTheme,
+          refreshThemes,
+          openThemesFolder,
+        },
+      }),
+    }))
+
+    await expect(fetchJson(`${baseUrl(server)}/api/themes`)).resolves.toEqual({
+      success: true,
+      themes: [{ id: 'flexoki' }],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/themes/flexoki`)).resolves.toEqual({
+      success: true,
+      theme: { id: 'flexoki' },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/themes/flexoki/apply`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'light' }),
+    })).resolves.toEqual({
+      success: true,
+      cssVariables: {
+        '--theme-id': 'flexoki',
+        '--theme-mode': 'light',
+      },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/themes/refresh`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projectPath: '/workspace' }),
+    })).resolves.toEqual({
+      success: true,
+      themes: [],
+      projectPath: '/workspace',
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/themes/open-folder`, {
+      method: 'POST',
+    })).resolves.toEqual({
+      success: false,
+      error: 'not available',
+    })
+
+    expect(getTheme).toHaveBeenCalledWith('flexoki', expect.objectContaining({
+      userId: 'local-user',
+      workspaceId: 'default',
+    }))
+    expect(applyTheme).toHaveBeenCalledWith('flexoki', 'light', expect.any(Object))
+    expect(refreshThemes).toHaveBeenCalledWith('/workspace', expect.any(Object))
+    expect(openThemesFolder).toHaveBeenCalledWith(expect.any(Object))
+  })
+
+  it('routes prompt and todo-plan REST calls through the runtime facade', async () => {
+    const getSystemPromptSnapshot = vi.fn(async (sessionId: string) => ({
+      success: true,
+      snapshot: { sessionId },
+    }))
+    const getTodoPlan = vi.fn(async (request: unknown) => ({
+      success: true,
+      snapshot: { directory: '/todo', userNotes: [], request },
+    }))
+    const createNote = vi.fn(async (request: unknown) => ({
+      success: true,
+      document: { id: 'note-1', request },
+    }))
+    const update = vi.fn(async (request: unknown) => ({
+      success: true,
+      document: { id: 'workspace-ai-todo', request },
+    }))
+    const renameNote = vi.fn(async (request: unknown) => ({
+      success: true,
+      document: { id: 'renamed', request },
+    }))
+    const deleteNote = vi.fn(async () => ({ success: true }))
+    const revealDirectory = vi.fn(async () => ({ success: false, error: 'not available' }))
+    const listAgents = vi.fn(async () => ({
+      success: true,
+      agents: [{ id: 'default', name: 'Default Agent' }],
+    }))
+    const createAgent = vi.fn(async (request: unknown) => ({
+      success: true,
+      agent: { id: 'agent-1', request },
+    }))
+    const updateAgent = vi.fn(async (request: unknown) => ({
+      success: true,
+      agent: { id: 'agent-1', request },
+    }))
+    const deleteAgent = vi.fn(async (request: unknown) => ({
+      success: true,
+      request,
+    }))
+    const listProviders = vi.fn(async () => ({ success: true, providers: [{ id: 'local' }] }))
+    const providerUsage = vi.fn(async (providerId: string) => ({ success: true, providerId, unsupported: true }))
+    const providerEnvStatus = vi.fn(async (providerId: string) => ({
+      success: true,
+      status: { providerId, candidates: [] },
+    }))
+    const getModelsWithCapabilities = vi.fn(async (providerId: string, options?: { forceRefresh?: boolean }) => ({
+      success: true,
+      models: [{ id: `${providerId}-model`, options }],
+    }))
+    const getAllModels = vi.fn(async () => ({ success: true, models: [{ id: 'local-echo' }] }))
+    const searchModels = vi.fn(async (query: string, providerId?: string) => ({
+      success: true,
+      models: [{ id: 'local-echo', query, providerId }],
+    }))
+    const refreshModelRegistry = vi.fn(async () => ({ success: true }))
+    const getModelNameAliases = vi.fn(async () => ({ success: true, aliases: { 'local-echo': 'Local Echo' } }))
+    const getModelDisplayName = vi.fn(async (modelId: string) => ({ success: true, displayName: modelId }))
+    const server = await listen(createOnethingHttpServer({
+      runtime: createOnethingRuntimeFacade({
+        sessions: {
+          list: vi.fn(async () => []),
+          create: vi.fn(async () => ({ id: 'session-1' })),
+        },
+        commands: {
+          emit: vi.fn(async () => ({ success: true })),
+        },
+        events: {
+          subscribe: vi.fn(() => () => {}),
+        },
+        prompts: {
+          getSystemPromptSnapshot,
+        },
+        todoPlan: {
+          get: getTodoPlan,
+          createNote,
+          update,
+          renameNote,
+          deleteNote,
+          revealDirectory,
+        },
+        agents: {
+          list: listAgents,
+          create: createAgent,
+          update: updateAgent,
+          delete: deleteAgent,
+        },
+        providers: {
+          list: listProviders,
+          usage: providerUsage,
+          envStatus: providerEnvStatus,
+          getModelsWithCapabilities,
+          getAllModels,
+          searchModels,
+          refreshModelRegistry,
+          getModelNameAliases,
+          getModelDisplayName,
+        },
+      }),
+    }))
+
+    await expect(fetchJson(`${baseUrl(server)}/api/sessions/session-1/system-prompt-snapshot`)).resolves.toEqual({
+      success: true,
+      snapshot: { sessionId: 'session-1' },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/get`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId: 'session-1' }),
+    })).resolves.toEqual({
+      success: true,
+      snapshot: {
+        directory: '/todo',
+        userNotes: [],
+        request: { sessionId: 'session-1' },
+      },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Plan' }),
+    })).resolves.toEqual({
+      success: true,
+      document: { id: 'note-1', request: { title: 'Plan' } },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/update`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ scope: 'workspace-ai-todo', content: '- [ ] Ship' }),
+    })).resolves.toEqual({
+      success: true,
+      document: {
+        id: 'workspace-ai-todo',
+        request: { scope: 'workspace-ai-todo', content: '- [ ] Ship' },
+      },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/rename`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'note-1', title: 'Next' }),
+    })).resolves.toEqual({
+      success: true,
+      document: { id: 'renamed', request: { id: 'note-1', title: 'Next' } },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/delete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id: 'note-1' }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/reveal-directory`, {
+      method: 'POST',
+    })).resolves.toEqual({
+      success: false,
+      error: 'not available',
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/agents`)).resolves.toEqual({
+      success: true,
+      agents: [{ id: 'default', name: 'Default Agent' }],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/agents`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Reviewer', systemPrompt: 'Review carefully' }),
+    })).resolves.toEqual({
+      success: true,
+      agent: {
+        id: 'agent-1',
+        request: { name: 'Reviewer', systemPrompt: 'Review carefully' },
+      },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/agents/agent-1/update`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Builder' }),
+    })).resolves.toEqual({
+      success: true,
+      agent: {
+        id: 'agent-1',
+        request: { name: 'Builder', agentId: 'agent-1' },
+      },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/agents/agent-1`, {
+      method: 'DELETE',
+    })).resolves.toEqual({
+      success: true,
+      request: { agentId: 'agent-1' },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/providers`)).resolves.toEqual({
+      success: true,
+      providers: [{ id: 'local' }],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/providers/codex/usage`)).resolves.toEqual({
+      success: true,
+      providerId: 'codex',
+      unsupported: true,
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/providers/openai/env-status`)).resolves.toEqual({
+      success: true,
+      status: { providerId: 'openai', candidates: [] },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/providers/local/models?forceRefresh=true`)).resolves.toEqual({
+      success: true,
+      models: [{ id: 'local-model', options: { forceRefresh: true } }],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/models`)).resolves.toEqual({
+      success: true,
+      models: [{ id: 'local-echo' }],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/models/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: 'echo', providerId: 'local' }),
+    })).resolves.toEqual({
+      success: true,
+      models: [{ id: 'local-echo', query: 'echo', providerId: 'local' }],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/models/refresh`, {
+      method: 'POST',
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrl(server)}/api/models/name-aliases`)).resolves.toEqual({
+      success: true,
+      aliases: { 'local-echo': 'Local Echo' },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/models/local-echo/display-name`)).resolves.toEqual({
+      success: true,
+      displayName: 'local-echo',
+    })
+
+    expect(getSystemPromptSnapshot).toHaveBeenCalledWith('session-1', expect.objectContaining({
+      userId: 'local-user',
+      workspaceId: 'default',
+    }))
+    expect(getTodoPlan).toHaveBeenCalledWith({ sessionId: 'session-1' }, expect.any(Object))
+    expect(revealDirectory).toHaveBeenCalledWith(expect.any(Object))
+    expect(listAgents).toHaveBeenCalledWith(expect.any(Object))
+    expect(updateAgent).toHaveBeenCalledWith({ name: 'Builder', agentId: 'agent-1' }, expect.any(Object))
+    expect(deleteAgent).toHaveBeenCalledWith({ agentId: 'agent-1' }, expect.any(Object))
+    expect(providerUsage).toHaveBeenCalledWith('codex', expect.any(Object))
+    expect(getModelsWithCapabilities).toHaveBeenCalledWith('local', { forceRefresh: true }, expect.any(Object))
+    expect(searchModels).toHaveBeenCalledWith('echo', 'local', expect.any(Object))
+    expect(getModelDisplayName).toHaveBeenCalledWith('local-echo', expect.any(Object))
+  })
+
+  it('exposes sandboxed read-only tool routes for the web runtime', async () => {
+    const workspaceRoot = await createTempDir('onething-server-tools-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const aliceHeaders = contextHeaders('alice', 'tool-workspace')
+    const bobHeaders = contextHeaders('bob', 'tool-workspace')
+    const created = await createSession(baseUrl(server), 'Tool session', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    const aliceWorkspaceRoot = join(workspaceRoot, 'alice', 'tool-workspace')
+    const bobWorkspaceRoot = join(workspaceRoot, 'bob', 'tool-workspace')
+    await mkdir(join(aliceWorkspaceRoot, 'notes'), { recursive: true })
+    await mkdir(bobWorkspaceRoot, { recursive: true })
+    await writeFile(join(aliceWorkspaceRoot, 'notes', 'a.txt'), 'alpha\nneedle here\n', 'utf8')
+    await writeFile(join(aliceWorkspaceRoot, 'notes', 'b.ts'), 'const value = "needle";\n', 'utf8')
+    await writeFile(join(bobWorkspaceRoot, 'secret.txt'), 'bob secret\n', 'utf8')
+
+    const tools = await fetchJson(`${baseUrl(server)}/api/tools`, { headers: aliceHeaders })
+    expect(tools.success).toBe(true)
+    expect(tools.tools.map((tool: { id: string }) => tool.id)).toEqual(['read', 'glob', 'grep'])
+
+    const readResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        toolId: 'read',
+        arguments: { path: 'notes/a.txt' },
+        messageId: 'message-1',
+        sessionId,
+      }),
+    })
+    expect(readResult.success).toBe(true)
+    expect(readResult.result.output).toContain('needle here')
+
+    const globResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        toolId: 'glob',
+        arguments: { pattern: '**/*.txt' },
+        messageId: 'message-1',
+        sessionId,
+      }),
+    })
+    expect(globResult.success).toBe(true)
+    expect(globResult.result.output).toContain('notes/a.txt')
+    expect(globResult.result.output).not.toContain('secret.txt')
+
+    const grepResult = await fetchJson(`${baseUrl(server)}/api/tools/execute`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        toolId: 'grep',
+        arguments: { pattern: 'needle', path: 'notes', glob: '*.txt', literal: true },
+        messageId: 'message-1',
+        sessionId,
+      }),
+    })
+    expect(grepResult.success).toBe(true)
+    expect(grepResult.result.output).toContain('a.txt:2: needle here')
+
+    await expect(fetchJson(`${baseUrl(server)}/api/tools/execute`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        toolId: 'bash',
+        arguments: { command: 'pwd' },
+        messageId: 'message-1',
+        sessionId,
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Tool execution for "bash" is disabled in the web server runtime.',
+    })
+
+    await expect(fetchJson(`${baseUrl(server)}/api/tools/execute`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        toolId: 'read',
+        arguments: { path: join(bobWorkspaceRoot, 'secret.txt') },
+        messageId: 'message-1',
+        sessionId,
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Tool "read" can only access paths inside the session workspace.',
+    })
+
+    await expect(fetchJson(`${baseUrl(server)}/api/tools/execute`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        toolId: 'read',
+        arguments: { path: 'notes/a.txt' },
+        messageId: 'message-1',
+        sessionId,
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Session not found',
+    })
+
+    await expect(fetchJson(`${baseUrl(server)}/api/tools/cancel`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ toolCallId: 'tool-1' }),
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrl(server)}/api/tools/background-jobs?includeInactive=true`, {
+      headers: aliceHeaders,
+    })).resolves.toEqual({
+      success: true,
+      jobs: [],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/tools/background-jobs/job-1/stop`, {
+      method: 'POST',
+      headers: aliceHeaders,
+    })).resolves.toEqual({
+      success: false,
+      error: 'Background jobs are not available in the web server runtime.',
+    })
+  })
+
+  it('runs the development runtime through REST commands and SSE streams', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const createResponse = await fetch(`${baseUrl(server)}/api/sessions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'Web smoke' }),
+    })
+    const created = await createResponse.json() as { success: boolean; session?: { id: string } }
+    expect(created.success).toBe(true)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+    expect(created.session).not.toHaveProperty('userId')
+    expect(created.session).not.toHaveProperty('workspaceId')
+
+    const eventsResponse = await fetch(`${baseUrl(server)}/api/events?sessionId=${encodeURIComponent(sessionId!)}`)
+    expect(eventsResponse.status).toBe(200)
+
+    const commandResponse = await fetch(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'command:send-message', content: 'hello web' }),
+    })
+    await expect(commandResponse.json()).resolves.toEqual({ success: true })
+
+    const sse = await readUntil(eventsResponse, text => (
+      text.includes('event: session:stream') && text.includes('"type":"stream:complete"')
+    ))
+    expect(sse).toContain('event: session:event')
+    expect(sse).toContain('event: session:stream')
+    expect(sse).toContain('Echo:')
+  })
+
+  it('reuses retry and edit-and-resend commands through the development runtime', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const baseUrlValue = baseUrl(server)
+    const created = await createSession(baseUrlValue, 'Command reuse', {})
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    let eventsResponse = await fetch(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
+    await expect(sendSessionCommand(baseUrlValue, sessionId!, {
+      type: 'command:send-message',
+      content: 'first',
+    })).resolves.toEqual({ success: true })
+    await readUntil(eventsResponse, text => text.includes('"type":"stream:complete"'))
+
+    let messages = await getSessionMessages(baseUrlValue, sessionId!)
+    expect(messages.map(message => `${message.role}:${message.content}`)).toEqual([
+      'user:first',
+      'assistant:Echo: first',
+    ])
+
+    eventsResponse = await fetch(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
+    await expect(sendSessionCommand(baseUrlValue, sessionId!, {
+      type: 'command:retry-message',
+      messageId: messages[1].id,
+    })).resolves.toEqual({ success: true })
+    const retrySse = await readUntil(eventsResponse, text => text.includes('"type":"stream:complete"'))
+    expect(retrySse).toContain('messages:replaced')
+
+    messages = await getSessionMessages(baseUrlValue, sessionId!)
+    expect(messages.map(message => `${message.role}:${message.content}`)).toEqual([
+      'user:first',
+      'assistant:Echo: first',
+    ])
+
+    eventsResponse = await fetch(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
+    await expect(sendSessionCommand(baseUrlValue, sessionId!, {
+      type: 'command:edit-and-resend',
+      messageId: messages[0].id,
+      newContent: 'edited',
+    })).resolves.toEqual({ success: true })
+    const editSse = await readUntil(eventsResponse, text => text.includes('"type":"stream:complete"'))
+    expect(editSse).toContain('messages:replaced')
+
+    messages = await getSessionMessages(baseUrlValue, sessionId!)
+    expect(messages.map(message => `${message.role}:${message.content}`)).toEqual([
+      'user:edited',
+      'assistant:Echo: edited',
+    ])
+  })
+
+  it('uses the onething desktop settings file by default', async () => {
+    const storeRoot = await createTempDir('onething-desktop-settings-')
+    const originalStorePath = process.env.ONETHING_STORE_PATH
+    process.env.ONETHING_STORE_PATH = storeRoot
+    await writeFile(join(storeRoot, 'settings.json'), `${JSON.stringify({
+      theme: 'light',
+      ai: {
+        provider: 'openai',
+        providers: {
+          openai: {
+            apiKey: 'sk-desktop-secret',
+            model: 'gpt-4o',
+            selectedModels: ['gpt-4o'],
+          },
+        },
+      },
+    })}\n`, 'utf8')
+
+    try {
+      const serverRuntime = createDevelopmentOnethingServerRuntime({
+        dataRoot: await createTempDir('onething-server-data-'),
+      })
+      runtimes.push(serverRuntime)
+
+      const response = await serverRuntime.runtime.settings!.get() as SettingsResponse
+
+      expect(response.settings).toEqual(expect.objectContaining({
+        theme: 'light',
+      }))
+      expect(response.settings?.ai.provider).toBe('openai')
+      expect(response.settings?.ai.providers.openai.model).toBe('gpt-4o')
+      expect(response.settings?.ai.providers.openai.apiKey).toBe(SERVER_REDACTED_SECRET)
+      expect(JSON.stringify(response.settings)).not.toContain('sk-desktop-secret')
+    } finally {
+      if (originalStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+      else process.env.ONETHING_STORE_PATH = originalStorePath
+    }
+  })
+
+  it('uses the onething desktop app state and chat sessions by default', async () => {
+    const storeRoot = await createTempDir('onething-desktop-sessions-')
+    const originalStorePath = process.env.ONETHING_STORE_PATH
+    process.env.ONETHING_STORE_PATH = storeRoot
+    const sessionsDir = join(storeRoot, 'sessions')
+    await mkdir(sessionsDir, { recursive: true })
+
+    const now = Date.now()
+    const session = {
+      id: 'desktop-session-1',
+      name: 'Desktop Session',
+      createdAt: now - 1000,
+      updatedAt: now,
+      agentId: 'default',
+      lastProvider: 'openai',
+      lastModel: 'gpt-4o',
+      messages: [
+        {
+          id: 'message-user-1',
+          sessionId: 'desktop-session-1',
+          role: 'user',
+          content: 'hello from desktop json',
+          timestamp: now - 500,
+        },
+        {
+          id: 'message-assistant-1',
+          sessionId: 'desktop-session-1',
+          role: 'assistant',
+          content: 'hello from web',
+          timestamp: now,
+        },
+      ],
+    }
+
+    await writeFile(join(storeRoot, 'app-state.json'), `${JSON.stringify({
+      currentSessionId: session.id,
+      currentWorkspaceId: null,
+    })}\n`, 'utf8')
+    await writeFile(join(sessionsDir, 'index.json'), `${JSON.stringify([{
+      id: session.id,
+      name: session.name,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      agentId: session.agentId,
+      lastProvider: session.lastProvider,
+      lastModel: session.lastModel,
+      messageCount: session.messages.length,
+      previewText: session.messages[0].content,
+    }])}\n`, 'utf8')
+    await writeFile(join(sessionsDir, `${session.id}.json`), `${JSON.stringify(session)}\n`, 'utf8')
+
+    try {
+      const serverRuntime = createDevelopmentOnethingServerRuntime({
+        dataRoot: await createTempDir('onething-server-data-'),
+      })
+      runtimes.push(serverRuntime)
+      const server = await listen(createOnethingHttpServer({
+        runtime: serverRuntime.runtime,
+      }))
+      const baseUrlValue = baseUrl(server)
+
+      await expect(fetchJson(`${baseUrlValue}/api/app-state`)).resolves.toEqual(expect.objectContaining({
+        currentSessionId: session.id,
+      }))
+
+      const list = await fetchJson(`${baseUrlValue}/api/sessions`)
+      expect(list.sessions).toEqual([
+        expect.objectContaining({
+          id: session.id,
+          name: session.name,
+          messageCount: 2,
+        }),
+      ])
+
+      const messages = await getSessionMessages(baseUrlValue, session.id)
+      expect(messages.map(message => `${message.role}:${message.content}`)).toEqual([
+        'user:hello from desktop json',
+        'assistant:hello from web',
+      ])
+    } finally {
+      if (originalStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+      else process.env.ONETHING_STORE_PATH = originalStorePath
+    }
+  })
+
+  it('stores web settings per user/workspace owner in the server runtime', async () => {
+    const settingsRoot = await createTempDir('onething-server-settings-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const aliceHeaders = contextHeaders('alice', 'settings-a')
+    const bobHeaders = contextHeaders('bob', 'settings-a')
+    const aliceOtherWorkspaceHeaders = contextHeaders('alice', 'settings-b')
+
+    const aliceInitial = await fetchJson(`${baseUrl(server)}/api/settings`, { headers: aliceHeaders })
+    expect(aliceInitial.settings).toEqual(expect.objectContaining({
+      theme: 'dark',
+    }))
+
+    const saved = await fetchJson(`${baseUrl(server)}/api/settings`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        theme: 'light',
+        general: {
+          typographyDensity: 'comfortable',
+        },
+        ai: {
+          providers: {
+            openai: {
+              apiKey: 'sk-alice-secret',
+              model: 'gpt-4o',
+              selectedModels: [],
+            },
+            codex: {
+              authType: 'oauth',
+              model: 'gpt-5.3-codex',
+              selectedModels: [],
+              oauthToken: {
+                accessToken: 'access-alice-secret',
+                refreshToken: 'refresh-alice-secret',
+                expiresAt: 12345,
+                tokenType: 'Bearer',
+                idToken: 'id-alice-secret',
+              },
+            },
+          },
+        },
+      }),
+    })
+    expect(saved.settings).toEqual(expect.objectContaining({
+      theme: 'light',
+      general: expect.objectContaining({
+        typographyDensity: 'comfortable',
+      }),
+      tools: expect.any(Object),
+    }))
+    expect(saved.settings.ai.providers.openai.apiKey).toBe(SERVER_REDACTED_SECRET)
+    expect(saved.settings.ai.providers.codex.oauthToken).toBe(SERVER_REDACTED_SECRET)
+    expect(JSON.stringify(saved.settings)).not.toContain('sk-alice-secret')
+    expect(JSON.stringify(saved.settings)).not.toContain('access-alice-secret')
+
+    const aliceAgain = await fetchJson(`${baseUrl(server)}/api/settings`, { headers: aliceHeaders })
+    expect(aliceAgain.settings).toEqual(expect.objectContaining({
+      theme: 'light',
+      general: expect.objectContaining({
+        typographyDensity: 'comfortable',
+      }),
+    }))
+    expect(aliceAgain.settings.ai.providers.openai.apiKey).toBe(SERVER_REDACTED_SECRET)
+    expect(aliceAgain.settings.ai.providers.codex.oauthToken).toBe(SERVER_REDACTED_SECRET)
+    expect(JSON.stringify(aliceAgain.settings)).not.toContain('sk-alice-secret')
+    expect(JSON.stringify(aliceAgain.settings)).not.toContain('access-alice-secret')
+
+    const bobSettings = await fetchJson(`${baseUrl(server)}/api/settings`, { headers: bobHeaders })
+    const aliceOtherWorkspaceSettings = await fetchJson(`${baseUrl(server)}/api/settings`, {
+      headers: aliceOtherWorkspaceHeaders,
+    })
+    expect(bobSettings.settings).toEqual(expect.objectContaining({ theme: 'dark' }))
+    expect(bobSettings.settings.ai.providers.openai.apiKey).toBe('')
+    expect(aliceOtherWorkspaceSettings.settings).toEqual(expect.objectContaining({ theme: 'dark' }))
+    expect(aliceOtherWorkspaceSettings.settings.ai.providers.openai.apiKey).toBe('')
+  })
+
+  it('tests network proxy settings through the development server runtime', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    await expect(fetchJson(`${baseUrl(server)}/api/network/test-proxy`, {
+      method: 'POST',
+      headers: {
+        ...contextHeaders('alice', 'network-dev-workspace'),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        proxy: {
+          enabled: false,
+          url: '',
+        },
+      }),
+    })).resolves.toEqual({
+      success: false,
+      error: 'Proxy is disabled.',
+    })
+  })
+
+  it('redacts server settings secrets and preserves them when clients save sanitized settings', () => {
+    const previous = createDefaultSettings()
+    previous.ai.providers.openai.apiKey = 'sk-real-openai'
+    previous.ai.providers.codex.oauthToken = {
+      accessToken: 'access-real-codex',
+      refreshToken: 'refresh-real-codex',
+      expiresAt: 12345,
+      tokenType: 'Bearer',
+      idToken: 'id-real-codex',
+    }
+    previous.mcp = {
+      enabled: true,
+      servers: [{
+        id: 'mcp-secret-server',
+        name: 'Secret MCP',
+        transport: 'stdio',
+        enabled: true,
+        command: 'npx',
+        args: ['-y', '@private/mcp-server'],
+        cwd: '/srv/private-workspace',
+        env: {
+          MCP_TOKEN: 'mcp-env-secret',
+        },
+        headers: {
+          Authorization: 'Bearer mcp-header-secret',
+        },
+      }],
+    }
+
+    const sanitized = sanitizeSettingsForClient(previous)
+    expect(sanitized.ai.providers.openai.apiKey).toBe(SERVER_REDACTED_SECRET)
+    expect(sanitized.ai.providers.codex.oauthToken).toBe(SERVER_REDACTED_SECRET)
+    expect(sanitized.mcp?.servers[0]).toEqual(expect.objectContaining({
+      command: SERVER_REDACTED_SECRET,
+      args: SERVER_REDACTED_SECRET,
+      cwd: SERVER_REDACTED_SECRET,
+      env: SERVER_REDACTED_SECRET,
+      headers: SERVER_REDACTED_SECRET,
+    }))
+    expect(JSON.stringify(sanitized)).not.toContain('sk-real-openai')
+    expect(JSON.stringify(sanitized)).not.toContain('access-real-codex')
+    expect(JSON.stringify(sanitized)).not.toContain('mcp-env-secret')
+    expect(JSON.stringify(sanitized)).not.toContain('mcp-header-secret')
+
+    sanitized.theme = 'light'
+    const merged = mergeServerSettingsUpdate(previous, sanitized)
+    expect(merged.theme).toBe('light')
+    expect(merged.ai.providers.openai.apiKey).toBe('sk-real-openai')
+    expect(merged.ai.providers.codex.oauthToken).toEqual(previous.ai.providers.codex.oauthToken)
+    expect(merged.mcp?.servers[0]).toEqual(previous.mcp.servers[0])
+
+    const cleared = mergeServerSettingsUpdate(previous, {
+      ...sanitized,
+      ai: {
+        ...sanitized.ai,
+        providers: {
+          ...sanitized.ai.providers,
+          openai: {
+            ...sanitized.ai.providers.openai,
+            apiKey: '',
+          },
+        },
+      },
+      mcp: {
+        ...sanitized.mcp,
+        servers: [{
+          ...sanitized.mcp?.servers[0],
+          env: {},
+        }],
+      },
+    })
+    expect(cleared.ai.providers.openai.apiKey).toBe('')
+    expect(cleared.ai.providers.codex.oauthToken).toEqual(previous.ai.providers.codex.oauthToken)
+    expect(cleared.mcp?.servers[0].env).toEqual({})
+    expect(cleared.mcp?.servers[0].headers).toEqual(previous.mcp.servers[0].headers)
+
+    const partial = mergeServerSettingsUpdate(previous, { theme: 'dark' })
+    expect(partial.mcp).toEqual(previous.mcp)
+  })
+
+  it('persists owner-scoped server settings outside the browser-facing payload', async () => {
+    const settingsRoot = await createTempDir('onething-server-settings-')
+    const aliceContext = { userId: 'alice', workspaceId: 'settings-persist' }
+    const baseSettings = createDefaultSettings()
+    const firstRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
+    runtimes.push(firstRuntime)
+
+    const saved = await firstRuntime.runtime.settings!.update({
+      ...baseSettings,
+      theme: 'light',
+      ai: {
+        ...baseSettings.ai,
+        providers: {
+          ...baseSettings.ai.providers,
+          openai: {
+            ...baseSettings.ai.providers.openai,
+            apiKey: 'sk-persisted-openai',
+          },
+        },
+      },
+      mcp: {
+        enabled: true,
+        servers: [{
+          id: 'persisted-mcp',
+          name: 'Persisted MCP',
+          transport: 'sse',
+          enabled: true,
+          url: 'https://mcp.example.test/sse?token=mcp-url-secret',
+          headers: {
+            Authorization: 'Bearer mcp-persisted-header',
+          },
+        }],
+      },
+    }, aliceContext) as SettingsResponse
+    expect(saved).toEqual(expect.objectContaining({
+      success: true,
+      settings: expect.objectContaining({
+        theme: 'light',
+      }),
+    }))
+    firstRuntime.shutdown()
+    runtimes.splice(runtimes.indexOf(firstRuntime), 1)
+
+    const persisted = await readFile(join(settingsRoot, 'alice', 'settings-persist.json'), 'utf8')
+    expect(persisted).toContain('sk-persisted-openai')
+    expect(persisted).toContain('mcp-persisted-header')
+    expect(persisted).not.toContain(SERVER_REDACTED_SECRET)
+
+    const secondRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
+    runtimes.push(secondRuntime)
+    const aliceSettings = await secondRuntime.runtime.settings!.get(aliceContext) as SettingsResponse
+    const bobSettings = await secondRuntime.runtime.settings!.get({
+      userId: 'bob',
+      workspaceId: 'settings-persist',
+    }) as SettingsResponse
+
+    expect(aliceSettings.settings).toEqual(expect.objectContaining({ theme: 'light' }))
+    expect(aliceSettings.settings?.ai.providers.openai.apiKey).toBe(SERVER_REDACTED_SECRET)
+    expect(aliceSettings.settings?.mcp?.servers[0].url).toBe(SERVER_REDACTED_SECRET)
+    expect(aliceSettings.settings?.mcp?.servers[0].headers).toBe(SERVER_REDACTED_SECRET)
+    expect(JSON.stringify(aliceSettings.settings)).not.toContain('sk-persisted-openai')
+    expect(JSON.stringify(aliceSettings.settings)).not.toContain('mcp-persisted-header')
+    expect(bobSettings.settings).toEqual(expect.objectContaining({ theme: 'dark' }))
+    expect(bobSettings.settings?.ai.providers.openai.apiKey).toBe('')
+  })
+
+  it('manages MCP servers through owner-scoped server REST routes', async () => {
+    const settingsRoot = await createTempDir('onething-server-settings-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const aliceHeaders = contextHeaders('alice', 'mcp-workspace')
+    const bobHeaders = contextHeaders('bob', 'mcp-workspace')
+
+    const added = await fetchJson(`${baseUrl(server)}/api/mcp/servers`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: 'mcp-server-1',
+        name: 'Alice MCP',
+        transport: 'sse',
+        enabled: true,
+        url: 'https://mcp.example.test/sse?token=mcp-route-secret',
+        headers: {
+          Authorization: 'Bearer mcp-route-header',
+        },
+      }),
+    })
+    expect(added).toEqual(expect.objectContaining({
+      success: true,
+      server: expect.objectContaining({
+        config: expect.objectContaining({
+          id: 'mcp-server-1',
+          url: SERVER_REDACTED_SECRET,
+          headers: SERVER_REDACTED_SECRET,
+        }),
+      }),
+    }))
+    expect(JSON.stringify(added)).not.toContain('mcp-route-secret')
+    expect(JSON.stringify(added)).not.toContain('mcp-route-header')
+
+    const aliceServers = await fetchJson(`${baseUrl(server)}/api/mcp/servers`, { headers: aliceHeaders })
+    expect(aliceServers.servers).toHaveLength(1)
+    expect(aliceServers.servers[0].config.url).toBe(SERVER_REDACTED_SECRET)
+
+    const bobServers = await fetchJson(`${baseUrl(server)}/api/mcp/servers`, { headers: bobHeaders })
+    expect(bobServers).toEqual({ success: true, servers: [] })
+
+    const updated = await fetchJson(`${baseUrl(server)}/api/mcp/servers/mcp-server-1/update`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ...aliceServers.servers[0].config,
+        name: 'Alice MCP Renamed',
+      }),
+    })
+    expect(updated).toEqual(expect.objectContaining({
+      success: true,
+      server: expect.objectContaining({
+        config: expect.objectContaining({
+          name: 'Alice MCP Renamed',
+          url: SERVER_REDACTED_SECRET,
+          headers: SERVER_REDACTED_SECRET,
+        }),
+      }),
+    }))
+
+    const persisted = await readFile(join(settingsRoot, 'alice', 'mcp-workspace.json'), 'utf8')
+    expect(persisted).toContain('Alice MCP Renamed')
+    expect(persisted).toContain('mcp-route-secret')
+    expect(persisted).toContain('mcp-route-header')
+    expect(persisted).not.toContain(SERVER_REDACTED_SECRET)
+
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/tools`, { headers: aliceHeaders })).resolves.toEqual({
+      success: true,
+      tools: [],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/servers/mcp-server-1`, {
+      method: 'DELETE',
+      headers: aliceHeaders,
+    })).resolves.toEqual({ success: true })
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/servers`, { headers: aliceHeaders })).resolves.toEqual({
+      success: true,
+      servers: [],
+    })
+  })
+
+  it('routes MCP capability operations through an injected server MCP client', async () => {
+    const settingsRoot = await createTempDir('onething-server-settings-')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({
+      settingsRoot,
+      mcpClientFactory: config => createMockMCPClient(config),
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+    const aliceHeaders = contextHeaders('alice', 'mcp-client')
+    const bobHeaders = contextHeaders('bob', 'mcp-client')
+
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/servers`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: 'mcp-client-1',
+        name: 'Mock MCP',
+        transport: 'sse',
+        enabled: false,
+        url: 'https://mcp.example.test/sse?token=mock-mcp-client-secret',
+      }),
+    })).resolves.toEqual(expect.objectContaining({ success: true }))
+
+    const connected = await fetchJson(`${baseUrl(server)}/api/mcp/servers/mcp-client-1/connect`, {
+      method: 'POST',
+      headers: aliceHeaders,
+    })
+    expect(connected).toEqual(expect.objectContaining({
+      success: true,
+      server: expect.objectContaining({
+        status: 'connected',
+        config: expect.objectContaining({
+          url: SERVER_REDACTED_SECRET,
+        }),
+        tools: [expect.objectContaining({ name: 'echo' })],
+      }),
+    }))
+    expect(JSON.stringify(connected)).not.toContain('mock-mcp-client-secret')
+
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/tools`, { headers: aliceHeaders })).resolves.toEqual({
+      success: true,
+      tools: [expect.objectContaining({ name: 'echo', serverId: 'mcp-client-1' })],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/tools`, { headers: bobHeaders })).resolves.toEqual({
+      success: true,
+      tools: [],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/tools/call`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        serverId: 'mcp-client-1',
+        toolName: 'echo',
+        arguments: { text: 'hello' },
+      }),
+    })).resolves.toEqual({
+      success: true,
+      content: [{ type: 'text', text: 'echo:hello' }],
+      isError: false,
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/resources`, { headers: aliceHeaders })).resolves.toEqual({
+      success: true,
+      resources: [expect.objectContaining({ uri: 'mock://resource' })],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/resources/read`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        serverId: 'mcp-client-1',
+        uri: 'mock://resource',
+      }),
+    })).resolves.toEqual({
+      success: true,
+      content: { text: 'resource:mock://resource' },
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/prompts`, { headers: aliceHeaders })).resolves.toEqual({
+      success: true,
+      prompts: [expect.objectContaining({ name: 'draft' })],
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/mcp/prompts/get`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        serverId: 'mcp-client-1',
+        name: 'draft',
+        arguments: { topic: 'web' },
+      }),
+    })).resolves.toEqual({
+      success: true,
+      messages: [{ role: 'user', content: 'draft:web' }],
+    })
+  })
+
+  it('updates web session settings through the runtime facade with ownership checks', async () => {
+    const workspaceRoot = join(tmpdir(), 'onething-server-http-test-workspaces')
+    const aliceWorkspaceRoot = join(workspaceRoot, 'alice', 'workspace-settings')
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const aliceHeaders = contextHeaders('alice', 'workspace-settings')
+    const bobHeaders = contextHeaders('bob', 'workspace-settings')
+    const created = await createSession(baseUrl(server), 'Settings session', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    await expect(postSessionAction(baseUrl(server), sessionId!, 'archive', {
+      isArchived: true,
+      archivedAt: 12345,
+    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
+    await expect(postSessionAction(baseUrl(server), sessionId!, 'working-directory', {
+      workingDirectory: 'project-a',
+    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
+    await expect(postSessionAction(baseUrl(server), sessionId!, 'working-directory', {
+      workingDirectory: join(workspaceRoot, 'bob', 'workspace-settings', 'outside'),
+    }, aliceHeaders)).resolves.toEqual({
+      success: false,
+      error: 'Working directory must stay inside the workspace sandbox root.',
+    })
+    await expect(postSessionAction(baseUrl(server), sessionId!, 'agent', {
+      agentId: 'agent-research',
+    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
+    await expect(postSessionAction(baseUrl(server), sessionId!, 'permission-mode', {
+      permissionMode: 'auto-accept-edits',
+    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
+    await expect(postSessionAction(baseUrl(server), sessionId!, 'model', {
+      provider: 'codex',
+      model: 'gpt-5.5',
+    }, aliceHeaders)).resolves.toEqual(expect.objectContaining({ success: true }))
+
+    const aliceSession = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}`, {
+      headers: aliceHeaders,
+    })
+    expect(aliceSession.session).toEqual(expect.objectContaining({
+      id: sessionId,
+      isArchived: true,
+      archivedAt: 12345,
+      workingDirectory: join(aliceWorkspaceRoot, 'project-a'),
+      workingDirectoryRoots: [aliceWorkspaceRoot],
+      agentId: 'agent-research',
+      permissionMode: 'auto-accept-edits',
+      lastProvider: 'codex',
+      lastModel: 'gpt-5.5',
+    }))
+    expect(aliceSession.session).not.toHaveProperty('userId')
+    expect(aliceSession.session).not.toHaveProperty('workspaceId')
+
+    await expect(postSessionAction(baseUrl(server), sessionId!, 'model', {
+      provider: 'other',
+      model: 'other-model',
+    }, bobHeaders)).resolves.toEqual({ success: false, error: 'Session not found' })
+
+    const unchanged = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}`, {
+      headers: aliceHeaders,
+    })
+    expect(unchanged.session).toEqual(expect.objectContaining({
+      lastProvider: 'codex',
+      lastModel: 'gpt-5.5',
+    }))
+  })
+
+	  it('isolates sessions, commands, and SSE streams by user/workspace context', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const aliceHeaders = contextHeaders('alice', 'workspace-a')
+    const bobHeaders = contextHeaders('bob', 'workspace-a')
+    const created = await createSession(baseUrl(server), 'Alice only', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    const aliceList = await fetchJson(`${baseUrl(server)}/api/sessions`, { headers: aliceHeaders })
+    const bobList = await fetchJson(`${baseUrl(server)}/api/sessions`, { headers: bobHeaders })
+    expect(aliceList.sessions?.map((session: { id: string }) => session.id)).toContain(sessionId)
+    expect(bobList.sessions ?? []).toHaveLength(0)
+
+    const bobCommand = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'command:send-message', content: 'should not run' }),
+    })
+    expect(bobCommand).toEqual({ success: false, error: 'Session not found' })
+
+    const bobEvents = await fetch(`${baseUrl(server)}/api/events?sessionId=${encodeURIComponent(sessionId!)}`, {
+      headers: bobHeaders,
+    })
+    expect(bobEvents.status).toBe(200)
+    const bobSessionEvents = await fetch(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/events`, {
+      headers: bobHeaders,
+    })
+    expect(bobSessionEvents.status).toBe(200)
+
+    await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'command:send-message', content: 'secret' }),
+    })
+
+    const [bobSse, bobSessionSse] = await Promise.all([
+      readFor(bobEvents, 120),
+      readFor(bobSessionEvents, 120),
+    ])
+    expect(bobSse).not.toContain('secret')
+    expect(bobSse).not.toContain('session:event')
+    expect(bobSse).not.toContain('session:stream')
+    expect(bobSessionSse).not.toContain('secret')
+    expect(bobSessionSse).not.toContain('session:event')
+	    expect(bobSessionSse).not.toContain('session:stream')
+	  })
+
+	  it('manages user prompts through owner-scoped server runtime stores', async () => {
+	    const dataRoot = await createTempDir('onething-prompts-')
+	    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
+	    runtimes.push(serverRuntime)
+	    const server = await listen(createOnethingHttpServer({
+	      runtime: serverRuntime.runtime,
+	    }))
+
+	    const aliceHeaders = contextHeaders('alice', 'workspace-prompts')
+	    const bobHeaders = contextHeaders('bob', 'workspace-prompts')
+	    const created = await fetchJson(`${baseUrl(server)}/api/prompts`, {
+	      method: 'POST',
+	      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+	      body: JSON.stringify({
+	        title: 'Reusable Review',
+	        body: 'Review this carefully.',
+	        tags: ['review', 'review', ' code '],
+	      }),
+	    })
+	    const promptId = created.prompt?.id
+	    expect(created).toEqual(expect.objectContaining({
+	      success: true,
+	      prompt: expect.objectContaining({
+	        title: 'Reusable Review',
+	        body: 'Review this carefully.',
+	        tags: ['review', 'code'],
+	      }),
+	    }))
+	    expect(promptId).toBeTruthy()
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/prompts`, {
+	      headers: aliceHeaders,
+	    })).resolves.toEqual({
+	      success: true,
+	      prompts: [
+	        expect.objectContaining({
+	          id: promptId,
+	          title: 'Reusable Review',
+	        }),
+	      ],
+	    })
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/prompts/${encodeURIComponent(promptId!)}`, {
+	      headers: aliceHeaders,
+	    })).resolves.toEqual({
+	      success: true,
+	      prompt: expect.objectContaining({
+	        id: promptId,
+	        body: 'Review this carefully.',
+	      }),
+	    })
+
+	    const updated = await fetchJson(`${baseUrl(server)}/api/prompts/${encodeURIComponent(promptId!)}/update`, {
+	      method: 'POST',
+	      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+	      body: JSON.stringify({ body: 'Updated body' }),
+	    })
+	    expect(updated).toEqual(expect.objectContaining({
+	      success: true,
+	      prompt: expect.objectContaining({
+	        id: promptId,
+	        title: 'Reusable Review',
+	        body: 'Updated body',
+	      }),
+	    }))
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/prompts`, {
+	      headers: bobHeaders,
+	    })).resolves.toEqual({
+	      success: true,
+	      prompts: [],
+	    })
+	    await expect(fetchJson(`${baseUrl(server)}/api/prompts/${encodeURIComponent(promptId!)}`, {
+	      headers: bobHeaders,
+	    })).resolves.toEqual({
+	      success: false,
+	      error: 'Prompt not found',
+	    })
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/prompts/${encodeURIComponent(promptId!)}`, {
+	      method: 'DELETE',
+	      headers: aliceHeaders,
+	    })).resolves.toEqual({ success: true })
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/prompts`, {
+	      headers: aliceHeaders,
+	    })).resolves.toEqual({
+	      success: true,
+	      prompts: [],
+	    })
+	  })
+
+	  it('manages user skills through owner-scoped server runtime stores', async () => {
+	    const dataRoot = await createTempDir('onething-skills-')
+	    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
+	    runtimes.push(serverRuntime)
+	    const server = await listen(createOnethingHttpServer({
+	      runtime: serverRuntime.runtime,
+	    }))
+
+	    const aliceHeaders = contextHeaders('alice', 'workspace-skills')
+	    const bobHeaders = contextHeaders('bob', 'workspace-skills')
+	    const created = await fetchJson(`${baseUrl(server)}/api/skills`, {
+	      method: 'POST',
+	      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+	      body: JSON.stringify({
+	        name: 'daily-review',
+	        description: 'Review daily notes',
+	        instructions: 'Check the notes and summarize risks.',
+	        source: 'user',
+	      }),
+	    })
+	    const skillId = created.skill?.id
+	    expect(created).toEqual(expect.objectContaining({
+	      success: true,
+	      skill: expect.objectContaining({
+	        id: 'user:daily-review',
+	        name: 'daily-review',
+	        description: 'Review daily notes',
+	        source: 'user',
+	        enabled: true,
+	      }),
+	    }))
+	    expect(skillId).toBe('user:daily-review')
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/skills`, {
+	      headers: aliceHeaders,
+	    })).resolves.toEqual({
+	      success: true,
+	      skills: [
+	        expect.objectContaining({
+	          id: skillId,
+	          name: 'daily-review',
+	          enabled: true,
+	        }),
+	      ],
+	    })
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/skills`, {
+	      headers: bobHeaders,
+	    })).resolves.toEqual({
+	      success: true,
+	      skills: [],
+	    })
+
+	    const readSkill = await fetchJson(`${baseUrl(server)}/api/skills/read-file`, {
+	      method: 'POST',
+	      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+	      body: JSON.stringify({ skillId, fileName: 'SKILL.md' }),
+	    })
+	    expect(readSkill).toEqual(expect.objectContaining({
+	      success: true,
+	      content: expect.stringContaining('Check the notes'),
+	    }))
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/skills/${encodeURIComponent(skillId!)}/toggle`, {
+	      method: 'POST',
+	      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+	      body: JSON.stringify({ enabled: false }),
+	    })).resolves.toEqual({ success: true })
+
+	    const afterToggle = await fetchJson(`${baseUrl(server)}/api/skills`, {
+	      headers: aliceHeaders,
+	    })
+	    expect(afterToggle.skills?.[0]).toEqual(expect.objectContaining({
+	      id: skillId,
+	      enabled: false,
+	    }))
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/skills/open-directory`, {
+	      method: 'POST',
+	      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+	      body: JSON.stringify({ skillId }),
+	    })).resolves.toEqual({
+	      success: false,
+	      error: 'Opening local skill directories is not available in the web server runtime.',
+	    })
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/skills/${encodeURIComponent(skillId!)}`, {
+	      method: 'DELETE',
+	      headers: aliceHeaders,
+	    })).resolves.toEqual({ success: true })
+
+	    await expect(fetchJson(`${baseUrl(server)}/api/skills`, {
+	      headers: aliceHeaders,
+	    })).resolves.toEqual({
+	      success: true,
+	      skills: [],
+	    })
+	  })
+
+	  it('routes permission responses back into the session command stream with ownership checks', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const aliceHeaders = contextHeaders('alice', 'workspace-permissions')
+    const bobHeaders = contextHeaders('bob', 'workspace-permissions')
+    const created = await createSession(baseUrl(server), 'Permission session', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    let permissionCommand: any
+    const unsubscribe = (serverRuntime.eventBus as any).onAnySession('command:permission-respond', (envelope: any) => {
+      permissionCommand = envelope
+    })
+
+    await (serverRuntime.eventBus as any).emit(sessionId!, {
+      type: 'permission:request',
+      requestId: 'permission-1',
+      targetChannel: 'api',
+      toolCallId: 'tool-1',
+      messageId: 'message-1',
+      permissionType: 'bash',
+      title: 'Run command',
+      metadata: {},
+    })
+
+    const bobResponse = await fetchJson(`${baseUrl(server)}/api/permissions/permission-1/respond`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'once' }),
+    })
+    expect(bobResponse).toEqual({ success: false, error: 'Permission request not found' })
+    expect(permissionCommand).toBeUndefined()
+
+    const aliceResponse = await fetchJson(`${baseUrl(server)}/api/permissions/permission-1/respond`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'once' }),
+    })
+    expect(aliceResponse).toEqual({ success: true })
+    expect(permissionCommand).toEqual(expect.objectContaining({
+      sessionId,
+      event: {
+        type: 'command:permission-respond',
+        channel: 'api',
+        requestId: 'permission-1',
+        decision: 'once',
+      },
+    }))
+
+    permissionCommand = undefined
+    await (serverRuntime.eventBus as any).emit(sessionId!, {
+      type: 'permission:request',
+      requestId: 'permission-2',
+      targetChannel: 'api',
+      toolCallId: 'tool-2',
+      messageId: 'message-2',
+      permissionType: 'bash',
+      title: 'Run another command',
+      metadata: {},
+    })
+
+    const aliceCommandResponse = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'command:permission-respond',
+        requestId: 'permission-2',
+        decision: 'reject',
+        rejectReason: 'no thanks',
+      }),
+    })
+    expect(aliceCommandResponse).toEqual({ success: true })
+    expect(permissionCommand).toEqual(expect.objectContaining({
+      sessionId,
+      event: {
+        type: 'command:permission-respond',
+        channel: 'api',
+        requestId: 'permission-2',
+        decision: 'reject',
+        rejectReason: 'no thanks',
+      },
+    }))
+
+    let resumeCommand: any
+    const unsubscribeResume = (serverRuntime.eventBus as any).onAnySession('command:resume-after-confirm', (envelope: any) => {
+      resumeCommand = envelope
+    })
+    const bobResume = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'command:resume-after-confirm',
+        messageId: 'message-3',
+      }),
+    })
+    expect(bobResume).toEqual({ success: false, error: 'Session not found' })
+    expect(resumeCommand).toBeUndefined()
+
+    const aliceResume = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/commands`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'command:resume-after-confirm',
+        messageId: 'message-3',
+      }),
+    })
+    expect(aliceResume).toEqual({ success: true })
+    expect(resumeCommand).toEqual(expect.objectContaining({
+      sessionId,
+      event: {
+        type: 'command:resume-after-confirm',
+        messageId: 'message-3',
+      },
+    }))
+    unsubscribeResume()
+    unsubscribe()
+  })
+
+  it('exposes pending permissions through the runtime facade with ownership checks', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const aliceHeaders = contextHeaders('alice', 'workspace-pending')
+    const bobHeaders = contextHeaders('bob', 'workspace-pending')
+    const created = await createSession(baseUrl(server), 'Pending permission session', aliceHeaders)
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    await (serverRuntime.eventBus as any).emit(sessionId!, {
+      type: 'permission:request',
+      requestId: 'permission-pending-1',
+      targetChannel: 'api',
+      toolCallId: 'tool-1',
+      messageId: 'message-1',
+      permissionType: 'bash',
+      title: 'Run command',
+      pattern: 'git status',
+      metadata: { command: 'git status' },
+    })
+
+    const alicePending = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/permissions/pending`, {
+      headers: aliceHeaders,
+    })
+    expect(alicePending).toEqual({
+      success: true,
+      pending: [
+        expect.objectContaining({
+          id: 'permission-pending-1',
+          type: 'bash',
+          sessionId,
+          title: 'Run command',
+          userId: 'alice',
+          workspaceId: 'workspace-pending',
+        }),
+      ],
+    })
+
+    const bobPending = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/permissions/pending`, {
+      headers: bobHeaders,
+    })
+    expect(bobPending).toEqual({ success: false, pending: [], error: 'Session not found' })
+
+    const cleared = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/permissions/clear`, {
+      method: 'POST',
+      headers: aliceHeaders,
+    })
+    expect(cleared).toEqual({ success: true })
+
+    const emptyPending = await fetchJson(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/permissions/pending`, {
+      headers: aliceHeaders,
+    })
+    expect(emptyPending).toEqual({ success: true, pending: [] })
+  })
+
+  it('manages owner-scoped permission grants over HTTP', async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), 'onething-permissions-'))
+    tempDirs.push(dataRoot)
+    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const aliceHeaders = contextHeaders('alice', 'workspace-grants')
+    const bobHeaders = contextHeaders('bob', 'workspace-grants')
+    const created = await createSession(baseUrl(server), 'Grant session', aliceHeaders)
+    const sessionId = created.session?.id
+    const workspaceRoot = created.session?.workingDirectory
+    expect(sessionId).toBeTruthy()
+    expect(workspaceRoot).toBeTruthy()
+
+    await (serverRuntime.eventBus as any).emit(sessionId!, {
+      type: 'permission:request',
+      requestId: 'permission-session-grant',
+      targetChannel: 'api',
+      toolCallId: 'tool-session',
+      messageId: 'message-session',
+      permissionType: 'bash',
+      title: 'Run session command',
+      pattern: 'git status',
+      metadata: {},
+    })
+    await fetchJson(`${baseUrl(server)}/api/permissions/permission-session-grant/respond`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'session' }),
+    })
+
+    const listedSessionGrants = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })
+    const sessionGrantId = listedSessionGrants.sessionGrants?.[0]?.id
+    expect(listedSessionGrants).toEqual(expect.objectContaining({
+      success: true,
+      sessionGrants: [
+        expect.objectContaining({
+          scope: 'session',
+          type: 'bash',
+          sessionId,
+          userId: 'alice',
+          workspaceId: 'workspace-grants',
+        }),
+      ],
+      workspaceGrants: [],
+    }))
+    expect(sessionGrantId).toBeTruthy()
+
+    const bobSessionGrants = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })
+    expect(bobSessionGrants).toEqual({ success: false, error: 'Session not found' })
+
+    await expect(fetchJson(`${baseUrl(server)}/api/permission-grants/revoke`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ id: sessionGrantId }),
+    })).resolves.toEqual({ success: true })
+
+    await (serverRuntime.eventBus as any).emit(sessionId!, {
+      type: 'permission:request',
+      requestId: 'permission-workspace-grant',
+      targetChannel: 'api',
+      toolCallId: 'tool-workspace',
+      messageId: 'message-workspace',
+      permissionType: 'file_write',
+      title: 'Write file',
+      pattern: 'notes.md',
+      metadata: {},
+    })
+    await fetchJson(`${baseUrl(server)}/api/permissions/permission-workspace-grant/respond`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ decision: 'workdir' }),
+    })
+
+    const listedWorkspaceGrants = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot }),
+    })
+    expect(listedWorkspaceGrants).toEqual(expect.objectContaining({
+      success: true,
+      sessionGrants: [],
+      workspaceGrants: [
+        expect.objectContaining({
+          scope: 'workspace',
+          type: 'file_write',
+          workspaceRoot,
+          userId: 'alice',
+          workspaceId: 'workspace-grants',
+        }),
+      ],
+    }))
+
+    const bobWorkspaceGrants = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
+      method: 'POST',
+      headers: { ...bobHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot }),
+    })
+    expect(bobWorkspaceGrants).toEqual({
+      success: false,
+      error: 'Workspace root must stay inside the workspace sandbox root.',
+    })
+
+    await expect(fetchJson(`${baseUrl(server)}/api/permission-grants/workspace/clear`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot }),
+    })).resolves.toEqual({ success: true })
+
+    const afterClear = await fetchJson(`${baseUrl(server)}/api/permission-grants/list`, {
+      method: 'POST',
+      headers: { ...aliceHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceRoot }),
+    })
+    expect(afterClear).toEqual({ success: true, sessionGrants: [], workspaceGrants: [] })
+  })
+})
+
+async function listen(server: Server): Promise<Server> {
+  servers.push(server)
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  return server
+}
+
+function contextHeaders(userId: string, workspaceId: string): Record<string, string> {
+  return {
+    'x-onething-user-id': userId,
+    'x-onething-workspace-id': workspaceId,
+  }
+}
+
+function createMockMCPClient(config: MCPServerConfig) {
+  let state: MCPServerState = {
+    config,
+    status: 'disconnected',
+    tools: [],
+    resources: [],
+    prompts: [],
+  }
+
+  return {
+    get state() {
+      return JSON.parse(JSON.stringify(state)) as MCPServerState
+    },
+    get status() {
+      return state.status
+    },
+    async connect() {
+      state = {
+        ...state,
+        status: 'connected',
+        error: undefined,
+        connectedAt: 12345,
+        tools: [{
+          name: 'echo',
+          serverId: state.config.id,
+          description: 'Echo text',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        }],
+        resources: [{
+          uri: 'mock://resource',
+          name: 'Mock Resource',
+          serverId: state.config.id,
+        }],
+        prompts: [{
+          name: 'draft',
+          serverId: state.config.id,
+        }],
+      }
+    },
+    async disconnect() {
+      state = {
+        ...state,
+        status: 'disconnected',
+        tools: [],
+        resources: [],
+        prompts: [],
+        connectedAt: undefined,
+      }
+    },
+    async updateConfig(nextConfig: MCPServerConfig) {
+      state = {
+        ...state,
+        config: nextConfig,
+      }
+      if (!nextConfig.enabled) {
+        state = {
+          ...state,
+          status: 'disconnected',
+          tools: [],
+          resources: [],
+          prompts: [],
+        }
+      }
+    },
+    async callTool(toolName: string, args: Record<string, unknown>) {
+      return {
+        success: true,
+        content: [{ type: 'text' as const, text: `${toolName}:${String(args.text ?? '')}` }],
+        isError: false,
+      }
+    },
+    async readResource(uri: string) {
+      return {
+        success: true,
+        content: { text: `resource:${uri}` },
+      }
+    },
+    async getPrompt(_name: string, args?: Record<string, string>) {
+      return {
+        success: true,
+        messages: [{ role: 'user', content: `draft:${args?.topic ?? ''}` }],
+      }
+    },
+    async refreshCapabilities() {
+      await this.connect()
+    },
+  }
+}
+
+async function createTempDir(prefix: string): Promise<string> {
+  const path = await mkdtemp(join(tmpdir(), prefix))
+  tempDirs.push(path)
+  return path
+}
+
+async function createSession(
+  baseUrlValue: string,
+  name: string,
+  headers: Record<string, string>,
+): Promise<{ success: boolean; session?: { id: string; workingDirectory?: string } }> {
+  return fetchJson(`${baseUrlValue}/api/sessions`, {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+}
+
+async function sendSessionCommand(
+  baseUrlValue: string,
+  sessionId: string,
+  command: unknown,
+  headers: Record<string, string> = {},
+): Promise<any> {
+  return fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId)}/commands`, {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify(command),
+  })
+}
+
+async function getSessionMessages(
+  baseUrlValue: string,
+  sessionId: string,
+  headers: Record<string, string> = {},
+): Promise<Array<{ id: string; role: string; content: string }>> {
+  const response = await fetchJson(`${baseUrlValue}/api/session-messages/page`, {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ sessionId, limit: 20 }),
+  })
+  return response.messages ?? []
+}
+
+async function postSessionAction(
+  baseUrlValue: string,
+  sessionId: string,
+  action: string,
+  body: unknown,
+  headers: Record<string, string>,
+): Promise<any> {
+  return fetchJson(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId)}/${action}`, {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+async function fetchJson(url: string, init?: RequestInit): Promise<any> {
+  const response = await fetch(url, init)
+  return response.json()
+}
+
+function baseUrl(server: Server): string {
+  const address = server.address()
+  if (!address || typeof address === 'string') throw new Error('Server did not bind a TCP port')
+  return `http://${address.address}:${address.port}`
+}
+
+async function readFirstChunk(response: Response): Promise<string> {
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Response body is not readable')
+  const { value } = await reader.read()
+  await reader.cancel()
+  if (!value) return ''
+  return new TextDecoder().decode(value)
+}
+
+async function readUntil(
+  response: Response,
+  predicate: (text: string) => boolean,
+  timeoutMs = 3000,
+): Promise<string> {
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Response body is not readable')
+  const decoder = new TextDecoder()
+  let text = ''
+  const deadline = Date.now() + timeoutMs
+
+  try {
+    while (Date.now() < deadline) {
+      const remaining = Math.max(1, deadline - Date.now())
+      const result = await Promise.race([
+        reader.read(),
+        new Promise<ReadableStreamReadResult<Uint8Array>>(resolve => {
+          setTimeout(() => resolve({ done: true, value: undefined }), remaining)
+        }),
+      ])
+      if (result.done) break
+      text += decoder.decode(result.value, { stream: true })
+      if (predicate(text)) return text
+    }
+    throw new Error(`Timed out waiting for SSE payload. Received: ${text}`)
+  } finally {
+    await reader.cancel().catch(() => {})
+  }
+}
+
+async function readFor(response: Response, durationMs: number): Promise<string> {
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('Response body is not readable')
+  const decoder = new TextDecoder()
+  let text = ''
+  const deadline = Date.now() + durationMs
+
+  try {
+    while (Date.now() < deadline) {
+      const remaining = Math.max(1, deadline - Date.now())
+      const result = await Promise.race([
+        reader.read(),
+        new Promise<ReadableStreamReadResult<Uint8Array>>(resolve => {
+          setTimeout(() => resolve({ done: true, value: undefined }), remaining)
+        }),
+      ])
+      if (result.done) break
+      text += decoder.decode(result.value, { stream: true })
+    }
+    return text
+  } finally {
+    await reader.cancel().catch(() => {})
+  }
+}

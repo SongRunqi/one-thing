@@ -1,0 +1,14 @@
+{
+  "name": "@onething/server-host",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./http": "./src/http.ts"
+  },
+  "dependencies": {
+    "@onething/core": "file:../../packages/core"
+  }
+}
+

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -18,8 +18,13 @@ let archiveCounter = 0
 let currentDay = dayKey()
 let currentChild = null
 let shuttingDown = false
+let forwardChildOutput = true
 let cleanupTimer = null
 const streamLineBuffers = new Map()
+const managedChildren = new Set()
+const isWindows = process.platform === 'win32'
+const verboseStartup = process.env.ONETHING_DEV_VERBOSE === '1'
+const projectRoot = process.cwd().replaceAll('\\', '/')
 
 function readNumberEnv(name, fallback, min, max) {
   const value = Number(process.env[name])
@@ -123,9 +128,8 @@ function writeLogLine(source, text) {
   currentDay = dayKey()
 }
 
-function writeChunk(stream, chunk) {
+function writeChunk(stream, chunk, options = {}) {
   const text = chunk.toString()
-  stream.write(chunk)
   const source = stream === process.stderr ? 'stderr' : 'stdout'
   const pending = streamLineBuffers.get(source) || ''
   const parts = `${pending}${text}`.split(/\r?\n/)
@@ -133,6 +137,7 @@ function writeChunk(stream, chunk) {
   for (const line of parts) {
     if (line.length > 0) writeLogLine(source, line)
   }
+  if (forwardChildOutput && options.forward !== false) safeStreamWrite(stream, chunk)
 }
 
 function flushLineBuffers() {
@@ -143,7 +148,7 @@ function flushLineBuffers() {
 }
 
 function localBin(name) {
-  const suffix = process.platform === 'win32' ? '.cmd' : ''
+  const suffix = isWindows ? '.cmd' : ''
   return path.join(process.cwd(), 'node_modules', '.bin', `${name}${suffix}`)
 }
 
@@ -153,26 +158,65 @@ function commandLine(command, args) {
 
 function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
+    const {
+      title,
+      forwardOutput = true,
+      enableForwardOutputAfter,
+      ...spawnOptions
+    } = options
+    let bufferedOutput = ''
+    let shouldForwardOutput = forwardOutput
+    if (title) safeStreamWrite(process.stdout, `${title}\n`)
     writeLogLine('runner', `$ ${commandLine(command, args)}`)
     const child = spawn(command, args, {
       cwd: process.cwd(),
       env: process.env,
       stdio: ['inherit', 'pipe', 'pipe'],
-      shell: process.platform === 'win32',
-      ...options,
+      shell: isWindows,
+      detached: !isWindows,
+      ...spawnOptions,
     })
     currentChild = child
+    managedChildren.add(child)
 
-    child.stdout?.on('data', chunk => writeChunk(process.stdout, chunk))
-    child.stderr?.on('data', chunk => writeChunk(process.stderr, chunk))
+    if (typeof enableForwardOutputAfter === 'function') {
+      void enableForwardOutputAfter().then(() => {
+        shouldForwardOutput = true
+      }).catch(() => {
+        shouldForwardOutput = true
+      })
+    }
+
+    const bufferChunk = chunk => {
+      bufferedOutput = `${bufferedOutput}${chunk.toString()}`.slice(-20000)
+    }
+    child.stdout?.on('data', chunk => {
+      bufferChunk(chunk)
+      writeChunk(process.stdout, chunk, { forward: shouldForwardOutput })
+    })
+    child.stderr?.on('data', chunk => {
+      bufferChunk(chunk)
+      writeChunk(process.stderr, chunk, { forward: shouldForwardOutput })
+    })
     child.on('error', reject)
     child.on('close', (code, signal) => {
       currentChild = null
+      managedChildren.delete(child)
       flushLineBuffers()
       writeLogLine('runner', `exit ${commandLine(command, args)} code=${code ?? 'null'} signal=${signal ?? 'null'}`)
+      if (shuttingDown) {
+        resolve()
+        return
+      }
       if (signal) {
+        if (forwardOutput === false && bufferedOutput.trim()) {
+          safeStreamWrite(process.stderr, `${bufferedOutput.trim()}\n`)
+        }
         reject(Object.assign(new Error(`${command} terminated by ${signal}`), { code, signal }))
       } else if (code && code !== 0) {
+        if (forwardOutput === false && bufferedOutput.trim()) {
+          safeStreamWrite(process.stderr, `${bufferedOutput.trim()}\n`)
+        }
         reject(Object.assign(new Error(`${command} exited with code ${code}`), { code }))
       } else {
         resolve()
@@ -181,14 +225,134 @@ function run(command, args, options = {}) {
   })
 }
 
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function isBrokenOutputPipeError(error) {
+  return error?.code === 'EPIPE'
+    || error?.code === 'ERR_STREAM_DESTROYED'
+    || error?.code === 'ERR_STREAM_WRITE_AFTER_END'
+}
+
+function safeStreamWrite(stream, chunk) {
+  try {
+    stream.write(chunk)
+  } catch (error) {
+    if (!isBrokenOutputPipeError(error)) throw error
+  }
+}
+
+function normalizedCommand(command) {
+  return command.replaceAll('\\', '/')
+}
+
+function pidsMatchingCommand(predicate) {
+  if (isWindows) return []
+  const result = spawnSync('ps', ['-axo', 'pid=,command='], {
+    encoding: 'utf8',
+  })
+  if (result.status !== 0 || !result.stdout) return []
+
+  const pids = []
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const match = line.match(/^\s*(\d+)\s+(.+)$/)
+    if (!match) continue
+    const pid = Number.parseInt(match[1], 10)
+    const command = match[2] ?? ''
+    if (!Number.isFinite(pid) || pid === process.pid) continue
+    if (command.includes('/bin/zsh -c') || command.includes('/bin/bash -c') || /\brg\b/.test(command)) continue
+    if (predicate(command)) pids.push(pid)
+  }
+  return [...new Set(pids)]
+}
+
+function processExists(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function killPid(pid, signal = 'SIGTERM') {
+  try {
+    process.kill(pid, signal)
+  } catch {
+    // Process already exited.
+  }
+}
+
+function killProcessGroup(child, signal = 'SIGTERM') {
+  if (!child?.pid) return
+  if (isWindows) {
+    killPid(child.pid, signal)
+    return
+  }
+  try {
+    process.kill(-child.pid, signal)
+  } catch {
+    killPid(child.pid, signal)
+  }
+}
+
+function isProjectElectronDevCommand(command) {
+  const normalized = normalizedCommand(command)
+  return (
+    normalized.includes(`${projectRoot}/node_modules/.bin/electron-vite`) ||
+    normalized.includes(`${projectRoot}/node_modules/electron-vite/`) ||
+    normalized.includes(`${projectRoot}/node_modules/electron/`)
+  )
+}
+
+function isProjectElectronMainCommand(command) {
+  const normalized = normalizedCommand(command)
+  return normalized.includes(`${projectRoot}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron .`)
+}
+
+async function waitForProcess(predicate, timeoutMs = 90000) {
+  const attempts = Math.ceil(timeoutMs / 250)
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (pidsMatchingCommand(predicate).length > 0) return
+    await wait(250)
+  }
+  throw new Error('process did not start')
+}
+
+async function cleanupElectronDevProcesses(signal = 'SIGTERM') {
+  const pids = pidsMatchingCommand(isProjectElectronDevCommand)
+  if (pids.length === 0) return
+  writeLogLine('runner', `stopping electron dev processes: ${pids.join(', ')}`)
+  for (const pid of pids) killPid(pid, signal)
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await wait(100)
+    if (pids.every(pid => !processExists(pid))) return
+  }
+  for (const pid of pids) {
+    if (processExists(pid)) killPid(pid, 'SIGKILL')
+  }
+}
+
 function forwardSignal(signal) {
   if (shuttingDown) return
   shuttingDown = true
   writeLogLine('runner', `received ${signal}`)
-  if (currentChild && !currentChild.killed) {
-    currentChild.kill(signal)
+  safeStreamWrite(process.stdout, `[dev] stopping Electron dev processes; child logs muted\n`)
+  forwardChildOutput = false
+  for (const child of managedChildren) {
+    killProcessGroup(child, signal)
   }
-  setTimeout(() => process.exit(signal === 'SIGINT' ? 130 : 143), 250).unref()
+  void (async () => {
+    await wait(1200)
+    await cleanupElectronDevProcesses('SIGTERM')
+    await wait(1800)
+    for (const child of managedChildren) {
+      killProcessGroup(child, 'SIGKILL')
+    }
+    await cleanupElectronDevProcesses('SIGKILL')
+    process.exit(0)
+  })()
 }
 
 async function main() {
@@ -201,9 +365,23 @@ async function main() {
   process.on('SIGINT', () => forwardSignal('SIGINT'))
   process.on('SIGTERM', () => forwardSignal('SIGTERM'))
 
-  await run('npm', ['run', 'build:native:mac'])
-  await run('npm', ['run', 'rebuild:sqlite:electron'])
-  await run(localBin('electron-vite'), [LOG_NAME === 'start' ? 'preview' : 'dev'])
+  const forwardPrepOutput = verboseStartup
+  await run('npm', ['run', 'build:native:mac'], {
+    title: 'checking native panel bridge',
+    forwardOutput: forwardPrepOutput,
+  })
+  await run('npm', ['run', 'sign:dev:mac'], {
+    title: 'checking macOS dev signatures',
+    forwardOutput: forwardPrepOutput,
+  })
+  await cleanupElectronDevProcesses()
+  await run(localBin('electron-vite'), [LOG_NAME === 'start' ? 'preview' : 'dev'], {
+    title: 'launching Electron window',
+    forwardOutput: verboseStartup,
+    enableForwardOutputAfter: verboseStartup
+      ? undefined
+      : () => waitForProcess(isProjectElectronMainCommand),
+  })
 }
 
 main().then(() => {

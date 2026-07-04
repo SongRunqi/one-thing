@@ -6,6 +6,8 @@
     "packages/onething-runtime/**/*",
     "packages/gateway/**/*",
     "apps/electron/**/*",
+    "apps/server/**/*",
+    "apps/web/**/*",
     "scripts/gateway-smoke-test.ts",
     "src/main/**/*",
     "src/shared/**/*"

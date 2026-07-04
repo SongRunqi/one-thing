@@ -175,6 +175,7 @@ export default defineConfig({
       '@onething/runtime/triggers/skill-review': path.resolve(__dirname, 'packages/onething-runtime/src/triggers/skill-review.ts'),
       '@onething/runtime/triggers/skill-review-state': path.resolve(__dirname, 'packages/onething-runtime/src/triggers/skill-review-state.ts'),
       '@onething/runtime/settings': path.resolve(__dirname, 'packages/onething-runtime/src/settings/index.ts'),
+      '@onething/runtime/sessions/session-repository': path.resolve(__dirname, 'packages/onething-runtime/src/sessions/session-repository.ts'),
       '@onething/runtime/sessions': path.resolve(__dirname, 'packages/onething-runtime/src/sessions/index.ts'),
       '@onething/runtime/agents': path.resolve(__dirname, 'packages/onething-runtime/src/agents/index.ts'),
       '@onething/runtime/scheduler': path.resolve(__dirname, 'packages/onething-runtime/src/scheduler/index.ts'),

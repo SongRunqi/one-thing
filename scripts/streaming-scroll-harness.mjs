@@ -281,18 +281,33 @@ const harnessHtml = `<!doctype html>
       })
     }
 
+    function findWriteActivityRow() {
+      const rows = Array.from(document.querySelectorAll('[data-tool-activity-row]'))
+      return rows.find(row => {
+        const action = row.querySelector('.node-action')?.textContent?.trim() || ''
+        return action === 'Write' || action === 'Writing' || action === 'Wrote'
+      }) || null
+    }
+
     function expandWriteRowOnce() {
       if (writeRowExpanded) return
-      const writeRow = document.querySelector('[data-tool-activity-row]')
-      const main = writeRow?.querySelector('.activity-main')
-      if (!writeRow || !main || !writeRow.classList.contains('interactive')) return
-      main.click()
+      const writeRow = findWriteActivityRow()
+      if (!writeRow) return
+      if (writeRow.querySelector('.diff-preview')) {
+        writeRowExpanded = true
+        return
+      }
+      const target = writeRow.querySelector('.operation-row.has-details .node-target')
+        || writeRow.querySelector('.collapse-panel-header[aria-expanded="false"]')
+        || writeRow.querySelector('.collapse-panel-header')
+      if (!target) return
+      target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
       writeRowExpanded = true
     }
 
     function trackWritePreview() {
       if (!writeRowExpanded) return
-      const writeRow = document.querySelector('[data-tool-activity-row]')
+      const writeRow = findWriteActivityRow()
       const preview = writeRow?.querySelector('.diff-preview') || null
       if (!preview) {
         if (writePreviewObserved) writePreviewMissingFrames++
@@ -600,6 +615,8 @@ try {
         '@': resolve(root, 'src/renderer'),
         '@renderer': resolve(root, 'src/renderer'),
         '@shared': resolve(root, 'src/shared'),
+        '@onething/core': resolve(root, 'packages/core'),
+        '@onething/runtime': resolve(root, 'packages/onething-runtime/src'),
       },
     },
     plugins: [vue()],
