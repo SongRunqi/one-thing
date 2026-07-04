@@ -365,6 +365,7 @@ import type { MCPServerConfig } from '@/types'
 import { MCP_PRESETS, PRESET_CATEGORIES, type MCPPreset, type PresetCategory } from '@/data/mcpPresets'
 import { v4 as uuidv4 } from 'uuid'
 import { parseConfigFile, parseCommandLine, getServerSummary } from './useMCPServers'
+import { platformApi } from '@/platform'
 
 interface Props {
   show: boolean
@@ -442,7 +443,7 @@ function switchTab(tab: 'file' | 'paste' | 'presets') {
 // File import
 async function selectImportFile() {
   try {
-    const result = await window.electronAPI.showOpenDialog({
+    const result = await platformApi.showOpenDialog({
       title: 'Select MCP Configuration File',
       properties: ['openFile'],
     })
@@ -450,7 +451,7 @@ async function selectImportFile() {
     if (result.canceled || result.filePaths.length === 0) return
 
     const filePath = result.filePaths[0]
-    const response = await window.electronAPI.mcpReadConfigFile(filePath)
+    const response = await platformApi.mcpReadConfigFile(filePath)
 
     if (!response.success) {
       error.value = response.error || 'Failed to read file'
@@ -569,7 +570,7 @@ function updatePresetServer() {
 }
 
 async function browseForPath(paramKey: string) {
-  const result = await window.electronAPI.showOpenDialog({
+  const result = await platformApi.showOpenDialog({
     title: 'Select Path',
     properties: ['openDirectory'],
   })

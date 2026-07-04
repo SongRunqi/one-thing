@@ -47,7 +47,7 @@ describe('tool activity view', () => {
     const activity = buildToolActivityView(streamingStep)
 
     expect(activity.status).toBe('streaming-input')
-    expect(activity.verb).toBe('Writing')
+    expect(activity.toolLabel).toBe('Write')
     expect(activity.target).toBe('large.ts')
     expect(activity.filePath).toBe('/Users/me/project/src/large.ts')
     expect(activity.additions).toBe(220)
@@ -127,7 +127,7 @@ describe('tool activity view', () => {
     expect(activity.stats).toBe('+3 -1')
   })
 
-  it('shows duration only while a tool is active', () => {
+  it('shows live duration while active and keeps the frozen duration after', () => {
     const executing = buildToolActivityView(step({
       status: 'running',
       toolCall: tc({
@@ -159,10 +159,24 @@ describe('tool activity view', () => {
       }),
     }), 3_000)
 
-    expect(executing.duration).toBe('1.5s')
+    expect(executing.duration).toBe('1.500s')
     expect(streaming.duration).toBe('500ms')
-    expect(completed.duration).toBe('')
-    expect(failed.duration).toBe('')
+    expect(completed.duration).toBe('1.500s')
+    expect(failed.duration).toBe('1.500s')
+  })
+
+  it('prefers the high-resolution durationMs and caps precision at 0.1ms', () => {
+    const completed = buildToolActivityView(step({
+      status: 'completed',
+      toolCall: tc({
+        status: 'completed',
+        startTime: 1_000,
+        endTime: 2_000,
+        durationMs: 843.267,
+      }),
+    }), 3_000)
+
+    expect(completed.duration).toBe('843.3ms')
   })
 
   it('exposes numeric additions/deletions for group aggregation', () => {
@@ -239,7 +253,7 @@ describe('tool activity view', () => {
     }))
 
     expect(rejected.status).toBe('rejected')
-    expect(rejected.verb).toBe('Rejected run')
+    expect(rejected.toolLabel).toBe('Bash')
     expect(rejected.errorSummary).toBe('')
     expect(rejected.defaultExpanded).toBe(false)
   })
@@ -282,13 +296,13 @@ describe('tool activity view', () => {
       }),
     }))
 
-    expect(setWorkdir.verb).toBe('Set')
+    expect(setWorkdir.toolLabel).toBe('Variable')
     expect(setWorkdir.target).toBe('workdir')
     expect(setWorkdir.targetMeta).toBe('= /Users/me/project/start-electron')
-    expect(listVariables.verb).toBe('Listing')
+    expect(listVariables.toolLabel).toBe('Variable')
     expect(listVariables.target).toBe('variables')
     expect(listVariables.targetMeta).toBe('')
-    expect(appendRoot.verb).toBe('Add')
+    expect(appendRoot.toolLabel).toBe('Variable')
     expect(appendRoot.target).toBe('workdir root')
     expect(appendRoot.targetMeta).toBe('+ /Users/me/other-project')
   })

@@ -2,6 +2,7 @@ import { computed, reactive } from 'vue'
 import { languageFromPath } from '@/editor/languages'
 import type { EditorLanguage, EditorSelection } from '@/editor'
 import type { FileSearchMatch } from '@/components/chat/file-search'
+import { platformApi } from '@/platform'
 
 export interface FileSearchState {
   query: string
@@ -32,6 +33,10 @@ export interface FileBuffer {
 }
 
 const buffers = reactive(new Map<string, FileBuffer>())
+
+function hasWorkspaceFileAccess(): boolean {
+  return platformApi.capabilities.localFileSystem || platformApi.capabilities.workspaceFileSystem
+}
 
 function createBuffer(filePath: string): FileBuffer {
   return reactive({
@@ -81,13 +86,17 @@ async function loadFile(filePath: string, maxBytes: number, options: { force?: b
   if (!options.force && (buffer.content || buffer.error || buffer.lastReadMtimeMs !== undefined || buffer.isBinary)) {
     return buffer
   }
+  if (!hasWorkspaceFileAccess()) {
+    buffer.error = 'Workspace file access is not available in this host.'
+    return buffer
+  }
 
   buffer.loading = true
   buffer.error = ''
   buffer.conflict = false
 
   try {
-    const res = await window.electronAPI.readFileContent(filePath, maxBytes)
+    const res = await platformApi.readFileContent(filePath, maxBytes)
     if (!res.success) {
       buffer.error = res.error || 'Failed to read file'
       return buffer
@@ -138,13 +147,17 @@ async function saveFile(filePath: string) {
     buffer.error = 'This file is read-only in preview.'
     return false
   }
+  if (!hasWorkspaceFileAccess()) {
+    buffer.error = 'Workspace file access is not available in this host.'
+    return false
+  }
 
   buffer.saving = true
   buffer.error = ''
   buffer.conflict = false
 
   try {
-    const res = await window.electronAPI.saveFileContent(
+    const res = await platformApi.saveFileContent(
       filePath,
       buffer.draftContent,
       buffer.lastReadMtimeMs,

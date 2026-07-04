@@ -42,6 +42,7 @@ import type {
 } from './types'
 import type { SkillDefinition, UserPrompt } from '@shared/ipc'
 import type { CommandDefinition } from '@/types/commands'
+import { platformApi } from '@/platform'
 
 interface MarkdownAssetContext {
   documentPath?: string
@@ -118,8 +119,8 @@ const markdownLivePreviewOptions = computed<MarkdownLivePreviewOptions>(() => ({
   features: props.markdownLivePreviewFeatures,
   resolveAsset: async (rawTarget) => {
     const documentPath = props.markdownAssetContext?.documentPath
-    if (!documentPath || !window.electronAPI?.resolveMarkdownAsset) return null
-    const response = await window.electronAPI.resolveMarkdownAsset({
+    if (!documentPath || !platformApi?.resolveMarkdownAsset) return null
+    const response = await platformApi.resolveMarkdownAsset({
       documentPath,
       workspaceRoot: props.markdownAssetContext?.workspaceRoot,
       rawTarget,

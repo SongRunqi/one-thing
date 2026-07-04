@@ -275,6 +275,7 @@ import {
 import { useSettingsStore } from '@/stores/settings'
 import { matchShortcut } from '@/composables/useShortcuts'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
+import { platformApi } from '@/platform'
 
 // Tab Components
 import GeneralSettingsTab from './settings/GeneralSettingsTab.vue'
@@ -449,7 +450,7 @@ const hasUnsavedChanges = computed(() => {
 
 async function loadTools() {
   try {
-    const toolsResponse = await window.electronAPI.getTools()
+    const toolsResponse = await platformApi.getTools()
     if (toolsResponse.success && toolsResponse.tools) {
       tools.value = toolsResponse.tools
     }
@@ -711,9 +712,9 @@ function handleKeydown(e: KeyboardEvent) {
 
 async function openSettingsJson() {
   try {
-    const dataPath = await window.electronAPI.getDataPath()
+    const dataPath = await platformApi.getDataPath()
     const normalizedPath = dataPath.endsWith('/') ? dataPath.slice(0, -1) : dataPath
-    const result = await window.electronAPI.openPath(`${normalizedPath}/settings.json`)
+    const result = await platformApi.openPath(`${normalizedPath}/settings.json`)
     if (result) {
       console.warn('Failed to open settings.json:', result)
     }

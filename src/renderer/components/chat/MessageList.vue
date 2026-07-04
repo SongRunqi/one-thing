@@ -18,7 +18,14 @@
       />
 
       <div
-        v-if="messages.length > 0"
+        v-if="messages.length === 0"
+        ref="messageListContentRef"
+        class="message-list-content message-list-content--empty"
+        aria-hidden="true"
+      />
+
+      <div
+        v-else
         ref="messageListContentRef"
         class="message-list-content"
       >
@@ -199,6 +206,7 @@ import {
 } from '@/composables/useFollowScroll'
 import { useMessageScrollCoordinator } from '@/composables/useMessageScrollCoordinator'
 import { buildFontFamily } from '@shared/fonts'
+import { platformApi } from '@/platform'
 
 interface BranchInfo {
   id: string
@@ -1509,7 +1517,7 @@ watch(
     if (msgCount === 0) return  // Messages not loaded yet, wait
 
     try {
-      const response = await window.electronAPI.getPendingPermissions(newSessionId)
+      const response = await platformApi.getPendingPermissions(newSessionId)
       if (response.success && response.pending && response.pending.length > 0) {
         console.log('[Frontend] Loading pending permissions for session:', newSessionId, response.pending.length)
         // Apply each pending permission to the UI via the store
@@ -1609,6 +1617,25 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
 
   // Record start time
   const startTime = Date.now()
+  if (!platformApi.capabilities.shellTools) {
+    const error = 'Tool execution is not available in this host.'
+    const endTime = Date.now()
+    if (tc) {
+      tc.endTime = endTime
+      tc.status = 'failed'
+      tc.error = error
+    }
+    if (message) {
+      await platformApi.updateToolCall(currentSession.id, message.id, toolCall.id, {
+        status: 'failed',
+        startTime,
+        endTime,
+        error,
+      })
+    }
+    return
+  }
+
   if (tc) {
     tc.status = 'executing'
     tc.startTime = startTime
@@ -1617,7 +1644,7 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
   try {
     // Deep clone to unwrap all Vue reactive proxies - IPC cannot serialize Proxy objects
     const rawArguments = JSON.parse(JSON.stringify(toRaw(toolCall.arguments) || {}))
-    const result = await window.electronAPI.executeTool(
+    const result = await platformApi.executeTool(
       toolCall.toolId,
       rawArguments,
       toolCall.id,
@@ -1635,7 +1662,7 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
 
     // Persist to backend
     if (message) {
-      await window.electronAPI.updateToolCall(currentSession.id, message.id, toolCall.id, {
+      await platformApi.updateToolCall(currentSession.id, message.id, toolCall.id, {
         status: result.success ? 'completed' : 'failed',
         startTime,
         endTime,
@@ -1654,7 +1681,7 @@ async function handleExecuteTool(toolCall: ExecutableToolCall) {
 
     // Persist to backend
     if (message) {
-      await window.electronAPI.updateToolCall(currentSession.id, message.id, toolCall.id, {
+      await platformApi.updateToolCall(currentSession.id, message.id, toolCall.id, {
         status: 'failed',
         startTime,
         endTime,
@@ -1686,7 +1713,7 @@ async function handleConfirmTool(toolCall: PermissionToolCall, response: Permiss
     // Use unified command channel to respond (EventBus → Permission validates channel)
     console.log(`[Frontend] Responding to permission ${permissionId} with ${response}`)
     try {
-      await window.electronAPI.emitCommand(currentSession.id, {
+      await platformApi.emitCommand(currentSession.id, {
         type: 'command:permission-respond',
         requestId: permissionId,
         decision: response,
@@ -1754,7 +1781,7 @@ async function handleRejectTool(toolCall: PermissionToolCall, rejectReasonArg?: 
     // Use unified command channel to reject (EventBus → Permission validates channel)
     console.log(`[Frontend] Rejecting permission ${permissionId}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
     try {
-      await window.electronAPI.emitCommand(currentSession.id, {
+      await platformApi.emitCommand(currentSession.id, {
         type: 'command:permission-respond',
         requestId: permissionId,
         decision: 'reject',
@@ -1807,7 +1834,7 @@ async function handleUpdateThinkingTime(messageId: string, thinkingTime: number)
     }
 
     // Persist to backend
-    await window.electronAPI.updateMessageThinkingTime(currentSession.id, messageId, thinkingTime)
+    await platformApi.updateMessageThinkingTime(currentSession.id, messageId, thinkingTime)
   } catch (error) {
     console.error('Failed to update thinking time:', error)
   }
@@ -2007,6 +2034,16 @@ defineExpose({
   margin: 0 auto;
   padding-top: var(--chat-scroll-top-reserve);
   padding-bottom: var(--chat-scroll-tail-reserve);
+}
+
+.message-list-content.message-list-content--empty {
+  height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  pointer-events: none;
+  overflow-anchor: none;
 }
 
 .history-page-summary {

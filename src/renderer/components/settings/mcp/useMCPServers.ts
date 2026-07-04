@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 /**
  * useMCPServers - MCP 服务器管理 Composable
  *
@@ -29,7 +30,7 @@ export function useMCPServers(
   // Load servers from backend
   async function loadServers() {
     try {
-      const response = await window.electronAPI.mcpGetServers()
+      const response = await platformApi.mcpGetServers()
       if (response.success && response.servers) {
         servers.value = response.servers
       }
@@ -55,7 +56,7 @@ export function useMCPServers(
 
     const updatedConfig = { ...server.config, enabled }
     try {
-      const response = await window.electronAPI.mcpUpdateServer(updatedConfig)
+      const response = await platformApi.mcpUpdateServer(updatedConfig)
       if (response.success) {
         await loadServers()
         const updatedServers = settings().servers.map(s =>
@@ -78,9 +79,9 @@ export function useMCPServers(
 
     try {
       if (server.status === 'connected') {
-        await window.electronAPI.mcpDisconnectServer(serverId)
+        await platformApi.mcpDisconnectServer(serverId)
       } else {
-        await window.electronAPI.mcpConnectServer(serverId)
+        await platformApi.mcpConnectServer(serverId)
       }
       await loadServers()
     } catch (error) {
@@ -130,9 +131,9 @@ export function useMCPServers(
 
       let response
       if (editingServer) {
-        response = await window.electronAPI.mcpUpdateServer(config)
+        response = await platformApi.mcpUpdateServer(config)
       } else {
-        response = await window.electronAPI.mcpAddServer(config)
+        response = await platformApi.mcpAddServer(config)
       }
 
       if (response.success) {
@@ -157,7 +158,7 @@ export function useMCPServers(
   // Delete server
   async function deleteServer(serverId: string): Promise<boolean> {
     try {
-      const response = await window.electronAPI.mcpRemoveServer(serverId)
+      const response = await platformApi.mcpRemoveServer(serverId)
       if (response.success) {
         await loadServers()
         const updatedServers = settings().servers.filter(s => s.id !== serverId)
@@ -185,7 +186,7 @@ export function useMCPServers(
     for (const server of toImport) {
       try {
         const cleanServer = JSON.parse(JSON.stringify(server))
-        const response = await window.electronAPI.mcpAddServer(cleanServer)
+        const response = await platformApi.mcpAddServer(cleanServer)
         if (response.success) {
           successCount++
         } else {

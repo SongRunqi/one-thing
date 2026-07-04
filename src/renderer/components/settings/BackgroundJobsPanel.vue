@@ -75,6 +75,7 @@ import {
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
+import { platformApi } from '@/platform'
 
 interface BackgroundJobView {
   id: string
@@ -92,7 +93,7 @@ const loading = ref(false)
 async function loadJobs() {
   loading.value = true
   try {
-    const result = await window.electronAPI.listBackgroundJobs({ includeInactive: true })
+    const result = await platformApi.listBackgroundJobs({ includeInactive: true })
     jobs.value = (result.jobs ?? []) as BackgroundJobView[]
   } finally {
     loading.value = false
@@ -100,7 +101,7 @@ async function loadJobs() {
 }
 
 async function stopJob(jobId: string) {
-  await window.electronAPI.stopBackgroundJob(jobId)
+  await platformApi.stopBackgroundJob(jobId)
   await loadJobs()
 }
 

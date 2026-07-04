@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 /**
  * Provider Settings Composable
  *
@@ -541,7 +542,7 @@ export function useProviderSettings(
 
   async function loadACPAgents() {
     try {
-      const response = await window.electronAPI.acpGetAgents()
+      const response = await platformApi.acpGetAgents()
       if (response.success && response.agents) {
         acpAgentStates.value = Object.fromEntries(response.agents.map(agent => [agent.config.id, agent]))
       }
@@ -575,7 +576,7 @@ export function useProviderSettings(
   async function connectACPAgent() {
     const agentId = currentACPAgent.value?.id
     if (!agentId) return
-    const response = await window.electronAPI.acpConnectAgent(agentId)
+    const response = await platformApi.acpConnectAgent(agentId)
     if (response.success && response.agent) {
       acpAgentStates.value = { ...acpAgentStates.value, [agentId]: response.agent }
     }
@@ -584,14 +585,14 @@ export function useProviderSettings(
   async function disconnectACPAgent() {
     const agentId = currentACPAgent.value?.id
     if (!agentId) return
-    await window.electronAPI.acpDisconnectAgent(agentId)
+    await platformApi.acpDisconnectAgent(agentId)
     await loadACPAgents()
   }
 
   async function refreshACPAgent() {
     const agentId = currentACPAgent.value?.id
     if (!agentId) return
-    const response = await window.electronAPI.acpRefreshAgent(agentId)
+    const response = await platformApi.acpRefreshAgent(agentId)
     if (response.success && response.agent) {
       acpAgentStates.value = { ...acpAgentStates.value, [agentId]: response.agent }
     }
@@ -693,7 +694,7 @@ export function useProviderSettings(
   // Model loading
   async function refreshProviderEnvStatus(providerId = viewingProvider.value) {
     try {
-      const response = await window.electronAPI.getProviderEnvStatus(providerId)
+      const response = await platformApi.getProviderEnvStatus(providerId)
       if (response.success && response.status) {
         providerEnvStatuses.value = {
           ...providerEnvStatuses.value,

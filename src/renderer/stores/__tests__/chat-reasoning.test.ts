@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatStore } from '../chat'
 import type { ChatMessage, Step, ToolCall } from '@/types'
 
@@ -45,6 +45,10 @@ function toolStep(call: ToolCall, overrides: Partial<Step> = {}): Step {
 describe('chat store reasoning placement', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('replaces the streamed message object so MessageItem props update in realtime', () => {
@@ -117,6 +121,60 @@ describe('chat store reasoning placement', () => {
     const message = store.getSessionState('s1').messages.value[0]
     expect(message.reasoning).toBe('opening thought')
     expect(message.contentParts).toEqual([])
+  })
+
+  it('starts thinking time at the first top reasoning chunk, not while waiting', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1000)
+
+    const store = useChatStore()
+    store.handleAssistantCreated({
+      sessionId: 's1',
+      message: assistantMessage({ thinkingStartTime: 500 }),
+    })
+
+    let message = store.getSessionState('s1').messages.value[0]
+    expect(message.thinkingStartTime).toBeUndefined()
+
+    store.handleStreamChunk({
+      type: 'content_part',
+      sessionId: 's1',
+      messageId: 'm1',
+      content: '',
+      contentPart: { type: 'waiting' },
+    })
+
+    message = store.getSessionState('s1').messages.value[0]
+    expect(message.thinkingStartTime).toBeUndefined()
+
+    vi.setSystemTime(2500)
+    store.handleStreamChunk({
+      type: 'reasoning',
+      sessionId: 's1',
+      messageId: 'm1',
+      content: '',
+      reasoning: 'opening thought',
+      placement: 'top',
+      turnIndex: 1,
+    })
+
+    message = store.getSessionState('s1').messages.value[0]
+    expect(message.thinkingStartTime).toBe(2500)
+
+    vi.setSystemTime(4000)
+    store.handleStreamChunk({
+      type: 'reasoning',
+      sessionId: 's1',
+      messageId: 'm1',
+      content: '',
+      reasoning: ' continued',
+      placement: 'top',
+      turnIndex: 1,
+    })
+
+    message = store.getSessionState('s1').messages.value[0]
+    expect(message.thinkingStartTime).toBe(2500)
+    expect(message.reasoning).toBe('opening thought continued')
   })
 
   it('renders post-tool reasoning inline without hiding top reasoning', () => {

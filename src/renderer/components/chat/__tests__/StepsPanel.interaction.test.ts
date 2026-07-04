@@ -5,7 +5,7 @@ import { createPinia } from 'pinia'
 import StepsPanel from '../StepsPanel.vue'
 import type { Step, ToolCall } from '@/types'
 
-function fileStep(id: string, status: Step['status'] = 'completed'): Step {
+function fileStep(id: string, status: Step['status'] = 'completed', turnIndex?: number): Step {
   const toolCall: ToolCall = {
     id,
     toolId: 'edit',
@@ -27,12 +27,13 @@ function fileStep(id: string, status: Step['status'] = 'completed'): Step {
     title: `edit: /repo/src/${id}.ts`,
     status,
     timestamp: 1,
+    turnIndex,
     toolCallId: id,
     toolCall,
   }
 }
 
-function readStep(id: string): Step {
+function readStep(id: string, turnIndex?: number): Step {
   const toolCall: ToolCall = {
     id,
     toolId: 'read',
@@ -49,6 +50,7 @@ function readStep(id: string): Step {
     status: 'completed',
     result: 'const value = 1',
     timestamp: 1,
+    turnIndex,
     toolCallId: id,
     toolCall,
   }
@@ -208,7 +210,7 @@ function mountPanelWithDetails(steps: Step[], pinia = createPinia()) {
 
 describe('StepsPanel interaction contract', () => {
   it('renders grouped and single tool calls through collapse panels', async () => {
-    const grouped = mountPanel([fileStep('a'), fileStep('b')])
+    const grouped = mountPanel([fileStep('a', 'completed', 1), fileStep('b', 'completed', 1)])
 
     expect(grouped.find('.tool-activity-timeline').classes()).toContain('collapse-group')
     expect(grouped.find('.workflow-group').classes()).toContain('collapse-panel')
@@ -240,7 +242,7 @@ describe('StepsPanel interaction contract', () => {
 
     expect(operation.classes()).toContain('collapse-panel')
     expect(operation.classes()).toContain('variant-plain')
-    expect(operation.find('.node-action').text()).toBe('Searched')
+    expect(operation.find('.node-action').text()).toBe('WebSearch')
     expect(operation.find('.node-target-name').text()).toBe('"collapse panel"')
     expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
 
@@ -266,7 +268,7 @@ describe('StepsPanel interaction contract', () => {
   })
 
   it('toggles a nested operation from its own expand icon without collapsing the group', async () => {
-    const wrapper = mountPanel([fileStep('a'), fileStep('b')])
+    const wrapper = mountPanel([fileStep('a', 'completed', 1), fileStep('b', 'completed', 1)])
 
     await wrapper.find('.workflow-group > .collapse-panel-header').trigger('click')
     expect(wrapper.find('.workflow-group').classes()).toContain('is-expanded')
@@ -288,79 +290,86 @@ describe('StepsPanel interaction contract', () => {
   })
 
   it('keeps an activity expanded when its group grows from 1 to 2', async () => {
-    const wrapper = mountPanel([fileStep('a')])
+    const wrapper = mountPanel([fileStep('a', 'completed', 1)])
 
     await wrapper.find('.operation-row').trigger('click')
     expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
 
-    await wrapper.setProps({ steps: [fileStep('a'), fileStep('b')] })
+    await wrapper.setProps({ steps: [fileStep('a', 'completed', 1), fileStep('b', 'completed', 1)] })
 
     expect(wrapper.find('.workflow-group').classes()).toContain('is-expanded')
     expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
   })
 
   it('shows failure summary in the grouped operation title row', () => {
-    const failed = fileStep('c', 'failed')
+    const failed = fileStep('c', 'failed', 1)
     failed.error = 'No match found'
     failed.toolCall!.status = 'failed'
 
-    const wrapper = mountPanel([fileStep('a'), failed])
+    const wrapper = mountPanel([fileStep('a', 'completed', 1), failed])
 
     expect(wrapper.find('.operation-failure').exists()).toBe(false)
     expect(wrapper.find('.node-error-summary').exists()).toBe(true)
     expect(wrapper.find('.node-error-summary').text()).toContain('No match found')
   })
 
-  it('uses compact failed edit group copy without diff stats', () => {
-    const failed = fileStep('c', 'failed')
+  it('summarizes a failed batch with a Failed badge and summed stats', () => {
+    const failed = fileStep('c', 'failed', 1)
     failed.error = 'No match found'
     failed.toolCall!.status = 'failed'
 
-    const wrapper = mountPanel([fileStep('a'), failed])
+    const wrapper = mountPanel([fileStep('a', 'completed', 1), failed])
 
-    expect(wrapper.find('.group-summary-text').text()).toBe('Edit 2 files')
+    expect(wrapper.find('.group-summary-text').text()).toBe('2 tools')
     expect(wrapper.find('.group-status-badge.failed').text()).toBe('Failed')
-    expect(wrapper.find('.group-stat.addition').exists()).toBe(false)
-    expect(wrapper.find('.group-stat.deletion').exists()).toBe(false)
     expect(wrapper.find('.workflow-group > .collapse-panel-header .collapse-panel-icon').exists()).toBe(true)
   })
 
-  it('uses completed edit group copy without OK or diff stats', () => {
-    const wrapper = mountPanel([fileStep('a'), fileStep('b')])
+  it('summarizes a completed batch as N tools with summed diff stats', () => {
+    const wrapper = mountPanel([fileStep('a', 'completed', 1), fileStep('b', 'completed', 1)])
 
-    expect(wrapper.find('.group-summary-text').text()).toBe('Edited 2 files')
+    expect(wrapper.find('.group-summary-text').text()).toBe('2 tools')
     expect(wrapper.find('.group-status-badge').exists()).toBe(false)
-    expect(wrapper.find('.group-stat.addition').exists()).toBe(false)
-    expect(wrapper.find('.group-stat.deletion').exists()).toBe(false)
+    expect(wrapper.find('.group-stat.addition').text()).toBe('+2')
+    expect(wrapper.find('.group-stat.deletion').text()).toBe('-2')
     expect(wrapper.find('.workflow-group > .collapse-panel-header .collapse-panel-icon').exists()).toBe(true)
   })
 
-  it('does not show OK for completed non-edit groups', () => {
+  it('never groups sequential calls from different turns', () => {
+    const wrapper = mountPanel([readStep('a', 1), readStep('b', 2)])
+
+    expect(wrapper.find('.workflow-group').exists()).toBe(false)
+    expect(wrapper.findAll('.operation-row')).toHaveLength(2)
+  })
+
+  it('never groups steps without a turn index', () => {
     const wrapper = mountPanel([readStep('a'), readStep('b')])
 
-    expect(wrapper.find('.group-summary-text').text()).toBe('Read 2 files')
-    expect(wrapper.find('.group-status-badge').exists()).toBe(false)
+    expect(wrapper.find('.workflow-group').exists()).toBe(false)
+    expect(wrapper.findAll('.operation-row')).toHaveLength(2)
   })
 
-  it('uses a trailing disclosure group header while completed rows omit terminal status icons', async () => {
-    const wrapper = mountPanel([fileStep('a'), fileStep('b')])
+  it('uses a trailing disclosure group header and renders tool icons on every row', async () => {
+    const wrapper = mountPanel([fileStep('a', 'completed', 1), fileStep('b', 'completed', 1)])
 
     expect(wrapper.find('.workflow-group > .collapse-panel-header .collapse-panel-icon').exists()).toBe(true)
     expect(wrapper.find('.group-header .group-chevron').exists()).toBe(false)
-    expect(wrapper.find('.group-header .operation-status-icon').exists()).toBe(false)
+    expect(wrapper.find('.group-header .group-icons .tool-icon').exists()).toBe(true)
     await wrapper.find('.group-header').trigger('click')
-    expect(wrapper.findAll('.operation-row .operation-status-icon')).toHaveLength(0)
+    expect(wrapper.findAll('.operation-row .tool-icon')).toHaveLength(2)
   })
 
-  it('only shows row status icons for active or awaiting rows', () => {
+  it('reflects active and awaiting statuses on the row tool icon', () => {
     const running = fileStep('run', 'running')
     const awaiting = fileStep('needs-approval', 'awaiting-confirmation')
     awaiting.toolCall!.requiresConfirmation = true
 
     const wrapper = mountPanel([running, awaiting])
 
-    expect(wrapper.find('.operation-row.status-executing .operation-status-icon').exists()).toBe(true)
-    expect(wrapper.find('.operation-row.status-awaiting-confirmation .operation-status-icon').exists()).toBe(true)
+    expect(wrapper.find('.operation-row.status-executing .tool-icon.icon-executing').exists()).toBe(true)
+    expect(wrapper.find('.operation-row.status-executing .node-action.is-flowing').exists()).toBe(true)
+    expect(wrapper.find('.operation-row.status-awaiting-confirmation .tool-icon.icon-awaiting-confirmation').exists()).toBe(true)
+    expect(wrapper.find('.operation-row.status-awaiting-confirmation .node-status-badge').text()).toBe('Needs approval')
   })
 
   it('does not render inline approval controls for awaiting-confirmation rows', () => {
@@ -370,26 +379,25 @@ describe('StepsPanel interaction contract', () => {
     const wrapper = mountPanel([awaiting])
 
     expect(wrapper.find('.row-review-btn').exists()).toBe(false)
-    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Edit needs-approval.ts')
+    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Edit(needs-approval.ts)')
     expect(wrapper.find('.operation-row .node-meta').exists()).toBe(false)
   })
 
-  it('renders command actions and command text as separate structured parts', () => {
+  it('renders the tool name and full command as separate structured parts', () => {
     const wrapper = mountPanel([commandStep('luac-check', 'luac -p nlp_test.lua')])
 
     const row = wrapper.find('.operation-row')
-    expect(row.find('.node-target').attributes('aria-label')).toBe('Ran luac -p nlp_test.lua')
-    expect(row.find('.node-action').text()).toBe('Ran')
+    expect(row.find('.node-target').attributes('aria-label')).toBe('Bash(luac -p nlp_test.lua)')
+    expect(row.find('.node-action').text()).toBe('Bash')
     expect(row.find('.node-target-name').text()).toBe('luac -p nlp_test.lua')
-    expect(row.find('.node-target-name').classes()).toContain('node-target-chip')
     expect(row.find('.node-target-name').classes()).toContain('command-chip')
   })
 
   it('renders variable target metadata in the row meta slot', () => {
     const wrapper = mountPanel([variableStep('set-workdir', '/Users/me/project')])
 
-    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Set workdir')
-    expect(wrapper.find('.operation-row .node-action').text()).toBe('Set')
+    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Variable(workdir)')
+    expect(wrapper.find('.operation-row .node-action').text()).toBe('Variable')
     expect(wrapper.find('.operation-row .node-target-name').text()).toBe('workdir')
     expect(wrapper.find('.operation-row .node-meta').text()).toBe('= /Users/me/project')
   })

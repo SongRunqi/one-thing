@@ -19,6 +19,7 @@ describe('MessageThinking', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.useRealTimers()
   })
 
   it('auto-expands reasoning content when it first arrives', async () => {
@@ -60,6 +61,57 @@ describe('MessageThinking', () => {
     expect(wrapper.text()).not.toContain('Waiting')
     expect(wrapper.find('.thinking-panel').classes()).toContain('collapse-panel')
     expect(wrapper.find('.collapse-panel-content').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
+  it('does not persist waiting time as thinking time', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+
+    const wrapper = mount(MessageThinking, {
+      props: {
+        isStreaming: true,
+        hasContent: false,
+        reasoning: '',
+      },
+    })
+
+    vi.advanceTimersByTime(1200)
+    await wrapper.setProps({ isStreaming: false })
+    await nextTick()
+
+    expect(wrapper.emitted('updateThinkingTime')).toBeUndefined()
+
+    wrapper.unmount()
+  })
+
+  it('starts thinking time when reasoning appears after waiting', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(0)
+
+    const wrapper = mount(MessageThinking, {
+      props: {
+        isStreaming: true,
+        hasContent: false,
+        reasoning: '',
+      },
+    })
+
+    vi.advanceTimersByTime(1500)
+    await wrapper.setProps({
+      reasoning: 'reasoning summary',
+      thinkingStartTime: Date.now(),
+    })
+    await nextTick()
+
+    vi.advanceTimersByTime(2000)
+    await wrapper.setProps({ hasContent: true })
+    await nextTick()
+
+    const emitted = wrapper.emitted('updateThinkingTime')
+    expect(emitted).toBeTruthy()
+    expect(emitted?.[0]?.[0]).toBeCloseTo(2, 1)
 
     wrapper.unmount()
   })

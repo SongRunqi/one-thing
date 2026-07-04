@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 /**
  * useSessionEvents — Per-session event subscription composable
  *
@@ -157,9 +158,9 @@ export function useSessionEvents(sessionIdRef: MaybeRef<string | undefined>): Se
   let cleanupStream: (() => void) | null = null
 
   function subscribe() {
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      cleanupEvent = window.electronAPI.onSessionEvent(handleEvent)
-      cleanupStream = window.electronAPI.onSessionStream(handleChunk)
+    if (typeof window !== 'undefined' && platformApi) {
+      cleanupEvent = platformApi.onSessionEvent(handleEvent)
+      cleanupStream = platformApi.onSessionStream(handleChunk)
     }
   }
 

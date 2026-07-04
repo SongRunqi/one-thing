@@ -562,6 +562,7 @@ import ToolDiffPreview from './ToolDiffPreview.vue'
 import WebSearchResultRenderer from './WebSearchResultRenderer.vue'
 import ToolResultRenderer from './ToolResultRenderer.vue'
 import type { Step } from '@/types'
+import { platformApi } from '@/platform'
 
 interface Props {
   sessionId: string
@@ -1059,7 +1060,7 @@ async function rollbackDiff() {
   rollbackState.value = 'running'
   rollbackError.value = ''
   try {
-    const result = await window.electronAPI.rollbackFile({ auditPath })
+    const result = await platformApi.rollbackFile({ auditPath })
     if (!result.success) throw new Error(result.error || 'Rollback failed')
     rollbackState.value = 'done'
   } catch (error: any) {

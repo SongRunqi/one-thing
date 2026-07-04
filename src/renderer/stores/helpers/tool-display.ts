@@ -1,8 +1,12 @@
 import type { ToolCall } from '@/types'
 import { shortenPath } from './tool-preview'
-import type { ToolRenderStatus } from './tool-status'
 import { getFileToolCategory } from './tool-ui-registry'
 
+/**
+ * Verb sets survive ONLY for permission-dialog titles, where natural
+ * language reads better ("Run npm install?"). The activity rows use
+ * `getToolDisplayLabel` from tool-ui-registry — tool name, no verbs.
+ */
 interface ToolVerbSet {
   wait: string
   run: string
@@ -10,29 +14,6 @@ interface ToolVerbSet {
 }
 
 const DEFAULT_VERBS: ToolVerbSet = { wait: 'Call', run: 'Calling', done: 'Called' }
-
-const TOOL_VERBS: Record<string, ToolVerbSet> = {
-  bash: { wait: 'Run', run: 'Running', done: 'Ran' },
-  read: { wait: 'Read', run: 'Reading', done: 'Read' },
-  grep: { wait: 'Search', run: 'Searching', done: 'Searched' },
-  glob: { wait: 'Match', run: 'Matching', done: 'Matched' },
-  find: { wait: 'Find', run: 'Finding', done: 'Found' },
-  ls: { wait: 'List', run: 'Listing', done: 'Listed' },
-  write: { wait: 'Write', run: 'Writing', done: 'Wrote' },
-  edit: { wait: 'Edit', run: 'Editing', done: 'Edited' },
-  web_search: { wait: 'Search', run: 'Searching', done: 'Searched' },
-  websearch: { wait: 'Search', run: 'Searching', done: 'Searched' },
-  'web-search': { wait: 'Search', run: 'Searching', done: 'Searched' },
-  web_open: { wait: 'Open', run: 'Opening', done: 'Opened' },
-  webopen: { wait: 'Open', run: 'Opening', done: 'Opened' },
-  'web-open': { wait: 'Open', run: 'Opening', done: 'Opened' },
-  web_find: { wait: 'Find', run: 'Finding', done: 'Found' },
-  webfind: { wait: 'Find', run: 'Finding', done: 'Found' },
-  'web-find': { wait: 'Find', run: 'Finding', done: 'Found' },
-  calculator: { wait: 'Calculate', run: 'Calculating', done: 'Calculated' },
-  get_current_time: { wait: 'Get time', run: 'Getting time', done: 'Got time' },
-  fart: { wait: 'Summon', run: 'Summoning', done: 'Summoned' },
-}
 
 const VARIABLE_VERBS: Record<string, ToolVerbSet> = {
   list: { wait: 'List', run: 'Listing', done: 'Listed' },
@@ -114,34 +95,22 @@ function isTodoTool(toolName: string): boolean {
 
 export { getFileToolCategory }
 
-function verbsForTool(toolName: string, toolCall?: ToolCall): ToolVerbSet {
-  if (toolName === 'variable') return VARIABLE_VERBS[actionOf(toolCall)] || { wait: 'Change', run: 'Changing', done: 'Changed' }
-  if (isTodoTool(toolName)) return TODO_PLAN_VERBS[actionOf(toolCall)] || { wait: 'Update', run: 'Updating', done: 'Updated' }
-  if (toolName === 'time') return TIME_VERBS[actionOf(toolCall)] || TIME_VERBS.now
-  if (toolName === 'project_dirs') return PROJECT_DIRS_VERBS[actionOf(toolCall)] || { wait: 'Manage', run: 'Managing', done: 'Managed' }
-  if (isMcpSearchTool(toolName)) return MCP_SEARCH_VERBS[actionOf(toolCall)] || DEFAULT_VERBS
-  if (isLegacyMcpTool(toolName)) return DEFAULT_VERBS
+/** Hard cap for the primary argument shown in a row title (CSS clamps to 2 lines). */
+const PRIMARY_ARG_MAX = 400
 
-  const fileCategory = getFileToolCategory(toolName)
-  if (fileCategory) {
-    return TOOL_VERBS[fileCategory] || DEFAULT_VERBS
-  }
-
-  return TOOL_VERBS[toolName] || DEFAULT_VERBS
-}
-
-export function buildToolVerb(toolNameInput: string | undefined, status: ToolRenderStatus, toolCall?: ToolCall): string {
+export function buildToolPrimaryArg(toolNameInput: string | undefined, toolCall?: ToolCall): string {
   const toolName = normalizeToolName(toolNameInput || toolCall?.toolName || toolCall?.toolId)
-  const verbs = verbsForTool(toolName, toolCall)
-
-  if (status === 'rejected') return `Rejected ${verbs.wait.toLowerCase()}`
-  if (status === 'failed') return `Failed ${verbs.wait.toLowerCase()}`
-  if (status === 'cancelled') return `Cancelled ${verbs.wait.toLowerCase()}`
-
-  const running = status === 'streaming-input' || status === 'executing'
-
-  if (status === 'queued' || status === 'pending' || status === 'awaiting-confirmation') return verbs.wait
-  return running ? verbs.run : verbs.done
+  if (toolName === 'bash') {
+    const command = valueOf(toolCall, 'command') || valueOf(toolCall, 'CommandLine')
+    return truncate(command.replace(/\s*\n\s*/g, ' '), PRIMARY_ARG_MAX)
+  }
+  if (toolName === 'grep') {
+    const pattern = quote(valueOf(toolCall, 'pattern'), 60)
+    const scope = valueOf(toolCall, 'glob') || valueOf(toolCall, 'path')
+    return [pattern, scope ? shortenPath(scope, 36) : ''].filter(Boolean).join(', ')
+  }
+  if (toolName === 'glob') return valueOf(toolCall, 'pattern')
+  return buildToolActivityTarget(toolName, toolCall)
 }
 
 export function buildToolActivityTarget(toolNameInput: string | undefined, toolCall?: ToolCall): string {

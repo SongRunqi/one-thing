@@ -5,6 +5,7 @@ import type {
   PromptUpdateRequest,
   UserPrompt,
 } from '@/types'
+import { platformApi } from '@/platform'
 
 export const usePromptsStore = defineStore('prompts', () => {
   const prompts = ref<UserPrompt[]>([])
@@ -24,7 +25,7 @@ export const usePromptsStore = defineStore('prompts', () => {
     error.value = null
     loadPromise = (async () => {
       try {
-        const response = await window.electronAPI.listPrompts()
+        const response = await platformApi.listPrompts()
         if (!response.success || !response.prompts) {
           throw new Error(response.error || 'Failed to load prompts')
         }
@@ -45,7 +46,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   async function getPrompt(id: string): Promise<UserPrompt | undefined> {
     const cached = promptMap.value.get(id)
     if (cached) return cached
-    const response = await window.electronAPI.getPrompt({ id })
+    const response = await platformApi.getPrompt({ id })
     if (response.success && response.prompt) {
       prompts.value = [
         ...prompts.value.filter(prompt => prompt.id !== response.prompt!.id),
@@ -57,7 +58,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   async function createPrompt(request: PromptCreateRequest): Promise<UserPrompt | undefined> {
-    const response = await window.electronAPI.createPrompt(request)
+    const response = await platformApi.createPrompt(request)
     if (response.success && response.prompt) {
       prompts.value = [...prompts.value, response.prompt].sort((a, b) => a.title.localeCompare(b.title))
       return response.prompt
@@ -67,7 +68,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   async function updatePrompt(request: PromptUpdateRequest): Promise<UserPrompt | undefined> {
-    const response = await window.electronAPI.updatePrompt(request)
+    const response = await platformApi.updatePrompt(request)
     if (response.success && response.prompt) {
       prompts.value = prompts.value
         .map(prompt => prompt.id === response.prompt!.id ? response.prompt! : prompt)
@@ -79,7 +80,7 @@ export const usePromptsStore = defineStore('prompts', () => {
   }
 
   async function deletePrompt(id: string): Promise<boolean> {
-    const response = await window.electronAPI.deletePrompt({ id })
+    const response = await platformApi.deletePrompt({ id })
     if (response.success) {
       prompts.value = prompts.value.filter(prompt => prompt.id !== id)
       return true

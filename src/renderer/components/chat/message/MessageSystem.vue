@@ -57,6 +57,7 @@ import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import ContextCompactPanel from './ContextCompactPanel.vue'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
+import { platformApi } from '@/platform'
 
 interface Props {
   content: string
@@ -121,7 +122,7 @@ async function handleClose() {
 
   try {
     // Remove from backend (persistent storage)
-    await window.electronAPI.removeMessage(sessionId, props.messageId)
+    await platformApi.removeMessage(sessionId, props.messageId)
     // Remove from Vue state for immediate UI update
     chatStore.removeMessage(sessionId, props.messageId)
   } catch (error) {

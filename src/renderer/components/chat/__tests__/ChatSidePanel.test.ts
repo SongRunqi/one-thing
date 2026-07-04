@@ -14,8 +14,16 @@ const settingsStore = vi.hoisted(() => ({
   },
 }))
 
+const sessionsStore = vi.hoisted(() => ({
+  isNewChatDraftId: vi.fn((sessionId: string) => sessionId.startsWith('draft:')),
+}))
+
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => settingsStore,
+}))
+
+vi.mock('@/stores/sessions', () => ({
+  useSessionsStore: () => sessionsStore,
 }))
 
 vi.mock('../SystemPromptPanel.vue', () => ({
@@ -101,5 +109,23 @@ describe('ChatSidePanel', () => {
     expect(wrapper.findAll('.splitter-panel')).toHaveLength(2)
     expect(wrapper.findAll('.splitter-resizer')).toHaveLength(1)
     expect(panelSizes(wrapper)).toEqual([50, 50])
+  })
+
+  it('does not mount session-backed prompt or todo panels for a new chat draft', async () => {
+    const wrapper = mount(ChatSidePanel, {
+      props: {
+        sessionId: 'draft:one',
+        workingDirectory: '/repo',
+      },
+    })
+
+    await settle()
+
+    expect(wrapper.find('.mock-system-prompt-panel').exists()).toBe(false)
+    expect(wrapper.find('.mock-todo-progress-panel').exists()).toBe(false)
+    expect(wrapper.find('.chat-side-draft-state').text()).toBe('System prompt will appear after the chat starts.')
+    expect(wrapper.findAll('.splitter-panel')).toHaveLength(2)
+    expect(panelSizes(wrapper)).toEqual([50, 50])
+    expect(wrapper.find('[title="Refresh system prompt"]').attributes('disabled')).toBeDefined()
   })
 })

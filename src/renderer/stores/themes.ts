@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 /**
  * Theme Store
  * Manages theme loading, application, and preview functionality
@@ -81,7 +82,7 @@ export const useThemeStore = defineStore('themes', () => {
     error.value = null
 
     try {
-      const response: GetThemesResponse = await window.electronAPI.getThemes()
+      const response: GetThemesResponse = await platformApi.getThemes()
 
       if (response.success && response.themes) {
         availableThemes.value = response.themes
@@ -109,7 +110,7 @@ export const useThemeStore = defineStore('themes', () => {
     if (cached) return cached
 
     try {
-      const response = await window.electronAPI.getTheme(themeId)
+      const response = await platformApi.getTheme(themeId)
 
       if (response.success && response.theme) {
         themeCache.value.set(themeId, response.theme)
@@ -175,7 +176,7 @@ export const useThemeStore = defineStore('themes', () => {
     const themeId = currentThemeId.value
 
     try {
-      const response: ApplyThemeResponse = await window.electronAPI.applyTheme(themeId, mode)
+      const response: ApplyThemeResponse = await platformApi.applyTheme(themeId, mode)
 
       if (response.success && response.cssVariables) {
         applyThemeVariables(response.cssVariables)
@@ -278,7 +279,7 @@ export const useThemeStore = defineStore('themes', () => {
     const mode = settingsStore.effectiveTheme
 
     try {
-      const response = await window.electronAPI.applyTheme(themeId, mode)
+      const response = await platformApi.applyTheme(themeId, mode)
 
       if (response.success && response.cssVariables) {
         applyThemeVariables(response.cssVariables)
@@ -358,7 +359,7 @@ export const useThemeStore = defineStore('themes', () => {
     error.value = null
 
     try {
-      const response = await window.electronAPI.refreshThemes(projectPath)
+      const response = await platformApi.refreshThemes(projectPath)
 
       if (response.success && response.themes) {
         availableThemes.value = response.themes
@@ -383,7 +384,7 @@ export const useThemeStore = defineStore('themes', () => {
    */
   async function openThemesFolder(): Promise<void> {
     try {
-      await window.electronAPI.openThemesFolder()
+      await platformApi.openThemesFolder()
     } catch (err: any) {
       console.error('[ThemeStore] Error opening themes folder:', err)
     }

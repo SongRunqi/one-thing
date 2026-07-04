@@ -7,10 +7,10 @@ import {
   type ToolDiffData,
   type ToolStepView,
 } from './tool-step-view'
-import { buildToolActivityTarget, buildToolVerb, getFileToolCategory } from './tool-display'
+import { buildToolPrimaryArg, getFileToolCategory } from './tool-display'
 import { basename, shortenPath } from './tool-preview'
 import type { ToolRenderStatus } from './tool-status'
-import { getStatusLabel } from './tool-ui-registry'
+import { getStatusLabel, getToolDisplayLabel } from './tool-ui-registry'
 
 export interface ToolActivityView {
   id: string
@@ -18,7 +18,9 @@ export interface ToolActivityView {
   toolCall: ToolCall
   toolName: string
   status: ToolRenderStatus
-  verb: string
+  /** Display label for the row title (`Bash`, `Read`, raw MCP name…). */
+  toolLabel: string
+  /** Primary argument rendered as `toolLabel(target)`. */
   target: string
   targetMeta: string
   filePath: string
@@ -108,7 +110,7 @@ export function buildToolActivityView(step: Step, nowMs = Date.now()): ToolActiv
     toolCall,
     toolName,
     status: view.status,
-    verb: buildToolVerb(toolName, view.status, toolCall),
+    toolLabel: getToolDisplayLabel(toolCall.toolName || toolName),
     target,
     targetMeta,
     filePath,
@@ -131,7 +133,7 @@ export function buildDetailedToolStepView(activity: ToolActivityView): ToolStepV
 }
 
 function buildTarget(view: ToolStepView, filePath: string): string {
-  const mappedTarget = buildToolActivityTarget(view.toolName, view.toolCall)
+  const mappedTarget = buildToolPrimaryArg(view.toolName, view.toolCall)
   if (mappedTarget) return mappedTarget
 
   let preview = view.preview
@@ -199,14 +201,35 @@ function buildStats(diff: ToolDiffData | null, toolCall: ToolCall): ActivityStat
   return { additions: 0, deletions: 0, text: '' }
 }
 
+/**
+ * Duration display. Precision is capped at 0.1ms (sub-second values from the
+ * high-resolution `durationMs` field); legacy integer-ms data never fakes
+ * decimals it doesn't have.
+ */
+export function formatToolDuration(ms: number, highRes: boolean): string {
+  if (ms < 1000) return highRes ? `${ms.toFixed(1)}ms` : `${Math.round(ms)}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(3)}s`
+  const minutes = Math.floor(ms / 60_000)
+  const seconds = (ms % 60_000) / 1000
+  return `${minutes}m${seconds < 10 ? '0' : ''}${seconds.toFixed(1)}s`
+}
+
 function buildDuration(toolCall: ToolCall, nowMs = Date.now()): string {
-  if (toolCall.status !== 'executing' && toolCall.status !== 'input-streaming') return ''
-  if (!toolCall.startTime) return ''
-  const end = toolCall.endTime ?? nowMs
-  if (!end) return ''
-  const ms = Math.max(0, end - toolCall.startTime)
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
+  const running = toolCall.status === 'executing' || toolCall.status === 'input-streaming'
+  if (running) {
+    if (!toolCall.startTime) return ''
+    return formatToolDuration(Math.max(0, (toolCall.endTime ?? nowMs) - toolCall.startTime), false)
+  }
+  // Frozen final duration stays on the row so runs can be compared.
+  if (toolCall.status === 'completed' || toolCall.status === 'failed') {
+    if (typeof toolCall.durationMs === 'number') {
+      return formatToolDuration(Math.max(0, toolCall.durationMs), true)
+    }
+    if (toolCall.startTime && toolCall.endTime) {
+      return formatToolDuration(Math.max(0, toolCall.endTime - toolCall.startTime), false)
+    }
+  }
+  return ''
 }
 
 export function buildErrorSummary(

@@ -543,8 +543,8 @@
 	--ui-tool-error-fg: var(--color-danger-text, var(--color-danger, var(--text-tool-error)));
 	--ui-tool-success-bg: var(--color-success-bg, var(--color-success-light, var(--bg-tool-success)));
 	--ui-tool-text-fg: var(--color-neutral-primary-text, var(--text-tool-name, var(--text-primary)));
-	--ui-tool-text-muted-fg: var(--color-neutral-secondary-text, var(--text-tool-args, var(--text-muted)));
-	--ui-tool-text-faint-fg: var(--color-neutral-disabled-text, var(--text-tool-label, var(--text-faint)));
+	--ui-tool-text-muted-fg: var(--text-tool-args, var(--color-neutral-secondary-text, var(--text-muted)));
+	--ui-tool-text-faint-fg: var(--text-tool-label, var(--color-neutral-disabled-text, var(--text-faint)));
 	--ui-tool-accent-fg: var(--color-primary, var(--accent));
 	--ui-tool-accent-on-fg: var(--color-neutral-page-background, var(--bg-app));
 	--ui-tool-success-text-fg: var(--color-success-text, var(--color-success, var(--text-success)));

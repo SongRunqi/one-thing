@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 /**
  * Global Keyboard Shortcuts Composable
  *
@@ -95,7 +96,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       if (handlers.onSearchEverywhere) {
         handlers.onSearchEverywhere()
       } else {
-        window.electronAPI?.toggleSearchWindow?.()
+        platformApi?.toggleSearchWindow?.()
       }
       return
     }
@@ -105,7 +106,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       if (handlers.onToggleTodoPlanWindow) {
         handlers.onToggleTodoPlanWindow()
       } else {
-        window.electronAPI?.toggleTodoPlanWindow?.({
+        platformApi?.toggleTodoPlanWindow?.({
           activation: 'preserve-current-app',
           preserveMainWindowVisibility: true,
         })

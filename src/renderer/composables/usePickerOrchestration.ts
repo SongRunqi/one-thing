@@ -8,6 +8,7 @@ import type { EditorHandle, EditorSelection, EditorTransaction } from '@/editor'
 import { applyTriggerReplacement, parseEditorTrigger, type EditorTrigger } from '@/editor'
 import { usePromptsStore } from '@/stores/prompts'
 import { createPromptToken, createSkillToken } from '@shared/prompt-references'
+import { platformApi } from '@/platform'
 
 export type ComposerExtensionType = 'none' | 'palette' | 'files' | 'paths'
 export type ComposerExtensionItemKind = PaletteItemType | 'file' | 'directory' | 'path'
@@ -114,7 +115,7 @@ export function usePickerOrchestration(
 
   async function loadSkills() {
     try {
-      const response = await window.electronAPI.getSkills(workingDirectory.value || undefined)
+      const response = await platformApi.getSkills(workingDirectory.value || undefined)
       if (response.success && response.skills) {
         availableSkills.value = response.skills
       }
@@ -259,7 +260,7 @@ export function usePickerOrchestration(
     }
 
     try {
-      const result = await window.electronAPI.listVariables(sid)
+      const result = await platformApi.listVariables(sid)
       if (!result.success || !result.variables) {
         variableWorkdir.value = ''
         noteRoots.value = []
@@ -361,7 +362,7 @@ export function usePickerOrchestration(
       await loadNoteRoots()
       const cwd = variableWorkdir.value || workingDirectory.value
 
-      const result = await window.electronAPI.listFiles({
+      const result = await platformApi.listFiles({
         cwd,
         query,
         limit: 50,
@@ -405,7 +406,7 @@ export function usePickerOrchestration(
     patchActiveExtension({ loading: true, error: null })
 
     try {
-      const result = await window.electronAPI.listDirs({
+      const result = await platformApi.listDirs({
         basePath: pathToSearch,
         limit: 50,
       })

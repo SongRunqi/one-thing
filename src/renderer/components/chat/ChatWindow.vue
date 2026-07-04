@@ -110,6 +110,7 @@ import ChatSidePanel from './ChatSidePanel.vue'
 import Container from '@/components/common/Container.vue'
 import BorderBox from '@/components/common/BorderBox.vue'
 import SettingsPanel from '../SettingsPanel.vue'
+import { platformApi } from '@/platform'
 
 interface Props {
   showSettings?: boolean
@@ -166,7 +167,7 @@ const { tabs, activeTabId } = tabState
 // Restore saved tabs on mount
 onMounted(async () => {
   try {
-    const appState = await window.electronAPI.getAppState()
+    const appState = await platformApi.getAppState()
     const chatTabs = appState.openTabs?.filter((tab: any) => tab.type === 'chat') || []
     if (chatTabs.length > 0) {
       tabState.restore(chatTabs as any, 0)

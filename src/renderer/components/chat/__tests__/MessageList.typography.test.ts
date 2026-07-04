@@ -26,6 +26,16 @@ const mocks = vi.hoisted(() => ({
       chat: {},
     },
   },
+  platformApi: {
+    capabilities: {
+      shellTools: true,
+    },
+    emitCommand: vi.fn().mockResolvedValue({ success: true }),
+    executeTool: vi.fn().mockResolvedValue({ success: true, result: '' }),
+    getPendingPermissions: vi.fn().mockResolvedValue({ success: true, pending: [] }),
+    updateMessageThinkingTime: vi.fn().mockResolvedValue({ success: true }),
+    updateToolCall: vi.fn().mockResolvedValue({ success: true }),
+  },
 }))
 
 vi.mock('@/stores/chat', () => ({
@@ -38,6 +48,10 @@ vi.mock('@/stores/sessions', () => ({
 
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => mocks.settingsStore,
+}))
+
+vi.mock('@/platform', () => ({
+  platformApi: mocks.platformApi,
 }))
 
 vi.mock('@/composables/usePermissionShortcuts', () => ({
@@ -160,6 +174,15 @@ describe('MessageList typography density', () => {
 
     expect(messageList.classes()).toContain('scrollbar')
     expect(messageList.find('.scrollbar-content .message-list-content').exists()).toBe(true)
+  })
+
+  it('keeps a content-width measurement anchor for empty chats', () => {
+    const wrapper = mountMessageList([])
+    const anchor = wrapper.find('.scrollbar-content .message-list-content--empty')
+
+    expect(wrapper.find('.mock-empty-state').exists()).toBe(true)
+    expect(anchor.exists()).toBe(true)
+    expect(anchor.attributes('aria-hidden')).toBe('true')
   })
 
   it('lets explicit chat font size and line height override density defaults', () => {

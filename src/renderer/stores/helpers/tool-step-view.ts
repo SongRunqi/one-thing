@@ -196,7 +196,11 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
     step.thinking ||
     resultText ||
     step.summary ||
-    step.error
+    step.error ||
+    // The single-line row title truncates long commands; the expanded
+    // details are the guaranteed place to read the full command, so a bash
+    // row with a command is always expandable.
+    (toolName === 'bash' && toolCall.arguments?.command)
   )
 
   return {
@@ -227,6 +231,9 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
 
 function shouldDefaultExpand(toolName: string, status: ToolRenderStatus): boolean {
   if (status === 'failed' || status === 'rejected') return false
+  // Live bash output is the one result the row title can't summarize —
+  // show it while the command runs.
+  if (status === 'executing' && toolName === 'bash') return true
   if (status === 'streaming-input') {
     const cat = getFileToolCategory(toolName)
     return cat === 'write' || cat === 'edit'

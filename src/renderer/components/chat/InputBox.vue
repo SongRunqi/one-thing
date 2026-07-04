@@ -352,6 +352,7 @@
               :class="`mode-${permissionMode}`"
               teleported
               placement="top"
+              popper-class="inputbox-select-dropdown permission-mode-dropdown"
               :model-value="permissionMode"
               :options="PERMISSION_MODE_OPTIONS"
               :popper-style="permissionDropdownStyle"
@@ -438,6 +439,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
 import { useVoiceStore } from '@/stores/voice'
 import { usePromptsStore } from '@/stores/prompts'
+import { platformApi } from '@/platform'
 // Sub-components
 import QuotedContext from './QuotedContext.vue'
 import CommandPicker from './CommandPicker.vue'
@@ -1356,7 +1358,7 @@ async function prepareVoiceInput() {
   if (nextVoice.asr.provider === 'funasr-stream') {
     const url = nextVoice.asr.funasr.url.trim()
     if (!/^wss?:\/\//i.test(url)) {
-      void window.electronAPI.openSettingsWindow()
+      void platformApi.openSettingsWindow()
       return {
         success: false,
         error: switchedToRecommended
@@ -1371,7 +1373,7 @@ async function prepareVoiceInput() {
     const openRouterVoiceKey = nextVoice.asr.openrouter.apiKey?.trim()
     const hasOpenRouterKey = Boolean(openRouterVoiceKey || globalOpenRouterKey)
     if (!hasOpenRouterKey) {
-      void window.electronAPI.openSettingsWindow()
+      void platformApi.openSettingsWindow()
       return {
         success: false,
         error: 'Add an OpenRouter API key in Voice settings.',
@@ -1380,7 +1382,7 @@ async function prepareVoiceInput() {
   }
 
   if (nextVoice.asr.provider === 'funasr-server' && !nextVoice.asr.funasr.url.trim()) {
-    void window.electronAPI.openSettingsWindow()
+    void platformApi.openSettingsWindow()
     return {
       success: false,
       error: 'Add a FunASR server URL in Voice settings.',
@@ -1824,7 +1826,9 @@ defineExpose({
 
 /* Main composer container */
 .composer {
-  --composer-surface: color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))))) 44%, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg))) 56%);
+  /* The resolver guarantees --ui-surface-input-bg is visibly raised from the
+     chat surface; don't re-mix it toward chat here or the contrast collapses. */
+  --composer-surface: var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)))));
   --composer-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 36%, transparent);
 
   position: relative;
@@ -2291,6 +2295,147 @@ defineExpose({
   --permission-mode-fg: var(--ui-status-warning-fg, var(--text-warning));
   --permission-mode-border: var(--ui-status-warning-border, var(--color-warning));
   --permission-mode-bg: var(--ui-status-warning-bg, transparent);
+}
+
+:global(.inputbox-select-dropdown) {
+  --inputbox-select-panel-bg: var(--ui-surface-menu-bg, var(--ui-surface-overlay-bg, var(--ui-surface-input-bg, var(--bg-input, #282c34))));
+  --inputbox-select-row-fg: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 88%, var(--ui-text-primary-fg, var(--text)) 12%);
+  --inputbox-select-row-muted-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 84%, var(--ui-text-primary-fg, var(--text)) 16%);
+  --inputbox-select-row-muted-active-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 64%, var(--ui-text-primary-fg, var(--text)) 36%);
+  --inputbox-select-row-hover-bg: var(--ui-state-hover-bg, var(--hover, #2a303b));
+  --inputbox-select-row-hover-fg: var(--ui-text-primary-fg, var(--text));
+  --inputbox-select-row-selected-bg: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover, #2a303b))));
+  --inputbox-select-row-selected-fg: var(--ui-state-selected-fg, var(--ui-text-primary-fg, var(--text, #f4f4f5)));
+  --inputbox-select-row-selected-hover-bg: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--active, var(--inputbox-select-row-selected-bg))));
+  --inputbox-select-row-selected-border: var(--ui-state-selected-border, var(--ui-border-selected-border, var(--ui-accent-subtle-fg, var(--ui-accent-primary-fg, var(--accent, #60a5fa)))));
+  --inputbox-select-check-fg: var(--ui-accent-subtle-fg, var(--ui-accent-primary-fg, var(--accent, #60a5fa)));
+  --inputbox-select-chip-bg: color-mix(in srgb, var(--inputbox-select-row-hover-bg) 72%, transparent);
+  --inputbox-select-chip-bg-active: color-mix(in srgb, var(--inputbox-select-row-selected-hover-bg) 82%, transparent);
+  --inputbox-select-chip-fg: var(--inputbox-select-row-muted-active-fg);
+
+  padding: 6px;
+  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border, #3b4250)) 76%, var(--ui-text-primary-fg, var(--text, #f4f4f5)) 8%);
+  border-radius: 12px;
+  background: var(--inputbox-select-panel-bg);
+  background-clip: padding-box;
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+:global(.app-select-dropdown.inputbox-select-dropdown.model-select-dropdown),
+:global(.app-select-dropdown.inputbox-select-dropdown.think-select-dropdown),
+:global(.app-select-dropdown.inputbox-select-dropdown.permission-mode-dropdown) {
+  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border, #3b4250)) 76%, var(--ui-text-primary-fg, var(--text, #f4f4f5)) 8%);
+  background: var(--inputbox-select-panel-bg);
+}
+
+:global(.inputbox-select-dropdown .app-select-group-label) {
+  padding: 7px 8px 4px;
+  color: var(--inputbox-select-row-muted-active-fg);
+  font-size: 10.5px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+:global(.app-select-dropdown.inputbox-select-dropdown .app-select-option) {
+  min-height: 32px;
+  border-radius: 8px;
+  color: var(--inputbox-select-row-fg);
+  transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+:global(.app-select-dropdown.inputbox-select-dropdown .app-select-option:hover),
+:global(.app-select-dropdown.inputbox-select-dropdown .app-select-option.highlighted) {
+  color: var(--inputbox-select-row-hover-fg);
+  background: var(--inputbox-select-row-hover-bg);
+}
+
+:global(.app-select-dropdown.inputbox-select-dropdown .app-select-option.selected) {
+  color: var(--inputbox-select-row-selected-fg);
+  background: var(--inputbox-select-row-selected-bg);
+}
+
+:global(.app-select-dropdown.inputbox-select-dropdown .app-select-option.selected:hover),
+:global(.app-select-dropdown.inputbox-select-dropdown .app-select-option.selected.highlighted) {
+  color: var(--inputbox-select-row-selected-fg);
+  background: var(--inputbox-select-row-selected-hover-bg);
+}
+
+:global(.inputbox-select-dropdown .app-select-option .app-select-option-check),
+:global(.inputbox-select-dropdown .app-select-option .think-option-check) {
+  color: var(--inputbox-select-check-fg);
+}
+
+:global(.inputbox-select-dropdown .app-select-option.selected .app-select-option-check),
+:global(.inputbox-select-dropdown .app-select-option.selected .think-option-check) {
+  color: var(--inputbox-select-row-selected-border);
+}
+
+:global(.inputbox-select-dropdown .app-select-empty) {
+  color: var(--inputbox-select-row-muted-fg);
+}
+
+:global(.inputbox-select-dropdown .app-select-option .model-option-name),
+:global(.inputbox-select-dropdown .app-select-option .think-option-text),
+:global(.inputbox-select-dropdown .app-select-option .app-select-option-label) {
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+:global(.inputbox-select-dropdown .app-select-option.selected .model-option-name),
+:global(.inputbox-select-dropdown .app-select-option.selected .think-option-text),
+:global(.inputbox-select-dropdown .app-select-option.selected .app-select-option-label) {
+  color: var(--inputbox-select-row-selected-fg);
+}
+
+:global(.inputbox-select-dropdown .app-select-option .model-option-id),
+:global(.inputbox-select-dropdown .app-select-option .think-option-description) {
+  color: var(--inputbox-select-row-muted-fg);
+}
+
+:global(.inputbox-select-dropdown .app-select-option .model-option-meta) {
+  max-width: min(220px, 58%);
+}
+
+:global(.inputbox-select-dropdown .app-select-option:hover .model-option-id),
+:global(.inputbox-select-dropdown .app-select-option.highlighted .model-option-id),
+:global(.inputbox-select-dropdown .app-select-option.selected .model-option-id),
+:global(.inputbox-select-dropdown .app-select-option:hover .think-option-description),
+:global(.inputbox-select-dropdown .app-select-option.highlighted .think-option-description),
+:global(.inputbox-select-dropdown .app-select-option.selected .think-option-description) {
+  color: var(--inputbox-select-row-muted-active-fg);
+}
+
+:global(.inputbox-select-dropdown .app-select-option .model-context),
+:global(.inputbox-select-dropdown .app-select-option .model-badge) {
+  color: var(--inputbox-select-chip-fg);
+  background: var(--inputbox-select-chip-bg);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--inputbox-select-check-fg) 14%, transparent);
+}
+
+:global(.inputbox-select-dropdown .app-select-option .model-context) {
+  font-family: var(--font-mono, monospace);
+}
+
+:global(.inputbox-select-dropdown .app-select-option.selected .model-context),
+:global(.inputbox-select-dropdown .app-select-option.selected .model-badge),
+:global(.inputbox-select-dropdown .app-select-option:hover .model-context),
+:global(.inputbox-select-dropdown .app-select-option:hover .model-badge),
+:global(.inputbox-select-dropdown .app-select-option.highlighted .model-context),
+:global(.inputbox-select-dropdown .app-select-option.highlighted .model-badge) {
+  color: var(--inputbox-select-row-selected-fg);
+  background: var(--inputbox-select-chip-bg-active);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--inputbox-select-row-selected-border) 24%, transparent);
+}
+
+:global(.app-select-dropdown.inputbox-select-dropdown.think-select-dropdown .app-select-option) {
+  padding-block: 5px;
+}
+
+:global(.app-select-dropdown.inputbox-select-dropdown.permission-mode-dropdown .app-select-option-label) {
+  font-size: 12px;
+  font-weight: 650;
 }
 
 /* Toolbar buttons */

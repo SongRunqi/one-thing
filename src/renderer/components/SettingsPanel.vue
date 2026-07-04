@@ -366,6 +366,7 @@ import { useSettingsStore } from '@/stores/settings'
 import type { AppSettings, AIProvider, ProviderInfo, CustomProviderConfig, ToolDefinition } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
 import { v4 as uuidv4 } from 'uuid'
+import { platformApi } from '@/platform'
 
 // Import settings components
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
@@ -574,7 +575,7 @@ function handleSkillsSettingsUpdate(skillsSettings: { enableSkills: boolean; ski
 // Load available tools
 async function loadAvailableTools() {
   try {
-    const response = await window.electronAPI.getTools()
+    const response = await platformApi.getTools()
     if (response.success && response.tools) {
       availableTools.value = response.tools
     }

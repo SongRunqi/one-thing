@@ -39,8 +39,20 @@ const storeState = vi.hoisted(() => ({
   },
 }))
 
+const platformState = vi.hoisted(() => ({
+  platformApi: {
+    onImageGenerated: vi.fn(() => vi.fn()),
+    openImageGallery: vi.fn(),
+    openPath: vi.fn(),
+  },
+}))
+
 vi.mock('@/stores/media', () => ({
   useMediaStore: () => storeState.mediaStore,
+}))
+
+vi.mock('@/platform', () => ({
+  platformApi: platformState.platformApi,
 }))
 
 function imageAsset(overrides: Partial<MediaAsset>): MediaAsset {
@@ -86,12 +98,13 @@ describe('MediaPanel', () => {
     storeState.mediaStore.isRebuilding = false
     storeState.mediaStore.loadMedia.mockResolvedValue(undefined)
     storeState.mediaStore.removeMedia.mockResolvedValue(undefined)
+    platformState.platformApi.onImageGenerated.mockReturnValue(vi.fn())
     vi.stubGlobal('confirm', vi.fn(() => true))
     Object.defineProperty(window, 'electronAPI', {
       value: {
-        onImageGenerated: vi.fn(() => vi.fn()),
-        openImageGallery: vi.fn(),
-        openPath: vi.fn(),
+        onImageGenerated: platformState.platformApi.onImageGenerated,
+        openImageGallery: platformState.platformApi.openImageGallery,
+        openPath: platformState.platformApi.openPath,
       },
       configurable: true,
     })
@@ -102,7 +115,7 @@ describe('MediaPanel', () => {
     vi.unstubAllGlobals()
   })
 
-  it('shows reusable search and filter controls without tab buttons', () => {
+  it('shows reusable search and filter controls without tab buttons', async () => {
     const wrapper = mount(MediaPanel, {
       props: { visible: true },
       global: { stubs: { ArchivedChatsContent: true } },
@@ -114,10 +127,25 @@ describe('MediaPanel', () => {
     expect(wrapper.find('.kind-tabs').exists()).toBe(false)
     expect(wrapper.find('.source-tabs').exists()).toBe(false)
     expect(wrapper.text()).toContain('Uploaded')
+
+    await wrapper.find('.media-source-filter .app-select-control').trigger('click')
     expect(wrapper.text()).toContain('Generated')
     expect(wrapper.text()).toContain('Tasks')
     expect(wrapper.text()).not.toContain('OK')
     expect(wrapper.findAll('.media-item')).toHaveLength(2)
+  })
+
+  it('loads the media index without rebuilding when the panel becomes visible', async () => {
+    mount(MediaPanel, {
+      props: { visible: true },
+      global: { stubs: { ArchivedChatsContent: true } },
+    })
+
+    await vi.waitFor(() => {
+      expect(storeState.mediaStore.loadMedia).toHaveBeenCalled()
+    })
+    expect(storeState.mediaStore.loadMedia).toHaveBeenCalledWith({ rebuild: false, force: false })
+    expect(storeState.mediaStore.loadMedia).not.toHaveBeenCalledWith(expect.objectContaining({ rebuild: true }))
   })
 
   it('filters uploaded images separately from generated images', async () => {
@@ -191,6 +219,8 @@ describe('MediaPanel', () => {
 
     expect(wrapper.find('[data-workspace-panel-view="memory"]').exists()).toBe(true)
     expect(wrapper.find('[data-workspace-panel-view="media"]').exists()).toBe(false)
+    expect(wrapper.find('.main-panel-title').exists()).toBe(false)
+    expect(wrapper.find('.main-panel-header-spacer').exists()).toBe(true)
 
     await wrapper.setProps({ activeTab: 'media' })
 

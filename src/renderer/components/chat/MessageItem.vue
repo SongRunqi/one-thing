@@ -166,6 +166,7 @@ import MessageBubble from './message/MessageBubble.vue'
 import MessageActions from './message/MessageActions.vue'
 import SelectionToolbar from './message/SelectionToolbar.vue'
 import { rawTextFromPromptParts } from '@shared/prompt-references'
+import { platformApi } from '@/platform'
 
 interface BranchInfo {
   id: string
@@ -256,7 +257,7 @@ function handleCancelEdit() {
 // Image preview handlers
 function handleOpenImage(src: string, fileName?: string) {
   if (!src) return
-  window.electronAPI?.openImagePreview(src, fileName)
+  platformApi?.openImagePreview(src, fileName)
 }
 
 function closeImagePreview() {

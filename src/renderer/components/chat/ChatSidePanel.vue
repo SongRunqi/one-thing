@@ -49,7 +49,7 @@
               type="button"
               class="chat-side-icon-button"
               title="Refresh system prompt"
-              :disabled="systemPromptRefreshing || !props.sessionId"
+              :disabled="systemPromptRefreshing || !props.sessionId || isDraftSession"
               @click.stop="refreshSystemPromptPanel"
             >
               <RefreshCw
@@ -74,7 +74,7 @@
           </div>
 
           <SystemPromptPanel
-            v-if="!systemPromptCollapsed"
+            v-if="!systemPromptCollapsed && !isDraftSession"
             ref="systemPromptPanelRef"
             :session-id="props.sessionId"
             :working-directory="props.workingDirectory"
@@ -82,10 +82,16 @@
             :last-provider="props.lastProvider"
             :last-model="props.lastModel"
           />
+          <div
+            v-else-if="!systemPromptCollapsed"
+            class="chat-side-draft-state"
+          >
+            System prompt will appear after the chat starts.
+          </div>
         </SplitterPanel>
 
         <SplitterPanel
-          v-if="todoEnabled"
+          v-if="showTodoProgressPanel"
           v-model:size="sidePanelSizes.todo"
           as="section"
           class="chat-side-section chat-side-todo-section"
@@ -124,6 +130,7 @@
 import { ChevronDown, RefreshCw } from 'lucide-vue-next'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { useSessionsStore } from '@/stores/sessions'
 import Splitter from '@/components/common/Splitter.vue'
 import SplitterPanel from '@/components/common/SplitterPanel.vue'
 import SystemPromptPanel from './SystemPromptPanel.vue'
@@ -156,12 +163,15 @@ const SIDE_PANEL_MIN_SIZE = 12
 const EQUAL_THREE_PANEL_SIZE = 100 / 3
 
 const settingsStore = useSettingsStore()
+const sessionsStore = useSessionsStore()
 const outlineHostRef = ref<HTMLElement | null>(null)
 const todoCollapsed = ref(localStorage.getItem(TODO_COLLAPSED_STORAGE_KEY) === 'true')
 const systemPromptCollapsed = ref(localStorage.getItem(SYSTEM_PROMPT_COLLAPSED_STORAGE_KEY) === 'true')
 const systemPromptPanelRef = ref<InstanceType<typeof SystemPromptPanel> | null>(null)
 const systemPromptRefreshing = ref(false)
 const todoEnabled = computed(() => settingsStore.settings.general?.todoPlan?.enabled !== false)
+const isDraftSession = computed(() => props.sessionId ? sessionsStore.isNewChatDraftId(props.sessionId) : false)
+const showTodoProgressPanel = computed(() => todoEnabled.value && !isDraftSession.value)
 const sidePanelSizes = reactive({
   outline: EQUAL_THREE_PANEL_SIZE,
   system: EQUAL_THREE_PANEL_SIZE,
@@ -183,7 +193,7 @@ function toggleSystemPromptCollapsed() {
 }
 
 async function refreshSystemPromptPanel() {
-  if (systemPromptRefreshing.value || !props.sessionId) return
+  if (systemPromptRefreshing.value || !props.sessionId || isDraftSession.value) return
   systemPromptRefreshing.value = true
   try {
     if (systemPromptCollapsed.value) {
@@ -198,7 +208,7 @@ async function refreshSystemPromptPanel() {
 }
 
 function handleTodoToggleCard() {
-  if (!todoEnabled.value) return
+  if (!showTodoProgressPanel.value) return
   if (props.collapsed) {
     todoCollapsed.value = false
     localStorage.setItem(TODO_COLLAPSED_STORAGE_KEY, 'false')
@@ -222,8 +232,8 @@ watch(
 )
 
 watch(
-  todoEnabled,
-  enabled => equalizeSidePanelHeights(enabled ? 3 : 2),
+  showTodoProgressPanel,
+  visible => equalizeSidePanelHeights(visible ? 3 : 2),
   { immediate: true },
 )
 
@@ -354,6 +364,16 @@ onUnmounted(() => {
 .chat-side-icon-button:disabled {
   cursor: default;
   opacity: 0.5;
+}
+
+.chat-side-draft-state {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 9px 10px 10px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .chat-side-chevron {

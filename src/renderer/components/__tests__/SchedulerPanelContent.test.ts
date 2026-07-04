@@ -191,6 +191,7 @@ describe('SchedulerPanelContent', () => {
       expect(wrapper.text()).toContain('Morning news')
     })
 
+    expect(wrapper.find('.task-list-title').text()).toBe('All Tasks')
     expect(window.electronAPI.listSchedulerRuns).not.toHaveBeenCalled()
     expect(wrapper.text()).not.toContain('Run detail')
 
@@ -202,6 +203,23 @@ describe('SchedulerPanelContent', () => {
 
     await wrapper.find('.run-row').trigger('click')
     expect(wrapper.text()).toContain('Run detail')
+  })
+
+  it('loads tasks when a lazily mounted panel becomes active', async () => {
+    const wrapper = mount(SchedulerPanelContent, {
+      props: { active: false },
+    })
+
+    await vi.waitFor(() => {
+      expect(settingsStore.loadSettings).toHaveBeenCalled()
+    })
+    expect(window.electronAPI.listSchedulerTasks).not.toHaveBeenCalled()
+
+    await wrapper.setProps({ active: true })
+    await vi.waitFor(() => {
+      expect(window.electronAPI.listSchedulerTasks).toHaveBeenCalledTimes(1)
+      expect(wrapper.text()).toContain('Memory Dreaming Promotion')
+    })
   })
 
   it('keeps task creation in a drawer instead of the main page hierarchy', async () => {
@@ -277,6 +295,28 @@ describe('SchedulerPanelContent', () => {
     }))
   })
 
+  it('uses row switches for enablement without adding the task count to the list heading', async () => {
+    const wrapper = mount(SchedulerPanelContent)
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('Morning news')
+    })
+
+    expect(wrapper.find('.task-list-title').text()).toBe('All Tasks')
+
+    const morningRow = wrapper.findAll('.task-row').find(row => row.text().includes('Morning news'))!
+    expect(morningRow.exists()).toBe(true)
+    const morningSwitch = morningRow.find('[role="switch"]')
+    expect(morningSwitch.exists()).toBe(true)
+
+    await morningSwitch.trigger('click')
+    await vi.waitFor(() => {
+      expect(window.electronAPI.setSchedulerTaskEnabled).toHaveBeenCalledWith({
+        id: 'user:task-1',
+        enabled: false,
+      })
+    })
+  })
+
   it('manages Memory Dreaming task settings and uses scheduler actions', async () => {
     const wrapper = mount(SchedulerPanelContent)
     await vi.waitFor(() => {
@@ -290,10 +330,11 @@ describe('SchedulerPanelContent', () => {
     })
 
     const detailText = wrapper.find('.task-detail').text()
-    const orderedLabels = [
+    const expectedLabels = [
       'Memory Dreaming Promotion',
-      'All clear',
       'Run Now',
+      'Status',
+      'Healthy',
       'Runtime',
       'Run history',
       'Configuration',
@@ -301,9 +342,10 @@ describe('SchedulerPanelContent', () => {
       'Limits',
       'Scoring',
     ]
-    const orderedIndexes = orderedLabels.map(label => detailText.indexOf(label))
-    expect(orderedIndexes.every(index => index >= 0)).toBe(true)
-    expect([...orderedIndexes].sort((a, b) => a - b)).toEqual(orderedIndexes)
+    for (const label of expectedLabels) {
+      expect(detailText).toContain(label)
+    }
+    expect(detailText).not.toContain('All clear')
     expect(wrapper.find('.config-disclosure-head').exists()).toBe(false)
     expect(wrapper.findAll('.config-section-head').map(section => section.text())).toEqual([
       'Basic',

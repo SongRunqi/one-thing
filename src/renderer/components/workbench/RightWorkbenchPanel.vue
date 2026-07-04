@@ -113,7 +113,7 @@
             <span class="terminal-input-prompt">$</span>
             <input
               v-model="terminalInput"
-              :disabled="terminalBusy || !sessionId"
+              :disabled="terminalBusy || !sessionId || !canRunShellTools"
               type="text"
               autocomplete="off"
               spellcheck="false"
@@ -123,7 +123,7 @@
               unstyled
               class="terminal-run"
               native-type="submit"
-              :disabled="terminalBusy || !terminalInput.trim() || !sessionId"
+              :disabled="terminalBusy || !terminalInput.trim() || !sessionId || !canRunShellTools"
             >
               <Play
                 :size="13"
@@ -219,6 +219,7 @@ import EditorWorkbench from '@/components/editor/EditorWorkbench.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
+import { platformApi } from '@/platform'
 
 type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser'
 
@@ -269,6 +270,7 @@ const terminalOutputRef = ref<HTMLElement | null>(null)
 const terminalLines = ref<TerminalLine[]>([])
 const browserInput = ref('localhost:3000')
 const browserUrl = ref('')
+const canRunShellTools = computed(() => platformApi.capabilities.shellTools)
 let terminalLineId = 0
 let variableRequestId = 0
 
@@ -395,11 +397,11 @@ function applyVariableRoots(variables: ContextVariable[]) {
 
 async function refreshVariableRoots(): Promise<void> {
   const sessionId = props.sessionId
-  if (!sessionId || !window.electronAPI?.listVariables) return
+  if (!sessionId || !platformApi?.listVariables) return
 
   const requestId = ++variableRequestId
   try {
-    const response = await window.electronAPI.listVariables(sessionId)
+    const response = await platformApi.listVariables(sessionId)
     if (requestId !== variableRequestId || sessionId !== props.sessionId) return
     if (!response.success || !response.variables) return
     applyVariableRoots(response.variables)
@@ -490,13 +492,17 @@ function getToolOutput(result: unknown): string {
 async function runTerminalCommand() {
   const command = terminalInput.value.trim()
   if (!command || terminalBusy.value || !props.sessionId) return
+  if (!canRunShellTools.value) {
+    pushTerminalLine('error', 'Shell tools are not available in this host.')
+    return
+  }
 
   terminalInput.value = ''
   terminalBusy.value = true
   pushTerminalLine('command', command)
 
   try {
-    const response = await window.electronAPI.executeTool(
+    const response = await platformApi.executeTool(
       'bash',
       { command, timeout: 120000 },
       `workbench-terminal-${Date.now()}`,

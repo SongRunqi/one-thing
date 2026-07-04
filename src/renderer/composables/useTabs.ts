@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 /**
  * Tab state management composable
  *
@@ -214,9 +215,9 @@ export function useTabs(initialSessionId: string) {
   }
 
   function persistTabs() {
-    if (!window.electronAPI?.saveUIState) return
+    if (!platformApi?.saveUIState) return
     const { tabs: serializedTabs, activeTabIndex } = serialize()
-    window.electronAPI.saveUIState({ openTabs: serializedTabs, activeTabIndex }).catch(() => {})
+    platformApi.saveUIState({ openTabs: serializedTabs, activeTabIndex }).catch(() => {})
   }
 
   return {

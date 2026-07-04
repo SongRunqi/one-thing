@@ -178,6 +178,7 @@
 import Button from '@/components/common/Button.vue'
 import { computed } from 'vue'
 import type { AppSettings, BashToolSettings } from '@/types'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   settings: AppSettings
@@ -219,7 +220,7 @@ function updateWhitelist(value: string) {
 
 async function browseDirectory(mode: 'default' | 'add') {
   try {
-    const result = await window.electronAPI.showOpenDialog({
+    const result = await platformApi.showOpenDialog({
       properties: ['openDirectory'],
       title: mode === 'default' ? 'Select Default Working Directory' : 'Add Allowed Directory',
     })

@@ -1,5 +1,6 @@
 import type { MarkdownAttachmentInput } from '@shared/ipc/markdown'
 import type { EditorHandle } from './types'
+import { platformApi } from '@/platform'
 
 function clipboardFiles(event: ClipboardEvent): File[] {
   const files = new Map<string, File>()
@@ -67,7 +68,7 @@ export async function handleMarkdownAttachmentPaste(options: {
 
   options.event.preventDefault()
   const attachments = await Promise.all(files.map(toAttachmentInput))
-  const response = await window.electronAPI.saveMarkdownAttachments({
+  const response = await platformApi.saveMarkdownAttachments({
     documentPath: options.documentPath,
     workspaceRoot: options.workspaceRoot,
     files: attachments,

@@ -174,6 +174,7 @@ import { handleMarkdownAttachmentPaste } from '@/editor/markdown-attachments'
 import type { MarkdownDocumentEditorHandle, MarkdownFeatureSet } from '@/editor/markdown-document'
 import type { EditorTransaction } from '@/editor/types'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   initialFilePath?: string
@@ -350,7 +351,7 @@ async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution
   if (asset) return asset
   const documentPath = currentEditorFilePath()
   if (!documentPath) return null
-  const response = await window.electronAPI.resolveMarkdownAsset({
+  const response = await platformApi.resolveMarkdownAsset({
     documentPath,
     workspaceRoot: workspaceRoot.value,
     rawTarget: href,
@@ -361,15 +362,15 @@ async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution
 async function openMarkdownLink(payload: { href: string; asset?: MarkdownAssetResolution | null }) {
   const asset = await resolveMarkdownLink(payload.href, payload.asset)
   if (asset?.kind === 'external') {
-    await window.electronAPI.openExternal(asset.href || payload.href)
+    await platformApi.openExternal(asset.href || payload.href)
     return
   }
   if (asset?.absolutePath) {
-    await window.electronAPI.openPath(asset.absolutePath)
+    await platformApi.openPath(asset.absolutePath)
     return
   }
   if (/^[a-z][a-z\d+.-]*:/i.test(payload.href)) {
-    await window.electronAPI.openExternal(payload.href)
+    await platformApi.openExternal(payload.href)
   }
 }
 
@@ -380,7 +381,7 @@ async function openMarkdownImage(payload: {
   asset?: MarkdownAssetResolution | null
 }) {
   const src = payload.asset?.dataUrl || payload.src
-  await window.electronAPI.openImagePreview(src, payload.alt)
+  await platformApi.openImagePreview(src, payload.alt)
 }
 
 function onKeydown(event: KeyboardEvent) {
@@ -398,7 +399,7 @@ function onKeydown(event: KeyboardEvent) {
   }
   if (event.key === 'p' && (event.metaKey || event.ctrlKey)) {
     event.preventDefault()
-    window.electronAPI.toggleSearchWindow?.()
+    platformApi.toggleSearchWindow?.()
   }
 }
 

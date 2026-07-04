@@ -37,17 +37,18 @@
 
     <template v-else-if="isBashResult">
       <div class="bash-output">
+        <button
+          v-if="hiddenBashLineCount > 0"
+          type="button"
+          class="expand-line"
+          @click.stop="bashExpanded = true"
+        >… +{{ hiddenBashLineCount }} lines</button>
         <div
-          v-for="(line, index) in bashLines"
+          v-for="(line, index) in visibleBashLines"
           :key="`${index}-${line.text}`"
           class="bash-line"
           :class="line.kind"
         >
-          <Zap
-            v-if="line.kind === 'done'"
-            class="bash-done-icon"
-            :size="13"
-          />
           <span class="bash-line-text">{{ line.text }}</span>
         </div>
       </div>
@@ -55,20 +56,7 @@
 
     <template v-else-if="isReadTextResult">
       <div class="read-output">
-        <pre>{{ visibleReadText }}</pre>
-        <Button
-          v-if="hasMoreReadLines"
-          unstyled
-          class="more-button"
-          native-type="button"
-          @click="showMoreReadLines"
-        >
-          <ChevronDown
-            :size="13"
-            :stroke-width="2"
-          />
-          <span>more</span>
-        </Button>
+        <pre>{{ textContent }}</pre>
       </div>
     </template>
 
@@ -97,9 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import Button from '@/components/common/Button.vue'
-import { computed, ref, watch } from 'vue'
-import { ChevronDown, Zap } from 'lucide-vue-next'
+import { computed, ref } from 'vue'
 import type { ToolPartialResult, ToolRenderKind } from '@/types'
 import { chainWheelToScrollableAncestor, findScrollableWheelSource } from '@/utils/scroll-chain'
 import WebSearchResultRenderer from './WebSearchResultRenderer.vue'
@@ -115,10 +101,11 @@ interface VariableDetail {
 
 interface BashLine {
   text: string
-  kind: 'command' | 'done' | 'result' | 'blank'
+  kind: 'result' | 'blank'
 }
 
-const READ_LINES_PER_PAGE = 8
+/** Collapsed bash output shows the tail; earlier lines expand on demand. */
+const BASH_TAIL_LINES = 6
 
 const props = withDefaults(defineProps<{
   result?: ToolPartialResult | null
@@ -183,13 +170,14 @@ const isWebSearchResult = computed(() =>
     typeof (props.result.details as any).phase === 'string'
   ),
 )
-const visibleReadLineCount = ref(READ_LINES_PER_PAGE)
 const rendererRef = ref<HTMLElement | null>(null)
-const readLines = computed(() => textContent.value.split('\n'))
-const visibleReadText = computed(() =>
-  readLines.value.slice(0, visibleReadLineCount.value).join('\n'),
-)
-const hasMoreReadLines = computed(() => visibleReadLineCount.value < readLines.value.length)
+const bashExpanded = ref(false)
+
+/**
+ * Pure stdout/stderr: the command itself lives in the row title and the
+ * duration in the row meta, so echoed `> command` lines and trailing
+ * "Done in Xs" summaries are dropped instead of re-rendered.
+ */
 const bashLines = computed<BashLine[]>(() => {
   const source = textContent.value.replace(/\r\n/g, '\n')
   const rows: BashLine[] = []
@@ -205,33 +193,26 @@ const bashLines = computed<BashLine[]>(() => {
 
     lastWasBlank = false
     const trimmed = line.trimStart()
-    if (trimmed.startsWith('>')) {
-      rows.push({ text: line, kind: 'command' })
-    } else if (/^Done\s+in\s+/i.test(trimmed)) {
-      rows.push({ text: trimmed, kind: 'done' })
-    } else {
-      rows.push({ text: line, kind: 'result' })
-    }
+    if (trimmed.startsWith('>')) continue
+    if (/^Done\s+in\s+/i.test(trimmed)) continue
+    rows.push({ text: line, kind: 'result' })
   }
 
   if (rows[rows.length - 1]?.kind === 'blank') rows.pop()
   return rows
 })
 
-function showMoreReadLines() {
-  visibleReadLineCount.value += READ_LINES_PER_PAGE
-}
+const visibleBashLines = computed<BashLine[]>(() =>
+  bashExpanded.value ? bashLines.value : bashLines.value.slice(-BASH_TAIL_LINES),
+)
+
+const hiddenBashLineCount = computed(() =>
+  bashExpanded.value ? 0 : Math.max(0, bashLines.value.length - BASH_TAIL_LINES),
+)
 
 function handleWheel(event: WheelEvent) {
   chainWheelToScrollableAncestor(event, findScrollableWheelSource(event, rendererRef.value))
 }
-
-watch(
-  () => [props.toolName, textContent.value],
-  () => {
-    visibleReadLineCount.value = READ_LINES_PER_PAGE
-  },
-)
 </script>
 
 <style scoped>
@@ -311,10 +292,7 @@ watch(
   max-height: var(--tool-result-max-height);
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 7px 9px;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 34%, transparent);
+  padding: 2px 0;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
@@ -331,10 +309,7 @@ watch(
   max-height: var(--tool-result-max-height);
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 42%, transparent);
+  padding: 2px 0;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
@@ -355,72 +330,46 @@ watch(
   min-height: calc(var(--tool-font-size-body) * 0.65);
 }
 
-.bash-line.command {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  font-weight: 400;
-}
-
 .bash-line.result {
   color: var(--ui-tool-text-fg, var(--tool-ink));
-}
-
-.bash-line.done {
-  gap: 7px;
-  margin-top: 4px;
-  color: var(--ui-tool-success-text-fg, var(--tool-ok));
-  font-weight: 500;
-}
-
-.bash-done-icon {
-  flex: 0 0 auto;
-  color: var(--ui-tool-success-text-fg, var(--tool-ok));
 }
 
 .bash-line-text {
   min-width: 0;
 }
 
+.expand-line {
+  display: block;
+  width: 100%;
+  padding: 1px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  font-family: var(--tool-font-mono);
+  font-size: var(--tool-font-size-body);
+  line-height: var(--tool-code-line-height);
+  text-align: left;
+  cursor: pointer;
+}
+
+.expand-line:hover {
+  color: var(--ui-tool-text-fg, var(--tool-ink));
+}
+
 .read-output {
   max-height: var(--tool-result-max-height);
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 42%, transparent);
 }
 
 .read-output pre {
   max-height: none;
   overflow: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 8px 10px;
+  padding: 4px 0;
   white-space: pre;
   word-break: normal;
 }
 
-.more-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  width: 100%;
-  height: 24px;
-  border: 0;
-  border-top: 0.5px solid var(--ui-tool-border-border, var(--tool-border));
-  background: transparent;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-meta);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.more-button:hover {
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 10%, transparent);
-  color: var(--ui-tool-text-fg, var(--tool-ink));
-}
 
 .tool-result-file {
   display: flex;

@@ -173,6 +173,7 @@ import {
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   settings: AppSettings
@@ -282,7 +283,7 @@ function setWechatEnabled(enabled: boolean): void {
 }
 
 async function loadStatus(): Promise<void> {
-  const response = await window.electronAPI.gatewayGetStatus()
+  const response = await platformApi.gatewayGetStatus()
   if (response.success && response.status) {
     status.value = response.status
   }
@@ -292,15 +293,15 @@ async function startWechat(): Promise<void> {
   if (!wechatEnabled.value) {
     setWechatEnabled(true)
   }
-  await runGatewayAction(async () => window.electronAPI.gatewayStart({ channel: 'wechat' }))
+  await runGatewayAction(async () => platformApi.gatewayStart({ channel: 'wechat' }))
 }
 
 async function stopGateway(): Promise<void> {
-  await runGatewayAction(async () => window.electronAPI.gatewayStop())
+  await runGatewayAction(async () => platformApi.gatewayStop())
 }
 
 async function logoutWechat(): Promise<void> {
-  await runGatewayAction(async () => window.electronAPI.gatewayWechatLogout())
+  await runGatewayAction(async () => platformApi.gatewayWechatLogout())
 }
 
 async function runGatewayAction(
@@ -319,7 +320,7 @@ async function runGatewayAction(
 
 async function copyQrUrl(): Promise<void> {
   if (!qrUrl.value) return
-  const result = await window.electronAPI.writeClipboardText(qrUrl.value)
+  const result = await platformApi.writeClipboardText(qrUrl.value)
   if (!result.success) {
     transientMessage.value = result.error || 'Failed to copy login URL.'
     return
@@ -332,7 +333,7 @@ async function copyQrUrl(): Promise<void> {
 
 async function openQrUrl(): Promise<void> {
   if (!qrUrl.value) return
-  const result = await window.electronAPI.openExternal(qrUrl.value)
+  const result = await platformApi.openExternal(qrUrl.value)
   if (!result.success) {
     transientMessage.value = 'Failed to open login URL.'
   }

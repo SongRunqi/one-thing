@@ -308,6 +308,7 @@ import { stepFromToolCall } from '@/stores/helpers/tool-step-view'
 import { cleanReasoningContent } from '@/composables/useMarkdownRenderer'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
+import { platformApi } from '@/platform'
 
 interface Props {
   role: 'user' | 'assistant'
@@ -349,6 +350,7 @@ const isCollapsed = ref(true) // 默认折叠
 const isOverflowing = ref(false) // 内容是否超出最大高度
 let resizeObserver: ResizeObserver | null = null
 const INLINE_REASONING_SUMMARY_MAX = 88
+const shouldTrackOverflow = computed(() => props.role === 'user')
 
 // ============ New overlay-based transition system ============
 
@@ -545,6 +547,7 @@ function handleEditKeyDown(e: KeyboardEvent) {
 watch(
   () => props.isStreaming,
   (newVal, oldVal) => {
+    if (!shouldTrackOverflow.value) return
     if (!newVal && oldVal) {
       nextTick(() => {
         checkOverflow()
@@ -558,12 +561,17 @@ watch(
 watch(
   () => props.content,
   () => {
+    if (!shouldTrackOverflow.value) return
     nextTick(() => checkOverflow())
   }
 )
 
 // 检测内容是否溢出
 function checkOverflow() {
+  if (!shouldTrackOverflow.value) {
+    isOverflowing.value = false
+    return
+  }
   if (!contentRef.value) return
   const scrollHeight = contentRef.value.scrollHeight
   isOverflowing.value = scrollHeight > MAX_COLLAPSED_HEIGHT
@@ -576,6 +584,10 @@ function toggleCollapse() {
 
 // 设置 ResizeObserver
 function setupResizeObserver() {
+  if (!shouldTrackOverflow.value) {
+    isOverflowing.value = false
+    return
+  }
   if (!contentRef.value) return
 
   resizeObserver = new ResizeObserver(() => {
@@ -603,6 +615,17 @@ onMounted(() => {
 onUnmounted(() => {
   cleanupResizeObserver()
 })
+
+watch(
+  shouldTrackOverflow,
+  (track) => {
+    cleanupResizeObserver()
+    isOverflowing.value = false
+    if (track) {
+      nextTick(() => setupResizeObserver())
+    }
+  },
+)
 
 // Text selection
 function handleTextSelection() {
@@ -669,10 +692,10 @@ function handleContentClick(event: MouseEvent) {
     if (mediaIdMatch) {
       const mediaId = mediaIdMatch[1]
       console.log('[MessageBubble] Opening gallery for mediaId:', mediaId)
-      window.electronAPI?.openImageGallery(mediaId)
+      platformApi?.openImageGallery(mediaId)
     } else {
       // Non-media image (attachment, external URL, old format)
-      window.electronAPI?.openImagePreview(src, alt)
+      platformApi?.openImagePreview(src, alt)
     }
   }
   emit('contentClick', event)
@@ -708,10 +731,12 @@ function handleContentClick(event: MouseEvent) {
 
 /* User message bubble */
 .bubble.user {
-  --user-bubble-surface: color-mix(
-    in srgb,
-    var(--ui-message-user-bg, var(--user-bubble)) 72%,
-    var(--ui-surface-chat-bg, var(--bg-chat, transparent)) 28%
+  /* Must stay a solid color: --ui-message-user-bg may hold a gradient, which is
+     invalid inside color-mix()/gradient stops and would collapse the background
+     to transparent. The resolver guarantees the solid variant is visible. */
+  --user-bubble-surface: var(
+    --ui-message-user-solid-bg,
+    var(--bg-message-user-solid, var(--ui-surface-elevated-bg, var(--bg-elevated)))
   );
 
   max-width: min(74%, 680px);
@@ -925,7 +950,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   background: linear-gradient(
     to bottom,
     transparent,
-    var(--user-bubble-surface, var(--ui-message-user-bg, var(--user-bubble)))
+    var(--user-bubble-surface, var(--ui-message-user-solid-bg, var(--ui-surface-chat-bg, var(--bg-chat))))
   );
   pointer-events: none;
 }
@@ -1299,13 +1324,17 @@ html[data-theme='light'] .content :deep(img:hover) {
 
 .content :deep(th),
 .content :deep(td) {
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--ui-table-border, var(--ui-border-default-border, var(--border)));
   padding: 8px 12px;
   text-align: left;
 }
 
+.content :deep(td) {
+  background: var(--ui-table-row-bg, transparent);
+}
+
 .content :deep(th) {
-  background: var(--ui-state-hover-bg, rgba(255, 255, 255, 0.05));
+  background: var(--ui-table-header-bg, var(--ui-state-hover-bg, rgba(255, 255, 255, 0.05)));
   font-weight: 600;
 }
 

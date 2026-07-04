@@ -11,21 +11,15 @@
     <template #title="{ item, expanded, toggle }">
       <template v-if="isFartTimelineItem(item)">
         <div class="operation-row tree-node-row">
-          <span
-            v-if="getStatusIcon(getTimelineItemGroup(item).status)"
-            class="operation-status-icon"
-            :class="[`status-${getTimelineItemGroup(item).status}`]"
-          >
-            <component
-              :is="getStatusIcon(getTimelineItemGroup(item).status)"
-              :size="13"
-            />
-          </span>
+          <ToolIcon
+            tool-name="fart"
+            :status="getTimelineItemGroup(item).status"
+          />
           <div class="operation-copy tree-node-content">
             <div class="operation-primary">
               <span class="node-target operation-target">
-                <span class="node-action">Played</span>
-                <span class="node-target-name node-target-chip">fart</span>
+                <span class="node-action">Fart</span>
+                <span class="node-target-name">fart</span>
               </span>
             </div>
           </div>
@@ -35,6 +29,14 @@
       <template v-else-if="isGroupTimelineItem(item)">
         <div class="group-header-anchor">
           <div class="group-header">
+            <span class="group-icons">
+              <ToolIcon
+                v-for="activity in getGroupIconActivities(getTimelineItemGroup(item))"
+                :key="activity.id"
+                :tool-name="activity.toolName"
+                :status="activity.status"
+              />
+            </span>
             <div class="group-copy">
               <span class="group-summary-text">{{ getGroupSummaryText(getTimelineItemGroup(item)) }}</span>
               <span
@@ -72,42 +74,38 @@
             },
           ]"
         >
-          <span
-            v-if="getStatusIcon(getTimelineItemActivity(item).status)"
-            class="operation-status-icon"
-            :class="[`status-${getTimelineItemActivity(item).status}`]"
-            :title="getTimelineItemActivity(item).statusLabel"
-          >
-            <Transition
-              name="status-icon"
-              mode="out-in"
-            >
-              <component
-                :is="getStatusIcon(getTimelineItemActivity(item).status)"
-                :key="getTimelineItemActivity(item).status"
-                :size="13"
-              />
-            </Transition>
-          </span>
+          <ToolIcon
+            :tool-name="getTimelineItemActivity(item).toolName"
+            :status="getTimelineItemActivity(item).status"
+            :label="getTimelineItemActivity(item).statusLabel"
+          />
 
           <div class="operation-copy tree-node-content">
             <div class="operation-primary">
               <span
                 class="node-target operation-target"
                 :title="getTimelineItemActivity(item).filePath || getTimelineItemActivity(item).target"
-                :aria-label="getSingleActivityText(getTimelineItemGroup(item), getTimelineItemActivity(item))"
+                :aria-label="getSingleActivityText(getTimelineItemActivity(item))"
               >
-                <span class="node-action">{{ getSingleActivityVerb(getTimelineItemGroup(item), getTimelineItemActivity(item)) }}</span>
                 <span
-                  class="node-target-name node-target-chip"
+                  class="node-action"
+                  :class="{ 'is-flowing': isFlowingStatus(getTimelineItemActivity(item).status) }"
+                >{{ getTimelineItemActivity(item).toolLabel }}</span><span
+                  v-if="getTimelineItemActivity(item).target"
+                  class="node-target-name"
                   :class="{
                     'command-chip': getTimelineItemActivity(item).toolName === 'bash',
                     'file-link': getTimelineItemActivity(item).canOpenFile,
                     'file-opened': isFileOpenFlash(getTimelineItemActivity(item)),
                   }"
                   @click.stop="handleTargetClick(getTimelineItemActivity(item), toggle)"
-                >{{ getActivityTargetText(getTimelineItemActivity(item)) }}</span>
+                >{{ getTimelineItemActivity(item).target }}</span>
               </span>
+              <span
+                v-if="getStatusBadgeText(getTimelineItemActivity(item))"
+                class="node-status-badge"
+                :class="`badge-${getTimelineItemActivity(item).status}`"
+              >{{ getStatusBadgeText(getTimelineItemActivity(item)) }}</span>
               <span
                 v-if="getTimelineItemActivity(item).errorSummary"
                 class="node-error-summary"
@@ -140,10 +138,6 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
-import {
-  AlertTriangle,
-  LoaderCircle,
-} from 'lucide-vue-next'
 import type { Step } from '@/types'
 import NestedCollapseGroup from '@/components/common/NestedCollapseGroup.vue'
 import type {
@@ -152,16 +146,13 @@ import type {
 } from '@/components/common/collapse'
 import {
   buildToolActivityViews,
+  formatToolDuration,
   type ToolActivityView,
 } from '@/stores/helpers/tool-activity-view'
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
-import {
-  getCategoryVerbs,
-  getToolUiCategory,
-  type ToolUiCategory,
-} from '@/stores/helpers/tool-ui-registry'
 import FartCallItem from './FartCallItem.vue'
 import ToolActivityDetails from './ToolActivityDetails.vue'
+import ToolIcon from './ToolIcon.vue'
 
 const props = withDefaults(defineProps<{
   steps: Step[]
@@ -184,7 +175,9 @@ const activities = computed(() => buildToolActivityViews(props.steps, durationNo
 
 interface StepGroup {
   id: string
-  category: ToolUiCategory
+  /** Model generation round that issued this parallel batch (Step.turnIndex). */
+  turnIndex: number | undefined
+  isFart: boolean
   activities: ToolActivityView[]
   status: ToolRenderStatus
 }
@@ -197,6 +190,11 @@ type ToolTimelineItemData =
 
 type ToolTimelineItem = NestedCollapseItem<ToolTimelineItemData>
 
+/**
+ * Grouping: only tool calls issued together in ONE model turn (a parallel
+ * tool_calls array) form a group. Sequential calls — even of the same tool —
+ * always render as independent rows. Steps without a turnIndex never group.
+ */
 const stepGroups = computed<StepGroup[]>(() => {
   const groups: StepGroup[] = []
   let currentGroup: StepGroup | null = null
@@ -209,22 +207,30 @@ const stepGroups = computed<StepGroup[]>(() => {
       }
       groups.push({
         id: activity.id,
-        category: 'fart',
+        turnIndex: undefined,
+        isFart: true,
         activities: [activity],
         status: activity.status,
       })
       continue
     }
 
-    const category = getToolUiCategory(activity.toolName || '')
-    if (currentGroup && currentGroup.category === category) {
+    const turnIndex = activity.step.turnIndex
+    if (
+      currentGroup &&
+      !currentGroup.isFart &&
+      currentGroup.turnIndex !== undefined &&
+      turnIndex !== undefined &&
+      turnIndex === currentGroup.turnIndex
+    ) {
       currentGroup.activities.push(activity)
       currentGroup.status = mergeStatuses(currentGroup.status, activity.status)
     } else {
       if (currentGroup) groups.push(currentGroup)
       currentGroup = {
         id: activity.id,
-        category,
+        turnIndex,
+        isFart: false,
         activities: [activity],
         status: activity.status,
       }
@@ -250,9 +256,10 @@ let durationTimer: ReturnType<typeof setInterval> | null = null
 
 watch(hasRunning, (running) => {
   if (running && !durationTimer) {
+    // 80ms keeps the live ms counter visually continuous without rAF cost.
     durationTimer = setInterval(() => {
       durationNow.value = Date.now()
-    }, 1000)
+    }, 80)
   } else if (!running && durationTimer) {
     clearInterval(durationTimer)
     durationTimer = null
@@ -275,7 +282,7 @@ function isGrouped(group: StepGroup): boolean {
 }
 
 function createGroupTimelineItem(group: StepGroup): ToolTimelineItem {
-  if (group.category === 'fart') {
+  if (group.isFart) {
     const activity = group.activities[0]
     return {
       key: `fart-${group.id}`,
@@ -295,7 +302,6 @@ function createGroupTimelineItem(group: StepGroup): ToolTimelineItem {
       class: [
         'activity-group',
         'tool-group-panel',
-        group.category,
         group.status,
         { 'workflow-group': true },
       ],
@@ -313,7 +319,7 @@ function createGroupTimelineItem(group: StepGroup): ToolTimelineItem {
     key: `single-${group.id}`,
     panel: false,
     data: { kind: 'single-container', group },
-    class: ['activity-group', 'single-operation', group.category, group.status],
+    class: ['activity-group', 'single-operation', group.status],
     attrs: { 'data-tool-activity-row': true },
     childrenClass: ['operation-list', 'group-timeline-tree', 'single'],
     children: group.activities.map(activity => createActivityTimelineItem(group, activity, true)),
@@ -342,7 +348,7 @@ function createActivityTimelineItem(
     collapsible: activity.hasDetails,
     status: getCollapsePanelStatus(activity.status),
     streaming: isStreamingToolStatus(activity.status),
-    contentVariant: 'panel',
+    contentVariant: 'plain',
     contentClass: 'activity-inline-details',
     contentAttrs: { 'data-tool-activity-details': activity.id },
     expandIconDisplay: 'hover',
@@ -397,16 +403,15 @@ function flashFileOpen(activityId: string) {
   fileOpenFlashTimers.set(activityId, timer)
 }
 
-function getStatusIcon(status: ToolRenderStatus) {
-  switch (status) {
-    case 'streaming-input':
-    case 'executing':
-      return LoaderCircle
-    case 'awaiting-confirmation':
-      return AlertTriangle
-    default:
-      return null
-  }
+function isFlowingStatus(status: ToolRenderStatus): boolean {
+  return status === 'executing' || status === 'streaming-input'
+}
+
+function getStatusBadgeText(activity: ToolActivityView): string {
+  if (activity.status === 'awaiting-confirmation') return 'Needs approval'
+  if (activity.status === 'cancelled') return 'Cancelled'
+  if (activity.status === 'rejected') return 'Rejected'
+  return ''
 }
 
 function getCollapsePanelStatus(status: ToolRenderStatus): CollapsePanelStatus {
@@ -435,13 +440,22 @@ function isStreamingToolStatus(status: ToolRenderStatus): boolean {
   return status === 'streaming-input'
 }
 
+function getGroupIconActivities(group: StepGroup): ToolActivityView[] {
+  const seen = new Set<string>()
+  const picked: ToolActivityView[] = []
+  for (const activity of group.activities) {
+    if (seen.has(activity.toolName)) continue
+    seen.add(activity.toolName)
+    picked.push(activity)
+    if (picked.length === 3) break
+  }
+  return picked
+}
+
 function getGroupSummaryText(group: StepGroup): string {
   const count = group.activities.length
-  if (count === 1) return getSingleActivityText(group, group.activities[0])
-  if (group.category === 'edit' && group.status === 'completed') {
-    return `Edited ${count} ${getGroupActionNoun(group.category, count)}`
-  }
-  return `${getGroupActionVerb(group.category)} ${count} ${getGroupActionNoun(group.category, count)}`
+  if (count === 1) return getSingleActivityText(group.activities[0])
+  return `${count} tools`
 }
 
 function getGroupStatusText(group: StepGroup): string {
@@ -466,57 +480,15 @@ function getActivityMetaText(activity: ToolActivityView): string {
   return parts.join(' · ')
 }
 
-function getSingleActivityText(group: StepGroup, activity: ToolActivityView): string {
-  return `${getSingleActivityVerb(group, activity)} ${getActivityTargetText(activity)}`
-}
-
-function getSingleActivityVerb(group: StepGroup, activity: ToolActivityView): string {
-  if (activity.status === 'failed') return `${getBaseGroupVerb(group.category)} failed:`
-  if (activity.status === 'rejected') return `Rejected ${getBaseGroupVerb(group.category).toLowerCase()}:`
-  if (activity.status === 'awaiting-confirmation') return getBaseGroupVerb(group.category)
-  return activity.verb
-}
-
-function getActivityTargetText(activity: ToolActivityView): string {
-  return activity.target || activity.toolName || 'tool'
-}
-
-function getBaseGroupVerb(category: ToolUiCategory): string {
-  return getCategoryVerbs(category).base
-}
-
-function getGroupActionVerb(category: ToolUiCategory): string {
-  switch (category) {
-    case 'search': return 'Search'
-    case 'console': return 'Run'
-    case 'edit': return 'Edit'
-    case 'write': return 'Write'
-    case 'read': return 'Read'
-    default: return 'Call'
-  }
-}
-
-function getGroupActionNoun(category: ToolUiCategory, count: number): string {
-  const plural = count !== 1
-  switch (category) {
-    case 'search': return plural ? 'searches' : 'search'
-    case 'console': return plural ? 'commands' : 'command'
-    case 'edit':
-    case 'write':
-    case 'read':
-      return plural ? 'files' : 'file'
-    default:
-      return plural ? 'tools' : 'tool'
-  }
+function getSingleActivityText(activity: ToolActivityView): string {
+  return activity.target ? `${activity.toolLabel}(${activity.target})` : activity.toolLabel
 }
 
 function getGroupAdditions(group: StepGroup): number {
-  if (group.category === 'edit') return 0
   return group.activities.reduce((sum, activity) => sum + activity.additions, 0)
 }
 
 function getGroupDeletions(group: StepGroup): number {
-  if (group.category === 'edit') return 0
   return group.activities.reduce((sum, activity) => sum + activity.deletions, 0)
 }
 
@@ -527,8 +499,8 @@ function getGroupDuration(group: StepGroup): string {
     .filter((duration): duration is number => duration !== null)
   if (durations.length === 0) return ''
 
-  const total = durations.reduce((sum, duration) => sum + duration, 0)
-  return formatDuration(total)
+  // Parallel batch: the batch takes as long as its slowest member.
+  return formatToolDuration(Math.max(...durations), false)
 }
 
 function getActivityDurationMs(activity: ToolActivityView): number | null {
@@ -538,11 +510,6 @@ function getActivityDurationMs(activity: ToolActivityView): number | null {
   const end = endTime ?? durationNow.value
   if (!end) return null
   return Math.max(0, end - startTime)
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
 }
 
 function getTimelineItemData(item: NestedCollapseItem): ToolTimelineItemData | null {
@@ -577,16 +544,20 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   /* Size expanded panes against this container, not the viewport, so details
      never overflow a narrow message column (e.g. with the inspector open). */
   container-type: inline-size;
+  /* Defined here (StepsPanel's own root) so they inherit into slot content;
+     panel/list containers are rendered by NestedCollapseGroup/CollapsePanel
+     and never carry this component's scope attribute. */
+  --activity-title-fg: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  --activity-row-fg: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  --activity-hover-fg: var(--ui-tool-text-fg, var(--tool-ink));
+  --activity-link-fg: color-mix(in srgb, var(--ui-tool-accent-fg, var(--accent)) 60%, var(--ui-tool-text-muted-fg, var(--tool-soft)));
   width: 100%;
   margin: 4px 0 6px;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-sans);
 }
 
-.activity-group {
-  --activity-title-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 82%, transparent);
-  --activity-row-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 84%, var(--ui-text-primary-fg, var(--text)) 16%);
-  --activity-link-fg: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 74%, var(--ui-text-muted-fg, var(--muted)) 26%);
+.tool-activity-timeline :deep(.activity-group) {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -605,6 +576,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 .group-header {
   display: flex;
   align-items: center;
+  gap: 6px;
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
@@ -618,6 +590,13 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   transition: color 0.15s ease;
 }
 
+.group-icons {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
 .group-header:focus:not(:focus-visible),
 .operation-row:focus:not(:focus-visible) {
   outline: none;
@@ -627,43 +606,6 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 .operation-row:focus-visible {
   outline: 1.5px solid var(--ui-accent-primary-fg, var(--accent));
   outline-offset: -1.5px;
-}
-
-.operation-status-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  color: var(--activity-title-fg);
-  transition: color 0.15s ease, opacity 0.15s ease, transform 0.12s ease;
-}
-
-.operation-status-icon.status-streaming-input,
-.operation-status-icon.status-executing {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  animation: tool-status-spin 0.9s linear infinite;
-}
-
-.operation-status-icon.status-awaiting-confirmation {
-  color: var(--ui-status-warning-fg, var(--text-warning));
-}
-
-@keyframes tool-status-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.status-icon-enter-active,
-.status-icon-leave-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-.status-icon-enter-from,
-.status-icon-leave-to {
-  opacity: 0;
-  transform: scale(0.85);
 }
 
 .group-copy {
@@ -690,6 +632,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   color: color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 86%, transparent);
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
   line-height: 1.25;
   white-space: nowrap;
 }
@@ -725,14 +668,14 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 }
 
 .group-header:hover .group-summary-text {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--activity-hover-fg);
 }
 
 .group-header:hover .group-meta {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
 }
 
-.operation-list {
+.tool-activity-timeline :deep(.operation-list) {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -745,22 +688,22 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   border-top: 0;
 }
 
-.workflow-group .operation-list {
+.tool-activity-timeline :deep(.workflow-group .operation-list) {
   padding-left: 20px;
 }
 
-.workflow-group .operation-list::before {
+.tool-activity-timeline :deep(.workflow-group .operation-list)::before {
   content: '';
   position: absolute;
   top: 3px;
   bottom: 6px;
-  left: 13px;
+  left: 6px;
   width: 1px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 40%, transparent);
+  background: color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 28%, transparent);
 }
 
-.operation-list.single {
+.tool-activity-timeline :deep(.operation-list.single) {
   width: 100%;
   min-width: 0;
   max-width: 100%;
@@ -773,14 +716,14 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   max-width: 100%;
 }
 
-.operation-block {
+.tool-activity-timeline :deep(.operation-block) {
   width: 100%;
   min-width: 0;
 }
 
 .operation-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   box-sizing: border-box;
   width: 100%;
@@ -811,7 +754,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   max-width: 100%;
   display: flex;
   flex-wrap: nowrap;
-  align-items: center;
+  align-items: baseline;
   gap: 6px;
 }
 
@@ -831,67 +774,55 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 }
 
 .operation-secondary {
-  flex: 0 1 auto;
+  /* Never crushed by a long title/error: the timing readout stays legible. */
+  flex: 0 0 auto;
   overflow: hidden;
   color: color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 88%, transparent);
 }
 
+/* Title: `ToolName(primary arg)` — one line like every other row, ellipsis
+   when long; the expanded details always carry the full arguments. */
 .node-target {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+  display: block;
   flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
   color: var(--activity-row-fg);
   white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.45;
 }
 
 .node-action {
-  flex: 0 0 auto;
-  overflow: hidden;
-  color: color-mix(in srgb, var(--ui-text-faint-fg, var(--muted)) 84%, var(--activity-row-fg) 16%);
-  font-size: 10.5px;
+  color: var(--activity-title-fg);
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
   font-weight: 560;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: inherit;
 }
 
 .node-target-name {
-  display: block;
-  flex: 0 1 auto;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.node-target-chip {
-  display: block;
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 100%;
-  min-height: 18px;
-  box-sizing: border-box;
-  overflow: hidden;
-  padding: 1px 5px;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 52%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-surface-muted-bg, var(--surface-soft)) 52%, transparent);
   color: var(--activity-row-fg);
   font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  font-weight: 520;
-  line-height: 1.25;
+  font-size: 11.5px;
+  font-weight: 450;
+  line-height: inherit;
 }
 
-.node-target-chip.command-chip {
-  max-width: 100%;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  font-size: 10.5px;
-  font-weight: 400;
+.node-target-name::before {
+  content: '(';
+  color: var(--activity-title-fg);
+}
+
+.node-target-name::after {
+  content: ')';
+  color: var(--activity-title-fg);
+}
+
+.node-target-name.command-chip {
+  font-weight: 420;
 }
 
 .node-target-name.file-link {
@@ -899,47 +830,77 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   cursor: pointer;
 }
 
-.operation-row.has-details:hover .node-action,
-.operation-row.has-details:hover .node-target-chip {
-  color: var(--ui-text-primary-fg, var(--text));
+/* Flowing shimmer on the tool name while the call is live. */
+.node-action.is-flowing {
+  background: linear-gradient(
+    90deg,
+    var(--activity-row-fg) 32%,
+    var(--activity-hover-fg) 50%,
+    var(--activity-row-fg) 68%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: tool-name-flow 1.8s linear infinite;
 }
 
-.operation-row.has-details:hover .node-target-chip.file-link {
+@keyframes tool-name-flow {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -90% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node-action.is-flowing {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: initial;
+    color: var(--ui-tool-accent-fg, var(--accent));
+  }
+}
+
+.operation-row.has-details:hover .node-action:not(.is-flowing),
+.operation-row.has-details:hover .node-target-name {
+  color: var(--activity-hover-fg);
+}
+
+.operation-row.has-details:hover .node-target-name.file-link {
   color: var(--ui-accent-primary-fg, var(--accent));
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 32%, transparent);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
-.operation-row.has-details:hover .node-target-chip.command-chip,
-.operation-row.is-expanded .node-target-chip.command-chip,
-.operation-list.single .node-target-chip.command-chip,
-.operation-list.single .operation-row.has-details:hover .node-target-chip.command-chip,
-.operation-list.single .operation-row:focus-within .node-target-chip.command-chip {
+.operation-row.is-expanded .node-action:not(.is-flowing),
+.operation-row.is-expanded .node-target-name {
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
 }
 
-.operation-row.is-expanded .node-action,
-.operation-row.is-expanded .node-target-chip {
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.operation-list.single .node-action,
-.operation-list.single .node-target-chip,
-.operation-list.single .node-target-chip.file-link {
-  color: var(--activity-title-fg);
-}
-
-.operation-list.single .operation-row.has-details:hover .node-action,
-.operation-list.single .operation-row.has-details:hover .node-target-chip,
-.operation-list.single .operation-row:focus-within .node-action,
-.operation-list.single .operation-row:focus-within .node-target-chip {
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.operation-list.single .operation-row.has-details:hover .node-target-chip.file-link,
-.operation-list.single .operation-row:focus-within .node-target-chip.file-link {
+.operation-list.single .operation-row.has-details:hover .node-target-name.file-link,
+.operation-list.single .operation-row:focus-within .node-target-name.file-link {
   color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.node-status-badge {
+  flex: 0 0 auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 540;
+  line-height: 1.3;
+  white-space: nowrap;
+  color: var(--ui-text-faint-fg, var(--muted));
+}
+
+.node-status-badge.badge-awaiting-confirmation {
+  color: var(--ui-status-warning-fg, var(--text-warning));
+}
+
+.node-status-badge.badge-rejected {
+  color: var(--ui-tool-danger-text-fg, var(--text-error));
 }
 
 .node-error-summary {
@@ -985,21 +946,30 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   color: var(--ui-text-faint-fg, var(--muted));
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.node-verb {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-weight: 500;
-}
-
 :deep(.tool-operation-panel > .collapse-panel-content-shell > .activity-inline-details) {
   box-sizing: border-box;
-  width: calc(100% - 34px);
-  max-width: calc(100% - 34px);
+  width: calc(100% - 25px);
+  max-width: calc(100% - 25px);
   min-width: 0;
-  margin: 2px 5px 7px 29px;
+  margin: 2px 5px 7px 20px;
+}
+
+/* Narrow message column: give content width priority over indentation. */
+@container (max-width: 480px) {
+  .tool-activity-timeline :deep(.workflow-group .operation-list) {
+    padding-left: 10px;
+  }
+
+  :deep(.tool-operation-panel > .collapse-panel-content-shell > .activity-inline-details) {
+    width: calc(100% - 12px);
+    max-width: calc(100% - 12px);
+    margin: 2px 2px 7px 10px;
+  }
 }
 </style>

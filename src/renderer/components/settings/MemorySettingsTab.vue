@@ -891,6 +891,7 @@ import {
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   settings: AppSettings
@@ -1010,7 +1011,7 @@ function updateLogging(patch: Partial<SoulMemoryLoggingSettings>): void {
 }
 
 async function chooseMemoryDirectory(): Promise<void> {
-  const result = await window.electronAPI.showOpenDialog({
+  const result = await platformApi.showOpenDialog({
     title: 'Choose Memory Directory',
     properties: ['openDirectory'],
     defaultPath: memory.value.customDirectory || undefined,

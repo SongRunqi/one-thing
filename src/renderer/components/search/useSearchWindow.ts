@@ -2,6 +2,7 @@ import { computed, nextTick, onScopeDispose, ref, watch, type Ref } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { getScrollTopForSearchResult } from './result-scroll'
 import type { SearchCategory, SearchResult } from '@shared/ipc/search'
+import { platformApi } from '@/platform'
 
 const SEARCH_RESULT_LIMIT = 24
 const SEARCH_DEBOUNCE_MS = 150
@@ -70,7 +71,7 @@ export function useSearchWindow(resultsRef: Ref<HTMLElement | null>) {
     searchError.value = ''
 
     try {
-      const response = await window.electronAPI.searchQuery({
+      const response = await platformApi.searchQuery({
         query: query.value,
         category: activeTab.value,
         limit: SEARCH_RESULT_LIMIT,

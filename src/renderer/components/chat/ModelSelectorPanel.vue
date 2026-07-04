@@ -578,7 +578,7 @@ onUnmounted(() => {
   position: fixed;
   width: 480px;
   height: 400px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  background: color-mix(in oklch, var(--ui-surface-panel-bg, var(--bg)) 70%, var(--ui-surface-elevated-bg, var(--bg-elevated)) 30%);
   border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: var(--radius-md, 12px);
   box-shadow: var(--shadow-elevated, 0 8px 32px rgba(0, 0, 0, 0.4));
@@ -656,7 +656,7 @@ onUnmounted(() => {
 }
 
 .provider-item.active {
-  background-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
+  background-color: var(--ui-state-selected-bg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent));
 }
 
 .provider-item.active .provider-name {
@@ -732,8 +732,8 @@ onUnmounted(() => {
 }
 
 .model-card.active {
-  background-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  background-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 7%, transparent);
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
 }
 
 .model-header {

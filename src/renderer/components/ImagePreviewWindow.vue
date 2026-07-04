@@ -307,6 +307,7 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { matchShortcut } from '@/composables/useShortcuts'
 import type { MediaAsset } from '@/types'
+import { platformApi } from '@/platform'
 
 const settingsStore = useSettingsStore()
 
@@ -573,7 +574,7 @@ async function applySingleImagePreview(data: SingleImagePreviewPayload) {
   }
 
   try {
-    const response = await window.electronAPI?.getImagePreview?.(data.previewId)
+    const response = await platformApi?.getImagePreview?.(data.previewId)
     if (!response?.success || !response.src) {
       throw new Error(response?.error || 'Image preview was not found')
     }
@@ -587,7 +588,7 @@ async function applySingleImagePreview(data: SingleImagePreviewPayload) {
 
 function setupSingleImageListener() {
   console.log('[ImagePreviewWindow] Setting up single image IPC listener')
-  const cleanup = window.electronAPI?.onImagePreviewUpdate?.((data) => {
+  const cleanup = platformApi?.onImagePreviewUpdate?.((data) => {
     void applySingleImagePreview(data)
   })
   return cleanup
@@ -600,7 +601,7 @@ function setupSingleImageListener() {
 async function loadGalleryFromMedia(mediaId: string) {
   console.log('[ImagePreviewWindow] Loading gallery for mediaId:', mediaId)
   try {
-    const gallery = await window.electronAPI.getMediaGallery(mediaId, { kind: 'image' })
+    const gallery = await platformApi.getMediaGallery(mediaId, { kind: 'image' })
     console.log('[ImagePreviewWindow] Loaded media gallery:', gallery.images.length)
 
     if (gallery.images.length === 0) {
@@ -610,8 +611,11 @@ async function loadGalleryFromMedia(mediaId: string) {
     }
 
     const galleryImages: GalleryImage[] = gallery.images.map((item: MediaAsset) => {
-      const filename = item.filePath?.split('/').pop() || item.fileName
-      const src = `media://${filename}`
+      const filePath = item.filePath || ''
+      const filename = filePath.split('/').pop() || item.fileName
+      const src = /^(https?:)?\/\//.test(filePath) || filePath.startsWith('/api/')
+        ? filePath
+        : `media://${filename}`
       return {
         id: item.id,
         src,

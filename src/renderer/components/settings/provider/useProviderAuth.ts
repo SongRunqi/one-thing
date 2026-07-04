@@ -1,4 +1,5 @@
 import { ref, type ComputedRef, type Ref } from 'vue'
+import { platformApi } from '@/platform'
 
 export interface OAuthStatus {
   isLoggedIn: boolean
@@ -59,7 +60,7 @@ export function useProviderAuth(
     if (!isOAuthProvider.value) return
 
     try {
-      const response = await window.electronAPI.oauthGetStatus(providerId.value)
+      const response = await platformApi.oauthGetStatus(providerId.value)
       if (response.success) {
         oauthStatus.value = {
           isLoggedIn: response.isLoggedIn,
@@ -91,7 +92,7 @@ export function useProviderAuth(
     codeEntryError.value = ''
 
     try {
-      const response = await window.electronAPI.oauthStart(providerId.value)
+      const response = await platformApi.oauthStart(providerId.value)
 
       if (!response.success) {
         oauthStatus.value = {
@@ -137,7 +138,7 @@ export function useProviderAuth(
     codeEntryError.value = ''
 
     try {
-      const response = await window.electronAPI.oauthCallback(
+      const response = await platformApi.oauthCallback(
         providerId.value,
         manualCode.value.trim(),
         codeEntryInfo.value.state,
@@ -163,7 +164,7 @@ export function useProviderAuth(
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        const response = await window.electronAPI.oauthDevicePoll(providerId.value, flowId)
+        const response = await platformApi.oauthDevicePoll(providerId.value, flowId)
 
         if (response.success && response.completed) {
           await checkOAuthStatus()
@@ -227,7 +228,7 @@ export function useProviderAuth(
 
   async function logoutOAuth() {
     try {
-      await window.electronAPI.oauthLogout(providerId.value)
+      await platformApi.oauthLogout(providerId.value)
       resetOAuthState()
     } catch (err) {
       console.error('OAuth logout failed:', err)
@@ -235,14 +236,14 @@ export function useProviderAuth(
   }
 
   function initializeOAuthListeners() {
-    oauthTokenRefreshedCleanup = window.electronAPI.onOAuthTokenRefreshed(async (data) => {
+    oauthTokenRefreshedCleanup = platformApi.onOAuthTokenRefreshed(async (data) => {
       if (data.providerId === providerId.value) {
         await checkOAuthStatus()
         await handleAuthTokenRefreshed()
       }
     })
 
-    oauthTokenExpiredCleanup = window.electronAPI.onOAuthTokenExpired((data) => {
+    oauthTokenExpiredCleanup = platformApi.onOAuthTokenExpired((data) => {
       if (data.providerId === providerId.value) {
         oauthStatus.value = {
           isLoggedIn: false,

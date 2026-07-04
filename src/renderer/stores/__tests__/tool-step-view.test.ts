@@ -99,7 +99,7 @@ describe('buildToolStepView', () => {
     expect(view.defaultExpanded).toBe(false)
   })
 
-  it('does not treat bare arguments as expandable details (raw args live in the Inspector)', () => {
+  it('keeps bash rows expandable so the full command is always reachable', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         toolId: 'bash',
@@ -110,8 +110,10 @@ describe('buildToolStepView', () => {
     }))
 
     expect(view.toolName).toBe('bash')
-    expect(view.hasDetails).toBe(false)
-    expect(view.defaultExpanded).toBe(false)
+    // The single-line title truncates long commands; the expanded details
+    // must always be available as the place to read the whole command.
+    expect(view.hasDetails).toBe(true)
+    expect(view.defaultExpanded).toBe(true)
   })
 
   it('hides read arguments because the row target already carries the file range', () => {

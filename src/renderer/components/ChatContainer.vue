@@ -396,14 +396,27 @@ function equalizeAllPanels() {
 // Create new session from empty state
 async function createNewSession() {
   sessionsStore.openNewChatDraft('New Chat')
+  await nextTick()
+  focusInput()
 }
 
 // Focus input of first panel
 function focusInput() {
-  const firstPanel = panels.value[0]
-  if (firstPanel && panelRefs.value[firstPanel.id]) {
-    panelRefs.value[firstPanel.id]?.focusInput()
+  let attempts = 0
+  const maxAttempts = 4
+  const focus = () => {
+    attempts += 1
+    const firstPanel = panels.value[0]
+    if (firstPanel && panelRefs.value[firstPanel.id]) {
+      panelRefs.value[firstPanel.id]?.focusInput()
+    }
+    if (attempts >= maxAttempts) return
+    nextTick(() => {
+      const scheduleFrame = globalThis.requestAnimationFrame || ((callback: FrameRequestCallback) => window.setTimeout(callback, 0))
+      scheduleFrame(focus)
+    })
   }
+  focus()
 }
 
 function insertPromptReference(promptId: string) {

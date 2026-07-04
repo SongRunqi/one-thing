@@ -221,6 +221,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import type { SkillDefinition, SkillSettings } from '@/types'
 import SkillItem from './SkillItem.vue'
+import { platformApi } from '@/platform'
 
 interface Props {
   settings: SkillSettings
@@ -252,7 +253,7 @@ const builtinSkills = computed(() => skills.value.filter(s => s.source === 'buil
 async function loadSkills() {
   isLoading.value = true
   try {
-    const response = await window.electronAPI.getSkills()
+    const response = await platformApi.getSkills()
     if (response.success && response.skills) {
       skills.value = response.skills
     }
@@ -267,7 +268,7 @@ async function loadSkills() {
 async function refreshSkills() {
   isLoading.value = true
   try {
-    const response = await window.electronAPI.refreshSkills()
+    const response = await platformApi.refreshSkills()
     if (response.success && response.skills) {
       skills.value = response.skills
     }
@@ -291,7 +292,7 @@ function toggleSkillExpanded(skillId: string) {
 // Toggle skill enabled state
 async function toggleSkillEnabled(skillId: string, enabled: boolean) {
   try {
-    await window.electronAPI.toggleSkillEnabled(skillId, enabled)
+    await platformApi.toggleSkillEnabled(skillId, enabled)
     const skill = skills.value.find(s => s.id === skillId)
     if (skill) {
       skill.enabled = enabled
@@ -304,7 +305,7 @@ async function toggleSkillEnabled(skillId: string, enabled: boolean) {
 // Open skills directory
 async function openSkillsDirectory() {
   try {
-    await window.electronAPI.openSkillDirectory()
+    await platformApi.openSkillDirectory()
   } catch (error) {
     console.error('Failed to open skills directory:', error)
   }
@@ -313,7 +314,7 @@ async function openSkillsDirectory() {
 // Open specific skill directory
 async function openSkillDirectory(skillId: string) {
   try {
-    await window.electronAPI.openSkillDirectory(skillId)
+    await platformApi.openSkillDirectory(skillId)
   } catch (error) {
     console.error('Failed to open skill directory:', error)
   }
@@ -329,7 +330,7 @@ async function deleteSkill() {
   if (!deletingSkill.value) return
 
   try {
-    const response = await window.electronAPI.deleteSkill(deletingSkill.value.id)
+    const response = await platformApi.deleteSkill(deletingSkill.value.id)
     if (response.success) {
       skills.value = skills.value.filter(s => s.id !== deletingSkill.value!.id)
     }

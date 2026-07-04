@@ -511,7 +511,7 @@ export interface ElectronAPI {
   updateSessionPermissionMode: (sessionId: string, permissionMode: PermissionMode) => Promise<{ success: boolean; error?: string }>
   updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
   updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
-  listPermissionGrants: (options: { sessionId?: string; workspaceRoot?: string }) => Promise<{ success: boolean; error?: string; sessionGrants?: any[]; workspaceGrants?: any[] }>
+  listPermissionGrants: (options: { sessionId?: string; workspaceRoot?: string; userId?: string; workspaceId?: string }) => Promise<{ success: boolean; error?: string; sessionGrants?: any[]; workspaceGrants?: any[] }>
   revokePermissionGrant: (id: string) => Promise<{ success: boolean; error?: string }>
   clearSessionPermissionGrants: (sessionId: string) => Promise<{ success: boolean; error?: string }>
   clearWorkspacePermissionGrants: (workspaceRoot: string) => Promise<{ success: boolean; error?: string }>

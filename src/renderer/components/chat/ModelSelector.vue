@@ -12,7 +12,7 @@
       filterable
       teleported
       placement="top"
-      popper-class="model-select-dropdown"
+      popper-class="inputbox-select-dropdown model-select-dropdown"
       default-first-option
       :model-value="modelSelectValue"
       :options="modelSelectOptions"

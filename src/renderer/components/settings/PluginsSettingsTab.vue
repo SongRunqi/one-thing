@@ -166,6 +166,7 @@
 import Button from '@/components/common/Button.vue'
 import { ref, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
+import { platformApi } from '@/platform'
 
 interface PluginInfo {
   id: string
@@ -196,7 +197,7 @@ async function loadPlugins() {
   loading.value = true
   error.value = ''
   try {
-    const result = await window.electronAPI.getPlugins()
+    const result = await platformApi.getPlugins()
     if (result?.success) {
       plugins.value = result.plugins || []
     } else {
@@ -213,7 +214,7 @@ async function togglePlugin(plugin: PluginInfo) {
   const wasEnabled = plugin.enabled
   try {
     if (wasEnabled) {
-      const result = await window.electronAPI.disablePlugin(plugin.id)
+      const result = await platformApi.disablePlugin(plugin.id)
       if (result?.success) {
         plugin.enabled = false
         plugin.loaded = false
@@ -224,7 +225,7 @@ async function togglePlugin(plugin: PluginInfo) {
         console.error('Failed to disable plugin:', result?.error)
       }
     } else {
-      const result = await window.electronAPI.enablePlugin(plugin.id)
+      const result = await platformApi.enablePlugin(plugin.id)
       if (result?.success) {
         plugin.enabled = true
         // Reload list to get updated state
@@ -241,7 +242,7 @@ async function togglePlugin(plugin: PluginInfo) {
 
 async function refreshPlugins() {
   try {
-    const result = await window.electronAPI.refreshPlugins()
+    const result = await platformApi.refreshPlugins()
     if (!result?.success) {
       console.error('Failed to refresh plugins:', result?.error)
     }

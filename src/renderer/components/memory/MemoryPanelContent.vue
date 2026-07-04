@@ -263,16 +263,16 @@
                   aria-label="Filter notes"
                 >
                   <option value="all">
-                    All notes ({{ noteCount('all') }})
+                    All notes
                   </option>
                   <option value="ai">
-                    AI notes ({{ noteCount('ai') }})
+                    AI notes
                   </option>
                   <option value="daily">
-                    Daily captures ({{ noteCount('daily') }})
+                    Daily captures
                   </option>
                   <option value="dreams">
-                    Reflection reports ({{ noteCount('dreams') }})
+                    Reflection reports
                   </option>
                 </select>
               </div>
@@ -464,6 +464,7 @@ import type {
   MemoryOverview,
   MemoryReadResponse,
 } from '@shared/ipc'
+import { platformApi } from '@/platform'
 
 type NoteFilter = 'all' | 'ai' | 'daily' | 'dreams'
 type BadgeTone = 'neutral' | 'accent' | 'info' | 'success' | 'warning' | 'danger' | 'muted' | 'category-1' | 'category-2' | 'category-3' | 'category-4'
@@ -656,7 +657,7 @@ async function loadOverview(): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.getMemoryOverview(activeAgentId.value)
+    const response = await platformApi.getMemoryOverview(activeAgentId.value)
     if (!response.success || !response.overview) {
       throw new Error(response.error || 'Failed to load memory')
     }
@@ -705,7 +706,7 @@ async function ensureFileSelectionForTab(): Promise<void> {
 
 async function readSelectedFile(startLine?: number, full = false): Promise<void> {
   if (!selectedPath.value) return
-  const response = await window.electronAPI.readMemoryFile({
+  const response = await platformApi.readMemoryFile({
     path: selectedPath.value,
     agentId: activeAgentId.value,
     ...(startLine ? { startLine } : {}),
@@ -724,7 +725,7 @@ async function saveSelectedFile(): Promise<void> {
   savingFile.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.saveMemoryFile({
+    const response = await platformApi.saveMemoryFile({
       path: selectedPath.value,
       content: selectedFileText.value,
       agentId: activeAgentId.value,
@@ -745,7 +746,7 @@ async function loadGraph(): Promise<void> {
   try {
     const agentId = activeAgentId.value
     const query = graphSearch.value.trim() || undefined
-    const observations = await window.electronAPI.listMemoryGraphObservations({ agentId, query, limit: 250 })
+    const observations = await platformApi.listMemoryGraphObservations({ agentId, query, limit: 250 })
     if (!observations.success || !observations.observations) throw new Error(observations.error || 'Failed to load graph observations')
     graphObservations.value = observations.observations
   } catch (err) {
@@ -778,7 +779,7 @@ async function saveMemoryRow(memory: MemoryGraphObservation): Promise<void> {
   memoryActionId.value = memory.id
   error.value = ''
   try {
-    const response = await window.electronAPI.upsertMemoryGraphObservation({
+    const response = await platformApi.upsertMemoryGraphObservation({
       agentId: activeAgentId.value,
       id: memory.id,
       entityId: memory.entityId,
@@ -813,7 +814,7 @@ async function deleteMemoryRow(memory: MemoryGraphObservation): Promise<void> {
   memoryActionId.value = memory.id
   error.value = ''
   try {
-    const response = await window.electronAPI.deleteMemoryGraphObservation({
+    const response = await platformApi.deleteMemoryGraphObservation({
       agentId: activeAgentId.value,
       id: memory.id,
     })
@@ -846,14 +847,14 @@ function syncDreamingPolling(): void {
 
 async function revealMemoryRoot(): Promise<void> {
   if (overview.value?.root) {
-    await window.electronAPI.revealPath(overview.value.root)
+    await platformApi.revealPath(overview.value.root)
   }
 }
 
 async function openSelectedPath(): Promise<void> {
   if (!selectedPath.value || !overview.value) return
   const file = overview.value.files.find(item => item.relativePath === selectedPath.value)
-  if (file) await window.electronAPI.openPath(file.absolutePath)
+  if (file) await platformApi.openPath(file.absolutePath)
 }
 
 function kindIcon(kind: MemoryManagedFile['kind']): Component {
@@ -972,6 +973,8 @@ function formatShortDate(ms?: number): string {
 
 .memory-page-shell :deep(.page-shell-header) {
   padding: 8px 18px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
+  background: transparent;
 }
 
 .memory-page-shell :deep(.page-shell-header-main) {
@@ -983,6 +986,10 @@ function formatShortDate(ms?: number): string {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.memory-page-shell :deep(.layout-grid.type-grid) {
+  border-top: 0;
 }
 
 .icon-btn {
@@ -1035,19 +1042,15 @@ function formatShortDate(ms?: number): string {
   min-height: 0;
   padding: 14px 16px 16px;
   overflow: hidden;
-  background: var(--ui-surface-panel-bg, var(--ui-surface-app-bg, var(--bg)));
+  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
   grid-template-rows: auto minmax(0, 1fr);
 }
 
 .memory-surface {
   min-width: 0;
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 58%, transparent);
-  border-radius: 8px;
-  background: color-mix(
-    in srgb,
-    var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))) 78%,
-    var(--ui-surface-app-bg, var(--bg)) 22%
-  );
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .memory-section {
@@ -1061,7 +1064,7 @@ function formatShortDate(ms?: number): string {
   justify-content: space-between;
   gap: 12px;
   padding: 11px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 44%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
 }
 
 .memory-section-header > div:not(.memory-header-actions):not(.notes-header-actions) {
@@ -1100,11 +1103,7 @@ function formatShortDate(ms?: number): string {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  --collapse-panel-bg: color-mix(
-    in srgb,
-    var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))) 78%,
-    var(--ui-surface-app-bg, var(--bg)) 22%
-  );
+  --collapse-panel-bg: transparent;
   --collapse-panel-hover-bg: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 68%, transparent);
 }
 
@@ -1192,9 +1191,9 @@ function formatShortDate(ms?: number): string {
 }
 
 .memory-profile-table {
-  --app-table-bg: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel)) 82%, transparent);
-  --app-table-head-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 82%, transparent);
-  --app-table-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 58%, transparent);
+  --app-table-bg: transparent;
+  --app-table-head-bg: transparent;
+  --app-table-border: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
 
   height: var(--memory-table-height);
   min-height: 0;
@@ -1204,7 +1203,7 @@ function formatShortDate(ms?: number): string {
   height: var(--memory-table-height) !important;
   min-height: 0;
   border: 0;
-  border-top: 1px solid var(--app-table-border);
+  border-top: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
   border-radius: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
@@ -1269,7 +1268,7 @@ function formatShortDate(ms?: number): string {
   --app-button-gap: 0;
   --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
   --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --app-button-hover-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 56%, transparent);
+  --app-button-hover-border: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 6%, transparent);
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
@@ -1291,7 +1290,7 @@ function formatShortDate(ms?: number): string {
 
   background: var(--ui-state-hover-bg, var(--hover));
   color: var(--ui-text-primary-fg, var(--text));
-  border-color: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 56%, transparent);
+  border-color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 6%, transparent);
 }
 
 .row-icon-btn.danger:hover:not(:disabled) {
@@ -1323,7 +1322,7 @@ function formatShortDate(ms?: number): string {
   width: 100%;
   resize: vertical;
   padding: 8px 10px;
-  border: 1px solid var(--ui-surface-input-border, var(--ui-border-default-border, var(--border)));
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 6%, transparent);
   border-radius: 7px;
   background: var(--ui-surface-input-bg, var(--bg-input));
   color: var(--ui-text-primary-fg, var(--text));
@@ -1365,7 +1364,7 @@ function formatShortDate(ms?: number): string {
 .memory-detail-value,
 .memory-detail-item {
   min-width: 0;
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 48%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 6%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel)) 68%, transparent);
 }
@@ -1474,7 +1473,7 @@ function formatShortDate(ms?: number): string {
 
 .notes-header {
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 44%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
   border-radius: 0;
   background: transparent;
   min-height: 52px;
@@ -1500,7 +1499,7 @@ function formatShortDate(ms?: number): string {
   display: flex;
   align-items: center;
   padding: 0 9px;
-  border: 1px solid var(--ui-surface-input-border, color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 68%, transparent));
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
   border-radius: 7px;
   background: var(--ui-surface-input-bg, var(--bg-input));
 }
@@ -1521,8 +1520,8 @@ function formatShortDate(ms?: number): string {
   gap: 8px;
   min-height: 50px;
   padding: 10px 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 44%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--bg-panel)) 62%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
+  background: transparent;
 }
 
 .viewer-header > span {
@@ -1637,16 +1636,16 @@ function formatShortDate(ms?: number): string {
 }
 
 .notes-list-surface {
-  flex: 1 1 clamp(220px, 42%, 520px);
+  flex: 0 0 clamp(240px, 34%, 380px);
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   min-width: min(220px, 100%);
-  max-width: min(560px, 58%);
+  max-width: min(420px, 42%);
   overflow: hidden;
   background: transparent;
-  border-right: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 50%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
 }
 
 .viewer {
@@ -1665,7 +1664,7 @@ function formatShortDate(ms?: number): string {
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 44%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
   flex-shrink: 0;
 }
 
@@ -1746,7 +1745,7 @@ function formatShortDate(ms?: number): string {
   --app-button-font-size: 12.5px;
   --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
   --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --app-button-hover-border: var(--ui-border-subtle-border, var(--border-subtle));
+  --app-button-hover-border: transparent;
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
@@ -1762,7 +1761,7 @@ function formatShortDate(ms?: number): string {
   display: flex;
   align-items: stretch;
   gap: 0;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
   overflow: hidden;
   white-space: normal;
 }
@@ -1811,13 +1810,17 @@ function formatShortDate(ms?: number): string {
   --app-button-tone: var(--ui-text-primary-fg, var(--text));
 
   background: var(--ui-state-hover-bg, var(--hover));
-  border-color: var(--ui-border-subtle-border, var(--border-subtle));
+  border-color: transparent;
 }
 
 .file-row.active {
-  background: var(--ui-state-selected-bg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, transparent));
-  border-color: color-mix(in srgb, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))) 48%, transparent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  background: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover))));
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+.file-row.active:hover {
+  background: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--active, var(--ui-state-selected-bg, var(--hover)))));
 }
 
 /* Notes Editor tab toggle bar */
@@ -1923,9 +1926,9 @@ function formatShortDate(ms?: number): string {
 
 .segmented {
   display: flex;
-  background: var(--ui-state-hover-bg, var(--hover));
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
-  padding: 2px;
+  background: transparent;
+  border: 0;
+  padding: 0;
   border-radius: 6px;
   width: fit-content;
 }
@@ -1961,11 +1964,11 @@ function formatShortDate(ms?: number): string {
 }
 
 .segmented :deep(.app-button.active) {
-  --app-button-tone: var(--ui-accent-primary-fg, var(--accent));
+  --app-button-tone: var(--ui-state-selected-fg, var(--ui-text-primary-fg, var(--text)));
 
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
-  color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover))));
+  color: var(--ui-state-selected-fg, var(--ui-text-primary-fg, var(--text)));
+  box-shadow: none;
 }
 
 .segmented :deep(.app-button:disabled) {
@@ -2220,17 +2223,17 @@ function formatShortDate(ms?: number): string {
 }
 
 .memory-page-shell .notes-list-surface {
-  flex: 1 1 clamp(220px, 42%, 520px) !important;
+  flex: 0 0 clamp(240px, 34%, 380px) !important;
   width: auto;
   min-width: min(220px, 100%);
-  max-width: min(560px, 58%);
+  max-width: min(420px, 42%);
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: transparent;
-  border-right: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 50%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
 }
 
 .memory-page-shell .file-list {
@@ -2238,6 +2241,7 @@ function formatShortDate(ms?: number): string {
   min-height: 0;
   overflow-y: auto;
   padding: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 4%, transparent);
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -2298,12 +2302,17 @@ function formatShortDate(ms?: number): string {
 
 .memory-page-shell .file-row:hover {
   background: var(--ui-state-hover-bg, var(--hover));
-  border-color: var(--ui-border-subtle-border, var(--border-subtle));
+  border-color: transparent;
 }
 
 .memory-page-shell .file-row.active {
-  background: var(--ui-state-selected-bg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, transparent));
-  border-color: color-mix(in srgb, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))) 48%, transparent);
+  background: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover))));
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+.memory-page-shell .file-row.active:hover {
+  background: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--active, var(--ui-state-selected-bg, var(--hover)))));
 }
 
 .memory-page-shell .file-icon {

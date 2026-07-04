@@ -292,11 +292,11 @@
                         </span>
                       </span>
                       <Input
-                        :model-value="settings.ai.providers?.[providerSettings.viewingProvider.value]?.apiKey"
+                        :model-value="providerApiKeyInputValue(providerSettings.viewingProvider.value)"
                         type="password"
                         show-password
                         class="row-input"
-                        :placeholder="`Enter ${providerSettings.currentProviderName.value} key...`"
+                        :placeholder="providerApiKeyPlaceholder(providerSettings.viewingProvider.value)"
                         :spellcheck="false"
                         aria-label="API key"
                         @update:model-value="providerSettings.updateProviderApiKey"
@@ -515,6 +515,11 @@ const emit = defineEmits<{
 const providerSettings = useProviderSettings(props, (event, value) => emit(event, value))
 const providerUsage = useProviderUsage(providerSettings.viewingProvider, providerSettings.oauthStatus)
 const expandedProviderId = ref<string | null>(props.settings.ai.provider)
+const SERVER_REDACTED_SECRET = '__onething_server_secret_set__'
+
+function isRedactedServerSecret(value: unknown): boolean {
+  return value === SERVER_REDACTED_SECRET
+}
 
 function isProviderExpanded(providerId: string): boolean {
   return expandedProviderId.value === providerId
@@ -546,6 +551,7 @@ function providerKeyPreview(providerId: string): string {
 
   if (providerId === 'acp') return 'Local agent'
   if (provider?.requiresOAuth) return 'Subscription'
+  if (isRedactedServerSecret(key)) return 'Key saved'
   if (providerSettings.providerUsesEnvApiKey(providerId)) {
     if (!envVar) return 'Env missing'
     return envPreview ? `Env ${envVar} · ${envPreview}` : `Env ${envVar}`
@@ -558,6 +564,19 @@ function providerKeyPreview(providerId: string): string {
 
   if (config?.baseUrl) return 'Base URL set'
   return 'Not connected'
+}
+
+function providerApiKeyInputValue(providerId: string): string {
+  const key = props.settings.ai.providers?.[providerId]?.apiKey || ''
+  return isRedactedServerSecret(key) ? '' : key
+}
+
+function providerApiKeyPlaceholder(providerId: string): string {
+  const key = props.settings.ai.providers?.[providerId]?.apiKey
+  if (isRedactedServerSecret(key)) {
+    return 'Existing key is saved on the server. Enter a new key to replace it.'
+  }
+  return `Enter ${providerSettings.currentProviderName.value} key...`
 }
 
 onMounted(() => {

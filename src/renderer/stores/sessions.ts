@@ -5,6 +5,7 @@ import type {
 	ContextVariable,
 	PermissionMode,
 } from "@/types";
+import { platformApi } from "@/platform";
 import { DEFAULT_AGENT_ID } from "../../shared/ipc";
 import { useChatStore } from "./chat";
 import { useSettingsStore } from "./settings";
@@ -165,7 +166,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		isLoading.value = true;
 		try {
 			// Use optimized API that returns only metadata (no messages)
-			const response = await window.electronAPI.getSessionsList();
+			const response = await platformApi.getSessionsList();
 			if (response.success) {
 				sessions.value = response.sessions || [];
 				// Don't auto-create new chat on app open - let user choose
@@ -287,7 +288,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 	async function loadSessionsFull() {
 		isLoading.value = true;
 		try {
-			const response = await window.electronAPI.getSessions();
+			const response = await platformApi.getSessions();
 			if (response.success) {
 				sessions.value = response.sessions || [];
 			}
@@ -298,7 +299,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	async function createSession(name: string) {
 		try {
-			const response = await window.electronAPI.createSession(
+			const response = await platformApi.createSession(
 				name || "New Chat",
 			);
 			if (response.success && response.session) {
@@ -317,7 +318,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 */
 	async function createSessionWithoutSwitch(name: string) {
 		try {
-			const response = await window.electronAPI.createSession(name);
+			const response = await platformApi.createSession(name);
 			if (response.success && response.session) {
 				sessions.value.unshift(response.session);
 				return response.session;
@@ -376,7 +377,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			// Step 1: Activate session (returns details without messages)
 			const activateStart = performance.now();
 			const activateResponse =
-				await window.electronAPI.activateSession(sessionId);
+				await platformApi.activateSession(sessionId);
 			activateMs = performance.now() - activateStart;
 			if (generation !== switchGeneration) return;
 			if (!activateResponse.success || !activateResponse.session) {
@@ -493,7 +494,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 */
 	async function switchSessionLegacy(sessionId: string) {
 		try {
-			const response = await window.electronAPI.switchSession(sessionId);
+			const response = await platformApi.switchSession(sessionId);
 			if (response.success && response.session) {
 				const chatStore = useChatStore();
 				const settingsStore = useSettingsStore();
@@ -605,7 +606,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				if (s) {
 					s.isArchived = true;
 					s.archivedAt = archivedAt;
-					await window.electronAPI.updateSessionArchived(id, true, archivedAt);
+					await platformApi.updateSessionArchived(id, true, archivedAt);
 				}
 			}
 
@@ -654,7 +655,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				if (s) {
 					s.isArchived = false;
 					s.archivedAt = undefined;
-					await window.electronAPI.updateSessionArchived(id, false, null);
+					await platformApi.updateSessionArchived(id, false, null);
 				}
 			}
 		} catch (error) {
@@ -680,7 +681,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 			const childIds = collectChildSessionIds(sessionId);
 			const allIdsToDelete = [sessionId, ...childIds];
 
-			const response = await window.electronAPI.deleteSession(sessionId);
+			const response = await platformApi.deleteSession(sessionId);
 			if (response.success) {
 				// Remove all deleted sessions from local state
 				sessions.value = sessions.value.filter(
@@ -694,7 +695,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	async function renameSession(sessionId: string, newName: string) {
 		try {
-			const response = await window.electronAPI.renameSession(
+			const response = await platformApi.renameSession(
 				sessionId,
 				newName,
 			);
@@ -712,7 +713,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		branchFromMessageId: string,
 	) {
 		try {
-			const response = await window.electronAPI.createBranch(
+			const response = await platformApi.createBranch(
 				parentSessionId,
 				branchFromMessageId,
 			);
@@ -730,7 +731,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	async function updateSessionPin(sessionId: string, isPinned: boolean) {
 		try {
-			const response = await window.electronAPI.updateSessionPin(
+			const response = await platformApi.updateSessionPin(
 				sessionId,
 				isPinned,
 			);
@@ -762,7 +763,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 
 		try {
-			const response = await window.electronAPI.updateSessionWorkingDirectory(
+			const response = await platformApi.updateSessionWorkingDirectory(
 				sessionId,
 				workingDirectory,
 			);
@@ -803,7 +804,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 
 		try {
-			const response = await window.electronAPI.updateSessionAgent(
+			const response = await platformApi.updateSessionAgent(
 				sessionId,
 				agentId,
 			);
@@ -838,7 +839,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 
 		try {
-			const response = await window.electronAPI.updateSessionPermissionMode(
+			const response = await platformApi.updateSessionPermissionMode(
 				sessionId,
 				permissionMode,
 			);
@@ -875,7 +876,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 
 		try {
-			const response = await window.electronAPI.updateSessionModel(
+			const response = await platformApi.updateSessionModel(
 				sessionId,
 				provider,
 				model,
@@ -968,7 +969,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 */
 	async function fetchVariables(sessionId: string): Promise<ContextVariable[]> {
 		try {
-			const response = await window.electronAPI.listVariables(sessionId);
+			const response = await platformApi.listVariables(sessionId);
 			const variables =
 				response.success && response.variables ? response.variables : [];
 			sessionVariables.value.set(sessionId, variables);
@@ -992,7 +993,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		description?: string,
 		scope?: "global" | "session",
 	): Promise<{ success: boolean; error?: string; code?: string }> {
-		const response = await window.electronAPI.setVariable(
+		const response = await platformApi.setVariable(
 			sessionId,
 			name,
 			value,
@@ -1010,7 +1011,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		sessionId: string,
 		name: string,
 	): Promise<{ success: boolean; error?: string; code?: string }> {
-		const response = await window.electronAPI.deleteVariable(sessionId, name);
+		const response = await platformApi.deleteVariable(sessionId, name);
 		return {
 			success: response.success,
 			error: response.error,

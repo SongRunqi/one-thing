@@ -370,6 +370,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import CollapsePanel from '@/components/common/CollapsePanel.vue'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   sessionId?: string
@@ -651,7 +652,7 @@ async function refreshSnapshot() {
   error.value = ''
 
   try {
-    const response = await window.electronAPI.getSystemPromptSnapshot(sessionId)
+    const response = await platformApi.getSystemPromptSnapshot(sessionId)
     if (currentRequest !== requestId) return
     if (!response.success || !response.snapshot) {
       throw new Error(response.error || 'Failed to load system prompt')

@@ -180,6 +180,7 @@ import SearchResultItem from './SearchResultItem.vue'
 import { resolveSearchResultAction } from './result-actions'
 import { useSearchWindow } from './useSearchWindow'
 import type { SearchResult, SearchWindowGuideState } from '@shared/ipc/search'
+import { platformApi } from '@/platform'
 
 const HIDDEN_GUIDES: SearchWindowGuideState = {
   visible: false,
@@ -224,7 +225,7 @@ let unsubscribeGuides: (() => void) | null = null
 let lastCompositionEndAt: number | null = null
 
 function closeWindow() {
-  window.electronAPI.closeSearchWindow()
+  platformApi.closeSearchWindow()
 }
 
 function onInputKeydown(event: KeyboardEvent) {
@@ -293,7 +294,7 @@ function confirmResult(item: SearchResult) {
     return
   }
 
-  window.electronAPI.searchExecuteAction(action.actionId)
+  platformApi.searchExecuteAction(action.actionId)
 }
 
 function openPromptCreate(title: string) {
@@ -321,7 +322,7 @@ async function createPromptFromDialog() {
     return
   }
 
-  const response = await window.electronAPI.createPrompt({
+  const response = await platformApi.createPrompt({
     title,
     body,
     description: promptForm.value.description.trim() || undefined,
@@ -332,7 +333,7 @@ async function createPromptFromDialog() {
   }
 
   showPromptCreate.value = false
-  window.electronAPI.searchExecuteAction(`insert-prompt:${response.prompt.id}`)
+  platformApi.searchExecuteAction(`insert-prompt:${response.prompt.id}`)
 }
 
 let lastShiftUp = 0
@@ -372,11 +373,11 @@ onMounted(async () => {
 
   inputRef.value?.focus()
   void doSearch()
-  unsubscribeShown = window.electronAPI.onSearchWindowShown?.(() => {
+  unsubscribeShown = platformApi.onSearchWindowShown?.(() => {
     resetSearchWindow()
     nextTick(() => inputRef.value?.focus())
   }) ?? null
-  unsubscribeGuides = window.electronAPI.onSearchWindowGuides?.((state) => {
+  unsubscribeGuides = platformApi.onSearchWindowGuides?.((state) => {
     dragGuides.value = state
   }) ?? null
   window.addEventListener('keydown', onGlobalKeyDown, true)

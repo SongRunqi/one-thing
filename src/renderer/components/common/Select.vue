@@ -1110,7 +1110,7 @@ defineExpose({
 .app-select.is-open .app-select-control,
 .app-select-control:focus {
   border-color: var(--ui-border-focus-border, var(--ui-accent-primary-fg, var(--accent)));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+  background: var(--ui-surface-input-focus-bg, var(--bg-elevated, var(--bg)));
 }
 
 .app-select-control:focus {
@@ -1250,7 +1250,7 @@ button.app-select-tag {
   padding: 5px;
   border: 1px solid var(--ui-border-default-border, var(--border));
   border-radius: 8px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+  background: color-mix(in oklch, var(--ui-surface-panel-bg, var(--bg)) 70%, var(--ui-surface-elevated-bg, var(--bg-elevated)) 30%);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18);
 }
 

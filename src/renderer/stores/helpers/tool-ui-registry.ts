@@ -1,17 +1,34 @@
 /**
  * Single source of truth for how each tool is presented in the UI:
- * category (icon/grouping), verbs, status labels, inspector tab.
+ * category (grouping/inspector), display label, icon, status labels.
  * Adding a new tool's UI treatment means editing THIS file only.
  */
+import type { Component } from 'vue'
+import {
+  Bot,
+  Calculator,
+  Clock,
+  ExternalLink,
+  FilePen,
+  FilePlus2,
+  FileText,
+  FolderCog,
+  FolderOpen,
+  FolderSearch,
+  Globe,
+  ListTodo,
+  Plug,
+  ScanSearch,
+  Sparkles,
+  Terminal,
+  TextSearch,
+  Variable,
+  Wind,
+  Wrench,
+} from 'lucide-vue-next'
 import type { ToolRenderStatus } from './tool-status'
 
 export type ToolUiCategory = 'read' | 'write' | 'edit' | 'search' | 'console' | 'fart' | 'tool'
-
-export interface CategoryVerbs {
-  base: string   // imperative: Edit / Run / Read
-  run: string    // progressive: Editing / Running
-  done: string   // past: Edited / Ran
-}
 
 const CATEGORY_ALIASES: Record<string, ToolUiCategory> = {
   read: 'read', read_file: 'read', 'read-file': 'read', readfile: 'read',
@@ -28,14 +45,76 @@ const CATEGORY_ALIASES: Record<string, ToolUiCategory> = {
   fart: 'fart',
 }
 
-const CATEGORY_VERBS: Record<ToolUiCategory, CategoryVerbs> = {
-  read: { base: 'Read', run: 'Reading', done: 'Read' },
-  write: { base: 'Write', run: 'Writing', done: 'Wrote' },
-  edit: { base: 'Edit', run: 'Editing', done: 'Edited' },
-  search: { base: 'Search', run: 'Searching', done: 'Searched' },
-  console: { base: 'Run', run: 'Running', done: 'Ran' },
-  fart: { base: 'Summon', run: 'Summoning', done: 'Summoned' },
-  tool: { base: 'Call', run: 'Calling', done: 'Called' },
+/**
+ * Display label shown as the row title (`Label(args)`).
+ * Tool identity is carried by this name + icon; no verb conjugation.
+ */
+const TOOL_LABELS: Record<string, string> = {
+  bash: 'Bash',
+  read: 'Read', read_file: 'Read', 'read-file': 'Read', readfile: 'Read',
+  view_file: 'Read', 'view-file': 'Read', viewfile: 'Read',
+  write: 'Write', write_file: 'Write', 'write-file': 'Write', writefile: 'Write',
+  write_to_file: 'Write', 'write-to-file': 'Write', writetofile: 'Write',
+  create_file: 'Write', 'create-file': 'Write', createfile: 'Write',
+  edit: 'Edit', edit_file: 'Edit', 'edit-file': 'Edit', editfile: 'Edit',
+  replace_file_content: 'Edit', multi_replace_file_content: 'Edit',
+  grep: 'Grep',
+  glob: 'Glob',
+  find: 'Find',
+  ls: 'Ls',
+  web_search: 'WebSearch', websearch: 'WebSearch', 'web-search': 'WebSearch',
+  web_open: 'WebOpen', webopen: 'WebOpen', 'web-open': 'WebOpen',
+  web_find: 'WebFind', webfind: 'WebFind', 'web-find': 'WebFind',
+  calculator: 'Calculator',
+  get_current_time: 'Time',
+  time: 'Time',
+  variable: 'Variable',
+  todo: 'Todo',
+  todo_plan: 'Todo',
+  project_dirs: 'Projects',
+  mcp_search: 'MCP',
+  tool_function: 'MCP',
+  task: 'Task',
+  agent: 'Task',
+  skill: 'Skill',
+  fart: 'Fart',
+}
+
+const TOOL_ICONS: Record<string, Component> = {
+  bash: Terminal,
+  read: FileText,
+  write: FilePlus2,
+  edit: FilePen,
+  grep: TextSearch,
+  glob: FolderSearch,
+  find: FolderSearch,
+  ls: FolderOpen,
+  web_search: Globe, websearch: Globe, 'web-search': Globe,
+  web_open: ExternalLink, webopen: ExternalLink, 'web-open': ExternalLink,
+  web_find: ScanSearch, webfind: ScanSearch, 'web-find': ScanSearch,
+  calculator: Calculator,
+  get_current_time: Clock,
+  time: Clock,
+  variable: Variable,
+  todo: ListTodo,
+  todo_plan: ListTodo,
+  project_dirs: FolderCog,
+  mcp_search: Plug,
+  tool_function: Plug,
+  task: Bot,
+  agent: Bot,
+  skill: Sparkles,
+  fart: Wind,
+}
+
+const CATEGORY_ICONS: Record<ToolUiCategory, Component> = {
+  read: FileText,
+  write: FilePlus2,
+  edit: FilePen,
+  search: Globe,
+  console: Terminal,
+  fart: Wind,
+  tool: Wrench,
 }
 
 const STATUS_LABELS: Record<ToolRenderStatus, string> = {
@@ -62,13 +141,36 @@ const CATEGORY_INSPECTOR_TABS: Record<ToolUiCategory, InspectorTab> = {
   tool: 'console',
 }
 
-export function getToolUiCategory(toolName: string | undefined): ToolUiCategory {
-  if (!toolName) return 'tool'
-  return CATEGORY_ALIASES[toolName.trim().toLowerCase()] ?? 'tool'
+function normalizeToolName(toolName: string | undefined): string {
+  return String(toolName || '').trim().toLowerCase()
 }
 
-export function getCategoryVerbs(category: ToolUiCategory): CategoryVerbs {
-  return CATEGORY_VERBS[category]
+export function getToolUiCategory(toolName: string | undefined): ToolUiCategory {
+  if (!toolName) return 'tool'
+  return CATEGORY_ALIASES[normalizeToolName(toolName)] ?? 'tool'
+}
+
+/**
+ * Row title label. MCP tools show their real name (`server.tool`);
+ * unknown tools show their raw name — never a generic "Called".
+ */
+export function getToolDisplayLabel(toolName: string | undefined): string {
+  const raw = String(toolName || '').trim()
+  if (!raw) return 'Tool'
+  const normalized = raw.toLowerCase()
+  const known = TOOL_LABELS[normalized]
+  if (known) return known
+  if (normalized.startsWith('mcp:')) return raw.slice(4) || 'MCP'
+  if (normalized.startsWith('mcp_')) return raw.slice(4) || 'MCP'
+  return raw
+}
+
+export function getToolIcon(toolName: string | undefined): Component {
+  const normalized = normalizeToolName(toolName)
+  const direct = TOOL_ICONS[normalized]
+  if (direct) return direct
+  if (normalized.startsWith('mcp:') || normalized.startsWith('mcp_')) return Plug
+  return CATEGORY_ICONS[getToolUiCategory(normalized)]
 }
 
 export function getStatusLabel(status: ToolRenderStatus): string {

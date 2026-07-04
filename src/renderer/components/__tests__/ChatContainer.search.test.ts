@@ -1,21 +1,16 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
-import { nextTick } from 'vue'
+import { nextTick, reactive } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ChatContainer from '../ChatContainer.vue'
 
 const mocks = vi.hoisted(() => ({
-  sessionsStore: {
-    currentSessionId: 'session-1',
-    sessions: [{ id: 'session-1', name: 'Search target' }],
-    createSession: vi.fn(),
-    createSessionWithoutSwitch: vi.fn(),
-    switchSession: vi.fn(),
-  },
+  sessionsStore: null as any,
   chatStore: {
     sessionMessages: new Map<string, Array<{ id: string }>>(),
     loadMessagesAround: vi.fn(),
   },
+  chatWindowFocusInput: vi.fn(),
   chatWindowScrollToMessage: vi.fn(),
 }))
 
@@ -34,7 +29,7 @@ vi.mock('@/components/chat/ChatWindow.vue', () => ({
     emits: ['switchSession'],
     setup(_props: unknown, { expose }: { expose: (exposed: Record<string, unknown>) => void }) {
       expose({
-        focusInput: vi.fn(),
+        focusInput: mocks.chatWindowFocusInput,
         addFileTab: vi.fn(),
         scrollToMessage: mocks.chatWindowScrollToMessage,
       })
@@ -60,7 +55,19 @@ async function settle() {
 describe('ChatContainer search navigation', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.sessionsStore = reactive({
+      currentSessionId: 'session-1',
+      sessions: [{ id: 'session-1', name: 'Search target' }],
+      createSession: vi.fn(),
+      createSessionWithoutSwitch: vi.fn(),
+      openNewChatDraft: vi.fn(),
+      switchSession: vi.fn(),
+    })
     mocks.sessionsStore.currentSessionId = 'session-1'
+    mocks.sessionsStore.openNewChatDraft = vi.fn((name: string) => {
+      mocks.sessionsStore.currentSessionId = 'draft:one'
+      return { id: 'draft:one', name }
+    })
     mocks.sessionsStore.switchSession.mockImplementation(async (sessionId: string) => {
       mocks.sessionsStore.currentSessionId = sessionId
       return { id: sessionId }
@@ -97,6 +104,19 @@ describe('ChatContainer search navigation', () => {
 
     expect(mocks.sessionsStore.switchSession).toHaveBeenCalledWith('session-new')
     expect(wrapper.find('.mock-chat-window').text()).toBe('session-new')
+  })
+
+  it('focuses the composer after creating a draft from the empty state', async () => {
+    mocks.sessionsStore.currentSessionId = ''
+    const wrapper = mount(ChatContainer)
+    await settle()
+
+    await wrapper.find('.new-chat-btn').trigger('click')
+    await settle()
+
+    expect(mocks.sessionsStore.openNewChatDraft).toHaveBeenCalledWith('New Chat')
+    expect(wrapper.find('.mock-chat-window').text()).toBe('draft:one')
+    expect(mocks.chatWindowFocusInput).toHaveBeenCalled()
   })
 
   it('switches only the invoking split panel for a child new-session command', async () => {

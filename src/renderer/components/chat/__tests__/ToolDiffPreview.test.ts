@@ -47,7 +47,7 @@ describe('ToolDiffPreview', () => {
   })
 
   it('keeps ordinary diff rows on a single neutral background layer', () => {
-    expect(componentSource).toContain('--diff-normal-bg: color-mix')
+    expect(componentSource).toContain('--diff-normal-bg: var(--ui-surface-app-bg')
     expect(componentSource).toContain('.diff-line {\n  --row-bg: transparent;')
     expect(componentSource).toContain('.diff-content:not(.wrap) .line-gutter')
   })

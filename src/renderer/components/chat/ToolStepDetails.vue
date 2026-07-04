@@ -4,94 +4,50 @@
     class="tool-step-details"
     @wheel="handleWheel"
   >
+    <dl
+      v-if="argEntries.length"
+      class="detail-args"
+    >
+      <template
+        v-for="entry in argEntries"
+        :key="entry.key"
+      >
+        <dt class="detail-arg-key">
+          {{ entry.key }}
+        </dt>
+        <dd
+          class="detail-arg-value"
+          :title="entry.value"
+        >
+          {{ entry.value }}
+        </dd>
+      </template>
+    </dl>
+
+    <!-- Failed edit: old/new merged into one compact "intent diff" —
+         the change the model wanted to make but couldn't apply. -->
     <div
       v-if="failedEditDetails"
       class="detail-section failed-edit-section"
     >
-      <div class="failed-edit-heading">
-        <div class="detail-label">
-          Failed edit parameters
-        </div>
-        <div
-          v-if="failedEditDetails.summary"
-          class="failed-edit-summary"
-        >
-          {{ failedEditDetails.summary }}
-        </div>
-      </div>
-
-      <dl
-        v-if="failedEditDetails.params.length"
-        class="failed-edit-param-list"
-      >
-        <template
-          v-for="param in failedEditDetails.params"
-          :key="param.label"
-        >
-          <dt class="failed-edit-param-label">
-            {{ param.label }}
-          </dt>
-          <dd
-            class="failed-edit-param-value"
-            :title="param.value"
-          >
-            {{ param.value }}
-          </dd>
-        </template>
-      </dl>
-
       <div
-        v-if="failedEditDetails.attempts.length"
-        class="failed-edit-attempts"
+        v-if="failedEditDetails.summary"
+        class="failed-edit-summary"
+      >
+        {{ failedEditDetails.summary }}
+      </div>
+      <div
+        v-for="attempt in failedEditDetails.attempts"
+        :key="attempt.index"
+        class="intent-diff"
       >
         <div
-          v-for="attempt in failedEditDetails.attempts"
-          :key="attempt.index"
-          class="failed-edit-attempt"
+          v-for="(line, lineIndex) in buildIntentLines(attempt)"
+          :key="`${attempt.index}-${lineIndex}`"
+          class="intent-line"
+          :class="line.kind"
         >
-          <div class="failed-edit-attempt-title">
-            {{ failedEditDetails.attempts.length > 1 ? `Edit ${attempt.index + 1}` : 'Edit' }}
-          </div>
-
-          <template v-if="attempt.oldTextPresent">
-            <div class="failed-edit-snippet-label">
-              Old string
-            </div>
-            <pre
-              class="failed-edit-snippet"
-              :class="{ 'is-empty': !attempt.oldText }"
-            >{{ displayEditText(attempt.oldText) }}</pre>
-          </template>
-
-          <template v-if="attempt.newTextPresent">
-            <div class="failed-edit-snippet-label">
-              New string
-            </div>
-            <pre
-              class="failed-edit-snippet replacement"
-              :class="{ 'is-empty': !attempt.newText }"
-            >{{ displayEditText(attempt.newText) }}</pre>
-          </template>
-
-          <dl
-            v-if="attempt.extraParams.length"
-            class="failed-edit-param-list compact"
-          >
-            <template
-              v-for="param in attempt.extraParams"
-              :key="param.label"
-            >
-              <dt class="failed-edit-param-label">
-                {{ param.label }}
-              </dt>
-              <dd
-                class="failed-edit-param-value"
-                :title="param.value"
-              >
-                {{ param.value }}
-              </dd>
-            </template>
-          </dl>
+          <span class="intent-sign">{{ line.kind === 'del' ? '-' : '+' }}</span><span class="intent-text">{{ line.text }}</span>
         </div>
       </div>
     </div>
@@ -105,27 +61,10 @@
       :wrap="wrap !== false"
     />
 
-    <div
-      v-if="activeDiff && successNote && !isFailedEdit"
-      class="detail-note-row"
-      :class="{ failed: view.status === 'failed' || view.status === 'rejected' }"
-    >
-      <Check
-        v-if="view.status !== 'failed' && view.status !== 'rejected'"
-        :size="13"
-        class="detail-note-icon"
-      />
-      <X
-        v-else
-        :size="13"
-        class="detail-note-icon"
-      />
-      <div class="detail-note">
-        {{ successNote }}
-      </div>
-    </div>
-
-    <template v-else>
+    <!-- Result output only when the diff doesn't already tell the story:
+         successful edit/write results ("Successfully edited …") duplicate
+         the row title + diff and are suppressed. -->
+    <template v-if="!activeDiff && !isFailedEdit">
       <div
         v-if="view.step.partialResult"
         class="detail-section result-section"
@@ -203,9 +142,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Check, X } from 'lucide-vue-next'
 import type { ToolPartialResult } from '@/types'
 import type { ToolStepView } from '@/stores/helpers/tool-step-view'
+import { getToolUiCategory } from '@/stores/helpers/tool-ui-registry'
 import { chainWheelToScrollableAncestor, findScrollableWheelSource } from '@/utils/scroll-chain'
 import ToolDiffPreview from './ToolDiffPreview.vue'
 import ToolResultRenderer from './ToolResultRenderer.vue'
@@ -299,26 +238,56 @@ const liveResultForRenderer = computed<ToolPartialResult | null>(() => {
   if (!props.view.liveOutput) return null
   return { content: [{ type: 'text', text: props.view.liveOutput }] }
 })
-const partialResultText = computed(() => compactOutput(props.view.step.partialResult?.content
-  ?.filter(part => part.type === 'text')
-  .map(part => part.text ?? '')
-  .filter(Boolean)
-  .join('\n') || ''))
-const successNote = computed(() => {
-  if (!activeDiff.value) return ''
-  if (props.view.status !== 'failed' && props.view.status !== 'rejected') return ''
-  const fallback = partialResultText.value || compactOutput(props.view.resultText || '')
-  const path = shortDisplayPath(activeDiff.value.filePath || props.view.filePath)
-  const count = replacementCount()
-  if (path) {
-    if (props.view.toolName === 'edit') {
-      return `Attempted edit ${path} · ${count} ${count === 1 ? 'replacement' : 'replacements'}`
-    }
-    if (props.view.toolName === 'write') {
-      return `Attempted write ${path}`
+interface IntentDiffLine {
+  kind: 'del' | 'add'
+  text: string
+}
+
+function buildIntentLines(attempt: FailedEditAttempt): IntentDiffLine[] {
+  const lines: IntentDiffLine[] = []
+  if (attempt.oldTextPresent) {
+    for (const text of displayEditText(attempt.oldText).split('\n')) {
+      lines.push({ kind: 'del', text })
     }
   }
-  return fallback.replace(/^Successfully\s+/i, '')
+  if (attempt.newTextPresent) {
+    for (const text of displayEditText(attempt.newText).split('\n')) {
+      lines.push({ kind: 'add', text })
+    }
+  }
+  return lines
+}
+
+interface ArgEntry {
+  key: string
+  value: string
+}
+
+const ARG_VALUE_MAX = 600
+
+/**
+ * Structured arguments for tools whose parameters carry information beyond
+ * the row title (console/search/mcp/unknown). File tools skip this — their
+ * path is the title and their content is the diff. The bash command is
+ * always included IN FULL: the single-line row title truncates, so the
+ * expanded details are the guaranteed place to read the whole command.
+ */
+const argEntries = computed<ArgEntry[]>(() => {
+  const category = getToolUiCategory(props.view.toolName)
+  if (category === 'read' || category === 'write' || category === 'edit' || category === 'fart') return []
+  const args = props.view.toolCall.arguments || {}
+  return Object.entries(args)
+    .filter(([, value]) => value !== undefined && value !== null && String(value) !== '')
+    .map(([key, value]) => {
+      const text = formatParamValue(value)
+      const isFullValueKey = props.view.toolName === 'bash' && key === 'command'
+      return {
+        key,
+        value: !isFullValueKey && text.length > ARG_VALUE_MAX
+          ? `${text.slice(0, ARG_VALUE_MAX - 1)}…`
+          : text,
+      }
+    })
 })
 
 const compactError = computed(() => compactErrorText(props.view.step.error || ''))
@@ -331,7 +300,7 @@ const showErrorDetails = computed(() => {
   if (normalizeErrorText(error) === normalizeErrorText(reason)) return false
   return error.split('\n').filter(line => line.trim()).length > 1
 })
-const showErrorSection = computed(() => !isFailedEdit.value && !!props.view.step.error && showErrorDetails.value)
+const showErrorSection = computed(() => !!props.view.step.error && showErrorDetails.value)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -410,11 +379,6 @@ function shortDisplayPath(path: string): string {
   return parts.slice(-2).join('/') || normalized
 }
 
-function replacementCount(): number {
-  const edits = props.view.toolCall.arguments?.edits
-  return Array.isArray(edits) && edits.length > 0 ? edits.length : 1
-}
-
 watch(
   () => props.view.streamingContent?.content,
   () => {
@@ -432,7 +396,8 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 4px 0 0;
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 60%, transparent);
   font-family: var(--tool-font-sans);
 }
 
@@ -475,10 +440,7 @@ pre {
   max-height: var(--tool-pane-max);
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 42%, transparent);
+  padding: 2px 0;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-body);
@@ -489,33 +451,33 @@ pre {
 }
 
 .thinking {
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
+  padding: 4px 0 4px 10px;
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 4%, transparent);
   border-left: 3px solid color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 30%, transparent);
-  border-radius: 6px;
 }
 
 .summary {
-  background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
+  padding: 4px 0 4px 10px;
+  background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 4%, transparent);
   border-left: 3px solid color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 35%, transparent);
-  border-radius: 6px;
 }
 
 .error-text {
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
+  padding: 4px 0 4px 10px;
+  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 4%, transparent);
   border-left: 3px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 30%, transparent);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
-  border-radius: 6px;
 }
 
 .rejection-text {
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
+  padding: 4px 0 4px 10px;
+  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 4%, transparent);
   border-left: 3px solid color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 30%, transparent);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
-  border-radius: 6px;
 }
 
 .error-section {
@@ -543,20 +505,10 @@ pre {
 }
 
 .failed-edit-section {
-  padding-top: 1px;
-}
-
-.failed-edit-heading {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 10px;
-  max-width: 72ch;
-  margin-bottom: 8px;
-}
-
-.failed-edit-heading .detail-label {
-  margin-bottom: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 1px;
 }
 
 .failed-edit-summary {
@@ -570,19 +522,58 @@ pre {
   white-space: nowrap;
 }
 
-.failed-edit-param-list {
+/* Intent diff: the edit the model wanted (old = -, new = +) in one block. */
+.intent-diff {
+  max-width: 100%;
+  max-height: clamp(96px, 20vh, 160px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-family: var(--tool-font-mono);
+  font-size: var(--tool-font-size-line, 11.5px);
+  line-height: var(--tool-code-line-height);
+}
+
+.intent-line {
+  display: flex;
+  align-items: baseline;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.intent-sign {
+  flex: 0 0 auto;
+  width: 14px;
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+}
+
+.intent-line.del {
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 5%, transparent);
+}
+
+.intent-line.del .intent-sign {
+  color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
+}
+
+.intent-line.add {
+  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
+  background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-add-bar)) 5%, transparent);
+}
+
+.intent-line.add .intent-sign {
+  color: var(--ui-tool-success-text-fg, var(--tool-add-bar));
+}
+
+/* Structured arguments (console/search/mcp/unknown tools). */
+.detail-args {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: 4px 9px;
-  max-width: 72ch;
-  margin: 0 0 9px;
+  gap: 3px 9px;
+  max-width: 100%;
+  margin: 0;
 }
 
-.failed-edit-param-list.compact {
-  margin: 7px 0 0;
-}
-
-.failed-edit-param-label {
+.detail-arg-key {
   color: var(--ui-tool-text-faint-fg, var(--tool-faint));
   font-family: var(--tool-font-sans);
   font-size: var(--tool-font-size-meta);
@@ -590,88 +581,17 @@ pre {
   line-height: var(--tool-line-height);
 }
 
-.failed-edit-param-value {
+.detail-arg-value {
   min-width: 0;
+  max-height: clamp(48px, 12vh, 96px);
   margin: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-mono);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
-}
-
-.failed-edit-attempts {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-.failed-edit-attempt {
-  max-width: 72ch;
-  min-width: 0;
-  padding-left: 10px;
-  border-left: 2px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 48%, transparent);
-}
-
-.failed-edit-attempt-title,
-.failed-edit-snippet-label {
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-meta);
-  font-weight: 500;
-  line-height: var(--tool-line-height);
-}
-
-.failed-edit-attempt-title {
-  margin-bottom: 5px;
-}
-
-.failed-edit-snippet-label {
-  margin: 6px 0 4px;
-}
-
-.failed-edit-snippet {
-  max-width: 100%;
-  max-height: calc(var(--tool-pane-max) * 0.62);
-  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
-  font-size: var(--tool-font-size-line, 11.5px);
-}
-
-.failed-edit-snippet.replacement {
-  background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-add-bar)) 4%, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)));
-}
-
-.failed-edit-snippet.is-empty {
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
-  font-style: italic;
-}
-
-.detail-note-row {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 7px;
-  max-width: calc(62ch + 28px);
-  padding: 6px 0 7px;
-  border-top: 0.5px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 60%, transparent);
-}
-
-.detail-note-icon {
-  flex: 0 0 auto;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  opacity: 0.72;
-}
-
-.detail-note-row.failed .detail-note-icon {
-  color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
-}
-
-.detail-note {
-  max-width: 62ch;
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  font-family: var(--font-sans);
-  font-size: var(--tool-font-size-meta);
-  font-weight: 400;
-  line-height: var(--tool-line-height);
-  opacity: 0.82;
 }
 </style>

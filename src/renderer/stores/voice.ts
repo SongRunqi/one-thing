@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { SessionEventEnvelope } from '../../shared/events/index.js'
 import type { VoiceEvent, VoiceLatencyMilestone, VoiceRuntimeState } from '@/types'
 import { useSessionsStore } from './sessions'
+import { platformApi } from '@/platform'
 
 interface VoiceTurn {
   sessionId: string
@@ -34,14 +35,14 @@ export const useVoiceStore = defineStore('voice', () => {
     initialized = true
 
     try {
-      const response = await window.electronAPI.voiceGetState()
+      const response = await platformApi.voiceGetState()
       if (response.success && response.state) state.value = response.state
     } catch (error: any) {
       lastError.value = error.message || 'Failed to load voice state.'
     }
 
-    window.electronAPI.onVoiceEvent(handleVoiceEvent)
-    window.electronAPI.onSessionEvent(handleSessionEvent)
+    platformApi.onVoiceEvent(handleVoiceEvent)
+    platformApi.onSessionEvent(handleSessionEvent)
   }
 
   async function startListening(sessionId?: string) {
@@ -51,13 +52,13 @@ export const useVoiceStore = defineStore('voice', () => {
       lastError.value = 'No active session for voice input.'
       return { success: false, error: lastError.value }
     }
-    const response = await window.electronAPI.voiceStart({ sessionId: resolvedSessionId, reason: 'manual' })
+    const response = await platformApi.voiceStart({ sessionId: resolvedSessionId, reason: 'manual' })
     if (!response.success && response.error) lastError.value = response.error
     return response
   }
 
   async function stop(reason = 'user', submit = reason === 'mic-button') {
-    return window.electronAPI.voiceStop({ reason, submit })
+    return platformApi.voiceStop({ reason, submit })
   }
 
   function dismissError() {

@@ -4,6 +4,7 @@ import type { AppSettings, ProviderInfo, CustomProviderConfig, OpenRouterModel }
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
 import type { AIProviderId, TypographyDensity } from '../../shared/ipc'
 import { createDefaultSettings } from '../../shared/defaults/settings'
+import { platformApi } from '@/platform'
 
 function isThemeDebugEnabled(): boolean {
   return import.meta.env.DEV && localStorage.getItem('onething:debug-theme') === '1'
@@ -76,7 +77,7 @@ export const useSettingsStore = defineStore('settings', () => {
   // Fetch system theme from main process (uses nativeTheme.shouldUseDarkColors)
   async function fetchSystemTheme() {
     try {
-      const response = await window.electronAPI.getSystemTheme()
+      const response = await platformApi.getSystemTheme()
       if (response.success && response.theme) {
         systemTheme.value = response.theme
       }
@@ -86,7 +87,7 @@ export const useSettingsStore = defineStore('settings', () => {
   }
 
   // Listen for system theme changes from main process
-  window.electronAPI.onSystemThemeChanged((theme: 'light' | 'dark') => {
+  platformApi.onSystemThemeChanged((theme: 'light' | 'dark') => {
     systemTheme.value = theme
     // Only apply if current setting is 'system'
     if (settings.value.theme === 'system') {
@@ -200,9 +201,9 @@ export const useSettingsStore = defineStore('settings', () => {
     try {
       // Load settings, providers, and model aliases in parallel
       const [settingsResponse, providersResponse, aliasesResponse] = await Promise.all([
-        window.electronAPI.getSettings(),
-        window.electronAPI.getProviders(),
-        window.electronAPI.getModelNameAliases(),
+        platformApi.getSettings(),
+        platformApi.getProviders(),
+        platformApi.getModelNameAliases(),
       ])
 
       if (settingsResponse.success && settingsResponse.settings) {
@@ -251,7 +252,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function loadProviders() {
     try {
-      const response = await window.electronAPI.getProviders()
+      const response = await platformApi.getProviders()
       if (response.success && response.providers) {
         // Merge with custom providers — a bare assignment here would clobber
         // any custom providers a previous loadSettings() merge had populated.
@@ -286,7 +287,7 @@ export const useSettingsStore = defineStore('settings', () => {
       const customProvidersChanged = prevCustomKey !== nextCustomKey
 
       settings.value = plainSettings
-      const response = await window.electronAPI.saveSettings(plainSettings)
+      const response = await platformApi.saveSettings(plainSettings)
       if (!response.success) {
         throw new Error(response.error || 'Failed to save settings')
       }
@@ -312,14 +313,27 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value.ai.provider = provider
   }
 
+  function ensureProviderConfig(provider: AIProviderId): AppSettings['ai']['providers'][string] {
+    const providers = settings.value.ai.providers as Record<string, AppSettings['ai']['providers'][string]>
+    if (!providers[provider]) {
+      providers[provider] = {
+        apiKey: '',
+        baseUrl: '',
+        model: '',
+        selectedModels: [],
+      }
+    }
+    return providers[provider]
+  }
+
   function updateAPIKey(apiKey: string, provider?: AIProviderId) {
     const targetProvider = provider || settings.value.ai.provider
-    settings.value.ai.providers[targetProvider].apiKey = apiKey
+    ensureProviderConfig(targetProvider).apiKey = apiKey
   }
 
   function updateModel(model: string, provider?: AIProviderId) {
     const targetProvider = provider || settings.value.ai.provider
-    settings.value.ai.providers[targetProvider].model = model
+    ensureProviderConfig(targetProvider).model = model
   }
 
   function updateTemperature(temperature: number) {
@@ -444,7 +458,7 @@ export const useSettingsStore = defineStore('settings', () => {
   // Refresh available providers list (used after adding/updating/deleting custom providers)
   async function refreshAvailableProviders() {
     try {
-      const response = await window.electronAPI.getProviders()
+      const response = await platformApi.getProviders()
       if (response.success && response.providers) {
         updateAvailableProviders(response.providers)
       }
@@ -526,7 +540,7 @@ export const useSettingsStore = defineStore('settings', () => {
 
     try {
       // Read from settings.json modelRegistry (via IPC)
-      const response = await window.electronAPI.getModelsWithCapabilities(providerId, { forceRefresh })
+      const response = await platformApi.getModelsWithCapabilities(providerId, { forceRefresh })
 
       if (response.success && response.models && response.models.length > 0) {
         const models = response.models
@@ -555,7 +569,7 @@ export const useSettingsStore = defineStore('settings', () => {
     const providerDirectModels = new Set(['codex', 'github-copilot'])
     if (!providerDirectModels.has(providerId)) {
       try {
-        await window.electronAPI.refreshModelRegistry()
+        await platformApi.refreshModelRegistry()
       } catch (error) {
         console.warn('[SettingsStore] Failed to refresh model registry:', error)
       }

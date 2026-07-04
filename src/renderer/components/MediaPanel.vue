@@ -66,14 +66,14 @@
         v-if="mode === 'main'"
         class="main-panel-header"
       >
-        <div class="main-panel-title">
-          <component
-            :is="currentNavItem?.icon"
-            :size="17"
-            :stroke-width="1.8"
-          />
-          <span>{{ currentNavItem?.label }}</span>
-        </div>
+        <div
+          :class="['main-panel-sidebar-actions-slot', { reserved: reserveSidebarActions }]"
+          aria-hidden="true"
+        />
+        <div
+          class="main-panel-header-spacer"
+          aria-hidden="true"
+        />
         <Button
           unstyled
           class="main-panel-close"
@@ -176,9 +176,6 @@
                     loading="lazy"
                     decoding="async"
                   >
-                  <div class="media-source-badge">
-                    {{ sourceLabel(asset.source) }}
-                  </div>
                   <div class="media-overlay">
                     <p class="media-title">
                       {{ assetTitle(asset) }}
@@ -454,7 +451,7 @@
           class="workspace-panel-view workspace-panel-content-view"
           data-workspace-panel-view="tasks"
         >
-          <SchedulerPanelContent />
+          <SchedulerPanelContent :active="activeNav === 'tasks'" />
         </section>
 
         <section
@@ -497,6 +494,7 @@ import {
   Trash2,
   Check,
 } from 'lucide-vue-next'
+import { platformApi } from '@/platform'
 
 type WorkspacePanelNav = 'media' | 'memory' | 'agents' | 'tasks' | 'archive'
 
@@ -505,10 +503,12 @@ const props = withDefaults(defineProps<{
   activeTab?: WorkspacePanelNav | null
   initialTab?: WorkspacePanelNav | ''
   mode?: 'side' | 'main'
+  reserveSidebarActions?: boolean
 }>(), {
   activeTab: null,
   initialTab: '',
   mode: 'side',
+  reserveSidebarActions: false,
 })
 
 defineEmits<{
@@ -533,8 +533,6 @@ const navItems: Array<{ id: WorkspacePanelNav; label: string; icon: Component }>
   { id: 'tasks', label: 'Tasks', icon: CalendarClock },
   { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
-
-const currentNavItem = computed(() => navItems.find(item => item.id === activeNav.value) || navItems[0])
 
 function normalizeNav(tab?: string | null): WorkspacePanelNav | null {
   if (tab === 'media' || tab === 'memory' || tab === 'agents' || tab === 'tasks' || tab === 'archive') {
@@ -700,12 +698,12 @@ function openAsset(asset: MediaAsset) {
 }
 
 function launchGallery(asset: MediaAsset) {
-  window.electronAPI.openImageGallery(asset.id)
+  platformApi.openImageGallery(asset.id)
 }
 
 function openFileExternally(asset: MediaAsset) {
   if (asset.filePath) {
-    window.electronAPI.openPath(asset.filePath)
+    platformApi.openPath(asset.filePath)
   }
 }
 
@@ -745,15 +743,15 @@ watch(activeNav, markNavMounted, {
   flush: 'sync',
 })
 
-async function refreshMedia(rebuild = false) {
-  await mediaStore.loadMedia({ rebuild })
+async function refreshMedia(rebuild = false, force = false) {
+  await mediaStore.loadMedia({ rebuild, force })
 }
 
 let unsubscribe: (() => void) | null = null
 
 onMounted(async () => {
-  unsubscribe = window.electronAPI.onImageGenerated(async () => {
-    await refreshMedia()
+  unsubscribe = platformApi.onImageGenerated(async () => {
+    await refreshMedia(false, true)
   })
 })
 
@@ -781,7 +779,7 @@ watch(
   async ([visible, nav], previous) => {
     const [wasVisible, previousNav] = previous ?? []
     if (visible && nav === 'media' && (!wasVisible || previousNav !== 'media')) {
-      await refreshMedia(true)
+      await refreshMedia()
     }
   },
   { immediate: true },
@@ -810,7 +808,7 @@ onUnmounted(() => {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
+  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .media-nav {
@@ -966,28 +964,30 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 12px 0 176px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 62%, transparent);
-  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
+  padding: 0 12px 0 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
+  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
   -webkit-app-region: drag;
 }
 
-.main-panel-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 13px;
-  font-weight: 500;
+.main-panel-sidebar-actions-slot {
+  width: 16px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
 }
 
-.main-panel-title svg {
-  color: var(--ui-accent-primary-fg, var(--accent-main, var(--accent)));
+.main-panel-sidebar-actions-slot.reserved {
+  width: 176px;
+}
+
+.main-panel-header-spacer {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .main-panel-close {
+  flex: 0 0 auto;
   width: 28px;
   height: 28px;
   display: inline-flex;
@@ -1388,18 +1388,6 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   height: auto;
   display: block;
   object-fit: contain;
-}
-
-.media-source-badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  padding: 3px 7px;
-  font-size: 10px;
-  font-weight: 600;
-  border-radius: 6px;
-  color: white;
-  background: rgba(0, 0, 0, 0.62);
 }
 
 .media-overlay {

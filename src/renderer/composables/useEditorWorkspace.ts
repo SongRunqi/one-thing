@@ -1,6 +1,7 @@
 import { computed, markRaw, reactive, shallowReactive } from 'vue'
 import * as monaco from 'monaco-editor'
 import { monacoLanguageFromPath } from '@/editor/monaco-languages'
+import { platformApi } from '@/platform'
 
 export interface ExplorerEntry {
   name: string
@@ -124,10 +125,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   })
 }
 
+const workspaceFileSystemUnavailable = 'Workspace file access is not available in this host.'
+
+function hasWorkspaceFileAccess(): boolean {
+  return platformApi.capabilities.localFileSystem || platformApi.capabilities.workspaceFileSystem
+}
+
 async function setWorkspaceRoot(root: string) {
   if (workspace.root === root) return
   if (watchedRoot) {
-    await window.electronAPI.unwatchWorkspace(watchedRoot).catch(() => {})
+    await platformApi.unwatchWorkspace(watchedRoot).catch(() => {})
   }
   watchDispose?.()
   watchDispose = null
@@ -146,10 +153,16 @@ async function loadDirectory(dirPath: string) {
     node = reactive({ expanded: true, loading: false, error: '', entries: [] }) as ExplorerNodeState
     workspace.tree.set(dirPath, node)
   }
+  if (!hasWorkspaceFileAccess()) {
+    node.loading = false
+    node.entries = []
+    node.error = workspaceFileSystemUnavailable
+    return
+  }
   node.loading = true
   node.error = ''
   try {
-    const res = await window.electronAPI.listDirectory(dirPath)
+    const res = await platformApi.listDirectory(dirPath)
     if (res.success) {
       node.entries = res.entries || []
       node.expanded = true
@@ -185,13 +198,17 @@ async function openFile(filePath: string, maxBytes = 1024 * 1024) {
     if (elapsed < 10_000) return buffer
     buffer.loading = false
   }
+  if (!hasWorkspaceFileAccess()) {
+    buffer.error = workspaceFileSystemUnavailable
+    return buffer
+  }
 
   buffer.loading = true
   buffer.loadingSince = Date.now()
   buffer.error = ''
   try {
     const res = await withTimeout(
-      window.electronAPI.readFileContent(filePath, maxBytes),
+      platformApi.readFileContent(filePath, maxBytes),
       8000,
       'File load timed out',
     )
@@ -235,11 +252,16 @@ async function saveFile(filePath = workspace.activePath) {
   const buffer = workspace.buffers.get(filePath)
   if (!buffer || buffer.truncated || buffer.isBinary) return false
   if (!buffer.model && !buffer.isMarkdown) return false
+  if (!hasWorkspaceFileAccess()) {
+    buffer.error = workspaceFileSystemUnavailable
+    workspace.problemsOpen = true
+    return false
+  }
   buffer.saving = true
   buffer.error = ''
   buffer.conflict = false
   const value = buffer.model?.getValue() ?? buffer.value
-  const res = await window.electronAPI.saveFileContent(filePath, value, buffer.lastReadMtimeMs)
+  const res = await platformApi.saveFileContent(filePath, value, buffer.lastReadMtimeMs)
   buffer.saving = false
   if (!res.success) {
     buffer.conflict = !!res.conflict
@@ -306,23 +328,26 @@ async function refreshActiveFile() {
 }
 
 async function createFile(parentDir: string, name: string) {
+  if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
   const filePath = `${parentDir.replace(/\/$/, '')}/${name}`
-  const res = await window.electronAPI.createFile(filePath)
+  const res = await platformApi.createFile(filePath)
   if (res.success) await loadDirectory(parentDir)
   return res
 }
 
 async function createDirectory(parentDir: string, name: string) {
+  if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
   const dirPath = `${parentDir.replace(/\/$/, '')}/${name}`
-  const res = await window.electronAPI.createDirectory(dirPath)
+  const res = await platformApi.createDirectory(dirPath)
   if (res.success) await loadDirectory(parentDir)
   return res
 }
 
 async function renamePath(oldPath: string, newName: string) {
+  if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
   const parent = oldPath.split('/').slice(0, -1).join('/') || '/'
   const newPath = `${parent}/${newName}`
-  const res = await window.electronAPI.renamePath(oldPath, newPath)
+  const res = await platformApi.renamePath(oldPath, newPath)
   if (res.success) {
     await loadDirectory(parent)
     if (workspace.buffers.has(oldPath)) {
@@ -334,8 +359,9 @@ async function renamePath(oldPath: string, newName: string) {
 }
 
 async function deletePath(targetPath: string) {
+  if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
   const parent = targetPath.split('/').slice(0, -1).join('/') || '/'
-  const res = await window.electronAPI.deletePath(targetPath)
+  const res = await platformApi.deletePath(targetPath)
   if (res.success) {
     closeFile(targetPath)
     await loadDirectory(parent)
@@ -344,7 +370,8 @@ async function deletePath(targetPath: string) {
 }
 
 async function revealPath(targetPath: string) {
-  return window.electronAPI.revealPath(targetPath)
+  if (!hasWorkspaceFileAccess()) return { success: false, error: workspaceFileSystemUnavailable }
+  return platformApi.revealPath(targetPath)
 }
 
 function setViewState(filePath: string, state: monaco.editor.ICodeEditorViewState | null) {

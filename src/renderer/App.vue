@@ -164,6 +164,7 @@
                   mode="main"
                   :visible="workspacePanelOpen"
                   :active-tab="activeWorkspacePanel"
+                  :reserve-sidebar-actions="reserveSidebarActions"
                   @close="closeWorkspacePanel"
                 />
               </div>
@@ -222,6 +223,7 @@ import VoiceRuntimeWindow from '@/components/voice/VoiceRuntimeWindow.vue'
 import VoiceOverlay from '@/components/voice/VoiceOverlay.vue'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
+import { platformApi } from '@/platform'
 
 
 // Type for diff overlay data
@@ -280,6 +282,11 @@ const sidebarWidth = ref(clampSidebarWidth(parseInt(localStorage.getItem('sideba
 const sidebarResizing = ref(false)
 
 type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks'
+type TodoPlanWebWindowActionDetail = {
+  action?: 'open' | 'hide' | 'toggle' | 'pin'
+}
+
+const TODO_PLAN_WEB_WINDOW_EVENT = 'todo-plan:web-window-action'
 
 // Main workspace panel state. These panels are launched from the sidebar
 // actions area and occupy the main content region instead of expanding from
@@ -315,6 +322,30 @@ function closeWorkspacePanel() {
   activeWorkspacePanel.value = null
 }
 
+function handleTodoPlanWebWindowAction(event: Event) {
+  if (isAuxiliaryWindow.value) return
+  const detail = (event as CustomEvent<TodoPlanWebWindowActionDetail>).detail
+  switch (detail?.action) {
+    case 'open':
+      openWorkspacePanel('tasks')
+      break
+    case 'hide':
+      if (activeWorkspacePanel.value === 'tasks') {
+        closeWorkspacePanel()
+      }
+      break
+    case 'toggle':
+      if (activeWorkspacePanel.value === 'tasks') {
+        closeWorkspacePanel()
+      } else {
+        openWorkspacePanel('tasks')
+      }
+      break
+    case 'pin':
+      break
+  }
+}
+
 async function selectSidebarSession(sessionId: string) {
   if (sidebarFloating.value) {
     closeFloatingSidebar()
@@ -324,7 +355,7 @@ async function selectSidebarSession(sessionId: string) {
 }
 
 function openSettingsWindow() {
-  window.electronAPI.openSettingsWindow()
+  platformApi.openSettingsWindow()
 }
 
 
@@ -344,14 +375,14 @@ useShortcuts({
   },
   onOpenSettings: () => {
     if (isAuxiliaryWindow.value) return
-    window.electronAPI.openSettingsWindow()
+    platformApi.openSettingsWindow()
   },
   onSearchEverywhere: () => {
     if (isAuxiliaryWindow.value) return
     openSearch()
   },
   onToggleTodoPlanWindow: () => {
-    window.electronAPI?.toggleTodoPlanWindow?.({
+    platformApi?.toggleTodoPlanWindow?.({
       activation: 'preserve-current-app',
       preserveMainWindowVisibility: true,
     })
@@ -565,7 +596,7 @@ watch([sidebarCollapsed, sidebarFloating, activeWorkspacePanel], ([collapsed]) =
   // Auxiliary windows own their chrome behavior. Todo/Notes uses native hover-only buttons.
   if (isSettingsWindow.value || isImagePreviewWindow.value || isSearchWindow.value || isTodoPlanWindow.value) return
   // Always show traffic lights since sidebar strip is always visible
-  window.electronAPI?.setWindowButtonVisibility?.(true).catch(() => {
+  platformApi?.setWindowButtonVisibility?.(true).catch(() => {
     // Handler may not be registered yet during initial load
   })
 }, { immediate: true })
@@ -573,7 +604,7 @@ watch([sidebarCollapsed, sidebarFloating, activeWorkspacePanel], ([collapsed]) =
 
 // Search Everywhere — open via IPC (toolbar button + double shift)
 function openSearch() {
-  window.electronAPI.toggleSearchWindow()
+  platformApi.toggleSearchWindow()
 }
 
 // Double Shift to open search (only in main window)
@@ -596,11 +627,12 @@ let unsubscribeSearchAction: (() => void) | null = null
 
 onMounted(async () => {
   window.addEventListener('hashchange', syncCurrentHash)
+  window.addEventListener(TODO_PLAN_WEB_WINDOW_EVENT, handleTodoPlanWebWindowAction)
 
   const markdownCacheReady = ensureMarkdownCacheReady().catch((e) => {
     console.warn('[App] markdown cache init failed', e)
   })
-  const appStateReady = window.electronAPI.getAppState().catch((e) => {
+  const appStateReady = platformApi.getAppState().catch((e) => {
     console.warn('[App] Failed to restore app state:', e)
     return null
   })
@@ -637,7 +669,7 @@ onMounted(async () => {
   void markdownCacheReady
 
   // Listen for settings changes from other windows (e.g., settings window)
-  unsubscribeSettingsChanged = window.electronAPI.onSettingsChanged((newSettings) => {
+  unsubscribeSettingsChanged = platformApi.onSettingsChanged((newSettings) => {
     console.log('[App] Settings changed from another window')
 
     void (async () => {
@@ -665,11 +697,11 @@ onMounted(async () => {
   })
 
   // Listen for menu shortcuts
-  unsubscribeMenuNewChat = window.electronAPI.onMenuNewChat(() => {
+  unsubscribeMenuNewChat = platformApi.onMenuNewChat(() => {
     createNewChat()
   })
 
-  unsubscribeMenuCloseChat = window.electronAPI.onMenuCloseChat(async () => {
+  unsubscribeMenuCloseChat = platformApi.onMenuCloseChat(async () => {
     const currentId = sessionsStore.currentSessionId
     if (currentId) {
       await sessionsStore.deleteSession(currentId)
@@ -677,7 +709,7 @@ onMounted(async () => {
   })
 
   // Listen for search action execution from Search Everywhere window
-  unsubscribeSearchAction = window.electronAPI.onSearchAction(async (actionId: string) => {
+  unsubscribeSearchAction = platformApi.onSearchAction(async (actionId: string) => {
     if (actionId.startsWith('insert-prompt:')) {
       const promptId = actionId.replace('insert-prompt:', '')
       chatContainerRef.value?.insertPromptReference?.(promptId)
@@ -725,6 +757,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('hashchange', syncCurrentHash)
+  window.removeEventListener(TODO_PLAN_WEB_WINDOW_EVENT, handleTodoPlanWebWindowAction)
 
   if (unsubscribeSettingsChanged) {
     unsubscribeSettingsChanged()

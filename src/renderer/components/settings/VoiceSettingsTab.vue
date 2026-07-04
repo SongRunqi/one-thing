@@ -637,6 +637,7 @@ import {
   SettingsSection,
 } from './settings-primitives'
 import { DEFAULT_VOICE_SETTINGS } from '@shared/defaults/settings'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   settings: AppSettings
@@ -805,7 +806,7 @@ const ENDPOINTING_PRESETS: Record<Exclude<VoiceEndpointingMode, 'custom'>, numbe
 
 onMounted(async () => {
   try {
-    const response = await window.electronAPI.listAgents()
+    const response = await platformApi.listAgents()
     if (response.success && response.agents?.length) agents.value = response.agents
   } catch {
     agents.value = []
@@ -943,7 +944,7 @@ async function loadOpenRouterTTSModels(force = false) {
   try {
     ttsModelsStatus.value = 'loading'
     ttsModelsMessage.value = 'Loading OpenRouter TTS models...'
-    const response = await window.electronAPI.voiceGetTTSModels({ force })
+    const response = await platformApi.voiceGetTTSModels({ force })
     if (!response.success) throw new Error(response.error || 'Failed to load OpenRouter TTS models.')
     ttsModels.value = response.models || []
     ttsModelsStatus.value = 'success'
@@ -1029,7 +1030,7 @@ async function testSystemVoice() {
     ttsTestStatus.value = 'testing'
     ttsTestMessage.value = 'Sending a test voice reply...'
     await sleep(650)
-    const response = await window.electronAPI.voiceTestTTS({ text: 'Voice reply is ready.' })
+    const response = await platformApi.voiceTestTTS({ text: 'Voice reply is ready.' })
     if (!response.success) throw new Error(response.error || 'Voice test failed.')
     ttsTestStatus.value = 'success'
     ttsTestMessage.value = 'Voice test sent. You should hear a reply.'
@@ -1095,7 +1096,7 @@ async function testSpeechToText() {
     // Settings save automatically from the parent page; give the debounce time to flush
     // so a freshly pasted API key is included in the test request.
     await sleep(650)
-    const response = await window.electronAPI.voiceTestASR({
+    const response = await platformApi.voiceTestASR({
       audioBase64: await blobToBase64(blob),
       mimeType: blob.type || 'audio/webm',
     })

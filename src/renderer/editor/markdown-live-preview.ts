@@ -24,6 +24,7 @@ import {
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
 import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
 import { findEmojiShortcodes } from './markdown-emoji'
+import { platformApi } from '@/platform'
 
 export type MarkdownLivePreviewLineKind =
   | 'heading'
@@ -2329,7 +2330,7 @@ function sanitizeFenceLanguage(value: string): string {
 
 async function copyText(text: string): Promise<boolean> {
   try {
-    const result = await window.electronAPI?.writeClipboardText?.(text)
+    const result = await platformApi?.writeClipboardText?.(text)
     if (result && result.success !== false) return true
   } catch {
     // Fall back to the browser clipboard paths below.

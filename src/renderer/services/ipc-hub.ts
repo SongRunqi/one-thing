@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 /**
  * Global IPC Event Hub
  *
@@ -48,7 +49,7 @@ export function initializeIPCHub() {
 
   // ── Unified event channel ─────────────────────
   // All structured events (steps, tools, stream lifecycle, etc.)
-  window.electronAPI.onSessionEvent((envelope: SessionEventEnvelope) => {
+  platformApi.onSessionEvent((envelope: SessionEventEnvelope) => {
     const store = useChatStore()
     const { sessionId, event } = envelope
 
@@ -210,7 +211,7 @@ export function initializeIPCHub() {
   // ── Unified stream channel ────────────────────
   // High-frequency chunks: text-delta, reasoning-delta, tool-input-delta
   // Already batched by IPCBridge (16ms coalescing), so route directly to store.
-  window.electronAPI.onSessionStream(({ sessionId, chunk }: { sessionId: string; chunk: any }) => {
+  platformApi.onSessionStream(({ sessionId, chunk }: { sessionId: string; chunk: any }) => {
     const store = useChatStore()
     if (shouldDebugStream()) {
       const text = typeof chunk.text === 'string'

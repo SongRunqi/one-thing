@@ -53,6 +53,7 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { platformApi } from '@/platform'
 
 interface BackgroundJobView {
   id: string
@@ -89,7 +90,7 @@ function jobTitle(job: BackgroundJobView): string {
 async function loadJobs() {
   loading.value = true
   try {
-    const result = await window.electronAPI.listBackgroundJobs()
+    const result = await platformApi.listBackgroundJobs()
     jobs.value = (result.jobs ?? []) as BackgroundJobView[]
   } finally {
     loading.value = false
@@ -97,7 +98,7 @@ async function loadJobs() {
 }
 
 async function stopJob(jobId: string) {
-  await window.electronAPI.stopBackgroundJob(jobId)
+  await platformApi.stopBackgroundJob(jobId)
   await loadJobs()
 }
 

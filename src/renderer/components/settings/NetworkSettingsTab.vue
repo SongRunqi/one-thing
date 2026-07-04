@@ -75,6 +75,7 @@ import {
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   settings: AppSettings
@@ -113,7 +114,7 @@ async function testProxy() {
   testMessage.value = ''
   try {
     const plainProxy = JSON.parse(JSON.stringify(toRaw(proxy.value))) as ProxySettings
-    const response = await window.electronAPI.testProxy(plainProxy)
+    const response = await platformApi.testProxy(plainProxy)
     if (response.success) {
       testStatus.value = 'success'
       testMessage.value = 'Proxy connection succeeded.'

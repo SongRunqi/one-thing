@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { MediaAsset, MediaKind, MediaQuery } from '@/types'
+import { platformApi } from '@/platform'
 
 export type GeneratedMedia = MediaAsset
 
@@ -13,6 +14,9 @@ export const useMediaStore = defineStore('media', () => {
   const isLoading = ref(false)
   const isRebuilding = ref(false)
   const hasBackfilled = ref(false)
+  const hasLoaded = ref(false)
+  let activeLoad: Promise<void> | null = null
+  let activeLoadKey = ''
 
   const assets = computed(() => mediaItems.value)
   const images = computed(() =>
@@ -31,7 +35,7 @@ export const useMediaStore = defineStore('media', () => {
     if (hasBackfilled.value && !force) return
     isRebuilding.value = true
     try {
-      await window.electronAPI.rebuildMediaLibrary()
+      await platformApi.rebuildMediaLibrary()
       hasBackfilled.value = true
     } catch (e) {
       console.error('Failed to rebuild media library:', e)
@@ -40,17 +44,33 @@ export const useMediaStore = defineStore('media', () => {
     }
   }
 
-  async function loadMedia(options: { rebuild?: boolean; query?: MediaQuery } = {}) {
+  async function loadMedia(options: { rebuild?: boolean; query?: MediaQuery; force?: boolean } = {}) {
+    const queryKey = JSON.stringify(options.query ?? {})
+    if (!options.rebuild && !options.force && hasLoaded.value && queryKey === activeLoadKey) return
+    if (activeLoad && !options.force && !options.rebuild && queryKey === activeLoadKey) {
+      return activeLoad
+    }
+
+    activeLoadKey = queryKey
     isLoading.value = true
-    try {
+    const load = (async () => {
       if (options.rebuild) {
         await rebuildLibraryOnce()
       }
-      mediaItems.value = await window.electronAPI.listMediaAssets(options.query)
+      mediaItems.value = await platformApi.listMediaAssets(options.query)
+      hasLoaded.value = true
+    })()
+    activeLoad = load
+
+    try {
+      await load
     } catch (e) {
       console.error('Failed to load media:', e)
     } finally {
-      isLoading.value = false
+      if (activeLoad === load) {
+        activeLoad = null
+        isLoading.value = false
+      }
     }
   }
 
@@ -64,7 +84,7 @@ export const useMediaStore = defineStore('media', () => {
     messageId: string
   }): Promise<GeneratedMedia | null> {
     try {
-      const item = await window.electronAPI.saveImage(data)
+      const item = await platformApi.saveImage(data)
       await loadMedia()
       return mediaItems.value.find(asset => asset.id === item.id) || null
     } catch (e) {
@@ -75,7 +95,7 @@ export const useMediaStore = defineStore('media', () => {
 
   async function removeMedia(id: string) {
     try {
-      await window.electronAPI.hideMediaAsset(id)
+      await platformApi.hideMediaAsset(id)
       mediaItems.value = mediaItems.value.filter(m => m.id !== id)
     } catch (e) {
       console.error('Failed to remove media from library:', e)
@@ -84,7 +104,7 @@ export const useMediaStore = defineStore('media', () => {
 
   async function clearAll() {
     try {
-      await window.electronAPI.clearAllMedia()
+      await platformApi.clearAllMedia()
       mediaItems.value = []
     } catch (e) {
       console.error('Failed to clear media:', e)
@@ -93,6 +113,9 @@ export const useMediaStore = defineStore('media', () => {
 
   function getImageUrl(media: MediaAsset): string {
     if (!media.filePath) return ''
+    if (/^(https?:)?\/\//.test(media.filePath) || media.filePath.startsWith('/api/')) {
+      return media.filePath
+    }
     const filename = media.filePath.split('/').pop() || media.fileName
     return `media://${filename}`
   }
@@ -104,6 +127,7 @@ export const useMediaStore = defineStore('media', () => {
     kindCounts,
     isLoading,
     isRebuilding,
+    hasLoaded,
     loadMedia,
     rebuildLibraryOnce,
     saveImage,

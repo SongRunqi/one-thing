@@ -4,9 +4,9 @@ import type { JsonObject } from '../../../shared/json'
 import {
   buildToolActivityTarget,
   buildToolPermissionTitle,
-  buildToolVerb,
+  buildToolPrimaryArg,
 } from '../helpers/tool-display'
-import type { ToolRenderStatus } from '../helpers/tool-status'
+import { getToolDisplayLabel } from '../helpers/tool-ui-registry'
 
 function tc(toolName: string, args: JsonObject = {}): ToolCall {
   return {
@@ -19,71 +19,60 @@ function tc(toolName: string, args: JsonObject = {}): ToolCall {
   }
 }
 
-const knownToolSamples: Array<{ toolName: string; args?: JsonObject }> = [
-  { toolName: 'bash', args: { command: 'echo hi' } },
-  { toolName: 'read', args: { path: 'src/main.ts' } },
-  { toolName: 'grep', args: { pattern: 'needle' } },
-  { toolName: 'glob', args: { pattern: '**/*.ts' } },
-  { toolName: 'find', args: { pattern: '**/*.vue' } },
-  { toolName: 'ls', args: { path: 'src' } },
-  { toolName: 'write', args: { path: 'src/new.ts' } },
-  { toolName: 'edit', args: { path: 'src/app.ts' } },
-  { toolName: 'web_search', args: { query: 'current weather' } },
-  { toolName: 'calculator', args: { expression: '2 + 2' } },
-  { toolName: 'get_current_time', args: { timezone: 'UTC' } },
-  { toolName: 'fart' },
-  { toolName: 'variable', args: { action: 'set', name: 'workdir', value: '/tmp/project' } },
-  { toolName: 'todo', args: { action: 'update', title: 'Ship it' } },
-  { toolName: 'time', args: { action: 'convert', timezone: 'UTC' } },
-  { toolName: 'project_dirs', args: { action: 'update', path: '/tmp/project' } },
-  { toolName: 'mcp_search', args: { action: 'call', tool: 'brave_web_search' } },
-  { toolName: 'mcp_old_tool', args: { query: 'legacy' } },
-]
-
-const statuses: ToolRenderStatus[] = ['awaiting-confirmation', 'executing', 'completed']
-
 describe('tool display mappings', () => {
-  it('maps every known tool away from generic use labels', () => {
-    for (const sample of knownToolSamples) {
-      const toolCall = tc(sample.toolName, sample.args)
-      for (const status of statuses) {
-        expect(buildToolVerb(sample.toolName, status, toolCall), `${sample.toolName}:${status}`)
-          .not.toMatch(/^Us(e|ing|ed)$/)
-      }
-      expect(buildToolPermissionTitle(toolCall), sample.toolName).not.toMatch(/^Use\b/)
-    }
+  it('labels every known tool with its own name, never a generic verb', () => {
+    expect(getToolDisplayLabel('bash')).toBe('Bash')
+    expect(getToolDisplayLabel('read')).toBe('Read')
+    expect(getToolDisplayLabel('edit_file')).toBe('Edit')
+    expect(getToolDisplayLabel('write_to_file')).toBe('Write')
+    expect(getToolDisplayLabel('grep')).toBe('Grep')
+    expect(getToolDisplayLabel('glob')).toBe('Glob')
+    expect(getToolDisplayLabel('web_search')).toBe('WebSearch')
+    expect(getToolDisplayLabel('web-open')).toBe('WebOpen')
+    expect(getToolDisplayLabel('calculator')).toBe('Calculator')
+    expect(getToolDisplayLabel('variable')).toBe('Variable')
+    expect(getToolDisplayLabel('todo_plan')).toBe('Todo')
+    expect(getToolDisplayLabel('time')).toBe('Time')
+    expect(getToolDisplayLabel('project_dirs')).toBe('Projects')
+    expect(getToolDisplayLabel('mcp_search')).toBe('MCP')
+    expect(getToolDisplayLabel('fart')).toBe('Fart')
   })
 
-  it('uses action-specific labels for MCP router tools', () => {
-    expect(buildToolVerb('mcp_search', 'executing', tc('mcp_search', { action: 'search', query: 'brave' }))).toBe('Searching')
-    expect(buildToolVerb('mcp_search', 'completed', tc('mcp_search', { action: 'find', query: 'brave' }))).toBe('Found')
-    expect(buildToolVerb('mcp_search', 'completed', tc('mcp_search', { action: 'describe', tool: 'brave_web_search' }))).toBe('Inspected')
-    expect(buildToolVerb('mcp_search', 'awaiting-confirmation', tc('mcp_search', { action: 'call', tool: 'brave_web_search' }))).toBe('Call')
+  it('shows raw names for MCP and unknown tools instead of "Called"', () => {
+    expect(getToolDisplayLabel('mcp:brave.web_search')).toBe('brave.web_search')
+    expect(getToolDisplayLabel('custom_runtime_tool')).toBe('custom_runtime_tool')
+    expect(getToolDisplayLabel('')).toBe('Tool')
+  })
+
+  it('builds the full bash command as the primary argument', () => {
+    const longCommand = 'cd ~/data/work/lenovo-scripts && echo "=== repo files ===" && ls *.lua'
+    expect(buildToolPrimaryArg('bash', tc('bash', { command: longCommand }))).toBe(longCommand)
+  })
+
+  it('collapses bash newlines and caps extremely long commands', () => {
+    expect(buildToolPrimaryArg('bash', tc('bash', { command: 'echo a \n  && echo b' }))).toBe('echo a && echo b')
+    const huge = 'x'.repeat(1000)
+    const arg = buildToolPrimaryArg('bash', tc('bash', { command: huge }))
+    expect(arg.length).toBeLessThanOrEqual(400)
+    expect(arg.endsWith('...')).toBe(true)
+  })
+
+  it('builds pattern-and-scope arguments for search tools', () => {
+    expect(buildToolPrimaryArg('grep', tc('grep', { pattern: 'needle', glob: 'src/**/*.ts' }))).toBe('"needle", src/**/*.ts')
+    expect(buildToolPrimaryArg('grep', tc('grep', { pattern: 'needle' }))).toBe('"needle"')
+    expect(buildToolPrimaryArg('glob', tc('glob', { pattern: '**/*.vue' }))).toBe('**/*.vue')
+  })
+
+  it('keeps activity targets for query-style tools', () => {
+    expect(buildToolActivityTarget('web_search', tc('web_search', { query: 'current weather' }))).toBe('"current weather"')
+    expect(buildToolActivityTarget('variable', tc('variable', { action: 'set', name: 'workdir', value: '/tmp/x' }))).toBe('workdir')
+    expect(buildToolActivityTarget('todo', tc('todo', { action: 'update', title: 'Ship it' }))).toBe('Ship it')
+  })
+
+  it('keeps natural-language permission titles', () => {
+    expect(buildToolPermissionTitle(tc('bash', { command: 'echo hi' }))).toBe('Run echo hi')
+    expect(buildToolPermissionTitle(tc('edit', { path: 'src/app.ts' }))).toBe('Edit src/app.ts')
     expect(buildToolPermissionTitle(tc('mcp_search', { action: 'call', tool: 'brave_web_search' }))).toBe('Call brave_web_search')
-    expect(buildToolVerb('tool_function', 'executing', tc('tool_function', { action: 'search', query: 'brave' }))).toBe('Searching')
-  })
-
-  it('uses action-specific labels for multi-action built-in tools', () => {
-    expect(buildToolVerb('variable', 'awaiting-confirmation', tc('variable', { action: 'append', name: 'workdir' }))).toBe('Add')
-    expect(buildToolVerb('todo', 'executing', tc('todo', { action: 'delete', id: 'todo-1' }))).toBe('Deleting')
-    expect(buildToolVerb('todo_plan', 'executing', tc('todo_plan', { action: 'delete', id: 'todo-1' }))).toBe('Deleting')
-    expect(buildToolVerb('time', 'completed', tc('time', { action: 'diff' }))).toBe('Compared')
-    expect(buildToolVerb('project_dirs', 'executing', tc('project_dirs', { action: 'remove', path: '/tmp/project' }))).toBe('Removing')
-  })
-
-  it('uses base verbs until a tool is actively running', () => {
-    const editTool = tc('edit', { path: 'src/app.ts' })
-    expect(buildToolVerb('edit', 'queued', editTool)).toBe('Edit')
-    expect(buildToolVerb('edit', 'pending', editTool)).toBe('Edit')
-    expect(buildToolVerb('edit', 'awaiting-confirmation', editTool)).toBe('Edit')
-    expect(buildToolVerb('edit', 'streaming-input', editTool)).toBe('Editing')
-    expect(buildToolVerb('edit', 'executing', editTool)).toBe('Editing')
-  })
-
-  it('falls back to call labels for unknown dynamic tools', () => {
-    const dynamicTool = tc('custom_runtime_tool')
-    expect(buildToolVerb(dynamicTool.toolName, 'executing', dynamicTool)).toBe('Calling')
-    expect(buildToolVerb(dynamicTool.toolName, 'completed', dynamicTool)).toBe('Called')
-    expect(buildToolPermissionTitle(dynamicTool)).toBe('Call custom_runtime_tool')
+    expect(buildToolPermissionTitle(tc('custom_runtime_tool'))).toBe('Call custom_runtime_tool')
   })
 })

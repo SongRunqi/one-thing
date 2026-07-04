@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  CHANGE_DIRECTORY_SLASH_COMMAND,
   NEW_SESSION_SLASH_COMMAND,
   SHARED_SLASH_COMMANDS,
 } from '@onething/core/slash-commands'
@@ -9,15 +10,32 @@ const storeMocks = vi.hoisted(() => ({
   createSessionWithoutSwitch: vi.fn(),
 }))
 
+const platformMocks = vi.hoisted(() => ({
+  capabilities: {
+    localFileSystem: true,
+    workspaceFileSystem: true,
+  },
+  showOpenDialog: vi.fn(),
+  updateSessionWorkingDirectory: vi.fn(),
+}))
+
 vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => ({
     createSessionWithoutSwitch: storeMocks.createSessionWithoutSwitch,
   }),
 }))
 
+vi.mock('@/platform', () => ({
+  platformApi: platformMocks,
+}))
+
 describe('renderer command registry', () => {
   beforeEach(() => {
     storeMocks.createSessionWithoutSwitch.mockReset()
+    platformMocks.capabilities.localFileSystem = true
+    platformMocks.capabilities.workspaceFileSystem = true
+    platformMocks.showOpenDialog.mockReset()
+    platformMocks.updateSessionWorkingDirectory.mockReset()
   })
 
   it('registers /new for the command picker', () => {
@@ -65,5 +83,44 @@ describe('renderer command registry', () => {
 
     expect(result).toEqual({ success: false, error: `Usage: ${NEW_SESSION_SLASH_COMMAND.usage}` })
     expect(storeMocks.createSessionWithoutSwitch).not.toHaveBeenCalled()
+  })
+
+  it('does not open a native directory picker for /cd without args on web hosts', async () => {
+    platformMocks.capabilities.localFileSystem = false
+
+    const result = await executeCommand('cd', {
+      sessionId: 'session-1',
+      args: '',
+    })
+
+    expect(result).toEqual({
+      success: false,
+      error: `Usage: ${CHANGE_DIRECTORY_SLASH_COMMAND.usage}`,
+    })
+    expect(platformMocks.showOpenDialog).not.toHaveBeenCalled()
+    expect(platformMocks.updateSessionWorkingDirectory).not.toHaveBeenCalled()
+  })
+
+  it('uses the native directory picker for /cd without args on desktop hosts', async () => {
+    platformMocks.showOpenDialog.mockResolvedValue({
+      canceled: false,
+      filePaths: ['/workspace/project'],
+    })
+    platformMocks.updateSessionWorkingDirectory.mockResolvedValue({ success: true })
+
+    const result = await executeCommand('cd', {
+      sessionId: 'session-1',
+      args: '',
+    })
+
+    expect(result).toEqual({
+      success: true,
+      message: 'Working directory set to /workspace/project',
+    })
+    expect(platformMocks.showOpenDialog).toHaveBeenCalledWith({
+      properties: ['openDirectory'],
+      title: 'Select Working Directory',
+    })
+    expect(platformMocks.updateSessionWorkingDirectory).toHaveBeenCalledWith('session-1', '/workspace/project')
   })
 })

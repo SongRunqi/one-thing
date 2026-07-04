@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   getToolUiCategory,
-  getCategoryVerbs,
+  getToolDisplayLabel,
+  getToolIcon,
   getStatusLabel,
   getInspectorTab,
 } from '../helpers/tool-ui-registry'
@@ -19,10 +20,21 @@ describe('tool-ui-registry', () => {
     expect(getToolUiCategory('whatever')).toBe('tool')
   })
 
-  it('provides one verb set per category', () => {
-    expect(getCategoryVerbs('edit')).toEqual({ base: 'Edit', run: 'Editing', done: 'Edited' })
-    expect(getCategoryVerbs('console')).toEqual({ base: 'Run', run: 'Running', done: 'Ran' })
-    expect(getCategoryVerbs('tool')).toEqual({ base: 'Call', run: 'Calling', done: 'Called' })
+  it('labels tools with their display name, aliases included', () => {
+    expect(getToolDisplayLabel('edit')).toBe('Edit')
+    expect(getToolDisplayLabel('replace_file_content')).toBe('Edit')
+    expect(getToolDisplayLabel('bash')).toBe('Bash')
+    expect(getToolDisplayLabel('mcp:brave.search')).toBe('brave.search')
+    expect(getToolDisplayLabel('whatever_tool')).toBe('whatever_tool')
+  })
+
+  it('provides a distinct icon per tool with a category fallback', () => {
+    expect(getToolIcon('bash')).toBeTruthy()
+    expect(getToolIcon('bash')).not.toBe(getToolIcon('read'))
+    expect(getToolIcon('edit')).not.toBe(getToolIcon('write'))
+    // MCP tools share the plug icon; unknown tools fall back to the wrench.
+    expect(getToolIcon('mcp:brave.search')).toBe(getToolIcon('mcp_search'))
+    expect(getToolIcon('totally_unknown')).toBeTruthy()
   })
 
   it('labels every render status', () => {

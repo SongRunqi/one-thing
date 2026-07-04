@@ -34,7 +34,7 @@ function mountDetails(step: Step) {
 }
 
 describe('ToolStepDetails inline content', () => {
-  it('renders failed edit parameters with old and new strings instead of raw JSON arguments', () => {
+  it('renders failed edits as one compact intent diff instead of loose parameter blocks', () => {
     const wrapper = mountDetails(makeStep(
       {
         status: 'failed',
@@ -49,18 +49,20 @@ describe('ToolStepDetails inline content', () => {
       { status: 'failed', error: 'No matching text found for oldText.' },
     ))
 
-    const oldSnippets = wrapper.findAll('.failed-edit-snippet:not(.replacement)')
-    const newSnippets = wrapper.findAll('.failed-edit-snippet.replacement')
-    expect(wrapper.find('.failed-edit-param-list').text()).toContain('/repo/src/App.vue')
-    expect(wrapper.find('.failed-edit-param-list').text()).toContain('2')
-    expect(oldSnippets).toHaveLength(2)
-    expect(newSnippets).toHaveLength(2)
-    expect(oldSnippets[0].text()).toBe('<OldToolCard />')
-    expect(oldSnippets[1].text()).toBe('const legacy = true')
-    expect(newSnippets[0].text()).toBe('<StepsPanel />')
-    expect(newSnippets[1].text()).toBe('(empty string)')
-    expect(wrapper.text()).toContain('Old string')
-    expect(wrapper.text()).toContain('New string')
+    const diffs = wrapper.findAll('.intent-diff')
+    expect(diffs).toHaveLength(2)
+    const firstDel = diffs[0].findAll('.intent-line.del')
+    const firstAdd = diffs[0].findAll('.intent-line.add')
+    expect(firstDel).toHaveLength(1)
+    expect(firstAdd).toHaveLength(1)
+    expect(firstDel[0].text()).toContain('<OldToolCard />')
+    expect(firstAdd[0].text()).toContain('<StepsPanel />')
+    const secondAdd = diffs[1].findAll('.intent-line.add')
+    expect(secondAdd[0].text()).toContain('(empty string)')
+    expect(wrapper.find('.failed-edit-summary').text()).toContain('src/App.vue')
+    // The loose three-block parameter layout is gone.
+    expect(wrapper.find('.failed-edit-param-list').exists()).toBe(false)
+    expect(wrapper.find('.failed-edit-snippet').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('oldText')
     expect(wrapper.find('.args-toggle').exists()).toBe(false)
   })

@@ -455,11 +455,11 @@ onMounted(async () => {
   flex-direction: column;
   gap: 6px;
   overflow-y: auto;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
-  border-radius: var(--radius-md);
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  padding: 12px;
-  transition: all 0.2s ease;
+  background: transparent;
+  border-radius: 0;
+  border: 0;
+  padding: 8px 0;
+  transition: none;
 }
 
 .agent-item {
@@ -474,21 +474,36 @@ onMounted(async () => {
   color: var(--ui-text-primary-fg, var(--text));
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.agent-item:hover {
+.agent-item.app-button.is-unstyled {
+  --app-button-fill: transparent;
+  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
+  --app-button-hover-border: transparent;
+  --app-button-hover-shadow: none;
+}
+
+.agent-item:hover,
+.agent-item:focus-visible {
   background: var(--ui-state-hover-bg, var(--hover));
-  border-color: var(--ui-border-subtle-border, var(--border-subtle));
-  transform: translateX(2px);
+  border-color: transparent;
 }
 
 .agent-item.active {
-  background: var(--ui-state-selected-bg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, var(--ui-surface-panel-bg))) !important;
+  --app-button-fill: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover))));
+  --app-button-hover-fill: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--active, var(--ui-state-hover-bg, var(--hover)))));
+
+  background: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover)))) !important;
   color: var(--ui-state-selected-fg, var(--ui-text-primary-fg, var(--text)));
-  border-color: var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent)));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
-  transform: translateX(2px);
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+.agent-item.active:hover,
+.agent-item.active:focus-visible {
+  background: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--active, var(--ui-state-hover-bg, var(--hover))))) !important;
 }
 
 .agent-item-main {
@@ -529,10 +544,10 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: var(--radius-md);
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
 }
 
 .agent-editor-header {
@@ -541,8 +556,8 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 12px;
   padding: 14px 20px;
-  border-bottom: 1px solid var(--ui-border-subtle-border);
-  background: color-mix(in srgb, var(--ui-surface-panel-bg) 98%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
+  background: transparent;
 }
 
 .agent-editor .back-btn {
@@ -643,8 +658,8 @@ onMounted(async () => {
   justify-content: flex-end;
   gap: 10px;
   padding: 14px 20px;
-  border-top: 1px solid var(--ui-border-subtle-border);
-  background: color-mix(in srgb, var(--ui-surface-panel-bg) 96%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
+  background: transparent;
 }
 
 /* Buttons and Controls */
@@ -750,10 +765,11 @@ onMounted(async () => {
   font-size: 10px;
   font-weight: 600;
   color: var(--ui-text-muted-fg);
-  background: var(--ui-state-hover-bg);
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid var(--ui-border-subtle-border);
+  background: transparent;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .prompt-templates-panel {
@@ -761,10 +777,10 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
-  padding: 6px 8px;
-  background: var(--ui-surface-panel-bg);
-  border-radius: 6px;
-  border: 1px solid var(--ui-border-subtle-border);
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+  border: 0;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -786,22 +802,29 @@ onMounted(async () => {
 }
 
 .template-chip {
-  background: var(--ui-surface-elevated-bg);
-  border: 1px solid var(--ui-border-default-border);
-  border-radius: var(--radius-full, 9999px);
-  color: var(--ui-text-primary-fg);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--ui-text-secondary-fg);
   font-size: 11px;
   font-weight: 600;
-  padding: 4px 10px;
+  padding: 4px 8px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  box-shadow: none;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.template-chip.app-button.is-unstyled {
+  --app-button-fill: transparent;
+  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
+  --app-button-hover-border: transparent;
+  --app-button-hover-shadow: none;
 }
 
 .template-chip:hover {
-  background: var(--ui-state-hover-bg);
-  border-color: var(--ui-accent-primary-fg);
-  color: var(--ui-accent-primary-fg);
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg);
 }
 
 

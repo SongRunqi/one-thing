@@ -520,6 +520,7 @@ import type {
   TodoNotesAction,
   TodoNotesActionContext,
 } from './todo-notes-actions'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   sessionId?: string
@@ -802,7 +803,7 @@ watch(activeFindIndex, () => {
 })
 
 async function loadSnapshot() {
-  const response = await window.electronAPI.getTodoPlan({
+  const response = await platformApi.getTodoPlan({
     sessionId: effectiveSessionId.value,
     workingDirectory: effectiveWorkingDirectory.value,
   })
@@ -901,7 +902,7 @@ async function saveDraft() {
   saveTimer = null
   const document = activeDocument.value
   if (!document) return
-  const response = await window.electronAPI.updateTodoPlan({
+  const response = await platformApi.updateTodoPlan({
     scope: document.scope,
     id: document.scope === 'user-note' ? document.id : undefined,
     sessionId: effectiveSessionId.value,
@@ -936,7 +937,7 @@ function applyDocument(document: TodoPlanDocument) {
 
 async function createNote() {
   const title = 'Untitled Note'
-  const response = await window.electronAPI.createTodoPlanNote({
+  const response = await platformApi.createTodoPlanNote({
     title,
     content: `# ${title}\n\n`,
   })
@@ -955,7 +956,7 @@ async function renameNote() {
   if (!document || document.scope !== 'user-note') return
   const title = window.prompt('Rename note', displayTitle.value)
   if (!title?.trim()) return
-  const response = await window.electronAPI.renameTodoPlanNote({ id: document.id, title })
+  const response = await platformApi.renameTodoPlanNote({ id: document.id, title })
   if (response.success && response.document) {
     loadedDocumentId = ''
     await loadSnapshot()
@@ -973,7 +974,7 @@ async function deleteUserNote(id: string) {
   const document = snapshot.value?.userNotes.find(note => note.id === id)
   if (!document) return
   if (!window.confirm(`Delete "${document.title}"?`)) return
-  const response = await window.electronAPI.deleteTodoPlanNote({ id: document.id })
+  const response = await platformApi.deleteTodoPlanNote({ id: document.id })
   if (response.success) {
     loadedDocumentId = ''
     await loadSnapshot()
@@ -1087,7 +1088,7 @@ function runFormatCommand(command: MarkdownCommand) {
 }
 
 async function revealNotesFolder() {
-  await window.electronAPI.revealTodoPlanDirectory?.()
+  await platformApi.revealTodoPlanDirectory?.()
 }
 
 async function copyMarkdown() {
@@ -1183,7 +1184,7 @@ async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution
   if (asset) return asset
   const documentPath = activeDocument.value?.filePath
   if (!documentPath) return null
-  const response = await window.electronAPI.resolveMarkdownAsset({
+  const response = await platformApi.resolveMarkdownAsset({
     documentPath,
     workspaceRoot: snapshot.value?.directory || effectiveWorkingDirectory.value,
     rawTarget: href,
@@ -1194,20 +1195,20 @@ async function resolveMarkdownLink(href: string, asset?: MarkdownAssetResolution
 async function openMarkdownLink(payload: { href: string; asset?: MarkdownAssetResolution | null }) {
   const asset = await resolveMarkdownLink(payload.href, payload.asset)
   if (asset?.kind === 'external') {
-    await window.electronAPI.openExternal(asset.href || payload.href)
+    await platformApi.openExternal(asset.href || payload.href)
     return
   }
   if (asset?.absolutePath) {
-    await window.electronAPI.openPath(asset.absolutePath)
+    await platformApi.openPath(asset.absolutePath)
     return
   }
   if (/^[a-z][a-z\d+.-]*:/i.test(payload.href)) {
-    await window.electronAPI.openExternal(payload.href)
+    await platformApi.openExternal(payload.href)
   }
 }
 
 async function openMarkdownImage(payload: { src: string; alt: string; asset?: MarkdownAssetResolution | null }) {
-  await window.electronAPI.openImagePreview(payload.asset?.dataUrl || payload.src, payload.alt)
+  await platformApi.openImagePreview(payload.asset?.dataUrl || payload.src, payload.alt)
 }
 
 function handleShortcut(event: KeyboardEvent) {
@@ -1269,7 +1270,7 @@ function handleEscape() {
     return
   }
   if (isStandalone.value) {
-    window.electronAPI.hideTodoPlanWindow?.({
+    platformApi.hideTodoPlanWindow?.({
       activation: 'preserve-current-app',
       preserveMainWindowVisibility: true,
     })
@@ -1302,7 +1303,7 @@ function togglePinned() {
   pinned.value = !pinned.value
   if (pinned.value) collapsed.value = false
   if (isStandalone.value) {
-    window.electronAPI.setTodoPlanWindowPinned(pinned.value)
+    platformApi.setTodoPlanWindowPinned(pinned.value)
   }
 }
 
@@ -1363,9 +1364,9 @@ function shouldRefreshChanged(data: { scope: string; sessionId?: string; working
 onMounted(() => {
   loadSnapshot()
   if (isStandalone.value) {
-    window.electronAPI.setTodoPlanWindowPinned(pinned.value)
+    platformApi.setTodoPlanWindowPinned(pinned.value)
   }
-  cleanupChanged = window.electronAPI.onTodoPlanChanged((data) => {
+  cleanupChanged = platformApi.onTodoPlanChanged((data) => {
     if (!shouldRefreshChanged(data)) return
     if (data.document) {
       applyDocument(data.document)

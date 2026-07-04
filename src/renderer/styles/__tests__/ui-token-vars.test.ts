@@ -410,10 +410,21 @@ describe('renderer UI semantic variables', () => {
     const markdownStyles = readRendererFile('styles/markdown.css')
 
     expect(stepsPanel).toContain('var(--ui-tool-danger-text-fg')
-    expect(toolResultRenderer).toContain('var(--ui-tool-surface-subtle-bg')
-    expect(toolStepDetails).toContain('var(--ui-tool-surface-subtle-bg')
-    expect(toolDiffPreview).toContain('var(--ui-tool-surface-subtle-bg')
-    expect(messageBubble).toContain('var(--ui-message-user-bg')
+    expect(toolResultRenderer).toContain('var(--ui-tool-text-muted-fg')
+    expect(toolStepDetails).toContain('var(--ui-tool-border-border')
+    expect(toolDiffPreview).toContain('var(--ui-tool-text-muted-fg')
+
+    // Theme-specific tool text colors must take precedence over the generic
+    // neutral tiers, or every theme's dedicated dim tool color is shadowed
+    // by near-body-brightness secondary text (regression guard).
+    const variablesCss = readRendererFile('styles/variables.css')
+    expect(variablesCss).toContain(
+      '--ui-tool-text-muted-fg: var(--text-tool-args, var(--color-neutral-secondary-text',
+    )
+    expect(variablesCss).toContain(
+      '--ui-tool-text-faint-fg: var(--text-tool-label, var(--color-neutral-disabled-text',
+    )
+    expect(messageBubble).toContain('var(--ui-message-user-solid-bg')
     expect(messageBubble).toContain('var(--ui-message-user-shadow')
     expect(messageBubble).toContain('--waiting-fg: var(--ui-message-thinking-fg')
     expect(messageBubble).toContain('--reasoning-fg: var(--ui-message-thinking-fg')

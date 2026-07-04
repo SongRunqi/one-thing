@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 type ElectronClipboardAPI = {
   writeClipboardText?: (text: string) => Promise<{ success: boolean; error?: string }> | { success: boolean; error?: string }
 }
@@ -5,7 +6,7 @@ type ElectronClipboardAPI = {
 async function writeWithElectronClipboard(text: string): Promise<boolean> {
   if (typeof window === 'undefined') return false
 
-  const api = window.electronAPI as (typeof window.electronAPI & ElectronClipboardAPI) | undefined
+  const api = platformApi as (typeof platformApi & ElectronClipboardAPI) | undefined
   if (typeof api?.writeClipboardText !== 'function') return false
 
   try {

@@ -33,7 +33,7 @@
                   aria-hidden="true"
                 />
                 <span class="thinking-text flowing">Extracting memory</span>
-                <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+                <span class="thinking-time">{{ formatThinkingTime(waitingElapsed) }}</span>
               </div>
 
               <div
@@ -46,7 +46,7 @@
                   aria-hidden="true"
                 />
                 <span class="thinking-text flowing">Waiting</span>
-                <span class="thinking-time">{{ formatThinkingTime(thinkingElapsed) }}</span>
+                <span class="thinking-time">{{ formatThinkingTime(waitingElapsed) }}</span>
               </div>
 
               <div
@@ -126,10 +126,13 @@ const emit = defineEmits<{
 }>()
 
 const thinkingElapsed = ref(0)
+const waitingElapsed = ref(0)
 const finalThinkingTime = ref(0)
 
 let thinkingStartTimeValue: number | null = null
+let waitingStartTimeValue: number | null = null
 let thinkingTimer: ReturnType<typeof setInterval> | null = null
+let waitingTimer: ReturnType<typeof setInterval> | null = null
 
 const displayTime = computed(() => {
   if (finalThinkingTime.value > 0) return finalThinkingTime.value
@@ -149,6 +152,9 @@ const shouldShowStatus = computed(() => {
   return showLoadingMemory || showWaiting || showReasoning
 })
 
+const isWaitingLive = computed(() => props.isStreaming && !props.hasContent && !props.reasoning)
+const isThinkingLive = computed(() => props.isStreaming && !props.hasContent && !!props.reasoning)
+
 function formatThinkingTime(seconds: number): string {
   if (seconds < 60) {
     return `${seconds.toFixed(1)}s`
@@ -160,13 +166,30 @@ function formatThinkingTime(seconds: number): string {
 
 function startThinkingTimer() {
   if (thinkingTimer) return
-  thinkingStartTimeValue = props.thinkingStartTime || Date.now()
+  thinkingStartTimeValue = props.thinkingStartTime ?? Date.now()
   thinkingElapsed.value = (Date.now() - thinkingStartTimeValue) / 1000
   thinkingTimer = setInterval(() => {
-    if (thinkingStartTimeValue) {
+    if (thinkingStartTimeValue !== null) {
       thinkingElapsed.value = (Date.now() - thinkingStartTimeValue) / 1000
     }
   }, 100)
+}
+
+function startWaitingTimer() {
+  if (waitingTimer) return
+  waitingStartTimeValue = Date.now()
+  waitingElapsed.value = 0
+  waitingTimer = setInterval(() => {
+    if (waitingStartTimeValue !== null) {
+      waitingElapsed.value = (Date.now() - waitingStartTimeValue) / 1000
+    }
+  }, 100)
+}
+
+function stopWaitingTimer() {
+  if (!waitingTimer) return
+  clearInterval(waitingTimer)
+  waitingTimer = null
 }
 
 function stopThinkingTimer() {
@@ -180,24 +203,27 @@ function stopThinkingTimer() {
 }
 
 watch(
-  () => props.isStreaming,
-  (newVal, oldVal) => {
-    if (newVal && !oldVal) {
-      startThinkingTimer()
-    } else if (!newVal && oldVal) {
-      stopThinkingTimer()
+  isWaitingLive,
+  (newVal) => {
+    if (newVal) {
+      startWaitingTimer()
+    } else {
+      stopWaitingTimer()
     }
   },
   { immediate: true },
 )
 
 watch(
-  () => props.hasContent,
-  (newVal, oldVal) => {
-    if (newVal && !oldVal) {
+  isThinkingLive,
+  (newVal) => {
+    if (newVal) {
+      startThinkingTimer()
+    } else {
       stopThinkingTimer()
     }
   },
+  { immediate: true },
 )
 
 watch(
@@ -214,15 +240,16 @@ onMounted(() => {
   if (props.thinkingTime && props.thinkingTime > 0) {
     finalThinkingTime.value = props.thinkingTime
   }
-  if (props.isStreaming && !props.hasContent) {
-    startThinkingTimer()
-  }
 })
 
 onUnmounted(() => {
   if (thinkingTimer) {
     clearInterval(thinkingTimer)
     thinkingTimer = null
+  }
+  if (waitingTimer) {
+    clearInterval(waitingTimer)
+    waitingTimer = null
   }
 })
 </script>

@@ -12,6 +12,7 @@
         size="small"
         teleported
         placement="top"
+        popper-class="inputbox-select-dropdown think-select-dropdown"
         :model-value="thinkingSelectValue"
         :options="thinkSelectOptions"
         :aria-label="tooltipText"

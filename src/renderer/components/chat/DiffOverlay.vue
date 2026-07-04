@@ -66,6 +66,7 @@ import Button from '@/components/common/Button.vue'
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { X } from 'lucide-vue-next'
 import DiffView from '@/components/chat/message/DiffView.vue'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   visible: boolean
@@ -105,6 +106,11 @@ async function loadDiff() {
   error.value = null
 
   try {
+    if (!platformApi.capabilities.shellTools || !platformApi.capabilities.localFileSystem) {
+      error.value = 'Diff preview is not available in this host.'
+      return
+    }
+
     const diffCommand = props.isStaged
       ? `git diff --cached -- "${props.filePath}"`
       : `git diff -- "${props.filePath}"`
@@ -114,19 +120,19 @@ async function loadDiff() {
       : `${props.workingDirectory}/${props.filePath}`
 
     const [diffResult, oldContentResult, newContentResult] = await Promise.all([
-      window.electronAPI.executeTool(
+      platformApi.executeTool(
         'bash',
         { command: diffCommand },
         `git-diff-${Date.now()}`,
         props.sessionId
       ),
-      window.electronAPI.executeTool(
+      platformApi.executeTool(
         'bash',
         { command: `git show HEAD:"${props.filePath}"` },
         `git-show-old-${Date.now()}`,
         props.sessionId
       ),
-      window.electronAPI.readFileContent(fullPath)
+      platformApi.readFileContent(fullPath)
     ])
 
     if (diffResult.success) {

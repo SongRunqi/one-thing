@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 /**
  * Chat Store - Centralized state management for all chat sessions
  *
@@ -343,6 +344,12 @@ export const useChatStore = defineStore('chat', () => {
     if (usage) {
       message.usage = usage
     }
+  }
+
+  function markTopReasoningStarted(message: ChatMessage, reasoning: string) {
+    if (!reasoning || message.reasoning) return
+    message.thinkingStartTime = Date.now()
+    message.thinkingTime = undefined
   }
 
   // Scroll trigger per session — incremented on every handleStreamChunk call so MessageList
@@ -960,6 +967,7 @@ export const useChatStore = defineStore('chat', () => {
       const reasoning = chunk.reasoning || ''
       const placement = chunk.placement ?? (message.content ? 'inline' : 'top')
       if (placement === 'top') {
+        markTopReasoningStarted(message, reasoning)
         message.reasoning = (message.reasoning || '') + reasoning
       } else if (reasoning) {
         appendOrMergeReasoning(parts, reasoning, chunk.turnIndex)
@@ -1349,7 +1357,13 @@ export const useChatStore = defineStore('chat', () => {
     bumpScrollVersion(sessionId)
   }
 
+  // High-resolution execution timing (performance.now), keyed by toolCallId.
+  // startTime/endTime stay integer Date.now for persistence; durationMs carries
+  // the 0.1ms-precision display value.
+  const toolExecutionStartHiRes = new Map<string, number>()
+
   function handleToolExecutionStart(data: ToolExecutionStartData) {
+    toolExecutionStartHiRes.set(data.toolCallId, performance.now())
     patchStep(data.sessionId, data.messageId, data.stepId, data.toolCallId, { status: 'running' })
     patchMessageToolCall(data.sessionId, data.messageId, data.toolCallId, {
       status: 'executing',
@@ -1367,9 +1381,12 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function handleToolExecutionEnd(data: ToolExecutionEndData) {
+    const hiResStart = toolExecutionStartHiRes.get(data.toolCallId)
+    toolExecutionStartHiRes.delete(data.toolCallId)
     patchMessageToolCall(data.sessionId, data.messageId, data.toolCallId, {
       status: data.isError ? 'failed' : 'completed',
       endTime: Date.now(),
+      ...(hiResStart !== undefined ? { durationMs: performance.now() - hiResStart } : {}),
       result: data.result as ToolCall['result'],
       ...(data.isError ? { error: data.error } : {}),
     })
@@ -1406,7 +1423,7 @@ export const useChatStore = defineStore('chat', () => {
    */
   async function loadMessages(sessionId: string) {
     try {
-      const response = await window.electronAPI.getSession(sessionId)
+      const response = await platformApi.getSession(sessionId)
       if (response.success && response.session) {
         const messages = (response.session.messages || []).map(rebuildContentParts)
 
@@ -1444,7 +1461,7 @@ export const useChatStore = defineStore('chat', () => {
     let setStateMs = 0
     try {
       const ipcStart = performance.now()
-      const response = await window.electronAPI.getSessionMessagesPage({
+      const response = await platformApi.getSessionMessagesPage({
         sessionId,
         anchor: 'tail',
         limit,
@@ -1494,7 +1511,7 @@ export const useChatStore = defineStore('chat', () => {
 
     updateSessionPageState(sessionId, { isLoadingOlder: true })
     try {
-      const response = await window.electronAPI.getSessionMessagesPage({
+      const response = await platformApi.getSessionMessagesPage({
         sessionId,
         cursor: state.nextCursor,
         direction: 'older',
@@ -1533,7 +1550,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionLoading.value.set(sessionId, true)
     triggerRef(sessionLoading)
     try {
-      const response = await window.electronAPI.getSessionMessagesPage({
+      const response = await platformApi.getSessionMessagesPage({
         sessionId,
         anchor: { messageId, before, after },
       })
@@ -1561,7 +1578,7 @@ export const useChatStore = defineStore('chat', () => {
 
   async function loadUserMessageMarkers(sessionId: string): Promise<UserMessageMarker[]> {
     try {
-      const response: GetSessionUserMarkersResponse = await window.electronAPI.getSessionUserMarkers(sessionId)
+      const response: GetSessionUserMarkersResponse = await platformApi.getSessionUserMarkers(sessionId)
       const markers = response.success ? (response.markers || []) : []
       sessionUserMarkers.value.set(sessionId, markers)
       triggerRef(sessionUserMarkers)
@@ -1596,7 +1613,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionLoading.value.set(sessionId, true)
     triggerRef(sessionLoading)
 
-    await window.electronAPI.emitCommand(sessionId, {
+    await platformApi.emitCommand(sessionId, {
       type: 'command:send-message',
       content,
       attachments,
@@ -1610,7 +1627,7 @@ export const useChatStore = defineStore('chat', () => {
    * model call, without aborting the current stream.
    */
   async function steerMessage(sessionId: string, content: string) {
-    await window.electronAPI.emitCommand(sessionId, {
+    await platformApi.emitCommand(sessionId, {
       type: 'command:inject-steering',
       content,
       source: 'user',
@@ -1622,7 +1639,7 @@ export const useChatStore = defineStore('chat', () => {
    * Queue a follow-up message for after the assistant would otherwise stop.
    */
   async function queueFollowUpMessage(sessionId: string, content: string) {
-    await window.electronAPI.emitCommand(sessionId, {
+    await platformApi.emitCommand(sessionId, {
       type: 'command:inject-followup',
       content,
       source: 'user',
@@ -1641,7 +1658,7 @@ export const useChatStore = defineStore('chat', () => {
     sessionLoading.value.set(sessionId, true)
     triggerRef(sessionLoading)
 
-    await window.electronAPI.emitCommand(sessionId, {
+    await platformApi.emitCommand(sessionId, {
       type: 'command:edit-and-resend',
       messageId,
       newContent,
@@ -1661,7 +1678,7 @@ export const useChatStore = defineStore('chat', () => {
       sessionLoading.value.set(sessionId, true)
       triggerRef(sessionLoading)
 
-      await window.electronAPI.emitCommand(sessionId, {
+      await platformApi.emitCommand(sessionId, {
         type: 'command:retry-message',
         messageId,
       })
@@ -1677,7 +1694,7 @@ export const useChatStore = defineStore('chat', () => {
    */
   async function stopGeneration(sessionId?: string) {
     try {
-      const response = await window.electronAPI.abortStream(sessionId)
+      const response = await platformApi.abortStream(sessionId)
       if (response.success && sessionId) {
         // Mark current streaming message as not streaming and cancel running steps
         const currentMessageId = activeStreams.value.get(sessionId)
@@ -1836,6 +1853,7 @@ export const useChatStore = defineStore('chat', () => {
       ...message,
       isStreaming: true,
       contentParts: message.contentParts || [],
+      thinkingStartTime: message.reasoning ? message.thinkingStartTime : undefined,
     }
     messages.push(assistantMessage)
     setSessionMessages(sessionId, [...messages])

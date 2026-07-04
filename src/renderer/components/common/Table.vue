@@ -1575,13 +1575,13 @@ defineExpose({
 
 <style scoped>
 .app-table {
-  --app-table-bg: var(--ui-surface-panel-bg, var(--panel, var(--bg)));
-  --app-table-head-bg: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
+  --app-table-bg: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--panel, var(--bg))));
+  --app-table-head-bg: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) var(--app-table-head-mix-percent, 4%), transparent);
   --app-table-row-bg: var(--app-table-bg);
   --app-table-row-hover-bg: var(--ui-state-hover-bg, var(--hover));
-  --app-table-stripe-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 5%, transparent);
-  --app-table-border: var(--ui-border-default-border, var(--border));
-  --app-table-strong-border: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 72%, var(--ui-text-primary-fg, var(--text)) 28%);
+  --app-table-stripe-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) var(--app-table-stripe-mix-percent, 5%), transparent);
+  --app-table-border: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) var(--app-table-border-mix-percent, 5%), transparent);
+  --app-table-strong-border: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) var(--app-table-strong-border-mix-percent, 7%), transparent);
   --app-table-fg: var(--ui-text-primary-fg, var(--text));
   --app-table-muted-fg: var(--ui-text-muted-fg, var(--muted));
   --app-table-accent: var(--ui-accent-primary-fg, var(--accent));
@@ -1599,6 +1599,7 @@ defineExpose({
   border: 1px solid var(--app-table-border);
   border-radius: 8px;
   background: var(--app-table-bg);
+  overflow: hidden;
 }
 
 .app-table-element {
@@ -1706,7 +1707,7 @@ defineExpose({
   max-height: min(260px, calc(100vh - 16px));
   padding: 5px;
   overflow-y: auto;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--app-table-strong-border);
   border-radius: 8px;
   background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.18);
@@ -1755,7 +1756,7 @@ defineExpose({
   display: flex;
   justify-content: flex-end;
   padding: 5px 2px 1px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
+  border-top: 1px solid var(--app-table-border);
   margin-top: 4px;
 }
 
@@ -1783,11 +1784,11 @@ defineExpose({
 }
 
 .app-table-row.is-current .app-table-cell {
-  background: color-mix(in srgb, var(--app-table-accent) 13%, var(--app-table-bg));
+  background: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--app-table-row-hover-bg)));
 }
 
 .app-table-row.is-selected .app-table-cell {
-  background: color-mix(in srgb, var(--app-table-accent) 9%, var(--app-table-bg));
+  background: var(--ui-state-selected-bg, var(--app-table-row-hover-bg));
 }
 
 .app-table-row.is-success .app-table-cell {
@@ -1938,13 +1939,13 @@ defineExpose({
 .app-table-cell.is-last-fixed-left,
 .app-table-head-cell.is-last-fixed-left,
 .app-table-summary-cell.is-last-fixed-left {
-  box-shadow: 8px 0 14px -14px rgba(0, 0, 0, 0.45);
+  box-shadow: none;
 }
 
 .app-table-cell.is-first-fixed-right,
 .app-table-head-cell.is-first-fixed-right,
 .app-table-summary-cell.is-first-fixed-right {
-  box-shadow: -8px 0 14px -14px rgba(0, 0, 0, 0.45);
+  box-shadow: none;
 }
 
 .app-table-summary-cell {

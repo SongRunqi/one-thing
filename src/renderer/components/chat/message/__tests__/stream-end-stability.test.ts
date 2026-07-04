@@ -9,12 +9,37 @@ import StepsPanel from '../../StepsPanel.vue'
 import type { ChatMessage, ContentPart, MessageAttachment, Step, ToolCall } from '@/types'
 import { clearStreamingContentCache } from '@/stores/helpers/tool-step-view'
 
+const platformApiMock = vi.hoisted(() => ({
+  openImagePreview: vi.fn(),
+  openImageGallery: vi.fn(),
+}))
+
+vi.mock('@/platform', () => ({
+  platformApi: platformApiMock,
+}))
+
 function installRaf() {
   vi.useFakeTimers()
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) =>
     setTimeout(() => cb(performance.now()), 16) as unknown as number,
   )
   vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id))
+}
+
+function installLocalStorage() {
+  const values = new Map<string, string>()
+  vi.stubGlobal('localStorage', {
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => {
+      values.set(key, value)
+    }),
+    removeItem: vi.fn((key: string) => {
+      values.delete(key)
+    }),
+    clear: vi.fn(() => {
+      values.clear()
+    }),
+  })
 }
 
 async function advance(ms = 20) {
@@ -95,7 +120,10 @@ function fileAttachment(overrides: Partial<MessageAttachment> = {}): MessageAtta
 describe('stream end visual stability', () => {
   beforeEach(() => {
     installRaf()
+    installLocalStorage()
     clearStreamingContentCache()
+    platformApiMock.openImagePreview.mockReset()
+    platformApiMock.openImageGallery.mockReset()
   })
 
   afterEach(() => {
@@ -165,6 +193,42 @@ describe('stream end visual stability', () => {
     expect(wrapper.findAll('[data-stream-word]')).toHaveLength(0)
   })
 
+  it('renders live markdown while preserving unchanged streamed DOM nodes', async () => {
+    const wrapper = mount(StreamingMarkdown, {
+      props: {
+        content: '## Title\nHello **world** [docs](https://example.com)\n- first item',
+        isUser: false,
+        isStreaming: true,
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.find('h2').text()).toBe('Title')
+    expect(wrapper.find('a').attributes('href')).toBe('https://example.com')
+    expect(wrapper.find('li').text()).toContain('first item')
+
+    const paragraph = wrapper.find('p').element
+    const strong = wrapper.find('strong').element
+    const firstWord = wrapper.find('[data-stream-word]').element
+
+    expect(wrapper.find('strong').text()).toBe('world')
+    expect(wrapper.findAll('[data-stream-word]').length).toBeGreaterThan(0)
+
+    await wrapper.setProps({
+      content: '## Title\nHello **world** [docs](https://example.com)\n- first item again',
+    })
+    await advance(80)
+
+    expect(wrapper.text()).toContain('again')
+    expect(wrapper.find('p').element).toBe(paragraph)
+    expect(wrapper.find('strong').element).toBe(strong)
+    expect(wrapper.find('[data-stream-word]').element).toBe(firstWord)
+    const newWords = wrapper.findAll('.stream-word.is-new').map(word => word.text())
+    expect(newWords).toContain('again')
+    expect(newWords).not.toContain('Hello')
+    expect(newWords).not.toContain('world')
+  })
+
   it('does not replace unchanged code line nodes when complete flips true', async () => {
     const wrapper = mount(StreamingCodeBlock, {
       props: {
@@ -187,12 +251,12 @@ describe('stream end visual stability', () => {
     expect(after[1]).toBe(before[1])
   })
 
-  it('groups consecutive steps of the same tool type correctly', async () => {
+  it('groups tool calls issued in the same turn', async () => {
     const wrapper = mount(StepsPanel, {
       props: {
         steps: [
-          step({ id: 'step1', title: 'edit', toolCall: toolCall({ id: 'tc1', toolName: 'edit' }) }),
-          step({ id: 'step2', title: 'edit', toolCall: toolCall({ id: 'tc2', toolName: 'edit' }) }),
+          step({ id: 'step1', title: 'edit', turnIndex: 1, toolCall: toolCall({ id: 'tc1', toolName: 'edit' }) }),
+          step({ id: 'step2', title: 'edit', turnIndex: 1, toolCall: toolCall({ id: 'tc2', toolName: 'edit' }) }),
         ],
       },
       global: {
@@ -205,12 +269,31 @@ describe('stream end visual stability', () => {
 
     const groups = wrapper.findAll('.workflow-group')
     expect(groups).toHaveLength(1)
-    expect(groups[0].classes()).toContain('edit')
     expect(groups[0].find('.group-header-anchor > .group-header').exists()).toBe(true)
-    expect(wrapper.find('.group-summary-text').text()).toBe('Edit 2 files')
-    expect(wrapper.find('.operation-status-icon').exists()).toBe(true)
+    expect(wrapper.find('.group-summary-text').text()).toBe('2 tools')
+    expect(wrapper.find('.group-icons .tool-icon').exists()).toBe(true)
     expect(wrapper.find('.group-type-icon').exists()).toBe(false)
     expect(wrapper.find('.group-final-result').exists()).toBe(false)
+  })
+
+  it('does not group same-tool calls from different turns', async () => {
+    const wrapper = mount(StepsPanel, {
+      props: {
+        steps: [
+          step({ id: 'step1', title: 'edit', turnIndex: 1, toolCall: toolCall({ id: 'tc1', toolName: 'edit' }) }),
+          step({ id: 'step2', title: 'edit', turnIndex: 2, toolCall: toolCall({ id: 'tc2', toolName: 'edit' }) }),
+        ],
+      },
+      global: {
+        stubs: {
+          FartCallItem: { template: '<div />' },
+        },
+      },
+    })
+    await nextTick()
+
+    expect(wrapper.findAll('.workflow-group')).toHaveLength(0)
+    expect(wrapper.findAll('.operation-row')).toHaveLength(2)
   })
 
   it('does not repeat diff stats in expanded operation metadata', async () => {
@@ -220,11 +303,13 @@ describe('stream end visual stability', () => {
           step({
             id: 'step1',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({ id: 'tc1', toolName: 'edit', status: 'completed', requiresConfirmation: false }),
           }),
           step({
             id: 'step2',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({ id: 'tc2', toolName: 'edit', status: 'completed', requiresConfirmation: false }),
           }),
         ],
@@ -252,11 +337,13 @@ describe('stream end visual stability', () => {
           step({
             id: 'step1',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({ id: 'tc1', status: 'completed', requiresConfirmation: false }),
           }),
           step({
             id: 'step2',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({ id: 'tc2', status: 'completed', requiresConfirmation: false }),
           }),
         ],
@@ -292,11 +379,13 @@ describe('stream end visual stability', () => {
           step({
             id: 'step1',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({ id: 'tc1', toolName: 'write', status: 'completed', requiresConfirmation: false }),
           }),
           step({
             id: 'step2',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({ id: 'tc2', toolName: 'write', status: 'completed', requiresConfirmation: false }),
           }),
         ],
@@ -314,10 +403,9 @@ describe('stream end visual stability', () => {
 
     const nodes = wrapper.findAll('.tree-node-row')
     expect(nodes).toHaveLength(2)
-    expect(nodes[0].find('.node-target').attributes('aria-label')).toBe('Wrote a.ts')
-    expect(nodes[0].find('.node-action').text().trim()).toBe('Wrote')
+    expect(nodes[0].find('.node-target').attributes('aria-label')).toBe('Write(a.ts)')
+    expect(nodes[0].find('.node-action').text().trim()).toBe('Write')
     expect(nodes[0].find('.node-target-name').text()).toBe('a.ts')
-    expect(nodes[0].find('.node-target-name').classes()).toContain('node-target-chip')
     expect(nodes[0].find('.node-target-name').classes()).toContain('file-link')
   })
 
@@ -328,11 +416,13 @@ describe('stream end visual stability', () => {
           step({
             id: 'step1',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({ id: 'tc1', toolName: 'write', status: 'completed', requiresConfirmation: false }),
           }),
           step({
             id: 'step2',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({ id: 'tc2', toolName: 'write', status: 'completed', requiresConfirmation: false }),
           }),
         ],
@@ -361,6 +451,7 @@ describe('stream end visual stability', () => {
           step({
             id: 'failed-edit-1',
             status: 'failed',
+            turnIndex: 1,
             error: 'No matching text found in file',
             toolCall: toolCall({
               id: 'tc-failed-edit-1',
@@ -374,6 +465,7 @@ describe('stream end visual stability', () => {
           step({
             id: 'failed-edit-2',
             status: 'failed',
+            turnIndex: 1,
             error: 'No matching text found in file',
             toolCall: toolCall({
               id: 'tc-failed-edit-2',
@@ -409,6 +501,7 @@ describe('stream end visual stability', () => {
           step({
             id: 'write-1',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({
               id: 'tc-write-1',
               toolName: 'write',
@@ -419,6 +512,7 @@ describe('stream end visual stability', () => {
           step({
             id: 'write-2',
             status: 'completed',
+            turnIndex: 1,
             toolCall: toolCall({
               id: 'tc-write-2',
               toolName: 'write',
@@ -473,10 +567,9 @@ describe('stream end visual stability', () => {
 
     expect(wrapper.find('.operation-row').exists()).toBe(true)
     expect(wrapper.find('.workflow-group').exists()).toBe(false)
-    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Wrote a.ts')
-    expect(wrapper.find('.operation-row .node-action').text().trim()).toBe('Wrote')
+    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Write(a.ts)')
+    expect(wrapper.find('.operation-row .node-action').text().trim()).toBe('Write')
     expect(wrapper.find('.operation-row .node-target-name').text()).toBe('a.ts')
-    expect(wrapper.find('.operation-row .node-target-name').classes()).toContain('node-target-chip')
 
     await wrapper.find('.operation-row .node-target').trigger('click')
     await nextTick()
@@ -513,8 +606,8 @@ describe('stream end visual stability', () => {
     })
     await nextTick()
 
-    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Edit failed: app.ts')
-    expect(wrapper.find('.operation-row .node-action').text()).toBe('Edit failed:')
+    expect(wrapper.find('.operation-row .node-target').attributes('aria-label')).toBe('Edit(app.ts)')
+    expect(wrapper.find('.operation-row .node-action').text()).toBe('Edit')
     expect(wrapper.find('.operation-row .node-target-name').text()).toBe('app.ts')
     expect(wrapper.find('.operation-failure').exists()).toBe(false)
     expect(wrapper.find('.node-error-summary').text()).toContain('No matching text found')
@@ -664,17 +757,6 @@ describe('stream end visual stability', () => {
   })
 
   it('routes attachment image opens through the Electron preview window', async () => {
-    const openImagePreview = vi.fn()
-    vi.stubGlobal('localStorage', {
-      getItem: vi.fn(),
-      setItem: vi.fn(),
-      removeItem: vi.fn(),
-      clear: vi.fn(),
-    })
-    Object.defineProperty(window, 'electronAPI', {
-      value: { openImagePreview },
-      configurable: true,
-    })
     const { default: MessageItem } = await import('../../MessageItem.vue')
     const message: ChatMessage = {
       id: 'm1',
@@ -701,7 +783,7 @@ describe('stream end visual stability', () => {
 
     await wrapper.find('.attachment-image').trigger('click')
 
-    expect(openImagePreview).toHaveBeenCalledWith(
+    expect(platformApiMock.openImagePreview).toHaveBeenCalledWith(
       'data:image/png;base64,abc123',
       'screenshot.png',
     )

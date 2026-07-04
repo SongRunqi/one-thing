@@ -44,16 +44,17 @@
       <section class="task-list">
         <div class="task-list-title">
           <span>All Tasks</span>
-          <strong>{{ tasks.length }}</strong>
         </div>
-        <Button
+        <div
           v-for="task in tasks"
           :key="task.id"
-          unstyled
-          native-type="button"
           class="task-row"
           :class="{ active: selectedTaskId === task.id }"
+          role="button"
+          tabindex="0"
           @click="selectTask(task.id)"
+          @keydown.enter.prevent="selectTask(task.id)"
+          @keydown.space.prevent="selectTask(task.id)"
         >
           <span class="task-icon">
             <Bot
@@ -66,8 +67,12 @@
             />
           </span>
           <span class="task-row-main">
-            <span class="task-title">
+            <span class="task-title-line">
               <strong>{{ task.name || task.id }}</strong>
+              <span :class="['status-badge', taskStatusClass(task)]">
+                <span class="status-marker" />
+                {{ taskStatusLabel(task) }}
+              </span>
             </span>
             <span class="task-meta">{{ formatSchedule(task.schedule) }}</span>
             <span class="task-preview">{{ task.promptPreview || task.pluginId || task.id }}</span>
@@ -76,13 +81,30 @@
               <span>{{ taskOwnerLabel(task) }}</span>
             </span>
           </span>
-          <span :class="['status-badge', taskStatusClass(task)]">
-            <span class="status-marker" />
-            {{ taskStatusLabel(task) }}
+          <span
+            class="task-row-control"
+            @click.stop
+            @keydown.stop
+          >
+            <AppSwitch
+              :model-value="task.enabled"
+              size="small"
+              :loading="actionId === task.id"
+              :disabled="actionId === task.id || task.inFlight"
+              :aria-label="`${task.name || task.id} ${task.enabled ? 'enabled' : 'disabled'}`"
+              @change="value => toggleTaskEnabled(task, value)"
+            />
           </span>
-        </Button>
+        </div>
         <div
-          v-if="!loading && tasks.length === 0"
+          v-if="loading && tasks.length === 0"
+          class="empty-state"
+        >
+          <CalendarClock :size="42" />
+          <span>Loading scheduled tasks...</span>
+        </div>
+        <div
+          v-else-if="!loading && tasks.length === 0"
           class="empty-state"
         >
           <CalendarClock :size="42" />
@@ -107,30 +129,19 @@
           <span class="detail-nav-title">Task Details</span>
         </div>
 
-        <section class="task-overview">
-          <div class="overview-main">
-            <span class="overview-kicker">{{ selectedTask.kind === 'agent' ? 'Agent task' : 'Plugin task' }}{{ selectedTask.readonly ? ' · Read only' : '' }}</span>
-            <h3>{{ selectedTask.name || selectedTask.id }}</h3>
-          </div>
-
-          <p
-            v-if="selectedTask.promptPreview || selectedTask.prompt"
-            class="overview-prompt"
-          >
-            {{ selectedTask.promptPreview || selectedTask.prompt }}
-          </p>
-        </section>
-
-        <section class="status-action-panel">
-          <div class="status-focus">
-            <span :class="['status-badge hero', taskStatusClass(selectedTask)]">
-              <span class="status-marker" />
-              {{ taskStatusLabel(selectedTask) }}
-            </span>
-            <div>
-              <strong :class="{ 'health-danger': taskHealthDanger(selectedTask) }">{{ taskHealthLabel(selectedTask) }}</strong>
-              <p>{{ runtimeStatusNote(selectedTask) }}</p>
+        <section class="task-detail-head">
+          <div class="task-overview">
+            <div class="overview-main">
+              <span class="overview-kicker">{{ selectedTask.kind === 'agent' ? 'Agent task' : 'Plugin task' }}{{ selectedTask.readonly ? ' · Read only' : '' }}</span>
+              <h3>{{ selectedTask.name || selectedTask.id }}</h3>
             </div>
+
+            <p
+              v-if="selectedTask.promptPreview || selectedTask.prompt"
+              class="overview-prompt"
+            >
+              {{ selectedTask.promptPreview || selectedTask.prompt }}
+            </p>
           </div>
 
           <div class="overview-actions">
@@ -144,17 +155,6 @@
             >
               <Play :size="15" />
               <span>Run Now</span>
-            </Button>
-            <Button
-              unstyled
-              class="secondary-btn"
-              native-type="button"
-              :title="selectedTask.enabled ? 'Disable' : 'Enable'"
-              :disabled="actionId === selectedTask.id"
-              @click="setEnabled(selectedTask.id, !selectedTask.enabled)"
-            >
-              <Power :size="15" />
-              <span>{{ selectedTask.enabled ? 'Disable' : 'Enable' }}</span>
             </Button>
             <Button
               v-if="!selectedTask.readonly"
@@ -176,6 +176,26 @@
             >
               <Trash2 :size="15" />
             </Button>
+          </div>
+        </section>
+
+        <section class="detail-summary-strip">
+          <div>
+            <span>Status</span>
+            <strong :class="['summary-status', taskStatusClass(selectedTask)]">
+              <span class="status-marker" />
+              {{ taskStatusLabel(selectedTask) }}
+            </strong>
+          </div>
+          <div>
+            <span>Next Run</span>
+            <strong :title="formatMaybeDate(selectedTask.nextRunAt)">
+              {{ formatShortDate(selectedTask.nextRunAt) }}
+            </strong>
+          </div>
+          <div>
+            <span>Runs</span>
+            <strong>{{ taskRunCountLabel(selectedTask) }}</strong>
           </div>
         </section>
 
@@ -842,6 +862,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import AppSwitch from '@/components/common/Switch.vue'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
 import { useSettingsStore } from '@/stores/settings'
@@ -861,7 +882,6 @@ import {
   Pencil,
   Play,
   Plus,
-  Power,
   RefreshCw,
   Save,
   Sparkles,
@@ -870,9 +890,31 @@ import {
   ArrowLeft,
   Info,
 } from 'lucide-vue-next'
+import { platformApi } from '@/platform'
 
 const agentsStore = useAgentsStore()
 const settingsStore = useSettingsStore()
+const TASK_LOAD_TIMEOUT_MS = 10000
+
+const props = withDefaults(defineProps<{
+  active?: boolean
+}>(), {
+  active: true,
+})
+
+function getSchedulerApi() {
+  return window.electronAPI ?? platformApi
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId)
+  })
+}
 
 const tasks = ref<SchedulerTaskSnapshotDTO[]>([])
 const runs = ref<SchedulerRunDetailDTO[]>([])
@@ -887,6 +929,7 @@ const error = ref('')
 const editing = ref(false)
 const editingId = ref('')
 const editorDialogRef = ref<HTMLElement | null>(null)
+const initialized = ref(false)
 
 const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
 
@@ -1064,9 +1107,10 @@ async function saveTask(): Promise<void> {
       schedule: buildSchedule(),
       workingDirectory: form.value.workingDirectory.trim() || undefined,
     }
+    const schedulerApi = getSchedulerApi()
     const response = editingId.value
-      ? await window.electronAPI.updateSchedulerTask({ id: editingId.value, ...payload })
-      : await window.electronAPI.createSchedulerTask(payload)
+      ? await schedulerApi.updateSchedulerTask({ id: editingId.value, ...payload })
+      : await schedulerApi.createSchedulerTask(payload)
     if (!response.success || !response.task) throw new Error(response.error || 'Failed to save scheduled task')
     editing.value = false
     editingId.value = ''
@@ -1110,7 +1154,7 @@ async function saveManagedDreamingTask(): Promise<void> {
       ...dreamingForm.value,
       sources: ['daily'],
     })
-    const response = await window.electronAPI.setSchedulerTaskEnabled({
+    const response = await getSchedulerApi().setSchedulerTaskEnabled({
       id: task.id,
       enabled: dreamingForm.value.enabled,
     })
@@ -1128,7 +1172,11 @@ async function loadAll(nextSelectedId = selectedTaskId.value): Promise<void> {
   loading.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.listSchedulerTasks()
+    const response = await withTimeout(
+      getSchedulerApi().listSchedulerTasks(),
+      TASK_LOAD_TIMEOUT_MS,
+      'Loading scheduled tasks timed out. Please refresh again.',
+    )
     if (!response.success || !response.tasks) throw new Error(response.error || 'Failed to load scheduled tasks')
     tasks.value = response.tasks.sort((a, b) => Number(a.readonly) - Number(b.readonly) || (a.name || a.id).localeCompare(b.name || b.id))
     selectedTaskId.value = tasks.value.find(task => task.id === nextSelectedId)?.id || tasks.value[0]?.id || ''
@@ -1150,7 +1198,7 @@ async function loadRuns(taskId: string): Promise<void> {
   selectedRun.value = null
   runs.value = []
   try {
-    const response = await window.electronAPI.listSchedulerRuns({ taskId, limit: 50 })
+    const response = await getSchedulerApi().listSchedulerRuns({ taskId, limit: 50 })
     if (!response.success || !response.runs) throw new Error(response.error || 'Failed to load run history')
     runs.value = response.runs
   } catch (err) {
@@ -1180,7 +1228,7 @@ async function runNow(taskId: string): Promise<void> {
   actionId.value = taskId
   error.value = ''
   try {
-    const response = await window.electronAPI.runSchedulerTaskNow({ id: taskId, force: true })
+    const response = await getSchedulerApi().runSchedulerTaskNow({ id: taskId, force: true })
     if (!response.success) throw new Error(response.error || 'Failed to run task')
     await loadAll(taskId)
   } catch (err) {
@@ -1199,7 +1247,7 @@ async function setEnabled(taskId: string, enabled: boolean): Promise<void> {
       await saveMemoryDreamingSettings({ enabled })
       resetDreamingForm()
     }
-    const response = await window.electronAPI.setSchedulerTaskEnabled({ id: taskId, enabled })
+    const response = await getSchedulerApi().setSchedulerTaskEnabled({ id: taskId, enabled })
     if (!response.success) throw new Error(response.error || 'Failed to update task')
     await loadAll(taskId)
   } catch (err) {
@@ -1209,11 +1257,15 @@ async function setEnabled(taskId: string, enabled: boolean): Promise<void> {
   }
 }
 
+async function toggleTaskEnabled(task: SchedulerTaskSnapshotDTO, value: unknown): Promise<void> {
+  await setEnabled(task.id, value === true)
+}
+
 async function deleteTask(taskId: string): Promise<void> {
   if (!confirm('Delete this scheduled task? Existing run history will stay on disk.')) return
   error.value = ''
   try {
-    const response = await window.electronAPI.deleteSchedulerTask({ id: taskId })
+    const response = await getSchedulerApi().deleteSchedulerTask({ id: taskId })
     if (!response.success) throw new Error(response.error || 'Failed to delete task')
     await loadAll('')
   } catch (err) {
@@ -1222,8 +1274,9 @@ async function deleteTask(taskId: string): Promise<void> {
 }
 
 async function openRunSession(sessionId: string): Promise<void> {
-  await window.electronAPI.updateSessionArchived(sessionId, false, null)
-  await window.electronAPI.switchSession(sessionId)
+  const schedulerApi = getSchedulerApi()
+  await schedulerApi.updateSessionArchived(sessionId, false, null)
+  await schedulerApi.switchSession(sessionId)
 }
 
 function formatSchedule(schedule?: SchedulerSchedule): string {
@@ -1270,19 +1323,6 @@ function formatTaskLastRun(task: SchedulerTaskSnapshotDTO): string {
   return `${status} ${formatShortDate(task.lastRunAt)}`
 }
 
-function taskHealthLabel(task: SchedulerTaskSnapshotDTO): string {
-  const total = task.successCount + task.failureCount
-  if (!total) return 'No runs'
-  if (task.failureCount === 0) return 'All clear'
-  if (task.failureCount > task.successCount) return `${task.failureCount}/${total} failed`
-  return `${task.successCount}/${total} ok`
-}
-
-function taskHealthDanger(task: SchedulerTaskSnapshotDTO): boolean {
-  const total = task.successCount + task.failureCount
-  return total > 0 && task.failureCount > task.successCount
-}
-
 function taskRunCountLabel(task: SchedulerTaskSnapshotDTO): string {
   const total = task.successCount + task.failureCount
   if (!total) return 'No runs yet'
@@ -1290,10 +1330,17 @@ function taskRunCountLabel(task: SchedulerTaskSnapshotDTO): string {
   return `${total} total · ${task.failureCount} failed`
 }
 
+function taskLastRunFailed(task: SchedulerTaskSnapshotDTO): boolean {
+  return (
+    (typeof task.lastRunAt === 'number' && task.lastErrorAt === task.lastRunAt) ||
+    task.recentRuns?.[0]?.ok === false
+  )
+}
+
 function taskStatusLabel(task: SchedulerTaskSnapshotDTO): string {
   if (task.inFlight) return 'Running'
   if (!task.enabled) return 'Disabled'
-  if (task.lastErrorAt === task.lastRunAt || task.recentRuns?.[0]?.ok === false) return 'Failed'
+  if (taskLastRunFailed(task)) return 'Failed'
   if (task.successCount + task.failureCount > 0) return 'Healthy'
   return 'Scheduled'
 }
@@ -1301,7 +1348,7 @@ function taskStatusLabel(task: SchedulerTaskSnapshotDTO): string {
 function taskStatusClass(task: SchedulerTaskSnapshotDTO): string {
   if (task.inFlight) return 'running'
   if (!task.enabled) return 'disabled'
-  if (task.lastErrorAt === task.lastRunAt || task.recentRuns?.[0]?.ok === false) return 'failed'
+  if (taskLastRunFailed(task)) return 'failed'
   if (task.successCount + task.failureCount > 0) return 'healthy'
   return 'scheduled'
 }
@@ -1310,16 +1357,6 @@ function taskOwnerLabel(task: SchedulerTaskSnapshotDTO): string {
   if (task.kind === 'plugin') return task.pluginId || 'Plugin'
   const agent = agentsStore.agents.find(item => item.id === task.agentId)
   return agent?.name || task.agentId || 'Agent'
-}
-
-function runtimeStatusNote(task: SchedulerTaskSnapshotDTO): string {
-  if (task.inFlight) return 'The task is running now.'
-  if (!task.enabled) return 'Automatic runs are paused.'
-  if (task.lastErrorAt === task.lastRunAt || task.recentRuns?.[0]?.ok === false) {
-    return 'Last run failed. Check history before changing settings.'
-  }
-  if (task.successCount + task.failureCount > 0) return 'Recent recorded runs are healthy.'
-  return 'Waiting for the first scheduled run.'
 }
 
 watch(
@@ -1345,8 +1382,18 @@ onMounted(async () => {
   ])
   resetForm()
   resetDreamingForm()
-  await loadAll()
+  initialized.value = true
+  if (props.active) await loadAll()
 })
+
+watch(
+  () => props.active,
+  async (active, wasActive) => {
+    if (!active || !initialized.value || active === wasActive) return
+    await loadAll()
+  },
+  { flush: 'post' },
+)
 </script>
 
 <style scoped>
@@ -1354,16 +1401,18 @@ onMounted(async () => {
   height: 100%;
   width: 100%;
   min-width: 0;
-  max-width: min(1040px, 100%);
+  max-width: none;
   box-sizing: border-box;
+  container-type: inline-size;
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  margin: 0 auto;
-  padding: 18px 20px 24px;
+  gap: 16px;
+  margin: 0;
+  padding: 16px 16px 20px;
   overflow-x: hidden;
   overflow-y: auto;
+  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
   color: var(--ui-text-primary-fg, var(--text));
   scrollbar-width: thin;
 }
@@ -1406,8 +1455,7 @@ onMounted(async () => {
 
 .tasks-header,
 .header-actions,
-.section-title,
-.task-title {
+.section-title {
   display: flex;
   align-items: center;
 }
@@ -1416,7 +1464,7 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 12px;
   padding: 0 0 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-divider-border, var(--border)) 72%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
 }
 
 .header-copy {
@@ -1483,7 +1531,7 @@ label span {
 
 .icon-btn:hover:not(:disabled) {
   background: var(--ui-state-hover-bg, var(--hover));
-  border-color: var(--ui-border-subtle-border, var(--border-subtle));
+  border-color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 10%, transparent);
   transform: translateY(-1px);
 }
 
@@ -1542,7 +1590,7 @@ label span {
 }
 
 .secondary-btn {
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 10%, transparent);
   background: var(--ui-action-secondary-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));
   color: var(--ui-action-secondary-fg, var(--ui-text-primary-fg, var(--text)));
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
@@ -1585,7 +1633,7 @@ label span {
   display: flex;
   align-items: center;
   gap: 12px;
-  border-bottom: 1px solid var(--ui-border-subtle-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
   padding: 10px 14px;
   flex-shrink: 0;
   background: var(--ui-surface-panel-bg);
@@ -1601,7 +1649,7 @@ label span {
 .config-tabs.segmented {
   display: flex;
   background: var(--ui-state-hover-bg);
-  border: 1px solid var(--ui-border-subtle-border);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 10%, transparent);
   padding: 3px;
   border-radius: 8px;
   margin-bottom: 16px;
@@ -1653,20 +1701,25 @@ label span {
 .tasks-layout {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: grid;
-  grid-template-columns: minmax(210px, 290px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 0.36fr) minmax(0, 1fr);
+  align-items: stretch;
+  gap: clamp(16px, 2.4vw, 28px);
   position: relative;
   overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
+  border: 0;
+  border-radius: 0;
+  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .task-list {
   min-width: 0;
+  height: 100%;
   overflow-y: auto;
-  padding: 16px;
-  border-right: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 58%, transparent);
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  padding: 14px 0 16px clamp(10px, 2cqw, 16px);
+  border-right: 0;
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1675,9 +1728,9 @@ label span {
 .task-list-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
-  padding: 0 8px 6px;
+  padding: 0 8px 8px;
   color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 11px;
   font-weight: 700;
@@ -1692,38 +1745,43 @@ label span {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  padding: 20px 24px 24px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  padding: 10px clamp(12px, 3cqw, 24px) 24px 0;
+  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
 }
 
 .task-row {
   width: 100%;
   min-width: 0;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr) 34px;
   align-items: start;
   gap: 10px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
-  padding: 10px 12px;
+  padding: 9px 10px;
   text-align: left;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-  margin-bottom: 4px;
+  outline: none;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.task-row:hover {
+.task-row:hover,
+.task-row:focus-visible {
   background: var(--ui-state-hover-bg, var(--hover));
-  border-color: var(--ui-border-subtle-border, var(--border-subtle));
-  transform: translateX(2px);
+  border-color: transparent;
 }
 
 .task-row.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, var(--ui-surface-elevated-bg, var(--bg-elevated)));
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  background: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover))));
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+.task-row.active:hover,
+.task-row.active:focus-visible {
+  background: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--active, var(--ui-state-hover-bg, var(--hover)))));
 }
 
 .task-icon {
@@ -1739,8 +1797,8 @@ label span {
 }
 
 .task-row.active .task-icon {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 13%, transparent);
+  color: var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent)));
+  background: color-mix(in srgb, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))) 10%, transparent);
 }
 
 .task-row-main {
@@ -1749,15 +1807,21 @@ label span {
   gap: 3px;
 }
 
-.task-title {
+.task-title-line {
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.task-title strong {
+.task-title-line strong {
+  flex: 1 1 auto;
   min-width: 0;
   font-size: 13px;
   line-height: 1.25;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-preview {
@@ -1803,6 +1867,16 @@ label span {
   transform: translateY(-50%);
 }
 
+.task-row-control {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 1px;
+}
+
+.task-row-control :deep(.app-switch) {
+  flex-shrink: 0;
+}
+
 .status-badge {
   --task-status-color: var(--ui-text-muted-fg, var(--text-muted));
   flex-shrink: 0;
@@ -1813,14 +1887,7 @@ label span {
   font-size: 11px;
   font-weight: 700;
   line-height: 1.2;
-}
-
-.status-badge.hero {
-  min-height: 28px;
-  border-radius: var(--radius-full, 9999px);
-  background: color-mix(in srgb, var(--task-status-color) 12%, transparent);
-  padding: 0 10px;
-  font-size: 13px;
+  white-space: nowrap;
 }
 
 .status-marker {
@@ -1828,11 +1895,6 @@ label span {
   height: 7px;
   border-radius: var(--radius-full, 9999px);
   background: var(--task-status-color);
-}
-
-.status-badge.hero .status-marker {
-  width: 9px;
-  height: 9px;
 }
 
 .status-badge.healthy {
@@ -1855,30 +1917,60 @@ label span {
   --task-status-color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
-.task-detail,
+.summary-status.healthy {
+  --task-status-color: var(--ui-status-success-fg, var(--color-success));
+}
+
+.summary-status.failed {
+  --task-status-color: var(--ui-status-danger-fg, var(--color-danger));
+}
+
+.summary-status.running {
+  --task-status-color: var(--ui-status-warning-fg, var(--color-warning));
+}
+
+.summary-status.scheduled {
+  --task-status-color: var(--ui-status-info-fg, var(--color-info));
+}
+
+.summary-status.disabled {
+  --task-status-color: var(--ui-text-muted-fg, var(--text-muted));
+}
+
 .managed-section {
   display: grid;
   align-content: start;
-}
-
-.managed-section {
   gap: 16px;
-  margin-top: 16px;
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
-  border-radius: 8px;
-  padding: 18px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  margin-top: 0;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
+  border-radius: 0;
+  padding: 20px 0 0;
+  background: transparent;
 }
 
 .task-detail {
+  display: flex;
+  flex-direction: column;
   gap: 24px;
-  padding: 2px 0 0;
+  padding: 10px clamp(12px, 3cqw, 24px) 24px 0;
+}
+
+.task-detail-head {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 6px 0 0;
 }
 
 .task-overview {
+  flex: 1 1 auto;
+  min-width: 0;
   display: grid;
   gap: 12px;
-  padding: 6px 2px 0;
+  padding: 0;
 }
 
 .overview-main {
@@ -1904,61 +1996,66 @@ label span {
   overflow-wrap: anywhere;
 }
 
-.status-action-panel {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 16px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-divider-border, var(--border)) 58%, transparent);
-  padding: 0 2px 18px;
-}
-
-.status-focus {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-}
-
-.status-focus > div {
-  min-width: 0;
-}
-
-.status-focus strong {
-  display: block;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 15px;
-  line-height: 1.25;
-}
-
-.status-focus strong.health-danger {
-  color: var(--ui-status-danger-fg, var(--color-danger));
-}
-
-.status-focus p {
-  margin: 3px 0 0;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  font-size: 12px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
 .overview-actions {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+  max-width: 360px;
+}
+
+.detail-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 110px), 1fr));
+  gap: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
+  border-bottom: 0;
+  padding: 22px 0 8px;
+}
+
+.detail-summary-strip > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.detail-summary-strip span {
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.detail-summary-strip strong {
+  min-width: 0;
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.summary-status {
+  --task-status-color: var(--ui-text-muted-fg, var(--text-muted));
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--task-status-color) !important;
 }
 
 .runtime-section {
   display: grid;
   gap: 12px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
-  border-radius: 8px;
-  padding: 14px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
+  border-radius: 0;
+  padding: 24px 0 0;
 }
 
 .section-block-heading {
@@ -1990,7 +2087,7 @@ label span {
 .runtime-grid {
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
   gap: 14px;
 }
 
@@ -2304,9 +2401,9 @@ select.field {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-border-divider-border, var(--border)) 58%, transparent);
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  padding: 14px 0 0;
+  border-top: 0;
+  background: transparent;
+  padding: 12px 0 0;
   z-index: 10;
 }
 
@@ -2375,10 +2472,11 @@ input[type="checkbox"]:focus-visible {
 .history-section {
   display: grid;
   gap: 9px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
-  border-radius: 8px;
-  padding: 14px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
+  border-radius: 0;
+  padding: 20px 0 0;
 }
 
 .history-toggle {
@@ -2465,7 +2563,7 @@ input[type="checkbox"]:focus-visible {
 }
 
 .run-row.active {
-  background: var(--ui-state-active-bg, var(--active));
+  background: var(--ui-state-selected-bg, var(--ui-state-active-bg, var(--active)));
 }
 
 .run-row strong {
@@ -2640,7 +2738,7 @@ input[type="checkbox"]:focus-visible {
 
 .timeline-run-card {
   flex: 1;
-  border: 1px solid var(--ui-border-subtle-border);
+  border: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 10%, transparent);
   border-radius: 8px;
   background: var(--ui-surface-panel-bg);
   padding: 10px 12px;
@@ -2664,8 +2762,8 @@ input[type="checkbox"]:focus-visible {
 }
 
 .timeline-run-item.active .timeline-run-card {
-  border-color: var(--ui-accent-primary-fg);
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 4%, var(--ui-surface-panel-bg));
+  border-color: var(--ui-state-selected-border, var(--ui-accent-primary-fg));
+  background: var(--ui-state-selected-bg, var(--ui-state-active-bg));
 }
 
 .run-card-header {
@@ -2720,11 +2818,11 @@ input[type="checkbox"]:focus-visible {
   }
 }
 
-/* Side Mode Stacking Layout */
+/* Side mode keeps the same split layout; tiny containers fall back below. */
 .mode-side .tasks-layout,
 .media-panel-content.mode-side .tasks-layout {
-  display: block;
-  position: relative;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.36fr) minmax(0, 1fr);
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -2732,47 +2830,41 @@ input[type="checkbox"]:focus-visible {
 
 .mode-side .task-list,
 .media-panel-content.mode-side .task-list {
-  width: 100%;
+  min-width: 0;
   height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform: translateX(0);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 1;
+  position: static;
+  transform: none;
+  transition: none;
   border-right: none;
 }
 
 .mode-side .task-detail,
 .media-panel-content.mode-side .task-detail {
-  width: 100%;
+  min-width: 0;
   height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform: translateX(100%);
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 2;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  position: static;
+  transform: none;
+  transition: none;
+  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
 }
 
 /* Slide stacked transitions */
 .mode-side .detail-active .task-list,
 .media-panel-content.mode-side .detail-active .task-list {
-  transform: translateX(-20%);
+  transform: none;
 }
 
 .mode-side .detail-active .task-detail,
 .media-panel-content.mode-side .detail-active .task-detail {
-  transform: translateX(0);
+  transform: none;
 }
 
 .mode-side .tasks-panel .detail-header-nav,
 .media-panel-content.mode-side .tasks-panel .detail-header-nav {
-  display: flex;
+  display: none;
 }
 
-@media (max-width: 768px) {
+@container (max-width: 520px) {
   .tasks-layout {
     display: block;
     position: relative;
@@ -2802,7 +2894,8 @@ input[type="checkbox"]:focus-visible {
     transform: translateX(100%);
     transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 2;
-    background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+    padding: 10px clamp(14px, 4cqw, 20px) 24px;
+    background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
   }
 
   .detail-active .task-list {
@@ -2813,8 +2906,28 @@ input[type="checkbox"]:focus-visible {
     transform: translateX(0);
   }
 
+  .task-detail-head {
+    display: grid;
+    gap: 12px;
+    padding-top: 4px;
+  }
+
+  .overview-actions {
+    align-items: center;
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .overview-main h3 {
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+
   .detail-header-nav {
     display: flex !important;
+    border-bottom-color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
+    background: transparent;
+    padding: 6px 0 12px;
   }
 }
 

@@ -206,12 +206,12 @@ defineExpose({
 
 <style scoped>
 .diff-preview {
-  --diff-normal-bg: color-mix(in srgb, var(--ui-tool-surface-subtle-bg, var(--tool-surface-sub)) 42%, transparent);
+  /* Opaque bg kept for the sticky line-number gutter, which must mask
+     horizontally scrolled code in no-wrap mode. */
+  --diff-normal-bg: var(--ui-surface-app-bg, var(--bg-app));
   margin: 0;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 30%, transparent);
-  border-radius: 6px;
-  background: var(--diff-normal-bg);
+  background: transparent;
 }
 
 .diff-content {

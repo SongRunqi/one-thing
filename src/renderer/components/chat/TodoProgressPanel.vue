@@ -115,6 +115,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { TaskSection } from './todo-plan-utils'
 import type { TodoPlanChangedPayload, TodoPlanDocument, TodoPlanSnapshot } from '@/types'
 import { groupTasksBySection, parseTasks, titleFromMarkdown } from './todo-plan-utils'
+import { platformApi } from '@/platform'
 
 const props = withDefaults(defineProps<{
   sessionId?: string
@@ -170,7 +171,7 @@ async function loadSnapshot() {
   loading.value = true
   error.value = ''
   try {
-    const response = await window.electronAPI.getTodoPlan({
+    const response = await platformApi.getTodoPlan({
       sessionId: props.sessionId,
       workingDirectory: effectiveWorkingDirectory.value || undefined,
     })
@@ -197,7 +198,7 @@ watch(
 
 onMounted(() => {
   loadSnapshot()
-  cleanupChanged = window.electronAPI.onTodoPlanChanged((data) => {
+  cleanupChanged = platformApi.onTodoPlanChanged((data) => {
     if (!shouldRefreshChanged(data)) return
     if (data.scope === 'workspace-ai-todo' && data.document) {
       applyDocument(data.document)

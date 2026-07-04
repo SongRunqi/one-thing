@@ -236,6 +236,7 @@
               unstyled
               class="secondary-btn"
               native-type="button"
+              :disabled="!canChooseLocalDirectory"
               @click="chooseDailyNoteDirectory"
             >
               Choose
@@ -302,6 +303,7 @@
               unstyled
               class="secondary-btn"
               native-type="button"
+              :disabled="!canChooseLocalDirectory"
               @click="chooseTodoPlanDirectory"
             >
               Choose
@@ -328,6 +330,7 @@ import {
   SettingsGroup,
   SettingsSection,
 } from './settings-primitives'
+import { platformApi } from '@/platform'
 
 const props = defineProps<{
   settings: AppSettings
@@ -354,6 +357,7 @@ const currentFontZh = computed(() => props.settings.chat?.chatFontZh ?? DEFAULT_
 const contextCompactEnabled = computed(() => props.settings.chat?.contextCompactEnabled !== false)
 const contextCompactThreshold = computed(() => props.settings.chat?.contextCompactThreshold ?? 85)
 const contextCompactKeepRecentTurns = computed(() => props.settings.chat?.contextCompactKeepRecentTurns ?? 6)
+const canChooseLocalDirectory = computed(() => platformApi.capabilities.localFileSystem)
 const dailyNotes = computed<DailyNoteSettings>(() => ({
   enabled: true,
   directoryMode: 'personal',
@@ -485,7 +489,8 @@ function updateTodoPlan(patch: Partial<TodoPlanSettings>) {
 }
 
 async function chooseDailyNoteDirectory() {
-  const result = await window.electronAPI.showOpenDialog({
+  if (!canChooseLocalDirectory.value) return
+  const result = await platformApi.showOpenDialog({
     title: 'Choose Daily Notes Directory',
     properties: ['openDirectory'],
     defaultPath: dailyNotes.value.customDirectory || undefined,
@@ -499,7 +504,8 @@ async function chooseDailyNoteDirectory() {
 }
 
 async function chooseTodoPlanDirectory() {
-  const result = await window.electronAPI.showOpenDialog({
+  if (!canChooseLocalDirectory.value) return
+  const result = await platformApi.showOpenDialog({
     title: 'Choose Todo / Plan Directory',
     properties: ['openDirectory'],
     defaultPath: todoPlan.value.directory || undefined,

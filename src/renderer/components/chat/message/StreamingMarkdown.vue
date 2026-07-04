@@ -10,10 +10,14 @@
       v-for="seg in segments"
       :key="seg.key"
     >
-      <div
+      <StreamingHtmlSegment
         v-if="seg.type === 'markdown'"
-        class="md-segment"
-        v-html="renderMd(seg.key, seg.content, seg.complete)"
+        :segment-key="seg.key"
+        :content="seg.content"
+        :is-user="isUser"
+        :streaming="useStableAssistantPipeline"
+        :wrap-words="shouldWrapWords(seg.complete)"
+        :animate-new-words="shouldAnimateWords(seg.complete)"
       />
       <StreamingCodeBlock
         v-else-if="seg.type === 'code'"
@@ -44,6 +48,7 @@ import { renderMarkdown } from '@/composables/useMarkdownRenderer'
 import { parseStreamingMarkdown, type MarkdownSegment } from '@/composables/parseStreamingMarkdown'
 import { advanceStreamingReveal } from '@/composables/streamingReveal'
 import StreamingCodeBlock from './StreamingCodeBlock.vue'
+import StreamingHtmlSegment from './StreamingHtmlSegment.vue'
 import StreamingTableBlock from './StreamingTableBlock.vue'
 import { enqueueMarkdownHydration } from './deferredMarkdownHydration'
 import {
@@ -382,27 +387,6 @@ const segments = computed<MarkdownSegment[]>(() => {
   return parsed
 })
 
-function renderMd(key: string, content: string, complete: boolean): string {
-  const streaming = useStableAssistantPipeline.value
-  const cacheKey = `${props.isUser ? 'user' : 'assistant'}:${streaming ? '1' : '0'}:${key}:${contentCacheKey(content)}`
-  const cached = getCachedMarkdownHtml(cacheKey)
-  if (cached) return shouldWrapWords(complete) ? wrapStreamingWords(key, cached, shouldAnimateWords(complete)) : cached
-
-  const started = performance.now()
-  const html = renderMarkdown(content, props.isUser ?? false, { streaming })
-  cacheMarkdownHtml(cacheKey, html)
-  const elapsed = performance.now() - started
-  if (elapsed > 16) {
-    console.info('[Perf][Markdown][html]', {
-      elapsedMs: Math.round(elapsed),
-      chars: content.length,
-      isUser: !!props.isUser,
-      streaming,
-    })
-  }
-  return shouldWrapWords(complete) ? wrapStreamingWords(key, html, shouldAnimateWords(complete)) : html
-}
-
 function shouldWrapWords(complete: boolean): boolean {
   return Boolean(
     !props.isUser &&
@@ -414,80 +398,6 @@ function shouldWrapWords(complete: boolean): boolean {
 
 function shouldAnimateWords(complete: boolean): boolean {
   return shouldWrapWords(complete) && renderPhase.value === 'live'
-}
-
-const seenWordKeys = new Map<string, Set<string>>()
-
-function getSeenWords(segmentKey: string): Set<string> {
-  let seen = seenWordKeys.get(segmentKey)
-  if (!seen) {
-    seen = new Set()
-    seenWordKeys.set(segmentKey, seen)
-  }
-  return seen
-}
-
-function isSkippableTextParent(parent: ParentNode | null): boolean {
-  if (!(parent instanceof Element)) return false
-  return !!parent.closest('pre, code, script, style, mjx-container')
-}
-
-function wrapStreamingWords(segmentKey: string, html: string, animateNew: boolean): string {
-  if (typeof document === 'undefined') return html
-
-  const template = document.createElement('template')
-  template.innerHTML = html
-
-  const walker = document.createTreeWalker(template.content, 4)
-  const textNodes: Text[] = []
-  let current = walker.nextNode()
-  while (current) {
-    const node = current as Text
-    if (node.textContent && !isSkippableTextParent(node.parentNode)) {
-      textNodes.push(node)
-    }
-    current = walker.nextNode()
-  }
-
-  const seen = getSeenWords(segmentKey)
-  let wordIndex = 0
-  const wordPattern = /[\p{Script=Han}]|[\p{L}\p{N}]+(?:['’_-][\p{L}\p{N}]+)*/gu
-
-  for (const node of textNodes) {
-    const text = node.textContent || ''
-    wordPattern.lastIndex = 0
-    let lastIndex = 0
-    let match = wordPattern.exec(text)
-    if (!match) continue
-
-    const fragment = document.createDocumentFragment()
-    while (match) {
-      if (match.index > lastIndex) {
-        fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)))
-      }
-
-      const word = match[0]
-      const wordKey = `${segmentKey}:${wordIndex}:${word}`
-      const span = document.createElement('span')
-      span.dataset.streamWord = ''
-      const isNew = animateNew && !seen.has(wordKey)
-      span.className = isNew ? 'stream-word is-new' : 'stream-word is-seen'
-      span.textContent = word
-      fragment.appendChild(span)
-      seen.add(wordKey)
-
-      wordIndex += 1
-      lastIndex = match.index + word.length
-      match = wordPattern.exec(text)
-    }
-
-    if (lastIndex < text.length) {
-      fragment.appendChild(document.createTextNode(text.slice(lastIndex)))
-    }
-    node.replaceWith(fragment)
-  }
-
-  return template.innerHTML
 }
 
 function updateReducedMotion() {

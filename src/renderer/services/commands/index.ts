@@ -1,3 +1,4 @@
+import { platformApi } from '@/platform'
 /**
  * Command Registry
  * Manages available commands for the "/" command system
@@ -49,7 +50,14 @@ const commands: CommandDefinition[] = [
       let nextDirectory = context.rawArgs.trim()
 
       if (!nextDirectory) {
-        const result = await window.electronAPI.showOpenDialog({
+        if (!platformApi.capabilities.localFileSystem) {
+          return {
+            success: false,
+            error: `Usage: ${CHANGE_DIRECTORY_SLASH_COMMAND.usage}`,
+          }
+        }
+
+        const result = await platformApi.showOpenDialog({
           properties: ['openDirectory'],
           title: 'Select Working Directory',
         })
@@ -61,7 +69,7 @@ const commands: CommandDefinition[] = [
         nextDirectory = result.filePaths[0]
       }
 
-      const result = await window.electronAPI.updateSessionWorkingDirectory(
+      const result = await platformApi.updateSessionWorkingDirectory(
         context.sessionId,
         nextDirectory
       )
@@ -85,7 +93,7 @@ const commands: CommandDefinition[] = [
       const requestId = globalThis.crypto?.randomUUID?.() || `compact-${Date.now()}-${Math.random().toString(36).slice(2)}`
       const completion = waitForCompactCompletion(context.sessionId, requestId)
 
-      const emitted = await window.electronAPI.emitCommand(context.sessionId, {
+      const emitted = await platformApi.emitCommand(context.sessionId, {
         type: 'command:compact-context',
         requestId,
         manual: true,
@@ -116,7 +124,7 @@ export async function refreshPluginCommands(): Promise<CommandDefinition[]> {
 
   pluginCommandsPromise = (async () => {
     try {
-      const result = await window.electronAPI.getPluginCommands()
+      const result = await platformApi.getPluginCommands()
       if (!result.success) {
         pluginCommands = []
         return pluginCommands
@@ -127,7 +135,7 @@ export async function refreshPluginCommands(): Promise<CommandDefinition[]> {
         description: command.description,
         usage: command.usage,
         async execute(context) {
-          const response = await window.electronAPI.executePluginCommand(
+          const response = await platformApi.executePluginCommand(
             command.name,
             context.rawArgs,
             context.sessionId,
@@ -168,7 +176,7 @@ function waitForCompactCompletion(sessionId: string, requestId: string): {
       finish({ success: false, error: 'Timed out waiting for compact to finish' })
     }, 120000)
 
-    cleanup = window.electronAPI.onSessionEvent((envelope: any) => {
+    cleanup = platformApi.onSessionEvent((envelope: any) => {
       if (envelope.sessionId !== sessionId) return
       const event = envelope.event
       if (event?.type !== 'context:compact-completed') return
