@@ -5,11 +5,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & Development Commands
 
 ```bash
-# Development (electron-vite handles all three processes)
-bun run dev
+# Development
+bun run dev                # unified dev (scripts/dev-unified.mjs)
+bun run electron:dev       # electron only (electron-vite, all three processes)
+bun run web:dev            # browser build of the renderer (apps/web)
+bun run server:start       # headless core server (apps/server, port 8787)
 
 # Production build
-bun run build              # electron-vite build (renderer + main + preload)
+bun run build              # electron build (native mac panel + electron-vite)
+bun run web:build          # web build
+bun run server:build       # headless server build
 bun run build:check        # typecheck + build
 bun run build:unpack       # build + electron-builder --dir
 bun run build:mac          # build + electron-builder --mac
@@ -25,16 +30,42 @@ bun run typecheck          # typecheck:node + typecheck:web
 
 ## Architecture Overview
 
-This is **onething**, an Electron-based AI chat desktop app with multi-provider support, tool calling, and an event-driven streaming engine.
+This is **onething**, an AI chat app with multi-provider support, tool calling, and an event-driven streaming engine. The primary host is an Electron desktop app; a headless server and a browser build share the same runtime packages.
 
-### Three-Process Model
+### Monorepo Layout
+
+```
+packages/core/               # Bottom layer: engine, session, permission, tools, storage primitives.
+                             # No Electron, no imports from runtime/gateway.
+packages/onething-runtime/   # App runtime on top of core: prompts, themes, memory, media,
+                             # scheduler, agents, agent-loop. Electron-free.
+packages/gateway/            # WeChat/Telegram channel gateway. Depends on core only.
+                             # Remote permission approval (reply 1/2/3), markdown-safe streaming.
+apps/electron/               # Electron-host-specific IPC/preload pieces
+apps/server/                 # Headless core server (HTTP, ONETHING_SERVER_PORT, default 8787)
+apps/web/                    # Browser build of the renderer (vite aliases '@' → src/renderer)
+src/main, src/renderer, ...  # Electron app itself (gradually thinning into the packages)
+```
+
+Dependency rules are enforced by `packages/core/__tests__/architecture-boundaries.test.ts`.
+
+Notes:
+- Session persistence is JSON-file based; the former SQLite path was removed.
+- Memory IPC in the Electron main process proxies to the headless server
+  (`ONETHING_SERVER_URL`, default `127.0.0.1:8787`); memory features need apps/server running.
+- Renderer code accesses the host through `platformApi` (`src/renderer/platform/`),
+  never `window.electronAPI` directly.
+- System prompt assembly is a single "directory at top, copy below" builder in
+  `packages/onething-runtime/src/prompts/builder.ts`.
+
+### Three-Process Model (Electron host)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Renderer Process (Vue 3 + Pinia)                               │
 │  src/renderer/                                                   │
 │  - UI components, stores, composables                           │
-│  - Calls window.electronAPI.* for IPC                          │
+│  - Calls platformApi.* (wraps electronAPI) for IPC             │
 └─────────────────────┬───────────────────────────────────────────┘
                       │ Electron IPC
 ┌─────────────────────┴───────────────────────────────────────────┐

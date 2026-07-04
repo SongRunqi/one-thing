@@ -1,7 +1,12 @@
 # Prompt 组装系统重新设计
 
 **日期**: 2026-06-09
-**状态**: 设计已确认，待写实现计划
+**状态**: 已实现（2026-07 验证）。落地位置比本 spec 更进一步：组装逻辑收敛到
+`packages/onething-runtime/src/prompts/builder.ts`（`buildRuntimeSystemPrompt`
+的 `compact([...])` 即"顶部目录"），`src/main/engine/prompt/system-prompt.ts`
+只留薄封装；compact prompt 在 `packages/core/engine/compact-prompt.ts`；
+segment/source/hash 追踪全链路已删除；developer 组为 `string[]`（codex 逐条
+developer 消息，其余 provider 合并为单条 system）。
 
 ## 背景与动机
 
