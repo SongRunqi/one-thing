@@ -50,3 +50,6 @@ userData/
 
 # Generated audit docs/assets
 docs/tool-ui-audit/
+.codex-audit/
+.codex/audits/
+tmp.md

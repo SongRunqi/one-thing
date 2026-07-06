@@ -117,6 +117,11 @@ interface SessionRow {
   created_at: number
   updated_at: number
   agent_id: string | null
+  memory_profile_id: string | null
+  origin_identity_key: string | null
+  memory_scope_id: string | null
+  last_connector: string | null
+  last_sent_at: number | null
   parent_session_id: string | null
   branch_from_message_id: string | null
   last_model: string | null

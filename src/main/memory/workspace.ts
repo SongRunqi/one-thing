@@ -6,6 +6,7 @@ import { getSettings } from '../stores/settings.js'
 import { getVariablesStore } from '../variables/index.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import * as store from '../store.js'
+import { LOCAL_CLIENT_USER_ID } from '../channel/origin.js'
 import type { MemoryWorkspace, ResolvedSoulMemorySettings } from '@onething/runtime/memory/types'
 import {
   planSoulMemoryWorkspacePaths as corePlanSoulMemoryWorkspacePaths,
@@ -61,9 +62,28 @@ export function sanitizeAgentPathSegment(agentId: string): string {
   return runtimeSanitizeAgentPathSegment(agentId, DEFAULT_AGENT_ID)
 }
 
-export function resolveSessionAgentId(sessionId?: string): string {
+function profileIdFromMemoryScope(memoryScopeId?: string): string | undefined {
+  if (!memoryScopeId) return undefined
+  const clientPrefix = 'client:'
+  if (memoryScopeId.startsWith(clientPrefix)) return memoryScopeId.slice(clientPrefix.length) || undefined
+  return sanitizeAgentPathSegment(memoryScopeId)
+}
+
+export function resolveSessionMemoryProfileId(sessionId?: string): string {
   if (!sessionId) return DEFAULT_AGENT_ID
-  return store.getSession(sessionId)?.agentId || DEFAULT_AGENT_ID
+  const session = store.getSession(sessionId)
+  return session?.memoryProfileId
+    || profileIdFromMemoryScope(session?.memoryScopeId)
+    || session?.agentId
+    || DEFAULT_AGENT_ID
+}
+
+function memoryWorkspaceIdForProfile(profileId: string): string {
+  return profileId === LOCAL_CLIENT_USER_ID ? DEFAULT_AGENT_ID : profileId
+}
+
+export function resolveSessionAgentId(sessionId?: string): string {
+  return memoryWorkspaceIdForProfile(resolveSessionMemoryProfileId(sessionId))
 }
 
 export function resolveRoot(settings: ResolvedSoulMemorySettings, agentId = DEFAULT_AGENT_ID): string {

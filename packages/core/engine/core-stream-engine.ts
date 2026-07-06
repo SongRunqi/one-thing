@@ -180,6 +180,7 @@ interface SendMessageCommandLike {
   channel?: string
   source?: string
   voice?: unknown
+  origin?: unknown
 }
 
 interface EditAndResendCommandLike {
@@ -187,6 +188,7 @@ interface EditAndResendCommandLike {
   messageId: string
   newContent: string
   channel?: string
+  origin?: unknown
 }
 
 interface RetryMessageCommandLike {
@@ -299,16 +301,21 @@ export class CoreStreamEngine<
     return this.runtime.clock.now()
   }
 
-  override steerMessage(sessionId: string, content: string, source = 'api'): void {
+  override steerMessage(sessionId: string, content: string, source = 'api', origin?: unknown): void {
     const queue = this.getSteeringQueue(sessionId)
     const timestamp = this.now()
 
     try {
-      const pendingMessage = this.createPersistedSteeringMessage(sessionId, content, source, timestamp)
+      const pendingMessage = this.createPersistedSteeringMessage(sessionId, content, source, timestamp, origin)
       queue.enqueue(pendingMessage)
     } catch (error) {
       this.logError('Failed to persist steering message immediately:', error)
-      queue.enqueue({ content, source, timestamp })
+      queue.enqueue({
+        content,
+        source,
+        timestamp,
+        ...(origin !== undefined ? { origin } : {}),
+      })
     }
 
     this.log(`Steering queued for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
@@ -391,6 +398,7 @@ export class CoreStreamEngine<
         contentParts: resolvedPromptRefs.contentParts,
         source: cmd.source || (cmd.channel === 'voice' ? 'voice' : 'text'),
         voice: cmd.voice,
+        ...(cmd.origin !== undefined ? { origin: cmd.origin } : {}),
       } as unknown as TMessage
       this.runtime.media.ingestMessageAttachments(
         sessionId,
@@ -430,6 +438,7 @@ export class CoreStreamEngine<
         isStreaming: true,
         thinkingStartTime: this.now(),
         toolCalls: [],
+        ...(cmd.origin !== undefined ? { origin: cmd.origin } : {}),
       } as unknown as TMessage
       this.store.addMessage(sessionId, assistantMessage)
 
@@ -552,6 +561,7 @@ export class CoreStreamEngine<
 
       if (!await this.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
 
+      const assistantOrigin = cmd.origin ?? sessionAfterTruncate?.messages.find(m => m.id === messageId)?.origin
       const assistantMessageId = this.createMessageId()
       const assistantMessage = {
         id: assistantMessageId,
@@ -563,6 +573,7 @@ export class CoreStreamEngine<
         isStreaming: true,
         thinkingStartTime: this.now(),
         toolCalls: [],
+        ...(assistantOrigin !== undefined ? { origin: assistantOrigin } : {}),
       } as unknown as TMessage
       this.store.addMessage(sessionId, assistantMessage)
 
@@ -626,6 +637,7 @@ export class CoreStreamEngine<
 
       if (!await this.maybeCompactBeforeSend(sessionId, providerId, configWithApiKey, settings)) return
 
+      const assistantOrigin = targetMessage.origin
       const assistantMessageId = this.createMessageId()
       const assistantMessage = {
         id: assistantMessageId,
@@ -637,6 +649,7 @@ export class CoreStreamEngine<
         isStreaming: true,
         thinkingStartTime: this.now(),
         toolCalls: [],
+        ...(assistantOrigin !== undefined ? { origin: assistantOrigin } : {}),
       } as unknown as TMessage
       this.store.addMessage(sessionId, assistantMessage)
 
@@ -669,6 +682,7 @@ export class CoreStreamEngine<
     content: string,
     source: string,
     timestamp: number,
+    origin?: unknown,
   ): PendingMessage {
     const session = this.store.getSession(sessionId)
     const settings = this.store.getSettings()
@@ -683,6 +697,7 @@ export class CoreStreamEngine<
       timestamp,
       contentParts: resolvedPromptRefs.contentParts,
       source,
+      ...(origin !== undefined ? { origin } : {}),
     } as unknown as TMessage
 
     this.store.addMessage(sessionId, userMessage)
@@ -698,6 +713,7 @@ export class CoreStreamEngine<
       id: userMessage.id,
       modelContent: resolvedPromptRefs.modelContent,
       contentParts: resolvedPromptRefs.contentParts,
+      ...(origin !== undefined ? { origin } : {}),
       persisted: true,
     }
   }

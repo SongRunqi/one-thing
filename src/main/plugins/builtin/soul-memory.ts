@@ -157,6 +157,10 @@ import type {
   SearchHit,
 } from '@onething/runtime/memory/types'
 import {
+  LOCAL_CLIENT_USER_ID,
+  LOCAL_MEMORY_SCOPE_ID,
+} from '../../channel/origin.js'
+import {
   CAPTURE_MAX_PENDING,
   CAPTURE_PENDING_STORE_KEY,
   CANONICAL_MIGRATION_STORE_KEY,
@@ -168,6 +172,7 @@ import {
   readLimited,
   replaceFileAtomic,
   resolveSessionAgentId,
+  resolveSessionMemoryProfileId,
   resolveSettings,
   SCOPED_DREAMING_SCHEDULER_TASK_ID,
   sha,
@@ -178,6 +183,7 @@ import {
   normalizeBulletText,
   previewLine,
   normalizeForDedupe,
+  sanitizeMemoryKey,
 } from '../../memory/workspace.js'
 import {
   appendTextFile,
@@ -328,6 +334,7 @@ const indexSyncScheduler = new CoreSoulMemoryIndexSyncScheduler<{
 let indexWatcher: CoreFileWatcher | null = null
 let indexWatcherRoot = ''
 let indexWatcherDebounce: NodeJS.Timeout | null = null
+const memoryProfileTaskQueues = new Map<string, Promise<void>>()
 
 function markIndexDirty(reason: string, metadata?: Record<string, unknown>): void {
   const state = indexTracker.markDirty(reason)
@@ -344,6 +351,51 @@ function markIndexClean(revision: number): void {
   indexTracker.markClean(revision)
 }
 
+function memoryProfileIdFromScope(memoryScopeId?: string): string | undefined {
+  if (!memoryScopeId) return undefined
+  const clientPrefix = 'client:'
+  if (memoryScopeId.startsWith(clientPrefix)) return memoryScopeId.slice(clientPrefix.length) || undefined
+  return undefined
+}
+
+function memoryWorkspaceIdFromProfile(profileId?: string): string {
+  if (!profileId || profileId === LOCAL_CLIENT_USER_ID) return DEFAULT_AGENT_ID
+  return profileId
+}
+
+function latestUserOrigin(messages: ChatMessage[]): ChatMessage['origin'] | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message?.role === 'user' && message.origin) return message.origin
+  }
+  return undefined
+}
+
+function resolveAfterResponseAgentId(context: AfterAssistantResponseContext): string {
+  const identity = latestUserOrigin(context.messages)?.resolvedIdentity
+  return memoryWorkspaceIdFromProfile(
+    identity?.profileId
+      || memoryProfileIdFromScope(identity?.memoryScopeId)
+      || resolveSessionMemoryProfileId(context.sessionId),
+  )
+}
+
+function enqueueMemoryProfileTask<T>(
+  agentId: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  const previous = memoryProfileTaskQueues.get(agentId) ?? Promise.resolve()
+  const run = previous.catch(() => undefined).then(task)
+  const settled = run.then(() => undefined, () => undefined)
+  memoryProfileTaskQueues.set(agentId, settled)
+  settled.finally(() => {
+    if (memoryProfileTaskQueues.get(agentId) === settled) {
+      memoryProfileTaskQueues.delete(agentId)
+    }
+  })
+  return run
+}
+
 async function ensureWorkspace(settings?: AppSettings, agentId = DEFAULT_AGENT_ID): Promise<MemoryWorkspace> {
   const workspace = getWorkspace(settings, agentId)
   configureMemoryDiagnosticsLogger(workspace.settings.logging)
@@ -353,6 +405,57 @@ async function ensureWorkspace(settings?: AppSettings, agentId = DEFAULT_AGENT_I
   await writeIfMissing(workspace.soulPath, SOUL_TEMPLATE)
   ensureIndexWatcher(workspace)
   return workspace
+}
+
+function sessionMemoryScopeId(sessionId?: string): string | undefined {
+  if (!sessionId) return undefined
+  return store.getSession(sessionId)?.memoryScopeId
+}
+
+function shouldRestrictMemoryScope(memoryScopeId?: string): memoryScopeId is string {
+  return Boolean(memoryScopeId && memoryScopeId !== LOCAL_MEMORY_SCOPE_ID)
+}
+
+function scopedMemoryKeyPrefix(memoryScopeId: string): string {
+  return `scope_${sha(memoryScopeId).slice(0, 16)}__`
+}
+
+function isScopedCanonicalMemory(memory: CanonicalMemoryRecord, memoryScopeId?: string): boolean {
+  if (!shouldRestrictMemoryScope(memoryScopeId)) return true
+  const prefix = scopedMemoryKeyPrefix(memoryScopeId)
+  return memory.memoryKey.startsWith(prefix) || Boolean(memory.evidence?.includes(`[memoryScopeId:${memoryScopeId}]`))
+}
+
+function filterCanonicalMemoryScope(
+  memories: CanonicalMemoryRecord[],
+  memoryScopeId?: string,
+  limit?: number,
+): CanonicalMemoryRecord[] {
+  const filtered = shouldRestrictMemoryScope(memoryScopeId)
+    ? memories.filter(memory => isScopedCanonicalMemory(memory, memoryScopeId))
+    : memories
+  return limit ? filtered.slice(0, limit) : filtered
+}
+
+function withCanonicalMemoryScope(
+  input: CanonicalMemoryInput,
+  memoryScopeId?: string,
+): CanonicalMemoryInput {
+  if (!shouldRestrictMemoryScope(memoryScopeId)) return input
+  const prefix = scopedMemoryKeyPrefix(memoryScopeId)
+  const memoryKey = input.memoryKey || `${input.kind}:${input.subject || input.value}`
+  const scopedMemoryKey = memoryKey.startsWith(prefix)
+    ? memoryKey
+    : sanitizeMemoryKey(`${prefix}${memoryKey}`)
+  const scopeEvidence = `[memoryScopeId:${memoryScopeId}]`
+  return {
+    ...input,
+    memoryKey: scopedMemoryKey,
+    source: input.source || 'scoped-profile',
+    evidence: input.evidence?.includes(scopeEvidence)
+      ? input.evidence
+      : [input.evidence, scopeEvidence].filter(Boolean).join('\n'),
+  }
 }
 
 function ensureIndexWatcher(workspace: MemoryWorkspace): void {
@@ -571,6 +674,7 @@ async function searchMemory(options: {
   query: string
   limit?: number | string
   minScore?: number
+  memoryScopeId?: string
 }): Promise<SearchHit[]> {
   const startedAt = Date.now()
   const runId = sha(`search:${startedAt}:${options.query}`).slice(0, 16)
@@ -605,6 +709,7 @@ async function searchMemory(options: {
       queryPreview: previewLine(options.query, 160),
       queryHash: sha(options.query).slice(0, 16),
       limit,
+      memoryScopeId: options.memoryScopeId,
       embeddingsEnabled: workspace.settings.embeddings.enabled,
     },
   })
@@ -1003,7 +1108,7 @@ function publicPendingCaptures(agentId?: string): MemoryCapturePending[] {
 }
 
 async function runMemoryCapture(api: PluginAPI, context: AfterAssistantResponseContext): Promise<void> {
-  const agentId = resolveSessionAgentId(context.sessionId)
+  const agentId = resolveAfterResponseAgentId(context)
   const workspace = await ensureWorkspace(context.settings, agentId)
   await runtimeRunMemoryCapture<MemoryToolProvider>({
     workspace,
@@ -1095,7 +1200,7 @@ async function runMemoryReview(
   context: AfterAssistantResponseContext,
   options: { force?: boolean } = {},
 ): Promise<void> {
-  const agentId = resolveSessionAgentId(context.sessionId)
+  const agentId = resolveAfterResponseAgentId(context)
   const workspace = await ensureWorkspace(context.settings, agentId)
   await runtimeRunMemoryReview<MemoryToolProvider>({
     workspace,
@@ -1288,6 +1393,7 @@ export async function searchSoulMemoryPanel(request: MemorySearchRequest): Promi
     agentId: request.agentId,
     query,
     limit: request.limit,
+    memoryScopeId: request.memoryScopeId,
   })
 }
 
@@ -1295,12 +1401,14 @@ export async function listSoulMemoryProfile(request: MemoryProfileListRequest = 
   const settings = getSettings()
   const workspace = await ensureWorkspace(settings, request.agentId)
   await migrateCanonicalMemoryIfNeeded(workspace, settings)
-  return listCanonicalMemories({
+  const scopedLimit = shouldRestrictMemoryScope(request.memoryScopeId) ? 500 : request.limit
+  const memories = listCanonicalMemories({
     workspace,
     query: request.query,
     includeDeleted: request.includeDeleted,
-    limit: request.limit,
+    limit: scopedLimit,
   })
+  return filterCanonicalMemoryScope(memories, request.memoryScopeId, request.limit)
 }
 
 export async function searchSoulMemoryProfile(request: MemoryProfileListRequest): Promise<CanonicalMemoryRecord[]> {
@@ -1312,7 +1420,7 @@ export async function upsertSoulMemoryProfile(request: MemoryProfileUpsertReques
   const workspace = await ensureWorkspace(settings, request.agentId)
   const existing = request.id ? getCanonicalMemoryByIdOrKey(workspace, request.id, true) : null
   const plan = corePlanSoulMemoryProfileUpsert(request, existing)
-  const result = await upsertCanonicalMemory(workspace, plan.input, {
+  const result = await upsertCanonicalMemory(workspace, withCanonicalMemoryScope(plan.input, request.memoryScopeId), {
     settings,
     action: plan.action,
   })
@@ -2050,11 +2158,13 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
   })
 
   api.afterAssistantResponse(CORE_SOUL_MEMORY_CAPTURE_HOOK_ID, async context => {
-    await runMemoryCapture(api, context)
+    const agentId = resolveAfterResponseAgentId(context)
+    await enqueueMemoryProfileTask(agentId, () => runMemoryCapture(api, context))
   })
 
   api.afterAssistantResponse(CORE_SOUL_MEMORY_REVIEW_HOOK_ID, async context => {
-    await runMemoryReview(api, context)
+    const agentId = resolveAfterResponseAgentId(context)
+    await enqueueMemoryProfileTask(agentId, () => runMemoryReview(api, context))
   })
 
   api.registerTool({
@@ -2145,6 +2255,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
           query: input.query,
           limit: input.limit,
           minScore: input.minScore,
+          memoryScopeId: sessionMemoryScopeId(ctx.sessionId),
         }),
         formatHits,
       })
@@ -2162,6 +2273,7 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
     }),
     async execute(args, ctx) {
       const workspace = await ensureWorkspace(getSettings(), resolveSessionAgentId(ctx.sessionId))
+      const memoryScopeId = sessionMemoryScopeId(ctx.sessionId)
       return coreHandleSoulMemoryGetTool({
         args,
         enabled: workspace.settings.enabled,
@@ -2175,7 +2287,10 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
               }
             : null
         },
-        getCanonical: path => getCanonicalMemoryByIdOrKey(workspace, path),
+        getCanonical: path => {
+          const memory = getCanonicalMemoryByIdOrKey(workspace, path)
+          return memory && isScopedCanonicalMemory(memory, memoryScopeId) ? memory : null
+        },
         readFileExcerpt: input => readMemoryFileExcerpt({
           workspace,
           inputPath: input.path,

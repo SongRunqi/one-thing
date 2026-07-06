@@ -24,6 +24,11 @@ import {
   getSessionManager,
 } from '../session/index.js'
 import * as store from '../store.js'
+import {
+  getOutboundReplyDispatcher,
+  registerChannelPromptContextProvider,
+  unregisterChannelPromptContextProvider,
+} from '../channel/index.js'
 
 export type {
   CoreStreamEngineOptions,
@@ -80,6 +85,7 @@ export function initializeStreamEngine(): void {
   }
 
   const streamRuntime = createMainStreamEngineRuntime()
+  registerChannelPromptContextProvider()
   const engine = new StreamEngine(streamRuntime)
   streamEngine = engine
 
@@ -110,6 +116,11 @@ export function initializeStreamEngine(): void {
   } catch {
     // EventBus may not be initialized yet in test scenarios
   }
+  try {
+    getOutboundReplyDispatcher().start(getEventBus())
+  } catch {
+    // EventBus may not be initialized yet in test scenarios
+  }
   console.log('[StreamEngine] Initialized')
 }
 
@@ -118,6 +129,8 @@ export function initializeStreamEngine(): void {
  */
 export function shutdownStreamEngine(): void {
   if (streamEngine) {
+    getOutboundReplyDispatcher().stop()
+    unregisterChannelPromptContextProvider()
     streamEngine.shutdown()
     streamEngine = null
   }

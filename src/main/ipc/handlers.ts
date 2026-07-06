@@ -32,7 +32,9 @@ import { registerTodoPlanHandlers } from '../todo-plan/ipc.js'
 import { registerVoiceHandlers } from '../voice/ipc.js'
 import { registerACPHandlers, initializeACP, shutdownACP } from './acp.js'
 import { registerGatewayHandlers } from '../gateway/ipc.js'
+import { registerChannelIdentityHandlers } from './channel-identity.js'
 import { getEventBus } from '../events/index.js'
+import { sanitizeRendererOrigin } from '../channel/index.js'
 
 export function initializeIPC() {
   registerChatHandlers()
@@ -63,6 +65,7 @@ export function initializeIPC() {
   registerVoiceHandlers()
   registerACPHandlers()
   registerGatewayHandlers()
+  registerChannelIdentityHandlers()
   registerCommandHandler()
 }
 
@@ -75,15 +78,37 @@ function registerCommandHandler() {
   registerElectronSessionCommandIpcHandler({
     channel: IPC_CHANNELS.SESSION_COMMAND,
     handleCommand: async ({ sessionId, command }: ElectronSessionCommandRequest) => {
+      const safeCommand = sanitizeRendererCommand(command)
       return emitCoreSessionCommandForIpc({
         sessionId,
-        command: command as Parameters<ReturnType<typeof getEventBus>['emit']>[1],
+        command: safeCommand as Parameters<ReturnType<typeof getEventBus>['emit']>[1],
         eventBus: getEventBus(),
         logger: console,
       })
     },
   })
   console.log('[IPC] session:command handler registered')
+}
+
+function sanitizeRendererCommand(command: unknown): unknown {
+  if (!command || typeof command !== 'object') return command
+  const record = command as Record<string, unknown>
+  if (typeof record.type !== 'string') return command
+  if (!record.type.startsWith('command:')) return command
+
+  if (
+    record.type === 'command:send-message'
+    || record.type === 'command:edit-and-resend'
+    || record.type === 'command:inject-steering'
+    || record.type === 'command:inject-followup'
+  ) {
+    return {
+      ...record,
+      origin: sanitizeRendererOrigin(record),
+    }
+  }
+
+  return command
 }
 
 export { initializeMCP, shutdownMCP, initializeSkills, cleanupOAuth, initializeThemeSystem, initializeACP, shutdownACP }

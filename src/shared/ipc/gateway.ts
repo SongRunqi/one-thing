@@ -10,6 +10,8 @@ export type GatewayWechatLoginStatus =
   | 'error'
 
 export interface GatewayWechatStatus {
+  id?: string
+  label?: string
   enabled: boolean
   running: boolean
   loginStatus: GatewayWechatLoginStatus
@@ -22,6 +24,10 @@ export interface GatewayWechatStatus {
   lastUpdatedAt?: number
 }
 
+export interface GatewayWechatAccountStatus extends GatewayWechatStatus {
+  id: string
+}
+
 export interface GatewayStatus {
   running: boolean
   starting: boolean
@@ -29,6 +35,7 @@ export interface GatewayStatus {
   enabled: boolean
   lastError?: string
   wechat: GatewayWechatStatus
+  wechatAccounts?: GatewayWechatAccountStatus[]
 }
 
 export interface GatewayGetStatusResponse {
@@ -39,6 +46,28 @@ export interface GatewayGetStatusResponse {
 
 export interface GatewayStartRequest {
   channel?: GatewayChannelId
+  accountId?: string
+}
+
+export interface GatewayWechatAddAccountRequest {
+  label?: string
+}
+
+export interface GatewayWechatRemoveAccountRequest {
+  accountId: string
+}
+
+export interface GatewayWechatStopAccountRequest {
+  accountId: string
+}
+
+export interface GatewayWechatLogoutRequest {
+  accountId?: string
+}
+
+export interface GatewayWechatRenameAccountRequest {
+  accountId: string
+  label?: string
 }
 
 export interface GatewayStartResponse {
@@ -56,5 +85,31 @@ export interface GatewayStopResponse {
 export interface GatewayWechatLogoutResponse {
   success: boolean
   status?: GatewayStatus
+  error?: string
+}
+
+export interface GatewayWechatAddAccountResponse {
+  success: boolean
+  status?: GatewayStatus
+  account?: GatewayWechatAccountStatus
+  error?: string
+}
+
+export interface GatewayWechatRemoveAccountResponse {
+  success: boolean
+  status?: GatewayStatus
+  error?: string
+}
+
+export interface GatewayWechatStopAccountResponse {
+  success: boolean
+  status?: GatewayStatus
+  error?: string
+}
+
+export interface GatewayWechatRenameAccountResponse {
+  success: boolean
+  status?: GatewayStatus
+  account?: GatewayWechatAccountStatus
   error?: string
 }

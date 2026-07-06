@@ -159,12 +159,33 @@ export function telegramUpdateToInboundMessage(
   const message = update.message
   if (!message?.text?.trim()) return null
 
+  const actor = telegramMessageActor(message)
   return {
     channelId,
     userId: String(message.chat.id),
     text: message.text,
     raw: message,
+    ...(actor ? { actor } : {}),
   }
+}
+
+function telegramMessageActor(message: TelegramMessage): InboundMessage['actor'] | undefined {
+  const displayName = joinName(message.from?.first_name, message.from?.last_name)
+    || joinName(message.chat.first_name, message.chat.last_name)
+    || message.chat.title?.trim()
+  const handle = message.from?.username?.trim() || message.chat.username?.trim()
+  const actor: NonNullable<InboundMessage['actor']> = {}
+  if (displayName) actor.displayName = displayName
+  if (handle) actor.handle = handle
+  return Object.keys(actor).length ? actor : undefined
+}
+
+function joinName(first?: string, last?: string): string | undefined {
+  const value = [first, last]
+    .map(part => part?.trim())
+    .filter(Boolean)
+    .join(' ')
+  return value || undefined
 }
 
 function splitText(text: string, maxLength: number): string[] {

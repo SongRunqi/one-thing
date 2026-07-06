@@ -357,7 +357,11 @@ export interface RuntimeGatewayAdapter {
   getStatus(context?: RuntimeRequestContext): Promise<unknown>
   start(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
   stop(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  wechatLogout(context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  wechatLogout(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  wechatAddAccount?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  wechatStopAccount?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  wechatRemoveAccount?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  wechatRenameAccount?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
 }
 
 export interface RuntimeVoiceAdapter {

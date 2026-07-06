@@ -233,6 +233,7 @@ export class GatewayBridge {
         content: msg.text,
         channel: msg.channelId,
         source: 'gateway',
+        origin: buildGatewayMessageOrigin(msg),
       })
       enqueueSegments(buffer.flushFinal())
       await sendChain
@@ -367,6 +368,62 @@ function commandMatches(command: GatewayCommandInfo, id: string): boolean {
 
 function conversationQueueKey(channelId: string, userId: string): string {
   return `${channelId}:${userId}`
+}
+
+function buildGatewayMessageOrigin(msg: InboundMessage): unknown {
+  const channel = parseGatewayChannelId(msg.channelId)
+  return {
+    transport: 'im',
+    source: 'gateway',
+    actor: buildGatewayActor(msg),
+    conversation: {
+      connector: channel.connector,
+      ...(channel.workspaceId ? { workspaceId: channel.workspaceId } : {}),
+      externalConversationId: msg.userId,
+      type: 'dm',
+    },
+    replyTarget: {
+      connector: channel.connector,
+      ...(channel.workspaceId ? { workspaceId: channel.workspaceId } : {}),
+      externalConversationId: msg.userId,
+      externalMessageId: externalMessageIdFromRaw(msg.raw),
+    },
+    externalMessageId: externalMessageIdFromRaw(msg.raw),
+    receivedAt: Date.now(),
+  }
+}
+
+function parseGatewayChannelId(channelId: string): { connector: string; workspaceId?: string } {
+  const [connector, ...workspaceParts] = channelId.split(':')
+  const workspaceId = workspaceParts.join(':')
+  return {
+    connector: connector || channelId,
+    ...(workspaceId ? { workspaceId } : {}),
+  }
+}
+
+function buildGatewayActor(msg: InboundMessage): Record<string, string> {
+  const actor: Record<string, string> = {
+    externalUserId: msg.userId,
+  }
+  addActorValue(actor, 'displayName', msg.actor?.displayName)
+  addActorValue(actor, 'handle', msg.actor?.handle)
+  addActorValue(actor, 'avatarUrl', msg.actor?.avatarUrl)
+  addActorValue(actor, 'locale', msg.actor?.locale)
+  addActorValue(actor, 'timezone', msg.actor?.timezone)
+  return actor
+}
+
+function addActorValue(target: Record<string, string>, key: string, value: string | undefined): void {
+  const trimmed = value?.trim()
+  if (trimmed) target[key] = trimmed
+}
+
+function externalMessageIdFromRaw(raw: unknown): string | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const record = raw as Record<string, unknown>
+  const value = record.message_id ?? record.messageId ?? record.id
+  return typeof value === 'string' || typeof value === 'number' ? String(value) : undefined
 }
 
 function isGatewayAutoPermissionMode(

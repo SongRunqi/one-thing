@@ -1,5 +1,6 @@
 export type {
   Channel,
+  InboundActor,
   InboundMessage,
   OutboundMessage,
   TypingMessage,

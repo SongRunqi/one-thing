@@ -56,7 +56,31 @@ import type {
   GatewayStartRequest,
   GatewayStartResponse,
   GatewayStopResponse,
+  GatewayWechatAddAccountRequest,
+  GatewayWechatAddAccountResponse,
+  GatewayWechatStopAccountRequest,
+  GatewayWechatStopAccountResponse,
+  GatewayWechatRemoveAccountRequest,
+  GatewayWechatRemoveAccountResponse,
+  GatewayWechatRenameAccountRequest,
+  GatewayWechatRenameAccountResponse,
+  GatewayWechatLogoutRequest,
   GatewayWechatLogoutResponse,
+  MessageOrigin,
+  ChannelUserLink,
+  ChannelUserProfile,
+  ChannelIdentityListLinksRequest,
+  ChannelIdentityListLinksResponse,
+  ChannelIdentityListProfilesResponse,
+  ChannelIdentityCreateLinkRequest,
+  ChannelIdentityCreateLinkResponse,
+  ChannelIdentityCreateProfileRequest,
+  ChannelIdentityCreateProfileResponse,
+  ChannelIdentityDeleteLinkResponse,
+  ChannelIdentityUpdateProfileRequest,
+  ChannelIdentityUpdateProfileResponse,
+  ChannelIdentityResolveResponse,
+  ChannelReplyDeliveryRecord,
   VoiceEndpointingMode,
   VoiceEvent,
   VoiceLatencyMilestone,
@@ -342,6 +366,9 @@ export type {
   GatewayStartResponse,
   GatewayStopResponse,
   GatewayWechatLogoutResponse,
+  MessageOrigin,
+  ChannelUserLink,
+  ChannelUserProfile,
   VoiceEndpointingMode,
   VoiceEvent,
   VoiceLatencyMilestone,
@@ -550,7 +577,19 @@ export interface ElectronAPI {
   gatewayGetStatus: () => Promise<GatewayGetStatusResponse>
   gatewayStart: (request?: GatewayStartRequest) => Promise<GatewayStartResponse>
   gatewayStop: () => Promise<GatewayStopResponse>
-  gatewayWechatLogout: () => Promise<GatewayWechatLogoutResponse>
+  gatewayWechatLogout: (request?: GatewayWechatLogoutRequest) => Promise<GatewayWechatLogoutResponse>
+  gatewayWechatAddAccount: (request?: GatewayWechatAddAccountRequest) => Promise<GatewayWechatAddAccountResponse>
+  gatewayWechatStopAccount: (request: GatewayWechatStopAccountRequest) => Promise<GatewayWechatStopAccountResponse>
+  gatewayWechatRemoveAccount: (request: GatewayWechatRemoveAccountRequest) => Promise<GatewayWechatRemoveAccountResponse>
+  gatewayWechatRenameAccount: (request: GatewayWechatRenameAccountRequest) => Promise<GatewayWechatRenameAccountResponse>
+  channelIdentityListLinks: (request?: ChannelIdentityListLinksRequest) => Promise<ChannelIdentityListLinksResponse>
+  channelIdentityListProfiles: () => Promise<ChannelIdentityListProfilesResponse>
+  channelIdentityCreateProfile: (request: ChannelIdentityCreateProfileRequest) => Promise<ChannelIdentityCreateProfileResponse>
+  channelIdentityUpdateProfile: (request: ChannelIdentityUpdateProfileRequest) => Promise<ChannelIdentityUpdateProfileResponse>
+  channelIdentityCreateLink: (request: ChannelIdentityCreateLinkRequest) => Promise<ChannelIdentityCreateLinkResponse>
+  channelIdentityDeleteLink: (id: string) => Promise<ChannelIdentityDeleteLinkResponse>
+  channelIdentityResolve: (origin: MessageOrigin) => Promise<ChannelIdentityResolveResponse>
+  channelDeliveryList: () => Promise<{ success: boolean; deliveries?: ChannelReplyDeliveryRecord[]; error?: string }>
   voiceGetState: () => Promise<VoiceGetStateResponse>
   voiceStart: (request?: VoiceStartRequest) => Promise<{ success: boolean; error?: string }>
   voiceStop: (request?: VoiceStopRequest) => Promise<{ success: boolean; error?: string }>

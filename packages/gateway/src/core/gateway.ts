@@ -20,9 +20,7 @@ export class Gateway {
   }
 
   async start(): Promise<void> {
-    for (const channel of this.channels) {
-      await channel.start()
-    }
+    await Promise.all(this.channels.map(channel => channel.start()))
 
     this.cleanupTimer = setInterval(() => {
       const removed = this.bridge.cleanupInactiveSessions()

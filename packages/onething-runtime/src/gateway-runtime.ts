@@ -60,6 +60,7 @@ export function createOnethingConversationRuntimeFromStreamEngine<TChunk extends
           content: message.content,
           source: message.source,
           attachments: message.attachments,
+          origin: message.origin,
         },
         sender,
       )
@@ -123,6 +124,8 @@ function permissionRequestFromEvent(
     toolCallId: typeof event.toolCallId === 'string' ? event.toolCallId : undefined,
     pattern: toPattern(event.pattern),
     metadata: toJsonObject(event.metadata),
+    userId: typeof event.userId === 'string' ? event.userId : undefined,
+    workspaceId: typeof event.workspaceId === 'string' ? event.workspaceId : undefined,
     timeoutMs: typeof event.timeoutMs === 'number' ? event.timeoutMs : undefined,
   }
 }

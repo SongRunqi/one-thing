@@ -130,6 +130,16 @@ export const SESSION_REPOSITORY_MIGRATIONS: SqliteMigration[] = [
       `ALTER TABLE sessions ADD COLUMN working_directory_roots_json TEXT`,
     ],
   },
+  {
+    version: 5,
+    statements: [
+      `ALTER TABLE sessions ADD COLUMN memory_profile_id TEXT`,
+      `ALTER TABLE sessions ADD COLUMN origin_identity_key TEXT`,
+      `ALTER TABLE sessions ADD COLUMN memory_scope_id TEXT`,
+      `ALTER TABLE sessions ADD COLUMN last_connector TEXT`,
+      `ALTER TABLE sessions ADD COLUMN last_sent_at INTEGER`,
+    ],
+  },
 ]
 
 export function getLatestSessionRepositorySchemaVersion(): number {

@@ -98,7 +98,7 @@ describe('WechatChannel', () => {
 
     expect(start).toHaveBeenCalled()
     expect(onMessage).toHaveBeenCalledWith({
-      channelId: 'wechat',
+      channelId: 'wechat:default',
       userId: 'wechat-user',
       text: 'hello',
       raw: expect.objectContaining({
@@ -106,6 +106,97 @@ describe('WechatChannel', () => {
         context_token: 'context-token',
       }),
     })
+  })
+
+  it('maps inbound WeChat identity metadata when iLink includes it', async () => {
+    let inboundHandler: ((msg: WeixinMessage) => Promise<void>) | undefined
+    const logger = silentLogger()
+    const channel = new WechatChannel({
+      loadAuthState: vi.fn(async () => ({
+        botToken: 'saved-token',
+        baseUrl: 'https://saved.weixin.example',
+      })),
+      createPoller: vi.fn((_auth, onMessage) => {
+        inboundHandler = onMessage
+        return {
+          start: vi.fn(async () => {}),
+          stop: vi.fn(async () => {}),
+        }
+      }),
+      logger,
+    })
+    const onMessage = vi.fn(async () => {})
+    channel.onMessage(onMessage)
+
+    await channel.start()
+    await inboundHandler?.({
+      from_user_id: 'wechat-user',
+      from_user_name: 'alice_wechat',
+      remark_name: 'Alice Chen',
+      avatar_url: 'https://wechat.example/avatar.png',
+      context_token: 'context-token',
+      item_list: [{ type: 1, text_item: { text: 'hello' } }],
+    })
+
+    expect(onMessage).toHaveBeenCalledWith({
+      channelId: 'wechat:default',
+      userId: 'wechat-user',
+      text: 'hello',
+      raw: expect.objectContaining({
+        from_user_id: 'wechat-user',
+        remark_name: 'Alice Chen',
+      }),
+      actor: {
+        displayName: 'Alice Chen',
+        handle: 'alice_wechat',
+        avatarUrl: 'https://wechat.example/avatar.png',
+      },
+    })
+    expect(logger.log).toHaveBeenCalledWith('[WechatChannel] inbound identity metadata', expect.objectContaining({
+      fromUserId: 'wechat-user',
+      matchedIdentityFields: expect.arrayContaining(['remark_name', 'from_user_name', 'avatar_url']),
+      identityFields: expect.objectContaining({
+        remark_name: 'Alice Chen',
+        from_user_name: 'alice_wechat',
+        avatar_url: 'https://wechat.example/avatar.png',
+      }),
+      rawKeys: expect.arrayContaining(['from_user_id', 'from_user_name', 'remark_name']),
+    }))
+  })
+
+  it('uses the local account id in the channel id for multi-account routing', async () => {
+    let inboundHandler: ((msg: WeixinMessage) => Promise<void>) | undefined
+    const channel = new WechatChannel({
+      accountId: 'work',
+      loadAuthState: vi.fn(async () => ({
+        botToken: 'saved-token',
+        baseUrl: 'https://saved.weixin.example',
+      })),
+      createPoller: vi.fn((_auth, onMessage) => {
+        inboundHandler = onMessage
+        return {
+          start: vi.fn(async () => {}),
+          stop: vi.fn(async () => {}),
+        }
+      }),
+      logger: silentLogger(),
+    })
+    const onMessage = vi.fn(async () => {})
+    channel.onMessage(onMessage)
+
+    await channel.start()
+    await inboundHandler?.({
+      from_user_id: 'wechat-user',
+      context_token: 'context-token',
+      item_list: [{ type: 1, text_item: { text: 'hello' } }],
+    })
+
+    expect(channel.id).toBe('wechat:work')
+    expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channelId: 'wechat:work',
+      userId: 'wechat-user',
+      text: 'hello',
+    }))
   })
 
   it('maps typing cancel signals to iLink sendtyping status 2', async () => {

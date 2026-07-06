@@ -23,6 +23,7 @@ export interface InjectMessageCommand {
   type?: string
   content: string
   source?: string
+  origin?: unknown
 }
 
 /**
@@ -68,15 +69,25 @@ export abstract class HeadlessStreamEngine<
     return queue
   }
 
-  steerMessage(sessionId: string, content: string, source = 'api'): void {
+  steerMessage(sessionId: string, content: string, source = 'api', origin?: unknown): void {
     const queue = this.getSteeringQueue(sessionId)
-    queue.enqueue({ content, source, timestamp: Date.now() })
+    queue.enqueue({
+      content,
+      source,
+      timestamp: Date.now(),
+      ...(origin !== undefined ? { origin } : {}),
+    })
     this.log(`Steering queued for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
   }
 
-  followUpMessage(sessionId: string, content: string, source = 'api'): void {
+  followUpMessage(sessionId: string, content: string, source = 'api', origin?: unknown): void {
     const queue = this.getFollowUpQueue(sessionId)
-    queue.enqueue({ content, source, timestamp: Date.now() })
+    queue.enqueue({
+      content,
+      source,
+      timestamp: Date.now(),
+      ...(origin !== undefined ? { origin } : {}),
+    })
     this.log(`Follow-up queued for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
   }
 
@@ -199,11 +210,11 @@ export abstract class HeadlessStreamEngine<
       }, 'StreamEngine'),
       eventBus.onAnySession('command:inject-steering', (envelope) => {
         const command = envelope.event as InjectMessageCommand
-        this.steerMessage(envelope.sessionId, command.content, command.source || 'eventbus')
+        this.steerMessage(envelope.sessionId, command.content, command.source || 'eventbus', command.origin)
       }, 'StreamEngine'),
       eventBus.onAnySession('command:inject-followup', (envelope) => {
         const command = envelope.event as InjectMessageCommand
-        this.followUpMessage(envelope.sessionId, command.content, command.source || 'eventbus')
+        this.followUpMessage(envelope.sessionId, command.content, command.source || 'eventbus', command.origin)
       }, 'StreamEngine'),
     )
   }

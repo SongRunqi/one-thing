@@ -26,7 +26,7 @@ export { formatMessagesForLog, getTextFromContent, sanitizeToolResultForAI }
  * Convert message with attachments to multimodal format
  */
 export function buildMessageContent(message: ChatMessage): AIMessageContent {
-  return buildOnethingMessageContent(message, {
+  return buildOnethingMessageContent(labelUserMessageForModel(message), {
     onImageAttachment: ({ mimeType, base64Length, dataUrlPrefix }) => {
       console.log('[Chat] Adding image attachment:', {
         mimeType,
@@ -66,7 +66,7 @@ export function buildHistoryMessages(
   messages: ChatMessage[],
   session?: { id?: string; summary?: string; summaryUpToMessageId?: string }
 ): HistoryMessage[] {
-  return buildOnethingHistoryMessages(messages, session, {
+  return buildOnethingHistoryMessages(messages.map(labelUserMessageForModel), session, {
     onImageAttachment: ({ mimeType, base64Length, dataUrlPrefix }) => {
       console.log('[Chat] Adding image attachment:', {
         mimeType,
@@ -98,6 +98,19 @@ export function buildHistoryMessages(
       })
     },
   }) as HistoryMessage[]
+}
+
+function labelUserMessageForModel(message: ChatMessage): ChatMessage {
+  if (message.role !== 'user') return message
+  const actor = message.origin?.actor
+  if (!actor) return message
+
+  const speaker = actor.displayName || actor.handle || actor.externalUserId
+  if (!speaker) return message
+  return {
+    ...message,
+    content: `${speaker} said:\n${message.content}`,
+  }
 }
 
 /**

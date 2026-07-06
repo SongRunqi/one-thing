@@ -14,7 +14,7 @@ const STALE_TOKEN_ERRCODE = -14
 
 export class ILinkPoller {
   private running = false
-  private getUpdatesBuf = loadGetUpdatesBuf()
+  private getUpdatesBuf: string
   private abortController: AbortController | null = null
   private loopPromise: Promise<void> | null = null
   private timeoutMs = POLL_TIMEOUT_MS
@@ -23,7 +23,10 @@ export class ILinkPoller {
     private readonly botToken: string,
     private readonly onMessage: (msg: WeixinMessage) => Promise<void>,
     private readonly baseUrl = DEFAULT_ILINK_BASE_URL,
-  ) {}
+    private readonly accountId?: string,
+  ) {
+    this.getUpdatesBuf = loadGetUpdatesBuf(accountId)
+  }
 
   async start(): Promise<void> {
     if (this.running) return
@@ -57,7 +60,7 @@ export class ILinkPoller {
 
         if (response.get_updates_buf) {
           this.getUpdatesBuf = response.get_updates_buf
-          saveGetUpdatesBuf(this.getUpdatesBuf)
+          saveGetUpdatesBuf(this.getUpdatesBuf, this.accountId)
         }
 
         for (const msg of response.msgs ?? []) {

@@ -14,6 +14,7 @@ const ILINK_BOT_AGENT = 'onething-gateway/0.0.0'
 const ILINK_APP_CLIENT_VERSION = buildClientVersion(ILINK_CHANNEL_VERSION)
 const WECHAT_TOKEN_PATH = getGatewayDataPath('wechat-token.json')
 const WECHAT_SYNC_PATH = getGatewayDataPath('wechat-sync.json')
+const DEFAULT_WECHAT_ACCOUNT_ID = 'default'
 
 interface TokenFile {
   bot_token?: string
@@ -31,6 +32,14 @@ export interface WechatAuthState {
   baseUrl: string
   ilinkUserId?: string
   ilinkBotId?: string
+}
+
+export interface WechatAccountStorage {
+  accountId: string
+  tokenPath: string
+  syncPath: string
+  legacyTokenPath?: string
+  legacySyncPath?: string
 }
 
 interface QRCodeResponse {
@@ -107,8 +116,29 @@ export async function pollQRCodeStatus(qrcode: string, baseUrl = DEFAULT_ILINK_B
   throw new Error('Unexpected get_qrcode_status response')
 }
 
-export async function saveAuthState(state: WechatAuthState): Promise<void> {
-  writeGatewayJsonFile<TokenFile>(WECHAT_TOKEN_PATH, {
+export function getWechatAccountStorage(accountId = DEFAULT_WECHAT_ACCOUNT_ID): WechatAccountStorage {
+  const normalized = normalizeWechatAccountId(accountId)
+  return {
+    accountId: normalized,
+    tokenPath: getGatewayDataPath('wechat-accounts', normalized, 'token.json'),
+    syncPath: getGatewayDataPath('wechat-accounts', normalized, 'sync.json'),
+    ...(normalized === DEFAULT_WECHAT_ACCOUNT_ID
+      ? {
+          legacyTokenPath: WECHAT_TOKEN_PATH,
+          legacySyncPath: WECHAT_SYNC_PATH,
+        }
+      : {}),
+  }
+}
+
+export function normalizeWechatAccountId(value: string | undefined): string {
+  const trimmed = value?.trim() || DEFAULT_WECHAT_ACCOUNT_ID
+  return trimmed.replace(/[^a-zA-Z0-9_.@-]+/g, '-').replace(/^-+|-+$/g, '') || DEFAULT_WECHAT_ACCOUNT_ID
+}
+
+export async function saveAuthState(state: WechatAuthState, accountId?: string): Promise<void> {
+  const storage = getWechatAccountStorage(accountId)
+  writeGatewayJsonFile<TokenFile>(storage.tokenPath, {
     bot_token: state.botToken,
     baseurl: state.baseUrl,
     ilink_user_id: state.ilinkUserId,
@@ -116,8 +146,12 @@ export async function saveAuthState(state: WechatAuthState): Promise<void> {
   })
 }
 
-export async function loadAuthState(): Promise<WechatAuthState | null> {
-  const saved = readGatewayJsonFile<TokenFile | null>(WECHAT_TOKEN_PATH, null)
+export async function loadAuthState(accountId?: string): Promise<WechatAuthState | null> {
+  const storage = getWechatAccountStorage(accountId)
+  const saved = readGatewayJsonFile<TokenFile | null>(
+    storage.tokenPath,
+    storage.legacyTokenPath ? readGatewayJsonFile<TokenFile | null>(storage.legacyTokenPath, null) : null,
+  )
   if (typeof saved?.bot_token !== 'string' || !saved.bot_token) {
     return null
   }
@@ -130,17 +164,24 @@ export async function loadAuthState(): Promise<WechatAuthState | null> {
   }
 }
 
-export async function clearAuthState(): Promise<void> {
-  deleteGatewayFile(WECHAT_TOKEN_PATH)
-  deleteGatewayFile(WECHAT_SYNC_PATH)
+export async function clearAuthState(accountId?: string): Promise<void> {
+  const storage = getWechatAccountStorage(accountId)
+  deleteGatewayFile(storage.tokenPath)
+  deleteGatewayFile(storage.syncPath)
+  if (storage.legacyTokenPath) deleteGatewayFile(storage.legacyTokenPath)
+  if (storage.legacySyncPath) deleteGatewayFile(storage.legacySyncPath)
 }
 
-export function saveGetUpdatesBuf(getUpdatesBuf: string): void {
-  writeGatewayJsonFile<SyncFile>(WECHAT_SYNC_PATH, { get_updates_buf: getUpdatesBuf })
+export function saveGetUpdatesBuf(getUpdatesBuf: string, accountId?: string): void {
+  writeGatewayJsonFile<SyncFile>(getWechatAccountStorage(accountId).syncPath, { get_updates_buf: getUpdatesBuf })
 }
 
-export function loadGetUpdatesBuf(): string {
-  const saved = readGatewayJsonFile<SyncFile | null>(WECHAT_SYNC_PATH, null)
+export function loadGetUpdatesBuf(accountId?: string): string {
+  const storage = getWechatAccountStorage(accountId)
+  const saved = readGatewayJsonFile<SyncFile | null>(
+    storage.syncPath,
+    storage.legacySyncPath ? readGatewayJsonFile<SyncFile | null>(storage.legacySyncPath, null) : null,
+  )
   return typeof saved?.get_updates_buf === 'string' ? saved.get_updates_buf : ''
 }
 

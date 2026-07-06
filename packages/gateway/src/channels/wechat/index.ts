@@ -3,6 +3,7 @@ import {
   DEFAULT_ILINK_BASE_URL,
   getQRCode,
   loadAuthState,
+  normalizeWechatAccountId,
   pollQRCodeStatus,
   saveAuthState,
   clearAuthState,
@@ -27,6 +28,7 @@ export type WechatAuthEvent =
   | { type: 'confirmed'; auth: WechatAuthState }
 
 export interface WechatChannelOptions {
+  accountId?: string
   loadAuthState?: typeof loadAuthState
   saveAuthState?: typeof saveAuthState
   getQRCode?: typeof getQRCode
@@ -43,13 +45,17 @@ export interface WechatChannelOptions {
 }
 
 export class WechatChannel implements Channel {
-  readonly id = 'wechat'
+  readonly accountId: string
+  readonly id: string
   private handler: ((msg: InboundMessage) => Promise<void>) | null = null
   private auth: WechatAuthState | null = null
   private poller: WechatPollerLike | null = null
   private stopped = false
 
-  constructor(private readonly options: WechatChannelOptions = {}) {}
+  constructor(private readonly options: WechatChannelOptions = {}) {
+    this.accountId = normalizeWechatAccountId(options.accountId)
+    this.id = `wechat:${this.accountId}`
+  }
 
   async start(): Promise<void> {
     this.stopped = false
@@ -57,18 +63,21 @@ export class WechatChannel implements Channel {
     this.throwIfStopped()
     const createPoller = this.options.createPoller
       ?? ((auth: WechatAuthState, onMessage: (msg: WeixinMessage) => Promise<void>) =>
-        new ILinkPoller(auth.botToken, onMessage, auth.baseUrl))
+        new ILinkPoller(auth.botToken, onMessage, auth.baseUrl, this.accountId))
 
     this.poller = createPoller(this.auth, async (msg) => {
       if (!msg.from_user_id) return
+      logWeixinIdentityMetadata(msg, this.options.logger ?? console)
       const textItem = msg.item_list?.find(item => item.type === 1 && item.text_item?.text)
       if (!textItem?.text_item?.text) return
+      const actor = weixinMessageActor(msg)
 
       await this.handler?.({
         channelId: this.id,
         userId: msg.from_user_id,
         text: textItem.text_item.text,
         raw: msg,
+        ...(actor ? { actor } : {}),
       })
     })
     await this.poller.start()
@@ -110,7 +119,7 @@ export class WechatChannel implements Channel {
     const pollStatus = this.options.pollQRCodeStatus ?? pollQRCodeStatus
     const sleep = this.options.delay ?? delay
     const logger = this.options.logger ?? console
-    const saved = await load()
+    const saved = await load(this.accountId)
     if (saved) {
       this.emitAuthEvent({ type: 'saved-auth', auth: saved })
       return saved
@@ -137,7 +146,7 @@ export class WechatChannel implements Channel {
             ilinkUserId: status.ilink_user_id,
             ilinkBotId: status.ilink_bot_id,
           }
-          await save(authState)
+          await save(authState, this.accountId)
           this.emitAuthEvent({ type: 'confirmed', auth: authState })
           return authState
         }
@@ -214,11 +223,102 @@ export class WechatChannel implements Channel {
 
 export { clearAuthState }
 
+const WECHAT_DISPLAY_NAME_KEYS = [
+  'remark_name',
+  'from_user_remark_name',
+  'nickname',
+  'nick_name',
+  'from_user_nickname',
+  'from_user_nick_name',
+  'sender_nickname',
+  'sender_name',
+  'from_user_name',
+] as const
+
+const WECHAT_HANDLE_KEYS = [
+  'username',
+  'alias',
+  'wechat_id',
+  'from_user_name',
+] as const
+
+const WECHAT_AVATAR_KEYS = [
+  'avatar_url',
+  'avatarUrl',
+  'head_img_url',
+  'headimgurl',
+] as const
+
+const WECHAT_IDENTITY_LOG_KEYS = [
+  ...WECHAT_DISPLAY_NAME_KEYS,
+  ...WECHAT_HANDLE_KEYS,
+  ...WECHAT_AVATAR_KEYS,
+] as const
+
 function isWeixinMessage(value: unknown): value is WeixinMessage {
   if (!value || typeof value !== 'object') return false
   const msg = value as Partial<WeixinMessage>
   return typeof msg.from_user_id === 'string'
     && Array.isArray(msg.item_list)
+}
+
+function weixinMessageActor(msg: WeixinMessage): InboundMessage['actor'] | undefined {
+  const excluded = [msg.from_user_id]
+  const displayName = firstStringValue(msg, WECHAT_DISPLAY_NAME_KEYS, excluded)
+  const handle = firstStringValue(msg, WECHAT_HANDLE_KEYS, excluded)
+  const avatarUrl = firstStringValue(msg, WECHAT_AVATAR_KEYS)
+  const actor: NonNullable<InboundMessage['actor']> = {}
+  if (displayName) actor.displayName = displayName
+  if (handle) actor.handle = handle
+  if (avatarUrl) actor.avatarUrl = avatarUrl
+  return Object.keys(actor).length ? actor : undefined
+}
+
+function firstStringValue(
+  source: object,
+  keys: readonly string[],
+  excluded: Array<string | undefined> = [],
+): string | undefined {
+  const record = source as Record<string, unknown>
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (!trimmed || excluded.includes(trimmed)) continue
+    return trimmed
+  }
+  return undefined
+}
+
+function logWeixinIdentityMetadata(
+  msg: WeixinMessage,
+  logger: Pick<Console, 'log'>,
+): void {
+  const identityFields = selectedStringFields(msg, WECHAT_IDENTITY_LOG_KEYS)
+  logger.log('[WechatChannel] inbound identity metadata', {
+    messageId: msg.message_id ?? msg.seq,
+    fromUserId: msg.from_user_id,
+    matchedIdentityFields: Object.keys(identityFields),
+    identityFields,
+    rawKeys: Object.keys(msg).sort(),
+  })
+}
+
+function selectedStringFields(source: object, keys: readonly string[]): Record<string, string> {
+  const record = source as Record<string, unknown>
+  const fields: Record<string, string> = {}
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value !== 'string') continue
+    const trimmed = value.trim()
+    if (!trimmed) continue
+    fields[key] = sanitizeLogValue(trimmed)
+  }
+  return fields
+}
+
+function sanitizeLogValue(value: string): string {
+  return value.replace(/[\r\n\t]+/g, ' ').slice(0, 160)
 }
 
 function delay(ms: number): Promise<void> {

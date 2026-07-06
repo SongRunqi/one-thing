@@ -9,15 +9,19 @@ vi.mock('@onething/gateway/config', () => ({
 }))
 
 class TestWechatChannel {
-  readonly id = 'wechat'
+  readonly id: string
+  readonly accountId: string
 
-  constructor(private readonly options: { onAuthEvent?: (event: unknown) => void } = {}) {}
+  constructor(private readonly options: { accountId?: string; onAuthEvent?: (event: unknown) => void } = {}) {
+    this.accountId = options.accountId || 'default'
+    this.id = `wechat:${this.accountId}`
+  }
 
   async start(): Promise<void> {
     this.options.onAuthEvent?.({
       type: 'qr',
       qrcode: 'qr-token',
-      qrUrl: 'https://liteapp.weixin.qq.com/q/mock',
+      qrUrl: `https://liteapp.weixin.qq.com/q/${this.accountId}`,
     })
   }
 
@@ -117,8 +121,59 @@ describe('electron gateway lifecycle', () => {
       background: true,
     })
     expect(status.starting).toBe(true)
-    expect(status.wechat.qrUrl).toBe('https://liteapp.weixin.qq.com/q/mock')
+    expect(status.wechat.qrUrl).toBe('https://liteapp.weixin.qq.com/q/default')
     expect(status.wechat.loginStatus).toBe('waiting-for-scan')
+  })
+
+  it('adds a second WeChat account and starts a channel for each account id', async () => {
+    const { createElectronGatewayLifecycle } = await import('../lifecycle-controller.js')
+    const runtime = { id: 'conversation-runtime' } as any
+    const stop = vi.fn()
+    const startGateway = vi.fn(async (options: any) => ({
+      gateway: { stop },
+      startPromise: Promise.all((options.channels || []).map((channel: TestWechatChannel) => channel.start())),
+    }))
+    const clearWechatAuthState = vi.fn(async () => {})
+    mocks.isGatewayEnabledFromEnv.mockReturnValue(false)
+
+    const lifecycle = createElectronGatewayLifecycle({
+      env: {} as NodeJS.ProcessEnv,
+      logger: { log: vi.fn() },
+      getSettings: () => ({
+        channels: {
+          wechat: {
+            enabled: true,
+            accounts: [{ id: 'default', enabled: true }],
+          },
+        },
+      }),
+      getConversationRuntime: () => runtime,
+      importGateway: async () => ({
+        startGateway,
+        WechatChannel: TestWechatChannel as any,
+        clearWechatAuthState,
+      }) as any,
+    })
+
+    await lifecycle.startGateway({ channel: 'wechat' })
+    const result = await lifecycle.addWechatAccount({})
+
+    expect(result.account.id).toBe('account-1')
+    expect(startGateway).toHaveBeenCalledTimes(2)
+    const channels = startGateway.mock.calls.at(-1)?.[0].channels as TestWechatChannel[]
+    expect(channels.map(channel => channel.id)).toEqual(['wechat:default', 'wechat:account-1'])
+    expect(result.status.wechatAccounts?.map(account => account.id)).toEqual(['default', 'account-1'])
+
+    const stopStatus = await lifecycle.stopWechatAccount({ accountId: 'account-1' })
+    const restartedChannels = startGateway.mock.calls.at(-1)?.[0].channels as TestWechatChannel[]
+    expect(restartedChannels.map(channel => channel.id)).toEqual(['wechat:default'])
+    expect(stopStatus.wechatAccounts?.find(account => account.id === 'account-1')).toMatchObject({
+      enabled: false,
+      running: false,
+    })
+
+    await lifecycle.logoutWechat({ accountId: 'account-1' })
+    expect(clearWechatAuthState).toHaveBeenCalledWith('account-1')
   })
 
   it('passes the command provider to the gateway package when configured', async () => {

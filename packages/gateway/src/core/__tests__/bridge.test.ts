@@ -13,12 +13,16 @@ import { RateLimiter } from '../middleware/rate-limiter.js'
 import { GatewaySessionRegistry } from '../session-registry.js'
 
 class MockChannel implements Channel {
-  readonly id = 'mock'
+  readonly id: string
   readonly sent: OutboundMessage[] = []
   readonly sendAttempts: OutboundMessage[] = []
   readonly typingSignals: TypingMessage[] = []
   failSendAtCall?: number
   private handler: ((msg: InboundMessage) => Promise<void>) | null = null
+
+  constructor(id = 'mock') {
+    this.id = id
+  }
 
   async start(): Promise<void> {}
 
@@ -734,15 +738,71 @@ describe('GatewayBridge', () => {
       userId: 'user-1',
       text: '/skill explain this',
       raw,
+      actor: {
+        displayName: 'Alice Chen',
+        handle: 'alice',
+      },
     })
 
-    expect(runtime.messages).toEqual([{
+    expect(runtime.messages).toEqual([expect.objectContaining({
       sessionId: 'gateway:mock:user-1',
       content: '/skill explain this',
       channel: 'mock',
       source: 'gateway',
-    }])
+      origin: expect.objectContaining({
+        transport: 'im',
+        source: 'gateway',
+        actor: {
+          externalUserId: 'user-1',
+          displayName: 'Alice Chen',
+          handle: 'alice',
+        },
+        conversation: expect.objectContaining({
+          connector: 'mock',
+          externalConversationId: 'user-1',
+          type: 'dm',
+        }),
+      }),
+    })])
     expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Echo: /skill explain this', raw }])
+  })
+
+  it('derives origin connector and workspace from account-scoped channel ids', async () => {
+    const runtime = new MockRuntime()
+    const channel = new MockChannel('wechat:work')
+    const raw = { from_user_id: 'user-1', context_token: 'token-1' }
+    const bridge = new GatewayBridge({
+      allowlist: new Allowlist({ mode: 'open' }),
+      rateLimiter: new RateLimiter({ maxPerMinute: 10 }),
+      registry: new GatewaySessionRegistry(runtime),
+      runtime,
+    })
+    bridge.register(channel)
+
+    await bridge.handle({
+      channelId: 'wechat:work',
+      userId: 'user-1',
+      text: 'hello',
+      raw,
+    })
+
+    expect(runtime.messages).toEqual([expect.objectContaining({
+      sessionId: 'gateway:wechat:work:user-1',
+      channel: 'wechat:work',
+      origin: expect.objectContaining({
+        conversation: expect.objectContaining({
+          connector: 'wechat',
+          workspaceId: 'work',
+          externalConversationId: 'user-1',
+        }),
+        replyTarget: expect.objectContaining({
+          connector: 'wechat',
+          workspaceId: 'work',
+          externalConversationId: 'user-1',
+        }),
+      }),
+    })])
+    expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Echo: hello', raw }])
   })
 })
 

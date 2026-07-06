@@ -28,6 +28,11 @@ export interface SqliteSessionRow {
   created_at: number
   updated_at: number
   agent_id: string | null
+  memory_profile_id: string | null
+  origin_identity_key: string | null
+  memory_scope_id: string | null
+  last_connector: string | null
+  last_sent_at: number | null
   parent_session_id: string | null
   branch_from_message_id: string | null
   last_model: string | null
@@ -118,6 +123,11 @@ export interface SqliteSessionDetails {
   createdAt: number
   updatedAt: number
   agentId?: string
+  memoryProfileId?: string
+  originIdentityKey?: string
+  memoryScopeId?: string
+  lastConnector?: string
+  lastSentAt?: number
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
@@ -145,6 +155,11 @@ export interface SqliteSessionMetadataInput {
   createdAt: number
   updatedAt: number
   agentId?: string
+  memoryProfileId?: string
+  originIdentityKey?: string
+  memoryScopeId?: string
+  lastConnector?: string
+  lastSentAt?: number
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
@@ -172,6 +187,11 @@ export interface SqliteSessionMetadataParams {
   parentSessionId: string | null
   branchFromMessageId: string | null
   agentId: string
+  memoryProfileId: string | null
+  originIdentityKey: string | null
+  memoryScopeId: string | null
+  lastConnector: string | null
+  lastSentAt: number | null
   lastModel: string | null
   lastProvider: string | null
   isPinned: number
@@ -325,6 +345,11 @@ export type SqliteSessionInsertParams = [
   parentSessionId: string | null,
   branchFromMessageId: string | null,
   agentId: string,
+  memoryProfileId: string | null,
+  originIdentityKey: string | null,
+  memoryScopeId: string | null,
+  lastConnector: string | null,
+  lastSentAt: number | null,
   lastModel: string | null,
   lastProvider: string | null,
   isPinned: number,
@@ -568,13 +593,15 @@ export const SQLITE_UPSERT_SCHEMA_MIGRATION_SQL = 'INSERT OR REPLACE INTO schema
 export const SQLITE_UPSERT_SESSION_METADATA_SQL = `
     INSERT INTO sessions (
       id, name, created_at, updated_at, parent_session_id, branch_from_message_id,
-      agent_id, last_model, last_provider, is_pinned, is_archived, archived_at,
+      agent_id, memory_profile_id, origin_identity_key, memory_scope_id, last_connector, last_sent_at,
+      last_model, last_provider, is_pinned, is_archived, archived_at,
       working_directory, working_directory_roots_json, summary, summary_up_to_message_id, summary_created_at, prompt_context_json,
       migration_state, legacy_json_path
     )
     VALUES (
       @id, @name, @createdAt, @updatedAt, @parentSessionId, @branchFromMessageId,
-      @agentId, @lastModel, @lastProvider, @isPinned, @isArchived, @archivedAt,
+      @agentId, @memoryProfileId, @originIdentityKey, @memoryScopeId, @lastConnector, @lastSentAt,
+      @lastModel, @lastProvider, @isPinned, @isArchived, @archivedAt,
       @workingDirectory, @workingDirectoryRootsJson, @summary, @summaryUpToMessageId, @summaryCreatedAt, @promptContextJson,
       COALESCE(@migrationState, 'pending'), @legacyJsonPath
     )
@@ -583,6 +610,11 @@ export const SQLITE_UPSERT_SESSION_METADATA_SQL = `
       created_at = excluded.created_at,
       updated_at = excluded.updated_at,
       agent_id = COALESCE(excluded.agent_id, sessions.agent_id),
+      memory_profile_id = COALESCE(excluded.memory_profile_id, sessions.memory_profile_id),
+      origin_identity_key = COALESCE(excluded.origin_identity_key, sessions.origin_identity_key),
+      memory_scope_id = COALESCE(excluded.memory_scope_id, sessions.memory_scope_id),
+      last_connector = COALESCE(excluded.last_connector, sessions.last_connector),
+      last_sent_at = COALESCE(excluded.last_sent_at, sessions.last_sent_at),
       parent_session_id = excluded.parent_session_id,
       branch_from_message_id = excluded.branch_from_message_id,
       last_model = excluded.last_model,
@@ -680,11 +712,12 @@ export const SQLITE_UPSERT_MESSAGE_SQL = `
 export const SQLITE_INSERT_SESSION_FOR_WRITE_SQL = `
     INSERT OR REPLACE INTO sessions (
       id, name, created_at, updated_at, parent_session_id, branch_from_message_id,
-      agent_id, last_model, last_provider, is_pinned, is_archived, archived_at,
+      agent_id, memory_profile_id, origin_identity_key, memory_scope_id, last_connector, last_sent_at,
+      last_model, last_provider, is_pinned, is_archived, archived_at,
       working_directory, working_directory_roots_json, summary, summary_up_to_message_id, summary_created_at,
       prompt_context_json, migration_state, migrated_from_json_at, legacy_json_path
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'migrating', NULL, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'migrating', NULL, ?)
   `
 
 export const SQLITE_DELETE_SESSION_USAGE_SQL = 'DELETE FROM session_usage WHERE session_id = ?'
@@ -817,6 +850,11 @@ export function sqliteSessionMetadataParams(
     parentSessionId: meta.parentSessionId ?? null,
     branchFromMessageId: meta.branchFromMessageId ?? null,
     agentId: meta.agentId || options.defaultAgentId,
+    memoryProfileId: meta.memoryProfileId ?? null,
+    originIdentityKey: meta.originIdentityKey ?? null,
+    memoryScopeId: meta.memoryScopeId ?? null,
+    lastConnector: meta.lastConnector ?? null,
+    lastSentAt: meta.lastSentAt ?? null,
     lastModel: meta.lastModel ?? null,
     lastProvider: meta.lastProvider ?? null,
     isPinned: boolInt(meta.isPinned),
@@ -848,6 +886,11 @@ export function sqliteSessionMetadataInputFromSession(
     parentSessionId: session.parentSessionId,
     branchFromMessageId: session.branchFromMessageId,
     agentId: session.agentId,
+    memoryProfileId: session.memoryProfileId,
+    originIdentityKey: session.originIdentityKey,
+    memoryScopeId: session.memoryScopeId,
+    lastConnector: session.lastConnector,
+    lastSentAt: session.lastSentAt,
     lastModel: session.lastModel,
     lastProvider: session.lastProvider,
     isPinned: session.isPinned,
@@ -874,6 +917,11 @@ export function sqliteSessionInsertParams(
     session.parentSessionId ?? null,
     session.branchFromMessageId ?? null,
     session.agentId || options.defaultAgentId,
+    session.memoryProfileId ?? null,
+    session.originIdentityKey ?? null,
+    session.memoryScopeId ?? null,
+    session.lastConnector ?? null,
+    session.lastSentAt ?? null,
     session.lastModel ?? null,
     session.lastProvider ?? null,
     boolInt(session.isPinned),
@@ -1276,6 +1324,11 @@ export function rowToSessionDetails(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     agentId: row.agent_id || options.defaultAgentId,
+    memoryProfileId: row.memory_profile_id ?? undefined,
+    originIdentityKey: row.origin_identity_key ?? undefined,
+    memoryScopeId: row.memory_scope_id ?? undefined,
+    lastConnector: row.last_connector ?? undefined,
+    lastSentAt: row.last_sent_at ?? undefined,
     parentSessionId: row.parent_session_id ?? undefined,
     branchFromMessageId: row.branch_from_message_id ?? undefined,
     lastModel: row.last_model ?? undefined,

@@ -263,6 +263,11 @@ export interface NetworkSettings {
 
 export interface WechatChannelSettings {
   enabled: boolean
+  accounts?: Array<{
+    id: string
+    label?: string
+    enabled: boolean
+  }>
 }
 
 export interface ChannelSettings {

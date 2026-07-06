@@ -41,6 +41,11 @@ export interface CoreSessionMeta {
   createdAt: number
   updatedAt: number
   agentId?: string
+  memoryProfileId?: string
+  originIdentityKey?: string
+  memoryScopeId?: string
+  lastConnector?: string
+  lastSentAt?: number
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
@@ -937,6 +942,11 @@ export function extractSessionMeta<TMessage extends CoreSessionMessage>(
     parentSessionId: session.parentSessionId,
     branchFromMessageId: session.branchFromMessageId,
     agentId: session.agentId || options.defaultAgentId,
+    memoryProfileId: session.memoryProfileId,
+    originIdentityKey: session.originIdentityKey,
+    memoryScopeId: session.memoryScopeId,
+    lastConnector: session.lastConnector,
+    lastSentAt: session.lastSentAt,
     lastModel: session.lastModel,
     lastProvider: session.lastProvider,
     permissionMode: session.permissionMode,

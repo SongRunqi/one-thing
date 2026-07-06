@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -392,7 +392,11 @@ import type {
   GatewayStartResponse,
   GatewayStatus,
   GatewayStopResponse,
+  GatewayWechatAddAccountResponse,
   GatewayWechatLogoutResponse,
+  GatewayWechatRemoveAccountResponse,
+  GatewayWechatRenameAccountResponse,
+  GatewayWechatStopAccountResponse,
 } from '../../../src/shared/ipc/gateway.js'
 import type {
   VoiceEvent,
@@ -462,6 +466,13 @@ import type {
   MemorySaveFileRequest,
   MemorySearchRequest,
 } from '../../../src/shared/ipc/memory.js'
+import type {
+  ChannelReplyDeliveryRecord,
+  ChannelUserLink,
+  ChannelUserProfile,
+  MessageOrigin,
+  ResolvedIdentity,
+} from '../../../src/shared/ipc/channel-identity.js'
 import type { SessionCommand } from '../../../src/shared/events/session-commands.js'
 import type { PermissionInfo } from '../../../src/shared/ipc/permissions.js'
 import type {
@@ -479,7 +490,93 @@ type ServerChatSession = ChatSession & {
   previewText?: string
 }
 
+export interface ServerChannelIdentityApi {
+  listProfiles(): ChannelUserProfile[]
+  createProfile(input: { id?: string; name: string; isMain?: boolean }): ChannelUserProfile
+  updateProfile(input: { id: string; name?: string; isMain?: boolean }): ChannelUserProfile
+  listLinks(filter?: { connector?: string; workspaceId?: string; clientUserId?: string }): ChannelUserLink[]
+  createLink(input: Omit<ChannelUserLink, 'id' | 'createdAt' | 'updatedAt'>): ChannelUserLink
+  deleteLink(id: string): boolean
+  resolve(origin: MessageOrigin): { identity: ResolvedIdentity; origin: MessageOrigin; sessionId?: string }
+  listDeliveries(): ChannelReplyDeliveryRecord[]
+}
+
+interface ServerChannelIdentityStoreData {
+  profiles: ChannelUserProfile[]
+  links: ChannelUserLink[]
+  deliveries: ChannelReplyDeliveryRecord[]
+}
+
+const serverChannelIdentityApis = new WeakMap<OnethingRuntimeFacade, ServerChannelIdentityApi>()
+
+export function getServerChannelIdentityApi(runtime: OnethingRuntimeFacade): ServerChannelIdentityApi | undefined {
+  return serverChannelIdentityApis.get(runtime)
+}
+
 const DEFAULT_SESSION_MAX_TOKENS = 128000
+const LOCAL_SERVER_MEMORY_SCOPE_ID = 'client:local-owner'
+
+type ScopedCanonicalMemoryRecord = {
+  memoryKey: string
+  evidence?: string
+}
+
+function serverMemoryScopeHash(memoryScopeId: string): string {
+  return createHash('sha256').update(memoryScopeId).digest('hex').slice(0, 16)
+}
+
+function shouldRestrictServerMemoryScope(memoryScopeId?: string): memoryScopeId is string {
+  return Boolean(memoryScopeId && memoryScopeId !== LOCAL_SERVER_MEMORY_SCOPE_ID)
+}
+
+function serverMemoryScopeKeyPrefix(memoryScopeId: string): string {
+  return `scope_${serverMemoryScopeHash(memoryScopeId)}__`
+}
+
+function sanitizeServerMemoryKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9:_./-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    || 'memory'
+}
+
+function filterServerCanonicalMemoryScope<T extends ScopedCanonicalMemoryRecord>(
+  memories: T[],
+  memoryScopeId?: string,
+  limit?: number,
+): T[] {
+  const filtered = shouldRestrictServerMemoryScope(memoryScopeId)
+    ? memories.filter(memory => {
+      const prefix = serverMemoryScopeKeyPrefix(memoryScopeId)
+      return memory.memoryKey.startsWith(prefix) || Boolean(memory.evidence?.includes(`[memoryScopeId:${memoryScopeId}]`))
+    })
+    : memories
+  return limit ? filtered.slice(0, limit) : filtered
+}
+
+function withServerCanonicalMemoryScope<T extends { memoryKey?: string; kind: string; subject?: string; value: string; evidence?: string; source?: string }>(
+  input: T,
+  memoryScopeId?: string,
+): T {
+  if (!shouldRestrictServerMemoryScope(memoryScopeId)) return input
+  const prefix = serverMemoryScopeKeyPrefix(memoryScopeId)
+  const rawMemoryKey = input.memoryKey || `${input.kind}:${input.subject || input.value}`
+  const memoryKey = rawMemoryKey.startsWith(prefix)
+    ? rawMemoryKey
+    : sanitizeServerMemoryKey(`${prefix}${rawMemoryKey}`)
+  const scopeEvidence = `[memoryScopeId:${memoryScopeId}]`
+  return {
+    ...input,
+    memoryKey,
+    source: input.source || 'scoped-profile',
+    evidence: input.evidence?.includes(scopeEvidence)
+      ? input.evidence
+      : [input.evidence, scopeEvidence].filter(Boolean).join('\n'),
+  }
+}
 
 export type ServerMCPClientFactory = (config: MCPServerConfig) => MCPClientLike
 type ServerMCPManager = HeadlessMCPManager<MCPClientLike>
@@ -1821,29 +1918,33 @@ export function createDevelopmentOnethingServerRuntime(options: OnethingServerRu
     listProfile: async request => {
       const typedRequest = (request || {}) as MemoryProfileListRequest
       const workspace = await ensureMemoryWorkspaceForContext(context, typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID)
-      return listCanonicalMemories({
+      const scopedLimit = shouldRestrictServerMemoryScope(typedRequest.memoryScopeId) ? 500 : typedRequest.limit
+      const memories = listCanonicalMemories({
         workspace,
         query: typedRequest.query,
         includeDeleted: typedRequest.includeDeleted,
-        limit: typedRequest.limit,
+        limit: scopedLimit,
       })
+      return filterServerCanonicalMemoryScope(memories, typedRequest.memoryScopeId, typedRequest.limit)
     },
     searchProfile: async request => {
       const typedRequest = (request || {}) as MemoryProfileListRequest
       const workspace = await ensureMemoryWorkspaceForContext(context, typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID)
-      return listCanonicalMemories({
+      const scopedLimit = shouldRestrictServerMemoryScope(typedRequest.memoryScopeId) ? 500 : typedRequest.limit
+      const memories = listCanonicalMemories({
         workspace,
         query: typedRequest.query,
         includeDeleted: typedRequest.includeDeleted,
-        limit: typedRequest.limit,
+        limit: scopedLimit,
       })
+      return filterServerCanonicalMemoryScope(memories, typedRequest.memoryScopeId, typedRequest.limit)
     },
     upsertProfile: async request => {
       const typedRequest = request as MemoryProfileUpsertRequest
       const workspace = await ensureMemoryWorkspaceForContext(context, typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID)
       const existing = typedRequest.id ? getCanonicalMemoryByIdOrKey(workspace, typedRequest.id, true) : null
       const plan = planSoulMemoryProfileUpsert(typedRequest, existing)
-      const result = await upsertCanonicalMemory(workspace, plan.input, { action: plan.action })
+      const result = await upsertCanonicalMemory(workspace, withServerCanonicalMemoryScope(plan.input, typedRequest.memoryScopeId), { action: plan.action })
       return result.memory
     },
     deleteProfile: async request => {
@@ -4085,7 +4186,39 @@ export function createDevelopmentOnethingServerRuntime(options: OnethingServerRu
         const settings = await getOwnerSettings(settingsByOwner, settingsStore, context)
         return { success: true, status: createServerGatewayStatus(settings) }
       },
-      async wechatLogout(context = defaultRequestContext()): Promise<GatewayWechatLogoutResponse> {
+      async wechatLogout(_request?: unknown, context = defaultRequestContext()): Promise<GatewayWechatLogoutResponse> {
+        const settings = await getOwnerSettings(settingsByOwner, settingsStore, context)
+        return {
+          success: false,
+          error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
+          status: createServerGatewayStatus(settings, SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR),
+        }
+      },
+      async wechatAddAccount(_request?: unknown, context = defaultRequestContext()): Promise<GatewayWechatAddAccountResponse> {
+        const settings = await getOwnerSettings(settingsByOwner, settingsStore, context)
+        return {
+          success: false,
+          error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
+          status: createServerGatewayStatus(settings, SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR),
+        }
+      },
+      async wechatStopAccount(_request: unknown, context = defaultRequestContext()): Promise<GatewayWechatStopAccountResponse> {
+        const settings = await getOwnerSettings(settingsByOwner, settingsStore, context)
+        return {
+          success: false,
+          error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
+          status: createServerGatewayStatus(settings, SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR),
+        }
+      },
+      async wechatRemoveAccount(_request: unknown, context = defaultRequestContext()): Promise<GatewayWechatRemoveAccountResponse> {
+        const settings = await getOwnerSettings(settingsByOwner, settingsStore, context)
+        return {
+          success: false,
+          error: SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR,
+          status: createServerGatewayStatus(settings, SERVER_GATEWAY_CONNECTIONS_DISABLED_ERROR),
+        }
+      },
+      async wechatRenameAccount(_request: unknown, context = defaultRequestContext()): Promise<GatewayWechatRenameAccountResponse> {
         const settings = await getOwnerSettings(settingsByOwner, settingsStore, context)
         return {
           success: false,
@@ -4490,6 +4623,7 @@ export function createDevelopmentOnethingServerRuntime(options: OnethingServerRu
       pluginCatalogManagersByOwner.clear()
     },
   })
+  serverChannelIdentityApis.set(runtime, createServerChannelIdentityApi(join(dataRoot, 'channel-identity.json')))
 
   return {
     runtime,
@@ -5329,6 +5463,301 @@ function readServerRuntimeJsonFile<T>(filePath: string, defaultValue: T): T {
 function writeServerRuntimeJsonFile<T>(filePath: string, data: T): void {
   mkdirSync(dirname(filePath), { recursive: true })
   writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
+}
+
+function createServerChannelIdentityApi(filePath: string): ServerChannelIdentityApi {
+  const defaultData: ServerChannelIdentityStoreData = { profiles: [], links: [], deliveries: [] }
+  const localProfile = (now = Date.now()): ChannelUserProfile => ({
+    id: 'local-owner',
+    name: 'Local user',
+    memoryScopeId: LOCAL_SERVER_MEMORY_SCOPE_ID,
+    isMain: true,
+    source: 'local',
+    createdAt: now,
+    updatedAt: now,
+  })
+  const channelMemoryScope = (input: { connector: string; workspaceId?: string; externalUserId: string }) =>
+    `channel:${sanitizeServerIdentityPart(input.connector)}:${sanitizeServerIdentityPart(input.workspaceId || 'default')}:${sanitizeServerIdentityPart(input.externalUserId)}`
+  const channelProfileId = (input: { connector: string; workspaceId?: string; externalUserId: string }) =>
+    `channel-${sanitizeServerIdentityPart(input.connector)}-${sanitizeServerIdentityPart(input.workspaceId || 'default')}-${sanitizeServerIdentityPart(input.externalUserId)}`
+  const readData = (): ServerChannelIdentityStoreData => {
+    const data = readServerRuntimeJsonFile<ServerChannelIdentityStoreData>(filePath, defaultData)
+    const profiles = Array.isArray(data.profiles) ? data.profiles : []
+    if (!profiles.some(profile => profile.id === 'local-owner')) profiles.unshift(localProfile())
+    return {
+      profiles,
+      links: Array.isArray(data.links) ? data.links : [],
+      deliveries: Array.isArray(data.deliveries) ? data.deliveries : [],
+    }
+  }
+  const writeData = (data: ServerChannelIdentityStoreData) => writeServerRuntimeJsonFile(filePath, data)
+  const normalizeWorkspaceId = (workspaceId?: string) => workspaceId?.trim() || undefined
+  const findProfile = (id: string) => readData().profiles.find(profile => profile.id === id)
+  const createProfileRecord = (input: {
+    id?: string
+    name: string
+    isMain?: boolean
+    source?: ChannelUserProfile['source']
+    memoryScopeId?: string
+  }): ChannelUserProfile => {
+    const now = Date.now()
+    const data = readData()
+    const id = sanitizeServerIdentityPart(input.id || input.name || `user-${now}`)
+    const existing = data.profiles.find(profile => profile.id === id)
+    if (input.isMain) {
+      data.profiles.forEach(profile => {
+        profile.isMain = profile.id === id
+      })
+    }
+    if (existing) {
+      existing.name = input.name.trim() || existing.name
+      existing.memoryScopeId = input.memoryScopeId || existing.memoryScopeId
+      existing.source = input.source || existing.source
+      existing.isMain = input.isMain === undefined ? existing.isMain : input.isMain
+      existing.updatedAt = now
+      writeData(data)
+      return existing
+    }
+    const profile: ChannelUserProfile = {
+      id,
+      name: input.name.trim() || id,
+      memoryScopeId: input.memoryScopeId || (id === 'local-owner' ? LOCAL_SERVER_MEMORY_SCOPE_ID : `client:${id}`),
+      isMain: input.isMain === true,
+      source: input.source || 'manual',
+      createdAt: now,
+      updatedAt: now,
+    }
+    data.profiles.push(profile)
+    if (profile.isMain) {
+      data.profiles.forEach(item => {
+        item.isMain = item.id === profile.id
+      })
+    }
+    writeData(data)
+    return profile
+  }
+  const ensureClientProfile = (clientUserId: string, displayName?: string): ChannelUserProfile =>
+    findProfile(clientUserId) || createProfileRecord({
+      id: clientUserId,
+      name: displayName || clientUserId,
+      source: clientUserId === 'local-owner' ? 'local' : 'manual',
+      memoryScopeId: clientUserId === 'local-owner' ? LOCAL_SERVER_MEMORY_SCOPE_ID : `client:${clientUserId}`,
+      isMain: clientUserId === 'local-owner',
+    })
+  const ensureChannelProfile = (input: { connector: string; workspaceId?: string; externalUserId: string; displayName?: string }) =>
+    findProfile(channelProfileId(input)) || createProfileRecord({
+      id: channelProfileId(input),
+      name: input.displayName || input.externalUserId,
+      source: 'channel',
+      memoryScopeId: channelMemoryScope(input),
+    })
+  const touchProfile = (id: string, input: { sentAt?: number; transport?: MessageOrigin['transport']; connector?: string; displayName?: string } = {}) => {
+    const data = readData()
+    const profile = data.profiles.find(item => item.id === id)
+    if (!profile) return
+    const now = Date.now()
+    profile.lastSentAt = input.sentAt || now
+    profile.lastTransport = input.transport || profile.lastTransport
+    profile.lastConnector = input.connector || profile.lastConnector
+    if (input.displayName && profile.source === 'channel') profile.name = input.displayName
+    profile.updatedAt = now
+    writeData(data)
+  }
+
+  const findLink = (origin: MessageOrigin): ChannelUserLink | undefined => {
+    const connector = serverOriginConnector(origin)
+    const workspaceId = normalizeWorkspaceId(serverOriginWorkspaceId(origin))
+    const externalUserId = serverOriginExternalUserId(origin)
+    return readData().links.find(link =>
+      link.connector === connector
+      && normalizeWorkspaceId(link.workspaceId) === workspaceId
+      && link.externalUserId === externalUserId
+    )
+  }
+
+  const resolveIdentity = (origin: MessageOrigin): ResolvedIdentity => {
+    if (origin.transport === 'desktop' || origin.transport === 'voice') {
+      const profile = origin.resolvedIdentity?.profileId
+        ? findProfile(origin.resolvedIdentity.profileId) || readData().profiles.find(item => item.isMain) || localProfile()
+        : readData().profiles.find(item => item.isMain) || localProfile()
+      touchProfile(profile.id, { sentAt: origin.receivedAt, transport: origin.transport })
+      return {
+        ...(origin.resolvedIdentity ?? { kind: 'client-user' as const }),
+        kind: 'client-user',
+        userId: profile.id,
+        memoryScopeId: profile.memoryScopeId,
+        profileId: profile.id,
+        displayName: profile.name,
+        linkedClientUserId: profile.id,
+      }
+    }
+    if (origin.resolvedIdentity?.kind === 'client-user') {
+      const profile = ensureClientProfile(
+        origin.resolvedIdentity.profileId || origin.resolvedIdentity.linkedClientUserId || origin.resolvedIdentity.userId,
+        origin.resolvedIdentity.displayName || origin.actor?.displayName || origin.actor?.handle,
+      )
+      touchProfile(profile.id, {
+        sentAt: origin.receivedAt,
+        transport: origin.transport,
+        connector: serverOriginConnector(origin),
+        displayName: origin.actor?.displayName || origin.actor?.handle,
+      })
+      return {
+        ...origin.resolvedIdentity,
+        userId: profile.id,
+        profileId: profile.id,
+        memoryScopeId: profile.memoryScopeId,
+        displayName: origin.resolvedIdentity.displayName || profile.name,
+        linkedClientUserId: profile.id,
+      }
+    }
+
+    const connector = serverOriginConnector(origin)
+    const workspaceId = serverOriginWorkspaceId(origin)
+    const externalUserId = serverOriginExternalUserId(origin)
+    const link = findLink(origin)
+    if (link) {
+      const profile = ensureClientProfile(link.clientUserId, origin.actor?.displayName || origin.actor?.handle)
+      touchProfile(profile.id, { sentAt: origin.receivedAt, transport: origin.transport, connector })
+      return {
+        kind: 'client-user',
+        userId: profile.id,
+        memoryScopeId: profile.memoryScopeId,
+        profileId: profile.id,
+        displayName: origin.actor?.displayName || origin.actor?.handle || profile.name,
+        linkedClientUserId: profile.id,
+        externalUserKey: `${connector}:${workspaceId || 'default'}:${externalUserId}`,
+      }
+    }
+
+    const externalUserKey = `${connector}:${workspaceId || 'default'}:${externalUserId}`
+    const profile = ensureChannelProfile({ connector, workspaceId, externalUserId, displayName: origin.actor?.displayName || origin.actor?.handle })
+    touchProfile(profile.id, { sentAt: origin.receivedAt, transport: origin.transport, connector, displayName: origin.actor?.displayName || origin.actor?.handle })
+    return {
+      kind: 'channel-user',
+      userId: profile.id || `channel:${sanitizeServerIdentityPart(externalUserKey)}`,
+      memoryScopeId: profile.memoryScopeId,
+      profileId: profile.id,
+      displayName: origin.actor?.displayName || origin.actor?.handle || profile.name || externalUserId,
+      externalUserKey,
+    }
+  }
+
+  return {
+    listProfiles() {
+      return [...readData().profiles].sort((left, right) => {
+        if (left.isMain && !right.isMain) return -1
+        if (!left.isMain && right.isMain) return 1
+        return (right.lastSentAt || right.updatedAt) - (left.lastSentAt || left.updatedAt)
+      })
+    },
+    createProfile(input) {
+      return createProfileRecord(input)
+    },
+    updateProfile(input) {
+      const data = readData()
+      const profile = data.profiles.find(item => item.id === input.id)
+      if (!profile) throw new Error('Channel user profile not found')
+      if (input.name !== undefined) profile.name = input.name.trim() || profile.name
+      if (input.isMain !== undefined) {
+        data.profiles.forEach(item => {
+          item.isMain = input.isMain ? item.id === input.id : item.isMain && item.id !== input.id
+        })
+        profile.isMain = input.isMain
+      }
+      profile.updatedAt = Date.now()
+      writeData(data)
+      return profile
+    },
+    listLinks(filter = {}) {
+      const workspaceId = normalizeWorkspaceId(filter.workspaceId)
+      return readData().links.filter(link => {
+        if (filter.connector && link.connector !== filter.connector) return false
+        if (workspaceId !== undefined && normalizeWorkspaceId(link.workspaceId) !== workspaceId) return false
+        if (filter.clientUserId && link.clientUserId !== filter.clientUserId) return false
+        return true
+      })
+    },
+    createLink(input) {
+      ensureClientProfile(input.clientUserId)
+      const now = Date.now()
+      const data = readData()
+      const workspaceId = normalizeWorkspaceId(input.workspaceId)
+      const existing = data.links.find(link =>
+        link.connector === input.connector
+        && normalizeWorkspaceId(link.workspaceId) === workspaceId
+        && link.externalUserId === input.externalUserId
+      )
+      if (existing) {
+        existing.clientUserId = input.clientUserId
+        existing.updatedAt = now
+        writeData(data)
+        return existing
+      }
+      const link: ChannelUserLink = {
+        id: `link-${now}-${Math.random().toString(36).slice(2, 10)}`,
+        connector: input.connector,
+        workspaceId,
+        externalUserId: input.externalUserId,
+        clientUserId: input.clientUserId,
+        createdAt: now,
+        updatedAt: now,
+      }
+      data.links.push(link)
+      writeData(data)
+      return link
+    },
+    deleteLink(id) {
+      const data = readData()
+      const nextLinks = data.links.filter(link => link.id !== id)
+      if (nextLinks.length === data.links.length) return false
+      writeData({ ...data, links: nextLinks })
+      return true
+    },
+    resolve(origin) {
+      const normalized: MessageOrigin = {
+        ...origin,
+        source: origin.source || (origin.transport === 'voice' ? 'voice' : origin.transport === 'api' ? 'api' : 'text'),
+        receivedAt: typeof origin.receivedAt === 'number' ? origin.receivedAt : Date.now(),
+      }
+      const identity = resolveIdentity(normalized)
+      const resolvedOrigin = { ...normalized, resolvedIdentity: identity }
+      return {
+        identity,
+        origin: resolvedOrigin,
+        sessionId: serverIdentitySessionKey(resolvedOrigin),
+      }
+    },
+    listDeliveries() {
+      return readData().deliveries
+    },
+  }
+}
+
+function serverOriginConnector(origin: MessageOrigin): string {
+  return origin.conversation?.connector || origin.replyTarget?.connector || origin.transport
+}
+
+function serverOriginWorkspaceId(origin: MessageOrigin): string | undefined {
+  return origin.conversation?.workspaceId || origin.replyTarget?.workspaceId
+}
+
+function serverOriginExternalUserId(origin: MessageOrigin): string {
+  return origin.actor?.externalUserId
+    || origin.resolvedIdentity?.externalUserKey
+    || origin.resolvedIdentity?.userId
+    || `${origin.transport}-anonymous`
+}
+
+function sanitizeServerIdentityPart(value: string | undefined): string {
+  return (value || 'unknown').trim().replace(/[^a-zA-Z0-9_.@-]+/g, '_') || 'unknown'
+}
+
+function serverIdentitySessionKey(origin: MessageOrigin): string | undefined {
+  if (!origin.resolvedIdentity || origin.transport === 'desktop' || origin.transport === 'voice') return undefined
+  const connector = serverOriginConnector(origin)
+  const workspaceId = serverOriginWorkspaceId(origin) || 'default'
+  return `identity:${origin.transport}:${connector}:${workspaceId}:${origin.resolvedIdentity.userId}`
 }
 
 function ensureServerSkillsDirectories(dataRoot: string, context = defaultRequestContext()): void {

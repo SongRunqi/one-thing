@@ -22,6 +22,7 @@ export interface CoreSendMessageOptions {
   channel?: string
   source?: string
   attachments?: JsonObject[]
+  origin?: unknown
 }
 
 export type CorePermissionDecision = 'once' | 'session' | 'workdir' | 'reject'
@@ -36,6 +37,8 @@ export interface CorePermissionRequestEvent {
   toolCallId?: string
   pattern?: string | string[]
   metadata: JsonObject
+  userId?: string
+  workspaceId?: string
   timeoutMs?: number
 }
 
@@ -76,6 +79,7 @@ export interface CoreConversationSendMessageCommand {
   content: string
   source?: string
   attachments?: JsonObject[]
+  origin?: unknown
 }
 
 export interface CoreSessionRuntime {

@@ -10,6 +10,7 @@
  */
 
 import type { VoiceTranscriptMetadata } from '../ipc/voice.js'
+import type { MessageOrigin } from '../ipc/channel-identity.js'
 import type { JsonObject } from '../json.js'
 
 export interface SendMessageCommand {
@@ -20,6 +21,7 @@ export interface SendMessageCommand {
   attachments?: JsonObject[]
   source?: 'text' | 'voice' | 'api' | string
   voice?: VoiceTranscriptMetadata
+  origin?: MessageOrigin
 }
 
 export interface EditAndResendCommand {
@@ -28,6 +30,7 @@ export interface EditAndResendCommand {
   channel?: string
   messageId: string
   newContent: string
+  origin?: MessageOrigin
 }
 
 export interface AbortCommand {
@@ -72,6 +75,7 @@ export interface InjectSteeringCommand {
   type: 'command:inject-steering'
   content: string
   source?: string
+  origin?: MessageOrigin
 }
 
 /** Inject a follow-up message (only after agent would stop) */
@@ -79,6 +83,7 @@ export interface InjectFollowUpCommand {
   type: 'command:inject-followup'
   content: string
   source?: string
+  origin?: MessageOrigin
 }
 
 export type SessionCommand =

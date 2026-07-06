@@ -79,6 +79,20 @@ export const IPC_CHANNELS = {
   GATEWAY_START: 'gateway:start',
   GATEWAY_STOP: 'gateway:stop',
   GATEWAY_WECHAT_LOGOUT: 'gateway:wechat-logout',
+  GATEWAY_WECHAT_ADD_ACCOUNT: 'gateway:wechat-add-account',
+  GATEWAY_WECHAT_STOP_ACCOUNT: 'gateway:wechat-stop-account',
+  GATEWAY_WECHAT_REMOVE_ACCOUNT: 'gateway:wechat-remove-account',
+  GATEWAY_WECHAT_RENAME_ACCOUNT: 'gateway:wechat-rename-account',
+
+  // Channel identity and IM reply routing
+  CHANNEL_IDENTITY_LIST_LINKS: 'channel-identity:list-links',
+  CHANNEL_IDENTITY_LIST_PROFILES: 'channel-identity:list-profiles',
+  CHANNEL_IDENTITY_CREATE_PROFILE: 'channel-identity:create-profile',
+  CHANNEL_IDENTITY_UPDATE_PROFILE: 'channel-identity:update-profile',
+  CHANNEL_IDENTITY_CREATE_LINK: 'channel-identity:create-link',
+  CHANNEL_IDENTITY_DELETE_LINK: 'channel-identity:delete-link',
+  CHANNEL_IDENTITY_RESOLVE: 'channel-identity:resolve',
+  CHANNEL_DELIVERY_LIST: 'channel-delivery:list',
 
   // Agents related
   AGENTS_LIST: 'agents:list',

@@ -193,6 +193,7 @@ export interface CoreResolvedPendingAgentLoopMessage<TContentParts = unknown> {
   timestamp: number
   contentParts?: TContentParts
   persisted?: boolean
+  origin?: unknown
 }
 
 export interface CorePendingAgentLoopInputMessage {
@@ -203,6 +204,7 @@ export interface CorePendingAgentLoopInputMessage {
   modelContent?: string
   contentParts?: unknown
   persisted?: boolean
+  origin?: unknown
 }
 
 export interface CorePendingAgentLoopPromptResolution<TContentParts = unknown> {
@@ -222,6 +224,7 @@ export interface CorePendingAgentLoopChatMessage<TContentParts = unknown> {
   timestamp: number
   contentParts?: TContentParts
   persisted?: boolean
+  origin?: unknown
 }
 
 export interface CorePendingAgentLoopInjectionResult<
@@ -1209,6 +1212,7 @@ export function buildPendingAgentLoopMessageInjections<
       content: pending.modelContent,
       timestamp: pending.timestamp,
       contentParts: pending.contentParts,
+      ...(pending.origin !== undefined ? { origin: pending.origin } : {}),
       ...(pending.persisted ? { persisted: true } : {}),
     })
   }
@@ -1248,6 +1252,7 @@ export async function injectPendingAgentLoopMessagesWithAdapters<
       content: chatMessage.content,
       timestamp: chatMessage.timestamp,
       contentParts: chatMessage.contentParts,
+      ...(chatMessage.origin !== undefined ? { origin: chatMessage.origin } : {}),
     })
   }
 
@@ -1268,6 +1273,7 @@ export function resolvePendingAgentLoopMessages<TContentParts = unknown>(
         modelContent: pending.modelContent,
         timestamp: pending.timestamp,
         contentParts: pending.contentParts as TContentParts | undefined,
+        ...(pending.origin !== undefined ? { origin: pending.origin } : {}),
         ...(pending.persisted ? { persisted: true } : {}),
       }
     }
@@ -1278,6 +1284,7 @@ export function resolvePendingAgentLoopMessages<TContentParts = unknown>(
       modelContent: resolvedPromptRefs.modelContent,
       timestamp: pending.timestamp,
       contentParts: resolvedPromptRefs.contentParts,
+      ...(pending.origin !== undefined ? { origin: pending.origin } : {}),
       ...(pending.persisted ? { persisted: true } : {}),
     }
   })

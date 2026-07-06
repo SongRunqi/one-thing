@@ -22,6 +22,8 @@ export interface PendingMessage {
   contentParts?: unknown
   /** True when the message has already been written to chat history */
   persisted?: boolean
+  /** Trusted transport/identity metadata supplied by the host. */
+  origin?: unknown
 }
 
 export class PendingMessageQueue {

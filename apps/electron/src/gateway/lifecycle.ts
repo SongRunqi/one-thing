@@ -43,8 +43,24 @@ export async function stopGateway() {
   return getGatewayLifecycle().stopGateway()
 }
 
-export async function logoutWechatGateway() {
-  return getGatewayLifecycle().logoutWechat()
+export async function logoutWechatGateway(request?: Parameters<ElectronGatewayLifecycle['logoutWechat']>[0]) {
+  return getGatewayLifecycle().logoutWechat(request)
+}
+
+export async function addWechatGatewayAccount(request?: Parameters<ElectronGatewayLifecycle['addWechatAccount']>[0]) {
+  return getGatewayLifecycle().addWechatAccount(request)
+}
+
+export async function stopWechatGatewayAccount(request: Parameters<ElectronGatewayLifecycle['stopWechatAccount']>[0]) {
+  return getGatewayLifecycle().stopWechatAccount(request)
+}
+
+export async function removeWechatGatewayAccount(request: Parameters<ElectronGatewayLifecycle['removeWechatAccount']>[0]) {
+  return getGatewayLifecycle().removeWechatAccount(request)
+}
+
+export async function renameWechatGatewayAccount(request: Parameters<ElectronGatewayLifecycle['renameWechatAccount']>[0]) {
+  return getGatewayLifecycle().renameWechatAccount(request)
 }
 
 export async function shutdownGateway(): Promise<void> {

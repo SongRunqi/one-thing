@@ -60,6 +60,7 @@ export type {
   GatewayCommandProvider,
   GatewaySession,
   GatewaySessionRegistryOptions,
+  InboundActor,
   InboundMessage,
   OutboundMessage,
   RateLimiterConfig,

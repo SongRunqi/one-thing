@@ -14,6 +14,7 @@ import type {
 import type { PromptReferenceSnapshot } from './prompts.js'
 import type { SkillConditions, SkillReferenceSnapshot, SkillSource } from './skills.js'
 import type { VoiceTranscriptMetadata } from './voice.js'
+import type { MessageOrigin } from './channel-identity.js'
 
 /**
  * @deprecated Kept as a type alias for one version so old persisted
@@ -121,6 +122,7 @@ export interface ChatMessage {
   attachments?: MessageAttachment[]  // File/image attachments
   source?: 'text' | 'voice' | 'api' | string
   voice?: VoiceTranscriptMetadata
+  origin?: MessageOrigin
   // Token usage for this message (for assistant messages)
   usage?: {
     inputTokens: number
@@ -151,6 +153,11 @@ export interface SessionMeta {
   isPinned?: boolean
   isArchived?: boolean
   archivedAt?: number
+  originIdentityKey?: string
+  memoryScopeId?: string
+  memoryProfileId?: string
+  lastConnector?: string
+  lastSentAt?: number
   // Additional metadata for display (computed on save)
   messageCount?: number      // Number of messages in session
   previewText?: string       // First user message preview (truncated)
@@ -174,6 +181,11 @@ export interface SessionDetails extends SessionMeta {
   maxTokens?: number
   lastInputTokens?: number
   contextSize?: number
+  originIdentityKey?: string
+  memoryScopeId?: string
+  memoryProfileId?: string
+  lastConnector?: string
+  lastSentAt?: number
 }
 
 // ============================================================================
@@ -211,6 +223,11 @@ export interface ChatSession {
   maxTokens?: number            // Session context/token budget limit
   lastInputTokens?: number      // Last request's input tokens
   contextSize?: number          // Current context window size (last turn's input tokens)
+  originIdentityKey?: string    // Stable identity-session routing key for channel/API sessions
+  memoryScopeId?: string        // Memory scope selected for this session's resolved identity
+  memoryProfileId?: string      // User/profile whose memory workspace should be used
+  lastConnector?: string        // Last IM/API connector that routed into this session
+  lastSentAt?: number           // Last inbound user message timestamp for profile/channel auditing
 }
 
 // ============================================================================

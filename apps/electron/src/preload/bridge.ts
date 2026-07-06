@@ -374,10 +374,46 @@ const electronAPI = {
 
 	gatewayStop: () => ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_STOP),
 
-	gatewayWechatLogout: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_LOGOUT),
+	gatewayWechatLogout: (request?: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_LOGOUT, request || {}),
 
-	// Voice methods
+	gatewayWechatAddAccount: (request?: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_ADD_ACCOUNT, request || {}),
+
+	gatewayWechatStopAccount: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_STOP_ACCOUNT, request),
+
+	gatewayWechatRemoveAccount: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_REMOVE_ACCOUNT, request),
+
+	gatewayWechatRenameAccount: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_RENAME_ACCOUNT, request),
+
+		channelIdentityListLinks: (request?: any) =>
+			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_LIST_LINKS, request || {}),
+
+		channelIdentityListProfiles: () =>
+			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_LIST_PROFILES),
+
+		channelIdentityCreateProfile: (request: any) =>
+			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_CREATE_PROFILE, request),
+
+		channelIdentityUpdateProfile: (request: any) =>
+			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_UPDATE_PROFILE, request),
+
+		channelIdentityCreateLink: (request: any) =>
+			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_CREATE_LINK, request),
+
+		channelIdentityDeleteLink: (id: string) =>
+			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_DELETE_LINK, { id }),
+
+		channelIdentityResolve: (origin: any) =>
+			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_RESOLVE, { origin }),
+
+		channelDeliveryList: () =>
+			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_DELIVERY_LIST),
+
+		// Voice methods
 	voiceGetState: () => ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_STATE),
 
 	voiceStart: (request?: any) =>

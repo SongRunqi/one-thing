@@ -1,8 +1,17 @@
+export interface InboundActor {
+  displayName?: string
+  handle?: string
+  avatarUrl?: string
+  locale?: string
+  timezone?: string
+}
+
 export interface InboundMessage {
   channelId: string
   userId: string
   text: string
   raw: unknown
+  actor?: InboundActor
 }
 
 export interface OutboundMessage {

@@ -9,6 +9,20 @@ import type {
   RuntimeUnsubscribe,
 } from '@onething/core'
 import type { ProxySettings } from '../../../src/shared/ipc/settings.js'
+import { getServerChannelIdentityApi } from './runtime.js'
+import type {
+  ChannelIdentityCreateLinkRequest,
+  ChannelIdentityCreateProfileRequest,
+  ChannelIdentityDeleteLinkRequest,
+  ChannelIdentityListLinksRequest,
+  ChannelIdentityResolveRequest,
+  ChannelIdentityUpdateProfileRequest,
+  ChannelReplyDeliveryRecord,
+  ChannelUserLink,
+  ChannelUserProfile,
+  MessageOrigin,
+  ResolvedIdentity,
+} from '../../../src/shared/ipc/channel-identity.js'
 
 export type OnethingServerRequestHandler = (
   request: IncomingMessage,
@@ -33,6 +47,16 @@ interface RouteContext {
 
 type RouteHandler = (context: RouteContext) => Promise<void> | void
 type RuntimeMemoryMethod = keyof NonNullable<OnethingRuntimeFacade['memory']>
+type RuntimeChannelIdentityApi = {
+  listProfiles(): ChannelUserProfile[]
+  createProfile(input: ChannelIdentityCreateProfileRequest): ChannelUserProfile
+  updateProfile(input: ChannelIdentityUpdateProfileRequest): ChannelUserProfile
+  listLinks(filter?: ChannelIdentityListLinksRequest): ChannelUserLink[]
+  createLink(input: ChannelIdentityCreateLinkRequest): ChannelUserLink
+  deleteLink(id: string): boolean
+  resolve(origin: MessageOrigin): { identity: ResolvedIdentity; origin: MessageOrigin; sessionId?: string }
+  listDeliveries(): ChannelReplyDeliveryRecord[]
+}
 
 export function createOnethingHttpServer(options: OnethingHttpServerOptions): Server {
   return createServer(createOnethingServerRequestHandler(options))
@@ -110,6 +134,10 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/gateway/start') return handleGatewayStart
   if (method === 'POST' && pathname === '/api/gateway/stop') return handleGatewayStop
   if (method === 'POST' && pathname === '/api/gateway/wechat/logout') return handleGatewayWechatLogout
+  if (method === 'POST' && pathname === '/api/gateway/wechat/accounts/add') return handleGatewayWechatAddAccount
+  if (method === 'POST' && pathname === '/api/gateway/wechat/accounts/stop') return handleGatewayWechatStopAccount
+  if (method === 'POST' && pathname === '/api/gateway/wechat/accounts/remove') return handleGatewayWechatRemoveAccount
+  if (method === 'POST' && pathname === '/api/gateway/wechat/accounts/rename') return handleGatewayWechatRenameAccount
   if (method === 'GET' && pathname === '/api/voice/state') return handleVoiceGetState
   if (method === 'POST' && pathname === '/api/voice/start') return handleVoiceStart
   if (method === 'POST' && pathname === '/api/voice/stop') return handleVoiceStop
@@ -248,6 +276,14 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/memory/logs/cleanup') return handleMemoryLogsCleanup
   if (method === 'POST' && pathname === '/api/memory/capture/save') return handleMemoryCaptureSave
   if (method === 'POST' && pathname === '/api/memory/capture/discard') return handleMemoryCaptureDiscard
+  if (method === 'POST' && pathname === '/api/channel-identity/profiles/list') return handleChannelIdentityListProfiles
+  if (method === 'POST' && pathname === '/api/channel-identity/profiles/create') return handleChannelIdentityCreateProfile
+  if (method === 'POST' && pathname === '/api/channel-identity/profiles/update') return handleChannelIdentityUpdateProfile
+  if (method === 'POST' && pathname === '/api/channel-identity/links/list') return handleChannelIdentityListLinks
+  if (method === 'POST' && pathname === '/api/channel-identity/links/create') return handleChannelIdentityCreateLink
+  if (method === 'POST' && pathname === '/api/channel-identity/links/delete') return handleChannelIdentityDeleteLink
+  if (method === 'POST' && pathname === '/api/channel-identity/resolve') return handleChannelIdentityResolve
+  if (method === 'GET' && pathname === '/api/channel-identity/deliveries') return handleChannelDeliveryList
   if (method === 'GET' && pathname === '/api/sessions') return handleListSessions
   if (method === 'POST' && pathname === '/api/sessions') return handleCreateSession
   if (method === 'POST' && pathname === '/api/sessions/branch') return handleCreateBranch
@@ -778,6 +814,66 @@ async function handleMemoryCall(
   sendJson(context.response, 200, await handler(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
+function getChannelIdentityApi(context: RouteContext): RuntimeChannelIdentityApi | undefined {
+  return getServerChannelIdentityApi(context.runtime) as RuntimeChannelIdentityApi | undefined
+}
+
+function handleChannelIdentityListProfiles(context: RouteContext): void {
+  const api = getChannelIdentityApi(context)
+  if (!api) return sendNotImplemented(context, 'channelIdentity.listProfiles')
+  sendJson(context.response, 200, { success: true, profiles: api.listProfiles() }, context.corsOrigin)
+}
+
+async function handleChannelIdentityCreateProfile(context: RouteContext): Promise<void> {
+  const api = getChannelIdentityApi(context)
+  if (!api) return sendNotImplemented(context, 'channelIdentity.createProfile')
+  const body = await readJson<ChannelIdentityCreateProfileRequest>(context.request)
+  sendJson(context.response, 200, { success: true, profile: api.createProfile(body) }, context.corsOrigin)
+}
+
+async function handleChannelIdentityUpdateProfile(context: RouteContext): Promise<void> {
+  const api = getChannelIdentityApi(context)
+  if (!api) return sendNotImplemented(context, 'channelIdentity.updateProfile')
+  const body = await readJson<ChannelIdentityUpdateProfileRequest>(context.request)
+  sendJson(context.response, 200, { success: true, profile: api.updateProfile(body) }, context.corsOrigin)
+}
+
+async function handleChannelIdentityListLinks(context: RouteContext): Promise<void> {
+  const api = getChannelIdentityApi(context)
+  if (!api) return sendNotImplemented(context, 'channelIdentity.listLinks')
+  const body = await readJson<ChannelIdentityListLinksRequest>(context.request)
+  sendJson(context.response, 200, { success: true, links: api.listLinks(body ?? {}) }, context.corsOrigin)
+}
+
+async function handleChannelIdentityCreateLink(context: RouteContext): Promise<void> {
+  const api = getChannelIdentityApi(context)
+  if (!api) return sendNotImplemented(context, 'channelIdentity.createLink')
+  const body = await readJson<ChannelIdentityCreateLinkRequest>(context.request)
+  sendJson(context.response, 200, { success: true, link: api.createLink(body) }, context.corsOrigin)
+}
+
+async function handleChannelIdentityDeleteLink(context: RouteContext): Promise<void> {
+  const api = getChannelIdentityApi(context)
+  if (!api) return sendNotImplemented(context, 'channelIdentity.deleteLink')
+  const body = await readJson<ChannelIdentityDeleteLinkRequest>(context.request)
+  const deleted = api.deleteLink(body.id)
+  sendJson(context.response, 200, deleted ? { success: true } : { success: false, error: 'Channel user link not found' }, context.corsOrigin)
+}
+
+async function handleChannelIdentityResolve(context: RouteContext): Promise<void> {
+  const api = getChannelIdentityApi(context)
+  if (!api) return sendNotImplemented(context, 'channelIdentity.resolve')
+  const body = await readJson<ChannelIdentityResolveRequest>(context.request)
+  const resolved = api.resolve(body.origin)
+  sendJson(context.response, 200, { success: true, ...resolved }, context.corsOrigin)
+}
+
+function handleChannelDeliveryList(context: RouteContext): void {
+  const api = getChannelIdentityApi(context)
+  if (!api) return sendNotImplemented(context, 'channelIdentity.deliveries')
+  sendJson(context.response, 200, { success: true, deliveries: api.listDeliveries() }, context.corsOrigin)
+}
+
 const handleMemoryOverview = (context: RouteContext) =>
   handleMemoryCall(context, 'overview', 'memory.overview')
 const handleMemoryRead = (context: RouteContext) =>
@@ -1156,7 +1252,31 @@ async function handleGatewayStop(context: RouteContext): Promise<void> {
 async function handleGatewayWechatLogout(context: RouteContext): Promise<void> {
   const adapter = context.runtime.gateway
   if (!adapter) return sendNotImplemented(context, 'gateway.wechatLogout')
-  sendJson(context.response, 200, await adapter.wechatLogout(context.requestContext), context.corsOrigin)
+  sendJson(context.response, 200, await adapter.wechatLogout(await readJson(context.request), context.requestContext), context.corsOrigin)
+}
+
+async function handleGatewayWechatAddAccount(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.gateway
+  if (!adapter?.wechatAddAccount) return sendNotImplemented(context, 'gateway.wechatAddAccount')
+  sendJson(context.response, 200, await adapter.wechatAddAccount(await readJson(context.request), context.requestContext), context.corsOrigin)
+}
+
+async function handleGatewayWechatStopAccount(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.gateway
+  if (!adapter?.wechatStopAccount) return sendNotImplemented(context, 'gateway.wechatStopAccount')
+  sendJson(context.response, 200, await adapter.wechatStopAccount(await readJson(context.request), context.requestContext), context.corsOrigin)
+}
+
+async function handleGatewayWechatRemoveAccount(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.gateway
+  if (!adapter?.wechatRemoveAccount) return sendNotImplemented(context, 'gateway.wechatRemoveAccount')
+  sendJson(context.response, 200, await adapter.wechatRemoveAccount(await readJson(context.request), context.requestContext), context.corsOrigin)
+}
+
+async function handleGatewayWechatRenameAccount(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.gateway
+  if (!adapter?.wechatRenameAccount) return sendNotImplemented(context, 'gateway.wechatRenameAccount')
+  sendJson(context.response, 200, await adapter.wechatRenameAccount(await readJson(context.request), context.requestContext), context.corsOrigin)
 }
 
 async function handleVoiceGetState(context: RouteContext): Promise<void> {

@@ -57,6 +57,36 @@ describe('buildHistoryMessages', () => {
     expect(history[1]).toMatchObject({ role: 'assistant', content: 'assistant 2' })
   })
 
+  it('labels user history with trusted channel actor without mutating stored content', () => {
+    const stored = {
+      ...message(1, 'user'),
+      content: 'Can you summarize the thread?',
+      origin: {
+        transport: 'im',
+        source: 'slack',
+        actor: {
+          externalUserId: 'u-1',
+          displayName: 'Alice',
+          handle: 'alice',
+        },
+        conversation: {
+          connector: 'slack',
+          externalConversationId: 'c-1',
+          type: 'thread',
+        },
+        receivedAt: 123,
+      },
+    } satisfies ChatMessage
+
+    const history = buildHistoryMessages([stored])
+
+    expect(stored.content).toBe('Can you summarize the thread?')
+    expect(history[0]).toMatchObject({
+      role: 'user',
+      content: 'Alice said:\nCan you summarize the thread?',
+    })
+  })
+
   it('caps retained message payload after a compact summary', () => {
     const history = buildHistoryMessages(
       [

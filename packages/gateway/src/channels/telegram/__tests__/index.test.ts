@@ -20,6 +20,12 @@ describe('TelegramChannel', () => {
       message: {
         message_id: 10,
         date: 123,
+        from: {
+          id: 7,
+          first_name: 'Alice',
+          last_name: 'Chen',
+          username: 'alice_c',
+        },
         chat: { id: 42, type: 'private' },
         text: 'hello',
       },
@@ -30,8 +36,18 @@ describe('TelegramChannel', () => {
       raw: {
         message_id: 10,
         date: 123,
+        from: {
+          id: 7,
+          first_name: 'Alice',
+          last_name: 'Chen',
+          username: 'alice_c',
+        },
         chat: { id: 42, type: 'private' },
         text: 'hello',
+      },
+      actor: {
+        displayName: 'Alice Chen',
+        handle: 'alice_c',
       },
     })
 

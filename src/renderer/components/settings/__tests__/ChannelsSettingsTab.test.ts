@@ -47,24 +47,32 @@ function appSettings(enabled = false): AppSettings {
   } as unknown as AppSettings
 }
 
-function gatewayStatus(patch: Partial<GatewayStatus['wechat']> = {}): GatewayStatus {
+function gatewayStatus(
+  patch: Partial<GatewayStatus['wechat']> = {},
+  accounts?: NonNullable<GatewayStatus['wechatAccounts']>,
+): GatewayStatus {
+  const wechat = {
+    id: 'default',
+    enabled: false,
+    running: false,
+    loginStatus: 'idle' as const,
+    loggedIn: false,
+    ...patch,
+  }
   return {
     running: false,
     starting: false,
     stopping: false,
     enabled: false,
-    wechat: {
-      enabled: false,
-      running: false,
-      loginStatus: 'idle',
-      loggedIn: false,
-      ...patch,
-    },
+    wechat,
+    wechatAccounts: accounts || [wechat],
   }
 }
 
 async function settle(): Promise<void> {
   await nextTick()
+  await Promise.resolve()
+  await Promise.resolve()
   await Promise.resolve()
   await nextTick()
 }
@@ -91,6 +99,74 @@ describe('ChannelsSettingsTab', () => {
         }),
         gatewayStop: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
         gatewayWechatLogout: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
+        gatewayWechatAddAccount: vi.fn().mockResolvedValue({
+          success: true,
+          account: {
+            id: 'wechat-2',
+            enabled: true,
+            running: true,
+            loginStatus: 'waiting-for-scan',
+            loggedIn: false,
+            qrUrl: 'https://liteapp.weixin.qq.com/q/work',
+          },
+          status: gatewayStatus({}, [
+            {
+              id: 'default',
+              enabled: true,
+              running: false,
+              loginStatus: 'idle',
+              loggedIn: false,
+            },
+            {
+              id: 'wechat-2',
+              enabled: true,
+              running: true,
+              loginStatus: 'waiting-for-scan',
+              loggedIn: false,
+              qrUrl: 'https://liteapp.weixin.qq.com/q/work',
+            },
+          ]),
+        }),
+        gatewayWechatStopAccount: vi.fn().mockResolvedValue({
+          success: true,
+          status: gatewayStatus({
+            id: 'default',
+            enabled: false,
+            running: false,
+            loginStatus: 'idle',
+            loggedIn: false,
+          }),
+        }),
+        gatewayWechatRemoveAccount: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
+        gatewayWechatRenameAccount: vi.fn().mockResolvedValue({ success: true, status: gatewayStatus() }),
+        channelIdentityListProfiles: vi.fn().mockResolvedValue({
+          success: true,
+          profiles: [
+            {
+              id: 'local-owner',
+              name: 'Local user',
+              memoryScopeId: 'client:local-owner',
+              isMain: true,
+              createdAt: 1,
+              updatedAt: 1,
+              lastSentAt: 2,
+            },
+            {
+              id: 'channel-wechat-default-wechat-user-1',
+              name: 'WeChat user',
+              memoryScopeId: 'channel:wechat:default:wechat-user-1',
+              source: 'channel',
+              createdAt: 2,
+              updatedAt: 2,
+              lastSentAt: 3,
+            },
+          ],
+        }),
+        channelIdentityListLinks: vi.fn().mockResolvedValue({ success: true, links: [] }),
+        channelIdentityCreateProfile: vi.fn().mockResolvedValue({ success: true }),
+        channelIdentityUpdateProfile: vi.fn().mockResolvedValue({ success: true }),
+        channelIdentityCreateLink: vi.fn().mockResolvedValue({ success: true }),
+        channelIdentityDeleteLink: vi.fn().mockResolvedValue({ success: true }),
         writeClipboardText: vi.fn().mockReturnValue({ success: true }),
         openExternal: vi.fn().mockResolvedValue({ success: true }),
       },
@@ -103,13 +179,92 @@ describe('ChannelsSettingsTab', () => {
     })
     await settle()
 
-    await wrapper.find('.channel-action.primary').trigger('click')
+    const startButton = wrapper.findAll('button').find(button => button.text() === 'Start')
+    expect(startButton).toBeTruthy()
+    await startButton!.trigger('click')
     await settle()
 
     expect(wrapper.emitted('update:settings')?.[0]?.[0]).toMatchObject({
       channels: { wechat: { enabled: true } },
     })
-    expect(window.electronAPI.gatewayStart).toHaveBeenCalledWith({ channel: 'wechat' })
+    expect(window.electronAPI.gatewayStart).toHaveBeenCalledWith({ channel: 'wechat', accountId: 'default' })
+
+    wrapper.unmount()
+  })
+
+  it('adds a second WeChat account and renders its own QR code', async () => {
+    const wrapper = mount(ChannelsSettingsTab, {
+      props: { settings: appSettings(true) },
+    })
+    await settle()
+
+    const addButton = wrapper.findAll('button').find(button => button.text() === 'Add WeChat')
+    expect(addButton).toBeTruthy()
+    await addButton!.trigger('click')
+    await settle()
+
+    expect(window.electronAPI.gatewayWechatAddAccount).toHaveBeenCalledWith({})
+    expect(wrapper.text()).toContain('wechat-2')
+    expect(mocks.toDataURL).toHaveBeenCalledWith(
+      'https://liteapp.weixin.qq.com/q/work',
+      expect.any(Object),
+    )
+    expect(wrapper.emitted('update:settings')?.at(-1)?.[0]).toMatchObject({
+      channels: {
+        wechat: {
+          enabled: true,
+          accounts: expect.arrayContaining([
+            expect.objectContaining({ id: 'wechat-2', enabled: true }),
+          ]),
+        },
+      },
+    })
+
+    wrapper.unmount()
+  })
+
+  it('stops a single WeChat account without removing the account setting', async () => {
+    vi.mocked(window.electronAPI.gatewayGetStatus).mockResolvedValue({
+      success: true,
+      status: gatewayStatus({
+        id: 'default',
+        enabled: true,
+        running: true,
+        loginStatus: 'logged-in',
+        loggedIn: true,
+      }),
+    })
+
+    const wrapper = mount(ChannelsSettingsTab, {
+      props: {
+        settings: {
+          ...appSettings(true),
+          channels: {
+            wechat: {
+              enabled: true,
+              accounts: [{ id: 'default', enabled: true }],
+            },
+          },
+        } as AppSettings,
+      },
+    })
+    await settle()
+
+    const accountStopButton = wrapper.findAll('.wechat-account-row button')
+      .find(button => button.text() === 'Stop')
+    expect(accountStopButton).toBeTruthy()
+    await accountStopButton!.trigger('click')
+    await settle()
+
+    expect(window.electronAPI.gatewayWechatStopAccount).toHaveBeenCalledWith({ accountId: 'default' })
+    expect(wrapper.emitted('update:settings')?.at(-1)?.[0]).toMatchObject({
+      channels: {
+        wechat: {
+          enabled: true,
+          accounts: [expect.objectContaining({ id: 'default', enabled: false })],
+        },
+      },
+    })
 
     wrapper.unmount()
   })
@@ -132,7 +287,12 @@ describe('ChannelsSettingsTab', () => {
 
     expect(mocks.toDataURL).toHaveBeenCalledWith(
       'https://liteapp.weixin.qq.com/q/mock',
-      expect.any(Object),
+      expect.objectContaining({
+        color: {
+          dark: '#000000',
+          light: '#ffffff',
+        },
+      }),
     )
 
     await wrapper.find('button[title="Copy login URL"]').trigger('click')
@@ -140,6 +300,66 @@ describe('ChannelsSettingsTab', () => {
 
     expect(window.electronAPI.writeClipboardText).toHaveBeenCalledWith('https://liteapp.weixin.qq.com/q/mock')
     expect(window.electronAPI.openExternal).toHaveBeenCalledWith('https://liteapp.weixin.qq.com/q/mock')
+
+    wrapper.unmount()
+  })
+
+  it('retries QR rendering when refreshing the same scan URL after a render failure', async () => {
+    const scanStatus = gatewayStatus({
+      enabled: true,
+      running: true,
+      loginStatus: 'waiting-for-scan',
+      qrUrl: 'https://liteapp.weixin.qq.com/q/mock',
+    })
+    vi.mocked(window.electronAPI.gatewayGetStatus).mockResolvedValue({
+      success: true,
+      status: scanStatus,
+    })
+    mocks.toDataURL.mockRejectedValueOnce(new Error('render failed'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const wrapper = mount(ChannelsSettingsTab, {
+      props: { settings: appSettings(true) },
+    })
+    await settle()
+
+    expect(wrapper.text()).toContain('Could not render the login QR code')
+    expect(wrapper.find('img.qr-code-image').exists()).toBe(false)
+
+    await wrapper.find('button[title="Refresh status"]').trigger('click')
+    await settle()
+
+    expect(mocks.toDataURL).toHaveBeenCalledTimes(2)
+    expect(mocks.toDataURL).toHaveBeenLastCalledWith(
+      'https://liteapp.weixin.qq.com/q/mock',
+      expect.any(Object),
+    )
+    expect(wrapper.find('img.qr-code-image').exists()).toBe(true)
+
+    wrapper.unmount()
+    consoleError.mockRestore()
+  })
+
+  it('renders profiles and creates channel bindings', async () => {
+    const wrapper = mount(ChannelsSettingsTab, {
+      props: { settings: appSettings(true) },
+    })
+    await settle()
+
+    expect(wrapper.text()).toContain('Local user')
+    expect(wrapper.text()).toContain('local-owner')
+    expect(wrapper.text()).toContain('Default')
+    expect(wrapper.text()).toContain('wechat-user-1')
+
+    await wrapper.find('.binding-form .channel-action').trigger('click')
+    await settle()
+
+    expect(window.electronAPI.channelIdentityCreateLink).toHaveBeenCalledWith({
+      connector: 'wechat',
+      workspaceId: 'default',
+      externalUserId: 'wechat-user-1',
+      clientUserId: 'local-owner',
+    })
 
     wrapper.unmount()
   })
