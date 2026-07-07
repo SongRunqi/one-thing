@@ -52,10 +52,11 @@
                 v-if="getGroupDeletions(getTimelineItemGroup(item))"
                 class="group-stat deletion"
               >-{{ getGroupDeletions(getTimelineItemGroup(item)) }}</span>
-              <span
-                v-if="getGroupDuration(getTimelineItemGroup(item))"
+              <LiveToolDuration
+                v-if="getGroupLiveStart(getTimelineItemGroup(item)) !== undefined"
                 class="group-meta"
-              >{{ getGroupDuration(getTimelineItemGroup(item)) }}</span>
+                :start-time="getGroupLiveStart(getTimelineItemGroup(item))"
+              />
             </div>
           </div>
         </div>
@@ -113,10 +114,14 @@
               >{{ getTimelineItemActivity(item).errorSummary }}</span>
             </div>
             <div
-              v-if="getActivityMetaText(getTimelineItemActivity(item))"
+              v-if="getActivityMetaText(getTimelineItemActivity(item)) || hasLiveDuration(getTimelineItemActivity(item))"
               class="operation-secondary"
             >
-              <span class="node-meta">{{ getActivityMetaText(getTimelineItemActivity(item)) }}</span>
+              <span class="node-meta">{{ getActivityMetaText(getTimelineItemActivity(item)) }}<LiveToolDuration
+                v-if="hasLiveDuration(getTimelineItemActivity(item))"
+                :start-time="getTimelineItemActivity(item).toolCall.startTime"
+                :separator="getActivityMetaText(getTimelineItemActivity(item)) ? ' · ' : ''"
+              /></span>
             </div>
           </div>
         </div>
@@ -137,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import type { Step } from '@/types'
 import NestedCollapseGroup from '@/components/common/NestedCollapseGroup.vue'
 import type {
@@ -146,11 +151,11 @@ import type {
 } from '@/components/common/collapse'
 import {
   buildToolActivityViews,
-  formatToolDuration,
   type ToolActivityView,
 } from '@/stores/helpers/tool-activity-view'
 import type { ToolRenderStatus } from '@/stores/helpers/tool-status'
 import FartCallItem from './FartCallItem.vue'
+import LiveToolDuration from './LiveToolDuration.vue'
 import ToolActivityDetails from './ToolActivityDetails.vue'
 import ToolIcon from './ToolIcon.vue'
 
@@ -159,19 +164,26 @@ const props = withDefaults(defineProps<{
   depth?: number
   parentCollapsed?: boolean
   sessionId?: string
+  /**
+   * Flat timeline mode (inside ProcessRail): parallel batches render as
+   * plain rows without the "N tools" group header — the rail summary
+   * already carries the aggregate counts.
+   */
+  flat?: boolean
 }>(), {
   depth: 0,
   parentCollapsed: false,
   sessionId: '',
+  flat: false,
 })
 
 const emit = defineEmits<{
   'open-file': [filePath: string]
 }>()
 
-const durationNow = ref(Date.now())
-
-const activities = computed(() => buildToolActivityViews(props.steps, durationNow.value))
+// Live durations tick inside LiveToolDuration leaves; the activity views
+// themselves only rebuild when the steps actually change.
+const activities = computed(() => buildToolActivityViews(props.steps))
 
 interface StepGroup {
   id: string
@@ -248,29 +260,7 @@ const timelineItems = computed<ToolTimelineItem[]>(() =>
 const fileOpenFlashMap = ref<Record<string, boolean>>({})
 const fileOpenFlashTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
-const hasRunning = computed(() =>
-  activities.value.some(activity => activity.status === 'executing' || activity.status === 'streaming-input'),
-)
-
-let durationTimer: ReturnType<typeof setInterval> | null = null
-
-watch(hasRunning, (running) => {
-  if (running && !durationTimer) {
-    // 80ms keeps the live ms counter visually continuous without rAF cost.
-    durationTimer = setInterval(() => {
-      durationNow.value = Date.now()
-    }, 80)
-  } else if (!running && durationTimer) {
-    clearInterval(durationTimer)
-    durationTimer = null
-  }
-}, { immediate: true })
-
 onUnmounted(() => {
-  if (durationTimer) {
-    clearInterval(durationTimer)
-    durationTimer = null
-  }
   for (const timer of fileOpenFlashTimers.values()) {
     clearTimeout(timer)
   }
@@ -295,7 +285,7 @@ function createGroupTimelineItem(group: StepGroup): ToolTimelineItem {
     }
   }
 
-  if (isGrouped(group)) {
+  if (isGrouped(group) && !props.flat) {
     return {
       key: `group-${group.id}`,
       data: { kind: 'group', group },
@@ -475,9 +465,15 @@ function getActivityMetaText(activity: ToolActivityView): string {
   const parts = [
     activity.stats,
     activity.toolName === 'variable' ? activity.targetMeta : '',
-    activity.duration,
+    // Live durations render via LiveToolDuration so the row meta stays static.
+    hasLiveDuration(activity) ? '' : activity.duration,
   ].filter(Boolean)
   return parts.join(' · ')
+}
+
+function hasLiveDuration(activity: ToolActivityView): boolean {
+  return (activity.status === 'executing' || activity.status === 'streaming-input') &&
+    typeof activity.toolCall.startTime === 'number'
 }
 
 function getSingleActivityText(activity: ToolActivityView): string {
@@ -492,24 +488,17 @@ function getGroupDeletions(group: StepGroup): number {
   return group.activities.reduce((sum, activity) => sum + activity.deletions, 0)
 }
 
-function getGroupDuration(group: StepGroup): string {
-  if (group.status !== 'executing' && group.status !== 'streaming-input') return ''
-  const durations = group.activities
-    .map(activity => getActivityDurationMs(activity))
-    .filter((duration): duration is number => duration !== null)
-  if (durations.length === 0) return ''
-
-  // Parallel batch: the batch takes as long as its slowest member.
-  return formatToolDuration(Math.max(...durations), false)
-}
-
-function getActivityDurationMs(activity: ToolActivityView): number | null {
-  if (activity.status !== 'executing' && activity.status !== 'streaming-input') return null
-  const { startTime, endTime } = activity.toolCall
-  if (!startTime) return null
-  const end = endTime ?? durationNow.value
-  if (!end) return null
-  return Math.max(0, end - startTime)
+/**
+ * Parallel batch: the batch runs as long as its slowest member, i.e. from the
+ * earliest running start time. LiveToolDuration ticks from that instant.
+ */
+function getGroupLiveStart(group: StepGroup): number | undefined {
+  if (group.status !== 'executing' && group.status !== 'streaming-input') return undefined
+  const starts = group.activities
+    .filter(activity => hasLiveDuration(activity))
+    .map(activity => activity.toolCall.startTime as number)
+  if (starts.length === 0) return undefined
+  return Math.min(...starts)
 }
 
 function getTimelineItemData(item: NestedCollapseItem): ToolTimelineItemData | null {

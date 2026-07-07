@@ -121,6 +121,8 @@ interface ToolExecutionStartData {
   stepId: string
   toolName: string
   args: JsonObject
+  /** Authoritative main-process start timestamp (Date.now). */
+  startTime?: number
 }
 
 interface ToolExecutionUpdateData {
@@ -139,6 +141,8 @@ interface ToolExecutionEndData {
   result?: ToolResult
   isError?: boolean
   error?: string
+  /** Authoritative execution duration measured in the main process. */
+  durationMs?: number
 }
 
 // Skill activation data from IPC
@@ -344,6 +348,58 @@ export const useChatStore = defineStore('chat', () => {
     if (usage) {
       message.usage = usage
     }
+  }
+
+  /**
+   * Defensive reconciliation for stream end: nothing may stay in an active
+   * tool state once the stream is over. If a tool:execution-end event was
+   * lost (backend crash, IPC drop), the step would otherwise stay `running`
+   * forever — shimmer on, live duration ticking, timers never cleared.
+   *
+   * Tool calls awaiting user confirmation are left untouched: that state
+   * legitimately survives stream end (resume-after-confirm opens a new
+   * stream). Aborts have their own cancellation path.
+   */
+  function finalizeLingeringToolWork(message: ChatMessage): boolean {
+    const now = Date.now()
+    const lingerError = 'Tool did not report completion before the stream ended.'
+    let changed = false
+
+    for (const toolCall of message.toolCalls || []) {
+      if (toolCall.requiresConfirmation) continue
+      if (!isActiveToolCallStatus(toolCall.status)) continue
+      toolCall.status = 'cancelled'
+      toolCall.endTime = toolCall.endTime ?? now
+      toolCall.error = toolCall.error || lingerError
+      changed = true
+    }
+
+    let stepsChanged = false
+    for (const step of message.steps || []) {
+      if (step.status !== 'running' && step.status !== 'pending') continue
+      const linkedToolCall = step.toolCallId
+        ? message.toolCalls?.find(tc => tc.id === step.toolCallId)
+        : step.toolCall
+      if (linkedToolCall?.requiresConfirmation || step.toolCall?.requiresConfirmation) continue
+      step.status = 'cancelled'
+      step.error = step.error || lingerError
+      if (step.toolCall && isActiveToolCallStatus(step.toolCall.status)) {
+        step.toolCall = {
+          ...step.toolCall,
+          status: 'cancelled',
+          endTime: step.toolCall.endTime ?? now,
+          error: step.toolCall.error || lingerError,
+        }
+      }
+      stepsChanged = true
+      changed = true
+    }
+
+    if (stepsChanged) {
+      linkStepsToToolCalls(message)
+      message.steps = [...(message.steps || [])]
+    }
+    return changed
   }
 
   function markTopReasoningStarted(message: ChatMessage, reasoning: string) {
@@ -1104,6 +1160,7 @@ export const useChatStore = defineStore('chat', () => {
       flushPendingStreamChunks(sessionId, message.id)
       flushToolInputDeltas(sessionId, message.id)
       stopMessageStreaming(message, data.usage)
+      finalizeLingeringToolWork(message)
       setSessionMessages(sessionId, [...messages])
     } else {
       clearPendingStreamChunks(sessionId, resolvedMsgId)
@@ -1184,6 +1241,7 @@ export const useChatStore = defineStore('chat', () => {
       if (msg) {
         msg.errorDetails = errorText
         stopMessageStreaming(msg)
+        finalizeLingeringToolWork(msg)
       }
     } else {
       // No preserved content — replace streaming message with error message
@@ -1357,17 +1415,14 @@ export const useChatStore = defineStore('chat', () => {
     bumpScrollVersion(sessionId)
   }
 
-  // High-resolution execution timing (performance.now), keyed by toolCallId.
-  // startTime/endTime stay integer Date.now for persistence; durationMs carries
-  // the 0.1ms-precision display value.
-  const toolExecutionStartHiRes = new Map<string, number>()
-
+  // Timing is owned by the main process: execution-start carries the
+  // authoritative startTime and execution-end carries the authoritative
+  // durationMs. Renderer clocks are only a fallback for legacy events.
   function handleToolExecutionStart(data: ToolExecutionStartData) {
-    toolExecutionStartHiRes.set(data.toolCallId, performance.now())
     patchStep(data.sessionId, data.messageId, data.stepId, data.toolCallId, { status: 'running' })
     patchMessageToolCall(data.sessionId, data.messageId, data.toolCallId, {
       status: 'executing',
-      startTime: Date.now(),
+      startTime: data.startTime ?? Date.now(),
     })
     clearMessageTransientIndicators(data.sessionId, data.messageId)
   }
@@ -1381,12 +1436,10 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function handleToolExecutionEnd(data: ToolExecutionEndData) {
-    const hiResStart = toolExecutionStartHiRes.get(data.toolCallId)
-    toolExecutionStartHiRes.delete(data.toolCallId)
     patchMessageToolCall(data.sessionId, data.messageId, data.toolCallId, {
       status: data.isError ? 'failed' : 'completed',
       endTime: Date.now(),
-      ...(hiResStart !== undefined ? { durationMs: performance.now() - hiResStart } : {}),
+      ...(typeof data.durationMs === 'number' ? { durationMs: data.durationMs } : {}),
       result: data.result as ToolCall['result'],
       ...(data.isError ? { error: data.error } : {}),
     })

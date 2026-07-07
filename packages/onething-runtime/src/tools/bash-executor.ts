@@ -1,4 +1,4 @@
-import { constants, existsSync } from 'node:fs'
+import { constants, createWriteStream, existsSync } from 'node:fs'
 import { access as fsAccess, writeFile as fsWriteFile } from 'node:fs/promises'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import {
@@ -6,6 +6,7 @@ import {
   createBackgroundLogPath,
   getProcessGroupPids,
   registerBackgroundJob,
+  type BackgroundJob,
 } from './background-jobs.js'
 
 export interface ShellConfig {
@@ -21,6 +22,12 @@ export interface BashSpawnContext {
 
 export type BashSpawnHook = (context: BashSpawnContext) => BashSpawnContext
 
+export interface BashBackgroundLaunch {
+  jobId: string
+  pid: number
+  logPath: string
+}
+
 export interface BashOperations {
   exec: (
     command: string,
@@ -32,6 +39,16 @@ export interface BashOperations {
       env?: NodeJS.ProcessEnv
     },
   ) => Promise<{ exitCode: number | null; backgroundJobIds?: string[] }>
+  /**
+   * Launch a command as a managed background job. Returns immediately;
+   * stdout/stderr stream into the job's log file for the process lifetime
+   * (readable incrementally via readBackgroundJobOutput / bash_output).
+   */
+  execBackground?: (
+    command: string,
+    cwd: string,
+    options?: { env?: NodeJS.ProcessEnv },
+  ) => Promise<BashBackgroundLaunch>
 }
 
 const EXIT_STDIO_GRACE_MS = 100
@@ -311,6 +328,47 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
         if (timeoutHandle) clearTimeout(timeoutHandle)
         if (signal) signal.removeEventListener('abort', onAbort)
       }
+    },
+
+    execBackground: async (command, cwd, { env } = {}) => {
+      cleanupBackgroundJobLogs()
+      try {
+        await fsAccess(cwd, constants.F_OK)
+      } catch {
+        throw new Error(`Work directory does not exist: ${cwd}\nCannot execute bash commands.`)
+      }
+
+      const { shell, args } = getShellConfig(options.shellPath)
+      const spawnContext = resolveSpawnContext(command, cwd, options.spawnHook)
+      const logPath = createBackgroundLogPath()
+      const logStream = createWriteStream(logPath, { flags: 'a' })
+
+      const child = spawn(shell, [...args, spawnContext.command], {
+        cwd: spawnContext.cwd,
+        detached: process.platform !== 'win32',
+        env: env ?? spawnContext.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      })
+
+      child.stdout?.pipe(logStream, { end: false })
+      child.stderr?.pipe(logStream, { end: false })
+      child.once('close', () => logStream.end())
+      child.once('error', () => logStream.end())
+      child.unref()
+
+      // shellPid 0: the spawned shell IS the job (no wrapper to exclude when
+      // scanning the process group for liveness).
+      const job: BackgroundJob = registerBackgroundJob({
+        command: spawnContext.command,
+        cwd: spawnContext.cwd,
+        shellPid: 0,
+        pgid: child.pid ?? 0,
+        childPids: child.pid ? [child.pid] : [],
+        logPath,
+      })
+
+      return { jobId: job.id, pid: child.pid ?? 0, logPath }
     },
   }
 }

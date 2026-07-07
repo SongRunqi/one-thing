@@ -732,7 +732,7 @@ defineExpose({
 
 <style scoped>
 .chat-panel {
-  --chat-content-width: min(740px, max(58%, calc(100% - 144px)));
+  --chat-content-width: min(var(--content-measure, 46rem), max(58%, calc(100% - 144px)));
   --chat-composer-width: var(--chat-content-width);
   --chat-composer-height: 0px;
 

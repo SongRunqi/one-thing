@@ -429,12 +429,27 @@ onUnmounted(() => {
   box-shadow: none;
   pointer-events: auto;
   transform: translateY(-50%);
+  /* Single scroll indicator at rest: the outline only fades in when the
+     pointer reaches the right edge, so it never doubles the system
+     scrollbar. */
+  opacity: 0;
   transition:
     opacity 0.14s ease,
     width 0.16s ease,
     border-color 0.16s ease,
     background-color 0.16s ease,
     box-shadow 0.16s ease;
+}
+
+.assistant-nav-card:hover,
+.assistant-nav-card:focus-within,
+.assistant-nav-card.open {
+  opacity: 1;
+}
+
+.assistant-nav-rail.placement-side .assistant-nav-card,
+.assistant-nav-rail.placement-side .assistant-nav-card.open {
+  opacity: 1;
 }
 
 .assistant-nav-card.open {

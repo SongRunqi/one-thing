@@ -263,6 +263,7 @@ export interface CoreToolCallChanges {
   filePath: string
   additions: number
   deletions: number
+  /** @deprecated Rollback uses auditPath; kept only for legacy persisted sessions. */
   originalContent?: string
   originalContentHash?: string
   afterContentHash?: string
@@ -337,9 +338,9 @@ export interface CoreAgentLoopToolExecutionEmitter<
 > {
   sendToolCall(toolCall: TToolCall): void
   sendToolResult(toolCall: TToolCall): void
-  sendToolExecutionStart(toolCallId: string, stepId: string, toolName: string, args: JsonObject): void
+  sendToolExecutionStart(toolCallId: string, stepId: string, toolName: string, args: JsonObject, startTime?: number): void
   sendToolExecutionUpdate(toolCallId: string, stepId: string, partialResult: TPartialResult): void
-  sendToolExecutionEnd(toolCallId: string, stepId: string, result?: TToolResult, isError?: boolean, error?: string): void
+  sendToolExecutionEnd(toolCallId: string, stepId: string, result?: TToolResult, isError?: boolean, error?: string, durationMs?: number): void
   sendStepUpdated(stepId: string, updates: TStepUpdate): void
 }
 
@@ -570,6 +571,7 @@ export interface CoreAgentLoopToolCallForSettlement {
   commandType?: string
   startTime?: number
   endTime?: number
+  durationMs?: number
 }
 
 export interface CoreSettledAgentLoopToolCallResult<TToolCall extends CoreAgentLoopToolCallForSettlement> {
@@ -839,6 +841,54 @@ export function buildAgentLoopFinalMessageUpdate<TMessage extends CoreAgentLoopF
   }
 }
 
+const LINGERING_TOOL_CALL_STATUSES = new Set(['executing', 'input-streaming', 'queued', 'pending'])
+const LINGERING_STEP_STATUSES = new Set(['running', 'pending'])
+const LINGERING_TOOL_ERROR = 'Tool did not report completion before the stream ended.'
+
+interface LingeringToolCallLike {
+  status?: string
+  error?: string
+  endTime?: number
+  requiresConfirmation?: boolean
+}
+
+/**
+ * Backstop for stream end: no tool call or step may stay in an active state
+ * once the final message update is emitted. Tool calls awaiting user
+ * confirmation are preserved — that state legitimately survives stream end
+ * (resume-after-confirm opens a new stream).
+ */
+export function finalizeLingeringAgentLoopToolWork(
+  message: CoreAgentLoopFinalMessageLike,
+  now = Date.now(),
+): void {
+  const cancelToolCall = (toolCall: LingeringToolCallLike): void => {
+    if (toolCall.requiresConfirmation) return
+    if (!LINGERING_TOOL_CALL_STATUSES.has(toolCall.status ?? '')) return
+    toolCall.status = 'cancelled'
+    toolCall.endTime = toolCall.endTime ?? now
+    toolCall.error = toolCall.error || LINGERING_TOOL_ERROR
+  }
+
+  if (Array.isArray(message.toolCalls)) {
+    for (const toolCall of message.toolCalls) {
+      if (toolCall && typeof toolCall === 'object') cancelToolCall(toolCall as LingeringToolCallLike)
+    }
+  }
+
+  if (Array.isArray(message.steps)) {
+    for (const raw of message.steps) {
+      if (!raw || typeof raw !== 'object') continue
+      const step = raw as { status?: string; error?: string; toolCall?: LingeringToolCallLike }
+      if (!LINGERING_STEP_STATUSES.has(step.status ?? '')) continue
+      if (step.toolCall?.requiresConfirmation) continue
+      step.status = 'cancelled'
+      step.error = step.error || LINGERING_TOOL_ERROR
+      if (step.toolCall) cancelToolCall(step.toolCall)
+    }
+  }
+}
+
 export async function emitAgentLoopFinalMessageUpdateWithAdapters<
   TMessage extends CoreAgentLoopFinalMessageLike & { id: string },
   TSession extends CoreAgentLoopSessionWithMessages<TMessage>,
@@ -848,6 +898,8 @@ export async function emitAgentLoopFinalMessageUpdateWithAdapters<
   const updatedSession = options.getSession(options.sessionId)
   const updatedMessage = updatedSession?.messages.find(message => message.id === options.assistantMessageId)
   if (!updatedMessage) return false
+
+  finalizeLingeringAgentLoopToolWork(updatedMessage)
 
   await options.emitMessageUpdated({
     type: 'message:updated',
@@ -1005,7 +1057,6 @@ export function changesFromMetadata(metadata: JsonObject | undefined): CoreToolC
     filePath: String(metadata.path),
     additions: Number(metadata.additions) || 0,
     deletions: Number(metadata.deletions) || 0,
-    originalContent: typeof metadata.originalContent === 'string' ? metadata.originalContent : undefined,
     originalContentHash: typeof metadata.originalContentHash === 'string' ? metadata.originalContentHash : undefined,
     afterContentHash: typeof metadata.afterContentHash === 'string' ? metadata.afterContentHash : undefined,
     auditId: typeof metadata.auditId === 'string' ? metadata.auditId : undefined,
@@ -1100,6 +1151,9 @@ export function settleAgentLoopToolCallResult<TToolCall extends CoreAgentLoopToo
   toolCall.status = result.error
     ? data.aborted ? 'cancelled' : 'failed'
     : 'completed'
+  if (toolCall.startTime != null) {
+    toolCall.durationMs = Math.max(0, toolCall.endTime - toolCall.startTime)
+  }
   toolCall.result = toJsonValue(result.data ?? result.content)
   toolCall.error = result.error
   toolCall.rejected = data.rejected === true || undefined
@@ -1169,6 +1223,7 @@ export function startAgentLoopToolExecution<
     options.stepId,
     options.toolCall.toolId ?? options.toolCall.toolName,
     toJsonObject(options.toolCall.arguments),
+    options.toolCall.startTime,
   )
   options.emitter.sendStepUpdated(
     options.stepId,
@@ -1207,6 +1262,7 @@ export function settleAgentLoopToolResultWithAdapters<
         presentation.executionEnd.result as TToolResult | undefined,
         presentation.executionEnd.isError,
         presentation.executionEnd.error,
+        toolCall.durationMs,
       )
     }
     options.emitter.sendStepUpdated(stepId, presentation.stepUpdate as TStepUpdate)

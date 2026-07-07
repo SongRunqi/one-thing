@@ -202,13 +202,12 @@ function buildStats(diff: ToolDiffData | null, toolCall: ToolCall): ActivityStat
 }
 
 /**
- * Duration display. Precision is capped at 0.1ms (sub-second values from the
- * high-resolution `durationMs` field); legacy integer-ms data never fakes
- * decimals it doesn't have.
+ * Duration display. One format everywhere: seconds with a single decimal
+ * (`0.3s`, `12.4s`), switching to `2m05.3s` past a minute. Running and final
+ * values share the format so the text never jumps shape on completion.
  */
-export function formatToolDuration(ms: number, highRes: boolean): string {
-  if (ms < 1000) return highRes ? `${ms.toFixed(1)}ms` : `${Math.round(ms)}ms`
-  if (ms < 60_000) return `${(ms / 1000).toFixed(3)}s`
+export function formatToolDuration(ms: number): string {
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
   const minutes = Math.floor(ms / 60_000)
   const seconds = (ms % 60_000) / 1000
   return `${minutes}m${seconds < 10 ? '0' : ''}${seconds.toFixed(1)}s`
@@ -218,15 +217,15 @@ function buildDuration(toolCall: ToolCall, nowMs = Date.now()): string {
   const running = toolCall.status === 'executing' || toolCall.status === 'input-streaming'
   if (running) {
     if (!toolCall.startTime) return ''
-    return formatToolDuration(Math.max(0, (toolCall.endTime ?? nowMs) - toolCall.startTime), false)
+    return formatToolDuration(Math.max(0, (toolCall.endTime ?? nowMs) - toolCall.startTime))
   }
   // Frozen final duration stays on the row so runs can be compared.
   if (toolCall.status === 'completed' || toolCall.status === 'failed') {
     if (typeof toolCall.durationMs === 'number') {
-      return formatToolDuration(Math.max(0, toolCall.durationMs), true)
+      return formatToolDuration(Math.max(0, toolCall.durationMs))
     }
     if (toolCall.startTime && toolCall.endTime) {
-      return formatToolDuration(Math.max(0, toolCall.endTime - toolCall.startTime), false)
+      return formatToolDuration(Math.max(0, toolCall.endTime - toolCall.startTime))
     }
   }
   return ''

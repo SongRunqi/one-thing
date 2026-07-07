@@ -586,3 +586,40 @@ export function trimDiff(diff: string): string {
 
   return trimmedLines.join('\n')
 }
+
+export const DIFF_DISPLAY_MAX_LINES = 2_000
+export const DIFF_DISPLAY_MAX_BYTES = 200_000
+
+/**
+ * Cap a diff before it is shipped to the renderer. The audit record keeps the
+ * full diff on disk; the display payload only needs a bounded prefix so large
+ * file rewrites don't inflate IPC messages and session persistence.
+ */
+export function truncateDiffForDisplay(
+  diff: string,
+  maxLines = DIFF_DISPLAY_MAX_LINES,
+  maxBytes = DIFF_DISPLAY_MAX_BYTES,
+): string {
+  if (!diff) return diff
+
+  const lines = diff.split('\n')
+  let kept = lines
+  let droppedLines = 0
+  if (lines.length > maxLines) {
+    kept = lines.slice(0, maxLines)
+    droppedLines = lines.length - maxLines
+  }
+
+  let out = kept.join('\n')
+  let truncated = droppedLines > 0
+  if (out.length > maxBytes) {
+    const cut = out.slice(0, maxBytes)
+    const lastNewline = cut.lastIndexOf('\n')
+    out = lastNewline > 0 ? cut.slice(0, lastNewline) : cut
+    truncated = true
+  }
+
+  if (!truncated) return diff
+  const suffix = droppedLines > 0 ? ` (${droppedLines} more lines)` : ''
+  return `${out}\n[... diff truncated${suffix}; full diff kept in the file mutation audit]`
+}

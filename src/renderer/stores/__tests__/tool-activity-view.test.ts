@@ -4,7 +4,25 @@ import {
   buildDetailedToolStepView,
   buildToolActivityView,
   buildToolActivityViews,
+  formatToolDuration,
 } from '../helpers/tool-activity-view'
+
+describe('formatToolDuration', () => {
+  it('renders every duration as seconds with one decimal', () => {
+    expect(formatToolDuration(0)).toBe('0.0s')
+    expect(formatToolDuration(49)).toBe('0.0s')
+    expect(formatToolDuration(843.267)).toBe('0.8s')
+    expect(formatToolDuration(999)).toBe('1.0s')
+    expect(formatToolDuration(1_234)).toBe('1.2s')
+    expect(formatToolDuration(59_949)).toBe('59.9s')
+  })
+
+  it('switches to m + zero-padded seconds past one minute', () => {
+    expect(formatToolDuration(60_000)).toBe('1m00.0s')
+    expect(formatToolDuration(125_340)).toBe('2m05.3s')
+    expect(formatToolDuration(754_900)).toBe('12m34.9s')
+  })
+})
 
 function tc(overrides: Partial<ToolCall> = {}): ToolCall {
   return {
@@ -159,13 +177,13 @@ describe('tool activity view', () => {
       }),
     }), 3_000)
 
-    expect(executing.duration).toBe('1.500s')
-    expect(streaming.duration).toBe('500ms')
-    expect(completed.duration).toBe('1.500s')
-    expect(failed.duration).toBe('1.500s')
+    expect(executing.duration).toBe('1.5s')
+    expect(streaming.duration).toBe('0.5s')
+    expect(completed.duration).toBe('1.5s')
+    expect(failed.duration).toBe('1.5s')
   })
 
-  it('prefers the high-resolution durationMs and caps precision at 0.1ms', () => {
+  it('prefers the authoritative durationMs and formats with one decimal', () => {
     const completed = buildToolActivityView(step({
       status: 'completed',
       toolCall: tc({
@@ -176,7 +194,7 @@ describe('tool activity view', () => {
       }),
     }), 3_000)
 
-    expect(completed.duration).toBe('843.3ms')
+    expect(completed.duration).toBe('0.8s')
   })
 
   it('exposes numeric additions/deletions for group aggregation', () => {

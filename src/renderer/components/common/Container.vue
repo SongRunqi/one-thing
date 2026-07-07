@@ -6,8 +6,8 @@
     :style="containerStyle"
   >
     <component
-      v-if="slots.header"
       :is="props.headerAs"
+      v-if="slots.header"
       class="layout-container-header"
       :class="props.headerClass"
       :style="props.headerStyle"
@@ -21,8 +21,8 @@
       :style="props.bodyStyle"
     >
       <component
-        v-if="slots.sidebar && !isSidebarRight"
         :is="props.sidebarAs"
+        v-if="slots.sidebar && !isSidebarRight"
         class="layout-container-sidebar"
         :class="props.sidebarClass"
         :style="props.sidebarStyle"
@@ -40,8 +40,8 @@
       </component>
 
       <component
-        v-if="slots.sidebar && isSidebarRight"
         :is="props.sidebarAs"
+        v-if="slots.sidebar && isSidebarRight"
         class="layout-container-sidebar"
         :class="props.sidebarClass"
         :style="props.sidebarStyle"
@@ -51,8 +51,8 @@
     </div>
 
     <component
-      v-if="slots.footer"
       :is="props.footerAs"
+      v-if="slots.footer"
       class="layout-container-footer"
       :class="props.footerClass"
       :style="props.footerStyle"

@@ -247,8 +247,12 @@
                           aria-label="ACP permission mode"
                           @change="providerSettings.updateACPAgent({ permissionMode: (($event.target as HTMLSelectElement).value === 'reject' ? 'reject' : 'allow') })"
                         >
-                          <option value="allow">Allow</option>
-                          <option value="reject">Reject</option>
+                          <option value="allow">
+                            Allow
+                          </option>
+                          <option value="reject">
+                            Reject
+                          </option>
                         </select>
                       </div>
                       <div class="settings-row compact-toggle-row">

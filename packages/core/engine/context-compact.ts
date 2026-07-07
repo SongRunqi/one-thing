@@ -1,6 +1,6 @@
 import type { JsonObject } from '../json.js'
 import { buildContextCompactPrompt } from './compact-prompt.js'
-import { sanitizeToolResultForAI } from './history.js'
+import { sanitizeHistoryToolResultForAI, sanitizeToolResultForAI } from './history.js'
 import {
   estimateTextTokens,
   getContextUsageTriggerReason,
@@ -301,8 +301,17 @@ export function estimateSessionInputTokens(
         `${attachment.fileName} (${attachment.mimeType}, ${attachment.size} bytes)`,
       ).join('; ')}`)
     }
-    if (message.toolCalls?.length) {
-      parts.push(`toolCalls: ${formatToolCallsForSummary(message.toolCalls)}`)
+    // Tool payloads are counted at the size the rebuilt request actually
+    // ships (sanitized + budgeted), not the compacted summary size — a
+    // summary here would blind the threshold/hard-limit checks to the very
+    // payloads that overflow the model context.
+    for (const toolCall of message.toolCalls ?? []) {
+      parts.push(`toolCall ${toolCall.toolName}: ${safeJsonForSummary(toolCall.arguments || {})}`)
+      if (toolCall.status === 'completed') {
+        parts.push(safeJsonForSummary(sanitizeHistoryToolResultForAI(toolCall.result)))
+      } else if (toolCall.error || toolCall.rejectionReason) {
+        parts.push(toolCall.error || toolCall.rejectionReason || '')
+      }
     }
   }
 

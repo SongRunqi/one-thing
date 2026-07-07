@@ -406,10 +406,12 @@ describe('App container layout', () => {
     const sidebar = readRendererFile('components/sidebar/Sidebar.vue')
     const sessionList = readRendererFile('components/sidebar/SessionList.vue')
 
-    expect(sidebar).toContain("import MenuItem from '@/components/common/MenuItem.vue'")
+    // Sessions flow through the Menu; workspace panels moved to the bottom
+    // icon row and emit open-workspace-panel directly.
+    expect(sidebar).not.toContain("import MenuItem from '@/components/common/MenuItem.vue'")
     expect(sidebar).toContain(':active-index="activeSidebarIndex"')
     expect(sidebar).toContain('@menu-select="handleSidebarMenuSelect"')
-    expect(sidebar).toContain("return `panel:${panel}`")
+    expect(sidebar).toContain("$emit('open-workspace-panel', action.id)")
     expect(sidebar).toContain("return `session:${sessionId}`")
     expect(sidebar).toContain("'select-session': [sessionId: string]")
     expect(sidebar).not.toContain('@session-click')

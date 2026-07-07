@@ -590,32 +590,34 @@ async function setLegacyPairThinking(enabled: boolean): Promise<void> {
   width: var(--think-select-width, 112px);
 }
 
+/* Ghost control: resident ~4% surface signals "clickable" without a
+   border; hover raises to full hover strength. */
 .think-select :deep(.app-select-control) {
   min-height: 28px;
   padding: 3px 7px 3px 9px;
-  border-radius: 14px;
-  border-color: var(--ui-border-default-border, var(--border));
-  background: transparent;
+  border-radius: 7px;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
   color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .think-select :deep(.app-select-control:hover),
 .think-select.is-open :deep(.app-select-control) {
   color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-border-default-border, var(--border));
+  border-color: transparent;
   background: var(--ui-state-hover-bg, var(--hover));
   box-shadow: none;
 }
 
 .think-select.active :deep(.app-select-control) {
   color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--think-accent-border);
-  background: var(--think-accent-bg);
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
 }
 
 .think-select.active :deep(.app-select-control:hover),
 .think-select.active.is-open :deep(.app-select-control) {
-  background: var(--think-accent-bg-strong);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .think-select :deep(.app-select-single-value),

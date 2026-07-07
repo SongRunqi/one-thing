@@ -55,7 +55,7 @@
             @edit="handleEdit"
             @branch="handleBranch"
             @go-to-branch="handleGoToBranch"
-            @quote="handleQuote"
+            @text-selection="handleTextSelection"
             @regenerate="handleRegenerate"
             @execute-tool="handleExecuteTool"
             @open-file="(filePath) => emit('openFile', filePath)"
@@ -70,6 +70,20 @@
         />
       </div>
     </Scrollbar>
+
+    <!-- Selection toolbar: one instance for the whole list; MessageItems
+         report selections upward instead of each owning a toolbar. -->
+    <Teleport to="body">
+      <SelectionToolbar
+        :visible="selectionToolbarVisible"
+        :position="selectionToolbarPosition"
+        :selected-text="selectionToolbarText"
+        :can-branch="canCreateBranch"
+        @quote="handleSelectionQuote"
+        @branch="handleSelectionBranch"
+        @close="hideSelectionToolbar"
+      />
+    </Teleport>
 
     <Teleport
       :to="props.outlineRailTarget || 'body'"
@@ -186,6 +200,7 @@ import Scrollbar from '@/components/common/Scrollbar.vue'
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdated } from 'vue'
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
+import SelectionToolbar from './message/SelectionToolbar.vue'
 import EmptyState from './EmptyState.vue'
 import AssistantMessageNavRail from './AssistantMessageNavRail.vue'
 import UserMessageNavRail, { type UserMessageNavMarker } from './UserMessageNavRail.vue'
@@ -1396,6 +1411,8 @@ function detachMessageListListeners() {
 
 // Setup event listeners
 onMounted(() => {
+  document.addEventListener('click', handleSelectionDocumentClick)
+  document.addEventListener('selectionchange', handleSelectionChange)
   nextTick(() => {
     attachMessageListListeners()
 
@@ -1462,6 +1479,8 @@ watch(
 )
 
 onUnmounted(() => {
+  document.removeEventListener('click', handleSelectionDocumentClick)
+  document.removeEventListener('selectionchange', handleSelectionChange)
   if (deferredLayoutMeasurementTimer) {
     clearTimeout(deferredLayoutMeasurementTimer)
     deferredLayoutMeasurementTimer = null
@@ -1594,6 +1613,51 @@ async function handleGoToBranch(sessionId: string) {
 // Handle quote text event
 function handleQuote(quotedText: string) {
   emit('setQuotedText', quotedText)
+}
+
+// ============ Selection toolbar (single instance for the list) ============
+const selectionToolbarVisible = ref(false)
+const selectionToolbarText = ref('')
+const selectionToolbarPosition = ref({ top: 0, left: 0 })
+const selectionMessageId = ref<string | null>(null)
+
+function handleTextSelection(messageId: string, text: string, position: { top: number; left: number }) {
+  selectionMessageId.value = messageId
+  selectionToolbarText.value = text
+  selectionToolbarPosition.value = position
+  selectionToolbarVisible.value = true
+}
+
+function hideSelectionToolbar() {
+  selectionToolbarVisible.value = false
+}
+
+function handleSelectionQuote(text: string) {
+  handleQuote(text)
+  hideSelectionToolbar()
+}
+
+async function handleSelectionBranch(text: string) {
+  if (!canCreateBranch.value || !selectionMessageId.value) return
+  hideSelectionToolbar()
+  await handleBranch(selectionMessageId.value, text)
+}
+
+// Close the toolbar when clicking outside of it
+function handleSelectionDocumentClick(event: MouseEvent) {
+  const target = event.target as HTMLElement
+  if (!target.closest('.selection-toolbar')) {
+    hideSelectionToolbar()
+  }
+}
+
+// Hide the toolbar when the selection is cleared
+function handleSelectionChange() {
+  if (!selectionToolbarVisible.value) return
+  const text = window.getSelection()?.toString().trim()
+  if (!text) {
+    hideSelectionToolbar()
+  }
 }
 
 function handleRegenerate(messageId: string) {
@@ -2030,7 +2094,7 @@ defineExpose({
 
 .message-list-content {
   position: relative;
-  width: var(--chat-content-width, min(68%, 740px));
+  width: var(--chat-content-width, var(--content-measure, 46rem));
   margin: 0 auto;
   padding-top: var(--chat-scroll-top-reserve);
   padding-bottom: var(--chat-scroll-tail-reserve);

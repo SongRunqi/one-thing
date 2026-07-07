@@ -289,7 +289,15 @@ describe("InputBox paste attachments", () => {
 		expect(wrapper.find(".queued-messages").exists()).toBe(false);
 	});
 
-	it("shows a context meter with exact token values on hover", async () => {
+	it("hides the context meter when the session has no usage yet", async () => {
+		const wrapper = mountInputBox();
+		await settle();
+
+		// Resident gauge rule: no data → no gauge. Thresholds only color it.
+		expect(wrapper.find(".context-meter").exists()).toBe(false);
+	});
+
+	it("shows the context meter with exact token values whenever usage exists", async () => {
 		Object.assign(mocks.sessionsStore.sessions[0], {
 			lastProvider: "openai",
 			lastModel: "gpt-vision",
@@ -349,7 +357,10 @@ describe("InputBox paste attachments", () => {
 
 		const wrapper = mountInputBox({ sessionId: draft.id });
 
-		expect(wrapper.find(".permission-mode-select .app-select-single-value").text()).toBe("Normal");
+		// Icon-only quiet control: mode is encoded by class + status dot,
+		// not by a text label.
+		expect(wrapper.find(".permission-mode-select").classes()).toContain("mode-normal");
+		expect(wrapper.find(".permission-mode-dot").exists()).toBe(false);
 
 		await wrapper.find(".permission-mode-select .app-select-control").trigger("click");
 		await settle();
@@ -364,7 +375,8 @@ describe("InputBox paste attachments", () => {
 			draft.id,
 			"auto-accept-edits",
 		);
-		expect(wrapper.find(".permission-mode-select .app-select-single-value").text()).toBe("Auto Edits");
+		expect(wrapper.find(".permission-mode-select").classes()).toContain("mode-auto-accept-edits");
+		expect(wrapper.find(".permission-mode-dot").exists()).toBe(true);
 	});
 
 	it("shows an attachment tray after pasting a file", async () => {

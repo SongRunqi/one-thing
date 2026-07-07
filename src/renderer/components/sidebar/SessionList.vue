@@ -402,7 +402,9 @@ onUnmounted(() => {
   overflow-x: hidden;
   min-height: 0;
   min-width: 0;
-  padding: 3px 10px 64px 12px;
+  /* No top padding: the sticky group header must sit flush against the
+     scroll container's top edge, or scrolled text shows through the gap. */
+  padding: 0 10px 64px 12px;
   contain: strict;
   content-visibility: auto;
 }
@@ -438,8 +440,10 @@ onUnmounted(() => {
   z-index: 1;
   min-height: 0;
   height: auto;
-  margin-right: 6px;
-  padding: 11px 8px 4px;
+  /* Full-bleed opaque header: a right margin would leave an unpainted
+     channel where scrolled text shows through. */
+  margin-right: 0;
+  padding: 11px 14px 4px 8px;
   border-radius: 0;
   background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
   color: var(--sidebar-list-meta-fg);

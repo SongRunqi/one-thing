@@ -36,13 +36,19 @@
     </template>
 
     <template v-else-if="isBashResult">
-      <div class="bash-output">
+      <div
+        ref="bashOutputRef"
+        class="bash-output"
+        @scroll.passive="handleBashScroll"
+      >
         <button
           v-if="hiddenBashLineCount > 0"
           type="button"
           class="expand-line"
           @click.stop="bashExpanded = true"
-        >… +{{ hiddenBashLineCount }} lines</button>
+        >
+          … +{{ hiddenBashLineCount }} lines
+        </button>
         <div
           v-for="(line, index) in visibleBashLines"
           :key="`${index}-${line.text}`"
@@ -50,6 +56,18 @@
           :class="line.kind"
         >
           <span class="bash-line-text">{{ line.text }}</span>
+        </div>
+      </div>
+      <div
+        v-if="bashMetaLines.length"
+        class="bash-meta"
+      >
+        <div
+          v-for="(line, index) in bashMetaLines"
+          :key="`meta-${index}`"
+          class="bash-meta-line"
+        >
+          {{ line }}
         </div>
       </div>
     </template>
@@ -85,7 +103,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { ToolPartialResult, ToolRenderKind } from '@/types'
 import { chainWheelToScrollableAncestor, findScrollableWheelSource } from '@/utils/scroll-chain'
 import WebSearchResultRenderer from './WebSearchResultRenderer.vue'
@@ -173,13 +191,29 @@ const isWebSearchResult = computed(() =>
 const rendererRef = ref<HTMLElement | null>(null)
 const bashExpanded = ref(false)
 
+const BASH_METADATA_BLOCK = /<bash_metadata>\n?([\s\S]*?)\n?<\/bash_metadata>/g
+
+/** Machine-ish annotations (background jobs, truncation, exit codes) render
+ * as a muted meta strip below the output instead of as literal tag lines. */
+const bashMetaLines = computed<string[]>(() => {
+  const lines: string[] = []
+  for (const match of textContent.value.matchAll(BASH_METADATA_BLOCK)) {
+    for (const line of match[1].split('\n')) {
+      if (line.trim()) lines.push(line.trim())
+    }
+  }
+  return lines
+})
+
 /**
  * Pure stdout/stderr: the command itself lives in the row title and the
  * duration in the row meta, so echoed `> command` lines and trailing
  * "Done in Xs" summaries are dropped instead of re-rendered.
  */
 const bashLines = computed<BashLine[]>(() => {
-  const source = textContent.value.replace(/\r\n/g, '\n')
+  const source = textContent.value
+    .replace(BASH_METADATA_BLOCK, '')
+    .replace(/\r\n/g, '\n')
   const rows: BashLine[] = []
   let lastWasBlank = false
 
@@ -209,6 +243,32 @@ const visibleBashLines = computed<BashLine[]>(() =>
 const hiddenBashLineCount = computed(() =>
   bashExpanded.value ? 0 : Math.max(0, bashLines.value.length - BASH_TAIL_LINES),
 )
+
+// Live bash output follows the tail (like `tail -f`) until the user scrolls
+// up; scrolling back to the bottom re-engages following.
+const bashOutputRef = ref<HTMLElement | null>(null)
+const bashFollowing = ref(true)
+
+function handleBashScroll() {
+  const element = bashOutputRef.value
+  if (!element) return
+  bashFollowing.value = element.scrollHeight - element.scrollTop - element.clientHeight <= 4
+}
+
+watch(
+  () => [visibleBashLines.value.length, props.isPartial] as const,
+  async () => {
+    if (!props.isPartial || !bashFollowing.value) return
+    await nextTick()
+    const element = bashOutputRef.value
+    if (element) element.scrollTop = element.scrollHeight
+  },
+  { flush: 'post' },
+)
+
+watch(() => props.isPartial, (partial) => {
+  if (partial) bashFollowing.value = true
+})
 
 function handleWheel(event: WheelEvent) {
   chainWheelToScrollableAncestor(event, findScrollableWheelSource(event, rendererRef.value))
@@ -354,6 +414,21 @@ function handleWheel(event: WheelEvent) {
 
 .expand-line:hover {
   color: var(--ui-tool-text-fg, var(--tool-ink));
+}
+
+.bash-meta {
+  margin-top: 4px;
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--ui-tool-border-border, var(--tool-border));
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  font-family: var(--tool-font-mono);
+  font-size: calc(var(--tool-font-size-body) - 1px);
+  line-height: var(--tool-code-line-height);
+}
+
+.bash-meta-line {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .read-output {

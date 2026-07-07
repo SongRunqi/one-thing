@@ -7,6 +7,16 @@ export const COMPACTED_HISTORY_RETAINED_PAYLOAD_BUDGET_CHARS = 300_000
 export const COMPACTED_HISTORY_TOOL_RESULT_BUDGET_CHARS = 24_000
 export const COMPACTED_HISTORY_TOOL_RESULTS_TOTAL_BUDGET_CHARS = 80_000
 
+// Non-compacted history rebuild budgets. Generous compared to the compacted
+// path (legit tool outputs top out around 50KB), but a hard ceiling so a
+// single rebuilt request can never dwarf the live-loop request again.
+export const HISTORY_TOOL_RESULT_BUDGET_CHARS = 200_000
+export const HISTORY_TOOL_RESULTS_TOTAL_BUDGET_CHARS = 600_000
+// No legitimate tool result string exceeds this (read caps at 50KB, bash at
+// 30KB); anything larger is runaway payload (base64, embedded blobs).
+export const HISTORY_STRING_HARD_CAP_CHARS = 64_000
+const ATTACHMENT_INLINE_CONTENT_MAX_CHARS = 2_000
+
 export type CoreHistoryMessage =
   | { role: 'user'; content: unknown }
   | {
@@ -111,8 +121,43 @@ export interface CoreBuildHistoryMessagesOptions<TContent = unknown, TMessage ex
   onMissingSummaryAnchor?: (details: { sessionId?: string; summaryUpToMessageId: string }) => void
 }
 
+function capLongStringForAI(value: string): string {
+  if (value.length <= HISTORY_STRING_HARD_CAP_CHARS) return value
+  return `${value.slice(0, HISTORY_STRING_HARD_CAP_CHARS)}\n…[truncated ${value.length - HISTORY_STRING_HARD_CAP_CHARS} chars]`
+}
+
+/**
+ * Same wording the live loop produces for unsupported media
+ * (agentToolMessageContentToText → summarizeMediaData), so a rebuilt history
+ * shows the model the exact text it saw during the original turn.
+ */
+function attachmentDataPlaceholder(attachment: JsonObject, dataChars: number): string {
+  const kind = attachment.type === 'image' ? 'Image' : 'File'
+  const mediaType = typeof attachment.mimeType === 'string'
+    ? attachment.mimeType
+    : typeof attachment.mediaType === 'string' ? attachment.mediaType : 'binary'
+  return `[${kind}: ${mediaType} data omitted: ${dataChars} chars]`
+}
+
+function sanitizeAttachmentForAI(value: JsonValue): JsonValue {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return sanitizeToolResultForAI(value)
+  }
+  const record = value as JsonObject
+  const sanitized: JsonObject = {}
+  for (const [key, entry] of Object.entries(record)) {
+    if ((key === 'content' || key === 'data') && typeof entry === 'string' && entry.length > ATTACHMENT_INLINE_CONTENT_MAX_CHARS) {
+      sanitized[key] = attachmentDataPlaceholder(record, entry.length)
+      continue
+    }
+    sanitized[key] = sanitizeToolResultForAI(entry)
+  }
+  return sanitized
+}
+
 export function sanitizeToolResultForAI(result: JsonValue | undefined): JsonValue {
   if (result === undefined) return null
+  if (typeof result === 'string') return capLongStringForAI(result)
   if (!result || typeof result !== 'object') return result
 
   if (Array.isArray(result)) {
@@ -122,9 +167,25 @@ export function sanitizeToolResultForAI(result: JsonValue | undefined): JsonValu
   const sanitized: JsonObject = {}
   for (const [key, value] of Object.entries(result)) {
     if (key === 'originalContent' || key === 'originalContentHash') continue
+    if (key === 'attachments' && Array.isArray(value)) {
+      sanitized[key] = value.map(sanitizeAttachmentForAI)
+      continue
+    }
     sanitized[key] = sanitizeToolResultForAI(value)
   }
   return sanitized
+}
+
+/**
+ * Sanitizer for the non-compacted rebuild path: strips binary payloads like
+ * the base sanitizer, then falls back to a placeholder when a single result
+ * still exceeds the per-result budget.
+ */
+export function sanitizeHistoryToolResultForAI(result: JsonValue | undefined): JsonValue {
+  const sanitized = sanitizeToolResultForAI(result)
+  return jsonLength(sanitized) > HISTORY_TOOL_RESULT_BUDGET_CHARS
+    ? compactedToolResultPlaceholder(sanitized)
+    : sanitized
 }
 
 export function jsonLength(value: JsonValue | undefined): number {
@@ -224,28 +285,27 @@ export function compactedFailureToolResultForAI(
   return sanitizeCompactedToolResultForAI(options.failureResultForAI?.(toolCall) ?? defaultFailureResultForAI(toolCall))
 }
 
-export function buildCompactedToolResultContent(
+function buildBudgetedToolResultContent(
   toolCalls: CoreHistoryToolCall[],
-  options: CoreCompactedToolResultOptions = {},
+  options: CoreCompactedToolResultOptions,
+  budgets: { perResultChars: number; totalChars: number },
 ): Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: JsonValue }> {
   let totalResultChars = 0
   const toolNameForAI = options.getAIToolName ?? getAIToolName
 
   return toolCalls.map(toolCall => {
-    const rawResult = toolCall.status === 'completed'
-      ? sanitizeCompactedToolResultForAI(toolCall.result)
-      : compactedFailureToolResultForAI(toolCall, options)
+    const sanitized = toolCall.status === 'completed'
+      ? sanitizeToolResultForAI(toolCall.result)
+      : sanitizeToolResultForAI(options.failureResultForAI?.(toolCall) ?? defaultFailureResultForAI(toolCall))
+    const rawResult = jsonLength(sanitized) > budgets.perResultChars
+      ? compactedToolResultPlaceholder(sanitized)
+      : sanitized
     const resultChars = jsonLength(rawResult)
     const exceedsTotalBudget =
       totalResultChars > 0 &&
-      totalResultChars + resultChars > COMPACTED_HISTORY_TOOL_RESULTS_TOTAL_BUDGET_CHARS
+      totalResultChars + resultChars > budgets.totalChars
     const result = exceedsTotalBudget
-      ? compactedToolResultPlaceholder(
-          toolCall.status === 'completed'
-            ? sanitizeToolResultForAI(toolCall.result)
-            : options.failureResultForAI?.(toolCall) ?? defaultFailureResultForAI(toolCall),
-          false,
-        )
+      ? compactedToolResultPlaceholder(sanitized, false)
       : rawResult
 
     totalResultChars += jsonLength(result)
@@ -255,6 +315,32 @@ export function buildCompactedToolResultContent(
       toolName: toolNameForAI(toolCall.toolId || toolCall.toolName),
       result,
     }
+  })
+}
+
+export function buildCompactedToolResultContent(
+  toolCalls: CoreHistoryToolCall[],
+  options: CoreCompactedToolResultOptions = {},
+): Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: JsonValue }> {
+  return buildBudgetedToolResultContent(toolCalls, options, {
+    perResultChars: COMPACTED_HISTORY_TOOL_RESULT_BUDGET_CHARS,
+    totalChars: COMPACTED_HISTORY_TOOL_RESULTS_TOTAL_BUDGET_CHARS,
+  })
+}
+
+/**
+ * Tool results for the non-compacted rebuild path. Same machinery as the
+ * compacted path with looser budgets: the live loop already bounds what the
+ * model saw per turn, so a rebuilt request must never exceed the same order
+ * of magnitude.
+ */
+export function buildHistoryToolResultContent(
+  toolCalls: CoreHistoryToolCall[],
+  options: CoreCompactedToolResultOptions = {},
+): Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: JsonValue }> {
+  return buildBudgetedToolResultContent(toolCalls, options, {
+    perResultChars: HISTORY_TOOL_RESULT_BUDGET_CHARS,
+    totalChars: HISTORY_TOOL_RESULTS_TOTAL_BUDGET_CHARS,
   })
 }
 
@@ -391,14 +477,10 @@ function appendHistoryMessage<TContent, TMessage extends CoreHistoryChatMessage>
           getAIToolName: toolNameForAI,
           failureResultForAI: options.failureResultForAI,
         })
-      : completedToolCalls.map(toolCall => ({
-          type: 'tool-result' as const,
-          toolCallId: toolCall.id,
-          toolName: toolNameForAI(toolCall.toolId || toolCall.toolName),
-          result: toolCall.status === 'completed'
-            ? sanitizeToolResultForAI(toolCall.result)
-            : options.failureResultForAI?.(toolCall) ?? defaultFailureResultForAI(toolCall),
-        })),
+      : buildHistoryToolResultContent(completedToolCalls, {
+          getAIToolName: toolNameForAI,
+          failureResultForAI: options.failureResultForAI,
+        }),
   })
 }
 
@@ -534,14 +616,9 @@ export function buildResumeHistoryAfterToolConfirmation(
     },
     {
       role: 'tool',
-      content: toolCalls.map(toolCall => ({
-        type: 'tool-result' as const,
-        toolCallId: toolCall.id,
-        toolName: getAIToolName(toolCall.toolId || toolCall.toolName),
-        result: toolCall.status === 'completed'
-          ? sanitizeToolResultForAI(toolCall.result)
-          : { error: toolCall.error ?? null },
-      })),
+      content: buildHistoryToolResultContent(toolCalls, {
+        failureResultForAI: toolCall => ({ error: toolCall.error ?? null }),
+      }),
     },
   ]
 }

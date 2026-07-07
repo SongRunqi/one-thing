@@ -29,6 +29,7 @@ import {
   type TextFileSnapshot,
 } from '../file-snapshot.js'
 import { recordFileMutationAudit } from '../file-mutation-audit.js'
+import { trimDiff, truncateDiffForDisplay } from '../replacers.js'
 
 const MAX_REVALIDATION_ATTEMPTS = 5
 
@@ -46,7 +47,6 @@ export interface WriteResultMetadata {
   diff?: string
   additions?: number
   deletions?: number
-  originalContent?: string
   originalContentHash?: string
   auditId?: string
   auditPath?: string
@@ -108,7 +108,8 @@ function buildWritePlan(
   lineCount: number,
   snapshot: TextFileSnapshot,
 ): WritePlan {
-  const diff = createTwoFilesPatch(resolvedPath, resolvedPath, snapshot.content, content)
+  // trimDiff matches the edit tool so both diff views share the same density.
+  const diff = trimDiff(createTwoFilesPatch(resolvedPath, resolvedPath, snapshot.content, content))
   const { additions, deletions } = countLineChanges(snapshot.content, content)
 
   return {
@@ -215,8 +216,9 @@ export function createWriteTool(adapters: WriteToolAdapters): Tool.Info<typeof W
         throwIfAborted()
 
         const emitPlanMetadata = (plan: WritePlan) => {
+          const displayDiff = truncateDiffForDisplay(plan.diff)
           ctx.updateResult?.({
-            content: [{ type: 'text', text: plan.diff || `Preparing ${resolvedPath}` }],
+            content: [{ type: 'text', text: displayDiff || `Preparing ${resolvedPath}` }],
             details: {
               phase: 'preview',
               path: resolvedPath,
@@ -234,10 +236,9 @@ export function createWriteTool(adapters: WriteToolAdapters): Tool.Info<typeof W
               bytesWritten,
               lineCount,
               created: plan.created,
-              diff: plan.diff,
+              diff: displayDiff,
               additions: plan.additions,
               deletions: plan.deletions,
-              originalContent: plan.snapshot.content,
               originalContentHash: plan.originalContentHash,
             },
           })
@@ -315,16 +316,16 @@ export function createWriteTool(adapters: WriteToolAdapters): Tool.Info<typeof W
           },
         })
 
+        const displayDiff = truncateDiffForDisplay(approvedPlan.diff)
         ctx.metadata({
           metadata: {
             path: resolvedPath,
             bytesWritten,
             lineCount,
             created: approvedPlan.created,
-            diff: approvedPlan.diff,
+            diff: displayDiff,
             additions: approvedPlan.additions,
             deletions: approvedPlan.deletions,
-            originalContent: approvedPlan.snapshot.content,
             originalContentHash: approvedPlan.originalContentHash,
             auditId: audit.id,
             auditPath: audit.path,
@@ -337,10 +338,9 @@ export function createWriteTool(adapters: WriteToolAdapters): Tool.Info<typeof W
           bytesWritten,
           lineCount,
           created: approvedPlan.created,
-          diff: approvedPlan.diff,
+          diff: displayDiff,
           additions: approvedPlan.additions,
           deletions: approvedPlan.deletions,
-          originalContent: approvedPlan.snapshot.content,
           originalContentHash: approvedPlan.originalContentHash,
           auditId: audit.id,
           auditPath: audit.path,

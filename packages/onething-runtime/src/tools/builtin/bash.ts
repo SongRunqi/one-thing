@@ -34,6 +34,7 @@ import {
   DEFAULT_OUTPUT_MAX_LINES,
   OutputAccumulator,
 } from '../output-accumulator.js'
+import { readBackgroundJobOutput } from '../background-jobs.js'
 
 const MAX_OUTPUT_LENGTH = DEFAULT_OUTPUT_MAX_BYTES
 const MAX_OUTPUT_DISPLAY = `${Math.round(DEFAULT_OUTPUT_MAX_BYTES / 1000)}KB`
@@ -58,6 +59,7 @@ export interface BashMetadata {
   output: string
   outputFilePath?: string
   description?: string
+  backgroundJobIds?: string[]
 }
 
 export const BashParameters = z.object({
@@ -69,6 +71,10 @@ export const BashParameters = z.object({
     .number()
     .optional()
     .describe('Command timeout in milliseconds (default: 120000)'),
+  run_in_background: z
+    .boolean()
+    .optional()
+    .describe('Run the command as a managed background job and return immediately with a job id. Use for long-running services (dev servers, watchers). Read new output later with bash_output; stop it with kill_bash. Do NOT use for commands that finish on their own.'),
 })
 
 function findSandboxRoot(sandboxRoots: string[], targetPath: string): string | undefined {
@@ -118,6 +124,8 @@ export function createBashTool(adapters: BashToolAdapters): Tool.Info<typeof Bas
   return Tool.define<typeof BashParameters, BashMetadata>('bash', {
     name: 'Bash',
     description: `Execute a bash command in the session work directory. Returns stdout and stderr. Output is truncated to the last ${DEFAULT_OUTPUT_MAX_LINES} lines or ${MAX_OUTPUT_DISPLAY} (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in milliseconds.
+
+For long-running services (dev servers, watchers), set run_in_background: true — the command is launched as a managed background job and this call returns immediately with a job id plus initial output. Read new output later with the bash_output tool; stop the job with kill_bash.
 
 To change the work directory for bash and file tools, use variable { action: "set", name: "workdir", value: <directory> } before calling bash.`,
     category: 'builtin',
@@ -313,6 +321,45 @@ To change the work directory for bash and file tools, use variable { action: "se
       const ops = adapters.createOperations({
         shellPath: adapters.getShellPath?.(),
       })
+
+      if (args.run_in_background) {
+        if (!ops.execBackground) {
+          throw new Error('Background execution is not supported in this environment')
+        }
+        const launch = await ops.execBackground(command, workingDir)
+
+        // Give the process a moment to produce startup output or fail fast.
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 1500)
+          ctx.abortSignal?.addEventListener('abort', () => {
+            clearTimeout(timer)
+            resolve()
+          }, { once: true })
+        })
+
+        const read = readBackgroundJobOutput(launch.jobId, { fromStart: true })
+        const job = read?.job
+        const ports = job?.ports?.length ? ` Listening on port(s): ${job.ports.join(', ')}.` : ''
+        const startupOutput = read?.output.trim()
+
+        let backgroundOutput = `Started background job ${launch.jobId} (${job?.status ?? 'unknown'}).${ports}`
+        if (startupOutput) {
+          backgroundOutput += `\n\n${startupOutput}`
+        }
+        backgroundOutput += `\n\n<bash_metadata>\nBackground job: ${launch.jobId}. Use bash_output to read new output, kill_bash to stop it.\nLog file: ${launch.logPath}\n</bash_metadata>`
+
+        return {
+          title: `${command} (background ${launch.jobId})`,
+          output: backgroundOutput,
+          metadata: {
+            command,
+            workingDirectory: workingDir,
+            exitCode: 0,
+            output: backgroundOutput,
+            backgroundJobIds: [launch.jobId],
+          },
+        }
+      }
 
       let aborted = false
       let timedOut = false

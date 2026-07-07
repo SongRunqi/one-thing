@@ -187,6 +187,10 @@
       v-else
       class="workbench-empty-state empty-root"
     >
+      <div class="workbench-empty-copy">
+        <span class="workbench-empty-title">Workbench</span>
+        <span class="workbench-empty-hint">Open a tool alongside the chat.</span>
+      </div>
       <Button
         v-for="option in tabOptions"
         :key="option.type"
@@ -706,11 +710,33 @@ defineExpose({
   font-size: 13px;
 }
 
+/* Empty state reads as a panel with structure, not floating buttons:
+   header at the top, tool list rows under it. */
 .workbench-empty-state.empty-root {
   flex-direction: column;
-  gap: 8px;
-  padding: 16px;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 44px 18px 16px;
   box-sizing: border-box;
+}
+
+.workbench-empty-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.workbench-empty-title {
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workbench-empty-hint {
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 12px;
 }
 
 .workbench-empty-state.compact {
@@ -726,16 +752,16 @@ defineExpose({
   --app-button-hover-fg: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
-  width: min(190px, 100%);
-  height: 34px;
+  width: 100%;
+  height: 30px;
   box-sizing: border-box;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
+  justify-content: flex-start;
+  gap: 8px;
   min-width: 0;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid var(--workbench-tool-card-border);
   border-radius: 8px;
   color: var(--ui-text-muted-fg, var(--muted));

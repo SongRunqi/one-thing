@@ -90,106 +90,106 @@
         :resizable="sidebarDockedVisible"
       >
         <div class="app-content">
-        <div
-          class="app-sidebar-actions"
-          :class="{ transitioning: sidebarActionAnimating }"
-          :style="{ left: sidebarActionLeft + 'px' }"
-        >
-          <SidebarActionGroup
-            :sidebar-visible="!sidebarCollapsed || sidebarFloating"
-            variant="docked"
-            @toggle-sidebar="handleSidebarToggle"
-            @open-search="openSearch"
-            @create-new-chat="createNewChat"
-          />
-        </div>
-
-        <Splitter
-          class="app-content-splitter"
-          :gap="0"
-          :resizer-size="1"
-          :resizer-hit-size="12"
-          @resize-start="inspectorResizing = true"
-          @resize-end="handleInspectorResizeEnd"
-        >
-          <SplitterPanel
-            v-model:size="mainWorkspacePanelSize"
-            :min="52"
-            :resizable="inspectorVisible"
+          <div
+            class="app-sidebar-actions"
+            :class="{ transitioning: sidebarActionAnimating }"
+            :style="{ left: sidebarActionLeft + 'px' }"
           >
-            <Container
-              as="div"
-              main-as="div"
-              class="app-main-region"
-              body-class="app-main-body"
-              main-class="app-main-content-region"
-              full-height
-              :main-flex="'1 1 0'"
-              overflow="hidden"
-              main-overflow="hidden"
-            >
-              <div
-                class="workspace-view-stack"
-                :data-active-workspace-view="activeWorkspaceView"
-              >
-                <ChatContainer
-                  v-show="activeWorkspaceView === 'chat'"
-                  ref="chatContainerRef"
-                  class="workspace-view workspace-view-chat"
-                  :show-settings="showSettings"
-                  :sidebar-collapsed="sidebarCollapsed"
-                  :sidebar-floating="sidebarFloating"
-                  :show-hover-trigger="sidebarCollapsed && !sidebarFloating"
-                  :media-panel-open="workspacePanelOpen"
-                  :show-diff-overlay="showDiffOverlay"
-                  :diff-overlay-data="diffOverlayData"
-                  :is-inspector-open="inspectorOpen"
-                  :reserve-sidebar-actions="reserveSidebarActions"
-                  :layout-transitioning="sidebarActionAnimating"
-                  @close-settings="showSettings = false"
-                  @open-settings="showSettings = true"
-                  @toggle-sidebar="handleSidebarToggle"
-                  @open-search="openSearch"
-                  @create-new-chat="createNewChat"
-                  @show-floating-sidebar="handleTriggerEnter"
-                  @hide-floating-sidebar="handleTriggerLeave"
-                  @close-diff-overlay="closeDiffOverlay"
-                  @toggle-inspector="inspectorOpen = !inspectorOpen"
-                  @open-file="openFileInRightWorkbench"
-                />
-
-                <MediaPanel
-                  v-show="workspacePanelOpen"
-                  class="workspace-view workspace-view-panel"
-                  mode="main"
-                  :visible="workspacePanelOpen"
-                  :active-tab="activeWorkspacePanel"
-                  :reserve-sidebar-actions="reserveSidebarActions"
-                  @close="closeWorkspacePanel"
-                />
-              </div>
-            </Container>
-          </SplitterPanel>
-
-          <SplitterPanel
-            v-if="inspectorVisible"
-            v-model:size="inspectorPanelSize"
-            as="aside"
-            class="app-right-sidebar-region"
-            :min="22"
-            :max="48"
-          >
-            <RightWorkbenchPanel
-              ref="rightWorkbenchRef"
-              :session-id="sessionsStore.currentSessionId"
-              :workspace-root="currentWorkspaceRoot"
-              :workspace-roots="currentWorkspaceRoots"
-              @close="inspectorOpen = false"
+            <SidebarActionGroup
+              :sidebar-visible="!sidebarCollapsed || sidebarFloating"
+              variant="docked"
+              @toggle-sidebar="handleSidebarToggle"
+              @open-search="openSearch"
+              @create-new-chat="createNewChat"
             />
-          </SplitterPanel>
-        </Splitter>
+          </div>
 
-        <VoiceOverlay />
+          <Splitter
+            class="app-content-splitter"
+            :gap="0"
+            :resizer-size="1"
+            :resizer-hit-size="12"
+            @resize-start="inspectorResizing = true"
+            @resize-end="handleInspectorResizeEnd"
+          >
+            <SplitterPanel
+              v-model:size="mainWorkspacePanelSize"
+              :min="52"
+              :resizable="inspectorVisible"
+            >
+              <Container
+                as="div"
+                main-as="div"
+                class="app-main-region"
+                body-class="app-main-body"
+                main-class="app-main-content-region"
+                full-height
+                :main-flex="'1 1 0'"
+                overflow="hidden"
+                main-overflow="hidden"
+              >
+                <div
+                  class="workspace-view-stack"
+                  :data-active-workspace-view="activeWorkspaceView"
+                >
+                  <ChatContainer
+                    v-show="activeWorkspaceView === 'chat'"
+                    ref="chatContainerRef"
+                    class="workspace-view workspace-view-chat"
+                    :show-settings="showSettings"
+                    :sidebar-collapsed="sidebarCollapsed"
+                    :sidebar-floating="sidebarFloating"
+                    :show-hover-trigger="sidebarCollapsed && !sidebarFloating"
+                    :media-panel-open="workspacePanelOpen"
+                    :show-diff-overlay="showDiffOverlay"
+                    :diff-overlay-data="diffOverlayData"
+                    :is-inspector-open="inspectorOpen"
+                    :reserve-sidebar-actions="reserveSidebarActions"
+                    :layout-transitioning="sidebarActionAnimating"
+                    @close-settings="showSettings = false"
+                    @open-settings="showSettings = true"
+                    @toggle-sidebar="handleSidebarToggle"
+                    @open-search="openSearch"
+                    @create-new-chat="createNewChat"
+                    @show-floating-sidebar="handleTriggerEnter"
+                    @hide-floating-sidebar="handleTriggerLeave"
+                    @close-diff-overlay="closeDiffOverlay"
+                    @toggle-inspector="inspectorOpen = !inspectorOpen"
+                    @open-file="openFileInRightWorkbench"
+                  />
+
+                  <MediaPanel
+                    v-show="workspacePanelOpen"
+                    class="workspace-view workspace-view-panel"
+                    mode="main"
+                    :visible="workspacePanelOpen"
+                    :active-tab="activeWorkspacePanel"
+                    :reserve-sidebar-actions="reserveSidebarActions"
+                    @close="closeWorkspacePanel"
+                  />
+                </div>
+              </Container>
+            </SplitterPanel>
+
+            <SplitterPanel
+              v-if="inspectorVisible"
+              v-model:size="inspectorPanelSize"
+              as="aside"
+              class="app-right-sidebar-region"
+              :min="22"
+              :max="48"
+            >
+              <RightWorkbenchPanel
+                ref="rightWorkbenchRef"
+                :session-id="sessionsStore.currentSessionId"
+                :workspace-root="currentWorkspaceRoot"
+                :workspace-roots="currentWorkspaceRoots"
+                @close="inspectorOpen = false"
+              />
+            </SplitterPanel>
+          </Splitter>
+
+          <VoiceOverlay />
         </div>
       </SplitterPanel>
 

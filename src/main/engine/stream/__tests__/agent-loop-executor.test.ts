@@ -281,6 +281,7 @@ describe('agent loop executor', () => {
       'step-call_1',
       'lookup',
       { query: 'moon' },
+      expect.any(Number),
     )
     expect(state.processor.toolCalls[0]).toMatchObject({
       id: 'call_1',

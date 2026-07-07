@@ -558,6 +558,15 @@ onUnmounted(() => {
   flex: 0 0 15px;
 }
 
+/* Regenerate button animation */
+.regenerate-btn svg {
+  transition: transform 0.3s ease;
+}
+
+.regenerate-btn:hover svg {
+  transform: rotate(180deg);
+}
+
 /* Copy button success state - when showing check icon */
 .copy-btn:has(.lucide-check) {
   color: var(--ui-accent-primary-fg, var(--accent));

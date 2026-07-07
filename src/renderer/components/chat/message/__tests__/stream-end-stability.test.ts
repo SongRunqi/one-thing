@@ -635,9 +635,8 @@ describe('stream end visual stability', () => {
     await nextTick()
 
     expect(parentClick).not.toHaveBeenCalled()
-    expect(wrapper.emitted('openImage')?.[0]).toEqual([
-      'data:image/png;base64,abc123',
-      'screenshot.png',
+    expect(wrapper.emitted('openMedia')?.[0]).toEqual([
+      { src: 'data:image/png;base64,abc123', fileName: 'screenshot.png' },
     ])
   })
 
@@ -693,6 +692,15 @@ describe('stream end visual stability', () => {
       global: { stubs: markdownStubs },
     })
 
+    // Settled message: the whole process run sits collapsed behind one rail
+    // summary line; thought panels appear after expanding it.
+    const rail = wrapper.find('.process-rail')
+    expect(rail.exists()).toBe(true)
+    expect(rail.find('.process-rail-summary').text()).toContain('思考 2 步')
+    expect(wrapper.findAll('.inline-reasoning')).toHaveLength(0)
+
+    await rail.find('.process-rail-header').trigger('click')
+
     const headers = wrapper.findAll('.inline-reasoning-header')
     const panels = wrapper.findAll('.inline-reasoning')
     expect(panels).toHaveLength(2)
@@ -733,9 +741,8 @@ describe('stream end visual stability', () => {
 
     await wrapper.find('.attachment-image').trigger('click')
 
-    expect(wrapper.emitted('openImage')?.[0]).toEqual([
-      'media://session/image.png',
-      'screenshot.png',
+    expect(wrapper.emitted('openMedia')?.[0]).toEqual([
+      { src: 'media://session/image.png', fileName: 'screenshot.png' },
     ])
   })
 
@@ -753,7 +760,7 @@ describe('stream end visual stability', () => {
     expect(wrapper.find('.attachment-image').exists()).toBe(false)
     await wrapper.find('.attachment-file').trigger('click')
 
-    expect(wrapper.emitted('openImage')).toBeUndefined()
+    expect(wrapper.emitted('openMedia')).toBeUndefined()
   })
 
   it('routes attachment image opens through the Electron preview window', async () => {

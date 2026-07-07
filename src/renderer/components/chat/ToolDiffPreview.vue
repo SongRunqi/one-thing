@@ -8,6 +8,13 @@
       @wheel="handlePanelWheel"
     >
       <div class="diff-lines">
+        <div
+          v-if="liveHiddenLineCount > 0"
+          class="diff-line diff-live-hidden"
+        >
+          <span class="line-prefix">…</span>
+          <span class="line-content">{{ liveHiddenLineCount }} earlier lines</span>
+        </div>
         <template
           v-for="(entry, idx) in highlightedLines"
           :key="lineKey(entry.line, idx)"
@@ -75,12 +82,23 @@ const lineCount = computed(() => props.lines.length)
 const shouldUseFixedHeight = computed(() =>
   isLive.value || props.status === 'awaiting-confirmation',
 )
-const highlightedLines = computed(() => props.lines.map(line => ({
-  line,
-  segments: line.class === 'diff-add' || line.class === 'diff-del'
-    ? highlightCode(line.content)
-    : [{ text: line.content }],
-})))
+
+// While streaming, only the tail is rendered — the panel follows the bottom
+// anyway, and re-rendering thousands of rows per appended line is wasted work.
+// The full diff renders once the tool settles.
+const LIVE_TAIL_LINES = 200
+const liveHiddenLineCount = computed(() =>
+  isLive.value ? Math.max(0, props.lines.length - LIVE_TAIL_LINES) : 0,
+)
+const highlightedLines = computed(() => {
+  const source = liveHiddenLineCount.value > 0 ? props.lines.slice(-LIVE_TAIL_LINES) : props.lines
+  return source.map(line => ({
+    line,
+    segments: line.class === 'diff-add' || line.class === 'diff-del'
+      ? highlightCode(line.content)
+      : [{ text: line.content }],
+  }))
+})
 
 function lineKey(line: ToolDiffLine, idx: number): string {
   const oldNum = line.oldNum ?? ''
@@ -371,6 +389,13 @@ defineExpose({
 
 .diff-hunk .line-gutter {
   border-left-color: transparent;
+}
+
+.diff-live-hidden {
+  --row-bg: color-mix(in srgb, var(--ui-tool-text-fg, var(--tool-ink)) 4%, transparent);
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+  padding: 2px 0;
+  justify-content: center;
 }
 
 .syntax-keyword {

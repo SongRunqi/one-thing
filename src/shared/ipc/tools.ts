@@ -92,7 +92,7 @@ export interface ToolCall {
   timestamp: number
   startTime?: number         // Execution start timestamp (Date.now, integer ms)
   endTime?: number           // Execution end timestamp (Date.now, integer ms)
-  durationMs?: number        // High-resolution execution duration (performance.now delta, float ms)
+  durationMs?: number        // Authoritative execution duration measured in the main process
   // For dangerous commands that need user confirmation
   requiresConfirmation?: boolean
   commandType?: 'read-only' | 'dangerous' | 'forbidden'
@@ -102,7 +102,8 @@ export interface ToolCall {
     filePath: string
     additions: number
     deletions: number
-    originalContent?: string  // Original content for rollback
+    /** @deprecated Rollback goes through auditPath; only legacy persisted sessions still carry this. */
+    originalContent?: string
     originalContentHash?: string
     afterContentHash?: string
     auditId?: string

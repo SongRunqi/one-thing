@@ -27,6 +27,7 @@ export interface CoreMutableToolCallLike extends CoreToolCallLike {
   status?: string
   error?: string
   endTime?: number
+  durationMs?: number
 }
 
 export interface CoreToolCallAbortUpdateOptions {
@@ -135,6 +136,7 @@ export interface CoreToolCallChangesLike {
   filePath: string
   additions: number
   deletions: number
+  /** @deprecated Rollback uses auditPath; kept only for legacy persisted sessions. */
   originalContent?: string
   originalContentHash?: string
   afterContentHash?: string
@@ -269,10 +271,10 @@ export interface CoreToolExecutionEmitter<
   sendSkillActivated(skillName: string): void
   sendStepUpdated(stepId: string, updates: Partial<TStep>): void
   sendStepAdded(step: TStep): void
-  sendToolExecutionStart(toolCallId: string, stepId: string, toolName: string, args: JsonObject): void
+  sendToolExecutionStart(toolCallId: string, stepId: string, toolName: string, args: JsonObject, startTime?: number): void
   sendToolCall(toolCall: TToolCall): void
   sendToolExecutionUpdate(toolCallId: string, stepId: string, partialResult: TPartialResult): void
-  sendToolExecutionEnd(toolCallId: string, stepId: string, result?: TStructuredResult, isError?: boolean, error?: string): void
+  sendToolExecutionEnd(toolCallId: string, stepId: string, result?: TStructuredResult, isError?: boolean, error?: string, durationMs?: number): void
 }
 
 export interface CoreToolDirectExecutionCallbacks<
@@ -777,7 +779,6 @@ export function changesFromToolMetadata(metadata: JsonObject | undefined): CoreT
     filePath: String(metadata.path),
     additions: Number(metadata.additions) || 0,
     deletions: Number(metadata.deletions) || 0,
-    originalContent: typeof metadata.originalContent === 'string' ? metadata.originalContent : undefined,
     originalContentHash: typeof metadata.originalContentHash === 'string' ? metadata.originalContentHash : undefined,
     afterContentHash: typeof metadata.afterContentHash === 'string' ? metadata.afterContentHash : undefined,
     auditId: typeof metadata.auditId === 'string' ? metadata.auditId : undefined,
@@ -957,10 +958,10 @@ export async function executeCoreToolAndUpdate<
     emitter.sendStepAdded(step)
   }
 
-  emitter.sendToolExecutionStart(toolCall.id, step.id, toolCallData.toolName, toolCallData.args)
-
   toolCall.status = 'executing'
   toolCall.startTime = now()
+
+  emitter.sendToolExecutionStart(toolCall.id, step.id, toolCallData.toolName, toolCallData.args, toolCall.startTime)
 
   store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, allToolCalls)
   emitter.sendToolCall(toolCall)
@@ -1025,6 +1026,9 @@ export async function executeCoreToolAndUpdate<
   )
 
   toolCall.endTime = now()
+  if (toolCall.startTime != null) {
+    toolCall.durationMs = Math.max(0, toolCall.endTime - toolCall.startTime)
+  }
 
   const presentation = buildToolExecutionFinalPresentation({
     toolCall,
@@ -1043,6 +1047,7 @@ export async function executeCoreToolAndUpdate<
       presentation.executionEnd.result,
       presentation.executionEnd.isError,
       presentation.executionEnd.error,
+      toolCall.durationMs,
     )
   }
   emitter.sendStepUpdated(step.id, presentation.stepUpdate as Partial<TStep>)

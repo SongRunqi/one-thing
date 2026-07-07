@@ -1,24 +1,13 @@
 <template>
   <div class="message-item-wrapper">
-    <!-- Selection toolbar (floating) -->
-    <Teleport to="body">
-      <SelectionToolbar
-        :visible="showSelectionToolbar"
-        :position="selectionToolbarPosition"
-        :selected-text="selectedText"
-        @copy="handleSelectionCopy"
-        @quote="handleSelectionQuote"
-        @branch="handleSelectionBranch"
-        @close="showSelectionToolbar = false"
-      />
-    </Teleport>
-
     <!-- Error message -->
     <MessageError
       v-if="message.role === 'error'"
       :content="message.content"
       :error-details="message.errorDetails"
       :timestamp="message.timestamp"
+      :session-id="message.sessionId"
+      :message-id="message.id"
     />
 
     <!-- System message (e.g., /files command output) -->
@@ -61,13 +50,12 @@
           :steps="message.steps"
           :skill-used="message.skillUsed"
           :is-streaming="message.isStreaming"
-          :hide-inline-reasoning="false"
           :is-editing="isEditing"
           :edit-content="editContent"
           :session-id="message.sessionId"
           @submit-edit="handleSubmitEdit"
           @cancel-edit="handleCancelEdit"
-          @open-image="handleOpenImage"
+          @open-media="handleOpenMedia"
           @text-selection="handleTextSelection"
           @execute-tool="handleToolExecute"
           @open-file="(filePath) => emit('openFile', filePath)"
@@ -105,13 +93,13 @@
               y2="16"
             />
           </svg>
-          <span class="inline-error-text">{{ message.errorDetails }}</span>
+          <span class="inline-error-text">{{ inlineErrorText }}</span>
         </div>
 
         <!-- Steps panel fallback - only for legacy messages without contentParts -->
         <StepsPanel
-          v-if="message.role === 'assistant' && message.steps && message.steps.length > 0 && (!message.contentParts || !message.contentParts.some(p => p.type === 'data-steps'))"
-          :steps="message.steps"
+          v-if="showLegacyStepsPanel"
+          :steps="message.steps ?? []"
           :session-id="message.sessionId"
           @open-file="(filePath) => emit('openFile', filePath)"
         />
@@ -132,6 +120,7 @@
             :visible="true"
             :is-streaming="message.isStreaming || false"
             :branches="branches"
+            :can-branch="canBranch"
             :usage="message.usage"
             :model="message.model"
             :message-id="message.id"
@@ -143,28 +132,19 @@
         </div>
       </div>
     </div>
-
-    <!-- Image Preview Modal -->
-    <ImagePreview
-      :visible="previewVisible"
-      :src="previewImage.src"
-      :alt="previewImage.alt"
-      @close="closeImagePreview"
-    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import type { ChatMessage, ToolCall } from '@/types'
 import StepsPanel from './StepsPanel.vue'
-import ImagePreview from '../common/ImagePreview.vue'
 import MessageError from './message/MessageError.vue'
 import MessageSystem from './message/MessageSystem.vue'
 import MessageThinking from './message/MessageThinking.vue'
 import MessageBubble from './message/MessageBubble.vue'
 import MessageActions from './message/MessageActions.vue'
-import SelectionToolbar from './message/SelectionToolbar.vue'
+import { humanizeStreamError } from './message/error-humanizer'
 import { rawTextFromPromptParts } from '@shared/prompt-references'
 import { platformApi } from '@/platform'
 
@@ -180,14 +160,31 @@ interface Props {
   isHighlighted?: boolean
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  canBranch: true,
+  isHighlighted: false,
+})
+
+const inlineErrorText = computed(() => {
+  const raw = props.message.errorDetails
+  if (!raw) return ''
+  const humanized = humanizeStreamError(raw)
+  return humanized.title === '生成失败' ? raw : humanized.title
+})
+
+interface MessageMediaOpenPayload {
+  src: string
+  alt?: string
+  fileName?: string
+  mediaId?: string
+}
 
 const emit = defineEmits<{
   regenerate: [messageId: string]
   edit: [messageId: string, newContent: string]
   branch: [messageId: string, quotedText?: string]
   goToBranch: [sessionId: string]
-  quote: [quotedText: string]
+  textSelection: [messageId: string, text: string, position: { top: number; left: number }]
   executeTool: [toolCall: ToolCall]
   openFile: [filePath: string]
   updateThinkingTime: [messageId: string, thinkingTime: number]
@@ -197,17 +194,13 @@ const emit = defineEmits<{
 const isEditing = ref(false)
 const editContent = ref('')
 
-// Image preview state
-const previewVisible = ref(false)
-const previewImage = ref({ src: '', alt: '' })
-
-// Selection toolbar state
-const showSelectionToolbar = ref(false)
-const selectedText = ref('')
-const selectionToolbarPosition = ref({ top: 0, left: 0 })
-
-// Computed
-const isHighlighted = computed(() => props.isHighlighted || false)
+// Legacy messages carry steps without a data-steps contentPart placeholder;
+// only those need the standalone StepsPanel below the bubble.
+const showLegacyStepsPanel = computed(() =>
+  props.message.role === 'assistant' &&
+  (props.message.steps?.length ?? 0) > 0 &&
+  !props.message.contentParts?.some(p => p.type === 'data-steps')
+)
 
 // Check if message is loading memory (has loading-memory contentPart)
 const isLoadingMemory = computed(() => {
@@ -255,13 +248,14 @@ function handleCancelEdit() {
 }
 
 // Image preview handlers
-function handleOpenImage(src: string, fileName?: string) {
+function handleOpenMedia(payload: MessageMediaOpenPayload) {
+  const { src, alt, fileName, mediaId } = payload
   if (!src) return
-  platformApi?.openImagePreview(src, fileName)
-}
-
-function closeImagePreview() {
-  previewVisible.value = false
+  if (mediaId) {
+    platformApi?.openImageGallery(mediaId)
+    return
+  }
+  platformApi?.openImagePreview(src, fileName || alt)
 }
 
 // Regenerate handler
@@ -271,6 +265,7 @@ function handleRegenerate() {
 
 // Branch handlers
 function handleBranch() {
+  if (!props.canBranch) return
   emit('branch', props.message.id)
 }
 
@@ -278,25 +273,10 @@ function handleGoToBranch(sessionId: string) {
   emit('goToBranch', sessionId)
 }
 
-// Selection toolbar handlers
+// Text selection: the toolbar itself is owned by MessageList (one instance
+// for the whole list); this component only reports where the selection is.
 function handleTextSelection(text: string, position: { top: number; left: number }) {
-  selectedText.value = text
-  selectionToolbarPosition.value = position
-  showSelectionToolbar.value = true
-}
-
-function handleSelectionCopy() {
-  // Copy is handled by SelectionToolbar component
-}
-
-function handleSelectionQuote(text: string) {
-  emit('quote', text)
-  showSelectionToolbar.value = false
-}
-
-function handleSelectionBranch(text: string) {
-  emit('branch', props.message.id, text)
-  showSelectionToolbar.value = false
+  emit('textSelection', props.message.id, text, position)
 }
 
 // Tool handlers
@@ -308,38 +288,6 @@ function handleToolExecute(toolCall: ToolCall) {
 function handleUpdateThinkingTime(time: number) {
   emit('updateThinkingTime', props.message.id, time)
 }
-
-// Click outside handler
-function handleClickOutside(event: MouseEvent) {
-  const target = event.target as HTMLElement
-  // Close toolbar if clicking outside of it (including inside bubble)
-  if (!target.closest('.selection-toolbar')) {
-    showSelectionToolbar.value = false
-  }
-  if (isEditing.value && !target.closest('.bubble')) {
-    handleCancelEdit()
-  }
-}
-
-// Selection change handler - hide toolbar when selection is cleared
-function handleSelectionChange() {
-  const selection = window.getSelection()
-  const text = selection?.toString().trim()
-  // If selection is empty or cleared, hide toolbar
-  if (!text || text.length === 0) {
-    showSelectionToolbar.value = false
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-  document.addEventListener('selectionchange', handleSelectionChange)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-  document.removeEventListener('selectionchange', handleSelectionChange)
-})
 </script>
 
 <style scoped>
@@ -463,68 +411,6 @@ onUnmounted(() => {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* User message edit mode - inline editing styles */
-.message.user :deep(.edit-textarea) {
-  width: 100%;
-  min-height: 1.5em;
-  max-height: 300px;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.95);
-  font-size: 15px;
-  line-height: 1.5;
-  resize: none;
-  outline: none;
-  font-family: inherit;
-  overflow-y: auto;
-  caret-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.message.user :deep(.edit-textarea)::-webkit-scrollbar {
-  width: 4px;
-}
-
-.message.user :deep(.edit-textarea)::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.message.user :deep(.edit-textarea)::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 2px;
-}
-
-html[data-theme='light'] .message.user :deep(.edit-textarea) {
-  color: rgba(0, 0, 0, 0.9);
-}
-
-html[data-theme='light'] .message.user :deep(.edit-textarea)::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
-}
-
-/* Editing state bubble */
-.message.user :deep(.bubble.editing) {
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.3),
-    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent);
-}
-
-html[data-theme='light'] .message.user :deep(.bubble.editing) {
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.04),
-    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
-}
-
-/* Regenerate button animation */
-:deep(.regenerate-btn svg) {
-  transition: transform 0.3s ease;
-}
-
-:deep(.regenerate-btn:hover svg) {
-  transform: rotate(180deg);
 }
 
 /* Inline error for failed assistant messages */

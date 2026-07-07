@@ -123,13 +123,16 @@ html[data-theme="light"] .md-body img:hover {
 	font-weight: 600;
 }
 
-/* Shared inline code visual contract */
+/* Shared inline code visual contract.
+   De-weighted on purpose: a code word inside prose is "a word in another
+   typeface", not a chip. Chip styling is reserved for interactive
+   references (file paths, session links). */
 :where(.md-body, .md-inline-code-scope) {
-	--md-inline-code-padding: 2px 6px;
-	--md-inline-code-radius: calc(var(--md-code-block-radius, 8px) - 3px);
-	--md-inline-code-border: 1px solid color-mix(in srgb, var(--ui-surface-code-block-border, var(--border-code, var(--border))) 24%, transparent);
+	--md-inline-code-padding: 1px 4px;
+	--md-inline-code-radius: calc(var(--md-code-block-radius, 8px) - 4px);
+	--md-inline-code-border: 1px solid transparent;
 	--md-inline-code-fg: var(--ui-surface-code-inline-fg, var(--md-code-plain-fg, var(--hg-syntax-plain-fg, var(--ui-text-primary-fg, var(--text-code-block)))));
-	--md-inline-code-bg: var(--md-code-block-bg, color-mix(in srgb, var(--ui-surface-code-block-bg, var(--bg-code-block)) 62%, var(--ui-surface-chat-bg, var(--bg-chat, transparent)) 38%));
+	--md-inline-code-bg: color-mix(in srgb, var(--md-code-block-bg, color-mix(in srgb, var(--ui-surface-code-block-bg, var(--bg-code-block)) 62%, var(--ui-surface-chat-bg, var(--bg-chat, transparent)) 38%)) 40%, transparent);
 	--md-inline-code-font-family: var(--md-code-font-family, "SF Mono", Monaco, "Cascadia Code", monospace);
 	--md-inline-code-font-size: 0.9em;
 	--md-inline-code-line-height: var(--md-code-line-height, 1.35);

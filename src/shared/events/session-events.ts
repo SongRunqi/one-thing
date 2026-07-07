@@ -75,6 +75,8 @@ export interface ToolExecutionStartEvent {
   stepId: string
   toolName: string
   args: JsonObject
+  /** Authoritative main-process Date.now() captured when execution began. */
+  startTime?: number
 }
 
 export interface ToolExecutionUpdateEvent {
@@ -91,6 +93,8 @@ export interface ToolExecutionEndEvent {
   result?: ToolResult
   isError?: boolean
   error?: string
+  /** Authoritative execution duration measured in the main process. */
+  durationMs?: number
 }
 
 // ── Step events ─────────────────────────────────

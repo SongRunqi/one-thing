@@ -196,6 +196,22 @@ watch(
   { immediate: true },
 )
 
+/** ErrorCard "切换模型…" dispatches this event; scroll into view + pulse. */
+function handleOpenModelSelectorEvent(event: Event) {
+  const detail = (event as CustomEvent<{ sessionId?: string }>).detail
+  if (detail?.sessionId && props.sessionId && detail.sessionId !== props.sessionId) return
+  const el = selectorRef.value
+  if (!el) return
+  el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  el.classList.remove('attention-pulse')
+  // restart the animation on repeated clicks
+  void el.offsetWidth
+  el.classList.add('attention-pulse')
+  const input = el.querySelector<HTMLElement>('input, [tabindex], .app-select')
+  input?.focus()
+  window.setTimeout(() => el.classList.remove('attention-pulse'), 1600)
+}
+
 function checkCompactMode() {
   if (!selectorRef.value) return
 
@@ -230,10 +246,12 @@ onMounted(() => {
   }
 
   window.addEventListener('resize', checkCompactMode)
+  window.addEventListener('onething:open-model-selector', handleOpenModelSelectorEvent)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkCompactMode)
+  window.removeEventListener('onething:open-model-selector', handleOpenModelSelectorEvent)
   resizeObserver?.disconnect()
   resizeObserver = null
 })
@@ -470,6 +488,20 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   flex: 0 0 var(--model-selector-width, 168px);
 }
 
+.model-selector.attention-pulse {
+  animation: model-selector-pulse 0.8s ease-out 2;
+  border-radius: 8px;
+}
+
+@keyframes model-selector-pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--ui-border-focus, rgba(96, 130, 214, 0.55));
+  }
+  100% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
 .model-selector.compact {
   width: 34px;
   flex-basis: 34px;
@@ -479,12 +511,14 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   width: 100%;
 }
 
+/* Ghost control: resident ~4% surface signals "clickable" without a
+   border; hover raises to full hover strength. */
 .model-select :deep(.app-select-control) {
-  min-height: 30px;
+  min-height: 28px;
   gap: 5px;
   padding: 3px 6px;
   border-color: transparent;
-  background: transparent;
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
   color: var(--ui-text-muted-fg, var(--muted));
 }
 

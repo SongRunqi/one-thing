@@ -23,7 +23,7 @@ import { VariableTool } from './variable.js'
 import { TodoPlanTool } from './todo-plan.js'
 import { CalculatorTool } from './calculator.js'
 import { ProjectDirsTool } from '../../project-dirs/index.js'
-import { FartTool, TimeTool } from '@onething/runtime/tools'
+import { BashOutputTool, FartTool, KillBashTool, TimeTool } from '@onething/runtime/tools'
 
 // Web search
 import { WebSearchTool } from './web-search/index.js'
@@ -34,6 +34,8 @@ import { WebFindTool } from './web-search/find.js'
 // Note: some tools are async and need separate initialization
 const builtinTools = [
   BashTool,
+  BashOutputTool,
+  KillBashTool,
   EditTool,
   ReadTool,
   WriteTool,

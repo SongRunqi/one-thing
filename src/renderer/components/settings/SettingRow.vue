@@ -104,13 +104,13 @@ const hasDescription = computed(() => Boolean(props.description || slots.descrip
 
 .setting-row-title {
   min-width: 0;
-  overflow: hidden;
   color: var(--settings-ink-2, var(--type-body-strong-color, var(--ui-text-primary-fg, var(--text-primary))));
   font-size: var(--type-body-strong-size);
   font-weight: var(--type-body-strong-weight);
   line-height: var(--type-body-strong-line-height);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* Labels must never truncate ("Interface Den…"); wrap instead. */
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
 .setting-row-description {

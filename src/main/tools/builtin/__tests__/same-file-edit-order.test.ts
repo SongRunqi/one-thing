@@ -71,9 +71,12 @@ describe('same-file edit ordering', () => {
       'C: new',
       '',
     ].join('\n'))
-    expect(first.metadata.originalContent).toContain('A: old\nB: old\nC: old')
-    expect(second.metadata.originalContent).toContain('A: new\nB: old\nC: old')
-    expect(third.metadata.originalContent).toContain('A: new\nB: new\nC: old')
+    // Each edit is based on the previous edit's output: the content hashes chain.
+    expect(first.metadata.afterContentHash).toBe(second.metadata.originalContentHash)
+    expect(second.metadata.afterContentHash).toBe(third.metadata.originalContentHash)
+    expect(first.metadata.diff).toContain('+A: new')
+    expect(second.metadata.diff).toContain('+B: new')
+    expect(third.metadata.diff).toContain('+C: new')
     // Direct tool execution no longer performs tool-internal Permission.ask();
     // centralized analyze → PermissionPolicy handles permission before execute.
     expect(Permission.ask).not.toHaveBeenCalled()

@@ -327,6 +327,7 @@
           <div class="toolbar-left">
             <ModelSelector :session-id="props.sessionId" />
             <Tooltip
+              v-if="contextMeterVisible"
               :text="contextTooltipText"
               position="top"
               :delay="120"
@@ -360,7 +361,20 @@
               :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
               @click.stop
               @change="handlePermissionModeChange"
-            />
+            >
+              <template #label>
+                <span class="permission-mode-glyph">
+                  <Shield
+                    :size="14"
+                    :stroke-width="2"
+                  />
+                  <span
+                    v-if="permissionMode !== 'normal'"
+                    class="permission-mode-dot"
+                  />
+                </span>
+              </template>
+            </Select>
           </div>
 
           <div
@@ -447,7 +461,7 @@ import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
-import { X, Square, Send, Check, CornerDownRight, Trash2, FileText, Loader2, Mic, GitCompare } from 'lucide-vue-next'
+import { X, Square, Send, Check, CornerDownRight, Trash2, FileText, Loader2, Mic, GitCompare, Shield } from 'lucide-vue-next'
 import { findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
@@ -559,6 +573,13 @@ const contextPercent = computed(() => {
 })
 
 const contextMeterProgress = computed(() => contextPercent.value ?? 0)
+
+/**
+ * The meter is a resident gauge: visible whenever the session has any
+ * context usage. Only "no data" hides it — danger thresholds control
+ * color, not existence.
+ */
+const contextMeterVisible = computed(() => contextTokens.value > 0)
 
 const contextMeterStyle = computed<Record<string, string>>(() => ({
   '--context-meter-progress': `${contextMeterProgress.value}%`,
@@ -1508,7 +1529,7 @@ defineExpose({
 
 <style scoped>
 .composer-wrapper {
-  width: var(--chat-composer-width, var(--chat-content-width, min(70%, 740px)));
+  width: var(--chat-composer-width, var(--chat-content-width, var(--content-measure, 46rem)));
   margin: 0 var(--chat-content-column-right, auto) 0 var(--chat-content-column-left, auto);
   position: relative;
 }
@@ -2177,15 +2198,17 @@ defineExpose({
   overflow: hidden;
 }
 
+/* Resident gauge, battery-quiet: neutral grey ring below the warning
+   thresholds; accent never participates. */
 .context-meter {
   --context-meter-track: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
-  --context-meter-ring: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 68%, var(--ui-text-muted-fg, var(--muted)));
+  --context-meter-ring: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 45%, transparent);
   --context-meter-center: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 88%, transparent);
   --context-meter-fg: var(--ui-text-muted-fg, var(--muted));
 
   position: relative;
-  width: 29px;
-  height: 29px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -2221,7 +2244,7 @@ defineExpose({
 
 .context-meter-fill {
   position: absolute;
-  inset: 3px;
+  inset: 2.5px;
   border-radius: inherit;
   background: var(--context-meter-center);
   box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--ui-border-default-border, var(--border)) 28%, transparent);
@@ -2230,10 +2253,10 @@ defineExpose({
 .context-meter-label {
   position: relative;
   z-index: 1;
-  max-width: 23px;
+  max-width: 19px;
   overflow: hidden;
-  font-size: 9px;
-  font-weight: 760;
+  font-size: 7.5px;
+  font-weight: 700;
   letter-spacing: 0;
   line-height: 1;
   text-align: center;
@@ -2248,53 +2271,73 @@ defineExpose({
   flex-shrink: 0;
 }
 
+/*
+ * Quiet composer control: icon-only shield, no border, no resident tint.
+ * Mode is encoded by the status dot (accent for auto-edits, warning for
+ * danger); full wording stays in the tooltip and the dropdown.
+ */
 .permission-mode-select {
   --permission-mode-fg: var(--ui-text-muted-fg, var(--muted));
   --permission-mode-fg-hover: var(--ui-text-primary-fg, var(--text));
-  --permission-mode-border: var(--ui-border-default-border, var(--border));
-  --permission-mode-border-hover: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 35%, var(--ui-border-default-border, var(--border)));
-  --permission-mode-bg: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 88%, transparent);
 
-  width: 98px;
+  width: 36px;
   flex: 0 0 auto;
 }
 
 .permission-mode-select :deep(.app-select-control) {
   min-height: 28px;
-  gap: 5px;
-  padding: 3px 7px 3px 8px;
-  border-radius: 999px;
-  border-color: var(--permission-mode-border);
-  background: var(--permission-mode-bg);
+  gap: 0;
+  padding: 3px 5px;
+  justify-content: center;
+  border-radius: 7px;
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
   color: var(--permission-mode-fg);
-  font-size: 11px;
-  font-weight: 650;
 }
 
-.permission-mode-select :deep(.app-select-single-value) {
-  color: var(--permission-mode-fg);
-  font-size: 11px;
-  font-weight: 650;
+.permission-mode-select :deep(.app-select-suffix) {
+  display: none;
+}
+
+/* The selection wrapper is flex:1 inside the control; without this the
+   icon-only label hugs the left edge instead of centering. */
+.permission-mode-select :deep(.app-select-selection) {
+  justify-content: center;
 }
 
 .permission-mode-select :deep(.app-select-control:hover),
 .permission-mode-select.is-open :deep(.app-select-control) {
   color: var(--permission-mode-fg-hover);
-  border-color: var(--permission-mode-border-hover);
-  background: var(--permission-mode-bg);
+  border-color: transparent;
+  background: var(--ui-state-hover-bg, var(--hover));
   box-shadow: none;
 }
 
+.permission-mode-glyph {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.permission-mode-dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--permission-mode-dot-color, var(--ui-text-muted-fg, var(--muted)));
+  box-shadow: 0 0 0 1.5px var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
+}
+
 .permission-mode-select.mode-auto-accept-edits {
-  --permission-mode-fg: var(--ui-status-success-fg, var(--text-success));
-  --permission-mode-border: var(--ui-status-success-border, var(--border-success));
-  --permission-mode-bg: var(--ui-status-success-bg, transparent);
+  --permission-mode-dot-color: var(--ui-status-success-fg, var(--text-success));
 }
 
 .permission-mode-select.mode-dangerously-allow-all {
+  --permission-mode-dot-color: var(--ui-status-warning-fg, var(--text-warning));
   --permission-mode-fg: var(--ui-status-warning-fg, var(--text-warning));
-  --permission-mode-border: var(--ui-status-warning-border, var(--color-warning));
-  --permission-mode-bg: var(--ui-status-warning-bg, transparent);
 }
 
 :global(.inputbox-select-dropdown) {

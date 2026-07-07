@@ -33,36 +33,26 @@
         @confirm-rename="confirmInlineRename"
         @cancel-rename="cancelInlineRename"
         @overflow-change="handleOverflowChange"
-      >
-        <template #before>
-          <div
-            class="sidebar-workspace-actions"
-          >
-            <MenuItem
-              v-for="action in workspaceActions"
-              :key="action.id"
-              :index="panelMenuIndex(action.id)"
-              :title="action.label"
-              class="workspace-action"
-              :style="workspaceActionStyle(action.categorySlot)"
-            >
-              <template #icon>
-                <component
-                  :is="action.icon"
-                  :size="18"
-                  :stroke-width="2"
-                />
-              </template>
-              <template #title>
-                <span class="workspace-action-title">{{ action.label }}</span>
-              </template>
-            </MenuItem>
-          </div>
-        </template>
-      </SessionList>
+      />
 
-      <!-- Bottom bar -->
+      <!-- Bottom bar: low-frequency library entries live here as an icon
+           row so the session list owns the prime sidebar real estate -->
       <div class="sidebar-bottom">
+        <div class="sidebar-bottom-actions">
+          <Button
+            v-for="action in workspaceActions"
+            :key="action.id"
+            text
+            circle
+            class="sidebar-bottom-btn workspace-action-btn"
+            :class="{ 'is-active': activeWorkspacePanel === action.id }"
+            :title="action.label"
+            :aria-label="action.label"
+            :icon="action.icon"
+            :style="workspaceActionStyle(action.categorySlot)"
+            @click="$emit('open-workspace-panel', action.id)"
+          />
+        </div>
         <div class="sidebar-bottom-spacer" />
         <Button
           text
@@ -92,7 +82,6 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import MenuItem from '@/components/common/MenuItem.vue'
 import Space from '@/components/common/Space.vue'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
@@ -207,14 +196,9 @@ const groupedSessions = computed(() => {
 })
 
 const activeSidebarIndex = computed(() => {
-  if (props.activeWorkspacePanel) return panelMenuIndex(props.activeWorkspacePanel)
   if (sessionsStore.currentSessionId) return sessionMenuIndex(sessionsStore.currentSessionId)
   return ''
 })
-
-function panelMenuIndex(panel: WorkspacePanel): string {
-  return `panel:${panel}`
-}
 
 function sessionMenuIndex(sessionId: string): string {
   return `session:${sessionId}`
@@ -227,11 +211,6 @@ function workspaceActionStyle(categorySlot: number): Record<string, string> {
 }
 
 function handleSidebarMenuSelect(index: string) {
-  if (index.startsWith('panel:')) {
-    emit('open-workspace-panel', index.slice('panel:'.length) as WorkspacePanel)
-    return
-  }
-
   if (index.startsWith('session:')) {
     if (editingSessionId.value) return
     emit('select-session', index.slice('session:'.length))
@@ -383,13 +362,15 @@ onUnmounted(() => {
   pointer-events: auto;
 }
 
-/* Floating mode only needs height adjustment since base styles already have margin */
+/* Floating card clears the fixed window-controls strip (traffic lights +
+   sidebar actions, top 12px + 24px) instead of sliding beneath it — list
+   content must never show through that transparent strip. */
 .sidebar.floating .sidebar-content {
   width: var(--sidebar-docked-width);
   min-width: var(--sidebar-docked-width);
   max-width: var(--sidebar-docked-width);
-  height: calc(100% - var(--sidebar-floating-gutter) - var(--sidebar-floating-gutter));
-  margin: var(--sidebar-floating-gutter);
+  height: calc(100% - 44px - var(--sidebar-floating-gutter));
+  margin: 44px var(--sidebar-floating-gutter) var(--sidebar-floating-gutter);
   padding-bottom: 0;
   background: var(--sidebar-bg);
   border: 1px solid color-mix(in srgb, var(--ui-sidebar-border-border, var(--ui-border-subtle-border, var(--border-subtle, var(--border)))) 72%, transparent);
@@ -397,6 +378,12 @@ onUnmounted(() => {
   box-shadow: var(--shadow-floating);
   will-change: transform, opacity;
   pointer-events: auto;
+}
+
+/* The in-card traffic-lights spacer is meaningless when the card already
+   starts below the window controls. */
+.sidebar.floating .sidebar-content :deep(.sidebar-header) {
+  display: none;
 }
 
 .sidebar.floating.floating-closing {
@@ -453,73 +440,22 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-.sidebar-workspace-actions {
+.sidebar-bottom-actions {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 6px 6px 6px 0;
-  margin: 0 6px 2px 0;
-  flex-shrink: 0;
+  align-items: center;
+  gap: 2px;
 }
 
-.workspace-action :deep(.app-menu-item) {
-  width: 100%;
-  height: 34px;
-  padding: 0 10px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-fg, var(--text-sidebar-item)));
-  font-size: 13px;
-  -webkit-app-region: no-drag;
-  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.workspace-action :deep(.app-menu-item:hover),
-.workspace-action :deep(.app-menu-item:focus-visible) {
-  background: color-mix(in srgb, var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent))) 10%, transparent);
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
-  transform: translateX(2px);
-  box-shadow: none;
-}
-
-.workspace-action :deep(.app-menu-item:hover .app-menu-item-icon),
-.workspace-action :deep(.app-menu-item:focus-visible .app-menu-item-icon) {
+/* Library entries stay neutral at rest; category color appears only on
+   hover/active (accent containment). */
+.workspace-action-btn:hover,
+.workspace-action-btn:focus-visible {
   color: var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent)));
-  transform: scale(1.1);
-  opacity: 1;
 }
 
-.workspace-action.is-active :deep(.app-menu-item) {
+.workspace-action-btn.is-active {
   background: color-mix(in srgb, var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent))) 13%, transparent);
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-active-fg, var(--text-sidebar-item)));
-  font-weight: 600;
-  transform: translateX(2px);
-}
-
-.workspace-action :deep(.app-menu-item-icon) {
-  flex: 0 0 auto;
-  color: var(--workspace-action-icon-color, currentColor);
-  opacity: 0.9;
-  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.25s ease, opacity 0.25s ease;
-}
-
-.workspace-action.is-active :deep(.app-menu-item-icon) {
   color: var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent)));
-  transform: scale(1.1);
-  opacity: 1;
-}
-
-.workspace-action :deep(.app-menu-item-label) {
-  flex: 1;
-  min-width: 0;
-}
-
-.workspace-action-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .sidebar-bottom {

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import { sanitizeOutput } from './output-accumulator.js'
 
 export type BackgroundJobStatus = 'running' | 'exited' | 'killed' | 'unknown'
 
@@ -17,6 +18,8 @@ export interface BackgroundJob {
   endedAt?: number
   logPath?: string
   ports?: number[]
+  /** Byte offset of the last readBackgroundJobOutput call, for incremental reads. */
+  logReadOffset?: number
 }
 
 const jobs = new Map<string, BackgroundJob>()
@@ -170,6 +173,69 @@ export function listBackgroundJobs(options: { includeInactive?: boolean } = {}):
   return [...jobs.values()]
     .filter(job => options.includeInactive || job.status === 'running')
     .map(job => ({ ...job, childPids: [...job.childPids], ports: [...(job.ports ?? [])] }))
+}
+
+const BACKGROUND_OUTPUT_READ_MAX_BYTES = 30_000
+
+export interface BackgroundJobOutputRead {
+  job: BackgroundJob
+  /** Sanitized log content since the last read (or from the start). */
+  output: string
+  /** Bytes skipped between the read cursor and the returned window. */
+  omittedBytes: number
+}
+
+/**
+ * Incrementally read a background job's log. Each call advances the job's
+ * read cursor, so consecutive calls return only new output. The returned
+ * window is capped at the last 30KB.
+ */
+export function readBackgroundJobOutput(
+  id: string,
+  options: { fromStart?: boolean } = {},
+): BackgroundJobOutputRead | undefined {
+  const job = jobs.get(id)
+  if (!job) return undefined
+  refreshBackgroundJob(id)
+
+  let output = ''
+  let omittedBytes = 0
+
+  if (job.logPath && fs.existsSync(job.logPath)) {
+    let size = 0
+    try {
+      size = fs.statSync(job.logPath).size
+    } catch {
+      size = 0
+    }
+    const cursor = options.fromStart ? 0 : Math.min(job.logReadOffset ?? 0, size)
+    const readStart = size - cursor > BACKGROUND_OUTPUT_READ_MAX_BYTES
+      ? size - BACKGROUND_OUTPUT_READ_MAX_BYTES
+      : cursor
+    omittedBytes = readStart - cursor
+
+    if (size > readStart) {
+      try {
+        const fd = fs.openSync(job.logPath, 'r')
+        try {
+          const buffer = Buffer.alloc(size - readStart)
+          fs.readSync(fd, buffer, 0, buffer.length, readStart)
+          output = sanitizeOutput(buffer.toString('utf-8'))
+        } finally {
+          fs.closeSync(fd)
+        }
+      } catch {
+        output = ''
+      }
+    }
+    job.logReadOffset = size
+  }
+
+  return {
+    job: { ...job, childPids: [...job.childPids], ports: [...(job.ports ?? [])] },
+    output,
+    omittedBytes,
+  }
 }
 
 export function stopBackgroundJob(id: string): boolean {

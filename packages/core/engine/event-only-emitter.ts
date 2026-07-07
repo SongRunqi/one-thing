@@ -33,9 +33,9 @@ export type CoreEventOnlySessionEvent<
   | { type: 'tool:call'; toolCall: TToolCall }
   | { type: 'tool:result'; toolCall: TToolCall }
   | { type: 'tool:input-start'; toolCallId: string; toolName: string; toolCall: TToolCall }
-  | { type: 'tool:execution-start'; toolCallId: string; stepId: string; toolName: string; args: JsonObject }
+  | { type: 'tool:execution-start'; toolCallId: string; stepId: string; toolName: string; args: JsonObject; startTime?: number }
   | { type: 'tool:execution-update'; toolCallId: string; stepId: string; partialResult: TToolPartialResult }
-  | { type: 'tool:execution-end'; toolCallId: string; stepId: string; result?: TToolResult; isError?: boolean; error?: string }
+  | { type: 'tool:execution-end'; toolCallId: string; stepId: string; result?: TToolResult; isError?: boolean; error?: string; durationMs?: number }
   | { type: 'content:part'; part: TContentPart }
   | { type: 'content:continuation'; turnIndex?: number }
   | { type: 'step:added'; step: TStep }
@@ -277,16 +277,16 @@ export function createCoreEventOnlyEmitter<
       emitSafe({ type: 'tool:input-start', toolCallId, toolName, toolCall })
     },
 
-    sendToolExecutionStart(toolCallId, stepId, toolName, args) {
-      emitSafe({ type: 'tool:execution-start', toolCallId, stepId, toolName, args })
+    sendToolExecutionStart(toolCallId, stepId, toolName, args, startTime) {
+      emitSafe({ type: 'tool:execution-start', toolCallId, stepId, toolName, args, startTime })
     },
 
     sendToolExecutionUpdate(toolCallId, stepId, partialResult) {
       emitSafe({ type: 'tool:execution-update', toolCallId, stepId, partialResult })
     },
 
-    sendToolExecutionEnd(toolCallId, stepId, result, isError, error) {
-      emitSafe({ type: 'tool:execution-end', toolCallId, stepId, result, isError, error })
+    sendToolExecutionEnd(toolCallId, stepId, result, isError, error, durationMs) {
+      emitSafe({ type: 'tool:execution-end', toolCallId, stepId, result, isError, error, durationMs })
     },
 
     sendContentPart(part) {

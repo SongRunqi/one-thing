@@ -62,26 +62,13 @@
     </div>
 
     <!-- Edit mode for user messages -->
-    <div
+    <MessageInlineEdit
       v-if="isEditing"
-      class="edit-container"
-      @click.stop
-    >
-      <TextEditor
-        ref="editEditor"
-        v-model="localEditContent"
-        class="edit-textarea"
-        profile="inline-message"
-        language="markdown"
-        :min-height="60"
-        :max-height="280"
-        :select-on-focus="true"
-        @keydown="handleEditKeyDown"
-        @compositionstart="isEditComposing = true"
-        @compositionend="isEditComposing = false"
-        @height-change="adjustEditTextareaHeight"
-      />
-    </div>
+      :initial-content="editContent || content"
+      :boundary="bubbleRef"
+      @submit="emit('submitEdit', $event)"
+      @cancel="emit('cancelEdit')"
+    />
 
     <!-- Normal display -->
     <div
@@ -97,7 +84,7 @@
           collapsed: role === 'user' && isCollapsed && isOverflowing && !isStreaming,
           'has-overflow': role === 'user' && isOverflowing
         }"
-        :style="role === 'user' && isCollapsed && isOverflowing && !isStreaming ? { maxHeight: MAX_COLLAPSED_HEIGHT + 'px' } : {}"
+        :style="role === 'user' && isCollapsed && isOverflowing && !isStreaming ? { maxHeight: maxCollapsedHeight + 'px' } : {}"
       >
         <!-- New contentParts-based rendering -->
         <template v-if="contentParts && contentParts.length > 0">
@@ -110,141 +97,149 @@
               v-if="firstTextPart"
               class="content md-code-block-scope md-inline-code-scope"
             >
-              <StreamingMarkdown
-                v-if="shouldUseStreamingMarkdown(role === 'user')"
+              <MessageMarkdown
                 :content="firstTextPart.content"
                 :is-user="role === 'user'"
+                :live="shouldUseStreamingMarkdown(role === 'user')"
                 :is-streaming="Boolean(isStreaming)"
-              />
-              <StaticMarkdown
-                v-else
-                :content="firstTextPart.content"
-                :is-user="role === 'user'"
               />
             </div>
           </Transition>
 
-          <component
-            :is="otherPartsTag"
-            v-if="otherParts && otherParts.length > 0"
-            v-bind="otherPartsWrapperProps"
+          <div
+            v-if="partGroups.length > 0"
+            class="other-parts-container"
           >
             <template
-              v-for="(part, index) in otherParts"
-              :key="getOtherPartKey(part, index)"
+              v-for="group in partGroups"
+              :key="group.key"
             >
-              <!-- Generation waiting (工具执行后等待 AI 继续) -->
-              <div
-                v-if="part.type === 'waiting'"
-                class="generation-waiting"
-                role="status"
-                aria-live="polite"
+              <!-- Process rail: a run of reasoning/tool parts collapses
+                   behind one summary line, indented off the answer column -->
+              <ProcessRail
+                v-if="group.kind === 'process'"
+                :summary="processGroupSummary(group)"
+                :streaming="isProcessGroupLive(group)"
+                :solo="isSoloProcessGroup(group)"
+                :failed-count="processGroupFailedCount(group)"
               >
-                <span
-                  class="waiting-dot"
-                  aria-hidden="true"
-                />
-                <span class="waiting-text flowing">Waiting</span>
-              </div>
-              <div
-                v-else-if="part.type === 'image-loading'"
-                class="image-generation-skeleton"
-                role="status"
-                :aria-label="part.label || 'Generating image'"
-                :title="part.label || 'Generating image'"
-              />
-              <PromptReferenceCard
-                v-else-if="part.type === 'prompt-ref'"
-                :title="part.title"
-                :content="part.content"
-                :description="part.description"
-              />
-              <PromptReferenceCard
-                v-else-if="part.type === 'skill-ref'"
-                :title="part.name"
-                :content="part.content"
-                :description="part.description"
-              />
-              <!-- Additional text parts (after the first one) -->
-              <div
-                v-else-if="part.type === 'text'"
-                class="content md-code-block-scope md-inline-code-scope"
-              >
-                <StreamingMarkdown
-                  v-if="shouldUseStreamingMarkdown(role === 'user')"
-                  :content="part.content"
-                  :is-user="role === 'user'"
-                  :is-streaming="Boolean(isStreaming)"
-                />
-                <StaticMarkdown
-                  v-else
-                  :content="part.content"
-                  :is-user="role === 'user'"
-                />
-              </div>
-              <!-- Inline reasoning parts that arrive after answer text -->
-              <CollapsePanel
-                v-else-if="part.type === 'reasoning'"
-                class="inline-reasoning"
-                :name="inlineReasoningKey(part, index)"
-                default-collapsed
-                :status="isStreaming ? 'streaming' : 'completed'"
-                :streaming="Boolean(isStreaming)"
-                variant="plain"
-                expand-icon-position="inline-end"
-                expand-icon-display="hover"
-              >
-                <template #title>
-                  <div class="inline-reasoning-header">
-                    <span class="inline-reasoning-label">Thought</span>
-                    <span
-                      v-if="getInlineReasoningSummary(part)"
-                      class="inline-reasoning-summary"
-                      :title="getInlineReasoningSummary(part)"
-                    >
-                      <span
-                        class="inline-reasoning-summary-separator"
-                        aria-hidden="true"
-                      >·</span>
-                      <span class="inline-reasoning-summary-text">{{ getInlineReasoningSummary(part) }}</span>
-                    </span>
-                  </div>
-                </template>
-
-                <div class="inline-reasoning-body">
+                <template
+                  v-for="{ part, key } in group.entries"
+                  :key="key"
+                >
+                  <!-- Generation waiting (工具执行后等待 AI 继续) -->
                   <div
-                    class="inline-reasoning-content md-body"
+                    v-if="part.type === 'waiting'"
+                    class="generation-waiting"
+                    role="status"
+                    aria-live="polite"
                   >
-                    <StreamingMarkdown
-                      v-if="shouldUseStreamingMarkdown(false)"
-                      :content="cleanReasoningContent(part.content)"
-                      :is-user="false"
+                    <span
+                      class="waiting-dot"
+                      aria-hidden="true"
+                    />
+                    <span class="waiting-text flowing">Waiting</span>
+                  </div>
+                  <!-- Inline reasoning parts -->
+                  <CollapsePanel
+                    v-else-if="part.type === 'reasoning'"
+                    class="inline-reasoning"
+                    :name="key"
+                    default-collapsed
+                    :status="isProcessGroupLive(group) ? 'streaming' : 'completed'"
+                    :streaming="isProcessGroupLive(group)"
+                    variant="plain"
+                    expand-icon-position="inline-end"
+                    expand-icon-display="hover"
+                  >
+                    <template #title>
+                      <div class="inline-reasoning-header">
+                        <span class="inline-reasoning-label">Thought</span>
+                        <span
+                          v-if="getInlineReasoningSummary(part)"
+                          class="inline-reasoning-summary"
+                          :title="getInlineReasoningSummary(part)"
+                        >
+                          <span
+                            class="inline-reasoning-summary-separator"
+                            aria-hidden="true"
+                          >·</span>
+                          <span class="inline-reasoning-summary-text">{{ getInlineReasoningSummary(part) }}</span>
+                        </span>
+                      </div>
+                    </template>
+
+                    <div class="inline-reasoning-body">
+                      <div
+                        class="inline-reasoning-content md-body"
+                      >
+                        <MessageMarkdown
+                          :content="cleanReasoningContent(part.content)"
+                          :is-user="false"
+                          :live="shouldUseStreamingMarkdown(false)"
+                          :is-streaming="Boolean(isStreaming)"
+                        />
+                      </div>
+                    </div>
+                  </CollapsePanel>
+                  <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
+                  <StepsPanel
+                    v-else-if="part.type === 'tool-call' && streamingOnlySteps(part.toolCalls).length > 0"
+                    :steps="streamingOnlySteps(part.toolCalls)"
+                    :session-id="sessionId"
+                    flat
+                    @open-file="(filePath) => emit('openFile', filePath)"
+                  />
+                  <!-- Steps panel - rendered inline -->
+                  <StepsPanel
+                    v-else-if="part.type === 'data-steps' && steps && steps.length > 0"
+                    :steps="getStepsForTurn(part.turnIndex)"
+                    :session-id="sessionId"
+                    flat
+                    @open-file="(filePath) => emit('openFile', filePath)"
+                  />
+                </template>
+              </ProcessRail>
+              <template v-else>
+                <template
+                  v-for="{ part, key } in group.entries"
+                  :key="key"
+                >
+                  <div
+                    v-if="part.type === 'image-loading'"
+                    class="image-generation-skeleton"
+                    role="status"
+                    :aria-label="part.label || 'Generating image'"
+                    :title="part.label || 'Generating image'"
+                  />
+                  <PromptReferenceCard
+                    v-else-if="part.type === 'prompt-ref'"
+                    :title="part.title"
+                    :content="part.content"
+                    :description="part.description"
+                  />
+                  <PromptReferenceCard
+                    v-else-if="part.type === 'skill-ref'"
+                    :title="part.name"
+                    :content="part.content"
+                    :description="part.description"
+                  />
+                  <!-- Additional text parts (after the first one) -->
+                  <div
+                    v-else-if="part.type === 'text'"
+                    class="content md-code-block-scope md-inline-code-scope"
+                  >
+                    <MessageMarkdown
+                      :content="part.content"
+                      :is-user="role === 'user'"
+                      :live="shouldUseStreamingMarkdown(role === 'user')"
                       :is-streaming="Boolean(isStreaming)"
                     />
-                    <StaticMarkdown
-                      v-else
-                      :content="cleanReasoningContent(part.content)"
-                      :is-user="false"
-                    />
                   </div>
-                </div>
-              </CollapsePanel>
-              <!-- Tool call part - show only for streaming input that doesn't have a step yet -->
-              <StepsPanel
-                v-else-if="part.type === 'tool-call' && streamingOnlySteps(part.toolCalls).length > 0"
-                :steps="streamingOnlySteps(part.toolCalls)"
-                :session-id="sessionId"
-                @open-file="(filePath) => emit('openFile', filePath)"
-              />
-              <!-- Steps panel - rendered inline -->
-              <StepsPanel
-                v-else-if="part.type === 'data-steps' && steps && steps.length > 0"
-                :steps="getStepsForTurn(part.turnIndex)"
-                :session-id="sessionId"
-                @open-file="(filePath) => emit('openFile', filePath)"
-              />
+                </template>
+              </template>
             </template>
-          </component>
+          </div>
         </template>
 
         <!-- Fallback for messages without contentParts (user messages and
@@ -255,16 +250,11 @@
           v-else
           class="content md-code-block-scope md-inline-code-scope"
         >
-          <StreamingMarkdown
-            v-if="shouldUseStreamingMarkdown(role === 'user')"
+          <MessageMarkdown
             :content="content"
             :is-user="role === 'user'"
+            :live="shouldUseStreamingMarkdown(role === 'user')"
             :is-streaming="Boolean(isStreaming)"
-          />
-          <StaticMarkdown
-            v-else
-            :content="content"
-            :is-user="role === 'user'"
           />
         </div>
       </div>
@@ -297,18 +287,18 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import StepsPanel from '../StepsPanel.vue'
 import CollapsePanel from '@/components/common/CollapsePanel.vue'
 import PromptReferenceCard from '@/components/common/PromptReferenceCard.vue'
-import StreamingMarkdown from './StreamingMarkdown.vue'
-import StaticMarkdown from './StaticMarkdown.vue'
+import MessageMarkdown from './MessageMarkdown.vue'
+import MessageInlineEdit from './MessageInlineEdit.vue'
+import ProcessRail from './ProcessRail.vue'
 import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
 import { stepFromToolCall } from '@/stores/helpers/tool-step-view'
 import { cleanReasoningContent } from '@/composables/useMarkdownRenderer'
-import TextEditor from '@/editor/TextEditor.vue'
-import type { EditorHandle } from '@/editor'
-import { platformApi } from '@/platform'
+import { useCollapsibleContent } from '@/composables/useCollapsibleContent'
+import { hasVisibleReasoningContent, summarizeReasoningContent } from './reasoning-summary'
 
 interface Props {
   role: 'user' | 'assistant'
@@ -319,7 +309,6 @@ interface Props {
   steps?: Step[]
   skillUsed?: string
   isStreaming?: boolean
-  hideInlineReasoning?: boolean
   isEditing?: boolean
   editContent?: string
   sessionId?: string  // Session ID for AgentExecutionPanel state management
@@ -330,8 +319,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   submitEdit: [content: string]
   cancelEdit: []
-  openImage: [src: string, fileName?: string]
-  contentClick: [event: MouseEvent]
+  openMedia: [payload: { src: string; alt?: string; fileName?: string; mediaId?: string }]
   textSelection: [text: string, position: { top: number; left: number }]
   executeTool: [toolCall: ToolCall]
   openFile: [filePath: string]
@@ -339,18 +327,16 @@ const emit = defineEmits<{
 
 const bubbleRef = ref<HTMLElement | null>(null)
 const contentRef = ref<HTMLElement | null>(null)
-const editEditor = ref<EditorHandle | null>(null)
-const localEditContent = ref('')
-const isEditComposing = ref(false)
 const hasBeenStreaming = ref(Boolean(props.isStreaming))
 
-// Collapsible content
-const MAX_COLLAPSED_HEIGHT = 300 // 最大折叠高度（像素）
-const isCollapsed = ref(true) // 默认折叠
-const isOverflowing = ref(false) // 内容是否超出最大高度
-let resizeObserver: ResizeObserver | null = null
-const INLINE_REASONING_SUMMARY_MAX = 88
+// Collapsible content (only user messages collapse)
 const shouldTrackOverflow = computed(() => props.role === 'user')
+const { isCollapsed, isOverflowing, toggleCollapse, maxCollapsedHeight } = useCollapsibleContent({
+  contentRef,
+  enabled: shouldTrackOverflow,
+  isStreaming: () => Boolean(props.isStreaming),
+  content: () => props.content,
+})
 
 // ============ New overlay-based transition system ============
 
@@ -363,48 +349,177 @@ const firstTextPart = computed(() => {
   return parts[0].type === 'text' ? parts[0] : null
 })
 
-// Other parts for TransitionGroup
-// If firstTextPart captured parts[0], skip it here; otherwise keep all parts in order
-const otherParts = computed(() => {
-  if (!props.contentParts) return []
+// Parts rendered after the first text part, paired with render keys.
+// Keys derive from the part's position in the ORIGINAL contentParts array
+// (or its turnIndex): during streaming, transient parts (e.g. waiting) get
+// filtered in and out, so a filtered-array index would shift and remount
+// every part behind it. If firstTextPart captured parts[0], skip it here;
+// otherwise keep all parts in order.
+const otherPartEntries = computed(() => {
+  const parts = props.contentParts
+  if (!parts) return []
   const hasFirstText = !!firstTextPart.value
   let skippedFirstText = false
   let sawVisiblePartBeforeWaiting = false
+  const entries: { part: ContentPart; key: string }[] = []
 
-  return props.contentParts.filter(p => {
+  parts.forEach((p, sourceIndex) => {
     if (p.type === 'loading-memory' || p.type === 'provider-data') {
-      return false
-    }
-
-    if (p.type === 'reasoning' && props.hideInlineReasoning) {
-      return false
+      return
     }
 
     if (p.type === 'reasoning' && !hasVisibleReasoningContent(p.content)) {
-      return false
+      return
     }
 
     // Skip the initial waiting (handled by MessageThinking)
-    if (p.type === 'waiting') {
-      if (!sawVisiblePartBeforeWaiting) {
-        return false
-      }
-      return true
+    if (p.type === 'waiting' && !sawVisiblePartBeforeWaiting) {
+      return
     }
 
     // Only skip the first text if firstTextPart is rendering it
     if (p.type === 'text' && hasFirstText && !skippedFirstText) {
       skippedFirstText = true
       sawVisiblePartBeforeWaiting = true
-      return false
+      return
     }
-    sawVisiblePartBeforeWaiting = true
-    return true
+
+    if (p.type !== 'waiting') {
+      sawVisiblePartBeforeWaiting = true
+    }
+    entries.push({ part: p, key: getOtherPartKey(p, sourceIndex) })
   })
+
+  return entries
 })
 
-const otherPartsTag = 'div'
-const otherPartsWrapperProps = { class: 'other-parts-container' }
+// ============ Process rail grouping ============
+// Consecutive "process" parts (thinking + tool activity) collapse behind a
+// single ProcessRail; content parts (answer text, references) stay at full
+// volume on the main column.
+
+type PartEntry = { part: ContentPart; key: string }
+type PartGroup = { kind: 'process' | 'content'; key: string; entries: PartEntry[] }
+
+const PROCESS_PART_TYPES = new Set<ContentPart['type']>(['reasoning', 'tool-call', 'data-steps', 'waiting'])
+
+// Group key reuses the first entry's key: contentParts is append-only during
+// streaming, so extending a run never remounts what is already rendered.
+const partGroups = computed<PartGroup[]>(() => {
+  const groups: PartGroup[] = []
+  for (const entry of otherPartEntries.value) {
+    const isProcess = PROCESS_PART_TYPES.has(entry.part.type)
+    const last = groups[groups.length - 1]
+    if (isProcess && last?.kind === 'process') {
+      last.entries.push(entry)
+      continue
+    }
+    if (!isProcess && last?.kind === 'content') {
+      last.entries.push(entry)
+      continue
+    }
+    groups.push({
+      kind: isProcess ? 'process' : 'content',
+      key: `${isProcess ? 'process' : 'content'}-${entry.key}`,
+      entries: [entry],
+    })
+  }
+  return groups
+})
+
+interface ProcessGroupStats {
+  reasoningCount: number
+  toolCount: number
+  failedCount: number
+  toolCounts: Map<string, number>
+  durationMs: number
+}
+
+function processGroupStats(group: PartGroup): ProcessGroupStats {
+  let reasoningCount = 0
+  let toolCount = 0
+  let failedCount = 0
+  const toolCounts = new Map<string, number>()
+  let durationMs = 0
+
+  for (const { part } of group.entries) {
+    if (part.type === 'reasoning') {
+      reasoningCount++
+    } else if (part.type === 'data-steps') {
+      for (const step of getStepsForTurn(part.turnIndex)) {
+        const name = step.toolCall?.toolName || step.title || 'tool'
+        toolCount++
+        toolCounts.set(name, (toolCounts.get(name) ?? 0) + 1)
+        durationMs += step.toolCall?.durationMs ?? 0
+        if (step.status === 'failed') failedCount++
+      }
+    }
+  }
+
+  return { reasoningCount, toolCount, failedCount, toolCounts, durationMs }
+}
+
+function processGroupSummary(group: PartGroup): string {
+  const stats = processGroupStats(group)
+
+  const bits: string[] = []
+  if (stats.reasoningCount > 0) bits.push(`思考 ${stats.reasoningCount} 步`)
+
+  const toolBits = [...stats.toolCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => (count > 1 ? `${name} ×${count}` : name))
+  if (toolBits.length > 4) {
+    const extra = toolBits.length - 4
+    toolBits.length = 4
+    toolBits.push(`+${extra}`)
+  }
+  bits.push(...toolBits)
+
+  if (stats.durationMs >= 1000) bits.push(`${(stats.durationMs / 1000).toFixed(stats.durationMs >= 10_000 ? 0 : 1)}s`)
+
+  return bits.length > 0 ? bits.join(' · ') : '过程'
+}
+
+/** A one-item process reads better as a bare timeline row than as a
+ *  summary header that merely repeats it. */
+function isSoloProcessGroup(group: PartGroup): boolean {
+  const stats = processGroupStats(group)
+  return stats.reasoningCount + stats.toolCount <= 1
+}
+
+function processGroupFailedCount(group: PartGroup): number {
+  return processGroupStats(group).failedCount
+}
+
+const LIVE_STEP_STATUSES = new Set(['pending', 'running', 'awaiting-confirmation'])
+const LIVE_TOOL_STATUSES = new Set(['pending', 'queued', 'executing', 'input-streaming'])
+
+/**
+ * A rail animates only while ITS OWN work is in flight — earlier, finished
+ * process groups must settle even though the message as a whole is still
+ * streaming. "Live" = an in-flight step inside the group, or being the
+ * trailing process group of an actively streaming message (the turn that
+ * is thinking / about to call tools).
+ */
+function isProcessGroupLive(group: PartGroup): boolean {
+  if (!props.isStreaming) return false
+
+  for (const { part } of group.entries) {
+    if (part.type === 'data-steps') {
+      for (const step of getStepsForTurn(part.turnIndex)) {
+        if (LIVE_STEP_STATUSES.has(step.status)) return true
+      }
+    } else if (part.type === 'tool-call') {
+      if (part.toolCalls.some(tc => LIVE_TOOL_STATUSES.has(tc.status))) return true
+    }
+  }
+
+  const groups = partGroups.value
+  for (let i = groups.length - 1; i >= 0; i--) {
+    if (groups[i].kind === 'process') return groups[i] === group
+  }
+  return false
+}
 
 const useLiveAssistantMarkdown = computed(() =>
   props.role === 'assistant' && hasBeenStreaming.value,
@@ -414,17 +529,19 @@ function shouldUseStreamingMarkdown(isUser: boolean): boolean {
   return Boolean(props.isStreaming || (!isUser && useLiveAssistantMarkdown.value))
 }
 
-// Generate stable keys for other parts TransitionGroup
-function getOtherPartKey(part: ContentPart, index: number): string {
-  if (part.type === 'text') return `text-other-${index}`
-  if (part.type === 'reasoning') return inlineReasoningKey(part, index)
-  if (part.type === 'prompt-ref') return `prompt-ref-${part.promptId}-${part.bodyHash || index}`
-  if (part.type === 'skill-ref') return `skill-ref-${part.skillId}-${part.bodyHash || index}`
-  if (part.type === 'tool-call') return `tool-call-${part.toolCalls.map(tc => tc.id).join('-') || index}`
-  if (part.type === 'data-steps') return `steps-${part.turnIndex ?? index}`
-  if (part.type === 'waiting') return `waiting-${part.turnIndex ?? index}`
-  if (part.type === 'image-loading') return `image-loading-${part.turnIndex ?? index}`
-  return `part-${index}`
+// Generate render keys for other parts. `sourceIndex` is the part's index
+// in the original (unfiltered) contentParts array, which is append-only
+// during streaming and therefore stable.
+function getOtherPartKey(part: ContentPart, sourceIndex: number): string {
+  if (part.type === 'text') return `text-other-${sourceIndex}`
+  if (part.type === 'reasoning') return inlineReasoningKey(part, sourceIndex)
+  if (part.type === 'prompt-ref') return `prompt-ref-${part.promptId}-${part.bodyHash || sourceIndex}`
+  if (part.type === 'skill-ref') return `skill-ref-${part.skillId}-${part.bodyHash || sourceIndex}`
+  if (part.type === 'tool-call') return `tool-call-${part.toolCalls.map(tc => tc.id).join('-') || sourceIndex}`
+  if (part.type === 'data-steps') return `steps-${part.turnIndex ?? sourceIndex}`
+  if (part.type === 'waiting') return `waiting-${part.turnIndex ?? sourceIndex}`
+  if (part.type === 'image-loading') return `image-loading-${part.turnIndex ?? sourceIndex}`
+  return `part-${sourceIndex}`
 }
 
 function inlineReasoningKey(part: Extract<ContentPart, { type: 'reasoning' }>, index: number): string {
@@ -435,42 +552,8 @@ function inlineReasoningKey(part: Extract<ContentPart, { type: 'reasoning' }>, i
   return `reasoning-${part.turnIndex ?? index}`
 }
 
-function hasVisibleReasoningContent(content: string): boolean {
-  const cleaned = cleanReasoningContent(content)
-  if (!cleaned) return false
-  return /[\p{L}\p{N}\p{Script=Han}]/u.test(cleaned)
-}
-
 function getInlineReasoningSummary(part: Extract<ContentPart, { type: 'reasoning' }>): string {
   return summarizeReasoningContent(part.content)
-}
-
-function summarizeReasoningContent(content: string): string {
-  const cleaned = cleanReasoningContent(content)
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/[*_~]{1,3}/g, '')
-    .replace(/\r\n/g, '\n')
-
-  const lines = cleaned
-    .split('\n')
-    .map(line => line
-      .replace(/^\s{0,3}(?:#{1,6}|[-*+]|>\s*|\d+[.)])\s+/u, '')
-      .trim())
-    .filter(line => hasVisibleReasoningContent(line))
-
-  const source = lines.join(' ').replace(/\s+/g, ' ').trim()
-  if (!source) return ''
-
-  const boundary = source.search(/[.!?。！？]/u)
-  const sentence = boundary >= 8 ? source.slice(0, boundary + 1) : source
-  return truncateReasoningSummary(sentence)
-}
-
-function truncateReasoningSummary(value: string): string {
-  if (value.length <= INLINE_REASONING_SUMMARY_MAX) return value
-  return `${value.slice(0, INLINE_REASONING_SUMMARY_MAX - 3).trimEnd()}...`
 }
 
 // Computed
@@ -491,10 +574,15 @@ function streamingOnlySteps(toolCalls: ToolCall[]): Step[] {
 }
 
 const hasVisibleContent = computed(() => {
-  return props.content ||
-    (props.attachments && props.attachments.length > 0) ||
-    (props.contentParts && props.contentParts.length > 0) ||
-    !props.isStreaming
+  // The !isStreaming fallback keeps persisted (historical) messages visible
+  // even when they carry no content; only a still-empty streaming message
+  // hides the bubble.
+  return Boolean(
+    props.content ||
+    props.attachments?.length ||
+    props.contentParts?.length ||
+    !props.isStreaming,
+  )
 })
 
 watch(
@@ -510,122 +598,6 @@ function getStepsForTurn(turnIndex: number | undefined) {
   if (turnIndex === undefined) return props.steps
   return props.steps.filter(step => step.turnIndex === turnIndex)
 }
-
-// Edit mode
-watch(
-  () => props.isEditing,
-  (newVal) => {
-    if (newVal) {
-      localEditContent.value = props.editContent || props.content
-      nextTick(() => {
-        editEditor.value?.focus()
-        editEditor.value?.setSelection(0, localEditContent.value.length)
-      })
-    }
-  }
-)
-
-function adjustEditTextareaHeight() {
-  // CodeMirror handles inline editor sizing.
-}
-
-function handleEditKeyDown(e: KeyboardEvent) {
-  if (isEditComposing.value || e.isComposing) return
-
-  if (e.key === 'Escape') {
-    emit('cancelEdit')
-  } else if (e.key === 'Enter' && !e.shiftKey) {
-    e.preventDefault()
-    const trimmed = localEditContent.value.trim()
-    if (trimmed) {
-      emit('submitEdit', trimmed)
-    }
-  }
-}
-
-// Reset collapse state when streaming ends so long user messages re-collapse
-watch(
-  () => props.isStreaming,
-  (newVal, oldVal) => {
-    if (!shouldTrackOverflow.value) return
-    if (!newVal && oldVal) {
-      nextTick(() => {
-        checkOverflow()
-        isCollapsed.value = true
-      })
-    }
-  }
-)
-
-// Re-check overflow when content changes (streaming chunks, edits, etc.)
-watch(
-  () => props.content,
-  () => {
-    if (!shouldTrackOverflow.value) return
-    nextTick(() => checkOverflow())
-  }
-)
-
-// 检测内容是否溢出
-function checkOverflow() {
-  if (!shouldTrackOverflow.value) {
-    isOverflowing.value = false
-    return
-  }
-  if (!contentRef.value) return
-  const scrollHeight = contentRef.value.scrollHeight
-  isOverflowing.value = scrollHeight > MAX_COLLAPSED_HEIGHT
-}
-
-// 切换折叠状态
-function toggleCollapse() {
-  isCollapsed.value = !isCollapsed.value
-}
-
-// 设置 ResizeObserver
-function setupResizeObserver() {
-  if (!shouldTrackOverflow.value) {
-    isOverflowing.value = false
-    return
-  }
-  if (!contentRef.value) return
-
-  resizeObserver = new ResizeObserver(() => {
-    checkOverflow()
-  })
-  resizeObserver.observe(contentRef.value)
-
-  // 初始检查
-  checkOverflow()
-}
-
-// 清理 ResizeObserver
-function cleanupResizeObserver() {
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
-  }
-}
-
-onMounted(() => {
-  // 设置内容溢出检测
-  nextTick(() => setupResizeObserver())
-})
-
-onUnmounted(() => {
-  cleanupResizeObserver()
-})
-
-watch(
-  shouldTrackOverflow,
-  (track) => {
-    cleanupResizeObserver()
-    isOverflowing.value = false
-    if (track) {
-      nextTick(() => setupResizeObserver())
-    }
-  },
-)
 
 // Text selection
 function handleTextSelection() {
@@ -677,7 +649,7 @@ function openImageFromAttachment(attachment: MessageAttachment) {
     })
     return
   }
-  emit('openImage', src, attachment.fileName)
+  emit('openMedia', { src, fileName: attachment.fileName })
 }
 
 function handleContentClick(event: MouseEvent) {
@@ -690,15 +662,12 @@ function handleContentClick(event: MouseEvent) {
     // Check if alt text contains mediaId (format: "Generated Image|mediaId:xxx")
     const mediaIdMatch = alt.match(/\|mediaId:([a-f0-9-]+)/)
     if (mediaIdMatch) {
-      const mediaId = mediaIdMatch[1]
-      console.log('[MessageBubble] Opening gallery for mediaId:', mediaId)
-      platformApi?.openImageGallery(mediaId)
+      emit('openMedia', { src, alt, mediaId: mediaIdMatch[1] })
     } else {
       // Non-media image (attachment, external URL, old format)
-      platformApi?.openImagePreview(src, alt)
+      emit('openMedia', { src, alt })
     }
   }
-  emit('contentClick', event)
 }
 </script>
 
@@ -716,6 +685,18 @@ function handleContentClick(event: MouseEvent) {
 
 .bubble.editing {
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.bubble.user.editing {
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent);
+}
+
+html[data-theme='light'] .bubble.user.editing {
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.04),
+    0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
 }
 
 /* AI messages: remove bubble styling */
@@ -808,7 +789,7 @@ html[data-theme='light'] .bubble.assistant ::selection {
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.1);
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
   border-radius: 8px;
   font-size: var(--type-meta-size);
   font-weight: var(--type-meta-weight);
@@ -826,10 +807,6 @@ html[data-theme='light'] .bubble.assistant ::selection {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-html[data-theme='light'] .attachment-file {
-  background: rgba(0, 0, 0, 0.05);
 }
 
 /* Skill badge */
@@ -853,18 +830,6 @@ html[data-theme='light'] .attachment-file {
 
 .skill-name {
   font-weight: var(--type-meta-weight);
-}
-
-/* Edit container */
-.edit-container {
-  width: 100%;
-}
-
-.edit-textarea {
-  width: 100%;
-  --editor-font-size: var(--message-font-size, var(--type-chat-comfortable-size));
-  min-height: 60px;
-  padding: 12px;
 }
 
 /* Content display */
@@ -936,10 +901,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   }
 }
 
-.content-wrapper.collapsed {
-  /* Gradient mask at bottom when collapsed */
-}
-
+/* Gradient mask at bottom when collapsed */
 .content-wrapper.collapsed::after {
   content: '';
   position: absolute;
@@ -1019,6 +981,9 @@ html[data-theme='light'] .image-generation-skeleton::after {
 .bubble.user .content {
   line-height: var(--message-line-height-px, var(--type-chat-comfortable-line-height-px));
   color: var(--ui-message-user-fg, var(--text-user-primary));
+  /* User input is an instruction, not an article: it speaks UI sans even
+     when the reading font (--font-body override) is a serif. */
+  font-family: var(--font-sans);
 }
 
 /* ============ Text 淡入动画 ============ */
@@ -1168,44 +1133,9 @@ html[data-theme='light'] .image-generation-skeleton::after {
   }
 }
 
-/* ============ Other Parts TransitionGroup ============ */
-
 /* Container for tool-calls, steps, and additional text parts */
 .other-parts-container {
   position: relative;
-}
-
-/* Other parts transition classes */
-.other-parts-enter-active {
-  animation: otherPartsEnter 0.3s ease;
-}
-
-.other-parts-leave-active {
-  position: absolute;  /* 离开时脱离文档流，避免影响布局 */
-  width: 100%;
-  animation: otherPartsLeave 0.25s ease forwards;
-}
-
-.other-parts-move {
-  transition: transform 0.3s ease;
-}
-
-@keyframes otherPartsEnter {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes otherPartsLeave {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
 }
 
 /* Markdown content styles — compact for chat context */
@@ -1335,7 +1265,7 @@ html[data-theme='light'] .content :deep(img:hover) {
 
 .content :deep(th) {
   background: var(--ui-table-header-bg, var(--ui-state-hover-bg, rgba(255, 255, 255, 0.05)));
-  font-weight: 600;
+  font-weight: var(--type-body-strong-weight, 600);
 }
 
 /* Code visuals are shared in styles/markdown.css via .md-code-block-scope and .md-inline-code-scope. */
@@ -1359,13 +1289,9 @@ html[data-theme='light'] .content :deep(img:hover) {
   height: auto;
 }
 
-/* Dark theme: invert MathJax SVG colors */
+/* MathJax SVGs render via currentColor; the semantic token resolves per theme */
 .content :deep(mjx-container svg) {
   color: var(--ui-text-primary-fg, var(--text));
-}
-
-html[data-theme='light'] .content :deep(mjx-container svg) {
-  color: var(--ui-text-primary-fg, #1a1a1a);
 }
 
 </style>

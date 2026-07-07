@@ -329,12 +329,26 @@ onUnmounted(() => {
   box-shadow: none;
   pointer-events: auto;
   transform: translateY(-50%);
+  /* Hidden at rest; fades in on right-edge hover so the system scrollbar
+     stays the only resting scroll indicator. */
+  opacity: 0;
   transition:
     opacity 0.14s ease,
     width 0.16s ease,
     border-color 0.16s ease,
     background-color 0.16s ease,
     box-shadow 0.16s ease;
+}
+
+.user-nav-card:hover,
+.user-nav-card:focus-within,
+.user-nav-card.open {
+  opacity: 1;
+}
+
+.user-nav-rail.placement-side .user-nav-card,
+.user-nav-rail.placement-side .user-nav-card.open {
+  opacity: 1;
 }
 
 .user-nav-card.open {

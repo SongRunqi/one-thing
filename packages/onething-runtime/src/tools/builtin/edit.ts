@@ -21,7 +21,7 @@ import {
   resolveCoreToolPath,
 } from '../sandbox.js'
 import { prepareExactEditPreview, type ExactEdit } from '../edit-engine.js'
-import { trimDiff } from '../replacers.js'
+import { trimDiff, truncateDiffForDisplay } from '../replacers.js'
 import {
   countLineChanges,
   readTextFileSnapshot,
@@ -222,8 +222,9 @@ export function createEditTool(adapters: EditToolAdapters): Tool.Info<typeof Edi
         throwIfAborted()
 
         const emitPlanMetadata = (plan: EditPlan) => {
+          const displayDiff = truncateDiffForDisplay(plan.diff)
           ctx.updateResult?.({
-            content: [{ type: 'text', text: plan.diff || `Preparing ${resolvedPath}` }],
+            content: [{ type: 'text', text: displayDiff || `Preparing ${resolvedPath}` }],
             details: {
               phase: 'preview',
               path: resolvedPath,
@@ -236,10 +237,9 @@ export function createEditTool(adapters: EditToolAdapters): Tool.Info<typeof Edi
             title: `Editing ${basenamePath(resolvedPath)}`,
             metadata: {
               path: resolvedPath,
-              diff: plan.diff,
+              diff: displayDiff,
               additions: plan.additions,
               deletions: plan.deletions,
-              originalContent: plan.snapshot.content,
               originalContentHash: plan.originalContentHash,
             },
           })
@@ -315,13 +315,13 @@ export function createEditTool(adapters: EditToolAdapters): Tool.Info<typeof Edi
             replacements: edits.length,
           },
         })
+        const displayDiff = truncateDiffForDisplay(approvedPlan.diff)
         ctx.metadata({
           metadata: {
             path: resolvedPath,
-            diff: approvedPlan.diff,
+            diff: displayDiff,
             additions: approvedPlan.additions,
             deletions: approvedPlan.deletions,
-            originalContent: contentOld,
             originalContentHash: approvedPlan.originalContentHash,
             auditId: audit.id,
             auditPath: audit.path,
@@ -335,7 +335,7 @@ export function createEditTool(adapters: EditToolAdapters): Tool.Info<typeof Edi
           details: {
             phase: 'ready',
             path: resolvedPath,
-            diff: approvedPlan.diff,
+            diff: displayDiff,
             additions: approvedPlan.additions,
             deletions: approvedPlan.deletions,
             replacements: edits.length,
@@ -349,10 +349,9 @@ export function createEditTool(adapters: EditToolAdapters): Tool.Info<typeof Edi
           output,
           metadata: {
             path: resolvedPath,
-            diff: approvedPlan.diff,
+            diff: displayDiff,
             additions: approvedPlan.additions,
             deletions: approvedPlan.deletions,
-            originalContent: contentOld,
             originalContentHash: approvedPlan.originalContentHash,
             auditId: audit.id,
             auditPath: audit.path,

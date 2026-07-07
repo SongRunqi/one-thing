@@ -1534,12 +1534,21 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
+/* Disclosure stays functional but silent: it only appears on hover or
+   while the entry is open — the resting nav reads icon + label only. */
 .sidebar-entry :deep(.app-sub-menu-chevron) {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
   color: currentColor;
-  opacity: 1;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.sidebar-entry:hover :deep(.app-sub-menu-chevron),
+.sidebar-entry.is-opened :deep(.app-sub-menu-chevron),
+.sidebar-entry.is-active :deep(.app-sub-menu-chevron) {
+  opacity: 0.7;
 }
 
 .sidebar-entry :deep(.app-sub-menu-icon) {
@@ -1696,23 +1705,23 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+/* Developer escape hatch, not a page-level action: quiet text link. */
 .json-settings-button {
-  min-height: 31px;
+  min-height: 28px;
   flex-shrink: 0;
-  padding: 0 10px;
-  border: 1px solid var(--settings-rule);
+  padding: 0 8px;
+  border: none;
   border-radius: 5px;
-  background: color-mix(in srgb, var(--settings-paper-3) 84%, transparent);
-  color: var(--settings-ink-2);
+  background: transparent;
+  color: var(--settings-ink-4);
   font: inherit;
-  font-size: 14px;
-  font-weight: 560;
+  font-size: 12.5px;
+  font-weight: 500;
   cursor: pointer;
   -webkit-app-region: no-drag;
 }
 
 .json-settings-button:hover {
-  border-color: color-mix(in srgb, var(--settings-accent) 42%, var(--settings-rule));
   background: color-mix(in srgb, var(--settings-paper-3) 92%, var(--settings-accent-soft));
   color: var(--settings-ink);
 }
@@ -1779,17 +1788,19 @@ onUnmounted(() => {
   border-bottom: 1px solid var(--settings-rule);
 }
 
+/* Group headers are UI chrome, not data: system sans, small caps rhythm.
+   Mono stays reserved for values, paths, and save-state metadata. */
 :deep(.settings-section-title),
 :deep(.section-label),
 :deep(.section-title) {
   margin: 0;
   color: var(--settings-ink-4);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12.5px;
-  font-weight: 650;
-  letter-spacing: 0;
+  font-family: var(--font-body, inherit);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   line-height: 1.35;
-  text-transform: none;
+  text-transform: uppercase;
 }
 
 :deep(.section-label::after),

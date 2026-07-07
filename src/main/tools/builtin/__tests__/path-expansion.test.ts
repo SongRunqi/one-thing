@@ -86,7 +86,9 @@ describe('builtin file tool path expansion', () => {
     }, ctx)
 
     await expect(fs.readFile(filePath, 'utf-8')).resolves.toBe('done\n')
-    expect(result.metadata.originalContent).toBe('after\n')
+    // The diff is based on the post-gate snapshot ('after'), not the original 'before'.
+    expect(result.metadata.diff).toContain('-after')
+    expect(result.metadata.diff).toContain('+done')
   })
 
   it('write reads original content after the ordered write gate', async () => {
@@ -104,6 +106,8 @@ describe('builtin file tool path expansion', () => {
     }, ctx)
 
     await expect(fs.readFile(filePath, 'utf-8')).resolves.toBe('final\n')
-    expect(result.metadata.originalContent).toBe('latest\n')
+    // The diff is based on the post-gate snapshot ('latest'), not the original 'before'.
+    expect(result.metadata.diff).toContain('-latest')
+    expect(result.metadata.diff).toContain('+final')
   })
 })
