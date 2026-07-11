@@ -134,6 +134,11 @@ export class OnethingSessionRepository<
 > {
   private readonly sessionCache: LRUCache<string, TSession>
   private readonly sessionSaveQueue: AsyncSaveQueue<TSession>
+  /**
+   * 有未落盘写入的会话的强引用快照,防止 LRU 淘汰后 getLatest 落空导致静默丢写。
+   * 写入成功、重试耗尽或删除/取消时释放,保证不随触碰过的会话数无界增长。
+   */
+  private readonly pendingSessionValues = new Map<string, TSession>()
   /** 队列挂起期间累计的写入计划;落盘时取走,由驱动决定 meta/后缀/全量 */
   private readonly pendingWritePlans = new Map<string, SessionWritePlan>()
   /** 已删除但文件清理仍在排队的会话:读路径的同步屏障,防止从盘上复活 */
@@ -143,17 +148,24 @@ export class OnethingSessionRepository<
     this.sessionCache = new LRUCache<string, TSession>(options.cacheSize ?? 10)
     this.sessionSaveQueue = new AsyncSaveQueue<TSession>({
       throttleMs: options.saveThrottleMs ?? 300,
-      getLatest: sessionId => this.sessionCache.get(sessionId),
+      // 优先取缓存中的活对象;被 LRU 淘汰后回退到挂起快照,杜绝落空跳过。
+      getLatest: sessionId => this.sessionCache.get(sessionId) ?? this.pendingSessionValues.get(sessionId),
       write: async (sessionId, session) => {
         const plan = this.takePendingWritePlan(sessionId)
         const stored = dehydrateSessionForStorage(session)
         if (this.options.storageDriver) {
           await this.options.storageDriver.write(sessionId, stored, plan)
-          return
+        } else {
+          await this.options.writeJsonFileAsync(this.options.getSessionPath(sessionId), stored)
         }
-        await this.options.writeJsonFileAsync(this.options.getSessionPath(sessionId), stored)
+        // 写成功后释放快照;若期间有更新的 saveSessionToFile 换了引用则保留,交由其后续写入清理。
+        if (this.pendingSessionValues.get(sessionId) === session) {
+          this.pendingSessionValues.delete(sessionId)
+        }
       },
       onError: (sessionId, error) => this.options.logger?.error?.(`[Sessions] async save failed for ${sessionId}:`, error),
+      // 重试耗尽:释放快照避免无界增长(数据在此确实丢失,但已通过 onError 记录)。
+      onRetryExhausted: sessionId => this.pendingSessionValues.delete(sessionId),
     })
   }
 
@@ -168,6 +180,7 @@ export class OnethingSessionRepository<
   cancelPendingSave(sessionId: string): void {
     this.sessionSaveQueue.cancel(sessionId)
     this.pendingWritePlans.delete(sessionId)
+    this.pendingSessionValues.delete(sessionId)
     this.options.cancelPendingSideEffects?.(sessionId)
   }
 
@@ -177,6 +190,8 @@ export class OnethingSessionRepository<
     options?: { lazy?: boolean; plan?: SessionWritePlan },
   ): void {
     this.sessionCache.set(sessionId, session)
+    // 保留强引用,直至该写入成功落盘(见 getLatest / write 回调),防止淘汰后丢写。
+    this.pendingSessionValues.set(sessionId, session)
     this.mergePendingWritePlan(sessionId, options?.plan ?? STRUCTURAL_WRITE_PLAN)
     this.sessionSaveQueue.schedule(
       sessionId,

@@ -7091,7 +7091,9 @@ export function createLocalServerSessionStore(
 		if (missing.length === 0) return;
 		const start = Date.now();
 		for (const meta of missing) {
-			const session = repository.getSession(meta.id);
+			// 只读加载(不 sanitize、不入队写会话体):避免 headless server 在启动 backfill 时
+			// 重写 Electron 拥有的会话体,与其 suffix 写竞态损坏 messages.jsonl。
+			const session = repository.getSessionRaw(meta.id);
 			meta.userId = session?.userId;
 			meta.workspaceId = session?.workspaceId;
 			meta.ownerVersion = SESSION_INDEX_OWNER_VERSION;

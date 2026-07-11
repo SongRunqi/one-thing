@@ -107,4 +107,73 @@ describe('AsyncSaveQueue', () => {
     expect(writes).toEqual([])
     vi.useRealTimers()
   })
+
+  it('retries a failed write with backoff until it succeeds', async () => {
+    vi.useFakeTimers()
+
+    let attempts = 0
+    const values = new Map([['s1', { count: 1 }]])
+    const queue = new AsyncSaveQueue<{ count: number }>({
+      throttleMs: 300,
+      retryBaseDelayMs: 500,
+      getLatest: id => values.get(id),
+      write: async () => {
+        attempts += 1
+        if (attempts < 3) throw new Error('disk busy')
+      },
+    })
+
+    queue.schedule('s1')
+    await vi.advanceTimersByTimeAsync(300) // first attempt fails
+    expect(attempts).toBe(1)
+    await vi.advanceTimersByTimeAsync(500) // retry 1 (fails)
+    expect(attempts).toBe(2)
+    await vi.advanceTimersByTimeAsync(1000) // retry 2 (succeeds)
+    expect(attempts).toBe(3)
+    // 成功后条目被清理
+    expect(queue.getPendingIds()).toEqual([])
+    vi.useRealTimers()
+  })
+
+  it('gives up after maxRetries and reports exhaustion', async () => {
+    vi.useFakeTimers()
+
+    const exhausted: string[] = []
+    const queue = new AsyncSaveQueue<{ count: number }>({
+      throttleMs: 300,
+      maxRetries: 2,
+      retryBaseDelayMs: 100,
+      getLatest: () => ({ count: 1 }),
+      write: async () => {
+        throw new Error('permanent failure')
+      },
+      onRetryExhausted: id => exhausted.push(id),
+    })
+
+    queue.schedule('s1')
+    await vi.advanceTimersByTimeAsync(300) // attempt 1
+    await vi.advanceTimersByTimeAsync(100) // retry 1
+    await vi.advanceTimersByTimeAsync(200) // retry 2 -> exhausted
+    expect(exhausted).toEqual(['s1'])
+    expect(queue.getPendingIds()).toEqual([])
+    vi.useRealTimers()
+  })
+
+  it('removes idle entries after a successful timer-driven write', async () => {
+    vi.useFakeTimers()
+
+    const values = new Map([['s1', { count: 1 }]])
+    const queue = new AsyncSaveQueue<{ count: number }>({
+      throttleMs: 300,
+      getLatest: id => values.get(id),
+      write: async () => {},
+    })
+
+    queue.schedule('s1')
+    expect(queue.getPendingIds()).toEqual(['s1'])
+    await vi.advanceTimersByTimeAsync(300)
+    // 定时驱动写入完成后应自行清理,不再无界增长
+    expect(queue.getPendingIds()).toEqual([])
+    vi.useRealTimers()
+  })
 })

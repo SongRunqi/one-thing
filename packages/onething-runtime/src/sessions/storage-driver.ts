@@ -64,6 +64,8 @@ export interface HybridSessionStorageDriverOptions {
   readJsonFile<TValue>(filePath: string, fallback: TValue): TValue
   writeJsonFileAsync(filePath: string, data: unknown): Promise<void>
   deleteJsonFile(filePath: string): void
+  /** 惰性迁移触发前的延迟(毫秒),默认 1000;测试可设 0 以确定性触发 */
+  migrationDelayMs?: number
   logger?: { info?(...args: unknown[]): void; warn?(...args: unknown[]): void; error?(...args: unknown[]): void }
 }
 
@@ -124,6 +126,8 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
   const logger = options.logger
   /** 每次 write() 递增;迁移提交前比对,期间有写入则放弃本次迁移 */
   const writeGenerations = new Map<string, number>()
+  /** 每会话在途写入的 promise;迁移读取 legacy 前先排空,防止在途写重建已迁移的 legacy 文件 */
+  const inFlightWrites = new Map<string, Promise<void>>()
   const migrationScheduled = new Set<string>()
 
   const sessionDir = (sessionId: string) => path.join(options.getSessionsDir(), sessionId)
@@ -395,6 +399,11 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
     const legacyPath = options.getLegacySessionPath(sessionId)
     if (!fs.existsSync(legacyPath)) return false
 
+    // 先排空该会话在途的 legacy 写入:否则一个在捕获 generation 之前发起、尚未落盘的写入
+    // 会让迁移读到旧内容,并在提交后重建 legacy 文件,使新数据永久落在无人读取的 backup 里。
+    await inFlightWrites.get(sessionId)
+
+    // 排空后同步捕获代际并读取,二者之间无 await,保证读到的是最新已落盘内容。
     const generation = writeGenerations.get(sessionId) ?? 0
     const session = options.readJsonFile<TSession | null>(legacyPath, null)
     if (!session) return false
@@ -423,8 +432,12 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
         throw new Error('migrated jsonl log failed verification')
       }
 
-      // 提交在同一个同步 tick 内完成:期间有写入(代际变化)或 jsonl 已出现则放弃
-      if ((writeGenerations.get(sessionId) ?? 0) !== generation || jsonlExists(sessionId)) {
+      // 提交在同一个同步 tick 内完成:期间有写入(代际变化 / 在途写入)或 jsonl 已出现则放弃
+      if (
+        (writeGenerations.get(sessionId) ?? 0) !== generation ||
+        inFlightWrites.has(sessionId) ||
+        jsonlExists(sessionId)
+      ) {
         await fs.promises.rm(stagingDir, { recursive: true, force: true })
         return jsonlExists(sessionId)
       }
@@ -447,8 +460,11 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
     if (options.newSessionFormat() !== 'jsonl') return
     migrationScheduled.add(sessionId)
     setTimeout(() => {
-      void migrateToJsonlNow(sessionId)
-    }, 1000)
+      void migrateToJsonlNow(sessionId).then(done => {
+        // 因并发写入放弃时,解除标记,让后续 load() 在写入平静后重新触发迁移。
+        if (!done) migrationScheduled.delete(sessionId)
+      })
+    }, options.migrationDelayMs ?? 1000)
   }
 
   // ============ 驱动实现 ============
@@ -465,11 +481,19 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
 
     async write(sessionId, session, plan) {
       writeGenerations.set(sessionId, (writeGenerations.get(sessionId) ?? 0) + 1)
-      if (format(sessionId) === 'jsonl') {
-        await writeJsonl(sessionId, session, plan)
-        return
+      const writePromise = format(sessionId) === 'jsonl'
+        ? writeJsonl(sessionId, session, plan)
+        : options.writeJsonFileAsync(options.getLegacySessionPath(sessionId), session)
+      // 登记在途写入,供惰性迁移排空;失败也算完成(migration 会另行处理)。
+      const token = writePromise.then(() => {}, () => {})
+      inFlightWrites.set(sessionId, token)
+      try {
+        await writePromise
+      } finally {
+        if (inFlightWrites.get(sessionId) === token) {
+          inFlightWrites.delete(sessionId)
+        }
       }
-      await options.writeJsonFileAsync(options.getLegacySessionPath(sessionId), session)
     },
 
     delete(sessionId) {

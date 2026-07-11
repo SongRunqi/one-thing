@@ -274,6 +274,56 @@ function hasObjectBefore(json: string, arrayStart: number, byteStart: number): b
   return collectSlicesBackward(json, byteStart - 1, arrayStart, 1).length > 0
 }
 
+/**
+ * 统计 [arrayStart, boundary) 内已闭合的顶层消息对象数量(仅字节扫描,不做 JSON.parse)。
+ * 用于把反向扫描窗口的局部 seq 还原成与全量扫描一致的全局升序 seq。
+ */
+function countObjectsBefore(json: string, arrayStart: number, boundary: number): number {
+  let count = 0
+  let objectDepth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = arrayStart + 1; i < boundary; i++) {
+    const ch = json[i]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      } else if (ch === '\\') {
+        escaped = true
+      } else if (ch === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (ch === '"') {
+      inString = true
+    } else if (ch === '{') {
+      objectDepth++
+    } else if (ch === '}') {
+      objectDepth--
+      if (objectDepth === 0) count++
+    }
+  }
+
+  return count
+}
+
+/**
+ * collectSlicesBackward 赋的是窗口内局部降序 seq(reverse 后仍非全局);
+ * 这里按窗口首个对象之前的对象数,把 seq 归一成全局升序,与 collectMessageSlices 的语义一致。
+ * 否则 backwardsCursor(局部 seq)+ direction:'newer' 会被慢路径当全局 seq 解释,翻回会话开头。
+ */
+function assignGlobalSeq(json: string, arrayStart: number, slices: MessageSlice[]): void {
+  if (slices.length === 0) return
+  const baseSeq = countObjectsBefore(json, arrayStart, slices[0].start) + 1
+  for (let i = 0; i < slices.length; i++) {
+    slices[i].seq = baseSeq + i
+  }
+}
+
 function fastTailPage<TMessage extends StoredChatMessage>(
   request: GetSessionMessagesPageRequest,
   json: string,
@@ -282,6 +332,7 @@ function fastTailPage<TMessage extends StoredChatMessage>(
   limit: number,
 ): GetSessionMessagesPageResponse<TMessage> {
   const slices = collectSlicesBackward(json, arrayEnd - 1, arrayStart, limit)
+  assignGlobalSeq(json, arrayStart, slices)
   return fastResponseFromSlices(
     request.sessionId,
     json,
@@ -303,6 +354,7 @@ function fastOlderPage<TMessage extends StoredChatMessage>(
     ? (cursor.byteEnd ?? cursor.byteStart) - 1
     : cursor.byteStart - 1
   const slices = collectSlicesBackward(json, startFrom, arrayStart, limit)
+  assignGlobalSeq(json, arrayStart, slices)
   return fastResponseFromSlices(
     request.sessionId,
     json,

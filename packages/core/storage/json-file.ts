@@ -189,14 +189,33 @@ function stringifyJsonForFile(data: unknown, options?: WriteJsonFileOptions): st
   return options?.pretty === false ? JSON.stringify(data) : JSON.stringify(data, null, 2)
 }
 
+let atomicTmpCounter = 0
+
+/**
+ * 原子写入用的唯一临时名:含 pid + 时间 + 递增计数,避免多进程/并发写同一目标时
+ * 争抢固定的 `<file>.tmp`(会互相覆盖 tmp 或 rename ENOENT,损坏 index/会话文件)。
+ */
+function atomicTmpPath(filePath: string): string {
+  const dir = path.dirname(filePath)
+  const base = path.basename(filePath)
+  atomicTmpCounter = (atomicTmpCounter + 1) % Number.MAX_SAFE_INTEGER
+  return path.join(dir, `.${base}.${process.pid}.${Date.now()}.${atomicTmpCounter}.tmp`)
+}
+
 export function writeJsonFile<T>(filePath: string, data: T, options?: WriteJsonFileOptions): void {
+  const tmpPath = atomicTmpPath(filePath)
   try {
     const dir = path.dirname(filePath)
     ensureDir(dir)
-    const tmpPath = filePath + '.tmp'
     fs.writeFileSync(tmpPath, stringifyJsonForFile(data, options), 'utf-8')
     fs.renameSync(tmpPath, filePath)
   } catch (error) {
+    // 清理可能残留的临时文件,避免崩溃点积累孤儿 .tmp
+    try {
+      fs.unlinkSync(tmpPath)
+    } catch {
+      // 已不存在或无权限,忽略
+    }
     console.error(`Error writing ${filePath}:`, error)
     throw error
   }
@@ -224,9 +243,14 @@ export function writeTextFileInDir(baseDir: string, relativePath: string, conten
 export async function writeJsonFileAsync<T>(filePath: string, data: T, options?: WriteJsonFileOptions): Promise<void> {
   const dir = path.dirname(filePath)
   await fsp.mkdir(dir, { recursive: true })
-  const tmpPath = filePath + '.tmp'
-  await fsp.writeFile(tmpPath, stringifyJsonForFile(data, options), 'utf-8')
-  await fsp.rename(tmpPath, filePath)
+  const tmpPath = atomicTmpPath(filePath)
+  try {
+    await fsp.writeFile(tmpPath, stringifyJsonForFile(data, options), 'utf-8')
+    await fsp.rename(tmpPath, filePath)
+  } catch (error) {
+    await fsp.unlink(tmpPath).catch(() => {})
+    throw error
+  }
 }
 
 export async function writeTextFileAtomic(filePath: string, content: string): Promise<void> {
