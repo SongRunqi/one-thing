@@ -160,7 +160,10 @@ const onethingPackageAliases = [
   { find: '@onething/runtime/themes/theme-runtime', replacement: resolve(__dirname, 'packages/onething-runtime/src/themes/theme-runtime.ts') },
   { find: '@onething/runtime/themes', replacement: resolve(__dirname, 'packages/onething-runtime/src/themes/index.ts') },
   { find: '@onething/runtime/todo-plan', replacement: resolve(__dirname, 'packages/onething-runtime/src/todo-plan/index.ts') },
+  { find: '@onething/runtime/variables/providers/background-jobs', replacement: resolve(__dirname, 'packages/onething-runtime/src/variables/providers/background-jobs.ts') },
   { find: '@onething/runtime/variables/providers/core', replacement: resolve(__dirname, 'packages/onething-runtime/src/variables/providers/core.ts') },
+  { find: '@onething/runtime/variables/providers/datetime', replacement: resolve(__dirname, 'packages/onething-runtime/src/variables/providers/datetime.ts') },
+  { find: '@onething/runtime/variables/providers/git-branch', replacement: resolve(__dirname, 'packages/onething-runtime/src/variables/providers/git-branch.ts') },
   { find: '@onething/runtime/variables/providers/global-store', replacement: resolve(__dirname, 'packages/onething-runtime/src/variables/providers/global-store.ts') },
   { find: '@onething/runtime/variables/providers/notes', replacement: resolve(__dirname, 'packages/onething-runtime/src/variables/providers/notes.ts') },
   { find: '@onething/runtime/variables/providers/session-store', replacement: resolve(__dirname, 'packages/onething-runtime/src/variables/providers/session-store.ts') },
@@ -193,6 +196,7 @@ const onethingPackageAliases = [
   { find: '@onething/runtime/tools/sensitive-files', replacement: resolve(__dirname, 'packages/onething-runtime/src/tools/sensitive-files.ts') },
   { find: '@onething/runtime/tools/text-truncation', replacement: resolve(__dirname, 'packages/onething-runtime/src/tools/text-truncation.ts') },
   { find: '@onething/runtime/tools', replacement: resolve(__dirname, 'packages/onething-runtime/src/tools/index.ts') },
+  { find: '@onething/runtime/perf', replacement: resolve(__dirname, 'packages/onething-runtime/src/perf/index.ts') },
   { find: '@onething/runtime', replacement: resolve(__dirname, 'packages/onething-runtime/src/index.ts') },
 ]
 

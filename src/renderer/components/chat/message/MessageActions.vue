@@ -78,6 +78,61 @@
       </Button>
     </Tooltip>
 
+    <!-- Downvote button (evals incident capture) -->
+    <Tooltip
+      v-if="role === 'assistant'"
+      :text="downvoted ? 'Reported' : 'Report bad response'"
+    >
+      <Button
+        ref="downvoteBtnRef"
+        unstyled
+        class="action-btn downvote-btn"
+        :class="{ downvoted }"
+        @click="handleDownvote"
+      >
+        <ThumbsDown
+          :size="14"
+          :stroke-width="downvoted ? 2.5 : 1.5"
+        />
+      </Button>
+    </Tooltip>
+    <!-- Downvote note popover: the one-liner is the only human input the
+         eval system asks for — it becomes the incident's expectation/rubric. -->
+    <Teleport to="body">
+      <div
+        v-if="showDownvoteNote"
+        class="downvote-note-panel"
+        :style="downvoteNoteStyle"
+        @click.stop
+      >
+        <textarea
+          ref="downvoteNoteInput"
+          v-model="downvoteNote"
+          class="downvote-note-input"
+          rows="2"
+          placeholder="哪里不对 / 应该怎么做?(可选,一句话)"
+          @keydown.enter.exact.prevent="submitDownvote()"
+          @keydown.esc.prevent="cancelDownvoteNote"
+        />
+        <div class="downvote-note-actions">
+          <Button
+            unstyled
+            class="downvote-note-btn secondary"
+            @click="submitDownvote(true)"
+          >
+            跳过
+          </Button>
+          <Button
+            unstyled
+            class="downvote-note-btn primary"
+            @click="submitDownvote()"
+          >
+            记录事故
+          </Button>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Branch button (for assistant messages) -->
     <Tooltip
       v-if="role === 'assistant'"
@@ -239,11 +294,13 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { useTTS } from '@/composables/useTTS'
 import { stripMarkdown } from '@/composables/useMarkdownRenderer'
 import { copyTextToClipboard } from '@/utils/clipboard'
+import { platformApi } from '@/platform'
+import { useEvalsWorkbenchStore } from '@/stores/evalsWorkbench'
 import {
   Copy,
   Check,
@@ -256,6 +313,7 @@ import {
   Plus,
   MoreHorizontal,
   Hash,
+  ThumbsDown,
 } from 'lucide-vue-next'
 
 interface BranchInfo {
@@ -279,6 +337,7 @@ interface Props {
   usage?: TokenUsage
   model?: string
   messageId: string
+  sessionId?: string
 }
 
 const props = defineProps<Props>()
@@ -290,7 +349,10 @@ const emit = defineEmits<{
   branch: []
   goToBranch: [sessionId: string]
   menuOpen: [isOpen: boolean]
+  downvote: []
 }>()
+
+const workbenchStore = useEvalsWorkbenchStore()
 
 // TTS
 const { isSupported: ttsSupported, isSpeaking, speak, stop } = useTTS()
@@ -337,6 +399,79 @@ async function handleCopy() {
   setTimeout(() => {
     copied.value = false
   }, 2000)
+}
+
+// Downvote (evals incident capture)
+const downvoted = ref(false)
+const showDownvoteNote = ref(false)
+const downvoteNote = ref('')
+const downvoteBtnRef = ref<{ $el?: HTMLElement } | HTMLElement | null>(null)
+const downvoteNoteInput = ref<HTMLTextAreaElement | null>(null)
+const downvoteNotePosition = ref({ top: 0, left: 0 })
+
+const downvoteNoteStyle = computed(() => ({
+  position: 'fixed' as const,
+  top: `${downvoteNotePosition.value.top}px`,
+  left: `${downvoteNotePosition.value.left}px`,
+  zIndex: 1000,
+}))
+
+function handleDownvote() {
+  if (downvoted.value) return
+  if (!props.sessionId) {
+    console.error('Downvote recording failed: no sessionId available for this message')
+    return
+  }
+
+  if (showDownvoteNote.value) {
+    showDownvoteNote.value = false
+    return
+  }
+
+  const el = (downvoteBtnRef.value as { $el?: HTMLElement })?.$el
+    ?? (downvoteBtnRef.value as HTMLElement | null)
+  if (el?.getBoundingClientRect) {
+    const rect = el.getBoundingClientRect()
+    const panelWidth = 320
+    const padding = 8
+    let left = rect.left
+    if (left + panelWidth > window.innerWidth - padding) {
+      left = window.innerWidth - panelWidth - padding
+    }
+    downvoteNotePosition.value = { top: rect.bottom + 6, left }
+  }
+  showDownvoteNote.value = true
+  downvoteNote.value = ''
+  void nextTick(() => downvoteNoteInput.value?.focus())
+}
+
+function cancelDownvoteNote() {
+  showDownvoteNote.value = false
+  downvoteNote.value = ''
+}
+
+async function submitDownvote(skipNote = false) {
+  if (!props.sessionId) return
+  showDownvoteNote.value = false
+  const note = skipNote ? undefined : downvoteNote.value.trim() || undefined
+
+  try {
+    const result = await platformApi.recordEvalsDownvote({
+      sessionId: props.sessionId,
+      turnId: props.messageId,
+      userMessage: props.content,
+      note,
+    })
+    downvoted.value = true
+    emit('downvote')
+    // The incident is created quietly; the workbench stays out of the way
+    // (open it later from Settings → Evals when reviewing incidents).
+    if (result.success && result.incidentId) {
+      workbenchStore.notePendingIncident(result.incidentId)
+    }
+  } catch (error) {
+    console.error('Downvote recording failed:', error)
+  }
 }
 
 // Branch menu
@@ -565,6 +700,64 @@ onUnmounted(() => {
 
 .regenerate-btn:hover svg {
   transform: rotate(180deg);
+}
+
+/* Downvote button */
+.downvote-note-panel {
+  width: 320px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.downvote-note-input {
+  width: 100%;
+  resize: vertical;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-input-bg, var(--bg-input));
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+.downvote-note-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.downvote-note-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.downvote-note-btn.secondary {
+  color: var(--ui-text-secondary-fg, var(--text-secondary));
+}
+
+.downvote-note-btn.primary {
+  background: var(--ui-status-danger-bg);
+  color: var(--ui-status-danger-fg, #e74c3c);
+  border: 1px solid var(--ui-status-danger-border);
+}
+
+.downvote-btn.downvoted {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.downvote-btn.downvoted:hover {
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
 }
 
 /* Copy button success state - when showing check icon */

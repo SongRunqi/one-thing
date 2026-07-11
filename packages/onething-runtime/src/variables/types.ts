@@ -1,3 +1,16 @@
+/**
+ * How often a variable's value is expected to change, which decides where it
+ * is rendered:
+ * - 'static' (default): stable across turns → the system-prompt
+ *   "# Context Variables" section. A change busts the prompt-cache prefix,
+ *   so only low-churn values belong here.
+ * - 'turn': may change every turn (datetime, git branch) → injected after the
+ *   latest user message as a <context-update> block, never into the prefix.
+ * - 'on-demand': surfaced only in `variable` tool output and the Context
+ *   inspector; never rendered into the prompt.
+ */
+export type VariableVolatility = 'static' | 'turn' | 'on-demand'
+
 export interface ContextVariable {
   name: string
   value: string
@@ -5,6 +18,7 @@ export interface ContextVariable {
   scope?: 'global' | 'session'
   description?: string
   readonly?: boolean
+  volatility?: VariableVolatility
   updatedAt?: number
 }
 
@@ -19,6 +33,12 @@ export interface SetInput {
   value: string
   scope?: 'global' | 'session'
   description?: string
+  /**
+   * Custom variables may opt into 'turn' so frequent updates ride the
+   * per-turn <context-update> channel instead of rewriting the system
+   * prompt (which would invalidate the prompt-cache prefix every time).
+   */
+  volatility?: VariableVolatility
 }
 
 export interface VariableProvider {
@@ -67,6 +87,9 @@ export const RESERVED_NAMES = Object.freeze([
   'ai_note_dir',
   'user_note_dir',
   'work_note_dir',
+  'datetime',
+  'git_branch',
+  'background_jobs',
 ] as const)
 
 export type ReservedName = (typeof RESERVED_NAMES)[number]

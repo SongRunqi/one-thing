@@ -1,0 +1,216 @@
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
+import type {
+  CoreSession,
+  CoreSessionDetails,
+  CoreSessionMeta,
+  CoreTimelineStep,
+  CoreToolCallState,
+  StoredChatMessage,
+  UserMessageMarker,
+} from '@onething/core/session'
+import { createOnethingSessionRepository } from '../session-repository.js'
+import { createHybridSessionStorageDriver } from '../storage-driver.js'
+
+// 启动阶段的全量 sanitize 扫描已删除,冷加载(repository.getSession)是
+// 崩溃恢复的唯一防线。本文件把原 sanitizeAllSessionsOnStartup 的四类修复
+// 钉在冷加载路径上:isStreaming 复位、中断 step 置 failed、executing/pending
+// toolCall 置 cancelled、过期 context-compact 系统消息置 failed。
+
+interface TestMessage extends StoredChatMessage {
+  content: string
+  isStreaming?: boolean
+  toolCalls?: Array<CoreToolCallState & { id: string }>
+  steps?: CoreTimelineStep[]
+}
+
+interface TestSession extends CoreSession<TestMessage> {
+  id: string
+  workingDirectory?: string
+  workingDirectoryRoots?: string[]
+}
+
+const tempDirs: string[] = []
+
+function createTempSessionsDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-crash-recovery-'))
+  const sessionsDir = path.join(dir, 'sessions')
+  fs.mkdirSync(sessionsDir, { recursive: true })
+  tempDirs.push(dir)
+  return sessionsDir
+}
+
+function readJsonFile<TValue>(filePath: string, fallback: TValue): TValue {
+  if (!fs.existsSync(filePath)) return fallback
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8')) as TValue
+  } catch {
+    return fallback
+  }
+}
+
+function writeJsonFile(filePath: string, data: unknown): void {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8')
+}
+
+function createRepository(sessionsDir: string) {
+  const storageDriver = createHybridSessionStorageDriver<TestSession>({
+    getSessionsDir: () => sessionsDir,
+    getLegacySessionPath: sessionId => path.join(sessionsDir, `${sessionId}.json`),
+    newSessionFormat: () => 'jsonl',
+    readJsonFile,
+    writeJsonFileAsync: async (filePath, data) => {
+      writeJsonFile(filePath, data)
+    },
+    deleteJsonFile: filePath => fs.rmSync(filePath, { force: true }),
+  })
+
+  return createOnethingSessionRepository<
+    TestSession,
+    TestMessage,
+    CoreSessionMeta,
+    CoreSessionDetails,
+    UserMessageMarker
+  >({
+    defaultAgentId: 'default-agent',
+    getSessionsDir: () => sessionsDir,
+    getSessionPath: sessionId => path.join(sessionsDir, `${sessionId}.json`),
+    readJsonFile,
+    writeJsonFile,
+    writeJsonFileAsync: async (filePath, data) => {
+      writeJsonFile(filePath, data)
+    },
+    deleteJsonFile: filePath => fs.rmSync(filePath, { force: true }),
+    storageDriver,
+    getCurrentSessionId: () => '',
+    setCurrentSessionId: () => {},
+    getDefaultWorkingDirectory: () => '/tmp/workspace',
+    logger: { info: () => {}, error: () => {} },
+  })
+}
+
+function makeCrashedSession(now: number): TestSession {
+  return {
+    id: 'crashed',
+    messages: [
+      { id: 'm1', role: 'user', content: '触发一个长任务', timestamp: now - 60_000 },
+      {
+        id: 'm2',
+        role: 'assistant',
+        content: '进行中…',
+        timestamp: now - 50_000,
+        isStreaming: true,
+        toolCalls: [
+          { id: 't1', status: 'executing' },
+          { id: 't2', status: 'pending' },
+        ],
+        steps: [
+          {
+            title: 'Running: bash',
+            status: 'running',
+            toolCall: { status: 'executing' },
+            childSteps: [
+              { title: '等待授权', status: 'awaiting-confirmation' },
+            ],
+          },
+        ],
+      } as TestMessage,
+      {
+        id: 'm3',
+        role: 'system',
+        timestamp: now - 11 * 60 * 1000,
+        content: JSON.stringify({
+          type: 'context-compact',
+          status: 'compacting',
+          summary: '压缩到一半',
+          compactedMessageCount: 12,
+        }),
+      },
+    ],
+  } as TestSession
+}
+
+afterEach(() => {
+  for (const dir of tempDirs.splice(0)) {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+describe('crash recovery via cold load', () => {
+  it('repairs an interrupted streaming session on first load after a crash', async () => {
+    const sessionsDir = createTempSessionsDir()
+    const now = Date.now()
+
+    // 用独立实例落盘"崩溃现场",再追加半行模拟进程死在 jsonl 写入中途。
+    const seeder = createRepository(sessionsDir)
+    seeder.saveSessionToFile('crashed', makeCrashedSession(now))
+    await seeder.flushSessionSave('crashed')
+    const logPath = path.join(sessionsDir, 'crashed', 'messages.jsonl')
+    expect(fs.existsSync(logPath)).toBe(true)
+    fs.appendFileSync(logPath, '{"id":"m4","role":"assistant","content":"写到一半被杀', 'utf-8')
+
+    // 全新实例(空缓存)冷加载 —— 即原启动扫描被替代后的真实恢复路径。
+    const repository = createRepository(sessionsDir)
+    const session = repository.getSession('crashed')
+    expect(session).toBeDefined()
+
+    const messages = session!.messages
+    expect(messages.map(message => message.id)).toEqual(['m1', 'm2', 'm3'])
+
+    const assistant = messages[1]
+    expect(assistant.isStreaming).toBe(false)
+    expect(assistant.toolCalls?.map(toolCall => toolCall.status)).toEqual(['cancelled', 'cancelled'])
+
+    const step = assistant.steps![0]
+    expect(step.status).toBe('failed')
+    expect(step.title).toBe('Interrupted: bash')
+    expect(step.error).toBeTruthy()
+    expect(step.toolCall?.status).toBe('cancelled')
+    expect(step.childSteps![0]).toMatchObject({
+      status: 'failed',
+      error: 'Interrupted: permission request was not answered',
+    })
+
+    const compact = JSON.parse(messages[2].content) as { status: string; error?: string }
+    expect(compact.status).toBe('failed')
+    expect(compact.error).toBeTruthy()
+
+    // 修复必须写回磁盘:再开第三个实例,绕过 sanitize 的原始读取应已是修复后状态。
+    await repository.flushSessionSave('crashed')
+    const raw = createRepository(sessionsDir).getSessionRaw('crashed')
+    expect(raw?.messages[1].isStreaming).toBe(false)
+    expect(raw?.messages[1].toolCalls?.map(toolCall => toolCall.status)).toEqual(['cancelled', 'cancelled'])
+  })
+
+  it('leaves a cleanly finished session untouched', async () => {
+    const sessionsDir = createTempSessionsDir()
+    const seeder = createRepository(sessionsDir)
+    const clean: TestSession = {
+      id: 'clean',
+      messages: [
+        { id: 'm1', role: 'user', content: 'hi', timestamp: 1 },
+        {
+          id: 'm2',
+          role: 'assistant',
+          content: 'done',
+          timestamp: 2,
+          isStreaming: false,
+          toolCalls: [{ id: 't1', status: 'completed' }],
+          steps: [{ title: 'bash', status: 'completed' }],
+        } as TestMessage,
+      ],
+    } as TestSession
+    seeder.saveSessionToFile('clean', clean)
+    await seeder.flushSessionSave('clean')
+    const before = fs.readFileSync(path.join(sessionsDir, 'clean', 'messages.jsonl'), 'utf-8')
+
+    const session = createRepository(sessionsDir).getSession('clean')
+    expect(session?.messages[1].toolCalls?.[0].status).toBe('completed')
+    expect(session?.messages[1].steps?.[0].status).toBe('completed')
+    const after = fs.readFileSync(path.join(sessionsDir, 'clean', 'messages.jsonl'), 'utf-8')
+    expect(after).toBe(before)
+  })
+})

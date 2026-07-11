@@ -6,6 +6,21 @@ import type { AIProviderId, TypographyDensity } from '../../shared/ipc'
 import { createDefaultSettings } from '../../shared/defaults/settings'
 import { platformApi } from '@/platform'
 
+const CHAT_FONT_CACHE_KEY = 'cached-chat-fonts'
+
+// Cache chat font ids for main.ts to preload before first paint (same pattern
+// as 'cached-theme'). Settings arrive via async IPC, too late for preload.
+function cacheChatFonts(settings: { chat?: { chatFontEn?: string; chatFontZh?: string } }) {
+  try {
+    localStorage.setItem(CHAT_FONT_CACHE_KEY, JSON.stringify({
+      en: settings.chat?.chatFontEn ?? null,
+      zh: settings.chat?.chatFontZh ?? null,
+    }))
+  } catch {
+    // localStorage may be unavailable (private browsing, storage quota)
+  }
+}
+
 function isThemeDebugEnabled(): boolean {
   return import.meta.env.DEV && localStorage.getItem('onething:debug-theme') === '1'
 }
@@ -215,6 +230,7 @@ export const useSettingsStore = defineStore('settings', () => {
         await applyAppearanceFromSettings(undefined, {
           refreshSystemTheme: settings.value.theme === 'system',
         })
+        cacheChatFonts(settings.value)
       }
 
       if (providersResponse.success && providersResponse.providers) {
@@ -293,6 +309,7 @@ export const useSettingsStore = defineStore('settings', () => {
       }
       const savedSettings = response.settings ?? plainSettings
       settings.value = savedSettings
+      cacheChatFonts(savedSettings)
 
       // Only apply theme if theme-related settings actually changed
       if (themeChanged) {

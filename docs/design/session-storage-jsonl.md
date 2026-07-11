@@ -1,6 +1,11 @@
 # 会话持久化改造:JSONL 追加式存储设计方案
 
-状态:设计评审中
+状态:Phase 0-2 已实施(2026-07-07)。flag `settings.storage.sessionFormat` 默认 **jsonl**(设 legacy-json 即回滚);
+惰性迁移在会话冷加载时触发(暂存目录 + 写代际冲突检测 + 逐条校验 + legacy-backup);
+真实数据灰度:164 会话 276MB 双向转换往返,语义 diff = 0。
+偏差记录:`rebuild:sqlite:node` 保留(memory 系统仍用 better-sqlite3,test 脚本依赖);
+repository/message-runtime 的 `sqlite?` 适配器接口位与 `syncSessionToSqliteIfReady` 调用链暂保留为空挂钩,后续单独清理。
+Phase 3(steps/toolCalls 去重已由 session-dehydrate 覆盖大半;blob 外置)待实施。
 日期:2026-07-07
 前置阅读:`docs/design/long-session-storage-and-rendering.md`(旧 SQLite 方案,已废弃)
 
@@ -299,6 +304,23 @@ CLAUDE.md 更新:"会话持久化 = meta.json + messages.jsonl;索引/搜索能�
 3.1 steps/toolCalls 重复调查与去重
 3.2 blob 外置 + 加载/IPC 按需取 + 删除级联
 3.3 写入硬上限与告警
+
+### Phase 4 — legacy 退役(观察期后执行)
+
+前置条件(2026-07-08 已达成前三项):
+- ✅ 存量批量转换完成(`convert-sessions.mjs --to=jsonl` + `--verify` 全过,sessions/ 下无裸 `<id>.json`)
+- ✅ Electron 新会话默认 jsonl
+- ✅ server 新会话切 jsonl(不再产生新 legacy 数据)
+- ⏳ 真实使用观察 1–2 周:`[Perf][SessionPage]` source 稳定为 jsonl-log,无反复 `jsonl log recovered` 告警
+
+观察期过后删除:
+- storage-driver 中 legacy 分支与惰性迁移机制(`convert-sessions.mjs` 脚本永久保留)
+- `json-message-page.ts` 字节扫描分页(core 与 `src/main/stores/session-repository/` 两份,只服务 legacy)
+- flag 的 `'legacy-json'` 取值;`resolveSessionMessagesPage` 降级链简化为 jsonl-log → 整载兜底
+- repository/message-runtime 遗留的 `sqlite?` 空挂钩与 `syncSessionToSqliteIfReady` 调用链(同批清理)
+- `legacy-backup/` 数据文件满 30 天后删除(与删代码解耦;脚本可随时把备份转回)
+
+若未来对外发布:legacy 读路径 + 惰性迁移需跨至少一个发布版本再删(升级用户盘上是旧格式);写路径可先删。
 
 ---
 

@@ -12,6 +12,7 @@ import {
   formatMessagesForLog,
   getTextFromContent,
   historyMessagesForLog,
+  renderContextUpdateBlock,
   sanitizeToolResultForAI,
 } from '@onething/core/engine'
 import {
@@ -26,7 +27,7 @@ export { formatMessagesForLog, getTextFromContent, sanitizeToolResultForAI }
  * Convert message with attachments to multimodal format
  */
 export function buildMessageContent(message: ChatMessage): AIMessageContent {
-  return buildOnethingMessageContent(labelUserMessageForModel(message), {
+  return buildOnethingMessageContent(prepareUserMessageForModel(message), {
     onImageAttachment: ({ mimeType, base64Length, dataUrlPrefix }) => {
       console.log('[Chat] Adding image attachment:', {
         mimeType,
@@ -66,7 +67,7 @@ export function buildHistoryMessages(
   messages: ChatMessage[],
   session?: { id?: string; summary?: string; summaryUpToMessageId?: string }
 ): HistoryMessage[] {
-  return buildOnethingHistoryMessages(messages.map(labelUserMessageForModel), session, {
+  return buildOnethingHistoryMessages(messages.map(prepareUserMessageForModel), session, {
     onImageAttachment: ({ mimeType, base64Length, dataUrlPrefix }) => {
       console.log('[Chat] Adding image attachment:', {
         mimeType,
@@ -100,6 +101,10 @@ export function buildHistoryMessages(
   }) as HistoryMessage[]
 }
 
+function prepareUserMessageForModel(message: ChatMessage): ChatMessage {
+  return appendContextUpdateForModel(labelUserMessageForModel(message))
+}
+
 function labelUserMessageForModel(message: ChatMessage): ChatMessage {
   if (message.role !== 'user') return message
   const actor = message.origin?.actor
@@ -110,6 +115,19 @@ function labelUserMessageForModel(message: ChatMessage): ChatMessage {
   return {
     ...message,
     content: `${speaker} said:\n${message.content}`,
+  }
+}
+
+/**
+ * Render the persisted turn-volatile context block into the model-facing
+ * content. The stored field is replayed verbatim on every history rebuild so
+ * the request bytes stay identical (prompt-cache safe, append-only history).
+ */
+function appendContextUpdateForModel(message: ChatMessage): ChatMessage {
+  if (message.role !== 'user' || !message.contextUpdate) return message
+  return {
+    ...message,
+    content: renderContextUpdateBlock(message.content, message.contextUpdate),
   }
 }
 

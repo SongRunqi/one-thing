@@ -1,0 +1,635 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Side Panel × Workbench · 画线两案</title>
+<style>
+/* ============================================================
+   0. 基础色板（与 sidebar/line-style-options.html 同源:
+   variables.css Flexoki 纸墨 + paper-ink.json 传统色）
+   ============================================================ */
+:root {
+  --bg-app: #e6e4d9;
+  --bg-panel: #f2f0e5;
+  --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653;
+  --text-secondary: #6f6e69;
+  --text-muted: #878580;
+  --text-faint: #9f9d96;
+  --border-default: #cecdc3;
+  --border-subtle: #e6e4d9;
+  --border-strong: #b7b5ac;
+
+  /* 两案各执一色:批注朱砂 / 制图黛蓝 */
+  --zhusha: #a63c26;
+  --dailan: #39586f;
+
+  --font-display: "Lora", "Source Han Serif SC", "Noto Serif SC", Georgia, "Songti SC", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #282726;
+    --bg-panel: #343331;
+    --bg-chat: #343331;
+    --bg-hover: rgba(255, 255, 255, 0.04);
+    --text-primary: #f2f0e5;
+    --text-secondary: #e6e4d9;
+    --text-muted: #b7b5ac;
+    --text-faint: #9f9d96;
+    --border-default: #575653;
+    --border-subtle: #403e3c;
+    --border-strong: #6f6e69;
+    --zhusha: #c96f5b;
+    --dailan: #7a9cb8;
+  }
+}
+:root[data-theme="light"] {
+  --bg-app: #e6e4d9; --bg-panel: #f2f0e5; --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653; --text-secondary: #6f6e69;
+  --text-muted: #878580; --text-faint: #9f9d96;
+  --border-default: #cecdc3; --border-subtle: #e6e4d9; --border-strong: #b7b5ac;
+  --zhusha: #a63c26; --dailan: #39586f;
+}
+:root[data-theme="dark"] {
+  --bg-app: #282726; --bg-panel: #343331; --bg-chat: #343331;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --text-primary: #f2f0e5; --text-secondary: #e6e4d9;
+  --text-muted: #b7b5ac; --text-faint: #9f9d96;
+  --border-default: #575653; --border-subtle: #403e3c; --border-strong: #6f6e69;
+  --zhusha: #c96f5b; --dailan: #7a9cb8;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 48px clamp(16px, 5vw, 72px) 96px;
+}
+
+/* ============ 页首 ============ */
+.page-head { max-width: 1080px; margin: 0 auto 40px; }
+.page-head h1 {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-bottom: 10px;
+}
+.page-head p { color: var(--text-secondary); max-width: 64ch; }
+.page-head .thesis { margin-top: 6px; color: var(--text-muted); font-size: 12px; }
+.page-head .thesis b { color: var(--zhusha); font-weight: 600; }
+.page-head .thesis b.b2 { color: var(--dailan); }
+
+/* ============ 并排现场 ============ */
+.stage-wrap { max-width: 1080px; margin: 0 auto 56px; }
+.stage-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.stage {
+  display: flex;
+  height: 560px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-chat);
+  overflow: hidden;
+  box-shadow: 0 8px 28px rgba(76, 69, 54, 0.09);
+}
+.chat-sliver {
+  flex: 1 1 auto;
+  min-width: 180px;
+  padding: 28px 24px;
+  border-right: 1px solid var(--border-subtle);
+  color: var(--text-faint);
+  overflow: hidden;
+}
+.chat-sliver .bubble {
+  border: 1px solid var(--border-subtle);
+  padding: 10px 14px;
+  max-width: 220px;
+  margin-bottom: 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.chat-sliver .bubble.user { margin-left: auto; background: var(--bg-panel); }
+.ghost-line { height: 8px; background: var(--bg-hover); margin-bottom: 10px; border-radius: 2px; }
+.ghost-line.w60 { width: 60%; }
+.ghost-line.w80 { width: 80%; }
+.ghost-line.w40 { width: 40%; }
+
+/* ================================================================
+   方案甲 · 书目 Index —— side panel
+   词汇:全横向 / 点线引导 / 零封闭零圆角零底色 / 朱砂圈点
+   状态活在点线上:悬停点线变实,完成把点描成墨
+   ================================================================ */
+.side-panel {
+  flex: 0 0 236px;
+  background: var(--bg-chat);
+  padding: 18px 16px 18px 18px;
+  overflow-y: auto;
+  font-size: 12px;
+}
+
+/* 节头:圈点 + 眉批小标 + 余下全是点线 */
+.idx-section { margin-bottom: 26px; }
+.idx-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.idx-mark {          /* 圈点:朱砂空心圈,该节活动时填实 */
+  width: 7px; height: 7px;
+  border: 1.5px solid var(--zhusha);
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.idx-head.live .idx-mark { background: var(--zhusha); }
+.idx-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.idx-head .leader { flex: 1 1 auto; }
+.leader {             /* 点线:整个方案唯一的"线" */
+  height: 0;
+  border-bottom: 1.5px dotted var(--border-strong);
+  transform: translateY(1px);
+}
+.idx-fold {           /* 收合记号:不是箭头,是"未展开的一折" */
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* 目录行:文字 …… 页码。悬停时这一行的点线描实 */
+.idx-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.idx-row .t {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70%;
+}
+.idx-row .leader { flex: 1 1 auto; border-bottom-color: var(--border-default); }
+.idx-row .n {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.idx-row:hover .t { color: var(--text-primary); }
+.idx-row:hover .leader { border-bottom-style: solid; border-bottom-color: var(--text-muted); }
+.idx-row:hover .n { color: var(--text-secondary); }
+.idx-row.lv2 { padding-left: 16px; }
+.idx-row.now .t { color: var(--zhusha); }
+.idx-row.now .n { color: var(--zhusha); }
+.idx-row.now .leader { border-bottom-style: solid; border-bottom-color: var(--zhusha); opacity: 0.5; }
+
+/* 系统提示:词条式 label …… value,同一套点线 */
+.idx-kv { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; }
+.idx-kv .k {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.idx-kv .leader { flex: 1 1 auto; border-bottom-color: var(--border-subtle); }
+.idx-kv .v { color: var(--text-secondary); font-size: 11.5px; }
+
+/* 任务:描红 —— 点线基线,做完一段描一段实 */
+.idx-todo { padding: 4px 0; }
+.idx-todo .row { display: flex; align-items: baseline; gap: 8px; }
+.idx-todo .t { color: var(--text-secondary); }
+.idx-todo.done .t { color: var(--text-faint); }
+.idx-todo.done .leader { border-bottom-style: solid; border-bottom-color: var(--zhusha); opacity: 0.45; }
+.idx-todo .st {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+}
+.idx-todo.done .st { color: var(--zhusha); }
+.idx-todo.doing .t { color: var(--text-primary); }
+.idx-todo.doing .st { color: var(--zhusha); }
+.idx-progress {       /* 总进度:一条被描到 2/3 的点线 */
+  position: relative;
+  margin: 10px 0 2px;
+  border-bottom: 1.5px dotted var(--border-default);
+}
+.idx-progress i {
+  position: absolute;
+  left: 0; bottom: -1.5px;
+  width: 66%;
+  border-bottom: 1.5px solid var(--zhusha);
+}
+
+/* ================================================================
+   方案乙 · 台面 Bench —— workbench
+   词汇:全直角实线 / 框不闭合只留角标 / 左缘刻度尺 / 黛蓝制图
+   状态活在线宽与角标上:活动页签由卡尺括号托住
+   ================================================================ */
+.workbench {
+  flex: 0 0 300px;
+  position: relative;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+/* 签名:左缘刻度尺。细刻 8px 一格,40px 一长刻 */
+.workbench::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 8px;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      var(--border-strong) 0 1px, transparent 1px 8px
+    ) left / 4px 100% no-repeat,
+    repeating-linear-gradient(
+      to bottom,
+      var(--border-strong) 0 1px, transparent 1px 40px
+    ) left / 8px 100% no-repeat;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* 页签 = 尺寸线:一条基线,两端有止点,活动项落卡尺括号 */
+.wb-tabs {
+  display: flex;
+  align-items: stretch;
+  height: 36px;
+  padding: 0 10px 0 14px;
+  position: relative;
+}
+.wb-tabs::after {      /* 尺寸线:基线 + 两端止点 */
+  content: "";
+  position: absolute;
+  left: 10px; right: 10px; bottom: 0;
+  height: 5px;
+  border-bottom: 1px solid var(--border-default);
+  border-left: 1px solid var(--border-strong);
+  border-right: 1px solid var(--border-strong);
+}
+.wb-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  z-index: 1;
+}
+.wb-tab .x { font-size: 10px; color: var(--text-faint); }
+.wb-tab:hover { color: var(--text-primary); }
+.wb-tab.active { color: var(--dailan); }
+.wb-tab.active::after {   /* 卡尺括号 ⌞____⌟ */
+  content: "";
+  position: absolute;
+  left: 4px; right: 4px; bottom: 0;
+  height: 5px;
+  border-left: 1.5px solid var(--dailan);
+  border-right: 1.5px solid var(--dailan);
+  border-bottom: 1.5px solid var(--dailan);
+}
+.wb-tab-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  z-index: 1;
+}
+.wb-tab-actions button {
+  width: 20px; height: 20px;
+  border: 0; background: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.wb-tab-actions button:hover { color: var(--dailan); }
+
+/* 工作面:框永不闭合,只有四只角标(裁切线) */
+.wb-body { flex: 1 1 auto; padding: 16px 14px 14px 18px; overflow: hidden; display: flex; flex-direction: column; gap: 14px; }
+.crop {
+  position: relative;
+  padding: 12px;
+}
+.crop i {
+  position: absolute;
+  width: 9px; height: 9px;
+  border: 0 solid var(--border-strong);
+  pointer-events: none;
+}
+.crop i:nth-child(1) { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.crop i:nth-child(2) { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.crop i:nth-child(3) { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+.crop i:nth-child(4) { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+.crop:hover i { border-color: var(--dailan); }
+
+/* 骑线标签:标签压在角标顶线上,像图纸上的图名 */
+.crop .ride {
+  position: absolute;
+  top: -7px; left: 10px;
+  padding: 0 6px;
+  background: var(--bg-panel);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+/* 终端内容 */
+.term { flex: 1 1 auto; font-family: var(--font-mono); font-size: 11.5px; overflow: hidden; }
+.term .ln { padding: 2px 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term .ln .ps { color: var(--dailan); margin-right: 7px; }
+.term .ln.out { color: var(--text-muted); }
+.term-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-default);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.term-input .ps { color: var(--dailan); }
+.term-input .caret {
+  width: 7px; height: 13px;
+  background: var(--dailan);
+  opacity: 0.7;
+}
+.term-input .hint { color: var(--text-faint); }
+
+/* 文件行(第二块示意) */
+.wb-files .f {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.wb-files .f:hover { color: var(--dailan); }
+.wb-files .f .tick {   /* 行首短刻,呼应左缘刻度 */
+  width: 6px;
+  border-top: 1px solid var(--border-strong);
+  flex: 0 0 auto;
+}
+.wb-files .f:hover .tick { border-color: var(--dailan); width: 10px; }
+.wb-files .f .sz { margin-left: auto; color: var(--text-faint); font-size: 10px; }
+
+/* ============ 线谱(签名对照) ============ */
+.glossary { max-width: 1080px; margin: 0 auto 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 900px) { .glossary { grid-template-columns: 1fr; } .stage { height: auto; flex-wrap: wrap; } .chat-sliver { display: none; } }
+.gcol {
+  border-top: 1px solid var(--border-default);
+  padding-top: 16px;
+}
+.gcol h2 {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+}
+.gcol h2 em { font-style: normal; font-size: 12px; color: var(--text-faint); margin-left: 8px; letter-spacing: 0.02em; }
+.gcol .who { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
+.gcol.a h2 { color: var(--zhusha); }
+.gcol.b h2 { color: var(--dailan); }
+
+.spec { display: grid; grid-template-columns: 128px 1fr; gap: 10px 16px; align-items: center; }
+.spec .draw { height: 22px; position: relative; }
+.spec .why { font-size: 12px; color: var(--text-secondary); }
+.spec .why small { display: block; color: var(--text-faint); font-size: 11px; }
+
+/* 甲的线谱样本 */
+.sp-leader { border-bottom: 1.5px dotted var(--border-strong); height: 0; margin-top: 11px; }
+.sp-leader-solid { border-bottom: 1.5px solid var(--text-muted); height: 0; margin-top: 11px; }
+.sp-mark { width: 7px; height: 7px; border: 1.5px solid var(--zhusha); border-radius: 50%; margin-top: 7px; }
+.sp-trace { border-bottom: 1.5px dotted var(--border-default); height: 0; margin-top: 11px; position: relative; }
+.sp-trace i { position: absolute; left: 0; bottom: -1.5px; width: 60%; border-bottom: 1.5px solid var(--zhusha); }
+
+/* 乙的线谱样本 */
+.sp-dim { position: relative; margin-top: 10px; border-bottom: 1px solid var(--border-strong); }
+.sp-dim::before, .sp-dim::after {
+  content: ""; position: absolute; bottom: -3px; width: 1px; height: 7px; background: var(--border-strong);
+}
+.sp-dim::before { left: 0; } .sp-dim::after { right: 0; }
+.sp-caliper { position: relative; margin-top: 14px; height: 5px; border-left: 1.5px solid var(--dailan); border-right: 1.5px solid var(--dailan); border-bottom: 1.5px solid var(--dailan); width: 72px; }
+.sp-crop { position: relative; height: 20px; }
+.sp-crop i { position: absolute; width: 8px; height: 8px; border: 0 solid var(--border-strong); }
+.sp-crop i:nth-child(1) { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+.sp-crop i:nth-child(2) { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+.sp-crop i:nth-child(3) { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+.sp-crop i:nth-child(4) { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+.sp-rule { height: 22px; width: 8px;
+  background:
+    repeating-linear-gradient(to bottom, var(--border-strong) 0 1px, transparent 1px 5px) left / 4px 100% no-repeat,
+    repeating-linear-gradient(to bottom, var(--border-strong) 0 1px, transparent 1px 20px) left / 8px 100% no-repeat;
+}
+
+/* ============ 页尾对照表 ============ */
+.contrast { max-width: 1080px; margin: 0 auto; border-top: 1px solid var(--border-default); padding-top: 16px; }
+.contrast h2 { font-family: var(--font-display); font-size: 15px; margin-bottom: 12px; }
+.contrast table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.contrast th, .contrast td { text-align: left; padding: 7px 12px 7px 0; border-bottom: 1px dotted var(--border-default); }
+.contrast th { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); font-weight: 500; }
+.contrast td.a { color: var(--zhusha); }
+.contrast td.b { color: var(--dailan); }
+.contrast td:first-child { color: var(--text-muted); width: 120px; }
+</style>
+
+<div class="page-head">
+  <h1>Side Panel × Workbench · 画线两案</h1>
+  <p>两块右侧面板贴身并排,现在同穿一件卡片外衣,分不出谁是谁。给它们各配一门线语言:
+     side panel 是<b>读</b>的器官,workbench 是<b>做</b>的器官。</p>
+  <p class="thesis">甲 · <b>书目</b>:横向点线,朱砂圈点,来自书籍目录与批注 ——
+     乙 · <b>台面</b>:直角实线,黛蓝角标,来自图板与量具。<b class="b2">点对实、横对角、朱对蓝</b>,并排永不混淆。</p>
+</div>
+
+<!-- ==================== 并排现场 ==================== -->
+<div class="stage-wrap">
+  <div class="stage-label">In situ · 聊天 + side panel(甲)+ workbench(乙)</div>
+  <div class="stage">
+
+    <div class="chat-sliver">
+      <div class="bubble user">基于这个 html,给我生成一个图片</div>
+      <div class="ghost-line w80"></div>
+      <div class="ghost-line w60"></div>
+      <div class="ghost-line w40"></div>
+      <div class="bubble">已生成图片,尺寸 900 × 620。</div>
+      <div class="ghost-line w60"></div>
+    </div>
+
+    <!-- 方案甲:书目 -->
+    <aside class="side-panel">
+      <section class="idx-section">
+        <div class="idx-head live">
+          <span class="idx-mark"></span>
+          <span class="idx-title">大纲</span>
+          <span class="leader"></span>
+          <span class="idx-fold">−</span>
+        </div>
+        <div class="idx-row">
+          <span class="t">需求:HTML 转图片</span><span class="leader"></span><span class="n">01</span>
+        </div>
+        <div class="idx-row lv2">
+          <span class="t">选定 cascade 布局</span><span class="leader"></span><span class="n">02</span>
+        </div>
+        <div class="idx-row lv2 now">
+          <span class="t">导出 PNG 900×620</span><span class="leader"></span><span class="n">03</span>
+        </div>
+        <div class="idx-row">
+          <span class="t">尺寸微调讨论</span><span class="leader"></span><span class="n">04</span>
+        </div>
+      </section>
+
+      <section class="idx-section">
+        <div class="idx-head">
+          <span class="idx-mark"></span>
+          <span class="idx-title">系统提示</span>
+          <span class="leader"></span>
+          <span class="idx-fold">−</span>
+        </div>
+        <div class="idx-kv"><span class="k">prompt</span><span class="leader"></span><span class="v">151 chars</span></div>
+        <div class="idx-kv"><span class="k">tools</span><span class="leader"></span><span class="v">3 loaded</span></div>
+        <div class="idx-kv"><span class="k">runtime</span><span class="leader"></span><span class="v">Agent loop</span></div>
+        <div class="idx-kv"><span class="k">skills</span><span class="leader"></span><span class="v">Off</span></div>
+        <div class="idx-kv"><span class="k">agent</span><span class="leader"></span><span class="v">default</span></div>
+      </section>
+
+      <section class="idx-section">
+        <div class="idx-head">
+          <span class="idx-mark"></span>
+          <span class="idx-title">任务</span>
+          <span class="leader"></span>
+          <span class="idx-fold">−</span>
+        </div>
+        <div class="idx-todo done">
+          <div class="row"><span class="t">生成 HTML 版式</span><span class="leader"></span><span class="st">讫</span></div>
+        </div>
+        <div class="idx-todo done">
+          <div class="row"><span class="t">渲染并导出 PNG</span><span class="leader"></span><span class="st">讫</span></div>
+        </div>
+        <div class="idx-todo doing">
+          <div class="row"><span class="t">按反馈调整留白</span><span class="leader"></span><span class="st">…</span></div>
+        </div>
+        <div class="idx-progress"><i></i></div>
+      </section>
+    </aside>
+
+    <!-- 方案乙:台面 -->
+    <aside class="workbench">
+      <div class="wb-tabs">
+        <div class="wb-tab">Files <span class="x">×</span></div>
+        <div class="wb-tab active">Terminal <span class="x">×</span></div>
+        <div class="wb-tab">Browser <span class="x">×</span></div>
+        <div class="wb-tab-actions">
+          <button title="Add tab">+</button>
+          <button title="Close workbench">×</button>
+        </div>
+      </div>
+      <div class="wb-body">
+        <div class="crop wb-files">
+          <i></i><i></i><i></i><i></i>
+          <span class="ride">workspace</span>
+          <div class="f"><span class="tick"></span>option-a-cascade.html<span class="sz">4.2k</span></div>
+          <div class="f"><span class="tick"></span>option-a-cascade.png<span class="sz">118k</span></div>
+          <div class="f"><span class="tick"></span>export.config.json<span class="sz">0.3k</span></div>
+        </div>
+        <div class="crop term-wrap" style="flex:1 1 auto; display:flex; flex-direction:column;">
+          <i></i><i></i><i></i><i></i>
+          <span class="ride">terminal</span>
+          <div class="term">
+            <div class="ln"><span class="ps">$</span>ls -la ~/Downloads | grep cascade</div>
+            <div class="ln out">-rw-r--r--  option-a-cascade.html</div>
+            <div class="ln out">-rw-r--r--  option-a-cascade.png</div>
+            <div class="ln"><span class="ps">$</span>identify option-a-cascade.png</div>
+            <div class="ln out">PNG 900x620 8-bit sRGB</div>
+          </div>
+          <div class="term-input">
+            <span class="ps">$</span><span class="caret"></span><span class="hint">Command</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- ==================== 线谱 ==================== -->
+<div class="glossary">
+  <div class="gcol a">
+    <h2>甲 · 书目<em>Index — side panel</em></h2>
+    <div class="who">读的器官。整个面板只有一种线:横向点线。没有框,没有底色,没有圆角。</div>
+    <div class="spec">
+      <div class="draw"><div class="sp-leader"></div></div>
+      <div class="why">点线引导(……)<small>行的骨架:标题 …… 值。目录、词条、任务共用</small></div>
+      <div class="draw"><div class="sp-leader-solid"></div></div>
+      <div class="why">悬停描实<small>交互不加底色:点变实、墨变深,状态活在线上</small></div>
+      <div class="draw"><div class="sp-mark"></div></div>
+      <div class="why">朱砂圈点<small>节头记号:空心=收合,填实=当前活动节</small></div>
+      <div class="draw"><div class="sp-trace"><i></i></div></div>
+      <div class="why">描红进度<small>做完一段,把点线描成朱砂实线;"讫"字收尾</small></div>
+    </div>
+  </div>
+
+  <div class="gcol b">
+    <h2>乙 · 台面<em>Bench — workbench</em></h2>
+    <div class="who">做的器官。全部直角实线,框永不闭合:只留角标与刻度,像一块图板。</div>
+    <div class="spec">
+      <div class="draw"><div class="sp-rule"></div></div>
+      <div class="why">左缘刻度尺<small>签名:8px 细刻、40px 长刻,面板即量具</small></div>
+      <div class="draw"><div class="sp-dim"></div></div>
+      <div class="why">尺寸线页签<small>tab 基线两端有止点,是一段被测量的长度</small></div>
+      <div class="draw"><div class="sp-caliper"></div></div>
+      <div class="why">卡尺括号<small>活动页签被 ⌞⌟ 托住,黛蓝制图色</small></div>
+      <div class="draw"><div class="sp-crop"><i></i><i></i><i></i><i></i></div></div>
+      <div class="why">角标裁切线<small>内容块只画四角;图名骑在顶线上,悬停四角转蓝</small></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 对照表 ==================== -->
+<div class="contrast">
+  <h2>为什么并排不混</h2>
+  <table>
+    <tr><th>维度</th><th>甲 · 书目(side panel)</th><th>乙 · 台面(workbench)</th></tr>
+    <tr><td>线型</td><td class="a">点线,悬停才描实</td><td class="b">实线,悬停变蓝加重</td></tr>
+    <tr><td>方向</td><td class="a">只有横向</td><td class="b">直角相交(角标、括号、刻度)</td></tr>
+    <tr><td>封闭</td><td class="a">零封闭 —— 从不成框</td><td class="b">四角暗示框,但永不闭合</td></tr>
+    <tr><td>墨色</td><td class="a">朱砂 #a63c26(批注)</td><td class="b">黛蓝 #39586f(制图)</td></tr>
+    <tr><td>字感</td><td class="a">衬线节头 + 正文</td><td class="b">等宽标签 + 等宽正文</td></tr>
+    <tr><td>血缘</td><td class="a">承左栏墨线账本(同为墨,横竖有别)</td><td class="b">承工具调用图纸(同为图,框角有别)</td></tr>
+  </table>
+</div>

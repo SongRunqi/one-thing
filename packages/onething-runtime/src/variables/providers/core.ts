@@ -26,7 +26,7 @@ export interface CoreProviderAdapters {
 }
 
 const NAME_WORKDIR = 'workdir'
-const DESC_WORKDIR = 'Ordered workdir list. values[0] is the active cwd; later values are additional sandbox roots.'
+const DESC_WORKDIR = 'Ordered workdir list. values[0] is the active cwd for relative paths, bash defaults, AGENTS.md, project skills, and project todo state; later values are additional sandbox roots for file/bash tools. set replaces the active cwd, append adds a root, remove drops one; cannot be deleted. Values must be existing directories.'
 
 function normalizePath(input: string): string {
   return path.resolve(input)

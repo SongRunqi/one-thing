@@ -6,7 +6,8 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { DEFAULT_GENERAL_SETTINGS } from '@shared/defaults/settings.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import type { SearchWindowGuideState } from '@shared/ipc/search.js'
+import type { SearchWindowAnchor, SearchWindowGuideState } from '@shared/ipc/search.js'
+import { getWindowStatePath, readJsonFile, writeJsonFile } from '@main/stores/paths.js'
 import { getSettings } from '@main/stores/settings.js'
 import {
   getThemeBackgroundColor,
@@ -20,10 +21,16 @@ import { getElectronRendererDevUrl } from '@onething/electron-host/window/render
 import {
   ELECTRON_SEARCH_WINDOW_MIN_HEIGHT,
   ELECTRON_SEARCH_WINDOW_MIN_WIDTH,
+  applyElectronSearchWindowAnchor,
   getElectronDefaultSearchWindowBounds,
   getElectronSearchWindowGuideState,
   getElectronSearchWindowSizeConstraints,
 } from '@onething/electron-host/window/search-window-layout'
+import {
+  readElectronSearchWindowSize,
+  saveElectronSearchWindowSize,
+  type ElectronWindowStateOptions,
+} from '@onething/electron-host/window/window-state'
 import type { ElectronBrowserWindow } from '@onething/electron-host/window/types'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -38,6 +45,30 @@ const HIDDEN_GUIDES: SearchWindowGuideState = {
 
 function getRendererIndexPath(): string {
   return path.join(__dirname, '../renderer/index.html')
+}
+
+function getWindowStateOptions(): ElectronWindowStateOptions {
+  return {
+    path: getWindowStatePath(),
+    readJsonFile,
+    writeJsonFile,
+  }
+}
+
+// Content-area rect reported by the main window renderer; the search window
+// centers on it instead of the full window width (sidebar excluded).
+let searchWindowAnchor: SearchWindowAnchor | null = null
+
+export function setSearchWindowAnchor(anchor: SearchWindowAnchor | null): void {
+  if (
+    anchor &&
+    [anchor.x, anchor.y, anchor.width, anchor.height].every(value => Number.isFinite(value)) &&
+    anchor.width > 0
+  ) {
+    searchWindowAnchor = anchor
+  } else {
+    searchWindowAnchor = null
+  }
 }
 
 function getSearchWindowVisualOptions() {
@@ -68,14 +99,24 @@ const searchWindowController = createElectronSearchWindowController({
     minWidth: ELECTRON_SEARCH_WINDOW_MIN_WIDTH,
     minHeight: ELECTRON_SEARCH_WINDOW_MIN_HEIGHT,
     getSizeConstraints: getElectronSearchWindowSizeConstraints,
-    getDefaultBounds: getElectronDefaultSearchWindowBounds,
+    getDefaultBounds: parentBounds =>
+      applyElectronSearchWindowAnchor(
+        getElectronDefaultSearchWindowBounds(parentBounds),
+        parentBounds,
+        searchWindowAnchor,
+      ),
     getGuideState: getElectronSearchWindowGuideState,
   },
   getVisualOptions: getSearchWindowVisualOptions,
+  getPreferredSize: () => readElectronSearchWindowSize(getWindowStateOptions()),
+  savePreferredSize: size => saveElectronSearchWindowSize(getWindowStateOptions(), size),
 })
 
-export function openSearchWindow(parentWindow: ElectronBrowserWindow): ElectronBrowserWindow {
-  return searchWindowController.open(parentWindow)
+export function openSearchWindow(
+  parentWindow: ElectronBrowserWindow,
+  shownPayload?: unknown,
+): ElectronBrowserWindow {
+  return searchWindowController.open(parentWindow, shownPayload)
 }
 
 export function warmSearchWindow(parentWindow: ElectronBrowserWindow): ElectronBrowserWindow {
@@ -86,8 +127,8 @@ export function closeSearchWindow(): void {
   searchWindowController.close()
 }
 
-export function toggleSearchWindow(parentWindow: ElectronBrowserWindow): void {
-  searchWindowController.toggle(parentWindow)
+export function toggleSearchWindow(parentWindow: ElectronBrowserWindow, shownPayload?: unknown): void {
+  searchWindowController.toggle(parentWindow, shownPayload)
 }
 
 export function getSearchWindow(): ElectronBrowserWindow | null {

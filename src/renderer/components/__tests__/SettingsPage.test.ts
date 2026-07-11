@@ -136,8 +136,10 @@ describe('SettingsPage shell', () => {
     await wrapper.find('.settings-search input').setValue('prompt')
     await settle()
 
+    // "prompt" matches Prompts by label and Evals by its
+    // "Prompt evaluation" hint.
     const labels = wrapper.findAll('.sidebar-label').map(label => label.text())
-    expect(labels).toEqual(['Prompts'])
+    expect(labels).toEqual(['Prompts', 'Evals'])
   })
 
   it('expands and collapses sidebar sections independently', async () => {

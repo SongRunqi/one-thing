@@ -176,11 +176,20 @@ describe('tool activity view', () => {
         endTime: 2_500,
       }),
     }), 3_000)
+    const cancelled = buildToolActivityView(step({
+      status: 'cancelled',
+      toolCall: tc({
+        status: 'cancelled',
+        startTime: 1_000,
+        endTime: 2_500,
+      }),
+    }), 3_000)
 
     expect(executing.duration).toBe('1.5s')
     expect(streaming.duration).toBe('0.5s')
     expect(completed.duration).toBe('1.5s')
     expect(failed.duration).toBe('1.5s')
+    expect(cancelled.duration).toBe('1.5s')
   })
 
   it('prefers the authoritative durationMs and formats with one decimal', () => {

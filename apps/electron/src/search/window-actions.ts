@@ -29,7 +29,8 @@ export interface FindElectronMainSearchWindowOptions {
 
 export interface ToggleElectronSearchWindowFromOptions extends FindElectronMainSearchWindowOptions {
   sourceWindow?: ElectronSearchActionWindow | null
-  toggleSearchWindow(parentWindow: ElectronSearchActionWindow): void
+  openOptions?: unknown
+  toggleSearchWindow(parentWindow: ElectronSearchActionWindow, openOptions?: unknown): void
 }
 
 export interface ExecuteElectronSearchActionFromOptions extends FindElectronMainSearchWindowOptions {
@@ -46,14 +47,16 @@ export interface ElectronSearchIpcChannels {
   closeWindow: string
   query: string
   executeAction: string
+  setAnchor?: string
 }
 
 export interface RegisterElectronSearchIpcHandlersOptions {
   channels: ElectronSearchIpcChannels
-  toggleWindow(sourceWindow: ElectronSearchActionWindow | null): unknown
+  toggleWindow(sourceWindow: ElectronSearchActionWindow | null, openOptions?: unknown): unknown
   closeWindow(): unknown
   query(request: unknown): unknown
   executeAction(sourceWindow: ElectronSearchActionWindow | null, actionId: string): unknown
+  setAnchor?(anchor: unknown): unknown
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -97,7 +100,7 @@ export function toggleElectronSearchWindowFrom(options: ToggleElectronSearchWind
   const parentWindow = findElectronMainSearchWindow(options.sourceWindow, options)
   if (!parentWindow) return { success: false }
 
-  options.toggleSearchWindow(parentWindow)
+  options.toggleSearchWindow(parentWindow, options.openOptions)
   return { success: true }
 }
 
@@ -124,9 +127,16 @@ export function registerElectronSearchIpcHandlers(
 ): void {
   const host = options.ipcMain ?? ipcMain
 
-  host.handle(options.channels.toggleWindow, event => {
-    return options.toggleWindow(getElectronSearchWindowFromIpcEvent(event))
+  host.handle(options.channels.toggleWindow, (event, openOptions: unknown) => {
+    return options.toggleWindow(getElectronSearchWindowFromIpcEvent(event), openOptions)
   })
+
+  if (options.channels.setAnchor && options.setAnchor) {
+    const setAnchor = options.setAnchor
+    host.handle(options.channels.setAnchor, (_event, anchor: unknown) => {
+      return setAnchor(anchor)
+    })
+  }
 
   host.handle(options.channels.closeWindow, () => {
     return options.closeWindow()

@@ -159,38 +159,59 @@ function cancelRename() {
 </script>
 
 <style scoped>
-/* Session Item - Minimal Design */
+/* Session Item - Ledger (墨线): rows hang off the list's vertical rule via
+   a tick mark. No background fills, no radii — state lives in the line. */
 .session-item {
   position: relative;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 7px 10px;
-  margin: 2px 2px;
-  border-inline-start: 3px solid transparent;
-  border-radius: 8px;
+  min-height: 33px;
+  /* 行包装盒(.app-menu-item)自带 12px 起点，这里再退 14px，正文落在 x=26 */
+  padding: 6px 10px 6px 14px;
+  margin: 0;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   max-height: 44px;
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
     max-height 0.25s ease,
     padding 0.25s ease,
     margin 0.25s ease,
     opacity 0.2s ease;
 }
 
-.session-item:not(.active):hover {
-  background: var(--ui-sidebar-item-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+/* Tick: connects the row to the ledger rule (rule sits at x=7 on the menu,
+   see SessionList .sidebar-menu::before; this box starts at x=12, hence the
+   negative offset). Branch rows hang off the tree lines instead. */
+.session-item:not(.branch)::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  width: 7px;
+  height: 1px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  transition: width 0.12s ease, background-color 0.12s ease, height 0.12s ease;
 }
 
-.session-item.active {
-  border-inline-start-color: var(--ui-sidebar-item-active-border, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))));
-  background: var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight)));
+.session-item:not(.branch):hover::before {
+  width: 12px;
+  background: var(--ui-text-muted-fg, var(--text-muted));
+}
+
+.session-item:not(.branch).active::before {
+  width: 14px;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--ui-sidebar-item-active-border, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))));
+}
+
+/* Active branch rows light their └ connector instead of a tick */
+.session-item.branch.active .tree-line-segment.connector::after {
+  border-color: var(--ui-sidebar-item-active-border, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))));
+  opacity: 0.9;
 }
 
 .session-item.hidden {
@@ -228,16 +249,15 @@ function cancelRename() {
   position: relative;
 }
 
-/* 垂直延续线 (非最后子节点的祖先) */
+/* 垂直延续线 (非最后子节点的祖先) —— 点线支流，呼应主账目线 */
 .tree-line-segment.continue::before {
   content: '';
   position: absolute;
   left: 7px;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
-  opacity: 0.34;
+  border-left: 1px dotted var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  opacity: 0.55;
 }
 
 /* L 形连接线 (当前节点) */
@@ -248,10 +268,10 @@ function cancelRename() {
   top: 0;
   height: 50%;
   width: 9px;
-  border-left: 1px solid var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
-  border-bottom: 1px solid var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
-  border-bottom-left-radius: 4px;
-  opacity: 0.34;
+  border-left: 1px dotted var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-bottom: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  opacity: 0.55;
+  transition: border-color 0.12s ease, opacity 0.12s ease;
 }
 
 /* 非最后子节点：T 形（延续垂直线） */
@@ -261,9 +281,8 @@ function cancelRename() {
   left: 7px;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
-  opacity: 0.34;
+  border-left: 1px dotted var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  opacity: 0.55;
 }
 
 /* 右侧状态区域 - 固定宽度 */
@@ -278,12 +297,13 @@ function cancelRename() {
   transition: opacity 0.12s ease;
 }
 
-/* Generating dot - 始终存在，用 class 控制显隐 */
+/* Generating indicator - 空心圆环（画线语言），呼吸而非闪烁 */
 .generating-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--ui-status-success-fg, var(--text-success));
+  border: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  background: transparent;
   flex-shrink: 0;
   opacity: 0;
   transform: scale(0.8);
@@ -293,23 +313,27 @@ function cancelRename() {
 .generating-dot.active {
   opacity: 1;
   transform: scale(1);
-  animation: pulse 1.5s ease-in-out infinite;
+  animation: pulse 1.6s ease-in-out infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 0.4; transform: scale(0.9); }
-  50% { opacity: 1; transform: scale(1.1); }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
 
-/* Branch Badge：圆形数字 */
+@media (prefers-reduced-motion: reduce) {
+  .generating-dot.active { animation: none; }
+}
+
+/* Branch Badge：描边圆环数字，零填充 */
 .branch-badge {
   --app-button-height: 18px;
   --app-button-min-width: 18px;
   --app-button-padding-x: 5px;
   --app-button-gap: 0;
   --app-button-font-size: var(--type-caption-size);
-  --app-button-hover-fill: var(--ui-accent-primary-fg, var(--ui-action-primary-bg, var(--accent)));
-  --app-button-hover-fg: var(--ui-text-inverse-fg, var(--ui-action-primary-fg, var(--text-btn-primary)));
+  --app-button-hover-fill: transparent;
+  --app-button-hover-fg: var(--ui-accent-primary-fg, var(--accent));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
@@ -317,34 +341,37 @@ function cancelRename() {
   height: 18px;
   padding: 0 5px;
   border-radius: 9px;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: transparent;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: var(--type-caption-size);
-  font-weight: var(--font-weight-semibold);
+  font-weight: var(--font-weight-medium);
   line-height: var(--type-caption-line-height);
-  border: none;
+  border: 1px solid var(--ui-border-default-border, var(--border-default, var(--border)));
   cursor: pointer;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 
 .branch-badge:hover {
-  background: var(--ui-accent-primary-fg, var(--ui-action-primary-bg, var(--accent)));
-  color: var(--ui-text-inverse-fg, var(--ui-action-primary-fg, var(--text-btn-primary)));
+  background: transparent;
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
-/* 已收起时的 badge 样式 */
+/* 已收起时的 badge 样式：虚线描边提示"折叠中" */
 .session-item.collapsed .branch-badge {
-  background: var(--ui-sidebar-surface-bg, var(--ui-surface-elevated-bg, var(--bg-elevated)));
+  background: transparent;
+  border-style: dashed;
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .session-item.collapsed .branch-badge:hover {
-  background: var(--ui-accent-primary-fg, var(--ui-action-primary-bg, var(--accent)));
-  color: var(--ui-text-inverse-fg, var(--ui-action-primary-fg, var(--text-btn-primary)));
+  background: transparent;
+  border-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 
@@ -429,7 +456,7 @@ function cancelRename() {
   --app-button-height: 23px;
   --app-button-min-width: 23px;
   --app-button-padding-x: 0;
-  --app-button-hover-fill: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--bg-hover)));
+  --app-button-hover-fill: transparent;
   --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text-primary)));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
@@ -462,7 +489,7 @@ function cancelRename() {
 }
 
 .more-btn:hover {
-  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--bg-hover)));
+  background: transparent;
   color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text-primary)));
 }
 </style>

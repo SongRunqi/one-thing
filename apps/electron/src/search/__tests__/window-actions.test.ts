@@ -74,7 +74,17 @@ describe('electron search window actions', () => {
       isMainWindowUrl,
       toggleSearchWindow,
     })).toEqual({ success: true })
-    expect(toggleSearchWindow).toHaveBeenCalledWith(main)
+    expect(toggleSearchWindow).toHaveBeenCalledWith(main, undefined)
+
+    toggleSearchWindow.mockClear()
+    const openOptions = { intent: { type: 'split-panel', panelId: 'main' } }
+    expect(toggleElectronSearchWindowFrom({
+      sourceWindow: main,
+      openOptions,
+      isMainWindowUrl,
+      toggleSearchWindow,
+    })).toEqual({ success: true })
+    expect(toggleSearchWindow).toHaveBeenCalledWith(main, openOptions)
 
     toggleSearchWindow.mockClear()
     expect(toggleElectronSearchWindowFrom({
@@ -134,6 +144,7 @@ describe('electron search window actions', () => {
     const closeWindow = vi.fn().mockReturnValue({ success: true })
     const query = vi.fn().mockResolvedValue({ success: true, results: [] })
     const executeAction = vi.fn().mockResolvedValue({ success: true })
+    const setAnchor = vi.fn().mockReturnValue({ success: true })
     mocks.fromWebContents.mockReturnValue(source)
 
     registerElectronSearchIpcHandlers({
@@ -142,33 +153,41 @@ describe('electron search window actions', () => {
         closeWindow: 'search-window:close',
         query: 'search:query',
         executeAction: 'search:execute-action',
+        setAnchor: 'search-window:set-anchor',
       },
       toggleWindow,
       closeWindow,
       query,
       executeAction,
+      setAnchor,
       ipcMain: { handle },
     })
 
-    expect(handle).toHaveBeenCalledTimes(4)
+    expect(handle).toHaveBeenCalledTimes(5)
     expect(handle.mock.calls.map(call => call[0])).toEqual([
       'search-window:toggle',
+      'search-window:set-anchor',
       'search-window:close',
       'search:query',
       'search:execute-action',
     ])
 
-    expect(handle.mock.calls[0][1]({ sender })).toEqual({ success: true })
-    expect(toggleWindow).toHaveBeenCalledWith(source)
+    const openOptions = { intent: { type: 'split-panel', panelId: 'main' } }
+    expect(handle.mock.calls[0][1]({ sender }, openOptions)).toEqual({ success: true })
+    expect(toggleWindow).toHaveBeenCalledWith(source, openOptions)
     expect(mocks.fromWebContents).toHaveBeenCalledWith(sender)
 
-    expect(handle.mock.calls[1][1]({})).toEqual({ success: true })
+    const anchor = { x: 240, y: 0, width: 960, height: 800 }
+    expect(handle.mock.calls[1][1]({}, anchor)).toEqual({ success: true })
+    expect(setAnchor).toHaveBeenCalledWith(anchor)
+
+    expect(handle.mock.calls[2][1]({})).toEqual({ success: true })
 
     const request = { query: 'abc' }
-    await expect(handle.mock.calls[2][1]({}, request)).resolves.toEqual({ success: true, results: [] })
+    await expect(handle.mock.calls[3][1]({}, request)).resolves.toEqual({ success: true, results: [] })
     expect(query).toHaveBeenCalledWith(request)
 
-    await expect(handle.mock.calls[3][1]({ sender }, 'open-settings')).resolves.toEqual({ success: true })
+    await expect(handle.mock.calls[4][1]({ sender }, 'open-settings')).resolves.toEqual({ success: true })
     expect(executeAction).toHaveBeenCalledWith(source, 'open-settings')
   })
 })

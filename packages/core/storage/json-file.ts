@@ -180,12 +180,21 @@ export function watchDirectoryRecursive(
   return fs.watch(dir, { recursive: true }, onChange)
 }
 
-export function writeJsonFile<T>(filePath: string, data: T): void {
+export interface WriteJsonFileOptions {
+  /** 默认 true;大文件(如会话体)传 false 省 30%+ 体积和序列化时间。 */
+  pretty?: boolean
+}
+
+function stringifyJsonForFile(data: unknown, options?: WriteJsonFileOptions): string {
+  return options?.pretty === false ? JSON.stringify(data) : JSON.stringify(data, null, 2)
+}
+
+export function writeJsonFile<T>(filePath: string, data: T, options?: WriteJsonFileOptions): void {
   try {
     const dir = path.dirname(filePath)
     ensureDir(dir)
     const tmpPath = filePath + '.tmp'
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+    fs.writeFileSync(tmpPath, stringifyJsonForFile(data, options), 'utf-8')
     fs.renameSync(tmpPath, filePath)
   } catch (error) {
     console.error(`Error writing ${filePath}:`, error)
@@ -212,11 +221,11 @@ export function writeTextFileInDir(baseDir: string, relativePath: string, conten
   writeTextFile(path.join(baseDir, relativePath), content)
 }
 
-export async function writeJsonFileAsync<T>(filePath: string, data: T): Promise<void> {
+export async function writeJsonFileAsync<T>(filePath: string, data: T, options?: WriteJsonFileOptions): Promise<void> {
   const dir = path.dirname(filePath)
   await fsp.mkdir(dir, { recursive: true })
   const tmpPath = filePath + '.tmp'
-  await fsp.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8')
+  await fsp.writeFile(tmpPath, stringifyJsonForFile(data, options), 'utf-8')
   await fsp.rename(tmpPath, filePath)
 }
 

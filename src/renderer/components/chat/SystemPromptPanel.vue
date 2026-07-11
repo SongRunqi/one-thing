@@ -30,6 +30,10 @@
           @click="activeSection = 'prompt'"
         >
           <span>Prompt</span>
+          <i
+            class="system-prompt-meta-leader"
+            aria-hidden="true"
+          />
           <strong>{{ formattedChars }}</strong>
         </button>
         <button
@@ -39,6 +43,10 @@
           @click="activeSection = 'tools'"
         >
           <span>Tools</span>
+          <i
+            class="system-prompt-meta-leader"
+            aria-hidden="true"
+          />
           <strong :class="{ muted: !snapshot.tools.hasTools }">{{ toolsStatus }}</strong>
         </button>
         <button
@@ -48,6 +56,10 @@
           @click="activeSection = 'runtime'"
         >
           <span>Runtime</span>
+          <i
+            class="system-prompt-meta-leader"
+            aria-hidden="true"
+          />
           <strong :class="{ muted: !snapshot.agentLoopStream.active }">{{ runtimeStatus }}</strong>
         </button>
         <button
@@ -57,6 +69,10 @@
           @click="activeSection = 'skills'"
         >
           <span>Skills</span>
+          <i
+            class="system-prompt-meta-leader"
+            aria-hidden="true"
+          />
           <strong :class="{ muted: !snapshot.skills.includedInPrompt }">{{ skillsStatus }}</strong>
         </button>
         <button
@@ -66,6 +82,10 @@
           @click="activeSection = 'agent'"
         >
           <span>Agent</span>
+          <i
+            class="system-prompt-meta-leader"
+            aria-hidden="true"
+          />
           <strong>{{ snapshot.agentName || 'Default Agent' }}</strong>
         </button>
       </div>
@@ -380,6 +400,10 @@ const props = defineProps<{
   lastModel?: string
 }>()
 
+const emit = defineEmits<{
+  summaryChange: [summary: string]
+}>()
+
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 const snapshot = shallowRef<SystemPromptSnapshot | null>(null)
@@ -678,7 +702,14 @@ async function copyPrompt() {
   }, 1200)
 }
 
+const panelSummary = computed(() => {
+  const snap = snapshot.value
+  if (!snap) return ''
+  return [snap.model || snap.providerId, formattedChars.value].filter(Boolean).join(' · ')
+})
+
 watch(refreshKey, scheduleRefresh, { immediate: true })
+watch(panelSummary, summary => emit('summaryChange', summary), { immediate: true })
 
 defineExpose({
   refreshSnapshot,
@@ -737,38 +768,54 @@ onBeforeUnmount(() => {
   line-height: 1.35;
 }
 
+/* 书目词条:label …… value。无框无底,悬停点线描实,活动项朱砂。 */
 .system-prompt-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px;
+  display: flex;
+  flex-direction: column;
 }
 
 .system-prompt-meta-item {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  align-items: baseline;
+  gap: 8px;
   min-width: 0;
-  padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 34%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 54%, transparent);
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
   color: inherit;
   cursor: pointer;
   font: inherit;
   text-align: left;
 }
 
-.system-prompt-meta-item:hover {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent-color, var(--accent))) 38%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-hover-bg, var(--bg-hover, var(--bg-secondary))) 72%, transparent);
+.system-prompt-meta-leader {
+  flex: 1 1 auto;
+  height: 0;
+  min-width: 10px;
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 85%, transparent);
+  transform: translateY(1px);
 }
 
-.system-prompt-meta-item.active {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent-color, var(--accent))) 56%, transparent);
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent-color, var(--accent))) 10%, var(--ui-surface-panel-bg, var(--panel)));
+.system-prompt-meta-item:hover span {
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
-.system-prompt-meta-item span,
+.system-prompt-meta-item:hover .system-prompt-meta-leader {
+  border-bottom-style: solid;
+  border-bottom-color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.system-prompt-meta-item.active span,
+.system-prompt-meta-item.active strong {
+  color: var(--ui-accent-primary-fg, var(--accent-color, var(--accent)));
+}
+
+.system-prompt-meta-item.active .system-prompt-meta-leader {
+  border-bottom-style: solid;
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent-color, var(--accent)));
+  opacity: 0.5;
+}
+
 .system-prompt-group-head {
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 10.5px;
@@ -776,12 +823,23 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
+.system-prompt-meta-item span {
+  flex: 0 0 auto;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 550;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .system-prompt-meta-item strong {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   color: var(--ui-text-primary-fg, var(--text));
   font-size: 11.5px;
-  font-weight: 650;
+  font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

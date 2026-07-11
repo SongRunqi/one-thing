@@ -221,7 +221,6 @@ export interface MemorySearchRequest {
   query: string
   agentId?: string
   limit?: number | string
-  memoryScopeId?: string
 }
 
 export interface MemorySearchResponse {
@@ -235,7 +234,6 @@ export interface MemoryAppendRequest {
   agentId?: string
   target?: 'daily'
   heading?: string
-  memoryScopeId?: string
 }
 
 export interface MemoryAppendResponse {
@@ -522,7 +520,6 @@ export interface MemoryProfileListRequest {
   query?: string
   includeDeleted?: boolean
   limit?: number
-  memoryScopeId?: string
 }
 
 export interface MemoryProfileListResponse {
@@ -542,7 +539,6 @@ export interface MemoryProfileUpsertRequest {
   confidence?: number
   sensitivity?: 'normal' | 'sensitive' | 'secret'
   evidence?: string
-  memoryScopeId?: string
 }
 
 export interface MemoryProfileUpsertResponse {

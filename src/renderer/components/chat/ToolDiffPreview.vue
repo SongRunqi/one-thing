@@ -230,6 +230,9 @@ defineExpose({
   margin: 0;
   overflow: hidden;
   background: transparent;
+  /* Blueprint section cut: the diff is a ruled figure inside the frame. */
+  border: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 60%, transparent);
+  border-radius: 0;
 }
 
 .diff-content {

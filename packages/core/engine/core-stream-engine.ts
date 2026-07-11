@@ -16,6 +16,7 @@ import type {
   StreamEngineSkillsAdapter,
   StreamEngineStoreAdapter,
   StreamEngineStreamsAdapter,
+  StreamEngineVariablesAdapter,
 } from './stream-runtime.js'
 import {
   canApplyGeneratedSessionTitle,
@@ -31,6 +32,7 @@ import {
 import {
   buildContextUsageSnapshot,
 } from './context-usage.js'
+import { resolveTurnContextUpdateText } from './turn-context.js'
 
 export interface CoreEventBusEmitterLike extends CoreEventBusLike {
   emit(sessionId: string, event: any): Promise<unknown>
@@ -160,6 +162,7 @@ export interface CoreStreamEngineRuntime<
   history: StreamEngineHistoryAdapter<TSession, TMessage, THistoryMessage>
   streams: StreamEngineStreamsAdapter<THistoryMessage, TStreamResult>
   compaction: StreamEngineCompactionAdapter<unknown, TCompactResult>
+  variables?: StreamEngineVariablesAdapter
 }
 
 export interface CoreStreamErrorInfo {
@@ -229,7 +232,9 @@ function authToken(authContext: unknown): unknown {
 }
 
 export function normalizeCoreStreamError(
-  error: Error & Partial<CoreErrorDetails>,
+  // Error.cause is typed `unknown` by lib.es2022, so it must be excluded from
+  // the intersection for plain Error values to remain assignable.
+  error: Error & Partial<Omit<CoreErrorDetails, 'cause'>>,
 ): CoreStreamErrorInfo {
   return {
     error,
@@ -369,6 +374,30 @@ export class CoreStreamEngine<
     await this.handleCompactContext(sessionId, command as CompactContextCommandLike)
   }
 
+  /**
+   * Turn-volatile context (datetime, git branch, ...) for this send.
+   * Attached to the user message and persisted there so history rebuilds
+   * replay identical bytes. Deduplicated: when the text equals the most
+   * recently injected block in this session, nothing is attached — history
+   * stays append-only and the prompt-cache prefix is never rewritten.
+   */
+  private async resolveTurnContextUpdate(
+    sessionId: string,
+    session: { messages: TMessage[] } | undefined | null,
+  ): Promise<string | undefined> {
+    const adapter = this.runtime.variables
+    if (!adapter) return undefined
+    try {
+      return resolveTurnContextUpdateText(
+        await adapter.buildTurnContext(sessionId),
+        (session?.messages ?? []) as ReadonlyArray<{ contextUpdate?: unknown }>,
+      )
+    } catch (error) {
+      this.logError('turn context update failed:', error)
+      return undefined
+    }
+  }
+
   async handleSendMessage(
     sessionId: string,
     cmd: SendMessageCommandLike,
@@ -389,6 +418,7 @@ export class CoreStreamEngine<
       const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
         !session.messages.some(m => m.role === 'user' && m.timestamp > session.createdAt)
 
+      const contextUpdate = await this.resolveTurnContextUpdate(sessionId, session)
       const userMessage = {
         id: this.createMessageId(),
         role: 'user',
@@ -399,6 +429,7 @@ export class CoreStreamEngine<
         source: cmd.source || (cmd.channel === 'voice' ? 'voice' : 'text'),
         voice: cmd.voice,
         ...(cmd.origin !== undefined ? { origin: cmd.origin } : {}),
+        ...(contextUpdate !== undefined ? { contextUpdate } : {}),
       } as unknown as TMessage
       this.runtime.media.ingestMessageAttachments(
         sessionId,

@@ -1,0 +1,11 @@
+# Windows platform: should use Windows-compatible syntax
+id: windows-powershell-syntax
+description: >
+  On Windows, the assistant should use PowerShell or CMD syntax,
+  not Unix-style forward-slashed bash commands.
+fixture: windows.json
+userMessage: List all files in the current directory.
+expect:
+  notContains: ls -la
+  notes: >
+    On Windows, should use dir or Get-ChildItem, not ls.

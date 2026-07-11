@@ -159,6 +159,7 @@ const pageDirection = ref<1 | -1>(1)
 let pageWheelLockTimer: ReturnType<typeof setTimeout> | null = null
 
 const pageSize = 8
+let hasUserNavigatedManually = false
 const maxPageStartIndex = computed(() => {
   const total = sortedMarkers.value.length
   if (total <= pageSize) return 0
@@ -229,22 +230,26 @@ function handlePageWheel(event: WheelEvent) {
 }
 
 function goToPreviousPage() {
+  hasUserNavigatedManually = true
   openPanel()
   setPageStart(pageStartIndex.value - pageSize, -1)
 }
 
 function goToNextPage() {
+  hasUserNavigatedManually = true
   openPanel()
   setPageStart(pageStartIndex.value + pageSize, 1)
 }
 
 function handleNavigate(navIndex: number) {
+  hasUserNavigatedManually = false
   emit('navigate', navIndex)
 }
 
 watch(
   [() => props.currentIndex, () => props.markers.length],
   () => {
+    if (hasUserNavigatedManually) return
     if (!isOpen.value) {
       const nextStart = getPageStartForIndex(props.currentIndex)
       const direction = nextStart >= pageStartIndex.value ? 1 : -1
@@ -314,6 +319,8 @@ onUnmounted(() => {
   transform: none;
 }
 
+/* Ledger (墨线): the trail is a vertical rule at the right edge; rows hang
+   off it via tick marks. No fills, no radii — state lives in the line. */
 .user-nav-card {
   position: absolute;
   top: 50%;
@@ -324,7 +331,7 @@ onUnmounted(() => {
   padding: 0;
   overflow: visible;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: 0;
   background: transparent;
   box-shadow: none;
   pointer-events: auto;
@@ -336,8 +343,23 @@ onUnmounted(() => {
     opacity 0.14s ease,
     width 0.16s ease,
     border-color 0.16s ease,
-    background-color 0.16s ease,
-    box-shadow 0.16s ease;
+    background-color 0.16s ease;
+}
+
+/* 主账目线：行刻度(.user-nav-marker)挂在这条线上 */
+.user-nav-card::before {
+  content: '';
+  position: absolute;
+  top: calc(var(--user-nav-vertical-padding) + var(--user-nav-header-offset) - 2px);
+  right: 6px;
+  bottom: calc(var(--user-nav-vertical-padding) - 2px);
+  width: 1px;
+  background: color-mix(
+    in srgb,
+    var(--ui-border-strong-border, var(--border-strong, var(--border))) 80%,
+    transparent
+  );
+  pointer-events: none;
 }
 
 .user-nav-card:hover,
@@ -353,11 +375,8 @@ onUnmounted(() => {
 
 .user-nav-card.open {
   width: var(--user-nav-expanded-width);
-  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 34%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 64%, transparent);
-  box-shadow:
-    0 8px 18px rgba(0, 0, 0, 0.045),
-    0 1px 3px rgba(0, 0, 0, 0.035);
+  border-color: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg)));
 }
 
 .user-nav-rail.placement-side .user-nav-card {
@@ -477,35 +496,30 @@ onUnmounted(() => {
 
 .user-nav-card.open .user-nav-row:hover .user-nav-label,
 .user-nav-card.open .user-nav-row:focus-visible .user-nav-label {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-text-primary-fg, var(--text));
   opacity: 1;
 }
 
+/* Tick: connects the row to the ledger rule (rule sits at right 6px on the
+   card, see .user-nav-card::before). Grows leftward from the rule. */
 .user-nav-marker {
   position: absolute;
   top: 50%;
-  right: 5px;
-  width: 14px;
-  height: 2px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 42%, transparent);
-  opacity: 0.62;
+  right: 6px;
+  width: 7px;
+  height: 1px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
   transform: translateY(-50%);
   transition:
     width 0.12s ease,
-    background-color 0.12s ease,
-    opacity 0.12s ease,
-    box-shadow 0.12s ease;
-}
-
-.user-nav-rail.placement-side .user-nav-marker {
-  right: 6px;
+    height 0.12s ease,
+    background-color 0.12s ease;
 }
 
 .user-nav-row:hover .user-nav-marker,
 .user-nav-row:focus-visible .user-nav-marker {
-  opacity: 0.92;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 64%, var(--ui-text-muted-fg, var(--text-muted, var(--muted))));
+  width: 12px;
+  background: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .user-nav-row:focus-visible {
@@ -521,19 +535,18 @@ onUnmounted(() => {
 
 .user-nav-row.active .user-nav-marker {
   width: 14px;
-  opacity: 1;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 84%, var(--ui-text-muted-fg, var(--muted)));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
+  height: 2px;
+  background: var(--ui-accent-primary-fg, var(--accent));
 }
 
+/* Page position: a darker segment riding the ledger rule itself */
 .user-nav-scroll-thumb {
   position: absolute;
   top: calc(var(--user-nav-vertical-padding) + var(--user-nav-header-offset));
-  right: 1px;
+  right: 6px;
   display: none;
-  width: 3px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 24%, transparent);
+  width: 1px;
+  background: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   pointer-events: none;
 }
 
@@ -555,14 +568,13 @@ onUnmounted(() => {
   height: 18px;
   padding: 0 7px 0 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: 0;
   background: transparent;
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 62%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
   transition:
-    background-color 0.12s ease,
     color 0.12s ease,
     opacity 0.12s ease;
 }
@@ -573,12 +585,13 @@ onUnmounted(() => {
 
 .user-nav-page-cue:hover,
 .user-nav-page-cue:focus-visible {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  background: transparent;
+  color: var(--ui-text-primary-fg, var(--text));
   opacity: 0.9;
   outline: none;
 }
 
+/* Mode tabs：零填充文字页签，active 用下划线（画线语言） */
 .user-nav-mode-tabs {
   position: absolute;
   top: 8px;
@@ -586,18 +599,15 @@ onUnmounted(() => {
   z-index: 2;
   display: inline-grid;
   grid-template-columns: auto auto;
+  column-gap: 12px;
   align-items: center;
   height: 20px;
-  padding: 1px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 28%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 52%, transparent);
+  padding: 0;
+  border: 0;
+  background: transparent;
   opacity: 0.5;
   pointer-events: auto;
-  transition:
-    background-color 0.12s ease,
-    border-color 0.12s ease,
-    opacity 0.12s ease;
+  transition: opacity 0.12s ease;
 }
 
 .user-nav-rail.placement-side .user-nav-mode-tabs {
@@ -610,18 +620,14 @@ onUnmounted(() => {
 
 .user-nav-mode-tabs:hover,
 .user-nav-mode-tabs:focus-within {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 22%, transparent);
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 76%, transparent);
   opacity: 1;
 }
 
 .user-nav-mode-tab {
   box-sizing: border-box;
-  min-width: 42px;
   height: 16px;
-  padding: 0 7px;
+  padding: 0;
   border: 0;
-  border-radius: 999px;
   background: transparent;
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 72%, transparent);
   cursor: pointer;
@@ -633,15 +639,19 @@ onUnmounted(() => {
 }
 
 .user-nav-mode-tab.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-accent-primary-fg, var(--accent)) 18%);
+  color: var(--ui-text-primary-fg, var(--text));
   cursor: default;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .user-nav-mode-tab:not(.active):hover,
 .user-nav-mode-tab:not(.active):focus-visible {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-text-primary-fg, var(--text));
   outline: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .user-nav-close {
@@ -656,21 +666,20 @@ onUnmounted(() => {
   height: 18px;
   padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: 0;
   background: transparent;
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 56%, transparent);
   cursor: pointer;
   opacity: 0.42;
   pointer-events: auto;
   transition:
-    background-color 0.12s ease,
     color 0.12s ease,
     opacity 0.12s ease;
 }
 
 .user-nav-close:hover,
 .user-nav-close:focus-visible {
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
+  background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
   opacity: 0.9;
   outline: none;
@@ -683,7 +692,7 @@ onUnmounted(() => {
 
 .user-nav-close.can-pin:hover,
 .user-nav-close.can-pin:focus-visible {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  background: transparent;
   color: var(--ui-accent-primary-fg, var(--accent));
   opacity: 1;
 }

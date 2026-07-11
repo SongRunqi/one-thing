@@ -8,7 +8,9 @@ const workspaceRoot = process.env.ONETHING_SERVER_WORKSPACE_ROOT
 const dataRoot = process.env.ONETHING_SERVER_DATA_ROOT
 const settingsRoot = process.env.ONETHING_SERVER_SETTINGS_ROOT
 
+const runtimeCreateStart = Date.now()
 const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot, dataRoot, settingsRoot })
+console.log(`[Perf][Startup] runtime-created in ${Date.now() - runtimeCreateStart}ms`)
 const server = createOnethingHttpServer({
   runtime: serverRuntime.runtime,
   corsOrigin,
@@ -16,6 +18,7 @@ const server = createOnethingHttpServer({
 
 server.listen(port, host, () => {
   console.log(`[onething-server] listening on http://${host}:${port}`)
+  console.log(`[Perf][Startup] http-listening +${Math.round(process.uptime() * 1000)}ms since process start`)
 })
 
 function shutdown(signal: NodeJS.Signals): void {

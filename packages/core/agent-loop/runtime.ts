@@ -44,6 +44,7 @@ export interface BuildAgentLoopRuntimeOptions {
   beforeTurn?: AgentBeforeTurnHook
   afterTurn?: AgentAfterTurnHook
   onEvent?: AgentLoopOptions['onEvent']
+  onTurnTrace?: AgentLoopOptions['onTurnTrace']
 }
 
 export async function buildAgentLoopRuntime(
@@ -78,5 +79,6 @@ export async function buildAgentLoopRuntime(
     beforeTurn: options.beforeTurn,
     afterTurn: options.afterTurn,
     onEvent: options.onEvent,
+    onTurnTrace: options.onTurnTrace,
   }
 }

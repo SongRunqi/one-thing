@@ -176,7 +176,65 @@ describe('electron search window controller', () => {
     expect(win.show).toHaveBeenCalledTimes(1)
     expect(win.focus).toHaveBeenCalledTimes(1)
     expect(win.webContents.send).toHaveBeenCalledWith('search:guides', hiddenGuides)
-    expect(win.webContents.send).toHaveBeenCalledWith('search:shown')
+    expect(win.webContents.send).toHaveBeenCalledWith('search:shown', null)
+  })
+
+  it('forwards the open payload to the renderer on shown', async () => {
+    const controller = await createController()
+    const parent = parentWindow()
+    const payload = { intent: { type: 'split-panel', panelId: 'main' } }
+
+    const win = controller.open(parent, payload) as any
+    win.emit('ready-to-show')
+
+    expect(win.webContents.send).toHaveBeenCalledWith('search:shown', payload)
+
+    // Re-presenting without a payload resets to a plain search.
+    win.webContents.send.mockClear()
+    controller.open(parent)
+    expect(win.webContents.send).toHaveBeenCalledWith('search:shown', null)
+  })
+
+  it('re-presents a visible window instead of closing when toggled with a payload', async () => {
+    const controller = await createController()
+    const parent = parentWindow()
+    const win = controller.open(parent) as any
+    win.emit('ready-to-show')
+    win.webContents.send.mockClear()
+
+    controller.toggle(parent, { intent: { type: 'split-panel', panelId: 'main' } })
+
+    expect(win.hide).not.toHaveBeenCalled()
+    expect(win.webContents.send).toHaveBeenCalledWith('search:shown', {
+      intent: { type: 'split-panel', panelId: 'main' },
+    })
+  })
+
+  it('uses the remembered size clamped to constraints, centered on the default bounds', async () => {
+    const controller = await createController({
+      getPreferredSize: () => ({ width: 800, height: 700 }),
+    })
+    const parent = parentWindow()
+
+    const win = controller.open(parent) as any
+    win.emit('ready-to-show')
+
+    // width 800 within max 920; height 700 clamped to 624; x recentered around
+    // the default bounds' center (100 + 640/2 = 420).
+    expect(win.setBounds).toHaveBeenLastCalledWith({ x: 20, y: 120, width: 800, height: 624 })
+  })
+
+  it('persists the current size when the window is dismissed', async () => {
+    const savePreferredSize = vi.fn()
+    const controller = await createController({ savePreferredSize })
+    const parent = parentWindow()
+    const win = controller.open(parent) as any
+    win.emit('ready-to-show')
+    win.bounds = { x: 90, y: 130, width: 700, height: 400 }
+
+    controller.close()
+
+    expect(savePreferredSize).toHaveBeenCalledWith({ width: 700, height: 400 })
   })
 
   it('updates and hides guide overlays when moved while visible', async () => {

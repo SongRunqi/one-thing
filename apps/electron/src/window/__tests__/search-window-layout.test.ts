@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ELECTRON_SEARCH_WINDOW_MAX_DEFAULT_HEIGHT,
   ELECTRON_SEARCH_WINDOW_MIN_HEIGHT,
+  applyElectronSearchWindowAnchor,
   getElectronDefaultSearchWindowBounds,
   getElectronSearchWindowGuideState,
   getElectronSearchWindowSizeConstraints,
@@ -29,6 +30,40 @@ describe('electron search window layout', () => {
 
     expect(constraints.maxWidth).toBe(920)
     expect(constraints.maxHeight).toBe(624)
+  })
+
+  it('re-centers on the reported content anchor instead of the full window', () => {
+    const parent = { x: 100, y: 50, width: 1200, height: 900 }
+    const bounds = { x: 380, y: 212, width: 640, height: 360 }
+    // Sidebar occupies the first 240 CSS px; the content area starts there.
+    const anchored = applyElectronSearchWindowAnchor(bounds, parent, {
+      x: 240,
+      y: 0,
+      width: 960,
+      height: 900,
+    })
+
+    expect(anchored.x + anchored.width / 2).toBe(parent.x + 240 + 960 / 2)
+    expect(anchored.y).toBe(bounds.y)
+    expect(anchored.width).toBe(bounds.width)
+  })
+
+  it('clamps anchored bounds inside the parent and ignores empty anchors', () => {
+    const parent = { x: 0, y: 0, width: 1000, height: 800 }
+    const bounds = { x: 180, y: 144, width: 640, height: 320 }
+
+    const clamped = applyElectronSearchWindowAnchor(bounds, parent, {
+      x: 900,
+      y: 0,
+      width: 100,
+      height: 800,
+    })
+    expect(clamped.x + clamped.width).toBeLessThanOrEqual(parent.width - 24)
+
+    expect(applyElectronSearchWindowAnchor(bounds, parent, null)).toEqual(bounds)
+    expect(
+      applyElectronSearchWindowAnchor(bounds, parent, { x: 0, y: 0, width: 0, height: 0 }),
+    ).toEqual(bounds)
   })
 
   it('reports guide hits near center, default top, and default height', () => {

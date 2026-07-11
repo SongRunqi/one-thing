@@ -4,6 +4,25 @@
     class="tool-step-details"
     @wheel="handleWheel"
   >
+    <!-- Blueprint spec tags riding the frame border: tool · status on the
+         left, +N / −N takeoff on the right. -->
+    <span class="fig-tag">{{ figLabel }}<span
+      v-if="figStatus"
+      class="fig-status"
+      :class="figStatus.tone"
+    >&nbsp;·&nbsp;{{ figStatus.text }}</span></span>
+    <span
+      v-if="figGain"
+      class="fig-tag fig-tag-right"
+    >{{ figGain }}</span>
+
+    <div
+      v-if="bashCommand"
+      class="fig-cmd"
+    >
+      <span class="fig-cmd-ps">$</span>{{ bashCommand }}
+    </div>
+
     <dl
       v-if="argEntries.length"
       class="detail-args"
@@ -23,34 +42,6 @@
         </dd>
       </template>
     </dl>
-
-    <!-- Failed edit: old/new merged into one compact "intent diff" —
-         the change the model wanted to make but couldn't apply. -->
-    <div
-      v-if="failedEditDetails"
-      class="detail-section failed-edit-section"
-    >
-      <div
-        v-if="failedEditDetails.summary"
-        class="failed-edit-summary"
-      >
-        {{ failedEditDetails.summary }}
-      </div>
-      <div
-        v-for="attempt in failedEditDetails.attempts"
-        :key="attempt.index"
-        class="intent-diff"
-      >
-        <div
-          v-for="(line, lineIndex) in buildIntentLines(attempt)"
-          :key="`${attempt.index}-${lineIndex}`"
-          class="intent-line"
-          :class="line.kind"
-        >
-          <span class="intent-sign">{{ line.kind === 'del' ? '-' : '+' }}</span><span class="intent-text">{{ line.text }}</span>
-        </div>
-      </div>
-    </div>
 
     <ToolDiffPreview
       v-if="activeDiff && !isFailedEdit"
@@ -129,8 +120,14 @@
       <div class="detail-label">
         {{ view.status === 'rejected' ? 'Rejected' : 'Error' }}
       </div>
+      <!-- A failed edit has no diff or result to render — the error text is
+           the whole story, so it is shown plainly, not behind a disclosure. -->
+      <pre
+        v-if="showInlineError"
+        :class="view.status === 'rejected' ? 'rejection-text' : 'error-text'"
+      >{{ compactError }}</pre>
       <details
-        v-if="showErrorDetails"
+        v-else-if="showErrorDetails"
         class="error-details"
       >
         <summary>Details</summary>
@@ -149,26 +146,6 @@ import { chainWheelToScrollableAncestor, findScrollableWheelSource } from '@/uti
 import ToolDiffPreview from './ToolDiffPreview.vue'
 import ToolResultRenderer from './ToolResultRenderer.vue'
 
-interface FailedEditParam {
-  label: string
-  value: string
-}
-
-interface FailedEditAttempt {
-  index: number
-  oldText: string
-  oldTextPresent: boolean
-  newText: string
-  newTextPresent: boolean
-  extraParams: FailedEditParam[]
-}
-
-interface FailedEditDetails {
-  summary: string
-  params: FailedEditParam[]
-  attempts: FailedEditAttempt[]
-}
-
 const props = defineProps<{
   view: ToolStepView
   /** Soft-wrap long diff lines (controlled by the outer tool-step header) */
@@ -178,57 +155,40 @@ const props = defineProps<{
 const streamingPreviewRef = ref<InstanceType<typeof ToolDiffPreview> | null>(null)
 const detailsRef = ref<HTMLElement | null>(null)
 
+const figLabel = computed(() => (props.view.displayName || props.view.toolName || 'tool').toUpperCase())
+
+const figStatus = computed(() => {
+  switch (props.view.status) {
+    case 'failed': return { text: 'FAILED', tone: 'bad' }
+    case 'rejected': return { text: 'REJECTED', tone: 'bad' }
+    case 'cancelled': return { text: 'CANCELLED', tone: 'dim' }
+    case 'awaiting-confirmation': return { text: 'NEEDS APPROVAL', tone: 'warn' }
+    case 'executing':
+    case 'streaming-input': return { text: 'RUNNING', tone: 'live' }
+    case 'completed': return { text: 'OK', tone: 'ok' }
+    default: return null
+  }
+})
+
+const figGain = computed(() => {
+  const diff = props.view.diff || props.view.streamingDiff
+  if (!diff) return ''
+  const parts: string[] = []
+  if (diff.additions) parts.push(`+${diff.additions}`)
+  if (diff.deletions) parts.push(`−${diff.deletions}`)
+  return parts.join(' / ')
+})
+
+/** Bash gets a shell-style `$ command` line instead of a key/value row. */
+const bashCommand = computed(() => {
+  if (props.view.toolName !== 'bash') return ''
+  const command = props.view.toolCall.arguments?.command
+  return typeof command === 'string' ? command : ''
+})
+
 const activeDiff = computed(() => props.view.diff || props.view.streamingDiff)
 const activeDiffLines = computed(() => props.view.diff ? props.view.diffLines : props.view.streamingDiffLines)
 const isFailedEdit = computed(() => props.view.toolName === 'edit' && (props.view.status === 'failed' || props.view.status === 'rejected'))
-const failedEditDetails = computed<FailedEditDetails | null>(() => {
-  if (props.view.toolName !== 'edit' || props.view.status !== 'failed') return null
-  const args = props.view.toolCall.arguments || {}
-  const edits = Array.isArray(args.edits) ? args.edits : []
-  const params: FailedEditParam[] = []
-  const path = typeof args.path === 'string' ? args.path : ''
-
-  if (path) {
-    params.push({ label: 'Path', value: path })
-  }
-  if (edits.length) {
-    params.push({ label: 'Edits', value: String(edits.length) })
-  }
-
-  for (const [key, value] of Object.entries(args)) {
-    if (key === 'path' || key === 'edits') continue
-    params.push({ label: key, value: formatParamValue(value) })
-  }
-
-  const attempts = edits
-    .map((edit: unknown, index): FailedEditAttempt | null => {
-      if (!isRecord(edit)) return null
-      const oldTextPresent = hasOwn(edit, 'oldText')
-      const newTextPresent = hasOwn(edit, 'newText')
-      const extraParams = Object.entries(edit)
-        .filter(([key]) => key !== 'oldText' && key !== 'newText')
-        .map(([key, value]) => ({ label: key, value: formatParamValue(value) }))
-
-      return {
-        index,
-        oldText: oldTextPresent ? formatEditText(edit.oldText) : '',
-        oldTextPresent,
-        newText: newTextPresent ? formatEditText(edit.newText) : '',
-        newTextPresent,
-        extraParams,
-      }
-    })
-    .filter((attempt): attempt is FailedEditAttempt => attempt !== null)
-
-  if (!params.length && !attempts.length) return null
-
-  const summary = [
-    path ? shortDisplayPath(path) : '',
-    attempts.length ? `${attempts.length} ${attempts.length === 1 ? 'edit' : 'edits'}` : '',
-  ].filter(Boolean).join(' · ')
-
-  return { summary, params, attempts }
-})
 const resultRenderKind = computed(() => props.view.toolName === 'bash' ? 'bash' : 'text')
 const resultForRenderer = computed<ToolPartialResult | null>(() => {
   if (!props.view.resultText) return null
@@ -238,26 +198,6 @@ const liveResultForRenderer = computed<ToolPartialResult | null>(() => {
   if (!props.view.liveOutput) return null
   return { content: [{ type: 'text', text: props.view.liveOutput }] }
 })
-interface IntentDiffLine {
-  kind: 'del' | 'add'
-  text: string
-}
-
-function buildIntentLines(attempt: FailedEditAttempt): IntentDiffLine[] {
-  const lines: IntentDiffLine[] = []
-  if (attempt.oldTextPresent) {
-    for (const text of displayEditText(attempt.oldText).split('\n')) {
-      lines.push({ kind: 'del', text })
-    }
-  }
-  if (attempt.newTextPresent) {
-    for (const text of displayEditText(attempt.newText).split('\n')) {
-      lines.push({ kind: 'add', text })
-    }
-  }
-  return lines
-}
-
 interface ArgEntry {
   key: string
   value: string
@@ -278,12 +218,13 @@ const argEntries = computed<ArgEntry[]>(() => {
   const args = props.view.toolCall.arguments || {}
   return Object.entries(args)
     .filter(([, value]) => value !== undefined && value !== null && String(value) !== '')
+    // The bash command renders as the `$ …` line above, not as a key/value.
+    .filter(([key]) => !(props.view.toolName === 'bash' && key === 'command'))
     .map(([key, value]) => {
       const text = formatParamValue(value)
-      const isFullValueKey = props.view.toolName === 'bash' && key === 'command'
       return {
         key,
-        value: !isFullValueKey && text.length > ARG_VALUE_MAX
+        value: text.length > ARG_VALUE_MAX
           ? `${text.slice(0, ARG_VALUE_MAX - 1)}…`
           : text,
       }
@@ -300,15 +241,8 @@ const showErrorDetails = computed(() => {
   if (normalizeErrorText(error) === normalizeErrorText(reason)) return false
   return error.split('\n').filter(line => line.trim()).length > 1
 })
-const showErrorSection = computed(() => !!props.view.step.error && showErrorDetails.value)
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
-}
-
-function hasOwn(value: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(value, key)
-}
+const showInlineError = computed(() => isFailedEdit.value && !!props.view.step.error)
+const showErrorSection = computed(() => !!props.view.step.error && (showInlineError.value || showErrorDetails.value))
 
 function formatParamValue(value: unknown): string {
   if (typeof value === 'string') return value
@@ -320,14 +254,6 @@ function formatParamValue(value: unknown): string {
   } catch {
     return String(value)
   }
-}
-
-function formatEditText(value: unknown): string {
-  return typeof value === 'string' ? value : formatParamValue(value)
-}
-
-function displayEditText(value: string): string {
-  return value.length ? value : '(empty string)'
 }
 
 function handleWheel(event: WheelEvent) {
@@ -372,13 +298,6 @@ function normalizeErrorText(value: string): string {
   return compactToolFailureReason(value).replace(/\s+/g, ' ').trim().toLowerCase()
 }
 
-function shortDisplayPath(path: string): string {
-  if (!path) return ''
-  const normalized = path.replace(/\\/g, '/').replace(/\/+$/, '')
-  const parts = normalized.split('/').filter(Boolean)
-  return parts.slice(-2).join('/') || normalized
-}
-
 watch(
   () => props.view.streamingContent?.content,
   () => {
@@ -391,14 +310,70 @@ watch(
 </script>
 
 <style scoped>
+/* Blueprint figure frame: zero radius, full 1px outline, spec tags riding
+   the border (their solid background knocks the border line out). The pane
+   owns its whole surface — mount points only position it. */
 .tool-step-details {
   --tool-pane-max: clamp(148px, 28vh, 240px);
+  --fig-line: color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 90%, transparent);
+  --fig-knockout: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 2px 0 2px 10px;
-  border-left: 2px solid color-mix(in srgb, var(--ui-tool-border-border, var(--tool-border)) 60%, transparent);
+  margin-top: 8px;
+  padding: 13px 14px 10px;
+  border: 1px solid var(--fig-line);
+  border-radius: 0;
   font-family: var(--tool-font-sans);
+}
+
+.fig-tag {
+  position: absolute;
+  top: -8px;
+  left: 10px;
+  z-index: 1;
+  max-width: calc(100% - 90px);
+  padding: 0 7px;
+  background: var(--fig-knockout);
+  color: var(--ui-tool-text-fg, var(--tool-ink));
+  font-family: var(--tool-font-mono);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: 1.8px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+}
+
+.fig-tag-right {
+  left: auto;
+  right: 10px;
+  max-width: 40%;
+  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
+}
+
+.fig-status { font-weight: 600; }
+.fig-status.ok { color: var(--ui-tool-success-text-fg, var(--tool-ok)); }
+.fig-status.bad { color: var(--ui-tool-danger-text-fg, var(--tool-del-bar)); }
+.fig-status.live { color: var(--ui-tool-accent-fg, var(--tool-accent)); }
+.fig-status.warn { color: var(--ui-status-warning-fg, var(--tool-accent)); }
+.fig-status.dim { color: var(--ui-tool-text-faint-fg, var(--tool-faint)); }
+
+.fig-cmd {
+  color: var(--ui-tool-text-fg, var(--tool-ink));
+  font-family: var(--tool-font-mono);
+  font-size: var(--tool-font-size-body);
+  line-height: var(--tool-code-line-height);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.fig-cmd-ps {
+  margin-right: 8px;
+  color: var(--ui-tool-accent-fg, var(--tool-accent));
 }
 
 .detail-section {
@@ -429,10 +404,11 @@ watch(
   gap: 6px;
   margin-bottom: 8px;
   color: var(--ui-tool-text-faint-fg, var(--tool-faint));
-  font-family: var(--tool-font-sans);
-  font-size: var(--tool-font-size-meta);
-  font-weight: 500;
-  letter-spacing: 0;
+  font-family: var(--tool-font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
 }
 
 pre {
@@ -450,32 +426,34 @@ pre {
   word-break: break-word;
 }
 
+/* Blueprint semantics: outlined spec boxes, no fills, no side bars. */
 .thinking {
-  padding: 4px 0 4px 10px;
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 4%, transparent);
-  border-left: 3px solid color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 30%, transparent);
+  padding: 8px 10px;
+  border: 1px solid var(--fig-line);
+  background: transparent;
 }
 
 .summary {
-  padding: 4px 0 4px 10px;
-  background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 4%, transparent);
-  border-left: 3px solid color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 35%, transparent);
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-ok)) 35%, transparent);
+  background: transparent;
 }
 
 .error-text {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  padding: 4px 0 4px 10px;
-  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 4%, transparent);
-  border-left: 3px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 30%, transparent);
+  max-width: 72ch;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 40%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 65%, var(--ui-tool-text-fg, var(--tool-ink)));
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
 }
 
 .rejection-text {
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 38%, transparent);
+  background: transparent;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  padding: 4px 0 4px 10px;
-  background: color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 4%, transparent);
-  border-left: 3px solid color-mix(in srgb, var(--ui-tool-accent-fg, var(--tool-accent)) 30%, transparent);
   font-size: var(--tool-font-size-meta);
   line-height: var(--tool-line-height);
 }
@@ -502,66 +480,6 @@ pre {
   margin-top: 6px;
   max-height: calc(var(--tool-pane-max) * 0.6);
   padding: 7px 9px;
-}
-
-.failed-edit-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 1px;
-}
-
-.failed-edit-summary {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
-  font-family: var(--tool-font-mono);
-  font-size: var(--tool-font-size-meta);
-  line-height: var(--tool-line-height);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Intent diff: the edit the model wanted (old = -, new = +) in one block. */
-.intent-diff {
-  max-width: 100%;
-  max-height: clamp(96px, 20vh, 160px);
-  overflow: auto;
-  overscroll-behavior: contain;
-  font-family: var(--tool-font-mono);
-  font-size: var(--tool-font-size-line, 11.5px);
-  line-height: var(--tool-code-line-height);
-}
-
-.intent-line {
-  display: flex;
-  align-items: baseline;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.intent-sign {
-  flex: 0 0 auto;
-  width: 14px;
-  color: var(--ui-tool-text-faint-fg, var(--tool-faint));
-}
-
-.intent-line.del {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  background: color-mix(in srgb, var(--ui-tool-danger-text-fg, var(--tool-del-bar)) 5%, transparent);
-}
-
-.intent-line.del .intent-sign {
-  color: var(--ui-tool-danger-text-fg, var(--tool-del-bar));
-}
-
-.intent-line.add {
-  color: var(--ui-tool-text-muted-fg, var(--tool-soft));
-  background: color-mix(in srgb, var(--ui-tool-success-text-fg, var(--tool-add-bar)) 5%, transparent);
-}
-
-.intent-line.add .intent-sign {
-  color: var(--ui-tool-success-text-fg, var(--tool-add-bar));
 }
 
 /* Structured arguments (console/search/mcp/unknown tools). */

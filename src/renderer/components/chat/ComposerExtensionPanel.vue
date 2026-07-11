@@ -30,6 +30,10 @@
         </div>
       </header>
 
+      <!-- Fixed chrome between header and the scrolling body (e.g. the model
+           picker's search + provider filter rows). -->
+      <slot name="subheader" />
+
       <div
         v-if="error"
         class="composer-extension-message"
@@ -64,6 +68,17 @@
       >
         <slot />
       </div>
+
+      <footer
+        v-if="variant === 'command'"
+        class="composer-extension-hints"
+        aria-hidden="true"
+      >
+        <span>↑↓ move</span>
+        <span>⏎ run</span>
+        <span>tab complete</span>
+        <span>esc dismiss</span>
+      </footer>
     </section>
   </Transition>
 </template>
@@ -96,37 +111,31 @@ withDefaults(defineProps<{
 
 <style scoped>
 .composer-extension-panel {
-  --composer-extension-surface: var(
-    --ui-surface-composer-extension-bg,
-    color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))))) 32%, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg))) 68%)
-  );
-  --composer-extension-border: var(
-    --ui-surface-composer-extension-border,
-    color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 42%, transparent)
-  );
+  /* Floating overlay shell, shared by every picker variant. Speaks the same
+     popover language as the toolbar dropdowns (.inputbox-select-dropdown):
+     same surface, border mix, radius and shadow. */
+  --composer-extension-surface: var(--ui-surface-menu-bg, var(--ui-surface-overlay-bg, var(--ui-composer-overlay-bg)));
   --composer-extension-divider: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 24%, transparent);
-  --composer-extension-row-hover: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover, var(--ui-surface-panel-bg, var(--panel)))) 34%, transparent);
-  --composer-extension-row-selected: color-mix(in srgb, var(--ui-state-selected-bg, var(--selection, var(--ui-accent-primary-fg, var(--accent)))) 18%, transparent);
-  --composer-extension-row-selected-border: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 6%, transparent);
+  --composer-extension-row-hover: var(--ui-state-hover-bg, var(--hover));
+  --composer-extension-row-selected: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover))));
+  --composer-extension-row-selected-hover: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--composer-extension-row-selected)));
 
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(100% - 0.5px);
+  bottom: calc(100% + 9px);
   z-index: calc(var(--z-dropdown) + 1);
   width: 100%;
   margin: 0;
-  border: 0.5px solid var(--composer-extension-border);
-  border-bottom-color: var(--composer-extension-divider);
-  border-radius: 10px 10px 4px 4px;
+  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 76%, var(--ui-text-primary-fg, var(--text)) 8%);
+  border-radius: 12px;
   background: var(--composer-extension-surface);
-  box-shadow: var(
-    --ui-surface-composer-extension-shadow,
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.4%, transparent),
-    0 -1px 3px rgba(0, 0, 0, 0.018)
-  );
-  backdrop-filter: blur(8px) saturate(1.01);
-  -webkit-backdrop-filter: blur(8px) saturate(1.01);
+  background-clip: padding-box;
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.34),
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transform-origin: bottom center;
   overflow: hidden;
 }
 
@@ -150,8 +159,11 @@ withDefaults(defineProps<{
 .composer-extension-title {
   gap: 7px;
   color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-text-muted-fg, var(--muted)) 18%);
-  font-size: 12px;
-  font-weight: 620;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 2px;
+  text-transform: uppercase;
 }
 
 .composer-extension-title :deep(svg) {
@@ -181,7 +193,8 @@ withDefaults(defineProps<{
 .composer-extension-body {
   max-height: min(232px, 32vh);
   overflow-y: auto;
-  padding: 4px;
+  overscroll-behavior: contain;
+  padding: 6px;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
@@ -243,10 +256,22 @@ withDefaults(defineProps<{
   animation: composer-extension-spin 0.9s linear infinite;
 }
 
+.composer-extension-hints {
+  display: flex;
+  gap: 18px;
+  margin: 0 18px;
+  padding: 7px 0 8px;
+  border-top: 1px solid var(--composer-extension-divider);
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+
 :deep(.composer-extension-list) {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
 }
 
 :deep(.composer-extension-row) {
@@ -254,16 +279,14 @@ withDefaults(defineProps<{
   grid-template-columns: 22px minmax(0, 1fr) minmax(42px, 156px);
   align-items: center;
   gap: 7px;
-  min-height: 30px;
-  padding: 4px 7px;
-  border-radius: 6px;
-  border: 0.5px solid transparent;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-radius: 8px;
   color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
   transition:
-    background var(--duration-fast) var(--ease-default),
-    border-color var(--duration-fast) var(--ease-default),
-    color var(--duration-fast) var(--ease-default);
+    background 0.12s var(--ease-default),
+    color 0.12s var(--ease-default);
 }
 
 :deep(.composer-extension-row:hover) {
@@ -271,8 +294,11 @@ withDefaults(defineProps<{
 }
 
 :deep(.composer-extension-row.selected) {
-  border-color: var(--composer-extension-row-selected-border);
   background: var(--composer-extension-row-selected);
+}
+
+:deep(.composer-extension-row.selected:hover) {
+  background: var(--composer-extension-row-selected-hover);
 }
 
 :deep(.composer-extension-row-icon) {
@@ -336,182 +362,61 @@ withDefaults(defineProps<{
   opacity: 0.68;
 }
 
+/* Command palette follows the quietlines mockup
+   (docs/design/mockups/od-1-quietlines.html): full-bleed rows on a quiet
+   6px card, ▸ tick + accent command on the selected row, fixed command
+   column so descriptions align, kbd hints on the right. */
 .command-palette-panel {
-  --composer-extension-surface: var(
-    --ui-surface-composer-menu-bg,
-    color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg))))) 38%, var(--ui-surface-chat-bg, var(--bg-chat, var(--bg))) 62%)
-  );
-  --composer-extension-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 24%, transparent);
-  --composer-extension-row-hover: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover, var(--ui-surface-panel-bg, var(--panel)))) 42%, transparent);
-  --composer-extension-row-selected: color-mix(in srgb, var(--ui-state-selected-bg, var(--selection, var(--ui-accent-primary-fg, var(--accent)))) 42%, transparent);
-  --composer-extension-row-selected-border: color-mix(in srgb, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))) 54%, transparent);
-  --command-palette-focus-rail: color-mix(in srgb, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))) 86%, transparent);
-  --command-palette-edge-fade: linear-gradient(to bottom, var(--composer-extension-surface), transparent);
-  --command-palette-row-height: 42px;
+  --command-palette-row-height: 34px;
+  --command-palette-accent: var(--ui-accent-primary-fg, var(--accent));
 
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 9px);
-  width: 100%;
-  border-color: var(--composer-extension-border);
-  border-bottom-color: var(--composer-extension-border);
-  border-radius: 11px;
-  background: var(--composer-extension-surface);
-  box-shadow: var(
-    --ui-surface-composer-popover-shadow,
-    0 8px 18px rgba(0, 0, 0, 0.045),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.4%, transparent)
-  );
-  backdrop-filter: blur(8px) saturate(1.02);
-  -webkit-backdrop-filter: blur(8px) saturate(1.02);
-  transform-origin: bottom center;
-}
-
-.command-palette-panel::before,
-.command-palette-panel::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 10px;
-  z-index: 2;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.14s var(--ease-default);
-}
-
-.command-palette-panel::before {
-  top: 0;
-  background: var(--command-palette-edge-fade);
-}
-
-.command-palette-panel::after {
-  bottom: 0;
-  background: linear-gradient(to top, var(--composer-extension-surface), transparent);
-}
-
-.command-palette-panel:has(.command-palette-list.is-scrollable:not(.at-scroll-start))::before,
-.command-palette-panel:has(.command-palette-list.is-scrollable:not(.at-scroll-end))::after {
-  opacity: 0.1;
-}
-
-.command-palette-panel:has(.composer-extension-body.is-scrollable:not(.at-scroll-start))::before,
-.command-palette-panel:has(.composer-extension-body.is-scrollable:not(.at-scroll-end))::after {
-  opacity: 0.1;
+  border-color: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 42%, transparent);
+  border-radius: 6px;
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.5);
 }
 
 .command-palette-panel .composer-extension-body {
-  position: relative;
-  z-index: 1;
-  max-height: min(calc(var(--command-palette-row-height) * 5 + 12px), 30vh, 286px);
-  padding: 6px 7px;
-  scroll-padding-block: 10px;
+  max-height: min(calc(var(--command-palette-row-height) * 6 + 12px), 30vh, 286px);
+  padding: 6px 0;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-  transition: scrollbar-color 0.14s var(--ease-default);
-}
-
-.command-palette-panel .composer-extension-body::-webkit-scrollbar {
-  width: 8px;
-}
-
-.command-palette-panel .composer-extension-body::-webkit-scrollbar-thumb {
-  background: transparent;
-  border: 3px solid transparent;
-  background-clip: padding-box;
-}
-
-.command-palette-panel .composer-extension-body:hover,
-.command-palette-panel .composer-extension-body:focus-within,
-.command-palette-panel .composer-extension-body.is-scrollable:hover {
-  scrollbar-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 34%, transparent) transparent;
-}
-
-.command-palette-panel .composer-extension-body.is-navigating {
-  scrollbar-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 46%, transparent) transparent;
-}
-
-.command-palette-panel .composer-extension-body:hover::-webkit-scrollbar-thumb,
-.command-palette-panel .composer-extension-body:focus-within::-webkit-scrollbar-thumb,
-.command-palette-panel .composer-extension-body.is-scrollable:hover::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 42%, transparent);
-  border: 3px solid transparent;
-  background-clip: padding-box;
-}
-
-.command-palette-panel .composer-extension-body.is-navigating::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 48%, transparent);
-  border: 3px solid transparent;
-  background-clip: padding-box;
-}
-
-.command-palette-panel :deep(.composer-extension-row) {
-  grid-template-columns: minmax(0, 1fr) minmax(42px, 132px);
-  gap: 10px;
-  min-height: var(--command-palette-row-height);
-  padding: 0 10px;
-  border-radius: 8px;
-  border: 0.5px solid transparent;
-  position: relative;
-  z-index: 1;
-  scroll-margin-block: 8px;
-  transition:
-    color 0.12s var(--ease-default),
-    background 0.12s var(--ease-default),
-    border-color 0.12s var(--ease-default),
-    box-shadow 0.12s var(--ease-default);
-  animation: command-palette-row-in 0.16s ease both;
-}
-
-.command-palette-panel :deep(.composer-extension-row:nth-child(2)) {
-  animation-delay: 0.012s;
-}
-
-.command-palette-panel :deep(.composer-extension-row:nth-child(3)) {
-  animation-delay: 0.024s;
-}
-
-.command-palette-panel :deep(.composer-extension-row:nth-child(4)) {
-  animation-delay: 0.036s;
-}
-
-.command-palette-panel :deep(.composer-extension-row:nth-child(n + 5)) {
-  animation-delay: 0.048s;
 }
 
 .command-palette-panel :deep(.command-palette-list) {
-  --command-active-top: 0px;
-  --command-active-height: var(--command-palette-row-height);
-
   position: relative;
-  isolation: isolate;
-  padding-right: 7px;
-  gap: 2px;
+  gap: 0;
 }
 
-.command-palette-panel :deep(.command-palette-list.has-active-indicator)::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 7px;
-  top: 0;
-  height: var(--command-active-height);
-  border: 0.5px solid var(--composer-extension-row-selected-border);
-  border-radius: 8px;
-  background: var(--composer-extension-row-selected);
-  box-shadow:
-    inset 2px 0 0 var(--command-palette-focus-rail),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 3.5%, transparent);
-  opacity: 1;
-  pointer-events: none;
-  transform: translateY(var(--command-active-top));
-  transition:
-    transform 0.17s cubic-bezier(0.2, 0.82, 0.18, 1),
-    height 0.17s cubic-bezier(0.2, 0.82, 0.18, 1),
-    opacity var(--duration-fast) var(--ease-default);
-  will-change: transform, height;
-  z-index: 0;
+/* No scroll-margin/scroll-padding: keyboard navigation aligns the selected
+   row flush with the scrollport edge, so at the boundary the highlight stays
+   pinned in the first/last visible slot and the content pages by one row.
+   No transition either: paging scrolls instantly, and a fading highlight
+   would ride along with the old row for ~120ms before settling. */
+.command-palette-panel :deep(.composer-extension-row) {
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  min-height: var(--command-palette-row-height);
+  padding: 8px 18px 8px 8px;
+  border-radius: 0;
+  transition: none;
+}
+
+.command-palette-panel :deep(.composer-extension-row.selected),
+.command-palette-panel :deep(.composer-extension-row.selected:hover) {
+  background: color-mix(in srgb, var(--command-palette-accent) 7%, transparent);
+}
+
+.command-palette-panel :deep(.command-tick) {
+  align-self: center;
+  color: transparent;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1;
+  text-align: center;
+}
+
+.command-palette-panel :deep(.composer-extension-row.selected .command-tick) {
+  color: var(--command-palette-accent);
 }
 
 .command-palette-panel :deep(.composer-extension-row-icon) {
@@ -520,71 +425,38 @@ withDefaults(defineProps<{
 
 .command-palette-panel :deep(.composer-extension-row-main) {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
+  grid-template-columns: minmax(110px, max-content) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
   overflow: hidden;
 }
 
 .command-palette-panel :deep(.composer-extension-row-title) {
-  max-width: min(24ch, 32vw);
-  font-size: 13.25px;
-  font-weight: 660;
-  line-height: 1;
-  transition: color 0.12s var(--ease-default), opacity 0.12s var(--ease-default);
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.15;
 }
 
-.command-palette-panel :deep(.composer-extension-row-description),
-.command-palette-panel :deep(.composer-extension-row-meta) {
-  font-size: 12.35px;
-  line-height: 1;
-  transition: color 0.12s var(--ease-default), opacity 0.12s var(--ease-default);
+.command-palette-panel :deep(.command-hit),
+.command-palette-panel :deep(.composer-extension-row.selected .composer-extension-row-title) {
+  color: var(--command-palette-accent);
 }
 
 .command-palette-panel :deep(.composer-extension-row-description) {
-  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 88%, var(--ui-text-muted-fg, var(--muted)) 12%);
-  opacity: 0.82;
+  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  font-size: 12.5px;
+  line-height: 1.15;
 }
 
-.command-palette-panel :deep(.composer-extension-row-meta) {
-  max-width: min(100%, 132px);
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 88%, transparent);
-  opacity: 0.54;
-}
-
-.command-palette-panel :deep(.composer-extension-row.selected) {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
-.command-palette-panel :deep(.composer-extension-row:hover:not(.selected)) {
-  border-color: color-mix(in srgb, var(--composer-extension-row-selected-border) 18%, transparent);
-  background: var(--composer-extension-row-hover);
-}
-
-.command-palette-panel :deep(.composer-extension-row.selected .composer-extension-row-title) {
-  color: var(--ui-state-selected-fg, var(--ui-text-primary-fg, var(--text)));
-}
-
-.command-palette-panel :deep(.composer-extension-row.selected .composer-extension-row-description) {
-  color: color-mix(in srgb, var(--ui-state-selected-fg, var(--ui-text-primary-fg, var(--text))) 62%, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 38%);
-  opacity: 0.92;
-}
-
-.command-palette-panel :deep(.composer-extension-row.selected .composer-extension-row-meta) {
-  color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 86%, var(--ui-text-muted-fg, var(--muted)) 14%);
-  opacity: 0.7;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .command-palette-panel :deep(.command-palette-list.has-active-indicator)::before {
-    transition: none;
-  }
-
-  .command-palette-panel :deep(.composer-extension-row) {
-    animation: none;
-  }
+.command-palette-panel :deep(.composer-extension-row-kbd) {
+  justify-self: end;
+  min-width: 1.5em;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  line-height: 1.15;
+  text-align: right;
 }
 
 .composer-extension-enter-active {
@@ -601,17 +473,6 @@ withDefaults(defineProps<{
   transform: translateY(6px) scale(0.992);
 }
 
-@keyframes command-palette-row-in {
-  from {
-    opacity: 0;
-    transform: translateY(3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @keyframes composer-extension-spin {
   to {
     transform: rotate(360deg);
@@ -620,11 +481,7 @@ withDefaults(defineProps<{
 
 @media (max-width: 480px) {
   .composer-extension-panel {
-    border-radius: 10px 10px 4px 4px;
-  }
-
-  .command-palette-panel {
-    border-radius: 10px;
+    border-radius: 6px;
   }
 
   .composer-extension-body {
@@ -640,10 +497,15 @@ withDefaults(defineProps<{
   }
 
   .command-palette-panel :deep(.composer-extension-row) {
-    grid-template-columns: 18px minmax(0, 1fr);
+    grid-template-columns: 20px minmax(0, 1fr);
   }
 
-  :deep(.composer-extension-row-meta) {
+  .command-palette-panel :deep(.composer-extension-row-main) {
+    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  }
+
+  :deep(.composer-extension-row-meta),
+  .command-palette-panel :deep(.composer-extension-row-kbd) {
     display: none;
   }
 }

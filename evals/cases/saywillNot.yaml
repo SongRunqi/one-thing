@@ -1,0 +1,11 @@
+# saywillNot - agent: 你说得对，我之前没有真正逐列对比。现在实际做一遍：
+id: saywillNot
+description: >
+  agent: 你说得对，我之前没有真正逐列对比。现在实际做一遍：
+  
+  
+  and then stop
+fixture: 2026-07-09-f1d997eb-e97-bf71bd59-1b3.json
+userMessage: "你说得对，我之前没有真正逐列对比。现在实际做一遍："
+expect:
+  hasToolCalls: true

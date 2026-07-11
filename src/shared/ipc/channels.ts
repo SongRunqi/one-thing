@@ -4,333 +4,372 @@
  */
 
 export const IPC_CHANNELS = {
-  // Chat related
-  GET_CHAT_HISTORY: 'chat:get-history',
-  CLEAR_CHAT: 'chat:clear',
-  GENERATE_TITLE: 'chat:generate-title',
-  GET_SYSTEM_PROMPT_SNAPSHOT: 'chat:get-system-prompt-snapshot',
+	// Chat related
+	GET_CHAT_HISTORY: "chat:get-history",
+	CLEAR_CHAT: "chat:clear",
+	GENERATE_TITLE: "chat:generate-title",
+	GET_SYSTEM_PROMPT_SNAPSHOT: "chat:get-system-prompt-snapshot",
 
-  // Streaming control
-  ABORT_STREAM: 'chat:abort-stream',
-  GET_ACTIVE_STREAMS: 'chat:get-active-streams',
+	// Streaming control
+	ABORT_STREAM: "chat:abort-stream",
+	GET_ACTIVE_STREAMS: "chat:get-active-streams",
 
-  // Skill usage notification
-  SKILL_ACTIVATED: 'chat:skill-activated',
+	// Skill usage notification
+	SKILL_ACTIVATED: "chat:skill-activated",
 
-  // Image generation notification
-  IMAGE_GENERATED: 'chat:image-generated',
+	// Image generation notification
+	IMAGE_GENERATED: "chat:image-generated",
 
-  // Step tracking for showing AI reasoning process
-  STEP_ADDED: 'chat:step-added',
-  STEP_UPDATED: 'chat:step-updated',
+	// Step tracking for showing AI reasoning process
+	STEP_ADDED: "chat:step-added",
+	STEP_UPDATED: "chat:step-updated",
 
-  // Session related
-  GET_SESSIONS: 'sessions:get-all',
-  CREATE_SESSION: 'sessions:create',
-  SWITCH_SESSION: 'sessions:switch',
-  DELETE_SESSION: 'sessions:delete',
-  RENAME_SESSION: 'sessions:rename',
-  CREATE_BRANCH: 'sessions:create-branch',
-  UPDATE_SESSION_PIN: 'sessions:update-pin',
-  UPDATE_SESSION_MODEL: 'sessions:update-model',
-  UPDATE_SESSION_AGENT: 'sessions:update-agent',
-  UPDATE_SESSION_PERMISSION_MODE: 'sessions:update-permission-mode',
-  UPDATE_SESSION_ARCHIVED: 'sessions:update-archived',
-  UPDATE_SESSION_WORKING_DIRECTORY: 'sessions:update-working-directory',
-  GET_SESSION: 'sessions:get',
-  GET_SESSION_TOKEN_USAGE: 'sessions:get-token-usage',
-  UPDATE_SESSION_MAX_TOKENS: 'sessions:update-max-tokens',
-  CONTEXT_SIZE_UPDATED: 'sessions:context-size-updated',
-  CONTEXT_COMPACT_STARTED: 'sessions:context-compact-started',
-  CONTEXT_COMPACT_COMPLETED: 'sessions:context-compact-completed',
-  // Session optimization (metadata separation)
-  GET_SESSIONS_LIST: 'sessions:get-list',           // Returns SessionMeta[] only (no messages)
-  ACTIVATE_SESSION: 'sessions:activate',            // Mark session as active, return details
-  GET_SESSION_MESSAGES: 'sessions:get-messages',    // Returns ChatMessage[] for a session
-  GET_SESSION_MESSAGES_PAGE: 'sessions:get-messages-page', // Returns a cursor-addressed ChatMessage page
-  GET_SESSION_USER_MARKERS: 'sessions:get-user-markers',   // Returns lightweight user-message nav markers
-  SESSION_MESSAGES_CHANGED: 'sessions:messages-changed',  // Event: messages added/updated
+	// Session related
+	GET_SESSIONS: "sessions:get-all",
+	CREATE_SESSION: "sessions:create",
+	SWITCH_SESSION: "sessions:switch",
+	DELETE_SESSION: "sessions:delete",
+	RENAME_SESSION: "sessions:rename",
+	CREATE_BRANCH: "sessions:create-branch",
+	UPDATE_SESSION_PIN: "sessions:update-pin",
+	UPDATE_SESSION_MODEL: "sessions:update-model",
+	UPDATE_SESSION_AGENT: "sessions:update-agent",
+	UPDATE_SESSION_PERMISSION_MODE: "sessions:update-permission-mode",
+	UPDATE_SESSION_ARCHIVED: "sessions:update-archived",
+	UPDATE_SESSION_WORKING_DIRECTORY: "sessions:update-working-directory",
+	GET_SESSION: "sessions:get",
+	GET_SESSION_TOKEN_USAGE: "sessions:get-token-usage",
+	UPDATE_SESSION_MAX_TOKENS: "sessions:update-max-tokens",
+	CONTEXT_SIZE_UPDATED: "sessions:context-size-updated",
+	CONTEXT_COMPACT_STARTED: "sessions:context-compact-started",
+	CONTEXT_COMPACT_COMPLETED: "sessions:context-compact-completed",
+	// Session optimization (metadata separation)
+	GET_SESSIONS_LIST: "sessions:get-list", // Returns SessionMeta[] only (no messages)
+	ACTIVATE_SESSION: "sessions:activate", // Mark session as active, return details
+	GET_SESSION_MESSAGES: "sessions:get-messages", // Returns ChatMessage[] for a session
+	GET_SESSION_MESSAGES_PAGE: "sessions:get-messages-page", // Returns a cursor-addressed ChatMessage page
+	GET_SESSION_USER_MARKERS: "sessions:get-user-markers", // Returns lightweight user-message nav markers
+	SESSION_MESSAGES_CHANGED: "sessions:messages-changed", // Event: messages added/updated
 
-  // Settings related
-  GET_SETTINGS: 'settings:get',
-  SAVE_SETTINGS: 'settings:save',
-  OPEN_SETTINGS_WINDOW: 'settings:open-window',
-  SETTINGS_CHANGED: 'settings:changed',
-  GET_SYSTEM_THEME: 'settings:get-system-theme',
-  SYSTEM_THEME_CHANGED: 'settings:system-theme-changed',
+	// Settings related
+	GET_SETTINGS: "settings:get",
+	SAVE_SETTINGS: "settings:save",
+	OPEN_SETTINGS_WINDOW: "settings:open-window",
+	SETTINGS_CHANGED: "settings:changed",
+	GET_SYSTEM_THEME: "settings:get-system-theme",
+	SYSTEM_THEME_CHANGED: "settings:system-theme-changed",
 
-  // Voice related
-  VOICE_GET_STATE: 'voice:get-state',
-  VOICE_START: 'voice:start',
-  VOICE_STOP: 'voice:stop',
-  VOICE_SUBMIT_UTTERANCE: 'voice:submit-utterance',
-  VOICE_SUBMIT_TRANSCRIPT: 'voice:submit-transcript',
-  VOICE_SYNTHESIZE: 'voice:synthesize',
-  VOICE_TEST_ASR: 'voice:test-asr',
-  VOICE_TEST_TTS: 'voice:test-tts',
-  VOICE_GET_TTS_MODELS: 'voice:get-tts-models',
-  VOICE_EVENT: 'voice:event',
-  VOICE_RUNTIME_COMMAND: 'voice:runtime-command',
-  VOICE_RUNTIME_EVENT: 'voice:runtime-event',
-  VOICE_RUNTIME_READY: 'voice:runtime-ready',
+	// Voice related
+	VOICE_GET_STATE: "voice:get-state",
+	VOICE_START: "voice:start",
+	VOICE_STOP: "voice:stop",
+	VOICE_SUBMIT_UTTERANCE: "voice:submit-utterance",
+	VOICE_SUBMIT_TRANSCRIPT: "voice:submit-transcript",
+	VOICE_SYNTHESIZE: "voice:synthesize",
+	VOICE_TEST_ASR: "voice:test-asr",
+	VOICE_TEST_TTS: "voice:test-tts",
+	VOICE_GET_TTS_MODELS: "voice:get-tts-models",
+	VOICE_EVENT: "voice:event",
+	VOICE_RUNTIME_COMMAND: "voice:runtime-command",
+	VOICE_RUNTIME_EVENT: "voice:runtime-event",
+	VOICE_RUNTIME_READY: "voice:runtime-ready",
 
-  // Gateway / IM channel related
-  GATEWAY_GET_STATUS: 'gateway:get-status',
-  GATEWAY_START: 'gateway:start',
-  GATEWAY_STOP: 'gateway:stop',
-  GATEWAY_WECHAT_LOGOUT: 'gateway:wechat-logout',
-  GATEWAY_WECHAT_ADD_ACCOUNT: 'gateway:wechat-add-account',
-  GATEWAY_WECHAT_STOP_ACCOUNT: 'gateway:wechat-stop-account',
-  GATEWAY_WECHAT_REMOVE_ACCOUNT: 'gateway:wechat-remove-account',
-  GATEWAY_WECHAT_RENAME_ACCOUNT: 'gateway:wechat-rename-account',
+	// Gateway / IM channel related
+	GATEWAY_GET_STATUS: "gateway:get-status",
+	GATEWAY_START: "gateway:start",
+	GATEWAY_STOP: "gateway:stop",
+	GATEWAY_WECHAT_LOGOUT: "gateway:wechat-logout",
+	GATEWAY_WECHAT_ADD_ACCOUNT: "gateway:wechat-add-account",
+	GATEWAY_WECHAT_STOP_ACCOUNT: "gateway:wechat-stop-account",
+	GATEWAY_WECHAT_REMOVE_ACCOUNT: "gateway:wechat-remove-account",
+	GATEWAY_WECHAT_RENAME_ACCOUNT: "gateway:wechat-rename-account",
 
-  // Channel identity and IM reply routing
-  CHANNEL_IDENTITY_LIST_LINKS: 'channel-identity:list-links',
-  CHANNEL_IDENTITY_LIST_PROFILES: 'channel-identity:list-profiles',
-  CHANNEL_IDENTITY_CREATE_PROFILE: 'channel-identity:create-profile',
-  CHANNEL_IDENTITY_UPDATE_PROFILE: 'channel-identity:update-profile',
-  CHANNEL_IDENTITY_CREATE_LINK: 'channel-identity:create-link',
-  CHANNEL_IDENTITY_DELETE_LINK: 'channel-identity:delete-link',
-  CHANNEL_IDENTITY_RESOLVE: 'channel-identity:resolve',
-  CHANNEL_DELIVERY_LIST: 'channel-delivery:list',
+	// Channel identity and IM reply routing
+	CHANNEL_IDENTITY_LIST_LINKS: "channel-identity:list-links",
+	CHANNEL_IDENTITY_LIST_PROFILES: "channel-identity:list-profiles",
+	CHANNEL_IDENTITY_CREATE_PROFILE: "channel-identity:create-profile",
+	CHANNEL_IDENTITY_UPDATE_PROFILE: "channel-identity:update-profile",
+	CHANNEL_IDENTITY_CREATE_LINK: "channel-identity:create-link",
+	CHANNEL_IDENTITY_DELETE_LINK: "channel-identity:delete-link",
+	CHANNEL_IDENTITY_RESOLVE: "channel-identity:resolve",
+	CHANNEL_DELIVERY_LIST: "channel-delivery:list",
 
-  // Agents related
-  AGENTS_LIST: 'agents:list',
-  AGENTS_CREATE: 'agents:create',
-  AGENTS_UPDATE: 'agents:update',
-  AGENTS_DELETE: 'agents:delete',
+	// Agents related
+	AGENTS_LIST: "agents:list",
+	AGENTS_CREATE: "agents:create",
+	AGENTS_UPDATE: "agents:update",
+	AGENTS_DELETE: "agents:delete",
 
-  // User prompt snippets
-  PROMPTS_LIST: 'prompts:list',
-  PROMPTS_GET: 'prompts:get',
-  PROMPTS_CREATE: 'prompts:create',
-  PROMPTS_UPDATE: 'prompts:update',
-  PROMPTS_DELETE: 'prompts:delete',
+	// User prompt snippets
+	PROMPTS_LIST: "prompts:list",
+	PROMPTS_GET: "prompts:get",
+	PROMPTS_CREATE: "prompts:create",
+	PROMPTS_UPDATE: "prompts:update",
+	PROMPTS_DELETE: "prompts:delete",
 
-  // Network related
-  TEST_PROXY: 'network:test-proxy',
+	// Network related
+	TEST_PROXY: "network:test-proxy",
 
-  // Models related (read from settings.json modelRegistry)
-  // Model registry
-  GET_MODELS_WITH_CAPABILITIES: 'models:get-with-capabilities',
-  GET_ALL_MODELS: 'models:get-all',
-  SEARCH_MODELS: 'models:search',
-  REFRESH_MODEL_REGISTRY: 'models:refresh-registry',
-  GET_MODEL_NAME_ALIASES: 'models:get-name-aliases',
-  GET_MODEL_DISPLAY_NAME: 'models:get-display-name',
+	// Models related (read from settings.json modelRegistry)
+	// Model registry
+	GET_MODELS_WITH_CAPABILITIES: "models:get-with-capabilities",
+	GET_ALL_MODELS: "models:get-all",
+	SEARCH_MODELS: "models:search",
+	REFRESH_MODEL_REGISTRY: "models:refresh-registry",
+	GET_MODEL_NAME_ALIASES: "models:get-name-aliases",
+	GET_MODEL_DISPLAY_NAME: "models:get-display-name",
 
-  // Providers related
-  GET_PROVIDERS: 'providers:get-all',
-  GET_PROVIDER_USAGE: 'providers:get-usage',
-  GET_PROVIDER_ENV_STATUS: 'providers:get-env-status',
+	// Providers related
+	GET_PROVIDERS: "providers:get-all",
+	GET_PROVIDER_USAGE: "providers:get-usage",
+	GET_PROVIDER_ENV_STATUS: "providers:get-env-status",
 
-  // Tools related
-  GET_TOOLS: 'tools:get-all',
-  EXECUTE_TOOL: 'tools:execute',
-  CANCEL_TOOL: 'tools:cancel',
-  UPDATE_TOOL_CALL: 'tools:update-tool-call',
-  BACKGROUND_JOBS_LIST: 'tools:background-jobs:list',
-  BACKGROUND_JOBS_STOP: 'tools:background-jobs:stop',
-  REFRESH_ASYNC_TOOLS: 'tools:refresh-async',
-  UPDATE_MESSAGE_THINKING_TIME: 'chat:update-thinking-time',
-  RESUME_AFTER_TOOL_CONFIRM: 'chat:resume-after-tool-confirm',
+	// Tools related
+	GET_TOOLS: "tools:get-all",
+	EXECUTE_TOOL: "tools:execute",
+	CANCEL_TOOL: "tools:cancel",
+	UPDATE_TOOL_CALL: "tools:update-tool-call",
+	BACKGROUND_JOBS_LIST: "tools:background-jobs:list",
+	BACKGROUND_JOBS_STOP: "tools:background-jobs:stop",
+	REFRESH_ASYNC_TOOLS: "tools:refresh-async",
+	UPDATE_MESSAGE_THINKING_TIME: "chat:update-thinking-time",
+	RESUME_AFTER_TOOL_CONFIRM: "chat:resume-after-tool-confirm",
 
-  // Permission related
-  PERMISSION_REQUEST: 'permission:request',
-  PERMISSION_GET_PENDING: 'permission:get-pending',
-  PERMISSION_CLEAR_SESSION: 'permission:clear-session',
-  PERMISSION_LIST_GRANTS: 'permission:list-grants',
-  PERMISSION_REVOKE_GRANT: 'permission:revoke-grant',
-  PERMISSION_CLEAR_SESSION_GRANTS: 'permission:clear-session-grants',
-  PERMISSION_CLEAR_WORKSPACE_GRANTS: 'permission:clear-workspace-grants',
+	// Permission related
+	PERMISSION_REQUEST: "permission:request",
+	PERMISSION_GET_PENDING: "permission:get-pending",
+	PERMISSION_CLEAR_SESSION: "permission:clear-session",
+	PERMISSION_LIST_GRANTS: "permission:list-grants",
+	PERMISSION_REVOKE_GRANT: "permission:revoke-grant",
+	PERMISSION_CLEAR_SESSION_GRANTS: "permission:clear-session-grants",
+	PERMISSION_CLEAR_WORKSPACE_GRANTS: "permission:clear-workspace-grants",
 
-  // MCP related
-  MCP_GET_SERVERS: 'mcp:get-servers',
-  MCP_ADD_SERVER: 'mcp:add-server',
-  MCP_UPDATE_SERVER: 'mcp:update-server',
-  MCP_REMOVE_SERVER: 'mcp:remove-server',
-  MCP_CONNECT_SERVER: 'mcp:connect-server',
-  MCP_DISCONNECT_SERVER: 'mcp:disconnect-server',
-  MCP_REFRESH_SERVER: 'mcp:refresh-server',
-  MCP_GET_TOOLS: 'mcp:get-tools',
-  MCP_CALL_TOOL: 'mcp:call-tool',
-  MCP_GET_RESOURCES: 'mcp:get-resources',
-  MCP_READ_RESOURCE: 'mcp:read-resource',
-  MCP_GET_PROMPTS: 'mcp:get-prompts',
-  MCP_GET_PROMPT: 'mcp:get-prompt',
-  MCP_READ_CONFIG_FILE: 'mcp:read-config-file',
+	// MCP related
+	MCP_GET_SERVERS: "mcp:get-servers",
+	MCP_ADD_SERVER: "mcp:add-server",
+	MCP_UPDATE_SERVER: "mcp:update-server",
+	MCP_REMOVE_SERVER: "mcp:remove-server",
+	MCP_CONNECT_SERVER: "mcp:connect-server",
+	MCP_DISCONNECT_SERVER: "mcp:disconnect-server",
+	MCP_REFRESH_SERVER: "mcp:refresh-server",
+	MCP_GET_TOOLS: "mcp:get-tools",
+	MCP_CALL_TOOL: "mcp:call-tool",
+	MCP_GET_RESOURCES: "mcp:get-resources",
+	MCP_READ_RESOURCE: "mcp:read-resource",
+	MCP_GET_PROMPTS: "mcp:get-prompts",
+	MCP_GET_PROMPT: "mcp:get-prompt",
+	MCP_READ_CONFIG_FILE: "mcp:read-config-file",
 
-  // ACP related
-  ACP_GET_AGENTS: 'acp:get-agents',
-  ACP_ADD_AGENT: 'acp:add-agent',
-  ACP_UPDATE_AGENT: 'acp:update-agent',
-  ACP_REMOVE_AGENT: 'acp:remove-agent',
-  ACP_CONNECT_AGENT: 'acp:connect-agent',
-  ACP_DISCONNECT_AGENT: 'acp:disconnect-agent',
-  ACP_REFRESH_AGENT: 'acp:refresh-agent',
-  ACP_CANCEL_SESSION: 'acp:cancel-session',
+	// ACP related
+	ACP_GET_AGENTS: "acp:get-agents",
+	ACP_ADD_AGENT: "acp:add-agent",
+	ACP_UPDATE_AGENT: "acp:update-agent",
+	ACP_REMOVE_AGENT: "acp:remove-agent",
+	ACP_CONNECT_AGENT: "acp:connect-agent",
+	ACP_DISCONNECT_AGENT: "acp:disconnect-agent",
+	ACP_REFRESH_AGENT: "acp:refresh-agent",
+	ACP_CANCEL_SESSION: "acp:cancel-session",
 
-  // Dialog related
-  SHOW_OPEN_DIALOG: 'dialog:show-open',
+	// Dialog related
+	SHOW_OPEN_DIALOG: "dialog:show-open",
 
-  // Image Preview related
-  LIST_MEDIA_ASSETS: 'media:list-assets',
-  HIDE_MEDIA_ASSET: 'media:hide-asset',
-  REBUILD_MEDIA_LIBRARY: 'media:rebuild-library',
-  GET_MEDIA_GALLERY: 'media:get-gallery',
-  OPEN_IMAGE_PREVIEW: 'media:open-image-preview',
-  GET_IMAGE_PREVIEW: 'media:get-image-preview',
-  OPEN_IMAGE_GALLERY: 'media:open-image-gallery',
-  IMAGE_PREVIEW_UPDATE: 'image-preview:update',
-  IMAGE_GALLERY_UPDATE: 'image-gallery:update',
+	// Image Preview related
+	LIST_MEDIA_ASSETS: "media:list-assets",
+	HIDE_MEDIA_ASSET: "media:hide-asset",
+	REBUILD_MEDIA_LIBRARY: "media:rebuild-library",
+	GET_MEDIA_GALLERY: "media:get-gallery",
+	OPEN_IMAGE_PREVIEW: "media:open-image-preview",
+	GET_IMAGE_PREVIEW: "media:get-image-preview",
+	OPEN_IMAGE_GALLERY: "media:open-image-gallery",
+	IMAGE_PREVIEW_UPDATE: "image-preview:update",
+	IMAGE_GALLERY_UPDATE: "image-gallery:update",
 
-  // Skills related
-  SKILLS_GET_ALL: 'skills:get-all',
-  SKILLS_REFRESH: 'skills:refresh',
-  SKILLS_READ_FILE: 'skills:read-file',
-  SKILLS_OPEN_DIRECTORY: 'skills:open-directory',
-  SKILLS_CREATE: 'skills:create',
-  SKILLS_DELETE: 'skills:delete',
-  SKILLS_TOGGLE_ENABLED: 'skills:toggle-enabled',
+	// Skills related
+	SKILLS_GET_ALL: "skills:get-all",
+	SKILLS_REFRESH: "skills:refresh",
+	SKILLS_READ_FILE: "skills:read-file",
+	SKILLS_OPEN_DIRECTORY: "skills:open-directory",
+	SKILLS_CREATE: "skills:create",
+	SKILLS_DELETE: "skills:delete",
+	SKILLS_TOGGLE_ENABLED: "skills:toggle-enabled",
 
-  // Theme related
-  THEME_GET_ALL: 'themes:get-all',
-  THEME_GET: 'themes:get',
-  THEME_APPLY: 'themes:apply',
-  THEME_REFRESH: 'themes:refresh',
-  THEME_OPEN_FOLDER: 'themes:open-folder',
+	// Theme related
+	THEME_GET_ALL: "themes:get-all",
+	THEME_GET: "themes:get",
+	THEME_APPLY: "themes:apply",
+	THEME_REFRESH: "themes:refresh",
+	THEME_OPEN_FOLDER: "themes:open-folder",
 
-  // OAuth related
-  OAUTH_START: 'oauth:start',
-  OAUTH_CALLBACK: 'oauth:callback',
-  OAUTH_REFRESH: 'oauth:refresh',
-  OAUTH_LOGOUT: 'oauth:logout',
-  OAUTH_STATUS: 'oauth:status',
-  OAUTH_DEVICE_POLL: 'oauth:device-poll',
-  OAUTH_TOKEN_REFRESHED: 'oauth:token-refreshed',
-  OAUTH_TOKEN_EXPIRED: 'oauth:token-expired',
+	// OAuth related
+	OAUTH_START: "oauth:start",
+	OAUTH_CALLBACK: "oauth:callback",
+	OAUTH_REFRESH: "oauth:refresh",
+	OAUTH_LOGOUT: "oauth:logout",
+	OAUTH_STATUS: "oauth:status",
+	OAUTH_DEVICE_POLL: "oauth:device-poll",
+	OAUTH_TOKEN_REFRESHED: "oauth:token-refreshed",
+	OAUTH_TOKEN_EXPIRED: "oauth:token-expired",
 
-  // Files related (for @ file search)
-  FILES_LIST: 'files:list',
+	// Files related (for @ file search)
+	FILES_LIST: "files:list",
 
-  // File rollback related
-  FILE_ROLLBACK: 'files:rollback',
+	// File rollback related
+	FILE_ROLLBACK: "files:rollback",
 
-  // Directories related (for /cd path completion)
-  DIRS_LIST: 'dirs:list',
+	// Directories related (for /cd path completion)
+	DIRS_LIST: "dirs:list",
 
-  // File Preview related (for reading file content)
-  FILE_READ_CONTENT: 'file:read-content',
-  FILE_SAVE_CONTENT: 'file:save-content',
-  FILE_LIST_DIRECTORY: 'file:list-directory',
-  FILE_CREATE: 'file:create',
-  FILE_CREATE_DIRECTORY: 'file:create-directory',
-  FILE_RENAME: 'file:rename',
-  FILE_DELETE: 'file:delete',
-  FILE_STAT: 'file:stat',
-  FILE_REVEAL: 'file:reveal',
-  FILE_WATCH_START: 'file:watch-start',
-  FILE_WATCH_STOP: 'file:watch-stop',
-  FILE_WATCH_EVENT: 'file:watch-event',
+	// File Preview related (for reading file content)
+	FILE_READ_CONTENT: "file:read-content",
+	FILE_SAVE_CONTENT: "file:save-content",
+	FILE_LIST_DIRECTORY: "file:list-directory",
+	FILE_CREATE: "file:create",
+	FILE_CREATE_DIRECTORY: "file:create-directory",
+	FILE_RENAME: "file:rename",
+	FILE_DELETE: "file:delete",
+	FILE_STAT: "file:stat",
+	FILE_REVEAL: "file:reveal",
+	FILE_WATCH_START: "file:watch-start",
+	FILE_WATCH_STOP: "file:watch-stop",
+	FILE_WATCH_EVENT: "file:watch-event",
 
-  // Markdown asset / attachment related
-  MARKDOWN_RESOLVE_ASSET: 'markdown:resolve-asset',
-  MARKDOWN_SAVE_ATTACHMENTS: 'markdown:save-attachments',
+	// Markdown asset / attachment related
+	MARKDOWN_RESOLVE_ASSET: "markdown:resolve-asset",
+	MARKDOWN_SAVE_ATTACHMENTS: "markdown:save-attachments",
 
-  // Unified event-driven channels (Phase 4)
-  SESSION_EVENT: 'session:event',
-  SESSION_STREAM: 'session:stream',
-  SESSION_COMMAND: 'session:command',
+	// Unified event-driven channels (Phase 4)
+	SESSION_EVENT: "session:event",
+	SESSION_STREAM: "session:stream",
+	SESSION_COMMAND: "session:command",
 
-  // Variables subsystem (scalar-only)
-  VARIABLES_LIST: 'variables:list',
-  VARIABLES_SET: 'variables:set',
-  VARIABLES_DELETE: 'variables:delete',
+	// Variables subsystem (scalar-only)
+	VARIABLES_LIST: "variables:list",
+	VARIABLES_SET: "variables:set",
+	VARIABLES_DELETE: "variables:delete",
 
-  // Project directories — independent module
-  PROJECT_DIRS_LIST: 'project-dirs:list',
-  PROJECT_DIRS_GET: 'project-dirs:get',
-  PROJECT_DIRS_ADD: 'project-dirs:add',
-  PROJECT_DIRS_UPDATE: 'project-dirs:update',
-  PROJECT_DIRS_REMOVE: 'project-dirs:remove',
+	// Project directories — independent module
+	PROJECT_DIRS_LIST: "project-dirs:list",
+	PROJECT_DIRS_GET: "project-dirs:get",
+	PROJECT_DIRS_ADD: "project-dirs:add",
+	PROJECT_DIRS_UPDATE: "project-dirs:update",
+	PROJECT_DIRS_REMOVE: "project-dirs:remove",
 
-  // Plugin management
-  PLUGINS_LIST: 'plugins:list',
-  PLUGINS_ENABLE: 'plugins:enable',
-  PLUGINS_DISABLE: 'plugins:disable',
-  PLUGINS_REFRESH: 'plugins:refresh',
-  PLUGINS_COMMANDS: 'plugins:commands',
-  PLUGINS_EXECUTE_COMMAND: 'plugins:execute-command',
+	// Plugin management
+	PLUGINS_LIST: "plugins:list",
+	PLUGINS_ENABLE: "plugins:enable",
+	PLUGINS_DISABLE: "plugins:disable",
+	PLUGINS_REFRESH: "plugins:refresh",
+	PLUGINS_COMMANDS: "plugins:commands",
+	PLUGINS_EXECUTE_COMMAND: "plugins:execute-command",
 
-  // Soul / Memory panel
-  MEMORY_OVERVIEW: 'memory:overview',
-  MEMORY_READ: 'memory:read',
-  MEMORY_SEARCH: 'memory:search',
-  MEMORY_APPEND: 'memory:append',
-  MEMORY_SAVE_FILE: 'memory:save-file',
-  MEMORY_INDEX: 'memory:index',
-  MEMORY_RUN_DREAMING: 'memory:run-dreaming',
-  MEMORY_CAPTURE_SAVE: 'memory:capture-save',
-  MEMORY_CAPTURE_DISCARD: 'memory:capture-discard',
-  MEMORY_PROFILE_LIST: 'memory.profile:list',
-  MEMORY_PROFILE_SEARCH: 'memory.profile:search',
-  MEMORY_PROFILE_UPSERT: 'memory.profile:upsert',
-  MEMORY_PROFILE_DELETE: 'memory.profile:delete',
-  MEMORY_PROFILE_AUDIT: 'memory.profile:audit',
-  MEMORY_PROFILE_EXPORT: 'memory.profile:export',
-  MEMORY_GRAPH_OVERVIEW: 'memory.graph:overview',
-  MEMORY_GRAPH_ENTITIES_LIST: 'memory.graph.entities:list',
-  MEMORY_GRAPH_ENTITIES_UPSERT: 'memory.graph.entities:upsert',
-  MEMORY_GRAPH_ENTITIES_DELETE: 'memory.graph.entities:delete',
-  MEMORY_GRAPH_OBSERVATIONS_LIST: 'memory.graph.observations:list',
-  MEMORY_GRAPH_OBSERVATIONS_UPSERT: 'memory.graph.observations:upsert',
-  MEMORY_GRAPH_OBSERVATIONS_DELETE: 'memory.graph.observations:delete',
-  MEMORY_GRAPH_RELATIONS_LIST: 'memory.graph.relations:list',
-  MEMORY_GRAPH_RELATIONS_UPSERT: 'memory.graph.relations:upsert',
-  MEMORY_GRAPH_RELATIONS_DELETE: 'memory.graph.relations:delete',
-  MEMORY_GRAPH_DUPLICATES_LIST: 'memory.graph.duplicates:list',
-  MEMORY_GRAPH_DUPLICATES_MERGE: 'memory.graph.duplicates:merge',
-  MEMORY_GRAPH_DUPLICATES_IGNORE: 'memory.graph.duplicates:ignore',
-  MEMORY_GRAPH_AUDIT: 'memory.graph:audit',
-  MEMORY_LOGS_LIST: 'memory.logs:list',
-  MEMORY_LOGS_STATS: 'memory.logs:stats',
-  MEMORY_LOGS_OPEN_FOLDER: 'memory.logs:open-folder',
-  MEMORY_LOGS_CLEANUP: 'memory.logs:cleanup',
+	// Soul / Memory panel
+	MEMORY_OVERVIEW: "memory:overview",
+	MEMORY_READ: "memory:read",
+	MEMORY_SEARCH: "memory:search",
+	MEMORY_APPEND: "memory:append",
+	MEMORY_SAVE_FILE: "memory:save-file",
+	MEMORY_INDEX: "memory:index",
+	MEMORY_RUN_DREAMING: "memory:run-dreaming",
+	MEMORY_CAPTURE_SAVE: "memory:capture-save",
+	MEMORY_CAPTURE_DISCARD: "memory:capture-discard",
+	MEMORY_PROFILE_LIST: "memory.profile:list",
+	MEMORY_PROFILE_SEARCH: "memory.profile:search",
+	MEMORY_PROFILE_UPSERT: "memory.profile:upsert",
+	MEMORY_PROFILE_DELETE: "memory.profile:delete",
+	MEMORY_PROFILE_AUDIT: "memory.profile:audit",
+	MEMORY_PROFILE_EXPORT: "memory.profile:export",
+	MEMORY_GRAPH_OVERVIEW: "memory.graph:overview",
+	MEMORY_GRAPH_ENTITIES_LIST: "memory.graph.entities:list",
+	MEMORY_GRAPH_ENTITIES_UPSERT: "memory.graph.entities:upsert",
+	MEMORY_GRAPH_ENTITIES_DELETE: "memory.graph.entities:delete",
+	MEMORY_GRAPH_OBSERVATIONS_LIST: "memory.graph.observations:list",
+	MEMORY_GRAPH_OBSERVATIONS_UPSERT: "memory.graph.observations:upsert",
+	MEMORY_GRAPH_OBSERVATIONS_DELETE: "memory.graph.observations:delete",
+	MEMORY_GRAPH_RELATIONS_LIST: "memory.graph.relations:list",
+	MEMORY_GRAPH_RELATIONS_UPSERT: "memory.graph.relations:upsert",
+	MEMORY_GRAPH_RELATIONS_DELETE: "memory.graph.relations:delete",
+	MEMORY_GRAPH_DUPLICATES_LIST: "memory.graph.duplicates:list",
+	MEMORY_GRAPH_DUPLICATES_MERGE: "memory.graph.duplicates:merge",
+	MEMORY_GRAPH_DUPLICATES_IGNORE: "memory.graph.duplicates:ignore",
+	MEMORY_GRAPH_AUDIT: "memory.graph:audit",
+	MEMORY_LOGS_LIST: "memory.logs:list",
+	MEMORY_LOGS_STATS: "memory.logs:stats",
+	MEMORY_LOGS_OPEN_FOLDER: "memory.logs:open-folder",
+	MEMORY_LOGS_CLEANUP: "memory.logs:cleanup",
 
-  // Generic scheduler
-  SCHEDULER_LIST: 'scheduler:list',
-  SCHEDULER_GET: 'scheduler:get',
-  SCHEDULER_RUN_NOW: 'scheduler:run-now',
-  SCHEDULER_SET_ENABLED: 'scheduler:set-enabled',
-  SCHEDULER_CREATE_TASK: 'scheduler:create-task',
-  SCHEDULER_UPDATE_TASK: 'scheduler:update-task',
-  SCHEDULER_DELETE_TASK: 'scheduler:delete-task',
-  SCHEDULER_LIST_RUNS: 'scheduler:list-runs',
-  SCHEDULER_GET_RUN: 'scheduler:get-run',
+	// Generic scheduler
+	SCHEDULER_LIST: "scheduler:list",
+	SCHEDULER_GET: "scheduler:get",
+	SCHEDULER_RUN_NOW: "scheduler:run-now",
+	SCHEDULER_SET_ENABLED: "scheduler:set-enabled",
+	SCHEDULER_CREATE_TASK: "scheduler:create-task",
+	SCHEDULER_UPDATE_TASK: "scheduler:update-task",
+	SCHEDULER_DELETE_TASK: "scheduler:delete-task",
+	SCHEDULER_LIST_RUNS: "scheduler:list-runs",
+	SCHEDULER_GET_RUN: "scheduler:get-run",
 
-  // App State (restore on startup)
-  GET_APP_STATE: 'app-state:get',
-  SAVE_UI_STATE: 'app-state:save-ui',
+	// App State (restore on startup)
+	GET_APP_STATE: "app-state:get",
+	SAVE_UI_STATE: "app-state:save-ui",
 
-  // Search Everywhere
-  SEARCH_WINDOW_TOGGLE: 'search-window:toggle',
-  SEARCH_WINDOW_CLOSE: 'search-window:close',
-  SEARCH_WINDOW_SHOWN: 'search-window:shown',
-  SEARCH_WINDOW_GUIDES: 'search-window:guides',
-  SEARCH_QUERY: 'search:query',
-  SEARCH_EXECUTE_ACTION: 'search:execute-action',
-  SEARCH_ACTION: 'search:action',
+	// Search Everywhere
+	SEARCH_WINDOW_TOGGLE: "search-window:toggle",
+	SEARCH_WINDOW_CLOSE: "search-window:close",
+	SEARCH_WINDOW_SHOWN: "search-window:shown",
+	SEARCH_WINDOW_GUIDES: "search-window:guides",
+	SEARCH_WINDOW_SET_ANCHOR: "search-window:set-anchor",
+	SEARCH_QUERY: "search:query",
+	SEARCH_EXECUTE_ACTION: "search:execute-action",
+	SEARCH_ACTION: "search:action",
 
-  // Todo / Plan
-  TODO_PLAN_GET: 'todo-plan:get',
-  TODO_PLAN_CREATE: 'todo-plan:create',
-  TODO_PLAN_UPDATE: 'todo-plan:update',
-  TODO_PLAN_RENAME: 'todo-plan:rename',
-  TODO_PLAN_DELETE: 'todo-plan:delete',
-  TODO_PLAN_REVEAL_DIRECTORY: 'todo-plan:reveal-directory',
-  TODO_PLAN_OPEN_WINDOW: 'todo-plan:open-window',
-  TODO_PLAN_HIDE_WINDOW: 'todo-plan:hide-window',
-  TODO_PLAN_TOGGLE_WINDOW: 'todo-plan:toggle-window',
-  TODO_PLAN_SET_WINDOW_PINNED: 'todo-plan:set-window-pinned',
-  TODO_PLAN_CHANGED: 'todo-plan:changed',
-} as const
+	// Todo / Plan
+	TODO_PLAN_GET: "todo-plan:get",
+	TODO_PLAN_CREATE: "todo-plan:create",
+	TODO_PLAN_UPDATE: "todo-plan:update",
+	TODO_PLAN_RENAME: "todo-plan:rename",
+	TODO_PLAN_DELETE: "todo-plan:delete",
+	TODO_PLAN_REVEAL_DIRECTORY: "todo-plan:reveal-directory",
+	TODO_PLAN_OPEN_WINDOW: "todo-plan:open-window",
+	TODO_PLAN_HIDE_WINDOW: "todo-plan:hide-window",
+	TODO_PLAN_TOGGLE_WINDOW: "todo-plan:toggle-window",
+	TODO_PLAN_SET_WINDOW_PINNED: "todo-plan:set-window-pinned",
+	TODO_PLAN_CHANGED: "todo-plan:changed",
+
+	// Evals (prompt evaluation) related
+	EVALS_RECORD_DOWNVOTE: "evals:record-downvote",
+
+	// Evals Phase 1 - Review (read-only)
+	EVALS_LIST_RECORDS: "evals:list-records",
+	EVALS_LIST_FIXTURES: "evals:list-fixtures",
+	EVALS_READ_FIXTURE: "evals:read-fixture",
+	EVALS_READ_SNAPSHOT: "evals:read-snapshot",
+	EVALS_LIST_RESULTS: "evals:list-results",
+
+	// Evals Phase 2 - Run
+	EVALS_RUN_START: "evals:run-start",
+	EVALS_RUN_CANCEL: "evals:run-cancel",
+	EVALS_RUN_PROGRESS: "evals:run-progress",
+	EVALS_LIST_CASES: "evals:list-cases",
+	EVALS_GET_CASE: "evals:get-case",
+
+	// Evals Phase 3 - Actions
+	EVALS_PROMOTE_FIXTURE: "evals:promote-fixture",
+	EVALS_RETIRE_CASE: "evals:retire-case",
+	EVALS_GENERATE_TRIAGE: "evals:generate-triage",
+	EVALS_READ_RUN_DETAIL: "evals:read-run-detail",
+
+	// Evals Workbench (incident-centric, W1-W5)
+	EVALS_INCIDENT_LIST: "evals:incident-list",
+	EVALS_INCIDENT_GET: "evals:incident-get",
+	EVALS_INCIDENT_UPDATE: "evals:incident-update",
+	EVALS_INCIDENT_READ_FILE: "evals:incident-read-file",
+	EVALS_REPLAY_START: "evals:replay-start",
+	EVALS_REPLAY_CANCEL: "evals:replay-cancel",
+	EVALS_REPLAY_PROGRESS: "evals:replay-progress",
+	EVALS_INCIDENT_ANALYZE: "evals:incident-analyze",
+	EVALS_INCIDENT_PROMOTE: "evals:incident-promote",
+	EVALS_DIAGNOSE_START: "evals:diagnose-start",
+	EVALS_DIAGNOSE_PROGRESS: "evals:diagnose-progress",
+	EVALS_ROUND_LIST: "evals:round-list",
+	EVALS_ROUND_REPLAY: "evals:round-replay",
+} as const;

@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import { initializeIPCHub } from './services/ipc-hub'
+import { buildFontLoadSpecs, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '../shared/fonts'
 import './styles/main.css'
 
 // Note: Initial theme is handled by index.html inline script to prevent FOUC
@@ -45,15 +46,29 @@ if (!html.getAttribute('data-base-theme')) {
 // very first Vue paint is already on the intended font.
 async function preloadCriticalFonts(): Promise<void> {
   if (typeof document === 'undefined' || !document.fonts) return
-  const loads: Array<[string, string]> = [
-    ['400 14px "Public Sans Variable"', 'The quick brown fox'],
-    ['500 14px "Public Sans Variable"', 'The quick brown fox'],
-    ['600 14px "Public Sans Variable"', 'The quick brown fox'],
-    ['400 14px "Noto Sans SC Variable"', '启动会话列表服务器抓包进入笔记目录'],
-    ['500 14px "Noto Sans SC Variable"', '启动会话列表服务器抓包进入笔记目录'],
-    ['600 14px "Noto Sans SC Variable"', '启动会话列表服务器抓包进入笔记目录'],
-  ]
-  await Promise.all(loads.map(([spec, text]) => document.fonts.load(spec, text).catch(() => null)))
+
+  // UI fonts (sidebar, chrome) — always preload
+  const specMap = new Map<string, string>()
+  for (const { spec, sample } of buildFontLoadSpecs(DEFAULT_FONT_EN, DEFAULT_FONT_ZH)) {
+    specMap.set(spec, sample)
+  }
+
+  // Chat fonts — read from last-run cache so they're ready before first paint
+  try {
+    const raw = localStorage.getItem('cached-chat-fonts')
+    if (raw) {
+      const cached = JSON.parse(raw) as { en?: string | null; zh?: string | null }
+      for (const { spec, sample } of buildFontLoadSpecs(cached.en ?? undefined, cached.zh ?? undefined)) {
+        if (!specMap.has(spec)) specMap.set(spec, sample)
+      }
+    }
+  } catch {
+    // No cache or corrupt — skip chat font preload, UI is fine
+  }
+
+  await Promise.all(
+    Array.from(specMap.entries(), ([spec, text]) => document.fonts.load(spec, text).catch(() => null))
+  )
 }
 
 // 1.5s cap: cold-start loading of local woff2 from disk is ~100-400ms, but if

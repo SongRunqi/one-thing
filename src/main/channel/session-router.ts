@@ -25,7 +25,9 @@ function sessionNameFor(origin: MessageOrigin, sessionId: string): string {
 
 function updateSessionIdentityMetadata(session: ChatSession, origin: MessageOrigin, originIdentityKey?: string): void {
   session.originIdentityKey = originIdentityKey
-  session.memoryScopeId = origin.resolvedIdentity?.memoryScopeId
+  // memoryProfileId is the single source of truth for memory routing; the
+  // legacy memoryScopeId field is kept readable on old sessions but no longer
+  // written.
   session.memoryProfileId = origin.resolvedIdentity?.profileId || origin.resolvedIdentity?.userId
   session.lastConnector = originConnector(origin)
   session.lastSentAt = origin.receivedAt || Date.now()

@@ -44,6 +44,8 @@ describe('onething prompt builder', () => {
       'developer',
       'developer',
       'developer',
+      // context-update-convention section (always-on constant)
+      'developer',
       'user',
     ])
     expect(prompt.messages.some(message => (

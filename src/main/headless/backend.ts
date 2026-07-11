@@ -39,7 +39,6 @@ import {
   updateSessionWorkingDirectory,
 } from '../store.js'
 import { getSettings, initializeSettings } from '../stores/settings.js'
-import { sanitizeAllSessionsOnStartup } from '../stores/sessions.js'
 import { configureSandboxHost } from '../tools/core/sandbox.js'
 import { initializeHeadlessToolRegistry, getAllToolsAsync } from '../tools/index.js'
 import { initializeEventSystem, shutdownEventSystem, getEventBus, getStreamChannel } from '../events/index.js'
@@ -105,7 +104,6 @@ export class HeadlessBackend {
       sessionId => getStreamEngine().getPermissionMode(sessionId),
     )
 
-    sanitizeAllSessionsOnStartup()
     bootstrapVariableSystem()
     bootstrapProjectDirs()
     await initializeHeadlessToolRegistry()

@@ -48,6 +48,7 @@ import oneDarkTheme from './builtin/one-dark.json' with { type: 'json' }
 import githubLightTheme from './builtin/github-light.json' with { type: 'json' }
 import githubDarkTheme from './builtin/github-dark.json' with { type: 'json' }
 import rosePineTheme from './builtin/rose-pine.json' with { type: 'json' }
+import paperInkTheme from './builtin/paper-ink.json' with { type: 'json' }
 
 // Theme caches
 const builtinThemeMap = new Map<string, Theme>()
@@ -97,6 +98,7 @@ export function initializeThemes(): void {
     githubLightTheme as Theme,
     githubDarkTheme as Theme,
     rosePineTheme as Theme,
+    paperInkTheme as Theme,
   ]
 
   for (const theme of builtinThemes) {

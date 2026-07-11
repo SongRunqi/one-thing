@@ -40,6 +40,7 @@ export class SessionStoreProvider implements VariableProvider {
         value: variable.value,
         scope: 'session',
         description: variable.description,
+        volatility: variable.volatility,
         updatedAt: variable.updatedAt,
       }))
   }
@@ -67,6 +68,7 @@ export class SessionStoreProvider implements VariableProvider {
       value: input.value,
       scope: 'session',
       description: input.description,
+      volatility: input.volatility,
       updatedAt: Date.now(),
     }
     await this.gateway.write(ctx.sessionId, [...without, next])

@@ -6,44 +6,6 @@
     :class="{ editing: isEditing, [role]: true }"
     @mouseup="handleTextSelection"
   >
-    <!-- Attachments preview (shown above text for user messages) -->
-    <div
-      v-if="attachments && attachments.length > 0"
-      class="message-attachments"
-    >
-      <div
-        v-for="attachment in attachments"
-        :key="attachment.id"
-        class="message-attachment"
-        :class="{ 'is-image': attachment.mediaType === 'image' }"
-      >
-        <img
-          v-if="attachment.mediaType === 'image' && attachmentImageSrc(attachment)"
-          :src="attachmentImageSrc(attachment)"
-          :alt="attachment.fileName"
-          class="attachment-image"
-          @click.stop="openImageFromAttachment(attachment)"
-        >
-        <div
-          v-else
-          class="attachment-file"
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-          </svg>
-          <span class="attachment-file-name">{{ attachment.fileName }}</span>
-        </div>
-      </div>
-    </div>
-
     <!-- Skill usage badge -->
     <div
       v-if="skillUsed && role === 'assistant'"
@@ -294,7 +256,7 @@ import PromptReferenceCard from '@/components/common/PromptReferenceCard.vue'
 import MessageMarkdown from './MessageMarkdown.vue'
 import MessageInlineEdit from './MessageInlineEdit.vue'
 import ProcessRail from './ProcessRail.vue'
-import type { ToolCall, Step, ContentPart, MessageAttachment } from '@/types'
+import type { ToolCall, Step, ContentPart } from '@/types'
 import { stepFromToolCall } from '@/stores/helpers/tool-step-view'
 import { cleanReasoningContent } from '@/composables/useMarkdownRenderer'
 import { useCollapsibleContent } from '@/composables/useCollapsibleContent'
@@ -304,7 +266,6 @@ interface Props {
   role: 'user' | 'assistant'
   content: string
   contentParts?: ContentPart[]
-  attachments?: MessageAttachment[]
   toolCalls?: ToolCall[]
   steps?: Step[]
   skillUsed?: string
@@ -574,12 +535,17 @@ function streamingOnlySteps(toolCalls: ToolCall[]): Step[] {
 }
 
 const hasVisibleContent = computed(() => {
+  // Attachments render outside the bubble (in MessageItem), so an
+  // attachment-only user message has no bubble shell at all.
+  if (props.isEditing) return true
+  if (props.role === 'user') {
+    return Boolean(props.content || props.contentParts?.length)
+  }
   // The !isStreaming fallback keeps persisted (historical) messages visible
   // even when they carry no content; only a still-empty streaming message
   // hides the bubble.
   return Boolean(
     props.content ||
-    props.attachments?.length ||
     props.contentParts?.length ||
     !props.isStreaming,
   )
@@ -630,26 +596,6 @@ function handleTextSelection() {
 
     emit('textSelection', text, { top, left })
   }, 10)
-}
-
-function attachmentImageSrc(attachment: MessageAttachment): string {
-  if (attachment.base64Data) {
-    return `data:${attachment.mimeType};base64,${attachment.base64Data}`
-  }
-  return attachment.url || ''
-}
-
-function openImageFromAttachment(attachment: MessageAttachment) {
-  const src = attachmentImageSrc(attachment)
-  if (!src) {
-    console.warn('[MessageBubble] Image attachment has no preview source:', {
-      id: attachment.id,
-      fileName: attachment.fileName,
-      mimeType: attachment.mimeType,
-    })
-    return
-  }
-  emit('openMedia', { src, fileName: attachment.fileName })
 }
 
 function handleContentClick(event: MouseEvent) {
@@ -712,23 +658,20 @@ html[data-theme='light'] .bubble.user.editing {
 
 /* User message bubble */
 .bubble.user {
-  /* Must stay a solid color: --ui-message-user-bg may hold a gradient, which is
-     invalid inside color-mix()/gradient stops and would collapse the background
-     to transparent. The resolver guarantees the solid variant is visible. */
+  /* Blueprint frame: zero fill, one outline. The surface variable stays a
+     solid color for the collapse fade mask; behind a transparent bubble the
+     visible surface is the chat background, with the solid bubble token as
+     fallback (--ui-message-user-solid-bg keeps gradients out of color-mix). */
   --user-bubble-surface: var(
-    --ui-message-user-solid-bg,
-    var(--bg-message-user-solid, var(--ui-surface-elevated-bg, var(--bg-elevated)))
+    --ui-surface-chat-bg,
+    var(--ui-message-user-solid-bg, var(--bg-message-user-solid, var(--ui-surface-elevated-bg, var(--bg-elevated))))
   );
 
   max-width: min(74%, 680px);
-  background: var(--user-bubble-surface);
-  border-radius: 14px 14px 5px 14px;
-  border: 1px solid color-mix(in srgb, var(--ui-message-user-border, var(--user-bubble-border)) 46%, transparent);
-  box-shadow: var(
-    --ui-message-user-shadow,
-    0 1px 4px rgba(0, 0, 0, 0.075),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.5%, transparent)
-  );
+  background: transparent;
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  box-shadow: var(--ui-message-user-shadow, none);
   width: fit-content;
 }
 
@@ -749,64 +692,6 @@ html[data-theme='light'] .bubble.user {
 
 html[data-theme='light'] .bubble.assistant ::selection {
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 25%, transparent);
-}
-
-/* Message attachments */
-.message-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.message-attachment {
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.message-attachment.is-image {
-  max-width: 300px;
-  max-height: 300px;
-}
-
-.attachment-image {
-  display: block;
-  max-width: 100%;
-  max-height: 300px;
-  object-fit: contain;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: transform 0.2s ease, opacity 0.2s ease;
-}
-
-.attachment-image:hover {
-  transform: scale(1.02);
-  opacity: 0.95;
-}
-
-.attachment-file {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
-  border-radius: 8px;
-  font-size: var(--type-meta-size);
-  font-weight: var(--type-meta-weight);
-  line-height: var(--type-meta-line-height);
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.attachment-file svg {
-  flex-shrink: 0;
-  opacity: 0.7;
-}
-
-.attachment-file-name {
-  max-width: 150px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Skill badge */
@@ -981,9 +866,9 @@ html[data-theme='light'] .image-generation-skeleton::after {
 .bubble.user .content {
   line-height: var(--message-line-height-px, var(--type-chat-comfortable-line-height-px));
   color: var(--ui-message-user-fg, var(--text-user-primary));
-  /* User input is an instruction, not an article: it speaks UI sans even
-     when the reading font (--font-body override) is a serif. */
-  font-family: var(--font-sans);
+  /* Manuscript voice: the user's words are set in the display serif,
+     independent of the chat reading-font setting. */
+  font-family: var(--font-display, var(--font-sans));
 }
 
 /* ============ Text 淡入动画 ============ */

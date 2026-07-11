@@ -1,0 +1,734 @@
+<title>Sidebar 画线风格 · 两案对比</title>
+<style>
+/* ============================================================
+   0. 基础色板（与 src/renderer/styles/variables.css 同源）
+   亮色 = variables.css [data-theme=light] 段(L893+)
+   暗色 = variables.css 默认段(L613+)，Flexoki 纸墨
+   ============================================================ */
+:root {
+  --bg-app: #e6e4d9;
+  --bg-sidebar: #f2f0e5;
+  --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653;
+  --text-secondary: #6f6e69;
+  --text-muted: #878580;
+  --text-faint: #9f9d96;
+  --border-default: #cecdc3;
+  --border-subtle: #e6e4d9;
+  --border-strong: #b7b5ac;
+  --border-divider: #dad8ce;
+  --accent: #4385be; /* --fx-blue-300 */
+
+  --font-display: "Lora", "Source Han Serif SC", "Noto Serif SC", Georgia, "Songti SC", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --type-headline-size: 16px;
+  --type-title-size: 14px;
+  --type-label-size: 13px;
+  --type-meta-size: 12px;
+  --type-caption-size: 11px;
+
+  --space-1: 4px; --space-2: 8px; --space-3: 12px;
+  --space-4: 16px; --space-5: 20px; --space-6: 24px;
+  --radius-xs: 4px; --radius-sm: 8px; --radius-full: 9999px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #282726;
+    --bg-sidebar: #343331;
+    --bg-chat: #343331;
+    --bg-hover: rgba(255, 255, 255, 0.04);
+    --text-primary: #f2f0e5;
+    --text-secondary: #e6e4d9;
+    --text-muted: #b7b5ac;
+    --text-faint: #9f9d96;
+    --border-default: #575653;
+    --border-subtle: #403e3c;
+    --border-strong: #6f6e69;
+    --border-divider: #403e3c;
+  }
+}
+:root[data-theme="light"] {
+  --bg-app: #e6e4d9;
+  --bg-sidebar: #f2f0e5;
+  --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653;
+  --text-secondary: #6f6e69;
+  --text-muted: #878580;
+  --text-faint: #9f9d96;
+  --border-default: #cecdc3;
+  --border-subtle: #e6e4d9;
+  --border-strong: #b7b5ac;
+  --border-divider: #dad8ce;
+}
+:root[data-theme="dark"] {
+  --bg-app: #282726;
+  --bg-sidebar: #343331;
+  --bg-chat: #343331;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --text-primary: #f2f0e5;
+  --text-secondary: #e6e4d9;
+  --text-muted: #b7b5ac;
+  --text-faint: #9f9d96;
+  --border-default: #575653;
+  --border-subtle: #403e3c;
+  --border-strong: #6f6e69;
+  --border-divider: #403e3c;
+}
+
+/* ============================================================
+   1. 语义层（与 variables.css L420-488 的 --ui-* 链一致）
+   两个方案的 mockup CSS 只允许消费这一层
+   ============================================================ */
+:root, :root[data-theme="light"], :root[data-theme="dark"] {
+  --ui-text-primary-fg: var(--text-primary);
+  --ui-text-secondary-fg: var(--text-secondary);
+  --ui-text-muted-fg: var(--text-muted);
+  --ui-text-faint-fg: var(--text-faint);
+  --ui-border-default-border: var(--border-default);
+  --ui-border-subtle-border: var(--border-subtle);
+  --ui-border-strong-border: var(--border-strong);
+  --ui-border-divider-border: var(--border-divider);
+  --ui-accent-primary-fg: var(--accent);
+  --ui-state-hover-bg: var(--bg-hover);
+  --ui-surface-app-bg: var(--bg-app);
+  --ui-surface-chat-bg: var(--bg-chat);
+
+  --ui-sidebar-surface-bg: var(--bg-sidebar);
+  --ui-sidebar-item-fg: var(--ui-text-secondary-fg);
+  --ui-sidebar-item-hover-bg: var(--ui-state-hover-bg);
+  --ui-sidebar-item-hover-fg: var(--ui-text-primary-fg);
+  --ui-sidebar-item-active-fg: var(--ui-text-primary-fg);
+  --ui-sidebar-item-active-border: var(--ui-accent-primary-fg);
+  --ui-sidebar-item-muted-fg: var(--ui-text-muted-fg);
+  --ui-sidebar-header-fg: var(--ui-text-primary-fg);
+  --ui-sidebar-border-border: var(--ui-border-divider-border);
+}
+
+/* ============================================================
+   2. 页面骨架（对比稿自身的排版，非交付物）
+   ============================================================ */
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--ui-surface-app-bg);
+  color: var(--ui-text-primary-fg);
+  font-family: var(--font-body);
+  font-size: var(--type-label-size);
+  line-height: 1.6;
+  padding: 48px clamp(20px, 5vw, 72px) 80px;
+}
+.page-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  max-width: 1080px;
+  margin: 0 auto var(--space-2);
+}
+.page-head h1 {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin: 0;
+  text-wrap: balance;
+}
+.page-head h1 small {
+  font-size: var(--type-meta-size);
+  font-family: var(--font-mono);
+  font-weight: 400;
+  color: var(--ui-text-faint-fg);
+  margin-left: var(--space-3);
+  letter-spacing: 0;
+}
+#theme-toggle {
+  font: inherit;
+  font-size: var(--type-caption-size);
+  letter-spacing: 0.08em;
+  color: var(--ui-text-secondary-fg);
+  background: none;
+  border: 1px solid var(--ui-border-strong-border);
+  border-radius: var(--radius-full);
+  padding: 4px 14px;
+  cursor: pointer;
+}
+#theme-toggle:hover { color: var(--ui-text-primary-fg); border-color: var(--ui-text-muted-fg); }
+#theme-toggle:focus-visible { outline: 2px solid var(--ui-accent-primary-fg); outline-offset: 2px; }
+.page-intro {
+  max-width: 1080px;
+  margin: 0 auto var(--space-8, 32px);
+  color: var(--ui-text-muted-fg);
+  font-size: var(--type-meta-size);
+  max-inline-size: 62ch;
+}
+.compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: var(--space-6);
+  max-width: 1080px;
+  margin: 32px auto 0;
+}
+@media (max-width: 520px) { .compare { grid-template-columns: 1fr; } }
+
+.scheme-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+.scheme-title .no {
+  font-family: var(--font-mono);
+  font-size: var(--type-caption-size);
+  color: var(--ui-accent-primary-fg);
+  letter-spacing: 0.1em;
+}
+.scheme-title h2 {
+  font-family: var(--font-display);
+  font-size: var(--type-headline-size);
+  font-weight: 600;
+  margin: 0;
+}
+.scheme-title .tag {
+  font-size: var(--type-caption-size);
+  color: var(--ui-text-faint-fg);
+}
+
+/* 舞台：侧栏 + 一条聊天区切片，让边缘处理读得出来 */
+.stage {
+  display: flex;
+  border: 1px solid var(--ui-border-strong-border);
+  background: var(--ui-surface-chat-bg);
+  height: 588px;
+  overflow: hidden;
+}
+.stage .chat-sliver {
+  flex: 1;
+  min-width: 90px;
+  background: var(--ui-surface-chat-bg);
+  position: relative;
+}
+.stage .chat-sliver::before {
+  content: "";
+  position: absolute;
+  inset: 48px auto auto 24px;
+  width: 56%;
+  height: 1px;
+  background: var(--ui-border-subtle-border);
+  box-shadow: 0 16px 0 var(--ui-border-subtle-border), 0 32px 0 var(--ui-border-subtle-border);
+}
+
+.notes {
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ui-text-secondary-fg);
+  font-size: var(--type-meta-size);
+}
+.notes li {
+  padding-left: var(--space-4);
+  position: relative;
+  margin-bottom: var(--space-1);
+}
+.notes li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.72em;
+  width: 8px;
+  height: 1px;
+  background: var(--ui-border-strong-border);
+}
+.tokens {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--ui-border-default-border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.9;
+  color: var(--ui-text-faint-fg);
+  overflow-x: auto;
+}
+.tokens b {
+  font-weight: 400;
+  color: var(--ui-text-muted-fg);
+  letter-spacing: 0.08em;
+  display: block;
+}
+.footnote {
+  max-width: 1080px;
+  margin: 48px auto 0;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--ui-border-divider-border);
+  color: var(--ui-text-faint-fg);
+  font-size: var(--type-caption-size);
+  max-inline-size: 78ch;
+}
+
+/* ============================================================
+   3. 案一 · 墨线 —— 一根账目线，刻度挂行，零填充零圆角
+   ============================================================ */
+.ledger {
+  width: 264px;
+  flex-shrink: 0;
+  background: var(--ui-sidebar-surface-bg);
+  border-right: 1px solid var(--ui-sidebar-border-border);
+  display: flex;
+  flex-direction: column;
+  font-size: var(--type-label-size);
+}
+.ledger-head {
+  padding: var(--space-5) var(--space-4) var(--space-3);
+}
+.ledger-head .brand {
+  font-family: var(--font-display);
+  font-size: var(--type-headline-size);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ui-sidebar-header-fg);
+}
+.ledger-new {
+  display: block;
+  width: calc(100% - var(--space-4) * 2);
+  margin: 0 var(--space-4);
+  padding: var(--space-2) 0;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--ui-border-default-border);
+  border-bottom: 1px solid var(--ui-border-default-border);
+  font: inherit;
+  font-size: var(--type-label-size);
+  text-align: left;
+  color: var(--ui-sidebar-item-fg);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.ledger-new .plus { color: var(--ui-text-faint-fg); margin-right: var(--space-2); }
+.ledger-new:hover { color: var(--ui-sidebar-item-hover-fg); border-bottom-color: var(--ui-sidebar-item-active-border); }
+.ledger-new:hover .plus { color: var(--ui-sidebar-item-active-border); }
+.ledger-new:focus-visible { outline: 1px solid var(--ui-accent-primary-fg); outline-offset: 2px; }
+
+.ledger-scroll {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  padding: var(--space-3) 0 var(--space-4);
+}
+/* 那根线：从第一组标签下方一直走到底 */
+.ledger-scroll::before {
+  content: "";
+  position: absolute;
+  left: 19px;
+  top: var(--space-3);
+  bottom: var(--space-4);
+  width: 1px;
+  background: var(--ui-border-default-border);
+}
+.ledger-group-label {
+  position: relative;
+  z-index: 1;
+  margin: var(--space-4) 0 var(--space-1);
+  padding: 2px var(--space-2) 2px var(--space-3);
+  display: inline-block;
+  background: var(--ui-sidebar-surface-bg); /* 打断纵线 */
+  font-size: var(--type-caption-size);
+  letter-spacing: 0.18em;
+  color: var(--ui-text-faint-fg);
+}
+.ledger-group-label:first-child { margin-top: 0; }
+
+.ledger-item {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 5px var(--space-3) 5px 36px;
+  color: var(--ui-sidebar-item-fg);
+  cursor: pointer;
+}
+/* 刻度线 */
+.ledger-item::before {
+  content: "";
+  position: absolute;
+  left: 19px;
+  top: 50%;
+  width: 7px;
+  height: 1px;
+  background: var(--ui-border-strong-border);
+  transition: width 0.12s ease, background-color 0.12s ease;
+}
+.ledger-item:hover { color: var(--ui-sidebar-item-hover-fg); }
+.ledger-item:hover::before { width: 12px; background: var(--ui-text-muted-fg); }
+.ledger-item.active { color: var(--ui-sidebar-item-active-fg); font-weight: 500; }
+.ledger-item.active::before {
+  width: 14px;
+  height: 2px;
+  margin-top: -1px;
+  background: var(--ui-sidebar-item-active-border);
+}
+.ledger-item .title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ledger-item .when {
+  font-size: var(--type-caption-size);
+  color: var(--ui-text-faint-fg);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+/* 子会话：从父行分出一段点线支流 */
+.ledger-children { position: relative; }
+.ledger-children::before {
+  content: "";
+  position: absolute;
+  left: 33px;
+  top: 0;
+  bottom: 9px;
+  width: 1px;
+  border-left: 1px dotted var(--ui-border-strong-border);
+}
+.ledger-children .ledger-item { padding-left: 50px; }
+.ledger-children .ledger-item::before { left: 33px; }
+.ledger-children .ledger-item.active::before { left: 33px; }
+/* 生成中：空心圆环在刻度端点呼吸 */
+.ledger-item .ring {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -4.5px;
+  border: 1px solid var(--ui-accent-primary-fg);
+  border-radius: var(--radius-full);
+  background: var(--ui-sidebar-surface-bg);
+  animation: ledger-pulse 1.6s ease-in-out infinite;
+}
+.ledger-item.generating::before { display: none; }
+@keyframes ledger-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .ledger-item .ring { animation: none; } }
+
+.ledger-foot {
+  border-top: 1px solid var(--ui-sidebar-border-border);
+  margin: 0 var(--space-4);
+  padding: var(--space-3) 0 var(--space-4);
+  display: flex;
+  gap: var(--space-5);
+  font-size: var(--type-caption-size);
+  letter-spacing: 0.12em;
+  color: var(--ui-text-muted-fg);
+}
+.ledger-foot span { cursor: pointer; }
+.ledger-foot span:hover {
+  color: var(--ui-text-primary-fg);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-color: var(--ui-accent-primary-fg);
+}
+
+/* ============================================================
+   4. 案二 · 制图 —— fieldset 图例分组，虚线分隔，描边卡片
+   ============================================================ */
+.draft {
+  width: 264px;
+  flex-shrink: 0;
+  background: var(--ui-sidebar-surface-bg);
+  border-right: 1px solid var(--ui-sidebar-border-border);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-3) var(--space-3);
+  font-size: var(--type-label-size);
+}
+.draft-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-1) var(--space-3);
+}
+.draft-head .brand {
+  font-size: var(--type-title-size);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ui-sidebar-header-fg);
+}
+.draft-new {
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: 1px solid var(--ui-border-default-border);
+  border-radius: var(--radius-xs);
+  color: var(--ui-text-muted-fg);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.draft-new:hover { border-color: var(--ui-border-strong-border); color: var(--ui-text-primary-fg); }
+.draft-new:focus-visible { outline: 2px solid var(--ui-accent-primary-fg); outline-offset: 2px; }
+
+.draft-search {
+  margin: 0 var(--space-1) var(--space-2);
+  border: none;
+  border-bottom: 1px solid var(--ui-border-default-border);
+  background: none;
+  padding: var(--space-1) 2px var(--space-2);
+  font: inherit;
+  font-size: var(--type-meta-size);
+  color: var(--ui-text-primary-fg);
+  width: calc(100% - var(--space-1) * 2);
+}
+.draft-search::placeholder { color: var(--ui-text-faint-fg); letter-spacing: 0.06em; }
+.draft-search:focus { outline: none; border-bottom-color: var(--ui-accent-primary-fg); }
+
+.draft-scroll { flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-2); }
+
+.draft fieldset {
+  margin: 0;
+  border: 1px solid var(--ui-border-default-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-1) var(--space-2);
+  min-inline-size: 0;
+}
+.draft legend {
+  font-size: var(--type-caption-size);
+  letter-spacing: 0.18em;
+  color: var(--ui-text-muted-fg);
+  padding: 0 var(--space-2);
+  margin-left: var(--space-2);
+}
+.draft-item {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  margin: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  color: var(--ui-sidebar-item-fg);
+  cursor: pointer;
+}
+.draft-item + .draft-item { border-top: 1px dashed var(--ui-border-subtle-border); }
+.draft-item:hover {
+  color: var(--ui-sidebar-item-hover-fg);
+  box-shadow: inset 0 0 0 1px var(--ui-border-strong-border);
+}
+.draft-item.active {
+  color: var(--ui-sidebar-item-active-fg);
+  box-shadow: inset 0 0 0 1px var(--ui-sidebar-item-active-border);
+}
+.draft-item.active::after {
+  /* 图纸角标：右上角一个小三角折角 */
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  border-top: 7px solid var(--ui-sidebar-item-active-border);
+  border-left: 7px solid transparent;
+  border-top-right-radius: var(--radius-xs);
+}
+.draft-item .title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.draft-item .when {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ui-text-faint-fg);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+/* 子会话：└ 形工程折线 */
+.draft-item.child { padding-left: 26px; }
+.draft-item.child::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: -4px;
+  width: 8px;
+  height: 15px;
+  border-left: 1px solid var(--ui-border-default-border);
+  border-bottom: 1px solid var(--ui-border-default-border);
+}
+.draft-item.child + .draft-item.child { border-top-style: none; }
+/* 生成中：虚线描边圆点旋转 */
+.draft-item .spin {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  align-self: center;
+  border: 1px dashed var(--ui-accent-primary-fg);
+  border-radius: var(--radius-full);
+  animation: draft-spin 2.4s linear infinite;
+}
+@keyframes draft-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .draft-item .spin { animation: none; } }
+
+.draft-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-1) 0;
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--ui-sidebar-border-border);
+}
+.draft-foot .pill {
+  font-size: var(--type-caption-size);
+  letter-spacing: 0.1em;
+  color: var(--ui-text-muted-fg);
+  border: 1px solid var(--ui-border-default-border);
+  border-radius: var(--radius-full);
+  padding: 2px 12px;
+  cursor: pointer;
+  background: none;
+  font-family: inherit;
+}
+.draft-foot .pill:hover { color: var(--ui-text-primary-fg); border-color: var(--ui-border-strong-border); }
+.draft-foot .pill:focus-visible { outline: 2px solid var(--ui-accent-primary-fg); outline-offset: 2px; }
+.draft-foot .ver {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ui-text-faint-fg);
+}
+</style>
+
+<header class="page-head">
+  <h1>Sidebar · 画线风格两案<small>tokens ⇄ variables.css --ui-*</small></h1>
+  <button id="theme-toggle" type="button" aria-label="切换明暗主题">暗色 ◐</button>
+</header>
+<p class="page-intro">
+  两案共用同一份语义 token（--ui-sidebar-* / --ui-text-* / --ui-border-*），仅靠线的用法区分气质：
+  案一把整栏收成一根纵向墨线，案二把分组画成工程图纸的图例线框。切换右上角主题可验证两套 token 映射。
+</p>
+
+<div class="compare">
+
+  <!-- ========== 案一 · 墨线 ========== -->
+  <section>
+    <div class="scheme-title">
+      <span class="no">A</span>
+      <h2>墨线 · Ledger</h2>
+      <span class="tag">一根线，零填充，零圆角</span>
+    </div>
+    <div class="stage">
+      <aside class="ledger" aria-label="会话侧栏 · 案一">
+        <div class="ledger-head"><span class="brand">0neThing</span></div>
+        <button class="ledger-new" type="button"><span class="plus">＋</span>新对话</button>
+        <div class="ledger-scroll">
+          <span class="ledger-group-label">置 顶</span>
+          <div class="ledger-item"><span class="title">Prompt 汇编重构方案</span><span class="when">7·09</span></div>
+
+          <span class="ledger-group-label">今 天</span>
+          <div class="ledger-item active"><span class="title">会话存储 JSONL 迁移</span><span class="when">14:32</span></div>
+          <div class="ledger-children">
+            <div class="ledger-item"><span class="title">Phase 2 · 惰性迁移</span><span class="when">13:05</span></div>
+            <div class="ledger-item"><span class="title">legacy 回滚开关验证</span><span class="when">11:47</span></div>
+          </div>
+          <div class="ledger-item generating"><span class="ring" aria-hidden="true"></span><span class="title">工具调用 UI 蓝图评审</span><span class="when">生成中</span></div>
+          <div class="ledger-item"><span class="title">模型选择器 popover 定稿</span><span class="when">09:18</span></div>
+
+          <span class="ledger-group-label">本 周</span>
+          <div class="ledger-item"><span class="title">附件链路 per-provider 映射</span><span class="when">周三</span></div>
+          <div class="ledger-item"><span class="title">多用户 memory 双层隔离</span><span class="when">周二</span></div>
+          <div class="ledger-item"><span class="title">启动性能剖析 · 302MB 扫描</span><span class="when">周一</span></div>
+        </div>
+        <div class="ledger-foot"><span>库</span><span>设置</span></div>
+      </aside>
+      <div class="chat-sliver" aria-hidden="true"></div>
+    </div>
+    <ul class="notes">
+      <li>整栏唯一的结构元素是那根纵向账目线：分组标签压线打断，会话行以 7px 刻度挂线，子会话分出点线支流。</li>
+      <li>没有任何背景填充与圆角。hover = 刻度伸长变深；active = 刻度换成 2px 强调色；生成中 = 线端空心圆环呼吸。</li>
+      <li>品牌与分组用衬线 --font-display + 宽字距，其余全部走 --type-label/caption 档，安静的书页页边气质。</li>
+    </ul>
+    <div class="tokens"><b>消费的 TOKEN</b>
+      --ui-sidebar-surface-bg · --ui-sidebar-border-border · --ui-sidebar-header-fg · --ui-sidebar-item-fg / -hover-fg / -active-fg / -active-border ·
+      --ui-border-default/strong-border · --ui-text-muted/faint-fg · --ui-accent-primary-fg ·
+      --font-display · --type-label/caption-size · --space-1…5 · --radius-full
+    </div>
+  </section>
+
+  <!-- ========== 案二 · 制图 ========== -->
+  <section>
+    <div class="scheme-title">
+      <span class="no">B</span>
+      <h2>制图 · Draft</h2>
+      <span class="tag">图例线框，虚线分隔，描边卡片</span>
+    </div>
+    <div class="stage">
+      <aside class="draft" aria-label="会话侧栏 · 案二">
+        <div class="draft-head">
+          <span class="brand">0neThing</span>
+          <button class="draft-new" type="button" aria-label="新对话">＋</button>
+        </div>
+        <input class="draft-search" type="text" placeholder="搜索会话…" aria-label="搜索会话" />
+        <div class="draft-scroll">
+          <fieldset>
+            <legend>置顶</legend>
+            <div class="draft-item"><span class="title">Prompt 汇编重构方案</span><span class="when">07-09</span></div>
+          </fieldset>
+          <fieldset>
+            <legend>今天</legend>
+            <div class="draft-item active"><span class="title">会话存储 JSONL 迁移</span><span class="when">14:32</span></div>
+            <div class="draft-item child"><span class="title">Phase 2 · 惰性迁移</span><span class="when">13:05</span></div>
+            <div class="draft-item child"><span class="title">legacy 回滚开关验证</span><span class="when">11:47</span></div>
+            <div class="draft-item"><span class="spin" aria-hidden="true"></span><span class="title">工具调用 UI 蓝图评审</span><span class="when">RUN</span></div>
+            <div class="draft-item"><span class="title">模型选择器 popover 定稿</span><span class="when">09:18</span></div>
+          </fieldset>
+          <fieldset>
+            <legend>本周</legend>
+            <div class="draft-item"><span class="title">附件链路 per-provider 映射</span><span class="when">WED</span></div>
+            <div class="draft-item"><span class="title">多用户 memory 双层隔离</span><span class="when">TUE</span></div>
+          </fieldset>
+        </div>
+        <div class="draft-foot">
+          <button class="pill" type="button">库</button>
+          <button class="pill" type="button">设置</button>
+          <span class="ver">v0.7.1</span>
+        </div>
+      </aside>
+      <div class="chat-sliver" aria-hidden="true"></div>
+    </div>
+    <ul class="notes">
+      <li>每个时间分组是一张 fieldset 图纸：分组名作 legend 压在边框线上，天然的"线上开口"就是画线语言本身。</li>
+      <li>组内会话用 1px 虚线分隔；hover 浮出 1px 描边，active 换强调色描边并在右上角落一个折角角标，全程无填充。</li>
+      <li>辅助信息走工程标注味：mono 小字号时间戳（tabular-nums）、下划线式搜索框、描边胶囊按钮、右下版本号。</li>
+    </ul>
+    <div class="tokens"><b>消费的 TOKEN</b>
+      --ui-sidebar-surface-bg · --ui-sidebar-border-border · --ui-sidebar-header-fg · --ui-sidebar-item-fg / -hover-fg / -active-fg / -active-border ·
+      --ui-border-default/subtle/strong-border · --ui-text-muted/faint-fg · --ui-accent-primary-fg ·
+      --font-mono · --type-title/meta/caption-size · --space-1…4 · --radius-xs/sm/full
+    </div>
+  </section>
+</div>
+
+<p class="footnote">
+  接入说明：本页第 0 节的基础色板只是 demo 的替身（取值同 variables.css 暗色 L613+ / 亮色 L893+）；
+  第 3、4 节的 mockup CSS 只消费 --ui-* / --type-* / --space-* / --radius-* 语义层，
+  可直接搬进 Sidebar.vue / SessionList.vue / SessionItem.vue 的 scoped 样式，主题切换与 base46 主题包无需任何适配。
+</p>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var btn = document.getElementById('theme-toggle');
+  function apply(dark) {
+    root.setAttribute('data-theme', dark ? 'dark' : 'light');
+    btn.textContent = dark ? '亮色 ◑' : '暗色 ◐';
+  }
+  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  apply(prefersDark);
+  btn.addEventListener('click', function () {
+    apply(root.getAttribute('data-theme') !== 'dark');
+  });
+})();
+</script>

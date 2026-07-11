@@ -43,6 +43,10 @@
             :title="agent.name"
             @click="selectAgent(agent.id)"
           >
+            <span
+              class="agent-row-dot"
+              aria-hidden="true"
+            />
             <span class="agent-row-main">
               <span class="agent-row-name">{{ agent.name }}</span>
               <span
@@ -57,12 +61,6 @@
                 v-if="agent.isDefault"
                 class="agent-row-meta"
               >Default</span>
-              <Check
-                v-if="agent.id === currentAgentId"
-                class="agent-row-check"
-                :size="14"
-                :stroke-width="2.2"
-              />
             </span>
           </Button>
         </div>
@@ -81,7 +79,7 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { Bot, Check, ChevronDown } from 'lucide-vue-next'
+import { Bot, ChevronDown } from 'lucide-vue-next'
 import { useAgentsStore, DEFAULT_AGENT_ID } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
@@ -208,30 +206,52 @@ onBeforeUnmount(() => {
   -webkit-app-region: no-drag;
 }
 
+/* 座标底线(案 A):裸文字落在 header 基线上,无胶囊无底色。
+   悬停浮现点线段,展开描实 —— 与页签同一句法。 */
 .agent-chip {
-  --app-button-fill: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 42%, transparent);
-  --app-button-hover-fill: var(--agent-selector-hover-bg);
-  --app-button-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 70%, transparent);
-  --app-button-hover-border: var(--agent-selector-hover-border);
-  --app-button-hover-fg: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  --app-button-fill: transparent;
+  --app-button-hover-fill: transparent;
+  --app-button-border: transparent;
+  --app-button-hover-border: transparent;
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
+  position: relative;
   height: 28px;
   max-width: clamp(150px, 26vw, 260px);
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 70%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 42%, transparent);
+  padding: 0 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
   cursor: pointer;
-  transition:
-    background 0.25s cubic-bezier(0.25, 0.8, 0.25, 1),
-    border-color 0.25s cubic-bezier(0.25, 0.8, 0.25, 1),
-    color 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: color 0.2s ease;
+}
+
+/* 底部墨段:落在 40px 栏的基线上(28px 控件下方留 6px) */
+.agent-chip::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  bottom: -6px;
+  left: 6px;
+  height: 0;
+  border-bottom: 1.5px dotted transparent;
+  transition: border-color 0.2s ease;
+  pointer-events: none;
+}
+
+.agent-chip:hover:not(:disabled)::after {
+  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 75%, transparent);
+}
+
+.agent-chip.open::after {
+  border-bottom-style: solid;
+  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 90%, transparent);
 }
 
 .agent-chip-icon {
@@ -260,19 +280,11 @@ onBeforeUnmount(() => {
 }
 
 .agent-chip:hover:not(:disabled) {
-  background: var(--agent-selector-hover-bg);
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
-  border-color: var(--agent-selector-hover-border);
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .agent-chip.open {
-  --app-button-fill: var(--agent-selector-selected-bg);
-  --app-button-hover-fill: var(--agent-selector-selected-bg);
-  --app-button-border: var(--agent-selector-selected-border);
-  --app-button-hover-border: var(--agent-selector-selected-border);
-  background: var(--agent-selector-selected-bg);
-  border-color: var(--agent-selector-selected-border);
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-active-fg, var(--text-sidebar-item)));
+  color: var(--ui-text-primary-fg, var(--text));
 }
 
 .agent-chip:hover:not(:disabled) .agent-chip-icon,
@@ -301,18 +313,19 @@ onBeforeUnmount(() => {
   position: fixed;
   box-sizing: border-box;
   overflow: auto;
-  padding: 8px;
+  padding: 6px 12px;
   border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--ui-surface-floating-bg, var(--bg-floating, var(--bg-panel)));
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
   z-index: 1200;
   -webkit-app-region: no-drag;
 }
 
+/* 书目目录页:行与行之间一道极淡点线,无底色无圆角。
+   行首圈点:hover 空心浮现,当前填实朱砂 —— 与 side panel 节头同记号。 */
 .agent-list {
   display: grid;
-  gap: 4px;
 }
 
 .agent-row,
@@ -323,13 +336,13 @@ onBeforeUnmount(() => {
 
 .agent-menu .agent-row {
   --app-button-fill: transparent;
-  --app-button-hover-fill: var(--agent-selector-hover-bg);
+  --app-button-hover-fill: transparent;
   --app-button-border: transparent;
-  --app-button-hover-border: var(--agent-selector-hover-border);
-  --app-button-hover-fg: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  --app-button-hover-border: transparent;
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
-  border: 1px solid transparent;
+  border: 0;
   background: transparent;
   color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-fg, var(--text-sidebar-item)));
   cursor: pointer;
@@ -341,34 +354,54 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  padding: 8px;
-  border-radius: 7px;
+  gap: 9px;
+  padding: 8px 2px;
+  border-radius: 0;
   text-align: left;
+}
+
+.agent-row + .agent-row {
+  border-top: 1px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 62%, transparent);
+}
+
+.agent-row-dot {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border: 1.5px solid var(--ui-accent-primary-fg, var(--accent));
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
 
 .agent-menu .agent-row:hover,
 .agent-menu .agent-row.app-button.is-unstyled:hover {
-  --app-button-hover-fill: var(--agent-selector-hover-bg);
-  --app-button-hover-border: var(--agent-selector-hover-border);
-  background: var(--agent-selector-hover-bg);
-  border-color: var(--agent-selector-hover-border);
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-hover-fg, var(--text-sidebar-item)));
+  background: transparent;
+  border-color: transparent;
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.agent-row:hover .agent-row-dot {
+  opacity: 0.45;
 }
 
 .agent-menu .agent-row.active,
 .agent-menu .agent-row.app-button.is-unstyled.active {
-  --app-button-fill: var(--agent-selector-selected-bg);
-  --app-button-hover-fill: var(--agent-selector-selected-bg);
-  --app-button-border: var(--agent-selector-selected-border);
-  --app-button-hover-border: var(--agent-selector-selected-border);
-  background: var(--agent-selector-selected-bg);
-  border-color: var(--agent-selector-selected-border);
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-active-fg, var(--text-sidebar-item)));
+  background: transparent;
+  border-color: transparent;
+  color: var(--ui-text-primary-fg, var(--text));
   font-weight: 600;
 }
 
+.agent-row.active .agent-row-dot {
+  background: var(--ui-accent-primary-fg, var(--accent));
+  opacity: 1;
+}
+
 .agent-row-main {
+  flex: 1 1 auto;
   min-width: 0;
   display: grid;
   gap: 3px;
@@ -380,11 +413,16 @@ onBeforeUnmount(() => {
   line-height: 1.25;
 }
 
+.agent-row.active .agent-row-name {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
 .agent-row-prompt {
   display: -webkit-box;
   overflow: hidden;
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 11px;
+  font-weight: 400;
   line-height: 1.35;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -398,26 +436,19 @@ onBeforeUnmount(() => {
   color: var(--ui-text-muted-fg, var(--muted));
 }
 
-.agent-row.active .agent-row-side,
-.agent-row.active .agent-row-check {
-  color: var(--agent-selector-accent);
-}
-
 .agent-row-meta {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .agent-error {
-  margin: 8px 2px 0;
+  margin: 8px 2px 2px;
+  padding-left: 9px;
+  border-left: 2px solid var(--ui-status-danger-fg, var(--error, #ef4444));
   color: var(--ui-status-danger-fg, var(--error, #ef4444));
   font-size: 12px;
 }
 </style>
-.agent-menu .agent-row.active:hover,
-.agent-menu .agent-row.app-button.is-unstyled.active:hover {
-  --app-button-hover-fill: var(--agent-selector-selected-bg);
-  --app-button-hover-border: var(--agent-selector-selected-border);
-  background: var(--agent-selector-selected-bg);
-  border-color: var(--agent-selector-selected-border);
-}

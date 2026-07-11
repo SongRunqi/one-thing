@@ -929,13 +929,25 @@ function ensureHighlightedOption() {
     return
   }
 
-  if (
-    componentProps.defaultFirstOption ||
-    !highlightedKey.value ||
-    !options.some(option => option.key === highlightedKey.value)
-  ) {
-    highlightedKey.value = options[0].key
+  // If the currently-highlighted option still exists, keep it.
+  if (highlightedKey.value && options.some(option => option.key === highlightedKey.value)) {
+    return
   }
+
+  // When opening the dropdown (no previous highlight), prefer the
+  // currently-selected option so the user sees what they have.
+  if (!componentProps.multiple && selectedOptions.value[0]) {
+    highlightedKey.value = selectedOptions.value[0].key
+    return
+  }
+
+  if (componentProps.defaultFirstOption) {
+    highlightedKey.value = options[0].key
+    return
+  }
+
+  // Fallback: clear highlight when nothing else matches.
+  highlightedKey.value = null
 }
 
 function scrollHighlightedIntoView() {

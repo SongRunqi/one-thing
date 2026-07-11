@@ -353,12 +353,23 @@ describe('DeepSeek provider agent routing', () => {
     expect(request.headers['x-api-key']).toBe('anthropic-key')
     expect(body).toMatchObject({
       model: 'claude-test',
-      system: 'utility rules',
+      // Builtin claude runtime enables prompt caching: system becomes blocks
+      // with a cache breakpoint on the tail.
+      system: [
+        { type: 'text', text: 'utility rules', cache_control: { type: 'ephemeral' } },
+      ],
       max_tokens: 222,
       stream: true,
       temperature: 0.2,
     })
-    expect(body.messages).toEqual([{ role: 'user', content: 'summarize' }])
+    expect(body.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'summarize', cache_control: { type: 'ephemeral' } },
+        ],
+      },
+    ])
     expect(body.tools).toBeUndefined()
   })
 

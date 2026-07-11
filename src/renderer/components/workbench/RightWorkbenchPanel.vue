@@ -34,8 +34,9 @@
     </div>
 
     <Button
+      v-if="!openTabs.length"
       unstyled
-      class="workbench-close"
+      class="workbench-close is-floating"
       title="Close workbench"
       aria-label="Close workbench"
       @click="$emit('close')"
@@ -56,6 +57,22 @@
       @tab-add="togglePicker"
       @tab-remove="closeWorkbenchTab"
     >
+      <template #actions>
+        <Button
+          unstyled
+          class="workbench-close"
+          title="Close workbench"
+          aria-label="Close workbench"
+          @click="$emit('close')"
+        >
+          <X
+            :size="14"
+            :stroke-width="2"
+            aria-hidden="true"
+          />
+        </Button>
+      </template>
+
       <TabPane
         v-for="tab in openTabs"
         :key="tab.id"
@@ -541,11 +558,15 @@ defineExpose({
 </script>
 
 <style scoped>
+/* 台面(Bench):直角实线,框不闭合只留角标,左缘一把刻度尺。
+   活性一律制图黛蓝(theme info 色)。 */
 .right-workbench {
   position: relative;
   height: 100%;
   min-width: 0;
   min-height: 0;
+  --workbench-accent: var(--ui-status-info-fg, var(--color-info, #39586f));
+  --workbench-line: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent);
   --workbench-tool-card-bg: var(--ui-surface-elevated-bg, var(--bg-elevated));
   --workbench-tool-card-hover-bg: color-mix(
     in srgb,
@@ -582,18 +603,47 @@ defineExpose({
   min-height: 0;
 }
 
+/* 签名:左缘刻度尺。8px 细刻、40px 长刻,面板即量具。 */
+.right-workbench::before {
+  content: "";
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 8px;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      var(--workbench-line) 0 1px,
+      transparent 1px 8px
+    ) left / 4px 100% no-repeat,
+    repeating-linear-gradient(
+      to bottom,
+      var(--workbench-line) 0 1px,
+      transparent 1px 40px
+    ) left / 8px 100% no-repeat;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .workbench-close {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0;
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+/* Empty state has no tab header to host the button, so it floats. */
+.workbench-close.is-floating {
   position: absolute;
   z-index: 4;
   top: 7px;
   right: 8px;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .workbench-close:hover {
@@ -603,14 +653,51 @@ defineExpose({
 
 .right-workbench-tabs {
   height: 100%;
-}
-
-.right-workbench-tabs :deep(.app-tabs-nav-scroll) {
-  padding-right: 38px;
+  --app-tabs-active-text: var(--workbench-accent);
+  --app-tabs-accent: var(--workbench-accent);
 }
 
 .right-workbench-tabs :deep(.app-tabs-content) {
   padding: 0;
+}
+
+/* 尺寸线:页签基线两端立起止点,tab 条是一段被测量的长度 */
+.right-workbench-tabs :deep(.app-tabs-nav)::before,
+.right-workbench-tabs :deep(.app-tabs-nav)::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  width: 1px;
+  height: 6px;
+  background: var(--workbench-line);
+}
+
+.right-workbench-tabs :deep(.app-tabs-nav)::before {
+  left: 0;
+}
+
+.right-workbench-tabs :deep(.app-tabs-nav)::after {
+  right: 0;
+}
+
+/* 卡尺括号 ⌞⌟:活动页签的指示线改为三边开口括号 */
+.right-workbench .right-workbench-tabs :deep(.app-tabs--line .app-tabs-tab)::after {
+  top: auto;
+  right: 5px;
+  bottom: -1px;
+  left: 5px;
+  height: 5px;
+  background: transparent;
+  border-right: 1.5px solid var(--workbench-accent);
+  border-bottom: 1.5px solid var(--workbench-accent);
+  border-left: 1.5px solid var(--workbench-accent);
+}
+
+/* In a narrow panel the text ellipsizes away, but icon + close must survive:
+   10px padding ×2 + 15px icon + 6px gap + 20px close ≈ 64px. */
+.right-workbench-tabs :deep(.app-tabs-tab) {
+  min-width: 64px;
+  padding: 0 10px;
 }
 
 .right-workbench-tabs :deep(.app-tab-pane) {
@@ -624,11 +711,16 @@ defineExpose({
   align-items: center;
   gap: 6px;
   min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .workbench-tab-label svg,
 .picker-option svg,
 .empty-action svg {
+  flex: 0 0 auto;
   color: var(--workbench-tool-icon-color, currentColor);
   opacity: 0.92;
   transition:
@@ -644,15 +736,16 @@ defineExpose({
   white-space: nowrap;
 }
 
+/* Anchored under the header actions ("+" now lives at the right edge). */
 .workbench-tab-picker {
   position: absolute;
   z-index: 5;
   top: 38px;
-  left: 8px;
+  right: 8px;
   width: min(220px, calc(100% - 16px));
   padding: 6px;
   border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--ui-surface-elevated-bg, var(--bg-elevated));
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
 }
@@ -669,7 +762,7 @@ defineExpose({
   align-items: center;
   gap: 9px;
   padding: 0 9px;
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   text-align: left;
@@ -763,7 +856,7 @@ defineExpose({
   min-width: 0;
   padding: 0 10px;
   border: 1px solid var(--workbench-tool-card-border);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--ui-text-muted-fg, var(--muted));
   background: var(--workbench-tool-card-bg);
   font-size: 12px;
@@ -797,6 +890,7 @@ defineExpose({
   box-shadow: none;
 }
 
+/* 角标裁切线:工作面不闭合成框,只画四只角 */
 .workbench-terminal,
 .workbench-browser {
   height: 100%;
@@ -804,7 +898,18 @@ defineExpose({
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
+  box-sizing: border-box;
+  padding: 6px;
+  background:
+    linear-gradient(var(--workbench-line), var(--workbench-line)) top 0 left 10px / 10px 1px no-repeat,
+    linear-gradient(var(--workbench-line), var(--workbench-line)) top 0 left 10px / 1px 10px no-repeat,
+    linear-gradient(var(--workbench-line), var(--workbench-line)) top 0 right 2px / 10px 1px no-repeat,
+    linear-gradient(var(--workbench-line), var(--workbench-line)) top 0 right 2px / 1px 10px no-repeat,
+    linear-gradient(var(--workbench-line), var(--workbench-line)) bottom 2px left 10px / 10px 1px no-repeat,
+    linear-gradient(var(--workbench-line), var(--workbench-line)) bottom 2px left 10px / 1px 10px no-repeat,
+    linear-gradient(var(--workbench-line), var(--workbench-line)) bottom 2px right 2px / 10px 1px no-repeat,
+    linear-gradient(var(--workbench-line), var(--workbench-line)) bottom 2px right 2px / 1px 10px no-repeat,
+    var(--ui-surface-panel-bg, var(--bg-panel));
 }
 
 .terminal-output {
@@ -845,7 +950,7 @@ defineExpose({
 
 .terminal-prompt,
 .terminal-input-prompt {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--workbench-accent);
 }
 
 .terminal-input-row,
@@ -866,7 +971,7 @@ defineExpose({
   min-width: 0;
   height: 28px;
   border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
+  border-radius: 0;
   padding: 0 9px;
   background: var(--ui-surface-app-bg, var(--bg));
   color: var(--ui-text-primary-fg, var(--text));
@@ -875,7 +980,7 @@ defineExpose({
 
 .terminal-input-row input:focus,
 .browser-toolbar input:focus {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--workbench-accent);
 }
 
 .terminal-run,
@@ -885,7 +990,7 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--ui-text-muted-fg, var(--muted));
 }
 

@@ -25,17 +25,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
 
 interface Props {
   text: string
   delay?: number
   position?: 'top' | 'bottom' | 'left' | 'right'
+  /** When true, the tooltip will not appear (e.g. while a dropdown is open). */
+  disabled?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   delay: 400,
-  position: 'top'
+  position: 'top',
+  disabled: false,
 })
 
 const wrapperRef = ref<HTMLElement | null>(null)
@@ -46,6 +49,7 @@ const actualPosition = ref<'top' | 'bottom' | 'left' | 'right'>('top')
 let showTimer: ReturnType<typeof setTimeout> | null = null
 
 function handleMouseEnter() {
+  if (props.disabled) return
   showTimer = setTimeout(() => {
     updatePosition()
     visible.value = true
@@ -162,6 +166,16 @@ const arrowStyle = computed(() => {
 onUnmounted(() => {
   if (showTimer) {
     clearTimeout(showTimer)
+  }
+})
+
+watch(() => props.disabled, (d) => {
+  if (d) {
+    if (showTimer) {
+      clearTimeout(showTimer)
+      showTimer = null
+    }
+    visible.value = false
   }
 })
 </script>

@@ -14,6 +14,11 @@
       <div
         ref="tabListRef"
         class="app-tabs-nav-scroll"
+        :class="{
+          'is-overflow-start': hasOverflowStart,
+          'is-overflow-end': hasOverflowEnd,
+        }"
+        @scroll.passive="updateOverflowState"
       >
         <div
           v-for="tabPane in normalizedPanes"
@@ -54,7 +59,12 @@
             />
           </button>
         </div>
+      </div>
 
+      <div
+        v-if="canAdd || $slots.actions"
+        class="app-tabs-nav-actions"
+      >
         <button
           v-if="canAdd"
           class="app-tabs-add"
@@ -71,6 +81,8 @@
             />
           </slot>
         </button>
+
+        <slot name="actions" />
       </div>
     </div>
 
@@ -87,6 +99,8 @@ import {
   defineComponent,
   h,
   nextTick,
+  onBeforeUnmount,
+  onMounted,
   provide,
   ref,
   shallowRef,
@@ -177,6 +191,10 @@ const panes = shallowRef<TabPaneState[]>([])
 const currentName = ref<TabPaneName | undefined>(props.modelValue ?? props.defaultValue)
 const pendingLeaveToken = ref(0)
 
+const hasOverflowStart = ref(false)
+const hasOverflowEnd = ref(false)
+let overflowObserver: ResizeObserver | null = null
+
 const isControlled = computed(() => props.modelValue !== undefined)
 const resolvedType = computed(() => props.type || 'line')
 const isVertical = computed(() => props.tabPosition === 'left' || props.tabPosition === 'right')
@@ -219,7 +237,10 @@ watch(
 
 watch(
   normalizedPanes,
-  () => ensureActivePane(),
+  () => {
+    ensureActivePane()
+    void nextTick(updateOverflowState)
+  },
   { immediate: true, flush: 'post' },
 )
 
@@ -399,6 +420,31 @@ function focusPane(pane: NormalizedTabPane) {
   tab?.focus()
 }
 
+function updateOverflowState() {
+  const el = tabListRef.value
+  if (!el) return
+
+  if (isVertical.value) {
+    hasOverflowStart.value = el.scrollTop > 1
+    hasOverflowEnd.value = el.scrollTop + el.clientHeight < el.scrollHeight - 1
+  } else {
+    hasOverflowStart.value = el.scrollLeft > 1
+    hasOverflowEnd.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+  }
+}
+
+onMounted(() => {
+  updateOverflowState()
+  if (typeof ResizeObserver === 'undefined') return
+  overflowObserver = new ResizeObserver(updateOverflowState)
+  if (tabListRef.value) overflowObserver.observe(tabListRef.value)
+})
+
+onBeforeUnmount(() => {
+  overflowObserver?.disconnect()
+  overflowObserver = null
+})
+
 function scrollToActiveTab() {
   const activeTab = tabListRef.value?.querySelector<HTMLElement>('[data-active="true"]')
   activeTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
@@ -464,10 +510,17 @@ defineExpose({
 
 .app-tabs-nav {
   position: relative;
+  display: flex;
+  align-items: stretch;
   flex: 0 0 auto;
   min-width: 0;
   min-height: 0;
   border-color: var(--app-tabs-border);
+}
+
+.app-tabs--left .app-tabs-nav,
+.app-tabs--right .app-tabs-nav {
+  flex-direction: column;
 }
 
 .app-tabs--top .app-tabs-nav {
@@ -489,14 +542,53 @@ defineExpose({
 .app-tabs-nav-scroll {
   display: flex;
   align-items: stretch;
+  flex: 1 1 auto;
   min-width: 0;
   max-width: 100%;
   overflow: auto hidden;
   scrollbar-width: none;
 }
 
+.app-tabs-nav-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 0 6px;
+}
+
+.app-tabs.is-vertical .app-tabs-nav-actions {
+  justify-content: flex-start;
+  padding: 6px;
+}
+
 .app-tabs-nav-scroll::-webkit-scrollbar {
   display: none;
+}
+
+/* The scrollbar is hidden, so fade the clipped edge to signal more tabs. */
+.app-tabs-nav-scroll.is-overflow-start {
+  mask-image: linear-gradient(to right, transparent, black 18px);
+}
+
+.app-tabs-nav-scroll.is-overflow-end {
+  mask-image: linear-gradient(to right, black calc(100% - 18px), transparent);
+}
+
+.app-tabs-nav-scroll.is-overflow-start.is-overflow-end {
+  mask-image: linear-gradient(to right, transparent, black 18px, black calc(100% - 18px), transparent);
+}
+
+.app-tabs.is-vertical .app-tabs-nav-scroll.is-overflow-start {
+  mask-image: linear-gradient(to bottom, transparent, black 18px);
+}
+
+.app-tabs.is-vertical .app-tabs-nav-scroll.is-overflow-end {
+  mask-image: linear-gradient(to bottom, black calc(100% - 18px), transparent);
+}
+
+.app-tabs.is-vertical .app-tabs-nav-scroll.is-overflow-start.is-overflow-end {
+  mask-image: linear-gradient(to bottom, transparent, black 18px, black calc(100% - 18px), transparent);
 }
 
 .app-tabs--left .app-tabs-nav-scroll,
@@ -512,9 +604,10 @@ defineExpose({
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
+  /* Shrink before the strip starts scrolling; the floor keeps tabs clickable. */
+  flex: 0 1 auto;
   gap: 6px;
-  min-width: 0;
+  min-width: 44px;
   min-height: 34px;
   max-width: 240px;
   padding: 0 14px;
@@ -540,6 +633,7 @@ defineExpose({
 
 .app-tabs.is-vertical .app-tabs-tab {
   justify-content: flex-start;
+  flex-shrink: 0;
   width: 100%;
   max-width: none;
   text-align: left;
@@ -714,6 +808,15 @@ defineExpose({
   text-overflow: ellipsis;
 }
 
+/* Slotted label content must inherit the squeeze so text ellipsizes
+   instead of hard-clipping when tabs shrink. */
+.app-tabs-tab-label :deep(span) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-tabs-close,
 .app-tabs-add {
   display: inline-flex;
@@ -744,15 +847,6 @@ defineExpose({
 .app-tabs-close:focus-visible,
 .app-tabs-add:focus-visible {
   box-shadow: 0 0 0 2px var(--app-tabs-focus);
-}
-
-.app-tabs-add {
-  align-self: center;
-  margin: 6px;
-}
-
-.app-tabs.is-vertical .app-tabs-add {
-  align-self: flex-start;
 }
 
 .app-tabs-content {

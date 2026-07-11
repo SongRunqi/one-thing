@@ -38,6 +38,29 @@ export interface SearchResponse {
   results: SearchResult[]
 }
 
+export interface SearchWindowSplitIntent {
+  type: 'split-panel'
+  panelId: string
+}
+
+export type SearchWindowIntent = SearchWindowSplitIntent
+
+export interface SearchWindowOpenOptions {
+  intent?: SearchWindowIntent
+}
+
+export interface SearchWindowShownPayload {
+  intent?: SearchWindowIntent | null
+}
+
+/** Anchor rect reported by the main window renderer (CSS px, viewport-relative). */
+export interface SearchWindowAnchor {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface SearchWindowGuideState {
   visible: boolean
   centerX: boolean

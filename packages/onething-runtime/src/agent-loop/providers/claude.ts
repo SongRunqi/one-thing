@@ -1,5 +1,6 @@
 import { collectAgentTurnFromStream } from '@onething/core/agent-loop'
 import { agentToolMessageContentToText } from '@onething/core/agent-loop'
+import { undeliverableAttachmentText } from '@onething/core/agent-loop'
 import { readJsonSseData } from './sse.js'
 import type {
   AgentContentPart,
@@ -29,15 +30,25 @@ export interface ClaudeAgentProviderOptions {
   headers?: Record<string, string>
   omitApiKeyHeader?: boolean
   systemHeader?: string
+  /**
+   * Set explicit prompt-cache breakpoints (cache_control: ephemeral) on the
+   * system prompt and the conversation tail. Opt-in: enabled for the official
+   * Anthropic endpoints; left off for third-party anthropic-compatible
+   * endpoints that may reject the field.
+   */
+  promptCaching?: boolean
 }
 
-type ClaudeTextBlock = { type: 'text'; text: string }
+type ClaudeCacheControl = { type: 'ephemeral' }
+
+type ClaudeTextBlock = { type: 'text'; text: string; cache_control?: ClaudeCacheControl }
 
 type ClaudeImageBlock = {
   type: 'image'
   source:
     | { type: 'base64'; media_type: string; data: string }
     | { type: 'url'; url: string }
+  cache_control?: ClaudeCacheControl
 }
 
 type ClaudeToolUseBlock = {
@@ -45,6 +56,13 @@ type ClaudeToolUseBlock = {
   id: string
   name: string
   input: AgentJsonValue
+  cache_control?: ClaudeCacheControl
+}
+
+type ClaudeDocumentBlock = {
+  type: 'document'
+  source: { type: 'base64'; media_type: string; data: string }
+  cache_control?: ClaudeCacheControl
 }
 
 type ClaudeToolResultContentBlock = ClaudeTextBlock | ClaudeImageBlock
@@ -54,11 +72,13 @@ type ClaudeToolResultBlock = {
   tool_use_id: string
   content: string | ClaudeToolResultContentBlock[]
   is_error?: boolean
+  cache_control?: ClaudeCacheControl
 }
 
 type ClaudeContentBlock =
   | ClaudeTextBlock
   | ClaudeImageBlock
+  | ClaudeDocumentBlock
   | ClaudeToolUseBlock
   | ClaudeToolResultBlock
 
@@ -70,6 +90,7 @@ interface ClaudeTool {
   name: string
   description?: string
   input_schema: AgentJsonObject
+  cache_control?: ClaudeCacheControl
 }
 
 interface ClaudeStreamEvent {
@@ -180,11 +201,36 @@ function userContentBlocks(content: AgentMessageContent): string | ClaudeContent
       blocks.push(imageSourceFromData(part.image, part.mediaType))
       continue
     }
-    if (part.type === 'file' && part.mediaType.startsWith('image/')) {
-      blocks.push(imageSourceFromData(part.data, part.mediaType))
+    if (part.type === 'file') {
+      if (part.mediaType.startsWith('image/')) {
+        blocks.push(imageSourceFromData(part.data, part.mediaType))
+        continue
+      }
+      const pdf = documentSourceFromData(part.data, part.mediaType)
+      if (pdf) {
+        blocks.push(pdf)
+        continue
+      }
+      // Text files are inlined as text parts upstream; whatever binary is
+      // left has no Claude-native form — say so instead of dropping it.
+      blocks.push({ type: 'text', text: undeliverableAttachmentText(part) })
     }
   }
   return blocks.length > 0 ? blocks : ''
+}
+
+function documentSourceFromData(data: string, mediaType: string): ClaudeDocumentBlock | undefined {
+  const parsed = parseDataUrl(data)
+  const resolvedMediaType = (parsed?.mediaType ?? mediaType).split(';')[0]?.trim().toLowerCase()
+  if (resolvedMediaType !== 'application/pdf') return undefined
+  return {
+    type: 'document',
+    source: {
+      type: 'base64',
+      media_type: 'application/pdf',
+      data: parsed?.data ?? data,
+    },
+  }
 }
 
 function parseToolArguments(args: string): AgentJsonValue {
@@ -461,6 +507,53 @@ async function* streamClaudeResponse(
   }
 }
 
+/**
+ * Explicit prompt-cache breakpoints (Anthropic caches nothing without them):
+ * 1. end of system — caches the tools + system prefix, invalidated only when
+ *    the system prompt itself changes;
+ * 2. end of the conversation — the next turn extends the history, so its
+ *    prefix matches this position and reuses the cached conversation.
+ * Anthropic matches against the ~20 most recent breakpoint positions, so the
+ * sliding tail breakpoint keeps hitting across consecutive turns.
+ */
+function applyPromptCacheBreakpoints(body: {
+  system?: string | ClaudeTextBlock[]
+  tools?: ClaudeTool[]
+  messages: ClaudeMessage[]
+}): void {
+  if (body.system) {
+    const blocks: ClaudeTextBlock[] = typeof body.system === 'string'
+      ? [{ type: 'text', text: body.system }]
+      : [...body.system]
+    if (blocks.length > 0) {
+      blocks[blocks.length - 1] = {
+        ...blocks[blocks.length - 1],
+        cache_control: { type: 'ephemeral' },
+      }
+      body.system = blocks
+    }
+  } else if (body.tools?.length) {
+    body.tools[body.tools.length - 1] = {
+      ...body.tools[body.tools.length - 1],
+      cache_control: { type: 'ephemeral' },
+    }
+  }
+
+  for (let i = body.messages.length - 1; i >= 0; i--) {
+    const message = body.messages[i]
+    const blocks: ClaudeContentBlock[] = typeof message.content === 'string'
+      ? (message.content ? [{ type: 'text', text: message.content }] : [])
+      : [...message.content]
+    if (blocks.length === 0) continue
+    blocks[blocks.length - 1] = {
+      ...blocks[blocks.length - 1],
+      cache_control: { type: 'ephemeral' },
+    }
+    body.messages[i] = { ...message, content: blocks }
+    return
+  }
+}
+
 export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): AgentProvider {
   const baseUrl = (options.baseUrl || CLAUDE_DEFAULT_BASE_URL).replace(/\/$/, '')
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
@@ -494,6 +587,7 @@ export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): 
       body.tool_choice = toClaudeToolChoice(request.toolChoice)
     }
     if (request.temperature !== undefined) body.temperature = request.temperature
+    if (options.promptCaching) applyPromptCacheBreakpoints(body)
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',

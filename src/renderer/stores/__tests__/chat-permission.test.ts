@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useChatStore } from '../chat'
-import type { ChatMessage, Step } from '@/types'
+import type { ChatMessage, Step, ToolCall } from '@/types'
 
 function assistantMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
@@ -158,6 +158,61 @@ describe('chat store permission ordering', () => {
         status: 'cancelled',
         requiresConfirmation: false,
       }),
+    })
+  })
+
+  it('freezes running tool timers when generation is stopped', async () => {
+    const abortStream = vi.fn(async () => ({ success: true }))
+    vi.stubGlobal('window', { electronAPI: { abortStream } })
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(2_500)
+    const store = useChatStore()
+    const canonicalToolCall: ToolCall = {
+      id: 'tc1',
+      toolId: 'edit',
+      toolName: 'edit',
+      arguments: { path: 'style.css' },
+      status: 'executing',
+      timestamp: 0,
+      startTime: 1_000,
+    }
+    const stepToolCall: ToolCall = { ...canonicalToolCall }
+
+    store.handleAssistantCreated({
+      sessionId: 's1',
+      message: assistantMessage({
+        toolCalls: [canonicalToolCall],
+        steps: [{
+          id: 'step1',
+          type: 'tool-call',
+          title: 'Edit style.css',
+          status: 'running',
+          timestamp: 0,
+          toolCallId: 'tc1',
+          toolCall: stepToolCall,
+        }],
+      }),
+    })
+    store.handleStreamStarted({ sessionId: 's1', messageId: 'm1' })
+
+    try {
+      await expect(store.stopGeneration('s1')).resolves.toBe(true)
+    } finally {
+      dateNow.mockRestore()
+    }
+
+    const message = store.sessionMessages.get('s1')![0]
+    expect(message.isStreaming).toBe(false)
+    expect(message.toolCalls![0]).toMatchObject({
+      status: 'cancelled',
+      endTime: 2_500,
+      durationMs: 1_500,
+    })
+    expect(message.steps![0]).toMatchObject({ status: 'cancelled' })
+    expect(message.steps![0].toolCall).toBe(message.toolCalls![0])
+    expect(message.steps![0].toolCall).toMatchObject({
+      status: 'cancelled',
+      endTime: 2_500,
+      durationMs: 1_500,
     })
   })
 })

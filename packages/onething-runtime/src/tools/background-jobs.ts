@@ -10,6 +10,8 @@ export interface BackgroundJob {
   id: string
   command: string
   cwd: string
+  /** Session that started the job; readers scope visibility to it. */
+  sessionId?: string
   shellPid: number
   pgid: number
   childPids: number[]
@@ -129,6 +131,7 @@ export function cleanupBackgroundJobLogs(): number {
 export function registerBackgroundJob(input: {
   command: string
   cwd: string
+  sessionId?: string
   shellPid: number
   pgid: number
   childPids?: number[]
@@ -139,6 +142,7 @@ export function registerBackgroundJob(input: {
     id: `bg-${nextId++}`,
     command: input.command,
     cwd: input.cwd,
+    sessionId: input.sessionId,
     shellPid: input.shellPid,
     pgid: input.pgid,
     childPids,

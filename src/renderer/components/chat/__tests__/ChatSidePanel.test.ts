@@ -49,8 +49,10 @@ async function settle() {
   await nextTick()
 }
 
-function panelSizes(wrapper: ReturnType<typeof mount>) {
-  return wrapper.findAll('.splitter-panel').map(panel => Number(panel.attributes('data-size')))
+function focusedSections(wrapper: ReturnType<typeof mount>) {
+  return wrapper.findAll('.chat-side-esec.focus').map(section =>
+    section.find('.chat-side-esum-title').text(),
+  )
 }
 
 describe('ChatSidePanel', () => {
@@ -72,7 +74,7 @@ describe('ChatSidePanel', () => {
     vi.unstubAllGlobals()
   })
 
-  it('defaults outline, system prompt, and todo panels to equal adjustable heights', async () => {
+  it('renders three elastic sections with outline focused by default', async () => {
     const wrapper = mount(ChatSidePanel, {
       props: {
         sessionId: 'session-1',
@@ -82,20 +84,35 @@ describe('ChatSidePanel', () => {
 
     await settle()
 
-    expect(wrapper.find('.chat-side-splitter').classes()).toContain('layout-vertical')
-    expect(wrapper.findAll('.splitter-panel')).toHaveLength(3)
-    expect(wrapper.findAll('.splitter-resizer')).toHaveLength(2)
-    expect(wrapper.findAll('.splitter-resizer').every(resizer =>
-      resizer.attributes('aria-orientation') === 'horizontal',
-    )).toBe(true)
-
-    for (const size of panelSizes(wrapper)) {
-      expect(size).toBeCloseTo(100 / 3, 3)
-    }
+    expect(wrapper.findAll('.chat-side-esec')).toHaveLength(3)
+    expect(focusedSections(wrapper)).toEqual(['Outline'])
+    // 子面板常驻挂载,未聚焦时也在(压成 0 高)
+    expect(wrapper.find('.mock-system-prompt-panel').exists()).toBe(true)
+    expect(wrapper.find('.mock-todo-progress-panel').exists()).toBe(true)
   })
 
-  it('falls back to equal outline and system heights when todo is disabled', async () => {
-    settingsStore.settings.general.todoPlan.enabled = false
+  it('moves focus on summary click and persists it', async () => {
+    const wrapper = mount(ChatSidePanel, {
+      props: {
+        sessionId: 'session-1',
+        workingDirectory: '/repo',
+      },
+    })
+
+    await settle()
+
+    const todoSummary = wrapper.findAll('.chat-side-esum-main')
+      .find(button => button.text().includes('Todo'))
+    expect(todoSummary).toBeDefined()
+    await todoSummary!.trigger('click')
+    await settle()
+
+    expect(focusedSections(wrapper)).toEqual(['Todo'])
+    expect(localStorage.setItem).toHaveBeenCalledWith('chatSideFocusedSection', 'todo')
+  })
+
+  it('restores the persisted focused section', async () => {
+    localStorage.setItem('chatSideFocusedSection', 'system')
 
     const wrapper = mount(ChatSidePanel, {
       props: {
@@ -106,12 +123,29 @@ describe('ChatSidePanel', () => {
 
     await settle()
 
-    expect(wrapper.findAll('.splitter-panel')).toHaveLength(2)
-    expect(wrapper.findAll('.splitter-resizer')).toHaveLength(1)
-    expect(panelSizes(wrapper)).toEqual([50, 50])
+    expect(focusedSections(wrapper)).toEqual(['System prompt'])
+  })
+
+  it('falls back to two sections when todo is disabled', async () => {
+    settingsStore.settings.general.todoPlan.enabled = false
+    localStorage.setItem('chatSideFocusedSection', 'todo')
+
+    const wrapper = mount(ChatSidePanel, {
+      props: {
+        sessionId: 'session-1',
+        workingDirectory: '/repo',
+      },
+    })
+
+    await settle()
+
+    expect(wrapper.findAll('.chat-side-esec')).toHaveLength(2)
+    expect(focusedSections(wrapper)).toEqual(['Outline'])
   })
 
   it('does not mount session-backed prompt or todo panels for a new chat draft', async () => {
+    localStorage.setItem('chatSideFocusedSection', 'system')
+
     const wrapper = mount(ChatSidePanel, {
       props: {
         sessionId: 'draft:one',
@@ -123,9 +157,49 @@ describe('ChatSidePanel', () => {
 
     expect(wrapper.find('.mock-system-prompt-panel').exists()).toBe(false)
     expect(wrapper.find('.mock-todo-progress-panel').exists()).toBe(false)
+    expect(wrapper.findAll('.chat-side-esec')).toHaveLength(2)
     expect(wrapper.find('.chat-side-draft-state').text()).toBe('System prompt will appear after the chat starts.')
-    expect(wrapper.findAll('.splitter-panel')).toHaveLength(2)
-    expect(panelSizes(wrapper)).toEqual([50, 50])
     expect(wrapper.find('[title="Refresh system prompt"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('shows the todo live summary from panel progress events', async () => {
+    const wrapper = mount(ChatSidePanel, {
+      props: {
+        sessionId: 'session-1',
+        workingDirectory: '/repo',
+      },
+    })
+
+    await settle()
+
+    const todoPanel = wrapper.findComponent({ name: 'TodoProgressPanel' })
+    todoPanel.vm.$emit('progressChange', { done: 4, total: 7, currentText: 'Fix crash recovery' })
+    await settle()
+
+    const todoSummary = wrapper.findAll('.chat-side-esum-live').at(-1)
+    expect(todoSummary?.text()).toBe('4/7 · Fix crash recovery')
+  })
+
+  it('updates the outline live summary from window events for the same session', async () => {
+    const wrapper = mount(ChatSidePanel, {
+      props: {
+        sessionId: 'session-1',
+        workingDirectory: '/repo',
+      },
+    })
+
+    await settle()
+
+    window.dispatchEvent(new CustomEvent('assistant-outline:current-changed', {
+      detail: { sessionId: 'other-session', label: 'Ignored heading', count: 3 },
+    }))
+    await settle()
+    expect(wrapper.find('.chat-side-esum-live').text()).toBe('')
+
+    window.dispatchEvent(new CustomEvent('assistant-outline:current-changed', {
+      detail: { sessionId: 'session-1', label: 'Current heading', count: 3 },
+    }))
+    await settle()
+    expect(wrapper.find('.chat-side-esum-live').text()).toBe('Current heading')
   })
 })

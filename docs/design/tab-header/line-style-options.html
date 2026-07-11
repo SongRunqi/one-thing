@@ -1,0 +1,441 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tab Header · 画线三案</title>
+<style>
+/* ============================================================
+   0. 色板与字体(与 panels/line-style-options.html 同源)
+   ============================================================ */
+:root {
+  --bg-app: #e6e4d9;
+  --bg-panel: #f2f0e5;
+  --bg-chat: #fffcf0;
+  --text-primary: #575653;
+  --text-secondary: #6f6e69;
+  --text-muted: #878580;
+  --text-faint: #9f9d96;
+  --border-default: #cecdc3;
+  --border-subtle: #e6e4d9;
+  --border-strong: #b7b5ac;
+  --zhusha: #a63c26;
+
+  --font-display: "Lora", "Source Han Serif SC", "Noto Serif SC", Georgia, "Songti SC", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ctl: 28px;   /* 全部控件统一高度 */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #282726; --bg-panel: #343331; --bg-chat: #343331;
+    --text-primary: #f2f0e5; --text-secondary: #e6e4d9;
+    --text-muted: #b7b5ac; --text-faint: #9f9d96;
+    --border-default: #575653; --border-subtle: #403e3c; --border-strong: #6f6e69;
+    --zhusha: #c96f5b;
+  }
+}
+:root[data-theme="light"] {
+  --bg-app: #e6e4d9; --bg-panel: #f2f0e5; --bg-chat: #fffcf0;
+  --text-primary: #575653; --text-secondary: #6f6e69;
+  --text-muted: #878580; --text-faint: #9f9d96;
+  --border-default: #cecdc3; --border-subtle: #e6e4d9; --border-strong: #b7b5ac;
+  --zhusha: #a63c26;
+}
+:root[data-theme="dark"] {
+  --bg-app: #282726; --bg-panel: #343331; --bg-chat: #343331;
+  --text-primary: #f2f0e5; --text-secondary: #e6e4d9;
+  --text-muted: #b7b5ac; --text-faint: #9f9d96;
+  --border-default: #575653; --border-subtle: #403e3c; --border-strong: #6f6e69;
+  --zhusha: #c96f5b;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 48px clamp(16px, 5vw, 72px) 96px;
+}
+
+.page-head { max-width: 1080px; margin: 0 auto 44px; }
+.page-head h1 {
+  font-family: var(--font-display);
+  font-size: 26px; font-weight: 600;
+  letter-spacing: 0.02em; margin-bottom: 10px;
+}
+.page-head p { color: var(--text-secondary); max-width: 66ch; }
+.page-head .rule-note { margin-top: 6px; color: var(--text-muted); font-size: 12px; }
+
+/* ============ 案区块 ============ */
+.case { max-width: 1080px; margin: 0 auto 52px; }
+.case-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.case-head h2 {
+  font-family: var(--font-display);
+  font-size: 17px; font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--zhusha);
+}
+.case-head em { font-style: normal; font-size: 12px; color: var(--text-faint); }
+.case-desc { color: var(--text-muted); font-size: 12px; margin-bottom: 12px; max-width: 78ch; }
+.case-desc b { color: var(--text-secondary); font-weight: 600; }
+
+/* 舞台:header 条 + 纸面残影 */
+.stage {
+  border: 1px solid var(--border-default);
+  background: var(--bg-chat);
+  box-shadow: 0 8px 28px rgba(76, 69, 54, 0.09);
+  overflow: hidden;
+}
+.paper-ghost { height: 96px; padding: 20px 26px; }
+.ghost-line { height: 8px; background: rgba(125, 117, 97, 0.08); margin-bottom: 12px; border-radius: 2px; }
+.ghost-line.w40 { width: 40%; } .ghost-line.w70 { width: 70%; }
+
+/* ============ 通用 header 骨架:40px 栏,28px 控件,一条水平线对齐 ============ */
+.hd {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px 0 0;
+  user-select: none;
+}
+.hd .traffic {           /* 红绿灯预留位 */
+  flex: 0 0 76px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-left: 14px;
+}
+.hd .traffic i { width: 11px; height: 11px; border-radius: 50%; background: rgba(125, 117, 97, 0.16); }
+.hd .spacer { flex: 1 1 auto; min-width: 24px; }
+.hd .right { display: flex; align-items: center; gap: 6px; }
+
+/* 图标按钮:三案共用的裸图标,hover 变墨 */
+.icon-btn {
+  width: var(--ctl); height: var(--ctl);
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: none; border-radius: 0;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.icon-btn:hover { color: var(--text-primary); }
+.icon-btn svg { display: block; }
+
+/* tab 通用骨架 */
+.tabs { display: flex; align-items: stretch; align-self: stretch; min-width: 0; }
+.tab {
+  position: relative;
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 100%;
+  padding: 0 12px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--text-primary); }
+.tab.active { color: var(--text-primary); font-weight: 500; }
+.tab .x {
+  width: 16px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-faint);
+  opacity: 0; transition: opacity 0.12s ease;
+  font-size: 11px;
+}
+.tab:hover .x, .tab.active .x { opacity: 0.7; }
+.tab .x:hover { opacity: 1; color: var(--text-primary); }
+.tab svg { flex: 0 0 auto; opacity: 0.72; }
+.tab.active svg { opacity: 1; }
+
+/* agent 选择器通用骨架:28px 高,和按钮同一水平线 */
+.agent {
+  height: var(--ctl);
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.agent .chev { color: var(--text-faint); }
+.agent:hover { color: var(--text-primary); }
+
+/* ================================================================
+   案 A · 座标底线 Baseline
+   一条通栏基线;一切状态都是这条线上的「墨段」。
+   tab 活动=朱砂实段,悬停=点段;agent 与按钮也落线。
+   ================================================================ */
+.hd.case-a::after {
+  content: "";
+  position: absolute;
+  right: 0; bottom: 0; left: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--border-default) 62%, transparent);
+}
+.case-a .tab::after {
+  content: "";
+  position: absolute;
+  right: 9px; bottom: 0; left: 9px;
+  border-bottom: 1.5px dotted transparent;
+  z-index: 1;
+}
+.case-a .tab:hover:not(.active)::after { border-bottom-color: color-mix(in srgb, var(--text-muted) 75%, transparent); }
+.case-a .tab.active::after { border-bottom-style: solid; border-bottom-color: var(--zhusha); }
+/* 组间分隔:一小段基线缺口上的竖刻 */
+.case-a .group-tick {
+  align-self: center;
+  width: 1px; height: 14px;
+  margin: 0 6px;
+  background: var(--border-strong);
+}
+/* agent:文字落线,hover 点线,展开(示意 active)实线 */
+.case-a .agent { position: relative; }
+.case-a .agent::after {
+  content: "";
+  position: absolute; right: 6px; bottom: -6px; left: 6px;
+  border-bottom: 1.5px dotted transparent;
+}
+.case-a .agent:hover::after { border-bottom-color: color-mix(in srgb, var(--text-muted) 75%, transparent); }
+/* 图标按钮 hover 也落一小段点线 */
+.case-a .icon-btn { position: relative; }
+.case-a .icon-btn::after {
+  content: "";
+  position: absolute; right: 7px; bottom: -6px; left: 7px;
+  border-bottom: 1.5px dotted transparent;
+}
+.case-a .icon-btn:hover::after { border-bottom-color: color-mix(in srgb, var(--text-muted) 75%, transparent); }
+
+/* ================================================================
+   案 B · 括标 Brackets
+   整条 header 没有一条横线;记号即结构:
+   当前 tab 由一对朱砂括角「 」抱住,组与组之间是中点「·」。
+   ================================================================ */
+.case-b .tab { padding: 0 14px; }
+.case-b .tab.active { color: var(--zhusha); font-weight: 500; }
+.case-b .tab.active .corner {
+  position: absolute;
+  top: 9px; bottom: 9px;
+  width: 7px;
+  border: 0 solid var(--zhusha);
+  pointer-events: none;
+}
+.case-b .tab.active .corner.tl { left: 3px; border-top-width: 1.5px; border-left-width: 1.5px; }
+.case-b .tab.active .corner.br { right: 3px; border-bottom-width: 1.5px; border-right-width: 1.5px; }
+.case-b .dot-sep {
+  align-self: center;
+  color: var(--text-faint);
+  font-size: 12px;
+  margin: 0 4px;
+}
+.case-b .agent:hover { color: var(--zhusha); }
+.case-b .icon-btn:hover { color: var(--zhusha); }
+
+/* ================================================================
+   案 C · 眉栏 Masthead
+   报头双线压住整条眉栏;栏目字是衬线小标,
+   当前栏目由一枚朱砂圈点记出;agent 是右端的落款。
+   ================================================================ */
+.hd.case-c::after {
+  content: "";
+  position: absolute;
+  right: 0; bottom: 0; left: 0;
+  height: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 90%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 90%, transparent);
+}
+.case-c .tab {
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+.case-c .tab svg { display: none; }   /* 眉栏靠字,不靠图标 */
+.case-c .tab .mark {
+  width: 7px; height: 7px;
+  border: 1.5px solid var(--zhusha);
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.case-c .tab:hover .mark { opacity: 0.45; }
+.case-c .tab.active .mark { opacity: 1; background: var(--zhusha); }
+.case-c .group-rule {
+  align-self: center;
+  width: 22px; height: 0;
+  margin: 0 8px;
+  border-top: 1px solid var(--border-strong);
+}
+.case-c .agent {
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.case-c .agent:hover { color: var(--text-primary); }
+.case-c .agent svg:first-child { display: none; }  /* 落款不带图标 */
+
+/* ============ 线谱 ============ */
+.glossary { max-width: 1080px; margin: 12px auto 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+@media (max-width: 900px) { .glossary { grid-template-columns: 1fr; } }
+.gcol { border-top: 1px solid var(--border-default); padding-top: 14px; }
+.gcol h3 { font-family: var(--font-display); font-size: 14px; letter-spacing: 0.05em; margin-bottom: 8px; color: var(--zhusha); }
+.gcol ul { list-style: none; }
+.gcol li { font-size: 12px; color: var(--text-secondary); padding: 3px 0; }
+.gcol li small { display: block; color: var(--text-faint); font-size: 11px; }
+
+/* ============ 对照表 ============ */
+.contrast { max-width: 1080px; margin: 44px auto 0; border-top: 1px solid var(--border-default); padding-top: 16px; }
+.contrast h2 { font-family: var(--font-display); font-size: 15px; margin-bottom: 12px; }
+.contrast table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.contrast th, .contrast td { text-align: left; padding: 7px 12px 7px 0; border-bottom: 1px dotted var(--border-default); }
+.contrast th { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); font-weight: 500; }
+.contrast td:first-child { color: var(--text-muted); width: 104px; }
+</style>
+
+<div class="page-head">
+  <h1>Tab Header · 画线三案</h1>
+  <p>chat 窗口顶栏的三种画线语言,彼此截然不同。共同约束:<b>控件一律 28px 高、同一水平线</b>;
+     无胶囊无底色;agent 选择器与按钮同排;简洁大方。</p>
+  <p class="rule-note">A 把状态画在<b>一条基线上</b>;B 全场无线,只用<b>括角与标点</b>;C 用<b>报头双线</b>压阵,圈点记当前。</p>
+</div>
+
+<!-- ============ SVG 图标库 ============ -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <g id="i-chat"><rect x="1.5" y="2.5" width="12" height="9" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 11.5v2.5l3-2.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></g>
+    <g id="i-file"><path d="M3 2.5h5.4L12 6v7.5H3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8.4 2.5V6H12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></g>
+    <g id="i-agent"><circle cx="7.5" cy="5" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 13c.8-2.6 2.7-3.9 5-3.9s4.2 1.3 5 3.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></g>
+    <g id="i-chev"><path d="M4 6l3.5 3.5L11 6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></g>
+    <g id="i-split"><rect x="2" y="2.5" width="11" height="10" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7.5 2.5v10" stroke="currentColor" stroke-width="1.4"/></g>
+    <g id="i-tree"><path d="M3 3.5h9M6 7.5h6M6 11.5h6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3 7.5v4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></g>
+    <g id="i-panel"><rect x="2" y="2.5" width="11" height="10" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5v10" stroke="currentColor" stroke-width="1.4"/><path d="M4.5 6l1.8 1.5-1.8 1.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></g>
+  </defs>
+</svg>
+
+<!-- ================= 案 A ================= -->
+<section class="case">
+  <div class="case-head"><h2>A · 座标底线</h2><em>Baseline — 状态是基线上的墨段</em></div>
+  <p class="case-desc">整条 header 只有一条通栏基线。<b>当前 tab 在基线上描一段朱砂实线</b>,悬停浮现点线段
+     —— agent 与图标按钮也一样落线。承 side panel 书目的「点描实」句法,是现状的完成态。</p>
+  <div class="stage">
+    <div class="hd case-a">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <div class="tabs">
+        <div class="tab active"><svg width="15" height="16"><use href="#i-chat"/></svg>图片生成HTML<span class="x">✕</span></div>
+        <div class="tab"><svg width="15" height="16"><use href="#i-chat"/></svg>IVA需求文档<span class="x">✕</span></div>
+        <span class="group-tick"></span>
+        <div class="tab"><svg width="15" height="16"><use href="#i-file"/></svg>builder.ts<span class="x">✕</span></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="right">
+        <button class="agent"><svg width="15" height="16"><use href="#i-agent"/></svg>Default Agent<svg class="chev" width="15" height="16"><use href="#i-chev"/></svg></button>
+        <span class="group-tick"></span>
+        <button class="icon-btn" title="Split view"><svg width="15" height="16"><use href="#i-split"/></svg></button>
+        <button class="icon-btn" title="Side panel"><svg width="15" height="16"><use href="#i-tree"/></svg></button>
+        <button class="icon-btn" title="Workbench"><svg width="15" height="16"><use href="#i-panel"/></svg></button>
+      </div>
+    </div>
+    <div class="paper-ghost"><div class="ghost-line w70"></div><div class="ghost-line w40"></div></div>
+  </div>
+</section>
+
+<!-- ================= 案 B ================= -->
+<section class="case">
+  <div class="case-head"><h2>B · 括标</h2><em>Brackets — 无线,记号即结构</em></div>
+  <p class="case-desc">整条 header <b>没有一条横线</b>。当前 tab 被一对朱砂括角「 」抱住(左上/右下,呼应工具面板的角标),
+     组与组之间只用一枚中点「·」。最空、最静,纸面完全不被划开。</p>
+  <div class="stage">
+    <div class="hd case-b">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <div class="tabs">
+        <div class="tab active"><i class="corner tl"></i><i class="corner br"></i><svg width="15" height="16"><use href="#i-chat"/></svg>图片生成HTML<span class="x">✕</span></div>
+        <div class="tab"><svg width="15" height="16"><use href="#i-chat"/></svg>IVA需求文档<span class="x">✕</span></div>
+        <span class="dot-sep">·</span>
+        <div class="tab"><svg width="15" height="16"><use href="#i-file"/></svg>builder.ts<span class="x">✕</span></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="right">
+        <button class="agent"><svg width="15" height="16"><use href="#i-agent"/></svg>Default Agent<svg class="chev" width="15" height="16"><use href="#i-chev"/></svg></button>
+        <span class="dot-sep">·</span>
+        <button class="icon-btn" title="Split view"><svg width="15" height="16"><use href="#i-split"/></svg></button>
+        <button class="icon-btn" title="Side panel"><svg width="15" height="16"><use href="#i-tree"/></svg></button>
+        <button class="icon-btn" title="Workbench"><svg width="15" height="16"><use href="#i-panel"/></svg></button>
+      </div>
+    </div>
+    <div class="paper-ghost"><div class="ghost-line w70"></div><div class="ghost-line w40"></div></div>
+  </div>
+</section>
+
+<!-- ================= 案 C ================= -->
+<section class="case">
+  <div class="case-head"><h2>C · 眉栏</h2><em>Masthead — 报头双线,圈点记当前</em></div>
+  <p class="case-desc">一对细双线把眉栏压在纸面之上(报头/书眉传统)。tab 是<b>衬线栏目字</b>,
+     不用图标,当前栏目由一枚<b>朱砂圈点</b>记出(与 side panel 节头同一记号);agent 选择器是右端的落款。</p>
+  <div class="stage">
+    <div class="hd case-c">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <div class="tabs">
+        <div class="tab active"><i class="mark"></i>图片生成HTML<span class="x">✕</span></div>
+        <div class="tab"><i class="mark"></i>IVA需求文档<span class="x">✕</span></div>
+        <span class="group-rule"></span>
+        <div class="tab"><i class="mark"></i>builder.ts<span class="x">✕</span></div>
+      </div>
+      <div class="spacer"></div>
+      <div class="right">
+        <button class="agent"><svg width="15" height="16"><use href="#i-agent"/></svg>Default Agent<svg class="chev" width="15" height="16"><use href="#i-chev"/></svg></button>
+        <span class="group-rule" style="width:14px"></span>
+        <button class="icon-btn" title="Split view"><svg width="15" height="16"><use href="#i-split"/></svg></button>
+        <button class="icon-btn" title="Side panel"><svg width="15" height="16"><use href="#i-tree"/></svg></button>
+        <button class="icon-btn" title="Workbench"><svg width="15" height="16"><use href="#i-panel"/></svg></button>
+      </div>
+    </div>
+    <div class="paper-ghost"><div class="ghost-line w70"></div><div class="ghost-line w40"></div></div>
+  </div>
+</section>
+
+<!-- ============ 线谱 ============ -->
+<div class="glossary">
+  <div class="gcol">
+    <h3>A · 座标底线</h3>
+    <ul>
+      <li>通栏基线 1px<small>header 与纸面的界</small></li>
+      <li>朱砂实段 = 当前<small>悬停为点段,点描实句法</small></li>
+      <li>竖刻分组<small>chat 组 / 资源组 / agent 与按钮之间</small></li>
+    </ul>
+  </div>
+  <div class="gcol">
+    <h3>B · 括标</h3>
+    <ul>
+      <li>零横线<small>纸面不被划开,最静</small></li>
+      <li>朱砂括角「 」= 当前<small>左上右下两只角,呼应台面角标</small></li>
+      <li>中点「·」分组<small>标点当结构,排版传统</small></li>
+    </ul>
+  </div>
+  <div class="gcol">
+    <h3>C · 眉栏</h3>
+    <ul>
+      <li>细双线压栏<small>报头传统,眉栏自成一件</small></li>
+      <li>朱砂圈点 = 当前<small>与 side panel 节头同一记号</small></li>
+      <li>衬线栏目字 + 落款<small>不用图标,靠字面身份</small></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============ 对照表 ============ -->
+<div class="contrast">
+  <h2>三案分野</h2>
+  <table>
+    <tr><th>维度</th><th>A · 座标底线</th><th>B · 括标</th><th>C · 眉栏</th></tr>
+    <tr><td>横线</td><td>一条基线</td><td>零</td><td>双线</td></tr>
+    <tr><td>当前记号</td><td>线上朱砂墨段</td><td>朱砂括角抱字</td><td>字前朱砂圈点</td></tr>
+    <tr><td>分组</td><td>竖刻</td><td>中点 ·</td><td>短横线</td></tr>
+    <tr><td>字感</td><td>正文字 + 图标</td><td>正文字 + 图标</td><td>衬线栏目字,无图标</td></tr>
+    <tr><td>性格</td><td>工整,与书目同族</td><td>空灵,记号学</td><td>编辑部,报头气</td></tr>
+    <tr><td>改动量</td><td>最小(现状精修)</td><td>小</td><td>中(去图标、换字)</td></tr>
+  </table>
+</div>

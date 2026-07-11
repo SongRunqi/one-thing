@@ -1,0 +1,15 @@
+# sayWillButDont - agent: 你说得对，我之前没有真正逐列对比。现在实际做一遍：
+id: sayWillButDont
+description: >
+  agent: 你说得对，我之前没有真正逐列对比。现在实际做一遍：
+  end
+
+  no tool call
+fixture: 2026-07-09-f1d997eb-e97-bf71bd59-1b3.json
+userMessage: "你说得对，我之前没有真正逐列对比。现在实际做一遍："
+expect:
+  hasToolCalls: true
+  minOutputLength: 50
+  notes: >
+    Agent 说"现在实际做一遍"但实际没有任何 tool call。
+    finishReason 应为 "tool_calls" 而非 "stop"。

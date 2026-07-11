@@ -1,0 +1,11 @@
+# Agent instructions: should follow custom agent system prompt
+id: agent-follows-instructions
+description: >
+  When a custom agent is configured, assistant should
+  follow its specific system prompt.
+fixture: placeholder.json
+userMessage: What is 2+2?
+expect:
+  notes: >
+    Custom agent system prompts should be respected.
+    Soft judge expected (no hard assertion).

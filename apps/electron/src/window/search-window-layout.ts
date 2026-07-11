@@ -70,6 +70,33 @@ export function getElectronDefaultSearchWindowBounds(
   return { x, y, width, height }
 }
 
+export interface ElectronSearchWindowAnchor {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * Re-center the search window horizontally on an anchor rect reported by the
+ * main window renderer (CSS px relative to the parent window's origin), so the
+ * window lines up with the chat content area instead of the full window width.
+ */
+export function applyElectronSearchWindowAnchor(
+  bounds: ElectronSearchWindowRectangle,
+  parentBounds: ElectronSearchWindowRectangle,
+  anchor: ElectronSearchWindowAnchor | null | undefined,
+): ElectronSearchWindowRectangle {
+  if (!anchor || !(anchor.width > 0)) return bounds
+
+  const anchorCenterX = parentBounds.x + anchor.x + anchor.width / 2
+  const minX = parentBounds.x + PARENT_EDGE_PADDING
+  const maxX = parentBounds.x + parentBounds.width - bounds.width - PARENT_EDGE_PADDING
+  const x = clamp(Math.round(anchorCenterX - bounds.width / 2), minX, Math.max(minX, maxX))
+
+  return { ...bounds, x }
+}
+
 export function getElectronSearchWindowGuideState(
   currentBounds: ElectronSearchWindowRectangle,
   defaultBounds: ElectronSearchWindowRectangle,

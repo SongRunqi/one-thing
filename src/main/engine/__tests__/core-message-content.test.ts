@@ -23,6 +23,7 @@ describe('core message content helpers', () => {
 
   it('builds multimodal provider content from attachments', () => {
     const onImageAttachment = vi.fn()
+    const pdfBase64 = Buffer.from('%PDF-1.4').toString('base64')
     const content = buildMessageContent({
       content: 'see attached',
       attachments: [
@@ -33,10 +34,20 @@ describe('core message content helpers', () => {
           base64Data: 'abc123',
         },
         {
+          // Text attachments are decoded and inlined so every provider can
+          // actually read them ('ZmlsZQ==' is base64 for 'file').
           fileName: 'notes.txt',
           mimeType: 'text/plain',
           mediaType: 'file',
           base64Data: 'ZmlsZQ==',
+        },
+        {
+          // Binary attachments stay as file parts and carry the filename
+          // that provider payloads (e.g. Codex input_file) require.
+          fileName: 'report.pdf',
+          mimeType: 'application/pdf',
+          mediaType: 'file',
+          base64Data: pdfBase64,
         },
       ],
     }, { onImageAttachment })
@@ -44,7 +55,11 @@ describe('core message content helpers', () => {
     expect(content).toEqual([
       { type: 'text', text: 'see attached' },
       { type: 'image', image: 'data:image/png;base64,abc123' },
-      { type: 'file', data: 'ZmlsZQ==', mediaType: 'text/plain' },
+      {
+        type: 'text',
+        text: '<attachment filename="notes.txt" media_type="text/plain">\nfile\n</attachment>',
+      },
+      { type: 'file', data: pdfBase64, mediaType: 'application/pdf', filename: 'report.pdf' },
     ])
     expect(onImageAttachment).toHaveBeenCalledWith({
       mimeType: 'image/png',

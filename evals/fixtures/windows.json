@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "capturedAt": "2026-07-07T00:00:00Z",
+  "promptVersion": "00000000",
+  "provider": "eval",
+  "model": "eval",
+  "context": {
+    "workingDirectory": "C:\\Users\\tester\\projects\\example",
+    "skills": [],
+    "toolNames": ["read", "write", "edit", "bash", "glob", "grep"],
+    "hasTools": true,
+    "platform": "win32"
+  },
+  "userMessage": "Placeholder - replace with real user message",
+  "sessionRef": {
+    "sessionId": "eval-windows",
+    "turnId": "eval-windows"
+  }
+}

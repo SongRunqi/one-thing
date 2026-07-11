@@ -2,440 +2,303 @@
   <div
     ref="composerWrapperRef"
     class="composer-wrapper"
-    :class="{
-      'has-extension': activeExtensionVisible,
-      'command-palette-open': activeExtension.type === 'palette',
-    }"
   >
-    <TransitionGroup
-      v-if="queuedMessages.length > 0"
-      name="queued-message"
-      tag="div"
-      class="queued-messages"
-      :class="{ 'has-file-changes': !!queuedFileChanges }"
-    >
-      <div
-        v-if="queuedFileChanges"
-        key="queued-file-changes"
-        class="queued-file-changes-row"
-      >
-        <div class="queued-file-changes-summary">
-          <span>{{ changedFilesLabel(queuedFileChanges.fileCount) }}</span>
-          <span class="queued-file-additions">+{{ queuedFileChanges.additions }}</span>
-          <span class="queued-file-deletions">-{{ queuedFileChanges.deletions }}</span>
-        </div>
-        <Button
-          text
-          size="small"
-          class="queued-review-btn"
-          native-type="button"
-          title="Review file changes"
-          @click.stop="reviewQueuedFileChanges"
-        >
-          Review
-        </Button>
-      </div>
-
-      <div
-        v-for="item in queuedMessages"
-        :key="item.id"
-        class="queued-message-card"
-        :class="{ 'has-files': !!item.attachments?.length || hasQueuedFileChanges(item) }"
-      >
-        <span
-          class="queued-message-marker"
-          aria-hidden="true"
-        >
-          <CornerDownRight
-            class="queued-message-icon"
-            :size="15"
-            :stroke-width="2"
-          />
-        </span>
-
-        <div class="queued-message-body">
-          <span class="queued-message-label">Insert message</span>
-          <span class="queued-message-separator">·</span>
-          <span
-            class="queued-message-text"
-            :class="{ empty: !item.content }"
-          >
-            {{ queuedMessagePreview(item) }}
-          </span>
-          <span
-            v-if="queuedFileSummary(item)"
-            class="queued-file-summary"
-            :class="{ 'is-diff': hasQueuedFileChanges(item) }"
-            :title="queuedFileSummaryTitle(item)"
-          >
-            <span class="queued-message-separator">·</span>
-            <GitCompare
-              v-if="hasQueuedFileChanges(item)"
-              :size="13"
-              :stroke-width="2"
-            />
-            <FileText
-              v-else
-              :size="13"
-              :stroke-width="2"
-            />
-            <span>{{ queuedFileSummary(item) }}</span>
-          </span>
-        </div>
-
-        <div class="queued-message-actions">
-          <Button
-            text
-            size="small"
-            class="queued-message-action"
-            native-type="button"
-            :disabled="!!item.attachments?.length"
-            :title="item.attachments?.length ? 'File messages will send after the current response' : 'Steer the current agent response with this message'"
-            @click.stop="steerQueuedMessage(item.id)"
-          >
-            <template #icon>
-              <CornerDownRight
-                :size="15"
-                :stroke-width="2"
-              />
-            </template>
-            Steer
-          </Button>
-          <Button
-            text
-            circle
-            class="queued-message-icon-btn"
-            native-type="button"
-            title="Remove from queue"
-            aria-label="Remove from queue"
-            :icon="Trash2"
-            @click.stop="removeQueuedMessage(item.id)"
-          />
-        </div>
-      </div>
-    </TransitionGroup>
-
     <div class="composer-stack">
-      <CommandPicker
-        :visible="activeExtension.type === 'palette'"
-        :items="activeExtension.items"
-        :selected-index="activeExtension.selectedIndex"
-        :query="activeExtension.query"
-        :loading="activeExtension.loading"
-        :error="activeExtension.error"
-        @select="handleCommandSelect"
-        @highlight="highlightActiveSelection"
-        @close="handleCommandPickerClose"
-      />
-
-      <FilePicker
-        :visible="activeExtension.type === 'files'"
-        :items="activeExtension.items"
-        :selected-index="activeExtension.selectedIndex"
-        :query="activeExtension.query"
-        :loading="activeExtension.loading"
-        :error="activeExtension.error"
-        @select="handleFilePickerSelect"
-        @highlight="highlightActiveSelection"
-        @close="handleFilePickerClose"
-      />
-
-      <PathPicker
-        :visible="activeExtension.type === 'paths'"
-        :items="activeExtension.items"
-        :selected-index="activeExtension.selectedIndex"
-        :path-input="activeExtension.query"
-        :loading="activeExtension.loading"
-        :error="activeExtension.error"
-        @select="handlePathPickerSelect"
-        @highlight="highlightActiveSelection"
-        @close="handlePathPickerClose"
-      />
-
-      <div
-        class="composer"
-        :class="{
-          focused: isFocused,
-          'extension-open': activeExtensionVisible,
-          'command-mode': activeExtension.type === 'palette',
-        }"
-        @click="focusEditor"
+      <!-- Dock: persistent context that travels with the draft (queue,
+           quote, attachments), stacked above the composer in normal flow. -->
+      <TransitionGroup
+        v-if="dockVisible"
+        name="dock-row"
+        tag="div"
+        class="composer-dock"
       >
-        <div
-          v-if="quotedText || commandFeedback"
-          class="composer-context-stack"
-          @click.stop
-        >
-          <Transition name="fade">
-            <div
-              v-if="commandFeedback"
-              :class="['command-feedback', commandFeedback.type]"
-            >
-              <Check
-                v-if="commandFeedback.type === 'success'"
-                :size="14"
-                :stroke-width="2.5"
-              />
-              <X
-                v-else
-                :size="14"
-                :stroke-width="2.5"
-              />
-              <span>{{ commandFeedback.message }}</span>
-            </div>
-          </Transition>
-
-          <QuotedContext
-            :text="quotedText"
-            @clear="clearQuotedText"
-          />
-        </div>
-
-        <!-- Input area -->
-        <div class="input-area">
-          <TextEditor
-            ref="editorRef"
-            v-model="messageInput"
-            class="composer-input"
-            profile="composer"
-            language="markdown"
-            :placeholder="composerPlaceholder"
-            :settings="editorSettings"
-            :prompt-refs="promptsStore.prompts"
-            :skill-refs="enabledSkills"
-            :command-refs="commandRefs"
-            :min-height="42"
-            :max-height="composerMaxHeight"
-            @keydown="handleKeyDown"
-            @paste="handlePasteAttachments"
-            @focus="isFocused = true"
-            @blur="isFocused = false"
-            @height-change="handleEditorHeightChange"
-            @selection-change="handleEditorSelectionChange"
-            @transaction="handleEditorTransaction"
-            @compositionstart="isComposing = true"
-            @compositionend="isComposing = false"
-          />
-        </div>
-
-        <div
-          v-if="voiceCaptureVisible"
-          class="voice-capture-bar"
-          :class="{ recording: isVoiceRecordingActive, transcribing: isVoiceTranscribingActive }"
-          :title="voiceCaptureHint"
-          aria-live="polite"
-          @click.stop
-        >
-          <span class="voice-capture-visual">
-            <Loader2
-              v-if="isVoiceTranscribingActive"
-              class="voice-spinner"
-              :size="14"
-              :stroke-width="2"
-            />
-            <span
-              v-else
-              class="voice-wave"
-              aria-hidden="true"
-            >
-              <span />
-              <span />
-              <span />
-              <span />
-              <span />
-            </span>
-          </span>
-          <span class="voice-capture-main">
-            <span class="voice-capture-title">{{ voiceCaptureTitle }}</span>
-            <span class="voice-capture-detail">{{ voiceCaptureDetail }}</span>
-          </span>
-          <Button
-            v-if="isVoiceRecordingActive"
-            text
-            size="small"
-            type="danger"
-            class="voice-capture-stop"
-            native-type="button"
-            title="Stop recording and transcribe"
-            @mousedown.prevent
-            @click.stop="handleVoiceButton"
-          >
-            <template #icon>
-              <Square
-                :size="12"
-                :stroke-width="2.4"
-              />
-            </template>
-            Stop
-          </Button>
-        </div>
-
-        <div
+        <QueuePanel
+          v-if="queuedMessages.length > 0"
+          key="queue"
+          :items="queuedMessages"
+          :file-changes="queuedFileChanges"
+          @steer="steerQueuedMessage"
+          @remove="removeQueuedMessage"
+          @review="reviewQueuedFileChanges"
+        />
+        <QuotedContext
+          v-if="quotedText"
+          key="quote"
+          :text="quotedText"
+          @clear="clearQuotedText"
+        />
+        <AttachmentRow
           v-if="attachedFiles.length > 0 || isProcessingAttachments"
-          class="attachment-tray"
-          @click.stop
-        >
+          key="attachments"
+          :files="attachedFiles"
+          :processing="isProcessingAttachments"
+          @remove="removeAttachment"
+        />
+      </TransitionGroup>
+      <!-- Anchor keeps flyouts glued to the composer's top edge, floating
+           above whatever is docked higher in the stack. -->
+      <div class="composer-anchor">
+        <span
+          class="composer-frame-label"
+          aria-hidden="true"
+        >COMPOSER</span>
+        <Transition name="fade">
           <div
-            v-for="file in attachedFiles"
-            :key="file.id"
-            class="attachment-chip"
-            :class="{ 'is-image': file.mediaType === 'image' }"
-            :title="`${file.fileName} (${formatFileSize(file.size)})`"
-          >
-            <img
-              v-if="file.mediaType === 'image' && file.preview"
-              class="attachment-thumb"
-              :src="file.preview"
-              :alt="file.fileName"
-            >
-            <span
-              v-else
-              class="attachment-file-icon"
-            >
-              <FileText :size="15" />
-            </span>
-            <span class="attachment-info">
-              <span class="attachment-name">{{ file.fileName }}</span>
-              <span class="attachment-size">{{ formatFileSize(file.size) }}</span>
-            </span>
-            <Button
-              text
-              circle
-              class="attachment-remove"
-              native-type="button"
-              :title="`Remove ${file.fileName}`"
-              :aria-label="`Remove ${file.fileName}`"
-              :icon="X"
-              @mousedown.prevent
-              @click.stop="removeAttachment(file.id)"
-            />
-          </div>
-          <div
-            v-if="isProcessingAttachments"
-            class="attachment-chip is-loading"
-          >
-            <Loader2
-              class="attachment-spinner"
-              :size="15"
-            />
-            <span>Reading files...</span>
-          </div>
-        </div>
-
-        <!-- Bottom toolbar -->
-        <div class="composer-toolbar">
-          <div class="toolbar-left">
-            <ModelSelector :session-id="props.sessionId" />
-            <Tooltip
-              v-if="contextMeterVisible"
-              :text="contextTooltipText"
-              position="top"
-              :delay="120"
-            >
-              <button
-                type="button"
-                class="context-meter"
-                :class="contextMeterTone"
-                :style="contextMeterStyle"
-                :title="contextTooltipText"
-                :aria-label="contextAriaLabel"
-                @mousedown.prevent
-                @click.stop="openContextInspector"
-              >
-                <span class="context-meter-fill" />
-                <span class="context-meter-label">{{ contextMeterLabel }}</span>
-              </button>
-            </Tooltip>
-            <ThinkToggle :session-id="props.sessionId" />
-            <Select
-              size="small"
-              class="permission-mode-select"
-              :class="`mode-${permissionMode}`"
-              teleported
-              placement="top"
-              popper-class="inputbox-select-dropdown permission-mode-dropdown"
-              :model-value="permissionMode"
-              :options="PERMISSION_MODE_OPTIONS"
-              :popper-style="permissionDropdownStyle"
-              aria-label="Permission mode"
-              :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
-              @click.stop
-              @change="handlePermissionModeChange"
-            >
-              <template #label>
-                <span class="permission-mode-glyph">
-                  <Shield
-                    :size="14"
-                    :stroke-width="2"
-                  />
-                  <span
-                    v-if="permissionMode !== 'normal'"
-                    class="permission-mode-dot"
-                  />
-                </span>
-              </template>
-            </Select>
-          </div>
-
-          <div
-            class="toolbar-right"
+            v-if="commandFeedback"
+            :class="['command-feedback', commandFeedback.type]"
             @click.stop
           >
+            <Check
+              v-if="commandFeedback.type === 'success'"
+              :size="14"
+              :stroke-width="2.5"
+            />
+            <X
+              v-else
+              :size="14"
+              :stroke-width="2.5"
+            />
+            <span>{{ commandFeedback.message }}</span>
+          </div>
+        </Transition>
+
+        <CommandPicker
+          :visible="activeExtension.type === 'palette'"
+          :items="activeExtension.items"
+          :selected-index="activeExtension.selectedIndex"
+          :query="activeExtension.query"
+          :loading="activeExtension.loading"
+          :error="activeExtension.error"
+          @select="handleCommandSelect"
+          @highlight="highlightActiveSelection"
+          @close="handleCommandPickerClose"
+        />
+
+        <FilePicker
+          :visible="activeExtension.type === 'files'"
+          :items="activeExtension.items"
+          :selected-index="activeExtension.selectedIndex"
+          :query="activeExtension.query"
+          :loading="activeExtension.loading"
+          :error="activeExtension.error"
+          @select="handleFilePickerSelect"
+          @highlight="highlightActiveSelection"
+          @close="handleFilePickerClose"
+        />
+
+        <PathPicker
+          :visible="activeExtension.type === 'paths'"
+          :items="activeExtension.items"
+          :selected-index="activeExtension.selectedIndex"
+          :path-input="activeExtension.query"
+          :loading="activeExtension.loading"
+          :error="activeExtension.error"
+          @select="handlePathPickerSelect"
+          @highlight="highlightActiveSelection"
+          @close="handlePathPickerClose"
+        />
+
+        <div
+          class="composer"
+          :class="{ focused: isFocused }"
+          @click="focusEditor"
+        >
+          <!-- Input area -->
+          <div class="input-area">
+            <TextEditor
+              ref="editorRef"
+              v-model="messageInput"
+              class="composer-input"
+              profile="composer"
+              language="markdown"
+              :placeholder="composerPlaceholder"
+              :settings="editorSettings"
+              :prompt-refs="promptsStore.prompts"
+              :skill-refs="enabledSkills"
+              :command-refs="commandRefs"
+              :min-height="42"
+              :max-height="composerMaxHeight"
+              @keydown="handleKeyDown"
+              @paste="handlePasteAttachments"
+              @focus="isFocused = true"
+              @blur="isFocused = false"
+              @height-change="handleEditorHeightChange"
+              @selection-change="handleEditorSelectionChange"
+              @transaction="handleEditorTransaction"
+              @compositionstart="isComposing = true"
+              @compositionend="isComposing = false"
+            />
+          </div>
+
+          <div
+            v-if="voiceCaptureVisible"
+            class="voice-capture-bar"
+            :class="{ recording: isVoiceRecordingActive, transcribing: isVoiceTranscribingActive }"
+            :title="voiceCaptureHint"
+            aria-live="polite"
+            @click.stop
+          >
+            <span class="voice-capture-visual">
+              <Loader2
+                v-if="isVoiceTranscribingActive"
+                class="voice-spinner"
+                :size="14"
+                :stroke-width="2"
+              />
+              <span
+                v-else
+                class="voice-wave"
+                aria-hidden="true"
+              >
+                <span />
+                <span />
+                <span />
+                <span />
+                <span />
+              </span>
+            </span>
+            <span class="voice-capture-main">
+              <span class="voice-capture-title">{{ voiceCaptureTitle }}</span>
+              <span class="voice-capture-detail">{{ voiceCaptureDetail }}</span>
+            </span>
             <Button
+              v-if="isVoiceRecordingActive"
+              text
               size="small"
-              class="voice-btn"
-              :class="{
-                active: isVoiceRecordingActive,
-                transcribing: isVoiceTranscribingActive,
-                'needs-setup': !!voiceConfigurationError && !voiceStore.isRecording,
-              }"
+              type="danger"
+              class="voice-capture-stop"
               native-type="button"
-              :title="voiceButtonTitle"
+              title="Stop recording and transcribe"
               @mousedown.prevent
               @click.stop="handleVoiceButton"
             >
               <template #icon>
                 <Square
-                  v-if="isVoiceRecordingActive"
-                  :size="14"
+                  :size="12"
                   :stroke-width="2.4"
                 />
-                <Loader2
-                  v-else-if="isVoiceTranscribingActive"
-                  class="voice-spinner"
-                  :size="16"
-                  :stroke-width="2"
-                />
-                <Mic
-                  v-else
-                  :size="17"
-                  :stroke-width="2"
-                />
               </template>
+              Stop
             </Button>
-            <Button
-              type="primary"
-              class="send-btn"
-              :class="{ 'stop-btn': shouldShowStopAction }"
-              :disabled="isPrimaryActionDisabled"
-              :title="primaryActionTitle"
-              @mousedown.prevent
-              @click.stop="handlePrimaryAction"
+          </div>
+
+          <!-- Bottom toolbar -->
+          <div class="composer-toolbar">
+            <div class="toolbar-left">
+              <ModelSelector :session-id="props.sessionId" />
+              <Tooltip
+                v-if="contextMeterVisible"
+                :text="contextTooltipText"
+                position="top"
+                :delay="120"
+              >
+                <button
+                  type="button"
+                  class="context-meter"
+                  :class="contextMeterTone"
+                  :style="contextMeterStyle"
+                  :title="contextTooltipText"
+                  :aria-label="contextAriaLabel"
+                  @mousedown.prevent
+                  @click.stop
+                >
+                  <span class="context-meter-prefix">ctx</span>
+                  <span
+                    v-if="contextPercent !== null"
+                    class="context-meter-cells"
+                    aria-hidden="true"
+                  ><i>{{ contextMeterFilledCells }}</i><em>{{ contextMeterRestCells }}</em></span>
+                  <span class="context-meter-label">{{ contextMeterLabel }}</span>
+                </button>
+              </Tooltip>
+              <ThinkToggle :session-id="props.sessionId" />
+              <Select
+                size="small"
+                class="permission-mode-select"
+                :class="`mode-${permissionMode}`"
+                teleported
+                placement="top"
+                popper-class="inputbox-select-dropdown permission-mode-dropdown"
+                :model-value="permissionMode"
+                :options="PERMISSION_MODE_OPTIONS"
+                :popper-style="permissionDropdownStyle"
+                aria-label="Permission mode"
+                :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
+                @click.stop
+                @change="handlePermissionModeChange"
+              >
+                <template #label>
+                  <span class="guard-label">guard:{{ guardShort }}</span>
+                </template>
+              </Select>
+            </div>
+
+            <div
+              class="toolbar-right"
+              @click.stop
             >
-              <template #icon>
-                <Send
-                  v-if="!shouldShowStopAction"
-                  :size="18"
-                  :stroke-width="2"
-                />
-                <Square
+              <Button
+                size="small"
+                class="voice-btn"
+                :class="{
+                  active: isVoiceRecordingActive,
+                  transcribing: isVoiceTranscribingActive,
+                  'needs-setup': !!voiceConfigurationError && !voiceStore.isRecording,
+                }"
+                native-type="button"
+                :title="voiceButtonTitle"
+                @mousedown.prevent
+                @click.stop="handleVoiceButton"
+              >
+                <template #icon>
+                  <Square
+                    v-if="isVoiceRecordingActive"
+                    :size="14"
+                    :stroke-width="2.4"
+                  />
+                  <Loader2
+                    v-else-if="isVoiceTranscribingActive"
+                    class="voice-spinner"
+                    :size="16"
+                    :stroke-width="2"
+                  />
+                  <Mic
+                    v-else
+                    :size="17"
+                    :stroke-width="2"
+                  />
+                </template>
+              </Button>
+              <Button
+                type="primary"
+                class="send-btn"
+                :class="{ 'stop-btn': shouldShowStopAction }"
+                :disabled="isPrimaryActionDisabled"
+                :title="primaryActionTitle"
+                @mousedown.prevent
+                @click.stop="handlePrimaryAction"
+              >
+                <template
+                  v-if="shouldShowStopAction"
+                  #icon
+                >
+                  <Square
+                    :size="14"
+                    fill="currentColor"
+                    :stroke-width="0"
+                  />
+                </template>
+                <template
                   v-else
-                  :size="16"
-                  fill="currentColor"
-                  :stroke-width="0"
-                />
-              </template>
-            </Button>
+                  #default
+                >
+                  <span
+                    class="send-label"
+                    aria-hidden="true"
+                  >SEND ⏎</span>
+                </template>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -461,7 +324,17 @@ import FilePicker from './FilePicker.vue'
 import PathPicker from './PathPicker.vue'
 import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
-import { X, Square, Send, Check, CornerDownRight, Trash2, FileText, Loader2, Mic, GitCompare, Shield } from 'lucide-vue-next'
+import QueuePanel from './composer/QueuePanel.vue'
+import AttachmentRow from './composer/AttachmentRow.vue'
+import {
+  decodeAttachmentText,
+  hasDiffLikeContent,
+  isPatchLikeFile,
+  parseDiffStats,
+  type QueuedFileChangeSummary,
+  type QueuedMessage,
+} from './composer/queued-message-utils'
+import { X, Square, Check, Loader2, Mic } from 'lucide-vue-next'
 import { findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
@@ -530,6 +403,14 @@ const permissionModeLabel = computed(() => {
 const permissionDropdownStyle = computed(() => ({
   width: '178px',
 }))
+
+const guardShort = computed(() => {
+  switch (permissionMode.value) {
+    case 'auto-accept-edits': return 'auto-edit'
+    case 'dangerously-allow-all': return 'danger'
+    default: return 'normal'
+  }
+})
 
 const activeProvider = computed(() => {
   return currentSession.value?.lastProvider || settingsStore.settings?.ai?.provider || ''
@@ -605,6 +486,17 @@ function formatCompactTokens(value: number): string {
   return `${value}`
 }
 
+const CONTEXT_METER_CELLS = 10
+
+const contextMeterFilledCells = computed(() => {
+  const filled = Math.round(((contextPercent.value ?? 0) / 100) * CONTEXT_METER_CELLS)
+  return '▮'.repeat(Math.min(CONTEXT_METER_CELLS, Math.max(0, filled)))
+})
+
+const contextMeterRestCells = computed(() => {
+  return '▯'.repeat(CONTEXT_METER_CELLS - contextMeterFilledCells.value.length)
+})
+
 const contextMeterLabel = computed(() => {
   if (contextTokens.value <= 0) return 'CTX'
   const percent = contextPercent.value
@@ -646,19 +538,6 @@ const isComposing = ref(false)
 const editorRef = ref<EditorHandle | null>(null)
 const composerWrapperRef = ref<HTMLElement | null>(null)
 
-interface QueuedMessage {
-  id: string
-  content: string
-  attachments?: MessageAttachment[]
-}
-
-interface QueuedFileChangeSummary {
-  fileCount: number
-  additions: number
-  deletions: number
-  selectedStepId?: string
-}
-
 const queuedMessages = ref<QueuedMessage[]>([])
 
 // Get the working directory for file search
@@ -693,7 +572,6 @@ const {
 
 const {
   activeExtension,
-  activeExtensionVisible,
   moveActiveSelection,
   setActiveSelection,
   pageActiveSelection,
@@ -767,6 +645,15 @@ const canSend = computed(() => {
 
 const shouldShowStopAction = computed(() => {
   return hasActiveGeneration.value && !hasMessageContent.value && !hasAttachments.value
+})
+
+const dockVisible = computed(() => {
+  return (
+    queuedMessages.value.length > 0 ||
+    !!quotedText.value ||
+    attachedFiles.value.length > 0 ||
+    isProcessingAttachments.value
+  )
 })
 
 const queuedFileChanges = computed<QueuedFileChangeSummary | null>(() => {
@@ -929,56 +816,6 @@ onUnmounted(() => {
 
 // --- Core handlers ---
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
-function isPatchLikeFile(file: MessageAttachment): boolean {
-  return /\.(diff|patch)$/i.test(file.fileName) || /(?:x-)?(?:diff|patch)/i.test(file.mimeType)
-}
-
-function hasDiffLikeContent(content: string): boolean {
-  return /^(diff --git|@@\s|[-+]{3}\s[ab]\/)/m.test(content)
-}
-
-function hasQueuedFileChanges(item: QueuedMessage): boolean {
-  return hasDiffLikeContent(item.content) || !!item.attachments?.some(isPatchLikeFile)
-}
-
-function changedFilesLabel(fileCount: number): string {
-  return fileCount === 1 ? '1 file changed' : `${fileCount} files changed`
-}
-
-function parseDiffStats(diff: string): { additions: number; deletions: number; fileCount: number } {
-  if (!diff) return { additions: 0, deletions: 0, fileCount: 0 }
-  let additions = 0
-  let deletions = 0
-  let fileCount = 0
-
-  for (const line of diff.split('\n')) {
-    if (line.startsWith('diff --git ')) fileCount += 1
-    if (line.startsWith('+') && !line.startsWith('+++')) additions += 1
-    if (line.startsWith('-') && !line.startsWith('---')) deletions += 1
-  }
-
-  return {
-    additions,
-    deletions,
-    fileCount: fileCount || (additions || deletions ? 1 : 0),
-  }
-}
-
-function decodeAttachmentText(file: MessageAttachment): string {
-  if (!file.base64Data) return ''
-  try {
-    return globalThis.atob(file.base64Data)
-  } catch {
-    return ''
-  }
-}
-
 function latestSessionFileChanges(): QueuedFileChangeSummary | null {
   const sessionId = effectiveSessionId.value
   if (!sessionId) return null
@@ -1043,36 +880,7 @@ function reviewQueuedFileChanges() {
   chatStore.openInspectorToTab?.('diff', queuedFileChanges.value?.selectedStepId || '')
 }
 
-function openContextInspector() {
-  chatStore.openInspectorToTab?.('context')
-}
 
-function queuedMessagePreview(item: QueuedMessage): string {
-  const text = item.content.trim().replace(/\s+/g, ' ')
-  if (text) return text
-  if (item.attachments?.length) return 'Files only'
-  return 'Queued'
-}
-
-function queuedFileSummary(item: QueuedMessage): string {
-  const attachments = item.attachments ?? []
-  if (hasQueuedFileChanges(item)) {
-    if (attachments.length === 0) return 'File changes'
-    if (attachments.length === 1) return `File changes · ${attachments[0].fileName}`
-    return `${attachments.length} files changed`
-  }
-  if (attachments.length === 0) return ''
-  if (attachments.length === 1) return `1 file attached · ${attachments[0].fileName}`
-  return `${attachments.length} files attached`
-}
-
-function queuedFileSummaryTitle(item: QueuedMessage): string {
-  const attachments = item.attachments ?? []
-  if (attachments.length === 0) return queuedFileSummary(item)
-  return attachments
-    .map(file => `${file.fileName} (${formatFileSize(file.size)})`)
-    .join('\n')
-}
 
 function showAttachmentResult(accepted: AttachedFile[], rejected: { message: string }[]) {
   if (rejected.length > 0) {
@@ -1192,6 +1000,14 @@ function handleKeyDown(e: KeyboardEvent) {
       void confirmActiveExtension()
       return
     }
+  }
+
+  // Escape order: flyout pickers close first (handled above); with no
+  // picker open, Escape clears the quoted context next.
+  if (e.key === 'Escape' && quotedText.value) {
+    e.preventDefault()
+    clearQuotedText()
+    return
   }
 
   // History navigation (up/down arrows)
@@ -1534,36 +1350,91 @@ defineExpose({
   position: relative;
 }
 
-.composer-wrapper.has-extension {
-  --composer-stack-divider: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 24%, transparent);
-  --composer-stack-top-highlight: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.2%, transparent);
-}
-
 .composer-stack {
   position: relative;
   width: 100%;
 }
 
-.composer-context-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px 12px 0;
+/* Positioning context for the flyout pickers: anchored to the composer's
+   top edge so they hover above any docked rows without moving with them. */
+.composer-anchor {
+  position: relative;
+  width: 100%;
 }
 
+/* Blueprint frame tag: floats on the composer's top border like a drawing
+   title block; backed by the chat surface so it "cuts" the outline. */
+.composer-frame-label {
+  position: absolute;
+  top: -7px;
+  left: 12px;
+  z-index: 2;
+  padding: 0 6px;
+  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  pointer-events: none;
+  user-select: none;
+}
+
+.composer-anchor:has(.composer.focused) .composer-frame-label {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+/* Dock: in-flow stack of persistent draft context above the composer.
+   Visual weight decreases toward the input: queue (panel) > quote (line)
+   > attachments (bare chips). */
+.composer-dock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  /* Frame tags float 7px above each row's border; the gaps make room. */
+  gap: 13px;
+  width: 100%;
+  padding-top: 7px;
+  margin-bottom: 14px;
+}
+
+.dock-row-enter-active,
+.dock-row-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.dock-row-enter-from,
+.dock-row-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.dock-row-move {
+  transition: transform 0.18s ease;
+}
+
+/* Transient toast floating above the composer's top edge; never affects
+   layout, unlike the old in-composer context stack. */
 .command-feedback {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 9px);
+  z-index: calc(var(--z-dropdown) + 2);
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
   gap: 6px;
   max-width: 100%;
   padding: 6px 10px;
-  border: 0.5px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 48%, transparent);
+  border: 0.5px solid var(--ui-composer-overlay-border);
+  border-radius: var(--radius-xs, 4px);
+  background: var(--ui-composer-overlay-bg);
+  box-shadow: var(--ui-composer-overlay-shadow);
+  backdrop-filter: blur(8px) saturate(1.02);
+  -webkit-backdrop-filter: blur(8px) saturate(1.02);
   color: var(--ui-text-primary-fg, var(--text));
   font-size: 12px;
   line-height: 1.3;
+  pointer-events: none;
 }
 
 .command-feedback.success {
@@ -1592,337 +1463,29 @@ defineExpose({
   opacity: 0;
 }
 
-.queued-messages {
-  --queued-row-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel, var(--bg)))) 30%, transparent);
-  --queued-row-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 38%, transparent);
-  --queued-row-fg: var(--ui-text-primary-fg, var(--text));
-  --queued-row-muted: var(--ui-text-muted-fg, var(--muted));
-  --queued-row-faint: var(--ui-text-faint-fg, var(--muted));
-  --queued-row-accent: var(--ui-accent-primary-fg, var(--accent));
-  --queued-row-hover: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 54%, transparent);
-
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  width: calc(100% - 96px);
-  margin: 0 auto 6px;
-  position: relative;
-  z-index: 1;
-  pointer-events: none;
-}
-
-.queued-messages:empty {
-  display: none;
-  margin: 0;
-}
-
-.queued-file-changes-row,
-.queued-message-card {
-  border: 0.5px solid var(--queued-row-border);
-  border-bottom: 0;
-  background: var(--queued-row-bg);
-}
-
-.queued-messages > :first-child {
-  border-top-left-radius: var(--radius-md, 12px);
-  border-top-right-radius: var(--radius-md, 12px);
-}
-
-.queued-messages > :last-child {
-  border-bottom: 0.5px solid var(--queued-row-border);
-  border-bottom-right-radius: var(--radius-md, 12px);
-  border-bottom-left-radius: var(--radius-md, 12px);
-}
-
-.queued-file-changes-row {
-  min-height: 42px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 7px 14px;
-  color: var(--queued-row-muted);
-  pointer-events: auto;
-}
-
-.queued-file-changes-summary {
-  min-width: 0;
-  display: inline-flex;
-  align-items: baseline;
-  gap: 5px;
-  overflow: hidden;
-  font-size: 15px;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.queued-file-additions {
-  color: var(--diff-add-text, var(--ui-status-success-fg, var(--text-success)));
-}
-
-.queued-file-deletions {
-  color: var(--diff-del-text, var(--ui-status-danger-fg, var(--text-error)));
-}
-
-.queued-review-btn {
-  --app-button-height: 28px;
-  --app-button-min-width: 0;
-  --app-button-padding-x: 8px;
-  --app-button-font-size: 14px;
-  --app-button-hover-fill: var(--queued-row-hover);
-  --app-button-hover-fg: var(--queued-row-fg);
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
-
-  height: 28px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--radius-sm, 8px);
-  background: transparent;
-  color: var(--queued-row-fg);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 520;
-  cursor: pointer;
-}
-
-.queued-review-btn:hover {
-  background: var(--queued-row-hover);
-}
-
-.queued-message-card {
-  min-height: 38px;
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 9px 5px 14px;
-  color: var(--queued-row-muted);
-  pointer-events: auto;
-}
-
-.queued-message-marker {
-  width: 20px;
-  height: 20px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-xs, 4px);
-  color: color-mix(in srgb, var(--queued-row-accent) 76%, var(--queued-row-muted));
-}
-
-.queued-message-icon {
-  flex-shrink: 0;
-}
-
-.queued-message-body {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  line-height: 1.25;
-}
-
-.queued-message-label {
-  flex: 0 0 auto;
-  color: var(--queued-row-fg);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.25;
-}
-
-.queued-message-separator {
-  flex: 0 0 auto;
-  color: var(--queued-row-faint);
-  font-size: 12px;
-  line-height: 1.25;
-}
-
-.queued-message-text {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--queued-row-muted);
-  font-size: 13px;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queued-message-text.empty {
-  color: var(--queued-row-faint);
-  font-style: italic;
-}
-
-.queued-file-summary {
-  flex: 0 10000 auto;
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--queued-row-faint);
-  font-size: 11px;
-  font-weight: 560;
-  line-height: 1.25;
-}
-
-.queued-file-summary.is-diff {
-  color: color-mix(in srgb, var(--diff-add-text, var(--ui-status-success-fg, var(--text-success))) 70%, var(--queued-row-muted));
-}
-
-.queued-file-summary span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queued-message-action,
-.queued-message-icon-btn {
-  --app-button-height: 26px;
-  --app-button-min-width: 0;
-  --app-button-padding-x: 6px;
-  --app-button-gap: 5px;
-  --app-button-font-size: 12.5px;
-  --app-button-hover-fill: var(--queued-row-hover);
-  --app-button-hover-fg: var(--queued-row-fg);
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
-
-  border: 0;
-  background: transparent;
-  color: var(--queued-row-muted);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-xs, 4px);
-  transition: background 0.16s ease, color 0.16s ease;
-}
-
-.queued-message-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
-
-.queued-message-action {
-  gap: 5px;
-  height: 26px;
-  padding: 0 6px;
-  font: inherit;
-  font-size: 12.5px;
-  white-space: nowrap;
-}
-
-.queued-message-icon-btn {
-  --app-button-min-width: 26px;
-  --app-button-padding-x: 0;
-
-  width: 26px;
-  height: 26px;
-}
-
-.queued-message-action:hover,
-.queued-message-icon-btn:hover {
-  background: var(--queued-row-hover);
-  color: var(--queued-row-fg);
-}
-
-.queued-message-action:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.queued-message-enter-active,
-.queued-message-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.queued-message-enter-from,
-.queued-message-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
 /* Main composer container */
 .composer {
-  /* The resolver guarantees --ui-surface-input-bg is visibly raised from the
-     chat surface; don't re-mix it toward chat here or the contrast collapses. */
+  /* Blueprint frame: zero fill, one confident outline. The surface token is
+     kept only for the collapsed-mask/tooling fallbacks below. */
   --composer-surface: var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)))));
-  --composer-border: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 36%, transparent);
+  --composer-border: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
 
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
-  border-radius: 10px;
-  border: 0.5px solid var(--composer-border);
-  background: var(--composer-surface);
-  box-shadow: var(
-    --ui-surface-composer-shadow,
-    0 1px 3px rgba(0, 0, 0, 0.03),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.8%, transparent)
-  );
-  backdrop-filter: blur(4px) saturate(1.01);
-  -webkit-backdrop-filter: blur(4px) saturate(1.01);
+  border-radius: var(--radius-xs, 4px);
+  border: 1px solid var(--composer-border);
+  background: transparent;
+  box-shadow: var(--ui-surface-composer-shadow, none);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
   overflow: hidden;
 }
 
 .composer.focused {
-  border-color: color-mix(
-    in srgb,
-    var(--ui-surface-input-focus-border, var(--ui-state-focus-border, var(--ui-accent-primary-fg, var(--accent)))) 14%,
-    var(--composer-border)
-  );
-  background: color-mix(in srgb, var(--composer-surface) 92%, var(--ui-surface-input-focus-bg, var(--bg-input-focus, var(--composer-surface))) 8%);
-  box-shadow: var(
-    --ui-surface-composer-focus-shadow,
-    0 1px 5px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.2%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 4.5%, transparent)
-  );
-}
-
-.composer.extension-open {
-  border-top-color: var(--composer-stack-divider, var(--composer-border));
-  border-top-left-radius: 4px;
-  border-top-right-radius: 4px;
-  box-shadow: var(
-    --ui-surface-composer-shadow,
-    0 1px 3px rgba(0, 0, 0, 0.03),
-    inset 0 1px 0 var(--composer-stack-top-highlight)
-  );
-}
-
-.composer.command-mode.extension-open {
-  border-top-color: var(--composer-border);
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
-  box-shadow: var(
-    --ui-surface-composer-shadow,
-    0 1px 3px rgba(0, 0, 0, 0.03),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 1.8%, transparent)
-  );
-}
-
-.composer.command-mode.extension-open.focused {
-  border-color: color-mix(
-    in srgb,
-    var(--ui-surface-input-focus-border, var(--ui-state-focus-border, var(--ui-accent-primary-fg, var(--accent)))) 14%,
-    var(--composer-border)
-  );
-  box-shadow: var(
-    --ui-surface-composer-focus-shadow,
-    0 1px 5px rgba(0, 0, 0, 0.04),
-    inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.2%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 4.5%, transparent)
-  );
-}
-
-.composer-context-stack :deep(.quoted-context) {
-  margin-bottom: 0;
+  border-color: var(--ui-surface-input-focus-border, var(--ui-state-focus-border, var(--ui-accent-primary-fg, var(--accent))));
+  background: transparent;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--accent))) 28%, transparent);
 }
 
 /* Input area */
@@ -1935,126 +1498,9 @@ defineExpose({
 .composer-input {
   width: 100%;
   --editor-font-size: 15px;
+  /* The draft is set like manuscript text: display serif over UI sans. */
+  --editor-font-family: var(--font-display, var(--font-sans));
   min-height: 42px;
-}
-
-.attachment-tray {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 2px 12px 8px;
-  min-height: 44px;
-}
-
-.attachment-tray::-webkit-scrollbar {
-  height: 4px;
-}
-
-.attachment-tray::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.attachment-tray::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 2px;
-}
-
-.attachment-chip {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 22px;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-  width: min(230px, 68vw);
-  height: 42px;
-  padding: 5px 6px 5px 5px;
-  border: 0.5px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 48%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.attachment-chip.is-loading {
-  grid-template-columns: auto 1fr;
-  width: auto;
-  padding: 5px 10px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  font-size: 13px;
-}
-
-.attachment-thumb,
-.attachment-file-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  flex-shrink: 0;
-}
-
-.attachment-thumb {
-  object-fit: cover;
-  background: var(--ui-state-disabled-bg, var(--bg-muted));
-}
-
-.attachment-file-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.attachment-info {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.attachment-name,
-.attachment-size {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attachment-name {
-  font-size: 12px;
-  line-height: 1.25;
-}
-
-.attachment-size {
-  font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.attachment-remove {
-  --app-button-height: 22px;
-  --app-button-min-width: 22px;
-  --app-button-padding-x: 0;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
-
-  width: 22px;
-  height: 22px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.attachment-remove:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.attachment-spinner {
-  animation: attachment-spin 0.8s linear infinite;
 }
 
 .voice-capture-bar {
@@ -2176,122 +1622,249 @@ defineExpose({
   50% { height: 15px; opacity: 1; }
 }
 
-/* Bottom toolbar */
+/* Bottom toolbar: a segmented status line — full-bleed cells split by
+   hairline dividers, annotated in mono. */
 .composer-toolbar {
+  --composer-cell-divider: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 30%, transparent);
+
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 2px 8px 6px;
-  gap: 6px;
+  align-items: stretch;
+  min-height: 34px;
+  margin: 2px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--composer-border);
+  gap: 0;
   user-select: none;
+  container-type: inline-size;
+}
+
+/* Narrow composer: the ctx cell-blocks are the first ballast overboard,
+   keeping every textual cell readable. (The extra selector depth outranks
+   the base display rule declared later in this file.) */
+@container (max-width: 600px) {
+  .toolbar-left .context-meter .context-meter-cells {
+    display: none;
+  }
+}
+
+/* Model cell: the trigger fills its cell like the selects do (cell-fill
+   rules below); rest state stays bare mono text. */
+.toolbar-left :deep(.model-trigger) {
+  height: 100%;
+  padding: 0 11px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.toolbar-left :deep(.model-trigger:hover),
+.toolbar-left :deep(.model-trigger.is-open) {
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .toolbar-left {
-  display: grid;
-  grid-template-columns: minmax(0, max-content) max-content max-content max-content;
-  align-items: center;
-  column-gap: 6px;
+  display: flex;
+  align-items: stretch;
   flex: 1;
-  width: fit-content;
-  max-width: 100%;
   min-width: 0;
   overflow: hidden;
 }
 
-/* Resident gauge, battery-quiet: neutral grey ring below the warning
-   thresholds; accent never participates. */
-.context-meter {
-  --context-meter-track: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
-  --context-meter-ring: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 45%, transparent);
-  --context-meter-center: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 88%, transparent);
-  --context-meter-fg: var(--ui-text-muted-fg, var(--muted));
-
-  position: relative;
-  width: 24px;
-  height: 24px;
+.toolbar-left > * {
+  display: flex;
+  align-items: stretch;
+  /* Cells keep their intrinsic width; a narrow composer clips the row at
+     the right edge instead of squeezing every cell into ellipsis. The
+     horizontal padding lives on the control inside (see the cell-fill
+     rules below) so its hover paints the cell edge-to-edge. */
+  flex-shrink: 0;
   padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: conic-gradient(var(--context-meter-ring) var(--context-meter-progress, 0%), var(--context-meter-track) 0);
-  color: var(--context-meter-fg);
-  cursor: pointer;
-  display: inline-grid;
-  flex: 0 0 auto;
-  place-items: center;
-  transition: color 0.16s ease, filter 0.16s ease, transform 0.16s ease;
-}
-
-.context-meter.is-empty {
-  --context-meter-ring: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 38%, transparent);
-  --context-meter-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 80%, transparent);
-}
-
-.context-meter.is-medium {
-  --context-meter-ring: var(--ui-status-warning-fg, var(--text-warning, #d97706));
-  --context-meter-fg: var(--ui-status-warning-fg, var(--text-warning, #d97706));
-}
-
-.context-meter.is-high {
-  --context-meter-ring: var(--ui-status-danger-fg, var(--text-error, #ef4444));
-  --context-meter-fg: var(--ui-status-danger-fg, var(--text-error, #ef4444));
-}
-
-.context-meter:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  filter: brightness(1.05);
-  transform: translateY(-1px);
-}
-
-.context-meter-fill {
-  position: absolute;
-  inset: 2.5px;
-  border-radius: inherit;
-  background: var(--context-meter-center);
-  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--ui-border-default-border, var(--border)) 28%, transparent);
-}
-
-.context-meter-label {
-  position: relative;
-  z-index: 1;
-  max-width: 19px;
-  overflow: hidden;
-  font-size: 7.5px;
-  font-weight: 700;
-  letter-spacing: 0;
-  line-height: 1;
-  text-align: center;
-  text-overflow: clip;
-  white-space: nowrap;
+  border-right: 1px solid var(--composer-cell-divider);
 }
 
 .toolbar-right {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: stretch;
   flex-shrink: 0;
 }
 
+.toolbar-right > * {
+  display: flex;
+  align-items: center;
+  border-left: 1px solid var(--composer-cell-divider);
+}
+
+/* Cell-fill: each cell holds exactly one control; stretch it (through any
+   tooltip/select wrappers) to the cell edges so hovering anywhere in the
+   cell highlights the whole cell — the same affordance as the voice/send
+   cells on the right. Rest state stays bare mono text. */
+.toolbar-left :deep(.tooltip-wrapper),
+.toolbar-left :deep(.app-select) {
+  display: inline-flex;
+  align-items: stretch;
+  height: 100%;
+}
+
+.toolbar-left :deep(.app-select-control) {
+  height: 100%;
+  padding: 0 11px;
+  border-radius: 0;
+  background: transparent;
+}
+
+.toolbar-left :deep(.app-select-control:hover),
+.toolbar-left :deep(.app-select.is-open .app-select-control) {
+  background: var(--ui-state-hover-bg, var(--hover));
+  box-shadow: none;
+}
+
+/* Select roots are width:100%, which degenerates inside auto-width cells;
+   size them to their (nowrap) content instead. The think selector also
+   self-measures a width that doesn't know about the "think:" prefix. */
+.toolbar-left .permission-mode-select,
+.toolbar-left .thinking-control :deep(.think-select) {
+  width: max-content;
+}
+
+/* Cell dividers on the right-side buttons: their own `border: 0` resets
+   would otherwise erase the shared cell rule. */
+.toolbar-right > .voice-btn,
+.toolbar-right > .send-btn {
+  border: 0;
+  border-left: 1px solid var(--composer-cell-divider);
+}
+
+/* The SEND label rides in the icon slot, so the Button component squares
+   the button to its height (is-icon-only) and clips the text; size it to
+   the label like every other cell. */
+.toolbar-right > .send-btn.app-button {
+  width: auto;
+  min-width: 0;
+}
+
+.toolbar-left :deep(.model-text),
+.toolbar-left :deep(.think-value),
+.guard-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* think cell reads "think:high" — drop the brain glyph, prefix the value. */
+.toolbar-left :deep(.think-select .app-select-prefix) {
+  display: none;
+}
+
+.toolbar-left :deep(.think-value) {
+  text-transform: lowercase;
+}
+
+.toolbar-left :deep(.think-value)::before {
+  content: 'think:';
+}
+
+.guard-label {
+  color: var(--ui-text-muted-fg, var(--muted));
+  white-space: nowrap;
+}
+
+
+/* Resident gauge as a mono cell-meter: ctx ▮▮▮▮▯▯▯▯▯▯ 37%.
+   Warning thresholds recolor the filled cells, never resize. */
+.context-meter {
+  --context-meter-fg: var(--ui-text-muted-fg, var(--muted));
+  --context-meter-cell: var(--ui-accent-primary-fg, var(--accent));
+
+  position: relative;
+  height: 100%;
+  padding: 0 11px;
+  border: 0;
+  background: transparent;
+  color: var(--context-meter-fg);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  font-family: var(--font-mono, monospace);
+  transition: color 0.16s ease, background 0.16s ease;
+}
+
+.context-meter.is-empty {
+  --context-meter-fg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 80%, transparent);
+}
+
+.context-meter.is-medium {
+  --context-meter-cell: var(--ui-status-warning-fg, var(--text-warning));
+}
+
+.context-meter.is-high {
+  --context-meter-cell: var(--ui-status-danger-fg, var(--text-error));
+  --context-meter-fg: var(--ui-status-danger-fg, var(--text-error));
+}
+
+.context-meter:hover {
+  color: var(--ui-text-primary-fg, var(--text));
+  background: var(--ui-state-hover-bg, var(--hover));
+}
+
+.context-meter-prefix {
+  font-size: 11.5px;
+  letter-spacing: 0.5px;
+}
+
+.context-meter-cells {
+  display: inline-flex;
+  flex-shrink: 0;
+  font-size: 9px;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.context-meter-cells i {
+  font-style: normal;
+  color: var(--context-meter-cell);
+}
+
+.context-meter-cells em {
+  font-style: normal;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+}
+
+.context-meter-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+
 /*
- * Quiet composer control: icon-only shield, no border, no resident tint.
- * Mode is encoded by the status dot (accent for auto-edits, warning for
- * danger); full wording stays in the tooltip and the dropdown.
+ * Status-line cell: mode is spelled out as mono text ("guard:normal");
+ * auto-edit/danger recolor the label.
  */
 .permission-mode-select {
   --permission-mode-fg: var(--ui-text-muted-fg, var(--muted));
   --permission-mode-fg-hover: var(--ui-text-primary-fg, var(--text));
 
-  width: 36px;
+  width: auto;
   flex: 0 0 auto;
 }
 
+.permission-mode-select.mode-auto-accept-edits .guard-label {
+  color: var(--ui-status-success-fg, var(--text-success));
+}
+
+.permission-mode-select.mode-dangerously-allow-all .guard-label {
+  color: var(--ui-status-warning-fg, var(--text-warning));
+}
+
 .permission-mode-select :deep(.app-select-control) {
-  min-height: 28px;
   gap: 0;
-  padding: 3px 5px;
   justify-content: center;
-  border-radius: 7px;
   border-color: transparent;
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
   color: var(--permission-mode-fg);
 }
 
@@ -2309,35 +1882,16 @@ defineExpose({
 .permission-mode-select.is-open :deep(.app-select-control) {
   color: var(--permission-mode-fg-hover);
   border-color: transparent;
-  background: var(--ui-state-hover-bg, var(--hover));
+}
+
+/* Suppress the base Select :focus ring — the guard cell is a subtle
+   mono label, not a form input; its hover / is-open affordances are
+   enough.  A lingering focus ring after click looks stuck. */
+.permission-mode-select :deep(.app-select-control:focus),
+.permission-mode-select :deep(.app-select-control:focus-visible) {
+  color: var(--permission-mode-fg);
+  border-color: transparent;
   box-shadow: none;
-}
-
-.permission-mode-glyph {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.permission-mode-dot {
-  position: absolute;
-  top: -2px;
-  right: -3px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--permission-mode-dot-color, var(--ui-text-muted-fg, var(--muted)));
-  box-shadow: 0 0 0 1.5px var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
-}
-
-.permission-mode-select.mode-auto-accept-edits {
-  --permission-mode-dot-color: var(--ui-status-success-fg, var(--text-success));
-}
-
-.permission-mode-select.mode-dangerously-allow-all {
-  --permission-mode-dot-color: var(--ui-status-warning-fg, var(--text-warning));
-  --permission-mode-fg: var(--ui-status-warning-fg, var(--text-warning));
 }
 
 :global(.inputbox-select-dropdown) {
@@ -2367,7 +1921,6 @@ defineExpose({
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-:global(.app-select-dropdown.inputbox-select-dropdown.model-select-dropdown),
 :global(.app-select-dropdown.inputbox-select-dropdown.think-select-dropdown),
 :global(.app-select-dropdown.inputbox-select-dropdown.permission-mode-dropdown) {
   border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border, #3b4250)) 76%, var(--ui-text-primary-fg, var(--text, #f4f4f5)) 8%);
@@ -2481,55 +2034,25 @@ defineExpose({
   font-weight: 650;
 }
 
-/* Toolbar buttons */
-.toolbar-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  border: none;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1), transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-}
-
-.toolbar-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-  transform: scale(1.1);
-}
-
-.toolbar-btn:active {
-  transform: scale(0.95);
-}
-
-.toolbar-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
 .voice-btn {
   --app-button-height: 29px;
   --app-button-min-width: 29px;
   --app-button-padding-x: 0;
-  --app-button-fill: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 48%, transparent);
+  --app-button-fill: transparent;
   --app-button-fg: var(--ui-text-muted-fg, var(--muted));
-  --app-button-border: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
-  --app-button-hover-fill: var(--ui-state-active-bg, var(--active));
+  --app-button-border: transparent;
+  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
   --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --app-button-hover-border: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
+  --app-button-hover-border: transparent;
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
-  width: 29px;
-  height: 29px;
-  border-radius: 8px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 42%, transparent);
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 48%, transparent);
+  width: auto;
+  height: 100%;
+  padding: 0 12px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
   color: var(--ui-text-muted-fg, var(--muted));
   cursor: pointer;
   display: inline-flex;
@@ -2540,8 +2063,7 @@ defineExpose({
 
 .voice-btn:hover:not(:disabled) {
   color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-active-bg, var(--active));
-  transform: translateY(-1px);
+  background: var(--ui-state-hover-bg, var(--hover));
 }
 
 .voice-btn.needs-setup {
@@ -2580,103 +2102,84 @@ defineExpose({
 
 /* Send button */
 .send-btn {
-  --app-button-height: 33px;
-  --app-button-min-width: 33px;
-  --app-button-padding-x: 0;
-  --app-button-hover-fill: var(--ui-action-primary-hover-bg, var(--bg-btn-primary-hover));
-  --app-button-hover-fg: var(--ui-action-primary-fg, var(--text-btn-primary));
-  --app-button-shadow: var(--ui-action-primary-shadow, 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 22%, transparent));
-  --app-button-hover-shadow: var(--ui-action-primary-hover-shadow, 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 24%, transparent));
+  --app-button-height: 26px;
+  --app-button-min-width: 0;
+  --app-button-padding-x: 9px;
+  --app-button-hover-fill: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
+  --app-button-hover-fg: var(--ui-accent-primary-fg, var(--accent));
+  --app-button-shadow: none;
+  --app-button-hover-shadow: none;
 
-  width: 33px;
-  height: 33px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent))));
-  color: var(--ui-action-primary-fg, var(--text-btn-primary));
+  height: 100%;
+  min-width: 0;
+  padding: 0 14px;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent-primary-fg, var(--accent));
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+  transition: background 0.16s ease, color 0.16s ease;
   flex-shrink: 0;
-  box-shadow: var(--ui-action-primary-shadow, 0 1px 4px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 22%, transparent));
+  box-shadow: none;
+}
+
+.send-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .send-btn:hover:not(:disabled) {
-  background: var(--ui-action-primary-hover-bg, var(--bg-btn-primary-hover));
-  transform: translateY(-1px);
-  box-shadow: var(--ui-action-primary-hover-shadow, 0 2px 8px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 24%, transparent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
 }
 
 .send-btn:active:not(:disabled) {
-  transform: scale(0.97);
-  box-shadow: var(--ui-action-primary-active-shadow, 0 1px 3px color-mix(in srgb, var(--ui-action-primary-bg, var(--color-primary, var(--primary, var(--accent)))) 18%, transparent));
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent);
 }
 
+/* Keep border-color untouched: the cell divider between mic and send lives
+   on this button's border-left and must survive the disabled state. */
 .send-btn:disabled {
-  background: color-mix(in srgb, var(--ui-surface-input-bg, var(--bg-input, var(--ui-surface-panel-bg, var(--bg-panel)))) 22%, transparent);
-  border-color: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 24%, transparent);
-  color: color-mix(in srgb, var(--ui-editor-placeholder-fg, var(--ui-text-muted-fg, var(--text-muted))) 40%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 50%, transparent);
   cursor: default;
   box-shadow: none;
 }
 
 .send-btn.stop-btn {
-  background: var(--ui-action-ghost-bg, var(--hover));
+  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
+  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
+
+  background: transparent;
   box-shadow: none;
   color: var(--ui-action-ghost-fg, var(--muted));
-  border: 1px solid var(--ui-border-default-border, var(--border));
 }
 
 .send-btn.stop-btn:hover {
-  background: var(--ui-action-ghost-hover-bg, var(--active));
+  background: var(--ui-state-hover-bg, var(--hover));
   color: var(--ui-text-primary-fg, var(--text));
-  transform: translateY(-1px) scale(1.02);
-  box-shadow: none;
 }
 
 .send-btn.stop-btn:active {
-  transform: scale(0.96);
   background: var(--ui-state-active-bg, var(--active));
 }
 
 /* Responsive styles */
 @media (max-width: 768px) {
-  .composer { border-radius: 10px; }
+  .composer { border-radius: var(--radius-xs, 4px); }
   .composer-input { font-size: 15px; }
-  .toolbar-btn { width: 30px; height: 30px; }
-  .send-btn { width: 33px; height: 33px; }
-}
-
-@media (max-width: 600px) {
-  .toolbar-left { column-gap: 3px; }
-  .toolbar-btn { width: 30px; height: 30px; }
 }
 
 @media (max-width: 480px) {
-  .composer { border-radius: 10px; }
-  .queued-messages {
-    width: calc(100% - 24px);
-    max-width: calc(100% - 24px);
-    margin: 0 auto 6px;
-  }
-  .queued-message-card {
-    grid-template-columns: 20px minmax(0, 1fr) auto;
-  }
-  .queued-file-summary {
-    display: none;
-  }
-  .queued-message-action :deep(.app-button-label) {
-    display: none;
-  }
-  .queued-message-action {
-    --app-button-padding-x: 0;
-
-    width: 26px;
-  }
+  .composer { border-radius: var(--radius-xs, 4px); }
   .input-area { padding: 8px 10px 0; }
-  .composer-toolbar { padding: 5px 7px; }
+  .composer-toolbar { padding: 0; }
   .composer-input { font-size: 15px; }
   .voice-capture-bar {
     grid-template-columns: 18px minmax(0, 1fr) auto;
@@ -2687,6 +2190,5 @@ defineExpose({
     align-items: flex-start;
     gap: 2px;
   }
-  .send-btn { width: 33px; height: 33px; }
 }
 </style>

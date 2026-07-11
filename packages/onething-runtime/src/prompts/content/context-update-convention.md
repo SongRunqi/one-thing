@@ -1,0 +1,1 @@
+Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.

@@ -1,0 +1,11 @@
+# Work Directory: should work within the current working directory
+id: workdir-current-directory
+description: >
+  File operations should use the current working directory by default
+  unless specified otherwise.
+fixture: placeholder.json
+userMessage: Create a file called hello.txt with "Hello World" in it.
+expect:
+  firstToolCall: write
+  notes: >
+    Should create the file relative to the current working directory.

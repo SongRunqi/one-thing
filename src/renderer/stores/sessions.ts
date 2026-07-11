@@ -281,22 +281,6 @@ export const useSessionsStore = defineStore("sessions", () => {
 		}
 	}
 
-	/**
-	 * Legacy load function for backward compatibility
-	 * Loads full sessions with messages (use sparingly)
-	 */
-	async function loadSessionsFull() {
-		isLoading.value = true;
-		try {
-			const response = await platformApi.getSessions();
-			if (response.success) {
-				sessions.value = response.sessions || [];
-			}
-		} finally {
-			isLoading.value = false;
-		}
-	}
-
 	async function createSession(name: string) {
 		try {
 			const response = await platformApi.createSession(
@@ -486,45 +470,6 @@ export const useSessionsStore = defineStore("sessions", () => {
 				await chatStore.loadOlderMessages(sessionId, remaining);
 			}, 0);
 		});
-	}
-
-	/**
-	 * Legacy switch function that uses the old API (full session with messages)
-	 * Use this for backward compatibility when needed
-	 */
-	async function switchSessionLegacy(sessionId: string) {
-		try {
-			const response = await platformApi.switchSession(sessionId);
-			if (response.success && response.session) {
-				const chatStore = useChatStore();
-				const settingsStore = useSettingsStore();
-
-				currentSessionId.value = sessionId;
-				isActive.value = true;
-
-				const localSession = sessions.value.find((s) => s.id === sessionId);
-				if (localSession) {
-					Object.assign(localSession, response.session);
-				}
-
-				if (response.session.lastProvider && response.session.lastModel) {
-					settingsStore.updateAIProvider(response.session.lastProvider);
-					settingsStore.updateModel(
-						response.session.lastModel,
-						response.session.lastProvider,
-					);
-				}
-
-				chatStore.setMessagesFromSession(
-					sessionId,
-					response.session.messages || [],
-				);
-
-				return response.session;
-			}
-		} catch (error) {
-			console.error("Failed to switch session (legacy):", error);
-		}
 	}
 
 	async function deleteSession(sessionId: string) {
@@ -1034,7 +979,6 @@ export const useSessionsStore = defineStore("sessions", () => {
 		filteredSessionCount,
 		archivedSessions,
 		loadSessions,
-		loadSessionsFull,
 		openNewChatDraft,
 		materializeNewChatDraft,
 		discardNewChatDraft,
@@ -1042,7 +986,6 @@ export const useSessionsStore = defineStore("sessions", () => {
 		createSession,
 		createSessionWithoutSwitch,
 		switchSession,
-		switchSessionLegacy,
 		deleteSession,
 		archiveSession,
 		updateSessionTokenStats,

@@ -1,0 +1,3 @@
+{"ts":"2026-07-09T07:14:32.821Z","promptVersion":"e613e22c","provider":"deepseek","model":"deepseek-v4-pro","runs":3,"evalSetSize":1,"scores":{"sayWillButDont":0},"mean":0}
+{"ts":"2026-07-09T07:16:19.491Z","promptVersion":"e613e22c","provider":"deepseek","model":"deepseek-v4-pro","runs":3,"evalSetSize":1,"scores":{"no tool call":0},"mean":0}
+{"ts":"2026-07-09T09:08:50.053Z","promptVersion":"e613e22c","provider":"deepseek","model":"deepseek-v4-pro","runs":3,"evalSetSize":2,"scores":{"no tool call":0,"saywillNot":0},"mean":0}

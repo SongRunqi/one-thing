@@ -22,7 +22,7 @@
         :class="['composer-extension-row', { selected: index === selectedIndex }]"
         :title="item.value"
         @click="selectPath(item)"
-        @mouseenter="emit('highlight', index)"
+        @mouseenter="highlightItem(index)"
       >
         <div class="composer-extension-row-icon">
           <Folder
@@ -84,6 +84,15 @@ function selectPath(item: ComposerExtensionItem) {
   }
 }
 
+/* Pointer-driven highlights must not scroll-follow: wheel-scrolling sweeps
+ * rows under the cursor, and following each would fight the user's scroll. */
+let pointerDrivenSelection = false
+
+function highlightItem(index: number) {
+  pointerDrivenSelection = true
+  emit('highlight', index)
+}
+
 function scrollToSelected() {
   const selected = listRef.value?.querySelector('.composer-extension-row.selected')
   selected?.scrollIntoView({ block: 'nearest' })
@@ -92,6 +101,9 @@ function scrollToSelected() {
 watch(
   () => [props.selectedIndex, props.visible, props.items.length],
   () => {
+    const pointerDriven = pointerDrivenSelection
+    pointerDrivenSelection = false
+    if (pointerDriven) return
     nextTick(scrollToSelected)
   },
 )

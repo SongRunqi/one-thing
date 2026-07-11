@@ -220,7 +220,7 @@ import {
   shouldShowScrollToBottomButton,
 } from '@/composables/useFollowScroll'
 import { useMessageScrollCoordinator } from '@/composables/useMessageScrollCoordinator'
-import { buildFontFamily } from '@shared/fonts'
+import { buildFontFamily, buildFontLoadSpecs } from '@shared/fonts'
 import { platformApi } from '@/platform'
 
 interface BranchInfo {
@@ -389,6 +389,7 @@ let navResizeObserver: ResizeObserver | null = null
 let isAssistantOutlineNavigating = false
 let assistantOutlineCooldownTimer: ReturnType<typeof setTimeout> | null = null
 let isPrependingHistory = false
+let isLoadingNewerHistory = false
 let renderMeasureStart: number | null = null
 let renderMeasureSessionId = ''
 let renderMeasureMessageCount = 0
@@ -498,7 +499,11 @@ function updateScrollToBottomButton() {
     showScrollToBottomButton.value = false
     return
   }
-  showScrollToBottomButton.value = shouldShowScrollToBottomButton(el, isFollowing.value)
+  // When hasMoreAfter is true, the visible "bottom" is not the real end
+  // of the conversation — force-show the button so the user can navigate
+  // to actual latest messages.
+  const hasMoreAfter = pageState.value?.hasMoreAfter ?? false
+  showScrollToBottomButton.value = hasMoreAfter || shouldShowScrollToBottomButton(el, isFollowing.value)
 }
 
 // External drift triggers — store-emitted scroll bumps and message count
@@ -522,11 +527,40 @@ const lastUserMessageId = computed(() => {
   }
   return null
 })
-watch([effectiveSessionId, lastUserMessageId, () => props.messages.length], ([sessionId, newId, messageCount], [oldSessionId, oldId, oldMessageCount]) => {
+let isReloadingTailForSend = false
+let isNavigatingCrossPage = false
+
+watch([effectiveSessionId, lastUserMessageId, () => props.messages.length], async ([sessionId, newId, messageCount], [oldSessionId, oldId, oldMessageCount]) => {
   if (!newId || newId === oldId) return
   if (sessionId !== oldSessionId) return
   if (messageCount <= oldMessageCount) return
   if (follow.isSwitching()) return
+  if (isReloadingTailForSend) return
+  if (isNavigatingCrossPage) return
+  // Only trigger when a new user message was APPENDED to the end
+  // (user just sent a message), NOT when the message array was REPLACED
+  // by a navigation action (loadMessagesAround/loadOlderMessages).
+  // Heuristic: count increased by exactly 1, old last user message
+  // still exists in the new array, and new last user message is
+  // genuinely new (wasn't in the old array at any position).
+  const countIncrementedByOne = messageCount === oldMessageCount + 1
+  const oldMsgStillExists = oldId ? !!props.messages.find(m => m.id === oldId) : false
+  const isNewUserMessage = countIncrementedByOne && oldMsgStillExists
+  if (!isNewUserMessage) return
+  
+  // If we're viewing a truncated window (hasMoreAfter=true), reload the
+  // tail page so the new message lands at the real bottom instead of being
+  // appended into a partial window.
+  if (sessionId && pageState.value?.hasMoreAfter) {
+    isReloadingTailForSend = true
+    try {
+      scrollCoordinator.clear()
+      await chatStore.loadInitialMessagePage(sessionId)
+    } finally {
+      isReloadingTailForSend = false
+    }
+  }
+  
   follow.isFollowing.value = true
   scrollCoordinator.setTail()
   nextTick(() => scheduleFollowNudge('watch:lastUserMsg'))
@@ -610,6 +644,17 @@ const displayNavMarkers = computed<NavMarker[]>(() => {
 const hasAssistantOutlineNav = computed(() => assistantOutlineMarkers.value.length > 1)
 const hasUserNavTrail = computed(() => displayNavMarkers.value.length > 1)
 const useSideOutlineRail = computed(() => Boolean(props.outlineRailTarget))
+
+watch([assistantOutlineMarkers, currentAssistantOutlineIndex], ([markers, currentIndex]) => {
+  const current = markers.find(marker => marker.navIndex === currentIndex) || null
+  window.dispatchEvent(new CustomEvent('assistant-outline:current-changed', {
+    detail: {
+      sessionId: props.sessionId || '',
+      label: current?.preview || '',
+      count: markers.length,
+    },
+  }))
+})
 
 function updateNavPanelRoom() {
   const scroller = messageListRef.value
@@ -748,17 +793,34 @@ async function navigateToUserMessage(navIndex: number) {
       return
     }
     if (!sessionId) return
+    // Set a guard to prevent the lastUserMessageId watcher (Fix D5)
+    // from re-loading the tail page while we're doing a cross-page
+    // navigation. Without this, the watcher sees the new message set,
+    // detects hasMoreAfter=true, and calls loadInitialMessagePage
+    // which overwrites the anchor window with the tail.
+    isNavigatingCrossPage = true
+    // Clear any residual tail/anchor mode before loading a new message
+    // window — otherwise the coordinator will pull the viewport to the
+    // bottom instead of the target message.
+    scrollCoordinator.clear()
     const loaded = await chatStore.loadMessagesAround(sessionId, marker.messageId)
     if (loaded) {
       await nextTick()
       lockNavigationIndex(navIndex)
+      // Use 'auto' (instant) scroll for cross-page jumps so that
+      // scrollToMessage's non-smooth branch sets an anchor lock on the
+      // target message, protecting it from layout-driven drift.
       scrollToMessage(marker.messageId, {
         preserveNavigation: true,
-        behavior: 'smooth',
+        behavior: 'auto',
         viewportOffsetRatio: NAV_VIEWPORT_OFFSET_RATIO,
         lockDurationMs: SCROLL_ANCHOR_LOCK_MS,
       })
     }
+    // Schedule a reset of the guard — uses nextTick so any pending
+    // watcher invocations that were queued during the navigation
+    // still see isNavigatingCrossPage = true.
+    nextTick(() => { isNavigatingCrossPage = false })
     return
   }
 
@@ -1054,15 +1116,27 @@ function restoreTopAnchor(anchor: TopAnchor | null) {
   scrollCoordinator.writeScrollTop(row.offsetTop + anchor.offsetWithinMessage)
 }
 
+const HISTORY_AUTO_LOAD_THRESHOLD_RATIO = 1.75
+
+function getAutoLoadThreshold(el: HTMLElement): number {
+  // Use clientHeight-based threshold so it scales with viewport size
+  // and large messages don't require pixel-perfect top-edge hugging.
+  return Math.round(el.clientHeight * HISTORY_AUTO_LOAD_THRESHOLD_RATIO)
+}
+
 async function loadOlderHistoryIfNeeded(force = false) {
   const sessionId = effectiveSessionId.value
   const scroller = messageListRef.value
   const state = pageState.value
   if (follow.isSwitching()) return
   if (!sessionId || !scroller || !state?.hasMoreBefore || state.isLoadingOlder || isPrependingHistory) return
-  if (!force && scroller.scrollTop > 240) return
+  if (!force && scroller.scrollTop > getAutoLoadThreshold(scroller)) return
 
   const anchor = captureTopAnchor()
+  // Clear tail/anchor mode before prepend — the user has scrolled to the
+  // top to load history, so pinning to bottom or a stale anchor is wrong.
+  // Restore position is handled by restoreTopAnchor below.
+  scrollCoordinator.clear()
   isPrependingHistory = true
   const wasFollowing = isFollowing.value
   try {
@@ -1078,6 +1152,32 @@ async function loadOlderHistoryIfNeeded(force = false) {
   } finally {
     isFollowing.value = wasFollowing
     isPrependingHistory = false
+    updateScrollToBottomButton()
+  }
+}
+
+async function loadNewerHistoryIfNeeded() {
+  const sessionId = effectiveSessionId.value
+  const scroller = messageListRef.value
+  const state = pageState.value
+  if (follow.isSwitching()) return
+  if (!sessionId || !scroller || !state?.hasMoreAfter || state.isLoadingOlder || isLoadingNewerHistory) return
+  
+  const distanceToBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+  if (distanceToBottom > getAutoLoadThreshold(scroller)) return
+  
+  isLoadingNewerHistory = true
+  try {
+    const loaded = await chatStore.loadNewerMessages(sessionId)
+    if (loaded) {
+      await nextTick()
+      scheduleMeasurementRefresh()
+      scheduleNavMarkerUpdate()
+      scheduleAssistantOutlineUpdate()
+      scheduleVisibleUserMessageIndexUpdate()
+    }
+  } finally {
+    isLoadingNewerHistory = false
     updateScrollToBottomButton()
   }
 }
@@ -1305,8 +1405,18 @@ function handleScroll() {
   follow.checkReattach()
   const el = messageListRef.value
   if (el) {
+    // Detect user-initiated scrolls that bypass wheel/pointerdown
+    // (custom scrollbar thumb drag, PageUp/Home, keyboard scroll, etc.)
+    scrollCoordinator.detectExternalScroll(el)
+    
     const isAtTail = el.scrollHeight - el.scrollTop - el.clientHeight <= 2
-    if (isAtTail && !scrollCoordinator.isAnchored() && (hasActiveStream.value ? isFollowing.value : true)) {
+    // Only set tail mode when at the true end of the conversation,
+    // not at the bottom of a partial window (hasMoreAfter=true).
+    // Otherwise tail mode would snap the viewport to the window's
+    // bottom on every content-height change, creating a cascade
+    // that flings the user to the real bottom.
+    const isRealTail = !pageState.value?.hasMoreAfter
+    if (isAtTail && isRealTail && !scrollCoordinator.isAnchored() && (hasActiveStream.value ? isFollowing.value : true)) {
       scrollCoordinator.setTail()
     }
   }
@@ -1315,6 +1425,7 @@ function handleScroll() {
   scheduleAssistantOutlineUpdate()
   scheduleVisibleUserMessageIndexUpdate()
   loadOlderHistoryIfNeeded()
+  loadNewerHistoryIfNeeded()
 }
 
 function handleWheel(event: WheelEvent) {
@@ -1362,9 +1473,19 @@ usePermissionShortcuts(
 // handlePermissionRequest is now in the chat store (called by IPC Hub)
 // The store's handlePermissionRequest() updates messages reactively.
 
-function scrollToBottomFromButton() {
+async function scrollToBottomFromButton() {
+  const sessionId = effectiveSessionId.value
   setNavIndexToLastMarker()
   follow.isFollowing.value = true
+  
+  // If we're viewing a truncated window, reload from the tail so the
+  // user sees actual latest messages instead of a partial window.
+  if (sessionId && pageState.value?.hasMoreAfter) {
+    scrollCoordinator.clear()
+    await chatStore.loadInitialMessagePage(sessionId)
+    await nextTick()
+  }
+  
   scrollCoordinator.setTail({ behavior: 'smooth' })
 }
 
@@ -1570,6 +1691,58 @@ watch(
       scheduleAssistantOutlineUpdate()
     })
   }
+)
+
+// --- Long-tail chat font preload ---
+// Phase C covers the high-frequency CJK sample at startup, but historical
+// messages with rare characters hit woff2 subsets that weren't preloaded.
+// This watcher fires once per session-load and triggers document.fonts.load()
+// with the actual visible message text, shrinking the swap window for those
+// remaining subsets. We don't gate rendering — deferred swap for rare chars
+// is acceptable and hiding text would introduce perceptible first-paint delay.
+
+/** Track which session we've already preloaded, so we only fire once per load */
+const fontPreloadSessionId = ref<string | null>(null)
+
+/** Extract up to `maxChars` unique non-ASCII characters from the given messages */
+function extractCjkSample(messages: ChatMessage[], maxChars = 300): string {
+  const seen = new Set<string>()
+  const chars: string[] = []
+  for (const msg of messages) {
+    const text = typeof msg.content === 'string' ? msg.content : ''
+    for (const ch of text) {
+      if (chars.length >= maxChars) break
+      // Skip ASCII (unicode <= 0x7F) — those glyphs are always in the Latin subset
+      if (ch.charCodeAt(0) <= 0x7f) continue
+      if (seen.has(ch)) continue
+      seen.add(ch)
+      chars.push(ch)
+    }
+    if (chars.length >= maxChars) break
+  }
+  return chars.join('')
+}
+
+watch(
+  [effectiveSessionId, () => props.messages.length],
+  ([sessionId, msgCount]) => {
+    if (!sessionId || msgCount === 0) return
+    if (fontPreloadSessionId.value === sessionId) return
+    if (typeof document === 'undefined' || !document.fonts) return
+    fontPreloadSessionId.value = sessionId
+
+    // Use last N messages (visible range) instead of all to stay cheap
+    const visibleCount = Math.min(msgCount, 20)
+    const visibleMessages = props.messages.slice(-visibleCount)
+    const sample = extractCjkSample(visibleMessages)
+    if (!sample) return
+
+    const specs = buildFontLoadSpecs(chatFontEn.value, chatFontZh.value)
+    for (const { spec } of specs) {
+      document.fonts.load(spec, sample).catch(() => null)
+    }
+  },
+  { immediate: true },
 )
 
 

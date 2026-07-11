@@ -393,6 +393,14 @@
 		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 2.2%, transparent),
 		0 0 0 1px color-mix(in srgb, var(--ui-state-focus-ring, var(--ui-accent-primary-fg, var(--color-primary-border, var(--color-primary, var(--accent))))) 4.5%, transparent);
 	--ui-surface-composer-queue-shadow: 0 -1px 6px rgba(0, 0, 0, 0.035);
+	/* Composer overlay system: shared surface for everything floating or
+	   docked above the composer (pickers, queue, quote, attachment chips).
+	   Derived from existing semantic tokens so themes adapt automatically. */
+	--ui-composer-overlay-bg: color-mix(in srgb, var(--ui-surface-input-bg) 38%, var(--ui-surface-chat-bg) 62%);
+	--ui-composer-overlay-border: color-mix(in srgb, var(--ui-border-subtle-border) 32%, transparent);
+	--ui-composer-overlay-shadow:
+		0 8px 18px rgba(0, 0, 0, 0.045),
+		inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--color-neutral-primary-text, var(--text))) 1.4%, transparent);
 	--ui-surface-tooltip-bg: var(--bg-tooltip);
 	--ui-surface-tooltip-fg: var(--text-tooltip);
 	--ui-surface-tooltip-border: var(--color-neutral-dark-border, var(--border-strong, var(--border-default)));

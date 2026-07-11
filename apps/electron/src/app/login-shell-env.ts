@@ -1,9 +1,12 @@
 import { spawn } from 'child_process'
+import fs from 'fs'
+import os from 'os'
 import path from 'path'
 
 const ENV_START_MARKER = '__ONETHING_LOGIN_SHELL_ENV_START__'
 const DEFAULT_TIMEOUT_MS = 3500
 const MAX_ENV_OUTPUT_BYTES = 1024 * 1024
+const CACHE_FORMAT_VERSION = 1
 
 export interface HydrateLoginShellEnvOptions {
   env?: NodeJS.ProcessEnv
@@ -11,6 +14,84 @@ export interface HydrateLoginShellEnvOptions {
   platform?: NodeJS.Platform
   shell?: string
   timeoutMs?: number
+  /**
+   * 登录 shell 环境缓存文件;undefined 用默认(~/.onething/login-shell-env.json),
+   * null 禁用缓存。命中缓存时同步注入(0ms),后台仍跑一次真实 shell 校正差异。
+   */
+  cacheFilePath?: string | null
+  /** 测试用:禁掉缓存命中后的后台校正。 */
+  disableBackgroundRefresh?: boolean
+}
+
+export interface LoginShellEnvCacheFingerprint {
+  version: number
+  shell: string
+  configMtimes: Record<string, number | null>
+}
+
+interface LoginShellEnvCacheFile {
+  fingerprint: LoginShellEnvCacheFingerprint
+  env: Record<string, string>
+}
+
+/**
+ * 以 shell 配置文件的 mtime 为缓存指纹:任何 rc/profile 变化都会失效。
+ * 无法覆盖 rc 内部 `source` 的其他文件——后台校正兜底这类漂移。
+ */
+export function computeShellConfigFingerprint(
+  shell: string,
+  homedir: string = os.homedir(),
+): LoginShellEnvCacheFingerprint {
+  const shellName = path.basename(shell).replace(/^-/, '')
+  const candidates = shellName === 'bash'
+    ? ['/etc/profile', path.join(homedir, '.bash_profile'), path.join(homedir, '.bashrc'), path.join(homedir, '.profile')]
+    : shellName === 'zsh'
+      ? ['/etc/zshenv', '/etc/zprofile', '/etc/zshrc', path.join(homedir, '.zshenv'), path.join(homedir, '.zprofile'), path.join(homedir, '.zshrc')]
+      : ['/etc/profile', path.join(homedir, '.profile')]
+
+  const configMtimes: Record<string, number | null> = {}
+  for (const filePath of candidates) {
+    try {
+      configMtimes[filePath] = fs.statSync(filePath).mtimeMs
+    } catch {
+      configMtimes[filePath] = null
+    }
+  }
+  return { version: CACHE_FORMAT_VERSION, shell, configMtimes }
+}
+
+function fingerprintEquals(a: LoginShellEnvCacheFingerprint, b: LoginShellEnvCacheFingerprint): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+function defaultLoginShellEnvCachePath(): string {
+  return path.join(os.homedir(), '.onething', 'login-shell-env.json')
+}
+
+function readLoginShellEnvCache(cachePath: string): LoginShellEnvCacheFile | undefined {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(cachePath, 'utf8')) as LoginShellEnvCacheFile
+    if (!parsed?.fingerprint || parsed.fingerprint.version !== CACHE_FORMAT_VERSION) return undefined
+    if (!parsed.env || typeof parsed.env !== 'object') return undefined
+    return parsed
+  } catch {
+    return undefined
+  }
+}
+
+function writeLoginShellEnvCache(
+  cachePath: string,
+  fingerprint: LoginShellEnvCacheFingerprint,
+  env: Record<string, string>,
+  logger?: Pick<Console, 'log' | 'warn'>,
+): void {
+  try {
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true })
+    // 缓存包含完整登录 shell 环境(可能含密钥),收紧到仅属主可读写。
+    fs.writeFileSync(cachePath, JSON.stringify({ fingerprint, env }), { mode: 0o600 })
+  } catch (error: any) {
+    logger?.warn(`[Env] Failed to write login shell env cache: ${error?.message || error}`)
+  }
 }
 
 function quoteShellArg(value: string): string {
@@ -131,12 +212,50 @@ export async function hydrateProcessEnvFromLoginShell(
   const shell = options.shell || targetEnv.SHELL || getDefaultShell(platform)
   if (!shell) return []
 
-  try {
+  const cachePath = options.cacheFilePath === undefined
+    ? defaultLoginShellEnvCachePath()
+    : options.cacheFilePath
+  const fingerprint = cachePath ? computeShellConfigFingerprint(shell) : undefined
+
+  const readAndCacheShellEnv = async (): Promise<Record<string, string>> => {
     const shellEnv = await readLoginShellEnv(
       shell,
       targetEnv,
       options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     )
+    if (cachePath && fingerprint) {
+      writeLoginShellEnvCache(cachePath, fingerprint, shellEnv, options.logger)
+    }
+    return shellEnv
+  }
+
+  // 缓存命中:同步注入(省掉 0.5~3.5s 的登录 shell),后台仍跑一次真实
+  // shell 校正 rc 内部 source 等指纹覆盖不到的漂移。
+  if (cachePath && fingerprint) {
+    const cached = readLoginShellEnvCache(cachePath)
+    if (cached && fingerprintEquals(cached.fingerprint, fingerprint)) {
+      const merged = mergeMissingEnv(targetEnv, cached.env)
+      if (merged.length > 0) {
+        options.logger?.log(`[Env] Loaded ${merged.length} missing variables from login shell cache`)
+      }
+      if (!options.disableBackgroundRefresh) {
+        void readAndCacheShellEnv()
+          .then(shellEnv => {
+            const corrected = mergeMissingEnv(targetEnv, shellEnv)
+            if (corrected.length > 0) {
+              options.logger?.log(`[Env] Background shell refresh added ${corrected.length} variables`)
+            }
+          })
+          .catch((error: any) => {
+            options.logger?.warn(`[Env] Background login shell refresh failed: ${error?.message || error}`)
+          })
+      }
+      return merged
+    }
+  }
+
+  try {
+    const shellEnv = await readAndCacheShellEnv()
     const merged = mergeMissingEnv(targetEnv, shellEnv)
     if (merged.length > 0) {
       options.logger?.log(`[Env] Loaded ${merged.length} missing variables from login shell`)

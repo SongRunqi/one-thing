@@ -1,0 +1,10 @@
+# Tool Guidelines: should show file paths clearly
+id: tool-guidelines-show-paths
+description: >
+  When working with files, the assistant should show file paths clearly.
+fixture: placeholder.json
+userMessage: Read the README.md file and tell me what it says.
+expect:
+  contains: README.md
+  notes: >
+    Tool guidelines require showing file paths clearly.

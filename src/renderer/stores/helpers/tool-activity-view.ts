@@ -220,7 +220,7 @@ function buildDuration(toolCall: ToolCall, nowMs = Date.now()): string {
     return formatToolDuration(Math.max(0, (toolCall.endTime ?? nowMs) - toolCall.startTime))
   }
   // Frozen final duration stays on the row so runs can be compared.
-  if (toolCall.status === 'completed' || toolCall.status === 'failed') {
+  if (toolCall.status === 'completed' || toolCall.status === 'failed' || toolCall.status === 'cancelled') {
     if (typeof toolCall.durationMs === 'number') {
       return formatToolDuration(Math.max(0, toolCall.durationMs))
     }

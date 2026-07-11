@@ -196,9 +196,11 @@ export async function buildHermesMemoryPromptFragment(
   workspace: HermesMemoryWorkspaceLike,
   maxChars: number,
 ): Promise<string | null> {
-  const [user, memory] = await Promise.all([
-    readHermesMemoryFile(workspace, 'user'),
-    readHermesMemoryFile(workspace, 'memory'),
-  ])
+  const memory = await readHermesMemoryFile(workspace, 'memory')
+  // User-notes workspaces alias both targets to the same MEMORY.md; injecting
+  // it once is enough.
+  const user = workspace.userPath === workspace.memoryPath
+    ? { ...(await readHermesMemoryFile(workspace, 'user')), content: '' }
+    : await readHermesMemoryFile(workspace, 'user')
   return coreBuildHermesMemoryPromptFragment({ user, memory, maxChars })
 }

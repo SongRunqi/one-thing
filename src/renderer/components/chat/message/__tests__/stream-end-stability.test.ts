@@ -62,6 +62,16 @@ const markdownStubs = {
   TextEditor: { template: '<textarea />' },
 }
 
+const messageItemStubs = {
+  ...markdownStubs,
+  ImagePreview: { template: '<div />' },
+  MessageActions: { template: '<div />' },
+  MessageError: { template: '<div />' },
+  MessageSystem: { template: '<div />' },
+  MessageThinking: { template: '<div />' },
+  SelectionToolbar: { template: '<div />' },
+}
+
 function toolCall(overrides: Partial<ToolCall> = {}): ToolCall {
   return {
     id: 'tc1',
@@ -615,29 +625,24 @@ describe('stream end visual stability', () => {
     expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
   })
 
-  it('opens image attachments from base64 data and stops click bubbling', async () => {
-    const wrapper = mount(MessageBubble, {
-      props: {
-        role: 'user',
-        content: '',
-        attachments: [imageAttachment()],
-        isStreaming: false,
-      },
-      global: { stubs: markdownStubs },
+  it('renders attachment-only user messages without a bubble shell', async () => {
+    const { default: MessageItem } = await import('../../MessageItem.vue')
+    const message: ChatMessage = {
+      id: 'm1',
+      role: 'user',
+      content: '',
+      timestamp: 0,
+      attachments: [imageAttachment(), fileAttachment()],
+    }
+    const wrapper = mount(MessageItem, {
+      props: { message },
+      global: { stubs: messageItemStubs },
     })
-    const parentClick = vi.fn()
-    wrapper.find('.bubble').element.addEventListener('click', parentClick)
 
-    wrapper.find('.attachment-image').element.dispatchEvent(new MouseEvent('click', {
-      bubbles: true,
-      cancelable: true,
-    }))
-    await nextTick()
-
-    expect(parentClick).not.toHaveBeenCalled()
-    expect(wrapper.emitted('openMedia')?.[0]).toEqual([
-      { src: 'data:image/png;base64,abc123', fileName: 'screenshot.png' },
-    ])
+    // Attachments live outside the bubble; with no text there is no shell.
+    expect(wrapper.find('.bubble').exists()).toBe(false)
+    expect(wrapper.find('.attachment-thumb-img').attributes('src')).toBe('data:image/png;base64,abc123')
+    expect(wrapper.find('.file-chip-name').text()).toBe('notes.pdf')
   })
 
   it('renders an image generation skeleton content part', async () => {
@@ -726,44 +731,54 @@ describe('stream end visual stability', () => {
   })
 
   it('opens image attachments from url-only sources', async () => {
-    const wrapper = mount(MessageBubble, {
-      props: {
-        role: 'user',
-        content: '',
-        attachments: [imageAttachment({
-          base64Data: undefined,
-          url: 'media://session/image.png',
-        })],
-        isStreaming: false,
-      },
-      global: { stubs: markdownStubs },
+    platformApiMock.openImagePreview.mockClear()
+    const { default: MessageItem } = await import('../../MessageItem.vue')
+    const message: ChatMessage = {
+      id: 'm1',
+      role: 'user',
+      content: '',
+      timestamp: 0,
+      attachments: [imageAttachment({
+        base64Data: undefined,
+        url: 'media://session/image.png',
+      })],
+    }
+    const wrapper = mount(MessageItem, {
+      props: { message },
+      global: { stubs: messageItemStubs },
     })
 
-    await wrapper.find('.attachment-image').trigger('click')
+    await wrapper.find('.attachment-thumb-img').trigger('click')
 
-    expect(wrapper.emitted('openMedia')?.[0]).toEqual([
-      { src: 'media://session/image.png', fileName: 'screenshot.png' },
-    ])
+    expect(platformApiMock.openImagePreview).toHaveBeenCalledWith(
+      'media://session/image.png',
+      'screenshot.png',
+    )
   })
 
   it('does not open previews for non-image attachments', async () => {
-    const wrapper = mount(MessageBubble, {
-      props: {
-        role: 'user',
-        content: '',
-        attachments: [fileAttachment()],
-        isStreaming: false,
-      },
-      global: { stubs: markdownStubs },
+    platformApiMock.openImagePreview.mockClear()
+    const { default: MessageItem } = await import('../../MessageItem.vue')
+    const message: ChatMessage = {
+      id: 'm1',
+      role: 'user',
+      content: '',
+      timestamp: 0,
+      attachments: [fileAttachment()],
+    }
+    const wrapper = mount(MessageItem, {
+      props: { message },
+      global: { stubs: messageItemStubs },
     })
 
-    expect(wrapper.find('.attachment-image').exists()).toBe(false)
-    await wrapper.find('.attachment-file').trigger('click')
+    expect(wrapper.find('.attachment-thumb-img').exists()).toBe(false)
+    await wrapper.find('.file-chip').trigger('click')
 
-    expect(wrapper.emitted('openMedia')).toBeUndefined()
+    expect(platformApiMock.openImagePreview).not.toHaveBeenCalled()
   })
 
   it('routes attachment image opens through the Electron preview window', async () => {
+    platformApiMock.openImagePreview.mockClear()
     const { default: MessageItem } = await import('../../MessageItem.vue')
     const message: ChatMessage = {
       id: 'm1',
@@ -774,21 +789,10 @@ describe('stream end visual stability', () => {
     }
     const wrapper = mount(MessageItem, {
       props: { message },
-      global: {
-        stubs: {
-          ...markdownStubs,
-          ImagePreview: { template: '<div />' },
-          MessageActions: { template: '<div />' },
-          MessageError: { template: '<div />' },
-          MessageSystem: { template: '<div />' },
-          MessageThinking: { template: '<div />' },
-          SelectionToolbar: { template: '<div />' },
-          StepsPanel: { template: '<div />' },
-        },
-      },
+      global: { stubs: messageItemStubs },
     })
 
-    await wrapper.find('.attachment-image').trigger('click')
+    await wrapper.find('.attachment-thumb-img').trigger('click')
 
     expect(platformApiMock.openImagePreview).toHaveBeenCalledWith(
       'data:image/png;base64,abc123',

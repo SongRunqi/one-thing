@@ -5,121 +5,120 @@
     aria-label="Chat side panel"
   >
     <template v-if="!props.collapsed">
-      <Splitter
-        class="chat-side-splitter"
-        layout="vertical"
-        :gap="10"
-        :resizer-size="2"
-        :resizer-hit-size="12"
-        :keyboard-step="4"
-        :keyboard-large-step="12"
+      <section
+        class="chat-side-esec chat-side-outline-section"
+        :class="{ focus: focusedSection === 'outline' }"
+        @mouseenter="scheduleFocus('outline')"
+        @mouseleave="cancelScheduledFocus"
       >
-        <SplitterPanel
-          v-model:size="sidePanelSizes.outline"
-          as="section"
-          class="chat-side-section chat-side-outline-section"
-          :min="SIDE_PANEL_MIN_SIZE"
-        >
-          <div class="chat-side-section-head">
-            <span class="chat-side-section-title">Outline</span>
-          </div>
+        <div class="chat-side-esum">
+          <button
+            type="button"
+            class="chat-side-esum-main"
+            :aria-expanded="focusedSection === 'outline'"
+            @click="setFocus('outline')"
+          >
+            <span class="chat-side-esum-title">Outline</span>
+            <span
+              class="chat-side-leader"
+              aria-hidden="true"
+            />
+            <span class="chat-side-esum-live">{{ outlineSummary }}</span>
+          </button>
+        </div>
+        <div class="chat-side-ebody">
           <div
             ref="outlineHostRef"
             class="chat-side-outline-host"
           />
-        </SplitterPanel>
+        </div>
+      </section>
 
-        <SplitterPanel
-          v-model:size="sidePanelSizes.system"
-          as="section"
-          class="chat-side-section chat-side-system-section"
-          :class="{ collapsed: systemPromptCollapsed }"
-          :min="SIDE_PANEL_MIN_SIZE"
-        >
-          <div class="chat-side-section-toggle chat-side-section-header">
-            <button
-              type="button"
-              class="chat-side-title-button"
-              :aria-expanded="!systemPromptCollapsed"
-              @click="toggleSystemPromptCollapsed"
-            >
-              <span class="chat-side-section-title">System prompt</span>
-            </button>
-            <button
-              type="button"
-              class="chat-side-icon-button"
-              title="Refresh system prompt"
-              :disabled="systemPromptRefreshing || !props.sessionId || isDraftSession"
-              @click.stop="refreshSystemPromptPanel"
-            >
-              <RefreshCw
-                :size="14"
-                :class="{ spinning: systemPromptRefreshing }"
-                aria-hidden="true"
-              />
-            </button>
-            <button
-              type="button"
-              class="chat-side-icon-button"
-              :aria-label="systemPromptCollapsed ? 'Expand system prompt' : 'Collapse system prompt'"
-              @click="toggleSystemPromptCollapsed"
-            >
-              <ChevronDown
-                class="chat-side-chevron"
-                :size="14"
-                :stroke-width="2.2"
-                aria-hidden="true"
-              />
-            </button>
-          </div>
-
+      <section
+        class="chat-side-esec chat-side-system-section"
+        :class="{ focus: focusedSection === 'system' }"
+        @mouseenter="scheduleFocus('system')"
+        @mouseleave="cancelScheduledFocus"
+      >
+        <div class="chat-side-esum">
+          <button
+            type="button"
+            class="chat-side-esum-main"
+            :aria-expanded="focusedSection === 'system'"
+            @click="setFocus('system')"
+          >
+            <span class="chat-side-esum-title">System prompt</span>
+            <span
+              class="chat-side-leader"
+              aria-hidden="true"
+            />
+            <span class="chat-side-esum-live">{{ systemSummary }}</span>
+          </button>
+          <button
+            v-if="focusedSection === 'system'"
+            type="button"
+            class="chat-side-icon-button"
+            title="Refresh system prompt"
+            :disabled="systemPromptRefreshing || !props.sessionId || isDraftSession"
+            @click.stop="refreshSystemPromptPanel"
+          >
+            <RefreshCw
+              :size="14"
+              :class="{ spinning: systemPromptRefreshing }"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+        <div class="chat-side-ebody">
           <SystemPromptPanel
-            v-if="!systemPromptCollapsed && !isDraftSession"
+            v-if="!isDraftSession"
             ref="systemPromptPanelRef"
             :session-id="props.sessionId"
             :working-directory="props.workingDirectory"
             :agent-id="props.agentId"
             :last-provider="props.lastProvider"
             :last-model="props.lastModel"
+            @summary-change="systemSummary = $event"
           />
           <div
-            v-else-if="!systemPromptCollapsed"
+            v-else
             class="chat-side-draft-state"
           >
             System prompt will appear after the chat starts.
           </div>
-        </SplitterPanel>
+        </div>
+      </section>
 
-        <SplitterPanel
-          v-if="showTodoProgressPanel"
-          v-model:size="sidePanelSizes.todo"
-          as="section"
-          class="chat-side-section chat-side-todo-section"
-          :class="{ collapsed: todoCollapsed }"
-          :min="SIDE_PANEL_MIN_SIZE"
-        >
+      <section
+        v-if="showTodoProgressPanel"
+        class="chat-side-esec chat-side-todo-section"
+        :class="{ focus: focusedSection === 'todo' }"
+        @mouseenter="scheduleFocus('todo')"
+        @mouseleave="cancelScheduledFocus"
+      >
+        <div class="chat-side-esum">
           <button
             type="button"
-            class="chat-side-section-toggle"
-            :aria-expanded="!todoCollapsed"
-            @click="toggleTodoCollapsed"
+            class="chat-side-esum-main"
+            :aria-expanded="focusedSection === 'todo'"
+            @click="setFocus('todo')"
           >
-            <span class="chat-side-section-title">Todo progress</span>
-            <ChevronDown
-              class="chat-side-chevron"
-              :size="14"
-              :stroke-width="2.2"
+            <span class="chat-side-esum-title">Todo</span>
+            <span
+              class="chat-side-leader"
               aria-hidden="true"
             />
+            <span class="chat-side-esum-live">{{ todoSummary }}</span>
           </button>
-
+        </div>
+        <div class="chat-side-ebody">
           <TodoProgressPanel
-            v-if="!todoCollapsed"
             :session-id="props.sessionId"
             :working-directory="props.workingDirectory"
+            @progress-change="todoProgress = $event"
           />
-        </SplitterPanel>
-      </Splitter>
+        </div>
+      </section>
 
       <slot name="extra-panels" />
     </template>
@@ -127,14 +126,20 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, RefreshCw } from 'lucide-vue-next'
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { RefreshCw } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
-import Splitter from '@/components/common/Splitter.vue'
-import SplitterPanel from '@/components/common/SplitterPanel.vue'
 import SystemPromptPanel from './SystemPromptPanel.vue'
 import TodoProgressPanel from './TodoProgressPanel.vue'
+
+type SectionId = 'outline' | 'system' | 'todo'
+
+interface TodoProgressSummary {
+  done: number
+  total: number
+  currentText: string
+}
 
 const props = withDefaults(defineProps<{
   sessionId?: string
@@ -157,50 +162,68 @@ const emit = defineEmits<{
   toggleCollapsed: []
 }>()
 
-const TODO_COLLAPSED_STORAGE_KEY = 'chatSideTodoProgressCollapsed'
-const SYSTEM_PROMPT_COLLAPSED_STORAGE_KEY = 'chatSideSystemPromptCollapsed'
-const SIDE_PANEL_MIN_SIZE = 12
-const EQUAL_THREE_PANEL_SIZE = 100 / 3
+const FOCUS_STORAGE_KEY = 'chatSideFocusedSection'
+const HOVER_FOCUS_DELAY_MS = 140
+const OUTLINE_CURRENT_CHANGED_EVENT = 'assistant-outline:current-changed'
 
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 const outlineHostRef = ref<HTMLElement | null>(null)
-const todoCollapsed = ref(localStorage.getItem(TODO_COLLAPSED_STORAGE_KEY) === 'true')
-const systemPromptCollapsed = ref(localStorage.getItem(SYSTEM_PROMPT_COLLAPSED_STORAGE_KEY) === 'true')
 const systemPromptPanelRef = ref<InstanceType<typeof SystemPromptPanel> | null>(null)
 const systemPromptRefreshing = ref(false)
+const focusedSection = ref<SectionId>(readStoredFocus())
+const outlineSummary = ref('')
+const systemSummary = ref('')
+const todoProgress = ref<TodoProgressSummary | null>(null)
+let hoverFocusTimer: ReturnType<typeof setTimeout> | null = null
+
 const todoEnabled = computed(() => settingsStore.settings.general?.todoPlan?.enabled !== false)
 const isDraftSession = computed(() => props.sessionId ? sessionsStore.isNewChatDraftId(props.sessionId) : false)
 const showTodoProgressPanel = computed(() => todoEnabled.value && !isDraftSession.value)
-const sidePanelSizes = reactive({
-  outline: EQUAL_THREE_PANEL_SIZE,
-  system: EQUAL_THREE_PANEL_SIZE,
-  todo: EQUAL_THREE_PANEL_SIZE,
+
+const todoSummary = computed(() => {
+  const progress = todoProgress.value
+  if (!progress || progress.total === 0) return ''
+  if (progress.done >= progress.total) return `${progress.done}/${progress.total} · complete`
+  if (!progress.currentText) return `${progress.done}/${progress.total}`
+  return `${progress.done}/${progress.total} · ${progress.currentText}`
 })
+
+function readStoredFocus(): SectionId {
+  const stored = localStorage.getItem(FOCUS_STORAGE_KEY)
+  return stored === 'system' || stored === 'todo' ? stored : 'outline'
+}
+
+function setFocus(section: SectionId) {
+  cancelScheduledFocus()
+  if (focusedSection.value === section) return
+  focusedSection.value = section
+  localStorage.setItem(FOCUS_STORAGE_KEY, section)
+}
+
+function scheduleFocus(section: SectionId) {
+  if (focusedSection.value === section) return
+  cancelScheduledFocus()
+  hoverFocusTimer = setTimeout(() => {
+    hoverFocusTimer = null
+    setFocus(section)
+  }, HOVER_FOCUS_DELAY_MS)
+}
+
+function cancelScheduledFocus() {
+  if (!hoverFocusTimer) return
+  clearTimeout(hoverFocusTimer)
+  hoverFocusTimer = null
+}
 
 function emitOutlineTarget() {
   emit('outlineTargetChange', props.collapsed ? null : outlineHostRef.value)
-}
-
-function toggleTodoCollapsed() {
-  todoCollapsed.value = !todoCollapsed.value
-  localStorage.setItem(TODO_COLLAPSED_STORAGE_KEY, String(todoCollapsed.value))
-}
-
-function toggleSystemPromptCollapsed() {
-  systemPromptCollapsed.value = !systemPromptCollapsed.value
-  localStorage.setItem(SYSTEM_PROMPT_COLLAPSED_STORAGE_KEY, String(systemPromptCollapsed.value))
 }
 
 async function refreshSystemPromptPanel() {
   if (systemPromptRefreshing.value || !props.sessionId || isDraftSession.value) return
   systemPromptRefreshing.value = true
   try {
-    if (systemPromptCollapsed.value) {
-      systemPromptCollapsed.value = false
-      localStorage.setItem(SYSTEM_PROMPT_COLLAPSED_STORAGE_KEY, 'false')
-      await nextTick()
-    }
     await systemPromptPanelRef.value?.refreshSnapshot()
   } finally {
     systemPromptRefreshing.value = false
@@ -209,20 +232,15 @@ async function refreshSystemPromptPanel() {
 
 function handleTodoToggleCard() {
   if (!showTodoProgressPanel.value) return
-  if (props.collapsed) {
-    todoCollapsed.value = false
-    localStorage.setItem(TODO_COLLAPSED_STORAGE_KEY, 'false')
-    emit('toggleCollapsed')
-    return
-  }
-  toggleTodoCollapsed()
+  if (props.collapsed) emit('toggleCollapsed')
+  setFocus('todo')
 }
 
-function equalizeSidePanelHeights(panelCount: 2 | 3) {
-  const size = 100 / panelCount
-  sidePanelSizes.outline = size
-  sidePanelSizes.system = size
-  sidePanelSizes.todo = panelCount === 3 ? 100 - (size * 2) : EQUAL_THREE_PANEL_SIZE
+function handleOutlineCurrentChanged(event: Event) {
+  const detail = (event as CustomEvent<{ sessionId?: string, label?: string, count?: number }>).detail
+  if (!detail) return
+  if (props.sessionId && detail.sessionId && detail.sessionId !== props.sessionId) return
+  outlineSummary.value = detail.count ? detail.label || '' : ''
 }
 
 watch(
@@ -231,20 +249,27 @@ watch(
   { flush: 'post' },
 )
 
-watch(
-  showTodoProgressPanel,
-  visible => equalizeSidePanelHeights(visible ? 3 : 2),
-  { immediate: true },
-)
+watch(showTodoProgressPanel, (visible) => {
+  if (!visible && focusedSection.value === 'todo') setFocus('outline')
+}, { immediate: true })
+
+watch(() => props.sessionId, () => {
+  outlineSummary.value = ''
+  systemSummary.value = ''
+  todoProgress.value = null
+})
 
 onMounted(() => {
   nextTick(emitOutlineTarget)
   window.addEventListener('todo-plan:toggle-card', handleTodoToggleCard)
+  window.addEventListener(OUTLINE_CURRENT_CHANGED_EVENT, handleOutlineCurrentChanged)
 })
 
 onUnmounted(() => {
+  cancelScheduledFocus()
   emit('outlineTargetChange', null)
   window.removeEventListener('todo-plan:toggle-card', handleTodoToggleCard)
+  window.removeEventListener(OUTLINE_CURRENT_CHANGED_EVENT, handleOutlineCurrentChanged)
 })
 </script>
 
@@ -254,7 +279,6 @@ onUnmounted(() => {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: 10px;
   height: 100%;
   max-height: 100%;
   min-width: 0;
@@ -267,72 +291,46 @@ onUnmounted(() => {
 
 .chat-side-panel.collapsed {
   align-items: center;
-  gap: 0;
   padding: 0;
 }
 
-.chat-side-section {
+/* 呼吸:三段同显,聚焦段长开,其余压成一行活摘要。 */
+.chat-side-esec {
   box-sizing: border-box;
   display: flex;
+  flex: 0.0001 1 auto;
   flex-direction: column;
   min-width: 0;
-  min-height: 0;
+  min-height: 36px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 48%, transparent);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 48%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 38%, transparent);
+  transition: flex-grow 0.26s ease;
 }
 
-.chat-side-splitter {
-  flex: 1 1 auto;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
+.chat-side-esec:last-of-type {
+  border-bottom: 0;
 }
 
-.chat-side-splitter :deep(.splitter-resizer) {
-  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, var(--ui-border-default-border, var(--border)));
+.chat-side-esec.focus {
+  flex-grow: 1;
 }
 
-.chat-side-outline-section,
-.chat-side-system-section,
-.chat-side-todo-section {
-  min-height: 0;
-}
-
-.chat-side-section-head,
-.chat-side-section-toggle {
+.chat-side-esum {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
+  min-width: 0;
   min-height: 34px;
-  padding: 8px 10px;
-  border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 36%, transparent);
-  background: transparent;
-  color: inherit;
-  font: inherit;
+  padding: 8px 4px 8px 2px;
 }
 
-.chat-side-section-toggle {
-  width: 100%;
-  cursor: pointer;
-}
-
-.chat-side-section-header {
-  padding: 6px 6px 6px 10px;
-  cursor: default;
-}
-
-.chat-side-title-button {
+.chat-side-esum-main {
   display: flex;
   flex: 1 1 auto;
   align-items: center;
+  gap: 7px;
   min-width: 0;
-  min-height: 24px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -340,6 +338,60 @@ onUnmounted(() => {
   cursor: pointer;
   font: inherit;
   text-align: left;
+}
+
+.chat-side-esum-title {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-text-muted-fg, var(--muted)));
+  font-family: var(--font-display, var(--font-serif, serif));
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* 活摘要:未聚焦时是该段最要紧的一句话 */
+.chat-side-esum-live {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-side-esec.focus .chat-side-esum-live {
+  visibility: hidden;
+}
+
+/* 点线:题名与摘要之间的引导线 */
+.chat-side-leader {
+  flex: 1 1 auto;
+  align-self: center;
+  height: 0;
+  min-width: 12px;
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent);
+  transform: translateY(1px);
+}
+
+.chat-side-ebody {
+  display: flex;
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease 0.08s;
+}
+
+.chat-side-esec.focus .chat-side-ebody {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .chat-side-icon-button {
@@ -368,7 +420,7 @@ onUnmounted(() => {
 
 .chat-side-draft-state {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   min-height: 42px;
   padding: 9px 10px 10px;
   color: var(--ui-text-muted-fg, var(--muted));
@@ -376,32 +428,8 @@ onUnmounted(() => {
   line-height: 1.35;
 }
 
-.chat-side-chevron {
-  color: var(--ui-text-muted-fg, var(--muted));
-  transition: transform 0.14s ease;
-}
-
-.chat-side-section.collapsed .chat-side-section-toggle {
-  border-bottom: 0;
-}
-
-.chat-side-section.collapsed .chat-side-chevron {
-  transform: rotate(-90deg);
-}
-
 .spinning {
   animation: chat-side-spin 0.8s linear infinite;
-}
-
-.chat-side-section-title {
-  min-width: 0;
-  overflow: hidden;
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-text-muted-fg, var(--muted)));
-  font-size: 11.5px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  text-transform: uppercase;
-  white-space: nowrap;
 }
 
 .chat-side-outline-host {
@@ -434,7 +462,11 @@ onUnmounted(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-side-chevron {
+  .chat-side-esec {
+    transition: none;
+  }
+
+  .chat-side-ebody {
     transition: none;
   }
 

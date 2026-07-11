@@ -447,21 +447,34 @@ onUnmounted(() => {
 }
 
 /* Library entries stay neutral at rest; category color appears only on
-   hover/active (accent containment). */
+   hover/active (accent containment). Ledger 风格：状态用线不用填充。 */
 .workspace-action-btn:hover,
 .workspace-action-btn:focus-visible {
   color: var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .workspace-action-btn.is-active {
-  background: color-mix(in srgb, var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent))) 13%, transparent);
+  background: transparent;
   color: var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+/* Active 面板：图标下一道短横线，而非底色填充 */
+.workspace-action-btn.is-active::after {
+  content: '';
+  position: absolute;
+  left: 9px;
+  right: 9px;
+  bottom: 3px;
+  height: 1px;
+  background: currentColor;
 }
 
 .sidebar-bottom {
   display: flex;
   align-items: center;
-  padding: 8px 12px;
+  margin: 0 16px;
+  padding: 8px 0 10px;
+  border-top: 1px solid var(--ui-sidebar-border-border, var(--ui-border-divider-border, var(--border)));
   flex-shrink: 0;
 }
 
@@ -469,11 +482,12 @@ onUnmounted(() => {
   --app-button-height: 32px;
   --app-button-min-width: 32px;
   --app-button-padding-x: 0;
-  --app-button-hover-fill: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  --app-button-hover-fill: transparent;
   --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
+  position: relative;
   width: 32px;
   height: 32px;
   display: flex;
@@ -485,13 +499,13 @@ onUnmounted(() => {
     --ui-sidebar-action-fg,
     color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 88%, transparent)
   );
-  border-radius: 8px;
+  border-radius: 0;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .sidebar-bottom-btn:hover {
-  background: var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover)));
+  background: transparent;
   color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 

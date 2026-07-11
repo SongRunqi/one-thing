@@ -11,17 +11,7 @@
   >
     <div
       ref="listRef"
-      :class="[
-        'composer-extension-list',
-        'command-palette-list',
-        {
-          'has-active-indicator': selectedIndex >= 0 && items.length > 0,
-          'is-navigating': isNavigating,
-          'is-scrollable': isScrollable,
-          'at-scroll-start': atScrollStart,
-          'at-scroll-end': atScrollEnd,
-        },
-      ]"
+      class="composer-extension-list command-palette-list"
       role="listbox"
       aria-label="Command palette"
       :aria-activedescendant="activeOptionId"
@@ -43,16 +33,33 @@
         @click="selectItem(item)"
         @mouseenter="highlightItem(index)"
       >
+        <span
+          class="command-tick"
+          aria-hidden="true"
+        >▸</span>
         <div class="composer-extension-row-main">
           <div class="composer-extension-row-title">
-            {{ item.title }}
+            <template
+              v-for="(segment, segmentIndex) in titleSegments(item.title)"
+              :key="segmentIndex"
+            >
+              <span
+                v-if="segment.hit"
+                class="command-hit"
+              >{{ segment.text }}</span><template v-else>
+                {{ segment.text }}
+              </template>
+            </template>
           </div>
           <div class="composer-extension-row-description">
             {{ item.description }}
           </div>
         </div>
-        <div class="composer-extension-row-meta">
-          {{ item.meta }}
+        <div
+          class="composer-extension-row-kbd"
+          aria-hidden="true"
+        >
+          {{ index === selectedIndex ? '⏎' : '' }}
         </div>
       </div>
     </div>
@@ -60,7 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
 import type { ComposerExtensionItem } from '@/composables/usePickerOrchestration'
 import type { PaletteItem } from '@/types/palette'
@@ -85,24 +92,14 @@ const emit = defineEmits<{
 }>()
 
 const listRef = ref<HTMLElement | null>(null)
-const isNavigating = ref(false)
-const isScrollable = ref(false)
-const atScrollStart = ref(true)
-const atScrollEnd = ref(true)
+
+/* Wheel-scrolling sweeps rows under the cursor, firing mouseenter →
+ * highlight for each; following those with scroll-into-view would yank the
+ * list back and fight the user's scroll. Only keyboard/content changes
+ * scroll-follow. */
+let pointerDrivenSelection = false
+
 const itemSignature = computed(() => props.items.map(item => item.id).join('\u001f'))
-let syncFrame: number | null = null
-let resizeObserver: ResizeObserver | null = null
-let navigationPulseTimer: number | null = null
-let observedScroller: HTMLElement | null = null
-
-const scrollerStateClasses = [
-  'command-palette-scroller',
-  'is-scrollable',
-  'is-navigating',
-  'at-scroll-start',
-  'at-scroll-end',
-] as const
-
 const activeOptionId = computed(() => {
   const item = props.items[props.selectedIndex]
   return item ? getOptionId(item, props.selectedIndex) : undefined
@@ -126,8 +123,28 @@ function selectItem(item: ComposerExtensionItem) {
 }
 
 function highlightItem(index: number) {
+  pointerDrivenSelection = true
   emit('highlight', index)
-  scheduleActiveSync(false)
+}
+
+interface TitleSegment {
+  text: string
+  hit: boolean
+}
+
+/** Splits the command title around the first query match so the matched
+ * characters render in accent, per the quietlines palette mockup. */
+function titleSegments(title: string): TitleSegment[] {
+  const query = props.query.trim().toLowerCase()
+  if (!query) return [{ text: title, hit: false }]
+  const start = title.toLowerCase().indexOf(query)
+  if (start < 0) return [{ text: title, hit: false }]
+  const end = start + query.length
+  return [
+    { text: title.slice(0, start), hit: false },
+    { text: title.slice(start, end), hit: true },
+    { text: title.slice(end), hit: false },
+  ].filter(segment => segment.text)
 }
 
 function getItemTooltip(item: ComposerExtensionItem) {
@@ -140,159 +157,21 @@ function getOptionId(item: ComposerExtensionItem, index: number) {
   return `command-palette-option-${index}-${stableId}`
 }
 
-function clearActiveGeometry(list = listRef.value) {
-  list?.style.removeProperty('--command-active-top')
-  list?.style.removeProperty('--command-active-height')
+function resetScrollPosition() {
+  const scroller = listRef.value?.parentElement
+  if (scroller) scroller.scrollTop = 0
 }
 
-function getScroller(list: HTMLElement) {
-  const scroller = list.parentElement
-  return scroller instanceof HTMLElement ? scroller : null
-}
-
-function clearScrollerClasses(scroller: HTMLElement | null) {
-  scrollerStateClasses.forEach(className => scroller?.classList.remove(className))
-}
-
-function syncScrollerClasses(scroller: HTMLElement) {
-  scroller.classList.add('command-palette-scroller')
-  scroller.classList.toggle('is-scrollable', isScrollable.value)
-  scroller.classList.toggle('is-navigating', isNavigating.value)
-  scroller.classList.toggle('at-scroll-start', atScrollStart.value)
-  scroller.classList.toggle('at-scroll-end', atScrollEnd.value)
-}
-
-function updateScrollState(scroller = listRef.value ? getScroller(listRef.value) : null) {
-  if (!scroller) {
-    isScrollable.value = false
-    atScrollStart.value = true
-    atScrollEnd.value = true
-    return
-  }
-
-  const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
-  isScrollable.value = maxScrollTop > 1
-  atScrollStart.value = scroller.scrollTop <= 1
-  atScrollEnd.value = scroller.scrollTop >= maxScrollTop - 1
-  syncScrollerClasses(scroller)
-}
-
-function resetScrollPosition(scroller = listRef.value ? getScroller(listRef.value) : null) {
-  if (!scroller) return
-  scroller.scrollTop = 0
-  updateScrollState(scroller)
-}
-
-function pulseNavigation() {
-  isNavigating.value = true
-  if (observedScroller) {
-    observedScroller.classList.add('is-navigating')
-  }
-  if (navigationPulseTimer !== null) {
-    window.clearTimeout(navigationPulseTimer)
-  }
-  navigationPulseTimer = window.setTimeout(() => {
-    isNavigating.value = false
-    if (observedScroller) {
-      observedScroller.classList.remove('is-navigating')
-    }
-    navigationPulseTimer = null
-  }, 1100)
-}
-
-function keepSelectedVisible(scroller: HTMLElement, selected: HTMLElement) {
-  const safeGap = Math.max(8, Math.round(selected.offsetHeight * 0.28))
-  const selectedTop = selected.offsetTop
-  const selectedBottom = selectedTop + selected.offsetHeight
-  const visibleTop = scroller.scrollTop + safeGap
-  const visibleBottom = scroller.scrollTop + scroller.clientHeight - safeGap
-
-  if (selectedTop < visibleTop) {
-    scroller.scrollTop = Math.max(0, selectedTop - safeGap)
-    return
-  }
-
-  if (selectedBottom > visibleBottom) {
-    scroller.scrollTop = Math.min(
-      scroller.scrollHeight - scroller.clientHeight,
-      selectedBottom - scroller.clientHeight + safeGap,
-    )
-  }
-}
-
-function syncActiveSelection(ensureVisible: boolean) {
-  syncFrame = null
+function syncSelectedIntoView() {
   const list = listRef.value
-  if (!list || props.items.length === 0 || props.selectedIndex < 0) {
-    clearActiveGeometry(list)
-    updateScrollState()
-    return
-  }
-
+  if (!list || props.items.length === 0 || props.selectedIndex < 0) return
   const selected = list.querySelector<HTMLElement>(`[data-command-index="${props.selectedIndex}"]`)
-  const scroller = getScroller(list)
-  if (!selected || !scroller) {
-    clearActiveGeometry(list)
-    updateScrollState(scroller)
-    return
-  }
-
-  if (ensureVisible) {
-    keepSelectedVisible(scroller, selected)
-  }
-
-  list.style.setProperty('--command-active-top', `${selected.offsetTop}px`)
-  list.style.setProperty('--command-active-height', `${selected.offsetHeight}px`)
-  updateScrollState(scroller)
-}
-
-function scheduleActiveSync(ensureVisible = true) {
-  if (syncFrame !== null) {
-    cancelAnimationFrame(syncFrame)
-    syncFrame = null
-  }
-
-  if (typeof requestAnimationFrame !== 'function') {
-    syncActiveSelection(ensureVisible)
-    return
-  }
-
-  syncFrame = requestAnimationFrame(() => syncActiveSelection(ensureVisible))
-}
-
-function bindResizeObserver() {
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  if (observedScroller) {
-    observedScroller.removeEventListener('scroll', handleScrollerScroll)
-    clearScrollerClasses(observedScroller)
-    observedScroller = null
-  }
-
-  const list = listRef.value
-  if (!list || typeof ResizeObserver === 'undefined') return
-
-  resizeObserver = new ResizeObserver(() => scheduleActiveSync(false))
-  resizeObserver.observe(list)
-  const scroller = getScroller(list)
-  if (scroller) {
-    resizeObserver.observe(scroller)
-    observedScroller = scroller
-    observedScroller.addEventListener('scroll', handleScrollerScroll, { passive: true })
-    updateScrollState(scroller)
-    syncScrollerClasses(scroller)
-  }
-}
-
-function handleScrollerScroll() {
-  updateScrollState(observedScroller)
-  scheduleActiveSync(false)
+  selected?.scrollIntoView({ block: 'nearest' })
 }
 
 watch(
   () => [props.selectedIndex, props.visible, props.items.length, props.query, itemSignature.value] as const,
-  ([selectedIndex, visible, , query, signature], previous) => {
-    const previousSelectedIndex = previous?.[0]
+  ([, visible, , query, signature], previous) => {
     const previousVisible = previous?.[1] ?? false
     const previousQuery = previous?.[3]
     const previousSignature = previous?.[4]
@@ -301,28 +180,18 @@ watch(
       query !== previousQuery ||
       signature !== previousSignature
     )
+    const pointerDriven = pointerDrivenSelection
+    pointerDrivenSelection = false
 
-    if (props.visible && previousVisible && selectedIndex !== previousSelectedIndex) {
-      pulseNavigation()
-    }
     nextTick(() => {
-      bindResizeObserver()
       if (contentChanged) {
         resetScrollPosition()
       }
-      scheduleActiveSync(true)
+      if (contentChanged || !pointerDriven) {
+        syncSelectedIntoView()
+      }
     })
   },
   { flush: 'post', immediate: true },
 )
-
-onBeforeUnmount(() => {
-  if (syncFrame !== null) cancelAnimationFrame(syncFrame)
-  if (navigationPulseTimer !== null) window.clearTimeout(navigationPulseTimer)
-  if (observedScroller) {
-    observedScroller.removeEventListener('scroll', handleScrollerScroll)
-    clearScrollerClasses(observedScroller)
-  }
-  resizeObserver?.disconnect()
-})
 </script>

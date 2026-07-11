@@ -4,8 +4,5 @@ export {
   encodeMessagePageCursor,
   getMessagesPageFromArray,
   getUserMessageMarkersFromArray,
-  SESSION_REPOSITORY_MIGRATIONS,
-  getLatestSessionRepositorySchemaVersion,
 } from '@onething/core/session'
 export { getMessagesPageFromJsonFile } from './json-message-page.js'
-export { getSessionDatabasePath } from '../paths.js'

@@ -56,23 +56,39 @@ export function createAndBindElectronMainWindow(options: ElectronActivateOptions
     options.setMainWindow(null)
   })
   options.attachVoiceMainWindow(mainWindow)
-  scheduleElectronMainWindowWarmups(options)
+  scheduleElectronMainWindowWarmups(options, mainWindow)
   return mainWindow
 }
 
-function scheduleElectronMainWindowWarmups(options: ElectronActivateOptions): void {
+function scheduleElectronMainWindowWarmups(
+  options: ElectronActivateOptions,
+  mainWindow: BrowserWindow,
+): void {
   const schedule = options.schedule ?? ((callback, delayMs) => setTimeout(callback, delayMs))
   const warmSearchDelayMs = options.warmSearchDelayMs ?? 1200
   const warmTodoDelayMs = options.warmTodoDelayMs ?? 1600
 
-  schedule(() => {
-    const mainWindow = options.getMainWindow()
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      options.warmSearchWindow(mainWindow)
-    }
-  }, warmSearchDelayMs)
+  const begin = (): void => {
+    schedule(() => {
+      const currentMainWindow = options.getMainWindow()
+      if (currentMainWindow && !currentMainWindow.isDestroyed()) {
+        options.warmSearchWindow(currentMainWindow)
+      }
+    }, warmSearchDelayMs)
 
-  schedule(() => {
-    options.warmTodoPlanWindow()
-  }, warmTodoDelayMs)
+    schedule(() => {
+      options.warmTodoPlanWindow()
+    }, warmTodoDelayMs)
+  }
+
+  // 预热计时从渲染器加载完成后起算,避免预热窗口与主窗口首帧/会话恢复
+  // 抢 CPU;测试桩没有完整 webContents 时保持旧行为(立即起算)。
+  const webContents = mainWindow.webContents as
+    | { isLoading?: () => boolean; once?: (event: string, listener: () => void) => unknown }
+    | undefined
+  if (webContents?.isLoading?.() && typeof webContents.once === 'function') {
+    webContents.once('did-finish-load', begin)
+  } else {
+    begin()
+  }
 }

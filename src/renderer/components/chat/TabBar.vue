@@ -1,5 +1,8 @@
 <template>
-  <header :class="['tab-bar', { 'with-traffic-lights': showSidebarToggle, 'media-panel-open': mediaPanelOpen }]">
+  <header
+    ref="headerRef"
+    :class="['tab-bar', { 'with-traffic-lights': showSidebarToggle, 'media-panel-open': mediaPanelOpen }]"
+  >
     <!-- Left: traffic lights reserved + tabs -->
     <div class="tab-bar-left">
       <div
@@ -57,15 +60,21 @@
       />
     </div>
 
-    <!-- Right: action buttons -->
+    <!-- Right: action buttons. Unfocused split panels collapse to just the
+         close button; clicking anywhere in a panel focuses it. -->
     <div class="tab-bar-right">
       <AgentSelector
-        v-if="activeTab?.type === 'chat' && sessionId"
+        v-if="showFullActions && activeTab?.type === 'chat' && sessionId"
         :session-id="sessionId"
+      />
+      <span
+        v-if="showFullActions && activeTab?.type === 'chat' && sessionId"
+        class="header-tick"
+        aria-hidden="true"
       />
 
       <Button
-        v-if="isBranchSession"
+        v-if="showFullActions && isBranchSession"
         unstyled
         class="header-btn back-btn"
         title="Back to parent chat"
@@ -78,7 +87,7 @@
       </Button>
 
       <Button
-        v-if="showSplitButton"
+        v-if="showFullActions && showSplitButton"
         unstyled
         class="header-btn"
         title="Split view"
@@ -91,7 +100,7 @@
       </Button>
 
       <Button
-        v-if="canClose"
+        v-if="showFullActions && canClose"
         unstyled
         class="header-btn"
         title="Equalize panels"
@@ -104,6 +113,7 @@
       </Button>
 
       <Button
+        v-if="showFullActions"
         unstyled
         class="header-btn side-panel-toggle"
         :title="sidePanelCollapsed ? 'Expand side panel' : 'Collapse side panel'"
@@ -116,6 +126,7 @@
       </Button>
 
       <Button
+        v-if="showFullActions"
         unstyled
         :class="['header-btn', 'inspector-toggle', { hidden: isInspectorOpen }]"
         title="Show workbench"
@@ -145,7 +156,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ArrowLeft, Columns2, Equal, ListTree, PanelRightOpen, X } from 'lucide-vue-next'
 import TabItem from './TabItem.vue'
 import AgentSelector from './AgentSelector.vue'
@@ -165,6 +176,8 @@ const props = defineProps<{
   reserveSidebarActions?: boolean
   sidePanelAvailable?: boolean
   sidePanelCollapsed?: boolean
+  /** False for split panels that don't own focus: only the close button stays. */
+  panelFocused?: boolean
 }>()
 
 defineEmits<{
@@ -183,6 +196,38 @@ defineEmits<{
 }>()
 
 const dragFromId = ref<string | null>(null)
+
+// Narrow split panels can't fit the traffic-light slot + tabs + the full
+// action group (nothing in the bar flex-shrinks), so below the threshold the
+// header collapses to compact mode — close button only — even when focused.
+const COMPACT_MIN_WIDTH_RESERVED = 540
+const COMPACT_MIN_WIDTH = 400
+
+const headerRef = ref<HTMLElement | null>(null)
+const headerWidth = ref(Number.POSITIVE_INFINITY)
+let headerResizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  if (typeof ResizeObserver === 'undefined' || !headerRef.value) return
+  headerResizeObserver = new ResizeObserver((entries) => {
+    headerWidth.value = entries[0]?.contentRect.width ?? Number.POSITIVE_INFINITY
+  })
+  headerResizeObserver.observe(headerRef.value)
+})
+
+onBeforeUnmount(() => {
+  headerResizeObserver?.disconnect()
+  headerResizeObserver = null
+})
+
+const isCompact = computed(() => {
+  const threshold = props.showSidebarToggle || props.reserveSidebarActions
+    ? COMPACT_MIN_WIDTH_RESERVED
+    : COMPACT_MIN_WIDTH
+  return headerWidth.value < threshold
+})
+
+const showFullActions = computed(() => props.panelFocused !== false && !isCompact.value)
 const chatTabs = computed(() => props.tabs.filter(t => t.type === 'chat'))
 const resourceTabs = computed(() => props.tabs.filter(t => t.type !== 'chat'))
 const chatTabCount = computed(() => chatTabs.value.length)
@@ -212,6 +257,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   box-shadow: var(--ui-tab-bar-surface-shadow, none);
 }
 
+/* 基线:页签底标(墨线)落在这条线上 */
 .tab-bar::after {
   content: '';
   position: absolute;
@@ -219,7 +265,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   bottom: 0;
   left: 0;
   height: 1px;
-  background: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle))) 18%, transparent);
+  background: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle))) 32%, transparent);
   pointer-events: none;
   z-index: 0;
 }
@@ -267,6 +313,7 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
 .tab-list {
   display: flex;
   align-items: center;
+  align-self: stretch;
   gap: 5px;
   overflow-x: auto;
   overflow-y: visible;
@@ -280,15 +327,13 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   display: none;
 }
 
+/* 竖刻:chat 组与资源组之间,与右侧 header-tick 同款 */
 .tab-group-divider {
   width: 1px;
-  height: 18px;
+  height: 14px;
   margin: 0 6px;
   flex: 0 0 1px;
-  background: var(--ot-divider);
-  opacity: 0.86;
-  transform: scaleX(0.5);
-  transform-origin: center;
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent);
 }
 
 .tab-bar-drag-spacer {
@@ -312,33 +357,56 @@ function shouldHideTrailingDivider(group: Tab[], index: number): boolean {
   -webkit-app-region: no-drag;
 }
 
+/* 座标底线(案 A):按钮无底色,悬停变墨并在基线上落一小段点线 */
 .header-btn {
+  position: relative;
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid transparent;
+  border: 0;
   background: transparent;
-  border-radius: 7px;
+  border-radius: 0;
   color: var(--ui-tab-bar-action-fg, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
   -webkit-app-region: no-drag;
   transition:
-    background var(--duration-fast) var(--ease-default),
-    border-color var(--duration-fast) var(--ease-default),
     color var(--duration-fast) var(--ease-default),
     transform var(--duration-fast) var(--ease-default);
 }
 
+.header-btn::after {
+  content: '';
+  position: absolute;
+  right: 7px;
+  bottom: -6px;
+  left: 7px;
+  height: 0;
+  border-bottom: 1.5px dotted transparent;
+  transition: border-color var(--duration-fast) var(--ease-default);
+  pointer-events: none;
+}
+
 .header-btn:hover {
-  background: color-mix(in srgb, var(--ui-tab-bar-action-hover-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 72%, transparent)) 78%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tab-bar-action-hover-border, var(--ui-border-subtle-border, var(--border-subtle))) 58%, transparent);
   color: var(--ui-tab-bar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+}
+
+.header-btn:hover::after {
+  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 75%, transparent);
 }
 
 .header-btn:active {
   transform: translateY(1px);
+}
+
+/* 竖刻:agent 与按钮组之间的分隔 */
+.header-tick {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 85%, transparent);
 }
 
 .header-btn.back-btn {

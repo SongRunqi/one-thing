@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InputBox ModelSelector — 四方案索引</title>
+<style>
+:root{color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:#282726;color:#F2F0E5;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;padding:48px 24px}
+.wrap{max-width:760px;margin:0 auto}
+h1{font-size:20px;font-weight:600;margin:0 0 6px}
+p.sub{font-size:13px;color:#B7B5AC;margin:0 0 28px}
+a.item{display:block;text-decoration:none;color:inherit;border:1px solid #403E3C;border-radius:12px;padding:18px 20px;margin-bottom:12px;transition:border-color .12s,background-color .12s}
+a.item:hover{border-color:#6F6E69;background:rgba(255,255,255,.03)}
+.item .t{font-size:15px;font-weight:600;margin-bottom:4px}
+.item .t span{font:600 11px/1 ui-monospace,Menlo,monospace;color:#4385BE;margin-right:8px}
+.item .d{font-size:12.5px;color:#CECDC3;line-height:1.6}
+.item .k{font-size:11px;color:#B7B5AC;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>InputBox ModelSelector — 四方案对比</h1>
+  <p class="sub">输入框模型 chip 弹出的选择器,popover 与 InputBox 同宽自适应(页内可切 360/640/900 验证);能力用图标+文字徽章、flex-wrap 换行展示,不遮挡不溢出。全部走 --ui-* 主题 token(Flexoki 深/浅演示值,页内可切换);选定方案后替换 ModelSelector.vue 的 Select 下拉即可接入。</p>
+
+  <a class="item" href="option-e-blueprint.html" style="border-color:#4385BE">
+    <div class="t"><span>E</span>图纸原生 Blueprint(贴合当前 InputBox)</div>
+    <div class="d">与现有 composer 完全同一视觉语言:MODEL 框签切轮廓、hairline 分段单元格、mono 标注;flyout 锚定 composer 顶边同宽;行样式沿用现有 dropdown 字号,能力徽章沿用 .model-badge 几何但按能力着色 + 换行。demo 里连 composer(COMPOSER 框签 + 工具条 ctx 表计/think/mode/SEND 格)都按 InputBox.vue 逐项复刻。</div>
+    <div class="k">推荐:接入成本最低,视觉零违和 — 相当于给现有 Select 下拉升级为蓝图 flyout。</div>
+  </a>
+
+  <a class="item" href="option-a-cascade.html">
+    <div class="t"><span>A</span>层叠菜单 Cascade</div>
+    <div class="d">原生菜单式二级层叠:provider 一级菜单,悬停右侧展开模型子菜单(底边跟随悬停项),单击即切换。零搜索、路径最短。</div>
+    <div class="k">适合:provider 多、靠位置记忆快速切换;最像系统原生菜单。</div>
+  </a>
+
+  <a class="item" href="option-b-compact-list.html">
+    <div class="t"><span>B</span>速查单列 Compact List</div>
+    <div class="d">324px 可搜索单列(Linear/Cursor 式):搜索置顶,模型按 provider 分组平铺,一次滚动看全;能力微型色点,↑↓/↵/esc 键盘可达。</div>
+    <div class="k">适合:模型总量大、键盘流;与现版 Select filterable 的心智最接近。</div>
+  </a>
+
+  <a class="item" href="option-c-icon-tabs.html">
+    <div class="t"><span>C</span>图标页签 Icon Tabs</div>
+    <div class="d">顶部一排 provider 图标页签(当前 provider 带角标),中部该 provider 模型列表(能力字母 T/R/V/I/S + 上下文),底部常驻当前模型状态条。</div>
+    <div class="k">适合:provider 维度优先、鼠标两击切换;信息密度均衡。</div>
+  </a>
+
+  <a class="item" href="option-d-drilldown.html">
+    <div class="t"><span>D</span>下钻两屏 Drill-down</div>
+    <div class="d">300px 窄面板,移动端式二级导航:第一屏 provider 大行(显示 using 哪个模型),点击滑入第二屏模型列表,‹ 返回;esc 逐级退出。</div>
+    <div class="k">适合:界面最克制、视觉负担最小;provider 行自带"正在使用"上下文。</div>
+  </a>
+</div>
+</body>
+</html>

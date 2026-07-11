@@ -1,0 +1,12 @@
+# Skills: should read skill instructions when task matches skill description
+id: skills-read-skill-md
+description: >
+  When the user asks for a task that matches a skill description, the assistant
+  should use the read tool to load the skill's SKILL.md before proceeding.
+fixture: placeholder.json
+userMessage: Can you create a poster for my event?
+expect:
+  contains: SKILL.md
+  notes: >
+    The skill "canvas-design" should be triggered
+    when user asks for poster creation.

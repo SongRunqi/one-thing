@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "capturedAt": "2026-07-07T00:00:00Z",
+  "promptVersion": "00000000",
+  "provider": "placeholder",
+  "model": "placeholder",
+  "context": {
+    "workingDirectory": "/Users/tester/projects/example",
+    "knownProjects": {
+      "hasAny": true,
+      "entries": [
+        {
+          "path": "/Users/tester/projects/other",
+          "displayPath": "~/projects/other",
+          "description": "Another project"
+        }
+      ]
+    },
+    "skills": [
+      {
+        "name": "canvas-design",
+        "description": "Create beautiful visual art in .png and .pdf documents using design philosophy.",
+        "source": "user",
+        "category": "design",
+        "enabled": true,
+        "path": "/Users/tester/.agents/skills/canvas-design/SKILL.md"
+      }
+    ],
+    "toolNames": ["read", "write", "edit", "bash", "glob", "grep"],
+    "hasTools": true,
+    "platform": "darwin"
+  },
+  "userMessage": "Placeholder - replace with real user message",
+  "sessionRef": {
+    "sessionId": "placeholder-session",
+    "turnId": "placeholder-turn"
+  }
+}

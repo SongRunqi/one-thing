@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   chatStore: {
     sessionMessages: new Map<string, Array<{ id: string }>>(),
     loadMessagesAround: vi.fn(),
+    loadInitialMessagePage: vi.fn(),
   },
   chatWindowFocusInput: vi.fn(),
   chatWindowScrollToMessage: vi.fn(),
@@ -117,6 +118,28 @@ describe('ChatContainer search navigation', () => {
     expect(mocks.sessionsStore.openNewChatDraft).toHaveBeenCalledWith('New Chat')
     expect(wrapper.find('.mock-chat-window').text()).toBe('draft:one')
     expect(mocks.chatWindowFocusInput).toHaveBeenCalled()
+  })
+
+  it('loads the initial message page for a split session that is not cached yet', async () => {
+    mocks.sessionsStore.sessions.push({ id: 'session-2', name: 'Split target' })
+    const wrapper = mount(ChatContainer)
+    await settle()
+
+    const vm = wrapper.vm as unknown as {
+      splitPanel: (panelId: string, sessionId: string) => void
+    }
+    vm.splitPanel('main', 'session-2')
+    await settle()
+
+    expect(mocks.chatStore.loadInitialMessagePage).toHaveBeenCalledWith('session-2')
+
+    // Already-cached sessions are not re-fetched.
+    mocks.chatStore.loadInitialMessagePage.mockClear()
+    mocks.chatStore.sessionMessages.set('session-1', [{ id: 'cached' }])
+    vm.splitPanel('main', 'session-1')
+    await settle()
+
+    expect(mocks.chatStore.loadInitialMessagePage).not.toHaveBeenCalled()
   })
 
   it('switches only the invoking split panel for a child new-session command', async () => {

@@ -11,15 +11,17 @@ import type {
 const DEFAULT_PAGE_LIMIT = 16
 const MAX_PAGE_LIMIT = 300
 
-interface IndexedMessage<TMessage extends StoredChatMessage> {
+export interface IndexedSessionMessage<TMessage extends StoredChatMessage> {
   message: TMessage
   seq: number
 }
 
-function clampLimit(limit: number | undefined): number {
+export function clampSessionMessagesPageLimit(limit: number | undefined): number {
   if (typeof limit !== 'number' || !Number.isFinite(limit)) return DEFAULT_PAGE_LIMIT
   return Math.max(1, Math.min(MAX_PAGE_LIMIT, Math.floor(limit)))
 }
+
+const clampLimit = clampSessionMessagesPageLimit
 
 export function encodeMessagePageCursor(cursor: SessionMessagePageCursor): string {
   return JSON.stringify(cursor)
@@ -45,22 +47,22 @@ export function decodeMessagePageCursor(cursor: string): SessionMessagePageCurso
   }
 }
 
-function withSeq<TMessage extends StoredChatMessage>(messages: TMessage[]): IndexedMessage<TMessage>[] {
+function withSeq<TMessage extends StoredChatMessage>(messages: TMessage[]): IndexedSessionMessage<TMessage>[] {
   return messages.map((message, index) => ({ message, seq: index + 1 }))
 }
 
 function cursorFor<TMessage extends StoredChatMessage>(
   sessionId: string,
-  item: IndexedMessage<TMessage> | undefined,
+  item: IndexedSessionMessage<TMessage> | undefined,
   includeAnchor: boolean,
 ): string | null {
   if (!item) return null
   return encodeMessagePageCursor({ sessionId, seq: item.seq, includeAnchor })
 }
 
-function responseFromItems<TMessage extends StoredChatMessage>(
+export function buildSessionMessagesPageResponse<TMessage extends StoredChatMessage>(
   sessionId: string,
-  items: IndexedMessage<TMessage>[],
+  items: IndexedSessionMessage<TMessage>[],
   totalCount: number,
 ): GetSessionMessagesPageResponse<TMessage> {
   const first = items[0]
@@ -85,7 +87,7 @@ export function getMessagesPageFromArray<TMessage extends StoredChatMessage>(
   const limit = clampLimit(request.limit)
 
   if (totalCount === 0) {
-    return responseFromItems(request.sessionId, [], totalCount)
+    return buildSessionMessagesPageResponse(request.sessionId, [], totalCount)
   }
 
   if (request.cursor) {
@@ -104,7 +106,7 @@ export function getMessagesPageFromArray<TMessage extends StoredChatMessage>(
 
     const page = filtered.slice(0, limit)
     const ordered = direction === 'older' ? page.reverse() : page
-    return responseFromItems(request.sessionId, ordered, totalCount)
+    return buildSessionMessagesPageResponse(request.sessionId, ordered, totalCount)
   }
 
   const anchor = request.anchor
@@ -118,7 +120,7 @@ export function getMessagesPageFromArray<TMessage extends StoredChatMessage>(
     const after = Math.max(0, anchor.after ?? Math.max(0, limit - before - 1))
     const start = Math.max(1, anchorSeq - before)
     const end = Math.min(totalCount, anchorSeq + after)
-    return responseFromItems(
+    return buildSessionMessagesPageResponse(
       request.sessionId,
       indexed.filter(item => item.seq >= start && item.seq <= end),
       totalCount,
@@ -126,11 +128,12 @@ export function getMessagesPageFromArray<TMessage extends StoredChatMessage>(
   }
 
   const tail = indexed.slice(Math.max(0, totalCount - limit))
-  return responseFromItems(request.sessionId, tail, totalCount)
+  return buildSessionMessagesPageResponse(request.sessionId, tail, totalCount)
 }
 
 export interface ResolveSessionMessagesPageOptions<TMessage extends StoredChatMessage = StoredChatMessage> {
   request: GetSessionMessagesPageRequest
+  getJsonlLogPage?: () => GetSessionMessagesPageResponse<TMessage> | undefined
   getSqlitePage?: () => GetSessionMessagesPageResponse<TMessage> | undefined
   getJsonByteScanPage?: () => GetSessionMessagesPageResponse<TMessage> | undefined
   getSessionMessages?: () => TMessage[] | undefined
@@ -143,6 +146,15 @@ export interface ResolveSessionMessagesPageOptions<TMessage extends StoredChatMe
 export function resolveSessionMessagesPage<TMessage extends StoredChatMessage = StoredChatMessage>(
   options: ResolveSessionMessagesPageOptions<TMessage>,
 ): ResolveSessionMessagesPageResult<TMessage> {
+  const jsonlLogPage = options.getJsonlLogPage?.()
+  if (jsonlLogPage) {
+    return {
+      response: jsonlLogPage,
+      source: 'jsonl-log',
+      shouldScheduleMigration: false,
+    }
+  }
+
   const sqlitePage = options.getSqlitePage?.()
   if (sqlitePage) {
     return {
@@ -192,6 +204,7 @@ export function getUserMessageMarkersFromArray<TMessage extends StoredChatMessag
 }
 
 export interface ResolveSessionUserMessageMarkersOptions<TMessage extends StoredChatMessage = StoredChatMessage> {
+  getJsonlLogMarkers?: () => UserMessageMarker[] | undefined
   getSqliteMarkers?: () => UserMessageMarker[] | undefined
   getSessionMessages?: () => TMessage[] | undefined
   markersFromMessages?: (messages: TMessage[]) => UserMessageMarker[]
@@ -200,6 +213,15 @@ export interface ResolveSessionUserMessageMarkersOptions<TMessage extends Stored
 export function resolveSessionUserMessageMarkers<TMessage extends StoredChatMessage = StoredChatMessage>(
   options: ResolveSessionUserMessageMarkersOptions<TMessage>,
 ): ResolveSessionUserMessageMarkersResult {
+  const jsonlLogMarkers = options.getJsonlLogMarkers?.()
+  if (jsonlLogMarkers) {
+    return {
+      markers: jsonlLogMarkers,
+      source: 'jsonl-log',
+      shouldScheduleMigration: false,
+    }
+  }
+
   const sqliteMarkers = options.getSqliteMarkers?.()
   if (sqliteMarkers) {
     return {

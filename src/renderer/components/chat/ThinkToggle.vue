@@ -4,7 +4,7 @@
     class="thinking-control"
     @click.stop
   >
-    <Tooltip :text="tooltipText">
+    <Tooltip :text="tooltipText" :disabled="tooltipDisabled">
       <Select
         class="think-select"
         :class="{ active: selectionActive }"
@@ -18,6 +18,7 @@
         :aria-label="tooltipText"
         :popper-style="thinkDropdownStyle"
         @change="handleThinkSelect"
+        @visible-change="handleThinkVisibleChange"
       >
         <template #prefix>
           <Brain :size="14" />
@@ -52,7 +53,7 @@
 
 <script setup lang="ts">
 import Select from '@/components/common/Select.vue'
-import { computed, type StyleValue } from 'vue'
+import { computed, ref, type StyleValue } from 'vue'
 import { Brain, Check } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
@@ -119,6 +120,12 @@ const props = defineProps<Props>()
 
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
+
+const tooltipDisabled = ref(false)
+
+function handleThinkVisibleChange(visible: boolean) {
+  tooltipDisabled.value = visible
+}
 
 const THINKING_PAIRS: Record<string, { normal: string; thinking: string }> = {
   deepseek: { normal: 'deepseek-chat', thinking: 'deepseek-reasoner' },
@@ -606,6 +613,17 @@ async function setLegacyPairThinking(enabled: boolean): Promise<void> {
   color: var(--ui-text-primary-fg, var(--text));
   border-color: transparent;
   background: var(--ui-state-hover-bg, var(--hover));
+  box-shadow: none;
+}
+
+/* Suppress the base Select :focus styles — the think toggle is a subtle
+   text label, not a form input.  Its hover / is-open affordances are
+   enough; a lingering focus ring after click looks stuck. */
+.think-select :deep(.app-select-control:focus),
+.think-select :deep(.app-select-control:focus-visible) {
+  color: var(--ui-text-muted-fg, var(--muted));
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
   box-shadow: none;
 }
 

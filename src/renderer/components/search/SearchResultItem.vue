@@ -102,6 +102,8 @@ const kindLabel = computed(() => {
       return 'Daily'
     case 'prompt':
       return 'Prompt'
+    default:
+      return ''
   }
 })
 </script>
@@ -119,7 +121,8 @@ const kindLabel = computed(() => {
   border-radius: 5px;
   margin: 0 3px;
   color: var(--ui-text-primary-fg, var(--text));
-  transition: background 0.12s var(--ease-default), color 0.12s var(--ease-default);
+  /* No transition: keyboard paging scrolls instantly, and a fading highlight
+     would ride along with the old row for ~120ms before settling. */
 }
 
 .search-result-item::before {
@@ -132,7 +135,6 @@ const kindLabel = computed(() => {
   border-radius: 999px;
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, transparent);
   opacity: 0;
-  transition: opacity 0.12s var(--ease-default);
 }
 
 .search-result-item.has-meta {

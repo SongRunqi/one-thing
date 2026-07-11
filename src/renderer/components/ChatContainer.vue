@@ -63,13 +63,15 @@
             :session-id="panel.sessionId"
             :can-close="panels.length > 1"
             :show-settings="index === 0 && showSettings"
-            :show-sidebar-toggle="sidebarCollapsed && !sidebarFloating"
+            :show-sidebar-toggle="index === 0 && sidebarCollapsed && !sidebarFloating"
             :media-panel-open="mediaPanelOpen"
             :is-inspector-open="isInspectorOpen"
-            :reserve-sidebar-actions="reserveSidebarActions"
+            :reserve-sidebar-actions="index === 0 && reserveSidebarActions"
             :layout-transitioning="layoutTransitioning"
+            :panel-focused="panels.length === 1 || panel.id === activePanelId"
+            @pointerdown.capture="activePanelId = panel.id"
             @close="closePanel(panel.id)"
-            @split="openSessionPicker(panel.id)"
+            @split="openSplitSearch(panel.id)"
             @equalize="equalizeAllPanels"
             @split-with-branch="(sessionId) => splitPanel(panel.id, sessionId)"
             @close-settings="$emit('close-settings')"
@@ -94,123 +96,15 @@
         @close="$emit('close-diff-overlay')"
       />
     </div>
-
-    <!-- Session Picker Dialog -->
-    <Teleport to="body">
-      <div
-        v-if="showSessionPicker"
-        class="session-picker-overlay"
-        @click.self="closeSessionPicker"
-      >
-        <div class="session-picker-dialog">
-          <div class="session-picker-header">
-            <h3>Select Session for Split View</h3>
-            <Button
-              unstyled
-              class="close-btn"
-              @click="closeSessionPicker"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
-            </Button>
-          </div>
-          <div class="session-picker-search">
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle
-                cx="11"
-                cy="11"
-                r="8"
-              />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-            <input
-              ref="sessionSearchInput"
-              v-model="sessionSearchQuery"
-              type="text"
-              placeholder="Search sessions..."
-              @keydown.escape="closeSessionPicker"
-            >
-          </div>
-          <div class="session-picker-list">
-            <!-- New Chat option (only show when not searching) -->
-            <Button
-              v-if="!sessionSearchQuery.trim()"
-              unstyled
-              class="session-picker-item new-chat-item"
-              @click="createNewChatForSplit"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              <span class="session-name">New Chat</span>
-              <span class="new-badge">Create</span>
-            </Button>
-
-            <!-- Existing sessions -->
-            <Button
-              v-for="session in filteredSessions"
-              :key="session.id"
-              unstyled
-              class="session-picker-item"
-              :class="{ current: session.id === sessionsStore.currentSessionId }"
-              @click="selectSessionForSplit(session.id)"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              <span class="session-name">{{ session.name || 'New chat' }}</span>
-              <span
-                v-if="session.id === sessionsStore.currentSessionId"
-                class="current-badge"
-              >Current</span>
-            </Button>
-            <div
-              v-if="filteredSessions.length === 0"
-              class="no-sessions"
-            >
-              No sessions found
-            </div>
-          </div>
-        </div>
-      </div>
-    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
+import { platformApi } from '@/platform'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
 import DiffOverlay from '@/components/chat/DiffOverlay.vue'
 import Splitter from '@/components/common/Splitter.vue'
@@ -275,6 +169,10 @@ const panels = ref<Panel[]>([
   }
 ])
 
+// Focused split panel: it shows the full header action group, the others
+// collapse to just the close button. Any pointerdown inside a panel claims it.
+const activePanelId = ref('main')
+
 // Sync main panel with current session
 watch(
   () => sessionsStore.currentSessionId,
@@ -286,58 +184,21 @@ watch(
   { immediate: true }
 )
 
-// Session picker state
-const showSessionPicker = ref(false)
-const sessionSearchQuery = ref('')
-const sessionSearchInput = ref<HTMLInputElement | null>(null)
-const splitFromPanelId = ref<string | null>(null)
-
-// Filtered sessions for picker
-const filteredSessions = computed(() => {
-  const sessions = sessionsStore.sessions
-  if (!sessionSearchQuery.value.trim()) {
-    return sessions.slice(0, 20)
-  }
-  const query = sessionSearchQuery.value.toLowerCase()
-  return sessions.filter(s =>
-    (s.name || '').toLowerCase().includes(query)
-  ).slice(0, 20)
-})
-
-// Open session picker
-function openSessionPicker(panelId: string) {
-  splitFromPanelId.value = panelId
-  sessionSearchQuery.value = ''
-  showSessionPicker.value = true
-  nextTick(() => {
-    sessionSearchInput.value?.focus()
-  })
+// Split goes through the Search Everywhere window: it opens locked to Chats
+// with a split intent, and the chosen session comes back via search:action.
+function openSplitSearch(panelId: string) {
+  void platformApi.toggleSearchWindow({ intent: { type: 'split-panel', panelId } })
 }
 
-// Close session picker
-function closeSessionPicker() {
-  showSessionPicker.value = false
-  splitFromPanelId.value = null
-  sessionSearchQuery.value = ''
-}
-
-// Select session and create split
-function selectSessionForSplit(sessionId: string) {
-  if (!splitFromPanelId.value) return
-  splitPanel(splitFromPanelId.value, sessionId)
-  closeSessionPicker()
-}
-
-// Create new chat for split view
-async function createNewChatForSplit() {
-  if (!splitFromPanelId.value) return
-
-  // Create new session without switching to it
-  const newSession = await sessionsStore.createSessionWithoutSwitch('New Chat')
-  if (newSession) {
-    splitPanel(splitFromPanelId.value, newSession.id)
-  }
-  closeSessionPicker()
+// Only the main panel goes through sessionsStore.switchSession, which owns
+// message loading. Secondary panels get their session assigned directly, so
+// their initial message page must be fetched here or they stay empty.
+function ensurePanelSessionLoaded(sessionId: string) {
+  if (!sessionId) return
+  if (!sessionsStore.sessions.some(s => s.id === sessionId)) return
+  const existing = chatStore.sessionMessages.get(sessionId)
+  if (existing && existing.length > 0) return
+  void chatStore.loadInitialMessagePage(sessionId)
 }
 
 // Split panel - create new panel with selected session
@@ -356,6 +217,8 @@ function splitPanel(panelId: string, sessionId: string) {
     size: panels.value[index].size
   }
   panels.value.splice(index + 1, 0, newPanel)
+  activePanelId.value = newPanel.id
+  ensurePanelSessionLoaded(sessionId)
 }
 
 async function switchPanelSession(panelId: string, sessionId: string) {
@@ -365,6 +228,8 @@ async function switchPanelSession(panelId: string, sessionId: string) {
   panel.sessionId = sessionId
   if (panel.id === panels.value[0]?.id) {
     await sessionsStore.switchSession(sessionId)
+  } else {
+    ensurePanelSessionLoaded(sessionId)
   }
 }
 
@@ -380,6 +245,9 @@ function closePanel(panelId: string) {
   const targetIndex = index === 0 ? 1 : index - 1
   panels.value[targetIndex].size += removedSize
 
+  if (activePanelId.value === panelId) {
+    activePanelId.value = panels.value[targetIndex].id
+  }
   panels.value.splice(index, 1)
 }
 
@@ -463,6 +331,7 @@ defineExpose({
   insertPromptReference,
   openFileTab,
   jumpToMessage,
+  splitPanel,
 })
 </script>
 
@@ -506,190 +375,6 @@ defineExpose({
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-}
-
-/* Session Picker Dialog */
-.session-picker-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 100px;
-  z-index: 1000;
-  animation: fadeIn 0.15s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.session-picker-dialog {
-  width: 400px;
-  max-height: 500px;
-  background: var(--ui-surface-panel-bg, var(--panel));
-  border-radius: 12px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  animation: slideDown 0.2s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.session-picker-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.session-picker-header h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.session-picker-header .close-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.session-picker-header .close-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.session-picker-search {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.session-picker-search svg {
-  color: var(--ui-text-muted-fg, var(--muted));
-  flex-shrink: 0;
-}
-
-.session-picker-search input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  color: var(--ui-text-primary-fg, var(--text));
-  outline: none;
-}
-
-.session-picker-search input::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.session-picker-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-}
-
-.session-picker-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 12px;
-  border: none;
-  background: transparent;
-  border-radius: 8px;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 14px;
-  text-align: left;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.session-picker-item:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-}
-
-.session-picker-item.current {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-}
-
-.session-picker-item svg {
-  color: var(--ui-text-muted-fg, var(--muted));
-  flex-shrink: 0;
-}
-
-.session-picker-item .session-name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-picker-item .current-badge {
-  font-size: 11px;
-  padding: 2px 6px;
-  background: var(--ui-accent-primary-fg, var(--accent));
-  color: white;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.session-picker-item.new-chat-item {
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  margin-bottom: 4px;
-  padding-bottom: 10px;
-}
-
-.session-picker-item.new-chat-item svg {
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.session-picker-item.new-chat-item:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-}
-
-.session-picker-item .new-badge {
-  font-size: 11px;
-  padding: 2px 6px;
-  background: var(--ui-accent-primary-fg, var(--accent));
-  color: white;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.no-sessions {
-  padding: 20px;
-  text-align: center;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 14px;
 }
 
 /* Full page container for CreateAgent, etc. */

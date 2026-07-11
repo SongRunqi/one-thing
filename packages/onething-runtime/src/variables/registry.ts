@@ -58,7 +58,12 @@ export class VariableRegistry {
     const chunks = await Promise.all(
       this.providers.map(provider => Promise.resolve(provider.list(ctx))),
     )
-    const flat = chunks.flat()
+    // Sort within each provider chunk so the flattened list is ordered by
+    // (provider priority, name). Identical variable sets must always render
+    // to identical bytes, or prompt-cache prefixes get invalidated for free.
+    const flat = chunks
+      .map(chunk => [...chunk].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)))
+      .flat()
 
     const dupes = findDuplicateNames(flat.map(variable => variable.name))
     if (dupes.length > 0) {

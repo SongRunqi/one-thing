@@ -6,8 +6,9 @@
     <div
       ref="listRef"
       class="sessions-list"
+      :class="{ 'is-scrolling': isScrolling }"
       :data-suppress-anim="suppressAnim ? '' : null"
-      @scroll="checkOverflow"
+      @scroll="handleScroll"
     >
       <AppMenu
         class="sidebar-menu"
@@ -253,6 +254,21 @@ function checkOverflowDelayed() {
   setTimeout(checkOverflow, 350)
 }
 
+// Reveal the scrollbar only while actively scrolling
+const isScrolling = ref(false)
+let scrollEndTimer: number | null = null
+
+function handleScroll() {
+  checkOverflow()
+
+  isScrolling.value = true
+  if (scrollEndTimer !== null) window.clearTimeout(scrollEndTimer)
+  scrollEndTimer = window.setTimeout(() => {
+    scrollEndTimer = null
+    isScrolling.value = false
+  }, 600)
+}
+
 function handleSessionMenuClick(event: MouseEvent, session: SessionWithBranches) {
   const now = Date.now()
   const lastClick = lastClickInfo.value
@@ -354,6 +370,10 @@ onUnmounted(() => {
     cancelAnimationFrame(suppressAnimFrame)
     suppressAnimFrame = null
   }
+  if (scrollEndTimer !== null) {
+    window.clearTimeout(scrollEndTimer)
+    scrollEndTimer = null
+  }
 })
 </script>
 
@@ -409,23 +429,57 @@ onUnmounted(() => {
   content-visibility: auto;
 }
 
+/* Native scrollbar stays hidden until the user scrolls or hovers the thumb.
+   The transparent thumb still occupies its 10px gutter, so :hover can hit it. */
+.sessions-list::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+.sessions-list.is-scrolling::-webkit-scrollbar-thumb,
+.sessions-list::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 26%, transparent);
+}
+
 .sidebar-menu {
   --app-menu-bg: transparent;
   --app-menu-border: transparent;
   --app-menu-width: 100%;
   --app-menu-padding: 0;
   --app-menu-item-height: 34px;
-  --app-menu-item-radius: 8px;
+  --app-menu-item-radius: 0;
+  /* MenuItem 会给二级项打内联 padding-inline-start: calc(12px + step)。
+     归零 step，让所有行的包装盒都从 12px 起，刻度几何才可控。 */
+  --app-menu-indent-step: 0px;
   --app-menu-item-fg: var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item)));
-  --app-menu-item-hover-bg: color-mix(in srgb, var(--ui-sidebar-item-hover-bg, var(--ui-state-hover-bg, var(--hover))) 54%, transparent);
+  /* Ledger（墨线）: state is drawn with the tick marks inside SessionItem,
+     never with background fills. */
+  --app-menu-item-hover-bg: transparent;
   --app-menu-item-hover-fg: var(--ui-sidebar-item-hover-fg, var(--ui-text-primary-fg, var(--text-sidebar-item-hover)));
-  --app-menu-active-bg: color-mix(in srgb, var(--ui-sidebar-item-active-bg, var(--ui-state-selected-bg, var(--session-highlight))) 54%, transparent);
+  --app-menu-active-bg: transparent;
   --app-menu-active-fg: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text-primary)));
 
+  position: relative;
   gap: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
+}
+
+/* 主账目线：整栏唯一的结构线。行刻度(SessionItem::before, x=7)挂在这条线上；
+   sticky 分组标签自带不透明底，天然把线打断。 */
+.sidebar-menu::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 4px;
+  bottom: 6px;
+  width: 1px;
+  background: color-mix(
+    in srgb,
+    var(--ui-border-strong-border, var(--border-strong, var(--border))) 80%,
+    transparent
+  );
+  pointer-events: none;
 }
 
 .session-group {
@@ -445,17 +499,19 @@ onUnmounted(() => {
   margin-right: 0;
   padding: 11px 14px 4px 8px;
   border-radius: 0;
+  /* 不透明底同时承担"打断账目线"的角色（sticky 时压在线上方） */
   background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
-  color: var(--sidebar-list-meta-fg);
-  font-size: 11px;
-  font-weight: 430;
+  color: var(--ui-text-faint-fg, var(--text-faint, var(--text-muted)));
+  font-size: var(--type-caption-size, 11px);
+  font-weight: var(--font-weight-normal, 400);
   line-height: 1.35;
-  letter-spacing: 0;
+  letter-spacing: 0.14em;
   transition: color 0.15s ease;
 }
 
+/* 第一组要让开 SidebarHeader 底部 12px 的淡出渐变，否则标签上半截被罩住 */
 .session-group.is-first-group :deep(.app-sub-menu-title) {
-  padding-top: 3px;
+  padding-top: 14px;
 }
 
 .session-group :deep(.app-sub-menu-title:hover),
@@ -465,12 +521,10 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
+/* Ledger（墨线）：分组头不用图标，标签本身压在账目线上（不透明底打断线）。
+   折叠状态由 group-count 提示，展开/收起仍点击整行。 */
 .session-group :deep(.app-sub-menu-chevron) {
-  order: -1;
-  width: 12px;
-  height: 16px;
-  color: currentColor;
-  opacity: 1;
+  display: none;
 }
 
 .session-group :deep(.app-sub-menu-label) {
@@ -478,6 +532,9 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   color: inherit;
+  /* 标签压线：SubMenu 给标题打了 12px 内联 padding-inline-start，拉回后
+     标签从 x=0(菜单系)起笔，账目线(x=7)从标签下方穿过 —— 与设计稿一致 */
+  margin-inline-start: -12px;
 }
 
 .session-group :deep(.app-sub-menu-panel) {
@@ -503,39 +560,45 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+/* 折叠时的会话数：右侧细字提示，同时充当"已折叠"的状态信号 */
 .group-count {
   flex-shrink: 0;
   font-weight: var(--font-weight-normal);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
   color: var(--sidebar-list-meta-fg-strong);
 }
 
-/* Show-more affordance per section */
+/* Show-more affordance per section — 文本行，无填充，下划线示意可点 */
 .load-more-btn {
   --app-button-height: auto;
   --app-button-min-width: 0;
   --app-button-padding-x: 0;
   --app-button-font-size: 11px;
-  --app-button-hover-fill: color-mix(in srgb, var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover))) 76%, transparent);
+  --app-button-hover-fill: transparent;
   --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
   --app-button-shadow: none;
   --app-button-hover-shadow: none;
 
   justify-content: flex-start;
-  margin: 4px 4px 6px;
-  padding: 5px 10px;
+  margin: 2px 4px 6px 26px;
+  padding: 3px 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   background: transparent;
   color: var(--sidebar-list-meta-fg);
   font-size: 11px;
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .load-more-btn:hover {
-  background: color-mix(in srgb, var(--ui-sidebar-action-hover-bg, var(--ui-state-hover-bg, var(--hover))) 76%, transparent);
+  background: transparent;
   color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 /* Kill child transitions while initial state settles to avoid the

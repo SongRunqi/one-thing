@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具方案三 · 图纸</title>
+</head>
+<body>
+<style>
+  :root {
+    --bg-app: #21252B;
+    --bg: #282C34;
+    --bg-hi: #2C323C;
+    --fg: #ABB2BF;
+    --fg-bright: #D7DAE0;
+    --mut: #636D83;
+    --faint: #5C6370;
+    --line: rgba(99, 109, 131, 0.22);
+    --line-2: rgba(99, 109, 131, 0.42);
+    --blue: #61AFEF;
+    --green: #98C379;
+    --red: #E06C75;
+    --cyan: #56B6C2;
+    --yellow: #E5C07B;
+    --sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  body {
+    margin: 0; background: var(--bg-app); color: var(--fg);
+    font-family: var(--sans); font-size: 14px; line-height: 1.6;
+    display: flex; flex-direction: column; align-items: center; gap: 26px;
+    padding: 44px 20px 90px;
+  }
+  .masthead { width: min(720px, 100%); }
+  .masthead h1 { color: var(--fg-bright); font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+  .masthead p { margin: 0; color: var(--mut); font-size: 13px; }
+  .scene-label { width: min(720px, 100%); font-family: var(--mono); font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--faint); margin-bottom: -12px; }
+  .window {
+    width: min(720px, 100%); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 34px; box-sizing: border-box;
+    background-image:
+      linear-gradient(var(--line) 0.5px, transparent 0.5px),
+      linear-gradient(90deg, var(--line) 0.5px, transparent 0.5px);
+    background-size: 28px 28px;
+    background-position: -0.5px -0.5px;
+  }
+
+  /* ============ 图纸:零圆角全描边,规格标签骑在框线上 ============ */
+  .sheet { font-family: var(--mono); }
+  .frame { position: relative; border: 1px solid var(--line-2); background: var(--bg); }
+  .frame + .frame { margin-top: 22px; }
+  .frame.grp { border-style: dashed; padding: 16px; background: transparent; }
+
+  .tag {
+    position: absolute; top: -8px; left: 12px;
+    padding: 0 7px; background: var(--bg);
+    font-size: 9.5px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--mut); white-space: nowrap;
+  }
+  .tag b { color: var(--fg-bright); font-weight: 600; }
+  .tag .ok { color: var(--green); } .tag .bad { color: var(--red); } .tag .liv { color: var(--blue); }
+  .tag-r { left: auto; right: 12px; color: var(--faint); letter-spacing: 1px; }
+
+  /* 收起态:行表 */
+  .ledger { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .ledger tr { border-top: 1px solid var(--line); cursor: pointer; }
+  .ledger tr:first-child { border-top: 0; }
+  .ledger tr:hover { background: color-mix(in srgb, var(--bg-hi) 70%, transparent); }
+  .ledger td { padding: 7px 12px; vertical-align: baseline; }
+  .ledger .no { width: 40px; color: var(--faint); font-size: 10px; }
+  .ledger .op { width: 58px; color: var(--fg-bright); font-weight: 600; }
+  .ledger tr.fail .op { color: var(--red); }
+  .ledger .tg { color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 0; width: 60%; }
+  .ledger .tg .err { color: var(--red); }
+  .ledger .spec { text-align: right; color: var(--faint); font-size: 10.5px; white-space: nowrap; }
+  .ledger .spec .plus { color: var(--green); } .ledger .spec .minus { color: var(--red); }
+  .ledger .spec .bad { color: var(--red); }
+  .ledger tr.run .op { color: var(--blue); }
+  .caret { display: inline-block; width: 7px; height: 12px; background: var(--blue); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* 展开体 */
+  .fig-body { padding: 14px 16px 12px; border-top: 1px solid var(--line-2); }
+  .cmd { font-size: 12.5px; color: var(--fg-bright); margin-bottom: 8px; }
+  .cmd .ps { color: var(--blue); margin-right: 8px; }
+  .out { font-size: 12px; line-height: 1.7; color: var(--mut); white-space: pre-wrap; }
+  .out .hi { color: var(--fg); }
+  .out .bad { color: var(--red); }
+  .more { font-size: 10.5px; color: var(--faint); cursor: pointer; margin: 3px 0; letter-spacing: 1px; }
+  .more:hover { color: var(--blue); }
+
+  /* 规格化 diff:行号排尺 + 符号列 */
+  .spec-diff { font-size: 12px; line-height: 1.65; border: 1px solid var(--line); }
+  .sd { display: flex; }
+  .sd + .sd { border-top: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+  .sd-no { width: 44px; flex-shrink: 0; text-align: right; padding-right: 8px; color: var(--faint); font-size: 10px; border-right: 1px solid var(--line); line-height: 1.65; padding-top: 1px; box-sizing: border-box; }
+  .sd-sign { width: 22px; text-align: center; flex-shrink: 0; color: var(--faint); }
+  .sd-text { white-space: pre; overflow: hidden; text-overflow: ellipsis; color: var(--fg); flex: 1; }
+  .sd.del { background: color-mix(in srgb, var(--red) 7%, transparent); }
+  .sd.del .sd-sign { color: var(--red); }
+  .sd.add { background: color-mix(in srgb, var(--green) 7%, transparent); }
+  .sd.add .sd-sign { color: var(--green); }
+  .sd.ctx .sd-text { color: var(--mut); }
+
+  .err-spec { border: 1px solid color-mix(in srgb, var(--red) 40%, transparent); padding: 10px 12px; font-size: 12px; line-height: 1.7; color: color-mix(in srgb, var(--red) 70%, var(--fg)); position: relative; }
+  .err-spec .tag { border: 0; color: var(--red); }
+  .err-spec .path { color: var(--fg); }
+
+  .dim-note { margin-top: 8px; font-size: 10px; letter-spacing: 1px; color: var(--faint); text-transform: uppercase; }
+  .dim-note .bad { color: var(--red); } .dim-note .ok { color: var(--green); }
+</style>
+
+<header class="masthead">
+  <h1>工具方案三 · 图纸</h1>
+  <p>零圆角、全描边、虚线分组。每次调用是一张编号图框(FIG.1 BASH),规格标签骑在框线上标注状态与量数(EXIT 1 · 4.6S · +6/−2);diff 带行号排尺,像工程图上的剖面。背景铺 28px 方格。</p>
+</header>
+
+<div class="scene-label">Collapsed · 图组清单</div>
+<div class="window">
+  <div class="sheet">
+    <div class="frame grp">
+      <span class="tag">RUN&nbsp;·&nbsp;<b>6 TOOLS</b>&nbsp;·&nbsp;8.4S</span>
+      <span class="tag tag-r">+24 / −6</span>
+      <div class="frame">
+        <table class="ledger">
+          <tr><td class="no">01</td><td class="op">read</td><td class="tg">src/renderer/stores/chat.ts</td><td class="spec">220 LN · 0.1S</td></tr>
+          <tr><td class="no">02</td><td class="op">bash</td><td class="tg">bun run test stores/chat</td><td class="spec"><span class="bad">EXIT 1</span> · 4.6S</td></tr>
+          <tr class="fail"><td class="no">03</td><td class="op">edit</td><td class="tg"><span class="err">Could not find the target text</span></td><td class="spec"><span class="bad">FAILED</span></td></tr>
+          <tr><td class="no">04</td><td class="op">edit</td><td class="tg">src/renderer/stores/chat.ts</td><td class="spec"><span class="plus">+6</span> <span class="minus">−2</span> · 0.2S</td></tr>
+          <tr><td class="no">05</td><td class="op">write</td><td class="tg">docs/notes/store-fix.md</td><td class="spec"><span class="plus">+18</span> · NEW</td></tr>
+          <tr class="run"><td class="no">06</td><td class="op">bash</td><td class="tg">bun run test stores/chat <span class="caret"></span></td><td class="spec">2.1S…</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Expanded · FIG.2 BASH</div>
+<div class="window">
+  <div class="sheet">
+    <div class="frame">
+      <span class="tag">FIG.2&nbsp;·&nbsp;<b>BASH</b>&nbsp;·&nbsp;<span class="bad">EXIT 1</span>&nbsp;·&nbsp;4.6S</span>
+      <span class="tag tag-r">41 LINES</span>
+      <div class="fig-body">
+        <div class="cmd"><span class="ps">$</span>bun run test stores/chat</div>
+        <div class="more">▸ +38 LINES</div>
+        <div class="out"><span class="hi">✓ chat.ts (12 tests)</span>
+<span class="bad">✕ resets draft on session switch</span>
+  expected 'draft' to be ''
+  at stores/__tests__/chat.test.ts:184</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Expanded · FIG.3 / FIG.4 EDIT</div>
+<div class="window">
+  <div class="sheet">
+    <div class="frame">
+      <span class="tag">FIG.3&nbsp;·&nbsp;<b>EDIT</b>&nbsp;·&nbsp;<span class="bad">FAILED</span></span>
+      <div class="fig-body">
+        <div class="err-spec">Could not find the target text in <span class="path">src/renderer/stores/chat.ts</span>. Tried exact matching and a single unique indentation-insensitive whole-line match. Re-read the current file and include a larger unique block.</div>
+      </div>
+    </div>
+    <div class="frame">
+      <span class="tag">FIG.4&nbsp;·&nbsp;<b>EDIT</b>&nbsp;·&nbsp;<span class="ok">OK</span>&nbsp;·&nbsp;0.2S</span>
+      <span class="tag tag-r">+6 / −2</span>
+      <div class="fig-body">
+        <div class="spec-diff">
+          <div class="sd ctx"><span class="sd-no">141</span><span class="sd-sign"></span><span class="sd-text">function switchSession(id: string) {</span></div>
+          <div class="sd del"><span class="sd-no">142</span><span class="sd-sign">−</span><span class="sd-text">  activeId.value = id</span></div>
+          <div class="sd add"><span class="sd-no">142</span><span class="sd-sign">+</span><span class="sd-text">  activeId.value = id</span></div>
+          <div class="sd add"><span class="sd-no">143</span><span class="sd-sign">+</span><span class="sd-text">  draft.value = ''</span></div>
+          <div class="sd add"><span class="sd-no">144</span><span class="sd-sign">+</span><span class="sd-text">  attachments.value = []</span></div>
+          <div class="sd ctx"><span class="sd-no">145</span><span class="sd-sign"></span><span class="sd-text">}</span></div>
+        </div>
+        <div class="dim-note">SECTION L141–145 · <span class="ok">APPLIED</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Expanded · FIG.1 READ / FIG.5 WRITE</div>
+<div class="window">
+  <div class="sheet">
+    <div class="frame">
+      <span class="tag">FIG.1&nbsp;·&nbsp;<b>READ</b>&nbsp;·&nbsp;220 LN</span>
+      <span class="tag tag-r">8.1 KB</span>
+      <div class="fig-body">
+        <div class="out">export const useChatStore = defineStore('chat', () =&gt; {
+  const activeId = ref&lt;string | null&gt;(null)
+  const draft = ref('')</div>
+        <div class="dim-note">RANGE L1–220</div>
+      </div>
+    </div>
+    <div class="frame">
+      <span class="tag">FIG.5&nbsp;·&nbsp;<b>WRITE</b>&nbsp;·&nbsp;<span class="ok">NEW FILE</span></span>
+      <span class="tag tag-r">+18</span>
+      <div class="fig-body">
+        <div class="spec-diff">
+          <div class="sd add"><span class="sd-no">1</span><span class="sd-sign">+</span><span class="sd-text"># chat store:会话切换后草稿残留</span></div>
+          <div class="sd add"><span class="sd-no">2</span><span class="sd-sign">+</span><span class="sd-text"></span></div>
+          <div class="sd add"><span class="sd-no">3</span><span class="sd-sign">+</span><span class="sd-text">切换会话时未清空 draft 与 attachments,导致</span></div>
+        </div>
+        <div class="more">▸ +15 LINES</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Running · 活动图框</div>
+<div class="window">
+  <div class="sheet">
+    <div class="frame">
+      <span class="tag">FIG.6&nbsp;·&nbsp;<b>BASH</b>&nbsp;·&nbsp;<span class="liv">RUNNING</span>&nbsp;·&nbsp;2.1S…</span>
+      <div class="fig-body">
+        <div class="cmd"><span class="ps">$</span>bun run test stores/chat <span class="caret"></span></div>
+        <div class="out"><span class="hi">✓ chat.ts (13 tests)</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

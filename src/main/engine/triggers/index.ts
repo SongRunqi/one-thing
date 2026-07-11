@@ -1,28 +1,36 @@
-import type { AppSettings, ChatMessage, ChatSession, ProviderConfig } from '../../../shared/ipc.js'
+import type {
+	AppSettings,
+	ChatMessage,
+	ChatSession,
+	ProviderConfig,
+} from "../../../shared/ipc.js";
 import {
-  CoreTriggerManager,
-  type CoreTrigger,
-  type CoreTriggerContext,
-} from '@onething/core/engine'
-import { createSkillReviewTrigger } from './skill-review.js'
+	CoreTriggerManager,
+	type CoreTrigger,
+	type CoreTriggerContext,
+} from "@onething/core/engine";
+import { createSkillReviewTrigger } from "./skill-review.js";
+import { createTurnEvaluationTrigger } from "./turn-evaluation.js";
 
-export interface TriggerContext extends CoreTriggerContext<
-  AppSettings,
-  ChatSession,
-  ChatMessage,
-  ProviderConfig
-> {}
+export interface TriggerContext
+	extends CoreTriggerContext<
+		AppSettings,
+		ChatSession,
+		ChatMessage,
+		ProviderConfig
+	> {}
 
 export interface Trigger extends CoreTrigger<TriggerContext> {}
 
 export class TriggerManager extends CoreTriggerManager<TriggerContext> {}
 
-export const triggerManager = new TriggerManager()
+export const triggerManager = new TriggerManager();
 
-let builtinTriggersRegistered = false
+let builtinTriggersRegistered = false;
 
 export function registerBuiltinTriggers(): void {
-  if (builtinTriggersRegistered) return
-  builtinTriggersRegistered = true
-  triggerManager.register(createSkillReviewTrigger())
+	if (builtinTriggersRegistered) return;
+	builtinTriggersRegistered = true;
+	triggerManager.register(createSkillReviewTrigger());
+	triggerManager.register(createTurnEvaluationTrigger());
 }

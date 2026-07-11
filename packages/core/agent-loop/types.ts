@@ -50,6 +50,8 @@ export interface AgentFileContentPart {
   data: string
   mediaType: string
   filename?: string
+  /** Absolute on-disk path when known (lets providers point the model at the original file). */
+  path?: string
 }
 
 export interface AgentAudioContentPart {
@@ -191,6 +193,32 @@ export type AgentAfterTurnHook = (
   context: AgentTurnLifecycleContext & { turnResult: AgentTurn },
 ) => AgentMessage[] | void | Promise<AgentMessage[] | void>
 
+/**
+ * Pure observation event fired for EVERY loop round (unlike afterTurn,
+ * which only fires on the final tool-less round): the exact request the
+ * model received and the response it produced. `request.messages` is the
+ * live array BEFORE this round's outputs are appended — observers must
+ * serialize synchronously and never mutate.
+ */
+export interface AgentTurnTraceEvent {
+  turn: number
+  sessionId: string
+  messageId: string
+  request: {
+    model: string
+    messages: AgentMessage[]
+    tools?: AgentTool[]
+    toolChoice?: AgentToolChoice
+    temperature?: number
+    maxTokens?: number
+    thinking?: 'enabled' | 'disabled'
+    reasoningEffort?: 'high' | 'max'
+  }
+  response: AgentTurn
+  /** Tool result messages produced by this round's tool calls. */
+  toolResultMessages: AgentMessage[]
+}
+
 export type AgentToolChoice =
   | 'auto'
   | 'none'
@@ -302,6 +330,9 @@ export interface AgentLoopOptions {
   workingDirectory?: string
   abortSignal?: AbortSignal
   onEvent?: (event: AgentStreamEvent) => void
+  /** Per-round request/response observer (tracing). Must be synchronous
+   * and non-throwing from the loop's perspective; errors are swallowed. */
+  onTurnTrace?: (event: AgentTurnTraceEvent) => void
 }
 
 export interface AgentLoopToolResult {

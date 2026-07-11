@@ -89,7 +89,10 @@
         class="app-shell-main-region"
         :resizable="sidebarDockedVisible"
       >
-        <div class="app-content">
+        <div
+          ref="appContentRef"
+          class="app-content"
+        >
           <div
             class="app-sidebar-actions"
             :class="{ transitioning: sidebarActionAnimating }"
@@ -105,6 +108,7 @@
           </div>
 
           <Splitter
+            ref="contentSplitterRef"
             class="app-content-splitter"
             :gap="0"
             :resizer-size="1"
@@ -171,21 +175,32 @@
               </Container>
             </SplitterPanel>
 
+            <!-- Collapsed (not unmounted) when hidden: the panel slides shut
+                 symmetrically and workbench tab state survives toggles. The
+                 slide wrapper freezes content at the expanded width so the
+                 panel edge clips it instead of reflowing tabs every frame. -->
             <SplitterPanel
-              v-if="inspectorVisible"
-              v-model:size="inspectorPanelSize"
+              v-if="workbenchMounted"
               as="aside"
               class="app-right-sidebar-region"
+              :size="inspectorPanelSize"
               :min="22"
               :max="48"
+              :collapsed="!workbenchRevealed"
+              @update:size="handleInspectorPanelSizeUpdate"
             >
-              <RightWorkbenchPanel
-                ref="rightWorkbenchRef"
-                :session-id="sessionsStore.currentSessionId"
-                :workspace-root="currentWorkspaceRoot"
-                :workspace-roots="currentWorkspaceRoots"
-                @close="inspectorOpen = false"
-              />
+              <div
+                class="workbench-slide"
+                :style="workbenchSlideStyle"
+              >
+                <RightWorkbenchPanel
+                  ref="rightWorkbenchRef"
+                  :session-id="sessionsStore.currentSessionId"
+                  :workspace-root="currentWorkspaceRoot"
+                  :workspace-roots="currentWorkspaceRoots"
+                  @close="inspectorOpen = false"
+                />
+              </div>
             </SplitterPanel>
           </Splitter>
 
@@ -196,6 +211,12 @@
       <!-- Old search overlay removed — replaced by Search Everywhere window -->
     </Splitter>
   </ErrorBoundary>
+
+  <!-- Evals incident workbench (full-screen overlay). Rendered OUTSIDE the
+       window-mode branches: the entry button lives in the Settings window,
+       which renders the SettingsPage branch — an overlay confined to the
+       main-app branch would never appear there. -->
+  <EvalsWorkbench v-if="evalsWorkbenchStore.open" />
 </template>
 
 <script setup lang="ts">
@@ -221,6 +242,8 @@ import SearchWindow from '@/components/search/SearchWindow.vue'
 import TodoPlanWindow from '@/components/TodoPlanWindow.vue'
 import VoiceRuntimeWindow from '@/components/voice/VoiceRuntimeWindow.vue'
 import VoiceOverlay from '@/components/voice/VoiceOverlay.vue'
+import EvalsWorkbench from '@/components/evals/EvalsWorkbench.vue'
+import { useEvalsWorkbenchStore } from '@/stores/evalsWorkbench'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { platformApi } from '@/platform'
@@ -262,7 +285,9 @@ const voiceStore = useVoiceStore()
 
 const appReady = ref(false)
 const showSettings = ref(false)
+const evalsWorkbenchStore = useEvalsWorkbenchStore()
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
+const appContentRef = ref<HTMLElement | null>(null)
 const rightWorkbenchRef = ref<InstanceType<typeof RightWorkbenchPanel> | null>(null)
 const inspectorOpen = computed({
   get: () => chatStore.inspectorOpen,
@@ -466,6 +491,61 @@ const inspectorPanelSize = ref(clampInspectorPanelSize(
   Number.parseFloat(localStorage.getItem('inspectorPanelSize') || String(DEFAULT_INSPECTOR_PANEL_SIZE))
 ))
 const inspectorResizing = ref(false)
+
+// Mount the workbench panel on first open, then keep it mounted so closing
+// only collapses it (animated) and its tab/terminal state is preserved.
+// First open mounts collapsed and expands a frame later so the slide-in
+// transition runs from width 0.
+const workbenchMounted = ref(false)
+const workbenchRevealed = ref(false)
+watch(inspectorVisible, async visible => {
+  if (visible && !workbenchMounted.value) {
+    workbenchMounted.value = true
+    await nextTick()
+    // Flush layout so the collapsed style is committed as the transition's
+    // starting state; otherwise the panel pops in at partial width.
+    void (contentSplitterRef.value?.$el as HTMLElement | undefined)?.offsetWidth
+    workbenchRevealed.value = inspectorVisible.value
+    return
+  }
+  workbenchRevealed.value = visible
+}, { immediate: true })
+
+// The splitter reports size 0 for the collapsed panel; ignore it so the
+// stored width survives close/reopen.
+function handleInspectorPanelSizeUpdate(size: number) {
+  if (!inspectorVisible.value) return
+  inspectorPanelSize.value = clampInspectorPanelSize(size)
+}
+
+const contentSplitterRef = ref<InstanceType<typeof Splitter> | null>(null)
+const contentSplitterWidth = ref(0)
+let contentSplitterObserver: ResizeObserver | null = null
+
+watch(contentSplitterRef, splitter => {
+  contentSplitterObserver?.disconnect()
+  const el = splitter?.$el as HTMLElement | undefined
+  if (!el || typeof ResizeObserver === 'undefined') return
+  contentSplitterObserver ??= new ResizeObserver(entries => {
+    contentSplitterWidth.value = entries[0]?.contentRect.width ?? 0
+  })
+  contentSplitterObserver.observe(el)
+}, { flush: 'post' })
+
+onUnmounted(() => {
+  contentSplitterObserver?.disconnect()
+  contentSplitterObserver = null
+})
+
+// Expanded pixel width of the workbench. While the panel collapses/expands,
+// this stays constant (inspectorPanelSize is not written during the
+// animation), so the content is clipped by the sliding edge instead of
+// being reflowed at every frame.
+const workbenchSlideStyle = computed(() => {
+  if (!contentSplitterWidth.value) return undefined
+  const width = Math.ceil(contentSplitterWidth.value * inspectorPanelSize.value / 100)
+  return { width: `${width}px` }
+})
 const mainWorkspacePanelSize = computed({
   get: () => inspectorVisible.value ? 100 - inspectorPanelSize.value : 100,
   set: (size: number) => {
@@ -607,6 +687,37 @@ function openSearch() {
   platformApi.toggleSearchWindow()
 }
 
+// Report the content area rect (sidebar excluded) so the main process can
+// center the Search Everywhere window on the chat area instead of the full
+// window width.
+let searchAnchorObserver: ResizeObserver | null = null
+let searchAnchorReportTimer: ReturnType<typeof setTimeout> | null = null
+
+function reportSearchAnchor() {
+  const el = appContentRef.value
+  if (!el || typeof platformApi.setSearchWindowAnchor !== 'function') return
+  const rect = el.getBoundingClientRect()
+  void platformApi
+    .setSearchWindowAnchor({ x: rect.x, y: rect.y, width: rect.width, height: rect.height })
+    .catch(() => {})
+}
+
+function scheduleSearchAnchorReport() {
+  if (searchAnchorReportTimer) clearTimeout(searchAnchorReportTimer)
+  searchAnchorReportTimer = setTimeout(() => {
+    searchAnchorReportTimer = null
+    reportSearchAnchor()
+  }, 150)
+}
+
+function setupSearchAnchorObserver() {
+  const el = appContentRef.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  searchAnchorObserver = new ResizeObserver(() => scheduleSearchAnchorReport())
+  searchAnchorObserver.observe(el)
+  reportSearchAnchor()
+}
+
 // Double Shift to open search (only in main window)
 if (!isSettingsWindow.value && !isImagePreviewWindow.value && !isSearchWindow.value && !isVoiceRuntimeWindow.value) {
   useDoubleShift(() => openSearch())
@@ -626,6 +737,7 @@ let unsubscribeMenuCloseChat: (() => void) | null = null
 let unsubscribeSearchAction: (() => void) | null = null
 
 onMounted(async () => {
+  console.info(`[Perf][Startup] renderer-mounted +${Math.round(performance.now())}ms since page load`)
   window.addEventListener('hashchange', syncCurrentHash)
   window.addEventListener(TODO_PLAN_WEB_WINDOW_EVENT, handleTodoPlanWebWindowAction)
 
@@ -666,7 +778,12 @@ onMounted(async () => {
   }
 
   appReady.value = true
+  console.info(`[Perf][Startup] session-interactive +${Math.round(performance.now())}ms since page load`)
   void markdownCacheReady
+
+  // Anchor element mounts with the main-app branch after appReady flips.
+  await nextTick()
+  setupSearchAnchorObserver()
 
   // Listen for settings changes from other windows (e.g., settings window)
   unsubscribeSettingsChanged = platformApi.onSettingsChanged((newSettings) => {
@@ -722,6 +839,17 @@ onMounted(async () => {
       await sessionsStore.switchSession(sessionId)
       return
     }
+    if (actionId.startsWith('split-panel:')) {
+      const payload = actionId.slice('split-panel:'.length)
+      const separatorIndex = payload.indexOf(':')
+      if (separatorIndex > 0) {
+        const panelId = payload.slice(0, separatorIndex)
+        const sessionId = payload.slice(separatorIndex + 1)
+        activeWorkspacePanel.value = null
+        chatContainerRef.value?.splitPanel?.(panelId, sessionId)
+      }
+      return
+    }
     if (actionId.startsWith('open-file:')) {
       const filePath = actionId.replace('open-file:', '')
       await openFileInRightWorkbench(filePath)
@@ -770,6 +898,14 @@ onUnmounted(() => {
   }
   if (unsubscribeSearchAction) {
     unsubscribeSearchAction()
+  }
+  if (searchAnchorObserver) {
+    searchAnchorObserver.disconnect()
+    searchAnchorObserver = null
+  }
+  if (searchAnchorReportTimer) {
+    clearTimeout(searchAnchorReportTimer)
+    searchAnchorReportTimer = null
   }
   if (floatingShowTimer.value) {
     clearTimeout(floatingShowTimer.value)
@@ -881,6 +1017,18 @@ onUnmounted(() => {
 
 .app-right-sidebar-region {
   position: relative;
+}
+
+.workbench-slide {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Hide only after the slide-out finishes; reappear instantly on expand. */
+.app-right-sidebar-region.is-collapsed .workbench-slide {
+  visibility: hidden;
+  transition: visibility 0s linear 0.2s;
 }
 
 .workspace-view-stack {

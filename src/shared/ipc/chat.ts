@@ -89,6 +89,7 @@ export type AttachmentMediaType = 'image' | 'document' | 'audio' | 'video' | 'fi
 export interface MessageAttachment {
   id: string
   fileName: string
+  filePath?: string          // Absolute on-disk path (dropped/picked files; pasted files have none)
   mimeType: string           // e.g., 'image/jpeg', 'application/pdf'
   size: number               // File size in bytes
   mediaType: AttachmentMediaType
@@ -123,6 +124,10 @@ export interface ChatMessage {
   source?: 'text' | 'voice' | 'api' | string
   voice?: VoiceTranscriptMetadata
   origin?: MessageOrigin
+  // Turn-volatile context variables captured at send time (user messages only).
+  // Rendered into the model request as a <context-update> block; persisted so
+  // history rebuilds replay identical bytes. Not displayed as message content.
+  contextUpdate?: string
   // Token usage for this message (for assistant messages)
   usage?: {
     inputTokens: number

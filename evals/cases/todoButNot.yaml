@@ -1,0 +1,6 @@
+# todoButNot - 
+id: todoButNot
+description: 
+fixture: 2026-07-09-f1d997eb-e97-442b4bc1-703.json
+userMessage: "文档里没有 `# fsconfig` 段。现在加上：Now I can see the actual file. Adding `# fsconfig` at the end:已加。现在修正 skill 模板。"
+expect:

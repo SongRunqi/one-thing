@@ -67,7 +67,9 @@
     "./plugins": "./src/plugins/index.ts",
     "./plugins/*": "./src/plugins/*.ts",
     "./tools": "./src/tools/index.ts",
-    "./tools/*": "./src/tools/*.ts"
+    "./tools/*": "./src/tools/*.ts",
+    "./perf": "./src/perf/index.ts",
+    "./perf/*": "./src/perf/*.ts"
   },
   "dependencies": {
     "@onething/core": "file:../core",

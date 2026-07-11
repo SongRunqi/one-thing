@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "ts": "2026-07-09T09:08:50.053Z",
+  "provider": "deepseek",
+  "model": "deepseek-v4-pro",
+  "runs": 3,
+  "cases": {
+    "no tool call": {
+      "score": 0,
+      "caseId": "no tool call",
+      "attempts": [
+        {
+          "index": 1,
+          "pass": false,
+          "reason": "fetch failed"
+        },
+        {
+          "index": 2,
+          "pass": false,
+          "reason": "fetch failed"
+        },
+        {
+          "index": 3,
+          "pass": false,
+          "reason": "fetch failed"
+        }
+      ]
+    },
+    "saywillNot": {
+      "score": 0,
+      "caseId": "saywillNot",
+      "attempts": [
+        {
+          "index": 1,
+          "pass": false,
+          "reason": "fetch failed"
+        },
+        {
+          "index": 2,
+          "pass": false,
+          "reason": "fetch failed"
+        },
+        {
+          "index": 3,
+          "pass": false,
+          "reason": "fetch failed"
+        }
+      ]
+    }
+  }
+}

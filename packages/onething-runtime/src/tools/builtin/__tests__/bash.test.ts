@@ -72,7 +72,10 @@ describe('runtime bash tool', () => {
       createContext(dir, { updateResult }),
     )
 
-    expect(createOperations).toHaveBeenCalledWith({ shellPath: '/bin/test-shell' })
+    expect(createOperations).toHaveBeenCalledWith({
+      shellPath: '/bin/test-shell',
+      sessionId: 'test-session',
+    })
     expect(exec).toHaveBeenCalledWith('printf "hello\\n"', dir, expect.objectContaining({
       onData: expect.any(Function),
       timeout: 120000,

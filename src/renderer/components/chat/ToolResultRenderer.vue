@@ -47,7 +47,7 @@
           class="expand-line"
           @click.stop="bashExpanded = true"
         >
-          … +{{ hiddenBashLineCount }} lines
+          ▸ +{{ hiddenBashLineCount }} lines
         </button>
         <div
           v-for="(line, index) in visibleBashLines"
@@ -406,9 +406,11 @@ function handleWheel(event: WheelEvent) {
   background: transparent;
   color: var(--ui-tool-text-faint-fg, var(--tool-faint));
   font-family: var(--tool-font-mono);
-  font-size: var(--tool-font-size-body);
+  font-size: 10px;
+  letter-spacing: 1px;
   line-height: var(--tool-code-line-height);
   text-align: left;
+  text-transform: uppercase;
   cursor: pointer;
 }
 
@@ -416,14 +418,16 @@ function handleWheel(event: WheelEvent) {
   color: var(--ui-tool-text-fg, var(--tool-ink));
 }
 
+/* Blueprint dimension note: bare caps annotation, no side bar. */
 .bash-meta {
-  margin-top: 4px;
-  padding: 2px 0 2px 8px;
-  border-left: 2px solid var(--ui-tool-border-border, var(--tool-border));
+  margin-top: 6px;
+  padding: 0;
   color: var(--ui-tool-text-faint-fg, var(--tool-faint));
   font-family: var(--tool-font-mono);
-  font-size: calc(var(--tool-font-size-body) - 1px);
+  font-size: 10px;
+  letter-spacing: 1px;
   line-height: var(--tool-code-line-height);
+  text-transform: uppercase;
 }
 
 .bash-meta-line {

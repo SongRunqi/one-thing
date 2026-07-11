@@ -530,9 +530,9 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 
 <style scoped>
 .tool-activity-timeline {
-  /* Size expanded panes against this container, not the viewport, so details
-     never overflow a narrow message column (e.g. with the inspector open). */
-  container-type: inline-size;
+  /* NOTE: no container-type here — its style containment would trap the
+     ledger counter below. The @container ancestor is .process-rail (the
+     normal mount); the legacy fallback merely loses narrow-column tweaks. */
   /* Defined here (StepsPanel's own root) so they inherit into slot content;
      panel/list containers are rendered by NestedCollapseGroup/CollapsePanel
      and never carry this component's scope attribute. */
@@ -544,6 +544,8 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   margin: 4px 0 6px;
   color: var(--ui-tool-text-muted-fg, var(--tool-soft));
   font-family: var(--tool-font-sans);
+  /* Blueprint ledger: rows are numbered like figures on a sheet. */
+  counter-reset: tool-fig;
 }
 
 .tool-activity-timeline :deep(.activity-group) {
@@ -668,13 +670,18 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0;
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
   max-width: 100%;
   padding: 1px 0 3px;
   border-top: 0;
+}
+
+/* Hairline rules between ledger rows. */
+.tool-activity-timeline :deep(.operation-list > * + *) {
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle)) 32%, transparent);
 }
 
 .tool-activity-timeline :deep(.workflow-group .operation-list) {
@@ -713,17 +720,36 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
 .operation-row {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  min-height: 24px;
-  padding: 2px 0;
+  min-height: 26px;
+  padding: 4px 8px 4px 4px;
   border-radius: 0;
   user-select: none;
   -webkit-user-select: none;
   transition: color 0.15s ease;
+}
+
+/* Ledger row number (01, 02, …), counted in DOM order per timeline. */
+.operation-row::before {
+  counter-increment: tool-fig;
+  content: counter(tool-fig, decimal-leading-zero);
+  flex: 0 0 auto;
+  width: 20px;
+  padding-top: 1px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  line-height: 1.75;
+  text-align: left;
+}
+
+/* The op name is the identity — no icons on the sheet. */
+.operation-row :deep(.tool-icon) {
+  display: none;
 }
 
 .operation-row.has-details {
@@ -783,31 +809,31 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   line-height: 1.45;
 }
 
+/* Ledger op column: lowercase mono, fixed width so targets align. */
 .node-action {
+  display: inline-block;
+  min-width: 46px;
   color: var(--activity-title-fg);
   font-family: var(--font-mono, monospace);
   font-size: 11.5px;
-  font-weight: 560;
+  font-weight: 620;
   line-height: inherit;
+  text-transform: lowercase;
+}
+
+.operation-row.status-failed .node-action,
+.operation-row.status-rejected .node-action {
+  color: var(--ui-status-danger-fg, var(--text-error));
 }
 
 .node-target-name {
   min-width: 0;
+  margin-left: 10px;
   color: var(--activity-row-fg);
   font-family: var(--font-mono, monospace);
   font-size: 11.5px;
   font-weight: 450;
   line-height: inherit;
-}
-
-.node-target-name::before {
-  content: '(';
-  color: var(--activity-title-fg);
-}
-
-.node-target-name::after {
-  content: ')';
-  color: var(--activity-title-fg);
 }
 
 .node-target-name.command-chip {
@@ -934,10 +960,12 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   overflow: hidden;
   color: var(--ui-text-faint-fg, var(--muted));
   font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.6px;
   line-height: 1.25;
   text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 

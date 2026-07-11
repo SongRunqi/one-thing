@@ -44,22 +44,31 @@ export interface ElectronSearchWindowLayoutOptions {
   ): ElectronSearchWindowGuideState
 }
 
+export interface ElectronSearchWindowSize {
+  width: number
+  height: number
+}
+
 export interface ElectronSearchWindowControllerOptions {
   shownChannel: string
   guidesChannel: string
   hiddenGuides: ElectronSearchWindowGuideState
   layout: ElectronSearchWindowLayoutOptions
   getVisualOptions(): ElectronSearchWindowVisualOptions
+  /** Last user-adjusted size; used instead of the default size when present. */
+  getPreferredSize?: () => ElectronSearchWindowSize | null
+  /** Persist the user-adjusted size when the window is dismissed. */
+  savePreferredSize?: (size: ElectronSearchWindowSize) => void
   guideHideDelayMs?: number
   schedule?: (callback: () => void, delayMs: number) => unknown
   clearScheduled?: (timer: unknown) => void
 }
 
 export interface ElectronSearchWindowController {
-  open(parentWindow: BrowserWindow): BrowserWindow
+  open(parentWindow: BrowserWindow, shownPayload?: unknown): BrowserWindow
   warm(parentWindow: BrowserWindow): BrowserWindow
   close(): void
-  toggle(parentWindow: BrowserWindow): void
+  toggle(parentWindow: BrowserWindow, shownPayload?: unknown): void
   getWindow(): BrowserWindow | null
 }
 
@@ -79,8 +88,13 @@ export function createElectronSearchWindowController(
   let searchWindow: BrowserWindow | null = null
   let searchParentWindow: BrowserWindow | null = null
   let pendingShowParentWindow: BrowserWindow | null = null
+  let pendingShownPayload: unknown = null
   let isSearchWindowReady = false
   let guideHideTimer: unknown = null
+
+  function clampSize(value: number, min: number, max: number): number {
+    return Math.min(Math.max(value, min), max)
+  }
 
   function clearGuideHideTimer(): void {
     if (!guideHideTimer) return
@@ -122,7 +136,23 @@ export function createElectronSearchWindowController(
 
   function position(window: BrowserWindow, parentWindow: BrowserWindow): void {
     applyConstraints(window, parentWindow)
-    window.setBounds(options.layout.getDefaultBounds(parentWindow.getBounds()))
+    const parentBounds = parentWindow.getBounds()
+    const defaultBounds = options.layout.getDefaultBounds(parentBounds)
+    const preferred = options.getPreferredSize?.() ?? null
+    if (!preferred) {
+      window.setBounds(defaultBounds)
+      return
+    }
+
+    const constraints = options.layout.getSizeConstraints(parentBounds)
+    const width = clampSize(preferred.width, constraints.minWidth, constraints.maxWidth)
+    const height = clampSize(preferred.height, constraints.minHeight, constraints.maxHeight)
+    window.setBounds({
+      x: Math.round(defaultBounds.x + (defaultBounds.width - width) / 2),
+      y: defaultBounds.y,
+      width,
+      height,
+    })
   }
 
   function show(parentWindow: BrowserWindow): void {
@@ -140,7 +170,8 @@ export function createElectronSearchWindowController(
     searchWindow.focus()
     pendingShowParentWindow = null
     emitGuides(options.hiddenGuides)
-    searchWindow.webContents.send(options.shownChannel)
+    searchWindow.webContents.send(options.shownChannel, pendingShownPayload ?? null)
+    pendingShownPayload = null
   }
 
   function loadRoute(window: BrowserWindow, visualOptions: ElectronSearchWindowVisualOptions): void {
@@ -215,6 +246,7 @@ export function createElectronSearchWindowController(
       searchWindow = null
       searchParentWindow = null
       pendingShowParentWindow = null
+      pendingShownPayload = null
       isSearchWindowReady = false
     })
 
@@ -223,7 +255,8 @@ export function createElectronSearchWindowController(
   }
 
   const controller: ElectronSearchWindowController = {
-    open(parentWindow) {
+    open(parentWindow, shownPayload) {
+      pendingShownPayload = shownPayload ?? null
       return create(parentWindow, true)
     },
     warm(parentWindow) {
@@ -233,15 +266,21 @@ export function createElectronSearchWindowController(
       if (searchWindow && !searchWindow.isDestroyed()) {
         clearGuideHideTimer()
         pendingShowParentWindow = null
+        pendingShownPayload = null
+        if (searchWindow.isVisible()) {
+          const bounds = searchWindow.getBounds()
+          options.savePreferredSize?.({ width: bounds.width, height: bounds.height })
+        }
         emitGuides(options.hiddenGuides)
         searchWindow.hide()
       }
     },
-    toggle(parentWindow) {
-      if (searchWindow && !searchWindow.isDestroyed() && searchWindow.isVisible()) {
+    toggle(parentWindow, shownPayload) {
+      // An explicit payload (e.g. split intent) re-presents the window instead of closing it.
+      if (shownPayload == null && searchWindow && !searchWindow.isDestroyed() && searchWindow.isVisible()) {
         controller.close()
       } else {
-        controller.open(parentWindow)
+        controller.open(parentWindow, shownPayload)
       }
     },
     getWindow() {

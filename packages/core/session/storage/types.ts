@@ -43,6 +43,7 @@ export interface GetSessionMessagesPageResponse<TMessage extends StoredChatMessa
 
 export type SessionMessagesPageSource =
   | 'sqlite'
+  | 'jsonl-log'
   | 'json-byte-scan'
   | 'json-full-fallback'
   | 'missing'
@@ -62,6 +63,7 @@ export interface UserMessageMarker {
 
 export type SessionUserMessageMarkersSource =
   | 'sqlite'
+  | 'jsonl-log'
   | 'json-full-fallback'
   | 'missing'
 

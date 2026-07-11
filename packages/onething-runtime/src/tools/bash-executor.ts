@@ -253,7 +253,7 @@ function createDeferredBackgroundLog(maxBytes = MAX_BACKGROUND_STARTUP_LOG_BYTES
   }
 }
 
-export function createLocalBashOperations(options: { shellPath?: string; spawnHook?: BashSpawnHook } = {}): BashOperations {
+export function createLocalBashOperations(options: { shellPath?: string; spawnHook?: BashSpawnHook; sessionId?: string } = {}): BashOperations {
   return {
     exec: async (command, cwd, { onData, signal, timeout, env }) => {
       cleanupBackgroundJobLogs()
@@ -314,6 +314,7 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
           ? [registerBackgroundJob({
               command: spawnContext.command,
               cwd: spawnContext.cwd,
+              sessionId: options.sessionId,
               shellPid: child.pid,
               pgid: child.pid,
               childPids: backgroundPids,
@@ -362,6 +363,7 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
       const job: BackgroundJob = registerBackgroundJob({
         command: spawnContext.command,
         cwd: spawnContext.cwd,
+        sessionId: options.sessionId,
         shellPid: 0,
         pgid: child.pid ?? 0,
         childPids: child.pid ? [child.pid] : [],

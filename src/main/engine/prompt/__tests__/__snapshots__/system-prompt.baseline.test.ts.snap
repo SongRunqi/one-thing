@@ -10,6 +10,7 @@ Tool Guidelines:
 - Prefer specific file/search tools over bash when they fit the task.
 - When changing code, run an appropriate check when practical, then summarize changed paths clearly.
 - Show file paths clearly when working with files.
+- When you start a long-running or multi-turn operation, track its status with the \`variable\` tool (update on change, delete when done) so later turns stay aware of in-flight state.
 
 Current date: 2026-06-09",
     "role": "system",
@@ -17,6 +18,10 @@ Current date: 2026-06-09",
   {
     "content": "# Runtime Context
 - Provider ID: codex",
+    "role": "developer",
+  },
+  {
+    "content": "Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.",
     "role": "developer",
   },
   {
@@ -50,11 +55,14 @@ Tool Guidelines:
 - Prefer specific file/search tools over bash when they fit the task.
 - When changing code, run an appropriate check when practical, then summarize changed paths clearly.
 - Show file paths clearly when working with files.
+- When you start a long-running or multi-turn operation, track its status with the \`variable\` tool (update on change, delete when done) so later turns stay aware of in-flight state.
 
 Current date: 2026-06-09
 
 # Runtime Context
 - Provider ID: codex
+
+Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -77,6 +85,7 @@ Tool Guidelines:
 - Prefer specific file/search tools over bash when they fit the task.
 - When changing code, run an appropriate check when practical, then summarize changed paths clearly.
 - Show file paths clearly when working with files.
+- When you start a long-running or multi-turn operation, track its status with the \`variable\` tool (update on change, delete when done) so later turns stay aware of in-flight state.
 
 Current date: 2026-06-09
 
@@ -86,6 +95,8 @@ Be precise and cite sources.
 
 # Runtime Context
 - Provider ID: openai
+
+Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
 
 You are running on macOS. Use Unix/Bash-compatible syntax with forward slashes (/) for paths.
 
@@ -101,11 +112,14 @@ Tool Guidelines:
 - Prefer specific file/search tools over bash when they fit the task.
 - When changing code, run an appropriate check when practical, then summarize changed paths clearly.
 - Show file paths clearly when working with files.
+- When you start a long-running or multi-turn operation, track its status with the \`variable\` tool (update on change, delete when done) so later turns stay aware of in-flight state.
 
 Current date: 2026-06-09
 
 # Runtime Context
 - Provider ID: openai
+
+Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -126,11 +140,14 @@ Tool Guidelines:
 - Prefer specific file/search tools over bash when they fit the task.
 - When changing code, run an appropriate check when practical, then summarize changed paths clearly.
 - Show file paths clearly when working with files.
+- When you start a long-running or multi-turn operation, track its status with the \`variable\` tool (update on change, delete when done) so later turns stay aware of in-flight state.
 
 Current date: 2026-06-09
 
 # Runtime Context
 - Provider ID: openai
+
+Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -151,9 +168,6 @@ Additional work directories:
 
 If a request clearly belongs to one of these directories and it is not already the current work directory, first call \`variable\` with action="set", name="workdir", value=<path>. Use \`project_dirs get path=<path>\` only to inspect remembered metadata; it does not change the work directory.
 
-# Context Variables
-foo=bar
-
 # Skills
 The following skills provide specialized instructions for specific tasks.
 Use the read tool to load a skill file when the task matches its description.
@@ -170,7 +184,10 @@ When a skill file references a relative path, resolve it against the skill direc
 You are running on macOS. Use Unix/Bash-compatible syntax with forward slashes (/) for paths.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md",
+Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md
+
+# Context Variables
+foo=bar",
     "role": "system",
   },
   {
@@ -188,11 +205,14 @@ Tool Guidelines:
 - Prefer specific file/search tools over bash when they fit the task.
 - When changing code, run an appropriate check when practical, then summarize changed paths clearly.
 - Show file paths clearly when working with files.
+- When you start a long-running or multi-turn operation, track its status with the \`variable\` tool (update on change, delete when done) so later turns stay aware of in-flight state.
 
 Current date: 2026-06-09
 
 # Runtime Context
 - Provider ID: openai
+
+Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
 
 # Work Directory
 Current work directory: /repo (/repo)
@@ -213,9 +233,6 @@ Additional work directories:
 
 If a request clearly belongs to one of these directories and it is not already the current work directory, first call \`variable\` with action="set", name="workdir", value=<path>. Use \`project_dirs get path=<path>\` only to inspect remembered metadata; it does not change the work directory.
 
-# Context Variables
-foo=bar
-
 # Skills
 The following skills provide specialized instructions for specific tasks.
 Use the read tool to load a skill file when the task matches its description.
@@ -232,7 +249,10 @@ When a skill file references a relative path, resolve it against the skill direc
 You are running on macOS. Use Unix/Bash-compatible syntax with forward slashes (/) for paths.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md"
+Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md
+
+# Context Variables
+foo=bar"
 `;
 
 exports[`system prompt baseline > voice speak mode > voice-systemPrompt 1`] = `
@@ -243,6 +263,7 @@ Tool Guidelines:
 - Prefer specific file/search tools over bash when they fit the task.
 - When changing code, run an appropriate check when practical, then summarize changed paths clearly.
 - Show file paths clearly when working with files.
+- When you start a long-running or multi-turn operation, track its status with the \`variable\` tool (update on change, delete when done) so later turns stay aware of in-flight state.
 
 Current date: 2026-06-09
 
@@ -255,6 +276,8 @@ Do not output special speech markup tags. Write the actual reply text directly.
 
 # Runtime Context
 - Provider ID: openai
+
+Turn-volatile context (current time, git branch, background jobs, fast-changing variables) arrives in <context-update> blocks appended to user messages. The most recent block supersedes all earlier ones; treat state in older blocks as stale.
 
 You are running on macOS. Use Unix/Bash-compatible syntax with forward slashes (/) for paths.
 

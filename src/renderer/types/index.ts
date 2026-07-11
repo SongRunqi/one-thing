@@ -1,935 +1,1688 @@
 import type {
-  ChatMessage,
-  ChatSession,
-  ContextVariable,
-  AgentDefinition,
-  AgentsListResponse,
-  AgentCreateResponse,
-  AgentUpdateResponse,
-  AgentDeleteResponse,
-  UserPrompt,
-  PromptReferenceSnapshot,
-  PromptListResponse,
-  PromptGetResponse,
-  PromptCreateRequest,
-  PromptCreateResponse,
-  PromptUpdateRequest,
-  PromptUpdateResponse,
-  PromptDeleteRequest,
-  PromptDeleteResponse,
-  SessionMeta,
-  SessionDetails,
-  GetSessionsListResponse,
-  ActivateSessionResponse,
-  GetSessionMessagesResponse,
-  GetSessionMessagesPageRequest,
-  GetSessionMessagesPageResponse,
-  UserMessageMarker,
-  GetSessionUserMarkersResponse,
-  AISettings,
-  AppSettings,
-  AIProvider,
-  ProviderConfig,
-  ModelCapabilityOverride,
-  CustomProviderConfig,
-  ProviderInfo,
-  CodexProviderUsage,
-  CodexUsageLimit,
-  CodexUsageWindow,
-  ProviderEnvStatus,
-  GetProviderEnvStatusResponse,
-  ProviderUsageResponse,
-  ModelInfo,
-  OpenRouterModel,
-  ColorTheme,
-  BaseTheme,
-  MessageListDensity,
-  TypographyDensity,
-  KeyboardShortcut,
-  ShortcutSettings,
-  EditorSettings,
-  ChatSettings,
-  ProxySettings,
-  NetworkSettings,
-  GatewayStatus,
-  GatewayGetStatusResponse,
-  GatewayStartRequest,
-  GatewayStartResponse,
-  GatewayStopResponse,
-  GatewayWechatAddAccountRequest,
-  GatewayWechatAddAccountResponse,
-  GatewayWechatStopAccountRequest,
-  GatewayWechatStopAccountResponse,
-  GatewayWechatRemoveAccountRequest,
-  GatewayWechatRemoveAccountResponse,
-  GatewayWechatRenameAccountRequest,
-  GatewayWechatRenameAccountResponse,
-  GatewayWechatLogoutRequest,
-  GatewayWechatLogoutResponse,
-  MessageOrigin,
-  ChannelUserLink,
-  ChannelUserProfile,
-  ChannelIdentityListLinksRequest,
-  ChannelIdentityListLinksResponse,
-  ChannelIdentityListProfilesResponse,
-  ChannelIdentityCreateLinkRequest,
-  ChannelIdentityCreateLinkResponse,
-  ChannelIdentityCreateProfileRequest,
-  ChannelIdentityCreateProfileResponse,
-  ChannelIdentityDeleteLinkResponse,
-  ChannelIdentityUpdateProfileRequest,
-  ChannelIdentityUpdateProfileResponse,
-  ChannelIdentityResolveResponse,
-  ChannelReplyDeliveryRecord,
-  VoiceEndpointingMode,
-  VoiceEvent,
-  VoiceLatencyMilestone,
-  VoiceLatencyMilestoneName,
-  VoiceRuntimeCommand,
-  VoiceRuntimeState,
-  VoiceSettings,
-  VoiceStartRequest,
-  VoiceStopRequest,
-  VoiceSubmitUtteranceRequest,
-  VoiceSubmitTranscriptRequest,
-  VoiceSynthesizeRequest,
-  VoiceTestASRRequest,
-  VoiceTestTTSRequest,
-  VoiceGetStateResponse,
-  VoiceSubmitUtteranceResponse,
-  VoiceSynthesizeResponse,
-  VoiceTTSModel,
-  VoiceTTSModelsResponse,
-  MessageAttachment,
-  AttachmentMediaType,
-  MediaKind,
-  MediaSource,
-  MediaAsset,
-  MediaAssetLink,
-  MediaAssetMetadata,
-  MediaQuery,
-  MediaGalleryResponse,
-  MediaRebuildResponse,
-  MarkdownResolveAssetRequest,
-  MarkdownResolveAssetResponse,
-  MarkdownSaveAttachmentsRequest,
-  MarkdownSaveAttachmentsResponse,
-  GetChatHistoryResponse,
-  GetSystemPromptSnapshotResponse,
-  SystemPromptSkillSnapshot,
-  SystemPromptSnapshot,
-  SystemPromptToolSnapshot,
-  GetSessionsResponse,
-  CreateSessionResponse,
-  SwitchSessionResponse,
-  DeleteSessionResponse,
-  RenameSessionResponse,
-  CreateBranchResponse,
-  UpdateSessionPinResponse,
-  GetSettingsResponse,
-  SaveSettingsResponse,
-  GenerateTitleResponse,
-  GetProvidersResponse,
-  ToolDefinition,
-  ToolParameter,
-  ToolCall,
-  ToolResult,
-  ToolPartialResult,
-  ToolRenderKind,
-  PermissionMode,
-  ToolSettings,
-  BashToolSettings,
-  GetToolsResponse,
-  ExecuteToolResponse,
-  ContentPart,
-  Step,
-  StepType,
-  // UIMessage types (AI SDK 6.x compatible)
-  UIMessage,
-  UIMessagePart,
-  TextUIPart,
-  ReasoningUIPart,
-  ToolUIPart,
-  ToolUIState,
-  FileUIPart,
-  StepUIPart,
-  ErrorUIPart,
-  MessageMetadata,
-  UIMessageChunk,
-  UIMessageStreamData,
-  // MCP types
-  MCPServerConfig,
-  MCPServerState,
-  MCPToolInfo,
-  MCPResourceInfo,
-  MCPPromptInfo,
-  MCPSettings,
-  MCPGetServersResponse,
-  MCPAddServerResponse,
-  MCPUpdateServerResponse,
-  MCPRemoveServerResponse,
-  MCPConnectServerResponse,
-  MCPDisconnectServerResponse,
-  MCPRefreshServerResponse,
-  MCPGetToolsResponse,
-  MCPCallToolResponse,
-  MCPGetResourcesResponse,
-  MCPReadResourceResponse,
-  MCPGetPromptsResponse,
-  MCPGetPromptResponse,
-  MCPReadConfigFileResponse,
-  // ACP types
-  ACPAgentConfig,
-  ACPAgentState,
-  ACPSettings,
-  ACPGetAgentsResponse,
-  ACPAddAgentResponse,
-  ACPUpdateAgentResponse,
-  ACPRemoveAgentResponse,
-  ACPConnectAgentResponse,
-  ACPDisconnectAgentResponse,
-  ACPRefreshAgentResponse,
-  ACPCancelSessionResponse,
-  // Skills types (Official Claude Code Skills)
-  SkillDefinition,
-  SkillFile,
-  SkillSource,
-  SkillSettings,
-  GetSkillsResponse,
-  RefreshSkillsResponse,
-  ReadSkillFileResponse,
-  OpenSkillDirectoryResponse,
-  CreateSkillResponse,
-  PluginCommandInfo,
-  GetPluginCommandsResponse,
-  ExecutePluginCommandResponse,
-  MemoryAppendRequest,
-  MemoryAppendResponse,
-  MemoryCaptureDecisionRequest,
-  MemoryCaptureDecisionResponse,
-  MemoryIndexResponse,
-  MemoryOverviewResponse,
-  MemoryProfileAuditRequest,
-  MemoryProfileAuditResponse,
-  MemoryProfileDeleteRequest,
-  MemoryProfileDeleteResponse,
-  MemoryProfileExportResponse,
-  MemoryProfileListRequest,
-  MemoryProfileListResponse,
-  MemoryProfileUpsertRequest,
-  MemoryProfileUpsertResponse,
-  MemoryGraphAuditRequest,
-  MemoryGraphAuditResponse,
-  MemoryGraphDeleteRequest,
-  MemoryGraphDuplicateDecisionRequest,
-  MemoryGraphDuplicatesResponse,
-  MemoryGraphEntitiesResponse,
-  MemoryGraphEntityResponse,
-  MemoryGraphEntityUpsertRequest,
-  MemoryGraphObservationResponse,
-  MemoryGraphObservationUpsertRequest,
-  MemoryGraphObservationsResponse,
-  MemoryGraphOverviewResponse,
-  MemoryGraphRelationResponse,
-  MemoryGraphRelationUpsertRequest,
-  MemoryGraphRelationsResponse,
-  MemoryGraphListRequest,
-  MemoryLogsCleanupResponse,
-  MemoryLogsListRequest,
-  MemoryLogsListResponse,
-  MemoryLogsStatsResponse,
-  MemoryRunDreamingResponse,
-  MemoryReadRequest,
-  MemoryReadResponse,
-  MemorySaveFileRequest,
-  MemorySaveFileResponse,
-  MemorySearchRequest,
-  MemorySearchResponse,
-  SchedulerSchedule,
-  SchedulerRunDetailDTO,
-  SchedulerTaskSnapshotDTO,
-  SchedulerGetRequest,
-  SchedulerGetResponse,
-  SchedulerCreateTaskRequest,
-  SchedulerUpdateTaskRequest,
-  SchedulerDeleteTaskRequest,
-  SchedulerWriteTaskResponse,
-  SchedulerDeleteTaskResponse,
-  SchedulerListRunsRequest,
-  SchedulerListRunsResponse,
-  SchedulerGetRunRequest,
-  SchedulerGetRunResponse,
-  SchedulerListResponse,
-  SchedulerRunNowRequest,
-  SchedulerRunNowResponse,
-  SchedulerSetEnabledRequest,
-  SchedulerSetEnabledResponse,
-  SearchRequest,
-  SearchResponse,
-  SearchWindowGuideState,
-  // Permission types
-  PermissionInfo,
-  PermissionResponse,
-  // Theme types
-  ThemeMeta,
-  Theme,
-  GetThemesResponse,
-  GetThemeResponse,
-  ApplyThemeResponse,
-  RefreshThemesResponse,
-  // Variables types
-  VariablesListResponse,
-  VariablesSetResponse,
-  VariablesDeleteResponse,
-  // Project directories types (independent module)
-  ProjectDirsListResponse,
-  ProjectDirsGetResponse,
-  ProjectDirsAddResponse,
-  ProjectDirsUpdateResponse,
-  ProjectDirsRemoveResponse,
-  TodoPlanChangedPayload,
-  TodoPlanCreateRequest,
-  TodoPlanCreateResponse,
-  TodoPlanDocument,
-  TodoPlanGetRequest,
-  TodoPlanGetResponse,
-  TodoPlanRenameRequest,
-  TodoPlanRenameResponse,
-  TodoPlanDeleteRequest,
-  TodoPlanDeleteResponse,
-  TodoPlanSnapshot,
-  TodoPlanUpdateResponse,
-  TodoPlanUpdateRequest,
-  TodoPlanWindowActionRequest,
-} from '../../shared/ipc'
+	ChatMessage,
+	ChatSession,
+	ContextVariable,
+	AgentDefinition,
+	AgentsListResponse,
+	AgentCreateResponse,
+	AgentUpdateResponse,
+	AgentDeleteResponse,
+	UserPrompt,
+	PromptReferenceSnapshot,
+	PromptListResponse,
+	PromptGetResponse,
+	PromptCreateRequest,
+	PromptCreateResponse,
+	PromptUpdateRequest,
+	PromptUpdateResponse,
+	PromptDeleteRequest,
+	PromptDeleteResponse,
+	SessionMeta,
+	SessionDetails,
+	GetSessionsListResponse,
+	ActivateSessionResponse,
+	GetSessionMessagesResponse,
+	GetSessionMessagesPageRequest,
+	GetSessionMessagesPageResponse,
+	UserMessageMarker,
+	GetSessionUserMarkersResponse,
+	AISettings,
+	AppSettings,
+	AIProvider,
+	ProviderConfig,
+	ModelCapabilityOverride,
+	CustomProviderConfig,
+	ProviderInfo,
+	CodexProviderUsage,
+	CodexUsageLimit,
+	CodexUsageWindow,
+	ProviderEnvStatus,
+	GetProviderEnvStatusResponse,
+	ProviderUsageResponse,
+	ModelInfo,
+	OpenRouterModel,
+	ColorTheme,
+	BaseTheme,
+	MessageListDensity,
+	TypographyDensity,
+	KeyboardShortcut,
+	ShortcutSettings,
+	EditorSettings,
+	ChatSettings,
+	ProxySettings,
+	NetworkSettings,
+	GatewayStatus,
+	GatewayGetStatusResponse,
+	GatewayStartRequest,
+	GatewayStartResponse,
+	GatewayStopResponse,
+	GatewayWechatAddAccountRequest,
+	GatewayWechatAddAccountResponse,
+	GatewayWechatStopAccountRequest,
+	GatewayWechatStopAccountResponse,
+	GatewayWechatRemoveAccountRequest,
+	GatewayWechatRemoveAccountResponse,
+	GatewayWechatRenameAccountRequest,
+	GatewayWechatRenameAccountResponse,
+	GatewayWechatLogoutRequest,
+	GatewayWechatLogoutResponse,
+	MessageOrigin,
+	ChannelUserLink,
+	ChannelUserProfile,
+	ChannelIdentityListLinksRequest,
+	ChannelIdentityListLinksResponse,
+	ChannelIdentityListProfilesResponse,
+	ChannelIdentityCreateLinkRequest,
+	ChannelIdentityCreateLinkResponse,
+	ChannelIdentityCreateProfileRequest,
+	ChannelIdentityCreateProfileResponse,
+	ChannelIdentityDeleteLinkResponse,
+	ChannelIdentityUpdateProfileRequest,
+	ChannelIdentityUpdateProfileResponse,
+	ChannelIdentityResolveResponse,
+	ChannelReplyDeliveryRecord,
+	VoiceEndpointingMode,
+	VoiceEvent,
+	VoiceLatencyMilestone,
+	VoiceLatencyMilestoneName,
+	VoiceRuntimeCommand,
+	VoiceRuntimeState,
+	VoiceSettings,
+	VoiceStartRequest,
+	VoiceStopRequest,
+	VoiceSubmitUtteranceRequest,
+	VoiceSubmitTranscriptRequest,
+	VoiceSynthesizeRequest,
+	VoiceTestASRRequest,
+	VoiceTestTTSRequest,
+	VoiceGetStateResponse,
+	VoiceSubmitUtteranceResponse,
+	VoiceSynthesizeResponse,
+	VoiceTTSModel,
+	VoiceTTSModelsResponse,
+	MessageAttachment,
+	AttachmentMediaType,
+	MediaKind,
+	MediaSource,
+	MediaAsset,
+	MediaAssetLink,
+	MediaAssetMetadata,
+	MediaQuery,
+	MediaGalleryResponse,
+	MediaRebuildResponse,
+	MarkdownResolveAssetRequest,
+	MarkdownResolveAssetResponse,
+	MarkdownSaveAttachmentsRequest,
+	MarkdownSaveAttachmentsResponse,
+	GetChatHistoryResponse,
+	GetSystemPromptSnapshotResponse,
+	SystemPromptSkillSnapshot,
+	SystemPromptSnapshot,
+	SystemPromptToolSnapshot,
+	GetSessionsResponse,
+	CreateSessionResponse,
+	SwitchSessionResponse,
+	DeleteSessionResponse,
+	RenameSessionResponse,
+	CreateBranchResponse,
+	UpdateSessionPinResponse,
+	GetSettingsResponse,
+	SaveSettingsResponse,
+	GenerateTitleResponse,
+	GetProvidersResponse,
+	ToolDefinition,
+	ToolParameter,
+	ToolCall,
+	ToolResult,
+	ToolPartialResult,
+	ToolRenderKind,
+	PermissionMode,
+	ToolSettings,
+	BashToolSettings,
+	GetToolsResponse,
+	ExecuteToolResponse,
+	ContentPart,
+	Step,
+	StepType,
+	// UIMessage types (AI SDK 6.x compatible)
+	UIMessage,
+	UIMessagePart,
+	TextUIPart,
+	ReasoningUIPart,
+	ToolUIPart,
+	ToolUIState,
+	FileUIPart,
+	StepUIPart,
+	ErrorUIPart,
+	MessageMetadata,
+	UIMessageChunk,
+	UIMessageStreamData,
+	// MCP types
+	MCPServerConfig,
+	MCPServerState,
+	MCPToolInfo,
+	MCPResourceInfo,
+	MCPPromptInfo,
+	MCPSettings,
+	MCPGetServersResponse,
+	MCPAddServerResponse,
+	MCPUpdateServerResponse,
+	MCPRemoveServerResponse,
+	MCPConnectServerResponse,
+	MCPDisconnectServerResponse,
+	MCPRefreshServerResponse,
+	MCPGetToolsResponse,
+	MCPCallToolResponse,
+	MCPGetResourcesResponse,
+	MCPReadResourceResponse,
+	MCPGetPromptsResponse,
+	MCPGetPromptResponse,
+	MCPReadConfigFileResponse,
+	// ACP types
+	ACPAgentConfig,
+	ACPAgentState,
+	ACPSettings,
+	ACPGetAgentsResponse,
+	ACPAddAgentResponse,
+	ACPUpdateAgentResponse,
+	ACPRemoveAgentResponse,
+	ACPConnectAgentResponse,
+	ACPDisconnectAgentResponse,
+	ACPRefreshAgentResponse,
+	ACPCancelSessionResponse,
+	// Skills types (Official Claude Code Skills)
+	SkillDefinition,
+	SkillFile,
+	SkillSource,
+	SkillSettings,
+	GetSkillsResponse,
+	RefreshSkillsResponse,
+	ReadSkillFileResponse,
+	OpenSkillDirectoryResponse,
+	CreateSkillResponse,
+	PluginCommandInfo,
+	GetPluginCommandsResponse,
+	ExecutePluginCommandResponse,
+	MemoryAppendRequest,
+	MemoryAppendResponse,
+	MemoryCaptureDecisionRequest,
+	MemoryCaptureDecisionResponse,
+	MemoryIndexResponse,
+	MemoryOverviewResponse,
+	MemoryProfileAuditRequest,
+	MemoryProfileAuditResponse,
+	MemoryProfileDeleteRequest,
+	MemoryProfileDeleteResponse,
+	MemoryProfileExportResponse,
+	MemoryProfileListRequest,
+	MemoryProfileListResponse,
+	MemoryProfileUpsertRequest,
+	MemoryProfileUpsertResponse,
+	MemoryGraphAuditRequest,
+	MemoryGraphAuditResponse,
+	MemoryGraphDeleteRequest,
+	MemoryGraphDuplicateDecisionRequest,
+	MemoryGraphDuplicatesResponse,
+	MemoryGraphEntitiesResponse,
+	MemoryGraphEntityResponse,
+	MemoryGraphEntityUpsertRequest,
+	MemoryGraphObservationResponse,
+	MemoryGraphObservationUpsertRequest,
+	MemoryGraphObservationsResponse,
+	MemoryGraphOverviewResponse,
+	MemoryGraphRelationResponse,
+	MemoryGraphRelationUpsertRequest,
+	MemoryGraphRelationsResponse,
+	MemoryGraphListRequest,
+	MemoryLogsCleanupResponse,
+	MemoryLogsListRequest,
+	MemoryLogsListResponse,
+	MemoryLogsStatsResponse,
+	MemoryRunDreamingResponse,
+	MemoryReadRequest,
+	MemoryReadResponse,
+	MemorySaveFileRequest,
+	MemorySaveFileResponse,
+	MemorySearchRequest,
+	MemorySearchResponse,
+	SchedulerSchedule,
+	SchedulerRunDetailDTO,
+	SchedulerTaskSnapshotDTO,
+	SchedulerGetRequest,
+	SchedulerGetResponse,
+	SchedulerCreateTaskRequest,
+	SchedulerUpdateTaskRequest,
+	SchedulerDeleteTaskRequest,
+	SchedulerWriteTaskResponse,
+	SchedulerDeleteTaskResponse,
+	SchedulerListRunsRequest,
+	SchedulerListRunsResponse,
+	SchedulerGetRunRequest,
+	SchedulerGetRunResponse,
+	SchedulerListResponse,
+	SchedulerRunNowRequest,
+	SchedulerRunNowResponse,
+	SchedulerSetEnabledRequest,
+	SchedulerSetEnabledResponse,
+	SearchRequest,
+	SearchResponse,
+	SearchWindowAnchor,
+	SearchWindowGuideState,
+	SearchWindowOpenOptions,
+	SearchWindowShownPayload,
+	// Permission types
+	PermissionInfo,
+	PermissionResponse,
+	// Theme types
+	ThemeMeta,
+	Theme,
+	GetThemesResponse,
+	GetThemeResponse,
+	ApplyThemeResponse,
+	RefreshThemesResponse,
+	// Variables types
+	VariablesListResponse,
+	VariablesSetResponse,
+	VariablesDeleteResponse,
+	// Project directories types (independent module)
+	ProjectDirsListResponse,
+	ProjectDirsGetResponse,
+	ProjectDirsAddResponse,
+	ProjectDirsUpdateResponse,
+	ProjectDirsRemoveResponse,
+	TodoPlanChangedPayload,
+	TodoPlanCreateRequest,
+	TodoPlanCreateResponse,
+	TodoPlanDocument,
+	TodoPlanGetRequest,
+	TodoPlanGetResponse,
+	TodoPlanRenameRequest,
+	TodoPlanRenameResponse,
+	TodoPlanDeleteRequest,
+	TodoPlanDeleteResponse,
+	TodoPlanSnapshot,
+	TodoPlanUpdateResponse,
+	TodoPlanUpdateRequest,
+	TodoPlanWindowActionRequest,
+} from "../../shared/ipc";
 
 export type {
-  ChatMessage,
-  ChatSession,
-  ContextVariable,
-  AgentDefinition,
-  AgentsListResponse,
-  AgentCreateResponse,
-  AgentUpdateResponse,
-  AgentDeleteResponse,
-  UserPrompt,
-  PromptReferenceSnapshot,
-  PromptListResponse,
-  PromptGetResponse,
-  PromptCreateRequest,
-  PromptCreateResponse,
-  PromptUpdateRequest,
-  PromptUpdateResponse,
-  PromptDeleteRequest,
-  PromptDeleteResponse,
-  SessionMeta,
-  SessionDetails,
-  GetSessionsListResponse,
-  ActivateSessionResponse,
-  GetSessionMessagesResponse,
-  GetSessionMessagesPageRequest,
-  GetSessionMessagesPageResponse,
-  UserMessageMarker,
-  GetSessionUserMarkersResponse,
-  GetSystemPromptSnapshotResponse,
-  SystemPromptSkillSnapshot,
-  SystemPromptSnapshot,
-  SystemPromptToolSnapshot,
-  AISettings,
-  AppSettings,
-  AIProvider,
-  ProviderConfig,
-  ModelCapabilityOverride,
-  CustomProviderConfig,
-  ProviderInfo,
-  CodexProviderUsage,
-  CodexUsageLimit,
-  CodexUsageWindow,
-  ProviderEnvStatus,
-  GetProviderEnvStatusResponse,
-  ProviderUsageResponse,
-  ModelInfo,
-  OpenRouterModel,
-  ColorTheme,
-  BaseTheme,
-  MessageListDensity,
-  TypographyDensity,
-  KeyboardShortcut,
-  ShortcutSettings,
-  EditorSettings,
-  ChatSettings,
-  ProxySettings,
-  NetworkSettings,
-  GatewayStatus,
-  GatewayGetStatusResponse,
-  GatewayStartRequest,
-  GatewayStartResponse,
-  GatewayStopResponse,
-  GatewayWechatLogoutResponse,
-  MessageOrigin,
-  ChannelUserLink,
-  ChannelUserProfile,
-  VoiceEndpointingMode,
-  VoiceEvent,
-  VoiceLatencyMilestone,
-  VoiceLatencyMilestoneName,
-  VoiceRuntimeCommand,
-  VoiceRuntimeState,
-  VoiceSettings,
-  VoiceStartRequest,
-  VoiceStopRequest,
-  VoiceSubmitUtteranceRequest,
-  VoiceSynthesizeRequest,
-  VoiceTestASRRequest,
-  VoiceTestTTSRequest,
-  VoiceGetStateResponse,
-  VoiceSubmitUtteranceResponse,
-  VoiceSynthesizeResponse,
-  VoiceTTSModel,
-  VoiceTTSModelsResponse,
-  MessageAttachment,
-  AttachmentMediaType,
-  MediaKind,
-  MediaSource,
-  MediaAsset,
-  MediaAssetLink,
-  MediaAssetMetadata,
-  MediaQuery,
-  MediaGalleryResponse,
-  MediaRebuildResponse,
-  MarkdownResolveAssetRequest,
-  MarkdownResolveAssetResponse,
-  MarkdownSaveAttachmentsRequest,
-  MarkdownSaveAttachmentsResponse,
-  ToolDefinition,
-  ToolParameter,
-  ToolCall,
-  ToolResult,
-  ToolPartialResult,
-  ToolRenderKind,
-  PermissionMode,
-  ToolSettings,
-  BashToolSettings,
-  ContentPart,
-  Step,
-  StepType,
-  // UIMessage types (AI SDK 6.x compatible)
-  UIMessage,
-  UIMessagePart,
-  TextUIPart,
-  ReasoningUIPart,
-  ToolUIPart,
-  ToolUIState,
-  FileUIPart,
-  StepUIPart,
-  ErrorUIPart,
-  MessageMetadata,
-  UIMessageChunk,
-  UIMessageStreamData,
-  // MCP types
-  MCPServerConfig,
-  MCPServerState,
-  MCPToolInfo,
-  MCPResourceInfo,
-  MCPPromptInfo,
-  MCPSettings,
-  ACPAgentConfig,
-  ACPAgentState,
-  ACPSettings,
-  ACPGetAgentsResponse,
-  ACPAddAgentResponse,
-  ACPUpdateAgentResponse,
-  ACPRemoveAgentResponse,
-  ACPConnectAgentResponse,
-  ACPDisconnectAgentResponse,
-  ACPRefreshAgentResponse,
-  ACPCancelSessionResponse,
-  // Skills types (Official Claude Code Skills)
-  SkillDefinition,
-  SkillFile,
-  SkillSource,
-  SkillSettings,
-  PluginCommandInfo,
-  GetPluginCommandsResponse,
-  ExecutePluginCommandResponse,
-  MemoryAppendRequest,
-  MemoryAppendResponse,
-  MemoryCaptureDecisionRequest,
-  MemoryCaptureDecisionResponse,
-  MemoryIndexResponse,
-  MemoryOverviewResponse,
-  MemoryLogsCleanupResponse,
-  MemoryLogsListRequest,
-  MemoryLogsListResponse,
-  MemoryLogsStatsResponse,
-  MemoryRunDreamingResponse,
-  MemoryReadRequest,
-  MemoryReadResponse,
-  MemorySaveFileRequest,
-  MemorySaveFileResponse,
-  MemorySearchRequest,
-  MemorySearchResponse,
-  SchedulerSchedule,
-  SchedulerRunDetailDTO,
-  SchedulerTaskSnapshotDTO,
-  SchedulerGetRequest,
-  SchedulerGetResponse,
-  SchedulerCreateTaskRequest,
-  SchedulerUpdateTaskRequest,
-  SchedulerDeleteTaskRequest,
-  SchedulerWriteTaskResponse,
-  SchedulerDeleteTaskResponse,
-  SchedulerListRunsRequest,
-  SchedulerListRunsResponse,
-  SchedulerGetRunRequest,
-  SchedulerGetRunResponse,
-  SchedulerListResponse,
-  SchedulerRunNowRequest,
-  SchedulerRunNowResponse,
-  SchedulerSetEnabledRequest,
-  SchedulerSetEnabledResponse,
-  // Permission types
-  PermissionInfo,
-  PermissionResponse,
-  // Theme types
-  ThemeMeta,
-  Theme,
-  TodoPlanChangedPayload,
-  TodoPlanCreateRequest,
-  TodoPlanCreateResponse,
-  TodoPlanDocument,
-  TodoPlanGetRequest,
-  TodoPlanGetResponse,
-  TodoPlanRenameRequest,
-  TodoPlanRenameResponse,
-  TodoPlanDeleteRequest,
-  TodoPlanDeleteResponse,
-  TodoPlanSnapshot,
-  TodoPlanUpdateResponse,
-  TodoPlanUpdateRequest,
-}
+	ChatMessage,
+	ChatSession,
+	ContextVariable,
+	AgentDefinition,
+	AgentsListResponse,
+	AgentCreateResponse,
+	AgentUpdateResponse,
+	AgentDeleteResponse,
+	UserPrompt,
+	PromptReferenceSnapshot,
+	PromptListResponse,
+	PromptGetResponse,
+	PromptCreateRequest,
+	PromptCreateResponse,
+	PromptUpdateRequest,
+	PromptUpdateResponse,
+	PromptDeleteRequest,
+	PromptDeleteResponse,
+	SessionMeta,
+	SessionDetails,
+	GetSessionsListResponse,
+	ActivateSessionResponse,
+	GetSessionMessagesResponse,
+	GetSessionMessagesPageRequest,
+	GetSessionMessagesPageResponse,
+	UserMessageMarker,
+	GetSessionUserMarkersResponse,
+	GetSystemPromptSnapshotResponse,
+	SystemPromptSkillSnapshot,
+	SystemPromptSnapshot,
+	SystemPromptToolSnapshot,
+	AISettings,
+	AppSettings,
+	AIProvider,
+	ProviderConfig,
+	ModelCapabilityOverride,
+	CustomProviderConfig,
+	ProviderInfo,
+	CodexProviderUsage,
+	CodexUsageLimit,
+	CodexUsageWindow,
+	ProviderEnvStatus,
+	GetProviderEnvStatusResponse,
+	ProviderUsageResponse,
+	ModelInfo,
+	OpenRouterModel,
+	ColorTheme,
+	BaseTheme,
+	MessageListDensity,
+	TypographyDensity,
+	KeyboardShortcut,
+	ShortcutSettings,
+	EditorSettings,
+	ChatSettings,
+	ProxySettings,
+	NetworkSettings,
+	GatewayStatus,
+	GatewayGetStatusResponse,
+	GatewayStartRequest,
+	GatewayStartResponse,
+	GatewayStopResponse,
+	GatewayWechatLogoutResponse,
+	MessageOrigin,
+	ChannelUserLink,
+	ChannelUserProfile,
+	VoiceEndpointingMode,
+	VoiceEvent,
+	VoiceLatencyMilestone,
+	VoiceLatencyMilestoneName,
+	VoiceRuntimeCommand,
+	VoiceRuntimeState,
+	VoiceSettings,
+	VoiceStartRequest,
+	VoiceStopRequest,
+	VoiceSubmitUtteranceRequest,
+	VoiceSynthesizeRequest,
+	VoiceTestASRRequest,
+	VoiceTestTTSRequest,
+	VoiceGetStateResponse,
+	VoiceSubmitUtteranceResponse,
+	VoiceSynthesizeResponse,
+	VoiceTTSModel,
+	VoiceTTSModelsResponse,
+	MessageAttachment,
+	AttachmentMediaType,
+	MediaKind,
+	MediaSource,
+	MediaAsset,
+	MediaAssetLink,
+	MediaAssetMetadata,
+	MediaQuery,
+	MediaGalleryResponse,
+	MediaRebuildResponse,
+	MarkdownResolveAssetRequest,
+	MarkdownResolveAssetResponse,
+	MarkdownSaveAttachmentsRequest,
+	MarkdownSaveAttachmentsResponse,
+	ToolDefinition,
+	ToolParameter,
+	ToolCall,
+	ToolResult,
+	ToolPartialResult,
+	ToolRenderKind,
+	PermissionMode,
+	ToolSettings,
+	BashToolSettings,
+	ContentPart,
+	Step,
+	StepType,
+	// UIMessage types (AI SDK 6.x compatible)
+	UIMessage,
+	UIMessagePart,
+	TextUIPart,
+	ReasoningUIPart,
+	ToolUIPart,
+	ToolUIState,
+	FileUIPart,
+	StepUIPart,
+	ErrorUIPart,
+	MessageMetadata,
+	UIMessageChunk,
+	UIMessageStreamData,
+	// MCP types
+	MCPServerConfig,
+	MCPServerState,
+	MCPToolInfo,
+	MCPResourceInfo,
+	MCPPromptInfo,
+	MCPSettings,
+	ACPAgentConfig,
+	ACPAgentState,
+	ACPSettings,
+	ACPGetAgentsResponse,
+	ACPAddAgentResponse,
+	ACPUpdateAgentResponse,
+	ACPRemoveAgentResponse,
+	ACPConnectAgentResponse,
+	ACPDisconnectAgentResponse,
+	ACPRefreshAgentResponse,
+	ACPCancelSessionResponse,
+	// Skills types (Official Claude Code Skills)
+	SkillDefinition,
+	SkillFile,
+	SkillSource,
+	SkillSettings,
+	PluginCommandInfo,
+	GetPluginCommandsResponse,
+	ExecutePluginCommandResponse,
+	MemoryAppendRequest,
+	MemoryAppendResponse,
+	MemoryCaptureDecisionRequest,
+	MemoryCaptureDecisionResponse,
+	MemoryIndexResponse,
+	MemoryOverviewResponse,
+	MemoryLogsCleanupResponse,
+	MemoryLogsListRequest,
+	MemoryLogsListResponse,
+	MemoryLogsStatsResponse,
+	MemoryRunDreamingResponse,
+	MemoryReadRequest,
+	MemoryReadResponse,
+	MemorySaveFileRequest,
+	MemorySaveFileResponse,
+	MemorySearchRequest,
+	MemorySearchResponse,
+	SchedulerSchedule,
+	SchedulerRunDetailDTO,
+	SchedulerTaskSnapshotDTO,
+	SchedulerGetRequest,
+	SchedulerGetResponse,
+	SchedulerCreateTaskRequest,
+	SchedulerUpdateTaskRequest,
+	SchedulerDeleteTaskRequest,
+	SchedulerWriteTaskResponse,
+	SchedulerDeleteTaskResponse,
+	SchedulerListRunsRequest,
+	SchedulerListRunsResponse,
+	SchedulerGetRunRequest,
+	SchedulerGetRunResponse,
+	SchedulerListResponse,
+	SchedulerRunNowRequest,
+	SchedulerRunNowResponse,
+	SchedulerSetEnabledRequest,
+	SchedulerSetEnabledResponse,
+	// Permission types
+	PermissionInfo,
+	PermissionResponse,
+	// Theme types
+	ThemeMeta,
+	Theme,
+	TodoPlanChangedPayload,
+	TodoPlanCreateRequest,
+	TodoPlanCreateResponse,
+	TodoPlanDocument,
+	TodoPlanGetRequest,
+	TodoPlanGetResponse,
+	TodoPlanRenameRequest,
+	TodoPlanRenameResponse,
+	TodoPlanDeleteRequest,
+	TodoPlanDeleteResponse,
+	TodoPlanSnapshot,
+	TodoPlanUpdateResponse,
+	TodoPlanUpdateRequest,
+};
 
 // Gallery image type for image preview window
 export interface GalleryImage {
-  id: string
-  src: string        // Full image URL or data URL
-  alt?: string       // Image description/title
-  thumbnail?: string // Optional thumbnail URL
+	id: string;
+	src: string; // Full image URL or data URL
+	alt?: string; // Image description/title
+	thumbnail?: string; // Optional thumbnail URL
 }
 
 export interface ElectronAPI {
-  onSkillActivated: (callback: (data: { sessionId: string; messageId: string; skillName: string }) => void) => () => void
-  onStepAdded: (callback: (data: { sessionId: string; messageId: string; step: any }) => void) => () => void
-  onStepUpdated: (callback: (data: { sessionId: string; messageId: string; stepId: string; updates: any }) => void) => () => void
-  onImageGenerated: (callback: (data: { id: string; url?: string; base64?: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string; createdAt: number }) => void) => () => void
-  getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>
-  generateTitle: (message: string) => Promise<GenerateTitleResponse>
-  getSystemPromptSnapshot: (sessionId: string) => Promise<GetSystemPromptSnapshotResponse>
-  getSessions: () => Promise<GetSessionsResponse>
-  createSession: (name: string) => Promise<CreateSessionResponse>
-  switchSession: (sessionId: string) => Promise<SwitchSessionResponse>
-  getSession: (sessionId: string) => Promise<SwitchSessionResponse>
-  deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>
-  renameSession: (sessionId: string, newName: string) => Promise<RenameSessionResponse>
-  createBranch: (parentSessionId: string, branchFromMessageId: string) => Promise<CreateBranchResponse>
-  updateSessionPin: (sessionId: string, isPinned: boolean) => Promise<UpdateSessionPinResponse>
-  updateSessionModel: (sessionId: string, provider: string, model: string) => Promise<{ success: boolean; error?: string }>
-  updateSessionAgent: (sessionId: string, agentId: string) => Promise<{ success: boolean; error?: string }>
-  updateSessionPermissionMode: (sessionId: string, permissionMode: PermissionMode) => Promise<{ success: boolean; error?: string }>
-  updateSessionArchived: (sessionId: string, isArchived: boolean, archivedAt?: number | null) => Promise<{ success: boolean; error?: string }>
-  updateSessionWorkingDirectory: (sessionId: string, workingDirectory: string | null) => Promise<{ success: boolean; error?: string }>
-  listPermissionGrants: (options: { sessionId?: string; workspaceRoot?: string; userId?: string; workspaceId?: string }) => Promise<{ success: boolean; error?: string; sessionGrants?: any[]; workspaceGrants?: any[] }>
-  revokePermissionGrant: (id: string) => Promise<{ success: boolean; error?: string }>
-  clearSessionPermissionGrants: (sessionId: string) => Promise<{ success: boolean; error?: string }>
-  clearWorkspacePermissionGrants: (workspaceRoot: string) => Promise<{ success: boolean; error?: string }>
-  // Variables subsystem (scalar variables)
-  listVariables: (sessionId: string) => Promise<VariablesListResponse>
-  setVariable: (sessionId: string, name: string, value: string, description?: string, scope?: 'global' | 'session') => Promise<VariablesSetResponse>
-  deleteVariable: (sessionId: string, name: string) => Promise<VariablesDeleteResponse>
-  // Project directories — independent module
-  projectDirsList: () => Promise<ProjectDirsListResponse>
-  projectDirsGet: (path: string) => Promise<ProjectDirsGetResponse>
-  projectDirsAdd: (path: string, description?: string) => Promise<ProjectDirsAddResponse>
-  projectDirsUpdate: (path: string, description: string) => Promise<ProjectDirsUpdateResponse>
-  projectDirsRemove: (path: string) => Promise<ProjectDirsRemoveResponse>
-  getSessionTokenUsage: (sessionId: string) => Promise<{ success: boolean; usage?: { totalInputTokens: number; totalOutputTokens: number; totalTokens: number; maxTokens: number; lastInputTokens: number; contextSize: number }; error?: string }>
-  // Optimized session loading (Phase 4: Metadata Separation)
-  getSessionsList: () => Promise<GetSessionsListResponse>
-  activateSession: (sessionId: string) => Promise<ActivateSessionResponse>
-  getSessionMessages: (sessionId: string) => Promise<GetSessionMessagesResponse>
-  getSessionMessagesPage: (request: GetSessionMessagesPageRequest) => Promise<GetSessionMessagesPageResponse>
-  getSessionUserMarkers: (sessionId: string) => Promise<GetSessionUserMarkersResponse>
-  onSessionMessagesChanged: (callback: (data: { sessionId: string; action: 'added' | 'updated' | 'deleted'; messageId?: string }) => void) => () => void
-  // System message methods (for /files command persistence)
-  addSystemMessage: (sessionId: string, message: { id: string; role: string; content: string; timestamp: number }) => Promise<{ success: boolean; error?: string }>
-  removeFilesChangedMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>
-  removeGitStatusMessage: (sessionId: string) => Promise<{ success: boolean; removedId?: string | null; error?: string }>
-  // Generic remove message by ID (for close button functionality)
-  removeMessage: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
-  onContextSizeUpdated: (callback: (data: { sessionId: string; contextSize: number }) => void) => () => void
-  onContextCompactStarted: (callback: (data: { sessionId: string }) => void) => () => void
-  onContextCompactCompleted: (callback: (data: { sessionId: string; success: boolean; error?: string }) => void) => () => void
-  updateSessionMaxTokens: (sessionId: string, maxTokens: number) => Promise<{ success: boolean; error?: string }>
-  getSettings: () => Promise<GetSettingsResponse>
-  saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>
-  openSettingsWindow: () => Promise<{ success: boolean }>
-  onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void
-  gatewayGetStatus: () => Promise<GatewayGetStatusResponse>
-  gatewayStart: (request?: GatewayStartRequest) => Promise<GatewayStartResponse>
-  gatewayStop: () => Promise<GatewayStopResponse>
-  gatewayWechatLogout: (request?: GatewayWechatLogoutRequest) => Promise<GatewayWechatLogoutResponse>
-  gatewayWechatAddAccount: (request?: GatewayWechatAddAccountRequest) => Promise<GatewayWechatAddAccountResponse>
-  gatewayWechatStopAccount: (request: GatewayWechatStopAccountRequest) => Promise<GatewayWechatStopAccountResponse>
-  gatewayWechatRemoveAccount: (request: GatewayWechatRemoveAccountRequest) => Promise<GatewayWechatRemoveAccountResponse>
-  gatewayWechatRenameAccount: (request: GatewayWechatRenameAccountRequest) => Promise<GatewayWechatRenameAccountResponse>
-  channelIdentityListLinks: (request?: ChannelIdentityListLinksRequest) => Promise<ChannelIdentityListLinksResponse>
-  channelIdentityListProfiles: () => Promise<ChannelIdentityListProfilesResponse>
-  channelIdentityCreateProfile: (request: ChannelIdentityCreateProfileRequest) => Promise<ChannelIdentityCreateProfileResponse>
-  channelIdentityUpdateProfile: (request: ChannelIdentityUpdateProfileRequest) => Promise<ChannelIdentityUpdateProfileResponse>
-  channelIdentityCreateLink: (request: ChannelIdentityCreateLinkRequest) => Promise<ChannelIdentityCreateLinkResponse>
-  channelIdentityDeleteLink: (id: string) => Promise<ChannelIdentityDeleteLinkResponse>
-  channelIdentityResolve: (origin: MessageOrigin) => Promise<ChannelIdentityResolveResponse>
-  channelDeliveryList: () => Promise<{ success: boolean; deliveries?: ChannelReplyDeliveryRecord[]; error?: string }>
-  voiceGetState: () => Promise<VoiceGetStateResponse>
-  voiceStart: (request?: VoiceStartRequest) => Promise<{ success: boolean; error?: string }>
-  voiceStop: (request?: VoiceStopRequest) => Promise<{ success: boolean; error?: string }>
-  voiceSubmitUtterance: (request: VoiceSubmitUtteranceRequest) => Promise<VoiceSubmitUtteranceResponse>
-  voiceSubmitTranscript: (request: VoiceSubmitTranscriptRequest) => Promise<VoiceSubmitUtteranceResponse>
-  voiceSynthesize: (request: VoiceSynthesizeRequest) => Promise<VoiceSynthesizeResponse>
-  voiceTestASR: (request: VoiceTestASRRequest) => Promise<VoiceSubmitUtteranceResponse>
-  voiceTestTTS: (request: VoiceTestTTSRequest) => Promise<{ success: boolean; error?: string; mimeType?: string }>
-  voiceGetTTSModels: (request?: { force?: boolean }) => Promise<VoiceTTSModelsResponse>
-  onVoiceEvent: (callback: (event: VoiceEvent) => void) => () => void
-  voiceRuntimeReady: () => Promise<{ success: boolean }>
-  voiceRuntimeEvent: (event: VoiceEvent) => Promise<{ success: boolean }>
-  onVoiceRuntimeCommand: (callback: (command: VoiceRuntimeCommand) => void) => () => void
-  getSystemTheme: () => Promise<{ success: boolean; theme?: 'light' | 'dark' }>
-  testProxy: (proxy: ProxySettings) => Promise<{ success: boolean; error?: string; status?: number }>
-  onSystemThemeChanged: (callback: (theme: 'light' | 'dark') => void) => () => void
-  // Agent methods
-  listAgents: () => Promise<AgentsListResponse>
-  createAgent: (name: string, systemPrompt?: string) => Promise<AgentCreateResponse>
-  updateAgent: (agentId: string, updates: { name?: string; systemPrompt?: string }) => Promise<AgentUpdateResponse>
-  deleteAgent: (agentId: string) => Promise<AgentDeleteResponse>
-  // User prompt methods
-  listPrompts: () => Promise<PromptListResponse>
-  getPrompt: (request: { id: string }) => Promise<PromptGetResponse>
-  createPrompt: (request: PromptCreateRequest) => Promise<PromptCreateResponse>
-  updatePrompt: (request: PromptUpdateRequest) => Promise<PromptUpdateResponse>
-  deletePrompt: (request: PromptDeleteRequest) => Promise<PromptDeleteResponse>
-  // Theme methods
-  getThemes: () => Promise<GetThemesResponse>
-  getTheme: (themeId: string) => Promise<GetThemeResponse>
-  applyTheme: (themeId: string, mode: 'dark' | 'light') => Promise<ApplyThemeResponse>
-  refreshThemes: (projectPath?: string) => Promise<RefreshThemesResponse>
-  openThemesFolder: () => Promise<{ success: boolean; error?: string }>
-  getProviders: () => Promise<GetProvidersResponse>
-  getProviderUsage: (providerId: string) => Promise<ProviderUsageResponse>
-  getProviderEnvStatus: (providerId: string) => Promise<GetProviderEnvStatusResponse>
-  // New OpenRouter-based model API
-  getModelsWithCapabilities: (providerId: string, options?: { forceRefresh?: boolean }) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
-  getAllModels: () => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
-  searchModels: (query: string, providerId?: string) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
-  refreshModelRegistry: () => Promise<{ success: boolean; error?: string }>
-  getModelNameAliases: () => Promise<{ success: boolean; aliases?: Record<string, string>; error?: string }>
-  getModelDisplayName: (modelId: string) => Promise<{ success: boolean; displayName?: string; error?: string }>
-  // Tools methods
-  getTools: () => Promise<GetToolsResponse>
-  executeTool: (toolId: string, args: Record<string, any>, messageId: string, sessionId: string) => Promise<ExecuteToolResponse>
-  cancelTool: (toolCallId: string) => Promise<{ success: boolean }>
-  listBackgroundJobs: (options?: { includeInactive?: boolean }) => Promise<{ success: boolean; jobs?: Array<Record<string, any>>; error?: string }>
-  stopBackgroundJob: (jobId: string) => Promise<{ success: boolean; error?: string }>
-  updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => Promise<{ success: boolean }>
-  abortStream: (sessionId?: string) => Promise<{ success: boolean }>
-  getActiveStreams: () => Promise<{ success: boolean; streams?: string[] }>
-  resumeAfterToolConfirm: (sessionId: string, messageId: string) => Promise<{ success: boolean; error?: string }>
+	/**
+	 * Resolve the on-disk path of a dropped/picked File. Returns "" when the
+	 * file has no local path (pasted content, web platform).
+	 */
+	getPathForFile: (file: File) => string;
+	onSkillActivated: (
+		callback: (data: {
+			sessionId: string;
+			messageId: string;
+			skillName: string;
+		}) => void,
+	) => () => void;
+	onStepAdded: (
+		callback: (data: {
+			sessionId: string;
+			messageId: string;
+			step: any;
+		}) => void,
+	) => () => void;
+	onStepUpdated: (
+		callback: (data: {
+			sessionId: string;
+			messageId: string;
+			stepId: string;
+			updates: any;
+		}) => void,
+	) => () => void;
+	onImageGenerated: (
+		callback: (data: {
+			id: string;
+			url?: string;
+			base64?: string;
+			prompt: string;
+			revisedPrompt?: string;
+			model: string;
+			sessionId: string;
+			messageId: string;
+			createdAt: number;
+		}) => void,
+	) => () => void;
+	getChatHistory: (sessionId: string) => Promise<GetChatHistoryResponse>;
+	generateTitle: (message: string) => Promise<GenerateTitleResponse>;
+	getSystemPromptSnapshot: (
+		sessionId: string,
+	) => Promise<GetSystemPromptSnapshotResponse>;
+	getSessions: () => Promise<GetSessionsResponse>;
+	createSession: (name: string) => Promise<CreateSessionResponse>;
+	switchSession: (sessionId: string) => Promise<SwitchSessionResponse>;
+	getSession: (sessionId: string) => Promise<SwitchSessionResponse>;
+	deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>;
+	renameSession: (
+		sessionId: string,
+		newName: string,
+	) => Promise<RenameSessionResponse>;
+	createBranch: (
+		parentSessionId: string,
+		branchFromMessageId: string,
+	) => Promise<CreateBranchResponse>;
+	updateSessionPin: (
+		sessionId: string,
+		isPinned: boolean,
+	) => Promise<UpdateSessionPinResponse>;
+	updateSessionModel: (
+		sessionId: string,
+		provider: string,
+		model: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	updateSessionAgent: (
+		sessionId: string,
+		agentId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	updateSessionPermissionMode: (
+		sessionId: string,
+		permissionMode: PermissionMode,
+	) => Promise<{ success: boolean; error?: string }>;
+	updateSessionArchived: (
+		sessionId: string,
+		isArchived: boolean,
+		archivedAt?: number | null,
+	) => Promise<{ success: boolean; error?: string }>;
+	updateSessionWorkingDirectory: (
+		sessionId: string,
+		workingDirectory: string | null,
+	) => Promise<{ success: boolean; error?: string }>;
+	listPermissionGrants: (options: {
+		sessionId?: string;
+		workspaceRoot?: string;
+		userId?: string;
+		workspaceId?: string;
+	}) => Promise<{
+		success: boolean;
+		error?: string;
+		sessionGrants?: any[];
+		workspaceGrants?: any[];
+	}>;
+	revokePermissionGrant: (
+		id: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	clearSessionPermissionGrants: (
+		sessionId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	clearWorkspacePermissionGrants: (
+		workspaceRoot: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	// Evals (prompt evaluation) — 👎 downvote + Review + Run + Actions
+	recordEvalsDownvote: (request: {
+		sessionId: string;
+		turnId: string;
+		userMessage: string;
+		note?: string;
+	}) => Promise<{
+		success: boolean;
+		fixturePath?: string;
+		incidentId?: string;
+		error?: string;
+	}>;
 
-  // Permission methods
-  clearSessionPermissions: (sessionId: string) => Promise<{ success: boolean; error?: string }>
-  getPendingPermissions: (sessionId: string) => Promise<{ success: boolean; pending?: PermissionInfo[]; error?: string }>
+	// Phase 1: Review
+	evalsListRecords: (request: {
+		negativeOnly?: boolean;
+		category?: string;
+		sinceTs?: string;
+		limit?: number;
+		offset?: number;
+	}) => Promise<{
+		success: boolean;
+		records?: Array<Record<string, unknown>>;
+		total?: number;
+		error?: string;
+	}>;
+	evalsListFixtures: () => Promise<{
+		success: boolean;
+		fixtures?: Array<{
+			path: string;
+			capturedAt: string;
+			provider: string;
+			model: string;
+			sessionId: string;
+			turnId: string;
+			userMessagePreview: string;
+			hasNegative: boolean;
+		}>;
+		error?: string;
+	}>;
+	evalsReadFixture: (request: { fixturePath: string }) => Promise<{
+		success: boolean;
+		fixture?: Record<string, unknown>;
+		error?: string;
+	}>;
+	evalsListResults: () => Promise<{
+		success: boolean;
+		entries?: Array<{
+			ts: string;
+			promptVersion: string;
+			provider: string;
+			runs: number;
+			evalSetSize: number;
+			scores: Record<string, number>;
+			mean: number;
+			disabled?: string[];
+			cost?: string;
+			sentinelScores?: Record<string, number>;
+		}>;
+		error?: string;
+	}>;
+	evalsListCases: () => Promise<{
+		success: boolean;
+		cases?: Array<{
+			id: string;
+			file: string;
+			dir: string;
+			description: string;
+			fixture: string;
+			userMessage: string;
+			isSentinel: boolean;
+			expect: Record<string, unknown>;
+		}>;
+		error?: string;
+	}>;
+	evalsGetCase: (request: { caseId: string }) => Promise<{
+		success: boolean;
+		case_?: Record<string, unknown>;
+		error?: string;
+	}>;
 
-  // MCP methods
-  mcpGetServers: () => Promise<MCPGetServersResponse>
-  mcpAddServer: (config: MCPServerConfig) => Promise<MCPAddServerResponse>
-  mcpUpdateServer: (config: MCPServerConfig) => Promise<MCPUpdateServerResponse>
-  mcpRemoveServer: (serverId: string) => Promise<MCPRemoveServerResponse>
-  mcpConnectServer: (serverId: string) => Promise<MCPConnectServerResponse>
-  mcpDisconnectServer: (serverId: string) => Promise<MCPDisconnectServerResponse>
-  mcpRefreshServer: (serverId: string) => Promise<MCPRefreshServerResponse>
-  mcpGetTools: () => Promise<MCPGetToolsResponse>
-  mcpCallTool: (serverId: string, toolName: string, args: Record<string, any>) => Promise<MCPCallToolResponse>
-  mcpGetResources: () => Promise<MCPGetResourcesResponse>
-  mcpReadResource: (serverId: string, uri: string) => Promise<MCPReadResourceResponse>
-  mcpGetPrompts: () => Promise<MCPGetPromptsResponse>
-  mcpGetPrompt: (serverId: string, name: string, args?: Record<string, string>) => Promise<MCPGetPromptResponse>
-  mcpReadConfigFile: (filePath: string) => Promise<MCPReadConfigFileResponse>
+	// Phase 2: Run
+	evalsRunStart: (request: {
+		caseIds?: string[];
+		runs: number;
+		disabledSections?: string[];
+		providerId: string;
+		model: string;
+	}) => Promise<{ success: boolean; error?: string }>;
+	evalsRunCancel: () => Promise<{ success: boolean; error?: string }>;
+	onEvalsRunProgress: (
+		callback: (event: Record<string, unknown>) => void,
+	) => () => void;
 
-  // ACP methods
-  acpGetAgents: () => Promise<ACPGetAgentsResponse>
-  acpAddAgent: (config: ACPAgentConfig) => Promise<ACPAddAgentResponse>
-  acpUpdateAgent: (config: ACPAgentConfig) => Promise<ACPUpdateAgentResponse>
-  acpRemoveAgent: (agentId: string) => Promise<ACPRemoveAgentResponse>
-  acpConnectAgent: (agentId: string) => Promise<ACPConnectAgentResponse>
-  acpDisconnectAgent: (agentId: string) => Promise<ACPDisconnectAgentResponse>
-  acpRefreshAgent: (agentId: string) => Promise<ACPRefreshAgentResponse>
-  acpCancelSession: (sessionId: string, agentId?: string) => Promise<ACPCancelSessionResponse>
+	// Phase 3: Actions
+	evalsPromoteFixture: (request: {
+		fixturePath: string;
+		caseId: string;
+		description: string;
+		expect: { firstToolCall?: string; contains?: string; notContains?: string };
+	}) => Promise<{ success: boolean; casePath?: string; error?: string }>;
+	evalsRetireCase: (request: {
+		caseId: string;
+	}) => Promise<{ success: boolean; newPath?: string; error?: string }>;
+	evalsGenerateTriage: (request?: { weeks?: number }) => Promise<{
+		success: boolean;
+		report?: string;
+		triagePath?: string;
+		error?: string;
+	}>;
+	evalsReadRunDetail: (request: { detailPath: string }) => Promise<{
+		success: boolean;
+		detail?: Record<string, unknown>;
+		error?: string;
+	}>;
+	// Evals Workbench (incident-centric)
+	evalsIncidentList: () => Promise<{
+		success: boolean;
+		incidents?: Array<Record<string, unknown>>;
+		error?: string;
+	}>;
+	evalsIncidentGet: (request: { incidentId: string }) => Promise<{
+		success: boolean;
+		incident?: Record<string, unknown>;
+		markdown?: string;
+		runs?: Array<Record<string, unknown>>;
+		error?: string;
+	}>;
+	evalsIncidentUpdate: (request: {
+		incidentId: string;
+		patch: { status?: string; note?: string; rubric?: string; title?: string };
+	}) => Promise<{
+		success: boolean;
+		incident?: Record<string, unknown>;
+		error?: string;
+	}>;
+	evalsIncidentReadFile: (request: {
+		incidentId: string;
+		relativePath: string;
+	}) => Promise<{ success: boolean; content?: string; error?: string }>;
+	evalsReplayStart: (request: {
+		incidentId: string;
+		runs?: number;
+		disabledSections?: string[];
+		judge?: boolean;
+		useCapturedPrompt?: boolean;
+		providerId?: string;
+		model?: string;
+	}) => Promise<{ success: boolean; runId?: string; error?: string }>;
+	evalsReplayCancel: (request: {
+		incidentId: string;
+	}) => Promise<{ success: boolean; error?: string }>;
+	onEvalsReplayProgress: (
+		callback: (event: Record<string, unknown>) => void,
+	) => () => void;
+	evalsIncidentAnalyze: (request: { incidentId: string }) => Promise<{
+		success: boolean;
+		incident?: Record<string, unknown>;
+		error?: string;
+	}>;
+	evalsIncidentPromote: (request: {
+		incidentId: string;
+		caseId: string;
+		description?: string;
+	}) => Promise<{ success: boolean; casePath?: string; error?: string }>;
+	evalsDiagnoseStart: (request: {
+		incidentId: string;
+		quick?: boolean;
+	}) => Promise<{ success: boolean; error?: string }>;
+	onEvalsDiagnoseProgress: (
+		callback: (event: Record<string, unknown>) => void,
+	) => () => void;
+	evalsRoundList: (request: { incidentId: string }) => Promise<{
+		success: boolean;
+		rounds?: Array<Record<string, unknown>>;
+		error?: string;
+	}>;
+	evalsRoundReplay: (request: {
+		incidentId: string;
+		round: number;
+		runs?: number;
+		editedMessages?: unknown[];
+		providerId?: string;
+		model?: string;
+	}) => Promise<{
+		success: boolean;
+		attempts?: Array<{
+			content: string;
+			toolCalls: Array<{ name: string; args: Record<string, unknown> }>;
+			finishReason: string;
+		}>;
+		edited?: boolean;
+		error?: string;
+	}>;
+	// Variables subsystem (scalar variables)
+	listVariables: (sessionId: string) => Promise<VariablesListResponse>;
+	setVariable: (
+		sessionId: string,
+		name: string,
+		value: string,
+		description?: string,
+		scope?: "global" | "session",
+	) => Promise<VariablesSetResponse>;
+	deleteVariable: (
+		sessionId: string,
+		name: string,
+	) => Promise<VariablesDeleteResponse>;
+	// Project directories — independent module
+	projectDirsList: () => Promise<ProjectDirsListResponse>;
+	projectDirsGet: (path: string) => Promise<ProjectDirsGetResponse>;
+	projectDirsAdd: (
+		path: string,
+		description?: string,
+	) => Promise<ProjectDirsAddResponse>;
+	projectDirsUpdate: (
+		path: string,
+		description: string,
+	) => Promise<ProjectDirsUpdateResponse>;
+	projectDirsRemove: (path: string) => Promise<ProjectDirsRemoveResponse>;
+	getSessionTokenUsage: (sessionId: string) => Promise<{
+		success: boolean;
+		usage?: {
+			totalInputTokens: number;
+			totalOutputTokens: number;
+			totalTokens: number;
+			maxTokens: number;
+			lastInputTokens: number;
+			contextSize: number;
+		};
+		error?: string;
+	}>;
+	// Optimized session loading (Phase 4: Metadata Separation)
+	getSessionsList: () => Promise<GetSessionsListResponse>;
+	activateSession: (sessionId: string) => Promise<ActivateSessionResponse>;
+	getSessionMessages: (
+		sessionId: string,
+	) => Promise<GetSessionMessagesResponse>;
+	getSessionMessagesPage: (
+		request: GetSessionMessagesPageRequest,
+	) => Promise<GetSessionMessagesPageResponse>;
+	getSessionUserMarkers: (
+		sessionId: string,
+	) => Promise<GetSessionUserMarkersResponse>;
+	onSessionMessagesChanged: (
+		callback: (data: {
+			sessionId: string;
+			action: "added" | "updated" | "deleted";
+			messageId?: string;
+		}) => void,
+	) => () => void;
+	// System message methods (for /files command persistence)
+	addSystemMessage: (
+		sessionId: string,
+		message: { id: string; role: string; content: string; timestamp: number },
+	) => Promise<{ success: boolean; error?: string }>;
+	removeFilesChangedMessage: (
+		sessionId: string,
+	) => Promise<{ success: boolean; removedId?: string | null; error?: string }>;
+	removeGitStatusMessage: (
+		sessionId: string,
+	) => Promise<{ success: boolean; removedId?: string | null; error?: string }>;
+	// Generic remove message by ID (for close button functionality)
+	removeMessage: (
+		sessionId: string,
+		messageId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	onContextSizeUpdated: (
+		callback: (data: { sessionId: string; contextSize: number }) => void,
+	) => () => void;
+	onContextCompactStarted: (
+		callback: (data: { sessionId: string }) => void,
+	) => () => void;
+	onContextCompactCompleted: (
+		callback: (data: {
+			sessionId: string;
+			success: boolean;
+			error?: string;
+		}) => void,
+	) => () => void;
+	updateSessionMaxTokens: (
+		sessionId: string,
+		maxTokens: number,
+	) => Promise<{ success: boolean; error?: string }>;
+	getSettings: () => Promise<GetSettingsResponse>;
+	saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>;
+	openSettingsWindow: () => Promise<{ success: boolean }>;
+	onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void;
+	gatewayGetStatus: () => Promise<GatewayGetStatusResponse>;
+	gatewayStart: (
+		request?: GatewayStartRequest,
+	) => Promise<GatewayStartResponse>;
+	gatewayStop: () => Promise<GatewayStopResponse>;
+	gatewayWechatLogout: (
+		request?: GatewayWechatLogoutRequest,
+	) => Promise<GatewayWechatLogoutResponse>;
+	gatewayWechatAddAccount: (
+		request?: GatewayWechatAddAccountRequest,
+	) => Promise<GatewayWechatAddAccountResponse>;
+	gatewayWechatStopAccount: (
+		request: GatewayWechatStopAccountRequest,
+	) => Promise<GatewayWechatStopAccountResponse>;
+	gatewayWechatRemoveAccount: (
+		request: GatewayWechatRemoveAccountRequest,
+	) => Promise<GatewayWechatRemoveAccountResponse>;
+	gatewayWechatRenameAccount: (
+		request: GatewayWechatRenameAccountRequest,
+	) => Promise<GatewayWechatRenameAccountResponse>;
+	channelIdentityListLinks: (
+		request?: ChannelIdentityListLinksRequest,
+	) => Promise<ChannelIdentityListLinksResponse>;
+	channelIdentityListProfiles: () => Promise<ChannelIdentityListProfilesResponse>;
+	channelIdentityCreateProfile: (
+		request: ChannelIdentityCreateProfileRequest,
+	) => Promise<ChannelIdentityCreateProfileResponse>;
+	channelIdentityUpdateProfile: (
+		request: ChannelIdentityUpdateProfileRequest,
+	) => Promise<ChannelIdentityUpdateProfileResponse>;
+	channelIdentityCreateLink: (
+		request: ChannelIdentityCreateLinkRequest,
+	) => Promise<ChannelIdentityCreateLinkResponse>;
+	channelIdentityDeleteLink: (
+		id: string,
+	) => Promise<ChannelIdentityDeleteLinkResponse>;
+	channelIdentityResolve: (
+		origin: MessageOrigin,
+	) => Promise<ChannelIdentityResolveResponse>;
+	channelDeliveryList: () => Promise<{
+		success: boolean;
+		deliveries?: ChannelReplyDeliveryRecord[];
+		error?: string;
+	}>;
+	voiceGetState: () => Promise<VoiceGetStateResponse>;
+	voiceStart: (
+		request?: VoiceStartRequest,
+	) => Promise<{ success: boolean; error?: string }>;
+	voiceStop: (
+		request?: VoiceStopRequest,
+	) => Promise<{ success: boolean; error?: string }>;
+	voiceSubmitUtterance: (
+		request: VoiceSubmitUtteranceRequest,
+	) => Promise<VoiceSubmitUtteranceResponse>;
+	voiceSubmitTranscript: (
+		request: VoiceSubmitTranscriptRequest,
+	) => Promise<VoiceSubmitUtteranceResponse>;
+	voiceSynthesize: (
+		request: VoiceSynthesizeRequest,
+	) => Promise<VoiceSynthesizeResponse>;
+	voiceTestASR: (
+		request: VoiceTestASRRequest,
+	) => Promise<VoiceSubmitUtteranceResponse>;
+	voiceTestTTS: (
+		request: VoiceTestTTSRequest,
+	) => Promise<{ success: boolean; error?: string; mimeType?: string }>;
+	voiceGetTTSModels: (request?: {
+		force?: boolean;
+	}) => Promise<VoiceTTSModelsResponse>;
+	onVoiceEvent: (callback: (event: VoiceEvent) => void) => () => void;
+	voiceRuntimeReady: () => Promise<{ success: boolean }>;
+	voiceRuntimeEvent: (event: VoiceEvent) => Promise<{ success: boolean }>;
+	onVoiceRuntimeCommand: (
+		callback: (command: VoiceRuntimeCommand) => void,
+	) => () => void;
+	getSystemTheme: () => Promise<{ success: boolean; theme?: "light" | "dark" }>;
+	testProxy: (
+		proxy: ProxySettings,
+	) => Promise<{ success: boolean; error?: string; status?: number }>;
+	onSystemThemeChanged: (
+		callback: (theme: "light" | "dark") => void,
+	) => () => void;
+	// Agent methods
+	listAgents: () => Promise<AgentsListResponse>;
+	createAgent: (
+		name: string,
+		systemPrompt?: string,
+	) => Promise<AgentCreateResponse>;
+	updateAgent: (
+		agentId: string,
+		updates: { name?: string; systemPrompt?: string },
+	) => Promise<AgentUpdateResponse>;
+	deleteAgent: (agentId: string) => Promise<AgentDeleteResponse>;
+	// User prompt methods
+	listPrompts: () => Promise<PromptListResponse>;
+	getPrompt: (request: { id: string }) => Promise<PromptGetResponse>;
+	createPrompt: (request: PromptCreateRequest) => Promise<PromptCreateResponse>;
+	updatePrompt: (request: PromptUpdateRequest) => Promise<PromptUpdateResponse>;
+	deletePrompt: (request: PromptDeleteRequest) => Promise<PromptDeleteResponse>;
+	// Theme methods
+	getThemes: () => Promise<GetThemesResponse>;
+	getTheme: (themeId: string) => Promise<GetThemeResponse>;
+	applyTheme: (
+		themeId: string,
+		mode: "dark" | "light",
+	) => Promise<ApplyThemeResponse>;
+	refreshThemes: (projectPath?: string) => Promise<RefreshThemesResponse>;
+	openThemesFolder: () => Promise<{ success: boolean; error?: string }>;
+	getProviders: () => Promise<GetProvidersResponse>;
+	getProviderUsage: (providerId: string) => Promise<ProviderUsageResponse>;
+	getProviderEnvStatus: (
+		providerId: string,
+	) => Promise<GetProviderEnvStatusResponse>;
+	// New OpenRouter-based model API
+	getModelsWithCapabilities: (
+		providerId: string,
+		options?: { forceRefresh?: boolean },
+	) => Promise<{
+		success: boolean;
+		models?: OpenRouterModel[];
+		error?: string;
+	}>;
+	getAllModels: () => Promise<{
+		success: boolean;
+		models?: OpenRouterModel[];
+		error?: string;
+	}>;
+	searchModels: (
+		query: string,
+		providerId?: string,
+	) => Promise<{
+		success: boolean;
+		models?: OpenRouterModel[];
+		error?: string;
+	}>;
+	refreshModelRegistry: () => Promise<{ success: boolean; error?: string }>;
+	getModelNameAliases: () => Promise<{
+		success: boolean;
+		aliases?: Record<string, string>;
+		error?: string;
+	}>;
+	getModelDisplayName: (
+		modelId: string,
+	) => Promise<{ success: boolean; displayName?: string; error?: string }>;
+	// Tools methods
+	getTools: () => Promise<GetToolsResponse>;
+	executeTool: (
+		toolId: string,
+		args: Record<string, any>,
+		messageId: string,
+		sessionId: string,
+	) => Promise<ExecuteToolResponse>;
+	cancelTool: (toolCallId: string) => Promise<{ success: boolean }>;
+	listBackgroundJobs: (options?: { includeInactive?: boolean }) => Promise<{
+		success: boolean;
+		jobs?: Array<Record<string, any>>;
+		error?: string;
+	}>;
+	stopBackgroundJob: (
+		jobId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	updateToolCall: (
+		sessionId: string,
+		messageId: string,
+		toolCallId: string,
+		updates: Partial<ToolCall>,
+	) => Promise<{ success: boolean }>;
+	abortStream: (sessionId?: string) => Promise<{ success: boolean }>;
+	getActiveStreams: () => Promise<{ success: boolean; streams?: string[] }>;
+	resumeAfterToolConfirm: (
+		sessionId: string,
+		messageId: string,
+	) => Promise<{ success: boolean; error?: string }>;
 
-  // Skills methods (Official Claude Code Skills)
-  getSkills: (workingDirectory?: string) => Promise<GetSkillsResponse>
-  refreshSkills: () => Promise<RefreshSkillsResponse>
-  readSkillFile: (skillId: string, fileName: string) => Promise<ReadSkillFileResponse>
-  openSkillDirectory: (skillId?: string) => Promise<OpenSkillDirectoryResponse>
-  createSkill: (name: string, description: string, instructions: string, source: SkillSource) => Promise<CreateSkillResponse>
-  deleteSkill: (skillId: string) => Promise<{ success: boolean; error?: string }>
-  toggleSkillEnabled: (skillId: string, enabled: boolean) => Promise<{ success: boolean; error?: string }>
+	// Permission methods
+	clearSessionPermissions: (
+		sessionId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	getPendingPermissions: (sessionId: string) => Promise<{
+		success: boolean;
+		pending?: PermissionInfo[];
+		error?: string;
+	}>;
 
-  // Message update methods
-  updateMessageThinkingTime: (sessionId: string, messageId: string, thinkingTime: number) => Promise<{ success: boolean }>
+	// MCP methods
+	mcpGetServers: () => Promise<MCPGetServersResponse>;
+	mcpAddServer: (config: MCPServerConfig) => Promise<MCPAddServerResponse>;
+	mcpUpdateServer: (
+		config: MCPServerConfig,
+	) => Promise<MCPUpdateServerResponse>;
+	mcpRemoveServer: (serverId: string) => Promise<MCPRemoveServerResponse>;
+	mcpConnectServer: (serverId: string) => Promise<MCPConnectServerResponse>;
+	mcpDisconnectServer: (
+		serverId: string,
+	) => Promise<MCPDisconnectServerResponse>;
+	mcpRefreshServer: (serverId: string) => Promise<MCPRefreshServerResponse>;
+	mcpGetTools: () => Promise<MCPGetToolsResponse>;
+	mcpCallTool: (
+		serverId: string,
+		toolName: string,
+		args: Record<string, any>,
+	) => Promise<MCPCallToolResponse>;
+	mcpGetResources: () => Promise<MCPGetResourcesResponse>;
+	mcpReadResource: (
+		serverId: string,
+		uri: string,
+	) => Promise<MCPReadResourceResponse>;
+	mcpGetPrompts: () => Promise<MCPGetPromptsResponse>;
+	mcpGetPrompt: (
+		serverId: string,
+		name: string,
+		args?: Record<string, string>,
+	) => Promise<MCPGetPromptResponse>;
+	mcpReadConfigFile: (filePath: string) => Promise<MCPReadConfigFileResponse>;
 
-  // Dialog methods
-  showOpenDialog: (options: { properties?: Array<'openFile' | 'openDirectory' | 'multiSelections'>; title?: string; defaultPath?: string; filters?: Array<{ name: string; extensions: string[] }> }) => Promise<{ canceled: boolean; filePaths: string[] }>
+	// ACP methods
+	acpGetAgents: () => Promise<ACPGetAgentsResponse>;
+	acpAddAgent: (config: ACPAgentConfig) => Promise<ACPAddAgentResponse>;
+	acpUpdateAgent: (config: ACPAgentConfig) => Promise<ACPUpdateAgentResponse>;
+	acpRemoveAgent: (agentId: string) => Promise<ACPRemoveAgentResponse>;
+	acpConnectAgent: (agentId: string) => Promise<ACPConnectAgentResponse>;
+	acpDisconnectAgent: (agentId: string) => Promise<ACPDisconnectAgentResponse>;
+	acpRefreshAgent: (agentId: string) => Promise<ACPRefreshAgentResponse>;
+	acpCancelSession: (
+		sessionId: string,
+		agentId?: string,
+	) => Promise<ACPCancelSessionResponse>;
 
-  // Shell methods
-  openPath: (filePath: string) => Promise<string>
-  openExternal: (url: string) => Promise<{ success: boolean }>
-  getDataPath: () => Promise<string>
+	// Skills methods (Official Claude Code Skills)
+	getSkills: (workingDirectory?: string) => Promise<GetSkillsResponse>;
+	refreshSkills: () => Promise<RefreshSkillsResponse>;
+	readSkillFile: (
+		skillId: string,
+		fileName: string,
+	) => Promise<ReadSkillFileResponse>;
+	openSkillDirectory: (skillId?: string) => Promise<OpenSkillDirectoryResponse>;
+	createSkill: (
+		name: string,
+		description: string,
+		instructions: string,
+		source: SkillSource,
+	) => Promise<CreateSkillResponse>;
+	deleteSkill: (
+		skillId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	toggleSkillEnabled: (
+		skillId: string,
+		enabled: boolean,
+	) => Promise<{ success: boolean; error?: string }>;
 
-  // Clipboard methods
-  writeClipboardText: (text: string) => Promise<{ success: boolean; error?: string }> | { success: boolean; error?: string }
+	// Message update methods
+	updateMessageThinkingTime: (
+		sessionId: string,
+		messageId: string,
+		thinkingTime: number,
+	) => Promise<{ success: boolean }>;
 
-  // Media methods
-  saveImage: (data: { url?: string; base64?: string; prompt: string; revisedPrompt?: string; model: string; sessionId: string; messageId: string }) => Promise<{ id: string; type: 'image'; filePath: string; prompt: string; revisedPrompt?: string; model: string; createdAt: number; sessionId: string; messageId: string }>
-  loadAllMedia: () => Promise<{ id: string; type: 'image'; filePath: string; prompt: string; revisedPrompt?: string; model: string; createdAt: number; sessionId: string; messageId: string }[]>
-  deleteMedia: (id: string) => Promise<boolean>
-  clearAllMedia: () => Promise<void>
-  readImageBase64: (filePath: string) => Promise<string>
-  listMediaAssets: (query?: MediaQuery) => Promise<MediaAsset[]>
-  hideMediaAsset: (id: string) => Promise<{ success: boolean }>
-  rebuildMediaLibrary: () => Promise<MediaRebuildResponse>
-  getMediaGallery: (assetId: string, query?: MediaQuery) => Promise<MediaGalleryResponse>
+	// Dialog methods
+	showOpenDialog: (options: {
+		properties?: Array<"openFile" | "openDirectory" | "multiSelections">;
+		title?: string;
+		defaultPath?: string;
+		filters?: Array<{ name: string; extensions: string[] }>;
+	}) => Promise<{ canceled: boolean; filePaths: string[] }>;
 
-  // Image preview methods
-  openImagePreview: (src: string, alt?: string) => Promise<{ success: boolean }>
-  getImagePreview: (previewId: string) => Promise<{ success: boolean; src?: string; alt?: string; error?: string }>
-  openImageGallery: (mediaId: string) => Promise<{ success: boolean }>
-  onImagePreviewUpdate: (callback: (data: { mode?: 'single'; previewId?: string; src?: string; alt?: string }) => void) => () => void
+	// Shell methods
+	openPath: (filePath: string) => Promise<string>;
+	openExternal: (url: string) => Promise<{ success: boolean }>;
+	getDataPath: () => Promise<string>;
 
-  // OAuth methods
-  oauthStart: (providerId: string) => Promise<{
-    success: boolean
-    error?: string
-    flowId?: string
-    flowKind?: 'pkce-callback' | 'manual-pkce' | 'device-code'
-    pollIntervalMs?: number
-    expiresAt?: number
-    statusMessage?: string
-    // For device flow (GitHub Copilot)
-    userCode?: string
-    verificationUri?: string
-    // For manual code entry flow (Claude Code)
-    requiresCodeEntry?: boolean
-    state?: string
-    instructions?: string
-  }>
-  oauthCallback: (providerId: string, code: string, state: string) => Promise<{
-    success: boolean
-    error?: string
-  }>
-  oauthLogout: (providerId: string) => Promise<{ success: boolean; error?: string }>
-  oauthGetStatus: (providerId: string) => Promise<{
-    success: boolean
-    providerId?: string
-    isLoggedIn: boolean
-    isExpired?: boolean
-    canRefresh?: boolean
-    expiresAt?: number
-    account?: {
-      id?: string
-      email?: string
-      planType?: string
-      isFedramp?: boolean
-    }
-    lastError?: string
-    error?: string
-  }>
-  oauthDevicePoll: (providerId: string, flowId?: string) => Promise<{
-    success: boolean
-    completed?: boolean
-    error?: string
-    pollStatus?: string
-  }>
-  oauthRefresh: (providerId: string) => Promise<{ success: boolean; error?: string }>
-  onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) => () => void
-  onOAuthTokenExpired: (callback: (data: { providerId: string; error?: string }) => void) => () => void
+	// Clipboard methods
+	writeClipboardText: (
+		text: string,
+	) =>
+		| Promise<{ success: boolean; error?: string }>
+		| { success: boolean; error?: string };
 
-  // Menu event listeners
-  onMenuNewChat: (callback: () => void) => () => void
-  onMenuCloseChat: (callback: () => void) => () => void
+	// Media methods
+	saveImage: (data: {
+		url?: string;
+		base64?: string;
+		prompt: string;
+		revisedPrompt?: string;
+		model: string;
+		sessionId: string;
+		messageId: string;
+	}) => Promise<{
+		id: string;
+		type: "image";
+		filePath: string;
+		prompt: string;
+		revisedPrompt?: string;
+		model: string;
+		createdAt: number;
+		sessionId: string;
+		messageId: string;
+	}>;
+	loadAllMedia: () => Promise<
+		{
+			id: string;
+			type: "image";
+			filePath: string;
+			prompt: string;
+			revisedPrompt?: string;
+			model: string;
+			createdAt: number;
+			sessionId: string;
+			messageId: string;
+		}[]
+	>;
+	deleteMedia: (id: string) => Promise<boolean>;
+	clearAllMedia: () => Promise<void>;
+	readImageBase64: (filePath: string) => Promise<string>;
+	listMediaAssets: (query?: MediaQuery) => Promise<MediaAsset[]>;
+	hideMediaAsset: (id: string) => Promise<{ success: boolean }>;
+	rebuildMediaLibrary: () => Promise<MediaRebuildResponse>;
+	getMediaGallery: (
+		assetId: string,
+		query?: MediaQuery,
+	) => Promise<MediaGalleryResponse>;
 
-  // Files methods (for @ file search)
-  listFiles: (options: { cwd?: string; query?: string; limit?: number }) => Promise<{
-    success: boolean
-    files: string[]
-    entries?: Array<{
-      path: string
-      type: 'file' | 'directory'
-      source?: 'workdir' | 'downloads' | 'note'
-      label?: string
-    }>
-    error?: string
-  }>
+	// Image preview methods
+	openImagePreview: (
+		src: string,
+		alt?: string,
+	) => Promise<{ success: boolean }>;
+	getImagePreview: (previewId: string) => Promise<{
+		success: boolean;
+		src?: string;
+		alt?: string;
+		error?: string;
+	}>;
+	openImageGallery: (mediaId: string) => Promise<{ success: boolean }>;
+	onImagePreviewUpdate: (
+		callback: (data: {
+			mode?: "single";
+			previewId?: string;
+			src?: string;
+			alt?: string;
+		}) => void,
+	) => () => void;
 
-  // File rollback (for /files command)
-  rollbackFile: (options: { auditPath?: string; filePath?: string; originalContent?: string; isNew?: boolean }) => Promise<{ success: boolean; error?: string; auditId?: string; filePath?: string; restoredExists?: boolean }>
+	// OAuth methods
+	oauthStart: (providerId: string) => Promise<{
+		success: boolean;
+		error?: string;
+		flowId?: string;
+		flowKind?: "pkce-callback" | "manual-pkce" | "device-code";
+		pollIntervalMs?: number;
+		expiresAt?: number;
+		statusMessage?: string;
+		// For device flow (GitHub Copilot)
+		userCode?: string;
+		verificationUri?: string;
+		// For manual code entry flow (Claude Code)
+		requiresCodeEntry?: boolean;
+		state?: string;
+		instructions?: string;
+	}>;
+	oauthCallback: (
+		providerId: string,
+		code: string,
+		state: string,
+	) => Promise<{
+		success: boolean;
+		error?: string;
+	}>;
+	oauthLogout: (
+		providerId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	oauthGetStatus: (providerId: string) => Promise<{
+		success: boolean;
+		providerId?: string;
+		isLoggedIn: boolean;
+		isExpired?: boolean;
+		canRefresh?: boolean;
+		expiresAt?: number;
+		account?: {
+			id?: string;
+			email?: string;
+			planType?: string;
+			isFedramp?: boolean;
+		};
+		lastError?: string;
+		error?: string;
+	}>;
+	oauthDevicePoll: (
+		providerId: string,
+		flowId?: string,
+	) => Promise<{
+		success: boolean;
+		completed?: boolean;
+		error?: string;
+		pollStatus?: string;
+	}>;
+	oauthRefresh: (
+		providerId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	onOAuthTokenRefreshed: (
+		callback: (data: { providerId: string }) => void,
+	) => () => void;
+	onOAuthTokenExpired: (
+		callback: (data: { providerId: string; error?: string }) => void,
+	) => () => void;
 
-  // Directories listing (for /cd path completion)
-  listDirs: (options: { basePath: string; query?: string; limit?: number }) => Promise<{ success: boolean; dirs: string[]; basePath: string; error?: string }>
+	// Menu event listeners
+	onMenuNewChat: (callback: () => void) => () => void;
+	onMenuCloseChat: (callback: () => void) => () => void;
 
-  // File content reading/writing (for file preview panel)
-  readFileContent: (filePath: string, maxSize?: number) => Promise<{
-    success: boolean
-    content?: string
-    encoding?: string
-    size?: number
-    mtimeMs?: number
-    isBinary?: boolean
-    error?: string
-  }>
-  saveFileContent: (filePath: string, content: string, expectedMtimeMs?: number) => Promise<{
-    success: boolean
-    mtimeMs?: number
-    conflict?: boolean
-    error?: string
-  }>
-  listDirectory: (dirPath: string) => Promise<{
-    success: boolean
-    entries?: Array<{ name: string; path: string; type: 'file' | 'directory'; size?: number; mtimeMs?: number }>
-    error?: string
-  }>
-  createFile: (filePath: string, content?: string) => Promise<{ success: boolean; error?: string }>
-  createDirectory: (dirPath: string) => Promise<{ success: boolean; error?: string }>
-  renamePath: (oldPath: string, newPath: string) => Promise<{ success: boolean; error?: string }>
-  deletePath: (targetPath: string) => Promise<{ success: boolean; error?: string }>
-  statPath: (targetPath: string) => Promise<{ success: boolean; type?: 'file' | 'directory'; size?: number; mtimeMs?: number; error?: string }>
-  revealPath: (targetPath: string) => Promise<{ success: boolean; error?: string }>
-  watchWorkspace: (root: string) => Promise<{ success: boolean; error?: string }>
-  unwatchWorkspace: (root: string) => Promise<{ success: boolean }>
-  onWorkspaceFileChanged: (callback: (data: { root: string; path: string; eventType: string }) => void) => () => void
-  resolveMarkdownAsset: (request: MarkdownResolveAssetRequest) => Promise<MarkdownResolveAssetResponse>
-  saveMarkdownAttachments: (request: MarkdownSaveAttachmentsRequest) => Promise<MarkdownSaveAttachmentsResponse>
+	// Files methods (for @ file search)
+	listFiles: (options: {
+		cwd?: string;
+		query?: string;
+		limit?: number;
+	}) => Promise<{
+		success: boolean;
+		files: string[];
+		entries?: Array<{
+			path: string;
+			type: "file" | "directory";
+			source?: "workdir" | "downloads" | "note";
+			label?: string;
+		}>;
+		error?: string;
+	}>;
 
-  // Window methods
-  setWindowButtonVisibility: (visible: boolean) => Promise<{ success: boolean }>
+	// File rollback (for /files command)
+	rollbackFile: (options: {
+		auditPath?: string;
+		filePath?: string;
+		originalContent?: string;
+		isNew?: boolean;
+	}) => Promise<{
+		success: boolean;
+		error?: string;
+		auditId?: string;
+		filePath?: string;
+		restoredExists?: boolean;
+	}>;
 
-  // Unified event-driven channels (Phase 4)
-  onSessionEvent: (callback: (envelope: any) => void) => () => void
-  onSessionStream: (callback: (data: { sessionId: string; chunk: any }) => void) => () => void
-  emitCommand: (sessionId: string, command: any) => Promise<{ success: boolean; error?: string; result?: any }>
+	// Directories listing (for /cd path completion)
+	listDirs: (options: {
+		basePath: string;
+		query?: string;
+		limit?: number;
+	}) => Promise<{
+		success: boolean;
+		dirs: string[];
+		basePath: string;
+		error?: string;
+	}>;
 
-  // Skill execution
-  executeSkill: (skillId: string, options: { sessionId: string; input: string }) => Promise<{ success: boolean; result?: { output: string }; error?: string }>
+	// File content reading/writing (for file preview panel)
+	readFileContent: (
+		filePath: string,
+		maxSize?: number,
+	) => Promise<{
+		success: boolean;
+		content?: string;
+		encoding?: string;
+		size?: number;
+		mtimeMs?: number;
+		isBinary?: boolean;
+		error?: string;
+	}>;
+	saveFileContent: (
+		filePath: string,
+		content: string,
+		expectedMtimeMs?: number,
+	) => Promise<{
+		success: boolean;
+		mtimeMs?: number;
+		conflict?: boolean;
+		error?: string;
+	}>;
+	listDirectory: (dirPath: string) => Promise<{
+		success: boolean;
+		entries?: Array<{
+			name: string;
+			path: string;
+			type: "file" | "directory";
+			size?: number;
+			mtimeMs?: number;
+		}>;
+		error?: string;
+	}>;
+	createFile: (
+		filePath: string,
+		content?: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	createDirectory: (
+		dirPath: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	renamePath: (
+		oldPath: string,
+		newPath: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	deletePath: (
+		targetPath: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	statPath: (targetPath: string) => Promise<{
+		success: boolean;
+		type?: "file" | "directory";
+		size?: number;
+		mtimeMs?: number;
+		error?: string;
+	}>;
+	revealPath: (
+		targetPath: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	watchWorkspace: (
+		root: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	unwatchWorkspace: (root: string) => Promise<{ success: boolean }>;
+	onWorkspaceFileChanged: (
+		callback: (data: { root: string; path: string; eventType: string }) => void,
+	) => () => void;
+	resolveMarkdownAsset: (
+		request: MarkdownResolveAssetRequest,
+	) => Promise<MarkdownResolveAssetResponse>;
+	saveMarkdownAttachments: (
+		request: MarkdownSaveAttachmentsRequest,
+	) => Promise<MarkdownSaveAttachmentsResponse>;
 
-  // Plugin management
-  getPlugins: () => Promise<{ success: boolean; plugins?: Array<{
-    id: string; name: string; version: string; description: string;
-    author: string; loaded: boolean; enabled: boolean;
-    commands: string[]; error: string; dirPath: string;
-    needsInstall: boolean;
-  }>; error?: string }>
-  enablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
-  disablePlugin: (pluginId: string) => Promise<{ success: boolean; error?: string }>
-  refreshPlugins: () => Promise<{ success: boolean; error?: string }>
-  getPluginCommands: () => Promise<GetPluginCommandsResponse>
-  executePluginCommand: (
-    commandName: string,
-    args: string,
-    sessionId: string
-  ) => Promise<ExecutePluginCommandResponse>
+	// Window methods
+	setWindowButtonVisibility: (
+		visible: boolean,
+	) => Promise<{ success: boolean }>;
 
-  // Soul / Memory panel
-  getMemoryOverview: (agentId?: string) => Promise<MemoryOverviewResponse>
-  readMemoryFile: (request: MemoryReadRequest) => Promise<MemoryReadResponse>
-  searchMemory: (request: MemorySearchRequest) => Promise<MemorySearchResponse>
-  appendMemory: (request: MemoryAppendRequest) => Promise<MemoryAppendResponse>
-  saveMemoryFile: (request: MemorySaveFileRequest) => Promise<MemorySaveFileResponse>
-  rebuildMemoryIndex: (agentId?: string) => Promise<MemoryIndexResponse>
-  runMemoryDreaming: (agentId?: string) => Promise<MemoryRunDreamingResponse>
-  listMemoryProfile: (request?: MemoryProfileListRequest) => Promise<MemoryProfileListResponse>
-  searchMemoryProfile: (request: MemoryProfileListRequest) => Promise<MemoryProfileListResponse>
-  upsertMemoryProfile: (request: MemoryProfileUpsertRequest) => Promise<MemoryProfileUpsertResponse>
-  deleteMemoryProfile: (request: MemoryProfileDeleteRequest) => Promise<MemoryProfileDeleteResponse>
-  getMemoryProfileAudit: (request: MemoryProfileAuditRequest) => Promise<MemoryProfileAuditResponse>
-  exportMemoryProfile: (agentId?: string) => Promise<MemoryProfileExportResponse>
-  getMemoryGraphOverview: (agentId?: string) => Promise<MemoryGraphOverviewResponse>
-  listMemoryGraphEntities: (request?: MemoryGraphListRequest) => Promise<MemoryGraphEntitiesResponse>
-  upsertMemoryGraphEntity: (request: MemoryGraphEntityUpsertRequest) => Promise<MemoryGraphEntityResponse>
-  deleteMemoryGraphEntity: (request: MemoryGraphDeleteRequest) => Promise<{ success: boolean; error?: string }>
-  listMemoryGraphObservations: (request?: MemoryGraphListRequest & { entityId?: string }) => Promise<MemoryGraphObservationsResponse>
-  upsertMemoryGraphObservation: (request: MemoryGraphObservationUpsertRequest) => Promise<MemoryGraphObservationResponse>
-  deleteMemoryGraphObservation: (request: MemoryGraphDeleteRequest) => Promise<{ success: boolean; error?: string }>
-  listMemoryGraphRelations: (request?: MemoryGraphListRequest & { entityId?: string }) => Promise<MemoryGraphRelationsResponse>
-  upsertMemoryGraphRelation: (request: MemoryGraphRelationUpsertRequest) => Promise<MemoryGraphRelationResponse>
-  deleteMemoryGraphRelation: (request: MemoryGraphDeleteRequest) => Promise<{ success: boolean; error?: string }>
-  listMemoryGraphDuplicates: (request?: MemoryGraphListRequest) => Promise<MemoryGraphDuplicatesResponse>
-  mergeMemoryGraphDuplicate: (request: MemoryGraphDuplicateDecisionRequest) => Promise<{ success: boolean; error?: string }>
-  ignoreMemoryGraphDuplicate: (request: MemoryGraphDuplicateDecisionRequest) => Promise<{ success: boolean; error?: string }>
-  getMemoryGraphAudit: (request: MemoryGraphAuditRequest) => Promise<MemoryGraphAuditResponse>
-  listMemoryLogs: (request?: MemoryLogsListRequest) => Promise<MemoryLogsListResponse>
-  getMemoryLogStats: () => Promise<MemoryLogsStatsResponse>
-  openMemoryLogFolder: () => Promise<{ success: boolean; error?: string }>
-  cleanupMemoryLogs: () => Promise<MemoryLogsCleanupResponse>
-  saveMemoryCapture: (request?: MemoryCaptureDecisionRequest) => Promise<MemoryCaptureDecisionResponse>
-  discardMemoryCapture: (request?: MemoryCaptureDecisionRequest) => Promise<MemoryCaptureDecisionResponse>
-  listSchedulerTasks: () => Promise<SchedulerListResponse>
-  getSchedulerTask: (request: SchedulerGetRequest) => Promise<SchedulerGetResponse>
-  runSchedulerTaskNow: (request: SchedulerRunNowRequest) => Promise<SchedulerRunNowResponse>
-  setSchedulerTaskEnabled: (request: SchedulerSetEnabledRequest) => Promise<SchedulerSetEnabledResponse>
-  createSchedulerTask: (request: SchedulerCreateTaskRequest) => Promise<SchedulerWriteTaskResponse>
-  updateSchedulerTask: (request: SchedulerUpdateTaskRequest) => Promise<SchedulerWriteTaskResponse>
-  deleteSchedulerTask: (request: SchedulerDeleteTaskRequest) => Promise<SchedulerDeleteTaskResponse>
-  listSchedulerRuns: (request: SchedulerListRunsRequest) => Promise<SchedulerListRunsResponse>
-  getSchedulerRun: (request: SchedulerGetRunRequest) => Promise<SchedulerGetRunResponse>
+	// Unified event-driven channels (Phase 4)
+	onSessionEvent: (callback: (envelope: any) => void) => () => void;
+	onSessionStream: (
+		callback: (data: { sessionId: string; chunk: any }) => void,
+	) => () => void;
+	emitCommand: (
+		sessionId: string,
+		command: any,
+	) => Promise<{ success: boolean; error?: string; result?: any }>;
 
-  // App State
-  getAppState: () => Promise<{
-    currentSessionId: string
-    currentWorkspaceId: string | null
-    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; initialFilePath?: string; activeFilePath?: string; workspaceRoot?: string; title?: string }>
-    activeTabIndex?: number
-    sidebarCollapsed?: boolean
-  }>
-  saveUIState: (uiState: {
-    openTabs?: Array<{ type: string; sessionId?: string; filePath?: string; initialFilePath?: string; activeFilePath?: string; workspaceRoot?: string; title?: string }>
-    activeTabIndex?: number
-    sidebarCollapsed?: boolean
-  }) => Promise<{ success: boolean }>
+	// Skill execution
+	executeSkill: (
+		skillId: string,
+		options: { sessionId: string; input: string },
+	) => Promise<{
+		success: boolean;
+		result?: { output: string };
+		error?: string;
+	}>;
 
-  // Search Everywhere
-  toggleSearchWindow: () => Promise<{ success: boolean }>
-  closeSearchWindow: () => Promise<{ success: boolean }>
-  onSearchWindowShown: (callback: () => void) => () => void
-  onSearchWindowGuides: (callback: (state: SearchWindowGuideState) => void) => () => void
-  searchQuery: (req: SearchRequest) => Promise<SearchResponse>
-  searchExecuteAction: (actionId: string) => Promise<{ success: boolean }>
-  onSearchAction: (callback: (actionId: string) => void) => () => void
+	// Plugin management
+	getPlugins: () => Promise<{
+		success: boolean;
+		plugins?: Array<{
+			id: string;
+			name: string;
+			version: string;
+			description: string;
+			author: string;
+			loaded: boolean;
+			enabled: boolean;
+			commands: string[];
+			error: string;
+			dirPath: string;
+			needsInstall: boolean;
+		}>;
+		error?: string;
+	}>;
+	enablePlugin: (
+		pluginId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	disablePlugin: (
+		pluginId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	refreshPlugins: () => Promise<{ success: boolean; error?: string }>;
+	getPluginCommands: () => Promise<GetPluginCommandsResponse>;
+	executePluginCommand: (
+		commandName: string,
+		args: string,
+		sessionId: string,
+	) => Promise<ExecutePluginCommandResponse>;
 
-  // Todo / Plan
-  getTodoPlan: (request?: TodoPlanGetRequest) => Promise<TodoPlanGetResponse>
-  createTodoPlanNote: (request: TodoPlanCreateRequest) => Promise<TodoPlanCreateResponse>
-  updateTodoPlan: (request: TodoPlanUpdateRequest) => Promise<TodoPlanUpdateResponse>
-  renameTodoPlanNote: (request: TodoPlanRenameRequest) => Promise<TodoPlanRenameResponse>
-  deleteTodoPlanNote: (request: TodoPlanDeleteRequest) => Promise<TodoPlanDeleteResponse>
-  revealTodoPlanDirectory: () => Promise<{ success: boolean; error?: string }>
-  openTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => Promise<{ success: boolean }>
-  hideTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => Promise<{ success: boolean }>
-  toggleTodoPlanWindow: (request?: TodoPlanWindowActionRequest) => Promise<{ success: boolean }>
-  setTodoPlanWindowPinned: (pinned: boolean) => Promise<{ success: boolean; pinned: boolean }>
-  onTodoPlanChanged: (callback: (data: TodoPlanChangedPayload) => void) => () => void
+	// Soul / Memory panel
+	getMemoryOverview: (agentId?: string) => Promise<MemoryOverviewResponse>;
+	readMemoryFile: (request: MemoryReadRequest) => Promise<MemoryReadResponse>;
+	searchMemory: (request: MemorySearchRequest) => Promise<MemorySearchResponse>;
+	appendMemory: (request: MemoryAppendRequest) => Promise<MemoryAppendResponse>;
+	saveMemoryFile: (
+		request: MemorySaveFileRequest,
+	) => Promise<MemorySaveFileResponse>;
+	rebuildMemoryIndex: (agentId?: string) => Promise<MemoryIndexResponse>;
+	runMemoryDreaming: (agentId?: string) => Promise<MemoryRunDreamingResponse>;
+	listMemoryProfile: (
+		request?: MemoryProfileListRequest,
+	) => Promise<MemoryProfileListResponse>;
+	searchMemoryProfile: (
+		request: MemoryProfileListRequest,
+	) => Promise<MemoryProfileListResponse>;
+	upsertMemoryProfile: (
+		request: MemoryProfileUpsertRequest,
+	) => Promise<MemoryProfileUpsertResponse>;
+	deleteMemoryProfile: (
+		request: MemoryProfileDeleteRequest,
+	) => Promise<MemoryProfileDeleteResponse>;
+	getMemoryProfileAudit: (
+		request: MemoryProfileAuditRequest,
+	) => Promise<MemoryProfileAuditResponse>;
+	exportMemoryProfile: (
+		agentId?: string,
+	) => Promise<MemoryProfileExportResponse>;
+	getMemoryGraphOverview: (
+		agentId?: string,
+	) => Promise<MemoryGraphOverviewResponse>;
+	listMemoryGraphEntities: (
+		request?: MemoryGraphListRequest,
+	) => Promise<MemoryGraphEntitiesResponse>;
+	upsertMemoryGraphEntity: (
+		request: MemoryGraphEntityUpsertRequest,
+	) => Promise<MemoryGraphEntityResponse>;
+	deleteMemoryGraphEntity: (
+		request: MemoryGraphDeleteRequest,
+	) => Promise<{ success: boolean; error?: string }>;
+	listMemoryGraphObservations: (
+		request?: MemoryGraphListRequest & { entityId?: string },
+	) => Promise<MemoryGraphObservationsResponse>;
+	upsertMemoryGraphObservation: (
+		request: MemoryGraphObservationUpsertRequest,
+	) => Promise<MemoryGraphObservationResponse>;
+	deleteMemoryGraphObservation: (
+		request: MemoryGraphDeleteRequest,
+	) => Promise<{ success: boolean; error?: string }>;
+	listMemoryGraphRelations: (
+		request?: MemoryGraphListRequest & { entityId?: string },
+	) => Promise<MemoryGraphRelationsResponse>;
+	upsertMemoryGraphRelation: (
+		request: MemoryGraphRelationUpsertRequest,
+	) => Promise<MemoryGraphRelationResponse>;
+	deleteMemoryGraphRelation: (
+		request: MemoryGraphDeleteRequest,
+	) => Promise<{ success: boolean; error?: string }>;
+	listMemoryGraphDuplicates: (
+		request?: MemoryGraphListRequest,
+	) => Promise<MemoryGraphDuplicatesResponse>;
+	mergeMemoryGraphDuplicate: (
+		request: MemoryGraphDuplicateDecisionRequest,
+	) => Promise<{ success: boolean; error?: string }>;
+	ignoreMemoryGraphDuplicate: (
+		request: MemoryGraphDuplicateDecisionRequest,
+	) => Promise<{ success: boolean; error?: string }>;
+	getMemoryGraphAudit: (
+		request: MemoryGraphAuditRequest,
+	) => Promise<MemoryGraphAuditResponse>;
+	listMemoryLogs: (
+		request?: MemoryLogsListRequest,
+	) => Promise<MemoryLogsListResponse>;
+	getMemoryLogStats: () => Promise<MemoryLogsStatsResponse>;
+	openMemoryLogFolder: () => Promise<{ success: boolean; error?: string }>;
+	cleanupMemoryLogs: () => Promise<MemoryLogsCleanupResponse>;
+	saveMemoryCapture: (
+		request?: MemoryCaptureDecisionRequest,
+	) => Promise<MemoryCaptureDecisionResponse>;
+	discardMemoryCapture: (
+		request?: MemoryCaptureDecisionRequest,
+	) => Promise<MemoryCaptureDecisionResponse>;
+	listSchedulerTasks: () => Promise<SchedulerListResponse>;
+	getSchedulerTask: (
+		request: SchedulerGetRequest,
+	) => Promise<SchedulerGetResponse>;
+	runSchedulerTaskNow: (
+		request: SchedulerRunNowRequest,
+	) => Promise<SchedulerRunNowResponse>;
+	setSchedulerTaskEnabled: (
+		request: SchedulerSetEnabledRequest,
+	) => Promise<SchedulerSetEnabledResponse>;
+	createSchedulerTask: (
+		request: SchedulerCreateTaskRequest,
+	) => Promise<SchedulerWriteTaskResponse>;
+	updateSchedulerTask: (
+		request: SchedulerUpdateTaskRequest,
+	) => Promise<SchedulerWriteTaskResponse>;
+	deleteSchedulerTask: (
+		request: SchedulerDeleteTaskRequest,
+	) => Promise<SchedulerDeleteTaskResponse>;
+	listSchedulerRuns: (
+		request: SchedulerListRunsRequest,
+	) => Promise<SchedulerListRunsResponse>;
+	getSchedulerRun: (
+		request: SchedulerGetRunRequest,
+	) => Promise<SchedulerGetRunResponse>;
 
+	// App State
+	getAppState: () => Promise<{
+		currentSessionId: string;
+		currentWorkspaceId: string | null;
+		openTabs?: Array<{
+			type: string;
+			sessionId?: string;
+			filePath?: string;
+			initialFilePath?: string;
+			activeFilePath?: string;
+			workspaceRoot?: string;
+			title?: string;
+		}>;
+		activeTabIndex?: number;
+		sidebarCollapsed?: boolean;
+	}>;
+	saveUIState: (uiState: {
+		openTabs?: Array<{
+			type: string;
+			sessionId?: string;
+			filePath?: string;
+			initialFilePath?: string;
+			activeFilePath?: string;
+			workspaceRoot?: string;
+			title?: string;
+		}>;
+		activeTabIndex?: number;
+		sidebarCollapsed?: boolean;
+	}) => Promise<{ success: boolean }>;
+
+	// Search Everywhere
+	toggleSearchWindow: (
+		options?: SearchWindowOpenOptions,
+	) => Promise<{ success: boolean }>;
+	closeSearchWindow: () => Promise<{ success: boolean }>;
+	setSearchWindowAnchor: (
+		anchor: SearchWindowAnchor | null,
+	) => Promise<{ success: boolean }>;
+	onSearchWindowShown: (
+		callback: (payload?: SearchWindowShownPayload | null) => void,
+	) => () => void;
+	onSearchWindowGuides: (
+		callback: (state: SearchWindowGuideState) => void,
+	) => () => void;
+	searchQuery: (req: SearchRequest) => Promise<SearchResponse>;
+	searchExecuteAction: (actionId: string) => Promise<{ success: boolean }>;
+	onSearchAction: (callback: (actionId: string) => void) => () => void;
+
+	// Todo / Plan
+	getTodoPlan: (request?: TodoPlanGetRequest) => Promise<TodoPlanGetResponse>;
+	createTodoPlanNote: (
+		request: TodoPlanCreateRequest,
+	) => Promise<TodoPlanCreateResponse>;
+	updateTodoPlan: (
+		request: TodoPlanUpdateRequest,
+	) => Promise<TodoPlanUpdateResponse>;
+	renameTodoPlanNote: (
+		request: TodoPlanRenameRequest,
+	) => Promise<TodoPlanRenameResponse>;
+	deleteTodoPlanNote: (
+		request: TodoPlanDeleteRequest,
+	) => Promise<TodoPlanDeleteResponse>;
+	revealTodoPlanDirectory: () => Promise<{ success: boolean; error?: string }>;
+	openTodoPlanWindow: (
+		request?: TodoPlanWindowActionRequest,
+	) => Promise<{ success: boolean }>;
+	hideTodoPlanWindow: (
+		request?: TodoPlanWindowActionRequest,
+	) => Promise<{ success: boolean }>;
+	toggleTodoPlanWindow: (
+		request?: TodoPlanWindowActionRequest,
+	) => Promise<{ success: boolean }>;
+	setTodoPlanWindowPinned: (
+		pinned: boolean,
+	) => Promise<{ success: boolean; pinned: boolean }>;
+	onTodoPlanChanged: (
+		callback: (data: TodoPlanChangedPayload) => void,
+	) => () => void;
 }
 
 declare global {
-  interface Window {
-    electronAPI: ElectronAPI
-  }
+	interface Window {
+		electronAPI: ElectronAPI;
+	}
 }

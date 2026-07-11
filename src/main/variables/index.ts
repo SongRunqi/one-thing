@@ -18,74 +18,93 @@
  * directly with isolated providers.
  */
 
-import * as fs from 'fs/promises'
-import { getEventBus } from '../events/index.js'
-import { expandPath } from '../tools/core/sandbox.js'
-import { enforcePermissionPolicy } from '../tools/core/permission-policy.js'
-import { CoreProvider } from '@onething/runtime/variables/providers/core'
-import { GlobalStoreProvider } from '@onething/runtime/variables/providers/global-store'
-import { NotesProvider } from '@onething/runtime/variables/providers/notes'
-import { SessionStoreProvider } from '@onething/runtime/variables/providers/session-store'
-import { getVariableRegistry } from '@onething/runtime/variables/registry'
-import { getVariablesStore } from './store/index.js'
-import type { VariableProvider } from '@onething/runtime/variables'
+import { createHash } from "node:crypto";
+import * as fs from "fs/promises";
+import path from "node:path";
+import { getEventBus } from "../events/index.js";
+import { expandPath } from "../tools/core/sandbox.js";
+import { enforcePermissionPolicy } from "../tools/core/permission-policy.js";
+import { BackgroundJobsProvider } from "@onething/runtime/variables/providers/background-jobs";
+import { CoreProvider } from "@onething/runtime/variables/providers/core";
+import { DateTimeProvider } from "@onething/runtime/variables/providers/datetime";
+import { GitBranchProvider } from "@onething/runtime/variables/providers/git-branch";
+import { GlobalStoreProvider } from "@onething/runtime/variables/providers/global-store";
+import { NotesProvider } from "@onething/runtime/variables/providers/notes";
+import { SessionStoreProvider } from "@onething/runtime/variables/providers/session-store";
+import { getVariableRegistry } from "@onething/runtime/variables/registry";
+import { getVariablesStore } from "./store/index.js";
+import type { VariableProvider } from "@onething/runtime/variables";
 import {
-  notesGateway,
-  globalStoreGateway,
-  sessionStoreGateway,
-  workdirGateway,
-  notifyNotesDirChanged,
-  notifySessionVariablesChanged,
-  notifyWorkdirChanged,
-} from './gateways.js'
-import { formatVariablesForPrompt } from '@onething/runtime/variables/format'
-import type { ContextVariable, VariableContext } from '@onething/runtime/variables'
+	notesGateway,
+	globalStoreGateway,
+	sessionStoreGateway,
+	workdirGateway,
+} from "./gateways.js";
+import {
+	splitVariablesForPrompt,
+	type VariablePromptSections,
+} from "@onething/runtime/variables/format";
+import type { ContextVariable } from "@onething/runtime/variables";
 
-let bootstrapped = false
-let unsubscribeBridge: (() => void) | null = null
+let bootstrapped = false;
+let unsubscribeBridge: (() => void) | null = null;
 
 export function bootstrapVariableSystem(): void {
-  if (bootstrapped) return
-  bootstrapped = true
+	if (bootstrapped) return;
+	bootstrapped = true;
 
-  // Persistence layer comes online first — providers read from it.
-  getVariablesStore().initialize()
+	// Persistence layer comes online first — providers read from it.
+	getVariablesStore().initialize();
 
-  const registry = getVariableRegistry()
-  registry.register(new CoreProvider(workdirGateway, { enforcePermission: enforcePermissionPolicy }))
-  registry.register(new NotesProvider(notesGateway))
-  registry.register(new GlobalStoreProvider(globalStoreGateway))
-  registry.register(new SessionStoreProvider(sessionStoreGateway))
+	const registry = getVariableRegistry();
+	registry.register(
+		new CoreProvider(workdirGateway, {
+			enforcePermission: enforcePermissionPolicy,
+		}),
+	);
+	registry.register(new BackgroundJobsProvider());
+	registry.register(new DateTimeProvider());
+	registry.register(new GitBranchProvider(workdirGateway));
+	registry.register(new NotesProvider(notesGateway));
+	registry.register(new GlobalStoreProvider(globalStoreGateway));
+	registry.register(new SessionStoreProvider(sessionStoreGateway));
 
-  // Make sure the configured ai_note_dir directory exists on disk.
-  // Fire-and-forget: failure is non-fatal, the AI will get an error
-  // on first write and can fall back to set a different path.
-  ensureAiNoteDir().catch(err =>
-    console.error('[variables] ensureAiNoteDir failed:', err))
+	// Migrate old ~/.onething/notes to ~/.onething/memory if needed, then make
+	// sure the configured ai_note_dir exists on disk. ensure must run after the
+	// migration or it would recreate the old directory mid-rename.
+	// Fire-and-forget: failure is non-fatal, the AI will get an error
+	// on first write and can fall back to set a different path.
+	migrateAiNoteDir()
+		.catch((err) => console.error("[variables] migrateAiNoteDir failed:", err))
+		.then(() => ensureAiNoteDir())
+		.catch((err) => console.error("[variables] ensureAiNoteDir failed:", err));
 
-  // Bridge registry change events to the EventBus so the renderer
-  // refreshes via the existing session:variables-updated channel.
-  unsubscribeBridge = registry.subscribe((ctx, snapshot) => {
-    // Broadcasts (e.g. notes from a global state change) come with an
-    // empty sessionId; we have no target to emit to in that case.
-    if (!ctx.sessionId) return
-    const workdirVariable = snapshot.find(v => v.name === 'workdir')
-    const workdir = workdirVariable?.value || undefined
-    const workdirRoots = workdirVariable?.values?.slice(workdir ? 1 : 0)
-    try {
-      getEventBus().emit(ctx.sessionId, {
-        type: 'session:variables-updated',
-        workingDirectory: workdir,
-        workingDirectoryRoots: workdirRoots,
-        variables: snapshot,
-      }).catch(err =>
-        console.error('[variables] EventBus emit failed:', err))
-    } catch {
-      // EventBus not initialized (test or pre-bootstrap path) — ignore.
-    }
-  })
+	// Bridge registry change events to the EventBus so the renderer
+	// refreshes via the existing session:variables-updated channel.
+	unsubscribeBridge = registry.subscribe((ctx, snapshot) => {
+		// Broadcasts (e.g. notes from a global state change) come with an
+		// empty sessionId; we have no target to emit to in that case.
+		if (!ctx.sessionId) return;
+		const workdirVariable = snapshot.find((v) => v.name === "workdir");
+		const workdir = workdirVariable?.value || undefined;
+		const workdirRoots = workdirVariable?.values?.slice(workdir ? 1 : 0);
+		try {
+			getEventBus()
+				.emit(ctx.sessionId, {
+					type: "session:variables-updated",
+					workingDirectory: workdir,
+					workingDirectoryRoots: workdirRoots,
+					variables: snapshot,
+				})
+				.catch((err) =>
+					console.error("[variables] EventBus emit failed:", err),
+				);
+		} catch {
+			// EventBus not initialized (test or pre-bootstrap path) — ignore.
+		}
+	});
 
-  console.log('[variables] subsystem bootstrapped (4 providers)')
+	console.log("[variables] subsystem bootstrapped (4 providers)");
 }
 
 /**
@@ -93,42 +112,128 @@ export function bootstrapVariableSystem(): void {
  * normally need this since the process exits on shutdown.
  */
 export function shutdownVariableSystem(): void {
-  if (unsubscribeBridge) {
-    unsubscribeBridge()
-    unsubscribeBridge = null
-  }
-  getVariableRegistry().reset()
-  bootstrapped = false
+	if (unsubscribeBridge) {
+		unsubscribeBridge();
+		unsubscribeBridge = null;
+	}
+	getVariableRegistry().reset();
+	bootstrapped = false;
+}
+
+/**
+ * Migrate legacy ~/.onething/notes to ~/.onething/memory.
+ * If the old directory exists and the new one doesn't, rename old → new.
+ * Also renames the memory/ subdirectory to daily/ within.
+ */
+async function migrateAiNoteDir(): Promise<void> {
+	const OLD_DEFAULT = "~/.onething/notes";
+	const NEW_DEFAULT = "~/.onething/memory";
+	const raw = getVariablesStore().getAiNoteDir();
+	// Migrate when the store still points at the old default, or when it was
+	// never customized (unset, or already normalized to the new default by the
+	// schema fallback) while the old default directory still holds the data.
+	if (raw && raw !== OLD_DEFAULT && raw !== NEW_DEFAULT) return;
+
+	const oldPath = expandPath(OLD_DEFAULT);
+	const newPath = expandPath(NEW_DEFAULT);
+
+	try {
+		const oldStat = await fs.stat(oldPath).catch(() => null);
+		if (!oldStat?.isDirectory()) return;
+		const newStat = await fs.stat(newPath).catch(() => null);
+		if (newStat) return; // new path already exists, skip
+
+		await fs.rename(oldPath, newPath);
+		console.log("[variables] migrated ai_note_dir:", oldPath, "→", newPath);
+
+		// Rename memory/ → daily/ inside the migrated root.
+		const oldMemoryDir = path.join(newPath, "memory");
+		const newDailyDir = path.join(newPath, "daily");
+		const oldMemoryStat = await fs.stat(oldMemoryDir).catch(() => null);
+		if (oldMemoryStat?.isDirectory()) {
+			const newDailyStat = await fs.stat(newDailyDir).catch(() => null);
+			if (!newDailyStat) {
+				await fs.rename(oldMemoryDir, newDailyDir);
+				console.log(
+					"[variables] migrated daily dir:",
+					oldMemoryDir,
+					"→",
+					newDailyDir,
+				);
+			}
+		}
+
+		// Update the variable so future reads use the new path.
+		getVariablesStore().setAiNoteDir(NEW_DEFAULT);
+	} catch (err) {
+		console.warn("[variables] could not migrate ai_note_dir:", err);
+	}
 }
 
 /**
  * Create the configured ai_note_dir directory if it doesn't exist yet.
  */
 async function ensureAiNoteDir(): Promise<void> {
-  const raw = getVariablesStore().getAiNoteDir()
-  if (!raw) return
-  const resolved = expandPath(raw)
-  try {
-    await fs.mkdir(resolved, { recursive: true })
-  } catch (err) {
-    console.warn('[variables] could not create ai_note_dir:', resolved, err)
-  }
+	const raw = getVariablesStore().getAiNoteDir();
+	if (!raw) return;
+	const resolved = expandPath(raw);
+	try {
+		await fs.mkdir(resolved, { recursive: true });
+	} catch (err) {
+		console.warn("[variables] could not create ai_note_dir:", resolved, err);
+	}
 }
 
 // ── Helpers used by call sites ──────────────────────
 
-export async function listContextVariables(sessionId: string): Promise<ContextVariable[]> {
-  return getVariableRegistry().list({ sessionId })
+export async function listContextVariables(
+	sessionId: string,
+): Promise<ContextVariable[]> {
+	return getVariableRegistry().list({ sessionId });
 }
 
 /**
- * Build the prompt-injection string for non-workdir custom variables.
- * Workdir/cwd is rendered by the prompt builder itself, so it is filtered
- * out here to avoid duplicate directory instructions.
+ * Build both prompt channels for context variables:
+ * systemText (static volatility → system-prompt section) and
+ * turnText (turn volatility → per-turn <context-update> injection).
+ * Workdir is skipped inside the formatter itself (the prompt builder
+ * renders it in its own "# Work Directory" section).
  */
-export async function buildContextVariablesPromptText(sessionId: string): Promise<string> {
-  const list = (await listContextVariables(sessionId)).filter(variable => variable.name !== 'workdir')
-  return formatVariablesForPrompt(list)
+export async function buildVariablePromptSections(
+	sessionId: string,
+): Promise<VariablePromptSections> {
+	const sections = splitVariablesForPrompt(
+		await listContextVariables(sessionId),
+	);
+	trackStaticSectionChange(sessionId, sections.systemText);
+	return sections;
+}
+
+// Telemetry: the static section sits in the system prompt, ahead of the whole
+// conversation history, so any change invalidates the provider prompt-cache
+// prefix for that session. This should stay rare — log every occurrence so
+// unexpected churn (a provider leaking volatile values as static) is visible.
+const lastStaticSectionHash = new Map<string, string>();
+
+function trackStaticSectionChange(sessionId: string, systemText: string): void {
+	const hash = createHash("sha1").update(systemText).digest("hex").slice(0, 8);
+	const previous = lastStaticSectionHash.get(sessionId);
+	if (previous !== undefined && previous !== hash) {
+		console.log(
+			`[variables] static context section changed (busts prompt-cache prefix) session=${sessionId.slice(0, 8)} ${previous}→${hash}`,
+		);
+	}
+	lastStaticSectionHash.set(sessionId, hash);
+}
+
+/**
+ * Static channel only — the string injected as the system prompt's
+ * "# Context Variables" section.
+ */
+export async function buildContextVariablesPromptText(
+	sessionId: string,
+): Promise<string> {
+	return (await buildVariablePromptSections(sessionId)).systemText;
 }
 
 /**
@@ -138,22 +243,26 @@ export async function buildContextVariablesPromptText(sessionId: string): Promis
  * duplicate IDs.
  */
 export function registerVariableProvider(provider: VariableProvider): void {
-  getVariableRegistry().register(provider)
+	getVariableRegistry().register(provider);
 }
 
 // Re-exports for ergonomic imports at call sites.
-export { getVariableRegistry } from '@onething/runtime/variables/registry'
-export { formatVariablesForPrompt } from '@onething/runtime/variables/format'
-export { VariableError } from '@onething/runtime/variables'
-export type {
-  ContextVariable,
-  SetInput,
-  VariableContext,
-  VariableProvider,
-} from '@onething/runtime/variables'
+export { getVariableRegistry } from "@onething/runtime/variables/registry";
 export {
-  notifyNotesDirChanged,
-  notifySessionVariablesChanged,
-  notifyWorkdirChanged,
-} from './gateways.js'
-export { getVariablesStore } from './store/index.js'
+	formatVariablesForPrompt,
+	splitVariablesForPrompt,
+	type VariablePromptSections,
+} from "@onething/runtime/variables/format";
+export { VariableError } from "@onething/runtime/variables";
+export type {
+	ContextVariable,
+	SetInput,
+	VariableContext,
+	VariableProvider,
+} from "@onething/runtime/variables";
+export {
+	notifyNotesDirChanged,
+	notifySessionVariablesChanged,
+	notifyWorkdirChanged,
+} from "./gateways.js";
+export { getVariablesStore } from "./store/index.js";

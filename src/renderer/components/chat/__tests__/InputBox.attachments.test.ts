@@ -313,7 +313,7 @@ describe("InputBox paste attachments", () => {
 
 		const meter = wrapper.find(".context-meter");
 		expect(meter.exists()).toBe(true);
-		expect(meter.text()).toBe("25%");
+		expect(meter.text()).toContain("25%");
 		expect(meter.attributes("title")).toContain(
 			"Context: 8,000 / 32,000 tokens (25%)",
 		);
@@ -357,10 +357,9 @@ describe("InputBox paste attachments", () => {
 
 		const wrapper = mountInputBox({ sessionId: draft.id });
 
-		// Icon-only quiet control: mode is encoded by class + status dot,
-		// not by a text label.
+		// Status-line cell: mode is spelled out as mono text ("guard:normal").
 		expect(wrapper.find(".permission-mode-select").classes()).toContain("mode-normal");
-		expect(wrapper.find(".permission-mode-dot").exists()).toBe(false);
+		expect(wrapper.find(".guard-label").text()).toBe("guard:normal");
 
 		await wrapper.find(".permission-mode-select .app-select-control").trigger("click");
 		await settle();
@@ -376,7 +375,7 @@ describe("InputBox paste attachments", () => {
 			"auto-accept-edits",
 		);
 		expect(wrapper.find(".permission-mode-select").classes()).toContain("mode-auto-accept-edits");
-		expect(wrapper.find(".permission-mode-dot").exists()).toBe(true);
+		expect(wrapper.find(".guard-label").text()).toBe("guard:auto-edit");
 	});
 
 	it("shows an attachment tray after pasting a file", async () => {

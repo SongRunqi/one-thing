@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方案三 · 工图</title>
+</head>
+<body>
+<style>
+  :root {
+    --bg-app: #21252B;
+    --bg: #282C34;
+    --bg-hi: #2C323C;
+    --fg: #ABB2BF;
+    --fg-bright: #D7DAE0;
+    --mut: #636D83;
+    --faint: #5C6370;
+    --line: rgba(99, 109, 131, 0.32);
+    --line-2: rgba(99, 109, 131, 0.55);
+    --blue: #61AFEF;
+    --green: #98C379;
+    --red: #E06C75;
+    --cyan: #56B6C2;
+    --yellow: #E5C07B;
+    --serif: "Lora", "Noto Serif SC", Georgia, serif;
+    --sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  body {
+    margin: 0;
+    background: var(--bg-app);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 26px;
+    padding: 44px 20px 90px;
+  }
+  .masthead { width: min(720px, 100%); }
+  .masthead h1 { color: var(--fg-bright); font-size: 20px; font-weight: 650; margin: 0 0 4px; font-family: var(--mono); }
+  .masthead p { margin: 0; color: var(--mut); font-size: 13px; }
+  .scene-label { width: min(720px, 100%); font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--faint); margin-bottom: -12px; }
+  .scene-label::before { content: "┌ "; }
+
+  .window {
+    width: min(720px, 100%);
+    background: var(--bg);
+    border: 1px solid var(--line-2);
+    border-radius: 4px;
+    padding: 28px 30px 24px;
+    box-sizing: border-box;
+    position: relative;
+  }
+  /* corner ticks */
+  .window::before, .window::after {
+    content: ""; position: absolute; width: 8px; height: 8px; pointer-events: none;
+  }
+  .window::before { top: -1px; left: -1px; border-top: 2px solid var(--mut); border-left: 2px solid var(--mut); }
+  .window::after { bottom: -1px; right: -1px; border-bottom: 2px solid var(--mut); border-right: 2px solid var(--mut); }
+
+  /* ---------- 对话:全描边 ---------- */
+  .msg-user { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+  .shots { display: flex; gap: 10px; }
+  .figure { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+  .figure svg { width: 132px; height: 94px; display: block; border: 1px solid var(--line-2); border-radius: 4px; background: var(--bg-hi); }
+  .figure .dim { font-family: var(--mono); font-size: 9.5px; color: var(--faint); letter-spacing: 0.5px; }
+  .file-tag {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid var(--line-2); border-radius: 4px;
+    padding: 4px 10px; font-family: var(--mono); font-size: 11.5px; color: var(--fg);
+  }
+  .file-tag .ext { color: var(--yellow); font-size: 10px; }
+  .bubble-user {
+    max-width: 78%;
+    border: 1px solid var(--line-2);
+    border-radius: 4px;
+    padding: 10px 15px;
+    font-family: var(--serif);
+    font-size: 14.5px;
+    color: var(--fg-bright);
+    position: relative;
+  }
+  .bubble-user .spec {
+    position: absolute; top: -8px; right: 10px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 1.5px;
+    color: var(--faint); background: var(--bg); padding: 0 6px;
+  }
+  .ref { font-family: var(--mono); font-size: 12.5px; color: var(--blue); outline: 1px solid color-mix(in srgb, var(--blue) 40%, transparent); outline-offset: 1px; padding: 0 3px; white-space: nowrap; }
+  .msg-meta { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+
+  .msg-ai { margin-top: 24px; }
+  .ai-rail { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-bottom: 8px; }
+  .ai-rail::before { content: "── "; color: var(--line-2); }
+  .msg-ai .prose { max-width: 64ch; font-family: var(--serif); font-size: 15px; }
+
+  /* ---------- Dock:标注框 ---------- */
+  .dock { display: flex; flex-direction: column; gap: 8px; margin-top: 26px; }
+  .frame { position: relative; border: 1px solid var(--line-2); border-radius: 4px; }
+  .frame-label {
+    position: absolute; top: -8px; left: 10px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 2px;
+    color: var(--mut); background: var(--bg); padding: 0 6px;
+  }
+  .frame-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 12.5px; }
+  .frame-row + .frame-row { border-top: 1px dashed var(--line); }
+  .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+  .plus { color: var(--green); font-family: var(--mono); }
+  .minus { color: var(--red); font-family: var(--mono); }
+  .act { font-family: var(--mono); font-size: 11px; color: var(--blue); border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); border-radius: 3px; padding: 1px 7px; cursor: pointer; flex-shrink: 0; }
+  .x { font-family: var(--mono); color: var(--faint); cursor: pointer; flex-shrink: 0; font-size: 11px; }
+  .quote-frame { padding: 7px 12px; display: flex; align-items: center; gap: 10px; }
+  .quote-text { flex: 1; font-family: var(--serif); font-size: 13px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach-strip { display: flex; align-items: center; gap: 9px; padding: 8px 12px; }
+  .thumb { position: relative; }
+  .thumb svg { width: 38px; height: 38px; display: block; border: 1px solid var(--line-2); border-radius: 3px; background: var(--bg-hi); }
+  .thumb .x { position: absolute; top: -7px; right: -7px; width: 15px; height: 15px; background: var(--bg); border: 1px solid var(--line-2); border-radius: 3px; font-size: 8px; line-height: 13px; text-align: center; }
+
+  /* ---------- 输入:图框 + 焦点描边 ---------- */
+  .composer { margin-top: 14px; position: relative; border: 1px solid var(--line-2); border-radius: 4px; }
+  .composer.focus { border-color: var(--blue); box-shadow: 0 0 0 1px color-mix(in srgb, var(--blue) 30%, transparent); }
+  .composer .frame-label { color: var(--blue); }
+  .entry { font-family: var(--serif); font-size: 15px; color: var(--fg-bright); min-height: 44px; padding: 12px 14px 4px; }
+  .caret { display: inline-block; width: 7px; height: 15px; background: color-mix(in srgb, var(--blue) 70%, transparent); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+  .toolbar { display: flex; align-items: center; gap: 0; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 11px; color: var(--mut); overflow-x: auto; }
+  .toolbar > span { padding: 6px 12px; border-right: 1px solid var(--line); white-space: nowrap; }
+  .toolbar > span:last-child { border-right: 0; }
+  .toolbar b { color: var(--fg); font-weight: 600; }
+  .meter .fill { color: var(--blue); }
+  .meter .rest { color: var(--faint); }
+  .spacer { flex: 1; border-right: 0 !important; }
+  .send { color: var(--blue); font-weight: 700; cursor: pointer; border-left: 1px solid var(--line); }
+  .send::after { content: " ⏎"; color: color-mix(in srgb, var(--blue) 55%, var(--mut)); }
+
+  /* ---------- 命令面板:表格 ---------- */
+  .palette-wrap { position: relative; margin-top: 50px; }
+  .palette {
+    position: absolute; left: 0; right: 0; bottom: calc(100% + 10px);
+    background: var(--bg);
+    border: 1px solid var(--line-2);
+    border-radius: 4px;
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  }
+  .p-head { display: flex; justify-content: space-between; padding: 6px 12px; border-bottom: 1px solid var(--line-2); font-family: var(--mono); font-size: 11px; color: var(--mut); }
+  .p-head .q { color: var(--fg-bright); }
+  .p-head .q::before { content: "/ "; color: var(--blue); }
+  .p-row { display: grid; grid-template-columns: 3px 118px 1fr auto; align-items: center; gap: 12px; padding: 7px 12px 7px 0; cursor: pointer; }
+  .p-row + .p-row { border-top: 1px dashed var(--line); }
+  .p-rail { align-self: stretch; }
+  .p-cmd { font-family: var(--mono); font-size: 12.5px; color: var(--fg); }
+  .p-cmd .hit { color: var(--blue); text-decoration: underline; text-underline-offset: 3px; }
+  .p-desc { font-size: 12px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-kbd { font-family: var(--mono); font-size: 10px; color: var(--faint); }
+  .p-row.sel { background: color-mix(in srgb, var(--blue) 8%, transparent); }
+  .p-row.sel .p-rail { background: var(--blue); }
+  .p-row.sel .p-cmd { color: var(--blue); }
+  .p-foot { display: flex; gap: 16px; padding: 5px 12px; border-top: 1px solid var(--line-2); font-family: var(--mono); font-size: 10px; color: var(--faint); }
+</style>
+
+<header class="masthead">
+  <h1>方案三 · 工图</h1>
+  <p>工程图纸感:零填充、全描边、虚线分组、等宽标注。每个区块带悬浮小标签,像图纸上的图框。</p>
+</header>
+
+<div class="scene-label">CONVERSATION</div>
+<div class="window">
+  <div class="msg-user">
+    <div class="shots">
+      <span class="figure"><svg viewBox="0 0 132 94"><rect x="10" y="10" width="112" height="10" rx="1" fill="#3B4250"/><rect x="10" y="28" width="68" height="52" rx="1" fill="#61AFEF" opacity="0.5"/><rect x="86" y="28" width="36" height="24" rx="1" fill="#56B6C2" opacity="0.4"/><rect x="86" y="58" width="36" height="22" rx="1" fill="#3B4250"/></svg><span class="dim">home-v1.png · 1280×832 · 420K</span></span>
+      <span class="figure"><svg viewBox="0 0 132 94"><rect x="10" y="10" width="52" height="74" rx="1" fill="#98C379" opacity="0.38"/><rect x="70" y="10" width="52" height="34" rx="1" fill="#3B4250"/><rect x="70" y="52" width="52" height="32" rx="1" fill="#61AFEF" opacity="0.38"/></svg><span class="dim">home-v2.png · 1280×832 · 388K</span></span>
+    </div>
+    <span class="file-tag"><span class="ext">[PDF]</span>季度报告Q2.pdf · 1.2M</span>
+    <div class="bubble-user">
+      <span class="spec">USER · 16:42</span>
+      帮我把这两张首页设计稿和季度报告整理成一页评审摘要,用 <span class="ref">⚡双语摘要</span> 的风格输出。
+    </div>
+  </div>
+  <div class="msg-ai">
+    <div class="ai-rail">THOUGHT 1 STEP · READ(报告Q2.PDF) · 0.8S</div>
+    <div class="prose">好的。我先读取报告的章节结构,再对照两张设计稿的信息层级,给出一页以内的评审摘要——中文在前,英文在后。</div>
+  </div>
+</div>
+
+<div class="scene-label">COMPOSER / DRAFT LOADED</div>
+<div class="window" style="padding-top:32px">
+  <div class="dock" style="margin-top:0">
+    <div class="frame">
+      <span class="frame-label">QUEUE · 2</span>
+      <div class="frame-row">
+        <span class="t">2 files changed <span class="plus">+18</span> <span class="minus">−4</span></span>
+        <span class="act">review</span>
+      </div>
+      <div class="frame-row">
+        <span class="t">记得把风险部分单独列出来,不要混在正文里</span>
+        <span class="act">⏎ steer</span>
+        <span class="x">[x]</span>
+      </div>
+    </div>
+    <div class="frame">
+      <span class="frame-label">QUOTE</span>
+      <div class="quote-frame">
+        <span class="quote-text">上次评审提到首屏信息密度过高,需要重新分组导航,并把次要入口收进抽屉。</span>
+        <span class="x">[x]</span>
+      </div>
+    </div>
+    <div class="frame">
+      <span class="frame-label">ATTACH · 3</span>
+      <div class="attach-strip">
+        <span class="thumb"><svg viewBox="0 0 38 38"><rect x="6" y="7" width="26" height="10" rx="1" fill="#61AFEF" opacity="0.5"/><rect x="6" y="21" width="16" height="10" rx="1" fill="#56B6C2" opacity="0.4"/></svg><span class="x">x</span></span>
+        <span class="thumb"><svg viewBox="0 0 38 38"><circle cx="14" cy="15" r="7" fill="#98C379" opacity="0.38"/><rect x="24" y="8" width="8" height="22" rx="1" fill="#3B4250"/></svg><span class="x">x</span></span>
+        <span class="file-tag"><span class="ext">[PDF]</span>设计规范.pdf <span class="x">[x]</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="composer focus">
+    <span class="frame-label">COMPOSER</span>
+    <div class="entry">对比两版首屏的信息层级,列出<span class="caret"></span></div>
+    <div class="toolbar">
+      <span><b>deepseek-v4-pro</b> ▾</span>
+      <span class="meter">ctx <span class="fill">▮▮▮▮</span><span class="rest">▯▯▯▯▯▯</span> 37%</span>
+      <span>think:high</span>
+      <span>guard:normal</span>
+      <span class="spacer"></span>
+      <span>mic</span>
+      <span class="send">SEND</span>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">COMMAND PALETTE</div>
+<div class="window" style="padding-top:200px">
+  <div class="palette-wrap">
+    <div class="palette">
+      <div class="p-head"><span class="q">com<span class="caret"></span></span><span>2/5</span></div>
+      <div class="p-row sel"><span class="p-rail"></span><span class="p-cmd">/<span class="hit">com</span>pact</span><span class="p-desc">压缩上下文,归纳较早的对话历史</span><span class="p-kbd">⏎</span></div>
+      <div class="p-row"><span class="p-rail"></span><span class="p-cmd">/<span class="hit">com</span>mands</span><span class="p-desc">列出全部可用命令</span><span class="p-kbd"></span></div>
+      <div class="p-row" style="opacity:0.45"><span class="p-rail"></span><span class="p-cmd">/new</span><span class="p-desc">新建会话</span><span class="p-kbd">⌘N</span></div>
+      <div class="p-row" style="opacity:0.45"><span class="p-rail"></span><span class="p-cmd">/cd</span><span class="p-desc">切换本会话的工作目录</span><span class="p-kbd"></span></div>
+      <div class="p-foot"><span>↑↓ move</span><span>⏎ run</span><span>tab complete</span><span>esc dismiss</span></div>
+    </div>
+    <div class="composer" style="margin-top:0">
+      <span class="frame-label">COMPOSER</span>
+      <div class="entry"><span style="color:var(--blue);font-family:var(--mono);font-size:14px">/com</span><span class="caret"></span></div>
+      <div class="toolbar">
+        <span><b>deepseek-v4-pro</b> ▾</span>
+        <span class="meter">ctx <span class="fill">▮▮▮▮</span><span class="rest">▯▯▯▯▯▯</span> 37%</span>
+        <span class="spacer"></span>
+        <span class="send">SEND</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

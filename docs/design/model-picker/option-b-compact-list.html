@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-scheme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>方案 B · 速查单列 Compact List</title>
+<!--
+  方案 B「速查单列 Compact List」— InputBox 内 ModelSelector 的弹出样式
+  范式:可搜索单列(Linear/Cursor 式)。搜索置顶,模型按 provider 分组平铺,
+        ↑↓/↵/esc 键盘可达,搜索命中高亮。
+  适配:popover left:0/right:0 与 InputBox 同宽,任意宽度不溢出。
+  能力:每行两层 — 名称+上下文一行,图标+文字徽章一行(flex-wrap 换行,不遮挡不溢出)。
+  接入:替换 ModelSelector.vue 的 Select 下拉为自绘 popover(数据走 settingsStore)。
+  主题:全部 --ui-* token;:root 为 Flexoki 深/浅演示值,接入后删除即继承系统主题。
+  注意:panel 混色用 color-mix(in srgb, …);oklch 混合近中性色会产出 hue none → 泛粉。
+-->
+<style>
+:root{
+  color-scheme:dark;
+  --ui-surface-app-bg:#282726;
+  --ui-surface-panel-bg:#343331;
+  --ui-surface-elevated-bg:#403E3C;
+  --ui-surface-input-bg:#343331;
+  --ui-text-primary-fg:#F2F0E5;
+  --ui-text-secondary-fg:#E6E4D9;
+  --ui-text-muted-fg:#CECDC3;
+  --ui-text-faint-fg:#B7B5AC;
+  --ui-accent-primary-fg:#4385BE;
+  --ui-action-primary-bg:#4385BE;
+  --ui-action-primary-fg:#100F0F;
+  --ui-border-default-border:#575653;
+  --ui-border-subtle-border:#403E3C;
+  --ui-border-strong-border:#6F6E69;
+  --ui-state-hover-bg:rgba(255,255,255,.04);
+  --ui-state-active-bg:rgba(255,255,255,.08);
+  --ui-state-selected-bg:rgba(67,133,190,.15);
+  --ui-status-success-fg:#879A39;
+  --ui-status-warning-fg:#DA702C;
+  --ui-status-info-fg:#3AA99F;
+  --cap-purple:#8B7EC8;--cap-magenta:#CE5D97;
+  --shadow-elevated:0 8px 32px rgba(0,0,0,.4);
+  --font-ui:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+:root[data-scheme="light"]{
+  color-scheme:light;
+  --ui-surface-app-bg:#E6E4D9;
+  --ui-surface-panel-bg:#DAD8CE;
+  --ui-surface-elevated-bg:#CECDC3;
+  --ui-surface-input-bg:#DAD8CE;
+  --ui-text-primary-fg:#1C1B1A;
+  --ui-text-secondary-fg:#282726;
+  --ui-text-muted-fg:#403E3C;
+  --ui-text-faint-fg:#575653;
+  --ui-accent-primary-fg:#205EA6;
+  --ui-action-primary-bg:#205EA6;
+  --ui-action-primary-fg:#FFFCF0;
+  --ui-border-default-border:#B7B5AC;
+  --ui-border-subtle-border:#CECDC3;
+  --ui-border-strong-border:#9F9D96;
+  --ui-state-hover-bg:rgba(0,0,0,.04);
+  --ui-state-active-bg:rgba(0,0,0,.06);
+  --ui-state-selected-bg:rgba(32,94,166,.1);
+  --ui-status-success-fg:#66800B;
+  --ui-status-warning-fg:#BC5215;
+  --ui-status-info-fg:#24837B;
+  --cap-purple:#5E409D;--cap-magenta:#A02F6F;
+  --shadow-elevated:0 8px 32px rgba(16,15,15,.12);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--ui-surface-app-bg);color:var(--ui-text-primary-fg);font-family:var(--font-ui);-webkit-font-smoothing:antialiased}
+.demo-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;font-size:12px;color:var(--ui-text-faint-fg);letter-spacing:.02em;flex-wrap:wrap}
+.ctl{display:flex;align-items:center;gap:6px}
+.ctl .wl{font-size:11px;margin-right:2px}
+.demo-bar button{font:inherit;font-size:11px;color:var(--ui-text-muted-fg);background:transparent;border:1px solid var(--ui-border-subtle-border);border-radius:999px;padding:4px 10px;cursor:pointer}
+.demo-bar button:hover{background:var(--ui-state-hover-bg)}
+.demo-bar button.on{color:var(--ui-text-primary-fg);border-color:var(--ui-border-strong-border);background:var(--ui-state-hover-bg)}
+.demo-stage{flex:1;display:flex;justify-content:center;padding:24px 24px 48px}
+:focus-visible{outline:2px solid var(--ui-accent-primary-fg);outline-offset:1px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.pv-claude{--pv:var(--ui-status-warning-fg)}
+.pv-codex{--pv:var(--ui-status-info-fg)}
+.pv-deepseek{--pv:var(--ui-accent-primary-fg)}
+.pv-gemini{--pv:var(--cap-purple)}
+.pv-kimi{--pv:var(--cap-magenta)}
+
+/* ————— 对话区 + 输入框示意 ————— */
+.workbench{width:640px;max-width:100%;display:flex;flex-direction:column;justify-content:flex-end;transition:width .18s ease}
+.mock-chat{flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:14px;padding-bottom:20px;min-height:220px}
+.mock-bubble{border-radius:12px;height:16px;opacity:.5}
+.mock-bubble.user{width:38%;align-self:flex-end;background:var(--ui-surface-elevated-bg)}
+.mock-bubble.ai{width:56%;background:var(--ui-state-active-bg)}
+.composer-wrap{position:relative}
+.composer{
+  background:var(--ui-surface-input-bg);
+  border:1px solid var(--ui-border-default-border);
+  border-radius:14px;padding:14px 14px 12px;
+}
+.composer .ph{font-size:14px;color:var(--ui-text-faint-fg);min-height:40px}
+.composer-row{display:flex;align-items:center;gap:8px}
+.model-chip{
+  display:inline-flex;align-items:center;gap:7px;cursor:pointer;min-width:0;
+  border:1px solid var(--ui-border-subtle-border);background:var(--ui-state-hover-bg);
+  border-radius:999px;padding:5px 11px 5px 6px;
+  font:500 12px/1 var(--font-ui);color:var(--ui-text-secondary-fg);
+}
+.model-chip:hover{border-color:var(--ui-border-strong-border)}
+.model-chip[aria-expanded="true"]{border-color:color-mix(in srgb,var(--ui-accent-primary-fg) 50%,transparent);background:var(--ui-state-selected-bg)}
+.model-chip .mono{
+  width:17px;height:17px;border-radius:50%;flex-shrink:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  font:700 9px/1 var(--font-mono);color:var(--pv);
+  background:color-mix(in srgb,var(--pv) 16%,transparent);
+}
+.model-chip .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.model-chip .cx{font:400 10px/1 var(--font-mono);color:var(--ui-text-faint-fg);flex-shrink:0}
+.model-chip .caret{font-size:9px;color:var(--ui-text-faint-fg);transform:translateY(.5px);flex-shrink:0}
+@keyframes chipPulse{0%{transform:scale(1)}40%{transform:scale(1.07)}100%{transform:scale(1)}}
+.model-chip.flash{animation:chipPulse .28s ease}
+.send{
+  margin-left:auto;width:32px;height:32px;border-radius:50%;border:none;cursor:pointer;flex-shrink:0;
+  background:var(--ui-action-primary-bg);color:var(--ui-action-primary-fg);
+  font-size:15px;display:flex;align-items:center;justify-content:center;
+}
+
+/* ————— 速查单列 popover(与 InputBox 同宽) ————— */
+.popover{
+  position:absolute;bottom:calc(100% + 8px);left:0;right:0;
+  background:color-mix(in srgb,var(--ui-surface-panel-bg) 70%,var(--ui-surface-elevated-bg) 30%);
+  border:1px solid var(--ui-border-default-border);
+  border-radius:11px;box-shadow:var(--shadow-elevated);
+  overflow:hidden;display:flex;flex-direction:column;
+  transform-origin:bottom left;
+  animation:pop .14s cubic-bezier(.32,.72,0,1);
+}
+.popover[hidden]{display:none}
+@keyframes pop{from{opacity:0;transform:translateY(6px) scale(.99)}to{opacity:1;transform:none}}
+.search-row{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 12px;border-bottom:1px solid var(--ui-border-subtle-border);
+}
+.search-row svg{color:var(--ui-text-faint-fg);flex-shrink:0}
+.search-row input{
+  flex:1;min-width:0;background:transparent;border:none;outline:none;
+  color:var(--ui-text-primary-fg);font:400 13px/1.4 var(--font-ui);
+}
+.search-row input::placeholder{color:var(--ui-text-faint-fg)}
+.list{max-height:302px;overflow-y:auto;padding:5px}
+.group-label{
+  padding:8px 8px 4px;
+  font:600 9px/1 var(--font-mono);letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ui-text-faint-fg);
+  display:flex;align-items:center;gap:7px;
+}
+.group-label .dot{width:6px;height:6px;border-radius:50%;background:var(--pv);flex-shrink:0}
+.row{padding:6px 8px;border-radius:7px;cursor:pointer}
+.row.focused{background:var(--ui-state-hover-bg)}
+.row.current{background:var(--ui-state-selected-bg)}
+.row.current.focused{background:color-mix(in srgb,var(--ui-state-selected-bg) 80%,var(--ui-state-active-bg))}
+.row .top{display:flex;align-items:center;gap:8px}
+.row .ck{width:12px;font-size:11px;color:var(--ui-accent-primary-fg);visibility:hidden;flex-shrink:0}
+.row.current .ck{visibility:visible}
+.row .nm{flex:1;min-width:0;font:500 12.5px/1.2 var(--font-ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .cx{font:400 10px/1 var(--font-mono);color:var(--ui-text-faint-fg);flex-shrink:0}
+/* 能力徽章:flex-wrap 换行,行高自增,永不溢出 */
+.badges{display:flex;flex-wrap:wrap;gap:4px;margin:5px 0 1px 20px}
+.badge{
+  display:inline-flex;align-items:center;gap:3px;white-space:nowrap;
+  font:600 9.5px/1 var(--font-ui);padding:3px 6px;border-radius:4px;
+  color:var(--capc);background:color-mix(in srgb,var(--capc) 13%,transparent);
+}
+.badge svg{flex-shrink:0}
+mark{background:transparent;color:var(--ui-accent-primary-fg);text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}
+.empty{padding:24px 0;text-align:center;font-size:12px;color:var(--ui-text-faint-fg)}
+.foot{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:7px 12px;border-top:1px solid var(--ui-border-subtle-border);
+  font-size:10px;color:var(--ui-text-faint-fg);
+}
+kbd{
+  font:500 9px/1 var(--font-mono);color:var(--ui-text-faint-fg);
+  border:1px solid var(--ui-border-subtle-border);border-bottom-width:2px;
+  border-radius:3px;padding:1px 4px;background:var(--ui-state-hover-bg);
+}
+</style>
+</head>
+<body>
+<div class="demo-bar">
+  <span>方案 B · 速查单列 Compact List — 可搜索单列,与输入框同宽,能力徽章换行展示</span>
+  <span class="ctl">
+    <span class="wl">输入框宽度</span>
+    <button class="wbtn" data-w="360">360</button>
+    <button class="wbtn on" data-w="640">640</button>
+    <button class="wbtn" data-w="900">900</button>
+    <button id="schemeToggle">切换浅色</button>
+  </span>
+</div>
+<div class="demo-stage">
+  <div class="workbench">
+    <div class="mock-chat">
+      <div class="mock-bubble user"></div>
+      <div class="mock-bubble ai"></div>
+      <div class="mock-bubble user"></div>
+    </div>
+    <div class="composer-wrap">
+      <div class="popover" id="pop">
+        <div class="search-row">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input id="q" type="text" placeholder="Search models…" autocomplete="off">
+        </div>
+        <div class="list" id="list"></div>
+        <div class="foot">
+          <span><kbd>↑↓</kbd> <kbd>↵</kbd> <kbd>esc</kbd></span>
+          <span id="count"></span>
+        </div>
+      </div>
+      <div class="composer">
+        <div class="ph">Send a message…</div>
+        <div class="composer-row">
+          <button class="model-chip" id="chip" aria-expanded="true"></button>
+          <button class="send" title="Send">↑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROVIDERS=[
+ {id:'claude',name:'Claude',models:[
+  {id:'claude-fable-5',name:'Fable 5',ctx:200000,caps:['tools','reasoning','vision']},
+  {id:'claude-opus-4-8',name:'Opus 4.8',ctx:200000,caps:['tools','reasoning','vision']},
+  {id:'claude-sonnet-5',name:'Sonnet 5',ctx:1000000,caps:['tools','reasoning','vision','speed']},
+  {id:'claude-haiku-4-5',name:'Haiku 4.5',ctx:200000,caps:['tools','vision','speed']}]},
+ {id:'codex',name:'Codex',models:[
+  {id:'gpt-5.2',name:'GPT-5.2',ctx:400000,caps:['tools','reasoning','vision','image']},
+  {id:'gpt-5.2-codex',name:'GPT-5.2 Codex',ctx:400000,caps:['tools','reasoning']},
+  {id:'gpt-5-mini',name:'GPT-5 mini',ctx:272000,caps:['tools','vision','speed']}]},
+ {id:'deepseek',name:'DeepSeek',models:[
+  {id:'deepseek-chat',name:'DeepSeek Chat',ctx:128000,caps:['tools','speed']},
+  {id:'deepseek-reasoner',name:'DeepSeek Reasoner',ctx:128000,caps:['reasoning']}]},
+ {id:'gemini',name:'Gemini',models:[
+  {id:'gemini-3-pro',name:'Gemini 3 Pro',ctx:1048576,caps:['tools','reasoning','vision','image']},
+  {id:'gemini-3-flash',name:'Gemini 3 Flash',ctx:1048576,caps:['tools','vision','speed']}]},
+ {id:'kimi',name:'Kimi',models:[
+  {id:'kimi-k2',name:'Kimi K2',ctx:262144,caps:['tools','speed']}]},
+];
+const CAPS={
+ tools:{label:'Tools',c:'var(--ui-accent-primary-fg)',svg:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>'},
+ reasoning:{label:'Reasoning',c:'var(--cap-purple)',svg:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'},
+ vision:{label:'Image in',c:'var(--ui-status-info-fg)',svg:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'},
+ image:{label:'Image out',c:'var(--ui-status-success-fg)',svg:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>'},
+ speed:{label:'Fast',c:'var(--ui-status-warning-fg)',svg:'<path d="M13 2L3 14h8l-1 8 10-12h-8l1-8z"/>'},
+};
+const badge=c=>`<span class="badge" style="--capc:${CAPS[c].c}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${CAPS[c].svg}</svg>${CAPS[c].label}</span>`;
+const badgesOf=m=>`<div class="badges">${m.caps.map(badge).join('')}</div>`;
+let CURRENT={provider:'claude',model:'claude-fable-5'};
+let query='',focusIdx=0,flat=[];
+
+const $=s=>document.querySelector(s);
+const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtCtx=n=>!n?'':n>=1e6?(Math.round(n/1e5)/10).toFixed(n%1e6?1:0).replace(/\.0$/,'')+'M':Math.round(n/1000)+'K';
+function hl(text){
+  if(!query)return esc(text);
+  const i=text.toLowerCase().indexOf(query.toLowerCase());
+  if(i<0)return esc(text);
+  return esc(text.slice(0,i))+'<mark>'+esc(text.slice(i,i+query.length))+'</mark>'+esc(text.slice(i+query.length));
+}
+function groups(){
+  const q=query.toLowerCase();
+  return PROVIDERS
+    .map(p=>({p,models:p.models.filter(m=>!q||m.name.toLowerCase().includes(q)||m.id.toLowerCase().includes(q)||p.name.toLowerCase().includes(q))}))
+    .filter(g=>g.models.length);
+}
+function render(){
+  const gs=groups();
+  flat=gs.flatMap(g=>g.models.map(m=>({p:g.p,m})));
+  focusIdx=Math.max(0,Math.min(focusIdx,flat.length-1));
+  let i=0;
+  $('#list').innerHTML=flat.length===0?'<div class="empty">No models found</div>':gs.map(g=>
+    `<div class="group-label pv-${g.p.id}"><span class="dot"></span>${esc(g.p.name)}</div>`+
+    g.models.map(m=>{
+      const idx=i++;
+      const cur=CURRENT.provider===g.p.id&&CURRENT.model===m.id;
+      return `<div class="row ${cur?'current':''} ${idx===focusIdx?'focused':''}" data-i="${idx}">
+        <div class="top"><span class="ck">✓</span><span class="nm">${hl(m.name)}</span><span class="cx">${fmtCtx(m.ctx)}</span></div>
+        ${badgesOf(m)}
+      </div>`;
+    }).join('')).join('');
+  document.querySelectorAll('.row').forEach(el=>{
+    el.addEventListener('click',()=>select(+el.dataset.i));
+    el.addEventListener('mouseenter',()=>{focusIdx=+el.dataset.i;paint();});
+  });
+  $('#count').textContent=`${flat.length} models`;
+}
+function paint(){document.querySelectorAll('.row').forEach(el=>el.classList.toggle('focused',+el.dataset.i===focusIdx));}
+function select(i){
+  const it=flat[i];if(!it)return;
+  CURRENT={provider:it.p.id,model:it.m.id};
+  renderChip();render();flashChip();closePop();
+  /* 实际接入:emit('select', provider, model) */
+}
+function renderChip(){
+  const p=PROVIDERS.find(x=>x.id===CURRENT.provider);
+  const m=p.models.find(x=>x.id===CURRENT.model);
+  $('#chip').className=`model-chip pv-${p.id}`;
+  $('#chip').innerHTML=`<span class="mono">${p.name[0]}</span><span class="nm">${m.name}</span><span class="cx">${fmtCtx(m.ctx)}</span><span class="caret">▾</span>`;
+}
+function flashChip(){const c=$('#chip');c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}
+function closePop(){$('#pop').hidden=true;$('#chip').setAttribute('aria-expanded','false');}
+function openPop(){
+  $('#pop').hidden=false;$('#chip').setAttribute('aria-expanded','true');
+  query='';$('#q').value='';
+  focusIdx=PROVIDERS.flatMap(p=>p.models.map(m=>({p,m}))).findIndex(x=>x.p.id===CURRENT.provider&&x.m.id===CURRENT.model);
+  render();$('#q').focus();
+}
+$('#q').addEventListener('input',e=>{query=e.target.value;focusIdx=0;render();});
+document.addEventListener('keydown',e=>{
+  if($('#pop').hidden)return;
+  if(e.key==='ArrowDown'){e.preventDefault();focusIdx=Math.min(focusIdx+1,flat.length-1);paint();scrollFocus();}
+  else if(e.key==='ArrowUp'){e.preventDefault();focusIdx=Math.max(focusIdx-1,0);paint();scrollFocus();}
+  else if(e.key==='Enter'){select(focusIdx);}
+  else if(e.key==='Escape'){closePop();}
+});
+function scrollFocus(){const el=document.querySelector('.row.focused');if(el)el.scrollIntoView({block:'nearest'});}
+$('#chip').addEventListener('click',()=>{$('#pop').hidden?openPop():closePop();});
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.popover')&&!e.target.closest('.model-chip'))closePop();
+});
+document.querySelectorAll('.wbtn').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.wbtn').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelector('.workbench').style.width=b.dataset.w+'px';
+}));
+const root=document.documentElement,tg=$('#schemeToggle');
+tg.addEventListener('click',()=>{
+  const light=root.dataset.scheme==='light';
+  root.dataset.scheme=light?'dark':'light';
+  tg.textContent=light?'切换浅色':'切换深色';
+});
+renderChip();openPop();
+</script>
+</body>
+</html>

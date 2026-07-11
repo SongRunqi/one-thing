@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具方案一 · 缝线</title>
+</head>
+<body>
+<style>
+  :root {
+    --bg-app: #21252B;
+    --bg: #282C34;
+    --bg-hi: #2C323C;
+    --fg: #ABB2BF;
+    --fg-bright: #D7DAE0;
+    --mut: #636D83;
+    --faint: #5C6370;
+    --line: rgba(99, 109, 131, 0.22);
+    --line-2: rgba(99, 109, 131, 0.42);
+    --blue: #61AFEF;
+    --green: #98C379;
+    --red: #E06C75;
+    --cyan: #56B6C2;
+    --yellow: #E5C07B;
+    --serif: "Lora", "Noto Serif SC", Georgia, serif;
+    --sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  body {
+    margin: 0; background: var(--bg-app); color: var(--fg);
+    font-family: var(--sans); font-size: 14px; line-height: 1.6;
+    display: flex; flex-direction: column; align-items: center; gap: 26px;
+    padding: 44px 20px 90px;
+  }
+  .masthead { width: min(720px, 100%); }
+  .masthead h1 { color: var(--fg-bright); font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+  .masthead p { margin: 0; color: var(--mut); font-size: 13px; }
+  .scene-label { width: min(720px, 100%); font-family: var(--mono); font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--faint); margin-bottom: -12px; }
+  .window {
+    width: min(720px, 100%); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 30px 34px 26px; box-sizing: border-box;
+  }
+
+  /* ============ 缝线:一条脊线贯穿整组,每个工具是线上的一个"针脚" ============ */
+  .seam { position: relative; padding-left: 22px; }
+  .seam::before {
+    content: ''; position: absolute; left: 4px; top: 6px; bottom: 6px;
+    width: 1px; background: var(--line-2);
+  }
+  .seam-head {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 1px;
+    color: var(--faint); text-transform: uppercase; margin-bottom: 14px;
+    position: relative;
+  }
+  .seam-head b { color: var(--mut); font-weight: 500; }
+  .seam-head .plus { color: var(--green); } .seam-head .minus { color: var(--red); }
+
+  .stitch { position: relative; padding: 5px 0; }
+  .stitch + .stitch { margin-top: 2px; }
+  /* 针脚节点:骑在脊线上 */
+  .stitch::before {
+    content: ''; position: absolute; left: -22px; top: 13px;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--bg); border: 1.5px solid var(--mut);
+    box-sizing: border-box;
+  }
+  .stitch.ok::before   { border-color: var(--faint); }
+  .stitch.fail::before { border-color: var(--red); background: color-mix(in srgb, var(--red) 24%, var(--bg)); }
+  .stitch.run::before  { border-color: var(--blue); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 18%, transparent); } }
+
+  .stitch-row { display: flex; align-items: baseline; gap: 10px; cursor: pointer; }
+  .stitch-row:hover .verb { color: var(--fg-bright); }
+  .verb { font-family: var(--mono); font-size: 12.5px; color: var(--fg); font-weight: 600; flex-shrink: 0; }
+  .target { font-family: var(--mono); font-size: 12.5px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .stitch.fail .verb { color: var(--red); }
+  .gain { font-family: var(--mono); font-size: 11px; flex-shrink: 0; }
+  .gain .plus { color: var(--green); } .gain .minus { color: var(--red); margin-left: 5px; }
+  .took { margin-left: auto; font-family: var(--mono); font-size: 10px; color: var(--faint); flex-shrink: 0; }
+  .fail-note { font-size: 12px; color: var(--red); opacity: 0.85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+  /* 展开体:悬挂在脊线右侧,无框无底,只有排版 */
+  .hang { margin: 8px 0 14px; padding-left: 2px; }
+  .cmdline { font-family: var(--mono); font-size: 12.5px; color: var(--fg-bright); margin-bottom: 6px; }
+  .cmdline .ps { color: var(--blue); margin-right: 8px; }
+  .out { font-family: var(--mono); font-size: 12px; line-height: 1.75; color: var(--mut); white-space: pre-wrap; }
+  .out .hi { color: var(--fg); }
+  .out .bad { color: var(--red); }
+  .more { font-family: var(--mono); font-size: 11px; color: var(--faint); cursor: pointer; margin: 2px 0; }
+  .more:hover { color: var(--blue); }
+  .meta-line {
+    margin-top: 8px; font-family: var(--mono); font-size: 10.5px;
+    color: var(--faint); letter-spacing: 0.5px;
+  }
+  .meta-line .bad { color: var(--red); }
+  .meta-line .ok { color: var(--green); }
+
+  /* diff:裸文本 + 悬挂符号,无底色块 */
+  .bare-diff { font-family: var(--mono); font-size: 12px; line-height: 1.75; }
+  .bd-line { display: flex; }
+  .bd-sign { width: 20px; flex-shrink: 0; color: var(--faint); }
+  .bd-line.del .bd-sign { color: var(--red); }
+  .bd-line.add .bd-sign { color: var(--green); }
+  .bd-line.del .bd-text { color: color-mix(in srgb, var(--red) 55%, var(--fg)); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--red) 40%, transparent); }
+  .bd-line.add .bd-text { color: color-mix(in srgb, var(--green) 45%, var(--fg-bright)); }
+  .bd-line.ctx .bd-text { color: var(--mut); }
+  .bd-text { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+
+  /* 失败详情:一段红字,前面没有任何容器 */
+  .plain-error { font-family: var(--mono); font-size: 12px; line-height: 1.7; color: color-mix(in srgb, var(--red) 72%, var(--fg)); max-width: 62ch; }
+  .plain-error .path { color: var(--fg); }
+
+  /* read 摘录:серif 引文式 */
+  .excerpt { border-left: 0; }
+  .excerpt .out { color: var(--faint); }
+  .excerpt .range { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-top: 6px; letter-spacing: 0.5px; }
+</style>
+
+<header class="masthead">
+  <h1>工具方案一 · 缝线</h1>
+  <p>没有卡片,没有底色。一条 1px 脊线纵贯整组工具,每次调用是线上的一个针脚:圆点节点标状态,展开体悬挂在线右,信息全部交给字重、颜色与留白。失败是一个红结。</p>
+</header>
+
+<div class="scene-label">Collapsed · 一组针脚</div>
+<div class="window">
+  <div class="seam">
+    <div class="seam-head">6 tools · 8.4s · <span class="plus">+24</span> <span class="minus">−6</span></div>
+    <div class="stitch ok"><div class="stitch-row"><span class="verb">read</span><span class="target">src/renderer/stores/chat.ts</span><span class="took">0.1s</span></div></div>
+    <div class="stitch ok"><div class="stitch-row"><span class="verb">bash</span><span class="target">bun run test stores/chat</span><span class="took">4.6s</span></div></div>
+    <div class="stitch fail"><div class="stitch-row"><span class="verb">edit</span><span class="target">chat.ts</span><span class="fail-note">Could not find the target text</span><span class="took">0.1s</span></div></div>
+    <div class="stitch ok"><div class="stitch-row"><span class="verb">edit</span><span class="target">src/renderer/stores/chat.ts</span><span class="gain"><span class="plus">+6</span><span class="minus">−2</span></span><span class="took">0.2s</span></div></div>
+    <div class="stitch ok"><div class="stitch-row"><span class="verb">write</span><span class="target">docs/notes/store-fix.md</span><span class="gain"><span class="plus">+18</span></span><span class="took">0.1s</span></div></div>
+    <div class="stitch run"><div class="stitch-row"><span class="verb">bash</span><span class="target">bun run test stores/chat</span><span class="took">2.1s…</span></div></div>
+  </div>
+</div>
+
+<div class="scene-label">Expanded · Bash(exit 1)</div>
+<div class="window">
+  <div class="seam">
+    <div class="stitch ok">
+      <div class="stitch-row"><span class="verb">bash</span><span class="target">bun run test stores/chat</span><span class="took">4.6s</span></div>
+      <div class="hang">
+        <div class="cmdline"><span class="ps">$</span>bun run test stores/chat</div>
+        <div class="more">… +38 lines</div>
+        <div class="out"><span class="hi">✓ chat.ts (12 tests)</span>
+<span class="bad">✕ resets draft on session switch</span>
+  expected 'draft' to be ''
+  at stores/__tests__/chat.test.ts:184</div>
+        <div class="meta-line"><span class="bad">exit 1</span> · 4.6s · 41 lines</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Expanded · Edit(失败 → 成功)</div>
+<div class="window">
+  <div class="seam">
+    <div class="stitch fail">
+      <div class="stitch-row"><span class="verb">edit</span><span class="target">src/renderer/stores/chat.ts</span><span class="took">0.1s</span></div>
+      <div class="hang">
+        <div class="plain-error">Could not find the target text in <span class="path">src/renderer/stores/chat.ts</span>. Tried exact matching and a single unique indentation-insensitive whole-line match. Re-read the current file and include a larger unique block.</div>
+      </div>
+    </div>
+    <div class="stitch ok">
+      <div class="stitch-row"><span class="verb">edit</span><span class="target">src/renderer/stores/chat.ts</span><span class="gain"><span class="plus">+6</span><span class="minus">−2</span></span><span class="took">0.2s</span></div>
+      <div class="hang">
+        <div class="bare-diff">
+          <div class="bd-line ctx"><span class="bd-sign"></span><span class="bd-text">function switchSession(id: string) {</span></div>
+          <div class="bd-line del"><span class="bd-sign">−</span><span class="bd-text">  activeId.value = id</span></div>
+          <div class="bd-line add"><span class="bd-sign">+</span><span class="bd-text">  activeId.value = id</span></div>
+          <div class="bd-line add"><span class="bd-sign">+</span><span class="bd-text">  draft.value = ''</span></div>
+          <div class="bd-line add"><span class="bd-sign">+</span><span class="bd-text">  attachments.value = []</span></div>
+          <div class="bd-line ctx"><span class="bd-sign"></span><span class="bd-text">}</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Expanded · Read / Write</div>
+<div class="window">
+  <div class="seam">
+    <div class="stitch ok">
+      <div class="stitch-row"><span class="verb">read</span><span class="target">src/renderer/stores/chat.ts</span><span class="took">0.1s</span></div>
+      <div class="hang excerpt">
+        <div class="out">export const useChatStore = defineStore('chat', () => {
+  const activeId = ref&lt;string | null&gt;(null)
+  const draft = ref('')</div>
+        <div class="range">L1–220 · 220 lines · 8.1 KB</div>
+      </div>
+    </div>
+    <div class="stitch ok">
+      <div class="stitch-row"><span class="verb">write</span><span class="target">docs/notes/store-fix.md</span><span class="gain"><span class="plus">+18</span></span><span class="took">0.1s</span></div>
+      <div class="hang">
+        <div class="bare-diff">
+          <div class="bd-line add"><span class="bd-sign">+</span><span class="bd-text"># chat store:会话切换后草稿残留</span></div>
+          <div class="bd-line add"><span class="bd-sign">+</span><span class="bd-text"></span></div>
+          <div class="bd-line add"><span class="bd-sign">+</span><span class="bd-text">切换会话时未清空 draft 与 attachments,导致</span></div>
+        </div>
+        <div class="more">… +15 lines</div>
+        <div class="meta-line"><span class="ok">new file</span> · 18 lines</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Running · 活动针脚</div>
+<div class="window">
+  <div class="seam">
+    <div class="stitch run">
+      <div class="stitch-row"><span class="verb">bash</span><span class="target">bun run test stores/chat</span><span class="took">2.1s…</span></div>
+      <div class="hang">
+        <div class="cmdline"><span class="ps">$</span>bun run test stores/chat</div>
+        <div class="out"><span class="hi">✓ chat.ts (13 tests)</span>
+running…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

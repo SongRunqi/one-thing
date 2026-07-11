@@ -53,3 +53,12 @@ docs/tool-ui-audit/
 .codex-audit/
 .codex/audits/
 tmp.md
+
+# tool / debug artifacts
+.playwright-mcp/
+.pi/
+/current-state.png
+/e2e-0-loaded.png
+/manual-test.png
+/page-loaded.png
+/test-page.png

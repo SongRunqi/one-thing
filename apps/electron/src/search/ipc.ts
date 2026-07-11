@@ -3,13 +3,13 @@
  */
 
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import type { SearchRequest, SearchResponse } from '@shared/ipc/search.js'
+import type { SearchRequest, SearchResponse, SearchWindowAnchor } from '@shared/ipc/search.js'
 import {
   closeOnethingSearchWindowForIpc,
   executeOnethingSearchForIpc,
 } from '@onething/runtime/search'
 import { executeSearch } from '@main/search/providers.js'
-import { closeSearchWindow } from './window.js'
+import { closeSearchWindow, setSearchWindowAnchor } from './window.js'
 import { registerElectronSearchIpcHandlers } from './window-actions.js'
 import { executeSearchActionFrom, toggleSearchWindowFrom } from './window-controller.js'
 
@@ -20,9 +20,14 @@ export function registerSearchHandlers(): void {
       closeWindow: IPC_CHANNELS.SEARCH_WINDOW_CLOSE,
       query: IPC_CHANNELS.SEARCH_QUERY,
       executeAction: IPC_CHANNELS.SEARCH_EXECUTE_ACTION,
+      setAnchor: IPC_CHANNELS.SEARCH_WINDOW_SET_ANCHOR,
     },
-    toggleWindow: sourceWindow => toggleSearchWindowFrom(sourceWindow),
+    toggleWindow: (sourceWindow, openOptions) => toggleSearchWindowFrom(sourceWindow, openOptions),
     closeWindow: () => closeOnethingSearchWindowForIpc({ closeSearchWindow }),
+    setAnchor: (anchor) => {
+      setSearchWindowAnchor((anchor as SearchWindowAnchor | null) ?? null)
+      return { success: true }
+    },
     query: (req): Promise<SearchResponse> =>
       executeOnethingSearchForIpc({
         request: req as SearchRequest,

@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方案二 · 浮岛</title>
+</head>
+<body>
+<style>
+  :root {
+    --bg-app: #21252B;
+    --bg: #282C34;
+    --bg-hi: #2C323C;
+    --bg-hi2: #323945;
+    --fg: #ABB2BF;
+    --fg-bright: #D7DAE0;
+    --mut: #636D83;
+    --faint: #5C6370;
+    --line: rgba(99, 109, 131, 0.18);
+    --blue: #61AFEF;
+    --green: #98C379;
+    --red: #E06C75;
+    --cyan: #56B6C2;
+    --shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+    --shadow-sm: 0 3px 10px rgba(0, 0, 0, 0.28);
+    --serif: "Lora", "Noto Serif SC", Georgia, serif;
+    --sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  body {
+    margin: 0;
+    background: var(--bg-app);
+    color: var(--fg);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 26px;
+    padding: 44px 20px 90px;
+  }
+  .masthead { width: min(720px, 100%); }
+  .masthead h1 { color: var(--fg-bright); font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+  .masthead p { margin: 0; color: var(--mut); font-size: 13px; }
+  .scene-label { width: min(720px, 100%); font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--faint); margin-bottom: -12px; }
+
+  .window {
+    width: min(720px, 100%);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    padding: 28px 30px 24px;
+    box-sizing: border-box;
+  }
+
+  /* ---------- 对话:柔和浮层 ---------- */
+  .msg-user { display: flex; flex-direction: column; align-items: flex-end; gap: 9px; }
+  .shots { display: flex; gap: 8px; }
+  .shot { border-radius: 13px; overflow: hidden; box-shadow: var(--shadow-sm); }
+  .shot svg { width: 132px; height: 94px; display: block; }
+  .file-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--bg-hi); border-radius: 999px; padding: 6px 13px 6px 7px;
+    box-shadow: var(--shadow-sm); font-size: 12.5px; color: var(--fg);
+  }
+  .file-icon { width: 24px; height: 24px; border-radius: 999px; background: color-mix(in srgb, var(--red) 24%, var(--bg-hi)); color: var(--red); font-size: 8.5px; font-weight: 800; display: grid; place-items: center; }
+  .file-chip .size { color: var(--mut); }
+  .bubble-user {
+    max-width: 76%;
+    background: var(--bg-hi);
+    border-radius: 18px 18px 6px 18px;
+    padding: 11px 16px;
+    font-family: var(--serif);
+    font-size: 14.5px;
+    color: var(--fg-bright);
+    box-shadow: var(--shadow-sm);
+  }
+  .ref {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: color-mix(in srgb, var(--blue) 16%, transparent);
+    color: var(--blue);
+    border-radius: 999px; padding: 1px 9px;
+    font-family: var(--sans); font-size: 12px; font-weight: 600; vertical-align: -2px; white-space: nowrap;
+  }
+  .msg-meta { font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+  .msg-ai { margin-top: 22px; }
+  .think-pill { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-hi); border-radius: 999px; padding: 3px 12px; font-size: 11.5px; color: var(--mut); margin-bottom: 8px; }
+  .think-pill .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--blue); }
+  .msg-ai .prose { max-width: 64ch; font-family: var(--serif); font-size: 15px; }
+
+  /* ---------- Dock:迷你浮岛 ---------- */
+  .dock { display: flex; flex-direction: column; gap: 8px; margin-top: 26px; }
+  .isle { background: var(--bg-hi); border-radius: 13px; box-shadow: var(--shadow-sm); overflow: hidden; }
+  .isle-row { display: flex; align-items: center; gap: 10px; padding: 8px 14px; font-size: 12.5px; color: var(--fg); }
+  .isle-row + .isle-row { border-top: 1px solid var(--line); }
+  .badge { font-size: 10.5px; font-weight: 700; color: var(--mut); background: var(--bg-hi2); border-radius: 999px; padding: 2px 9px; flex-shrink: 0; }
+  .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .plus { color: var(--green); font-family: var(--mono); font-size: 12px; }
+  .minus { color: var(--red); font-family: var(--mono); font-size: 12px; }
+  .act { font-size: 12px; font-weight: 650; color: var(--blue); background: color-mix(in srgb, var(--blue) 13%, transparent); border-radius: 999px; padding: 3px 11px; cursor: pointer; flex-shrink: 0; }
+  .x { width: 20px; height: 20px; border-radius: 50%; background: var(--bg-hi2); color: var(--mut); font-size: 9px; display: grid; place-items: center; cursor: pointer; flex-shrink: 0; }
+  .quote-isle { display: flex; align-items: center; gap: 10px; background: var(--bg-hi); border-radius: 999px; padding: 7px 10px 7px 14px; box-shadow: var(--shadow-sm); }
+  .quote-bar { width: 3px; height: 15px; border-radius: 2px; background: var(--cyan); flex-shrink: 0; }
+  .quote-text { flex: 1; font-size: 12.5px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .attach-row { display: flex; align-items: center; gap: 9px; padding: 2px 2px; }
+  .mini-thumb { position: relative; border-radius: 12px; box-shadow: var(--shadow-sm); }
+  .mini-thumb svg { width: 44px; height: 44px; display: block; border-radius: 12px; }
+  .badge-x { position: absolute; top: -6px; right: -6px; width: 17px; height: 17px; border-radius: 50%; background: var(--bg-hi2); border: 1px solid var(--line); color: var(--fg); font-size: 8.5px; display: grid; place-items: center; cursor: pointer; }
+
+  /* ---------- 输入:浮起的圆角卡 ---------- */
+  .composer {
+    margin-top: 12px;
+    background: var(--bg-hi);
+    border-radius: 18px;
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(215, 218, 224, 0.04);
+    padding: 15px 15px 11px 18px;
+  }
+  .composer.focus { box-shadow: var(--shadow), 0 0 0 1.5px color-mix(in srgb, var(--blue) 40%, transparent); }
+  .entry { font-family: var(--serif); font-size: 15px; color: var(--fg-bright); min-height: 44px; }
+  .caret { display: inline-block; width: 2px; height: 16px; border-radius: 1px; background: var(--blue); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+  .toolbar { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; background: var(--bg-hi2); border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 600; color: var(--fg); cursor: pointer; }
+  .pill .arr { color: var(--faint); font-size: 9px; }
+  .model-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
+  .ring { position: relative; width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(var(--blue) 37%, var(--bg-hi2) 0); display: grid; place-items: center; flex-shrink: 0; }
+  .ring::before { content: ""; position: absolute; inset: 3.5px; background: var(--bg-hi); border-radius: 50%; }
+  .ring span { position: relative; font-family: var(--mono); font-size: 7.5px; font-weight: 700; color: var(--mut); }
+  .spacer { flex: 1; }
+  .round-btn { width: 32px; height: 32px; border-radius: 50%; background: var(--bg-hi2); color: var(--mut); display: grid; place-items: center; font-size: 13px; cursor: pointer; }
+  .send {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--blue); color: #21252B; font-size: 16px; font-weight: 800;
+    display: grid; place-items: center; cursor: pointer;
+    box-shadow: 0 6px 18px color-mix(in srgb, var(--blue) 42%, transparent);
+  }
+
+  /* ---------- 命令面板:浮岛清单 ---------- */
+  .palette-wrap { position: relative; margin-top: 46px; }
+  .palette {
+    position: absolute; left: 6px; right: 6px; bottom: calc(100% + 12px);
+    background: var(--bg-hi);
+    border-radius: 18px;
+    box-shadow: 0 26px 60px rgba(0, 0, 0, 0.55);
+    padding: 7px;
+  }
+  .p-row { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 12px; cursor: pointer; }
+  .p-icon { width: 32px; height: 32px; border-radius: 10px; background: var(--bg-hi2); color: var(--mut); display: grid; place-items: center; font-family: var(--mono); font-size: 13px; flex-shrink: 0; }
+  .p-main { flex: 1; min-width: 0; }
+  .p-cmd { font-size: 13px; font-weight: 650; color: var(--fg-bright); }
+  .p-cmd .hit { color: var(--blue); }
+  .p-desc { font-size: 12px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-kbd { font-family: var(--mono); font-size: 10px; color: var(--faint); background: var(--bg-hi2); border-radius: 6px; padding: 2px 7px; }
+  .p-row.sel { background: color-mix(in srgb, var(--blue) 13%, transparent); }
+  .p-row.sel .p-icon { background: color-mix(in srgb, var(--blue) 22%, var(--bg-hi2)); color: var(--blue); }
+  .p-foot { display: flex; gap: 16px; padding: 7px 14px 4px; font-size: 11px; color: var(--faint); }
+</style>
+
+<header class="masthead">
+  <h1>方案二 · 浮岛</h1>
+  <p>柔和浮层:圆角卡片逐级浮起,层级全靠明度和阴影。附件是胶囊与圆片,发送是一颗蓝色圆钮。</p>
+</header>
+
+<div class="scene-label">对话</div>
+<div class="window">
+  <div class="msg-user">
+    <div class="shots">
+      <span class="shot"><svg viewBox="0 0 132 94"><rect width="132" height="94" fill="#2C323C"/><rect x="10" y="10" width="112" height="10" rx="4" fill="#3B4250"/><rect x="10" y="28" width="68" height="52" rx="6" fill="#61AFEF" opacity="0.55"/><rect x="86" y="28" width="36" height="24" rx="6" fill="#56B6C2" opacity="0.45"/><rect x="86" y="58" width="36" height="22" rx="6" fill="#3B4250"/></svg></span>
+      <span class="shot"><svg viewBox="0 0 132 94"><rect width="132" height="94" fill="#2A3038"/><rect x="10" y="10" width="52" height="74" rx="6" fill="#98C379" opacity="0.4"/><rect x="70" y="10" width="52" height="34" rx="6" fill="#3B4250"/><rect x="70" y="52" width="52" height="32" rx="6" fill="#61AFEF" opacity="0.4"/></svg></span>
+    </div>
+    <span class="file-chip"><span class="file-icon">PDF</span>季度报告 Q2.pdf <span class="size">· 1.2 MB</span></span>
+    <div class="bubble-user">帮我把这两张首页设计稿和季度报告整理成一页评审摘要,用 <span class="ref">⚡ 双语摘要</span> 的风格输出。</div>
+    <span class="msg-meta">16:42</span>
+  </div>
+  <div class="msg-ai">
+    <span class="think-pill"><span class="dot"></span>思考了 1 步 · 0.8s</span>
+    <div class="prose">好的。我先读取报告的章节结构,再对照两张设计稿的信息层级,给出一页以内的评审摘要——中文在前,英文在后。</div>
+  </div>
+</div>
+
+<div class="scene-label">输入框 · 草稿满载</div>
+<div class="window">
+  <div class="dock" style="margin-top:0">
+    <div class="isle">
+      <div class="isle-row">
+        <span class="badge">改动</span>
+        <span class="t">2 files changed <span class="plus">+18</span> <span class="minus">−4</span></span>
+        <span class="act">Review</span>
+      </div>
+      <div class="isle-row">
+        <span class="badge">待发送</span>
+        <span class="t">记得把风险部分单独列出来,不要混在正文里</span>
+        <span class="act">立即插入</span>
+        <span class="x">✕</span>
+      </div>
+    </div>
+    <div class="quote-isle">
+      <span class="quote-bar"></span>
+      <span class="quote-text">上次评审提到首屏信息密度过高,需要重新分组导航,并把次要入口收进抽屉。</span>
+      <span class="x">✕</span>
+    </div>
+    <div class="attach-row">
+      <span class="mini-thumb"><svg viewBox="0 0 44 44"><rect width="44" height="44" rx="12" fill="#2C323C"/><rect x="7" y="9" width="30" height="11" rx="4" fill="#61AFEF" opacity="0.55"/><rect x="7" y="25" width="19" height="10" rx="4" fill="#56B6C2" opacity="0.45"/></svg><span class="badge-x">✕</span></span>
+      <span class="mini-thumb"><svg viewBox="0 0 44 44"><rect width="44" height="44" rx="12" fill="#2A3038"/><circle cx="16" cy="18" r="8" fill="#98C379" opacity="0.4"/><rect x="27" y="10" width="9" height="24" rx="4" fill="#3B4250"/></svg><span class="badge-x">✕</span></span>
+      <span class="file-chip" style="position:relative"><span class="file-icon">PDF</span>设计规范.pdf<span class="badge-x">✕</span></span>
+    </div>
+  </div>
+
+  <div class="composer focus">
+    <div class="entry">对比两版首屏的信息层级,列出<span class="caret"></span></div>
+    <div class="toolbar">
+      <span class="pill"><span class="model-dot"></span>DeepSeek V4 Pro <span class="arr">▾</span></span>
+      <span class="ring"><span>37</span></span>
+      <span class="pill">✦ 深度思考 <span class="arr">▾</span></span>
+      <span class="round-btn" style="width:28px;height:28px">🛡</span>
+      <span class="spacer"></span>
+      <span class="round-btn">🎙</span>
+      <span class="send">↑</span>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">命令面板</div>
+<div class="window" style="padding-top:240px">
+  <div class="palette-wrap">
+    <div class="palette">
+      <div class="p-row sel">
+        <span class="p-icon">⇅</span>
+        <span class="p-main"><span class="p-cmd">/<span class="hit">com</span>pact</span><div class="p-desc">压缩上下文,归纳较早的对话历史</div></span>
+        <span class="p-kbd">⏎</span>
+      </div>
+      <div class="p-row">
+        <span class="p-icon">≡</span>
+        <span class="p-main"><span class="p-cmd">/<span class="hit">com</span>mands</span><div class="p-desc">列出全部可用命令</div></span>
+      </div>
+      <div class="p-row" style="opacity:0.5">
+        <span class="p-icon">＋</span>
+        <span class="p-main"><span class="p-cmd">/new</span><div class="p-desc">新建会话</div></span>
+        <span class="p-kbd">⌘N</span>
+      </div>
+      <div class="p-row" style="opacity:0.5">
+        <span class="p-icon">➜</span>
+        <span class="p-main"><span class="p-cmd">/cd</span><div class="p-desc">切换本会话的工作目录</div></span>
+      </div>
+      <div class="p-foot"><span>↑↓ 选择</span><span>⏎ 执行</span><span>esc 关闭</span></div>
+    </div>
+    <div class="composer" style="margin-top:0">
+      <div class="entry"><span style="color:var(--blue);font-weight:600">/com</span><span class="caret"></span></div>
+      <div class="toolbar">
+        <span class="pill"><span class="model-dot"></span>DeepSeek V4 Pro <span class="arr">▾</span></span>
+        <span class="ring"><span>37</span></span>
+        <span class="spacer"></span>
+        <span class="send">↑</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -3,7 +3,7 @@
     as="main"
     class="chat"
     border-style="solid"
-    radius-value="9px"
+    radius-value="0"
     :border-color="chatBorderColor"
     background="var(--chat-surface)"
     :shadow-value="chatPanelShadowValue"
@@ -38,6 +38,7 @@
           :reserve-sidebar-actions="reserveSidebarActions"
           :side-panel-available="sidePanelAvailable"
           :side-panel-collapsed="sidePanelCollapsed"
+          :panel-focused="panelFocused"
           @select-tab="activateTab"
           @close-tab="handleCloseTab"
           @move-tab="tabState.moveTab"
@@ -121,12 +122,14 @@ interface Props {
   isInspectorOpen?: boolean
   reserveSidebarActions?: boolean
   layoutTransitioning?: boolean
+  panelFocused?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   showSettings: false,
   showSidebarToggle: false,
   mediaPanelOpen: false,
+  panelFocused: true,
 })
 
 const chatBorderColor = 'color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 52%, transparent)'

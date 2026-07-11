@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Side Panel · 重组方案 第二批</title>
+<style>
+:root {
+  --bg-app: #e6e4d9;
+  --bg-panel: #f2f0e5;
+  --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653;
+  --text-secondary: #6f6e69;
+  --text-muted: #878580;
+  --text-faint: #9f9d96;
+  --border-default: #cecdc3;
+  --border-subtle: #e6e4d9;
+  --border-strong: #b7b5ac;
+  --zhusha: #a63c26;
+  --dailan: #39586f;
+
+  --font-display: "Lora", "Source Han Serif SC", "Noto Serif SC", Georgia, "Songti SC", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #282726; --bg-panel: #343331; --bg-chat: #343331;
+    --bg-hover: rgba(255, 255, 255, 0.04);
+    --text-primary: #f2f0e5; --text-secondary: #e6e4d9;
+    --text-muted: #b7b5ac; --text-faint: #9f9d96;
+    --border-default: #575653; --border-subtle: #403e3c; --border-strong: #6f6e69;
+    --zhusha: #c96f5b; --dailan: #7a9cb8;
+  }
+}
+:root[data-theme="light"] {
+  --bg-app: #e6e4d9; --bg-panel: #f2f0e5; --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653; --text-secondary: #6f6e69;
+  --text-muted: #878580; --text-faint: #9f9d96;
+  --border-default: #cecdc3; --border-subtle: #e6e4d9; --border-strong: #b7b5ac;
+  --zhusha: #a63c26; --dailan: #39586f;
+}
+:root[data-theme="dark"] {
+  --bg-app: #282726; --bg-panel: #343331; --bg-chat: #343331;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --text-primary: #f2f0e5; --text-secondary: #e6e4d9;
+  --text-muted: #b7b5ac; --text-faint: #9f9d96;
+  --border-default: #575653; --border-subtle: #403e3c; --border-strong: #6f6e69;
+  --zhusha: #c96f5b; --dailan: #7a9cb8;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+  padding: 48px 24px 110px;
+}
+
+.masthead { width: min(960px, 100%); }
+.masthead h1 { margin: 0 0 6px; font-family: var(--font-display); font-size: 24px; font-weight: 650; }
+.masthead p { margin: 0; max-width: 68ch; color: var(--text-muted); font-size: 13px; }
+
+.scene { width: min(960px, 100%); margin-top: 18px; }
+.scene-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.scene-head .no { font-family: var(--font-display); font-size: 15px; color: var(--zhusha); }
+.scene-head h2 { margin: 0; font-family: var(--font-display); font-size: 19px; font-weight: 650; }
+.scene-head .model { font-family: var(--font-mono); font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--text-faint); }
+.scene-desc { margin: 0 0 6px; max-width: 74ch; color: var(--text-secondary); font-size: 13px; }
+.scene-tradeoff { margin: 0 0 14px; max-width: 74ch; color: var(--text-muted); font-size: 12px; }
+.scene-tradeoff b { color: var(--text-secondary); font-weight: 600; }
+
+.window {
+  position: relative;
+  display: flex;
+  height: 540px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-chat);
+}
+.chat {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 26px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 30px 34px;
+}
+.msg-user { align-self: flex-end; max-width: 72%; padding-right: 12px; border-right: 2px solid var(--dailan); font-family: var(--font-display); font-size: 14px; color: var(--text-primary); text-align: right; }
+.msg-ai { max-width: 62ch; color: var(--text-secondary); font-size: 13.5px; }
+.msg-ai h5 { margin: 0 0 4px; font-family: var(--font-display); font-size: 14px; color: var(--text-primary); font-weight: 650; }
+.msg-ai p { margin: 0 0 8px; }
+.msg-fade { color: var(--text-faint); }
+
+.panel {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--border-default);
+  background: var(--bg-panel);
+}
+.eyebrow { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 2.2px; text-transform: uppercase; color: var(--text-faint); }
+.leader { flex: 1 1 auto; min-width: 10px; height: 0; border-bottom: 1.5px dotted color-mix(in srgb, var(--border-strong) 85%, transparent); transform: translateY(1px); }
+
+/* ============================================================
+   方案四 · 编年 —— 一条时间流,不分区
+   ============================================================ */
+.s4 .panel { width: 288px; }
+.s4 .colophon {
+  flex: 0 0 auto;
+  display: grid; gap: 2px;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: default;
+}
+.s4 .colophon:hover { background: var(--bg-hover); }
+.s4 .colophon .line { display: flex; align-items: baseline; gap: 8px; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+.s4 .colophon .line b { font-weight: 600; color: var(--text-secondary); }
+
+.s4 .ledger {
+  position: relative;
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  padding: 16px 18px 18px 0;
+}
+.s4 .spine-line { position: absolute; top: 0; bottom: 0; left: 25px; width: 0; border-left: 1px solid var(--border-default); }
+.s4 .entry { position: relative; display: flex; align-items: baseline; gap: 9px; min-width: 0; padding: 3px 0 3px 34px; font-size: 11.5px; color: var(--text-secondary); cursor: default; }
+.s4 .entry:hover { color: var(--text-primary); }
+.s4 .entry .tick { position: absolute; left: 21.5px; top: 50%; transform: translateY(-50%); width: 7px; height: 7px; display: flex; align-items: center; justify-content: center; }
+.s4 .entry span.txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.s4 .entry.turn { margin-top: 14px; padding-left: 34px; font-family: var(--font-display); font-size: 12.5px; font-weight: 650; color: var(--text-primary); }
+.s4 .entry.turn:first-child { margin-top: 0; }
+.s4 .entry.turn .tick::before { content: ""; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--text-muted); background: var(--bg-panel); }
+.s4 .entry.turn .ord { flex: 0 0 auto; font-size: 11px; color: var(--zhusha); }
+
+.s4 .entry.heading .tick::before { content: ""; width: 3px; height: 3px; border-radius: 50%; background: var(--border-strong); }
+.s4 .entry.done { color: var(--text-muted); }
+.s4 .entry.done .tick { color: var(--zhusha); font-size: 9px; }
+.s4 .entry.done .tick::before { content: "✓"; }
+.s4 .entry.doing { color: var(--text-primary); font-weight: 600; }
+.s4 .entry.doing .tick::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--zhusha); }
+.s4 .entry.current::after { content: ""; position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 14px; height: 0; border-top: 2px solid var(--zhusha); }
+.s4 .entry .kind { flex: 0 0 auto; font-family: var(--font-mono); font-size: 9px; color: var(--text-faint); }
+.s4 .entry.done .kind, .s4 .entry.doing .kind { color: color-mix(in srgb, var(--zhusha) 70%, var(--text-faint)); }
+
+.s4 .pending-head { margin-top: 16px; padding-left: 34px; }
+.s4 .entry.pending { color: var(--text-faint); }
+.s4 .entry.pending .tick::before { content: ""; width: 5px; height: 5px; border-radius: 50%; border: 1px solid var(--text-faint); }
+
+/* ============================================================
+   方案五 · 仪表 —— 只显当下,永不滚动
+   ============================================================ */
+.s5 .panel { width: 252px; justify-content: space-between; padding: 22px 20px; gap: 18px; }
+.s5 .cluster { display: grid; gap: 8px; }
+.s5 .cluster-head { display: flex; align-items: baseline; gap: 8px; }
+.s5 .cluster-head .val { flex: 0 0 auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+
+.s5 .pos { display: grid; gap: 5px; }
+.s5 .pos .prev, .s5 .pos .next { font-size: 11px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s5 .pos .curr { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 650; color: var(--text-primary); }
+.s5 .pos .curr::before { content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--zhusha); transform: translateY(-1px); }
+.s5 .pos .curr span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s5 .pos .prev { padding-left: 14px; }
+.s5 .pos .next { padding-left: 14px; }
+
+.s5 .task-num { display: flex; align-items: baseline; gap: 10px; }
+.s5 .task-num .big { font-family: var(--font-display); font-size: 30px; font-weight: 650; line-height: 1; color: var(--text-primary); }
+.s5 .task-num .big i { font-style: normal; font-size: 15px; color: var(--text-muted); }
+.s5 .task-num .lbl { font-size: 11px; color: var(--text-muted); }
+.s5 .task-line { font-size: 12px; color: var(--text-secondary); line-height: 1.45; }
+.s5 .meter { position: relative; height: 0; margin-top: 4px; border-bottom: 1.5px dotted color-mix(in srgb, var(--border-strong) 90%, transparent); }
+.s5 .meter i { position: absolute; bottom: -1.5px; left: 0; height: 0; border-bottom: 1.5px solid var(--zhusha); }
+
+.s5 .env { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+.s5 .env .cell { display: grid; gap: 1px; }
+.s5 .env .cell b { font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--text-secondary); }
+.s5 .env .cell span { font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-faint); font-family: var(--font-mono); }
+.s5 .rule { height: 0; border-top: 1px solid var(--border-subtle); }
+.s5 .note { font-size: 10px; color: var(--text-faint); }
+
+/* ============================================================
+   方案六 · 呼吸 —— 三段同显,空间随注意力流动
+   ============================================================ */
+.s6 .panel { width: 288px; }
+.s6 .esec {
+  display: flex; flex-direction: column;
+  flex: 0.0001 1 auto;
+  min-height: 40px; min-width: 0; overflow: hidden;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: flex-grow 0.28s ease;
+}
+.s6 .esec:last-child { border-bottom: 0; }
+.s6 .esec.focus { flex-grow: 1; }
+.s6 .esum {
+  display: flex; align-items: baseline; gap: 8px;
+  flex: 0 0 auto; min-width: 0;
+  padding: 11px 18px 9px;
+  cursor: default;
+}
+.s6 .esum .k { flex: 0 0 auto; font-family: var(--font-display); font-size: 12px; font-weight: 650; color: var(--text-primary); }
+.s6 .esum .live { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-muted); }
+.s6 .esum .live b { color: color-mix(in srgb, var(--zhusha) 80%, var(--text-primary)); font-weight: 600; }
+.s6 .esec.focus .esum .live { visibility: hidden; }
+.s6 .ebody {
+  flex: 1 1 0px; min-height: 0; overflow: auto;
+  padding: 0 18px;
+  opacity: 0; transition: opacity 0.22s ease 0.1s;
+}
+.s6 .esec.focus .ebody { opacity: 1; padding-bottom: 14px; }
+
+.s6 .ol-group { display: grid; gap: 5px; }
+.s6 .ol-group + .ol-group { margin-top: 12px; }
+.s6 .ol-user { display: flex; gap: 8px; align-items: baseline; min-width: 0; font-family: var(--font-display); font-size: 12.5px; font-weight: 650; color: var(--text-primary); }
+.s6 .ol-user .ord { flex: 0 0 auto; color: var(--zhusha); font-size: 11px; }
+.s6 .ol-user span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s6 .ol-h { margin-left: 19px; padding-left: 10px; border-left: 1px solid var(--border-default); font-size: 11.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s6 .ol-h.current { border-left: 2px solid var(--zhusha); padding-left: 9px; color: var(--text-primary); }
+
+.s6 .todo-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 11.5px; color: var(--text-secondary); }
+.s6 .todo-row + .todo-row { margin-top: 6px; }
+.s6 .todo-row span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s6 .todo-state { flex: 0 0 auto; font-size: 10px; color: var(--text-faint); }
+.s6 .todo-row.done { color: var(--text-muted); }
+.s6 .todo-row.done .leader { border-bottom-style: solid; border-bottom-color: var(--zhusha); opacity: 0.4; }
+.s6 .todo-row.done .todo-state { color: var(--zhusha); }
+.s6 .todo-row.doing { color: var(--text-primary); font-weight: 600; }
+.s6 .todo-row.doing .todo-state { color: var(--zhusha); }
+
+.s6 .sp-meta { display: grid; gap: 3px; margin-bottom: 8px; font-size: 11px; color: var(--text-muted); }
+.s6 .sp-meta b { color: var(--text-secondary); font-weight: 600; font-family: var(--font-mono); font-size: 10.5px; }
+.s6 .sp-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding: 5px 0; font-size: 11.5px; color: var(--text-secondary); }
+.s6 .sp-row .v { flex: 0 0 auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+
+/* ---------- 尾注对比 ---------- */
+.coda { width: min(960px, 100%); margin-top: 8px; }
+.coda h3 { margin: 0 0 10px; font-family: var(--font-display); font-size: 16px; }
+.coda table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.coda th, .coda td { padding: 8px 12px; border-bottom: 1px solid var(--border-default); text-align: left; vertical-align: top; }
+.coda th { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-faint); font-weight: 600; }
+.coda td:first-child { font-family: var(--font-display); font-weight: 650; white-space: nowrap; }
+.coda td { color: var(--text-secondary); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <h1>Side Panel · 重组方案 第二批</h1>
+  <p>与第一批(检字/案头/批注边)完全不同的三种组织逻辑:<b>按时间合流</b>、<b>只显当下</b>、<b>空间随注意力流动</b>。这一批收掉装饰性隐喻,走朴素直接的信息整理。</p>
+</header>
+
+<!-- ============================================================ -->
+<!-- 方案四 · 编年 -->
+<!-- ============================================================ -->
+<section class="scene s4">
+  <div class="scene-head">
+    <span class="no">肆</span>
+    <h2>编年 · 一条时间流,不再分区</h2>
+    <span class="model">UNIFIED LEDGER</span>
+  </div>
+  <p class="scene-desc">换一个根本假设:目录和待办本来就是同一条时间线上的事件——「聊到了什么」和「做完了什么」交替发生。所以面板不分区,只有一条编年流:轮次、小节标题、任务完成,按发生顺序排在同一根脊线上,靠四种记号区分(○ 轮次 · 小节 ✓ 已讫 ● 进行中)。还没发生的任务排在流的末尾。提示词只在卷首留两行题记。</p>
+  <p class="scene-tradeoff"><b>得:</b>没有节头、没有分割条、没有折叠——整个面板只有一种结构,读起来像看一份会议纪要;「做了什么」自带上下文(它发生在哪个话题里)。<b>失:</b>想单独看「全部待办」需要扫全流(靠记号颜色补偿);事件与话题的归属需要引擎记录时间戳。<b>改动:</b>中——数据侧要把 todo 事件挂到轮次上。</p>
+
+  <div class="window">
+    <div class="chat">
+      <div class="msg-user">把会话存储迁到 JSONL,要能惰性迁移</div>
+      <div class="msg-ai">
+        <h5>现有 session.json 的读写路径</h5>
+        <p>目前整份会话是一个 JSON 文件,流式期间每次落盘都要整文件重写……</p>
+        <h5>迁移策略:惰性 + 备份</h5>
+        <p class="msg-fade">旧文件首次打开时转换,原件移入 legacy-backup/ 保留……</p>
+      </div>
+      <div class="msg-user">流式写入会不会丢数据?</div>
+      <div class="msg-ai">
+        <h5>追加写与 fsync 时机</h5>
+        <p class="msg-fade">messages.jsonl 采用逐行追加,收尾时统一 suffix 重写……</p>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="colophon">
+        <div class="line"><span>提示词</span><span class="leader"></span><b>opus-4.5 · 47.8k 字</b></div>
+        <div class="line"><span>工具 14 · skills 6</span><span class="leader"></span><b>凭证就绪</b></div>
+      </div>
+
+      <div class="ledger">
+        <div class="spine-line" aria-hidden="true"></div>
+
+        <div class="entry turn"><span class="tick"></span><span class="ord">壹</span><span class="txt">把会话存储迁到 JSONL</span></div>
+        <div class="entry heading"><span class="tick"></span><span class="txt">现有 session.json 的读写路径</span></div>
+        <div class="entry heading"><span class="tick"></span><span class="txt">迁移策略:惰性 + 备份</span></div>
+        <div class="entry done"><span class="tick"></span><span class="txt">盘点现有读写路径</span><span class="kind">讫</span></div>
+        <div class="entry done"><span class="tick"></span><span class="txt">设计 meta.json + messages.jsonl</span><span class="kind">讫</span></div>
+
+        <div class="entry turn"><span class="tick"></span><span class="ord">贰</span><span class="txt">流式写入会不会丢数据?</span></div>
+        <div class="entry heading"><span class="tick"></span><span class="txt">追加写与 fsync 时机</span></div>
+        <div class="entry done"><span class="tick"></span><span class="txt">实现追加写与 suffix 重写</span><span class="kind">讫</span></div>
+        <div class="entry heading"><span class="tick"></span><span class="txt">崩溃恢复的三种情形</span></div>
+        <div class="entry done"><span class="tick"></span><span class="txt">惰性迁移 + legacy-backup</span><span class="kind">讫</span></div>
+
+        <div class="entry turn"><span class="tick"></span><span class="ord">叁</span><span class="txt">加个回滚开关</span></div>
+        <div class="entry heading"><span class="tick"></span><span class="txt">settings.storage.sessionFormat</span></div>
+        <div class="entry doing"><span class="tick"></span><span class="txt">崩溃恢复:容错读取</span><span class="kind">…</span></div>
+        <div class="entry heading current"><span class="tick"></span><span class="txt">回滚后的兼容读取</span></div>
+
+        <div class="eyebrow pending-head">未竟</div>
+        <div class="entry pending"><span class="tick"></span><span class="txt">回滚开关 sessionFormat</span></div>
+        <div class="entry pending"><span class="tick"></span><span class="txt">convert-sessions.mjs 转换脚本</span></div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 方案五 · 仪表 -->
+<!-- ============================================================ -->
+<section class="scene s5">
+  <div class="scene-head">
+    <span class="no">伍</span>
+    <h2>仪表 · 只显当下,永不滚动</h2>
+    <span class="model">COCKPIT</span>
+  </div>
+  <p class="scene-desc">反向做减法:面板不再试图「陈列全部」,只回答三个瞬时问题——我在哪(当前小节,前后各露一行,随聊天滚动自动跟随)、做到哪(大数字进度 + 当前任务一句话)、环境是什么(模型/字数/工具/skills 四格读数)。固定高度,永远放得下,永远不滚动、不折叠、不截断。要看全量?点「我在哪」跳回正文,点环境读数打开既有的设置对话框——聊天区本身就是详情页。</p>
+  <p class="scene-tradeoff"><b>得:</b>面板彻底安静,信息密度降到「一眼读完」,再长的会话也不变重;跟随滚动让它变成实时仪表而非静态档案。<b>失:</b>失去浏览能力——不能在面板里翻历史小节和任务清单;依赖「点击跳转回正文」这条路径成立。<b>改动:</b>小——只做当前位置追踪,其余全是删。</p>
+
+  <div class="window">
+    <div class="chat">
+      <div class="msg-user">把会话存储迁到 JSONL,要能惰性迁移</div>
+      <div class="msg-ai">
+        <h5>现有 session.json 的读写路径</h5>
+        <p>目前整份会话是一个 JSON 文件,流式期间每次落盘都要整文件重写……</p>
+        <h5>迁移策略:惰性 + 备份</h5>
+        <p class="msg-fade">旧文件首次打开时转换,原件移入 legacy-backup/ 保留……</p>
+      </div>
+      <div class="msg-user">流式写入会不会丢数据?</div>
+      <div class="msg-ai">
+        <h5>追加写与 fsync 时机</h5>
+        <p class="msg-fade">messages.jsonl 采用逐行追加,收尾时统一 suffix 重写……</p>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="cluster">
+        <div class="cluster-head"><span class="eyebrow">我在哪</span><span class="leader"></span><span class="val">叁 / 3 轮</span></div>
+        <div class="pos">
+          <div class="prev">settings.storage.sessionFormat</div>
+          <div class="curr"><span>回滚后的兼容读取</span></div>
+          <div class="next">— 会话末尾 —</div>
+        </div>
+      </div>
+
+      <div class="rule"></div>
+
+      <div class="cluster">
+        <div class="cluster-head"><span class="eyebrow">做到哪</span><span class="leader"></span></div>
+        <div class="task-num">
+          <span class="big">4<i> / 7</i></span>
+          <span class="lbl">已讫</span>
+        </div>
+        <div class="task-line">进行中:崩溃恢复,半行截断的容错读取</div>
+        <div class="meter"><i style="width:57%"></i></div>
+      </div>
+
+      <div class="rule"></div>
+
+      <div class="cluster">
+        <div class="cluster-head"><span class="eyebrow">环境</span><span class="leader"></span></div>
+        <div class="env">
+          <div class="cell"><b>opus-4.5</b><span>模型</span></div>
+          <div class="cell"><b>47.8k</b><span>提示词</span></div>
+          <div class="cell"><b>14</b><span>工具</span></div>
+          <div class="cell"><b>6</b><span>skills</span></div>
+        </div>
+        <div class="note">点读数打开详情;点「我在哪」跳回正文。</div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 方案六 · 呼吸 -->
+<!-- ============================================================ -->
+<section class="scene s6">
+  <div class="scene-head">
+    <span class="no">陆</span>
+    <h2>呼吸 · 三段同显,空间随注意力流动</h2>
+    <span class="model">ELASTIC FOCUS</span>
+  </div>
+  <p class="scene-desc">保留「三块同时可见」,但废掉三等分和一切折叠钮/分割条:未聚焦的段落自动压成一行「活摘要」——不是干巴巴的节头,而是各自最要紧的那句话(目录压成当前小节,待办压成 4/7 + 当前任务,提示词压成模型 + 字数)。鼠标移到哪段,哪段自然长开占据大部分高度,其余让位。没有任何点击操作,空间自己呼吸。<b>把鼠标移到下面面板的三段上试试。</b></p>
+  <p class="scene-tradeoff"><b>得:</b>三块永远在场且摘要本身就有信息量,展开零点击;去掉全部折叠/拖拽控件后视觉噪音大减。<b>失:</b>悬停驱动的布局变化需要克制的动效调校,否则会晃;触控板误触边缘时会有轻微重排(可加短延迟)。<b>改动:</b>中——布局层重写,三个子面板内容复用。</p>
+
+  <div class="window">
+    <div class="chat">
+      <div class="msg-user">把会话存储迁到 JSONL,要能惰性迁移</div>
+      <div class="msg-ai">
+        <h5>现有 session.json 的读写路径</h5>
+        <p>目前整份会话是一个 JSON 文件,流式期间每次落盘都要整文件重写……</p>
+        <h5>迁移策略:惰性 + 备份</h5>
+        <p class="msg-fade">旧文件首次打开时转换,原件移入 legacy-backup/ 保留……</p>
+      </div>
+      <div class="msg-user">流式写入会不会丢数据?</div>
+      <div class="msg-ai">
+        <h5>追加写与 fsync 时机</h5>
+        <p class="msg-fade">messages.jsonl 采用逐行追加,收尾时统一 suffix 重写……</p>
+      </div>
+    </div>
+
+    <aside class="panel" id="s6-panel">
+      <!-- 目录段(默认聚焦) -->
+      <section class="esec focus">
+        <div class="esum">
+          <span class="k">目录</span>
+          <span class="leader"></span>
+          <span class="live">叁 · 回滚后的兼容读取</span>
+        </div>
+        <div class="ebody">
+          <div class="ol-group">
+            <div class="ol-user"><span class="ord">壹</span><span>把会话存储迁到 JSONL</span></div>
+            <div class="ol-h">现有 session.json 的读写路径</div>
+            <div class="ol-h">迁移策略:惰性 + 备份</div>
+          </div>
+          <div class="ol-group">
+            <div class="ol-user"><span class="ord">贰</span><span>流式写入会不会丢数据?</span></div>
+            <div class="ol-h">追加写与 fsync 时机</div>
+            <div class="ol-h">崩溃恢复的三种情形</div>
+          </div>
+          <div class="ol-group">
+            <div class="ol-user"><span class="ord">叁</span><span>加个回滚开关</span></div>
+            <div class="ol-h">settings.storage.sessionFormat</div>
+            <div class="ol-h current">回滚后的兼容读取</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 待办段 -->
+      <section class="esec">
+        <div class="esum">
+          <span class="k">待办</span>
+          <span class="leader"></span>
+          <span class="live"><b>4/7</b> · 崩溃恢复:容错读取</span>
+        </div>
+        <div class="ebody">
+          <div class="todo-row done"><span>盘点现有 session.json 读写路径</span><span class="leader"></span><span class="todo-state">讫</span></div>
+          <div class="todo-row done"><span>设计 meta.json + messages.jsonl</span><span class="leader"></span><span class="todo-state">讫</span></div>
+          <div class="todo-row done"><span>实现追加写与 suffix 重写</span><span class="leader"></span><span class="todo-state">讫</span></div>
+          <div class="todo-row done"><span>惰性迁移 + legacy-backup</span><span class="leader"></span><span class="todo-state">讫</span></div>
+          <div class="todo-row doing"><span>崩溃恢复:容错读取</span><span class="leader"></span><span class="todo-state">…</span></div>
+          <div class="todo-row"><span>回滚开关 sessionFormat</span><span class="leader"></span><span class="todo-state">未</span></div>
+          <div class="todo-row"><span>convert-sessions.mjs 转换脚本</span><span class="leader"></span><span class="todo-state">未</span></div>
+        </div>
+      </section>
+
+      <!-- 提示词段 -->
+      <section class="esec">
+        <div class="esum">
+          <span class="k">提示词</span>
+          <span class="leader"></span>
+          <span class="live">opus-4.5 · 47.8k 字</span>
+        </div>
+        <div class="ebody">
+          <div class="sp-meta">
+            <div>模型 <b>claude · opus-4.5</b> · 凭证 <b>就绪</b></div>
+            <div>正文 <b>47,832 字</b> · 缓存 <b>开启</b></div>
+          </div>
+          <div class="sp-row"><span>正文全文</span><span class="leader"></span><span class="v">复制 ⧉</span></div>
+          <div class="sp-row"><span>运行时</span><span class="leader"></span><span class="v">agent loop</span></div>
+          <div class="sp-row"><span>Skills</span><span class="leader"></span><span class="v">6 · 已注入</span></div>
+          <div class="sp-row"><span>工具</span><span class="leader"></span><span class="v">14</span></div>
+          <div class="sp-row"><span>文件</span><span class="leader"></span><span class="v">3</span></div>
+        </div>
+      </section>
+    </aside>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 尾注 · 对比 -->
+<!-- ============================================================ -->
+<section class="coda">
+  <h3>取舍对照</h3>
+  <table>
+    <thead>
+      <tr><th>方案</th><th>组织逻辑</th><th>一次可见</th><th>操作成本</th><th>实现改动</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>肆 · 编年</td><td>按时间合流,话题与任务同一条流</td><td>全部历史(单流滚动)</td><td>零操作,只滚动</td><td>中:todo 事件需挂时间线</td></tr>
+      <tr><td>伍 · 仪表</td><td>只显当下,聊天区即详情页</td><td>三个瞬时读数,永不滚动</td><td>零操作;看全量需跳转</td><td>小:主要是删</td></tr>
+      <tr><td>陆 · 呼吸</td><td>三段同显,空间随注意力弹性分配</td><td>一段全量 + 两行活摘要</td><td>零点击,悬停即展开</td><td>中:布局层重写</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<script>
+// 方案六:悬停驱动的弹性聚焦(短延迟防误触)
+(function () {
+  var secs = document.querySelectorAll('#s6-panel .esec')
+  var timer = null
+  secs.forEach(function (sec) {
+    sec.addEventListener('mouseenter', function () {
+      clearTimeout(timer)
+      timer = setTimeout(function () {
+        secs.forEach(function (s) { s.classList.remove('focus') })
+        sec.classList.add('focus')
+      }, 120)
+    })
+  })
+})()
+</script>
+</body>
+</html>

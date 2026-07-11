@@ -27,26 +27,37 @@ defineProps<{
 </script>
 
 <style scoped>
+/* Inline mention set like a spec token: mono, link-colored, thin outline;
+   hover for the full card. */
 .prompt-ref-card {
   position: relative;
   display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  max-width: min(260px, 100%);
+  align-items: baseline;
+  gap: 3px;
+  max-width: min(240px, 100%);
   margin: 0 2px;
-  padding: 3px 7px;
-  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, var(--ui-surface-app-bg, var(--bg)));
-  color: var(--ui-text-primary-fg, var(--text));
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--ui-text-link-fg, var(--ui-accent-primary-fg, var(--accent))) 40%, transparent);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ui-text-link-fg, var(--ui-accent-primary-fg, var(--accent)));
   vertical-align: baseline;
   cursor: default;
   outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
 .prompt-ref-card:hover,
 .prompt-ref-card:focus {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 55%, var(--ui-border-default-border, var(--border)));
+  border-color: color-mix(in srgb, var(--ui-text-link-fg, var(--ui-accent-primary-fg, var(--accent))) 70%, transparent);
+  background: color-mix(in srgb, var(--ui-text-link-fg, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent);
+}
+
+.prompt-ref-card > svg {
+  flex-shrink: 0;
+  width: 11px;
+  height: 11px;
+  align-self: center;
 }
 
 .prompt-ref-title {
@@ -54,8 +65,10 @@ defineProps<{
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.92em;
-  font-weight: 650;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.86em;
+  font-weight: 600;
+  line-height: inherit;
 }
 
 .prompt-ref-popover {

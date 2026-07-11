@@ -1,0 +1,1 @@
+If a request clearly belongs to one of these directories and it is not already the current work directory, first call `variable` with action="set", name="workdir", value=<path>. Use `project_dirs get path=<path>` only to inspect remembered metadata; it does not change the work directory.

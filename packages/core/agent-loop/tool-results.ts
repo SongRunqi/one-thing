@@ -259,3 +259,70 @@ export function agentToolResultToMessageContentForCapabilities(
     capabilities,
   )
 }
+
+function safeStringifyHistoryResult(result: AgentJsonValue): string {
+  try {
+    return JSON.stringify(result)
+  } catch {
+    return String(result)
+  }
+}
+
+/**
+ * Plausible inline media payload: data/http URLs, or a long unbroken blob
+ * (raw base64). Sanitized placeholders like "[Image: … omitted]" and other
+ * human-readable strings fail this check and are treated as text — otherwise
+ * a vision model would receive an invalid image part.
+ */
+function looksLikeMediaData(value: AgentJsonValue | undefined): value is string {
+  if (typeof value !== 'string' || value.length === 0) return false
+  if (value.startsWith('data:') || value.startsWith('http://') || value.startsWith('https://')) return true
+  return value.length > 1_000 && !/[\s[\]{}]/.test(value.slice(0, 200))
+}
+
+/**
+ * Convert a PERSISTED tool result (the `{title, output, metadata,
+ * attachments}` object stored on the session) into the exact message content
+ * the live loop produced for it — same text, same capability gating, same
+ * media handling. This is the single convergence point that keeps rebuilt
+ * histories identical to what the model saw during the original turn.
+ */
+export function agentToolMessageContentFromHistoryResult(
+  result: AgentJsonValue | undefined,
+  capabilities: AgentModelCapabilities,
+): AgentMessageContent {
+  if (result == null) return ''
+  if (typeof result === 'string') return result
+  if (typeof result !== 'object' || Array.isArray(result)) return safeStringifyHistoryResult(result)
+
+  const record = result as AgentJsonObject
+  const looksLikeToolResult =
+    typeof record.output === 'string' ||
+    Array.isArray(record.attachments) ||
+    Array.isArray(record.content)
+  if (!looksLikeToolResult) return safeStringifyHistoryResult(record)
+
+  // Attachments whose payload was already replaced by a sanitizer
+  // placeholder (or never had inline data) degrade to text lines; only
+  // plausible media survives as structured parts for capable models.
+  const textExtras: string[] = []
+  const mediaAttachments: AgentJsonValue[] = []
+  for (const attachment of Array.isArray(record.attachments) ? record.attachments : []) {
+    if (!isRecord(attachment)) continue
+    const data = attachment.content ?? attachment.data ?? attachment.url
+    if (looksLikeMediaData(data)) {
+      mediaAttachments.push(attachment)
+    } else if (typeof data === 'string' && data) {
+      textExtras.push(data)
+    } else if (typeof attachment.path === 'string' && attachment.path) {
+      textExtras.push(`[${String(attachment.type || 'File')}: ${attachment.path}]`)
+    }
+  }
+
+  const output = typeof record.output === 'string' ? record.output : ''
+  const content = [output, ...textExtras].filter(Boolean).join('\n')
+  return agentToolResultToMessageContentForCapabilities(
+    { content, data: { ...record, attachments: mediaAttachments } },
+    capabilities,
+  )
+}

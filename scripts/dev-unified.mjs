@@ -1,4 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import process from 'node:process'
 
 const children = new Map()
@@ -9,6 +11,16 @@ const isWindows = process.platform === 'win32'
 const skipElectron = process.env.ONETHING_DEV_SKIP_ELECTRON === '1'
 const verboseStartup = process.env.ONETHING_DEV_VERBOSE === '1'
 const projectRoot = process.cwd().replaceAll('\\', '/')
+
+// 泳道选择:all(默认)| electron | web。
+// electron 与 web 两个模式各管各的进程/端口,可以在两个终端并行跑。
+const mode = process.argv[2] ?? 'all'
+if (!['all', 'electron', 'web'].includes(mode)) {
+  process.stderr.write(`[dev] unknown mode "${mode}" (expected: all | electron | web)\n`)
+  process.exit(1)
+}
+const managesElectron = mode !== 'web'
+const managesWeb = mode !== 'electron'
 
 function npmCommand() {
   return isWindows ? 'npm.cmd' : 'npm'
@@ -181,7 +193,13 @@ function isProjectElectronMainCommand(command) {
 
 function isProjectDevRunnerCommand(command) {
   const normalized = normalizedCommand(command)
-  return normalized.includes(`${projectRoot}/scripts/dev-unified.mjs`)
+  // 也匹配从项目根目录用相对路径起的 runner(如 `node scripts/dev-unified.mjs web`)。
+  const isRunner = normalized.includes(`${projectRoot}/scripts/dev-unified.mjs`)
+    || /(^|[\s/])scripts\/dev-unified\.mjs(\s|$)/.test(normalized)
+  if (!isRunner) return false
+  const otherMode = normalized.match(/scripts\/dev-unified\.mjs(?:\s+(\S+))?/)?.[1] ?? 'all'
+  if (otherMode === 'all' || mode === 'all') return true
+  return otherMode === mode
 }
 
 async function wait(ms) {
@@ -209,38 +227,42 @@ async function cleanupPort(port) {
   await cleanupPids(`process on port ${port}`, pidsListeningOn(port))
 }
 
+function isProjectWebDevCommand(command) {
+  const normalized = normalizedCommand(command)
+  return normalized.includes('apps/web/vite.config.ts') && normalized.includes('node_modules/.bin/vite')
+}
+
+function isProjectServerCommand(command) {
+  return normalizedCommand(command).includes(`${projectRoot}/dist/server/main.js`)
+    || normalizedCommand(command).includes('dist/server/main.js')
+}
+
 async function cleanupStaleProjectProcesses(options = {}) {
-  await cleanupPids(
-    'web dev process',
-    pidsMatchingCommand(command => {
-      const normalized = normalizedCommand(command)
-      return normalized.includes('apps/web/vite.config.ts') && normalized.includes('node_modules/.bin/vite')
-    }),
-    options,
-  )
-  await cleanupPids(
-    'server process',
-    pidsMatchingCommand(command => normalizedCommand(command).includes(`${projectRoot}/dist/server/main.js`)
-      || normalizedCommand(command).includes('dist/server/main.js')),
-    options,
-  )
-  await cleanupPids(
-    'electron dev process',
-    pidsMatchingCommand(isProjectElectronDevCommand),
-    options,
-  )
+  if (managesWeb) {
+    await cleanupPids('web dev process', pidsMatchingCommand(isProjectWebDevCommand), options)
+    await cleanupPids('server process', pidsMatchingCommand(isProjectServerCommand), options)
+  }
+  if (managesElectron) {
+    await cleanupPids(
+      'electron dev process',
+      pidsMatchingCommand(isProjectElectronDevCommand),
+      options,
+    )
+  }
+}
+
+function managedLaneProcessPids() {
+  return [
+    ...(managesWeb ? pidsMatchingCommand(isProjectWebDevCommand) : []),
+    ...(managesWeb ? pidsMatchingCommand(isProjectServerCommand) : []),
+    ...(managesElectron ? pidsMatchingCommand(isProjectElectronDevCommand) : []),
+  ].filter((pid, index, pids) => pids.indexOf(pid) === index)
 }
 
 function staleProjectProcessPids() {
   return [
     ...pidsMatchingCommand(isProjectDevRunnerCommand),
-    ...pidsMatchingCommand(command => {
-      const normalized = normalizedCommand(command)
-      return normalized.includes('apps/web/vite.config.ts') && normalized.includes('node_modules/.bin/vite')
-    }),
-    ...pidsMatchingCommand(command => normalizedCommand(command).includes(`${projectRoot}/dist/server/main.js`)
-      || normalizedCommand(command).includes('dist/server/main.js')),
-    ...pidsMatchingCommand(isProjectElectronDevCommand),
+    ...managedLaneProcessPids(),
   ].filter((pid, index, pids) => pids.indexOf(pid) === index)
 }
 
@@ -268,8 +290,10 @@ async function waitForNoStaleProjectProcesses(timeoutMs = 5000) {
 async function stopExistingDevProcesses() {
   await cleanupStaleProjectRunners({ graceMs: 5000 })
   await cleanupStaleProjectProcesses({ graceMs: 3500 })
-  await cleanupPort(5174)
-  await cleanupPort(8787)
+  if (managesWeb) {
+    await cleanupPort(5174)
+    await cleanupPort(8787)
+  }
   await waitForNoStaleProjectProcesses()
   await wait(300)
 }
@@ -302,32 +326,75 @@ function shutdown(code = 0, signal = 'SIGTERM') {
   shuttingDown = true
   log('dev', 'stopping managed dev processes; child logs muted')
   forwardChildOutput = false
+  // 只清扫 shutdown 进场时已存在的泳道进程:之后新出现的属于接管方 runner,
+  // 重新扫描会把接管方刚起的子进程一并杀掉(被接管的 runner 曾因此误杀新 vite)。
+  const sweepPids = managedLaneProcessPids()
   for (const child of children.values()) {
     killProcessGroup(child, signal)
   }
 
   void (async () => {
     await wait(1200)
-    await cleanupStaleProjectProcesses({ signal: 'SIGTERM', graceMs: 1200, quiet: true })
+    await cleanupPids('project dev process', sweepPids.filter(processExists), {
+      signal: 'SIGTERM',
+      graceMs: 1200,
+      quiet: true,
+    })
     await wait(1800)
     for (const child of children.values()) {
       killProcessGroup(child, 'SIGKILL')
     }
-    await cleanupStaleProjectProcesses({ signal: 'SIGKILL', graceMs: 300, quiet: true })
+    await cleanupPids('project dev process', sweepPids.filter(processExists), {
+      signal: 'SIGKILL',
+      graceMs: 300,
+      quiet: true,
+    })
     process.exit(code)
   })()
 }
 
-async function main() {
-  process.on('SIGINT', () => shutdown(0, 'SIGINT'))
-  process.on('SIGTERM', () => shutdown(0, 'SIGTERM'))
+// better-sqlite3 只在 Node ABI / 包版本变化时才需要 rebuild;
+// 无脑 `npm rebuild` 每次要 ~1.3s,且重写 .node 会连带触发 dev 签名重签。
+function ensureBetterSqliteNodeAbi() {
+  const markerPath = join('node_modules', '.cache', 'onething-sqlite-abi.json')
+  const binaryPath = join('node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node')
+  let pkgVersion = ''
+  try {
+    pkgVersion = JSON.parse(readFileSync(join('node_modules', 'better-sqlite3', 'package.json'), 'utf8')).version
+  } catch {
+    // 包不存在时走 rebuild 报错路径。
+  }
+  const expected = {
+    nodeVersion: process.version,
+    nodeModulesAbi: process.versions.modules,
+    pkgVersion,
+  }
 
-  await stopExistingDevProcesses()
+  try {
+    const marker = JSON.parse(readFileSync(markerPath, 'utf8'))
+    if (
+      existsSync(binaryPath)
+      && marker.nodeVersion === expected.nodeVersion
+      && marker.nodeModulesAbi === expected.nodeModulesAbi
+      && marker.pkgVersion === expected.pkgVersion
+    ) {
+      log('server', 'better-sqlite3 matches Node ABI, skipping rebuild')
+      return
+    }
+  } catch {
+    // 标记缺失或损坏 → rebuild。
+  }
 
-  log('dev', 'preparing web backend')
   runBlocking('server', npmCommand(), ['run', 'rebuild:sqlite:node'], {
-    title: 'checking better-sqlite3 for Node',
+    title: 'rebuilding better-sqlite3 for Node',
   })
+  mkdirSync(dirname(markerPath), { recursive: true })
+  writeFileSync(markerPath, JSON.stringify(expected))
+}
+
+async function startBackendLane() {
+  log('dev', 'preparing web backend')
+  ensureBetterSqliteNodeAbi()
   runBlocking('server', npmCommand(), ['run', 'server:build'], {
     title: 'building web backend',
   })
@@ -340,21 +407,39 @@ async function main() {
     },
   })
   await waitForHttp('http://127.0.0.1:8787/api/capabilities', 'web backend')
+}
 
+async function startWebLane() {
   log('dev', 'starting web frontend')
   spawnManaged('web', localBin('vite'), ['--config', 'apps/web/vite.config.ts', '--host', '127.0.0.1'])
   await waitForHttp('http://127.0.0.1:5174', 'web frontend')
+}
 
-  if (!skipElectron) {
-    log('dev', 'starting Electron')
-    spawnManaged('electron', npmCommand(), ['run', 'electron:dev'])
-    await waitForProcess(isProjectElectronMainCommand, 'Electron')
-  }
+async function startElectronLane() {
+  if (skipElectron) return
+  log('dev', 'starting Electron')
+  spawnManaged('electron', npmCommand(), ['run', 'electron:dev'])
+  await waitForProcess(isProjectElectronMainCommand, 'Electron')
+}
 
-  log(
-    'dev',
-    `ready: ${skipElectron ? '' : 'Electron dev, '}Web http://127.0.0.1:5174, API http://127.0.0.1:8787`,
-  )
+async function main() {
+  process.on('SIGINT', () => shutdown(0, 'SIGINT'))
+  process.on('SIGTERM', () => shutdown(0, 'SIGTERM'))
+
+  await stopExistingDevProcesses()
+
+  // 三条泳道并行:Electron 不依赖 web 前端;对 server 只有 memory 代理的
+  // HTTP 依赖,晚就绪会自动重连。electron/web 先 spawn(子进程即刻在跑),
+  // backend 泳道内的同步构建不再垫在 Electron 启动前面。
+  const lanes = []
+  if (managesElectron) lanes.push(startElectronLane())
+  if (managesWeb) lanes.push(startWebLane(), startBackendLane())
+  await Promise.all(lanes)
+
+  const readyParts = []
+  if (managesElectron && !skipElectron) readyParts.push('Electron dev')
+  if (managesWeb) readyParts.push('Web http://127.0.0.1:5174', 'API http://127.0.0.1:8787')
+  log('dev', `ready: ${readyParts.join(', ')}`)
 }
 
 main().catch(error => {

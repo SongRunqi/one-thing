@@ -219,6 +219,10 @@
               v-else-if="activeTab === 'plugins'"
               @plugins-changed="loadTools"
             />
+
+            <EvalsSettingsTab
+              v-else-if="activeTab === 'evals'"
+            />
           </template>
           <div
             v-else
@@ -291,6 +295,7 @@ import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
 import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
 import PromptsSettingsPanel from './settings/PromptsSettingsPanel.vue'
 import MemorySettingsTab from './settings/MemorySettingsTab.vue'
+import EvalsSettingsTab from './settings/evals/EvalsSettingsTab.vue'
 
 // Dialogs
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
@@ -402,6 +407,13 @@ const navItems = [
     hint: 'Installed extensions',
     icon: Plug,
     sections: ['Plugins'],
+  },
+  {
+    id: 'evals',
+    label: 'Evals',
+    hint: 'Prompt evaluation: records, fixtures, runs, cases',
+    icon: Sparkles,
+    sections: ['Records', 'Fixtures', 'Runs', 'Cases'],
   },
 ]
 

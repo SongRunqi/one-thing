@@ -1,0 +1,11 @@
+# Voice Mode: should avoid code blocks and long structured output
+id: voice-no-codeblock
+description: >
+  In voice conversation mode, the assistant should output conversational text
+  without markdown code blocks, dense file paths, or long lists.
+fixture: voice.json
+userMessage: What does the builder.ts file do?
+expect:
+  notContains: "```"
+  notes: >
+    Voice mode should produce natural spoken language, not code blocks.

@@ -111,10 +111,12 @@ describe('ChannelSessionRouter', () => {
     expect(mocks.getOrCreate).toHaveBeenCalledWith('gateway:wechat:user-1')
     expect(session).toMatchObject({
       originIdentityKey: 'identity:im:wechat:default:channel:wechat_default_user-1',
-      memoryScopeId: 'channel:wechat:default:user-1',
       memoryProfileId: 'channel-wechat-default-user-1',
       lastConnector: 'wechat',
     })
+    // memoryProfileId is the single routing key; the legacy scope field is no
+    // longer written.
+    expect(session.memoryScopeId).toBeUndefined()
   })
 
   it('routes non-gateway IM messages to identity sessions', () => {

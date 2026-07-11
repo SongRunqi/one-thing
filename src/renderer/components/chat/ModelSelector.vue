@@ -3,84 +3,175 @@
     ref="selectorRef"
     class="model-selector"
     :class="{ compact: isCompact }"
-    :style="modelSelectorStyle"
     @click.stop
   >
-    <Select
-      class="model-select"
-      size="small"
-      filterable
-      teleported
-      placement="top"
-      popper-class="inputbox-select-dropdown model-select-dropdown"
-      default-first-option
-      :model-value="modelSelectValue"
-      :options="modelSelectOptions"
-      :filter-method="filterModelOption"
-      :placeholder="displayName || 'Select model'"
+    <button
+      ref="triggerRef"
+      type="button"
+      class="model-trigger"
+      :class="{ 'is-open': open }"
+      :aria-expanded="open"
+      aria-haspopup="listbox"
       :aria-label="displayName || 'Select model'"
       :title="displayName || 'Select model'"
-      :popper-style="modelDropdownStyle"
-      no-data-text="No models configured"
-      no-match-text="No models found"
-      @change="handleModelChange"
-      @visible-change="handleVisibleChange"
+      @click="toggleFlyout"
     >
-      <template #prefix>
-        <ProviderIcon
-          :provider="currentProvider"
-          :size="18"
-        />
-      </template>
+      <ProviderIcon
+        v-if="isCompact"
+        :provider="currentProvider"
+        :size="16"
+      />
+      <span
+        v-else
+        class="model-text"
+      >{{ displayName }}</span>
+      <ChevronDown
+        v-if="!isCompact"
+        class="model-trigger-caret"
+        :size="11"
+        :stroke-width="2"
+      />
+    </button>
 
-      <template #label>
-        <span class="model-text">{{ displayName }}</span>
-      </template>
+    <!-- The flyout lives in .composer-anchor next to the command/file pickers:
+         the toolbar cell clips (.toolbar-left is overflow:hidden), and the
+         anchor is what keeps flyouts glued to the composer's top edge at the
+         composer's full width. Vue keeps this teleported subtree in the
+         component's style scope. -->
+    <Teleport
+      v-if="flyoutAnchor"
+      :to="flyoutAnchor"
+    >
+      <ComposerExtensionPanel
+        :visible="open"
+        class="model-flyout"
+        title="Model"
+        :count="filteredCount"
+        empty-text="No models found"
+        empty-hint="Pick models per provider in Settings"
+      >
+        <template #subheader>
+          <div class="model-flyout-search">
+            <SearchIcon
+              :size="12"
+              :stroke-width="2"
+            />
+            <input
+              ref="searchRef"
+              v-model="query"
+              type="text"
+              placeholder="Search models…"
+              spellcheck="false"
+              aria-label="Search models"
+              @input="focusIdx = 0"
+              @keydown="handleSearchKeydown"
+            >
+          </div>
+          <div
+            class="model-flyout-providers"
+            role="tablist"
+            aria-label="Providers"
+          >
+            <button
+              type="button"
+              class="provider-cell"
+              :class="{ on: providerFilter === 'all' }"
+              @click="setProviderFilter('all')"
+            >
+              All<span class="provider-cell-count">{{ totalModelCount }}</span>
+            </button>
+            <button
+              v-for="provider in visibleProviders"
+              :key="provider.id"
+              type="button"
+              class="provider-cell"
+              :class="{ on: providerFilter === provider.id }"
+              @click="setProviderFilter(provider.id)"
+            >
+              {{ provider.name }}<span class="provider-cell-count">{{ providerOptions.get(provider.id)?.length || 0 }}</span>
+            </button>
+          </div>
+        </template>
 
-      <template #option="{ option }">
-        <span class="model-option">
-          <span class="model-option-main">
-            <span class="model-option-name">{{ modelOptionName(option) }}</span>
-            <span class="model-option-id">{{ modelOptionId(option) }}</span>
-          </span>
-          <span class="model-option-meta">
-            <span
-              v-if="modelOptionContext(option)"
-              class="model-context"
+        <div
+          ref="listRef"
+          class="model-flyout-list"
+          role="listbox"
+          aria-label="Models"
+        >
+          <template
+            v-for="group in filteredGroups"
+            :key="group.providerId"
+          >
+            <div
+              v-if="providerFilter === 'all'"
+              class="model-group-label"
+              aria-hidden="true"
             >
-              {{ modelOptionContext(option) }}
-            </span>
-            <span
-              v-for="capability in modelOptionCompactCapabilities(option)"
-              :key="capability"
-              class="model-badge"
+              <span>{{ group.providerName }}</span>
+              <span class="model-group-rule" />
+            </div>
+            <div
+              v-for="entry in group.options"
+              :key="`${group.providerId}:${entry.option.modelId}`"
+              class="model-row"
+              :class="{ current: isCurrent(entry.option), focused: entry.index === focusIdx }"
+              :data-model-index="entry.index"
+              role="option"
+              :aria-selected="isCurrent(entry.option)"
+              @click="selectOption(entry.option)"
+              @mouseenter="focusIdx = entry.index"
             >
-              {{ capability }}
-            </span>
-          </span>
-        </span>
-      </template>
-    </Select>
+              <span
+                class="model-tick"
+                aria-hidden="true"
+              >✓</span>
+              <span class="model-main">
+                <span class="model-line">
+                  <span class="model-name">{{ entry.option.modelName }}</span>
+                  <span
+                    v-if="entry.option.modelId !== entry.option.modelName"
+                    class="model-id"
+                  >{{ entry.option.modelId }}</span>
+                  <span
+                    v-if="formatContext(entry.option.contextLength)"
+                    class="model-context"
+                  >{{ formatContext(entry.option.contextLength) }}</span>
+                </span>
+                <span
+                  v-if="entry.option.capabilities.length"
+                  class="model-badges"
+                >
+                  <span
+                    v-for="capability in entry.option.capabilities"
+                    :key="capability"
+                    class="model-badge"
+                  >{{ capability }}</span>
+                </span>
+              </span>
+            </div>
+          </template>
+        </div>
+      </ComposerExtensionPanel>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import Select from '@/components/common/Select.vue'
-import { computed, nextTick, onMounted, onUnmounted, ref, watch, type StyleValue } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { ChevronDown, Search as SearchIcon } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import type { AIProvider, OpenRouterModel } from '../../../shared/ipc'
-import type { SelectModelValue, SelectNormalizedOption, SelectOptionLike } from '@/components/common/select'
 import ProviderIcon from '../settings/ProviderIcon.vue'
+import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
 import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
 
 interface Props {
   sessionId?: string
 }
 
-interface ModelSelectOption {
-  value: string
-  label: string
+interface ModelPickerOption {
   providerId: string
   providerName: string
   modelId: string
@@ -95,21 +186,18 @@ const props = defineProps<Props>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 
-const MODEL_SELECTOR_MIN_WIDTH = 112
-const MODEL_SELECTOR_MAX_WIDTH = 420
-const MODEL_SELECTOR_CHROME_WIDTH = 72
-const MODEL_TEXT_FALLBACK_FONT = '520 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
-
 const selectorRef = ref<HTMLElement | null>(null)
+const triggerRef = ref<HTMLButtonElement | null>(null)
+const searchRef = ref<HTMLInputElement | null>(null)
+const listRef = ref<HTMLElement | null>(null)
+const flyoutAnchor = ref<HTMLElement | null>(null)
 const isCompact = ref(false)
-const measuredModelText = ref({ label: '', width: 0 })
 let resizeObserver: ResizeObserver | null = null
-let modelTextMeasureCanvas: HTMLCanvasElement | null = null
 
-const modelDropdownStyle = computed<StyleValue>(() => ({
-  width: 'min(340px, calc(100vw - 24px))',
-  maxHeight: '224px',
-}))
+const open = ref(false)
+const query = ref('')
+const providerFilter = ref<'all' | string>('all')
+const focusIdx = ref(0)
 
 const currentSession = computed(() => {
   const sid = props.sessionId
@@ -133,24 +221,6 @@ const displayName = computed(() => {
   return settingsStore.getModelDisplayName(currentModel.value)
 })
 
-const modelSelectorStyle = computed<StyleValue>(() => {
-  const label = displayName.value
-  const measuredWidth = measuredModelText.value.label === label
-    ? measuredModelText.value.width
-    : 0
-
-  return {
-    '--model-selector-width': isCompact.value
-      ? '34px'
-      : `${modelSelectorWidth(label, measuredWidth)}px`,
-  }
-})
-
-const modelSelectValue = computed(() => {
-  if (!currentProvider.value || !currentModel.value) return ''
-  return makeModelValue(currentProvider.value, currentModel.value)
-})
-
 const visibleProviders = computed(() => {
   const settings = settingsStore.settings
   const providers = settingsStore.availableProviders || []
@@ -167,17 +237,38 @@ const visibleProviders = computed(() => {
   })
 })
 
-const modelSelectOptions = computed<SelectOptionLike[]>(() => {
-  return visibleProviders.value
-    .map((provider) => {
-      const options = buildProviderModelOptions(provider.id, provider.name)
-      return {
-        label: provider.name,
-        options,
-      }
-    })
-    .filter((group) => group.options.length > 0)
+const providerOptions = computed(() => {
+  const map = new Map<string, ModelPickerOption[]>()
+  for (const provider of visibleProviders.value) {
+    map.set(provider.id, buildProviderModelOptions(provider.id, provider.name))
+  }
+  return map
 })
+
+const totalModelCount = computed(() => {
+  let total = 0
+  for (const options of providerOptions.value.values()) total += options.length
+  return total
+})
+
+const filteredGroups = computed(() => {
+  const normalized = query.value.trim().toLowerCase()
+  let index = 0
+  return visibleProviders.value
+    .filter(provider => providerFilter.value === 'all' || provider.id === providerFilter.value)
+    .map(provider => ({
+      providerId: provider.id,
+      providerName: provider.name,
+      options: (providerOptions.value.get(provider.id) || [])
+        .filter(option => matchesQuery(option, normalized))
+        .map(option => ({ option, index: index++ })),
+    }))
+    .filter(group => group.options.length > 0)
+})
+
+const filteredFlat = computed(() => filteredGroups.value.flatMap(group => group.options.map(entry => entry.option)))
+
+const filteredCount = computed(() => filteredFlat.value.length)
 
 watch(
   currentProvider,
@@ -188,15 +279,7 @@ watch(
   { immediate: true },
 )
 
-watch(
-  displayName,
-  () => {
-    void updateMeasuredModelTextWidth()
-  },
-  { immediate: true },
-)
-
-/** ErrorCard "切换模型…" dispatches this event; scroll into view + pulse. */
+/** ErrorCard "切换模型…" dispatches this event; scroll into view, pulse, open. */
 function handleOpenModelSelectorEvent(event: Event) {
   const detail = (event as CustomEvent<{ sessionId?: string }>).detail
   if (detail?.sessionId && props.sessionId && detail.sessionId !== props.sessionId) return
@@ -207,8 +290,7 @@ function handleOpenModelSelectorEvent(event: Event) {
   // restart the animation on repeated clicks
   void el.offsetWidth
   el.classList.add('attention-pulse')
-  const input = el.querySelector<HTMLElement>('input, [tabindex], .app-select')
-  input?.focus()
+  if (!open.value) void openFlyout()
   window.setTimeout(() => el.classList.remove('attention-pulse'), 1600)
 }
 
@@ -231,11 +313,9 @@ function checkCompactMode() {
 }
 
 onMounted(() => {
-  void updateMeasuredModelTextWidth()
-
-  if (document.fonts) {
-    void document.fonts.ready.then(() => updateMeasuredModelTextWidth())
-  }
+  // Same anchor the command/file/path pickers render into. Without one
+  // (isolated mounts, tests) the flyout is simply unavailable.
+  flyoutAnchor.value = selectorRef.value?.closest('.composer-anchor') as HTMLElement | null
 
   checkCompactMode()
 
@@ -247,16 +327,20 @@ onMounted(() => {
 
   window.addEventListener('resize', checkCompactMode)
   window.addEventListener('onething:open-model-selector', handleOpenModelSelectorEvent)
+  document.addEventListener('mousedown', handleDocumentMousedown)
+  document.addEventListener('keydown', handleDocumentKeydown, true)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkCompactMode)
   window.removeEventListener('onething:open-model-selector', handleOpenModelSelectorEvent)
+  document.removeEventListener('mousedown', handleDocumentMousedown)
+  document.removeEventListener('keydown', handleDocumentKeydown, true)
   resizeObserver?.disconnect()
   resizeObserver = null
 })
 
-function buildProviderModelOptions(providerId: string, providerName: string): ModelSelectOption[] {
+function buildProviderModelOptions(providerId: string, providerName: string): ModelPickerOption[] {
   const config = settingsStore.settings?.ai?.providers?.[providerId]
   const selectedModels = config?.selectedModels || []
   const ids = [...selectedModels]
@@ -274,8 +358,6 @@ function buildProviderModelOptions(providerId: string, providerName: string): Mo
     const model = cachedModels.find((item) => item.id === id)
     const modelName = settingsStore.getModelDisplayName(id) || model?.name || id
     return {
-      value: makeModelValue(providerId, id),
-      label: modelName,
       providerId,
       providerName,
       modelId: id,
@@ -287,106 +369,123 @@ function buildProviderModelOptions(providerId: string, providerName: string): Mo
   })
 }
 
-async function updateMeasuredModelTextWidth() {
-  const label = displayName.value
-  await nextTick()
-
-  const width = measureModelTextWidth(label)
-  measuredModelText.value = { label, width }
-
-  await nextTick()
-  checkCompactMode()
+function matchesQuery(option: ModelPickerOption, normalized: string): boolean {
+  if (!normalized) return true
+  return [
+    option.modelName,
+    option.modelId,
+    option.providerName,
+    option.description || '',
+    ...option.capabilities,
+  ].some((part) => part.toLowerCase().includes(normalized))
 }
 
-function measureModelTextWidth(label: string): number {
-  const text = label.trim() || 'Select model'
-  const context = getModelTextMeasureContext()
-  if (!context) return estimateModelTextWidth(text)
-
-  context.font = getModelTextFont()
-  const width = Math.ceil(context.measureText(text).width)
-  return Number.isFinite(width) && width > 0 ? width : estimateModelTextWidth(text)
+function isCurrent(option: ModelPickerOption): boolean {
+  return option.providerId === currentProvider.value && option.modelId === currentModel.value
 }
 
-function getModelTextMeasureContext(): CanvasRenderingContext2D | null {
-  if (!modelTextMeasureCanvas) {
-    modelTextMeasureCanvas = document.createElement('canvas')
-  }
-  return modelTextMeasureCanvas.getContext('2d')
+function formatContext(length: number): string {
+  if (!length) return ''
+  if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M`
+  if (length >= 1000) return `${Math.round(length / 1000)}K`
+  return String(length)
 }
 
-function getModelTextFont(): string {
-  const textElement = selectorRef.value?.querySelector<HTMLElement>('.model-text')
-  if (!textElement) return MODEL_TEXT_FALLBACK_FONT
-
-  const styles = window.getComputedStyle(textElement)
-  if (styles.font) return styles.font
-
-  return `${styles.fontWeight || 520} ${styles.fontSize || '13px'} ${styles.fontFamily || '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'}`
-}
-
-function estimateModelTextWidth(text: string): number {
-  const visualLength = Array.from(text).reduce((total, char) => {
-    if (/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]/.test(char)) return total + 1.7
-    if (/[A-Z0-9]/.test(char)) return total + 1.05
-    if (/[-_./]/.test(char)) return total + 0.65
-    if (char === ' ') return total + 0.45
-    return total + 0.9
-  }, 0)
-
-  return Math.ceil(visualLength * 7.8)
-}
-
-function modelSelectorWidth(label: string, measuredTextWidth = 0): number {
-  const text = label.trim() || 'Select model'
-  const textWidth = measuredTextWidth > 0 ? measuredTextWidth : estimateModelTextWidth(text)
-  return Math.round(Math.max(
-    MODEL_SELECTOR_MIN_WIDTH,
-    Math.min(MODEL_SELECTOR_MAX_WIDTH, textWidth + MODEL_SELECTOR_CHROME_WIDTH),
-  ))
-}
-
-function makeModelValue(provider: string, model: string): string {
-  return JSON.stringify([provider, model])
-}
-
-function parseModelValue(value: string): { provider: string; model: string } | null {
-  try {
-    const parsed = JSON.parse(value)
-    if (
-      Array.isArray(parsed) &&
-      typeof parsed[0] === 'string' &&
-      typeof parsed[1] === 'string'
-    ) {
-      return { provider: parsed[0], model: parsed[1] }
-    }
-  } catch {
-    return null
-  }
-  return null
-}
-
-async function handleModelChange(value: SelectModelValue) {
-  if (Array.isArray(value) || typeof value !== 'string') return
-  const selection = parseModelValue(value)
-  if (!selection) return
-
-  if (selection.provider !== currentProvider.value) {
-    settingsStore.updateAIProvider(selection.provider as AIProvider)
-  }
-  settingsStore.updateModel(selection.model, selection.provider as AIProvider)
-
-  const effectiveSessionId = props.sessionId || sessionsStore.currentSessionId
-  if (effectiveSessionId) {
-    await sessionsStore.updateSessionModel(effectiveSessionId, selection.provider, selection.model)
+function toggleFlyout() {
+  if (open.value) {
+    closeFlyout()
+  } else {
+    void openFlyout()
   }
 }
 
-function handleVisibleChange(visible: boolean) {
-  if (!visible) return
+async function openFlyout() {
+  open.value = true
+  query.value = ''
+  providerFilter.value = 'all'
   for (const provider of visibleProviders.value) {
     void loadModelsForProvider(provider.id)
   }
+  await nextTick()
+  const currentIndex = filteredFlat.value.findIndex(isCurrent)
+  focusIdx.value = currentIndex >= 0 ? currentIndex : 0
+  scrollFocusedIntoView()
+  searchRef.value?.focus()
+}
+
+function closeFlyout() {
+  open.value = false
+}
+
+function setProviderFilter(filter: 'all' | string) {
+  providerFilter.value = filter
+  focusIdx.value = 0
+  searchRef.value?.focus()
+}
+
+function cycleProviderFilter(backwards: boolean) {
+  const order: Array<'all' | string> = ['all', ...visibleProviders.value.map(provider => provider.id)]
+  const current = order.indexOf(providerFilter.value)
+  const next = (current + (backwards ? order.length - 1 : 1)) % order.length
+  setProviderFilter(order[next])
+}
+
+async function selectOption(option: ModelPickerOption) {
+  if (option.providerId !== currentProvider.value) {
+    settingsStore.updateAIProvider(option.providerId as AIProvider)
+  }
+  settingsStore.updateModel(option.modelId, option.providerId as AIProvider)
+
+  closeFlyout()
+
+  const effectiveSessionId = props.sessionId || sessionsStore.currentSessionId
+  if (effectiveSessionId) {
+    await sessionsStore.updateSessionModel(effectiveSessionId, option.providerId, option.modelId)
+  }
+}
+
+function handleSearchKeydown(event: KeyboardEvent) {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    focusIdx.value = Math.min(focusIdx.value + 1, filteredFlat.value.length - 1)
+    scrollFocusedIntoView()
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    focusIdx.value = Math.max(focusIdx.value - 1, 0)
+    scrollFocusedIntoView()
+  } else if (event.key === 'Enter') {
+    event.preventDefault()
+    const option = filteredFlat.value[focusIdx.value]
+    if (option) void selectOption(option)
+  } else if (event.key === 'Tab') {
+    event.preventDefault()
+    cycleProviderFilter(event.shiftKey)
+  }
+}
+
+function scrollFocusedIntoView() {
+  void nextTick(() => {
+    const row = listRef.value?.querySelector<HTMLElement>(`[data-model-index="${focusIdx.value}"]`)
+    row?.scrollIntoView({ block: 'nearest' })
+  })
+}
+
+/* The panel shell stops mousedown propagation, so anything that reaches the
+   document is outside the flyout; the trigger keeps its own toggle. */
+function handleDocumentMousedown(event: MouseEvent) {
+  if (!open.value) return
+  const target = event.target as Node | null
+  if (target && selectorRef.value?.contains(target)) return
+  closeFlyout()
+}
+
+/* Capture-phase so the flyout wins the Escape before the editor's own
+   escape handling reacts. */
+function handleDocumentKeydown(event: KeyboardEvent) {
+  if (!open.value || event.key !== 'Escape') return
+  event.stopPropagation()
+  closeFlyout()
+  triggerRef.value?.focus()
 }
 
 async function loadModelsForProvider(providerId: string) {
@@ -395,52 +494,6 @@ async function loadModelsForProvider(providerId: string) {
   } catch (error) {
     console.warn('[ModelSelector] failed to load provider models:', error)
   }
-}
-
-function filterModelOption(query: string, option?: SelectNormalizedOption): boolean {
-  const item = asModelOption(option?.raw)
-  if (!item) return false
-  const normalized = query.toLowerCase()
-  return [
-    item.modelName,
-    item.modelId,
-    item.providerName,
-    item.description || '',
-    ...item.capabilities,
-  ].some((part) => part.toLowerCase().includes(normalized))
-}
-
-function asModelOption(option: SelectOptionLike | undefined): ModelSelectOption | null {
-  if (!option || typeof option !== 'object' || Array.isArray(option)) return null
-  const candidate = option as Partial<ModelSelectOption>
-  if (typeof candidate.modelId !== 'string' || typeof candidate.modelName !== 'string') return null
-  return candidate as ModelSelectOption
-}
-
-function modelOptionName(option: SelectOptionLike): string {
-  return asModelOption(option)?.modelName || ''
-}
-
-function modelOptionId(option: SelectOptionLike): string {
-  const item = asModelOption(option)
-  if (!item || item.modelId === item.modelName) return ''
-  return item.modelId
-}
-
-function modelOptionContext(option: SelectOptionLike): string {
-  const length = asModelOption(option)?.contextLength || 0
-  if (!length) return ''
-  if (length >= 1000000) return `${(length / 1000000).toFixed(1)}M`
-  if (length >= 1000) return `${Math.round(length / 1000)}K`
-  return String(length)
-}
-
-function modelOptionCapabilities(option: SelectOptionLike): string[] {
-  return asModelOption(option)?.capabilities || []
-}
-
-function modelOptionCompactCapabilities(option: SelectOptionLike): string[] {
-  return modelOptionCapabilities(option).slice(0, 2)
 }
 
 function capabilityLabels(providerId: string, model?: OpenRouterModel): string[] {
@@ -484,8 +537,8 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 <style scoped>
 .model-selector {
   min-width: 0;
-  width: var(--model-selector-width, 168px);
-  flex: 0 0 var(--model-selector-width, 168px);
+  display: flex;
+  align-items: stretch;
 }
 
 .model-selector.attention-pulse {
@@ -502,42 +555,47 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   }
 }
 
-.model-selector.compact {
-  width: 34px;
-  flex-basis: 34px;
-}
-
-.model-select {
-  width: 100%;
-}
-
 /* Ghost control: resident ~4% surface signals "clickable" without a
-   border; hover raises to full hover strength. */
-.model-select :deep(.app-select-control) {
+   border; hover raises to full hover strength. The toolbar cell-fill
+   rules in InputBox.vue stretch it edge-to-edge inside the toolbar. */
+.model-trigger {
+  min-width: 0;
   min-height: 28px;
+  display: inline-flex;
+  align-items: center;
   gap: 5px;
   padding: 3px 6px;
-  border-color: transparent;
+  border: none;
+  border-radius: 6px;
   background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 45%, transparent);
   color: var(--ui-text-muted-fg, var(--muted));
+  font: inherit;
+  cursor: pointer;
+  transition: color 0.16s ease, background 0.16s ease;
 }
 
-.model-select :deep(.app-select-control:hover),
-.model-select.is-open :deep(.app-select-control) {
-  border-color: transparent;
+.model-trigger:hover,
+.model-trigger.is-open {
   background: var(--ui-state-hover-bg, var(--hover));
   color: var(--ui-text-primary-fg, var(--text));
-  box-shadow: none;
 }
 
-.model-selector.compact :deep(.app-select-selection),
-.model-selector.compact :deep(.app-select-suffix) {
-  display: none;
+/* Suppress the focus ring — the model cell is a subtle text label, not a
+   form input; its hover / is-open affordances are enough. A lingering
+   focus ring after click looks stuck. */
+.model-trigger:focus,
+.model-trigger:focus-visible {
+  outline: none;
 }
 
-.model-selector.compact :deep(.app-select-control) {
-  justify-content: center;
-  padding: 3px;
+.model-trigger-caret {
+  flex-shrink: 0;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  transition: transform 0.15s ease;
+}
+
+.model-trigger.is-open .model-trigger-caret {
+  transform: rotate(180deg);
 }
 
 .model-text {
@@ -550,84 +608,212 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   white-space: nowrap;
 }
 
-.model-option {
-  min-width: 0;
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
+/* ————— MODEL flyout (teleported into .composer-anchor) ————— */
+
+.model-flyout :deep(.composer-extension-body) {
+  max-height: min(304px, 40vh);
 }
 
-.model-option-main {
+.model-flyout-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 0.5px solid var(--composer-extension-divider);
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+}
+
+.model-flyout-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ui-text-primary-fg, var(--text));
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.model-flyout-search input::placeholder {
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+}
+
+/* Provider filter: a segmented mono status line, same construction as the
+   composer toolbar cells. */
+.model-flyout-providers {
+  display: flex;
+  align-items: stretch;
+  min-height: 28px;
+  border-bottom: 0.5px solid var(--composer-extension-divider);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.model-flyout-providers::-webkit-scrollbar {
+  display: none;
+}
+
+.provider-cell {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 0;
+  border-right: 0.5px solid var(--composer-extension-divider);
+  background: transparent;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.provider-cell:hover {
+  background: var(--composer-extension-row-hover);
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.provider-cell.on {
+  background: var(--composer-extension-row-hover);
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.provider-cell-count {
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.model-flyout-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.model-group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 3px;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+}
+
+.model-group-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--composer-extension-divider);
+}
+
+.model-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-height: 32px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.model-row.focused {
+  background: var(--composer-extension-row-hover);
+}
+
+.model-row.current {
+  background: var(--composer-extension-row-selected);
+}
+
+.model-row.current.focused {
+  background: var(--composer-extension-row-selected-hover);
+}
+
+.model-tick {
+  width: 14px;
+  flex-shrink: 0;
+  padding-top: 1px;
+  color: transparent;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.model-row.current .model-tick {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.model-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.model-line {
   min-width: 0;
   display: flex;
   align-items: baseline;
   gap: 6px;
 }
 
-.model-option-name,
-.model-option-id {
+.model-name {
+  color: var(--ui-text-primary-fg, var(--text));
+  font-size: 12.25px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-id {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.model-option-name {
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.model-option-id {
   color: var(--ui-text-muted-fg, var(--muted));
   font-size: 10.5px;
+  opacity: 0.75;
 }
 
-.model-option-meta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  flex-wrap: nowrap;
-  max-width: 128px;
-  overflow: hidden;
-}
-
-.model-context,
-.model-badge {
-  flex: 0 0 auto;
+.model-context {
+  margin-left: auto;
+  flex-shrink: 0;
   padding: 1px 5px;
   border-radius: 5px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  background: var(--ui-state-hover-bg, var(--hover));
+  font-family: var(--font-mono, monospace);
   font-size: 10px;
   font-weight: 650;
   line-height: 1.4;
 }
 
-.model-context {
-  color: var(--ui-text-muted-fg, var(--muted));
-  background: var(--ui-state-hover-bg, var(--hover));
-  font-family: var(--font-mono, monospace);
+/* Capabilities: one quiet accent tone; wrapping (not truncation) keeps every
+   badge visible at any composer width. */
+.model-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .model-badge {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 5px;
+  white-space: nowrap;
   color: var(--ui-accent-primary-fg, var(--accent));
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
-}
-
-:global(.model-select-dropdown) {
-  max-width: min(340px, calc(100vw - 24px));
-  padding: 4px;
-}
-
-:global(.model-select-dropdown .app-select-option) {
-  min-height: 28px;
-  padding: 2px 7px;
-}
-
-:global(.model-select-dropdown .app-select-group-label) {
-  padding: 6px 7px 3px;
   font-size: 10px;
+  font-weight: 650;
+  line-height: 1.4;
 }
 </style>

@@ -67,6 +67,14 @@ afterEach(async () => {
   fs.rmSync(tempHome, { recursive: true, force: true })
 })
 
+
+// 默认格式已切到 jsonl:会话级字段落在 <id>/meta.json;legacy 格式仍兼容
+function readStoredSessionMeta(paths: { getSessionPath(id: string): string; getSessionsDir(): string }, sessionId: string): { agentId?: string } {
+  const metaPath = path.join(paths.getSessionsDir(), sessionId, 'meta.json')
+  const target = fs.existsSync(metaPath) ? metaPath : paths.getSessionPath(sessionId)
+  return JSON.parse(fs.readFileSync(target, 'utf-8'))
+}
+
 describe('session agent metadata', () => {
   it('defaults new sessions to Default Agent and persists agent switches', async () => {
     const { paths, sessions } = await loadIsolatedStores()
@@ -76,7 +84,7 @@ describe('session agent metadata', () => {
 
     expect(session.agentId).toBe(DEFAULT_AGENT_ID)
     expect(sessions.getSessionsList()[0].agentId).toBe(DEFAULT_AGENT_ID)
-    expect(JSON.parse(fs.readFileSync(paths.getSessionPath(session.id), 'utf-8')).agentId).toBe(DEFAULT_AGENT_ID)
+    expect(readStoredSessionMeta(paths, session.id).agentId).toBe(DEFAULT_AGENT_ID)
 
     expect(sessions.updateSessionAgent(session.id, 'agent-custom')).toBe(true)
     await sessions.flushSessionSave(session.id)
@@ -84,7 +92,7 @@ describe('session agent metadata', () => {
     expect(sessions.getSession(session.id)?.agentId).toBe('agent-custom')
     expect(sessions.getSessionDetails(session.id)?.agentId).toBe('agent-custom')
     expect(sessions.getSessionsList()[0].agentId).toBe('agent-custom')
-    expect(JSON.parse(fs.readFileSync(paths.getSessionPath(session.id), 'utf-8')).agentId).toBe('agent-custom')
+    expect(readStoredSessionMeta(paths, session.id).agentId).toBe('agent-custom')
   })
 
   it('inherits the parent session Agent when branching', async () => {
@@ -104,6 +112,6 @@ describe('session agent metadata', () => {
 
     expect(branch.agentId).toBe('agent-branch')
     expect(sessions.getSessionDetails(branch.id)?.agentId).toBe('agent-branch')
-    expect(JSON.parse(fs.readFileSync(paths.getSessionPath(branch.id), 'utf-8')).agentId).toBe('agent-branch')
+    expect(readStoredSessionMeta(paths, branch.id).agentId).toBe('agent-branch')
   })
 })

@@ -1,0 +1,180 @@
+{
+  "minimal": {
+    "totalChars": 1238,
+    "totalTokens": 354,
+    "segments": {
+      "core": {
+        "chars": 688,
+        "estimatedTokens": 197
+      },
+      "agent": {
+        "chars": 548,
+        "estimatedTokens": 157
+      },
+      "os": {
+        "chars": 252,
+        "estimatedTokens": 72
+      }
+    }
+  },
+  "desktop-full": {
+    "totalChars": 2904,
+    "totalTokens": 830,
+    "segments": {
+      "core": {
+        "chars": 688,
+        "estimatedTokens": 197
+      },
+      "agent": {
+        "chars": 295,
+        "estimatedTokens": 85
+      },
+      "workdir": {
+        "chars": 289,
+        "estimatedTokens": 83
+      },
+      "active-project": {
+        "chars": 77,
+        "estimatedTokens": 22
+      },
+      "known-projects": {
+        "chars": 344,
+        "estimatedTokens": 99
+      },
+      "skills": {
+        "chars": 1094,
+        "estimatedTokens": 313
+      },
+      "os": {
+        "chars": 253,
+        "estimatedTokens": 73
+      },
+      "context-variables": {
+        "chars": 110,
+        "estimatedTokens": 32
+      }
+    }
+  },
+  "codex-split": {
+    "totalChars": 2631,
+    "totalTokens": 752,
+    "segments": {
+      "core": {
+        "chars": 688,
+        "estimatedTokens": 197
+      },
+      "agent": {
+        "chars": 52,
+        "estimatedTokens": 15
+      },
+      "runtime-context": {
+        "chars": 306,
+        "estimatedTokens": 88
+      },
+      "workdir": {
+        "chars": 487,
+        "estimatedTokens": 140
+      },
+      "skills": {
+        "chars": 1093,
+        "estimatedTokens": 313
+      },
+      "os": {
+        "chars": 252,
+        "estimatedTokens": 72
+      }
+    }
+  },
+  "voice": {
+    "totalChars": 1877,
+    "totalTokens": 537,
+    "segments": {
+      "core": {
+        "chars": 688,
+        "estimatedTokens": 197
+      },
+      "agent": {
+        "chars": 52,
+        "estimatedTokens": 15
+      },
+      "voice": {
+        "chars": 793,
+        "estimatedTokens": 227
+      },
+      "workdir": {
+        "chars": 340,
+        "estimatedTokens": 98
+      },
+      "os": {
+        "chars": 252,
+        "estimatedTokens": 72
+      }
+    }
+  },
+  "agents-md": {
+    "totalChars": 1726,
+    "totalTokens": 494,
+    "segments": {
+      "core": {
+        "chars": 688,
+        "estimatedTokens": 197
+      },
+      "agent": {
+        "chars": 295,
+        "estimatedTokens": 85
+      },
+      "workdir": {
+        "chars": 740,
+        "estimatedTokens": 212
+      },
+      "os": {
+        "chars": 252,
+        "estimatedTokens": 72
+      }
+    }
+  },
+  "windows": {
+    "totalChars": 1270,
+    "totalTokens": 363,
+    "segments": {
+      "core": {
+        "chars": 688,
+        "estimatedTokens": 197
+      },
+      "agent": {
+        "chars": 279,
+        "estimatedTokens": 80
+      },
+      "workdir": {
+        "chars": 300,
+        "estimatedTokens": 86
+      },
+      "os": {
+        "chars": 206,
+        "estimatedTokens": 59
+      }
+    }
+  },
+  "linux": {
+    "totalChars": 1190,
+    "totalTokens": 340,
+    "segments": {
+      "core": {
+        "chars": 688,
+        "estimatedTokens": 197
+      },
+      "agent": {
+        "chars": 275,
+        "estimatedTokens": 79
+      },
+      "workdir": {
+        "chars": 224,
+        "estimatedTokens": 64
+      },
+      "os": {
+        "chars": 129,
+        "estimatedTokens": 37
+      }
+    }
+  }
+}

@@ -43,6 +43,8 @@ const BASH_UPDATE_THROTTLE_MS = 100
 
 export interface BashOperationsOptions {
   shellPath?: string
+  /** Owning session for background jobs registered by this call. */
+  sessionId?: string
 }
 
 export interface BashToolAdapters {
@@ -320,6 +322,7 @@ To change the work directory for bash and file tools, use variable { action: "se
 
       const ops = adapters.createOperations({
         shellPath: adapters.getShellPath?.(),
+        sessionId: ctx.sessionId,
       })
 
       if (args.run_in_background) {

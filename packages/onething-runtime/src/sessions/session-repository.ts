@@ -26,7 +26,7 @@ import {
   resolveSessionDetailsSnapshot,
   resolveSessionMessagesPage,
   resolveSessionUserMessageMarkers,
-  sanitizeSessionsOnStartupWithAdapters,
+  sanitizeSessionOnStartup,
   syncSessionSideEffectWithReadyAdapters,
   type CoreSession,
   type CoreSessionDetails,
@@ -45,6 +45,8 @@ import {
 } from '@onething/core/session'
 import { getMessagesPageFromJsonFilePath } from '@onething/core/session'
 import { AsyncSaveQueue, LRUCache } from '@onething/core/storage'
+import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
+import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan } from './storage-driver.js'
 
 export interface OnethingSessionRepositoryLogger {
   log?(...args: unknown[]): void
@@ -87,6 +89,8 @@ export interface OnethingSessionRepositoryOptions<
 > {
   cacheSize?: number
   saveThrottleMs?: number
+  /** 流式 token 级更新的兜底落盘间隔;边界事件仍走 saveThrottleMs。 */
+  lazySaveThrottleMs?: number
   defaultAgentId: string
   getSessionsDir(): string
   getSessionPath(sessionId: string): string
@@ -99,6 +103,8 @@ export interface OnethingSessionRepositoryOptions<
   getDefaultWorkingDirectory?(): string | undefined
   expandPath?(path: string): string
   cancelPendingSideEffects?(sessionId: string): void
+  /** 格式感知的存储驱动(legacy/jsonl 混合路由);缺省时退回整文件 JSON 直写 */
+  storageDriver?: SessionStorageDriver<TSession>
   sqlite?: OnethingSessionRepositorySqliteAdapters<TSession, TMeta, TDetails, TMarker>
   logger?: OnethingSessionRepositoryLogger
 }
@@ -128,13 +134,25 @@ export class OnethingSessionRepository<
 > {
   private readonly sessionCache: LRUCache<string, TSession>
   private readonly sessionSaveQueue: AsyncSaveQueue<TSession>
+  /** 队列挂起期间累计的写入计划;落盘时取走,由驱动决定 meta/后缀/全量 */
+  private readonly pendingWritePlans = new Map<string, SessionWritePlan>()
+  /** 已删除但文件清理仍在排队的会话:读路径的同步屏障,防止从盘上复活 */
+  private readonly deletionTombstones = new Set<string>()
 
   constructor(private readonly options: OnethingSessionRepositoryOptions<TSession, TMessage, TMeta, TDetails, TMarker>) {
     this.sessionCache = new LRUCache<string, TSession>(options.cacheSize ?? 10)
     this.sessionSaveQueue = new AsyncSaveQueue<TSession>({
       throttleMs: options.saveThrottleMs ?? 300,
       getLatest: sessionId => this.sessionCache.get(sessionId),
-      write: (sessionId, session) => this.options.writeJsonFileAsync(this.options.getSessionPath(sessionId), session),
+      write: async (sessionId, session) => {
+        const plan = this.takePendingWritePlan(sessionId)
+        const stored = dehydrateSessionForStorage(session)
+        if (this.options.storageDriver) {
+          await this.options.storageDriver.write(sessionId, stored, plan)
+          return
+        }
+        await this.options.writeJsonFileAsync(this.options.getSessionPath(sessionId), stored)
+      },
       onError: (sessionId, error) => this.options.logger?.error?.(`[Sessions] async save failed for ${sessionId}:`, error),
     })
   }
@@ -149,12 +167,63 @@ export class OnethingSessionRepository<
 
   cancelPendingSave(sessionId: string): void {
     this.sessionSaveQueue.cancel(sessionId)
+    this.pendingWritePlans.delete(sessionId)
     this.options.cancelPendingSideEffects?.(sessionId)
   }
 
-  saveSessionToFile(sessionId: string, session: TSession): void {
+  saveSessionToFile(
+    sessionId: string,
+    session: TSession,
+    options?: { lazy?: boolean; plan?: SessionWritePlan },
+  ): void {
     this.sessionCache.set(sessionId, session)
-    this.sessionSaveQueue.schedule(sessionId)
+    this.mergePendingWritePlan(sessionId, options?.plan ?? STRUCTURAL_WRITE_PLAN)
+    this.sessionSaveQueue.schedule(
+      sessionId,
+      options?.lazy ? (this.options.lazySaveThrottleMs ?? 5000) : undefined,
+    )
+  }
+
+  private mergePendingWritePlan(sessionId: string, plan: SessionWritePlan): void {
+    const existing = this.pendingWritePlans.get(sessionId)
+    if (!existing) {
+      this.pendingWritePlans.set(sessionId, { ...plan })
+      return
+    }
+    if (existing.kind === 'structural' || plan.kind === 'structural') {
+      this.pendingWritePlans.set(sessionId, { kind: 'structural' })
+      return
+    }
+    if (existing.kind === 'message' || plan.kind === 'message') {
+      const seqs = [existing, plan]
+        .filter(p => p.kind === 'message')
+        .map(p => p.dirtySeq)
+      // message 计划必须带 dirtySeq;缺失按 structural 兜底
+      if (seqs.some(seq => typeof seq !== 'number')) {
+        this.pendingWritePlans.set(sessionId, { kind: 'structural' })
+        return
+      }
+      this.pendingWritePlans.set(sessionId, {
+        kind: 'message',
+        dirtySeq: Math.min(...(seqs as number[])),
+      })
+      return
+    }
+    // 两边都是 meta,保持
+  }
+
+  private takePendingWritePlan(sessionId: string): SessionWritePlan {
+    const plan = this.pendingWritePlans.get(sessionId) ?? { kind: 'structural' as const }
+    this.pendingWritePlans.delete(sessionId)
+    return plan
+  }
+
+  private loadStoredSession(sessionId: string): TSession | undefined {
+    if (this.deletionTombstones.has(sessionId)) return undefined
+    const stored = this.options.storageDriver
+      ? this.options.storageDriver.load(sessionId)
+      : this.options.readJsonFile<TSession | null>(this.options.getSessionPath(sessionId), null) ?? undefined
+    return stored ? rehydrateSessionFromStorage(stored) : undefined
   }
 
   invalidateSessionCache(sessionId: string): void {
@@ -180,15 +249,6 @@ export class OnethingSessionRepository<
       maxSize: stats.maxSize,
       cachedSessionIds: stats.keys,
     }
-  }
-
-  sanitizeAllSessionsOnStartup(): void {
-    sanitizeSessionsOnStartupWithAdapters<TSession, TMeta>({
-      loadIndex: () => this.loadSessionsIndex(),
-      loadSession: sessionId => this.options.readJsonFile<TSession | null>(this.options.getSessionPath(sessionId), null) ?? undefined,
-      saveSession: (sessionId, session) => this.options.writeJsonFile(this.options.getSessionPath(sessionId), session),
-      syncSession: session => this.syncSessionToSqliteIfReady(session),
-    })
   }
 
   loadSessionsIndex(): TMeta[] {
@@ -348,11 +408,22 @@ export class OnethingSessionRepository<
     const start = performance.now()
     const result = resolveSessionMessagesPage({
       request,
+      getJsonlLogPage: () => {
+        const page = this.options.storageDriver?.getMessagesPage(request)
+        if (page?.messages) rehydrateSessionFromStorage({ messages: page.messages })
+        return page as GetSessionMessagesPageResponse<TMessage & StoredChatMessage> | undefined
+      },
       getSqlitePage: () => this.options.sqlite?.getMessagesPage?.(request),
-      getJsonByteScanPage: () => getMessagesPageFromJsonFilePath(
-        request,
-        this.options.getSessionPath(request.sessionId),
-      ) ?? undefined,
+      getJsonByteScanPage: () => {
+        const page = getMessagesPageFromJsonFilePath(
+          request,
+          this.options.getSessionPath(request.sessionId),
+        )
+        // Byte-scan pages come straight from the dehydrated file; restore
+        // the in-memory shape (step.toolCall links, final partialResult).
+        if (page?.messages) rehydrateSessionFromStorage({ messages: page.messages })
+        return page ?? undefined
+      },
       getSessionMessages: () => this.getSession(request.sessionId)?.messages,
     })
 
@@ -373,6 +444,7 @@ export class OnethingSessionRepository<
 
   getSessionUserMessageMarkers(sessionId: string): TMarker[] | undefined {
     const result = resolveSessionUserMessageMarkers({
+      getJsonlLogMarkers: () => this.options.storageDriver?.getUserMessageMarkers(sessionId),
       getSqliteMarkers: () => this.options.sqlite?.getUserMessageMarkers?.(sessionId),
       getSessionMessages: () => this.getSession(sessionId)?.messages,
     })
@@ -383,16 +455,18 @@ export class OnethingSessionRepository<
   }
 
   getSessionRaw(sessionId: string): TSession | undefined {
-    return this.options.readJsonFile<TSession | null>(this.options.getSessionPath(sessionId), null) ?? undefined
+    return this.loadStoredSession(sessionId)
   }
 
   getSession(sessionId: string): TSession | undefined {
     return loadSessionWithAdapters<TSession>({
       sessionId,
       cache: this.sessionCache,
-      loadSession: id => this.options.readJsonFile<TSession | null>(this.options.getSessionPath(id), null) ?? undefined,
+      loadSession: id => this.loadStoredSession(id),
       saveSession: (id, session) => this.saveSessionToFile(id, session),
       syncSession: session => this.syncSessionToSqliteIfReady(session),
+      // 启动不再全量扫描;冷加载时做完整修复(含中断的 step/toolCall),替代原 sanitizeAllSessionsOnStartup。
+      sanitizeSession: session => sanitizeSessionOnStartup(session),
       expandPath: this.options.expandPath,
     }).session
   }
@@ -454,7 +528,23 @@ export class OnethingSessionRepository<
       loadIndex: () => this.loadSessionsIndex(),
       saveIndex: index => this.saveSessionsIndex(index),
       cancelPendingSave: id => this.cancelPendingSave(id),
-      deleteSessionFile: id => this.options.deleteJsonFile(this.options.getSessionPath(id)),
+      // 文件删除排在该会话在途异步写之后执行(与写入互斥),
+      // 否则 rm 目录会与正在落盘的 meta/log 写入竞态(ENOTEMPTY);
+      // tombstone 保证清理完成前读路径不会把会话从盘上复活。
+      deleteSessionFile: id => {
+        this.deletionTombstones.add(id)
+        void this.sessionSaveQueue.runExclusive(id, () => {
+          if (this.options.storageDriver) {
+            this.options.storageDriver.delete(id)
+            return
+          }
+          this.options.deleteJsonFile(this.options.getSessionPath(id))
+        }).catch(error => {
+          this.options.logger?.error?.(`[Sessions] failed to delete session files for ${id}:`, error)
+        }).finally(() => {
+          this.deletionTombstones.delete(id)
+        })
+      },
       deleteSessionCache: id => this.deleteCachedSession(id),
       deleteSessionsFromSqlite: ids => this.options.sqlite?.deleteSessions?.(ids),
       setCurrentSessionId: sessionId => this.options.setCurrentSessionId(sessionId),
@@ -484,7 +574,8 @@ export class OnethingSessionRepository<
       sessionId,
       getSession: id => this.getSession(id),
       mutateSession: options.mutateSession,
-      saveSession: (id, session) => this.saveSessionToFile(id, session),
+      // 只动会话级字段,不碰消息日志
+      saveSession: (id, session) => this.saveSessionToFile(id, session, { plan: { kind: 'meta' } }),
       syncSessionMetadata: session => this.syncSessionMetadataToSqliteIfReady(session),
       updateIndexMeta: options.mutateMeta
         ? (id, mutate) => this.updateSessionsIndexMeta(id, mutate)
@@ -504,7 +595,8 @@ export class OnethingSessionRepository<
       sessionId,
       getSession: id => this.getSession(id),
       mutateSession: options.mutateSession,
-      saveSession: (id, session) => this.saveSessionToFile(id, session),
+      // usage/contextSize/variables 都是会话级字段
+      saveSession: (id, session) => this.saveSessionToFile(id, session, { plan: { kind: 'meta' } }),
       syncSession: options.syncSession,
     }).applied
   }

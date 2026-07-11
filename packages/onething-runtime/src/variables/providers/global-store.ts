@@ -31,6 +31,7 @@ export class GlobalStoreProvider implements VariableProvider {
         value: variable.value,
         scope: 'global',
         description: variable.description,
+        volatility: variable.volatility,
         updatedAt: variable.updatedAt,
       }))
   }
@@ -58,6 +59,7 @@ export class GlobalStoreProvider implements VariableProvider {
       value: input.value,
       scope: 'global',
       description: input.description,
+      volatility: input.volatility,
       updatedAt: Date.now(),
     }
     await this.gateway.write([...without, next])

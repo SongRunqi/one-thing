@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工具方案四 · 终端流</title>
+</head>
+<body>
+<style>
+  :root {
+    --bg-app: #21252B;
+    --bg: #282C34;
+    --bg-hi: #2C323C;
+    --fg: #ABB2BF;
+    --fg-bright: #D7DAE0;
+    --mut: #636D83;
+    --faint: #5C6370;
+    --line: rgba(99, 109, 131, 0.22);
+    --line-2: rgba(99, 109, 131, 0.42);
+    --blue: #61AFEF;
+    --green: #98C379;
+    --red: #E06C75;
+    --cyan: #56B6C2;
+    --yellow: #E5C07B;
+    --purple: #C678DD;
+    --sans: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  body {
+    margin: 0; background: var(--bg-app); color: var(--fg);
+    font-family: var(--sans); font-size: 14px; line-height: 1.6;
+    display: flex; flex-direction: column; align-items: center; gap: 26px;
+    padding: 44px 20px 90px;
+  }
+  .masthead { width: min(720px, 100%); }
+  .masthead h1 { color: var(--fg-bright); font-size: 20px; font-weight: 650; margin: 0 0 4px; }
+  .masthead p { margin: 0; color: var(--mut); font-size: 13px; }
+  .scene-label { width: min(720px, 100%); font-family: var(--mono); font-size: 10px; letter-spacing: 3px; text-transform: uppercase; color: var(--faint); margin-bottom: -12px; }
+  .window {
+    width: min(720px, 100%); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 26px 30px; box-sizing: border-box;
+  }
+
+  /* ============ 终端流:没有任何盒子,只有一条 transcript ============ */
+  .term { font-family: var(--mono); font-size: 12.5px; line-height: 1.85; }
+
+  .session-head { color: var(--faint); font-size: 11px; }
+  .session-head .sep { letter-spacing: -1.5px; margin: 0 8px; opacity: 0.6; }
+  .session-head .plus { color: var(--green); } .session-head .minus { color: var(--red); }
+
+  .entry { margin-top: 10px; }
+  .entry:first-of-type { margin-top: 14px; }
+
+  /* 每种工具一个提示符:sigil 列对齐成一条可扫读的轨 */
+  .prompt { display: flex; align-items: baseline; gap: 10px; cursor: pointer; white-space: nowrap; }
+  .prompt:hover .cmd-main { color: #fff; }
+  .sigil { width: 22px; flex-shrink: 0; text-align: center; font-weight: 700; }
+  .sigil.read  { color: var(--cyan); }
+  .sigil.bash  { color: var(--blue); }
+  .sigil.edit  { color: var(--yellow); }
+  .sigil.write { color: var(--green); }
+  .sigil.fail  { color: var(--red); }
+  .cmd-kind { color: var(--faint); flex-shrink: 0; font-size: 11px; }
+  .cmd-main { color: var(--fg-bright); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .prompt .status { margin-left: auto; flex-shrink: 0; font-size: 11px; color: var(--faint); }
+  .status .tagx { padding: 0 6px; }
+  .tagx.ok   { color: var(--green); }
+  .tagx.bad  { color: var(--bg); background: var(--red); font-weight: 700; }
+  .tagx.new  { color: var(--bg); background: var(--green); font-weight: 700; }
+  .tagx.liv  { color: var(--bg); background: var(--blue); font-weight: 700; animation: throb 1.2s ease-in-out infinite; }
+  @keyframes throb { 50% { opacity: 0.55; } }
+  .gain .plus { color: var(--green); } .gain .minus { color: var(--red); margin-left: 4px; }
+
+  /* 输出:缩进到 sigil 轨之后,弱色 */
+  .yield { margin-left: 32px; color: var(--mut); white-space: pre-wrap; }
+  .yield .hi { color: var(--fg); }
+  .yield .bad { color: var(--red); }
+  .yield .err { color: color-mix(in srgb, var(--red) 72%, var(--fg)); white-space: normal; display: block; max-width: 60ch; line-height: 1.7; }
+  .yield .err .path { color: var(--fg-bright); }
+  .fold { margin-left: 32px; color: var(--faint); font-size: 11px; cursor: pointer; }
+  .fold:hover { color: var(--blue); }
+  .fold::before { content: '⋮ '; }
+  .aside { margin-left: 32px; color: var(--faint); font-size: 11px; }
+  .aside .bad { color: var(--red); } .aside .ok { color: var(--green); }
+
+  /* diff 行:ANSI 味,整行前景着色,无底色 */
+  .yield .dline { display: block; }
+  .yield .d-add { color: var(--green); }
+  .yield .d-del { color: var(--red); }
+  .yield .d-ctx { color: var(--faint); }
+
+  .caret { display: inline-block; width: 7px; height: 13px; background: var(--fg-bright); vertical-align: -2px; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* 选中行(键盘导航):反白 */
+  .prompt.sel { background: var(--bg-hi); outline: 4px solid var(--bg-hi); }
+  .prompt.sel .cmd-main { color: #fff; }
+</style>
+
+<header class="masthead">
+  <h1>工具方案四 · 终端流</h1>
+  <p>没有卡片、没有框:整组工具就是一条连续的会话记录。每种工具一个彩色提示符(❯ bash、± edit、◇ read、▲ write),左缘排成一条可扫读的符号轨;输出缩进弱化,状态是 ANSI 式反白标签。运行中的命令有真实的闪烁光标。</p>
+</header>
+
+<div class="scene-label">Collapsed · Transcript</div>
+<div class="window">
+  <div class="term">
+    <div class="session-head">── run · 6 tools · 8.4s<span class="sep">────────</span><span class="plus">+24</span> <span class="minus">−6</span> ──</div>
+    <div class="entry"><div class="prompt"><span class="sigil read">◇</span><span class="cmd-kind">read</span><span class="cmd-main">src/renderer/stores/chat.ts</span><span class="status">220L · 0.1s</span></div></div>
+    <div class="entry"><div class="prompt"><span class="sigil bash">❯</span><span class="cmd-kind">bash</span><span class="cmd-main">bun run test stores/chat</span><span class="status"><span class="tagx bad">exit 1</span> 4.6s</span></div></div>
+    <div class="entry"><div class="prompt"><span class="sigil fail">±</span><span class="cmd-kind">edit</span><span class="cmd-main">chat.ts — Could not find the target text</span><span class="status"><span class="tagx bad">fail</span></span></div></div>
+    <div class="entry"><div class="prompt"><span class="sigil edit">±</span><span class="cmd-kind">edit</span><span class="cmd-main">src/renderer/stores/chat.ts</span><span class="status gain"><span class="plus">+6</span><span class="minus">−2</span></span></div></div>
+    <div class="entry"><div class="prompt"><span class="sigil write">▲</span><span class="cmd-kind">write</span><span class="cmd-main">docs/notes/store-fix.md</span><span class="status"><span class="tagx new">new</span> +18</span></div></div>
+    <div class="entry"><div class="prompt"><span class="sigil bash">❯</span><span class="cmd-kind">bash</span><span class="cmd-main">bun run test stores/chat <span class="caret"></span></span><span class="status"><span class="tagx liv">run</span> 2.1s</span></div></div>
+  </div>
+</div>
+
+<div class="scene-label">Expanded · Bash(exit 1)</div>
+<div class="window">
+  <div class="term">
+    <div class="entry">
+      <div class="prompt sel"><span class="sigil bash">❯</span><span class="cmd-kind">bash</span><span class="cmd-main">bun run test stores/chat</span><span class="status"><span class="tagx bad">exit 1</span> 4.6s</span></div>
+      <div class="fold">+38 lines</div>
+      <div class="yield"><span class="hi">✓ chat.ts (12 tests)</span>
+<span class="bad">✕ resets draft on session switch</span>
+  expected 'draft' to be ''
+  at stores/__tests__/chat.test.ts:184</div>
+      <div class="aside"><span class="bad">exit 1</span> · 41 lines · 4.6s</div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Expanded · Edit(失败 → 成功)</div>
+<div class="window">
+  <div class="term">
+    <div class="entry">
+      <div class="prompt"><span class="sigil fail">±</span><span class="cmd-kind">edit</span><span class="cmd-main">src/renderer/stores/chat.ts</span><span class="status"><span class="tagx bad">fail</span> 0.1s</span></div>
+      <div class="yield"><span class="err">Could not find the target text in <span class="path">src/renderer/stores/chat.ts</span>. Tried exact matching and a single unique indentation-insensitive whole-line match. Re-read the current file and include a larger unique block.</span></div>
+    </div>
+    <div class="entry">
+      <div class="prompt"><span class="sigil edit">±</span><span class="cmd-kind">edit</span><span class="cmd-main">src/renderer/stores/chat.ts</span><span class="status gain"><span class="plus">+6</span><span class="minus">−2</span> 0.2s</span></div>
+      <div class="yield"><span class="dline d-ctx">  function switchSession(id: string) {</span><span class="dline d-del">− activeId.value = id</span><span class="dline d-add">+ activeId.value = id</span><span class="dline d-add">+ draft.value = ''</span><span class="dline d-add">+ attachments.value = []</span><span class="dline d-ctx">  }</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Expanded · Read / Write</div>
+<div class="window">
+  <div class="term">
+    <div class="entry">
+      <div class="prompt"><span class="sigil read">◇</span><span class="cmd-kind">read</span><span class="cmd-main">src/renderer/stores/chat.ts</span><span class="status">220L · 8.1KB</span></div>
+      <div class="yield">export const useChatStore = defineStore('chat', () =&gt; {
+  const activeId = ref&lt;string | null&gt;(null)
+  const draft = ref('')</div>
+      <div class="aside">L1–220</div>
+    </div>
+    <div class="entry">
+      <div class="prompt"><span class="sigil write">▲</span><span class="cmd-kind">write</span><span class="cmd-main">docs/notes/store-fix.md</span><span class="status"><span class="tagx new">new</span> +18</span></div>
+      <div class="yield"><span class="dline d-add">+ # chat store:会话切换后草稿残留</span><span class="dline d-add">+</span><span class="dline d-add">+ 切换会话时未清空 draft 与 attachments,导致</span></div>
+      <div class="fold">+15 lines</div>
+    </div>
+  </div>
+</div>
+
+<div class="scene-label">Running · 闪烁光标</div>
+<div class="window">
+  <div class="term">
+    <div class="entry">
+      <div class="prompt"><span class="sigil bash">❯</span><span class="cmd-kind">bash</span><span class="cmd-main">bun run test stores/chat <span class="caret"></span></span><span class="status"><span class="tagx liv">run</span> 2.1s</span></div>
+      <div class="yield"><span class="hi">✓ chat.ts (13 tests)</span></div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

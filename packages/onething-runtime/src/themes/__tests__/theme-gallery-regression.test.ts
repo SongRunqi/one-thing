@@ -366,6 +366,24 @@ describe('built-in theme gallery regression', () => {
           "theme": "One Light",
         },
         {
+          "accent": "#a63c26",
+          "scheme": "light",
+          "states": {
+            "composerFocus": "#E8E4D8",
+            "sidebarActive": "#DCD4C0",
+            "tabActive": "#E9E5DA",
+          },
+          "surfaces": {
+            "app": "#f4eedd",
+            "chat": "#faf6ea",
+            "composer": "#EFEBDF",
+            "sidebar": "#ece4d0",
+            "tabbar": "#faf6ea",
+            "tool": "#F0ECE0",
+          },
+          "theme": "纸墨 Paper Ink",
+        },
+        {
           "accent": "#C4A7E7",
           "scheme": "dark",
           "states": {

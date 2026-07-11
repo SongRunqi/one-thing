@@ -1,0 +1,616 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Side Panel × Workbench · 画线案二</title>
+<style>
+/* ============================================================
+   0. 基础色板(与案一 line-style-options.html 同源)
+   案二换对立轴:连续界格 × 连通线路;乌丝/朱砂 × 竹青
+   ============================================================ */
+:root {
+  --bg-app: #e6e4d9;
+  --bg-panel: #f2f0e5;
+  --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653;
+  --text-secondary: #6f6e69;
+  --text-muted: #878580;
+  --text-faint: #9f9d96;
+  --border-default: #cecdc3;
+  --border-subtle: #e6e4d9;
+  --border-strong: #b7b5ac;
+
+  --zhusha: #a63c26;   /* 朱砂:鱼尾、着重、批点 */
+  --zhuqing: #4a7c59;  /* 竹青:线路活性 */
+
+  --font-display: "Lora", "Source Han Serif SC", "Noto Serif SC", Georgia, "Songti SC", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #282726; --bg-panel: #343331; --bg-chat: #343331;
+    --bg-hover: rgba(255, 255, 255, 0.04);
+    --text-primary: #f2f0e5; --text-secondary: #e6e4d9;
+    --text-muted: #b7b5ac; --text-faint: #9f9d96;
+    --border-default: #575653; --border-subtle: #403e3c; --border-strong: #6f6e69;
+    --zhusha: #c96f5b; --zhuqing: #7fae8e;
+  }
+}
+:root[data-theme="light"] {
+  --bg-app: #e6e4d9; --bg-panel: #f2f0e5; --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653; --text-secondary: #6f6e69;
+  --text-muted: #878580; --text-faint: #9f9d96;
+  --border-default: #cecdc3; --border-subtle: #e6e4d9; --border-strong: #b7b5ac;
+  --zhusha: #a63c26; --zhuqing: #4a7c59;
+}
+:root[data-theme="dark"] {
+  --bg-app: #282726; --bg-panel: #343331; --bg-chat: #343331;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --text-primary: #f2f0e5; --text-secondary: #e6e4d9;
+  --text-muted: #b7b5ac; --text-faint: #9f9d96;
+  --border-default: #575653; --border-subtle: #403e3c; --border-strong: #6f6e69;
+  --zhusha: #c96f5b; --zhuqing: #7fae8e;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 48px clamp(16px, 5vw, 72px) 96px;
+}
+
+/* ============ 页首 ============ */
+.page-head { max-width: 1080px; margin: 0 auto 40px; }
+.page-head h1 {
+  font-family: var(--font-display);
+  font-size: 26px; font-weight: 600;
+  letter-spacing: 0.02em; margin-bottom: 10px;
+}
+.page-head p { color: var(--text-secondary); max-width: 64ch; }
+.page-head .thesis { margin-top: 6px; color: var(--text-muted); font-size: 12px; }
+.page-head .thesis b { color: var(--zhusha); font-weight: 600; }
+.page-head .thesis b.b2 { color: var(--zhuqing); }
+.page-head .vs { margin-top: 6px; font-size: 12px; color: var(--text-faint); }
+.page-head .vs code { font-family: var(--font-mono); font-size: 11px; }
+
+/* ============ 并排现场 ============ */
+.stage-wrap { max-width: 1080px; margin: 0 auto 56px; }
+.stage-label {
+  font-family: var(--font-mono);
+  font-size: 11px; letter-spacing: 0.12em;
+  color: var(--text-faint); text-transform: uppercase;
+  margin-bottom: 10px;
+}
+.stage {
+  display: flex; height: 560px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-chat);
+  overflow: hidden;
+  box-shadow: 0 8px 28px rgba(76, 69, 54, 0.09);
+}
+.chat-sliver {
+  flex: 1 1 auto; min-width: 180px;
+  padding: 28px 24px;
+  border-right: 1px solid var(--border-subtle);
+  color: var(--text-faint); overflow: hidden;
+}
+.chat-sliver .bubble {
+  border: 1px solid var(--border-subtle);
+  padding: 10px 14px; max-width: 220px;
+  margin-bottom: 18px; font-size: 12px;
+  color: var(--text-muted);
+}
+.chat-sliver .bubble.user { margin-left: auto; background: var(--bg-panel); }
+.ghost-line { height: 8px; background: var(--bg-hover); margin-bottom: 10px; border-radius: 2px; }
+.ghost-line.w60 { width: 60%; } .ghost-line.w80 { width: 80%; } .ghost-line.w40 { width: 40%; }
+
+/* ================================================================
+   方案丙 · 朱丝栏 Ruled Leaf —— side panel
+   词汇:两道连续竖界栏包住整叶 / 鱼尾分节 / 着重号点在字下 /
+   批点落在栏外 / 界格进度。面板即一叶手稿纸。
+   ================================================================ */
+.side-panel {
+  flex: 0 0 236px;
+  position: relative;
+  background: var(--bg-chat);
+  padding: 20px 22px 20px 26px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  font-size: 12px;
+}
+.side-panel::-webkit-scrollbar { display: none; }
+/* 界栏:左右两道通栏竖线,左侧留出批点的栏外余地 */
+.side-panel::before, .side-panel::after {
+  content: "";
+  position: absolute; top: 0; bottom: 0;
+  border-left: 1px solid var(--border-default);
+  pointer-events: none;
+}
+.side-panel::before { left: 14px; }
+.side-panel::after { right: 10px; }
+
+/* 鱼尾分节:整行细线,中央坐一枚鱼尾 */
+.leaf-div {
+  position: relative;
+  margin: 22px 0 14px;
+  border-top: 1px solid var(--border-default);
+}
+.leaf-div.first { margin-top: 0; border-top: 0; text-align: center; height: 9px; }
+.leaf-div .tail {
+  position: absolute;
+  top: -4px; left: 50%;
+  transform: translateX(-50%);
+  width: 12px; height: 7px;
+  background: var(--zhusha);
+  clip-path: polygon(0 0, 50% 42%, 100% 0, 100% 55%, 50% 100%, 0 55%);
+}
+.leaf-div.first .tail { position: static; display: inline-block; transform: none; }
+.leaf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  cursor: pointer; user-select: none;
+}
+.leaf-title {
+  font-family: var(--font-display);
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 0.22em;
+  color: var(--text-secondary);
+}
+.leaf-fold { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); }
+
+/* 行:无引导线,左题右注。悬停时栏外落一枚朱砂批点 */
+.leaf-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+.leaf-row .t {
+  color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.leaf-row .n {
+  font-family: var(--font-mono);
+  font-size: 10.5px; color: var(--text-faint);
+  flex: 0 0 auto;
+}
+.leaf-row:hover .t { color: var(--text-primary); }
+.leaf-row:hover::before {          /* 栏外批点 */
+  content: "";
+  position: absolute;
+  left: -15px; top: 8px;
+  width: 3px; height: 10px;
+  background: var(--zhusha);
+  opacity: 0.75;
+}
+.leaf-row.lv2 { padding-left: 14px; }
+/* 当前行:着重号 —— 点在字下 */
+.leaf-row.now .t {
+  color: var(--zhusha);
+  text-decoration: underline dotted var(--zhusha) 2px;
+  text-underline-offset: 5px;
+}
+.leaf-row.now .n { color: var(--zhusha); }
+.leaf-row.now::before {
+  content: "";
+  position: absolute;
+  left: -15px; top: 8px;
+  width: 3px; height: 10px;
+  background: var(--zhusha);
+}
+
+/* 词条:左右分列,不画线 —— 留白即分隔(界栏在管束) */
+.leaf-kv { display: flex; align-items: baseline; justify-content: space-between; padding: 4px 0; }
+.leaf-kv .k {
+  font-family: var(--font-mono);
+  font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-faint);
+}
+.leaf-kv .v { color: var(--text-secondary); font-size: 11.5px; }
+
+/* 任务:勾抹完成,界格计数 */
+.leaf-todo { position: relative; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 4px 0; }
+.leaf-todo .t { color: var(--text-secondary); }
+.leaf-todo.done .t {
+  color: var(--text-faint);
+  text-decoration: line-through solid var(--zhusha) 1px;
+  text-decoration-skip-ink: none;
+  opacity: 0.85;
+}
+.leaf-todo .st { font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); }
+.leaf-todo.done .st { color: var(--zhusha); }
+.leaf-todo.doing .t { color: var(--text-primary); }
+.leaf-todo.doing .st { color: var(--zhusha); }
+/* 界格进度:一排竖格,做完的格子上墨 */
+.leaf-grid {
+  display: flex;
+  height: 10px;
+  margin-top: 10px;
+  border-right: 1px solid var(--border-strong);
+}
+.leaf-grid i {
+  flex: 1 1 0;
+  border-left: 1px solid var(--border-strong);
+}
+.leaf-grid i.ink { background: var(--zhusha); opacity: 0.5; }
+.leaf-grid + .leaf-frac {
+  margin-top: 5px;
+  text-align: right;
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* ================================================================
+   方案丁 · 线路 Circuit —— workbench
+   词汇:一条总线走通左缘 / 内容块经短接头挂上总线,
+   接点是圆节 / 页签是轨道上的站点 / 活性一律竹青。
+   没有框:每块只有一条下垂的接线。
+   ================================================================ */
+.workbench {
+  flex: 0 0 300px;
+  position: relative;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+/* 总线:一条通身竖线 */
+.workbench::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 12px; bottom: 14px;
+  border-left: 1px solid var(--border-strong);
+  pointer-events: none;
+}
+/* 总线末端:终端符(三横渐短) */
+.workbench::after {
+  content: "";
+  position: absolute;
+  left: 7px; bottom: 8px;
+  width: 11px; height: 6px;
+  background:
+    linear-gradient(var(--border-strong), var(--border-strong)) top / 11px 1px no-repeat,
+    linear-gradient(var(--border-strong), var(--border-strong)) center / 7px 1px no-repeat,
+    linear-gradient(var(--border-strong), var(--border-strong)) bottom / 3px 1px no-repeat;
+  pointer-events: none;
+}
+
+/* 页签 = 轨道:标签在上,站点节踩在轨道线上 */
+.cb-tabs {
+  position: relative;
+  height: 42px;
+  padding: 6px 12px 0 24px;
+  display: flex;
+  align-items: flex-start;
+}
+.cb-tabs::before {          /* 轨道,从总线引出 */
+  content: "";
+  position: absolute;
+  left: 12px; right: 12px; top: 30px;
+  border-top: 1px solid var(--border-strong);
+}
+.cb-tab {
+  position: relative;
+  padding: 0 14px 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.cb-tab::after {            /* 站点节 */
+  content: "";
+  position: absolute;
+  left: 50%; top: 27px;
+  transform: translateX(-50%);
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-panel);
+}
+.cb-tab:hover { color: var(--text-primary); }
+.cb-tab:hover::after { border-color: var(--zhuqing); }
+.cb-tab.active { color: var(--zhuqing); }
+.cb-tab.active::after {
+  border-color: var(--zhuqing);
+  background: var(--zhuqing);
+}
+.cb-tab .x { font-size: 10px; color: var(--text-faint); margin-left: 5px; }
+.cb-actions {
+  margin-left: auto;
+  display: inline-flex; gap: 2px;
+  position: relative; z-index: 1;
+}
+.cb-actions button {
+  width: 20px; height: 20px;
+  border: 0; background: none;
+  font-family: var(--font-mono);
+  font-size: 12px; color: var(--text-faint);
+  cursor: pointer;
+}
+.cb-actions button:hover { color: var(--zhuqing); }
+
+/* 内容块:经接头挂上总线。块本身只有一条左垂线 */
+.cb-body { flex: 1 1 auto; padding: 14px 14px 20px 0; display: flex; flex-direction: column; gap: 18px; overflow: hidden; }
+.cb-block {
+  position: relative;
+  margin-left: 30px;
+  border-left: 1px solid var(--border-strong);
+  padding: 8px 10px 10px 12px;
+}
+.cb-block::before {          /* 接头:总线 → 块 */
+  content: "";
+  position: absolute;
+  left: -18px; top: 13px;
+  width: 18px;
+  border-top: 1px solid var(--border-strong);
+}
+.cb-block::after {           /* 接点节,骑在总线上 */
+  content: "";
+  position: absolute;
+  left: -21px; top: 10px;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-panel);
+}
+.cb-block:hover { border-left-color: var(--zhuqing); }
+.cb-block:hover::before { border-top-color: var(--zhuqing); }
+.cb-block:hover::after { border-color: var(--zhuqing); background: var(--zhuqing); }
+.cb-block .lbl {
+  font-family: var(--font-mono);
+  font-size: 10px; letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 7px;
+}
+.cb-block:hover .lbl { color: var(--zhuqing); }
+
+/* 文件行 */
+.cb-files .f {
+  display: flex; align-items: center; gap: 8px;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 11px; color: var(--text-secondary);
+  cursor: pointer;
+}
+.cb-files .f:hover { color: var(--zhuqing); }
+.cb-files .f .sz { margin-left: auto; color: var(--text-faint); font-size: 10px; }
+
+/* 终端 */
+.cb-term { flex: 1 1 auto; display: flex; flex-direction: column; }
+.term { flex: 1 1 auto; font-family: var(--font-mono); font-size: 11.5px; overflow: hidden; }
+.term .ln { padding: 2px 0; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term .ln .ps { color: var(--zhuqing); margin-right: 7px; }
+.term .ln.out { color: var(--text-muted); }
+.term-input {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px; padding-top: 8px;
+  border-top: 1px dashed var(--border-default);
+  font-family: var(--font-mono); font-size: 11.5px;
+}
+.term-input .ps { color: var(--zhuqing); }
+.term-input .caret { width: 7px; height: 13px; background: var(--zhuqing); opacity: 0.7; }
+.term-input .hint { color: var(--text-faint); }
+
+/* ============ 线谱 ============ */
+.glossary { max-width: 1080px; margin: 0 auto 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 900px) { .glossary { grid-template-columns: 1fr; } .stage { height: auto; flex-wrap: wrap; } .chat-sliver { display: none; } }
+.gcol { border-top: 1px solid var(--border-default); padding-top: 16px; }
+.gcol h2 {
+  font-family: var(--font-display);
+  font-size: 16px; font-weight: 600;
+  letter-spacing: 0.06em; margin-bottom: 2px;
+}
+.gcol h2 em { font-style: normal; font-size: 12px; color: var(--text-faint); margin-left: 8px; letter-spacing: 0.02em; }
+.gcol .who { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
+.gcol.a h2 { color: var(--zhusha); }
+.gcol.b h2 { color: var(--zhuqing); }
+
+.spec { display: grid; grid-template-columns: 128px 1fr; gap: 10px 16px; align-items: center; }
+.spec .draw { height: 24px; position: relative; }
+.spec .why { font-size: 12px; color: var(--text-secondary); }
+.spec .why small { display: block; color: var(--text-faint); font-size: 11px; }
+
+/* 丙的线谱样本 */
+.sp-rail2 { height: 22px; width: 60px; border-left: 1px solid var(--border-default); border-right: 1px solid var(--border-default); }
+.sp-tail { width: 12px; height: 7px; margin-top: 8px; background: var(--zhusha); clip-path: polygon(0 0, 50% 42%, 100% 0, 100% 55%, 50% 100%, 0 55%); }
+.sp-dots { margin-top: 4px; font-size: 12px; color: var(--text-secondary); text-decoration: underline dotted var(--zhusha) 2px; text-underline-offset: 5px; width: max-content; }
+.sp-cells { display: flex; height: 10px; width: 84px; margin-top: 7px; border-right: 1px solid var(--border-strong); }
+.sp-cells i { flex: 1 1 0; border-left: 1px solid var(--border-strong); }
+.sp-cells i.ink { background: var(--zhusha); opacity: 0.5; }
+
+/* 丁的线谱样本 */
+.sp-bus { position: relative; height: 24px; width: 90px; }
+.sp-bus::before { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; border-left: 1px solid var(--border-strong); }
+.sp-bus::after { content: ""; position: absolute; left: 4px; top: 10px; width: 30px; border-top: 1px solid var(--border-strong); }
+.sp-bus i { position: absolute; left: 1px; top: 7px; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--border-strong); background: var(--bg-app); }
+.sp-station { position: relative; height: 24px; width: 90px; }
+.sp-station::before { content: ""; position: absolute; left: 0; right: 0; top: 11px; border-top: 1px solid var(--border-strong); }
+.sp-station i { position: absolute; top: 8px; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--border-strong); background: var(--bg-app); }
+.sp-station i:nth-child(1) { left: 14px; }
+.sp-station i:nth-child(2) { left: 42px; border-color: var(--zhuqing); background: var(--zhuqing); }
+.sp-station i:nth-child(3) { left: 70px; }
+.sp-drop { position: relative; height: 24px; width: 90px; }
+.sp-drop::before { content: ""; position: absolute; left: 10px; top: 2px; bottom: 2px; border-left: 1px solid var(--border-strong); }
+.sp-gnd { position: relative; height: 24px; width: 90px; }
+.sp-gnd::before { content: ""; position: absolute; left: 10px; top: 0; height: 12px; border-left: 1px solid var(--border-strong); }
+.sp-gnd::after { content: ""; position: absolute; left: 5px; top: 12px; width: 11px; height: 7px;
+  background:
+    linear-gradient(var(--border-strong), var(--border-strong)) top / 11px 1px no-repeat,
+    linear-gradient(var(--border-strong), var(--border-strong)) center / 7px 1px no-repeat,
+    linear-gradient(var(--border-strong), var(--border-strong)) bottom / 3px 1px no-repeat;
+}
+
+/* ============ 对照表 ============ */
+.contrast { max-width: 1080px; margin: 0 auto; border-top: 1px solid var(--border-default); padding-top: 16px; }
+.contrast h2 { font-family: var(--font-display); font-size: 15px; margin-bottom: 12px; }
+.contrast table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.contrast th, .contrast td { text-align: left; padding: 7px 12px 7px 0; border-bottom: 1px dotted var(--border-default); }
+.contrast th { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-faint); font-weight: 500; }
+.contrast td.a { color: var(--zhusha); }
+.contrast td.b { color: var(--zhuqing); }
+.contrast td:first-child { color: var(--text-muted); width: 120px; }
+.contrast .note { margin-top: 18px; font-size: 12px; color: var(--text-muted); max-width: 72ch; }
+.contrast .note b { color: var(--text-secondary); }
+</style>
+
+<div class="page-head">
+  <h1>Side Panel × Workbench · 画线案二</h1>
+  <p>案一走「散点与量具」:线是碎的,靠留白呼吸。案二反其道,走<b>「界格与线路」</b>:
+     线是连续的,自成整体 —— side panel 是一叶朱丝栏手稿纸,workbench 是一块接通的线路板。</p>
+  <p class="thesis">丙 · <b>朱丝栏</b>:两道通栏竖界包住整叶,鱼尾分节,着重号点在字下 ——
+     丁 · <b class="b2">线路</b>:一条总线走通左缘,块块挂线,节节可点。
+     <b>静的界格</b>对<b class="b2">动的线路</b>,一收一放。</p>
+  <p class="vs">对读:案一 <code>line-style-options.html</code>(书目 × 台面)。两案数据同景,便于比较。</p>
+</div>
+
+<!-- ==================== 并排现场 ==================== -->
+<div class="stage-wrap">
+  <div class="stage-label">In situ · 聊天 + side panel(丙)+ workbench(丁)</div>
+  <div class="stage">
+
+    <div class="chat-sliver">
+      <div class="bubble user">基于这个 html,给我生成一个图片</div>
+      <div class="ghost-line w80"></div>
+      <div class="ghost-line w60"></div>
+      <div class="ghost-line w40"></div>
+      <div class="bubble">已生成图片,尺寸 900 × 620。</div>
+      <div class="ghost-line w60"></div>
+    </div>
+
+    <!-- 方案丙:朱丝栏 -->
+    <aside class="side-panel">
+      <div class="leaf-div first"><span class="tail"></span></div>
+      <div class="leaf-head">
+        <span class="leaf-title">大纲</span>
+        <span class="leaf-fold">−</span>
+      </div>
+      <div class="leaf-row"><span class="t">需求:HTML 转图片</span><span class="n">01</span></div>
+      <div class="leaf-row lv2"><span class="t">选定 cascade 布局</span><span class="n">02</span></div>
+      <div class="leaf-row lv2 now"><span class="t">导出 PNG 900×620</span><span class="n">03</span></div>
+      <div class="leaf-row"><span class="t">尺寸微调讨论</span><span class="n">04</span></div>
+
+      <div class="leaf-div"><span class="tail"></span></div>
+      <div class="leaf-head">
+        <span class="leaf-title">系统提示</span>
+        <span class="leaf-fold">−</span>
+      </div>
+      <div class="leaf-kv"><span class="k">prompt</span><span class="v">151 chars</span></div>
+      <div class="leaf-kv"><span class="k">tools</span><span class="v">3 loaded</span></div>
+      <div class="leaf-kv"><span class="k">runtime</span><span class="v">Agent loop</span></div>
+      <div class="leaf-kv"><span class="k">skills</span><span class="v">Off</span></div>
+      <div class="leaf-kv"><span class="k">agent</span><span class="v">default</span></div>
+
+      <div class="leaf-div"><span class="tail"></span></div>
+      <div class="leaf-head">
+        <span class="leaf-title">任务</span>
+        <span class="leaf-fold">−</span>
+      </div>
+      <div class="leaf-todo done"><span class="t">生成 HTML 版式</span><span class="st">讫</span></div>
+      <div class="leaf-todo done"><span class="t">渲染并导出 PNG</span><span class="st">讫</span></div>
+      <div class="leaf-todo doing"><span class="t">按反馈调整留白</span><span class="st">…</span></div>
+      <div class="leaf-grid">
+        <i class="ink"></i><i class="ink"></i><i class="ink"></i><i class="ink"></i>
+        <i class="ink"></i><i class="ink"></i><i class="ink"></i><i class="ink"></i>
+        <i></i><i></i><i></i><i></i>
+      </div>
+      <div class="leaf-frac">卷二 · 三之二</div>
+    </aside>
+
+    <!-- 方案丁:线路 -->
+    <aside class="workbench">
+      <div class="cb-tabs">
+        <div class="cb-tab">Files<span class="x">×</span></div>
+        <div class="cb-tab active">Terminal<span class="x">×</span></div>
+        <div class="cb-tab">Browser<span class="x">×</span></div>
+        <div class="cb-actions">
+          <button title="Add tab">+</button>
+          <button title="Close workbench">×</button>
+        </div>
+      </div>
+      <div class="cb-body">
+        <div class="cb-block cb-files">
+          <div class="lbl">workspace</div>
+          <div class="f">option-a-cascade.html<span class="sz">4.2k</span></div>
+          <div class="f">option-a-cascade.png<span class="sz">118k</span></div>
+          <div class="f">export.config.json<span class="sz">0.3k</span></div>
+        </div>
+        <div class="cb-block cb-term">
+          <div class="lbl">terminal</div>
+          <div class="term">
+            <div class="ln"><span class="ps">$</span>ls -la ~/Downloads | grep cascade</div>
+            <div class="ln out">-rw-r--r--  option-a-cascade.html</div>
+            <div class="ln out">-rw-r--r--  option-a-cascade.png</div>
+            <div class="ln"><span class="ps">$</span>identify option-a-cascade.png</div>
+            <div class="ln out">PNG 900x620 8-bit sRGB</div>
+          </div>
+          <div class="term-input">
+            <span class="ps">$</span><span class="caret"></span><span class="hint">Command</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</div>
+
+<!-- ==================== 线谱 ==================== -->
+<div class="glossary">
+  <div class="gcol a">
+    <h2>丙 · 朱丝栏<em>Ruled Leaf — side panel</em></h2>
+    <div class="who">读的器官。整叶被两道竖界栏管束,行内不再画线:分隔靠鱼尾,强调靠着重号。</div>
+    <div class="spec">
+      <div class="draw"><div class="sp-rail2"></div></div>
+      <div class="why">通栏界线<small>左右两道连续竖线包住全叶,面板即稿纸</small></div>
+      <div class="draw"><div class="sp-tail"></div></div>
+      <div class="why">鱼尾分节<small>节与节之间一道细线,中央坐朱砂鱼尾</small></div>
+      <div class="draw"><div class="sp-dots">导出 PNG</div></div>
+      <div class="why">着重号<small>当前项点在字下;悬停在栏外落一枚批点</small></div>
+      <div class="draw"><div class="sp-cells"><i class="ink"></i><i class="ink"></i><i class="ink"></i><i></i><i></i></div></div>
+      <div class="why">界格进度<small>竖格上墨计数,完成项以朱线勾抹,"卷二·三之二"记分</small></div>
+    </div>
+  </div>
+
+  <div class="gcol b">
+    <h2>丁 · 线路<em>Circuit — workbench</em></h2>
+    <div class="who">做的器官。没有一个框:一条总线走通左缘,每块内容经接头挂线,一切相连。</div>
+    <div class="spec">
+      <div class="draw"><div class="sp-bus"><i></i></div></div>
+      <div class="why">总线与接头<small>块块从总线引出,接点是骑线圆节,悬停充墨转青</small></div>
+      <div class="draw"><div class="sp-station"><i></i><i></i><i></i></div></div>
+      <div class="why">轨道页签<small>tab 是轨道上的站点:空节=候场,实节=当前</small></div>
+      <div class="draw"><div class="sp-drop"></div></div>
+      <div class="why">垂线块缘<small>内容块唯一的"边":一条左垂线,悬停整线转青</small></div>
+      <div class="draw"><div class="sp-gnd"></div></div>
+      <div class="why">终端符<small>总线末端三横渐短收笔,电路的落款</small></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 对照表 ==================== -->
+<div class="contrast">
+  <h2>为什么并排不混</h2>
+  <table>
+    <tr><th>维度</th><th>丙 · 朱丝栏(side panel)</th><th>丁 · 线路(workbench)</th></tr>
+    <tr><td>线的性格</td><td class="a">静:通栏竖界,行内无线</td><td class="b">动:总线走位,处处接头</td></tr>
+    <tr><td>连接</td><td class="a">不连接 —— 界栏只管束,不牵线</td><td class="b">全连接 —— 每块都挂在总线上</td></tr>
+    <tr><td>节点</td><td class="a">无节点,记号是鱼尾与批点</td><td class="b">圆节是唯一记号:空/实=候/活</td></tr>
+    <tr><td>墨色</td><td class="a">乌丝界栏 + 朱砂点批</td><td class="b">墨线 + 竹青活性</td></tr>
+    <tr><td>字感</td><td class="a">衬线节头,着重号点字</td><td class="b">等宽通身,如网络标号</td></tr>
+    <tr><td>血缘</td><td class="a">承纸墨主题的"纸"(稿纸的界栏)</td><td class="b">承左栏墨线的"线"(把 tick 长成总线)</td></tr>
+  </table>
+  <p class="note"><b>两案分野:</b>案一(书目 × 台面)线是碎的 —— 点线、角标、刻度,靠留白呼吸,气质更素;
+     案二(朱丝栏 × 线路)线是连续的 —— 界栏通身、总线走位,结构感更强,面板各自更"成一件东西"。
+     选案一如选一页素笺,选案二如选一件装帧。</p>
+</div>

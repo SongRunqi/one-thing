@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Side Panel · 三版重组方案</title>
+<style>
+/* ============================================================
+   0. 基础色板(与 panels/line-style-options.html 同源:
+   Flexoki 纸墨 + 朱砂/黛蓝)
+   ============================================================ */
+:root {
+  --bg-app: #e6e4d9;
+  --bg-panel: #f2f0e5;
+  --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653;
+  --text-secondary: #6f6e69;
+  --text-muted: #878580;
+  --text-faint: #9f9d96;
+  --border-default: #cecdc3;
+  --border-subtle: #e6e4d9;
+  --border-strong: #b7b5ac;
+  --zhusha: #a63c26;
+  --dailan: #39586f;
+  --shadow: 0 10px 30px rgba(60, 50, 30, 0.14), 0 2px 8px rgba(60, 50, 30, 0.08);
+
+  --font-display: "Lora", "Source Han Serif SC", "Noto Serif SC", Georgia, "Songti SC", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #282726;
+    --bg-panel: #343331;
+    --bg-chat: #343331;
+    --bg-hover: rgba(255, 255, 255, 0.04);
+    --text-primary: #f2f0e5;
+    --text-secondary: #e6e4d9;
+    --text-muted: #b7b5ac;
+    --text-faint: #9f9d96;
+    --border-default: #575653;
+    --border-subtle: #403e3c;
+    --border-strong: #6f6e69;
+    --zhusha: #c96f5b;
+    --dailan: #7a9cb8;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+}
+:root[data-theme="light"] {
+  --bg-app: #e6e4d9; --bg-panel: #f2f0e5; --bg-chat: #fffcf0;
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --text-primary: #575653; --text-secondary: #6f6e69;
+  --text-muted: #878580; --text-faint: #9f9d96;
+  --border-default: #cecdc3; --border-subtle: #e6e4d9; --border-strong: #b7b5ac;
+  --zhusha: #a63c26; --dailan: #39586f;
+  --shadow: 0 10px 30px rgba(60, 50, 30, 0.14), 0 2px 8px rgba(60, 50, 30, 0.08);
+}
+:root[data-theme="dark"] {
+  --bg-app: #282726; --bg-panel: #343331; --bg-chat: #343331;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --text-primary: #f2f0e5; --text-secondary: #e6e4d9;
+  --text-muted: #b7b5ac; --text-faint: #9f9d96;
+  --border-default: #575653; --border-subtle: #403e3c; --border-strong: #6f6e69;
+  --zhusha: #c96f5b; --dailan: #7a9cb8;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+  padding: 48px 24px 110px;
+}
+
+.masthead { width: min(960px, 100%); }
+.masthead h1 { margin: 0 0 6px; font-family: var(--font-display); font-size: 24px; font-weight: 650; }
+.masthead p { margin: 0; max-width: 62ch; color: var(--text-muted); font-size: 13px; }
+.masthead .problem { margin-top: 10px; padding-left: 12px; border-left: 2px solid var(--zhusha); color: var(--text-secondary); }
+
+.scene { width: min(960px, 100%); margin-top: 18px; }
+.scene-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.scene-head .no { font-family: var(--font-display); font-size: 15px; color: var(--zhusha); }
+.scene-head h2 { margin: 0; font-family: var(--font-display); font-size: 19px; font-weight: 650; }
+.scene-head .model { font-family: var(--font-mono); font-size: 10px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--text-faint); }
+.scene-desc { margin: 0 0 6px; max-width: 74ch; color: var(--text-secondary); font-size: 13px; }
+.scene-tradeoff { margin: 0 0 14px; max-width: 74ch; color: var(--text-muted); font-size: 12px; }
+.scene-tradeoff b { color: var(--text-secondary); font-weight: 600; }
+
+/* ---------- 模拟窗口 ---------- */
+.window {
+  position: relative;
+  display: flex;
+  height: 540px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-chat);
+}
+.chat {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 26px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 30px 34px;
+}
+.msg-user { align-self: flex-end; max-width: 72%; padding-right: 12px; border-right: 2px solid var(--dailan); font-family: var(--font-display); font-size: 14px; color: var(--text-primary); text-align: right; }
+.msg-ai { max-width: 62ch; color: var(--text-secondary); font-size: 13.5px; }
+.msg-ai h5 { margin: 0 0 4px; font-family: var(--font-display); font-size: 14px; color: var(--text-primary); font-weight: 650; }
+.msg-ai p { margin: 0 0 8px; }
+.msg-fade { color: var(--text-faint); }
+
+/* ---------- 面板通用 ---------- */
+.panel {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  border-left: 1px solid var(--border-default);
+  background: var(--bg-panel);
+}
+.eyebrow { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 2.2px; text-transform: uppercase; color: var(--text-faint); }
+.leader { flex: 1 1 auto; min-width: 10px; height: 0; border-bottom: 1.5px dotted color-mix(in srgb, var(--border-strong) 85%, transparent); transform: translateY(1px); }
+
+/* 目录条目(三案共用形态) */
+.ol-group { display: grid; gap: 5px; }
+.ol-user { display: flex; gap: 8px; align-items: baseline; min-width: 0; font-family: var(--font-display); font-size: 12.5px; font-weight: 650; color: var(--text-primary); }
+.ol-user .ord { flex: 0 0 auto; color: var(--zhusha); font-size: 11px; }
+.ol-user span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ol-h { position: relative; margin-left: 19px; padding-left: 10px; border-left: 1px solid var(--border-default); font-size: 11.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
+.ol-h:hover { color: var(--text-primary); }
+.ol-h.current { border-left: 2px solid var(--zhusha); padding-left: 9px; color: var(--text-primary); }
+
+/* 待办行(书目行) */
+.todo-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; font-size: 11.5px; color: var(--text-secondary); }
+.todo-row span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.todo-state { flex: 0 0 auto; font-size: 10px; color: var(--text-faint); }
+.todo-row.done { color: var(--text-muted); }
+.todo-row.done .leader { border-bottom-style: solid; border-bottom-color: var(--zhusha); opacity: 0.4; }
+.todo-row.done .todo-state { color: var(--zhusha); }
+.todo-row.doing { color: var(--text-primary); font-weight: 600; }
+.todo-row.doing .todo-state { color: var(--zhusha); }
+
+/* 描红进度线 */
+.meter { position: relative; height: 0; border-bottom: 1.5px dotted color-mix(in srgb, var(--border-strong) 90%, transparent); }
+.meter i { position: absolute; bottom: -1.5px; left: 0; height: 0; border-bottom: 1.5px solid var(--zhusha); }
+
+/* 提示词清单行 */
+.sp-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding: 6px 0; font-size: 11.5px; color: var(--text-secondary); cursor: default; }
+.sp-row:hover { color: var(--text-primary); }
+.sp-row .v { flex: 0 0 auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+.sp-meta { display: grid; gap: 3px; font-size: 11px; color: var(--text-muted); }
+.sp-meta b { color: var(--text-secondary); font-weight: 600; font-family: var(--font-mono); font-size: 10.5px; }
+
+/* ============================================================
+   方案一 · 检字 —— 书脊栏 + 独占视图
+   ============================================================ */
+.s1 .panel { width: 300px; }
+.s1 .views { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; overflow: hidden; }
+.s1 .view { display: none; flex: 1 1 auto; flex-direction: column; gap: 14px; min-height: 0; overflow: auto; padding: 18px 16px; }
+.s1 .view.active { display: flex; }
+.s1 .view-title { display: flex; align-items: baseline; gap: 8px; }
+.s1 .view-title .name { font-family: var(--font-display); font-size: 13px; font-weight: 650; color: var(--text-primary); }
+.s1 .view-title .count { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+
+.s1 .spines { display: flex; flex: 0 0 40px; flex-direction: column; border-left: 1px solid var(--border-default); }
+.s1 .spine {
+  position: relative;
+  display: flex; flex: 1 1 0; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  border: 0; border-bottom: 1px solid var(--border-default);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  font-family: var(--font-display); font-size: 12px; letter-spacing: 0.35em;
+  writing-mode: vertical-rl; padding: 14px 0;
+}
+.s1 .spine:last-child { border-bottom: 0; }
+.s1 .spine:hover { color: var(--text-primary); background: var(--bg-hover); }
+.s1 .spine.active { color: var(--zhusha); background: color-mix(in srgb, var(--zhusha) 7%, transparent); font-weight: 650; }
+.s1 .spine.active::before { content: ""; position: absolute; top: 0; left: 0; width: 2px; height: 100%; background: var(--zhusha); }
+.s1 .spine .badge { writing-mode: horizontal-tb; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0; color: var(--text-faint); }
+.s1 .spine .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--zhusha); }
+.s1 .ol-group + .ol-group { margin-top: 12px; }
+.s1 .todo-list { display: grid; gap: 6px; }
+.s1 .now { display: grid; gap: 4px; padding: 10px 0 12px; border-bottom: 1px solid var(--border-subtle); }
+.s1 .now .task { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+
+/* ============================================================
+   方案二 · 案头 —— 速览分层,重内容浮层化
+   ============================================================ */
+.s2 .panel { width: 280px; flex-direction: column; }
+.s2 .now {
+  flex: 0 0 auto; display: grid; gap: 6px;
+  padding: 16px 16px 14px; border-bottom: 1px solid var(--border-default);
+  cursor: pointer;
+}
+.s2 .now:hover { background: var(--bg-hover); }
+.s2 .now-head { display: flex; align-items: baseline; gap: 8px; }
+.s2 .now-head .count { flex: 0 0 auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); }
+.s2 .now .task { font-size: 12.5px; font-weight: 600; color: var(--text-primary); line-height: 1.4; }
+.s2 .now .meter { margin-top: 4px; }
+.s2 .now-rest { display: none; margin-top: 8px; }
+.s2 .now.expanded .now-rest { display: grid; gap: 6px; }
+.s2 .now .hint { margin-top: 2px; font-size: 10px; color: var(--text-faint); }
+
+.s2 .outline { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px; display: grid; gap: 12px; align-content: start; }
+.s2 .foot {
+  flex: 0 0 auto; padding: 8px 16px 12px;
+  border-top: 1px solid var(--border-default);
+}
+.s2 .foot .sp-row { cursor: pointer; }
+
+.s2 .flyout {
+  position: absolute; z-index: 5; top: 24px; right: 296px;
+  display: none; width: 340px; max-height: 480px; overflow: auto;
+  padding: 18px; border: 1px solid var(--border-strong); border-radius: 10px;
+  background: var(--bg-chat); box-shadow: var(--shadow);
+}
+.s2 .flyout.open { display: block; }
+.s2 .flyout-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.s2 .flyout-head .name { font-family: var(--font-display); font-size: 14px; font-weight: 650; }
+.s2 .flyout-close { border: 0; background: transparent; color: var(--text-muted); font-size: 14px; cursor: pointer; padding: 2px 6px; }
+.s2 .flyout-close:hover { color: var(--text-primary); }
+.s2 .flyout .sp-meta { padding-bottom: 10px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 6px; }
+
+/* ============================================================
+   方案三 · 批注边 —— 面板消解,信息入页边
+   ============================================================ */
+.s3 .chat { padding-right: 0; }
+.s3 .gutter {
+  position: relative; flex: 0 0 190px;
+  border-left: 1px dotted color-mix(in srgb, var(--border-strong) 60%, transparent);
+  background: transparent;
+}
+.s3 .anno { position: absolute; left: 14px; right: 26px; display: grid; gap: 4px; }
+.s3 .anno .ol-user { font-size: 12px; }
+.s3 .anno .ol-h { font-size: 11px; margin-left: 17px; }
+
+/* 待办丝线:窗口右缘 */
+.s3 .filament { position: absolute; top: 16px; bottom: 16px; right: 10px; width: 0; border-right: 1.5px dotted color-mix(in srgb, var(--border-strong) 85%, transparent); }
+.s3 .filament i { position: absolute; top: 0; right: -1.5px; width: 0; border-right: 1.5px solid var(--zhusha); }
+.s3 .filament .knot { position: absolute; right: -4px; width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--zhusha); background: var(--bg-chat); }
+.s3 .todo-tag {
+  position: absolute; right: 22px; bottom: 34px;
+  display: grid; gap: 3px; max-width: 150px;
+  padding: 8px 10px; border: 1px solid var(--border-default); border-radius: 8px;
+  background: var(--bg-panel); font-size: 11px; color: var(--text-secondary);
+  cursor: default;
+}
+.s3 .todo-tag .count { font-family: var(--font-mono); font-size: 9.5px; color: var(--zhusha); }
+
+/* 提示词印章 */
+.s3 .seal {
+  position: absolute; z-index: 4; top: 14px; right: 22px;
+  width: 30px; height: 30px; border: 1.5px solid var(--zhusha); border-radius: 6px;
+  background: color-mix(in srgb, var(--zhusha) 6%, var(--bg-chat));
+  color: var(--zhusha); font-family: var(--font-display); font-size: 14px; font-weight: 650;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.s3 .seal:hover { background: color-mix(in srgb, var(--zhusha) 14%, var(--bg-chat)); }
+.s3 .sheet {
+  position: absolute; z-index: 6; top: 0; right: 0; bottom: 0;
+  display: none; width: 380px; overflow: auto;
+  padding: 22px 22px 26px;
+  border-left: 1px solid var(--border-strong);
+  background: color-mix(in srgb, var(--bg-panel) 94%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--shadow);
+}
+.s3 .sheet.open { display: block; }
+.s3 .sheet-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.s3 .sheet-head .name { font-family: var(--font-display); font-size: 15px; font-weight: 650; }
+.s3 .sheet-close { border: 0; background: transparent; color: var(--text-muted); font-size: 15px; cursor: pointer; }
+.s3 .sheet-close:hover { color: var(--text-primary); }
+.s3 .sheet .sp-meta { padding-bottom: 12px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 8px; }
+
+/* ---------- 尾注对比 ---------- */
+.coda { width: min(960px, 100%); margin-top: 8px; }
+.coda h3 { margin: 0 0 10px; font-family: var(--font-display); font-size: 16px; }
+.coda table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.coda th, .coda td { padding: 8px 12px; border-bottom: 1px solid var(--border-default); text-align: left; vertical-align: top; }
+.coda th { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-faint); font-weight: 600; }
+.coda td:first-child { font-family: var(--font-display); font-weight: 650; white-space: nowrap; }
+.coda td { color: var(--text-secondary); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <h1>Side Panel · 三版重组方案</h1>
+  <p>现状:Outline / System prompt / Todo 三段竖排三等分,各自滚动。节头、分割条、折叠钮吃掉高度,哪一段都看不全。</p>
+  <p class="problem">三块内容的查看频率其实完全不同——目录是<b>导航</b>(常看),待办是<b>状态</b>(扫一眼),提示词是<b>参考</b>(偶尔查)。三版方案分别用三种截然不同的组织逻辑回应这一点。</p>
+</header>
+
+<!-- ============================================================ -->
+<!-- 方案一 · 检字 -->
+<!-- ============================================================ -->
+<section class="scene s1">
+  <div class="scene-head">
+    <span class="no">壹</span>
+    <h2>检字 · 书脊栏,一次只看一件事</h2>
+    <span class="model">EXCLUSIVE VIEWS</span>
+  </div>
+  <p class="scene-desc">取消三等分:右缘一条线装书式的竖排书脊栏,三个视图互斥切换,当前视图独占整个面板高度。未激活的书脊用小徽标带出状态(待办进度、提示词活跃点),不用展开也知道有没有事。</p>
+  <p class="scene-tradeoff"><b>得:</b>任何一段信息都能完整铺开,滚动条从三根变一根。<b>失:</b>不能同时看目录和待办,靠书脊徽标补偿。<b>改动:</b>中——ChatSidePanel 去掉 Splitter 换成视图栈,子面板基本不动。</p>
+
+  <div class="window">
+    <div class="chat">
+      <div class="msg-user">把会话存储迁到 JSONL,要能惰性迁移</div>
+      <div class="msg-ai">
+        <h5>现有 session.json 的读写路径</h5>
+        <p>目前整份会话是一个 JSON 文件,流式期间每次落盘都要整文件重写……</p>
+        <h5>迁移策略:惰性 + 备份</h5>
+        <p class="msg-fade">旧文件首次打开时转换,原件移入 legacy-backup/ 保留……</p>
+      </div>
+      <div class="msg-user">流式写入会不会丢数据?</div>
+      <div class="msg-ai">
+        <h5>追加写与 fsync 时机</h5>
+        <p class="msg-fade">messages.jsonl 采用逐行追加,收尾时统一 suffix 重写……</p>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="views">
+        <!-- 目录视图 -->
+        <div class="view active" id="s1-outline">
+          <div class="view-title"><span class="name">目录</span><span class="count">3 轮 · 6 节</span></div>
+          <div>
+            <div class="ol-group">
+              <div class="ol-user"><span class="ord">壹</span><span>把会话存储迁到 JSONL</span></div>
+              <div class="ol-h">现有 session.json 的读写路径</div>
+              <div class="ol-h">迁移策略:惰性 + 备份</div>
+            </div>
+            <div class="ol-group">
+              <div class="ol-user"><span class="ord">贰</span><span>流式写入会不会丢数据?</span></div>
+              <div class="ol-h">追加写与 fsync 时机</div>
+              <div class="ol-h">崩溃恢复的三种情形</div>
+            </div>
+            <div class="ol-group">
+              <div class="ol-user"><span class="ord">叁</span><span>加个回滚开关</span></div>
+              <div class="ol-h">settings.storage.sessionFormat</div>
+              <div class="ol-h current">回滚后的兼容读取</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 提示词视图 -->
+        <div class="view" id="s1-prompt">
+          <div class="view-title"><span class="name">提示词</span><span class="count">47.8k 字</span></div>
+          <div class="sp-meta">
+            <div>模型 <b>claude · opus-4.5</b></div>
+            <div>凭证 <b>就绪</b> · 缓存 <b>开启</b></div>
+          </div>
+          <div>
+            <div class="sp-row"><span>正文</span><span class="leader"></span><span class="v">47.8k 字</span></div>
+            <div class="sp-row"><span>运行时</span><span class="leader"></span><span class="v">agent loop</span></div>
+            <div class="sp-row"><span>Skills</span><span class="leader"></span><span class="v">6 · 已注入</span></div>
+            <div class="sp-row"><span>工具</span><span class="leader"></span><span class="v">14</span></div>
+            <div class="sp-row"><span>文件</span><span class="leader"></span><span class="v">3</span></div>
+          </div>
+        </div>
+
+        <!-- 待办视图 -->
+        <div class="view" id="s1-todo">
+          <div class="view-title"><span class="name">待办</span><span class="count">4/7 已讫</span></div>
+          <div class="now">
+            <span class="eyebrow">现在</span>
+            <span class="task">崩溃恢复:半行截断的容错读取</span>
+            <div class="meter" style="margin-top:6px"><i style="width:57%"></i></div>
+          </div>
+          <div class="todo-list">
+            <div class="todo-row done"><span>盘点现有 session.json 读写路径</span><span class="leader"></span><span class="todo-state">讫</span></div>
+            <div class="todo-row done"><span>设计 meta.json + messages.jsonl</span><span class="leader"></span><span class="todo-state">讫</span></div>
+            <div class="todo-row done"><span>实现追加写与 suffix 重写</span><span class="leader"></span><span class="todo-state">讫</span></div>
+            <div class="todo-row done"><span>惰性迁移 + legacy-backup</span><span class="leader"></span><span class="todo-state">讫</span></div>
+            <div class="todo-row doing"><span>崩溃恢复:容错读取</span><span class="leader"></span><span class="todo-state">…</span></div>
+            <div class="todo-row"><span>回滚开关 sessionFormat</span><span class="leader"></span><span class="todo-state">未</span></div>
+            <div class="todo-row"><span>convert-sessions.mjs 转换脚本</span><span class="leader"></span><span class="todo-state">未</span></div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="spines" aria-label="面板视图切换">
+        <button class="spine active" data-view="s1-outline">目录</button>
+        <button class="spine" data-view="s1-prompt">提示<span class="dot" aria-hidden="true"></span></button>
+        <button class="spine" data-view="s1-todo">待办<span class="badge">4/7</span></button>
+      </nav>
+    </aside>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 方案二 · 案头 -->
+<!-- ============================================================ -->
+<section class="scene s2">
+  <div class="scene-head">
+    <span class="no">贰</span>
+    <h2>案头 · 按查看频率分层,重内容浮层化</h2>
+    <span class="model">DIGEST + FLYOUT</span>
+  </div>
+  <p class="scene-desc">面板不再是三个并列的「区」,而是一页按频率排版的案头:顶部「现在」一格只放当前任务和一条描红进度线(点开就地展开全部任务);中段整段留给目录——它是唯一真正需要面积的导航;底部一行统计把提示词压成书目行,点击时以浮层临时铺开在聊天区上方,看完即走,不占常驻空间。</p>
+  <p class="scene-tradeoff"><b>得:</b>常看的信息永远在固定位置,一眼定位;提示词这类「重参考」不再挤占常驻高度。<b>失:</b>提示词多一次点击;浮层需要新组件(可复用 Composer Flyout 的浮层层)。<b>改动:</b>中偏大。</p>
+
+  <div class="window">
+    <div class="chat">
+      <div class="msg-user">把会话存储迁到 JSONL,要能惰性迁移</div>
+      <div class="msg-ai">
+        <h5>现有 session.json 的读写路径</h5>
+        <p>目前整份会话是一个 JSON 文件,流式期间每次落盘都要整文件重写……</p>
+        <h5>迁移策略:惰性 + 备份</h5>
+        <p class="msg-fade">旧文件首次打开时转换,原件移入 legacy-backup/ 保留……</p>
+      </div>
+      <div class="msg-user">流式写入会不会丢数据?</div>
+      <div class="msg-ai">
+        <h5>追加写与 fsync 时机</h5>
+        <p class="msg-fade">messages.jsonl 采用逐行追加,收尾时统一 suffix 重写……</p>
+      </div>
+    </div>
+
+    <!-- 提示词浮层(点底部统计行弹出) -->
+    <div class="flyout" id="s2-flyout">
+      <div class="flyout-head">
+        <span class="name">提示词</span>
+        <button class="flyout-close" id="s2-flyout-close" aria-label="关闭">×</button>
+      </div>
+      <div class="sp-meta">
+        <div>模型 <b>claude · opus-4.5</b> · 凭证 <b>就绪</b></div>
+        <div>正文 <b>47,832 字</b> · 缓存 <b>开启</b></div>
+      </div>
+      <div>
+        <div class="sp-row"><span>正文全文</span><span class="leader"></span><span class="v">复制 ⧉</span></div>
+        <div class="sp-row"><span>运行时</span><span class="leader"></span><span class="v">agent loop</span></div>
+        <div class="sp-row"><span>Skills</span><span class="leader"></span><span class="v">6 · 已注入</span></div>
+        <div class="sp-row"><span>工具</span><span class="leader"></span><span class="v">14</span></div>
+        <div class="sp-row"><span>文件</span><span class="leader"></span><span class="v">3</span></div>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <!-- 现在:当前任务,点开就地展开 -->
+      <div class="now" id="s2-now">
+        <div class="now-head"><span class="eyebrow">现在</span><span class="leader"></span><span class="count">4/7 已讫</span></div>
+        <span class="task">崩溃恢复:半行截断的容错读取</span>
+        <div class="meter"><i style="width:57%"></i></div>
+        <div class="now-rest">
+          <div class="todo-row done"><span>盘点现有 session.json 读写路径</span><span class="leader"></span><span class="todo-state">讫</span></div>
+          <div class="todo-row done"><span>设计 meta.json + messages.jsonl</span><span class="leader"></span><span class="todo-state">讫</span></div>
+          <div class="todo-row done"><span>实现追加写与 suffix 重写</span><span class="leader"></span><span class="todo-state">讫</span></div>
+          <div class="todo-row done"><span>惰性迁移 + legacy-backup</span><span class="leader"></span><span class="todo-state">讫</span></div>
+          <div class="todo-row doing"><span>崩溃恢复:容错读取</span><span class="leader"></span><span class="todo-state">…</span></div>
+          <div class="todo-row"><span>回滚开关 sessionFormat</span><span class="leader"></span><span class="todo-state">未</span></div>
+          <div class="todo-row"><span>convert-sessions.mjs 转换脚本</span><span class="leader"></span><span class="todo-state">未</span></div>
+        </div>
+        <span class="hint">点击展开全部任务</span>
+      </div>
+
+      <!-- 目录:占据主体 -->
+      <div class="outline">
+        <div class="ol-group">
+          <div class="ol-user"><span class="ord">壹</span><span>把会话存储迁到 JSONL</span></div>
+          <div class="ol-h">现有 session.json 的读写路径</div>
+          <div class="ol-h">迁移策略:惰性 + 备份</div>
+        </div>
+        <div class="ol-group">
+          <div class="ol-user"><span class="ord">贰</span><span>流式写入会不会丢数据?</span></div>
+          <div class="ol-h">追加写与 fsync 时机</div>
+          <div class="ol-h">崩溃恢复的三种情形</div>
+        </div>
+        <div class="ol-group">
+          <div class="ol-user"><span class="ord">叁</span><span>加个回滚开关</span></div>
+          <div class="ol-h">settings.storage.sessionFormat</div>
+          <div class="ol-h current">回滚后的兼容读取</div>
+        </div>
+      </div>
+
+      <!-- 脚注:提示词一行统计 -->
+      <div class="foot">
+        <div class="sp-row" id="s2-sp-line" role="button" tabindex="0">
+          <span>提示词</span><span class="leader"></span><span class="v">opus-4.5 · 47.8k 字</span>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 方案三 · 批注边 -->
+<!-- ============================================================ -->
+<section class="scene s3">
+  <div class="scene-head">
+    <span class="no">叁</span>
+    <h2>批注边 · 面板消解,信息回到页边</h2>
+    <span class="model">MARGINALIA</span>
+  </div>
+  <p class="scene-desc">最激进的一版:不再有常驻面板。目录变成手稿式的页边批注,贴着对应消息的位置排在右侧页边,天然与滚动位置对齐;待办化为窗口右缘一根丝线(描红的比例即进度),当前任务是丝线下端一枚小签;提示词收进右上角一方朱砂印,点开是覆盖式抽屉。聊天区拿回全部宽度。</p>
+  <p class="scene-tradeoff"><b>得:</b>「面板感」彻底消失,批注跟随内容位置,导航即地图;阅读宽度最大化。<b>失:</b>页边批注要与虚拟滚动联动定位,是三案中实现成本最高的;长目录在页边会拥挤,需要抽稀。<b>改动:</b>大。</p>
+
+  <div class="window">
+    <button class="seal" id="s3-seal" title="查看提示词">提</button>
+
+    <div class="chat">
+      <div class="msg-user">把会话存储迁到 JSONL,要能惰性迁移</div>
+      <div class="msg-ai">
+        <h5>现有 session.json 的读写路径</h5>
+        <p>目前整份会话是一个 JSON 文件,流式期间每次落盘都要整文件重写,300MB 的会话目录在启动清扫时要 1.4 秒……</p>
+        <h5>迁移策略:惰性 + 备份</h5>
+        <p class="msg-fade">旧文件首次打开时转换,原件移入 legacy-backup/ 保留……</p>
+      </div>
+      <div class="msg-user">流式写入会不会丢数据?</div>
+      <div class="msg-ai">
+        <h5>追加写与 fsync 时机</h5>
+        <p class="msg-fade">messages.jsonl 采用逐行追加,收尾时统一 suffix 重写。崩溃恢复要处理三种情形:整行完好、半行截断、meta 落后……</p>
+      </div>
+    </div>
+
+    <div class="gutter" aria-label="页边批注">
+      <div class="anno" style="top: 28px;">
+        <div class="ol-user"><span class="ord">壹</span><span>迁到 JSONL</span></div>
+        <div class="ol-h">session.json 读写路径</div>
+        <div class="ol-h">惰性迁移 + 备份</div>
+      </div>
+      <div class="anno" style="top: 210px;">
+        <div class="ol-user"><span class="ord">贰</span><span>会不会丢数据?</span></div>
+        <div class="ol-h">追加写与 fsync</div>
+        <div class="ol-h current">崩溃恢复三情形</div>
+      </div>
+      <div class="anno" style="top: 350px;">
+        <div class="ol-user"><span class="ord">叁</span><span>加个回滚开关</span></div>
+        <div class="ol-h">sessionFormat</div>
+      </div>
+
+      <div class="filament" aria-label="待办进度 4/7">
+        <i style="height:57%"></i>
+        <span class="knot" style="top:57%"></span>
+      </div>
+
+      <div class="todo-tag">
+        <span class="count">待办 4/7</span>
+        <span>崩溃恢复:容错读取</span>
+      </div>
+    </div>
+
+    <!-- 提示词抽屉 -->
+    <div class="sheet" id="s3-sheet">
+      <div class="sheet-head">
+        <span class="name">提示词</span>
+        <button class="sheet-close" id="s3-sheet-close" aria-label="关闭">×</button>
+      </div>
+      <div class="sp-meta">
+        <div>模型 <b>claude · opus-4.5</b> · 凭证 <b>就绪</b></div>
+        <div>正文 <b>47,832 字</b> · 缓存 <b>开启</b></div>
+      </div>
+      <div>
+        <div class="sp-row"><span>正文全文</span><span class="leader"></span><span class="v">复制 ⧉</span></div>
+        <div class="sp-row"><span>运行时</span><span class="leader"></span><span class="v">agent loop</span></div>
+        <div class="sp-row"><span>Skills</span><span class="leader"></span><span class="v">6 · 已注入</span></div>
+        <div class="sp-row"><span>工具</span><span class="leader"></span><span class="v">14</span></div>
+        <div class="sp-row"><span>文件</span><span class="leader"></span><span class="v">3</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 尾注 · 对比 -->
+<!-- ============================================================ -->
+<section class="coda">
+  <h3>取舍对照</h3>
+  <table>
+    <thead>
+      <tr><th>方案</th><th>一次可见</th><th>查看成本</th><th>聊天区宽度</th><th>实现改动</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>壹 · 检字</td><td>一段完整内容 + 书脊徽标</td><td>切换一次,无滚动折叠</td><td>不变(300px 面板)</td><td>中:去 Splitter,换视图栈</td></tr>
+      <tr><td>贰 · 案头</td><td>当前任务 + 完整目录 + 一行统计</td><td>常看内容零成本;提示词一次点击</td><td>不变(280px 面板)</td><td>中偏大:新增浮层</td></tr>
+      <tr><td>叁 · 批注边</td><td>批注随滚动对齐,进度常显</td><td>零切换;提示词一次点击</td><td>最大(面板消失)</td><td>大:批注定位联动虚拟滚动</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<script>
+// 方案一:书脊切换
+document.querySelectorAll('.s1 .spine').forEach(function (spine) {
+  spine.addEventListener('click', function () {
+    document.querySelectorAll('.s1 .spine').forEach(function (s) { s.classList.remove('active') })
+    document.querySelectorAll('.s1 .view').forEach(function (v) { v.classList.remove('active') })
+    spine.classList.add('active')
+    document.getElementById(spine.dataset.view).classList.add('active')
+  })
+})
+
+// 方案二:「现在」就地展开 + 提示词浮层
+document.getElementById('s2-now').addEventListener('click', function () {
+  this.classList.toggle('expanded')
+})
+document.getElementById('s2-sp-line').addEventListener('click', function () {
+  document.getElementById('s2-flyout').classList.toggle('open')
+})
+document.getElementById('s2-flyout-close').addEventListener('click', function (e) {
+  e.stopPropagation()
+  document.getElementById('s2-flyout').classList.remove('open')
+})
+
+// 方案三:印章开合抽屉
+document.getElementById('s3-seal').addEventListener('click', function () {
+  document.getElementById('s3-sheet').classList.add('open')
+})
+document.getElementById('s3-sheet-close').addEventListener('click', function () {
+  document.getElementById('s3-sheet').classList.remove('open')
+})
+</script>
+</body>
+</html>

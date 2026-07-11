@@ -6,9 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Development
-bun run dev                # unified dev (scripts/dev-unified.mjs)
-bun run electron:dev       # electron only (electron-vite, all three processes)
-bun run web:dev            # browser build of the renderer (apps/web)
+bun run dev                # unified dev: electron + web + server (scripts/dev-unified.mjs)
+bun run dev:electron       # managed lane: electron only (can run alongside dev:web)
+bun run dev:web            # managed lane: web frontend :5174 + headless server :8787
+bun run electron:dev       # electron only (electron-vite, all three processes, no lane cleanup)
+bun run web:dev            # bare vite for apps/web (no server, no cleanup)
 bun run server:start       # headless core server (apps/server, port 8787)
 
 # Production build
@@ -50,7 +52,15 @@ src/main, src/renderer, ...  # Electron app itself (gradually thinning into the 
 Dependency rules are enforced by `packages/core/__tests__/architecture-boundaries.test.ts`.
 
 Notes:
-- Session persistence is JSON-file based; the former SQLite path was removed.
+
+- Session persistence is file-based: new sessions use per-session JSONL dirs
+  (`sessions/<id>/meta.json` + `messages.jsonl`, append/suffix writes during streaming);
+  legacy whole-file `sessions/<id>.json` is still readable and lazily migrated
+  (originals kept in `sessions/legacy-backup/`). Toggle via
+  `settings.storage.sessionFormat` ('jsonl' default | 'legacy-json' to roll back).
+  See `docs/design/session-storage-jsonl.md`; conversion: `scripts/convert-sessions.mjs`.
+  Cross-session search/indexing belongs in apps/server — do not add a database to the
+  Electron main process.
 - Memory IPC in the Electron main process proxies to the headless server
   (`ONETHING_SERVER_URL`, default `127.0.0.1:8787`); memory features need apps/server running.
 - Renderer code accesses the host through `platformApi` (`src/renderer/platform/`),
@@ -87,6 +97,7 @@ Notes:
 ### Key Data Flows
 
 **Chat Message Flow (Event-Driven):**
+
 ```
 InputBox.vue → chatStore.emitCommand('send-message')
   → IPC → EventBus.emit('command:send-message', { sessionId, content })
@@ -98,6 +109,7 @@ InputBox.vue → chatStore.emitCommand('send-message')
 ```
 
 **Tool Call Flow:**
+
 ```
 AI response with tool_call → ToolRegistry.execute() → Permission check
   → EventBus.emit('permission:request') → IPCBridge → renderer
@@ -115,6 +127,7 @@ The core architecture uses a central **EventBus** (`src/main/events/`) with:
 - **Stream channels** for per-session event routing
 
 Key subscribers:
+
 - **StreamEngine** (`src/main/engine/stream-engine.ts`): Listens to commands, orchestrates streaming
 - **IPCBridge** (`src/main/bridges/ipc-bridge.ts`): Routes events from EventBus to renderer via WebContents
 
@@ -127,6 +140,7 @@ Key subscribers:
 5. **Preload bridge**: `src/preload/index.ts` + `create-api.ts` - exposes typed `window.electronAPI`
 
 To add a new IPC channel:
+
 1. Add channel name to `src/shared/ipc/channels.ts`
 2. Add types in corresponding `src/shared/ipc/[domain].ts`
 3. Implement handler in `src/main/ipc/[domain].ts`
@@ -242,11 +256,11 @@ dist/
 ### Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
+| ------- | ----------- |
 | Desktop | Electron |
 | Frontend | Vue 3 + TypeScript + Pinia |
 | AI SDK | Vercel AI SDK (`ai`) |
 | Storage | File-based (JSON) |
-| Build | electron-vite (Vite renderer + tsc main + esbuild preload) |
+| Build | electron-vite (Vite renderer + Vite main + esbuild preload) |
 | Test | Vitest |
 | Virtual Scroll | @tanstack/vue-virtual |

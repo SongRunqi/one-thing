@@ -1,0 +1,10 @@
+# Linux platform: should use Unix/Bash syntax
+id: linux-unix-syntax
+description: >
+  On Linux, assistant should use Unix/Bash-compatible syntax.
+fixture: linux.json
+userMessage: Show me the current date.
+expect:
+  contains: date
+  notes: >
+    Linux should use Unix commands.

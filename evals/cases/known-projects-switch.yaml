@@ -1,0 +1,13 @@
+# Known Projects: should switch directory before operating on a known project
+id: known-projects-switch
+description: >
+  When the user asks about a project in "known projects" but is in a different
+  working directory, the assistant should call the directory switching mechanism
+  before reading or editing files.
+fixture: known-projects-transreader.json
+userMessage: How do I configure the transreader project?
+expect:
+  firstToolCall: variable
+  notes: >
+    Real failure from 2026-07-03. Assistant edited files in start-electron
+    instead of switching to transreader directory first.

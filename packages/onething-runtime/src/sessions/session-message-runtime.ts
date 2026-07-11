@@ -24,6 +24,7 @@ import {
   type CoreSessionUsageSnapshot,
   type CoreSessionWithMessageList,
 } from '@onething/core/session'
+import type { SessionWritePlan } from './storage-driver.js'
 
 export interface OnethingSessionMessageRuntimeLogger {
   log?(...args: unknown[]): void
@@ -37,7 +38,11 @@ export interface OnethingSessionMessageRuntimeRepository<
 > {
   getSession(sessionId: string): TSession | undefined
   getCachedSession?(sessionId: string): TSession | undefined
-  saveSessionToFile(sessionId: string, session: TSession): void
+  saveSessionToFile(
+    sessionId: string,
+    session: TSession,
+    options?: { lazy?: boolean; plan?: SessionWritePlan },
+  ): void
   syncSessionToSqliteIfReady?(session: TSession): void
   updateSessionsIndexMeta(sessionId: string, update: (meta: TMeta) => void): boolean
 }
@@ -132,7 +137,10 @@ export class OnethingSessionMessageRuntime<
       message,
       now: this.now(),
       getSession: id => this.options.repository.getSession(id),
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session),
+      // 追加 = 从新消息的 seq 起做后缀写
+      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session, {
+        plan: { kind: 'message', dirtySeq: session.messages.length },
+      }),
       syncMessage: (session, nextMessage) => this.syncMessageToSqliteIfReady(session, nextMessage),
       updateIndexMeta: (id, mutate) => this.options.repository.updateSessionsIndexMeta(id, mutate),
     })
@@ -225,12 +233,13 @@ export class OnethingSessionMessageRuntime<
     return true
   }
 
+  // 逐 token 高频路径:只更新缓存并用 lazy 档兜底落盘,避免流式期间反复全量写盘。
   updateMessageContent(sessionId: string, messageId: string, newContent: string): boolean {
-    return this.patchMessage(sessionId, messageId, { content: newContent } as Partial<TMessage>)
+    return this.patchMessage(sessionId, messageId, { content: newContent } as Partial<TMessage>, { lazy: true })
   }
 
   updateMessageReasoning(sessionId: string, messageId: string, reasoning: string): boolean {
-    return this.patchMessage(sessionId, messageId, { reasoning } as Partial<TMessage>)
+    return this.patchMessage(sessionId, messageId, { reasoning } as Partial<TMessage>, { lazy: true })
   }
 
   updateMessageStreaming(sessionId: string, messageId: string, isStreaming: boolean): boolean {
@@ -246,7 +255,7 @@ export class OnethingSessionMessageRuntime<
   }
 
   updateMessageContentParts(sessionId: string, messageId: string, contentParts: TMessage['contentParts']): boolean {
-    return this.patchMessage(sessionId, messageId, { contentParts } as Partial<TMessage>)
+    return this.patchMessage(sessionId, messageId, { contentParts } as Partial<TMessage>, { lazy: true })
   }
 
   addMessageContentPart(sessionId: string, messageId: string, part: TContentPart): boolean {
@@ -256,7 +265,7 @@ export class OnethingSessionMessageRuntime<
   }
 
   updateMessageThinkingTime(sessionId: string, messageId: string, thinkingTime: number): boolean {
-    return this.patchMessage(sessionId, messageId, { thinkingTime } as Partial<TMessage>)
+    return this.patchMessage(sessionId, messageId, { thinkingTime } as Partial<TMessage>, { lazy: true })
   }
 
   updateMessageSkill(sessionId: string, messageId: string, skillUsed: string): boolean {
@@ -277,11 +286,13 @@ export class OnethingSessionMessageRuntime<
   }
 
   updateMessageStep(sessionId: string, messageId: string, stepId: string, updates: Partial<TStep>): boolean {
+    // step 存活期间的活跃计时/部分输出更新是高频的;完成态(status 变更)按边界立即调度。
+    const lazy = updates.status === undefined
     return this.mutateMessage(sessionId, messageId, (session, targetMessageId) => {
       const message = findSessionMessage(session, targetMessageId)
       if (!message) return undefined
       return updateSessionMessageStep(message, stepId, updates) ? message : undefined
-    })
+    }, { lazy })
   }
 
   updateMessageSteps(sessionId: string, messageId: string, steps: TStep[] | undefined): boolean {
@@ -300,15 +311,27 @@ export class OnethingSessionMessageRuntime<
       turnIndex,
       usage,
       getSession: id => this.options.repository.getSession(id),
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session),
+      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session, {
+        plan: this.messageWritePlan(session, messageId),
+      }),
       syncMessage: (session, message) => this.syncMessageToSqliteIfReady(session, message),
     })
   }
 
-  private patchMessage(sessionId: string, messageId: string, patch: Partial<TMessage>): boolean {
+  private patchMessage(
+    sessionId: string,
+    messageId: string,
+    patch: Partial<TMessage>,
+    saveOptions?: { lazy?: boolean },
+  ): boolean {
     return this.mutateMessage(sessionId, messageId, (session, targetMessageId) =>
       patchSessionMessage<TMessage, Partial<TMessage>>(session, targetMessageId, patch),
-    )
+    saveOptions)
+  }
+
+  private messageWritePlan(session: TSession, messageId: string): SessionWritePlan {
+    const index = session.messages.findIndex(item => item.id === messageId)
+    return index === -1 ? { kind: 'structural' } : { kind: 'message', dirtySeq: index + 1 }
   }
 
   private mutateMessage(
@@ -318,13 +341,17 @@ export class OnethingSessionMessageRuntime<
       session: TSession,
       messageId: string,
     ) => TMessage | undefined,
+    saveOptions?: { lazy?: boolean },
   ): boolean {
     return applySessionMessageMutationWithAdapters<TSession, TMessage>({
       sessionId,
       messageId,
       getSession: id => this.options.repository.getSession(id),
       mutateMessage,
-      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session),
+      saveSession: (id, session) => this.options.repository.saveSessionToFile(id, session, {
+        ...saveOptions,
+        plan: this.messageWritePlan(session, messageId),
+      }),
       syncMessage: (session, message) => this.syncMessageToSqliteIfReady(session, message),
     }).applied
   }

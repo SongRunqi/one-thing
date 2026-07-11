@@ -1,0 +1,199 @@
+{
+  "id": "paper-ink",
+  "name": "纸墨 Paper Ink",
+  "author": "onething",
+  "version": "1.0.0",
+  "type": "full",
+  "colorScheme": "light",
+
+  "defs": {
+    "paper0": "#ece4d0",
+    "paper1": "#f4eedd",
+    "paper2": "#faf6ea",
+    "card": "#fffdf6",
+    "ink": "#262218",
+    "ink2": "#4c4536",
+    "ink3": "#7d7561",
+    "ink4": "#a39a83",
+    "line": "#ddd3bb",
+    "lineSubtle": "#e8e0cc",
+    "lineStrong": "#8a8069",
+    "zhusha": "#a63c26",
+    "zhushaDeep": "#8f3320",
+    "dailan": "#39586f",
+    "dailanDeep": "#2c4457",
+    "zhuqing": "#4a7c59",
+    "tenghuang": "#9a6b1f"
+  },
+
+  "theme": {
+    "accent": "zhusha",
+    "accentMain": "zhusha",
+    "accentSub": { "dark": "rgba(166, 60, 38, 0.2)", "light": "rgba(166, 60, 38, 0.14)" },
+    "accentRgb": "166, 60, 38",
+
+    "bg": {
+      "app": "paper1",
+      "sidebar": "paper0",
+      "chat": "paper2",
+      "panel": "paper2",
+      "elevated": "card",
+      "floating": "paper0",
+      "message": {
+        "user": "card",
+        "userSolid": "card",
+        "ai": "transparent",
+        "system": "paper1",
+        "error": "rgba(166, 60, 38, 0.08)",
+        "hover": "rgba(125, 117, 97, 0.04)"
+      },
+      "toolCall": "paper1",
+      "toolCallHover": "paper0",
+      "toolResult": "paper1",
+      "input": "card",
+      "inputFocus": "card",
+      "btn": {
+        "primary": "zhusha",
+        "primaryHover": "zhushaDeep",
+        "secondary": "paper0",
+        "secondaryHover": "line",
+        "ghost": "transparent",
+        "ghostHover": "paper1",
+        "danger": "zhusha",
+        "dangerHover": "zhushaDeep"
+      },
+      "code": {
+        "inline": "paper1",
+        "block": "paper1",
+        "header": "paper0"
+      },
+      "menu": "card",
+      "menuItemHover": "paper1",
+      "tooltip": "ink2",
+      "modal": "paper2",
+      "selected": "rgba(166, 60, 38, 0.10)",
+      "selectedHover": "rgba(166, 60, 38, 0.16)",
+      "highlight": "rgba(154, 107, 31, 0.16)",
+      "hover": "rgba(125, 117, 97, 0.07)",
+      "active": "rgba(125, 117, 97, 0.13)"
+    },
+
+    "text": {
+      "primary": "ink",
+      "secondary": "ink2",
+      "muted": "ink3",
+      "faint": "ink4",
+      "error": "zhusha",
+      "warning": "tenghuang",
+      "success": "zhuqing",
+      "info": "dailan",
+      "link": "dailan",
+      "linkHover": "dailanDeep",
+      "user": {
+        "primary": "ink",
+        "secondary": "ink2"
+      },
+      "ai": {
+        "primary": "ink",
+        "secondary": "ink2",
+        "thinking": "ink3"
+      },
+      "tool": {
+        "name": "dailan",
+        "args": "ink3",
+        "result": "ink3",
+        "error": "zhusha"
+      },
+      "sidebar": {
+        "title": "ink",
+        "item": "ink2",
+        "itemActive": "ink",
+        "itemHover": "ink",
+        "muted": "ink3"
+      },
+      "input": "ink",
+      "inputPlaceholder": "ink4",
+      "btn": {
+        "primary": "card",
+        "secondary": "ink2",
+        "ghost": "ink3",
+        "danger": "card"
+      },
+      "code": {
+        "inline": "ink",
+        "block": "ink",
+        "comment": "ink4",
+        "keyword": "zhusha",
+        "string": "zhuqing",
+        "number": "tenghuang",
+        "function": "dailan",
+        "variable": "ink",
+        "operator": "ink3",
+        "type": "tenghuang",
+        "property": "dailan",
+        "punctuation": "ink3"
+      },
+      "menu": {
+        "item": "ink2",
+        "itemHover": "ink",
+        "itemActive": "ink",
+        "header": "ink3"
+      },
+      "label": "ink2",
+      "helper": "ink3"
+    },
+
+    "border": {
+      "default": "line",
+      "subtle": "lineSubtle",
+      "strong": "lineStrong",
+      "accent": "zhusha",
+      "error": "zhusha",
+      "success": "zhuqing",
+      "warning": "tenghuang",
+      "input": "line",
+      "inputFocus": "zhusha",
+      "inputError": "zhusha",
+      "message": "lineSubtle",
+      "messageUser": "dailan",
+      "code": "line",
+      "divider": "lineSubtle"
+    },
+
+    "shadow": {
+      "xs": "0 1px 2px rgba(76, 69, 54, 0.05)",
+      "sm": "0 1px 3px rgba(76, 69, 54, 0.07)",
+      "md": "0 4px 12px rgba(76, 69, 54, 0.08)",
+      "lg": "0 8px 24px rgba(76, 69, 54, 0.10)",
+      "xl": "0 16px 44px rgba(76, 69, 54, 0.13)",
+      "inner": "inset 0 1px 2px rgba(76, 69, 54, 0.05)",
+      "glow": {
+        "accent": "0 0 18px rgba(166, 60, 38, 0.16)",
+        "error": "0 0 18px rgba(166, 60, 38, 0.16)"
+      },
+      "elevated": "0 8px 28px rgba(76, 69, 54, 0.09)",
+      "floating": "0 14px 40px rgba(76, 69, 54, 0.14)"
+    },
+
+    "effects": {
+      "gradientUserBubble": "linear-gradient(135deg, #fffdf6 0%, #fdfaf0 100%)",
+      "gradientAiBubble": "linear-gradient(135deg, transparent 0%, transparent 100%)",
+      "gradientAccent": "linear-gradient(135deg, #a63c26 0%, #39586f 100%)",
+      "overlayHover": "rgba(125, 117, 97, 0.06)",
+      "overlayActive": "rgba(125, 117, 97, 0.12)",
+      "overlayDisabled": "rgba(250, 246, 234, 0.55)",
+      "blurBackdrop": "18px"
+    },
+
+    "color": {
+      "danger": "zhusha",
+      "dangerLight": "rgba(166, 60, 38, 0.10)",
+      "warning": "tenghuang",
+      "warningLight": "rgba(154, 107, 31, 0.10)",
+      "success": "zhuqing",
+      "successLight": "rgba(74, 124, 89, 0.10)",
+      "info": "dailan",
+      "infoLight": "rgba(57, 88, 111, 0.10)"
+    }
+  }
+}

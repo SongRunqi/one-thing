@@ -239,9 +239,8 @@ let composerMeasureFrame: number | null = null
 let lastMeasuredComposerHeight = -1
 let contentColumnResizeObserver: ResizeObserver | null = null
 let contentColumnMeasureFrame: number | null = null
-let deferredComposerMeasure = false
-let deferredContentColumnMeasure = false
-let deferredLayoutMeasureTimer: ReturnType<typeof setTimeout> | null = null
+let layoutFollowFrame: number | null = null
+let lastMeasuredPanelLeft: number | null = null
 let pendingComposerResizeHeight: number | null = null
 
 const CONTENT_COLUMN_VAR_NAMES = [
@@ -281,19 +280,8 @@ function getResizeEntryBlockSize(entry: ResizeObserverEntry): number {
   return firstBorderBox?.blockSize ?? entry.contentRect.height
 }
 
-function deferChatPanelMeasurementDuringTransition(kind: 'composer' | 'content-column'): boolean {
-  if (!props.layoutTransitioning) return false
-  if (kind === 'composer') {
-    deferredComposerMeasure = true
-  } else {
-    deferredContentColumnMeasure = true
-  }
-  return true
-}
-
 function measureContentColumn() {
   contentColumnMeasureFrame = null
-  if (deferChatPanelMeasurementDuringTransition('content-column')) return
 
   const panel = chatPanelRef.value
   const column = getContentColumnElement()
@@ -304,6 +292,7 @@ function measureContentColumn() {
 
   const panelRect = panel.getBoundingClientRect()
   const columnRect = column.getBoundingClientRect()
+  lastMeasuredPanelLeft = panelRect.left
   const left = columnRect.left - panelRect.left
   const right = panelRect.right - columnRect.right
   const width = columnRect.width
@@ -324,7 +313,6 @@ function measureContentColumn() {
 }
 
 function scheduleContentColumnMeasure() {
-  if (deferChatPanelMeasurementDuringTransition('content-column')) return
   if (contentColumnMeasureFrame !== null) return
   contentColumnMeasureFrame = requestAnimationFrame(measureContentColumn)
 }
@@ -366,14 +354,12 @@ function applyPendingComposerResizeHeight(): boolean {
 
 function measureComposerHeight() {
   composerMeasureFrame = null
-  if (deferChatPanelMeasurementDuringTransition('composer')) return
   if (applyPendingComposerResizeHeight()) return
   const composer = composerContainerRef.value
   setComposerHeightVariable(composer?.getBoundingClientRect().height ?? 0)
 }
 
 function scheduleComposerMeasure() {
-  if (deferChatPanelMeasurementDuringTransition('composer')) return
   if (composerMeasureFrame !== null) return
   composerMeasureFrame = requestAnimationFrame(measureComposerHeight)
 }
@@ -390,10 +376,6 @@ function observeComposerHeight() {
     const entry = entries.find(item => item.target === composerContainerRef.value) ?? entries[0]
     if (!entry) return
     pendingComposerResizeHeight = getResizeEntryBlockSize(entry)
-    if (props.layoutTransitioning) {
-      deferredComposerMeasure = true
-      return
-    }
     applyPendingComposerResizeHeight()
   })
   composerResizeObserver.observe(composer, { box: 'border-box' })
@@ -542,10 +524,7 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(contentColumnMeasureFrame)
     contentColumnMeasureFrame = null
   }
-  if (deferredLayoutMeasureTimer) {
-    clearTimeout(deferredLayoutMeasureTimer)
-    deferredLayoutMeasureTimer = null
-  }
+  stopLayoutFollowLoop()
 
   const sessionId = effectiveSessionId.value
   if (sessionId) {
@@ -565,41 +544,72 @@ watch(
   { flush: 'post' },
 )
 
+// While the sidebar (or another layout region) animates, re-measure every frame
+// so the composer column tracks the moving layout instead of snapping afterwards.
+function stopLayoutFollowLoop() {
+  if (layoutFollowFrame !== null) {
+    cancelAnimationFrame(layoutFollowFrame)
+    layoutFollowFrame = null
+  }
+}
+
+function runLayoutFollowLoop() {
+  if (layoutFollowFrame !== null) return
+  layoutFollowFrame = requestAnimationFrame(() => {
+    layoutFollowFrame = null
+    if (!props.layoutTransitioning) return
+    const prevPanelLeft = lastMeasuredPanelLeft
+    measureContentColumn()
+    if (prevPanelLeft !== null && lastMeasuredPanelLeft !== null) {
+      const delta = prevPanelLeft - lastMeasuredPanelLeft
+      if (Math.abs(delta) >= 0.5) applyLayoutFlip(delta)
+    }
+    runLayoutFollowLoop()
+  })
+}
+
+// The panel origin snaps in a single frame when the docked sidebar toggles
+// (its width is deliberately discrete, see App.vue). Margin/width transitions
+// on the composer children ease relative to the container, so without
+// compensation the whole composer still jumps by the panel delta. FLIP: shift
+// the container back by that delta, then release it on the same curve.
+// Carrying the in-flight transform keeps re-toggles mid-animation smooth.
+function applyLayoutFlip(delta: number) {
+  const composer = composerContainerRef.value
+  if (!composer) return
+  const transform = getComputedStyle(composer).transform
+  const carried = transform && transform !== 'none' ? new DOMMatrixReadOnly(transform).m41 : 0
+  composer.style.transitionProperty = 'none'
+  composer.style.transform = `translateX(${(delta + carried).toFixed(2)}px)`
+  void composer.offsetWidth
+  composer.style.transitionProperty = ''
+  composer.style.transform = 'translateX(0px)'
+}
+
+function clearLayoutFlip() {
+  const composer = composerContainerRef.value
+  if (!composer) return
+  composer.style.transitionProperty = ''
+  composer.style.transform = ''
+}
+
 watch(
   () => props.layoutTransitioning,
-  (isTransitioning, wasTransitioning) => {
+  (isTransitioning) => {
+    // Imperative class: the container sits behind a v-memo, so a reactive
+    // :class binding would not re-render on this prop alone.
+    const composer = composerContainerRef.value
     if (isTransitioning) {
-      if (composerMeasureFrame !== null) {
-        cancelAnimationFrame(composerMeasureFrame)
-        composerMeasureFrame = null
-        deferredComposerMeasure = true
-      }
-      if (contentColumnMeasureFrame !== null) {
-        cancelAnimationFrame(contentColumnMeasureFrame)
-        contentColumnMeasureFrame = null
-        deferredContentColumnMeasure = true
-      }
-      if (deferredLayoutMeasureTimer) {
-        clearTimeout(deferredLayoutMeasureTimer)
-        deferredLayoutMeasureTimer = null
-      }
+      composer?.classList.add('is-layout-animating')
+      runLayoutFollowLoop()
       return
     }
-
-    const shouldMeasureComposer = deferredComposerMeasure
-    const shouldMeasureContentColumn = deferredContentColumnMeasure
-    if (!wasTransitioning || (!shouldMeasureComposer && !shouldMeasureContentColumn)) return
-
-    deferredComposerMeasure = false
-    deferredContentColumnMeasure = false
-    if (deferredLayoutMeasureTimer) {
-      clearTimeout(deferredLayoutMeasureTimer)
-    }
-    deferredLayoutMeasureTimer = setTimeout(() => {
-      deferredLayoutMeasureTimer = null
-      if (shouldMeasureContentColumn) scheduleContentColumnMeasure()
-      if (shouldMeasureComposer) applyPendingComposerResizeHeight()
-    }, 480)
+    stopLayoutFollowLoop()
+    clearLayoutFlip()
+    composer?.classList.remove('is-layout-animating')
+    // Final true-up once the animation settles.
+    scheduleContentColumnMeasure()
+    scheduleComposerMeasure()
   },
 )
 
@@ -750,10 +760,33 @@ defineExpose({
   padding: 0 0 16px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* flex-start, not center: the column children position themselves via the
+     measured margin vars (auto margins still center the fallback). Centering
+     would re-split leftover space in a single frame when the panel width
+     snaps, defeating the animated margins below. */
+  align-items: flex-start;
   background: transparent;
   position: relative;
   z-index: 3;
+}
+
+.composer-container > :deep(.background-jobs-bar) {
+  align-self: center;
+}
+
+/* The docked sidebar snaps discretely (see App.vue), so the composer glides
+   to its new column on its own; only while the layout toggle is animating,
+   so live splitter drags keep tracking the cursor 1:1. The container transform
+   carries the FLIP compensation for the panel-origin snap. */
+.composer-container.is-layout-animating {
+  transition: transform var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.composer-container.is-layout-animating :deep(.composer-wrapper),
+.composer-container.is-layout-animating .session-permission-panel {
+  transition:
+    width var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1)),
+    margin var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
 .session-permission-panel {

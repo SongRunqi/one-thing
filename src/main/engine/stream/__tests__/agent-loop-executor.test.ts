@@ -82,6 +82,7 @@ function supportedPrepared(overrides: Partial<SupportedAgentLoopRuntimeResult> =
       messageId: 'm1',
     },
     systemPrompt: 'system',
+    sections: [],
     enabledSkills: [],
     toolNames: ['read'],
     mcpToolNames: ['mcp_search'],

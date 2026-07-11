@@ -3,8 +3,6 @@
     class="scrollbar"
     :class="scrollbarClasses"
     :style="scrollbarStyle"
-    @mouseenter="isHovering = true"
-    @mouseleave="isHovering = false"
   >
     <div
       ref="scrollerRef"
@@ -90,7 +88,6 @@ const emit = defineEmits<{
 const scrollerRef = ref<HTMLElement | null>(null)
 const contentRef = ref<HTMLElement | null>(null)
 const geometry = ref<ScrollbarState>(createEmptyScrollState())
-const isHovering = ref(false)
 const isScrolling = ref(false)
 const isDragging = ref(false)
 
@@ -127,7 +124,6 @@ const scrollbarClasses = computed(() => ({
   'is-scrollable-x': showHorizontalBar.value,
   'is-stable-gutter': props.native && props.stableGutter,
   'is-vertical-disabled': !props.vertical,
-  'is-hovering': isHovering.value,
   'is-scrolling': isScrolling.value,
   'is-dragging': isDragging.value,
 }))
@@ -443,7 +439,8 @@ defineExpose({
 .scrollbar {
   --scrollbar-size: 8px;
   --scrollbar-track-inset: 2px;
-  --scrollbar-idle-opacity: 0.42;
+  /* Overlay bar stays hidden until the user scrolls, drags, or hovers the track. */
+  --scrollbar-idle-opacity: 0;
   --scrollbar-active-opacity: 1;
   --scrollbar-thumb-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 26%, transparent);
   --scrollbar-thumb-hover-bg: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 42%, transparent);
@@ -573,16 +570,14 @@ defineExpose({
   height: 100%;
 }
 
-.scrollbar.is-hovering .scrollbar-track,
 .scrollbar.is-scrolling .scrollbar-track,
 .scrollbar.is-dragging .scrollbar-track,
-.scrollbar:focus-within .scrollbar-track {
+.scrollbar-track:hover {
   opacity: var(--scrollbar-active-opacity);
 }
 
-.scrollbar.is-hovering .scrollbar-thumb,
 .scrollbar.is-scrolling .scrollbar-thumb,
-.scrollbar:focus-within .scrollbar-thumb {
+.scrollbar-track:hover .scrollbar-thumb {
   background: var(--scrollbar-thumb-hover-bg);
 }
 

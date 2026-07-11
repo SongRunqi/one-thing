@@ -42,6 +42,15 @@ export interface StreamEnginePromptAdapter<TSkill = unknown, TContentPart = unkn
   ): StreamEnginePromptResolution<TContentPart>
 }
 
+export interface StreamEngineVariablesAdapter {
+  /**
+   * Text for the per-turn <context-update> block (turn-volatile context
+   * variables). Attached to the user message at send time and persisted
+   * there, so history rebuilds replay identical bytes (prompt-cache safe).
+   */
+  buildTurnContext(sessionId: string): Promise<string> | string
+}
+
 export interface StreamEngineMediaAdapter<TAttachment = unknown> {
   ingestMessageAttachments(
     sessionId: string,

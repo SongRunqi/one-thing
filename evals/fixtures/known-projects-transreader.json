@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "capturedAt": "2026-07-03T00:00:00Z",
+  "promptVersion": "00000000",
+  "provider": "eval",
+  "model": "eval",
+  "context": {
+    "workingDirectory": "/Users/tester/data/code/start-electron",
+    "knownProjects": {
+      "hasAny": true,
+      "entries": [
+        {
+          "path": "/Users/tester/data/code/transreader",
+          "displayPath": "~/data/code/transreader",
+          "description": "TransReader: Python macOS menu bar translation app"
+        }
+      ]
+    },
+    "skills": [],
+    "toolNames": ["read", "write", "edit", "bash", "glob", "grep", "variable"],
+    "hasTools": true,
+    "platform": "darwin"
+  },
+  "userMessage": "How do I configure the transreader project?",
+  "sessionRef": {
+    "sessionId": "eval-known-projects-2026-07-03",
+    "turnId": "eval-known-projects-2026-07-03"
+  }
+}

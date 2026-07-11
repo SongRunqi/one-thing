@@ -1,4 +1,4 @@
-import { clipboard, contextBridge, ipcRenderer } from "electron";
+import { clipboard, contextBridge, ipcRenderer, webUtils } from "electron";
 import { IPC_CHANNELS } from "../../../../src/shared/ipc.js";
 import type {
 	GetSessionMessagesPageRequest,
@@ -17,7 +17,10 @@ import type {
 	SchedulerListRunsRequest,
 	SchedulerUpdateTaskRequest,
 	SearchRequest,
+	SearchWindowAnchor,
 	SearchWindowGuideState,
+	SearchWindowOpenOptions,
+	SearchWindowShownPayload,
 	TodoPlanWindowActionRequest,
 } from "../../../../src/shared/ipc.js";
 
@@ -389,31 +392,31 @@ const electronAPI = {
 	gatewayWechatRenameAccount: (request: any) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GATEWAY_WECHAT_RENAME_ACCOUNT, request),
 
-		channelIdentityListLinks: (request?: any) =>
-			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_LIST_LINKS, request || {}),
+	channelIdentityListLinks: (request?: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_LIST_LINKS, request || {}),
 
-		channelIdentityListProfiles: () =>
-			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_LIST_PROFILES),
+	channelIdentityListProfiles: () =>
+		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_LIST_PROFILES),
 
-		channelIdentityCreateProfile: (request: any) =>
-			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_CREATE_PROFILE, request),
+	channelIdentityCreateProfile: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_CREATE_PROFILE, request),
 
-		channelIdentityUpdateProfile: (request: any) =>
-			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_UPDATE_PROFILE, request),
+	channelIdentityUpdateProfile: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_UPDATE_PROFILE, request),
 
-		channelIdentityCreateLink: (request: any) =>
-			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_CREATE_LINK, request),
+	channelIdentityCreateLink: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_CREATE_LINK, request),
 
-		channelIdentityDeleteLink: (id: string) =>
-			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_DELETE_LINK, { id }),
+	channelIdentityDeleteLink: (id: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_DELETE_LINK, { id }),
 
-		channelIdentityResolve: (origin: any) =>
-			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_RESOLVE, { origin }),
+	channelIdentityResolve: (origin: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_IDENTITY_RESOLVE, { origin }),
 
-		channelDeliveryList: () =>
-			ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_DELIVERY_LIST),
+	channelDeliveryList: () =>
+		ipcRenderer.invoke(IPC_CHANNELS.CHANNEL_DELIVERY_LIST),
 
-		// Voice methods
+	// Voice methods
 	voiceGetState: () => ipcRenderer.invoke(IPC_CHANNELS.VOICE_GET_STATE),
 
 	voiceStart: (request?: any) =>
@@ -501,7 +504,10 @@ const electronAPI = {
 	openThemesFolder: () => ipcRenderer.invoke(IPC_CHANNELS.THEME_OPEN_FOLDER),
 
 	// Model registry methods (reads from settings.json modelRegistry)
-	getModelsWithCapabilities: (providerId: string, options?: { forceRefresh?: boolean }) =>
+	getModelsWithCapabilities: (
+		providerId: string,
+		options?: { forceRefresh?: boolean },
+	) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GET_MODELS_WITH_CAPABILITIES, {
 			providerId,
 			forceRefresh: options?.forceRefresh,
@@ -527,7 +533,9 @@ const electronAPI = {
 	getProviderUsage: (providerId: string): Promise<ProviderUsageResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDER_USAGE, { providerId }),
 
-	getProviderEnvStatus: (providerId: string): Promise<GetProviderEnvStatusResponse> =>
+	getProviderEnvStatus: (
+		providerId: string,
+	): Promise<GetProviderEnvStatusResponse> =>
 		ipcRenderer.invoke(IPC_CHANNELS.GET_PROVIDER_ENV_STATUS, {
 			providerId,
 		}),
@@ -713,6 +721,17 @@ const electronAPI = {
 	// Window methods
 	setWindowButtonVisibility: (visible: boolean) =>
 		ipcRenderer.invoke("window:set-button-visibility", visible),
+
+	// File methods
+	// Resolves the on-disk path of a dropped/picked File so attachments can
+	// carry it to the model (pasted files have no path and yield "").
+	getPathForFile: (file: File) => {
+		try {
+			return webUtils.getPathForFile(file);
+		} catch {
+			return "";
+		}
+	},
 
 	// Clipboard methods
 	writeClipboardText: (text: string) => {
@@ -1189,20 +1208,27 @@ const electronAPI = {
 	}) => ipcRenderer.invoke(IPC_CHANNELS.SAVE_UI_STATE, uiState),
 
 	// ── Search Everywhere ──────────────────────────
-	toggleSearchWindow: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_TOGGLE),
+	toggleSearchWindow: (options?: SearchWindowOpenOptions) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_TOGGLE, options),
 
 	closeSearchWindow: () => ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_CLOSE),
 
-	onSearchWindowShown: (callback: () => void) => {
-		const listener = () => callback();
+	setSearchWindowAnchor: (anchor: SearchWindowAnchor | null) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SEARCH_WINDOW_SET_ANCHOR, anchor),
+
+	onSearchWindowShown: (
+		callback: (payload?: SearchWindowShownPayload | null) => void,
+	) => {
+		const listener = (_event: any, payload?: SearchWindowShownPayload | null) =>
+			callback(payload);
 		ipcRenderer.on(IPC_CHANNELS.SEARCH_WINDOW_SHOWN, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_WINDOW_SHOWN, listener);
 	},
 
 	onSearchWindowGuides: (callback: (state: SearchWindowGuideState) => void) => {
-		const listener = (_event: any, state: SearchWindowGuideState) => callback(state);
+		const listener = (_event: any, state: SearchWindowGuideState) =>
+			callback(state);
 		ipcRenderer.on(IPC_CHANNELS.SEARCH_WINDOW_GUIDES, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_WINDOW_GUIDES, listener);
@@ -1217,7 +1243,8 @@ const electronAPI = {
 	onSearchAction: (callback: (actionId: string) => void) => {
 		const listener = (_event: any, actionId: string) => callback(actionId);
 		ipcRenderer.on(IPC_CHANNELS.SEARCH_ACTION, listener);
-		return () => ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_ACTION, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.SEARCH_ACTION, listener);
 	},
 
 	// Todo / Plan
@@ -1257,6 +1284,145 @@ const electronAPI = {
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.TODO_PLAN_CHANGED, listener);
 	},
+
+	// Evals (prompt evaluation) — 👎 downvote + Review + Run + Actions
+	recordEvalsDownvote: (request: {
+		sessionId: string;
+		turnId: string;
+		userMessage: string;
+		note?: string;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_RECORD_DOWNVOTE, request),
+
+	// Phase 1: Review (read-only)
+	evalsListRecords: (request: {
+		negativeOnly?: boolean;
+		category?: string;
+		sinceTs?: string;
+		limit?: number;
+		offset?: number;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_LIST_RECORDS, request),
+
+	evalsListFixtures: () => ipcRenderer.invoke(IPC_CHANNELS.EVALS_LIST_FIXTURES),
+
+	evalsReadFixture: (request: { fixturePath: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_READ_FIXTURE, request),
+
+	evalsListResults: () => ipcRenderer.invoke(IPC_CHANNELS.EVALS_LIST_RESULTS),
+
+	evalsListCases: () => ipcRenderer.invoke(IPC_CHANNELS.EVALS_LIST_CASES),
+
+	evalsGetCase: (request: { caseId: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_GET_CASE, request),
+
+	// Phase 2: Run
+	evalsRunStart: (request: {
+		caseIds?: string[];
+		runs: number;
+		disabledSections?: string[];
+		providerId: string;
+		model: string;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_RUN_START, request),
+
+	evalsRunCancel: () => ipcRenderer.invoke(IPC_CHANNELS.EVALS_RUN_CANCEL),
+
+	onEvalsRunProgress: (callback: (event: any) => void) => {
+		const listener = (_event: any, data: any) => callback(data);
+		ipcRenderer.on(IPC_CHANNELS.EVALS_RUN_PROGRESS, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.EVALS_RUN_PROGRESS, listener);
+	},
+
+	// Phase 3: Actions
+	evalsPromoteFixture: (request: {
+		fixturePath: string;
+		caseId: string;
+		description: string;
+		expect: {
+			firstToolCall?: string;
+			contains?: string;
+			notContains?: string;
+		};
+	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_PROMOTE_FIXTURE, request),
+
+	evalsRetireCase: (request: { caseId: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_RETIRE_CASE, request),
+
+	evalsGenerateTriage: (request?: { weeks?: number }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_GENERATE_TRIAGE, request || {}),
+
+	evalsReadRunDetail: (request: { detailPath: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_READ_RUN_DETAIL, request),
+
+	// Evals Workbench (incident-centric)
+	evalsIncidentList: () =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_LIST),
+
+	evalsIncidentGet: (request: { incidentId: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_GET, request),
+
+	evalsIncidentUpdate: (request: {
+		incidentId: string;
+		patch: { status?: string; note?: string; rubric?: string; title?: string };
+	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_UPDATE, request),
+
+	evalsIncidentReadFile: (request: {
+		incidentId: string;
+		relativePath: string;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_READ_FILE, request),
+
+	evalsReplayStart: (request: {
+		incidentId: string;
+		runs?: number;
+		disabledSections?: string[];
+		judge?: boolean;
+		useCapturedPrompt?: boolean;
+		providerId?: string;
+		model?: string;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_REPLAY_START, request),
+
+	evalsReplayCancel: (request: { incidentId: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_REPLAY_CANCEL, request),
+
+	onEvalsReplayProgress: (callback: (event: any) => void) => {
+		const listener = (_event: any, data: any) => callback(data);
+		ipcRenderer.on(IPC_CHANNELS.EVALS_REPLAY_PROGRESS, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.EVALS_REPLAY_PROGRESS, listener);
+	},
+
+	evalsIncidentAnalyze: (request: { incidentId: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_ANALYZE, request),
+
+	evalsIncidentPromote: (request: {
+		incidentId: string;
+		caseId: string;
+		description?: string;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_INCIDENT_PROMOTE, request),
+
+	evalsDiagnoseStart: (request: { incidentId: string; quick?: boolean }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_DIAGNOSE_START, request),
+
+	onEvalsDiagnoseProgress: (callback: (event: any) => void) => {
+		const listener = (_event: any, data: any) => callback(data);
+		ipcRenderer.on(IPC_CHANNELS.EVALS_DIAGNOSE_PROGRESS, listener);
+		return () =>
+			ipcRenderer.removeListener(
+				IPC_CHANNELS.EVALS_DIAGNOSE_PROGRESS,
+				listener,
+			);
+	},
+
+	evalsRoundList: (request: { incidentId: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVALS_ROUND_LIST, request),
+
+	evalsRoundReplay: (request: {
+		incidentId: string;
+		round: number;
+		runs?: number;
+		editedMessages?: unknown[];
+		providerId?: string;
+		model?: string;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.EVALS_ROUND_REPLAY, request),
 };
 
 export function installOnethingPreloadBridge(): void {

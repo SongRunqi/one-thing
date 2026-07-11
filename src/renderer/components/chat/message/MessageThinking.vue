@@ -289,8 +289,10 @@ onUnmounted(() => {
 
 .thinking-text {
   color: currentColor;
-  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
   font-weight: 520;
+  letter-spacing: 0.5px;
 }
 
 .thinking-text.flowing {

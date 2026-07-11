@@ -1861,8 +1861,11 @@ function readElectronApiMethodNames(): string[] {
     }
   }
 
+  // Top-level members sit at exactly one indent level (one tab or two
+  // spaces); deeper-indented lines are parameters of multi-line signatures
+  // and must not be picked up as method names.
   return Array.from(
-    source.slice(interfaceStart, interfaceEnd).matchAll(/^\s{2}([A-Za-z_$][\w$]*):/gm),
+    source.slice(interfaceStart, interfaceEnd).matchAll(/^(?:\t| {2})([A-Za-z_$][\w$]*):/gm),
     match => match[1],
   )
 }

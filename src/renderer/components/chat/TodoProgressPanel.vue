@@ -86,21 +86,14 @@
               v-for="task in section.tasks"
               :key="`${section.title}-${task.lineIndex}`"
               class="todo-progress-task"
-              :class="{ done: task.done }"
+              :class="{ done: task.done, doing: isCurrentTask(task) }"
             >
-              <CheckCircle2
-                v-if="task.done"
-                :size="13"
-                :stroke-width="2.2"
-                aria-hidden="true"
-              />
-              <Circle
-                v-else
-                :size="13"
-                :stroke-width="2"
-                aria-hidden="true"
-              />
               <span>{{ task.text }}</span>
+              <i
+                class="todo-progress-task-leader"
+                aria-hidden="true"
+              />
+              <span class="todo-progress-task-state">{{ task.done ? '讫' : '…' }}</span>
             </div>
           </div>
         </section>
@@ -110,9 +103,9 @@
 </template>
 
 <script setup lang="ts">
-import { CheckCircle2, Circle, ListChecks } from 'lucide-vue-next'
+import { CheckCircle2, ListChecks } from 'lucide-vue-next'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { TaskSection } from './todo-plan-utils'
+import type { ParsedTask, TaskSection } from './todo-plan-utils'
 import type { TodoPlanChangedPayload, TodoPlanDocument, TodoPlanSnapshot } from '@/types'
 import { groupTasksBySection, parseTasks, titleFromMarkdown } from './todo-plan-utils'
 import { platformApi } from '@/platform'
@@ -124,6 +117,10 @@ const props = withDefaults(defineProps<{
   sessionId: undefined,
   workingDirectory: undefined,
 })
+
+const emit = defineEmits<{
+  progressChange: [progress: { done: number, total: number, currentText: string }]
+}>()
 
 const snapshot = ref<TodoPlanSnapshot | null>(null)
 const loading = ref(false)
@@ -149,6 +146,10 @@ const progressPercent = computed(() => {
 
 function doneInSection(section: TaskSection) {
   return section.tasks.filter(task => task.done).length
+}
+
+function isCurrentTask(task: ParsedTask) {
+  return !task.done && currentTask.value?.lineIndex === task.lineIndex
 }
 
 function applyDocument(document: TodoPlanDocument) {
@@ -194,6 +195,18 @@ watch(
   () => {
     loadSnapshot()
   },
+)
+
+watch(
+  [doneCount, totalCount, currentTask],
+  () => {
+    emit('progressChange', {
+      done: doneCount.value,
+      total: totalCount.value,
+      currentText: currentTask.value?.text || '',
+    })
+  },
+  { immediate: true },
 )
 
 onMounted(() => {
@@ -268,8 +281,6 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   min-height: 92px;
-  border: 1px dashed var(--todo-progress-rule);
-  border-radius: 8px;
   color: var(--todo-progress-muted);
   font-size: 12px;
 }
@@ -278,30 +289,28 @@ onUnmounted(() => {
   color: color-mix(in srgb, var(--ui-danger-fg, #c2410c) 84%, var(--ui-text-primary-fg, var(--text)));
 }
 
+/* 描红:点线基线,做完的一段描成朱砂实线 */
 .todo-progress-meter {
   position: relative;
   flex: 0 0 auto;
-  height: 5px;
+  height: 0;
   margin: 12px 0;
-  overflow: hidden;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 12%, transparent);
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 90%, transparent);
 }
 
 .todo-progress-meter-fill {
   position: absolute;
-  inset: 0 auto 0 0;
-  border-radius: inherit;
-  background: color-mix(in srgb, var(--todo-progress-accent) 72%, var(--ui-status-success-fg, var(--todo-progress-accent)) 28%);
+  top: auto;
+  bottom: -1.5px;
+  left: 0;
+  height: 0;
+  border-bottom: 1.5px solid var(--todo-progress-accent);
 }
 
 .todo-progress-current {
   display: grid;
   gap: 4px;
-  padding: 9px 10px;
-  border: 1px solid var(--todo-progress-rule);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg))) 58%, transparent);
+  padding: 2px 0;
 }
 
 .todo-progress-current.is-complete {
@@ -328,6 +337,7 @@ onUnmounted(() => {
 .todo-progress-sections {
   display: grid;
   flex: 1 1 auto;
+  align-content: start;
   gap: 12px;
   min-height: 0;
   margin-top: 12px;
@@ -350,26 +360,54 @@ onUnmounted(() => {
 .todo-progress-tasks {
   display: grid;
   gap: 5px;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
 }
 
+/* 书目任务行:文字 …… 讫/…。完成的一行,点线描成朱砂。 */
 .todo-progress-task {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   min-height: 18px;
   color: color-mix(in srgb, var(--ui-text-secondary-fg, var(--text-secondary, var(--text))) 90%, var(--todo-progress-muted));
   font-size: 11.5px;
   line-height: 1.3;
 }
 
+.todo-progress-task-leader {
+  flex: 1 1 auto;
+  height: 0;
+  min-width: 10px;
+  border-bottom: 1.5px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 85%, transparent);
+  transform: translateY(1px);
+}
+
+.todo-progress-task-state {
+  flex: 0 0 auto;
+  color: var(--todo-progress-muted);
+  font-size: 10px;
+}
+
 .todo-progress-task.done {
   color: var(--todo-progress-muted);
 }
 
-.todo-progress-task.done span {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in srgb, currentColor 48%, transparent);
+.todo-progress-task.done .todo-progress-task-leader {
+  border-bottom-style: solid;
+  border-bottom-color: var(--todo-progress-accent);
+  opacity: 0.45;
+}
+
+.todo-progress-task.done .todo-progress-task-state {
+  color: var(--todo-progress-accent);
+}
+
+.todo-progress-task.doing {
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.todo-progress-task.doing .todo-progress-task-state {
+  color: var(--todo-progress-accent);
 }
 </style>

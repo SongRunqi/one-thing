@@ -40,12 +40,52 @@
           @update-thinking-time="handleUpdateThinkingTime"
         />
 
+        <!-- Attachments live outside the bubble: bare thumbnails for
+             images, compact chips for files. -->
+        <div
+          v-if="message.attachments?.length"
+          class="message-attachments"
+        >
+          <div
+            v-if="imageAttachments.length > 0"
+            class="message-attachment-images"
+            :class="{ grid: imageAttachments.length > 1 }"
+          >
+            <figure
+              v-for="attachment in imageAttachments"
+              :key="attachment.id"
+              class="message-figure"
+            >
+              <AttachmentThumb
+                size="md"
+                clickable
+                :src="attachmentImageSrc(attachment)"
+                :alt="attachment.fileName"
+                @open="openAttachmentImage(attachment)"
+              />
+              <figcaption class="message-figure-caption">
+                {{ attachment.fileName }} · {{ formatFileSize(attachment.size) }}
+              </figcaption>
+            </figure>
+          </div>
+          <div
+            v-if="fileAttachments.length > 0"
+            class="message-attachment-files"
+          >
+            <FileChip
+              v-for="attachment in fileAttachments"
+              :key="attachment.id"
+              :file-name="attachment.fileName"
+              :size-bytes="attachment.size"
+            />
+          </div>
+        </div>
+
         <!-- Message bubble -->
         <MessageBubble
           :role="message.role"
           :content="message.content"
           :content-parts="message.contentParts"
-          :attachments="message.attachments"
           :tool-calls="message.toolCalls"
           :steps="message.steps"
           :skill-used="message.skillUsed"
@@ -124,6 +164,7 @@
             :usage="message.usage"
             :model="message.model"
             :message-id="message.id"
+            :session-id="message.sessionId"
             @edit="startEdit"
             @regenerate="handleRegenerate"
             @branch="handleBranch"
@@ -137,8 +178,11 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import type { ChatMessage, ToolCall } from '@/types'
+import type { ChatMessage, MessageAttachment, ToolCall } from '@/types'
 import StepsPanel from './StepsPanel.vue'
+import AttachmentThumb from '@/components/common/AttachmentThumb.vue'
+import FileChip from '@/components/common/FileChip.vue'
+import { formatFileSize } from '@/utils/format'
 import MessageError from './message/MessageError.vue'
 import MessageSystem from './message/MessageSystem.vue'
 import MessageThinking from './message/MessageThinking.vue'
@@ -221,6 +265,33 @@ const messageHasContent = computed(() => {
 const topReasoning = computed(() => {
   return props.message.reasoning || ''
 })
+
+// Attachments render outside the bubble: images as bare thumbnails,
+// everything else (including images without a resolvable source) as chips.
+const imageAttachments = computed(() =>
+  (props.message.attachments ?? []).filter(
+    attachment => attachment.mediaType === 'image' && attachmentImageSrc(attachment),
+  ),
+)
+
+const fileAttachments = computed(() =>
+  (props.message.attachments ?? []).filter(
+    attachment => !(attachment.mediaType === 'image' && attachmentImageSrc(attachment)),
+  ),
+)
+
+function attachmentImageSrc(attachment: MessageAttachment): string {
+  if (attachment.base64Data) {
+    return `data:${attachment.mimeType};base64,${attachment.base64Data}`
+  }
+  return attachment.url || ''
+}
+
+function openAttachmentImage(attachment: MessageAttachment) {
+  const src = attachmentImageSrc(attachment)
+  if (!src) return
+  handleOpenMedia({ src, fileName: attachment.fileName })
+}
 
 // Format time
 function formatTime(timestamp: number): string {
@@ -349,6 +420,56 @@ function handleUpdateThinkingTime(time: number) {
 /* User messages: align items to the right */
 .message.user .message-content-wrapper {
   align-items: flex-end;
+}
+
+/* Attachment layer above the bubble: no shell of its own, each thumb/chip
+   carries its own surface. */
+.message-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: min(74%, 680px);
+  margin-bottom: 4px;
+}
+
+.message-attachment-images,
+.message-attachment-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.message.user .message-attachment-images,
+.message.user .message-attachment-files {
+  justify-content: flex-end;
+}
+
+/* Multiple images shrink into a uniform thumbnail grid. */
+.message-attachment-images.grid :deep(.attachment-thumb-img) {
+  width: 116px;
+  height: 116px;
+  object-fit: cover;
+}
+
+/* Plate captions: filename set like a figure label under each image. */
+.message-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  min-width: 0;
+}
+
+.message-figure-caption {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  font-size: 9.5px;
+  letter-spacing: 0.5px;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .message.assistant .message-content-wrapper {

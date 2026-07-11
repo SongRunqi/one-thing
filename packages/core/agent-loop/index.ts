@@ -17,6 +17,7 @@ export {
   agentToolMessageContentToText,
   agentToolMessageContentToStructuredPayload,
   agentToolMessageContentForCapabilities,
+  agentToolMessageContentFromHistoryResult,
   agentToolResultToMessageContent,
   agentToolResultToMessageContentForCapabilities,
 } from './tool-results.js'
@@ -24,6 +25,7 @@ export {
   agentContentFromHistoryContent,
   agentMessagesFromHistory,
   agentToolCallsFromHistory,
+  undeliverableAttachmentText,
 } from './messages.js'
 export {
   applyPromptInjectors,

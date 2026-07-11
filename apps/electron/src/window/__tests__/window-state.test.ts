@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  readElectronSearchWindowSize,
   readElectronTodoPlanWindowState,
   readElectronWindowState,
   sanitizeElectronWindowState,
   saveElectronMainWindowState,
+  saveElectronSearchWindowSize,
   saveElectronTodoPlanWindowState,
 } from '../window-state.js'
 
@@ -109,6 +111,47 @@ describe('electron window state persistence', () => {
       x: 12,
       y: 24,
       isMaximized: false,
+    })
+  })
+
+  it('reads and saves the remembered search window size', () => {
+    const store = storage({ width: 800, height: 600, searchWindow: { width: 700.4, height: 420 } })
+
+    expect(readElectronSearchWindowSize(store)).toEqual({ width: 700, height: 420 })
+
+    saveElectronSearchWindowSize(store, { width: 640, height: 360 })
+    expect(store.writeJsonFile).toHaveBeenCalledWith('/tmp/window-state.json', {
+      width: 800,
+      height: 600,
+      x: undefined,
+      y: undefined,
+      isMaximized: false,
+      searchWindow: { width: 640, height: 360 },
+    })
+  })
+
+  it('drops invalid search window sizes on read and refuses to persist them', () => {
+    const store = storage({ width: 800, height: 600, searchWindow: { width: -5, height: 300 } })
+
+    expect(readElectronSearchWindowSize(store)).toBeNull()
+
+    saveElectronSearchWindowSize(store, { width: Number.NaN, height: 300 })
+    expect(store.writeJsonFile).not.toHaveBeenCalled()
+  })
+
+  it('keeps the search window size when saving main window state', () => {
+    const store = storage({ width: 800, height: 600, searchWindow: { width: 700, height: 420 } })
+    const win = windowMock()
+
+    saveElectronMainWindowState(win, store)
+
+    expect(store.writeJsonFile).toHaveBeenCalledWith('/tmp/window-state.json', {
+      width: 900,
+      height: 700,
+      x: 12,
+      y: 24,
+      isMaximized: false,
+      searchWindow: { width: 700, height: 420 },
     })
   })
 

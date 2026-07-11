@@ -376,6 +376,33 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       }))
     throwIfAgentAborted(options.abortSignal)
 
+    // Per-round trace observation: `messages` still holds exactly what this
+    // round's request carried (outputs are appended below). Errors in the
+    // observer must never break the loop.
+    if (options.onTurnTrace) {
+      try {
+        options.onTurnTrace({
+          turn,
+          sessionId: options.sessionId,
+          messageId: options.messageId,
+          request: {
+            model: options.model,
+            messages,
+            tools,
+            toolChoice: resolveToolChoice(tools, options.toolChoice),
+            temperature: options.temperature,
+            maxTokens: options.maxTokens,
+            thinking: options.thinking,
+            reasoningEffort: options.reasoningEffort,
+          },
+          response: agentTurn,
+          toolResultMessages: pendingToolMessages,
+        })
+      } catch {
+        // Observation must not affect the loop
+      }
+    }
+
     messages.push(agentTurn.message)
     messages.push(...pendingToolMessages)
     assertAgentMessagesSupportedByCapabilities(messages, capabilities)

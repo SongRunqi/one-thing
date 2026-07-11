@@ -29,7 +29,7 @@
           class="tab-dirty-dot"
           aria-label="Modified"
         />
-        {{ displayTitle }}
+        <span class="tab-title-text">{{ displayTitle }}</span>
       </span>
       <Button
         v-if="closable"
@@ -115,17 +115,19 @@ function onDrop(e: DragEvent) {
 </script>
 
 <style scoped>
+/* 墨线页签:无胶囊无底色。inactive 纯文字,hover 点线浮现,
+   active 朱砂实线 —— 与 side panel「点描实」同一句法。 */
 .tab-item {
-  --tab-active-bg: var(--ui-surface-panel-bg, var(--bg-panel));
-  --tab-radius: 8px;
-  --tab-height: 28px;
   --tab-min-width: 82px;
   --tab-max-width: 220px;
+  /* 主题把 tab-bar-item-active-border 定义为 transparent(胶囊时代无边框),
+     底标直接取 accent 墨色。 */
+  --tab-ink: var(--ui-accent-primary-fg, var(--accent));
   position: relative;
   flex: 0 1 auto;
+  align-self: stretch;
   min-width: var(--tab-min-width);
   max-width: var(--tab-max-width);
-  height: var(--tab-height);
   margin-bottom: 0;
   box-sizing: border-box;
   cursor: pointer;
@@ -136,12 +138,22 @@ function onDrop(e: DragEvent) {
   line-height: 1;
   color: var(--ui-tab-bar-item-fg, var(--ui-text-muted-fg, var(--muted)));
   background: transparent;
-  transition:
-    background var(--duration-fast) var(--ease-default),
-    border-color var(--duration-fast) var(--ease-default),
-    color var(--duration-fast) var(--ease-default),
-    box-shadow var(--duration-fast) var(--ease-default);
+  transition: color var(--duration-fast) var(--ease-default);
   -webkit-app-region: no-drag;
+}
+
+/* 底标:tab 撑满整条 bar,线落在自身底缘 = bar 基线上
+   (tab-list 横向滚动会裁掉盒外内容,所以线必须画在盒内)。 */
+.tab-item::after {
+  content: '';
+  position: absolute;
+  right: 9px;
+  bottom: 0;
+  left: 9px;
+  height: 0;
+  border-bottom: 1.5px dotted transparent;
+  transition: border-color var(--duration-fast) var(--ease-default);
+  pointer-events: none;
 }
 
 .tab-surface {
@@ -153,26 +165,20 @@ function onDrop(e: DragEvent) {
   gap: 7px;
   width: 100%;
   height: 100%;
-  padding: 0 10px;
+  padding: 0 9px;
   box-sizing: border-box;
-  border: 0.5px solid transparent;
-  border-bottom-color: transparent;
-  border-radius: var(--tab-radius);
-  background: transparent;
-  transition:
-    background var(--duration-fast) var(--ease-default),
-    border-color var(--duration-fast) var(--ease-default),
-    color var(--duration-fast) var(--ease-default),
-    box-shadow var(--duration-fast) var(--ease-default);
 }
 
 .tab-item:not(.closable) .tab-surface {
   grid-template-columns: 15px minmax(0, max-content) 0;
 }
 
-.tab-item:hover .tab-surface {
-  background: color-mix(in srgb, var(--ot-hover-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 32%, transparent)) 64%, transparent);
+.tab-item:hover {
   color: var(--ui-tab-bar-item-hover-fg, var(--ui-text-primary-fg, var(--text)));
+}
+
+.tab-item:hover:not(.active)::after {
+  border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 75%, transparent);
 }
 
 .tab-item.active {
@@ -180,19 +186,14 @@ function onDrop(e: DragEvent) {
   font-weight: 500;
 }
 
-.tab-item.active .tab-surface {
-  background: color-mix(in srgb, var(--ot-active-bg, color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated)) 58%, transparent)) 68%, transparent);
-  border-color: color-mix(in srgb, var(--ui-tab-bar-item-active-border, var(--ui-border-subtle-border, var(--border-subtle))) 18%, transparent);
-  border-radius: var(--tab-radius);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.5%, transparent);
+.tab-item.active::after {
+  border-bottom-style: solid;
+  border-bottom-color: var(--tab-ink);
 }
 
+/* 拖放插入位:一道墨竖线 */
 .tab-item.drag-over {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle, var(--border)))) 80%, transparent);
-}
-
-.tab-item.drag-over .tab-surface {
-  border-left-color: color-mix(in srgb, var(--ui-tab-bar-divider-border, var(--ui-border-subtle-border, var(--border-subtle, var(--border)))) 80%, transparent);
+  box-shadow: inset 2px 0 0 var(--tab-ink);
 }
 
 .tab-icon {
@@ -211,7 +212,15 @@ function onDrop(e: DragEvent) {
   align-items: center;
   gap: 6px;
   overflow: hidden;
+  min-width: 0;
+}
+
+/* text-overflow only clips on a block-ish box; on the flex container the
+   flexed text node gets hard-cut without an ellipsis. */
+.tab-title-text {
+  overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   min-width: 0;
 }
 
@@ -233,13 +242,12 @@ function onDrop(e: DragEvent) {
   border: none;
   background: none;
   -webkit-app-region: no-drag;
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--ui-tab-bar-action-fg, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
   opacity: 0;
   transition:
     opacity var(--duration-fast) var(--ease-default),
-    background var(--duration-fast) var(--ease-default),
     color var(--duration-fast) var(--ease-default);
 }
 
@@ -250,7 +258,6 @@ function onDrop(e: DragEvent) {
 
 .tab-close:hover {
   opacity: 1;
-  background: var(--ui-tab-bar-action-hover-bg, var(--ui-state-hover-bg, var(--bg-hover)));
   color: var(--ui-tab-bar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
 }
 </style>

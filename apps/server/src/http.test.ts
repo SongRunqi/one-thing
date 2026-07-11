@@ -38,7 +38,7 @@ afterEach(async () => {
     })
   })))
   servers.length = 0
-  for (const runtime of runtimes) runtime.shutdown()
+  await Promise.all(runtimes.map(runtime => runtime.shutdown()))
   runtimes.length = 0
   resetPermissionGrantsForTests()
   await Promise.all(tempDirs.map(path => rm(path, { recursive: true, force: true })))
@@ -3256,7 +3256,7 @@ describe('createOnethingHttpServer', () => {
         theme: 'light',
       }),
     }))
-    firstRuntime.shutdown()
+    await firstRuntime.shutdown()
     runtimes.splice(runtimes.indexOf(firstRuntime), 1)
 
     const persisted = await readFile(join(settingsRoot, 'alice', 'settings-persist.json'), 'utf8')

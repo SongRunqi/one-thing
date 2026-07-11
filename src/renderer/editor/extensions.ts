@@ -279,7 +279,7 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
   const isMarkdownDocument = profile === 'markdown-document'
   const fontFamily = profile === 'code-file'
     ? 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
-    : 'var(--font-sans)'
+    : 'var(--editor-font-family, var(--font-sans))'
 
   return EditorView.theme({
     '&': {

@@ -26,8 +26,18 @@ export interface BashJobMetadata {
   logPath?: string
 }
 
-function describeKnownJobs(): string {
+/**
+ * Jobs are visible only to the session that started them (gateway users must
+ * never see or control desktop jobs). Jobs without an owner (edge/legacy
+ * registrations) stay visible everywhere.
+ */
+function jobVisibleToSession(job: BackgroundJob, sessionId: string | undefined): boolean {
+  return job.sessionId === undefined || job.sessionId === sessionId
+}
+
+function describeKnownJobs(sessionId: string | undefined): string {
   const known = listBackgroundJobs({ includeInactive: true })
+    .filter(job => jobVisibleToSession(job, sessionId))
     .map(job => `- ${job.id}: ${job.command} [${job.status}]`)
   return known.length > 0
     ? `Known background jobs:\n${known.join('\n')}`
@@ -62,10 +72,17 @@ export const BashOutputTool = Tool.define<typeof BashOutputParameters, BashJobMe
 
   parameters: BashOutputParameters,
 
-  async execute(args) {
+  async execute(args, ctx) {
+    // Visibility check before reading: readBackgroundJobOutput advances the
+    // incremental read cursor, so another session must not even peek.
+    const existing = refreshBackgroundJob(args.job_id)
+    if (!existing || !jobVisibleToSession(existing, ctx.sessionId)) {
+      throw new Error(`Unknown background job "${args.job_id}". ${describeKnownJobs(ctx.sessionId)}`)
+    }
+
     const read = readBackgroundJobOutput(args.job_id, { fromStart: args.from_start })
     if (!read) {
-      throw new Error(`Unknown background job "${args.job_id}". ${describeKnownJobs()}`)
+      throw new Error(`Unknown background job "${args.job_id}". ${describeKnownJobs(ctx.sessionId)}`)
     }
 
     const { job, output } = read
@@ -111,10 +128,10 @@ export const KillBashTool = Tool.define<typeof KillBashParameters, BashJobMetada
 
   parameters: KillBashParameters,
 
-  async execute(args) {
+  async execute(args, ctx) {
     const job = refreshBackgroundJob(args.job_id)
-    if (!job) {
-      throw new Error(`Unknown background job "${args.job_id}". ${describeKnownJobs()}`)
+    if (!job || !jobVisibleToSession(job, ctx.sessionId)) {
+      throw new Error(`Unknown background job "${args.job_id}". ${describeKnownJobs(ctx.sessionId)}`)
     }
 
     if (job.status !== 'running') {

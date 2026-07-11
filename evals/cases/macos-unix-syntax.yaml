@@ -1,0 +1,10 @@
+# macOS platform: should use Unix/Bash syntax
+id: macos-unix-syntax
+description: >
+  On macOS, assist should use Unix/Bash syntax with forward slashes.
+fixture: placeholder.json
+userMessage: List all files in the current directory.
+expect:
+  contains: ls
+  notes: >
+    macOS should use Unix commands.

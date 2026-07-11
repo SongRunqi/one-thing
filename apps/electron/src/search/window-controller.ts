@@ -19,9 +19,13 @@ async function resolveActionId(actionId: string): Promise<string> {
   return `open-file:${filePath}`
 }
 
-export function toggleSearchWindowFrom(sourceWindow?: ElectronSearchActionWindow | null): { success: boolean } {
+export function toggleSearchWindowFrom(
+  sourceWindow?: ElectronSearchActionWindow | null,
+  openOptions?: unknown,
+): { success: boolean } {
   return toggleElectronSearchWindowFrom({
     sourceWindow,
+    openOptions,
     isMainWindowUrl: isElectronMainAppWindowUrl,
     toggleSearchWindow,
   })

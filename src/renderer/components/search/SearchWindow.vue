@@ -5,12 +5,16 @@
         :size="15"
         class="search-icon"
       />
+      <span
+        v-if="splitIntent"
+        class="intent-chip"
+      >Split</span>
       <input
         ref="inputRef"
         v-model="query"
         type="text"
         class="search-input"
-        :placeholder="inputPlaceholder"
+        :placeholder="splitIntent ? 'Split with chat...' : inputPlaceholder"
         spellcheck="false"
         @keydown="onInputKeydown"
         @compositionstart="onInputCompositionStart"
@@ -179,7 +183,12 @@ import { useThemeStore } from '@/stores/themes'
 import SearchResultItem from './SearchResultItem.vue'
 import { resolveSearchResultAction } from './result-actions'
 import { useSearchWindow } from './useSearchWindow'
-import type { SearchResult, SearchWindowGuideState } from '@shared/ipc/search'
+import type {
+  SearchResult,
+  SearchWindowGuideState,
+  SearchWindowShownPayload,
+  SearchWindowSplitIntent,
+} from '@shared/ipc/search'
 import { platformApi } from '@/platform'
 
 const HIDDEN_GUIDES: SearchWindowGuideState = {
@@ -198,6 +207,9 @@ const promptForm = ref({ title: '', description: '', body: '' })
 const promptFormError = ref('')
 const dragGuides = ref<SearchWindowGuideState>(HIDDEN_GUIDES)
 const isInputComposing = ref(false)
+// Present while the window was opened from a panel's split button: confirming
+// a chat splits that panel instead of switching the main session.
+const splitIntent = ref<SearchWindowSplitIntent | null>(null)
 
 const COMPOSITION_ENTER_SUPPRESS_MS = 80
 
@@ -294,6 +306,12 @@ function confirmResult(item: SearchResult) {
     return
   }
 
+  if (splitIntent.value && action.actionId.startsWith('switch-session:')) {
+    const sessionId = action.actionId.slice('switch-session:'.length)
+    platformApi.searchExecuteAction(`split-panel:${splitIntent.value.panelId}:${sessionId}`)
+    return
+  }
+
   platformApi.searchExecuteAction(action.actionId)
 }
 
@@ -373,8 +391,12 @@ onMounted(async () => {
 
   inputRef.value?.focus()
   void doSearch()
-  unsubscribeShown = platformApi.onSearchWindowShown?.(() => {
+  unsubscribeShown = platformApi.onSearchWindowShown?.((payload?: SearchWindowShownPayload | null) => {
+    splitIntent.value = payload?.intent?.type === 'split-panel' ? payload.intent : null
     resetSearchWindow()
+    // Set after reset so the watcher's isResetting guard swallows the tab
+    // change and the initial query runs once against the right category.
+    if (splitIntent.value) activeTab.value = 'chats'
     nextTick(() => inputRef.value?.focus())
   }) ?? null
   unsubscribeGuides = platformApi.onSearchWindowGuides?.((state) => {
@@ -481,6 +503,17 @@ onUnmounted(() => {
 .search-icon {
   flex-shrink: 0;
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 52%, transparent);
+}
+
+.intent-chip {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent);
+  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 86%, var(--ui-text-primary-fg, var(--text)) 14%);
+  font-size: var(--type-micro-size);
+  font-weight: 500;
+  line-height: var(--type-micro-line-height);
 }
 
 .search-input {

@@ -96,16 +96,28 @@ watch(() => Boolean(props.streaming), () => {
 <style scoped>
 .process-rail {
   margin: 2px 0;
+  /* @container queries inside the steps resolve against the rail (the
+     timeline's own container-type is cancelled below: its style containment
+     would trap the ledger counter, so the container role moves up here —
+     one level above the counter scope on the body). */
+  container-type: inline-size;
 }
 
+/* The header is the frame's top edge in BOTH states: a dashed rule runs
+   through the summary (10px stub left, fill right). Expanding only attaches
+   the body's remaining three sides below — the header box never changes, so
+   the label cannot shift; no knockout background needed either. */
 .process-rail-header {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 7px;
   width: 100%;
-  padding: 3px 4px;
+  min-height: 24px;
+  padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: 0;
   background: none;
   color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
   /* Process summary is chrome: UI sans, not the reading font. */
@@ -116,9 +128,24 @@ watch(() => Boolean(props.streaming), () => {
   cursor: pointer;
 }
 
+/* Hover: text brightens only — no background band in either state. */
 .process-rail-header:hover {
   color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
+}
+
+.process-rail-header::before,
+.process-rail-header::after {
+  content: '';
+  align-self: center;
+  border-top: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border, var(--border))) 55%, transparent);
+}
+
+.process-rail-header::before {
+  flex: 0 0 10px;
+}
+
+.process-rail-header::after {
+  flex: 1 1 auto;
 }
 
 .process-rail-chevron {
@@ -135,6 +162,11 @@ watch(() => Boolean(props.streaming), () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
 }
 
 .process-rail-failed {
@@ -177,18 +209,32 @@ watch(() => Boolean(props.streaming), () => {
   }
 }
 
+/* Blueprint group frame: the header's dashed rule is the top edge; the body
+   supplies the other three sides, pulled up so its side borders meet the
+   rule at the header's vertical center (24px header → −12px). */
 .process-rail-body {
-  margin: 4px 0 4px 3px;
-  padding-left: 14px;
-  border-left: 2px solid var(--ui-border-subtle-border, var(--ui-border-default-border, var(--border)));
+  position: relative;
+  margin: -12px 0 4px;
+  padding: 18px 12px 8px;
+  border: 1px dashed color-mix(in srgb, var(--ui-border-strong-border, var(--ui-border-default-border, var(--border))) 55%, transparent);
+  border-top: none;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Ledger numbering runs across the whole group, not per step-timeline.
+     No containment here: it would trap the counter (see .process-rail). */
+  counter-reset: tool-fig;
 }
 
+.process-rail-body :deep(.tool-activity-timeline) {
+  counter-reset: none;
+}
+
+/* Solo (single step): no frame — the step's own figure frame is enough. */
 .process-rail.is-solo .process-rail-body {
-  margin-top: 0;
-  margin-bottom: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
 }
 
 /* ========================================================================
@@ -204,39 +250,23 @@ watch(() => Boolean(props.streaming), () => {
   margin: 0;
 }
 
-/* Thought full text: indent + tinted block, no quote line. Sans — process
-   content is chrome, not reading matter. */
+/* Thought full text: outlined blueprint block — no fills, no quote line.
+   Sans — process content is chrome, not reading matter. */
 .process-rail-body :deep(.inline-reasoning-content) {
-  border-left: none;
+  border: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border)) 60%, transparent);
   margin: 2px 0 6px 22px;
   padding: 8px 10px;
-  background: color-mix(in srgb, var(--ui-state-hover-bg, var(--hover)) 55%, transparent);
-  border-radius: 6px;
+  background: transparent;
+  border-radius: 0;
   font-family: var(--font-sans, inherit);
   font-size: 12.5px;
   line-height: 1.65;
 }
 
-/* Tool detail pane (command / output / diff): indent + code surface,
-   no left border. */
+/* Tool detail pane: the figure frame styles itself (ToolStepDetails);
+   the rail only positions it. */
 .process-rail-body :deep(.tool-step-details) {
-  border-left: none;
-  margin: 2px 0 6px 22px;
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--ui-surface-code-block-bg, var(--bg-code-block)) 60%, transparent);
-  border-radius: 6px;
-}
-
-/* Semantic stripes inside detail panes (thinking / summary / error /
-   rejection) keep their tinted backgrounds; the stripe would be a third
-   line, so it goes. */
-.process-rail-body :deep(.tool-step-details .thinking),
-.process-rail-body :deep(.tool-step-details .summary),
-.process-rail-body :deep(.tool-step-details .error-text),
-.process-rail-body :deep(.tool-step-details .rejection-text) {
-  border-left: none;
-  border-radius: 4px;
-  padding-left: 8px;
+  margin: 8px 0 8px 22px;
 }
 
 /* Timeline row rhythm: uniform 24px rows; icon and text share a vertical

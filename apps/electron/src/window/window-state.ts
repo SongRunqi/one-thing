@@ -8,8 +8,14 @@ export interface ElectronWindowState {
   isMaximized?: boolean
 }
 
+export interface ElectronSearchWindowSizeState {
+  width: number
+  height: number
+}
+
 export interface ElectronWindowStateFile extends ElectronWindowState {
   todoPlan?: ElectronWindowState
+  searchWindow?: ElectronSearchWindowSizeState
 }
 
 export interface ElectronWindowStateStorage {
@@ -59,6 +65,15 @@ export function sanitizeElectronWindowState(
   }
 }
 
+function sanitizeElectronSearchWindowSize(
+  size: Partial<ElectronSearchWindowSizeState> | null | undefined,
+): ElectronSearchWindowSizeState | undefined {
+  const width = Number(size?.width)
+  const height = Number(size?.height)
+  if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return undefined
+  return { width: Math.round(width), height: Math.round(height) }
+}
+
 export function readElectronWindowState(options: ElectronWindowStateOptions): ElectronWindowStateFile {
   const fallback = mainFallback(options)
   const state = options.readJsonFile<Partial<ElectronWindowStateFile> | null>(options.path, fallback)
@@ -70,7 +85,27 @@ export function readElectronWindowState(options: ElectronWindowStateOptions): El
   return {
     ...mainState,
     todoPlan,
+    searchWindow: sanitizeElectronSearchWindowSize(state?.searchWindow),
   }
+}
+
+export function readElectronSearchWindowSize(
+  options: ElectronWindowStateOptions,
+): ElectronSearchWindowSizeState | null {
+  return readElectronWindowState(options).searchWindow ?? null
+}
+
+export function saveElectronSearchWindowSize(
+  options: ElectronWindowStateOptions,
+  size: ElectronSearchWindowSizeState,
+): void {
+  const sanitized = sanitizeElectronSearchWindowSize(size)
+  if (!sanitized) return
+
+  options.writeJsonFile(options.path, {
+    ...readElectronWindowState(options),
+    searchWindow: sanitized,
+  })
 }
 
 export function readElectronTodoPlanWindowState(options: ElectronWindowStateOptions): ElectronWindowState {
