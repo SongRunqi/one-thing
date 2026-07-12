@@ -7084,24 +7084,27 @@ export function createLocalServerSessionStore(
 	// 存量 index 条目补齐所有权字段(一次性,ownerVersion 盖章后不再重跑):
 	// 会话列表因此可以只读 index 完成 owner 过滤,不必加载消息体。
 	const backfillSessionIndexOwnership = (): void => {
-		const index = repository.loadSessionsIndex() as ServerSessionIndexMeta[];
-		const missing = index.filter(
-			(meta) => meta.ownerVersion !== SESSION_INDEX_OWNER_VERSION,
-		);
-		if (missing.length === 0) return;
-		const start = Date.now();
-		for (const meta of missing) {
-			// 只读加载(不 sanitize、不入队写会话体):避免 headless server 在启动 backfill 时
-			// 重写 Electron 拥有的会话体,与其 suffix 写竞态损坏 messages.jsonl。
-			const session = repository.getSessionRaw(meta.id);
-			meta.userId = session?.userId;
-			meta.workspaceId = session?.workspaceId;
-			meta.ownerVersion = SESSION_INDEX_OWNER_VERSION;
-		}
-		repository.saveSessionsIndex(index);
-		console.log(
-			`[Sessions] index ownership backfilled for ${missing.length} sessions in ${Date.now() - start}ms`,
-		);
+		// 整个读-改-写放进跨进程 index 锁,锁内重新读盘,避免与桌面端并发写丢条目。
+		repository.runWithSessionsIndexLock(() => {
+			const index = repository.loadSessionsIndex() as ServerSessionIndexMeta[];
+			const missing = index.filter(
+				(meta) => meta.ownerVersion !== SESSION_INDEX_OWNER_VERSION,
+			);
+			if (missing.length === 0) return;
+			const start = Date.now();
+			for (const meta of missing) {
+				// 只读加载(不 sanitize、不入队写会话体):避免 headless server 在启动 backfill 时
+				// 重写 Electron 拥有的会话体,与其 suffix 写竞态损坏 messages.jsonl。
+				const session = repository.getSessionRaw(meta.id);
+				meta.userId = session?.userId;
+				meta.workspaceId = session?.workspaceId;
+				meta.ownerVersion = SESSION_INDEX_OWNER_VERSION;
+			}
+			repository.saveSessionsIndex(index);
+			console.log(
+				`[Sessions] index ownership backfilled for ${missing.length} sessions in ${Date.now() - start}ms`,
+			);
+		});
 	};
 	backfillSessionIndexOwnership();
 

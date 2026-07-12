@@ -44,7 +44,7 @@ import {
   type UserMessageMarker,
 } from '@onething/core/session'
 import { getMessagesPageFromJsonFilePath } from '@onething/core/session'
-import { AsyncSaveQueue, LRUCache } from '@onething/core/storage'
+import { AsyncSaveQueue, LRUCache, withFileLockSync } from '@onething/core/storage'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
 import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan } from './storage-driver.js'
 
@@ -271,16 +271,19 @@ export class OnethingSessionRepository<
   }
 
   saveSessionsIndex(index: TMeta[]): void {
-    this.options.writeJsonFile(this.getSessionsIndexPath(), index)
+    this.runWithSessionsIndexLock(() => {
+      this.options.writeJsonFile(this.getSessionsIndexPath(), index)
+    })
   }
 
   updateSessionsIndexMeta(sessionId: string, update: (meta: TMeta) => void): boolean {
-    return Boolean(applySessionIndexMetaMutationWithAdapters<TMeta>({
+    // 锁内重新读盘 + 改 + 写,避免与另一进程交错造成 last-writer-wins 丢条目。
+    return this.runWithSessionsIndexLock(() => Boolean(applySessionIndexMetaMutationWithAdapters<TMeta>({
       sessionId,
       loadIndex: () => this.loadSessionsIndex(),
       saveIndex: index => this.saveSessionsIndex(index),
       mutateMeta: update,
-    }))
+    })))
   }
 
   renameSession(sessionId: string, newName: string): boolean {
@@ -489,7 +492,7 @@ export class OnethingSessionRepository<
   createSession(sessionId: string, name: string): TSession {
     const workingDirectory = this.resolveDefaultWorkingDirectory()
 
-    return createSessionWithAdapters<TSession, TMessage, TMeta>({
+    return this.runWithSessionsIndexLock(() => createSessionWithAdapters<TSession, TMessage, TMeta>({
       sessionId,
       name,
       defaultAgentId: this.options.defaultAgentId,
@@ -500,7 +503,7 @@ export class OnethingSessionRepository<
       loadIndex: () => this.loadSessionsIndex(),
       saveIndex: index => this.saveSessionsIndex(index),
       setCurrentSessionId: sessionId => this.options.setCurrentSessionId(sessionId),
-    })
+    }))
   }
 
   createBranchSession(
@@ -513,7 +516,7 @@ export class OnethingSessionRepository<
     const parentSession = this.getSession(parentSessionId)
     const workingDirectory = parentSession?.workingDirectory ?? this.resolveDefaultWorkingDirectory()
 
-    return createBranchSessionWithAdapters<TSession, TMessage, TMeta>({
+    return this.runWithSessionsIndexLock(() => createBranchSessionWithAdapters<TSession, TMessage, TMeta>({
       sessionId,
       name,
       parentSessionId,
@@ -532,11 +535,11 @@ export class OnethingSessionRepository<
       loadIndex: () => this.loadSessionsIndex(),
       saveIndex: index => this.saveSessionsIndex(index),
       setCurrentSessionId: sessionId => this.options.setCurrentSessionId(sessionId),
-    })
+    }))
   }
 
   deleteSession(sessionId: string): OnethingDeleteSessionResult {
-    return deleteSessionWithAdapters<TSession, TMeta>({
+    return this.runWithSessionsIndexLock(() => deleteSessionWithAdapters<TSession, TMeta>({
       sessionId,
       getSession: id => this.getSession(id),
       getCurrentSessionId: () => this.options.getCurrentSessionId(),
@@ -563,7 +566,7 @@ export class OnethingSessionRepository<
       deleteSessionCache: id => this.deleteCachedSession(id),
       deleteSessionsFromSqlite: ids => this.options.sqlite?.deleteSessions?.(ids),
       setCurrentSessionId: sessionId => this.options.setCurrentSessionId(sessionId),
-    })
+    }))
   }
 
   syncSessionToSqliteIfReady(session: TSession): void {
@@ -679,6 +682,21 @@ export class OnethingSessionRepository<
 
   private getSessionsIndexPath(): string {
     return `${this.options.getSessionsDir()}/index.json`
+  }
+
+  private getSessionsIndexLockPath(): string {
+    return `${this.getSessionsIndexPath()}.lock`
+  }
+
+  /**
+   * 在跨进程文件锁下执行 index 读-改-写,保证 Electron 主进程与 headless server
+   * 并发变更 index.json 时不丢会话条目。可重入,供本类各变更方法及外部 backfill 复用。
+   */
+  runWithSessionsIndexLock<T>(fn: () => T): T {
+    return withFileLockSync(this.getSessionsIndexLockPath(), fn, {
+      owner: 'session-index',
+      logger: this.options.logger,
+    })
   }
 
   private getSqliteSessionDetailsSafe(sessionId: string): TDetails | undefined {

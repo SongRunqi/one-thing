@@ -63,6 +63,12 @@ export type {
   AsyncSaveQueueOptions,
 } from './async-save-queue.js'
 export {
+  withFileLockSync,
+} from './file-mutex.js'
+export type {
+  FileLockOptions,
+} from './file-mutex.js'
+export {
   CoreFileStorageProvider,
 } from './file-storage.js'
 export type {
