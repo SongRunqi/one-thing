@@ -73,4 +73,61 @@ describe('electron application menu', () => {
     expect(template[0].label).toBe('File')
     expect(fileMenu.submenu.at(-1)).toEqual({ role: 'quit' })
   })
+
+  it('omits the Develop menu when web preview is unavailable', async () => {
+    const { setupElectronApplicationMenu } = await import('../application-menu.js')
+    const { menu } = createMenu()
+
+    setupElectronApplicationMenu({
+      mainWindow: createWindow(),
+      openSettingsWindow: vi.fn(),
+      menu,
+      platform: 'darwin',
+      webPreview: {
+        available: false,
+        url: 'http://127.0.0.1:5174',
+        isRunning: () => false,
+        toggle: vi.fn(),
+        open: vi.fn(),
+      },
+    })
+
+    const template = (menu.buildFromTemplate as any).mock.calls[0][0] as any[]
+    expect(template.find(item => item.label === 'Develop')).toBeUndefined()
+  })
+
+  it('renders a Develop menu that toggles and opens the web preview', async () => {
+    const { setupElectronApplicationMenu } = await import('../application-menu.js')
+    const { menu } = createMenu()
+    const toggle = vi.fn()
+    const open = vi.fn()
+
+    setupElectronApplicationMenu({
+      mainWindow: createWindow(),
+      openSettingsWindow: vi.fn(),
+      menu,
+      platform: 'darwin',
+      webPreview: {
+        available: true,
+        url: 'http://127.0.0.1:5174',
+        isRunning: () => true,
+        toggle,
+        open,
+      },
+    })
+
+    const template = (menu.buildFromTemplate as any).mock.calls[0][0] as any[]
+    const develop = template.find(item => item.label === 'Develop')
+    expect(develop).toBeDefined()
+
+    const toggleItem = develop.submenu.find((item: any) => item.type === 'checkbox')
+    expect(toggleItem.checked).toBe(true)
+    toggleItem.click()
+    expect(toggle).toHaveBeenCalledOnce()
+
+    const openItem = develop.submenu.find((item: any) => item.label === '在浏览器打开 Web 预览')
+    expect(openItem.enabled).toBe(true)
+    openItem.click()
+    expect(open).toHaveBeenCalledOnce()
+  })
 })

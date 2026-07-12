@@ -14,12 +14,22 @@ export interface ElectronApplicationMenuLike {
   setApplicationMenu(menu: unknown): void
 }
 
+/** 测试用的 Web 预览开关(仅开发态注入);缺省或 available=false 时不渲染 Develop 菜单。 */
+export interface ElectronApplicationMenuWebPreview {
+  available: boolean
+  url: string
+  isRunning(): boolean
+  toggle(): void
+  open(): void
+}
+
 export interface ElectronApplicationMenuOptions {
   mainWindow: BrowserWindow
   openSettingsWindow(parentWindow: BrowserWindow): void
   app?: ElectronApplicationMenuAppLike
   menu?: ElectronApplicationMenuLike
   platform?: NodeJS.Platform
+  webPreview?: ElectronApplicationMenuWebPreview
 }
 
 export function setupElectronApplicationMenu(options: ElectronApplicationMenuOptions): void {
@@ -110,6 +120,22 @@ export function setupElectronApplicationMenu(options: ElectronApplicationMenuOpt
         ]),
       ],
     },
+    ...(options.webPreview?.available ? [{
+      label: 'Develop',
+      submenu: [
+        {
+          label: `Web 预览服务 (${options.webPreview.url})`,
+          type: 'checkbox' as const,
+          checked: options.webPreview.isRunning(),
+          click: () => options.webPreview?.toggle(),
+        },
+        {
+          label: '在浏览器打开 Web 预览',
+          enabled: options.webPreview.isRunning(),
+          click: () => options.webPreview?.open(),
+        },
+      ],
+    }] : []),
   ]
 
   const applicationMenu = electronMenu.buildFromTemplate(template)

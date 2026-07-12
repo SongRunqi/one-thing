@@ -22,6 +22,13 @@ import {
 } from '@onething/electron-host/window/macos-panel'
 import { setupElectronApplicationMenu } from '@onething/electron-host/menu/application-menu'
 import {
+  WEB_PREVIEW_URL,
+  isWebPreviewAvailable,
+  isWebPreviewRunning,
+  openWebPreview,
+  toggleWebPreview,
+} from '@onething/electron-host/web-preview/web-preview'
+import {
   registerElectronContentSecurityPolicy,
   registerElectronMediaPermissions,
 } from '@onething/electron-host/window/session-security'
@@ -454,8 +461,25 @@ export function createWindow() {
   attachElectronMainWindowRecovery({ mainWindow, loadMainWindowContent })
   loadMainWindowContent(mainWindow)
 
-  // Setup application menu with keyboard shortcuts
-  setupElectronApplicationMenu({ mainWindow, openSettingsWindow })
+  // Setup application menu with keyboard shortcuts.
+  // 测试用 Web 预览开关(仅开发态);toggle 后重建菜单以刷新勾选状态。
+  const buildApplicationMenu = () => {
+    setupElectronApplicationMenu({
+      mainWindow,
+      openSettingsWindow,
+      webPreview: {
+        available: isWebPreviewAvailable(),
+        url: WEB_PREVIEW_URL,
+        isRunning: isWebPreviewRunning,
+        open: openWebPreview,
+        toggle: () => {
+          toggleWebPreview()
+          buildApplicationMenu()
+        },
+      },
+    })
+  }
+  buildApplicationMenu()
 
   return mainWindow
 }

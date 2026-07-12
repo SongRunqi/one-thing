@@ -65,6 +65,7 @@ const onethingPackageAliases = [
   { find: '@onething/electron-host/ipc/variables', replacement: resolve(__dirname, 'apps/electron/src/ipc/variables.ts') },
   { find: '@onething/electron-host/logging/console-capture', replacement: resolve(__dirname, 'apps/electron/src/logging/console-capture.ts') },
   { find: '@onething/electron-host/menu/application-menu', replacement: resolve(__dirname, 'apps/electron/src/menu/application-menu.ts') },
+  { find: '@onething/electron-host/web-preview/web-preview', replacement: resolve(__dirname, 'apps/electron/src/web-preview/web-preview.ts') },
   { find: '@onething/electron-host/media/protocol', replacement: resolve(__dirname, 'apps/electron/src/media/protocol.ts') },
   { find: '@onething/electron-host/network/proxy', replacement: resolve(__dirname, 'apps/electron/src/network/proxy.ts') },
   { find: '@onething/electron-host/oauth/events', replacement: resolve(__dirname, 'apps/electron/src/oauth/events.ts') },
