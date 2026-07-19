@@ -10,6 +10,7 @@ import type { ACPSettings } from "./acp.js";
 import type { SkillSettings } from "./skills.js";
 import type { TodoPlanSettings } from "./todo-plan.js";
 import type { VoiceSettings } from "./voice.js";
+import type { MusicSettings } from "./music.js";
 
 export type ColorTheme =
 	| "blue"
@@ -78,7 +79,10 @@ export interface DailyNoteSettings {
 	format?: string;
 }
 
+export type NoteEditorEngine = 'codemirror' | 'prosemirror';
+
 export interface EditorSettings {
+	noteEngine?: NoteEditorEngine;
 	tabSize?: number;
 	lineWrapping?: boolean;
 	softWrapColumn?: number;
@@ -89,60 +93,7 @@ export interface EditorSettings {
 	markdownProjectAttachmentDirectory?: string;
 }
 
-export interface SoulMemoryActiveSettings {
-	enabled?: boolean;
-	queryMode?: "message" | "recent" | "full";
-	promptStyle?:
-		| "balanced"
-		| "strict"
-		| "contextual"
-		| "recall-heavy"
-		| "precision-heavy"
-		| "preference-only";
-	timeoutMs?: number;
-	cacheTtlMs?: number;
-	maxSummaryChars?: number;
-	recentUserTurns?: number;
-	recentAssistantTurns?: number;
-	recentUserChars?: number;
-	recentAssistantChars?: number;
-	circuitBreakerMaxTimeouts?: number;
-	circuitBreakerCooldownMs?: number;
-}
-
-export interface SoulMemorySearchSettings {
-	enabled?: boolean;
-	chunkTokens?: number;
-	chunkOverlap?: number;
-	maxResults?: number;
-	mmrEnabled?: boolean;
-	temporalDecayHalfLifeDays?: number;
-}
-
-export interface SoulMemoryEmbeddingSettings {
-	enabled?: boolean;
-	providerId?:
-		| "auto"
-		| "openai"
-		| "openrouter"
-		| "gemini"
-		| "custom"
-		| "ollama"
-		| string;
-	customProviderId?: string;
-	apiKey?: string;
-	model?: string;
-	baseUrl?: string;
-	dimensions?: number;
-}
-
-export interface SoulMemoryFlushSettings {
-	enabled?: boolean;
-	maxInputChars?: number;
-}
-
 export interface SoulMemoryCaptureSettings {
-	enabled?: boolean;
 	mode?: "explicit-only" | "auto" | "off";
 	maxInputChars?: number;
 	timeoutMs?: number;
@@ -155,39 +106,6 @@ export interface SoulMemoryReviewSettings {
 	timeoutMs?: number;
 	maxCandidates?: number;
 	minConfidence?: number;
-}
-
-export interface SoulMemoryCanonicalSettings {
-	enabled?: boolean;
-	store?: "sqlite";
-	highConfidenceThreshold?: number;
-	semanticDedupeThreshold?: number;
-}
-
-export interface SoulMemoryDreamingSettings {
-	enabled?: boolean;
-	frequency?: string;
-	timezone?: string;
-	/** @deprecated Memory Dreaming uses tools.toolCallModel provider/model. */
-	model?: string;
-	sources?: Array<"daily">;
-	lookbackDays?: number;
-	maxSourceFiles?: number;
-	maxSessions?: number;
-	maxMessagesPerSession?: number;
-	maxInputChars?: number;
-	maxPromotions?: number;
-	minScore?: number;
-	minRecallCount?: number;
-	minUniqueSources?: number;
-	timeoutMs?: number;
-}
-
-export interface SoulMemoryDailyContextSettings {
-	enabled?: boolean;
-	mode?: "session-start" | "always";
-	daysBack?: number;
-	maxChars?: number;
 }
 
 export interface SoulMemoryReadSettings {
@@ -210,15 +128,8 @@ export interface SoulMemorySettings {
 	directoryMode?: "ai-note-dir" | "custom";
 	customDirectory?: string;
 	bootstrapMaxChars?: number;
-	activeMemory?: SoulMemoryActiveSettings;
-	search?: SoulMemorySearchSettings;
-	embeddings?: SoulMemoryEmbeddingSettings;
-	memoryFlush?: SoulMemoryFlushSettings;
 	capture?: SoulMemoryCaptureSettings;
 	review?: SoulMemoryReviewSettings;
-	canonicalMemory?: SoulMemoryCanonicalSettings;
-	dreaming?: SoulMemoryDreamingSettings;
-	dailyContext?: SoulMemoryDailyContextSettings;
 	read?: SoulMemoryReadSettings;
 	logging?: SoulMemoryLoggingSettings;
 }
@@ -280,6 +191,10 @@ export interface ChatSettings {
 	contextCompactThreshold?: number; // Context usage % to trigger compacting, 50-100, default 85
 	contextCompactKeepRecentTurns?: number; // Recent user/assistant turns to keep verbatim, default 6
 	agentLoopStream?: boolean; // Legacy compatibility flag; supported providers always use the agent-loop stream runtime
+	maxTurns?: number; // Max agent-loop model round-trips per chat run before finishReason 'max_turns', default 100
+	goalContinuationLimit?: number; // Max automatic goal continuations per resume, default 10
+	goalDefaultTokenBudget?: number; // Optional token cap for goals without an explicit budget; unset = no cap
+	goalErrorRetryLimit?: number; // Consecutive failed goal runs retried with backoff before blocking, default 3
 }
 
 export interface ProxySettings {
@@ -323,6 +238,7 @@ export interface AppSettings {
 	theme: "light" | "dark" | "system";
 	general: GeneralSettings;
 	voice?: VoiceSettings;
+	music?: MusicSettings;
 	chat?: ChatSettings;
 	tools: ToolSettings;
 	network?: NetworkSettings;

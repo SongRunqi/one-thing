@@ -1015,7 +1015,7 @@ describe('createWebPlatformApi', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/tools/background-jobs?includeInactive=true', expect.any(Object))
   })
 
-  it('maps memory profile and graph platform methods to server REST endpoints', async () => {
+  it('maps memory platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/api/capabilities') {
@@ -1037,35 +1037,12 @@ describe('createWebPlatformApi', () => {
 
     await expect(api.getMemoryOverview('agent-1')).resolves.toEqual({ success: true, url: '/api/memory/overview' })
     await expect(api.readMemoryFile({ path: 'MEMORY.md' })).resolves.toEqual({ success: true, url: '/api/memory/read' })
-    await expect(api.searchMemory({ query: 'concise' })).resolves.toEqual({ success: true, url: '/api/memory/search' })
     await expect(api.appendMemory({ content: 'remember this', heading: 'Notes' })).resolves.toEqual({ success: true, url: '/api/memory/append' })
     await expect(api.saveMemoryFile({ path: 'MEMORY.md', content: '# Memory' })).resolves.toEqual({ success: true, url: '/api/memory/save-file' })
-    await expect(api.rebuildMemoryIndex('agent-1')).resolves.toEqual({ success: true, url: '/api/memory/index' })
-    await expect(api.listMemoryProfile({ agentId: 'agent-1' })).resolves.toEqual({ success: true, url: '/api/memory/profile/list' })
-    await expect(api.searchMemoryProfile({ query: 'pref' })).resolves.toEqual({ success: true, url: '/api/memory/profile/search' })
-    await expect(api.upsertMemoryProfile({ kind: 'preference', value: 'likes concise answers' } as any)).resolves.toEqual({ success: true, url: '/api/memory/profile/upsert' })
-    await expect(api.deleteMemoryProfile({ id: 'memory-1' })).resolves.toEqual({ success: true, url: '/api/memory/profile/delete' })
-    await expect(api.getMemoryProfileAudit({ id: 'memory-1' })).resolves.toEqual({ success: true, url: '/api/memory/profile/audit' })
-    await expect(api.exportMemoryProfile('agent-1')).resolves.toEqual({ success: true, url: '/api/memory/profile/export' })
-    await expect(api.getMemoryGraphOverview('agent-1')).resolves.toEqual({ success: true, url: '/api/memory/graph/overview' })
-    await expect(api.listMemoryGraphEntities({ query: 'user' })).resolves.toEqual({ success: true, url: '/api/memory/graph/entities/list' })
-    await expect(api.upsertMemoryGraphEntity({ entityType: 'user', name: 'self' } as any)).resolves.toEqual({ success: true, url: '/api/memory/graph/entities/upsert' })
-    await expect(api.deleteMemoryGraphEntity({ id: 'entity-1' })).resolves.toEqual({ success: true, url: '/api/memory/graph/entities/delete' })
-    await expect(api.listMemoryGraphObservations({ entityId: 'user:self' })).resolves.toEqual({ success: true, url: '/api/memory/graph/observations/list' })
-    await expect(api.upsertMemoryGraphObservation({ entityId: 'user:self', kind: 'preference', slot: 'tone', value: 'concise' } as any)).resolves.toEqual({ success: true, url: '/api/memory/graph/observations/upsert' })
-    await expect(api.deleteMemoryGraphObservation({ id: 'observation-1' })).resolves.toEqual({ success: true, url: '/api/memory/graph/observations/delete' })
-    await expect(api.listMemoryGraphRelations({ entityId: 'user:self' })).resolves.toEqual({ success: true, url: '/api/memory/graph/relations/list' })
-    await expect(api.upsertMemoryGraphRelation({ fromEntityId: 'user:self', relationType: 'uses', toEntityId: 'project:one' } as any)).resolves.toEqual({ success: true, url: '/api/memory/graph/relations/upsert' })
-    await expect(api.deleteMemoryGraphRelation({ id: 'relation-1' })).resolves.toEqual({ success: true, url: '/api/memory/graph/relations/delete' })
-    await expect(api.listMemoryGraphDuplicates({ query: 'dupe' })).resolves.toEqual({ success: true, url: '/api/memory/graph/duplicates/list' })
-    await expect(api.mergeMemoryGraphDuplicate({ id: 'duplicate-1' })).resolves.toEqual({ success: true, url: '/api/memory/graph/duplicates/merge' })
-    await expect(api.ignoreMemoryGraphDuplicate({ id: 'duplicate-1' })).resolves.toEqual({ success: true, url: '/api/memory/graph/duplicates/ignore' })
-    await expect(api.getMemoryGraphAudit({ id: 'entity-1' })).resolves.toEqual({ success: true, url: '/api/memory/graph/audit' })
     await expect(api.listMemoryLogs({ subsystem: 'ipc' } as any)).resolves.toEqual({ success: true, url: '/api/memory/logs/list' })
     await expect(api.getMemoryLogStats()).resolves.toEqual({ success: true, url: '/api/memory/logs/stats' })
     await expect(api.openMemoryLogFolder()).resolves.toEqual({ success: true, url: '/api/memory/logs/open-folder' })
     await expect(api.cleanupMemoryLogs()).resolves.toEqual({ success: true, url: '/api/memory/logs/cleanup' })
-    await expect(api.runMemoryDreaming('agent-1')).resolves.toEqual({ success: true, url: '/api/memory/dreaming/run' })
     await expect(api.saveMemoryCapture({ id: 'capture-1' })).resolves.toEqual({ success: true, url: '/api/memory/capture/save' })
     await expect(api.discardMemoryCapture({ id: 'capture-2' })).resolves.toEqual({ success: true, url: '/api/memory/capture/discard' })
 
@@ -1077,25 +1054,9 @@ describe('createWebPlatformApi', () => {
       method: 'POST',
       body: JSON.stringify({ path: 'MEMORY.md', content: '# Memory' }),
     }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/memory/index', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ agentId: 'agent-1' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/memory/profile/upsert', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ kind: 'preference', value: 'likes concise answers' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/memory/graph/entities/delete', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ id: 'entity-1' }),
-    }))
     expect(fetchMock).toHaveBeenCalledWith('/api/memory/logs/list', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ subsystem: 'ipc' }),
-    }))
-    expect(fetchMock).toHaveBeenCalledWith('/api/memory/dreaming/run', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ agentId: 'agent-1' }),
     }))
     expect(fetchMock).toHaveBeenCalledWith('/api/memory/capture/save', expect.objectContaining({
       method: 'POST',
@@ -1627,7 +1588,7 @@ describe('createWebPlatformApi', () => {
       url: '/api/todo-plan/create',
     })
     await expect(api.updateTodoPlan({
-      scope: 'workspace-ai-todo',
+      scope: 'session-ai-todo',
       content: '- [ ] Ship web',
     })).resolves.toEqual({
       success: true,

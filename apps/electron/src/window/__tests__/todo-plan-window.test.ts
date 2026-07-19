@@ -30,6 +30,9 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('electron', () => ({
   BrowserWindow: mocks.MockBrowserWindow,
+  screen: {
+    getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }],
+  },
 }))
 
 describe('electron todo plan window', () => {

@@ -8,19 +8,24 @@ export interface InboundActor {
 
 export interface InboundMessage {
   channelId: string
+  /** Identity of the person who sent the message (e.g. Telegram from.id). */
   userId: string
+  /** Where replies are routed (e.g. Telegram chat.id). Equals userId in DMs. */
+  conversationId: string
   text: string
   raw: unknown
   actor?: InboundActor
 }
 
 export interface OutboundMessage {
+  conversationId: string
   userId: string
   text: string
   raw: unknown
 }
 
 export interface TypingMessage {
+  conversationId: string
   userId: string
   raw: unknown
   status?: 'typing' | 'cancel'

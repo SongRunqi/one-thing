@@ -2,10 +2,13 @@ export interface OnethingSessionSkillLike {
   id: string
   name: string
   enabled: boolean
+  /** Agent this skill is scoped to; null/undefined means available to all agents */
+  agentId?: string | null
 }
 
 export interface OnethingSkillEnabledSetting {
   enabled: boolean
+  agentId?: string | null
 }
 
 export interface OnethingSessionSkillSettings {
@@ -15,6 +18,8 @@ export interface OnethingSessionSkillSettings {
 export interface OnethingSessionSkillsListOptions {
   workingDirectory?: string
   enabledOnly?: boolean
+  /** When provided, drop skills bound to a different agent */
+  agentId?: string
 }
 
 export interface OnethingSessionSkillsRuntimeAdapters<TSkill extends OnethingSessionSkillLike> {
@@ -46,14 +51,14 @@ export class OnethingSessionSkillsRuntime<TSkill extends OnethingSessionSkillLik
     )
   }
 
-  getForSession(workingDirectory?: string): TSkill[] {
+  getForSession(workingDirectory?: string, agentId?: string): TSkill[] {
     this.ensureInitialized()
-    return this.getForDirectory(workingDirectory, true)
+    return this.getForDirectory(workingDirectory, true, agentId)
   }
 
   getAll(options: OnethingSessionSkillsListOptions = {}): TSkill[] {
     this.ensureInitialized()
-    return this.getForDirectory(options.workingDirectory, options.enabledOnly ?? false)
+    return this.getForDirectory(options.workingDirectory, options.enabledOnly ?? false, options.agentId)
   }
 
   invalidateCache(workingDirectory?: string): void {
@@ -75,10 +80,10 @@ export class OnethingSessionSkillsRuntime<TSkill extends OnethingSessionSkillLik
     this.initialized = true
   }
 
-  private getForDirectory(workingDirectory?: string, enabledOnly = true): TSkill[] {
+  private getForDirectory(workingDirectory?: string, enabledOnly = true, agentId?: string): TSkill[] {
     const cacheKey = workingDirectory || '__global__'
     const cached = this.skillsCacheByDir.get(cacheKey)
-    if (cached) return this.applySkillSettings(cached, enabledOnly)
+    if (cached) return this.applySkillSettings(cached, enabledOnly, agentId)
 
     const loaded = workingDirectory
       ? mergeOnethingSkillsByPriority(
@@ -88,20 +93,28 @@ export class OnethingSessionSkillsRuntime<TSkill extends OnethingSessionSkillLik
       : this.globalSkillsCache.length > 0 ? this.globalSkillsCache : this.adapters.loadAllSkills()
 
     this.skillsCacheByDir.set(cacheKey, loaded)
-    return this.applySkillSettings(loaded, enabledOnly)
+    return this.applySkillSettings(loaded, enabledOnly, agentId)
   }
 
-  private applySkillSettings(skills: TSkill[], enabledOnly: boolean): TSkill[] {
+  private applySkillSettings(skills: TSkill[], enabledOnly: boolean, agentId?: string): TSkill[] {
     const settings = this.adapters.getSkillSettings()
-    const result = skills.map(skill => ({ ...skill }))
+    let result = skills.map(skill => ({ ...skill }))
 
     if (settings?.skills) {
       for (const skill of result) {
         const skillSettings = settings.skills[skill.id]
         if (skillSettings !== undefined) {
           skill.enabled = skillSettings.enabled
+          // Per-skill override beats the directory-level binding; null clears it.
+          if ('agentId' in skillSettings) {
+            skill.agentId = skillSettings.agentId
+          }
         }
       }
+    }
+
+    if (agentId !== undefined) {
+      result = result.filter(skill => !skill.agentId || skill.agentId === agentId)
     }
 
     return enabledOnly ? result.filter(skill => skill.enabled) : result

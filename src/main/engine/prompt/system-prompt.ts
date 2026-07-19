@@ -13,6 +13,7 @@ import {
   type BuildOnethingPromptContextOptions,
 } from '@onething/runtime/prompts'
 import { getMacOSAutomationDocsPath } from '../../stores/paths.js'
+import { getTodoPlanDirectory } from '../../todo-plan/store.js'
 import { getAgent } from '../../agents/index.js'
 import type { PromptProviderConfig } from './plugin-context.js'
 import type { PromptActiveProject, PromptKnownProjects } from './types.js'
@@ -57,6 +58,7 @@ function coreOptions(ctx: BuildPromptContextOptions): BuildOnethingPromptContext
     host: {
       getAgent,
       getMacOSAutomationDocsPath,
+      getTodoPlanDirectory,
     },
   }
 }

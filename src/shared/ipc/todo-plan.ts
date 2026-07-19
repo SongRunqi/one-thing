@@ -1,4 +1,4 @@
-export type TodoPlanScope = 'user-note' | 'workspace-ai-todo'
+export type TodoPlanScope = 'user-note' | 'session-ai-todo'
 
 export type TodoPlanActivationMode = 'preserve-current-app' | 'focus-if-app-active'
 
@@ -22,13 +22,14 @@ export interface TodoPlanDocument {
 
 export interface TodoPlanContext {
   sessionId?: string
-  workingDirectory?: string
 }
 
 export interface TodoPlanSnapshot {
   directory: string
   userNotes: TodoPlanDocument[]
-  workspaceAiTodo?: TodoPlanDocument
+  sessionAiTodo?: TodoPlanDocument
+  /** The session this snapshot was read for, after the host resolved it. */
+  sessionId?: string
 }
 
 export interface TodoPlanSettings {

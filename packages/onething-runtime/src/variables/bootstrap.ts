@@ -1,0 +1,50 @@
+import { BackgroundJobsProvider, type BackgroundJobsProviderDeps } from './providers/background-jobs.js'
+import { CoreProvider, type CoreProviderAdapters, type WorkdirGateway } from './providers/core.js'
+import { DateTimeProvider } from './providers/datetime.js'
+import { GitBranchProvider } from './providers/git-branch.js'
+import { GlobalStoreProvider, type GlobalStoreGateway } from './providers/global-store.js'
+import { GoalProvider, type GoalVariableGateway } from './providers/goal.js'
+import { MusicRadioProvider, type MusicRadioGateway } from './providers/music-radio.js'
+import { NotesProvider, type NotesGateway } from './providers/notes.js'
+import { SessionStoreProvider, type SessionStoreGateway } from './providers/session-store.js'
+import type { VariableRegistry } from './registry.js'
+
+export interface StandardVariableProviderGateways {
+  workdir: WorkdirGateway
+  notes: NotesGateway
+  globalStore: GlobalStoreGateway
+  sessionStore: SessionStoreGateway
+  /** Extra host adapters for the core (workdir) provider, e.g. permission enforcement. */
+  core?: CoreProviderAdapters
+  /** Dependency overrides for the background-jobs board (tests). */
+  backgroundJobs?: BackgroundJobsProviderDeps
+  /** Session goal reader; hosts without a goal subsystem simply omit it. */
+  goal?: GoalVariableGateway
+  /** Music/radio status reader; hosts without a music subsystem simply omit it. */
+  musicRadio?: MusicRadioGateway
+}
+
+/**
+ * Register the canonical provider set on a registry. Every host (Electron
+ * main process, headless server) assembles through this function so hosts
+ * cannot drift apart on which providers exist — adding a provider here adds
+ * it everywhere.
+ */
+export function registerStandardVariableProviders(
+  registry: VariableRegistry,
+  gateways: StandardVariableProviderGateways,
+): void {
+  registry.register(new CoreProvider(gateways.workdir, gateways.core ?? {}))
+  registry.register(new BackgroundJobsProvider(gateways.backgroundJobs))
+  registry.register(new DateTimeProvider())
+  registry.register(new GitBranchProvider(gateways.workdir))
+  if (gateways.goal) {
+    registry.register(new GoalProvider(gateways.goal))
+  }
+  if (gateways.musicRadio) {
+    registry.register(new MusicRadioProvider(gateways.musicRadio))
+  }
+  registry.register(new NotesProvider(gateways.notes))
+  registry.register(new GlobalStoreProvider(gateways.globalStore))
+  registry.register(new SessionStoreProvider(gateways.sessionStore))
+}

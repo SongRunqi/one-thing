@@ -6,6 +6,7 @@ import {
   computeShellConfigFingerprint,
   hydrateProcessEnvFromLoginShell,
   mergeMissingEnv,
+  mergePathEnv,
   parseLoginShellEnvOutput,
 } from '../login-shell-env.js'
 
@@ -24,6 +25,35 @@ describe('login shell environment helpers', () => {
       OPENAI_API_KEY: 'from-shell',
       VALUE_WITH_EQUALS: 'a=b=c',
     })
+  })
+
+  it('unions PATH, which "merge if missing" can never repair', () => {
+    // launchd always hands a GUI-launched app this PATH, so PATH is never
+    // "missing" — which is exactly why a double-clicked build could not see
+    // Homebrew/nvm binaries while a terminal-launched dev run could.
+    const target: NodeJS.ProcessEnv = { PATH: '/usr/bin:/bin:/usr/sbin:/sbin' }
+
+    expect(mergePathEnv(target, { PATH: '/opt/homebrew/bin:/usr/bin:/bin' })).toBe(true)
+
+    // Login shell first (its order is the user's intent), inherited entries
+    // kept (we may only ever add a resolvable command, never remove one).
+    expect(target.PATH).toBe('/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin')
+  })
+
+  it('leaves PATH alone when the login shell adds nothing new', () => {
+    // The terminal-launched case: PATH is already the shell's, so this is a
+    // no-op rather than a reshuffle.
+    const target: NodeJS.ProcessEnv = { PATH: '/opt/homebrew/bin:/usr/bin' }
+
+    expect(mergePathEnv(target, { PATH: '/opt/homebrew/bin:/usr/bin' })).toBe(false)
+    expect(target.PATH).toBe('/opt/homebrew/bin:/usr/bin')
+  })
+
+  it('keeps the inherited PATH when the login shell reports none', () => {
+    const target: NodeJS.ProcessEnv = { PATH: '/usr/bin:/bin' }
+
+    expect(mergePathEnv(target, { HOME: '/Users/someone' })).toBe(false)
+    expect(target.PATH).toBe('/usr/bin:/bin')
   })
 
   it('merges only missing env vars into the current process env', () => {
@@ -85,6 +115,31 @@ describe('login shell environment cache', () => {
 
     expect(merged).toEqual(['FROM_CACHE'])
     expect(targetEnv.FROM_CACHE).toBe('cached-value')
+  })
+
+  it('repairs a launchd PATH so a packaged app can find Homebrew/nvm binaries', async () => {
+    // The whole point of hydrating: a double-clicked app gets launchd's PATH,
+    // so `ncm-cli`, `rg`, `uv` and friends are simply not there. It only ever
+    // showed up in packaged builds — a dev run inherits the terminal's PATH,
+    // where this is a no-op.
+    const cachePath = createTempCachePath()
+    const shell = '/nonexistent/fake-zsh'
+    fs.writeFileSync(cachePath, JSON.stringify({
+      fingerprint: computeShellConfigFingerprint(shell),
+      env: { PATH: '/opt/homebrew/bin:/usr/bin:/bin' },
+    }))
+
+    const targetEnv: NodeJS.ProcessEnv = { SHELL: shell, PATH: '/usr/bin:/bin:/usr/sbin:/sbin' }
+    const merged = await hydrateProcessEnvFromLoginShell({
+      env: targetEnv,
+      shell,
+      platform: 'darwin',
+      cacheFilePath: cachePath,
+      disableBackgroundRefresh: true,
+    })
+
+    expect(merged).toEqual(['PATH'])
+    expect(targetEnv.PATH).toBe('/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin')
   })
 
   it('ignores a cache whose shell config fingerprint no longer matches', async () => {

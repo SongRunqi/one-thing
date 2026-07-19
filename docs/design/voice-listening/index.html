@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listening 态 · 四方案(画线风)</title>
+<style>
+  :root {
+    --paper: #201d1a;
+    --paper-2: #262320;
+    --ink: #d9d2c6;
+    --ink-muted: #8d8578;
+    --line: #423d36;
+    --line-strong: #575047;
+    --danger: #c9705c;
+    --accent: #9aa88f;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --serif: "Songti SC", ui-serif, Georgia, serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 14px/1.6 -apple-system, "PingFang SC", sans-serif;
+    padding: 48px 40px 80px;
+  }
+  h1 { font-size: 16px; font-weight: 650; letter-spacing: .2em; color: var(--ink-muted); margin-bottom: 6px; }
+  .sub { font-size: 12px; color: var(--ink-muted); margin-bottom: 40px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 48px 40px; max-width: 1440px; }
+  .card { min-width: 0; }
+  .card h2 { font-size: 13px; font-weight: 650; letter-spacing: .12em; margin-bottom: 4px; }
+  .card h2 em { font-style: normal; color: var(--danger); margin-right: 8px; }
+  .card .desc { font-size: 12px; color: var(--ink-muted); margin-bottom: 16px; max-width: 60ch; }
+  .card .notes { margin-top: 12px; font-size: 11px; color: var(--ink-muted); line-height: 1.8; }
+  .card .notes b { color: var(--ink); font-weight: 600; }
+
+  /* ------- shared mock composer ------- */
+  .composer {
+    position: relative;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--paper);
+    padding: 26px 18px 0;
+  }
+  .composer .cap {
+    position: absolute; top: -7px; left: 22px;
+    padding: 0 8px; background: var(--paper);
+    font: 650 10px/1.4 var(--mono); letter-spacing: .3em; color: var(--ink-muted);
+  }
+  .composer .entry {
+    min-height: 56px;
+    font-family: var(--serif); font-size: 17px; color: var(--ink-muted);
+  }
+  .composer .toolbar {
+    display: flex; align-items: stretch; margin-top: 14px;
+    border-top: 1px solid var(--line);
+    font: 500 12px/1 var(--mono); color: var(--ink-muted);
+  }
+  .composer .toolbar .cell {
+    padding: 12px 14px; border-right: 1px solid var(--line); white-space: nowrap;
+  }
+  .composer .toolbar .spacer { flex: 1; border-right: 1px solid var(--line); }
+  .composer .toolbar .icon { width: 42px; display: grid; place-items: center; border-right: 1px solid var(--line); }
+  .composer .toolbar .send { border-right: 0; letter-spacing: .18em; padding: 12px 16px; }
+  svg { display: block; }
+
+  .live { color: var(--ink); }
+  .caret { display: inline-block; width: 1px; height: 1em; background: var(--danger); vertical-align: -0.15em; animation: caret 1s steps(1) infinite; }
+  @keyframes caret { 50% { opacity: 0; } }
+
+  /* =========================================================
+     方案壹 · 框即状态 frame-is-the-state
+     ========================================================= */
+  .p1 .composer.listening { border-color: color-mix(in srgb, var(--danger) 55%, var(--line)); animation: p1-breathe 2.2s ease-in-out infinite; }
+  @keyframes p1-breathe {
+    0%, 100% { box-shadow: 0 0 0 0 transparent; border-color: color-mix(in srgb, var(--danger) 60%, var(--line)); }
+    50% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 30%, var(--line)); }
+  }
+  .p1 .cap.listening { color: var(--danger); letter-spacing: .3em; }
+  .p1 .cap .t { color: var(--ink-muted); margin-left: 1em; font-variant-numeric: tabular-nums; letter-spacing: .05em; }
+  .p1 .entry .ghost { color: var(--ink); opacity: .92; }
+  .p1 .esc-hint {
+    position: absolute; right: 22px; top: -7px; padding: 0 8px; background: var(--paper);
+    font: 500 10px/1.4 var(--mono); letter-spacing: .18em; color: var(--ink-muted);
+  }
+  .p1 .esc-hint u { text-decoration-color: var(--line-strong); text-underline-offset: 3px; cursor: pointer; }
+  .p1 .esc-hint u:hover { color: var(--danger); }
+  .p1 .icon.mic-active { color: var(--danger); position: relative; }
+  .p1 .icon.mic-active::after {
+    content: ""; position: absolute; inset: 6px; border: 1px solid var(--danger);
+    border-radius: 3px; animation: p1-tick 2.2s ease-in-out infinite; opacity: .5;
+  }
+  @keyframes p1-tick { 0%,100% { transform: scale(.9); opacity: .6; } 50% { transform: scale(1.05); opacity: .15; } }
+
+  /* =========================================================
+     方案贰 · 账本批注行 ledger annotation row
+     ========================================================= */
+  .p2 .annot {
+    position: relative;
+    margin: 10px 4px 0;
+    padding: 9px 2px 9px 0;
+    display: flex; align-items: baseline; gap: 14px;
+    font: 500 12px/1.4 var(--mono);
+    color: var(--ink-muted);
+    overflow: hidden;
+  }
+  .p2 .annot::before {   /* the self-drawing rule */
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, var(--danger), var(--line) 60%);
+    transform-origin: left; animation: p2-draw .5s ease-out both;
+  }
+  @keyframes p2-draw { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  .p2 .tick { color: var(--danger); letter-spacing: .22em; font-size: 10px; font-weight: 650; flex: 0 0 auto; }
+  .p2 .tick::before { content: "◦ "; animation: p2-blink 1.4s ease-in-out infinite; }
+  @keyframes p2-blink { 50% { opacity: .25; } }
+  .p2 .text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-family: var(--serif); font-size: 14px; }
+  .p2 .t { font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+  .p2 .lnk { flex: 0 0 auto; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 4px; }
+  .p2 .lnk:hover { color: var(--ink); text-decoration-color: var(--danger); }
+  .p2 .lnk.go:hover { color: var(--danger); }
+
+  /* =========================================================
+     方案叁 · 墨印涟漪 ink-seal ripples (floating, no layout shift)
+     ========================================================= */
+  .p3 .stage { position: relative; }
+  .p3 .seal {
+    position: absolute; right: 14px; bottom: 64px;
+    width: 92px; height: 92px; pointer-events: none;
+  }
+  .p3 .seal .ring { position: absolute; inset: 0; border: 1px solid var(--danger); border-radius: 50%; opacity: 0; animation: p3-ripple 2s ease-out infinite; }
+  .p3 .seal .ring:nth-child(2) { animation-delay: .66s; }
+  .p3 .seal .ring:nth-child(3) { animation-delay: 1.33s; }
+  @keyframes p3-ripple { 0% { transform: scale(.36); opacity: .8; } 100% { transform: scale(1); opacity: 0; } }
+  .p3 .seal .core {
+    position: absolute; inset: 34px; border-radius: 50%;
+    border: 1px solid var(--danger); display: grid; place-items: center; color: var(--danger);
+    background: var(--paper); pointer-events: auto; cursor: pointer;
+  }
+  .p3 .slip {
+    position: absolute; right: 116px; bottom: 76px;
+    max-width: 62%;
+    padding: 8px 12px 9px;
+    border: 1px solid var(--line);
+    border-radius: 2px 8px 8px 2px;
+    background: var(--paper-2);
+    font-family: var(--serif); font-size: 13px; color: var(--ink);
+    box-shadow: 2px 2px 0 0 color-mix(in srgb, var(--line) 40%, transparent);
+    animation: p3-slip .35s ease-out both;
+  }
+  @keyframes p3-slip { from { transform: translateX(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .p3 .slip::before {
+    content: "LISTENING · 0:03"; display: block;
+    font: 650 9px/1 var(--mono); letter-spacing: .24em; color: var(--danger); margin-bottom: 5px;
+  }
+  .p3 .slip .ops { margin-top: 6px; font: 500 10px/1 var(--mono); letter-spacing: .12em; color: var(--ink-muted); }
+  .p3 .slip .ops u { cursor: pointer; text-underline-offset: 3px; text-decoration-color: var(--line-strong); margin-right: 12px; }
+  .p3 .slip .ops u:hover { color: var(--danger); }
+
+  /* =========================================================
+     方案肆 · 走纸记录仪 chart recorder
+     ========================================================= */
+  .p4 .composer.listening { border-top: 0; border-radius: 0 0 6px 6px; }
+  .p4 .recorder {
+    position: relative; height: 34px;
+    border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line));
+    border-bottom: 0; border-radius: 6px 6px 0 0;
+    overflow: hidden;
+    display: flex; align-items: center;
+  }
+  .p4 .wavewrap { position: absolute; inset: 0; opacity: .9; }
+  .p4 .wave-svg { height: 100%; width: 200%; animation: p4-scroll 6s linear infinite; }
+  @keyframes p4-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  .p4 .wave-svg path { stroke: var(--danger); stroke-width: 1; fill: none; opacity: .85; }
+  .p4 .label {
+    position: relative; z-index: 1; margin-left: 14px; padding: 1px 8px;
+    background: var(--paper);
+    font: 650 10px/1.6 var(--mono); letter-spacing: .26em; color: var(--danger);
+  }
+  .p4 .t { position: relative; z-index: 1; margin-left: 10px; padding: 1px 6px; background: var(--paper); font: 500 11px/1.6 var(--mono); color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+  .p4 .ops { position: relative; z-index: 1; margin-left: auto; margin-right: 10px; display: flex; gap: 6px; }
+  .p4 .op {
+    width: 24px; height: 22px; display: grid; place-items: center;
+    background: var(--paper); border: 1px solid var(--line); border-radius: 3px;
+    color: var(--ink-muted); cursor: pointer; font: 500 11px/1 var(--mono);
+  }
+  .p4 .op:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, var(--line)); }
+  .p4 .entry .live-line { font-family: var(--serif); color: var(--ink); }
+</style>
+</head>
+<body>
+<h1>LISTENING · 四方案</h1>
+<p class="sub">语音输入(听写)进行中的状态呈现 —— 全部画线风,四种放置位置与动画隐喻截然不同。字幕为循环演示。</p>
+
+<div class="grid">
+
+  <!-- ================= 方案壹 ================= -->
+  <section class="card p1">
+    <h2><em>壹</em>框即状态 · FRAME IS THE STATE</h2>
+    <p class="desc">不新增任何元素:composer 自己的墨线边框呼吸,左上角标翻成 LISTENING+计时,识别文字作为「幽灵字」直接打进输入区,右上角一行墨字链接负责取消。</p>
+    <div class="composer listening">
+      <span class="cap listening">LISTENING<span class="t" data-timer>0:03</span></span>
+      <span class="esc-hint"><u>ESC 取消</u></span>
+      <div class="entry"><span class="ghost" data-live></span><span class="caret"></span></div>
+      <div class="toolbar">
+        <span class="cell">GPT-5.5</span><span class="cell">think:medium</span><span class="spacer"></span>
+        <span class="icon">◠</span><span class="icon">✆</span>
+        <span class="icon mic-active">■</span>
+        <span class="send">SEND</span>
+      </div>
+    </div>
+    <p class="notes"><b>动画</b>:边框墨色 2.2s 呼吸,麦克风格内细框同步收放。<b>取消</b>:ESC 或右上角墨字。<b>发送</b>:麦克风格(已是停止图标)或静默自动断句。<b>特点</b>:零布局位移,字幕即草稿,识别完文字留在输入框可再编辑。</p>
+  </section>
+
+  <!-- ================= 方案贰 ================= -->
+  <section class="card p2">
+    <h2><em>贰</em>账本批注行 · LEDGER ANNOTATION</h2>
+    <p class="desc">composer 完全不动;它下方划出一条自左向右「画」出来的 hairline 批注行,像账本里追加的一条记录。字幕沿行滚动,行尾两个下划线墨字充当操作,没有任何按钮件。</p>
+    <div class="composer">
+      <span class="cap">COMPOSER</span>
+      <div class="entry">Ask anything...</div>
+      <div class="toolbar">
+        <span class="cell">GPT-5.5</span><span class="cell">think:medium</span><span class="spacer"></span>
+        <span class="icon">◠</span><span class="icon">✆</span><span class="icon" style="color:var(--danger)">●</span>
+        <span class="send">SEND</span>
+      </div>
+    </div>
+    <div class="annot">
+      <span class="tick">LISTENING</span>
+      <span class="text live" data-live></span>
+      <span class="t" data-timer>0:03</span>
+      <u class="lnk">取消 esc</u>
+      <u class="lnk go">发送 ⏎</u>
+    </div>
+    <p class="notes"><b>动画</b>:行线 0.5s 自左向右画出(左端红墨渐入),LISTENING 前墨点缓闪。<b>取消/发送</b>:行尾墨字链接,hover 下划线换红。<b>特点</b>:composer 内部零改动,状态是「附在账本上的一行批注」,结束时行线反向收回。</p>
+  </section>
+
+  <!-- ================= 方案叁 ================= -->
+  <section class="card p3">
+    <h2><em>叁</em>墨印涟漪 · INK SEAL</h2>
+    <p class="desc">一切都悬浮:麦克风上方浮起一枚墨线印章圆,细线涟漪一圈圈外扩;识别字幕写在一张斜搭出来的小纸签上。不占布局、不改 composer,挂在输入区右下。</p>
+    <div class="stage">
+      <div class="composer" style="padding-bottom:0">
+        <span class="cap">COMPOSER</span>
+        <div class="entry">Ask anything...</div>
+        <div class="toolbar">
+          <span class="cell">GPT-5.5</span><span class="cell">think:medium</span><span class="spacer"></span>
+          <span class="icon">◠</span><span class="icon">✆</span><span class="icon" style="color:var(--danger)">●</span>
+          <span class="send">SEND</span>
+        </div>
+      </div>
+      <div class="slip"><span class="live" data-live></span><span class="caret"></span>
+        <div class="ops"><u>✕ 取消</u><u>⏎ 发送</u></div>
+      </div>
+      <div class="seal">
+        <span class="ring"></span><span class="ring"></span><span class="ring"></span>
+        <span class="core">●</span>
+      </div>
+    </div>
+    <p class="notes"><b>动画</b>:三圈 1px 涟漪 2s 相位外扩;纸签从印章处滑出。<b>取消/发送</b>:纸签角部墨字;点印章本体=停止并发送。<b>特点</b>:与全屏通话页的墨圆 orb 同一族语言,听写像「盖了一枚会呼吸的印」。</p>
+  </section>
+
+  <!-- ================= 方案肆 ================= -->
+  <section class="card p4">
+    <h2><em>肆</em>走纸记录仪 · CHART RECORDER</h2>
+    <p class="desc">composer 顶边整段换成一台「走纸记录仪」:一条连续的墨线声波匀速向左走纸,像心电图。状态标签和操作墨符都骑在这条线上,与 composer 共用边框合为一体。</p>
+    <div>
+      <div class="recorder">
+        <div class="wavewrap">
+          <svg class="wave-svg" viewBox="0 0 800 34" preserveAspectRatio="none">
+            <path d="M0 17 L18 17 22 9 26 25 30 13 34 21 38 17 70 17 76 5 82 29 88 11 94 23 100 17 150 17 155 12 160 22 165 17 220 17 226 3 234 31 242 8 250 26 258 17 320 17 324 13 328 21 332 17 390 17 396 7 404 27 412 12 420 17 470 17 475 14 480 20 485 17 540 17 546 5 554 29 562 10 570 17 620 17 624 12 628 22 632 17 700 17 706 8 714 26 722 13 730 17 800 17
+                     L818 17 822 9 826 25 830 13 834 21 838 17 870 17 876 5 882 29 888 11 894 23 900 17 950 17 955 12 960 22 965 17 1020 17 1026 3 1034 31 1042 8 1050 26 1058 17 1120 17 1124 13 1128 21 1132 17 1190 17 1196 7 1204 27 1212 12 1220 17 1270 17 1275 14 1280 20 1285 17 1340 17 1346 5 1354 29 1362 10 1370 17 1420 17 1424 12 1428 22 1432 17 1500 17 1506 8 1514 26 1522 13 1530 17 1600 17" />
+          </svg>
+        </div>
+        <span class="label">LISTENING</span>
+        <span class="t" data-timer>0:03</span>
+        <div class="ops"><span class="op" title="取消">✕</span><span class="op" title="发送">⏎</span></div>
+      </div>
+      <div class="composer listening">
+        <div class="entry"><span class="live-line" data-live></span><span class="caret"></span></div>
+        <div class="toolbar">
+          <span class="cell">GPT-5.5</span><span class="cell">think:medium</span><span class="spacer"></span>
+          <span class="icon">◠</span><span class="icon">✆</span><span class="icon" style="color:var(--danger)">■</span>
+          <span class="send">SEND</span>
+        </div>
+      </div>
+    </div>
+    <p class="notes"><b>动画</b>:声波线 6s 无缝循环走纸(说话时可按音量实时生成波形);结束时整条记录仪向上折叠收起。<b>取消/发送</b>:线上两个 1px 描边墨符。<b>特点</b>:最有「仪器感」,记录仪与 composer 边框拼成一体,不是塞进去的块。</p>
+  </section>
+
+</div>
+
+<script>
+  const demo = '帮我看一下明天早上去机场的路况,顺便订个闹钟。';
+  const livers = document.querySelectorAll('[data-live]');
+  const timers = document.querySelectorAll('[data-timer]');
+  let i = 0, t = 3;
+  setInterval(() => {
+    i = (i + 1) % (demo.length + 14);
+    const text = demo.slice(0, Math.min(i, demo.length));
+    livers.forEach(el => { el.textContent = text; });
+    if (i === 0) t = 3;
+  }, 160);
+  setInterval(() => {
+    t += 1;
+    const label = `0:${String(t % 60).padStart(2, '0')}`;
+    timers.forEach(el => { el.textContent = label; });
+  }, 1000);
+</script>
+</body>
+</html>

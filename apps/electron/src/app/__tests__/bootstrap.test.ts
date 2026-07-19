@@ -101,6 +101,7 @@ describe('electron app bootstrap', () => {
         app: beforeQuitApp,
         markVoiceQuitRequested: vi.fn(),
         shutdownVoiceService: vi.fn(),
+        shutdownMusicService: vi.fn(),
         unregisterGlobalWindowShortcuts: vi.fn(),
         shutdownGateway: vi.fn(),
         shutdownMCP: vi.fn(),

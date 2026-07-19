@@ -134,7 +134,7 @@ describe('OnethingMediaLibraryService', () => {
       },
     ])
 
-    const indexWrites = writeSpy.mock.calls.filter(call => String(call[0]).endsWith('index.json.tmp'))
+    const indexWrites = writeSpy.mock.calls.filter(call => /\.index\.json\.[^/]*\.tmp$/.test(String(call[0])))
     expect(result).toEqual({ added: 2, skipped: 0 })
     expect(indexWrites).toHaveLength(1)
 
@@ -166,7 +166,7 @@ describe('OnethingMediaLibraryService', () => {
         ],
       },
     ])).toEqual({ added: 0, skipped: 2 })
-    expect(writeSpy.mock.calls.filter(call => String(call[0]).endsWith('index.json.tmp'))).toHaveLength(0)
+    expect(writeSpy.mock.calls.filter(call => /\.index\.json\.[^/]*\.tmp$/.test(String(call[0])))).toHaveLength(0)
 
     writeSpy.mockRestore()
   })

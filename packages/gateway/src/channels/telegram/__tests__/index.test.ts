@@ -31,7 +31,8 @@ describe('TelegramChannel', () => {
       },
     })).toEqual({
       channelId: 'telegram',
-      userId: '42',
+      userId: '7',
+      conversationId: '42',
       text: 'hello',
       raw: {
         message_id: 10,
@@ -61,6 +62,21 @@ describe('TelegramChannel', () => {
     })).toBeNull()
   })
 
+  it('keeps group members as distinct users while replies route to the chat', () => {
+    const inbound = telegramUpdateToInboundMessage('telegram', {
+      update_id: 3,
+      message: {
+        message_id: 12,
+        date: 125,
+        from: { id: 7, first_name: 'Alice' },
+        chat: { id: -100123, type: 'supergroup', title: 'Team' },
+        text: 'hi from group',
+      },
+    })
+    expect(inbound?.userId).toBe('7')
+    expect(inbound?.conversationId).toBe('-100123')
+  })
+
   it('sends text and typing through Telegram Bot API calls', async () => {
     const fetchMock = createFetchMock()
     const channel = new TelegramChannel({
@@ -74,16 +90,19 @@ describe('TelegramChannel', () => {
     })
 
     await channel.send({
-      userId: '42',
+      conversationId: '42',
+      userId: '7',
       text: 'hello',
       raw: {},
     })
     await channel.typing({
-      userId: '42',
+      conversationId: '42',
+      userId: '7',
       raw: {},
     })
     await channel.typing({
-      userId: '42',
+      conversationId: '42',
+      userId: '7',
       raw: {},
       status: 'cancel',
     })

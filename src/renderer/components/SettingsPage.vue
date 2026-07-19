@@ -16,6 +16,7 @@
       overflow="hidden"
       main-overflow="hidden"
       sidebar-overflow="hidden"
+      :sidebar-width="214"
       body-class="settings-layout"
       header-class="settings-titlebar"
       sidebar-class="settings-sidebar"
@@ -40,11 +41,6 @@
             aria-hidden="true"
           />
 
-          <div class="sidebar-heading">
-            <h2>Settings</h2>
-            <p>Configure onething</p>
-          </div>
-
           <label class="settings-search">
             <Search class="search-icon" />
             <input
@@ -66,36 +62,57 @@
             @open="handleNavMenuOpen"
             @close="handleNavMenuClose"
           >
-            <SubMenu
+            <template
               v-for="item in filteredNavItems"
               :key="item.id"
-              :index="item.id"
-              class="sidebar-entry"
-              expand-icon-position="start"
             >
-              <template #icon>
-                <component
-                  :is="item.icon"
-                  class="sidebar-icon"
-                  aria-hidden="true"
+              <SubMenu
+                v-if="item.sections.length > 1"
+                :index="item.id"
+                class="sidebar-entry"
+                expand-icon-position="start"
+                title-action="select"
+              >
+                <template #icon>
+                  <component
+                    :is="item.icon"
+                    class="sidebar-icon"
+                    aria-hidden="true"
+                  />
+                </template>
+                <template #title>
+                  <span class="sidebar-copy">
+                    <span class="sidebar-label">{{ item.label }}</span>
+                  </span>
+                </template>
+
+                <MenuItem
+                  v-for="section in item.sections"
+                  :key="section"
+                  :index="navSectionIndex(item.id, section)"
+                  :title="section"
+                  item-as="button"
+                  class="sidebar-subitem"
                 />
-              </template>
-              <template #title>
+              </SubMenu>
+              <MenuItem
+                v-else
+                :index="item.id"
+                item-as="button"
+                class="sidebar-entry sidebar-entry-flat"
+              >
+                <template #icon>
+                  <component
+                    :is="item.icon"
+                    class="sidebar-icon"
+                    aria-hidden="true"
+                  />
+                </template>
                 <span class="sidebar-copy">
                   <span class="sidebar-label">{{ item.label }}</span>
-                  <span class="sidebar-hint">{{ item.hint }}</span>
                 </span>
-              </template>
-
-              <MenuItem
-                v-for="section in item.sections"
-                :key="section"
-                :index="navSectionIndex(item.id, section)"
-                :title="section"
-                item-as="button"
-                class="sidebar-subitem"
-              />
-            </SubMenu>
+              </MenuItem>
+            </template>
           </AppMenu>
           <div
             v-else
@@ -128,10 +145,11 @@
           </p>
         </div>
         <span
+          v-if="hasUnsavedChanges || justSaved"
           class="save-state"
           :class="{ active: hasUnsavedChanges }"
         >
-          {{ hasUnsavedChanges ? 'Saving changes...' : 'Changes save automatically' }}
+          {{ hasUnsavedChanges ? 'Saving…' : 'Saved' }}
         </span>
       </header>
 
@@ -162,6 +180,8 @@
               @edit-custom-provider="editCustomProvider"
             />
 
+            <UsageSettingsPanel v-else-if="activeTab === 'usage'" />
+
             <ToolsSettingsTab
               v-else-if="activeTab === 'tools'"
               :settings="localSettings"
@@ -180,6 +200,8 @@
               :settings="localSettings"
               @update:settings="handleSettingsUpdate"
             />
+
+            <MusicSettingsTab v-else-if="activeTab === 'music'" />
 
             <ChannelsSettingsTab
               v-else-if="activeTab === 'channels'"
@@ -242,14 +264,6 @@
       @close="closeCustomProviderDialog"
       @save="saveCustomProvider"
     />
-
-    <!-- Unsaved Changes Dialog -->
-    <UnsavedChangesDialog
-      :visible="showUnsavedDialog"
-      @discard="handleDiscardChanges"
-      @save="handleSaveAndClose"
-      @cancel="showUnsavedDialog = false"
-    />
   </div>
 </template>
 
@@ -263,11 +277,13 @@ import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import {
   Boxes,
   Brain,
+  ChartColumn,
   Code2,
   MessageCircle,
   Globe2,
   Keyboard,
   Mic,
+  Music,
   NotebookPen,
   Plug,
   Search,
@@ -288,18 +304,19 @@ import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import NetworkSettingsTab from './settings/NetworkSettingsTab.vue'
 import VoiceSettingsTab from './settings/VoiceSettingsTab.vue'
+import MusicSettingsTab from './settings/MusicSettingsTab.vue'
 import ChannelsSettingsTab from './settings/ChannelsSettingsTab.vue'
 import ShortcutsSettingsTab from './settings/ShortcutsSettingsTab.vue'
 import { MCPSettingsPanel } from './settings/mcp'
-import SkillsSettingsPanel from './settings/SkillsSettingsPanel.vue'
+import { SkillsSettingsPanel } from './settings/skills'
 import PluginsSettingsTab from './settings/PluginsSettingsTab.vue'
 import PromptsSettingsPanel from './settings/PromptsSettingsPanel.vue'
 import MemorySettingsTab from './settings/MemorySettingsTab.vue'
+import UsageSettingsPanel from './settings/UsageSettingsPanel.vue'
 import EvalsSettingsTab from './settings/evals/EvalsSettingsTab.vue'
 
 // Dialogs
 import CustomProviderDialog, { type CustomProviderForm } from './settings/CustomProviderDialog.vue'
-import UnsavedChangesDialog from './settings/UnsavedChangesDialog.vue'
 
 const settingsStore = useSettingsStore()
 
@@ -312,17 +329,20 @@ const originalSettings = ref<string>('')
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const showCustomProviderDialog = ref(false)
 const editingProvider = ref<CustomProviderConfig | null>(null)
-const showUnsavedDialog = ref(false)
 const tools = ref<ToolDefinition[]>([])
 const isInitialLoad = ref(true) // Prevent auto-save during initial load
 
+// `sections` must mirror the h2/h3 headings the tab actually renders —
+// scroll anchoring matches on heading text. Single-section tabs render as
+// flat entries (no submenu), so their headings are not listed here; put
+// searchable terms in `keywords` instead.
 const navItems = [
   {
     id: 'general',
     label: 'General',
     hint: 'Appearance, themes, and typography',
     icon: Settings,
-    sections: ['Mode', 'Theme', 'Typography', 'Fonts', 'Context Compact', 'Daily Notes', 'Todo / Plan'],
+    sections: ['Mode', 'Theme', 'Typography', 'Context Compact', 'Agent Turns', 'Fonts', 'Daily Notes', 'Todo / Plan'],
   },
   {
     id: 'editor',
@@ -336,7 +356,15 @@ const navItems = [
     label: 'Providers',
     hint: 'Models, API keys, and defaults',
     icon: Boxes,
-    sections: ['Providers', 'API Configuration', 'Models', 'Temperature', 'Max Output'],
+    sections: ['Models', 'Connections'],
+  },
+  {
+    id: 'usage',
+    label: 'Usage',
+    hint: 'Token usage and cost across providers',
+    icon: ChartColumn,
+    sections: [],
+    keywords: 'token usage cost spend billing',
   },
   {
     id: 'tools',
@@ -350,70 +378,87 @@ const navItems = [
     label: 'Network',
     hint: 'Proxy routing',
     icon: Globe2,
-    sections: ['Network Proxy'],
+    sections: [],
+    keywords: 'network proxy bypass',
   },
   {
     id: 'voice',
     label: 'Voice',
     hint: 'Mic input, transcription, and speech playback',
     icon: Mic,
-    sections: ['Voice Input', 'Advanced Recording', 'Speech Providers'],
+    sections: [],
+    keywords: 'voice input recording speech providers transcription tts asr wake word',
+  },
+  {
+    id: 'music',
+    label: 'Music',
+    hint: 'NetEase Cloud Music setup for the music tool',
+    icon: Music,
+    sections: [],
+    keywords: '网易云音乐 电台 播放器 credentials login radio',
   },
   {
     id: 'channels',
     label: 'Channels',
     hint: 'IM gateways and login state',
     icon: MessageCircle,
-    sections: ['Channels', 'Runtime', 'WeChat login', 'Sessions'],
+    sections: ['Channels', 'Profiles', 'Sessions'],
+    keywords: 'wechat telegram gateway login',
   },
   {
     id: 'memory',
     label: 'Memory',
-    hint: 'Recall, capture, profile, and index settings',
+    hint: 'Memory capture, review, and diagnostics',
     icon: Brain,
-    sections: ['Basics', 'Recall', 'Capture', 'Profile', 'Search Index', 'Embeddings', 'Daily Notes Context', 'Compact Flush', 'Diagnostics', 'Scheduled Memory'],
+    sections: ['Basics', 'Capture', 'Review', 'Diagnostics'],
+    keywords: 'recall daily notes soul memory',
   },
   {
     id: 'shortcuts',
     label: 'Shortcuts',
     hint: 'Keyboard bindings',
     icon: Keyboard,
-    sections: ['Keyboard Shortcuts'],
+    sections: [],
+    keywords: 'keyboard shortcuts bindings',
   },
   {
     id: 'mcp',
     label: 'MCP Servers',
     hint: 'External context servers',
     icon: Server,
-    sections: ['Servers', 'Configuration'],
+    sections: [],
+    keywords: 'mcp servers context protocol',
   },
   {
     id: 'skills',
     label: 'Skills',
     hint: 'Reusable agent workflows',
     icon: Sparkles,
-    sections: ['Skills'],
+    sections: ['Directories', 'Skills'],
   },
   {
     id: 'prompts',
     label: 'Prompts',
     hint: 'Reusable prompt snippets',
     icon: NotebookPen,
-    sections: ['Prompts'],
+    sections: [],
+    keywords: 'prompt snippets templates',
   },
   {
     id: 'plugins',
     label: 'Plugins',
     hint: 'Installed extensions',
     icon: Plug,
-    sections: ['Plugins'],
+    sections: [],
+    keywords: 'plugins extensions install',
   },
   {
     id: 'evals',
     label: 'Evals',
     hint: 'Prompt evaluation: records, fixtures, runs, cases',
     icon: Sparkles,
-    sections: ['Records', 'Fixtures', 'Runs', 'Cases'],
+    sections: [],
+    keywords: 'records fixtures runs cases evaluation',
   },
 ]
 
@@ -424,7 +469,7 @@ const filteredNavItems = computed(() => {
   if (!query) return navItems
 
   return navItems.filter(item =>
-    `${item.label} ${item.hint} ${item.sections.join(' ')}`.toLowerCase().includes(query)
+    `${item.label} ${item.hint} ${item.sections.join(' ')} ${'keywords' in item ? item.keywords : ''}`.toLowerCase().includes(query)
   )
 })
 const expandedNavMenuIndexes = computed(() => [...expandedNavItems.value])
@@ -554,16 +599,16 @@ function handleNavMenuSelect(index: string) {
   void selectNavItem(tabId)
 }
 
+// Expanding/collapsing a group is a sidebar-only gesture (the chevron) — it
+// must not navigate; clicking the rest of the row selects the tab instead.
 function handleNavMenuOpen(index: string) {
   if (!isNavItemId(index)) return
   setNavExpanded(index, true)
-  void selectNavItem(index)
 }
 
 function handleNavMenuClose(index: string) {
   if (!isNavItemId(index)) return
   setNavExpanded(index, false)
-  void selectNavItem(index)
 }
 
 async function selectNavSection(tabId: string, sectionLabel: string) {
@@ -590,7 +635,9 @@ async function selectNavSection(tabId: string, sectionLabel: string) {
 }
 
 // Auto-save when settings change (with debounce)
+const justSaved = ref(false)
 let saveTimeout: number | null = null
+let savedBadgeTimeout: number | null = null
 watch(localSettings, (newSettings) => {
   if (!newSettings) return
   if (isInitialLoad.value) return
@@ -599,6 +646,11 @@ watch(localSettings, (newSettings) => {
   saveTimeout = window.setTimeout(async () => {
     await settingsStore.saveSettings(newSettings)
     originalSettings.value = JSON.stringify(newSettings)
+    justSaved.value = true
+    if (savedBadgeTimeout) clearTimeout(savedBadgeTimeout)
+    savedBadgeTimeout = window.setTimeout(() => {
+      justSaved.value = false
+    }, 1600)
   }, 500)
 }, { deep: true })
 
@@ -680,28 +732,6 @@ function saveCustomProvider(form: CustomProviderForm) {
   closeCustomProviderDialog()
 }
 
-// Unsaved changes handling
-function handleDiscardChanges() {
-  showUnsavedDialog.value = false
-  window.close()
-}
-
-async function handleSaveAndClose() {
-  if (localSettings.value) {
-    await settingsStore.saveSettings(localSettings.value)
-  }
-  showUnsavedDialog.value = false
-  window.close()
-}
-
-// Handle window close
-function handleBeforeUnload(e: BeforeUnloadEvent) {
-  if (hasUnsavedChanges.value) {
-    e.preventDefault()
-    e.returnValue = ''
-  }
-}
-
 // Handle keyboard shortcuts
 function handleKeydown(e: KeyboardEvent) {
   const closeShortcut = localSettings.value?.general?.shortcuts?.closeChat
@@ -737,14 +767,12 @@ async function openSettingsJson() {
 
 onMounted(async () => {
   await loadSettings()
-  window.addEventListener('beforeunload', handleBeforeUnload)
   window.addEventListener('focus', refreshToolsWhenVisible)
   document.addEventListener('visibilitychange', refreshToolsWhenVisible)
   document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('beforeunload', handleBeforeUnload)
   window.removeEventListener('focus', refreshToolsWhenVisible)
   document.removeEventListener('visibilitychange', refreshToolsWhenVisible)
   document.removeEventListener('keydown', handleKeydown)
@@ -794,18 +822,6 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-.settings-titlebar {
-  height: 38px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--settings-rule);
-  background: var(--settings-paper-2);
-  position: relative;
-  -webkit-app-region: drag;
-}
-
 .titlebar-title {
   position: absolute;
   inset: 0;
@@ -817,23 +833,6 @@ onUnmounted(() => {
   font-size: 12.5px;
   font-weight: 500;
   pointer-events: none;
-}
-
-.settings-layout {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.settings-sidebar {
-  width: 260px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 16px 12px 12px;
-  border-right: 1px solid var(--settings-rule);
-  background: var(--settings-paper-2);
-  -webkit-app-region: no-drag;
 }
 
 .settings-search {
@@ -900,33 +899,12 @@ onUnmounted(() => {
   line-height: 1.15;
 }
 
-.sidebar-hint {
-  overflow: hidden;
-  color: var(--settings-ink-4);
-  font-size: 11px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  background: var(--settings-paper);
-}
-
 .save-state {
+  margin-left: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-}
-
-.save-state {
-  margin-left: auto;
 }
 
 .content-body {
@@ -1131,177 +1109,9 @@ onUnmounted(() => {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.settings-page {
-  --settings-paper: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg-panel, var(--bg-elevated))));
-  --settings-paper-2: var(--ui-sidebar-surface-bg, var(--ui-surface-sidebar-bg, var(--bg-sidebar, var(--panel-2))));
-  --settings-paper-3: var(--ui-surface-panel-bg, var(--bg-panel, var(--ui-surface-elevated-bg, var(--bg-elevated))));
-  --settings-rule: var(--ui-border-default-border, var(--border-default, var(--border)));
-  --settings-rule-soft: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
-  --settings-ink: var(--ui-text-primary-fg, var(--text-primary, var(--text)));
-  --settings-ink-2: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
-  --settings-ink-3: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
-  --settings-ink-4: var(--ui-text-faint-fg, var(--text-faint, var(--muted)));
-  --settings-accent: var(--ui-accent-primary-fg, var(--accent));
-  --settings-accent-soft: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 14%, transparent);
-  background: var(--settings-paper);
-}
-
-.settings-titlebar {
-  height: 34px;
-  padding: 0 12px;
-  background: var(--settings-paper-2);
-}
-
-.titlebar-title {
-  color: var(--settings-ink-3);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.titlebar-save-state {
-  margin-left: auto;
-  color: var(--settings-ink-4);
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.titlebar-save-state.active {
-  color: var(--settings-accent);
-}
-
-.settings-sidebar {
-  width: 238px;
-  padding: 14px 10px 12px;
-  background: var(--settings-paper-2);
-}
-
-.sidebar-heading {
-  padding: 2px 8px 12px;
-}
-
-.sidebar-heading h2 {
-  margin: 0;
-  color: var(--settings-ink);
-  font-size: 16px;
-  font-weight: 650;
-  line-height: 1.2;
-}
-
-.sidebar-heading p {
-  margin: 3px 0 0;
-  color: var(--settings-ink-4);
-  font-size: 12px;
-  line-height: 1.3;
-}
-
-.settings-search {
-  height: 30px;
-  box-sizing: border-box;
-  margin: 0 4px 12px;
-  padding: 0 9px;
-  border-color: var(--settings-rule-soft);
-  background: color-mix(in srgb, var(--settings-paper) 74%, transparent);
-}
-
-.sidebar-nav {
-  gap: 2px;
-}
-
-.sidebar-icon {
-  width: 15px;
-  height: 15px;
-}
-
-.sidebar-label {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.sidebar-hint {
-  display: none;
-}
-
-.sidebar-empty {
-  padding: 12px 9px;
-  color: var(--settings-ink-4);
-  font-size: 12px;
-}
-
-.settings-content {
-  background: var(--settings-paper);
-}
-
-.content-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px 32px 16px;
-  border-bottom: 1px solid var(--settings-rule-soft);
-  background: color-mix(in srgb, var(--settings-paper) 92%, var(--settings-paper-2));
-}
-
-.content-header-copy {
-  min-width: 0;
-}
-
-.content-header h1 {
-  margin: 0;
-  color: var(--settings-ink);
-  font-size: 21px;
-  font-weight: 650;
-  letter-spacing: 0;
-  line-height: 1.18;
-}
-
-.content-header p {
-  margin: 5px 0 0;
-  color: var(--settings-ink-4);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.save-state {
-  flex-shrink: 0;
-  margin-top: 18px;
-  padding: 4px 8px;
-  border: 1px solid var(--settings-rule-soft);
-  border-radius: 999px;
-  background: var(--settings-paper-3);
-  color: var(--settings-ink-4);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  font-family: inherit;
-}
-
-.save-state.active {
-  border-color: color-mix(in srgb, var(--settings-accent) 28%, var(--settings-rule));
-  color: var(--settings-accent);
-}
-
-.content-body {
-  padding: 24px 32px 44px;
-}
-
-.content-inner {
-  width: min(100%, 920px);
-}
-
-.content-inner-wide {
-  width: min(100%, 1120px);
-}
-
 :deep(.settings-section),
 :deep(.detail-section) {
   margin-bottom: 24px;
-}
-
-:deep(.settings-card),
-:deep(.settings-group) {
-  border-radius: 8px;
-  background: var(--settings-paper-3);
 }
 
 :deep(.card-row),
@@ -1332,45 +1142,6 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
-@media (max-width: 860px) {
-  .settings-page {
-    padding: 0;
-  }
-
-  .settings-window {
-    height: 100%;
-    min-height: 0;
-    border-radius: 0;
-  }
-
-  .settings-sidebar {
-    width: 210px;
-  }
-
-  .sidebar-hint {
-    display: none;
-  }
-
-  .content-header {
-    flex-direction: column;
-    gap: 10px;
-    padding: 16px 22px 14px;
-  }
-
-  .save-state {
-    margin-top: 0;
-  }
-
-  .content-body {
-    padding: 24px 22px 44px;
-  }
-
-  .content-inner-wide,
-  .content-inner {
-    width: 100%;
-  }
-}
-
 /* IDE-style settings page refresh, inspired by compact desktop preferences. */
 .settings-page {
   --settings-paper: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg-panel, var(--bg-elevated))));
@@ -1399,9 +1170,9 @@ onUnmounted(() => {
   clip: rect(0 0 0 0);
 }
 
+/* Sidebar width is owned by the :sidebar-width Container prop (inline style
+   beats any CSS var set here — do not try to size the sidebar from CSS). */
 .settings-window {
-  --layout-container-sidebar-width: 214px;
-
   background: var(--settings-paper);
 }
 
@@ -1443,24 +1214,22 @@ onUnmounted(() => {
   -webkit-app-region: drag;
 }
 
-.sidebar-heading {
-  display: none;
-}
-
 .settings-search,
 .sidebar-nav {
   -webkit-app-region: no-drag;
 }
 
+/* Ledger search: a single underline carries the field. */
 .settings-search {
   height: 31px;
   margin: 0 0 16px;
-  padding: 0 9px;
-  border-color: var(--settings-rule);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--settings-paper) 56%, transparent);
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px solid var(--settings-rule);
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink-4);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink) 2%, transparent);
+  box-shadow: none;
 }
 
 .settings-search input {
@@ -1470,9 +1239,9 @@ onUnmounted(() => {
 }
 
 .settings-search:focus-within {
-  border-color: color-mix(in srgb, var(--settings-ink) 24%, var(--settings-rule));
-  background: color-mix(in srgb, var(--settings-paper) 72%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink) 8%, transparent);
+  border-bottom-color: var(--settings-accent);
+  background: transparent;
+  box-shadow: none;
 }
 
 .settings-search input:focus,
@@ -1492,18 +1261,21 @@ onUnmounted(() => {
   --app-menu-width: 100%;
   --app-menu-padding: 0;
   --app-menu-item-height: 30px;
-  --app-menu-item-radius: 4px;
+  --app-menu-item-radius: 0;
   --app-menu-item-gap: 8px;
   --app-menu-indent-step: 0px;
   --app-menu-item-fg: var(--settings-ink-4);
-  --app-menu-item-hover-bg: color-mix(in srgb, var(--settings-paper) 46%, transparent);
+  --app-menu-item-hover-bg: transparent;
   --app-menu-item-hover-fg: var(--settings-ink-2);
-  --app-menu-active-bg: color-mix(in srgb, var(--settings-paper) 72%, var(--settings-accent-soft));
+  --app-menu-active-bg: transparent;
   --app-menu-active-fg: var(--settings-ink);
 
+  /* Bleed through the sidebar's 10px right padding so the scrollbar
+     hugs the sidebar edge; padding-right keeps items at their inset. */
   gap: 0;
-  width: 100%;
-  padding-right: 8px;
+  width: calc(100% + 10px);
+  margin-right: -10px;
+  padding-right: 18px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1519,18 +1291,20 @@ onUnmounted(() => {
   min-height: 30px;
   padding: 5px 8px;
   border: 0;
-  border-radius: 4px;
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink-4);
   font: inherit;
   font-size: 14px;
   outline: none;
   text-align: left;
-  transition: background 120ms ease, color 120ms ease;
+  transition: box-shadow 120ms ease, color 120ms ease;
 }
 
 .sidebar-entry :deep(.app-sub-menu-title:hover) {
-  background: color-mix(in srgb, var(--settings-paper) 46%, transparent);
+  background: transparent;
   color: var(--settings-ink-2);
+  box-shadow: inset 2px 0 0 var(--settings-rule);
 }
 
 .sidebar-entry :deep(.app-sub-menu-title:focus-visible) {
@@ -1539,28 +1313,36 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
+/* Active nav entry: state lives in the left ink line, not a fill. */
 .sidebar-entry.is-active :deep(.app-sub-menu-title) {
   border-color: transparent;
-  background: color-mix(in srgb, var(--settings-paper) 72%, var(--settings-accent-soft));
+  background: transparent;
   color: var(--settings-ink);
-  box-shadow: none;
+  box-shadow: inset 2px 0 0 var(--settings-accent);
 }
 
-/* Disclosure stays functional but silent: it only appears on hover or
-   while the entry is open — the resting nav reads icon + label only. */
+/* Disclosure is always visible and is its own click target: the chevron
+   expands/collapses, the rest of the row switches tabs. */
+.sidebar-entry :deep(.app-sub-menu-chevron-hit) {
+  width: 20px;
+  height: 20px;
+  margin: -2px;
+  flex-shrink: 0;
+}
+
 .sidebar-entry :deep(.app-sub-menu-chevron) {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
   color: currentColor;
-  opacity: 0;
+  opacity: 0.45;
   transition: opacity 0.12s ease;
 }
 
-.sidebar-entry:hover :deep(.app-sub-menu-chevron),
+.sidebar-entry :deep(.app-sub-menu-chevron-hit:hover .app-sub-menu-chevron),
 .sidebar-entry.is-opened :deep(.app-sub-menu-chevron),
 .sidebar-entry.is-active :deep(.app-sub-menu-chevron) {
-  opacity: 0.7;
+  opacity: 0.85;
 }
 
 .sidebar-entry :deep(.app-sub-menu-icon) {
@@ -1570,6 +1352,60 @@ onUnmounted(() => {
 }
 
 .sidebar-entry :deep(.app-sub-menu-label) {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+}
+
+/* Flat entries (tabs without sub-sections) mirror the sub-menu title look,
+   minus the disclosure chevron. The start padding aligns their icons with
+   sub-menu icons (which sit after the reserved chevron slot); !important is
+   required because MenuItem writes padding-inline-start as an inline style. */
+.sidebar-entry-flat :deep(.app-menu-item) {
+  gap: 8px;
+  min-height: 30px;
+  padding: 5px 8px;
+  padding-inline-start: 36px !important;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-ink-4);
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  text-align: left;
+  justify-content: flex-start;
+  transition: box-shadow 120ms ease, color 120ms ease;
+}
+
+.sidebar-entry-flat :deep(.app-menu-item:hover) {
+  background: transparent;
+  color: var(--settings-ink-2);
+  box-shadow: inset 2px 0 0 var(--settings-rule);
+}
+
+.sidebar-entry-flat :deep(.app-menu-item:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--settings-ink) 24%, transparent);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+
+.sidebar-entry-flat.is-active :deep(.app-menu-item) {
+  background: transparent;
+  color: var(--settings-ink);
+  box-shadow: inset 2px 0 0 var(--settings-accent);
+}
+
+.sidebar-entry-flat :deep(.app-menu-item-icon) {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.sidebar-entry-flat :deep(.app-menu-item-label) {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -1597,10 +1433,6 @@ onUnmounted(() => {
   font-size: 14px;
   font-weight: 560;
   line-height: 1.25;
-}
-
-.sidebar-hint {
-  display: none;
 }
 
 .sidebar-entry :deep(.app-sub-menu-panel) {
@@ -1645,9 +1477,12 @@ onUnmounted(() => {
 
 .sidebar-subitem :deep(.app-menu-item:hover),
 .sidebar-subitem :deep(.app-menu-item:focus-visible) {
-  background: color-mix(in srgb, var(--settings-paper) 42%, transparent);
+  background: transparent;
   color: var(--settings-ink-2);
   box-shadow: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--settings-rule);
 }
 
 .sidebar-subitem :deep(.app-menu-item-label) {
@@ -1695,16 +1530,18 @@ onUnmounted(() => {
   color: var(--settings-ink);
 }
 
+/* Scope badge: outlined ring, zero fill. */
 .scope-badge {
   display: inline-flex;
   align-items: center;
   min-height: 23px;
-  padding: 0 8px;
-  border-radius: 5px;
-  background: var(--settings-accent-soft);
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--settings-accent) 55%, transparent);
+  border-radius: 999px;
+  background: transparent;
   color: var(--settings-accent);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1;
 }
 
@@ -1756,17 +1593,18 @@ onUnmounted(() => {
 }
 
 .save-state {
-  display: none;
+  display: inline-flex;
   position: absolute;
   right: 30px;
   bottom: 16px;
   margin: 0;
   border-radius: 5px;
   background: transparent;
+  color: var(--settings-ink-4);
 }
 
 .save-state.active {
-  display: inline-flex;
+  color: var(--settings-accent);
 }
 
 .content-body {
@@ -1840,13 +1678,13 @@ onUnmounted(() => {
 
 :deep(.theme-card) {
   border-color: var(--settings-rule);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--settings-paper-3) 82%, transparent);
+  border-radius: 0;
+  background: transparent;
 }
 
 :deep(.theme-card.active) {
-  border-color: color-mix(in srgb, var(--settings-accent) 56%, var(--settings-rule));
-  box-shadow: 0 0 0 2px var(--settings-accent-soft);
+  border-color: var(--settings-accent);
+  box-shadow: inset 0 -2px 0 var(--settings-accent);
 }
 
 :deep(.setting-row),
@@ -1910,6 +1748,7 @@ onUnmounted(() => {
   justify-content: flex-start;
 }
 
+/* Boxed fields: square drafting boxes, no fills. */
 :deep(.form-input),
 :deep(.form-textarea),
 :deep(.form-select),
@@ -1917,8 +1756,8 @@ onUnmounted(() => {
 :deep(.row-select) {
   min-height: 32px;
   border: 1px solid var(--settings-rule);
-  border-radius: 5px;
-  background-color: color-mix(in srgb, var(--settings-paper-3) 84%, transparent);
+  border-radius: 0;
+  background-color: transparent;
   color: var(--settings-ink);
   font-size: 13px;
 }
@@ -1928,15 +1767,45 @@ onUnmounted(() => {
 :deep(.form-select:focus),
 :deep(.row-input:focus),
 :deep(.row-select:focus) {
-  border-color: color-mix(in srgb, var(--settings-ink) 24%, var(--settings-rule));
-  background-color: var(--settings-paper-3);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-ink) 8%, transparent);
+  border-color: var(--settings-accent);
+  background-color: transparent;
+  box-shadow: none;
 }
 
+/* Segmented controls drawn once here so tabs without local styles
+   (e.g. Memory's directory mode) still get a visible active state. */
 :deep(.segmented-control) {
-  border-color: var(--settings-rule);
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--settings-paper-3) 72%, transparent);
+  display: inline-flex;
+  border: 1px solid var(--settings-rule);
+  border-radius: 0;
+  background: transparent;
+}
+
+:deep(.segment-btn) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 5px 14px;
+  color: var(--settings-ink-3);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: color 120ms ease, box-shadow 120ms ease;
+}
+
+:deep(.segment-btn + .segment-btn) {
+  border-left: 1px solid var(--settings-rule-soft);
+}
+
+:deep(.segment-btn:hover) {
+  background: transparent;
+  color: var(--settings-ink);
+}
+
+:deep(.segment-btn.active) {
+  background: transparent;
+  color: var(--settings-ink);
+  box-shadow: inset 0 -2px 0 var(--settings-accent);
 }
 
 :deep(.segment-btn),
@@ -1947,27 +1816,71 @@ onUnmounted(() => {
 :deep(.prompt-primary-btn),
 :deep(.prompt-secondary-btn),
 :deep(.prompt-danger-btn) {
-  border-radius: 5px;
+  border-radius: 0;
   font-size: 13px;
 }
 
 :deep(.secondary-btn),
 :deep(.test-btn),
 :deep(.prompt-secondary-btn) {
-  border-color: var(--settings-rule);
-  background: color-mix(in srgb, var(--settings-paper-3) 84%, transparent);
+  border: 1px solid var(--settings-rule);
+  background: transparent;
+  color: var(--settings-ink-2);
+}
+
+:deep(.secondary-btn:hover),
+:deep(.test-btn:hover),
+:deep(.prompt-secondary-btn:hover) {
+  border-color: var(--settings-ink-3);
+  background: transparent;
+  color: var(--settings-ink);
+}
+
+/* Primary actions: accent line + accent ink, never a filled block. */
+:deep(.primary-action),
+:deep(.save-action),
+:deep(.prompt-primary-btn) {
+  border: 1px solid var(--settings-accent);
+  background: transparent;
+  color: var(--settings-accent);
+}
+
+:deep(.primary-action:hover:not(:disabled)),
+:deep(.save-action:hover:not(:disabled)),
+:deep(.prompt-primary-btn:hover:not(:disabled)) {
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--settings-accent);
+  color: var(--settings-accent);
+}
+
+:deep(.prompt-danger-btn) {
+  border: 1px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  background: transparent;
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
 :deep(.form-slider) {
-  height: 4px;
+  height: 1px;
+  border-radius: 0;
   background: var(--settings-rule);
 }
 
 :deep(.form-slider::-webkit-slider-thumb) {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--settings-accent);
+  border-radius: 50%;
+  background: var(--settings-paper);
+  box-shadow: none;
 }
 
+/*
+ * Ink toggle, drawn once for every switch on the page.
+ * Off: dashed rail + hollow ring at the left.  On: solid accent rail +
+ * filled ink dot at the right.  Covers both markup dialects:
+ * native checkboxes (.toggle-row / .native-toggle) and the span-based
+ * `.toggle > input + .toggle-slider` used by older tabs.
+ */
 :deep(.toggle-row input[type="checkbox"]),
 :deep(.native-toggle input[type="checkbox"]) {
   position: relative;
@@ -1975,45 +1888,142 @@ onUnmounted(() => {
   height: 20px;
   flex: 0 0 auto;
   margin: 0;
-  border: 1px solid var(--settings-rule);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--settings-paper-3) 72%, transparent);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   cursor: pointer;
   appearance: none;
   -webkit-appearance: none;
-  transition: background 140ms ease, border-color 140ms ease;
+}
+
+:deep(.toggle-row input[type="checkbox"]::after),
+:deep(.native-toggle input[type="checkbox"]::after) {
+  content: '';
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 50%;
+  height: 0;
+  border-top: 1px dashed var(--settings-rule);
+  transition: border-color 140ms ease;
 }
 
 :deep(.toggle-row input[type="checkbox"]::before),
 :deep(.native-toggle input[type="checkbox"]::before) {
   content: '';
   position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  background: var(--settings-ink-4);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
-  transition: transform 140ms ease, background 140ms ease;
+  top: 4px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--settings-ink-4);
+  border-radius: 50%;
+  background: var(--settings-paper);
+  box-shadow: none;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+  z-index: 1;
 }
 
 :deep(.toggle-row input[type="checkbox"]:checked),
 :deep(.native-toggle input[type="checkbox"]:checked) {
-  border-color: color-mix(in srgb, var(--settings-accent) 44%, var(--settings-rule));
-  background: color-mix(in srgb, var(--settings-accent) 42%, var(--settings-paper-3));
+  border: 0;
+  background: transparent;
+}
+
+:deep(.toggle-row input[type="checkbox"]:checked::after),
+:deep(.native-toggle input[type="checkbox"]:checked::after) {
+  border-top-style: solid;
+  border-top-color: color-mix(in srgb, var(--settings-accent) 65%, transparent);
 }
 
 :deep(.toggle-row input[type="checkbox"]:checked::before),
 :deep(.native-toggle input[type="checkbox"]:checked::before) {
-  transform: translateX(14px);
-  background: color-mix(in srgb, white 86%, var(--settings-accent));
+  transform: translateX(20px);
+  border-color: var(--settings-accent);
+  background: var(--settings-accent);
 }
 
 :deep(.toggle-row input[type="checkbox"]:disabled),
 :deep(.native-toggle input[type="checkbox"]:disabled) {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+/* Span-based dialect: the slider span becomes the rail, its ::before the knob. */
+:deep(.toggle) {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+:deep(.toggle input) {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+:deep(.toggle .toggle-slider) {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: none;
+}
+
+:deep(.toggle .toggle-slider::after) {
+  content: '';
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 50%;
+  height: 0;
+  border-top: 1px dashed var(--settings-rule);
+  transition: border-color 140ms ease;
+}
+
+:deep(.toggle .toggle-slider::before) {
+  content: '';
+  position: absolute;
+  top: 4px;
+  left: 1px;
+  bottom: auto;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--settings-ink-4);
+  border-radius: 50%;
+  background: var(--settings-paper);
+  box-shadow: none;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+  z-index: 1;
+}
+
+:deep(.toggle input:checked + .toggle-slider) {
+  background: transparent;
+}
+
+:deep(.toggle input:checked + .toggle-slider::after) {
+  border-top-style: solid;
+  border-top-color: color-mix(in srgb, var(--settings-accent) 65%, transparent);
+}
+
+:deep(.toggle input:checked + .toggle-slider::before) {
+  transform: translateX(20px);
+  border-color: var(--settings-accent);
+  background: var(--settings-accent);
+}
+
+:deep(.toggle input:disabled + .toggle-slider) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+:deep(.toggle input:focus-visible + .toggle-slider) {
+  outline: 2px solid color-mix(in srgb, var(--settings-ink) 24%, transparent);
+  outline-offset: 2px;
 }
 
 :deep(.provider-rows) {
@@ -2028,16 +2038,25 @@ onUnmounted(() => {
   border-top-color: var(--settings-rule-soft);
 }
 
-:deep(.provider-row:hover),
+:deep(.provider-row:hover) {
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--settings-rule);
+}
+
 :deep(.provider-row.active) {
-  background: color-mix(in srgb, var(--settings-paper-3) 76%, transparent);
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--settings-accent);
 }
 
 :deep(.provider-configure),
 :deep(.provider-row-edit),
-:deep(.provider-pill),
+:deep(.provider-pill) {
+  border-radius: 0;
+}
+
 :deep(.provider-icon-tile) {
-  border-radius: 5px;
+  border-radius: 0;
+  background: transparent;
 }
 
 :deep(.detail-title) {
@@ -2072,8 +2091,8 @@ onUnmounted(() => {
 .settings-page :deep(.model-caps-id-input:focus),
 .settings-page :deep(.model-caps-id-input:focus-visible) {
   outline: none;
-  border-color: color-mix(in srgb, var(--settings-ink) 24%, var(--settings-rule));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-ink) 8%, transparent);
+  border-color: var(--settings-accent);
+  box-shadow: none;
 }
 
 .settings-page :deep(.settings-search:focus-within),
@@ -2081,8 +2100,13 @@ onUnmounted(() => {
 .settings-page :deep(.model-search-field:focus-within),
 .settings-page :deep(.app-input-number:focus-within),
 .settings-page :deep(.model-out-wrap:focus-within) {
-  border-color: color-mix(in srgb, var(--settings-ink) 24%, var(--settings-rule));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--settings-ink) 8%, transparent);
+  border-color: var(--settings-accent);
+  box-shadow: none;
+}
+
+/* Five-digit values (12000, 15000) were clipped in the stepper input. */
+.settings-page :deep(.app-input-number-input) {
+  min-width: 76px;
 }
 
 .settings-page :deep(.segment-btn:focus-visible),
@@ -2094,12 +2118,7 @@ onUnmounted(() => {
 }
 
 @media (max-width: 860px) {
-  .settings-window {
-    --layout-container-sidebar-width: 204px;
-  }
-
   .settings-window :deep(.settings-sidebar) {
-    width: 204px;
     padding: 0 8px 12px;
   }
 

@@ -10,6 +10,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '../stores/settings'
 import { useSessionsStore } from '../stores/sessions'
 import type { KeyboardShortcut, ShortcutSettings } from '@/types'
+import { isEditableTarget } from '@/utils/editable-target'
 
 /**
  * Check if a keyboard event matches a shortcut configuration
@@ -32,6 +33,11 @@ export function matchShortcut(event: KeyboardEvent, shortcut: KeyboardShortcut |
   if (!!shortcut.metaKey !== event.metaKey) return false
 
   return true
+}
+
+/** 是否带修饰键。不带修饰键的快捷键是「裸键」，在输入框里必须让位给打字。 */
+export function hasModifier(shortcut: KeyboardShortcut | undefined): boolean {
+  return !!(shortcut?.ctrlKey || shortcut?.altKey || shortcut?.metaKey)
 }
 
 /**
@@ -72,6 +78,8 @@ export interface ShortcutHandlers {
   onSearchEverywhere?: () => void
   onToggleTodoPlanWindow?: () => void
   onToggleTodoPlan?: () => void
+  /** digit is 1-9, browser convention: 9 always means "last tab" */
+  onSelectTabByIndex?: (digit: number) => void
 }
 
 /**
@@ -83,15 +91,19 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
 
   function handleGlobalKeydown(event: KeyboardEvent) {
     // Skip if we're in an input field (except for specific shortcuts)
-    const target = event.target as HTMLElement
-    const isInInput = target.tagName === 'INPUT' ||
-      target.tagName === 'TEXTAREA' ||
-      target.isContentEditable
+    const isInInput = isEditableTarget(event.target)
 
     const shortcuts = settingsStore.settings?.general?.shortcuts
     if (!shortcuts) return
 
-    if (matchShortcut(event, resolveSearchEverywhereShortcut(shortcuts))) {
+    // 输入框内只放行带修饰键的快捷键：裸键（用户可以把 Space、单字母绑上去）
+    // 若照常 preventDefault，会直接把用户正在打的字吞掉。
+    const match = (shortcut: KeyboardShortcut | undefined): boolean => {
+      if (!matchShortcut(event, shortcut)) return false
+      return !isInInput || hasModifier(shortcut)
+    }
+
+    if (match(resolveSearchEverywhereShortcut(shortcuts))) {
       event.preventDefault()
       if (handlers.onSearchEverywhere) {
         handlers.onSearchEverywhere()
@@ -101,7 +113,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       return
     }
 
-    if (matchShortcut(event, shortcuts.toggleTodoPlanWindow)) {
+    if (match(shortcuts.toggleTodoPlanWindow)) {
       event.preventDefault()
       if (handlers.onToggleTodoPlanWindow) {
         handlers.onToggleTodoPlanWindow()
@@ -115,7 +127,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
     }
 
     // New Chat - works everywhere
-    if (matchShortcut(event, shortcuts.newChat)) {
+    if (match(shortcuts.newChat)) {
       event.preventDefault()
       if (handlers.onNewChat) {
         handlers.onNewChat()
@@ -129,7 +141,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
 
 
     // Toggle Sidebar - works everywhere
-    if (matchShortcut(event, shortcuts.toggleSidebar)) {
+    if (match(shortcuts.toggleSidebar)) {
       event.preventDefault()
       if (handlers.onToggleSidebar) {
         handlers.onToggleSidebar()
@@ -137,7 +149,7 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       return
     }
 
-    if (matchShortcut(event, shortcuts.toggleTodoPlan)) {
+    if (match(shortcuts.toggleTodoPlan)) {
       event.preventDefault()
       if (handlers.onToggleTodoPlan) {
         handlers.onToggleTodoPlan()
@@ -163,6 +175,15 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
       if (handlers.onOpenSettings) {
         handlers.onOpenSettings()
       }
+      return
+    }
+
+    // Switch tab by position - Cmd+1..9 (macOS) or Ctrl+1..9 (Windows)
+    // Browser convention, hardcoded like Cmd+, above; active even while
+    // focused in an input, since the shortcut targets tabs, not text.
+    if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) {
+      event.preventDefault()
+      handlers.onSelectTabByIndex?.(Number(event.key))
       return
     }
 

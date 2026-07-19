@@ -13,6 +13,7 @@
 
 import {
   acpBuiltinProvider,
+  claudeCodeAgentBuiltinProvider,
   ONETHING_CODEX_PROVIDER_ID,
   onethingPortableBuiltinProviders,
 } from '@onething/runtime/providers'
@@ -26,6 +27,7 @@ export const builtinProviders: ProviderDefinition[] = [
     .filter(provider => provider.id !== ONETHING_CODEX_PROVIDER_ID) as ProviderDefinition[],
   codex,
   acpBuiltinProvider as ProviderDefinition,
+  claudeCodeAgentBuiltinProvider as ProviderDefinition,
 ]
 
 export default builtinProviders

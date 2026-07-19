@@ -7,16 +7,9 @@ import type { SoulMemoryLoggingSettings } from './types.js'
 
 export type MemoryDiagnosticLevel = 'debug' | 'info' | 'warn' | 'error'
 export type MemoryDiagnosticSubsystem =
-  | 'embedding'
-  | 'index'
-  | 'search'
   | 'capture'
-  | 'graph'
   | 'daily'
-  | 'active-memory'
-  | 'flush'
   | 'review'
-  | 'dreaming'
   | 'scheduler'
   | 'ipc'
 export type MemoryDiagnosticStatus = 'started' | 'ok' | 'error' | 'skipped' | 'fallback'
@@ -464,7 +457,7 @@ export function createMemoryDiagnosticsFetch(
       ...(context.model ? { model: context.model } : {}),
     }
     logger.log({
-      subsystem: context.subsystem || 'embedding',
+      subsystem: context.subsystem || 'ipc',
       operation: context.operation || 'http',
       stage: 'request',
       status: 'started',
@@ -479,7 +472,7 @@ export function createMemoryDiagnosticsFetch(
         : undefined
       logger.log({
         level: response.ok ? 'info' : 'warn',
-        subsystem: context.subsystem || 'embedding',
+        subsystem: context.subsystem || 'ipc',
         operation: context.operation || 'http',
         stage: 'response',
         status: response.ok ? 'ok' : 'error',
@@ -497,7 +490,7 @@ export function createMemoryDiagnosticsFetch(
     } catch (error) {
       logger.log({
         level: 'error',
-        subsystem: context.subsystem || 'embedding',
+        subsystem: context.subsystem || 'ipc',
         operation: context.operation || 'http',
         stage: 'response',
         status: 'error',

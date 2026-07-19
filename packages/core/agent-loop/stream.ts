@@ -199,6 +199,9 @@ function isAgentTurnStreamEvent(event: AgentStreamEvent): event is AgentTurnStre
     case 'tool-call-start':
     case 'tool-call-delta':
     case 'tool-call-done':
+    case 'tool-metadata':
+    case 'tool-partial-result':
+    case 'tool-result':
     case 'provider-data':
     case 'finish':
       return true

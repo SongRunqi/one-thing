@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { EditorState } from '@codemirror/state'
+import { EditorSelection, EditorState } from '@codemirror/state'
 import { markdown } from '@codemirror/lang-markdown'
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { cursorCharLeft, deleteCharBackward } from '@codemirror/commands'
@@ -9,6 +9,7 @@ import {
   analyzeMarkdownLivePreviewLine,
   isLineActive,
   markdownLivePreviewExtension,
+  markdownWidgetCaretRect,
 } from '../markdown-live-preview'
 
 describe('markdown live preview helpers', () => {
@@ -352,7 +353,7 @@ describe('markdown live preview helpers', () => {
     view.destroy()
   })
 
-  it('moves through hidden Markdown source by character', () => {
+  it('skips the hidden task marker as one atomic unit but steps through inline syntax', () => {
     const doc = [
       'Before',
       '- [ ] Task',
@@ -367,18 +368,20 @@ describe('markdown live preview helpers', () => {
       parent: document.body,
     })
 
-    const taskTextFrom = doc.indexOf('Task')
+    // The rendered checkbox is crossed in a single step instead of walking
+    // invisible marker positions one character at a time.
+    const taskLineFrom = doc.indexOf('- [ ] Task')
     let moved = view.moveByChar(view.state.selection.main, false)
-    expect(moved.head).toBe(taskTextFrom - 1)
+    expect(moved.head).toBe(taskLineFrom)
     view.dispatch({ selection: moved, userEvent: 'select' })
-    expect(view.state.selection.main.head).toBe(taskTextFrom - 1)
 
     moved = view.moveByChar(view.state.selection.main, false)
     view.dispatch({ selection: moved, userEvent: 'select' })
-    expect(view.state.selection.main.head).toBe(taskTextFrom - 2)
+    expect(view.state.selection.main.head).toBe(taskLineFrom - 1)
 
     view.destroy()
 
+    // Inline emphasis delimiters are atomic too: crossing `**` is one step.
     const inlineView = new EditorView({
       state: EditorState.create({
         doc: '**bold** after',
@@ -389,7 +392,7 @@ describe('markdown live preview helpers', () => {
     })
 
     moved = inlineView.moveByChar(inlineView.state.selection.main, true)
-    expect(moved.head).toBe(1)
+    expect(moved.head).toBe(2)
     inlineView.destroy()
 
     const inlineSuffixView = new EditorView({
@@ -402,7 +405,7 @@ describe('markdown live preview helpers', () => {
     })
 
     moved = inlineSuffixView.moveByChar(inlineSuffixView.state.selection.main, true)
-    expect(moved.head).toBe(7)
+    expect(moved.head).toBe(8)
 
     inlineSuffixView.destroy()
   })
@@ -456,7 +459,7 @@ describe('markdown live preview helpers', () => {
     imageView.destroy()
   })
 
-  it('keeps heading marker source reachable during keyboard selection', () => {
+  it('crosses the heading marker in one step and keeps it reachable via selection', () => {
     const doc = [
       'Before',
       '## Now',
@@ -472,11 +475,15 @@ describe('markdown live preview helpers', () => {
 
     let moved = view.moveByChar(view.state.selection.main, false)
     view.dispatch({ selection: moved, userEvent: 'select' })
-    expect(view.state.selection.main.head).toBe(doc.indexOf('Now') - 1)
+    expect(view.state.selection.main.head).toBe(doc.indexOf('## Now'))
 
     moved = view.moveByChar(view.state.selection.main, false)
     view.dispatch({ selection: moved, userEvent: 'select' })
-    expect(view.state.selection.main.head).toBe(doc.indexOf('Now') - 2)
+    expect(view.state.selection.main.head).toBe(doc.indexOf('## Now') - 1)
+
+    // A selection spanning the marker still reveals the raw source.
+    view.dispatch({ selection: { anchor: doc.indexOf('Now'), head: doc.indexOf('## Now') } })
+    expect(view.dom.querySelector('.md-live-source-revealed')).not.toBeNull()
 
     view.destroy()
   })
@@ -501,7 +508,9 @@ describe('markdown live preview helpers', () => {
       positions.push(view.state.selection.main.head)
     }
 
-    expect(positions).toEqual([21, 20, 19, 18])
+    // The hidden outer marker is crossed atomically (20 → 17 = line start),
+    // never landing inside it or jumping to the previous line's marker.
+    expect(positions).toEqual([21, 20, 17, 16])
 
     view.destroy()
   })
@@ -1732,6 +1741,243 @@ describe('markdown live preview helpers', () => {
     expect(view.state.sliceDoc(selection.from, selection.to)).toBe('const first = 1\nconst second = 2')
     expect(view.state.sliceDoc(selection.from, selection.to)).not.toContain('```')
     expect(view.scrollDOM.scrollTop).toBe(120)
+
+    view.destroy()
+  })
+
+  it('unhides zero-height table lines when the caret reaches them', () => {
+    const doc = '| a | b |\n| --- | --- |\n| 1 | 2 |'
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: doc.indexOf('---') + 1 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    // Caret sits inside the separator line: that line is revealed at normal
+    // height, only the third row stays height-collapsed.
+    expect(view.dom.querySelectorAll('.md-live-fold-hidden')).toHaveLength(1)
+    expect(view.dom.querySelector('.md-live-source-revealed')).not.toBeNull()
+
+    view.destroy()
+  })
+
+  it('unhides all collapsed lines when a selection spans them', () => {
+    const doc = '| a | b |\n| --- | --- |\n| 1 | 2 |\n\n```js\ncode\n```'
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: 0, head: doc.length },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    expect(view.dom.querySelectorAll('.md-live-fold-hidden')).toHaveLength(0)
+    expect(view.dom.querySelectorAll('.md-live-codeblock-fence-hidden')).toHaveLength(0)
+
+    view.destroy()
+  })
+
+  it('leaves math, emoji, and strikethrough syntax untouched inside inline code', () => {
+    const doc = 'run `echo :rocket: $PATH and $HOME ~~x~~` now'
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    expect(view.dom.querySelector('.md-live-math')).toBeNull()
+    expect(view.dom.querySelector('.md-live-strikethrough')).toBeNull()
+    expect(view.dom.querySelector('.md-live-emoji')).toBeNull()
+    expect(view.dom.textContent).toContain(':rocket: $PATH and $HOME ~~x~~')
+
+    view.destroy()
+  })
+
+  it('still renders math, emoji, and strikethrough outside inline code', () => {
+    const doc = 'a `code` b $x+y$ :rocket: ~~gone~~'
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    expect(view.dom.querySelector('.md-live-math')).not.toBeNull()
+    expect(view.dom.querySelector('.md-live-strikethrough')).not.toBeNull()
+
+    view.destroy()
+  })
+
+  it('crosses a rendered table as one island so the caret never rests on widget lines', () => {
+    const doc = 'Above\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\nBelow'
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: doc.indexOf('Above') + 5 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    // One step from the end of "Above" lands on the empty line after the
+    // table; the caret never stops on the widget or hidden rows in between.
+    const moved = view.moveByChar(view.state.selection.main, true)
+    expect(moved.head).toBe(doc.indexOf('\nBelow'))
+
+    const back = view.moveByChar(EditorSelection.cursor(doc.indexOf('\nBelow')), false)
+    expect(back.head).toBe(doc.indexOf('Above') + 5)
+
+    view.destroy()
+  })
+
+  it('anchors widget caret rects by position inside the range, not approach side', () => {
+    const line = document.createElement('div')
+    line.className = 'cm-line'
+    const widget = document.createElement('span')
+    line.append(widget)
+    document.body.append(line)
+    const rect = (left: number, right: number) => ({
+      left, right, top: 0, bottom: 20, width: right - left, height: 20,
+      x: left, y: 0, toJSON: () => ({}),
+    } as DOMRect)
+    widget.getBoundingClientRect = () => rect(10, 38)
+    line.getBoundingClientRect = () => rect(0, 200)
+
+    // Caret before the widget (pos 0) hugs the left edge regardless of the
+    // side the motion approached from; caret after it (pos > 0) hugs the
+    // right edge — the inverted variant was the "caret on the wrong side of
+    // the checkbox" bug.
+    expect(markdownWidgetCaretRect(widget, 0, -1)?.left).toBe(10)
+    expect(markdownWidgetCaretRect(widget, 0, 1)?.left).toBe(10)
+    expect(markdownWidgetCaretRect(widget, 6, -1)?.left).toBe(38)
+    expect(markdownWidgetCaretRect(widget, 6, 1)?.left).toBe(38)
+
+    line.remove()
+  })
+
+  it('keeps empty lines between rendered blocks reachable', () => {
+    const doc = '| a | b |\n| --- | --- |\n\n```js\ncode\n```'
+    const emptyLinePos = doc.indexOf('\n\n') + 1
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: 0 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    const moved = view.moveByChar(view.state.selection.main, true)
+    expect(moved.head).toBe(emptyLinePos)
+
+    view.destroy()
+  })
+
+  it('does not treat dollar amounts as math', () => {
+    for (const doc of ['Price is $5 and $10 today', 'paid $3, got $2 back', 'cost: 100$ vs 200$']) {
+      const view = new EditorView({
+        state: EditorState.create({
+          doc,
+          extensions: [markdown(), markdownLivePreviewExtension(true)],
+        }),
+        parent: document.body,
+      })
+
+      expect(view.dom.querySelector('.md-live-math')).toBeNull()
+      expect(view.dom.textContent).toContain(doc)
+
+      view.destroy()
+      document.body.innerHTML = ''
+    }
+  })
+
+  it('still renders flanked math expressions', () => {
+    for (const doc of ['$x + y$', 'inline $a_i^2$ math', 'display $$\\sum_i a_i$$ block']) {
+      const view = new EditorView({
+        state: EditorState.create({
+          doc,
+          extensions: [markdown(), markdownLivePreviewExtension(true)],
+        }),
+        parent: document.body,
+      })
+
+      expect(view.dom.querySelector('.md-live-math')).not.toBeNull()
+
+      view.destroy()
+      document.body.innerHTML = ''
+    }
+  })
+
+  it('keeps a collapsed code block folded while typing above it', () => {
+    const doc = 'Intro\n\n```js\nconst a = 1\nconst b = 2\n```'
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: { anchor: 0 },
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    const foldButton = view.dom.querySelector('.md-live-codeblock-topbar .md-live-codeblock-fold-toggle') as HTMLButtonElement | null
+    foldButton?.click()
+    expect(view.dom.querySelector('.md-live-codeblock-fold-summary-line')).not.toBeNull()
+
+    view.dispatch({ changes: { from: 0, insert: 'yy' }, selection: { anchor: 2 } })
+
+    expect(view.dom.querySelector('.md-live-codeblock-fold-summary-line')).not.toBeNull()
+
+    view.destroy()
+  })
+
+  it('treats a leading divider followed by a blank line as a rule, not front matter', () => {
+    const doc = '---\n\nSection one text\n\n---\n\nSection two'
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    expect(view.dom.querySelector('.md-live-frontmatter-widget')).toBeNull()
+    expect(view.dom.textContent).toContain('Section one text')
+    expect(view.dom.textContent).toContain('Section two')
+
+    view.destroy()
+  })
+
+  it('does not render markdown widgets for samples nested inside a longer fence', () => {
+    const doc = [
+      '````md',
+      '```',
+      '- [ ] sample task',
+      '| a | b |',
+      '| --- | --- |',
+      '```',
+      '````',
+      '',
+      '- [ ] real task',
+    ].join('\n')
+    const view = new EditorView({
+      state: EditorState.create({
+        doc,
+        extensions: [markdown(), markdownLivePreviewExtension(true)],
+      }),
+      parent: document.body,
+    })
+
+    // Only the task outside the fence renders as a checkbox; the sample
+    // inside the ````-block stays plain code, with no table widget either.
+    expect(view.dom.querySelectorAll('.md-live-task-checkbox, input[type="checkbox"]')).toHaveLength(1)
+    expect(view.dom.querySelector('.md-live-table-block')).toBeNull()
 
     view.destroy()
   })

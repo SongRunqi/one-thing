@@ -4,6 +4,7 @@ import { createDevelopmentOnethingServerRuntime } from './runtime.js'
 const port = Number.parseInt(process.env.ONETHING_SERVER_PORT || '8787', 10)
 const host = process.env.ONETHING_SERVER_HOST || '127.0.0.1'
 const corsOrigin = process.env.ONETHING_CORS_ORIGIN || 'http://127.0.0.1:5174'
+const authToken = process.env.ONETHING_SERVER_TOKEN
 const workspaceRoot = process.env.ONETHING_SERVER_WORKSPACE_ROOT
 const dataRoot = process.env.ONETHING_SERVER_DATA_ROOT
 const settingsRoot = process.env.ONETHING_SERVER_SETTINGS_ROOT
@@ -14,7 +15,16 @@ console.log(`[Perf][Startup] runtime-created in ${Date.now() - runtimeCreateStar
 const server = createOnethingHttpServer({
   runtime: serverRuntime.runtime,
   corsOrigin,
+  authToken,
 })
+
+const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1'])
+if (!authToken && !loopbackHosts.has(host)) {
+  console.warn(
+    `[onething-server] WARNING: listening on ${host} without ONETHING_SERVER_TOKEN — `
+    + 'the API is reachable from other machines without authentication.',
+  )
+}
 
 server.listen(port, host, () => {
   console.log(`[onething-server] listening on http://${host}:${port}`)

@@ -27,6 +27,8 @@ export interface SessionWithBranches extends SessionBase {
   isHidden: boolean
   lastBranchUpdate: number
   ancestorsLastChild: boolean[]
+  // Temporal sub-header rendered above this row (未归类 桶内退回时间：今天/昨天/…)
+  sectionLabel?: string
 }
 
 // A temporal (or pinned) section of the session list
@@ -404,6 +406,98 @@ export function useSessionOrganizer() {
     return groups
   }
 
+  // Project label = the last path segment of workingDirectory
+  // (/Users/me/data/code/start-electron → start-electron).
+  function projectLabel(dir: string): string {
+    const trimmed = dir.replace(/[/\\]+$/, '')
+    const base = trimmed.split(/[/\\]/).pop()
+    return base && base.length > 0 ? base : trimmed
+  }
+
+  // A working directory only counts as a "project" if it's a real place the
+  // user works. Transient tool sandboxes (the headless server's per-request
+  // workspace, OS temp dirs) would otherwise mint meaningless groups like
+  // "default" — route those to 未归类 instead.
+  function isProjectDir(dir: string): boolean {
+    if (/onething-server-workspaces/.test(dir)) return false
+    if (/(^|\/)(private\/)?(tmp|var\/folders)\//.test(dir)) return false
+    return true
+  }
+
+  // Group sessions by their working directory (project). Order:
+  // 置顶 → 各项目(按最近活动降序) → 未归类(无 cwd + 草稿)。
+  // Each root keeps its branch subtree together inside its section.
+  function getProjectGroupedSessions(filteredSessions: SessionBase[]): SessionGroup[] {
+    const organized = organizeSessionsWithBranches(filteredSessions)
+
+    type Block = { root: SessionWithBranches; rows: SessionWithBranches[] }
+    const blocks: Block[] = []
+    for (const session of organized) {
+      if (session.depth === 0) {
+        blocks.push({ root: session, rows: [session] })
+      } else {
+        blocks[blocks.length - 1]?.rows.push(session)
+      }
+    }
+
+    const pinnedBlocks: Block[] = []
+    const draftBlocks: Block[] = []
+    const uncategorized: Block[] = []
+    const projects = new Map<string, { label: string; blocks: Block[] }>()
+
+    for (const block of blocks) {
+      const root = block.root
+      if (isNewChatDraft(root)) { draftBlocks.push(block); continue }
+      if (root.isPinned) { pinnedBlocks.push(block); continue }
+      const dir = (root.workingDirectory || '').trim()
+      if (!dir || !isProjectDir(dir)) { uncategorized.push(block); continue }
+      let entry = projects.get(dir)
+      if (!entry) { entry = { label: projectLabel(dir), blocks: [] }; projects.set(dir, entry) }
+      entry.blocks.push(block)
+    }
+
+    const byRecency = (a: Block, b: Block) => b.root.lastBranchUpdate - a.root.lastBranchUpdate
+    pinnedBlocks.sort(byRecency)
+    uncategorized.sort(byRecency)
+    draftBlocks.sort(byRecency)
+    for (const entry of projects.values()) entry.blocks.sort(byRecency)
+
+    // Project sections ordered by their most recently active session
+    const projectSections = [...projects.entries()]
+      .map(([dir, entry]) => ({
+        dir,
+        label: entry.label,
+        blocks: entry.blocks,
+        recency: entry.blocks[0]?.root.lastBranchUpdate ?? 0,
+      }))
+      .sort((a, b) => b.recency - a.recency)
+
+    const groups: SessionGroup[] = []
+    if (pinnedBlocks.length > 0) {
+      groups.push({ key: 'pinned', label: '置顶', sessions: pinnedBlocks.flatMap(b => b.rows) })
+    }
+    for (const section of projectSections) {
+      groups.push({ key: `proj:${section.dir}`, label: section.label, sessions: section.blocks.flatMap(b => b.rows) })
+    }
+    // Drafts and cwd-less sessions share the 未归类 bucket; drafts float first.
+    // Inside it, fall back to time (V7): tag the first root of each temporal
+    // run so the list renders 今天 / 昨天 / 过去 7 天 / 更早 sub-headers.
+    const miscBlocks = [...draftBlocks, ...uncategorized]
+    if (miscBlocks.length > 0) {
+      const temporalLabel: Record<string, string> = {
+        today: '今天', yesterday: '昨天', week: '过去 7 天', older: '更早',
+      }
+      let lastKey = ''
+      for (const block of miscBlocks) {
+        const key = temporalKey(block.root.lastBranchUpdate)
+        block.root.sectionLabel = key !== lastKey ? temporalLabel[key] : undefined
+        lastKey = key
+      }
+      groups.push({ key: 'uncategorized', label: '未归类', sessions: miscBlocks.flatMap(b => b.rows) })
+    }
+    return groups
+  }
+
   // Get session preview text
   function getSessionPreview(session: SessionBase): string {
     return session.previewText || (session.messageCount ? '' : 'No messages yet')
@@ -449,6 +543,7 @@ export function useSessionOrganizer() {
     organizeSessionsWithBranches,
     getFlatSessions,
     getGroupedSessions,
+    getProjectGroupedSessions,
     getSessionPreview,
     formatModelName,
   }

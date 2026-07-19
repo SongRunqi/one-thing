@@ -1,6 +1,10 @@
 import { collectAgentTurnFromStream } from '@onething/core/agent-loop'
 import { agentToolMessageContentToText } from '@onething/core/agent-loop'
 import { readJsonSseData } from './sse.js'
+import {
+  ONETHING_GEMINI_THINKING_BUDGETS,
+  onethingGeminiThinkingLevels,
+} from '../../providers/model-capability.js'
 import type {
   AgentContentPart,
   AgentFinishReason,
@@ -53,15 +57,80 @@ interface GeminiToolConfig {
   }
 }
 
+interface GeminiThinkingConfig {
+  includeThoughts?: boolean
+  /** Gemini 3+ knob. */
+  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
+  /** Gemini 2.5 knob: token budget, 0 = off (flash only), -1 = dynamic. */
+  thinkingBudget?: number
+}
+
 interface GeminiRequestBody {
   systemInstruction?: { parts: Array<{ text: string }> }
   contents: GeminiContent[]
   generationConfig: {
     maxOutputTokens?: number
     temperature?: number
+    thinkingConfig?: GeminiThinkingConfig
   }
   tools?: GeminiTool[]
   toolConfig?: GeminiToolConfig
+}
+
+const GEMINI_LEVEL_ORDER = ['minimal', 'low', 'medium', 'high'] as const
+
+/**
+ * Clamp the abstract effort onto a level the model actually accepts
+ * (gemini-3-pro only takes low/high; flash-lite-image only minimal/high):
+ * prefer the requested level, else the closest supported one below it, else
+ * the lowest supported.
+ */
+function geminiThinkingLevel(
+  effort: AgentTurnRequest['reasoningEffort'],
+  model: string,
+): 'minimal' | 'low' | 'medium' | 'high' {
+  const supported = onethingGeminiThinkingLevels(model)
+  const requested = effort === 'minimal' || effort === 'low' || effort === 'medium'
+    ? effort
+    : 'high'
+  if (supported.includes(requested)) return requested
+  const requestedIndex = GEMINI_LEVEL_ORDER.indexOf(requested)
+  for (let index = requestedIndex - 1; index >= 0; index--) {
+    if (supported.includes(GEMINI_LEVEL_ORDER[index])) return GEMINI_LEVEL_ORDER[index]
+  }
+  return supported[0] ?? 'high'
+}
+
+function isGemini25Model(model: string): boolean {
+  return model.toLowerCase().includes('2.5')
+}
+
+/**
+ * Dynamic thinking is Gemini's default, so nothing is sent unless the user
+ * chose a setting. Gemini 3+ takes thinkingLevel; 2.5 takes thinkingBudget.
+ * "Off" maps to budget 0 on 2.5 flash models and the lowest level elsewhere
+ * (2.5 pro and Gemini 3 pro cannot fully disable thinking).
+ */
+function geminiThinkingConfig(request: AgentTurnRequest): GeminiThinkingConfig | undefined {
+  if (request.thinking === 'enabled') {
+    const level = geminiThinkingLevel(request.reasoningEffort, request.model)
+    return {
+      includeThoughts: true,
+      ...(isGemini25Model(request.model)
+        ? { thinkingBudget: ONETHING_GEMINI_THINKING_BUDGETS[level as keyof typeof ONETHING_GEMINI_THINKING_BUDGETS] }
+        : { thinkingLevel: level }),
+    }
+  }
+  if (request.thinking === 'disabled') {
+    const model = request.model.toLowerCase()
+    if (isGemini25Model(model)) {
+      return model.includes('flash') ? { thinkingBudget: 0 } : { thinkingBudget: ONETHING_GEMINI_THINKING_BUDGETS.minimal }
+    }
+    // The lowest level this model accepts stands in for "off" (Gemini 3
+    // cannot fully disable thinking).
+    return { thinkingLevel: onethingGeminiThinkingLevels(request.model)[0] ?? 'low' }
+  }
+  return undefined
 }
 
 interface GeminiStreamChunk {
@@ -83,6 +152,8 @@ interface GeminiStreamChunk {
     promptTokenCount?: number
     candidatesTokenCount?: number
     totalTokenCount?: number
+    cachedContentTokenCount?: number
+    thoughtsTokenCount?: number
   }
   error?: {
     message?: string
@@ -305,7 +376,15 @@ function usageFromChunk(chunk: GeminiStreamChunk): AgentUsage | undefined {
   const inputTokens = chunk.usageMetadata.promptTokenCount ?? 0
   const outputTokens = chunk.usageMetadata.candidatesTokenCount ?? 0
   const totalTokens = chunk.usageMetadata.totalTokenCount ?? inputTokens + outputTokens
-  return { inputTokens, outputTokens, totalTokens }
+  const cacheReadTokens = chunk.usageMetadata.cachedContentTokenCount
+  const reasoningTokens = chunk.usageMetadata.thoughtsTokenCount
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    ...(cacheReadTokens ? { cacheReadTokens } : {}),
+    ...(reasoningTokens ? { reasoningTokens } : {}),
+  }
 }
 
 function stableToolCallId(turn: number, index: number, name: string): string {
@@ -412,12 +491,14 @@ export function createGeminiAgentProvider(options: GeminiAgentProviderOptions): 
   async function* streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
     const { systemInstruction, contents } = buildGeminiContents(request.messages)
     const tools = request.toolChoice === 'none' ? undefined : toGeminiTools(request.tools)
+    const thinkingConfig = geminiThinkingConfig(request)
     const body: GeminiRequestBody = {
       ...(systemInstruction ? { systemInstruction } : {}),
       contents,
       generationConfig: {
         ...(request.maxTokens !== undefined ? { maxOutputTokens: request.maxTokens } : {}),
         ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+        ...(thinkingConfig ? { thinkingConfig } : {}),
       },
     }
 

@@ -33,6 +33,8 @@ import {
   type ACPUpdateAgentResponse,
 } from '../../shared/ipc.js'
 import { ACPManager } from '../acp/index.js'
+import { registerACPPermissionBridge } from '../acp/permission-bridge.js'
+import { disposeExternalAgentConnectors } from '../external-agents/index.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
 
 function getACPSettings() {
@@ -134,8 +136,11 @@ export function registerACPHandlers(): void {
 
 export function initializeACP(): void {
   ACPManager.initialize(getACPSettings())
+  registerACPPermissionBridge()
 }
 
 export async function shutdownACP(): Promise<void> {
   await ACPManager.shutdown()
+  // External agent connectors (Claude Code, …) share the same teardown moment.
+  await disposeExternalAgentConnectors()
 }

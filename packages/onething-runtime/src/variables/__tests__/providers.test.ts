@@ -75,6 +75,63 @@ describe('runtime CoreProvider', () => {
     await expect(provider.set(ctx, { name: 'workdir', value: path.join(tempDir, 'missing') }))
       .rejects.toMatchObject({ code: 'WORKDIR_NOT_FOUND' })
   })
+
+  it('set enforces the same external-directory barrier as append', async () => {
+    const gateway = workdirGateway(tempDir)
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'runtime-variable-outside-'))
+    const enforcePermission = vi.fn(async () => undefined)
+    const provider = new CoreProvider(gateway, { enforcePermission })
+
+    await provider.set({
+      sessionId: 'sess-a',
+      messageId: 'message-1',
+      toolCallId: 'tool-1',
+    }, { name: 'workdir', value: outside })
+
+    expect(enforcePermission).toHaveBeenCalledWith(expect.objectContaining({
+      toolName: 'workdir',
+      preview: expect.objectContaining({ title: `Set work directory: ${outside}` }),
+    }))
+
+    await fs.rm(outside, { recursive: true, force: true })
+  })
+
+  it('set denied by the barrier does not change the workdir', async () => {
+    const gateway = workdirGateway(tempDir)
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'runtime-variable-denied-'))
+    const provider = new CoreProvider(gateway, {
+      enforcePermission: vi.fn(async () => {
+        throw new Error('denied')
+      }),
+    })
+
+    await expect(provider.set({
+      sessionId: 'sess-a',
+      messageId: 'message-1',
+    }, { name: 'workdir', value: outside })).rejects.toThrow('denied')
+    expect(gateway.read('sess-a')).toBe(tempDir)
+    expect(gateway.writtenRoots).toEqual([])
+
+    await fs.rm(outside, { recursive: true, force: true })
+  })
+
+  it('set skips the barrier for subdirectories of granted roots and preauthorized dirs', async () => {
+    const inside = await fs.mkdtemp(path.join(tempDir, 'nested-'))
+    const enforcePermission = vi.fn(async () => undefined)
+    const provider = new CoreProvider(workdirGateway(tempDir), { enforcePermission })
+    await provider.set({ sessionId: 'sess-a', messageId: 'm1' }, { name: 'workdir', value: inside })
+    expect(enforcePermission).not.toHaveBeenCalled()
+
+    const project = await fs.mkdtemp(path.join(os.tmpdir(), 'runtime-variable-project-'))
+    const preauthorized = new CoreProvider(workdirGateway(tempDir), {
+      enforcePermission,
+      isPreauthorizedDirectory: dir => dir === project,
+    })
+    await preauthorized.set({ sessionId: 'sess-a', messageId: 'm1' }, { name: 'workdir', value: project })
+    expect(enforcePermission).not.toHaveBeenCalled()
+
+    await fs.rm(project, { recursive: true, force: true })
+  })
 })
 
 function notesGateway(initial: Partial<Record<NoteVarName, string>> = {}): NotesGateway & {

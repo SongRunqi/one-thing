@@ -1,4 +1,5 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, screen } from 'electron'
+import { clampElectronWindowStateToDisplays } from './window-state'
 
 export interface ElectronTodoPlanWindowState {
   width: number
@@ -25,11 +26,15 @@ export interface ElectronTodoPlanWindowOptions {
 }
 
 export function createElectronTodoPlanWindow(options: ElectronTodoPlanWindowOptions): BrowserWindow {
+  const windowState = clampElectronWindowStateToDisplays(
+    options.windowState,
+    screen.getAllDisplays().map(display => display.workArea),
+  )
   const todoPlanWindow = new BrowserWindow({
-    width: options.windowState.width,
-    height: options.windowState.height,
-    x: options.windowState.x,
-    y: options.windowState.y,
+    width: windowState.width,
+    height: windowState.height,
+    x: windowState.x,
+    y: windowState.y,
     minWidth: 320,
     minHeight: 280,
     show: false,

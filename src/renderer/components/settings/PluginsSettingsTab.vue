@@ -259,6 +259,12 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/*
+ * Plugins ledger — 画线风.
+ * No fills, no radii: rows hang on hairlines, badges are outlined rings.
+ * Toggle visuals and .section-title/.settings-card chrome come from the
+ * SettingsPage :deep() layer.
+ */
 .tab-content {
   max-width: 720px;
 }
@@ -267,39 +273,25 @@ onMounted(() => {
   margin-bottom: 28px;
 }
 
-.section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
-  margin: 0 0 4px;
-}
-
 .section-desc {
   font-size: 12px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
   margin: 0 0 14px;
   line-height: 1.5;
 }
 
-.section-desc code {
-  background: rgba(128, 128, 128, 0.12);
-  padding: 1px 5px;
-  border-radius: 3px;
+.section-desc code,
+.empty-state .hint code,
+.install-steps code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
 }
 
-.settings-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.card-row {
-  padding: 16px;
-}
-
-/* ── Plugin list ── */
+/* ── Plugin list: ledger rows, no card chrome ── */
 .plugin-list {
   display: flex;
   flex-direction: column;
@@ -309,37 +301,45 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  background: rgba(128, 128, 128, 0.04);
+  gap: 10px;
+  padding: 6px 0 8px;
+  border-bottom: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: transparent;
 }
 
 .plugin-count {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
-  font-weight: 500;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .refresh-btn {
   margin-top: 0 !important;
-  padding: 3px 10px;
+  padding: 2px 8px;
   font-size: 11px;
 }
 
 .plugin-item {
   display: flex;
   align-items: flex-start;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
-  transition: opacity 0.15s;
+  padding: 12px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 55%, transparent);
 }
 
 .plugin-item:last-child {
   border-bottom: none;
 }
 
-.plugin-item.disabled {
-  opacity: 0.55;
+/* Disabled plugin: faint ink + strike-through, not an opacity veil. */
+.plugin-item.disabled .plugin-name {
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted))) 60%, transparent);
+}
+
+.plugin-item.disabled .plugin-desc {
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
 }
 
 .plugin-body {
@@ -360,6 +360,7 @@ onMounted(() => {
 }
 
 .plugin-name-row {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -369,42 +370,52 @@ onMounted(() => {
 .plugin-name {
   font-size: 13px;
   font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
+/* Badges: outlined rings, zero fill. */
 .plugin-version {
-  font-size: 11px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
-  font-family: monospace;
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 999px;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .status-badge {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
   font-size: 10px;
   font-weight: 500;
-  padding: 1px 7px;
-  border-radius: 10px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
 
 .status-badge.loaded {
-  background: rgba(52, 211, 153, 0.15);
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, #34d399));
   color: var(--ui-status-success-fg, #34d399);
 }
 
 .status-badge.error {
-  background: rgba(248, 113, 113, 0.15);
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #f87171));
   color: var(--ui-status-danger-fg, #f87171);
 }
 
 .status-badge.stopped {
-  background: rgba(128, 128, 128, 0.2);
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
+  border-style: dashed;
+  border-color: var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
 }
 
 .plugin-desc {
   font-size: 12px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
   margin: 0;
   line-height: 1.45;
 }
@@ -412,11 +423,14 @@ onMounted(() => {
 .plugin-error {
   font-size: 11px;
   color: var(--ui-status-danger-fg, #f87171);
+  border-left: 2px solid var(--ui-status-danger-fg, #f87171);
+  padding-left: 8px;
   margin: 0;
   line-height: 1.4;
 }
 
 .plugin-meta {
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -424,98 +438,71 @@ onMounted(() => {
 }
 
 .meta-tag {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
   font-size: 10px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
-  font-family: monospace;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .meta-tag.path {
-  opacity: 0.5;
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
 }
 
 .meta-tag.needs-install {
+  padding: 1px 7px;
+  border: 1px solid var(--ui-status-warning-border, var(--ui-status-warning-fg, #f59e0b));
+  border-radius: 999px;
+  background: transparent;
   color: var(--ui-status-warning-fg, #f59e0b);
-  background: rgba(245, 158, 11, 0.12);
-  padding: 1px 5px;
-  border-radius: 3px;
 }
 
 .meta-tag.builtin {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 1px 7px;
+  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 55%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .cmd-list {
-  opacity: 0.7;
-}
-
-/* ── Toggle ── */
-.toggle {
-  position: relative;
-  display: inline-block;
-  width: 38px;
-  height: 22px;
-  cursor: pointer;
-}
-
-.toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  inset: 0;
-  background: rgba(128, 128, 128, 0.3);
-  border-radius: 22px;
-  transition: background 0.2s;
-}
-
-.toggle-slider::after {
-  content: '';
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  left: 3px;
-  top: 3px;
-  background: white;
-  border-radius: 50%;
-  transition: transform 0.2s;
-}
-
-.toggle input:checked + .toggle-slider {
-  background: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.toggle input:checked + .toggle-slider::after {
-  transform: translateX(16px);
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted)));
 }
 
 /* ── Empty/Loading/Error ── */
 .empty-state,
-.loading-row,
-.error-state {
-  padding: 32px 16px;
+.loading-row {
+  padding: 28px 16px;
   text-align: center;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 13px;
+}
+
+.empty-state {
+  border: 1px dashed var(--settings-rule, var(--ui-border-default-border, var(--border)));
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0 4px 10px;
+  border-left: 2px solid var(--ui-status-danger-fg, #f87171);
+  color: var(--ui-status-danger-fg, #f87171);
+  font-size: 12px;
 }
 
 .empty-state .hint {
   font-size: 12px;
   margin-top: 8px;
   line-height: 1.6;
-}
-
-.empty-state .hint code,
-.pre code {
-  background: rgba(128, 128, 128, 0.12);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 11px;
 }
 
 .loading-row {
@@ -528,8 +515,8 @@ onMounted(() => {
 .spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(128, 128, 128, 0.2);
-  border-top-color: var(--ui-accent-primary-fg, var(--accent));
+  border: 2px solid color-mix(in srgb, var(--settings-ink-4, var(--ui-text-faint-fg, var(--muted))) 30%, transparent);
+  border-top-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
@@ -544,44 +531,28 @@ onMounted(() => {
   justify-content: center;
   gap: 6px;
   margin-top: 8px;
-  padding: 4px 12px;
-  font-size: 12px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text)));
   cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
 }
 
 .btn-sm:hover {
-  background: rgba(128, 128, 128, 0.1);
-}
-
-.code-block {
-  background: rgba(0, 0, 0, 0.15);
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  padding: 12px 14px;
-  font-size: 11px;
-  line-height: 1.6;
-  margin: 8px 0 0;
-  overflow-x: auto;
-  white-space: pre;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
+  background: transparent;
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
 .install-steps {
   margin: 0;
   padding-left: 18px;
   line-height: 1.8;
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--muted)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 12px;
-}
-
-.install-steps code {
-  background: rgba(128, 128, 128, 0.12);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 11px;
 }
 </style>

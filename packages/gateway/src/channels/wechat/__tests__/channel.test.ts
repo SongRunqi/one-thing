@@ -100,6 +100,7 @@ describe('WechatChannel', () => {
     expect(onMessage).toHaveBeenCalledWith({
       channelId: 'wechat:default',
       userId: 'wechat-user',
+      conversationId: 'wechat-user',
       text: 'hello',
       raw: expect.objectContaining({
         from_user_id: 'wechat-user',
@@ -141,6 +142,7 @@ describe('WechatChannel', () => {
     expect(onMessage).toHaveBeenCalledWith({
       channelId: 'wechat:default',
       userId: 'wechat-user',
+      conversationId: 'wechat-user',
       text: 'hello',
       raw: expect.objectContaining({
         from_user_id: 'wechat-user',
@@ -195,6 +197,7 @@ describe('WechatChannel', () => {
     expect(onMessage).toHaveBeenCalledWith(expect.objectContaining({
       channelId: 'wechat:work',
       userId: 'wechat-user',
+      conversationId: 'wechat-user',
       text: 'hello',
     }))
   })
@@ -221,8 +224,8 @@ describe('WechatChannel', () => {
       item_list: [{ type: 1, text_item: { text: 'hello' } }],
     }
 
-    await channel.typing({ userId: 'wechat-user', raw })
-    await channel.typing({ userId: 'wechat-user', raw, status: 'cancel' })
+    await channel.typing({ conversationId: 'wechat-user', userId: 'wechat-user', raw })
+    await channel.typing({ conversationId: 'wechat-user', userId: 'wechat-user', raw, status: 'cancel' })
 
     expect(sendTyping).toHaveBeenNthCalledWith(
       1,

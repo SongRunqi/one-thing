@@ -3,6 +3,7 @@ import {
   type CoreEventBusLike,
 } from './headless-stream-engine.js'
 import type { PendingMessage } from './message-queue.js'
+import { isCoreExternalAgentProvider } from './external-agent-providers.js'
 import type {
   StreamEngineCompactionAdapter,
   StreamEngineClockAdapter,
@@ -32,7 +33,7 @@ import {
 import {
   buildContextUsageSnapshot,
 } from './context-usage.js'
-import { resolveTurnContextUpdateText } from './turn-context.js'
+import { resolveTurnContextUpdateText, visibleMessagesAfterSummary } from './turn-context.js'
 
 export interface CoreEventBusEmitterLike extends CoreEventBusLike {
   emit(sessionId: string, event: any): Promise<unknown>
@@ -61,6 +62,7 @@ export interface CoreStreamSession<TMessage extends CoreStreamMessage = CoreStre
   messages: TMessage[]
   name?: string
   workingDirectory?: string
+  agentId?: string
   parentSessionId?: string
   createdAt: number
   contextSize?: number
@@ -184,6 +186,16 @@ interface SendMessageCommandLike {
   source?: string
   voice?: unknown
   origin?: unknown
+  providerId?: string
+  model?: string
+  /**
+   * Pin the think mode for this turn (system-internal drives with their own
+   * configured model, e.g. the radio DJ). Only honored alongside providerId.
+   */
+  thinking?: boolean
+  thinkingEffort?: string
+  /** System-internal drives set this: their prompt text is not a title. */
+  suppressTitleGeneration?: boolean
 }
 
 interface EditAndResendCommandLike {
@@ -192,11 +204,15 @@ interface EditAndResendCommandLike {
   newContent: string
   channel?: string
   origin?: unknown
+  providerId?: string
+  model?: string
 }
 
 interface RetryMessageCommandLike {
   type?: string
   messageId: string
+  providerId?: string
+  model?: string
 }
 
 interface ResumeAfterConfirmCommandLike {
@@ -242,7 +258,8 @@ export function normalizeCoreStreamError(
     details: extractErrorDetails({
       message: error.message,
       stack: error.stack,
-      cause: error.cause as CoreErrorDetails | undefined,
+      // Read via a cast: web tsconfig's lib predates ES2022's Error.cause.
+      cause: (error as { cause?: unknown }).cause as CoreErrorDetails | undefined,
       responseBody: error.responseBody,
       data: error.data,
     }),
@@ -383,14 +400,23 @@ export class CoreStreamEngine<
    */
   private async resolveTurnContextUpdate(
     sessionId: string,
-    session: { messages: TMessage[] } | undefined | null,
+    session:
+      | { messages: TMessage[]; summaryUpToMessageId?: string }
+      | undefined
+      | null,
   ): Promise<string | undefined> {
     const adapter = this.runtime.variables
     if (!adapter) return undefined
     try {
+      // Dedupe only against messages the model still sees after compaction;
+      // a block that was summarized away must not suppress re-injection.
+      const visible = visibleMessagesAfterSummary(
+        (session?.messages ?? []) as ReadonlyArray<{ id?: string; contextUpdate?: unknown }>,
+        session?.summaryUpToMessageId,
+      )
       return resolveTurnContextUpdateText(
         await adapter.buildTurnContext(sessionId),
-        (session?.messages ?? []) as ReadonlyArray<{ contextUpdate?: unknown }>,
+        visible,
       )
     } catch (error) {
       this.logError('turn context update failed:', error)
@@ -411,7 +437,7 @@ export class CoreStreamEngine<
       const settingsForRefs = this.store.getSettings()
       const skillsForRefs = settingsForRefs.skills?.enableSkills === false
         ? []
-        : this.runtime.skills.getForSession(sessionForRefs?.workingDirectory)
+        : this.runtime.skills.getForSession(sessionForRefs?.workingDirectory, sessionForRefs?.agentId)
       const resolvedPromptRefs = this.runtime.prompts.resolveReferences(messageContent, { skills: skillsForRefs })
       const session = sessionForRefs
       const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
@@ -444,7 +470,7 @@ export class CoreStreamEngine<
         message: userMessage,
       })
 
-      if (isFirstUserMessage || isBranchFirstMessage) {
+      if ((isFirstUserMessage || isBranchFirstMessage) && !cmd.suppressTitleGeneration) {
         this.generateAndApplySessionTitle(
           sessionId,
           resolvedPromptRefs.displayContent,
@@ -452,7 +478,18 @@ export class CoreStreamEngine<
         ).catch(err => this.logError('chat title generation failed:', err))
       }
 
-      const resolved = await this.resolveProvider(sessionId)
+      const resolved = await this.resolveProvider(
+        sessionId,
+        cmd.providerId
+          ? {
+              providerId: cmd.providerId,
+              model: cmd.model,
+              ...(typeof cmd.thinking === 'boolean'
+                ? { thinking: cmd.thinking, thinkingEffort: cmd.thinkingEffort }
+                : {}),
+            }
+          : undefined,
+      )
       if (!resolved) return
       const { configWithApiKey, providerId, settings } = resolved
 
@@ -569,7 +606,7 @@ export class CoreStreamEngine<
       const settingsForRefs = this.store.getSettings()
       const skillsForRefs = settingsForRefs.skills?.enableSkills === false
         ? []
-        : this.runtime.skills.getForSession(sessionForRefs?.workingDirectory)
+        : this.runtime.skills.getForSession(sessionForRefs?.workingDirectory, sessionForRefs?.agentId)
       const resolvedPromptRefs = this.runtime.prompts.resolveReferences(newContent, { skills: skillsForRefs })
 
       const updated = this.store.updateMessageAndTruncate(sessionId, messageId, resolvedPromptRefs.modelContent, {
@@ -586,7 +623,10 @@ export class CoreStreamEngine<
         messages: sessionAfterTruncate?.messages || [],
       })
 
-      const resolved = await this.resolveProvider(sessionId)
+      const resolved = await this.resolveProvider(
+        sessionId,
+        cmd.providerId ? { providerId: cmd.providerId, model: cmd.model } : undefined,
+      )
       if (!resolved) return
       const { configWithApiKey, providerId, settings } = resolved
 
@@ -662,7 +702,10 @@ export class CoreStreamEngine<
         messages: sessionAfterTruncate?.messages || [],
       })
 
-      const resolved = await this.resolveProvider(sessionId)
+      const resolved = await this.resolveProvider(
+        sessionId,
+        cmd.providerId ? { providerId: cmd.providerId, model: cmd.model } : undefined,
+      )
       if (!resolved) return
       const { configWithApiKey, providerId, settings } = resolved
 
@@ -719,7 +762,7 @@ export class CoreStreamEngine<
     const settings = this.store.getSettings()
     const skills = settings.skills?.enableSkills === false
       ? []
-      : this.runtime.skills.getForSession(session?.workingDirectory)
+      : this.runtime.skills.getForSession(session?.workingDirectory, session?.agentId)
     const resolvedPromptRefs = this.runtime.prompts.resolveReferences(content, { skills })
     const userMessage = {
       id: this.createMessageId(),
@@ -757,10 +800,6 @@ export class CoreStreamEngine<
     const { messageId } = cmd
 
     try {
-      const resolved = await this.resolveProvider(sessionId)
-      if (!resolved) return
-      const { configWithApiKey, providerId, settings } = resolved
-
       const session = this.store.getSession(sessionId)
       if (!session) {
         this.emitStreamError(sessionId, 'Session not found')
@@ -771,6 +810,18 @@ export class CoreStreamEngine<
         this.emitStreamError(sessionId, 'Assistant message not found')
         return
       }
+
+      // Resume with the provider/model that the paused message was already
+      // created under, not whatever session/global resolves to right now —
+      // the global default may have changed while the tool-permission
+      // confirm dialog was pending.
+      const resolved = await this.resolveProvider(
+        sessionId,
+        assistantMessage.provider ? { providerId: assistantMessage.provider, model: assistantMessage.model } : undefined,
+      )
+      if (!resolved) return
+      const { configWithApiKey, providerId, settings } = resolved
+
       const historyMessages = this.runtime.history.buildMessages(session.messages, session)
       const historyWithoutCurrent = historyMessages.filter((_, idx) => {
         const msgCount = historyMessages.length
@@ -943,13 +994,16 @@ export class CoreStreamEngine<
     )
   }
 
-  private async resolveProvider(sessionId: string): Promise<{
+  private async resolveProvider(
+    sessionId: string,
+    override?: { providerId?: string; model?: string; thinking?: boolean; thinkingEffort?: string } | null,
+  ): Promise<{
     configWithApiKey: TProviderConfigWithKey
     providerId: string
     settings: TSettings
   } | null> {
     const settings = this.store.getSettings()
-    const { providerId, providerConfig, model: effectiveModel } = this.runtime.provider.getEffectiveConfig(settings, sessionId)
+    const { providerId, providerConfig, model: effectiveModel } = this.runtime.provider.getEffectiveConfig(settings, sessionId, override)
 
     const authContext = await this.runtime.provider.resolveAuth(providerId, providerConfig)
     if (!authContext) {
@@ -988,7 +1042,7 @@ export class CoreStreamEngine<
     configWithApiKey: TProviderConfigWithKey,
     settings: TSettings,
   ): Promise<boolean> {
-    if (providerId === 'acp') return true
+    if (isCoreExternalAgentProvider(providerId)) return true
 
     const compactSettings = settings.chat
     if (compactSettings?.contextCompactEnabled === false) return true

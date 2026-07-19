@@ -2,6 +2,8 @@ export { buildContextCompactPrompt } from "./compact-prompt.js";
 
 export { createCoreId } from "./ids.js";
 
+export { isCoreExternalAgentProvider } from "./external-agent-providers.js";
+
 export type {
 	CoreOSType,
 	CorePromptActiveProject,
@@ -533,6 +535,7 @@ export type {
 export {
 	renderContextUpdateBlock,
 	resolveTurnContextUpdateText,
+	visibleMessagesAfterSummary,
 } from "./turn-context.js";
 export type {
 	CompactPlan,

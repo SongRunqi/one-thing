@@ -11,12 +11,22 @@ import type {
 	ACPAgentState,
 	AppSettings,
 	AIProvider,
+	OpenRouterModel,
 	ProviderEnvStatus,
 	ProviderInfo,
-	OpenRouterModel,
 } from "@/types";
 import { useSettingsStore } from "@/stores/settings";
+import { isProviderConfigEnabled } from "@/stores/helpers/provider-model";
 import { useProviderAuth } from "./useProviderAuth";
+import {
+	hasVision,
+	hasImageGeneration,
+	hasTools,
+	hasReasoning,
+	supportsTemperature,
+	formatContextLength,
+	createCustomModel,
+} from "./model-capabilities";
 
 export type {
 	OAuthStatus,
@@ -100,9 +110,8 @@ export function useProviderSettings(
 		const id = props.settings.ai.providers[viewingProvider.value]?.model;
 		if (!id) return true;
 		const found = availableModels.value.find((m) => m.id === id);
-		if (!found || !found.supported_parameters) return true;
-		if (found.supported_parameters.length === 0) return true;
-		return found.supported_parameters.includes("temperature");
+		if (!found) return true;
+		return supportsTemperature(found, viewingProvider.value);
 	});
 
 	// The effective temperature for the active model.
@@ -196,7 +205,7 @@ export function useProviderSettings(
 		return props.providers.filter((p) => {
 			const config = props.settings.ai.providers[p.id];
 			return (
-				config?.enabled !== false && (config?.selectedModels?.length ?? 0) > 0
+				isProviderConfigEnabled(config) && (config?.selectedModels?.length ?? 0) > 0
 			);
 		});
 	});
@@ -224,8 +233,7 @@ export function useProviderSettings(
 	}
 
 	function isProviderEnabled(providerId: string): boolean {
-		const config = props.settings.ai.providers[providerId];
-		return config?.enabled !== false;
+		return isProviderConfigEnabled(props.settings.ai.providers[providerId]);
 	}
 
 	function getProviderEnvStatus(
@@ -250,71 +258,6 @@ export function useProviderSettings(
 		const model = availableModels.value.find((m) => m.id === modelId);
 		if (model?.name) return model.name;
 		return settingsStore.getModelDisplayName(modelId) || modelId;
-	}
-
-	// Model capability checks
-	function hasVision(model: OpenRouterModel): boolean {
-		return model.architecture?.input_modalities?.includes("image") ?? false;
-	}
-
-	function hasImageGeneration(model: OpenRouterModel): boolean {
-		const codexMetadata = model.providerMetadata?.codex as
-			| Record<string, unknown>
-			| undefined;
-		if (
-			Array.isArray(codexMetadata?.nativeTools) &&
-			codexMetadata.nativeTools.includes("image_generation")
-		) {
-			return true;
-		}
-		if (model.architecture?.output_modalities?.includes("image")) {
-			return true;
-		}
-		const imageGenIndicators = [
-			"dall-e",
-			"dalle",
-			"gpt-image",
-			"imagen",
-			"stable-diffusion",
-			"midjourney",
-		];
-		return imageGenIndicators.some((indicator) =>
-			model.id.toLowerCase().includes(indicator),
-		);
-	}
-
-	function hasTools(model: OpenRouterModel): boolean {
-		return model.supported_parameters?.includes("tools") ?? false;
-	}
-
-	function hasReasoning(model: OpenRouterModel): boolean {
-		if (model.supported_parameters?.includes("reasoning")) {
-			return true;
-		}
-		const reasoningIndicators = [
-			"o1",
-			"o3",
-			"o4",
-			"deepseek-r1",
-			"reasoner",
-			"grok-3-mini",
-			"grok-mini",
-		];
-		return reasoningIndicators.some(
-			(indicator) =>
-				model.id.toLowerCase().includes(indicator) ||
-				model.name?.toLowerCase().includes(indicator),
-		);
-	}
-
-	function formatContextLength(contextLength: number): string {
-		if (!contextLength) return "";
-		if (contextLength >= 1000000) {
-			return `${(contextLength / 1000000).toFixed(1)}M`;
-		} else if (contextLength >= 1000) {
-			return `${Math.round(contextLength / 1000)}K`;
-		}
-		return contextLength.toString();
 	}
 
 	// Update functions
@@ -616,6 +559,19 @@ export function useProviderSettings(
 		}
 	}
 
+	/**
+	 * Set several providers' enabled flag in one settings write. Family cards
+	 * toggle both members together; sequential toggleProviderEnabled calls would
+	 * each spread the not-yet-updated props and lose the earlier write.
+	 */
+	function setProvidersEnabled(providerIds: string[], enabled: boolean) {
+		const providers = { ...props.settings.ai.providers };
+		for (const providerId of providerIds) {
+			providers[providerId] = { ...providers[providerId], enabled };
+		}
+		updateSettings({ ai: { ...props.settings.ai, providers } });
+	}
+
 	async function switchViewingProvider(provider: string) {
 		viewingProvider.value = provider;
 		modelError.value = "";
@@ -786,28 +742,6 @@ export function useProviderSettings(
 		newModelInput.value = "";
 	}
 
-	function createCustomModel(modelId: string): OpenRouterModel {
-		return {
-			id: modelId,
-			name: modelId,
-			description: "Custom model",
-			context_length: 0,
-			architecture: {
-				modality: "text",
-				input_modalities: ["text"],
-				output_modalities: ["text"],
-				tokenizer: "unknown",
-			},
-			pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
-			top_provider: {
-				context_length: 0,
-				max_completion_tokens: 0,
-				is_moderated: false,
-			},
-			supported_parameters: [],
-		};
-	}
-
 	// Model loading
 	async function refreshProviderEnvStatus(providerId = viewingProvider.value) {
 		try {
@@ -929,10 +863,12 @@ export function useProviderSettings(
 		providerUsesEnvApiKey,
 		isModelSelected,
 		getModelName,
-		hasVision,
-		hasImageGeneration,
-		hasTools,
-		hasReasoning,
+		// Bound to the provider being viewed so the catalog page and the model
+		// ledger resolve capabilities through the same provider-aware chain.
+		hasVision: (model: OpenRouterModel) => hasVision(model, viewingProvider.value),
+		hasImageGeneration: (model: OpenRouterModel) => hasImageGeneration(model, viewingProvider.value),
+		hasTools: (model: OpenRouterModel) => hasTools(model, viewingProvider.value),
+		hasReasoning: (model: OpenRouterModel) => hasReasoning(model, viewingProvider.value),
 		formatContextLength,
 		updateProviderApiKey,
 		updateProviderBaseUrl,
@@ -948,6 +884,7 @@ export function useProviderSettings(
 		renameModel,
 		setActiveModel,
 		toggleProviderEnabled,
+		setProvidersEnabled,
 		switchViewingProvider,
 		toggleModelSelection,
 		setDefaultProvider,

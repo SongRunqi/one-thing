@@ -9,7 +9,7 @@
       <div class="voice-copy">
         <span class="voice-status">{{ statusLabel }}</span>
         <span
-          v-if="voice.lastTranscript"
+          v-if="showTranscript"
           class="voice-transcript"
         >{{ voice.lastTranscript }}</span>
         <span
@@ -21,11 +21,11 @@
         unstyled
         class="voice-stop"
         native-type="button"
-        :title="voice.lastError ? 'Dismiss' : 'Stop voice playback'"
+        :title="overlayActionTitle"
         @click="handleOverlayAction"
       >
         <X
-          v-if="voice.lastError"
+          v-if="voice.lastError || isCapturing"
           :size="14"
         />
         <Volume2
@@ -48,8 +48,23 @@ const voice = useVoiceStore()
 const overlayStatus = computed(() => (voice.lastError ? 'error' : voice.status))
 const shouldShowOverlay = computed(() => {
   if (!voice.isEnabled) return false
+  // The call panel owns the UI during a call, and the composer's capture
+  // bar owns listening/transcribing — no floating pill for those.
+  if (voice.callActive) return false
   if (voice.lastError) return true
   return voice.status === 'speaking'
+})
+
+const isCapturing = computed(() => voice.status === 'recording' || voice.status === 'transcribing')
+
+// Live subtitles belong to the listening phase; while the reply is being
+// spoken the overlay stays a minimal status pill instead of popping text.
+const showTranscript = computed(() => Boolean(voice.lastTranscript) && isCapturing.value)
+
+const overlayActionTitle = computed(() => {
+  if (voice.lastError) return 'Dismiss'
+  if (isCapturing.value) return 'Cancel — discard this recording'
+  return 'Stop voice playback'
 })
 
 const statusLabel = computed(() => {

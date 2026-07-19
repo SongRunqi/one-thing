@@ -65,7 +65,7 @@ export class TelegramChannel implements Channel {
 
     for (const segment of splitText(text, MAX_TEXT_LENGTH)) {
       await this.callTelegram('sendMessage', {
-        chat_id: msg.userId,
+        chat_id: msg.conversationId,
         text: segment,
       })
     }
@@ -75,7 +75,7 @@ export class TelegramChannel implements Channel {
     if (msg.status === 'cancel') return
 
     await this.callTelegram('sendChatAction', {
-      chat_id: msg.userId,
+      chat_id: msg.conversationId,
       action: 'typing',
     }).catch(error => {
       this.logger.warn('[TelegramChannel] Failed to send typing:', error)
@@ -162,7 +162,8 @@ export function telegramUpdateToInboundMessage(
   const actor = telegramMessageActor(message)
   return {
     channelId,
-    userId: String(message.chat.id),
+    userId: String(message.from?.id ?? message.chat.id),
+    conversationId: String(message.chat.id),
     text: message.text,
     raw: message,
     ...(actor ? { actor } : {}),

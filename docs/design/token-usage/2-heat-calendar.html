@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方案二 · 热力月历 — Token Usage</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb;
+    --ink: #17181a;
+    --ink-2: #52555a;
+    --ink-3: #90949b;
+    --rule: #e4e5e2;
+    /* 顺序色阶：单蓝，浅→深（dataviz 校验过的序列） */
+    --seq-0: #f1f3f2;   /* 零用量：近表面 */
+    --seq-1: #cde2fb;
+    --seq-2: #9ec5f4;
+    --seq-3: #6da7ec;
+    --seq-4: #3987e5;
+    --seq-5: #256abf;
+    --seq-6: #184f95;
+    --seq-7: #0d366b;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #eef0ee;
+    color: var(--ink);
+    font-family: -apple-system, "PingFang SC", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  .panel {
+    width: 640px;
+    max-width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(30,40,60,.08);
+    padding: 26px 30px 28px;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+  }
+  header h1 { font-size: 15px; font-weight: 650; letter-spacing: .01em; }
+  header h1 span { color: var(--ink-3); font-weight: 400; margin-left: 8px; font-size: 12px; }
+  .month-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+  }
+  .month-nav button {
+    border: 1px solid var(--rule);
+    background: none;
+    border-radius: 6px;
+    width: 24px; height: 24px;
+    cursor: pointer;
+    color: var(--ink-2);
+    font: inherit;
+  }
+
+  /* ── 月历网格 ── */
+  .weekday-row, .week {
+    display: grid;
+    grid-template-columns: 34px repeat(7, 1fr);
+    gap: 5px;
+  }
+  .weekday-row { margin-bottom: 6px; }
+  .weekday-row span {
+    font-size: 10.5px;
+    color: var(--ink-3);
+    text-align: center;
+  }
+  .weekday-row .wk-label { text-align: left; }
+  .week { margin-bottom: 5px; }
+  .week .wk {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-3);
+    align-self: center;
+  }
+  .day {
+    position: relative;
+    aspect-ratio: 1.55;
+    border-radius: 5px;
+    background: var(--seq-0);
+    cursor: pointer;
+    border: 1px solid transparent;
+    display: flex;
+    align-items: flex-start;
+    padding: 3px 5px;
+  }
+  .day em {
+    font-style: normal;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    color: var(--ink-2);
+  }
+  .day.l1 { background: var(--seq-1); }
+  .day.l2 { background: var(--seq-2); }
+  .day.l3 { background: var(--seq-3); }
+  .day.l4 { background: var(--seq-4); }
+  .day.l5 { background: var(--seq-5); }
+  .day.l6 { background: var(--seq-6); }
+  .day.l1 em, .day.l2 em { color: #123a6b; }
+  .day.l3 em, .day.l4 em, .day.l5 em, .day.l6 em { color: rgba(255,255,255,.92); }
+  .day.future em { color: var(--ink-3); }
+  .day.out { visibility: hidden; }
+  .day.future { background: repeating-linear-gradient(-45deg, transparent 0 3px, var(--rule) 3px 4px); cursor: default; }
+  .day:hover:not(.future) { border-color: var(--ink-2); }
+  .day.selected {
+    border-color: var(--ink);
+    box-shadow: 0 0 0 1px var(--ink);
+  }
+
+  .scale-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    justify-content: flex-end;
+    margin-top: 8px;
+    font-size: 10.5px;
+    color: var(--ink-3);
+  }
+  .scale-legend i {
+    width: 16px; height: 9px;
+    border-radius: 2px;
+    display: inline-block;
+  }
+
+  /* ── 选中日详情条 ── */
+  .day-detail {
+    margin-top: 18px;
+    border-top: 1px solid var(--rule);
+    padding-top: 14px;
+  }
+  .detail-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .detail-head h2 { font-size: 13px; font-weight: 600; }
+  .detail-head h2 span { color: var(--ink-3); font-weight: 400; margin-left: 8px; font-size: 12px; }
+  .detail-head .total {
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+  .detail-head .total small { color: var(--ink-3); font-weight: 400; font-size: 11px; margin-left: 6px; }
+
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .split .kv label { display: block; font-size: 10.5px; color: var(--ink-3); margin-bottom: 2px; }
+  .split .kv b {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .split .kv b i { font-style: normal; font-size: 10px; color: var(--ink-3); font-weight: 400; }
+
+  .models { display: flex; flex-direction: column; gap: 6px; }
+  .model-row {
+    display: grid;
+    grid-template-columns: 150px 1fr 58px;
+    align-items: center;
+    gap: 10px;
+    font-size: 11.5px;
+  }
+  .model-row .name { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .model-row .track { height: 5px; border-radius: 3px; background: var(--seq-0); overflow: hidden; }
+  .model-row .track i { display: block; height: 100%; border-radius: 3px; background: var(--seq-4); }
+  .model-row .amt {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-align: right;
+    color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* tooltip */
+  #tip {
+    position: fixed;
+    pointer-events: none;
+    background: var(--ink);
+    color: #fff;
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 5px 8px;
+    border-radius: 5px;
+    opacity: 0;
+    transition: opacity .1s;
+    z-index: 10;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <header>
+      <h1>用量月历<span>颜色越深，花得越多</span></h1>
+      <div class="month-nav">
+        <button>‹</button><span>2026-07</span><button>›</button>
+      </div>
+    </header>
+
+    <div class="weekday-row">
+      <span class="wk-label"></span>
+      <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+    </div>
+
+    <!-- 每格 data-v = "$总额 · 笔数" -->
+    <div class="week">
+      <span class="wk">W27</span>
+      <div class="day out"></div><div class="day out"></div>
+      <div class="day l1" data-v="07-01 · $0.42 · 18 turns"><em>1</em></div>
+      <div class="day l2" data-v="07-02 · $1.15 · 52 turns"><em>2</em></div>
+      <div class="day l3" data-v="07-03 · $2.31 · 89 turns"><em>3</em></div>
+      <div class="day l1" data-v="07-04 · $0.66 · 24 turns"><em>4</em></div>
+      <div class="day l1" data-v="07-05 · $0.62 · 21 turns"><em>5</em></div>
+    </div>
+    <div class="week">
+      <span class="wk">W28</span>
+      <div class="day l2" data-v="07-06 · $1.88 · 65 turns"><em>6</em></div>
+      <div class="day l4" data-v="07-07 · $3.42 · 118 turns"><em>7</em></div>
+      <div class="day l3" data-v="07-08 · $2.10 · 72 turns"><em>8</em></div>
+      <div class="day" data-v="07-09 · $0 · 无使用"><em>9</em></div>
+      <div class="day l2" data-v="07-10 · $1.24 · 44 turns"><em>10</em></div>
+      <div class="day l5" data-v="07-11 · $4.05 · 133 turns"><em>11</em></div>
+      <div class="day l4" data-v="07-12 · $3.66 · 121 turns"><em>12</em></div>
+    </div>
+    <div class="week">
+      <span class="wk">W29</span>
+      <div class="day l3" data-v="07-13 · $2.91 · 96 turns"><em>13</em></div>
+      <div class="day l2" data-v="07-14 · $1.02 · 37 turns"><em>14</em></div>
+      <div class="day l1" data-v="07-15 · $0.48 · 19 turns"><em>15</em></div>
+      <div class="day l3" data-v="07-16 · $2.77 · 88 turns"><em>16</em></div>
+      <div class="day l6 selected" data-v="07-17 · $5.32 · 142 turns"><em>17</em></div>
+      <div class="day l2" data-v="07-18 · $1.94 · 61 turns"><em>18</em></div>
+      <div class="day future"><em>19</em></div>
+    </div>
+    <div class="week">
+      <span class="wk">W30</span>
+      <div class="day future"><em>20</em></div>
+      <div class="day future"><em>21</em></div>
+      <div class="day future"><em>22</em></div>
+      <div class="day future"><em>23</em></div>
+      <div class="day future"><em>24</em></div>
+      <div class="day future"><em>25</em></div>
+      <div class="day future"><em>26</em></div>
+    </div>
+
+    <div class="scale-legend">
+      少
+      <i style="background:var(--seq-0)"></i><i style="background:var(--seq-1)"></i><i style="background:var(--seq-2)"></i><i style="background:var(--seq-3)"></i><i style="background:var(--seq-4)"></i><i style="background:var(--seq-5)"></i><i style="background:var(--seq-6)"></i>
+      多
+    </div>
+
+    <div class="day-detail">
+      <div class="detail-head">
+        <h2>7月17日 星期四<span>142 turns · 6.8M tokens</span></h2>
+        <div class="total">$5.32<small>实付 $1.87 + 估算 $3.45</small></div>
+      </div>
+      <div class="split">
+        <div class="kv"><label>输入 / 输出</label><b>0.9M / 0.5M</b></div>
+        <div class="kv"><label>缓存读 / 写</label><b>5.1M / 0.3M</b></div>
+        <div class="kv"><label>推理</label><b>66K <i>tokens</i></b></div>
+      </div>
+      <div class="models">
+        <div class="model-row">
+          <span class="name">gpt-5.2-codex</span>
+          <span class="track"><i style="width:64%"></i></span>
+          <span class="amt">$3.45 估</span>
+        </div>
+        <div class="model-row">
+          <span class="name">claude-sonnet-4.5</span>
+          <span class="track"><i style="width:26%"></i></span>
+          <span class="amt">$1.41</span>
+        </div>
+        <div class="model-row">
+          <span class="name">deepseek-v3.2</span>
+          <span class="track"><i style="width:7%"></i></span>
+          <span class="amt">$0.38</span>
+        </div>
+        <div class="model-row">
+          <span class="name">gemini-2.5-flash</span>
+          <span class="track"><i style="width:2%"></i></span>
+          <span class="amt">$0.08</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tip"></div>
+  <script>
+    const tip = document.getElementById('tip');
+    document.querySelectorAll('.day[data-v]').forEach(el => {
+      el.addEventListener('mousemove', e => {
+        tip.textContent = el.dataset.v;
+        tip.style.left = (e.clientX + 12) + 'px';
+        tip.style.top = (e.clientY - 30) + 'px';
+        tip.style.opacity = 1;
+      });
+      el.addEventListener('mouseleave', () => tip.style.opacity = 0);
+    });
+  </script>
+</body>
+</html>

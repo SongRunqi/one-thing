@@ -398,6 +398,11 @@ function isFlowingStatus(status: ToolRenderStatus): boolean {
 }
 
 function getStatusBadgeText(activity: ToolActivityView): string {
+  // Queued behind another prompt in the session's permission queue: waiting,
+  // not actionable yet (no respond card).
+  if (activity.status === 'awaiting-confirmation' && activity.toolCall.permissionQueued) {
+    return 'Waiting for approval'
+  }
   if (activity.status === 'awaiting-confirmation') return 'Needs approval'
   if (activity.status === 'cancelled') return 'Cancelled'
   if (activity.status === 'rejected') return 'Rejected'

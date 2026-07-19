@@ -2,6 +2,9 @@ import { agentContentToText, collectAgentTurnFromStream } from '@onething/core/a
 import type {
   AgentFinishReason,
   AgentProvider,
+  AgentToolCall,
+  AgentToolResult,
+  AgentToolResultContentPart,
   AgentTurnRequest,
   AgentTurnStreamEvent,
 } from '@onething/core/agent-loop'
@@ -18,16 +21,46 @@ export interface CoreACPContentPart {
   text?: string
 }
 
+/**
+ * Structural subset of ACP `ToolCallContent`: either an embedded content
+ * block (`type: 'content'`) or a diff (`type: 'diff'`). Terminal refs are
+ * ignored.
+ */
+export interface CoreACPToolCallContentPart {
+  type: string
+  content?: CoreACPContentPart | null
+  text?: string
+  path?: string | null
+  oldText?: string | null
+  newText?: string | null
+}
+
+/**
+ * Structural subset of the ACP `tool_call` / `tool_call_update` session
+ * update payloads (@agentclientprotocol/sdk ToolCall / ToolCallUpdate).
+ */
+export interface CoreACPSessionUpdate {
+  sessionUpdate: string
+  /**
+   * Message/thought chunks carry a single content block; tool_call and
+   * tool_call_update carry an array of ToolCallContent — same wire field.
+   */
+  content?: CoreACPContentPart | CoreACPToolCallContentPart[] | null
+  toolCallId?: string
+  title?: string | null
+  kind?: string | null
+  status?: string | null
+  rawInput?: unknown
+  rawOutput?: unknown
+}
+
 export type CoreACPPromptStreamEvent =
   | { type: 'warning'; message: string }
   | { type: 'finish'; stopReason: string; usage?: { inputTokens: number; outputTokens: number; totalTokens: number } }
   | {
       type: 'update'
       notification: {
-        update: {
-          sessionUpdate: string
-          content?: CoreACPContentPart | CoreACPContentPart[] | null
-        }
+        update: CoreACPSessionUpdate
       }
     }
 
@@ -58,9 +91,147 @@ function latestUserPrompt(request: AgentTurnRequest): string {
   return ''
 }
 
-function textFromACPContent(content: CoreACPContentPart | CoreACPContentPart[] | null | undefined): string | undefined {
+function textFromACPContent(
+  content: CoreACPContentPart | CoreACPToolCallContentPart[] | null | undefined,
+): string | undefined {
   if (!content || Array.isArray(content)) return undefined
   return content.type === 'text' ? content.text : undefined
+}
+
+function safeStringify(value: unknown): string {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function acpToolContentToParts(
+  content: CoreACPToolCallContentPart[] | null | undefined,
+): AgentToolResultContentPart[] {
+  const parts: AgentToolResultContentPart[] = []
+  for (const item of content ?? []) {
+    if (item.type === 'content') {
+      const text = item.content?.type === 'text' ? item.content.text : item.text
+      if (text) parts.push({ type: 'text', text })
+      continue
+    }
+    if (item.type === 'diff') {
+      const path = item.path ?? ''
+      parts.push({ type: 'text', text: `[diff] ${path}`.trim(), path: item.path ?? undefined })
+    }
+  }
+  return parts
+}
+
+interface ACPToolCallState {
+  toolCall: AgentToolCall
+  settled: boolean
+  resultParts: AgentToolResultContentPart[]
+}
+
+/** Per-stream tracker mapping ACP tool_call notifications onto structured
+ * externally-executed agent tool events. */
+function createACPToolCallTracker(turn: number) {
+  const states = new Map<string, ACPToolCallState>()
+
+  const start = (update: CoreACPSessionUpdate): AgentTurnStreamEvent[] => {
+    const id = update.toolCallId
+    if (!id) return []
+    const existing = states.get(id)
+    if (existing) return progress(update)
+    const toolCall: AgentToolCall = {
+      id,
+      name: update.kind || 'tool',
+      arguments: safeStringify(update.rawInput ?? {}) || '{}',
+      externallyExecuted: true,
+    }
+    const state: ACPToolCallState = { toolCall, settled: false, resultParts: [] }
+    states.set(id, state)
+    const events: AgentTurnStreamEvent[] = [
+      { type: 'tool-call-start', turn, toolCallId: id, toolName: toolCall.name },
+      { type: 'tool-call-done', turn, toolCall },
+    ]
+    if (update.title) {
+      events.push({ type: 'tool-metadata', turn, toolCall, update: { title: update.title } })
+    }
+    events.push(...progressEvents(state, update))
+    return events
+  }
+
+  const progress = (update: CoreACPSessionUpdate): AgentTurnStreamEvent[] => {
+    const id = update.toolCallId
+    if (!id) return []
+    const state = states.get(id)
+    // Defensive: some agents emit tool_call_update before tool_call.
+    if (!state) return start({ ...update, sessionUpdate: 'tool_call' })
+    if (state.settled) return []
+    const events: AgentTurnStreamEvent[] = []
+    if (update.title) {
+      events.push({
+        type: 'tool-metadata',
+        turn,
+        toolCall: state.toolCall,
+        update: { title: update.title },
+      })
+    }
+    events.push(...progressEvents(state, update))
+    return events
+  }
+
+  const progressEvents = (
+    state: ACPToolCallState,
+    update: CoreACPSessionUpdate,
+  ): AgentTurnStreamEvent[] => {
+    const events: AgentTurnStreamEvent[] = []
+    const parts = acpToolContentToParts(Array.isArray(update.content) ? update.content : undefined)
+    if (parts.length > 0) {
+      state.resultParts.push(...parts)
+      events.push({
+        type: 'tool-partial-result',
+        turn,
+        toolCall: state.toolCall,
+        update: { content: parts },
+      })
+    }
+    if (update.status === 'completed' || update.status === 'failed') {
+      events.push(settleEvent(state, {
+        failed: update.status === 'failed',
+        rawOutput: update.rawOutput,
+      }))
+    }
+    return events
+  }
+
+  const settleEvent = (
+    state: ACPToolCallState,
+    outcome: { failed?: boolean; aborted?: boolean; rawOutput?: unknown },
+  ): AgentTurnStreamEvent => {
+    state.settled = true
+    const content = safeStringify(outcome.rawOutput)
+      || state.resultParts.map(part => part.text ?? '').filter(Boolean).join('\n')
+    const result: AgentToolResult = {
+      content,
+      ...(outcome.failed ? { error: content || 'Tool call failed' } : {}),
+      ...(outcome.aborted ? { aborted: true, error: content || 'Tool call cancelled' } : {}),
+    }
+    return { type: 'tool-result', turn, toolCall: state.toolCall, result }
+  }
+
+  /** The stream is ending; every unsettled call must still reach a terminal
+   * state so downstream step state machines never hang on "running". */
+  const settleRemaining = (options: { aborted: boolean }): AgentTurnStreamEvent[] => {
+    const events: AgentTurnStreamEvent[] = []
+    for (const state of states.values()) {
+      if (state.settled) continue
+      events.push(settleEvent(state, { aborted: options.aborted }))
+    }
+    return events
+  }
+
+  return { start, progress, settleRemaining }
 }
 
 export function createACPAgentProvider(options: CoreACPAgentProviderOptions): AgentProvider {
@@ -79,6 +250,8 @@ export function createACPAgentProvider(options: CoreACPAgentProviderOptions): Ag
       const prompt = latestUserPrompt(request)
       if (!prompt) throw new Error('ACP prompt is empty')
 
+      const tracker = createACPToolCallTracker(request.turn)
+
       for await (const event of options.streamPrompt(request.model, {
         localSessionId: options.localSessionId ?? `acp-${request.model}`,
         prompt,
@@ -91,6 +264,7 @@ export function createACPAgentProvider(options: CoreACPAgentProviderOptions): Ag
         }
 
         if (event.type === 'finish') {
+          yield* tracker.settleRemaining({ aborted: event.stopReason === 'cancelled' })
           yield {
             type: 'finish',
             turn: request.turn,
@@ -118,8 +292,10 @@ export function createACPAgentProvider(options: CoreACPAgentProviderOptions): Ag
             yield { type: 'reasoning-delta', turn: request.turn, delta: 'ACP plan updated.' }
             break
           case 'tool_call':
+            yield* tracker.start(update)
+            break
           case 'tool_call_update':
-            yield { type: 'reasoning-delta', turn: request.turn, delta: 'ACP tool activity updated.' }
+            yield* tracker.progress(update)
             break
           default:
             break

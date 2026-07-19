@@ -10,6 +10,7 @@ export interface ElectronBeforeQuitAppLike {
 export interface ElectronBeforeQuitCleanupOptions {
   markVoiceQuitRequested: CleanupFn
   shutdownVoiceService: CleanupFn
+  shutdownMusicService: CleanupFn
   unregisterGlobalWindowShortcuts: CleanupFn
   shutdownGateway: CleanupFn
   shutdownMCP: CleanupFn
@@ -43,6 +44,7 @@ export async function runElectronBeforeQuitCleanup(
 ): Promise<void> {
   options.markVoiceQuitRequested()
   await options.shutdownVoiceService()
+  await options.shutdownMusicService()
   options.unregisterGlobalWindowShortcuts()
 
   await options.shutdownGateway()

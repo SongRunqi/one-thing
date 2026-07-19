@@ -14,6 +14,7 @@ import {
   type CoreFileAccessTargetType,
 } from '@onething/runtime/tools/sandbox-runtime'
 import { getSettings } from '../../stores/settings.js'
+import { getToolOutputsDir } from '../../stores/paths.js'
 import { getVariablesStore } from '../../variables/store/index.js'
 
 interface SandboxHost {
@@ -33,6 +34,9 @@ configureOnethingToolSandboxRuntime({
       store.getWorkNoteDir(),
     ]
   },
+  // The bash tool's overflow logs ("full output saved to …"): re-reading a
+  // tool result already adjudicated by the permission system — never prompt.
+  getAppArtifactDirectories: () => [getToolOutputsDir()],
 })
 
 export function configureSandboxHost(host: SandboxHost): void {

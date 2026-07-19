@@ -72,4 +72,57 @@ describe('onething prompt builder', () => {
     expect(String(prompt.messages[0]?.content)).toContain('Provider ID: deepseek')
     expect(String(prompt.messages[0]?.content)).toContain('Model ID: deepseek-v4-flash')
   })
+
+  // The prompt naming the file is what scopes the AI todo to a session: a
+  // session can only name its own path, so two sessions cannot collide.
+  describe('todo section', () => {
+    const todoHost = { ...host, getTodoPlanDirectory: () => '/Users/tester/.onething/todo-plan' }
+
+    it('points the session at its own AI todo file and the shared user notes', async () => {
+      const { developer } = await buildOnethingSystemPrompt({
+        sessionId: 'session-abc',
+        hasTools: true,
+        skills: [],
+        host: todoHost,
+      })
+
+      const todo = developer.find(section => section.startsWith('# Todo'))
+      expect(todo).toContain('~/.onething/todo-plan/sessions/session-abc/ai-todo.md')
+      expect(todo).toContain('~/.onething/todo-plan/user-notes')
+    })
+
+    it('gives two sessions different todo paths', async () => {
+      const build = (sessionId: string) => buildOnethingSystemPrompt({
+        sessionId,
+        hasTools: true,
+        skills: [],
+        host: todoHost,
+      })
+
+      const a = (await build('session-a')).developer.find(s => s.startsWith('# Todo'))
+      const b = (await build('session-b')).developer.find(s => s.startsWith('# Todo'))
+
+      expect(a).toContain('sessions/session-a/ai-todo.md')
+      expect(a).not.toContain('session-b')
+      expect(b).toContain('sessions/session-b/ai-todo.md')
+      expect(b).not.toContain('session-a')
+    })
+
+    it('is omitted without a session or without tools', async () => {
+      const noSession = await buildOnethingSystemPrompt({
+        hasTools: true,
+        skills: [],
+        host: todoHost,
+      })
+      const noTools = await buildOnethingSystemPrompt({
+        sessionId: 'session-abc',
+        hasTools: false,
+        skills: [],
+        host: todoHost,
+      })
+
+      expect(noSession.developer.find(s => s.startsWith('# Todo'))).toBeUndefined()
+      expect(noTools.developer.find(s => s.startsWith('# Todo'))).toBeUndefined()
+    })
+  })
 })

@@ -4,7 +4,7 @@ import { nextTick, reactive } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import InputBox from "../InputBox.vue";
 import { createDefaultSettings } from "../../../../shared/defaults/settings";
-import { findCommand } from "@/services/commands";
+import { executeCommand, findCommand } from "@/services/commands";
 
 const mocks = vi.hoisted(() => ({
 	settingsStore: null as any,
@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 	chatStore: null as any,
 	voiceStore: null as any,
 	promptsStore: null as any,
+	musicStore: null as any,
 }));
 
 vi.mock("@/stores/settings", () => ({
@@ -34,6 +35,10 @@ vi.mock("@/stores/prompts", () => ({
 	usePromptsStore: () => mocks.promptsStore,
 }));
 
+vi.mock("@/stores/music", () => ({
+	useMusicStore: () => mocks.musicStore,
+}));
+
 vi.mock("@/services/commands", () => ({
 	findCommand: vi.fn(() => null),
 	getCommands: vi.fn(() => [
@@ -46,6 +51,7 @@ vi.mock("@/services/commands", () => ({
 		},
 	]),
 	refreshPluginCommands: vi.fn().mockResolvedValue([]),
+	executeCommand: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 vi.mock("@/editor/TextEditor.vue", () => ({
@@ -202,7 +208,6 @@ describe("InputBox paste attachments", () => {
 		mocks.chatStore = reactive({
 			sessionMessages: new Map(),
 			isSessionGenerating: vi.fn(() => false),
-			openInspectorToTab: vi.fn(),
 			setComposerDraft: vi.fn((sessionId: string, draft: any) => {
 				if (
 					!draft.messageInput?.trim() &&
@@ -237,6 +242,17 @@ describe("InputBox paste attachments", () => {
 		mocks.promptsStore = reactive({
 			prompts: [],
 			loadPrompts: vi.fn().mockResolvedValue([]),
+		});
+		mocks.musicStore = reactive({
+			nowPlaying: null,
+			radio: { active: false, intent: "", programmeLength: 0, canResume: false },
+			livePosition: 0,
+			progressRatio: 0,
+			playerBackend: "mpv",
+			initialize: vi.fn().mockResolvedValue(undefined),
+			useClock: vi.fn(() => () => {}),
+			sendCommand: vi.fn().mockResolvedValue({ success: true }),
+			setPlayer: vi.fn().mockResolvedValue({ success: true }),
 		});
 
 		vi.stubGlobal(
@@ -318,9 +334,6 @@ describe("InputBox paste attachments", () => {
 			"Context: 8,000 / 32,000 tokens (25%)",
 		);
 		expect(meter.attributes("title")).toContain("Total output: 3,000 tokens");
-
-		await meter.trigger("click");
-		expect(mocks.chatStore.openInspectorToTab).toHaveBeenCalledWith("context");
 	});
 
 	it("restores composer text when switching back to a draft session", async () => {
@@ -491,9 +504,6 @@ describe("InputBox paste attachments", () => {
 		expect(wrapper.find(".queued-file-changes-row").text()).toContain("1 file changed");
 		expect(wrapper.find(".queued-file-changes-row").text()).toContain("+88");
 		expect(wrapper.find(".queued-file-changes-row").text()).toContain("-656");
-		expect(wrapper.find(".queued-review-btn").text()).toBe("Review");
-		await wrapper.find(".queued-review-btn").trigger("click");
-		expect(mocks.chatStore.openInspectorToTab).toHaveBeenCalledWith("diff", "diff-step-1");
 	});
 
 	it("keeps Enter inside the active palette instead of sending the draft", async () => {
@@ -532,11 +542,12 @@ describe("InputBox paste attachments", () => {
 			name: "New Session",
 			description: "Start a new chat session",
 			usage: "/new",
-			execute: vi.fn().mockResolvedValue({
-				success: true,
-				message: "New session opened",
-				switchToSessionId: "session-new",
-			}),
+			execute: vi.fn(),
+		});
+		vi.mocked(executeCommand).mockResolvedValue({
+			success: true,
+			message: "New session opened",
+			switchToSessionId: "session-new",
 		});
 		const wrapper = mountInputBox();
 
@@ -601,41 +612,37 @@ describe("InputBox paste attachments", () => {
 		expect(mocks.voiceStore.startListening).not.toHaveBeenCalled();
 	});
 
-	it("shows an inline recording status with an explicit stop action", async () => {
+	it("turns the composer frame into the listening state with an esc cancel", async () => {
 		mocks.voiceStore.isRecording = true;
 		mocks.voiceStore.status = "recording";
-		mocks.settingsStore.settings.voice.vad.silenceMs = 1200;
 
 		const wrapper = mountInputBox();
 		await settle();
 
-		const statusBar = wrapper.find(".voice-capture-bar");
-		expect(statusBar.exists()).toBe(true);
-		expect(statusBar.text()).toContain("Listening");
-		expect(statusBar.text()).toContain("0:00");
-		expect(statusBar.attributes("title")).toContain(
-			"Auto-stops after about 1.2s of silence",
-		);
-		expect(statusBar.find(".voice-capture-stop").exists()).toBe(true);
+		const frameLabel = wrapper.find(".composer-frame-label");
+		expect(frameLabel.text()).toContain("LISTENING");
+		expect(frameLabel.text()).toContain("0:00");
+		expect(frameLabel.classes()).toContain("listening");
+		expect(wrapper.find(".composer").classes()).toContain("listening");
 
-		await statusBar.find(".voice-capture-stop").trigger("click");
+		const cancel = wrapper.find(".composer-voice-cancel");
+		expect(cancel.exists()).toBe(true);
+		await cancel.trigger("click");
 		await settle();
-
-		expect(mocks.voiceStore.stop).toHaveBeenCalledWith("mic-button", true);
+		expect(mocks.voiceStore.stop).toHaveBeenCalledWith("cancel", false);
 	});
 
-	it("shows an inline transcribing status while speech is sent to ASR", async () => {
+	it("marks the composer frame while speech is sent to ASR", async () => {
 		mocks.voiceStore.isRecording = true;
 		mocks.voiceStore.status = "transcribing";
 
 		const wrapper = mountInputBox();
 		await settle();
 
-		const statusBar = wrapper.find(".voice-capture-bar");
-		expect(statusBar.exists()).toBe(true);
-		expect(statusBar.text()).toContain("Transcribing");
-		expect(statusBar.text()).toContain("Speech to text");
-		expect(statusBar.find(".voice-capture-stop").exists()).toBe(false);
+		const frameLabel = wrapper.find(".composer-frame-label");
+		expect(frameLabel.text()).toContain("TRANSCRIBING");
+		expect(wrapper.find(".composer").classes()).toContain("transcribing");
+		expect(wrapper.find(".composer-voice-cancel").exists()).toBe(false);
 		expect(wrapper.find(".voice-btn").classes()).toContain("transcribing");
 	});
 });

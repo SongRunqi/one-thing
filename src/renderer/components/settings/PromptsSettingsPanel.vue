@@ -375,6 +375,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/* Prompts ledger — 画线风: no fills, no radii, state lives in the line. */
 .prompts-settings {
   display: flex;
   flex-direction: column;
@@ -395,10 +396,15 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 0 10px;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
-  background: var(--settings-paper-3, var(--ui-surface-panel-bg, var(--panel)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  transition: border-color 0.12s ease;
+}
+
+.prompt-search:focus-within {
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .prompt-search input {
@@ -415,10 +421,10 @@ onMounted(async () => {
 .prompt-workspace {
   min-height: 520px;
   display: grid;
-  grid-template-columns: minmax(260px, 0.88fr) minmax(420px, 1.35fr);
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
-  background: var(--settings-paper-3, var(--ui-surface-panel-bg, var(--panel)));
+  grid-template-columns: minmax(220px, 0.88fr) minmax(0, 1.35fr);
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border)));
+  border-radius: 0;
+  background: transparent;
   overflow: hidden;
 }
 
@@ -426,7 +432,7 @@ onMounted(async () => {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border-right: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border)));
 }
 
 .prompt-list-header {
@@ -436,9 +442,11 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 10px;
   padding: 0 12px;
-  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border)));
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
-  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
   font-weight: 650;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -447,30 +455,31 @@ onMounted(async () => {
 .prompt-list {
   min-height: 0;
   overflow: auto;
-  padding: 6px;
 }
 
+/* Ledger rows: hairline separators, selection is a left ink rule. */
 .prompt-row {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 5px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 55%, transparent);
+  border-radius: 0;
   background: transparent;
   color: inherit;
-  padding: 9px 10px;
+  padding: 9px 12px;
   text-align: left;
   cursor: pointer;
 }
 
-.prompt-row:hover {
-  background: color-mix(in srgb, var(--settings-paper) 62%, transparent);
+.prompt-row:hover .prompt-row-preview {
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
 }
 
 .prompt-row.active {
-  border-color: var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .prompt-row-top {
@@ -495,7 +504,9 @@ onMounted(async () => {
 .prompt-row-date {
   flex-shrink: 0;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
-  font-size: 10.5px;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
 }
 
 .prompt-row-preview {
@@ -513,14 +524,17 @@ onMounted(async () => {
   gap: 4px;
 }
 
+/* Tag rings: outlined, zero fill. */
 .prompt-tags span {
   max-width: 92px;
   overflow: hidden;
-  padding: 2px 5px;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 10%, transparent);
+  padding: 1px 7px;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 999px;
+  background: transparent;
   color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
-  font-size: 10.5px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -554,22 +568,28 @@ onMounted(async () => {
   line-height: 1.4;
 }
 
+/* Notice rings: outlined status, no fills. */
 .prompt-notice {
   flex-shrink: 0;
-  padding: 4px 7px;
+  padding: 2px 9px;
+  border: 1px solid transparent;
   border-radius: 999px;
+  background: transparent;
   font-size: 11px;
   font-weight: 650;
 }
 
 .prompt-notice.success {
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, var(--success, #1a7f45)));
   color: var(--ui-status-success-fg, var(--success, #1a7f45));
-  background: var(--ui-status-success-bg, transparent);
+}
+
+.prompt-notice.error {
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, var(--danger, #d14)));
 }
 
 .prompt-notice.error,
-.delete-confirmation,
-.prompt-danger-btn {
+.delete-confirmation {
   color: var(--ui-status-danger-fg, var(--danger, #d14));
 }
 
@@ -579,19 +599,21 @@ onMounted(async () => {
   flex-direction: column;
 }
 
+/* Drafting-box fields: square, transparent, focus moves the line to accent. */
 .prompt-input,
 .prompt-textarea {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
   outline: 0;
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  background: transparent;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font: inherit;
   font-size: 13px;
   line-height: 1.45;
   padding: 8px 9px;
+  transition: border-color 0.12s ease;
 }
 
 .prompt-textarea {
@@ -602,9 +624,11 @@ onMounted(async () => {
 .prompt-input:focus,
 .prompt-textarea:focus {
   border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  box-shadow: 0 0 0 2px var(--settings-accent-soft, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent));
+  box-shadow: none;
 }
 
+/* Visuals (square corners, line borders, accent primary) come from the
+   SettingsPage :deep() layer; only layout lives here. */
 .prompt-primary-btn,
 .prompt-secondary-btn,
 .prompt-danger-btn {
@@ -612,46 +636,26 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 30px;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
   padding: 0 10px;
-  font: inherit;
-  font-size: 12px;
+  font-family: inherit;
   font-weight: 600;
   cursor: pointer;
 }
 
-.prompt-primary-btn {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 72%, var(--settings-rule-soft));
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  color: white;
-}
-
-.prompt-secondary-btn,
-.prompt-danger-btn {
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
-}
-
-.prompt-danger-btn {
-  color: var(--ui-status-danger-fg, var(--danger, #d14));
-}
-
 .prompt-primary-btn:disabled {
   cursor: not-allowed;
-  opacity: 0.6;
+  opacity: 0.45;
 }
 
 @media (max-width: 860px) {
   .prompt-workspace {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .prompt-list-panel {
     max-height: 280px;
     border-right: 0;
-    border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+    border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border)));
   }
 }
 </style>

@@ -1,3 +1,5 @@
+import { builtinMusicProviders } from '../music/providers/index.js'
+
 export type BashPermissionDecision = 'allow' | 'ask' | 'deny'
 
 export interface ClassifiedBashCommand {
@@ -23,6 +25,9 @@ const READ_ONLY_COMMANDS = new Set([
   'printenv', 'less', 'more', 'diff', 'cmp', 'stat', 'du', 'df',
   'tree', 'realpath', 'dirname', 'basename', 'readlink', 'type',
   'man', 'help', 'uname', 'hostname',
+  // Pure waiting, no side effects. Models habitually write `sleep 2 && <check>`
+  // and every distinct duration used to raise its own permission dialog.
+  'sleep',
 ])
 
 // Git read-only commands
@@ -35,6 +40,19 @@ const GIT_READ_ONLY = new Set([
 const NPM_READ_ONLY = new Set([
   'list', 'ls', 'outdated', 'view', 'search', 'info', 'help',
 ])
+
+/**
+ * Music CLI security policies come from the provider registry: the model
+ * plays music by driving the CLI through bash, and prompting for every
+ * "下一首" would make the feature unusable — but the same CLI can rewrite the
+ * user's account, so each provider ships its own allow-list and write
+ * classification. ALL builtin policies are registered (keyed by binary): only
+ * the active provider's CLI is installed, so whitelisting an absent binary is
+ * inert, and the classifier needs no active-provider state.
+ */
+const MUSIC_BASH_POLICIES = new Map(
+  builtinMusicProviders.map(provider => [provider.bashPolicy.binary, provider.bashPolicy]),
+)
 
 // Dangerous commands - require permission (ask)
 const DANGEROUS_COMMANDS = new Set([
@@ -166,7 +184,7 @@ function normalizeOperators(words: string[]): string[] {
   return output
 }
 
-function splitCommandSegments(command: string): string[] {
+export function splitCommandSegments(command: string): string[] {
   const words = splitShellWords(command)
   const segments: string[] = []
   let current: string[] = []
@@ -263,6 +281,36 @@ function classifySimpleCommand(command: string): ClassifiedBashCommand {
       pattern: getCommandPattern(command),
       reason: GIT_WRITE.has(subcommand) ? `Git command "${subcommand}" mutates repository state` : `Unknown git command "${subcommand}"`,
     }
+  }
+
+  const musicPolicy = MUSIC_BASH_POLICIES.get(head)
+  if (musicPolicy && args.length > 0) {
+    const group = args[0]
+    const pair = args.length > 1 ? `${group} ${args[1]}` : ''
+
+    if (
+      musicPolicy.autoAllow.has(pair) || musicPolicy.autoAllow.has(group)
+      || musicPolicy.extraAllow?.(args) === true
+    ) {
+      return { text: command, head, args, decision: 'allow' }
+    }
+    return {
+      text: command,
+      head,
+      args,
+      decision: 'ask',
+      pattern: getCommandPattern(command),
+      reason: musicPolicy.askReason(pair || group),
+    }
+  }
+
+  // The skill's mpv install check. Only the bare version probe runs free —
+  // any other mpv invocation plays a file at the user and still asks. Note
+  // splitShellWords tokenizes `2>&1` into `2>`, `&`, `1`, so redirection
+  // noise arrives shredded.
+  if (head === 'mpv' && (args[0] === '--version' || args[0] === '-V')
+    && args.slice(1).every(arg => /^(\d*>{1,2}&?\d*|&|\d+)$/.test(arg))) {
+    return { text: command, head, args, decision: 'allow' }
   }
 
   if ((head === 'npm' || head === 'npx' || head === 'yarn' || head === 'pnpm') && args.length > 0) {

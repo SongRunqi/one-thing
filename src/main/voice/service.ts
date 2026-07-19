@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import {
   IPC_CHANNELS,
   type AppSettings,
+  type VoiceAudioChunkPayload,
   type VoiceEvent,
   type VoiceLatencyMilestone,
   type VoiceLatencyMilestoneName,
@@ -15,6 +16,8 @@ import {
   type VoiceSubmitUtteranceRequest,
   type VoiceSynthesizeRequest,
 } from '../../shared/ipc.js'
+import { VoiceAudioRouter } from './audio-router.js'
+import { WakeWordEngine } from './kws.js'
 import { getEventBus, getStreamChannel } from '../events/index.js'
 import type { StreamChunk } from '../../shared/events/index.js'
 import type { Unsubscribe } from '../events/types.js'
@@ -75,10 +78,123 @@ class VoiceService {
   private replyPlayback: VoiceReplyPlaybackTurn | null = null
   private replyPlaybackId = 0
   private speechChain: Promise<void> = Promise.resolve()
+  private audioRouter: VoiceAudioRouter | null = null
+  private doubaoTranscriptId = ''
+  private doubaoFirstPartialSeen = false
+  private wakeEngine: WakeWordEngine | null = null
+  private currentTurnReason: VoiceStartRequest['reason'] = 'manual'
+  private pendingSpeechCount = 0
+  private resumeChainCount = 0
+  private resumeTimer: ReturnType<typeof setTimeout> | null = null
+  private callActive = false
+
+  private getAudioRouter(): VoiceAudioRouter {
+    if (!this.audioRouter) {
+      this.audioRouter = new VoiceAudioRouter({
+        onPartialTranscript: (text, sessionId) => {
+          this.state.lastTranscript = text
+          if (!this.doubaoFirstPartialSeen) {
+            this.doubaoFirstPartialSeen = true
+            this.emitMilestone('asr-first-partial', {
+              sessionId,
+              transcriptId: this.doubaoTranscriptId,
+              provider: 'doubao',
+              model: 'bigmodel',
+            })
+          }
+          this.emit({
+            type: 'partial-transcript',
+            sessionId,
+            transcriptId: this.doubaoTranscriptId,
+            text,
+          })
+        },
+        onFinalTranscript: ({ text, sessionId, durationMs }) => {
+          sendVoiceRuntimeCommand({ type: 'stop-recording', reason: 'asr-finalized' })
+          this.emitMilestone('asr-finalized', {
+            sessionId,
+            transcriptId: this.doubaoTranscriptId,
+            elapsedMs: durationMs,
+            provider: 'doubao',
+            model: 'bigmodel',
+          })
+          const finalText = this.currentTurnReason === 'wake'
+            ? stripWakePhrasePrefix(text, getSettings().voice?.wake.phrase)
+            : text
+          const meaningfulChars = finalText.replace(/[\s\p{P}]+/gu, '')
+          const emptyTurn = !finalText.trim()
+            // Follow-up windows drop one-character fragments (echo tails,
+            // breath noise) instead of turning them into chat messages.
+            || (this.currentTurnReason === 'resume' && meaningfulChars.length < 2)
+          if (emptyTurn) {
+            const settings = getSettings().voice
+            this.setStatus(settings?.enabled && settings.alwaysOn ? 'wake-listening' : 'idle')
+            if (this.callActive) this.maybeStartResumeWindow()
+            return
+          }
+          void this.submitTranscript({
+            sessionId,
+            transcriptId: this.doubaoTranscriptId || undefined,
+            text: finalText,
+            asrProvider: 'doubao',
+            asrModel: 'bigmodel',
+            durationMs,
+          })
+        },
+        onRecordingError: (error, _sessionId) => {
+          sendVoiceRuntimeCommand({ type: 'stop-recording', reason: 'asr-error' })
+          if (this.currentTurnReason === 'resume') {
+            // A silent resume window simply falls back to wake listening.
+            const settings = getSettings().voice
+            this.setStatus(settings?.enabled && settings.alwaysOn ? 'wake-listening' : 'idle')
+            if (this.callActive) this.maybeStartResumeWindow()
+            return
+          }
+          this.setError(error)
+        },
+        onWakeAudio: (pcm, sampleRate) => {
+          this.wakeEngine?.pushAudio(pcm, sampleRate)
+        },
+      })
+    }
+    return this.audioRouter
+  }
+
+  private syncWakeEngine(settings: VoiceSettings | undefined): void {
+    const useSherpaWake = Boolean(
+      settings?.enabled
+      && settings.alwaysOn
+      && settings.wake.enabled
+      && settings.wake.provider === 'sherpa-kws',
+    )
+    if (!useSherpaWake) {
+      this.wakeEngine?.stop()
+      return
+    }
+    if (!this.wakeEngine) this.wakeEngine = new WakeWordEngine()
+    this.getAudioRouter()
+    this.wakeEngine.start({
+      phrase: settings!.wake.phrase,
+      sensitivity: settings!.wake.sensitivity,
+      onDetected: keyword => {
+        if (this.state.status === 'recording' || this.state.status === 'transcribing') return
+        this.emit({ type: 'wake-detected', phrase: keyword, sessionId: this.state.currentSessionId })
+        void this.start({ reason: 'wake' })
+      },
+      onError: error => {
+        if (this.fallbackToMicButtonForWakeError(error)) {
+          this.setStatus('idle')
+          return
+        }
+        this.setError(error)
+      },
+    })
+  }
 
   applySettings(settings: AppSettings = getSettings()): void {
     const voice = settings.voice
     this.state.enabled = Boolean(voice?.enabled)
+    this.syncWakeEngine(voice)
 
     if (!voice?.enabled) {
       this.setStatus('disabled')
@@ -106,7 +222,7 @@ class VoiceService {
   }
 
   getState(): VoiceRuntimeState {
-    return { ...this.state }
+    return { ...this.state, callActive: this.callActive }
   }
 
   async start(request: VoiceStartRequest = {}): Promise<{ success: boolean; error?: string }> {
@@ -133,7 +249,26 @@ class VoiceService {
     }
 
     this.state.currentSessionId = sessionId
+    this.currentTurnReason = request.reason || 'manual'
+    if (this.currentTurnReason === 'call') {
+      this.callActive = true
+    }
+    if (this.currentTurnReason === 'resume') {
+      this.resumeChainCount += 1
+    } else {
+      this.resumeChainCount = 0
+    }
+    this.clearResumeTimer()
     this.setStatus('recording')
+    if (settings.asr.provider === 'doubao') {
+      this.doubaoTranscriptId = randomUUID()
+      this.doubaoFirstPartialSeen = false
+      void this.getAudioRouter().startDoubaoRecording(settings, sessionId, {
+        shouldIgnoreDefinite: request.reason === 'wake'
+          ? text => stripWakePhrasePrefix(text, settings.wake.phrase).length === 0
+          : undefined,
+      })
+    }
     sendVoiceRuntimeCommand({
       type: 'start-recording',
       settings,
@@ -143,11 +278,26 @@ class VoiceService {
     return { success: true }
   }
 
+  handleAudioChunk(payload: VoiceAudioChunkPayload): void {
+    this.getAudioRouter().handleChunk(payload)
+  }
+
   stop(request: VoiceStopRequest = {}): { success: boolean } {
+    this.clearResumeTimer()
+    this.resumeChainCount = 0
+    this.callActive = false
+    const submit = request.submit ?? request.reason === 'mic-button'
+    if (this.audioRouter?.isRecording) {
+      if (submit) {
+        void this.audioRouter.finishRecording()
+      } else {
+        this.audioRouter.abortRecording(request.reason || 'stopped')
+      }
+    }
     sendVoiceRuntimeCommand({
       type: 'stop',
       reason: request.reason,
-      submit: request.submit ?? request.reason === 'mic-button',
+      submit,
     })
     const settings = getSettings().voice
     this.setStatus(settings?.enabled && settings.alwaysOn ? 'wake-listening' : settings?.enabled ? 'idle' : 'disabled')
@@ -235,7 +385,7 @@ class VoiceService {
   async synthesize(request: VoiceSynthesizeRequest): Promise<{ success: boolean; requestId?: string; mimeType?: string; error?: string }> {
     const settings = getSettings().voice
     if (!settings?.enabled) return { success: false, error: 'Voice is disabled.' }
-    if (!settings.tts.autoSpeak) return { success: false, error: 'Voice auto speak is disabled.' }
+    if (!settings.tts.autoSpeak && !this.callActive) return { success: false, error: 'Voice auto speak is disabled.' }
 
     const text = request.text.trim()
     if (!text) return { success: true, requestId: request.requestId }
@@ -368,10 +518,19 @@ class VoiceService {
         this.setStatus('recording')
         this.emit(event)
         break
-      case 'recording-stopped':
-        this.setStatus('idle')
+      case 'recording-stopped': {
+        // Doubao finalizes in the main process before the runtime window
+        // reports the mic stop; don't downgrade transcribing/thinking.
+        if (this.state.status === 'recording') {
+          const settings = getSettings().voice
+          this.setStatus(settings?.enabled && settings.alwaysOn ? 'wake-listening' : 'idle')
+          // A silent turn ended without a transcript; on a call the loop
+          // keeps listening until the user hangs up.
+          if (this.callActive) this.maybeStartResumeWindow()
+        }
         this.emit(event)
         break
+      }
       case 'partial-transcript':
         this.state.lastTranscript = event.text
         this.emit(event)
@@ -390,6 +549,10 @@ class VoiceService {
         this.emit(event)
         break
       }
+      case 'playback-idle':
+        this.emit(event)
+        this.maybeStartResumeWindow()
+        break
       case 'error':
         if (this.fallbackToMicButtonForWakeError(event.error)) {
           this.setStatus('idle')
@@ -404,6 +567,9 @@ class VoiceService {
 
   shutdown(): void {
     this.cancelReplyPlayback()
+    this.clearResumeTimer()
+    this.audioRouter?.shutdown()
+    this.wakeEngine?.stop()
     sendVoiceRuntimeCommand({ type: 'stop', reason: 'shutdown' })
     destroyVoiceRuntimeWindow()
     this.state.runtimeReady = false
@@ -441,7 +607,9 @@ class VoiceService {
   private beginReplyPlayback(sessionId: string): void {
     this.cancelReplyPlayback()
     const settings = getSettings().voice
-    if (!settings?.enabled || !settings.tts.autoSpeak) return
+    // On a call the reply is always spoken; the autoSpeak toggle only
+    // affects mic-button / wake-word input turns.
+    if (!settings?.enabled || (!settings.tts.autoSpeak && !this.callActive)) return
 
     const turn: VoiceReplyPlaybackTurn = {
       id: ++this.replyPlaybackId,
@@ -465,7 +633,7 @@ class VoiceService {
   private handleReplyStreamChunk(turn: VoiceReplyPlaybackTurn, chunk: StreamChunk): void {
     if (this.replyPlayback?.id !== turn.id) return
     if (chunk.type !== 'text-delta') return
-    if (!getSettings().voice?.tts.autoSpeak) return
+    if (!getSettings().voice?.tts.autoSpeak && !this.callActive) return
 
     const speakText = getOnethingSpeakableTextFromDelta(chunk)
     if (!speakText) return
@@ -490,6 +658,7 @@ class VoiceService {
       const text = sentence.trim()
       if (!text) continue
       const turnId = turn.id
+      this.pendingSpeechCount += 1
       this.speechChain = this.speechChain
         .then(async () => {
           if (this.replyPlaybackId !== turnId && this.replyPlayback?.id !== turnId) return
@@ -498,6 +667,9 @@ class VoiceService {
         })
         .catch((error: any) => {
           this.setError(error?.message || 'Voice synthesis failed.')
+        })
+        .finally(() => {
+          this.pendingSpeechCount = Math.max(0, this.pendingSpeechCount - 1)
         })
     }
   }
@@ -537,6 +709,42 @@ class VoiceService {
     if (!turn.flushTimer) return
     clearTimeout(turn.flushTimer)
     turn.flushTimer = undefined
+  }
+
+  // After the reply has fully played, keep the mic open for one follow-up
+  // window so multi-turn conversations don't need the wake phrase again.
+  // On an active call this is the core loop: it always re-opens.
+  private maybeStartResumeWindow(): void {
+    const settings = getSettings().voice
+    if (!settings?.enabled) return
+    if (!this.callActive) {
+      if (!settings.alwaysOn || !settings.wake.enabled) return
+      if (settings.wake.provider !== 'sherpa-kws') return
+      // Runaway-loop bound: after several back-to-back follow-up turns the
+      // wake phrase is required again.
+      if (this.resumeChainCount >= 5) return
+    }
+    if (this.replyPlayback || this.pendingSpeechCount > 0) return
+    if (this.state.status === 'recording' || this.state.status === 'transcribing' || this.state.status === 'thinking') return
+
+    // Let the speaker tail / room reverb of the reply die down before the
+    // mic re-opens, or the ASR transcribes our own TTS into a new turn.
+    this.clearResumeTimer()
+    this.resumeTimer = setTimeout(() => {
+      this.resumeTimer = null
+      const current = getSettings().voice
+      if (!current?.enabled) return
+      if (!this.callActive && (!current.alwaysOn || !current.wake.enabled)) return
+      if (this.replyPlayback || this.pendingSpeechCount > 0) return
+      if (this.state.status !== 'wake-listening' && this.state.status !== 'idle') return
+      void this.start({ sessionId: this.state.currentSessionId, reason: 'resume' })
+    }, 900)
+  }
+
+  private clearResumeTimer(): void {
+    if (!this.resumeTimer) return
+    clearTimeout(this.resumeTimer)
+    this.resumeTimer = null
   }
 
   private fallbackToMicButtonForWakeError(error: string): boolean {
@@ -583,6 +791,13 @@ class VoiceService {
       payload: event,
     })
   }
+}
+
+function stripWakePhrasePrefix(text: string, phrase?: string): string {
+  const trimmed = text.trim()
+  const normalizedPhrase = (phrase || '').trim()
+  if (!normalizedPhrase || !trimmed.startsWith(normalizedPhrase)) return trimmed
+  return trimmed.slice(normalizedPhrase.length).replace(/^[\s,,。.!!??、::;;]+/, '')
 }
 
 let service: VoiceService | null = null

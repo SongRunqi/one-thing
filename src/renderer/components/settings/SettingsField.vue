@@ -34,6 +34,9 @@ defineProps<{
 
 <style scoped>
 .settings-field {
+  /* Fill the control row: fields shrank to placeholder width as plain flex
+     children, leaving inputs ~175px wide inside a 600px+ row. */
+  flex: 1 1 auto;
   min-width: 0;
 }
 

@@ -353,36 +353,6 @@ describe('CollapsePanel', () => {
     expect(wrapper.find('[data-collapse-panel-code]').text()).toContain('export default value')
   })
 
-  it('renders built-in diff content with structured add, delete, hunk, and metadata rows', () => {
-    const wrapper = mount(CollapsePanel, {
-      props: {
-        title: 'Edit file',
-        contentKind: 'diff',
-        filePath: '/repo/src/value.ts',
-        content: [
-          '--- a/src/value.ts',
-          '+++ b/src/value.ts',
-          '@@ -1,2 +1,2 @@',
-          '-const value = 1',
-          '+const value = 2',
-          ' export default value',
-        ].join('\n'),
-      },
-    })
-
-    const lines = wrapper.findAll('[data-collapse-panel-diff-line]')
-    expect(wrapper.find('[data-collapse-panel-diff]').exists()).toBe(true)
-    expect(lines).toHaveLength(6)
-    expect(lines[0].classes()).toContain('line-meta')
-    expect(lines[2].classes()).toContain('line-hunk')
-    expect(lines[3].classes()).toContain('line-delete')
-    expect(lines[3].find('.collapse-panel-diff-prefix').text()).toBe('-')
-    expect(lines[3].find('.collapse-panel-diff-content').text()).toBe('const value = 1')
-    expect(lines[4].classes()).toContain('line-add')
-    expect(lines[4].find('.collapse-panel-diff-prefix').text()).toBe('+')
-    expect(lines[4].find('.collapse-panel-diff-content').text()).toBe('const value = 2')
-    expect(lines[5].classes()).toContain('line-context')
-  })
 
   it('keeps built-in streaming code content mounted while collapsed and updates it', async () => {
     const StreamingCodeHost = defineComponent({

@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>练习条展开态 · 六案</title>
+<style>
+:root {
+  --paper: #faf8f1;
+  --paper-deep: #f3efe5;
+  --ink: #29241c;
+  --ink-60: rgba(41, 36, 28, 0.62);
+  --ink-40: rgba(41, 36, 28, 0.42);
+  --ink-25: rgba(41, 36, 28, 0.25);
+  --ink-12: rgba(41, 36, 28, 0.12);
+  --a-red: #b8452c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #191611;
+    --paper-deep: #14110d;
+    --ink: #e8e1d2;
+    --ink-60: rgba(232, 225, 210, 0.66);
+    --ink-40: rgba(232, 225, 210, 0.45);
+    --ink-25: rgba(232, 225, 210, 0.28);
+    --ink-12: rgba(232, 225, 210, 0.14);
+    --a-red: #d8765c;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 48px 40px 96px;
+}
+.serif { font-family: Georgia, "Songti SC", "Noto Serif SC", serif; }
+
+.page-head { max-width: 900px; margin: 0 auto 44px; }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after { content: ""; display: block; width: 88px; border-bottom: 2px solid var(--ink); margin-top: 10px; }
+.page-head p { margin-top: 12px; color: var(--ink-60); max-width: 62em; }
+
+.options { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 64px; }
+.option .opt-head { margin-bottom: 16px; }
+.option .opt-head h2 { font-size: 15px; font-weight: 600; letter-spacing: 0.06em; }
+.option .opt-head h2 em { font-style: normal; font-size: 12px; font-weight: 400; color: var(--ink-60); margin-left: 10px; }
+.option .opt-head p { font-size: 12px; color: var(--ink-60); margin-top: 4px; max-width: 62em; }
+
+.frame { margin: 0 0 18px; }
+.frame > figcaption { font-size: 11px; color: var(--ink-40); letter-spacing: 0.08em; margin-bottom: 6px; }
+.mock { border: 1px solid var(--ink-25); background: var(--paper); border-radius: 8px; overflow: hidden; position: relative; }
+
+/* 模拟 tab header */
+.tabbar { display: flex; align-items: center; height: 40px; padding: 0 12px 0 14px; position: relative; }
+.tabbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--ink-12); z-index: 0; }
+.tl { display: flex; gap: 6px; margin-right: 16px; }
+.tl i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-12); }
+.tb-tab { font-size: 12.5px; color: var(--ink-60); padding: 0 10px; height: 100%; display: flex; align-items: center; position: relative; }
+.tb-tab.active { color: var(--ink); }
+.tb-tab.active::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; background: var(--ink); z-index: 1; }
+.tb-tick { width: 1px; height: 14px; background: var(--ink-25); margin: 0 4px; }
+.tb-sp { flex: 1; }
+.tb-more { color: var(--ink-40); font-size: 14px; padding: 0 6px; }
+
+/* 模拟聊天正文:多行,用于看清"聊天有没有被推动" */
+.ghost { padding: 12px 18px 16px; color: var(--ink-25); font-size: 12px; line-height: 1.9; user-select: none; }
+.ghost b { color: var(--ink-40); font-weight: 400; }
+
+.verb { color: var(--ink); cursor: pointer; border-bottom: 1.5px dotted var(--ink-40); padding-bottom: 1px; }
+.dot-sep { color: var(--ink-25); margin: 0 6px; }
+.cat { color: var(--ink-60); margin: 0 3px; cursor: pointer; }
+.cat.on { color: var(--ink); border-bottom: 1.5px solid var(--ink); }
+.num { color: var(--ink); border-bottom: 1px dashed var(--ink-25); padding: 0 1px; }
+
+/* ————————— 案一 · 浮批:锚定隐线的浮层账卡 ————————— */
+.v1 .float-card {
+  position: absolute; left: 50%; top: 44px; transform: translateX(-50%);
+  width: 480px; background: var(--paper);
+  border: 1px solid var(--ink-25); border-radius: 0 0 8px 8px; border-top: 0;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.13), 0 1px 4px rgba(0,0,0,0.06);
+  z-index: 5; padding: 2px 0 6px;
+}
+.v1 .fc-row { display: flex; align-items: baseline; gap: 12px; padding: 9px 18px 8px; font-size: 12.5px; border-bottom: 1px solid var(--ink-12); }
+.v1 .fc-row:last-of-type { border-bottom: 0; }
+.v1 .fc-name { width: 44px; flex: 0 0 44px; font-weight: 600; color: var(--ink); }
+.v1 .fc-body { flex: 1; color: var(--ink-60); }
+.v1 .fc-foot { display: flex; justify-content: flex-end; padding: 4px 18px 2px; font-size: 11px; color: var(--ink-40); }
+.v1 .fc-input { color: var(--ink-25); border-bottom: 1px dashed var(--ink-25); padding: 0 30px 0 2px; }
+
+/* ————————— 案二 · 墨签菜单 ————————— */
+.v2 .menu {
+  position: absolute; left: 50%; top: 46px; transform: translateX(-50%);
+  min-width: 240px; background: var(--paper);
+  border: 1px solid var(--ink-25); border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  padding: 6px; z-index: 5;
+}
+.v2 .mi { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 12.5px; color: var(--ink); cursor: pointer; }
+.v2 .mi:hover, .v2 .mi.hover { background: rgba(41,36,28,0.06); }
+@media (prefers-color-scheme: dark) { .v2 .mi:hover, .v2 .mi.hover { background: rgba(232,225,210,0.07); } }
+.v2 .mi .glyph { width: 14px; text-align: center; color: var(--ink-40); flex: 0 0 14px; }
+.v2 .mi .hint { margin-left: auto; font-size: 11px; color: var(--ink-40); padding-left: 18px; }
+.v2 .mi .sub { color: var(--ink-25); margin-left: 6px; }
+.v2 .mdiv { height: 1px; background: var(--ink-12); margin: 5px 8px; }
+.v2 .submenu {
+  position: absolute; left: calc(50% + 128px); top: 88px;
+  min-width: 120px; background: var(--paper); border: 1px solid var(--ink-25);
+  border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); padding: 6px; z-index: 6;
+}
+
+/* ————————— 案三 · 换幕:tab 栏原地变身 ————————— */
+.v3 .tabbar.practice-mode .tb-tab, .v3 .tabbar.practice-mode .tb-more { opacity: 0.15; }
+.v3 .pm-strip { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 16px 0 96px; gap: 10px; font-size: 12.5px; z-index: 2; }
+.v3 .pm-label { font-weight: 600; letter-spacing: 0.2em; margin-right: 4px; }
+.v3 .pm-tick { width: 1px; height: 14px; background: var(--ink-25); margin: 0 6px; }
+.v3 .pm-close { margin-left: auto; color: var(--ink-40); cursor: pointer; font-size: 13px; }
+.v3 .pm-group { color: var(--ink-60); }
+.v3 .pm-group b { color: var(--ink); font-weight: 600; margin-right: 4px; }
+
+/* ————————— 案四 · 命令行:面板预过滤 ————————— */
+.v4 .scrim { position: absolute; inset: 0; background: rgba(20,17,13,0.18); z-index: 4; }
+@media (prefers-color-scheme: dark) { .v4 .scrim { background: rgba(0,0,0,0.32); } }
+.v4 .palette {
+  position: absolute; left: 50%; top: 54px; transform: translateX(-50%);
+  width: 460px; background: var(--paper); border: 1px solid var(--ink-25);
+  z-index: 5; box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+}
+.v4 .pal-input { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--ink-25); font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+.v4 .caret { display: inline-block; width: 1.5px; height: 15px; background: var(--ink); }
+.v4 .pal-row { display: flex; align-items: baseline; gap: 10px; padding: 8px 14px; font-size: 12.5px; border-bottom: 1px solid color-mix(in srgb, var(--a-red) 18%, transparent); }
+.v4 .pal-row:last-child { border-bottom: 0; }
+.v4 .pal-row.sel { background: rgba(41,36,28,0.05); }
+@media (prefers-color-scheme: dark) { .v4 .pal-row.sel { background: rgba(232,225,210,0.06); } }
+.v4 .pal-cmd { font-family: ui-monospace, Menlo, monospace; color: var(--ink); width: 118px; flex: 0 0 118px; }
+.v4 .pal-desc { color: var(--ink-60); }
+.v4 .pal-hint { margin-left: auto; color: var(--ink-25); font-size: 11px; }
+
+/* ————————— 案五 · 工作台直达 ————————— */
+.v5 .split { display: flex; min-height: 240px; }
+.v5 .chat-side { flex: 1; min-width: 0; border-right: 1px solid var(--ink-12); }
+.v5 .panel-side { width: 46%; flex: 0 0 46%; padding: 14px 18px; background: color-mix(in srgb, var(--paper-deep) 40%, var(--paper)); }
+.v5 .panel-side h4 { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; margin-bottom: 10px; }
+.v5 .start-card { border: 1px solid var(--ink-25); background: var(--paper); padding: 10px 14px; margin-bottom: 10px; }
+.v5 .start-card .sc-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+.v5 .start-card .sc-name { font-weight: 600; font-size: 13px; }
+.v5 .start-card .sc-detail { font-size: 11.5px; color: var(--ink-60); }
+.v5 .ledger-mini { margin-top: 12px; font-size: 11px; color: var(--ink-40); border-top: 1px solid var(--ink-25); padding-top: 8px; }
+
+/* ————————— 案六 · 仪式卡 ————————— */
+.v6 .scrim { position: absolute; inset: 0; background: rgba(20,17,13,0.22); z-index: 4; }
+@media (prefers-color-scheme: dark) { .v6 .scrim { background: rgba(0,0,0,0.38); } }
+.v6 .stage {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -46%);
+  width: 560px; background: var(--paper); border: 1px solid var(--ink-25);
+  box-shadow: 0 18px 44px rgba(0,0,0,0.2); z-index: 5; padding: 22px 26px 16px;
+}
+.v6 .stage-title { font-family: Georgia, "Songti SC", serif; font-size: 15px; letter-spacing: 0.3em; margin-bottom: 16px; }
+.v6 .stage-title::after { content: ""; display: block; width: 56px; border-bottom: 2px solid var(--ink); margin-top: 8px; }
+.v6 .stage-cols { display: flex; gap: 0; }
+.v6 .stage-col { flex: 1; padding: 2px 18px 6px; border-left: 1px solid var(--ink-12); }
+.v6 .stage-col:first-child { border-left: 0; padding-left: 2px; }
+.v6 .sc-title { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.v6 .sc-line { font-size: 11.5px; color: var(--ink-60); line-height: 1.9; }
+.v6 .sc-verb { display: inline-block; margin-top: 8px; }
+.v6 .stage-foot { margin-top: 14px; font-size: 10.5px; color: var(--ink-25); text-align: right; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1>练习条 · 展开态六案</h1>
+  <p>
+    两个待解问题:<b>① 展开不得推动聊天布局</b>(现抽屉占文档流 40px);<b>② 展开态要一眼看懂</b>
+    (现在一行字混排三种功能)。六案在"展开到哪里去"这个机制上截然不同;
+    静默态与运行态维持已实现的隐线不变。每帧下方的灰字聊天示意保持原位,即为"布局未被推动"的证据。
+    已排除的方向:往下推但加动画(位移仍在,治标)、hover 展开(误触且不可发现)、独立小窗(此前已否)。
+  </p>
+</header>
+
+<div class="options">
+
+<!-- 案一 -->
+<section class="option v1">
+  <div class="opt-head">
+    <h2>案一 · 浮批 <em>从隐线垂下的浮层账卡,覆盖而非推挤</em></h2>
+    <p>
+      点隐线,一张 480px 账卡从基线垂下,浮在聊天上方(纸面 + 细边 + 薄影)。三行名目左对齐:
+      凯格尔 / 番茄 / 补录,每行"名目 → 参数 → 动词"从左到右一条视线。点卡外或 Esc 收回。
+      它是现方案的直系修正:交互位置不变,只是从"占行"改成"浮层",并给了内容呼吸的空间。
+    </p>
+  </div>
+  <figure class="frame">
+    <figcaption>展开 — 账卡浮在聊天上;下方灰字未动</figcaption>
+    <div
+      class="mock"
+      style="min-height: 250px"
+    >
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="float-card">
+        <div class="fc-row">
+          <span class="fc-name">凯格尔</span>
+          <span class="fc-body">收 <span class="num">10</span>″ · 放 <span class="num">5</span>″ · <span class="num">20</span> 次 × <span class="num">3</span> 组</span>
+          <span class="verb">开始</span>
+        </div>
+        <div class="fc-row">
+          <span class="fc-name">番茄</span>
+          <span class="fc-body"><span class="cat on">学习</span><span class="cat">看视频</span><span class="cat">写作</span> · 25′</span>
+          <span class="verb">开始</span>
+        </div>
+        <div class="fc-row">
+          <span class="fc-name">补录</span>
+          <span class="fc-body"><span class="fc-input">俯卧撑 3×20 或 跑步 30分</span></span>
+          <span class="verb">记上</span>
+        </div>
+        <div class="fc-foot">♪ 音效 开 &nbsp;·&nbsp; Esc 关闭</div>
+      </div>
+      <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB,音乐闪避阈值保持不变。刚才那组串词的 TTS 已经换到语音轨了……<br><b>我:</b>顺便看下今天的番茄统计</div>
+    </div>
+  </figure>
+</section>
+
+<!-- 案二 -->
+<section class="option v2">
+  <div class="opt-head">
+    <h2>案二 · 墨签菜单 <em>就是一个右键菜单,零学习成本</em></h2>
+    <p>
+      展开态直接复用应用现有的菜单族(SessionContextMenu 同款圆角纸面):竖排四项,
+      每项"动词开头 + 右侧灰字参数提示",番茄的分类走二级菜单。菜单是最被普遍理解的控件——
+      "什么是什么"由控件惯例回答,不需要用户学。参数修改不进菜单(去练习 tab 改),菜单只管"开始"。
+    </p>
+  </div>
+  <figure class="frame">
+    <figcaption>展开 — 菜单浮层 + 番茄二级分类;聊天未动</figcaption>
+    <div
+      class="mock"
+      style="min-height: 280px"
+    >
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="menu">
+        <div class="mi"><span class="glyph">▶</span>开始凯格尔<span class="hint">收10″/放5″ · 20×3</span></div>
+        <div class="mi hover"><span class="glyph">◔</span>开始番茄<span class="hint">25′ ›</span></div>
+        <div class="mi"><span class="glyph">✎</span>补录一笔</div>
+        <div class="mdiv"></div>
+        <div class="mi"><span class="glyph">♪</span>音效<span class="hint">开</span></div>
+      </div>
+      <div class="submenu">
+        <div class="mi">学习</div>
+        <div class="mi">看视频</div>
+        <div class="mi">写作</div>
+        <div class="mi">其他…</div>
+      </div>
+      <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB,音乐闪避阈值保持不变。刚才那组串词的 TTS 已经换到语音轨了……<br><b>我:</b>顺便看下今天的番茄统计</div>
+    </div>
+  </figure>
+</section>
+
+<!-- 案三 -->
+<section class="option v3">
+  <div class="opt-head">
+    <h2>案三 · 换幕 <em>tab 栏原地变身练习栏,不新增一像素</em></h2>
+    <p>
+      点隐线,40px 的 tab 栏自身"换幕":页签淡出,练习控件淡入,同一行内用竖刻分隔三个组,
+      右端 × 返回。没有浮层遮挡聊天,也没有任何新增高度——它借的是已经存在的空间。
+      一行的排布密度约束仍在,但整行都是练习的了,比旧抽屉从容一倍;有"进入练习模式"的仪式感。
+    </p>
+  </div>
+  <figure class="frame">
+    <figcaption>展开 — 页签隐去,练习控件接管同一行;聊天未动</figcaption>
+    <div class="mock">
+      <div class="tabbar practice-mode">
+        <span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span>
+        <div class="pm-strip">
+          <span class="pm-label">练</span>
+          <span class="pm-group"><b>凯格尔</b>10″/5″ · 20×3 <span class="verb">开始</span></span>
+          <span class="pm-tick"></span>
+          <span class="pm-group"><b>番茄</b><span class="cat on">学习</span><span class="cat">看视频</span> <span class="verb">25′</span></span>
+          <span class="pm-tick"></span>
+          <span class="pm-group"><span class="verb">补录</span></span>
+          <span class="pm-close">×</span>
+        </div>
+      </div>
+      <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB,音乐闪避阈值保持不变。刚才那组串词的 TTS 已经换到语音轨了……<br><b>我:</b>顺便看下今天的番茄统计</div>
+    </div>
+  </figure>
+</section>
+
+<!-- 案四 -->
+<section class="option v4">
+  <div class="opt-head">
+    <h2>案四 · 命令行 <em>不造新面板:点隐线 = 打开预过滤的命令面板</em></h2>
+    <p>
+      隐线只是一个触发器:点击打开命令面板并预过滤到练习命令(/kegel、/pomodoro、补录)。
+      每条命令自带一整行的说明文字——"怎么用"由面板的账页行回答,且键盘直达。
+      练习不再拥有自己的展开面板,系统里少一个要学的东西;代价是每次开始多一步确认(回车)。
+    </p>
+  </div>
+  <figure class="frame">
+    <figcaption>展开 — 命令面板浮层预过滤;背景聊天压暗但未动</figcaption>
+    <div
+      class="mock"
+      style="min-height: 250px"
+    >
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="scrim"></div>
+      <div class="palette">
+        <div class="pal-input">练<span class="caret"></span></div>
+        <div class="pal-row sel"><span class="pal-cmd">/kegel</span><span class="pal-desc">开始凯格尔 · 收10″/放5″ · 20次×3组</span><span class="pal-hint">↵</span></div>
+        <div class="pal-row"><span class="pal-cmd">/pomodoro</span><span class="pal-desc">开始番茄 · 学习 25′(空格换分类)</span></div>
+        <div class="pal-row"><span class="pal-cmd">/practice-log</span><span class="pal-desc">补录一笔 · 俯卧撑 3×20</span></div>
+      </div>
+      <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB,音乐闪避阈值保持不变。刚才那组串词的 TTS 已经换到语音轨了……<br><b>我:</b>顺便看下今天的番茄统计</div>
+    </div>
+  </figure>
+</section>
+
+<!-- 案五 -->
+<section class="option v5">
+  <div class="opt-head">
+    <h2>案五 · 工作台直达 <em>点隐线 = 打开练习 tab,启动区搬进宽面板</em></h2>
+    <p>
+      展开态整个取消:点隐线直接打开右侧 workspace 的练习 tab,启动/调参/补录都住在那里,
+      有整面板的空间做清楚的卡片和表单——"什么是什么"用空间和层级解决,不用密度换。
+      聊天宽度变化走的是 workspace 面板的既有弹性动画,是应用里已被接受的行为,不是布局跳变。
+      隐线自身退回纯指示器(运行进度),职责最干净;代价是快速开始要"跨一个面板"。
+    </p>
+  </div>
+  <figure class="frame">
+    <figcaption>展开 — 右侧练习面板打开,启动卡 + 补录 + 账页概览</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="split">
+        <div class="chat-side">
+          <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB……<br><b>我:</b>顺便看下今天的番茄统计</div>
+        </div>
+        <div class="panel-side">
+          <h4>练习</h4>
+          <div class="start-card">
+            <div class="sc-head"><span class="sc-name">凯格尔</span><span class="verb">开始</span></div>
+            <div class="sc-detail">收 <span class="num">10</span>″ · 放 <span class="num">5</span>″ · 每组 <span class="num">20</span> 次 · <span class="num">3</span> 组 · 组间息 60″ · ♪ 开</div>
+          </div>
+          <div class="start-card">
+            <div class="sc-head"><span class="sc-name">番茄</span><span class="verb">25′</span></div>
+            <div class="sc-detail"><span class="cat on">学习</span><span class="cat">看视频</span><span class="cat">写作</span><span class="cat">其他</span></div>
+          </div>
+          <div class="start-card">
+            <div class="sc-head"><span class="sc-name">补录</span><span class="verb">记上</span></div>
+            <div class="sc-detail" style="color: var(--ink-25)">俯卧撑 3×20 或 跑步 30分</div>
+          </div>
+          <div class="ledger-mini">今日 · 凯格尔 2 · 番茄 3 · 俯卧撑 3×20 —— 查看账页 ›</div>
+        </div>
+      </div>
+    </div>
+  </figure>
+</section>
+
+<!-- 案六 -->
+<section class="option v6">
+  <div class="opt-head">
+    <h2>案六 · 仪式卡 <em>居中登台:开始练习是一个郑重的动作</em></h2>
+    <p>
+      点隐线,画面中央升起一张三栏卡(Search Everywhere 同族的浮窗),背景轻压暗。
+      凯格尔 / 番茄 / 补录各占一栏,竖刻分隔,宋体标题领起,每栏参数完整可改、动词唯一。
+      六案里"看懂"做得最彻底的一案——空间最奢侈、层级最清楚;也最重,适合把"开始练习"
+      当作一次切换心境的仪式,而不是顺手一点。
+    </p>
+  </div>
+  <figure class="frame">
+    <figcaption>展开 — 居中三栏卡,背景压暗;关闭后一切如旧</figcaption>
+    <div class="mock" style="min-height: 300px">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB,音乐闪避阈值保持不变。刚才那组串词的 TTS 已经换到语音轨了……<br><b>我:</b>顺便看下今天的番茄统计<br><b>AI:</b>今天到现在:学习 2 轮 51 分钟,看视频 1 轮 25 分钟……</div>
+      <div class="scrim"></div>
+      <div class="stage">
+        <div class="stage-title">练 习</div>
+        <div class="stage-cols">
+          <div class="stage-col">
+            <div class="sc-title">凯格尔</div>
+            <div class="sc-line">收 <span class="num">10</span>″ / 放 <span class="num">5</span>″<br><span class="num">20</span> 次 × <span class="num">3</span> 组<br>♪ 音效 开</div>
+            <span class="verb sc-verb">开始</span>
+          </div>
+          <div class="stage-col">
+            <div class="sc-title">番茄</div>
+            <div class="sc-line"><span class="cat on">学习</span><span class="cat">看视频</span><br><span class="cat">写作</span><span class="cat">其他</span><br>时长 <span class="num">25</span>′</div>
+            <span class="verb sc-verb">开始</span>
+          </div>
+          <div class="stage-col">
+            <div class="sc-title">补录</div>
+            <div class="sc-line" style="color: var(--ink-25)">俯卧撑 3×20<br>跑步 30分<br>&nbsp;</div>
+            <span class="verb sc-verb">记上</span>
+          </div>
+        </div>
+        <div class="stage-foot">ESC 关闭</div>
+      </div>
+    </div>
+  </figure>
+</section>
+
+</div>
+</body>
+</html>

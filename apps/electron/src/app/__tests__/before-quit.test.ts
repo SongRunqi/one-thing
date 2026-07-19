@@ -24,6 +24,7 @@ describe('electron before-quit cleanup', () => {
       options: {
         markVoiceQuitRequested: fn('markVoiceQuitRequested'),
         shutdownVoiceService: asyncFn('shutdownVoiceService'),
+        shutdownMusicService: asyncFn('shutdownMusicService'),
         unregisterGlobalWindowShortcuts: fn('unregisterGlobalWindowShortcuts'),
         shutdownGateway: asyncFn('shutdownGateway'),
         shutdownMCP: asyncFn('shutdownMCP'),
@@ -52,6 +53,7 @@ describe('electron before-quit cleanup', () => {
     expect(calls).toEqual([
       'markVoiceQuitRequested',
       'shutdownVoiceService',
+      'shutdownMusicService',
       'unregisterGlobalWindowShortcuts',
       'shutdownGateway',
       'shutdownMCP',

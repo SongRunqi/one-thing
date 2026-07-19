@@ -16,6 +16,7 @@
       @edit-and-resend="handleEditAndResend"
       @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
       @open-file="(filePath) => emit('openFile', filePath)"
+      @review-goal="(goalSessionId) => emit('reviewGoal', goalSessionId)"
     />
 
     <Teleport
@@ -25,10 +26,12 @@
       <div
         v-show="props.active"
         ref="composerContainerRef"
-        v-memo="[props.active, isGenerating, effectiveSessionId, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction]"
+        v-memo="[props.active, isGenerating, effectiveSessionId, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction, goalMusicOffset]"
         class="composer-container"
+        :style="{ '--goal-music-offset': goalMusicOffset + 'px' }"
       >
         <BackgroundJobsStatusBar />
+        <GoalStatusBar :session-id="effectiveSessionId" />
 
         <div
           v-if="currentPendingPermission"
@@ -142,10 +145,12 @@ import Button from '@/components/common/Button.vue'
 import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
+import { useMusicStore } from '@/stores/music'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
 import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
+import GoalStatusBar from './GoalStatusBar.vue'
 import type { MessageAttachment, ToolCall } from '@/types'
 import { buildToolPermissionTitle } from '@/stores/helpers/tool-display'
 
@@ -165,13 +170,23 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   splitWithBranch: [sessionId: string]
   openFile: [filePath: string]
+  reviewGoal: [sessionId: string]
   switchSession: [sessionId: string]
 }>()
 
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
+const musicStore = useMusicStore()
 
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
+
+// The music bar is an out-of-flow flyout floating up over the composer's top
+// edge, right where the goal bar sits. When it is showing, lift the goal bar
+// clear by its height (plus the bar's own 9px top gap) so the goal reads above
+// the music bar instead of being covered by it.
+const goalMusicOffset = computed(() =>
+  musicStore.barHeight > 0 ? musicStore.barHeight + 9 : 0,
+)
 
 const {
   messages,
@@ -398,6 +413,9 @@ function canAllowWorkspace(toolCall: ToolCall): boolean {
   const name = (toolCall.toolName || toolCall.toolId || '').toLowerCase()
   // Sensitive file reads should not be granted workspace-wide in the first scope UX.
   if (permissionType === 'sensitive_file_read') return false
+  // Repointing a capability is always a one-time answer — core refuses to turn
+  // it into a standing grant, so never offer the button either.
+  if (permissionType === 'capability_change') return false
   if (name === 'read' && /\.env|\.pem$|\.key$|\.p12$|\.pfx$/i.test(permissionTitle(toolCall))) return false
   return true
 }
@@ -671,7 +689,16 @@ async function handleSendMessage(
   } else {
     if (sessionsStore.isNewChatDraftId(session.id)) {
       const materialized = await sessionsStore.materializeNewChatDraft(session.id, session.name || 'New Chat')
-      if (!materialized) return
+      if (!materialized) {
+        // The input is already cleared; a silent return would discard the
+        // message with zero feedback. The draft was restored, so surface a
+        // visible error card in it.
+        chatStore.addLocalMessage(session.id, {
+          role: 'error',
+          content: 'Failed to create the session — your message was not sent. Please try again.',
+        })
+        return
+      }
       await chatStore.sendMessage(materialized.id, message, attachments)
       return
     }
@@ -774,6 +801,18 @@ defineExpose({
   align-self: center;
 }
 
+/* The goal bar rides the same measured column as the composer; without this
+   it sits at the container's flex-start edge, visibly off the reading column.
+   Top margin clears the frame legend that punches out above the border. */
+.composer-container > :deep(.goal-bar) {
+  box-sizing: border-box;
+  width: var(--chat-composer-width);
+  /* Bottom margin grows by the music bar's height (var set on the container)
+     so the goal bar lifts above the flyout that floats up from the composer. */
+  margin: 8px var(--chat-content-column-right, auto) calc(8px + var(--goal-music-offset, 0px)) var(--chat-content-column-left, auto);
+  transition: margin-bottom 0.18s ease;
+}
+
 /* The docked sidebar snaps discretely (see App.vue), so the composer glides
    to its new column on its own; only while the layout toggle is animating,
    so live splitter drags keep tracking the cursor 1:1. The container transform
@@ -783,6 +822,7 @@ defineExpose({
 }
 
 .composer-container.is-layout-animating :deep(.composer-wrapper),
+.composer-container.is-layout-animating :deep(.goal-bar),
 .composer-container.is-layout-animating .session-permission-panel {
   transition:
     width var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1)),

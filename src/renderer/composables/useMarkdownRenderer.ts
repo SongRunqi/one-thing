@@ -67,7 +67,42 @@ function createMarkdownRenderer(config: MarkdownRendererConfig) {
     return `<code class="inline-code">${instance.utils.escapeHtml(token.content)}</code>`
   }
 
+  // Normalize model-emitted local image paths (sandbox: scheme, bare absolute
+  // paths) into file:// URLs the CSP allows; runs after link validation, so
+  // the rewritten URL is rendered as-is.
+  const defaultImageRule = instance.renderer.rules.image
+  instance.renderer.rules.image = (tokens, idx, options, env, self) => {
+    const token = tokens[idx]
+    const src = token.attrGet('src')
+    if (src) {
+      const normalized = normalizeLocalImageSrc(src)
+      if (normalized !== src) token.attrSet('src', normalized)
+    }
+    return defaultImageRule
+      ? defaultImageRule(tokens, idx, options, env, self)
+      : self.renderToken(tokens, idx, options)
+  }
+
   return instance
+}
+
+/**
+ * Rewrite local-file image sources into loadable file:// URLs.
+ * Models imitate OpenAI's code-interpreter convention and emit
+ * `sandbox:/abs/path` (or a bare absolute path) for files on disk;
+ * neither scheme is loadable in the renderer.
+ */
+export function normalizeLocalImageSrc(src: string): string {
+  // src arrives percent-encoded from markdown-it's normalizeLink; do not re-encode.
+  const sandboxMatch = /^sandbox:(?:\/\/)?(.+)$/i.exec(src)
+  if (sandboxMatch) {
+    const path = sandboxMatch[1].startsWith('/') ? sandboxMatch[1] : `/${sandboxMatch[1]}`
+    return `file://${path}`
+  }
+  if (src.startsWith('/') && !src.startsWith('//')) {
+    return `file://${src}`
+  }
+  return src
 }
 
 function getMarkdownRenderer(config: MarkdownRendererConfig): MarkdownIt {

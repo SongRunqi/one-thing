@@ -45,6 +45,7 @@ export {
   updateSessionWorkingDirectory,
   updateSessionWorkingDirectoryRoots,
   updateSessionVariables,
+  updateSessionGoal,
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
   updateSessionContextSize,
@@ -60,6 +61,8 @@ export {
   initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
+  invalidateSessionCache,
+  getSessionCacheStats,
 
   // Initialization
   initializeStores,

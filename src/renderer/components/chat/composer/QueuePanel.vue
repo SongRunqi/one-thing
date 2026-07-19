@@ -19,16 +19,6 @@
           <span class="queued-file-additions">+{{ fileChanges.additions }}</span>
           <span class="queued-file-deletions">-{{ fileChanges.deletions }}</span>
         </div>
-        <Button
-          text
-          size="small"
-          class="queued-review-btn"
-          native-type="button"
-          title="Review file changes"
-          @click.stop="emit('review')"
-        >
-          Review
-        </Button>
       </div>
 
       <div
@@ -131,7 +121,6 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'steer', id: string): void
   (e: 'remove', id: string): void
-  (e: 'review'): void
 }>()
 
 function queuedMessagePreview(item: QueuedMessage): string {
@@ -256,33 +245,6 @@ function queuedFileSummaryTitle(item: QueuedMessage): string {
 
 .queued-file-deletions {
   color: var(--diff-del-text, var(--ui-status-danger-fg, var(--text-error)));
-}
-
-.queued-review-btn {
-  --app-button-height: 20px;
-  --app-button-min-width: 0;
-  --app-button-padding-x: 7px;
-  --app-button-font-size: 10.5px;
-  --app-button-hover-fill: color-mix(in srgb, var(--queued-row-accent) 12%, transparent);
-  --app-button-hover-fg: var(--queued-row-accent);
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
-
-  height: 20px;
-  padding: 0 7px;
-  border: 1px solid color-mix(in srgb, var(--queued-row-accent) 45%, transparent);
-  border-radius: 3px;
-  background: transparent;
-  color: var(--queued-row-accent);
-  font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-}
-
-.queued-review-btn:hover {
-  background: color-mix(in srgb, var(--queued-row-accent) 12%, transparent);
 }
 
 .queued-message-card {

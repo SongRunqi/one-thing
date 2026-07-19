@@ -1,16 +1,10 @@
 import {
-	canonicalSoulMemoryKindFromCaptureKind as coreCanonicalSoulMemoryKindFromCaptureKind,
-	canonicalSoulMemoryTokens as coreCanonicalSoulMemoryTokens,
-	buildSoulMemoryFtsQuery as coreBuildSoulMemoryFtsQuery,
-	CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-	cosineSoulMemoryVector as coreCosineSoulMemoryVector,
 	estimateSoulMemoryTokens as coreEstimateSoulMemoryTokens,
 	extractSoulMemoryCandidateValue as coreExtractSoulMemoryCandidateValue,
 	formatSoulMemoryDateString as coreFormatSoulMemoryDateString,
 	formatSoulMemoryDateStringDaysAgo as coreFormatSoulMemoryDateStringDaysAgo,
 	hashSoulMemoryText as coreHashSoulMemoryText,
 	isDurableSoulMemoryCaptureCandidate as coreIsDurableSoulMemoryCaptureCandidate,
-	isSoulMemoryIndexableMarkdownRelativePath as coreIsSoulMemoryIndexableMarkdownRelativePath,
 	looksLikeSoulMemoryNameValue as coreLooksLikeSoulMemoryNameValue,
 	normalizeSoulMemoryBulletText as coreNormalizeSoulMemoryBulletText,
 	normalizeSoulMemoryForDedupe as coreNormalizeSoulMemoryForDedupe,
@@ -20,9 +14,7 @@ import {
 	sanitizeSoulMemoryKey as coreSanitizeSoulMemoryKey,
 	slugifySoulMemoryKeyPart as coreSlugifySoulMemoryKeyPart,
 	soulMemoryAsBullet as coreSoulMemoryAsBullet,
-	soulMemoryTokenJaccard as coreSoulMemoryTokenJaccard,
 	truncateSoulMemoryText as coreTruncateSoulMemoryText,
-	type CoreCanonicalMemoryKind,
 	type CoreCaptureCandidate,
 	type CoreCaptureCandidateKind,
 } from "../plugins/index.js";
@@ -43,24 +35,14 @@ export const SOUL_TEMPLATE = `# SOUL.md
 
 `;
 
-export const DREAMING_SCHEDULER_TASK_ID = "memory-dreaming-promotion";
-export const SCOPED_DREAMING_SCHEDULER_TASK_ID = `plugin:${SOUL_MEMORY_PLUGIN_ID}:${DREAMING_SCHEDULER_TASK_ID}`;
 export const CAPTURE_PENDING_STORE_KEY = "pendingCaptures";
 export const CAPTURE_MAX_PENDING = 20;
-export const CANONICAL_MIGRATION_STORE_KEY = "canonicalMemoryMigrationV1Done";
-export const GRAPH_MIGRATION_STORE_KEY = "graphMemoryMigrationV1Done";
-export const USER_SELF_ENTITY_ID = CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID;
 
-export type MemoryCanonicalKind = CoreCanonicalMemoryKind;
 export type MemoryCaptureCandidateKind = CoreCaptureCandidateKind;
 export type MemoryDurableCandidateLike = Pick<CoreCaptureCandidate, "kind">;
 
 export function normalizeMemoryRelativePath(value: string): string {
 	return coreNormalizeSoulMemoryRelativePath(value);
-}
-
-export function isIndexableMarkdownPath(relativePath: string): boolean {
-	return coreIsSoulMemoryIndexableMarkdownRelativePath(relativePath);
 }
 
 export function todayString(): string {
@@ -129,20 +111,6 @@ export function looksLikeNameValue(value: string): boolean {
 	return coreLooksLikeSoulMemoryNameValue(value);
 }
 
-export function canonicalKindFromCaptureKind(
-	kind: MemoryCaptureCandidateKind | string,
-): MemoryCanonicalKind {
-	return coreCanonicalSoulMemoryKindFromCaptureKind(kind);
-}
-
-export function canonicalTokens(value: string): Set<string> {
-	return coreCanonicalSoulMemoryTokens(value);
-}
-
-export function tokenJaccard(left: string, right: string): number {
-	return coreSoulMemoryTokenJaccard(left, right);
-}
-
 export function isDurableCandidate(
 	candidate: MemoryDurableCandidateLike,
 ): boolean {
@@ -155,14 +123,6 @@ export function normalizeForDedupe(value: string): string {
 
 export function previewLine(value: string, maxChars = 220): string {
 	return corePreviewSoulMemoryLine(value, maxChars);
-}
-
-export function cosine(left?: number[], right?: number[]): number {
-	return coreCosineSoulMemoryVector(left, right);
-}
-
-export function ftsQuery(query: string): string {
-	return coreBuildSoulMemoryFtsQuery(query);
 }
 
 export const replaceFileAtomic = writeTextFileAtomic;

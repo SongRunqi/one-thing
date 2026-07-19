@@ -1,13 +1,11 @@
-import * as crypto from 'node:crypto'
 import * as fs from 'node:fs/promises'
 import * as os from 'node:os'
 import * as path from 'node:path'
 
-export type TodoPlanScope = 'user-note' | 'workspace-ai-todo'
+export type TodoPlanScope = 'user-note' | 'session-ai-todo'
 
 export interface TodoPlanContext {
   sessionId?: string
-  workingDirectory?: string
 }
 
 export interface TodoPlanDocument {
@@ -24,7 +22,9 @@ export interface TodoPlanDocument {
 export interface TodoPlanSnapshot {
   directory: string
   userNotes: TodoPlanDocument[]
-  workspaceAiTodo?: TodoPlanDocument
+  sessionAiTodo?: TodoPlanDocument
+  /** The session this snapshot was read for, after the host resolved it. */
+  sessionId?: string
 }
 
 export interface TodoPlanChangedPayload extends TodoPlanContext {
@@ -46,8 +46,31 @@ export interface OnethingTodoPlanStoreOptions {
 }
 
 const USER_NOTES_DIR = 'user-notes'
-const WORKSPACES_DIR = 'workspaces'
+const SESSIONS_DIR = 'sessions'
 const AI_TODO_FILE = 'ai-todo.md'
+
+/**
+ * Session ids and note ids arrive over IPC and are pasted straight into a file
+ * path, so they must be a single ordinary path segment. '..', a separator or an
+ * absolute path would escape the todo directory — and the permission policy
+ * trusts that these files stay inside it.
+ */
+function assertPathSegment(value: string, label: string): string {
+  const trimmed = value.trim()
+  if (
+    !trimmed ||
+    trimmed === '.' ||
+    trimmed === '..' ||
+    trimmed.includes('/') ||
+    trimmed.includes('\\') ||
+    trimmed.includes('\0') ||
+    path.isAbsolute(trimmed) ||
+    path.basename(trimmed) !== trimmed
+  ) {
+    throw new Error(`Invalid ${label}: ${JSON.stringify(value)}`)
+  }
+  return trimmed
+}
 
 function countTasks(content: string): number {
   return content.split('\n').filter(line => /^\s*[-*]\s+\[[ xX]]\s+/.test(line)).length
@@ -61,10 +84,6 @@ function safeSlug(input: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 44)
   return slug || 'todo'
-}
-
-function hashKey(input: string): string {
-  return crypto.createHash('sha1').update(input || '__default__').digest('hex').slice(0, 12)
 }
 
 function titleFromContent(content: string, fallback: string): string {
@@ -98,8 +117,43 @@ async function writeFileEnsured(filePath: string, content: string): Promise<void
   await fs.writeFile(filePath, content, 'utf-8')
 }
 
+// A write the store performs itself already broadcasts through notifyChanged.
+// The file watcher would see that same write land on disk and broadcast a second
+// time, so self-writes are remembered briefly and skipped by the watcher.
+const SELF_WRITE_TTL_MS = 2_000
+
 export class OnethingTodoPlanStore {
+  private readonly selfWrites = new Map<string, number>()
+
   constructor(private readonly options: OnethingTodoPlanStoreOptions) {}
+
+  private markSelfWrite(filePath: string): void {
+    const now = Date.now()
+    for (const [key, at] of this.selfWrites) {
+      if (now - at > SELF_WRITE_TTL_MS) this.selfWrites.delete(key)
+    }
+    this.selfWrites.set(path.resolve(filePath), now)
+  }
+
+  wasSelfWrite(filePath: string): boolean {
+    const at = this.selfWrites.get(path.resolve(filePath))
+    if (at === undefined) return false
+    if (Date.now() - at > SELF_WRITE_TTL_MS) {
+      this.selfWrites.delete(path.resolve(filePath))
+      return false
+    }
+    return true
+  }
+
+  private async writeOwn(filePath: string, content: string): Promise<void> {
+    this.markSelfWrite(filePath)
+    await writeFileEnsured(filePath, content)
+  }
+
+  private async unlinkOwn(filePath: string): Promise<void> {
+    this.markSelfWrite(filePath)
+    await fs.unlink(filePath).catch(() => {})
+  }
 
   getDirectory(): string {
     const configured = this.options.getConfiguredDirectory?.()?.trim()
@@ -131,12 +185,13 @@ export class OnethingTodoPlanStore {
         }),
     )
 
-    const workspaceAiTodo = await this.readWorkspaceAiTodo(context.workingDirectory)
+    const sessionAiTodo = await this.readSessionAiTodo(context.sessionId)
 
     return {
       directory,
       userNotes,
-      ...(workspaceAiTodo ? { workspaceAiTodo } : {}),
+      ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+      ...(sessionAiTodo ? { sessionAiTodo } : {}),
     }
   }
 
@@ -156,7 +211,7 @@ export class OnethingTodoPlanStore {
     }
 
     const filePath = this.userNotePath(id)
-    await writeFileEnsured(filePath, content ?? `# ${cleanTitle}\n\n`)
+    await this.writeOwn(filePath, content ?? `# ${cleanTitle}\n\n`)
     const document = await this.toDocument({ id, scope: 'user-note', role: 'user', title: cleanTitle, filePath })
     this.notifyChanged({ scope: 'global-user', document })
     return document
@@ -174,25 +229,25 @@ export class OnethingTodoPlanStore {
       filePath = this.userNotePath(id)
       role = 'user'
       title = id.replace(/-/g, ' ')
-    } else if (request.scope === 'workspace-ai-todo') {
-      id = 'workspace-ai-todo'
-      filePath = this.workspaceAiTodoPath(request.workingDirectory)
+    } else if (request.scope === 'session-ai-todo') {
+      if (!request.sessionId) throw new Error('sessionId is required for session-ai-todo updates')
+      id = 'session-ai-todo'
+      filePath = this.sessionAiTodoPath(request.sessionId)
       role = 'assistant'
       title = 'AI Todo'
       const exists = Boolean(await fs.stat(filePath).catch(() => null))
       if (!exists && !hasSubstantiveMarkdownContent(request.content)) {
-        throw new Error('workspace-ai-todo content is empty; it is created only after there is real AI todo content')
+        throw new Error('session-ai-todo content is empty; it is created only after there is real AI todo content')
       }
     } else {
       throw new Error(`Unsupported todo/plan scope: ${request.scope}`)
     }
 
-    await writeFileEnsured(filePath, request.content)
+    await this.writeOwn(filePath, request.content)
     const document = await this.toDocument({ id, scope: request.scope, role, title, filePath })
     this.notifyChanged({
       scope: request.scope === 'user-note' ? 'global-user' : request.scope,
       sessionId: request.sessionId,
-      workingDirectory: request.workingDirectory,
       document,
     })
     return document
@@ -217,8 +272,8 @@ export class OnethingTodoPlanStore {
     const withoutHeading = content.replace(/^# .*(\r?\n|$)/, '')
     const nextContent = `# ${nextTitle}\n${withoutHeading.startsWith('\n') ? withoutHeading : `\n${withoutHeading}`}`
     const nextPath = this.userNotePath(nextId)
-    await writeFileEnsured(nextPath, nextContent)
-    if (nextId !== id) await fs.unlink(currentPath).catch(() => {})
+    await this.writeOwn(nextPath, nextContent)
+    if (nextId !== id) await this.unlinkOwn(currentPath)
 
     const document = await this.toDocument({ id: nextId, scope: 'user-note', role: 'user', title: nextTitle, filePath: nextPath })
     this.notifyChanged({ scope: 'global-user', document })
@@ -226,9 +281,18 @@ export class OnethingTodoPlanStore {
   }
 
   async deleteUserNote(id: string): Promise<void> {
-    await fs.unlink(this.userNotePath(id)).catch(() => {})
+    await this.unlinkOwn(this.userNotePath(id))
     await this.ensureDefaultUserNote()
     this.notifyChanged({ scope: 'global-user' })
+  }
+
+  // The AI todo is keyed by session, so it dies with the session. Without this
+  // every deleted session would leave its todo behind forever.
+  async deleteSessionAiTodo(sessionId: string): Promise<void> {
+    if (!sessionId) return
+    const directory = path.dirname(this.sessionAiTodoPath(sessionId))
+    this.markSelfWrite(this.sessionAiTodoPath(sessionId))
+    await fs.rm(directory, { recursive: true, force: true }).catch(() => {})
   }
 
   async revealDirectory(): Promise<void> {
@@ -244,17 +308,33 @@ export class OnethingTodoPlanStore {
     this.options.notifyChanged?.(payload)
   }
 
-  private workspaceKey(workingDirectory?: string): string {
-    const display = workingDirectory ? path.basename(workingDirectory) : 'default'
-    return `${safeSlug(display)}-${hashKey(workingDirectory || '__default__')}`
-  }
-
   private userNotePath(id: string): string {
-    return path.join(this.getDirectory(), USER_NOTES_DIR, `${id}.md`)
+    return path.join(this.userNotesDirectory(), `${assertPathSegment(id, 'note id')}.md`)
   }
 
-  private workspaceAiTodoPath(workingDirectory?: string): string {
-    return path.join(this.getDirectory(), WORKSPACES_DIR, this.workspaceKey(workingDirectory), AI_TODO_FILE)
+  // The AI todo is per-session: the session id is the whole key. There is no
+  // fallback bucket — without a session there is no AI todo to read or write.
+  sessionAiTodoPath(sessionId: string): string {
+    return path.join(this.sessionsDirectory(), assertPathSegment(sessionId, 'sessionId'), AI_TODO_FILE)
+  }
+
+  sessionsDirectory(): string {
+    return path.join(this.getDirectory(), SESSIONS_DIR)
+  }
+
+  userNotesDirectory(): string {
+    return path.join(this.getDirectory(), USER_NOTES_DIR)
+  }
+
+  /**
+   * The directories the AI may write with the ordinary write/edit tools.
+   *
+   * Deliberately the two managed subdirectories rather than the todo root: the
+   * root comes from a free-text setting, so keeping the root out of this list
+   * bounds the damage of a careless value to directories the app created.
+   */
+  writableDirectories(): string[] {
+    return [this.sessionsDirectory(), this.userNotesDirectory()]
   }
 
   private async toDocument(input: {
@@ -283,22 +363,23 @@ export class OnethingTodoPlanStore {
     await fs.mkdir(directory, { recursive: true })
     const entries = await fs.readdir(directory).catch(() => [])
     if (entries.some(entry => entry.toLowerCase().endsWith('.md'))) return
-    await writeFileEnsured(
+    await this.writeOwn(
       path.join(directory, 'user-todo-1.md'),
       '# User Todo 1\n\n- [ ] Add the first user task\n',
     )
   }
 
-  private async readWorkspaceAiTodo(workingDirectory?: string): Promise<TodoPlanDocument | undefined> {
-    const filePath = this.workspaceAiTodoPath(workingDirectory)
+  private async readSessionAiTodo(sessionId?: string): Promise<TodoPlanDocument | undefined> {
+    if (!sessionId) return undefined
+    const filePath = this.sessionAiTodoPath(sessionId)
     try {
       await fs.access(filePath)
     } catch {
       return undefined
     }
     return this.toDocument({
-      id: 'workspace-ai-todo',
-      scope: 'workspace-ai-todo',
+      id: 'session-ai-todo',
+      scope: 'session-ai-todo',
       role: 'assistant',
       title: 'AI Todo',
       filePath,

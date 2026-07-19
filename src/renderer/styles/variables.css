@@ -474,9 +474,13 @@
 	--ui-sidebar-surface-bg: var(--ui-surface-sidebar-bg);
 	--ui-sidebar-surface-fg: var(--color-neutral-regular-text, var(--text-sidebar-item));
 	--ui-sidebar-surface-border: var(--ui-border-divider-border);
-	--ui-sidebar-item-fg: var(--color-neutral-regular-text, var(--text-sidebar-item));
+	/* Prefer the theme's dedicated sidebar tokens: themes deliberately pick a
+	   dimmer rest color (e.g. flexoki base800) one step below the hover color.
+	   The generic neutral-regular/primary text used to shadow them, making rest
+	   and hover titles nearly the same brightness. */
+	--ui-sidebar-item-fg: var(--text-sidebar-item, var(--color-neutral-regular-text));
 	--ui-sidebar-item-hover-bg: var(--ui-state-hover-bg);
-	--ui-sidebar-item-hover-fg: var(--color-neutral-primary-text, var(--text-sidebar-item-hover));
+	--ui-sidebar-item-hover-fg: var(--text-sidebar-item-hover, var(--color-neutral-primary-text));
 	--ui-sidebar-item-active-bg: var(--ui-state-selected-bg);
 	--ui-sidebar-item-active-fg: var(--ui-text-primary-fg);
 	--ui-sidebar-item-active-border: var(--ui-border-selected-border);

@@ -29,6 +29,7 @@ export const useVoiceStore = defineStore('voice', () => {
   const isEnabled = computed(() => state.value.enabled)
   const status = computed(() => state.value.status)
   const isRecording = computed(() => state.value.status === 'recording' || state.value.status === 'transcribing')
+  const callActive = computed(() => Boolean(state.value.callActive))
 
   async function initialize() {
     if (initialized) return
@@ -61,6 +62,22 @@ export const useVoiceStore = defineStore('voice', () => {
     return platformApi.voiceStop({ reason, submit })
   }
 
+  async function startCall(sessionId?: string) {
+    const sessionsStore = useSessionsStore()
+    const resolvedSessionId = sessionId || sessionsStore.currentSessionId
+    if (!resolvedSessionId) {
+      lastError.value = 'No active session for a voice call.'
+      return { success: false, error: lastError.value }
+    }
+    const response = await platformApi.voiceStart({ sessionId: resolvedSessionId, reason: 'call' })
+    if (!response.success && response.error) lastError.value = response.error
+    return response
+  }
+
+  async function endCall() {
+    return platformApi.voiceStop({ reason: 'call-end', submit: false })
+  }
+
   function dismissError() {
     lastError.value = ''
     state.value = {
@@ -80,6 +97,11 @@ export const useVoiceStore = defineStore('voice', () => {
     }
     if (event.type === 'error') {
       lastError.value = event.error
+      return
+    }
+    if (event.type === 'recording-started') {
+      // Fresh turn: drop the previous turn's transcript from the overlay.
+      lastTranscript.value = ''
       return
     }
     if (event.type === 'latency-milestone') {
@@ -130,6 +152,7 @@ export const useVoiceStore = defineStore('voice', () => {
     status,
     isEnabled,
     isRecording,
+    callActive,
     lastError,
     lastTranscript,
     lastMilestone,
@@ -137,6 +160,8 @@ export const useVoiceStore = defineStore('voice', () => {
     initialize,
     startListening,
     stop,
+    startCall,
+    endCall,
     dismissError,
   }
 })

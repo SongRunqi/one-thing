@@ -114,8 +114,37 @@
         <div class="chat-side-ebody">
           <TodoProgressPanel
             :session-id="props.sessionId"
-            :working-directory="props.workingDirectory"
             @progress-change="todoProgress = $event"
+          />
+        </div>
+      </section>
+
+      <section
+        v-if="!isDraftSession"
+        class="chat-side-esec chat-side-variables-section"
+        :class="{ focus: focusedSection === 'variables' }"
+        @mouseenter="scheduleFocus('variables')"
+        @mouseleave="cancelScheduledFocus"
+      >
+        <div class="chat-side-esum">
+          <button
+            type="button"
+            class="chat-side-esum-main"
+            :aria-expanded="focusedSection === 'variables'"
+            @click="setFocus('variables')"
+          >
+            <span class="chat-side-esum-title">Variables</span>
+            <span
+              class="chat-side-leader"
+              aria-hidden="true"
+            />
+            <span class="chat-side-esum-live">{{ variablesSummary }}</span>
+          </button>
+        </div>
+        <div class="chat-side-ebody">
+          <VariablesPanel
+            :session-id="props.sessionId"
+            @summary-change="variablesSummary = $event"
           />
         </div>
       </section>
@@ -132,8 +161,9 @@ import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import SystemPromptPanel from './SystemPromptPanel.vue'
 import TodoProgressPanel from './TodoProgressPanel.vue'
+import VariablesPanel from './VariablesPanel.vue'
 
-type SectionId = 'outline' | 'system' | 'todo'
+type SectionId = 'outline' | 'system' | 'todo' | 'variables'
 
 interface TodoProgressSummary {
   done: number
@@ -175,6 +205,7 @@ const focusedSection = ref<SectionId>(readStoredFocus())
 const outlineSummary = ref('')
 const systemSummary = ref('')
 const todoProgress = ref<TodoProgressSummary | null>(null)
+const variablesSummary = ref('')
 let hoverFocusTimer: ReturnType<typeof setTimeout> | null = null
 
 const todoEnabled = computed(() => settingsStore.settings.general?.todoPlan?.enabled !== false)
@@ -191,7 +222,7 @@ const todoSummary = computed(() => {
 
 function readStoredFocus(): SectionId {
   const stored = localStorage.getItem(FOCUS_STORAGE_KEY)
-  return stored === 'system' || stored === 'todo' ? stored : 'outline'
+  return stored === 'system' || stored === 'todo' || stored === 'variables' ? stored : 'outline'
 }
 
 function setFocus(section: SectionId) {
@@ -253,10 +284,15 @@ watch(showTodoProgressPanel, (visible) => {
   if (!visible && focusedSection.value === 'todo') setFocus('outline')
 }, { immediate: true })
 
+watch(isDraftSession, (draft) => {
+  if (draft && focusedSection.value === 'variables') setFocus('outline')
+}, { immediate: true })
+
 watch(() => props.sessionId, () => {
   outlineSummary.value = ''
   systemSummary.value = ''
   todoProgress.value = null
+  variablesSummary.value = ''
 })
 
 onMounted(() => {
@@ -440,6 +476,15 @@ onUnmounted(() => {
   overflow: auto;
   overscroll-behavior: contain;
   padding: 8px;
+}
+
+.chat-side-variables-section :deep(.variables-panel) {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 10px;
 }
 
 .chat-side-todo-section :deep(.todo-progress-panel) {

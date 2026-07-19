@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方案四 · 热敏小票 — Token Usage</title>
+<style>
+  :root {
+    --desk: #4a4e52;
+    --paper: #fdfcf7;
+    --ink: #2b2926;
+    --ink-soft: #6d6a63;
+    --ink-faint: #a5a29a;
+    --mono: "SF Mono", "Courier New", ui-monospace, Menlo, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background:
+      radial-gradient(ellipse at 50% 0%, #565b60, var(--desk) 70%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 44px 16px 64px;
+    font-family: var(--mono);
+  }
+
+  /* 重打小票的档位切换：像收银机按键 */
+  .reprint {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 22px;
+  }
+  .reprint button {
+    font: inherit;
+    font-size: 11px;
+    letter-spacing: .1em;
+    color: #cfd2d5;
+    background: #3a3e42;
+    border: 1px solid #2c2f33;
+    border-bottom-width: 3px;
+    border-radius: 6px;
+    padding: 6px 16px;
+    cursor: pointer;
+  }
+  .reprint button.active {
+    color: #fff;
+    background: #2c2f33;
+    border-bottom-width: 1px;
+    transform: translateY(2px);
+  }
+
+  .receipt {
+    width: 340px;
+    max-width: 100%;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 12px;
+    line-height: 1.55;
+    padding: 26px 22px 20px;
+    box-shadow: 0 18px 40px rgba(0,0,0,.45);
+    /* 上下撕纸锯齿 */
+    clip-path: polygon(
+      0 8px, 3% 0, 6% 8px, 9% 0, 12% 8px, 15% 0, 18% 8px, 21% 0, 24% 8px, 27% 0,
+      30% 8px, 33% 0, 36% 8px, 39% 0, 42% 8px, 45% 0, 48% 8px, 51% 0, 54% 8px,
+      57% 0, 60% 8px, 63% 0, 66% 8px, 69% 0, 72% 8px, 75% 0, 78% 8px, 81% 0,
+      84% 8px, 87% 0, 90% 8px, 93% 0, 96% 8px, 100% 0,
+      100% calc(100% - 8px), 97% 100%, 94% calc(100% - 8px), 91% 100%, 88% calc(100% - 8px),
+      85% 100%, 82% calc(100% - 8px), 79% 100%, 76% calc(100% - 8px), 73% 100%,
+      70% calc(100% - 8px), 67% 100%, 64% calc(100% - 8px), 61% 100%, 58% calc(100% - 8px),
+      55% 100%, 52% calc(100% - 8px), 49% 100%, 46% calc(100% - 8px), 43% 100%,
+      40% calc(100% - 8px), 37% 100%, 34% calc(100% - 8px), 31% 100%, 28% calc(100% - 8px),
+      25% 100%, 22% calc(100% - 8px), 19% 100%, 16% calc(100% - 8px), 13% 100%,
+      10% calc(100% - 8px), 7% 100%, 4% calc(100% - 8px), 1% 100%, 0 calc(100% - 8px)
+    );
+  }
+
+  .center { text-align: center; }
+  .shop-name {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: .3em;
+    margin-bottom: 2px;
+  }
+  .shop-sub {
+    font-size: 10px;
+    color: var(--ink-soft);
+    letter-spacing: .18em;
+    margin-bottom: 10px;
+  }
+  .meta {
+    font-size: 10.5px;
+    color: var(--ink-soft);
+    margin-bottom: 4px;
+  }
+
+  .dashes {
+    border: none;
+    border-top: 1.5px dashed var(--ink-faint);
+    margin: 10px 0;
+  }
+
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .row .l { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .r { font-variant-numeric: tabular-nums; }
+  .row.sub {
+    font-size: 10.5px;
+    color: var(--ink-soft);
+    padding-left: 12px;
+  }
+  .item { margin-bottom: 7px; }
+
+  .totals .row { padding: 1px 0; }
+  .totals .grand {
+    font-size: 16px;
+    font-weight: 700;
+    padding-top: 4px;
+  }
+  .totals .grand .r { letter-spacing: .02em; }
+  .est-note {
+    font-size: 10px;
+    color: var(--ink-soft);
+    text-align: right;
+  }
+
+  .tokens-served {
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: .08em;
+    color: var(--ink-soft);
+  }
+  .tokens-served b {
+    display: block;
+    font-size: 14px;
+    letter-spacing: .12em;
+    color: var(--ink);
+    font-weight: 700;
+  }
+
+  /* 每日消耗迷你直方：收银小票风的"*"图 */
+  .mini-hist {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 34px;
+    margin: 6px 2px 2px;
+  }
+  .mini-hist i {
+    flex: 1;
+    background: var(--ink);
+    opacity: .82;
+    min-height: 2px;
+  }
+  .mini-hist i.today { background: none; border: 1px dashed var(--ink-soft); }
+  .hist-caption {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5px;
+    color: var(--ink-faint);
+  }
+
+  .barcode {
+    height: 34px;
+    margin: 12px 8px 4px;
+    background: repeating-linear-gradient(90deg,
+      var(--ink) 0 2px, transparent 2px 4px,
+      var(--ink) 4px 5px, transparent 5px 9px,
+      var(--ink) 9px 12px, transparent 12px 14px,
+      var(--ink) 14px 15px, transparent 15px 19px);
+  }
+  .thanks {
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: .28em;
+    color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+  <div class="reprint">
+    <button class="active">本 月</button>
+    <button>本 周</button>
+    <button>今 日</button>
+  </div>
+
+  <div class="receipt">
+    <div class="center">
+      <div class="shop-name">0NETHING</div>
+      <div class="shop-sub">TOKEN RECEIPT · 用量小票</div>
+      <div class="meta">2026-07-01 → 07-18 · 单号 #2026-07</div>
+      <div class="meta">1,284 TURNS · 5 MODELS</div>
+    </div>
+
+    <hr class="dashes">
+
+    <div class="item">
+      <div class="row"><span class="l">GPT-5.2-CODEX</span><span class="r">$21.40*</span></div>
+      <div class="row sub"><span class="l">512 turns × 18.4M tok</span><span class="r">订阅折算</span></div>
+    </div>
+    <div class="item">
+      <div class="row"><span class="l">CLAUDE-SONNET-4.5</span><span class="r">$8.92</span></div>
+      <div class="row sub"><span class="l">293 turns × 12.9M tok</span><span class="r">API</span></div>
+    </div>
+    <div class="item">
+      <div class="row"><span class="l">CLAUDE-CODE</span><span class="r">$7.35*</span></div>
+      <div class="row sub"><span class="l">146 turns × 8.2M tok</span><span class="r">订阅折算</span></div>
+    </div>
+    <div class="item">
+      <div class="row"><span class="l">DEEPSEEK-V3.2</span><span class="r">$1.71</span></div>
+      <div class="row sub"><span class="l">210 turns × 4.4M tok</span><span class="r">API</span></div>
+    </div>
+    <div class="item">
+      <div class="row"><span class="l">GEMINI-2.5-FLASH</span><span class="r">$1.13</span></div>
+      <div class="row sub"><span class="l">174 turns × 2.1M tok</span><span class="r">API</span></div>
+    </div>
+    <div class="item">
+      <div class="row"><span class="l">KIMI-K2</span><span class="r">$0.71</span></div>
+      <div class="row sub"><span class="l">95 turns × 0.3M tok</span><span class="r">API</span></div>
+    </div>
+
+    <hr class="dashes">
+
+    <div class="totals">
+      <div class="row"><span class="l">API 实付小计</span><span class="r">$12.47</span></div>
+      <div class="row"><span class="l">订阅折算小计 *</span><span class="r">$38.20</span></div>
+      <div class="row"><span class="l">缓存命中已省</span><span class="r">-$19.80</span></div>
+      <div class="row grand"><span class="l">合 计</span><span class="r">$50.67</span></div>
+      <div class="est-note">* 订阅模型按官方 API 同价折算，非实际扣款</div>
+    </div>
+
+    <hr class="dashes">
+
+    <div class="tokens-served">
+      TOKENS SERVED
+      <b>46,312,884</b>
+    </div>
+
+    <div class="mini-hist" aria-label="每日消耗">
+      <i style="height:12%"></i><i style="height:35%"></i><i style="height:65%"></i>
+      <i style="height:19%"></i><i style="height:18%"></i><i style="height:53%"></i>
+      <i style="height:96%"></i><i style="height:59%"></i><i style="height:2%"></i>
+      <i style="height:35%"></i><i style="height:76%"></i><i style="height:69%"></i>
+      <i style="height:55%"></i><i style="height:29%"></i><i style="height:14%"></i>
+      <i style="height:52%"></i><i style="height:100%"></i><i class="today" style="height:37%"></i>
+    </div>
+    <div class="hist-caption"><span>07-01</span><span>每日合计</span><span>今日</span></div>
+
+    <div class="barcode" aria-hidden="true"></div>
+    <div class="thanks">谢谢惠顾 · 明天继续</div>
+  </div>
+</body>
+</html>

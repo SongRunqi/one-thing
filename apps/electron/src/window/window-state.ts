@@ -65,6 +65,52 @@ export function sanitizeElectronWindowState(
   }
 }
 
+export interface ElectronDisplayWorkArea {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+// A restored window must overlap some display by at least this much in both
+// axes; anything less (e.g. after unplugging an external monitor) is treated
+// as off-screen and pulled back into the nearest display.
+const MIN_VISIBLE_EDGE = 64
+
+export function clampElectronWindowStateToDisplays<
+  T extends { width: number, height: number, x?: number, y?: number },
+>(state: T, displays: ElectronDisplayWorkArea[]): T {
+  const { x, y, width, height } = state
+  if (x === undefined || y === undefined || displays.length === 0) return state
+
+  const intersectionSize = (area: ElectronDisplayWorkArea) => {
+    const overlapWidth = Math.min(x + width, area.x + area.width) - Math.max(x, area.x)
+    const overlapHeight = Math.min(y + height, area.y + area.height) - Math.max(y, area.y)
+    return { overlapWidth, overlapHeight }
+  }
+
+  const visible = displays.some((area) => {
+    const { overlapWidth, overlapHeight } = intersectionSize(area)
+    return overlapWidth >= Math.min(MIN_VISIBLE_EDGE, width) && overlapHeight >= Math.min(MIN_VISIBLE_EDGE, height)
+  })
+  if (visible) return state
+
+  const nearest = displays.reduce((best, area) => {
+    const distance = (candidate: ElectronDisplayWorkArea) => {
+      const centerX = candidate.x + candidate.width / 2
+      const centerY = candidate.y + candidate.height / 2
+      return Math.hypot(x + width / 2 - centerX, y + height / 2 - centerY)
+    }
+    return distance(area) < distance(best) ? area : best
+  })
+
+  return {
+    ...state,
+    x: Math.max(nearest.x, Math.min(x, nearest.x + nearest.width - width)),
+    y: Math.max(nearest.y, Math.min(y, nearest.y + nearest.height - height)),
+  }
+}
+
 function sanitizeElectronSearchWindowSize(
   size: Partial<ElectronSearchWindowSizeState> | null | undefined,
 ): ElectronSearchWindowSizeState | undefined {

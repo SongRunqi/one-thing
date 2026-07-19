@@ -139,11 +139,9 @@ export async function applyMemoryReviewCandidate(options: {
 	workspace: MemoryWorkspace;
 	candidate: CoreMemoryReviewCandidate;
 	minConfidence: number;
-	onIndexableWrite?: (target: { relativePath: string }) => void | Promise<void>;
+
 }): Promise<CoreMemoryReviewApplyResult> {
-	const markChanged = async (relativePath?: string): Promise<void> => {
-		if (relativePath) await options.onIndexableWrite?.({ relativePath });
-	};
+	const markChanged = async (_relativePath?: string): Promise<void> => {};
 
 	return coreApplyMemoryReviewCandidate({
 		candidate: options.candidate,
@@ -220,7 +218,7 @@ export async function runMemoryReview<TProvider>(options: {
 		level?: "info" | "warn" | "error",
 	) => void | Promise<void>;
 	logDiagnostic?: (event: MemoryDiagnosticsLogInput) => void;
-	onIndexableWrite?: (target: { relativePath: string }) => void | Promise<void>;
+
 	now?: () => number;
 }): Promise<CoreSoulMemoryReviewRunResult> {
 	return coreRunSoulMemoryReview<TProvider>({
@@ -264,7 +262,6 @@ export async function runMemoryReview<TProvider>(options: {
 				workspace: options.workspace,
 				candidate,
 				minConfidence,
-				onIndexableWrite: options.onIndexableWrite,
 			});
 		},
 		applyStatusMutation: options.applyStatusMutation,

@@ -14,6 +14,10 @@ describe('shared slash commands', () => {
       'new',
       'cd',
       'compact',
+      'goal',
+      'kegel',
+      'pomodoro',
+      'practice-stop',
     ])
     expect(findSharedSlashCommand('NEW')).toEqual(NEW_SESSION_SLASH_COMMAND)
     expect(NEW_SESSION_SLASH_COMMAND).toMatchObject({

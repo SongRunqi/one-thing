@@ -161,8 +161,51 @@ export {
 export {
 	buildRubricJudgeMessages,
 	parseRubricVerdict,
+	normalizeRubricClauses,
 	type RubricVerdict,
 } from "./judge.js";
+
+export {
+	compareRunEntries,
+	findBaselineEntry,
+	isComparableEntry,
+	loadResultEntries,
+	renderComparisonMarkdown,
+	STABLE_PASS,
+	STABLE_FAIL,
+	type RunComparison,
+	type CaseFlip,
+} from "./compare.js";
+
+export {
+	measureReplayFidelity,
+	replayDecisionSequence,
+	traceDecisionSequence,
+	fidelityVerdict,
+	type FidelityReport,
+} from "./fidelity.js";
+
+export {
+	runSensitivityAudit,
+	listPromptSectionNames,
+	renderSensitivityMarkdown,
+	type SensitivityReport,
+	type SectionSensitivity,
+	type SensitivityProgressEvent,
+} from "./sensitivity.js";
+
+export {
+	runJudgeCalibration,
+	parseAnnotationsJsonl,
+	renderCalibrationMarkdown,
+	CALIBRATION_MIN_SAMPLES,
+	CALIBRATION_AGREEMENT_THRESHOLD,
+	CALIBRATION_SCORE_CUTOFF,
+	type CalibrationAnnotation,
+	type CalibrationSample,
+	type CalibrationSampleOutcome,
+	type CalibrationOutcome,
+} from "./calibration.js";
 
 export {
 	analyzeIncident,

@@ -18,9 +18,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 12px 0;
   border-top: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  background: color-mix(in srgb, var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg))) 72%, transparent);
+  background: transparent;
 }
 
 .settings-action-status {

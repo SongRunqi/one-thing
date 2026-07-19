@@ -97,8 +97,7 @@
               type="number"
               min="1"
               max="10"
-              class="evals-form-input"
-              style="width:70px"
+              class="evals-form-input evals-form-input-narrow"
             >
           </label>
 
@@ -486,19 +485,30 @@ function handleCancelRun() {
   gap: 16px;
 }
 
+/* Ledger section title: uppercase small caps pulling a hairline */
 .evals-section-title {
-  margin: 0 0 8px;
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  font-size: 12px;
   font-weight: 620;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   color: var(--settings-ink);
 }
 
-/* Run panel */
+.evals-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--settings-rule-soft);
+}
+
+/* Run panel: no box, the section title rules it off */
 .evals-run-panel {
-  border: 1px solid var(--settings-rule);
-  border-radius: 8px;
-  padding: 16px;
-  background: var(--settings-paper-3);
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--settings-rule-soft);
 }
 
 .evals-run-form-row {
@@ -553,19 +563,17 @@ function handleCancelRun() {
   color: var(--settings-accent);
 }
 
+/* Progress: outlined track, translucent accent ink as the datum */
 .evals-progress-bar-wrap {
   position: relative;
   height: 22px;
   border: 1px solid var(--settings-rule);
-  border-radius: 4px;
-  background: var(--settings-paper);
   overflow: hidden;
 }
 
 .evals-progress-bar {
   height: 100%;
-  background: color-mix(in srgb, var(--settings-accent) 30%, transparent);
-  border-radius: 3px;
+  background: color-mix(in srgb, var(--settings-accent) 24%, transparent);
   transition: width 0.3s ease;
 }
 
@@ -575,42 +583,49 @@ function handleCancelRun() {
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   color: var(--settings-ink-2);
-  font-weight: 520;
 }
 
 .evals-action-btn.danger {
   color: var(--ui-status-danger-fg, #e74c3c);
-  border-color: var(--ui-status-danger-border);
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #e74c3c));
 }
 
 .evals-action-btn.danger:hover {
-  background: var(--ui-status-danger-bg);
+  border-color: var(--ui-status-danger-fg, #e74c3c);
 }
 
 .evals-run-case-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
 
 .evals-run-case-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--settings-paper) 60%, transparent);
+  padding: 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft) 32%, transparent);
 }
 
 .evals-run-case-name {
-  font-weight: 520;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
   color: var(--settings-ink-2);
 }
 
 .evals-run-case-score {
+  flex-shrink: 0;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   color: var(--settings-ink-3);
 }
 
@@ -618,146 +633,79 @@ function handleCancelRun() {
   color: var(--settings-accent);
 }
 
+/* Error: danger ink held by a left rule, no filled block */
 .evals-run-error {
   color: var(--ui-status-danger-fg, #e74c3c);
   font-size: 12px;
-  padding: 8px;
-  background: var(--ui-status-danger-bg);
-  border-radius: 4px;
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--ui-status-danger-fg, #e74c3c);
 }
 
 .evals-run-result-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  border: 1px solid var(--ui-status-success-border);
-  border-radius: 6px;
-  background: var(--ui-status-success-bg);
+  gap: 12px;
+  padding: 8px 0 8px 10px;
+  border-left: 2px solid var(--ui-status-success-fg, #27ae60);
+  border-bottom: 1px solid var(--settings-rule-soft);
   font-size: 13px;
 }
 
 .evals-run-mean {
+  font-variant-numeric: tabular-nums;
   font-weight: 620;
   color: var(--settings-ink-2);
-}
-
-/* Results list */
-.evals-results-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.evals-result-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border: 1px solid var(--settings-rule-soft);
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.12s ease;
-  background: var(--settings-paper-3);
-}
-
-.evals-result-row:hover {
-  border-color: color-mix(in srgb, var(--settings-accent) 20%, var(--settings-rule));
-}
-
-.evals-result-row.selected {
-  border-color: var(--settings-accent);
-  box-shadow: 0 0 0 1px var(--settings-accent);
-}
-
-.evals-result-row.compare-a {
-  border-color: var(--ui-status-info-fg, #3498db);
-  box-shadow: 0 0 0 1px var(--ui-status-info-fg, #3498db);
-}
-
-.evals-result-row.compare-b {
-  border-color: var(--ui-status-warning-fg, #e67e22);
-  box-shadow: 0 0 0 1px var(--ui-status-warning-fg, #e67e22);
-}
-
-.evals-result-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.evals-result-date {
-  font-size: 12px;
-  color: var(--settings-ink-2);
-  font-weight: 520;
-}
-
-.evals-result-provider {
-  font-size: 11px;
-  color: var(--settings-ink-4);
-}
-
-.evals-result-stats {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.evals-result-mean {
-  font-size: 15px;
-  font-weight: 650;
-  color: var(--settings-ink);
-}
-
-.evals-result-detail {
-  font-size: 11px;
-  color: var(--settings-ink-4);
 }
 
 /* ── Run History: left-right split ── */
 .evals-runs-split {
   display: flex;
-  gap: 12px;
+  gap: 16px;
   margin-top: 8px;
 }
 
 .evals-runs-list-panel {
-  width: 280px;
-  flex-shrink: 0;
-  border: 1px solid var(--settings-rule-soft);
-  border-radius: 6px;
-  background: var(--settings-paper-3);
-  padding: 8px;
+  flex: 0 1 280px;
+  min-width: 160px;
+  border-right: 1px solid var(--settings-rule-soft);
+  padding-right: 12px;
   overflow-y: auto;
   max-height: 480px;
 }
 
+/* Run rows: hairline ledger rows; selection is a left ink rule */
 .evals-run-list-row {
-  padding: 8px 10px;
-  border-radius: 4px;
+  padding: 8px 4px 8px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft) 32%, transparent);
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: box-shadow 0.12s ease;
 }
 
-.evals-run-list-row:hover {
-  background: color-mix(in srgb, var(--settings-accent) 5%, transparent);
+.evals-run-list-row:hover .evals-run-list-date {
+  color: var(--settings-ink);
 }
 
 .evals-run-list-row.selected {
-  background: color-mix(in srgb, var(--settings-accent) 12%, transparent);
-  border: 1px solid var(--settings-accent);
+  box-shadow: inset 2px 0 0 var(--settings-accent);
+}
+
+.evals-run-list-row.selected .evals-run-list-date {
+  color: var(--settings-ink);
 }
 
 .evals-run-list-date {
   font-size: 12px;
   color: var(--settings-ink-2);
   font-weight: 520;
+  font-variant-numeric: tabular-nums;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .evals-run-list-provider {
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
   color: var(--settings-ink-4);
   overflow: hidden;
@@ -767,7 +715,7 @@ function handleCancelRun() {
 
 .evals-run-list-stats {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 8px;
   margin-top: 2px;
 }
@@ -775,21 +723,19 @@ function handleCancelRun() {
 .evals-run-list-mean {
   font-size: 14px;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
   color: var(--settings-ink);
 }
 
 .evals-run-list-detail {
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: var(--settings-ink-4);
 }
 
 .evals-runs-detail-panel {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--settings-rule-soft);
-  border-radius: 6px;
-  background: var(--settings-paper-3);
-  padding: 12px;
   overflow-y: auto;
   max-height: 480px;
 }
@@ -811,33 +757,40 @@ function handleCancelRun() {
 
 .evals-detail-meta {
   font-size: 11px;
+  font-variant-numeric: tabular-nums;
   color: var(--settings-ink-3);
 }
 
+/* Case groups: hairline-separated ledger blocks, no cards */
 .evals-detail-case {
-  border: 1px solid var(--settings-rule-soft);
-  border-radius: 5px;
-  padding: 8px;
-  margin-bottom: 8px;
-  background: var(--settings-paper);
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft) 32%, transparent);
 }
 
 .evals-detail-case-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
+  gap: 12px;
   margin-bottom: 4px;
 }
 
 .evals-detail-case-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
   font-size: 12px;
   font-weight: 600;
   color: var(--settings-ink);
 }
 
 .evals-detail-case-score {
+  flex-shrink: 0;
   font-size: 12px;
   font-weight: 650;
+  font-variant-numeric: tabular-nums;
   color: var(--settings-accent);
 }
 
@@ -845,9 +798,8 @@ function handleCancelRun() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 6px;
+  padding: 3px 0;
   font-size: 11px;
-  border-radius: 3px;
 }
 
 .evals-detail-attempt.fail {
@@ -859,13 +811,16 @@ function handleCancelRun() {
 }
 
 .evals-attempt-icon {
+  flex-shrink: 0;
   font-weight: 700;
-  width: 14px;
+  min-width: 14px;
   text-align: center;
 }
 
 .evals-attempt-label {
-  font-weight: 520;
+  flex-shrink: 0;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   min-width: 20px;
 }
 
@@ -897,29 +852,40 @@ function handleCancelRun() {
 
 .evals-compare-table th {
   text-align: left;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 0;
   border-bottom: 2px solid var(--settings-rule);
   color: var(--settings-ink-3);
   font-weight: 600;
 }
 
 .evals-compare-table td {
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--settings-rule-soft);
+  padding: 7px 12px 7px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft) 32%, transparent);
   color: var(--settings-ink-2);
+}
+
+.evals-compare-table td:first-child {
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
 }
 
 .evals-num-col {
   text-align: right !important;
-  width: 80px;
+  width: 1%;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
 }
 
-.evals-compare-table tr.improved td {
-  background: var(--ui-status-success-bg);
+/* Regression state lives in a left ink rule, not a filled row */
+.evals-compare-table tr.improved td:first-child {
+  box-shadow: inset 2px 0 0 var(--ui-status-success-fg, #27ae60);
+  padding-left: 8px;
 }
 
-.evals-compare-table tr.regressed td {
-  background: var(--ui-status-danger-bg);
+.evals-compare-table tr.regressed td:first-child {
+  box-shadow: inset 2px 0 0 var(--ui-status-danger-fg, #e74c3c);
+  padding-left: 8px;
 }
 
 .evals-delta-pos {
@@ -949,39 +915,53 @@ function handleCancelRun() {
 
 .evals-form-input,
 .evals-form-select {
-  padding: 7px 10px;
+  padding: 6px 8px;
   border: 1px solid var(--settings-rule);
-  border-radius: 5px;
-  background: var(--settings-paper);
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink);
   font-size: 13px;
   font-family: inherit;
+  min-width: 0;
 }
 
+.evals-form-input:focus,
+.evals-form-select:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+.evals-form-input-narrow {
+  max-width: 70px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Outlined text buttons: state lives in the edge line, never a fill */
 .evals-action-btn {
-  padding: 7px 16px;
+  padding: 6px 16px;
   border: 1px solid var(--settings-rule);
-  border-radius: 5px;
-  background: var(--settings-paper);
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink-2);
   font-size: 13px;
   font-weight: 520;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: color 0.12s ease, border-color 0.12s ease;
 }
 
-.evals-action-btn:hover {
-  background: color-mix(in srgb, var(--settings-accent) 10%, var(--settings-paper-3));
-}
-
-.evals-action-btn.primary {
-  background: var(--settings-accent);
-  color: white;
+.evals-action-btn:hover:not(:disabled) {
+  color: var(--settings-ink);
   border-color: var(--settings-accent);
 }
 
+.evals-action-btn.primary {
+  border-color: var(--settings-accent);
+  color: var(--settings-accent);
+}
+
 .evals-action-btn:disabled {
-  opacity: 0.5;
+  border-style: dashed;
+  color: var(--settings-ink-4);
   cursor: not-allowed;
 }
 

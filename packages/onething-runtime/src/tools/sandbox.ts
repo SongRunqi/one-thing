@@ -30,8 +30,13 @@ export interface CoreFileAccessOptions extends CoreSandboxBoundaryOptions {
 }
 
 export function expandCorePath(dir: string): string {
-  if (dir.startsWith('~')) {
-    return dir.replace('~', os.homedir())
+  // Only a bare '~' or a '~/' prefix is a home reference. '~foo' is a literal
+  // (or another user's home, which is not ours to guess) and must stay as-is.
+  if (dir === '~') {
+    return os.homedir()
+  }
+  if (dir.startsWith('~/')) {
+    return path.join(os.homedir(), dir.slice(2))
   }
   return dir
 }
@@ -53,8 +58,11 @@ export function resolveCoreToolPath(
   options: CoreSandboxBoundaryOptions = {},
 ): string {
   const expandedPath = expandCorePath(filePath)
+  // Both branches normalize, so '/a/./b', '/a/b/' and '/a/b' resolve to one
+  // canonical string — callers key caches (read tracking, mutation queues) off
+  // this path and must not see the same file under two names.
   return path.isAbsolute(expandedPath)
-    ? expandedPath
+    ? path.resolve(expandedPath)
     : path.resolve(getCoreSandboxBoundary(options), expandedPath)
 }
 

@@ -34,6 +34,7 @@ export interface CoreBuildPromptContextOptions {
 	homeDir?: string;
 	platform?: NodeJS.Platform | string;
 	macOSAutomationDocsPath?: string;
+	todoPlanDirectory?: string;
 	now?: Date;
 	/** Phase 5 ablation: disable specific prompt sections for testing. */
 	disabledSections?: string[];

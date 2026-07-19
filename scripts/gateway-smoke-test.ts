@@ -90,6 +90,7 @@ bridge.register(mockChannel)
 const mockMsg: InboundMessage = {
   channelId: 'mock',
   userId: 'test_user',
+  conversationId: 'test_user',
   text: '你好',
   raw: { from_user_id: 'test_user', context_token: 'mock_token' },
 }

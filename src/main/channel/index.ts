@@ -1,6 +1,5 @@
 export {
   LOCAL_CLIENT_USER_ID,
-  LOCAL_MEMORY_SCOPE_ID,
   cloneOrigin,
   createApiOrigin,
   createDesktopOrigin,

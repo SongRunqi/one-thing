@@ -88,6 +88,42 @@ describe('onething session skills runtime', () => {
     ])
   })
 
+  it('filters agent-bound skills by session agent and applies per-skill agent overrides', () => {
+    const runtime = createOnethingSessionSkillsRuntime<TestSkill>({
+      ensureSkillsDirectories: vi.fn(),
+      loadAllSkills: () => [
+        { ...skill('custom:dir1:review', 'review', 'global'), agentId: 'writer' },
+        skill('user:shared', 'shared', 'global'),
+        skill('user:reassigned', 'reassigned', 'global'),
+      ],
+      loadProjectSkillsForDirectory: vi.fn(),
+      getSkillSettings: () => ({
+        skills: {
+          // Per-skill override binds this one to the coder agent.
+          'user:reassigned': { enabled: true, agentId: 'coder' },
+        },
+      }),
+    })
+
+    // Session on the writer agent: gets its bound skill + unbound skills.
+    expect(runtime.getForSession(undefined, 'writer').map(s => s.id)).toEqual([
+      'custom:dir1:review',
+      'user:shared',
+    ])
+    // Session on the coder agent: override wins, directory-bound skill dropped.
+    expect(runtime.getForSession(undefined, 'coder').map(s => s.id)).toEqual([
+      'user:shared',
+      'user:reassigned',
+    ])
+    // Display listing without an agent keeps everything and exposes bindings.
+    const all = runtime.getAll({ enabledOnly: false })
+    expect(all.map(s => [s.id, s.agentId ?? null])).toEqual([
+      ['custom:dir1:review', 'writer'],
+      ['user:shared', null],
+      ['user:reassigned', 'coder'],
+    ])
+  })
+
   it('invalidates per-directory and global caches', async () => {
     const loadAllSkills = vi
       .fn<() => TestSkill[]>()

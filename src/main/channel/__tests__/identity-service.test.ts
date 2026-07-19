@@ -69,7 +69,6 @@ describe('ChannelIdentityService', () => {
       kind: 'channel-user',
       userId: 'channel-slack-workspace-a-u-1',
       profileId: 'channel-slack-workspace-a-u-1',
-      memoryScopeId: 'channel:slack:workspace-a:u-1',
       externalUserKey: 'slack:workspace-a:u-1',
     })
     expect(getChannelIdentityStore().listProfiles()).toEqual(expect.arrayContaining([
@@ -92,7 +91,6 @@ describe('ChannelIdentityService', () => {
     expect(service.resolve(imOrigin('workspace-a'))).toMatchObject({
       kind: 'client-user',
       userId: 'client-alice',
-      memoryScopeId: 'client:client-alice',
       linkedClientUserId: 'client-alice',
     })
   })
@@ -105,7 +103,6 @@ describe('ChannelIdentityService', () => {
         kind: 'client-user',
         userId: 'client-bob',
         profileId: 'client-bob',
-        memoryScopeId: 'client:client-bob',
         displayName: 'Bob',
         linkedClientUserId: 'client-bob',
       },
@@ -115,7 +112,6 @@ describe('ChannelIdentityService', () => {
       kind: 'client-user',
       userId: 'client-bob',
       profileId: 'client-bob',
-      memoryScopeId: 'client:client-bob',
     })
     expect(getChannelIdentityStore().listProfiles()).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -136,7 +132,6 @@ describe('ChannelIdentityService', () => {
     const service = new ChannelIdentityService()
     expect(service.resolve(imOrigin('workspace-b'))).toMatchObject({
       kind: 'channel-user',
-      memoryScopeId: 'channel:slack:workspace-b:u-1',
     })
   })
 })

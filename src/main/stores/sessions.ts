@@ -7,11 +7,13 @@ import type {
 	SessionMeta,
 	SessionDetails,
 	ContextVariable,
+	SessionGoal,
 	GetSessionMessagesPageRequest,
 	GetSessionMessagesPageResponse,
 	PromptContextState,
 	UserMessageMarker,
 } from "../../shared/ipc.js";
+import { join } from "node:path";
 import {
 	getSessionsDir,
 	getSessionPath,
@@ -197,11 +199,51 @@ export function getSessions(): ChatSession[] {
 // ============================================================================
 
 /**
+ * workingDirectory is persisted per-session (meta.json / SessionDetails) but is
+ * NOT kept in the fast sessions index that `getSessionsList` returns. The
+ * sidebar groups sessions by project, so we surface it in the list: read each
+ * session's persisted cwd once into this cache (meta.json holds no messages, so
+ * the scan is cheap), then keep it fresh on explicit writes. The active
+ * session's live changes are separately mirrored into the renderer store via
+ * `session:variables-updated`, so this cache only has to cover cold start.
+ */
+const sessionWorkdirCache = new Map<string, string>();
+let sessionWorkdirBackfilled = false;
+
+function readPersistedWorkdir(sessionId: string): string {
+	const meta = readJsonFile<{ workingDirectory?: string }>(
+		join(getSessionsDir(), sessionId, "meta.json"),
+		{},
+	);
+	return typeof meta.workingDirectory === "string" ? meta.workingDirectory : "";
+}
+
+function ensureWorkdirBackfill(metas: SessionMeta[]): void {
+	if (sessionWorkdirBackfilled) return;
+	for (const meta of metas) {
+		if (sessionWorkdirCache.has(meta.id)) continue;
+		const indexWd = meta.workingDirectory;
+		sessionWorkdirCache.set(
+			meta.id,
+			typeof indexWd === "string" && indexWd
+				? indexWd
+				: readPersistedWorkdir(meta.id),
+		);
+	}
+	sessionWorkdirBackfilled = true;
+}
+
+/**
  * Get sessions list with metadata only (no messages)
  * This is the optimized version for fast startup
  */
 export function getSessionsList(): SessionMeta[] {
-	return sessionRepository.getSessionsList();
+	const metas = sessionRepository.getSessionsList();
+	ensureWorkdirBackfill(metas);
+	return metas.map((meta) => {
+		const workingDirectory = sessionWorkdirCache.get(meta.id);
+		return workingDirectory ? { ...meta, workingDirectory } : meta;
+	});
 }
 
 export function initializeSessionRepositoryIndex(): void {
@@ -331,6 +373,7 @@ export function updateSessionWorkingDirectory(
 	workingDirectory: string | null,
 ): void {
 	sessionRepository.updateSessionWorkingDirectory(sessionId, workingDirectory);
+	sessionWorkdirCache.set(sessionId, workingDirectory ?? "");
 }
 
 export function updateSessionWorkingDirectoryRoots(
@@ -347,12 +390,18 @@ export function updateSessionVariables(
 	sessionRepository.updateSessionVariables(sessionId, variables);
 }
 
+// Update session goal (does not affect sort order); null clears it
+export function updateSessionGoal(sessionId: string, goal: SessionGoal | null): void {
+	sessionRepository.updateSessionGoal(sessionId, goal);
+}
+
 // Inherit working directory from workspace (does not update updatedAt)
 export function inheritSessionWorkingDirectory(
 	sessionId: string,
 	workingDirectory: string,
 ): void {
 	sessionRepository.inheritSessionWorkingDirectory(sessionId, workingDirectory);
+	sessionWorkdirCache.set(sessionId, workingDirectory);
 }
 
 // Update session token usage (does not affect sort order)
@@ -515,7 +564,14 @@ export function updateMessageStreaming(
 export function updateMessageUsage(
 	sessionId: string,
 	messageId: string,
-	usage: { inputTokens: number; outputTokens: number; totalTokens: number },
+	usage: {
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+		cacheReadTokens?: number;
+		cacheWriteTokens?: number;
+		reasoningTokens?: number;
+	},
 ): boolean {
 	return sessionMessageRuntime!.updateMessageUsage(sessionId, messageId, usage);
 }
@@ -636,7 +692,14 @@ export function updateStepsUsageByTurn(
 	sessionId: string,
 	messageId: string,
 	turnIndex: number,
-	usage: { inputTokens: number; outputTokens: number; totalTokens: number },
+	usage: {
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+		cacheReadTokens?: number;
+		cacheWriteTokens?: number;
+		reasoningTokens?: number;
+	},
 ): string[] {
 	return sessionMessageRuntime!.updateStepsUsageByTurn(
 		sessionId,

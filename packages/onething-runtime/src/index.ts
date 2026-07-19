@@ -52,7 +52,6 @@ export * from "./agent-loop/index.js";
 export * from "./prompts/index.js";
 export * from "./project-dirs/index.js";
 export * from "./providers/index.js";
-export * from "./embeddings/index.js";
 export {
 	configureOnethingSkillManageRuntime,
 	createOnethingSessionSkillsRuntime,

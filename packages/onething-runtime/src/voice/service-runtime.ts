@@ -100,6 +100,7 @@ export function isOnethingMissingCloudTTSConfiguration(error: unknown): boolean 
     || message.includes('OpenRouter API key is required for voice TTS')
     || message.includes('Qwen/CosyVoice base URL is required')
     || message.includes('Qwen/CosyVoice API key is required')
+    || message.includes('Doubao (Volcano Engine) API key')
 }
 
 export function getOnethingTTSModelName(settings: OnethingVoiceSettingsRuntimeLike): string {
@@ -107,6 +108,7 @@ export function getOnethingTTSModelName(settings: OnethingVoiceSettingsRuntimeLi
   if (tts?.provider === 'openrouter-tts') return tts.openrouter?.model || 'openrouter-tts'
   if (tts?.provider === 'openai-tts') return tts.openai?.model || 'openai-tts'
   if (tts?.provider === 'qwen-tts') return tts.qwen?.model || 'qwen-tts'
+  if (tts?.provider === 'doubao') return 'doubao-seed-tts'
   return tts?.system?.voice || 'system'
 }
 

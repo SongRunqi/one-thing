@@ -23,43 +23,49 @@
         <slot name="before" />
 
         <SubMenu
-          v-for="(group, groupIndex) in groups"
+          v-for="group in groups"
           :key="group.key"
           :index="groupMenuIndex(group.key)"
+          expand-icon-position="start"
           class="session-group"
-          :class="{ 'is-first-group': groupIndex === 0 }"
         >
           <template #title>
             <span class="group-label">{{ group.label }}</span>
-            <span
-              v-if="collapsedGroups.has(group.key)"
-              class="group-count"
-            >{{ rootCount(group) }}</span>
           </template>
 
           <div class="session-group-items">
-            <MenuItem
+            <template
               v-for="session in visibleSessions(group)"
               :key="session.id"
-              :index="sessionMenuIndex(session.id)"
-              item-as="div"
-              raw
-              class="session-menu-item"
-              @click="(_, event) => handleSessionMenuClick(event, session)"
             >
-              <SessionItem
-                :session="session"
-                :is-active="activeIndex === sessionMenuIndex(session.id)"
-                :is-generating="isSessionGenerating(session.id)"
-                :is-editing="editingSessionId === session.id"
-                :editing-name="editingName"
-                @context-menu="(e) => $emit('context-menu', e, session)"
-                @toggle-collapse="$emit('toggle-collapse', session.id)"
-                @start-rename="$emit('start-rename', session)"
-                @confirm-rename="(name) => $emit('confirm-rename', session.id, name)"
-                @cancel-rename="$emit('cancel-rename')"
-              />
-            </MenuItem>
+              <!-- 未归类 桶内退回时间：今天 / 昨天 / 过去 7 天 / 更早 -->
+              <div
+                v-if="session.sectionLabel"
+                class="session-subtime"
+              >
+                {{ session.sectionLabel }}
+              </div>
+              <MenuItem
+                :index="sessionMenuIndex(session.id)"
+                item-as="div"
+                raw
+                class="session-menu-item"
+                @click="(_, event) => handleSessionMenuClick(event, session)"
+              >
+                <SessionItem
+                  :session="session"
+                  :is-active="activeIndex === sessionMenuIndex(session.id)"
+                  :is-generating="isSessionGenerating(session.id)"
+                  :is-editing="editingSessionId === session.id"
+                  :editing-name="editingName"
+                  @context-menu="(e) => $emit('context-menu', e, session)"
+                  @toggle-collapse="$emit('toggle-collapse', session.id)"
+                  @start-rename="$emit('start-rename', session)"
+                  @confirm-rename="(name) => $emit('confirm-rename', session.id, name)"
+                  @cancel-rename="$emit('cancel-rename')"
+                />
+              </MenuItem>
+            </template>
             <Button
               v-if="hasMore(group)"
               text
@@ -123,8 +129,11 @@ const hasContentBelow = ref(false)
 // Per-group display state (keyed by stable group.key)
 const DEFAULT_VISIBLE = 5   // root sessions shown per group by default
 const LOAD_STEP = 10        // additional roots revealed per "show more" click
-const collapsedGroups = ref<Set<string>>(new Set(['older']))
-const groupLimits = ref<Record<string, number>>({})
+const collapsedGroups = ref<Set<string>>(new Set())
+// Groups that stay open regardless of which project is active
+const ALWAYS_OPEN_GROUPS = new Set(['music', 'pinned'])
+// music 组默认只露最近一次编排;show more 才翻历史
+const groupLimits = ref<Record<string, number>>({ music: 1 })
 const expandedGroupMenuIndexes = computed(() =>
   props.groups
     .filter(group => !collapsedGroups.value.has(group.key))
@@ -198,6 +207,34 @@ function handleMenuClose(index: string) {
   const next = new Set(collapsedGroups.value)
   next.add(key)
   collapsedGroups.value = next
+}
+
+// Drawer default state (方案六): only the current project drawer is open;
+// every other project collapses to a single header row. 置顶 / 电台 always
+// stay open. Runs once when groups first populate.
+function seedCollapse() {
+  const groups = props.groups
+  if (groups.length === 0) return
+
+  let activeKey: string | null = null
+  const current = props.currentSessionId
+  if (current) {
+    for (const group of groups) {
+      if (group.sessions.some(s => s.id === current)) { activeKey = group.key; break }
+    }
+  }
+  // No active session → open the most recent project (first non-always-open group)
+  if (!activeKey) {
+    activeKey = groups.find(group => !ALWAYS_OPEN_GROUPS.has(group.key))?.key ?? null
+  }
+
+  const collapsed = new Set<string>()
+  for (const group of groups) {
+    if (ALWAYS_OPEN_GROUPS.has(group.key)) continue
+    if (group.key === activeKey) continue
+    collapsed.add(group.key)
+  }
+  collapsedGroups.value = collapsed
 }
 
 // Make sure the active session is actually rendered: expand its group and raise
@@ -316,6 +353,7 @@ watch(
   (len) => {
     if (len > 0 && !initialActiveApplied) {
       initialActiveApplied = true
+      seedCollapse()
       nextTick(ensureActiveVisible)
     }
   },
@@ -413,7 +451,6 @@ onUnmounted(() => {
     var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted))) 84%,
     transparent
   );
-
   position: relative;
   display: flex;
   flex-direction: column;
@@ -424,7 +461,7 @@ onUnmounted(() => {
   min-width: 0;
   /* No top padding: the sticky group header must sit flush against the
      scroll container's top edge, or scrolled text shows through the gap. */
-  padding: 0 10px 64px 12px;
+  padding: 0 10px 12px 12px;
   contain: strict;
   content-visibility: auto;
 }
@@ -446,15 +483,14 @@ onUnmounted(() => {
   --app-menu-width: 100%;
   --app-menu-padding: 0;
   --app-menu-item-height: 34px;
-  --app-menu-item-radius: 0;
+  /* 抽屉风（v7）：分组头圆角 8，hover 用软填充 */
+  --app-menu-item-radius: 8px;
   /* MenuItem 会给二级项打内联 padding-inline-start: calc(12px + step)。
-     归零 step，让所有行的包装盒都从 12px 起，刻度几何才可控。 */
+     归零 step，让所有行的包装盒都从 12px 起，行几何才可控。 */
   --app-menu-indent-step: 0px;
-  --app-menu-item-fg: var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item)));
-  /* Ledger（墨线）: state is drawn with the tick marks inside SessionItem,
-     never with background fills. */
-  --app-menu-item-hover-bg: transparent;
-  --app-menu-item-hover-fg: var(--ui-sidebar-item-hover-fg, var(--ui-text-primary-fg, var(--text-sidebar-item-hover)));
+  --app-menu-item-fg: var(--sidebar-row-fg, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))));
+  --app-menu-item-hover-bg: var(--sidebar-row-hover-fill, var(--ui-state-hover-bg, var(--hover)));
+  --app-menu-item-hover-fg: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-sidebar-item-hover)));
   --app-menu-active-bg: transparent;
   --app-menu-active-fg: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text-primary)));
 
@@ -465,66 +501,59 @@ onUnmounted(() => {
   background: transparent;
 }
 
-/* 主账目线：整栏唯一的结构线。行刻度(SessionItem::before, x=7)挂在这条线上；
-   sticky 分组标签自带不透明底，天然把线打断。 */
-.sidebar-menu::before {
-  content: '';
-  position: absolute;
-  left: 7px;
-  top: 4px;
-  bottom: 6px;
-  width: 1px;
-  background: color-mix(
-    in srgb,
-    var(--ui-border-strong-border, var(--border-strong, var(--border))) 80%,
-    transparent
-  );
-  pointer-events: none;
-}
-
 .session-group {
   display: flex;
   flex-direction: column;
   overflow: visible;
 }
 
+/* 抽屉头（v7 dhead）：左侧旋转 chevron + 12px/600 标签，hover 软填充圆角。
+   sticky 保留：滚动时组头钉在顶部，静置底色与列表同色所以不可见。 */
 .session-group :deep(.app-sub-menu-title) {
   position: sticky;
   top: 0;
   z-index: 1;
   min-height: 0;
   height: auto;
+  gap: 8px;
   /* Full-bleed opaque header: a right margin would leave an unpainted
      channel where scrolled text shows through. */
   margin-right: 0;
-  padding: 11px 14px 4px 8px;
-  border-radius: 0;
-  /* 不透明底同时承担"打断账目线"的角色（sticky 时压在线上方） */
+  padding-top: 7px;
+  padding-bottom: 7px;
+  padding-right: 8px;
+  /* 静置不透明底：sticky 时挡住滚过的行文 */
   background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
-  color: var(--ui-text-faint-fg, var(--text-faint, var(--text-muted)));
-  font-size: var(--type-caption-size, 11px);
-  font-weight: var(--font-weight-normal, 400);
+  /* 分组头用全墨：与 72% 墨的行文拉开一档，层级靠色阶不靠猜主题 */
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  /* v7 dhead：12px/600，无字距 */
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold, 600);
   line-height: 1.35;
-  letter-spacing: 0.14em;
-  transition: color 0.15s ease;
+  letter-spacing: 0;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
-/* 第一组要让开 SidebarHeader 底部 12px 的淡出渐变，否则标签上半截被罩住 */
-.session-group.is-first-group :deep(.app-sub-menu-title) {
-  padding-top: 14px;
-}
-
+/* hover 填充叠在不透明底之上（背景图层），sticky 状态下滚过的内容不会透出 */
 .session-group :deep(.app-sub-menu-title:hover),
 .session-group :deep(.app-sub-menu-title:focus-visible) {
-  background: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
-  color: var(--ui-sidebar-item-hover-fg, var(--ui-text-primary-fg, var(--text-primary)));
+  background-color: var(--ui-sidebar-surface-bg, var(--ui-surface-app-bg, var(--sidebar-bg)));
+  background-image: linear-gradient(
+    var(--sidebar-row-hover-fill, var(--ui-state-hover-bg, var(--hover))),
+    var(--sidebar-row-hover-fill, var(--ui-state-hover-bg, var(--hover)))
+  );
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-primary)));
   box-shadow: none;
 }
 
-/* Ledger（墨线）：分组头不用图标，标签本身压在账目线上（不透明底打断线）。
-   折叠状态由 group-count 提示，展开/收起仍点击整行。 */
+.session-group :deep(.app-sub-menu-chevron-hit) {
+  width: 12px;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+}
+
 .session-group :deep(.app-sub-menu-chevron) {
-  display: none;
+  width: 12px;
+  height: 12px;
 }
 
 .session-group :deep(.app-sub-menu-label) {
@@ -532,9 +561,6 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   color: inherit;
-  /* 标签压线：SubMenu 给标题打了 12px 内联 padding-inline-start，拉回后
-     标签从 x=0(菜单系)起笔，账目线(x=7)从标签下方穿过 —— 与设计稿一致 */
-  margin-inline-start: -12px;
 }
 
 .session-group :deep(.app-sub-menu-panel) {
@@ -546,6 +572,16 @@ onUnmounted(() => {
 
 .session-group-items {
   width: 100%;
+}
+
+/* 未归类 桶内的时间子标签：比分组头更轻，缩进到与行文对齐(x=32) */
+.session-subtime {
+  padding: 8px 12px 3px 32px;
+  font-size: var(--type-caption-muted-size, 10px);
+  font-weight: var(--font-weight-normal, 400);
+  letter-spacing: 0.1em;
+  color: var(--sidebar-list-meta-fg, var(--ui-text-faint-fg, var(--text-faint, var(--text-muted))));
+  user-select: none;
 }
 
 .session-menu-item :deep(.app-menu-item) {
@@ -560,15 +596,6 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-/* 折叠时的会话数：右侧细字提示，同时充当"已折叠"的状态信号 */
-.group-count {
-  flex-shrink: 0;
-  font-weight: var(--font-weight-normal);
-  letter-spacing: 0;
-  font-variant-numeric: tabular-nums;
-  color: var(--sidebar-list-meta-fg-strong);
-}
-
 /* Show-more affordance per section — 文本行，无填充，下划线示意可点 */
 .load-more-btn {
   --app-button-height: auto;
@@ -581,7 +608,7 @@ onUnmounted(() => {
   --app-button-hover-shadow: none;
 
   justify-content: flex-start;
-  margin: 2px 4px 6px 26px;
+  margin: 2px 4px 6px 32px;
   padding: 3px 0;
   border: none;
   border-radius: 0;
@@ -608,45 +635,6 @@ onUnmounted(() => {
 .sessions-list[data-suppress-anim] :deep(.session-item *) {
   transition: none !important;
   animation: none !important;
-}
-
-/* New Chat item - always at top of session list */
-.session-item.new-chat-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 12px 12px;
-  margin: 2px 4px;
-  border-radius: 6px;
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-  border-bottom: 1px solid var(--ui-sidebar-border-border, var(--ui-border-default-border, var(--border)));
-  margin-bottom: 8px;
-  padding-bottom: 12px;
-}
-
-.session-item.new-chat-item .new-chat-icon {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  flex-shrink: 0;
-}
-
-.session-item.new-chat-item .session-name {
-  flex: 1;
-  min-width: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 400;
-  color: var(--ui-accent-primary-fg, var(--accent));
-  padding-right: 12px;
-}
-
-.session-item.new-chat-item:hover {
-  background: var(--ui-sidebar-item-hover-bg, color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent));
-}
-
-.session-item.new-chat-item:hover .session-name {
-  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .empty-sessions {

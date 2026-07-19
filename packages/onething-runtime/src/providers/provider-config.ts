@@ -1,4 +1,5 @@
 import { toJsonObject, type JsonObject, type JsonValue } from '@onething/core'
+import { isCoreExternalAgentProvider } from '@onething/core/engine'
 import { resolveOnethingProviderBaseUrl } from './zhipu.js'
 
 export interface CoreProviderErrorDetails {
@@ -107,6 +108,30 @@ export interface CoreAppSettingsWithTitleModel<TProvider extends CoreProviderCon
 export interface CoreSessionProviderSelection {
   lastProvider?: string
   lastModel?: string
+}
+
+/**
+ * Explicit provider/model chosen by the caller at the moment of sending
+ * (e.g. what the renderer's model picker showed). When present and its
+ * config exists, this wins over session/global resolution outright —
+ * the caller already computed the answer, the engine just uses it. This
+ * is what makes "the picker showed X, the request went to Y" structurally
+ * impossible for the send path: there is no second independent computation
+ * of the same rule to diverge from the first.
+ */
+export interface CoreProviderSelectionOverride {
+  providerId?: string
+  model?: string
+  /**
+   * Pin the think mode for this one resolution, independent of the global
+   * per-model toggle. System-internal drives (the radio DJ wake) run in
+   * sessions nobody's ThinkToggle points at — this is how their settings
+   * panel's think switch reaches the turn without mutating
+   * settings.ai.providers[*].thinkingByModel for everyone.
+   */
+  thinking?: boolean
+  /** Effort used only when the pinned thinking is enabled. */
+  thinkingEffort?: string
 }
 
 export interface CoreEffectiveProviderConfig<TProvider extends CoreProviderConfigLike = CoreProviderConfigLike> {
@@ -253,7 +278,12 @@ export function getProviderConfig<TProvider extends CoreProviderConfigLike>(
 export async function getProviderApiKeyWithAdapters<TProvider extends CoreProviderConfigLike>(
   options: ResolveProviderApiKeyWithAdaptersOptions<TProvider>,
 ): Promise<string | null> {
-  if (options.providerId === (options.acpProviderId ?? 'acp')) {
+  // External agent providers authenticate through their own CLI login;
+  // the engine-side credential is deliberately empty.
+  if (
+    options.providerId === (options.acpProviderId ?? 'acp')
+    || isCoreExternalAgentProvider(options.providerId)
+  ) {
     return ''
   }
 
@@ -278,7 +308,10 @@ export async function resolveProviderAuthWithAdapters<
 ): Promise<TAuth | null> {
   const createApiKeyAuth = options.createApiKeyAuth ?? ((apiKey: string) => ({ kind: 'api-key', apiKey }) as TAuth)
 
-  if (options.providerId === (options.acpProviderId ?? 'acp')) {
+  if (
+    options.providerId === (options.acpProviderId ?? 'acp')
+    || isCoreExternalAgentProvider(options.providerId)
+  ) {
     return createApiKeyAuth('')
   }
 
@@ -298,23 +331,62 @@ export async function resolveProviderAuthWithAdapters<
   return apiKey ? createApiKeyAuth(apiKey) : null
 }
 
+/**
+ * THE resolution rule for "which provider/model does this session use":
+ * an explicit override (when its config exists) wins outright — see
+ * CoreProviderSelectionOverride; otherwise session.lastProvider (when its
+ * config exists) wins, with lastModel falling back to that provider's
+ * configured default; anything else is the global selection. Deliberately
+ * no inference or "repair" of mismatched pairs — a wrong pair must fail
+ * loudly at the provider, not silently reroute.
+ *
+ * The override is expected to be the renderer's own
+ * resolveProviderModelSelection (src/renderer/stores/helpers/provider-model.ts)
+ * result, passed through unchanged — the send path no longer needs a second,
+ * independent computation of "what should this session use" to potentially
+ * diverge from what the picker showed.
+ */
 export function getEffectiveProviderConfig<TProvider extends CoreProviderConfigLike>(
   settings: CoreAppSettingsWithAI<TProvider>,
   session?: CoreSessionProviderSelection | null,
+  override?: CoreProviderSelectionOverride | null,
 ): CoreEffectiveProviderConfig<TProvider> {
-  if (session?.lastProvider && session?.lastModel) {
-    const providerId = session.lastProvider
+  if (override?.providerId) {
+    const providerId = override.providerId
     const providerConfig = settings.ai.providers[providerId]
 
     if (providerConfig) {
+      const model = override.model || providerConfig.model || ''
       const effectiveConfig = withResolvedProviderBaseUrl(providerId, {
         ...providerConfig,
-        model: session.lastModel,
+        model,
       })
       return {
         providerId,
         providerConfig: effectiveConfig,
-        model: session.lastModel,
+        model,
+      }
+    }
+    // override points at a provider with no config (e.g. deleted since the
+    // picker rendered) — fall through to session/global rather than trust
+    // a dangling override, same invariant as the session.lastProvider case
+    // below.
+  }
+
+  if (session?.lastProvider) {
+    const providerId = session.lastProvider
+    const providerConfig = settings.ai.providers[providerId]
+
+    if (providerConfig) {
+      const model = session.lastModel || providerConfig.model || ''
+      const effectiveConfig = withResolvedProviderBaseUrl(providerId, {
+        ...providerConfig,
+        model,
+      })
+      return {
+        providerId,
+        providerConfig: effectiveConfig,
+        model,
       }
     }
   }

@@ -345,36 +345,45 @@ async function handleGenerateTriage() {
 }
 
 .evals-date-input {
-  width: 150px;
+  max-width: 160px;
+  font-variant-numeric: tabular-nums;
 }
 
 .evals-form-select,
 .evals-form-input {
   padding: 5px 8px;
   border: 1px solid var(--settings-rule);
-  border-radius: 5px;
-  background: var(--settings-paper);
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink);
   font-size: 12px;
   font-family: inherit;
+  min-width: 0;
 }
 
+.evals-form-select:focus,
+.evals-form-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+/* Outlined button: state lives in the edge line, never a fill */
 .evals-action-btn {
   padding: 5px 12px;
   border: 1px solid var(--settings-rule);
-  border-radius: 5px;
-  background: var(--settings-paper-3);
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink-2);
   font-size: 12px;
   font-weight: 520;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: color 0.12s ease, border-color 0.12s ease;
   white-space: nowrap;
 }
 
 .evals-action-btn:hover {
-  background: color-mix(in srgb, var(--settings-accent) 10%, var(--settings-paper-3));
-  border-color: color-mix(in srgb, var(--settings-accent) 30%, var(--settings-rule));
+  color: var(--settings-ink);
+  border-color: var(--settings-accent);
 }
 
 .evals-records-header {
@@ -385,25 +394,30 @@ async function handleGenerateTriage() {
 }
 
 .evals-records-count {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--settings-ink-4);
 }
 
+/* Record rows: hairline ledger rows; expansion is a left ink rule */
 .evals-record-row {
-  border: 1px solid var(--settings-rule-soft);
-  border-radius: 6px;
-  padding: 10px 14px;
+  border-bottom: 1px solid var(--settings-rule-soft);
+  padding: 10px 4px 10px 8px;
   cursor: pointer;
-  transition: border-color 0.12s ease;
-  background: var(--settings-paper-3);
+  transition: box-shadow 0.12s ease;
 }
 
-.evals-record-row:hover {
-  border-color: color-mix(in srgb, var(--settings-accent) 20%, var(--settings-rule));
+.evals-record-row:first-of-type {
+  border-top: 1px solid var(--settings-rule-soft);
+}
+
+.evals-record-row:hover .evals-record-date {
+  color: var(--settings-ink);
 }
 
 .evals-record-row.expanded {
-  border-color: color-mix(in srgb, var(--settings-accent) 30%, var(--settings-rule));
+  box-shadow: inset 2px 0 0 var(--settings-accent);
 }
 
 .evals-record-summary {
@@ -424,11 +438,19 @@ async function handleGenerateTriage() {
   font-size: 13px;
   color: var(--settings-ink-2);
   font-weight: 520;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .evals-record-provider {
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
   color: var(--settings-ink-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .evals-record-signals {
@@ -437,18 +459,24 @@ async function handleGenerateTriage() {
   flex-shrink: 0;
 }
 
+/* Signal badges: outlined rings, zero fill — colour lives in the edge */
 .evals-signal-badge {
   font-size: 12px;
-  padding: 2px 5px;
-  border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+  padding: 1px 7px 2px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--settings-rule) 80%, transparent);
+  background: transparent;
 }
 
 .evals-signal-badge.bad {
-  background: var(--ui-status-danger-bg);
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #e74c3c));
+  color: var(--ui-status-danger-fg, #e74c3c);
 }
 
 .evals-signal-badge.good {
-  background: var(--ui-status-success-bg);
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, #27ae60));
+  color: var(--ui-status-success-fg, #27ae60);
 }
 
 .evals-record-details {
@@ -475,10 +503,12 @@ async function handleGenerateTriage() {
 
 .evals-detail-value {
   color: var(--settings-ink-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .monospace {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
 }
 
@@ -487,10 +517,8 @@ async function handleGenerateTriage() {
 }
 
 .evals-triage-preview {
-  border: 1px solid color-mix(in srgb, var(--settings-accent) 30%, var(--settings-rule));
-  border-radius: 6px;
-  background: var(--settings-paper-3);
-  overflow: hidden;
+  border: 1px solid var(--settings-rule);
+  border-left: 2px solid var(--settings-accent);
 }
 
 .evals-triage-header {

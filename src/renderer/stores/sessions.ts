@@ -1,14 +1,15 @@
 import { defineStore } from "pinia";
-import { ref, computed } from "vue";
+import { ref, computed, triggerRef } from "vue";
 import type {
 	SessionDetails,
 	ContextVariable,
 	PermissionMode,
+	SessionGoal,
 } from "@/types";
 import { platformApi } from "@/platform";
 import { DEFAULT_AGENT_ID } from "../../shared/ipc";
 import { useChatStore } from "./chat";
-import { useSettingsStore } from "./settings";
+import { useWorkspaceStore } from "./workspace";
 
 // Base session type for list display - can be metadata-only initially, then
 // hydrated with full activation details such as token/context fields.
@@ -53,6 +54,13 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 */
 	const sessionVariables = ref<Map<string, ContextVariable[]>>(new Map());
 
+	/**
+	 * Per-session goal (null = fetched, none set). Hydrated by the goal
+	 * status bar on session switch via `fetchGoal()`, then live-updated by
+	 * ipc-hub when `session:goal-updated` arrives.
+	 */
+	const sessionGoals = ref<Map<string, SessionGoal | null>>(new Map());
+
 	const currentSession = computed<VisibleSessionListItem | undefined>(() => {
 		return (
 			newChatDrafts.value.find(
@@ -63,14 +71,25 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	const sessionCount = computed(() => sessions.value.length);
 
-	// Filter sessions (excluding archived), sorted by pinned first
+	// Filter sessions (excluding archived and the radio's working sessions —
+	// those live in the Music workspace panel, not the public list), sorted by
+	// pinned first
 	const filteredSessions = computed((): SessionListItem[] => {
-		const filtered = sessions.value.filter((s) => !s.isArchived);
+		const filtered = sessions.value.filter(
+			(s) => !s.isArchived && s.agentId !== "radio-dj",
+		);
 
 		// Only group by pinned, keep array order (new sessions are unshifted to top)
 		const pinned = filtered.filter((s) => s.isPinned);
 		const unpinned = filtered.filter((s) => !s.isPinned);
 		return [...pinned, ...unpinned];
+	});
+
+	// The radio DJ's curation sessions, newest first — the Music panel's list.
+	const radioSessions = computed(() => {
+		return sessions.value
+			.filter((s) => s.agentId === "radio-dj")
+			.sort((a, b) => b.updatedAt - a.updatedAt);
 	});
 
 	const sidebarSessions = computed((): VisibleSessionListItem[] => {
@@ -182,8 +201,32 @@ export const useSessionsStore = defineStore("sessions", () => {
 		);
 	}
 
+	/**
+	 * A draft's id IS its future session id (a plain v4 UUID): when the first
+	 * message materializes the draft, the main process persists the session
+	 * under this exact id, so nothing downstream (tabs, composer drafts,
+	 * snapshots) ever has to migrate to a renamed id. "Draft-ness" is pure
+	 * state — membership in `newChatDrafts` — not an id format.
+	 */
 	function createNewChatDraftId(): string {
-		return `draft:${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+		const uuid = globalThis.crypto?.randomUUID?.();
+		if (uuid) return uuid;
+		// Manual v4 fallback: the main process only accepts this exact format.
+		return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+			const r = (Math.random() * 16) | 0;
+			const v = c === "x" ? r : (r & 0x3) | 0x8;
+			return v.toString(16);
+		});
+	}
+
+	/**
+	 * The only sanctioned way to blank the current session (empty workspace /
+	 * everything closed). All other currentSessionId writes live in
+	 * switchSession.
+	 */
+	function clearCurrentSession() {
+		currentSessionId.value = "";
+		isActive.value = false;
 	}
 
 	function discardNewChatDraft(sessionId = currentSessionId.value) {
@@ -195,9 +238,12 @@ export const useSessionsStore = defineStore("sessions", () => {
 		newChatDrafts.value = newChatDrafts.value.filter(
 			(draft) => draft.id !== sessionId,
 		);
-		if (currentSessionId.value === sessionId) {
-			currentSessionId.value = "";
-			isActive.value = false;
+		const workspace = useWorkspaceStore();
+		workspace.closeSessionTabs(sessionId);
+		// A surviving tab (workspace promoted a neighbor) drives the follow-up
+		// switch via the workspace effect; only blank out when nothing is left.
+		if (currentSessionId.value === sessionId && !workspace.activeSessionId) {
+			clearCurrentSession();
 		}
 	}
 
@@ -212,6 +258,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				currentDraft,
 				...newChatDrafts.value.filter((draft) => draft.id !== currentDraft.id),
 			];
+			useWorkspaceStore().openSession(currentDraft.id);
 			return currentDraft;
 		}
 
@@ -229,8 +276,9 @@ export const useSessionsStore = defineStore("sessions", () => {
 		chatStore.clearSessionMessages(draft.id);
 		chatStore.deleteSnapshot(draft.id);
 		chatStore.clearComposerDraft(draft.id);
-		currentSessionId.value = draft.id;
-		isActive.value = true;
+		// Draft activation is synchronous inside switchSession (no data to
+		// load), which also aligns the workspace tab.
+		void switchSession(draft.id);
 		return draft;
 	}
 
@@ -247,15 +295,22 @@ export const useSessionsStore = defineStore("sessions", () => {
 		const chatStore = useChatStore();
 		chatStore.clearSessionMessages(sessionId);
 		chatStore.deleteSnapshot(sessionId);
-		const created = await createSession(draftName);
+		// The session persists under the draft's own id, so the existing tab,
+		// composer draft, and snapshots keep pointing at the right session
+		// with no rename step.
+		const created = await createSessionWithoutSwitch(draftName, draft.id);
 		chatStore.clearComposerDraft(sessionId);
 		if (!created) {
 			newChatDrafts.value = [draft, ...newChatDrafts.value];
-			currentSessionId.value = draft.id;
-			isActive.value = true;
+			void switchSession(draft.id);
 			return created;
 		}
 
+		// currentSessionId already equals the draft/session id, so
+		// switchSession would early-return — activate explicitly so the main
+		// process's current-session pointer (todo window etc.) follows.
+		await platformApi.activateSession(created.id).catch(() => {});
+		await switchSession(created.id);
 		await applyDraftSettingsToSession(created.id, draft);
 		return created;
 	}
@@ -297,15 +352,22 @@ export const useSessionsStore = defineStore("sessions", () => {
 	}
 
 	/**
-	 * Create a new session without switching to it
-	 * Used for split view where we want to create a new chat in a split panel
+	 * Create a new session without switching to it. Used by split view and by
+	 * draft materialization, which passes the draft's own id so the session
+	 * persists under the identity the renderer has been using all along.
 	 */
-	async function createSessionWithoutSwitch(name: string) {
+	async function createSessionWithoutSwitch(name: string, sessionId?: string) {
 		try {
-			const response = await platformApi.createSession(name);
+			const response = await platformApi.createSession(
+				name,
+				sessionId ? { sessionId } : undefined,
+			);
 			if (response.success && response.session) {
 				sessions.value.unshift(response.session);
 				return response.session;
+			}
+			if (response.error) {
+				console.error("Failed to create session:", response.error);
 			}
 		} catch (error) {
 			console.error("Failed to create session:", error);
@@ -319,6 +381,13 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 */
 	async function switchSession(sessionId: string) {
 		if (currentSessionId.value === sessionId) return currentSession.value;
+		// Align the workspace before anything else: whoever asked for this
+		// session gets a tab for it in the focused panel. Idempotent — when the
+		// switch was itself triggered by the workspace effect, the tab already
+		// exists and is active. Skipped before hydration so the startup restore
+		// isn't clobbered by an early switch.
+		const workspace = useWorkspaceStore();
+		if (workspace.hydrated) workspace.openSession(sessionId);
 		if (isNewChatDraftId(sessionId)) {
 			currentSessionId.value = sessionId;
 			isActive.value = true;
@@ -334,7 +403,6 @@ export const useSessionsStore = defineStore("sessions", () => {
 		let reusedCachedMessages = false;
 		try {
 			const chatStore = useChatStore();
-			const settingsStore = useSettingsStore();
 			const existingMessages = chatStore.sessionMessages.get(sessionId);
 			const targetSnapshot = chatStore.getSnapshot(sessionId);
 			const anchorMessageId =
@@ -381,14 +449,14 @@ export const useSessionsStore = defineStore("sessions", () => {
 				Object.assign(localSession, sessionDetails);
 			}
 
-			// Sync model selection if session has a saved model (from cached config)
-			if (sessionDetails.lastProvider && sessionDetails.lastModel) {
-				settingsStore.updateAIProvider(sessionDetails.lastProvider);
-				settingsStore.updateModel(
-					sessionDetails.lastModel,
-					sessionDetails.lastProvider,
-				);
-			}
+			// Deliberately no "mirror session's model into global settings"
+			// step here: ModelSelector/ThinkToggle already read the current
+			// selection straight off this session (resolveProviderModelSelection
+			// via getSessionItem, populated by the Object.assign above), so
+			// mirroring into the *global* default was both unnecessary and, per
+			// the 2026-07-14 incident, actively dangerous — it would silently
+			// overwrite the user's global default provider on every session
+			// switch.
 
 			// Step 2: Load the page needed by the UI state. Sessions without a saved
 			// detached anchor open at the tail, while revisits load around the saved
@@ -474,7 +542,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	async function deleteSession(sessionId: string) {
 		if (isNewChatDraftId(sessionId)) {
-			discardNewChatDraft();
+			discardNewChatDraft(sessionId);
 			return;
 		}
 		const session = sessions.value.find((s) => s.id === sessionId);
@@ -488,26 +556,24 @@ export const useSessionsStore = defineStore("sessions", () => {
 			const activeSessions = filteredSessions.value;
 			const sessionIndex = activeSessions.findIndex((s) => s.id === sessionId);
 
-			// Check if this is the only session - just delete it, keep window open
-			if (activeSessions.length === 1 && activeSessions[0].id === sessionId) {
-				await permanentlyDeleteSession(sessionId);
-				currentSessionId.value = "";
-				return;
-			}
-
+			const wasCurrent = currentSessionId.value === sessionId;
 			await permanentlyDeleteSession(sessionId);
-			// Switch to another session if needed
-			if (currentSessionId.value === sessionId) {
-				const remaining = filteredSessions.value;
-				if (remaining.length > 0) {
-					// Switch to previous session if available, otherwise next
-					// After deletion, the next session is at the same index
-					const targetIndex = sessionIndex > 0 ? sessionIndex - 1 : 0;
-					await switchSession(remaining[targetIndex].id);
-				} else {
-					// No sessions remaining, just clear current session
-					currentSessionId.value = "";
-				}
+			const workspace = useWorkspaceStore();
+			workspace.closeSessionTabs(sessionId);
+			if (currentSessionId.value === sessionId && !workspace.activeSessionId) {
+				clearCurrentSession();
+			}
+			// A surviving tab already drove the switch via the workspace effect.
+			// With nothing left open, keep the old UX of jumping to a sidebar
+			// neighbor instead of dropping into the empty state.
+			const remaining = filteredSessions.value;
+			if (wasCurrent && !workspace.hasAnyChatTab && remaining.length > 0) {
+				// Switch to previous session if available, otherwise next
+				// After deletion, the next session is at the same index
+				const targetIndex = sessionIndex > 0 ? sessionIndex - 1 : 0;
+				await switchSession(
+					remaining[Math.min(targetIndex, remaining.length - 1)].id,
+				);
 			}
 			return;
 		}
@@ -555,17 +621,25 @@ export const useSessionsStore = defineStore("sessions", () => {
 				}
 			}
 
-			// Switch to another session if current was archived
-			if (allIdsToArchive.includes(currentSessionId.value)) {
+			// Archived sessions (and their branches) lose their tabs; the
+			// workspace effect switches to a surviving neighbor tab if any.
+			const wasCurrent = allIdsToArchive.includes(currentSessionId.value);
+			const workspace = useWorkspaceStore();
+			for (const id of allIdsToArchive) {
+				workspace.closeSessionTabs(id);
+			}
+			if (wasCurrent && !workspace.activeSessionId) {
+				clearCurrentSession();
+			}
+			if (wasCurrent && !workspace.hasAnyChatTab) {
 				const activeSessions = filteredSessions.value;
 				if (activeSessions.length > 0) {
 					// Switch to previous session if available, otherwise next
 					// After archiving, the next session is at the same index
 					const targetIndex = sessionIndex > 0 ? sessionIndex - 1 : 0;
-					await switchSession(activeSessions[targetIndex].id);
-				} else {
-					// No sessions remaining, just clear current session
-					currentSessionId.value = "";
+					await switchSession(
+						activeSessions[Math.min(targetIndex, activeSessions.length - 1)].id,
+					);
 				}
 			}
 		} catch (error) {
@@ -908,6 +982,29 @@ export const useSessionsStore = defineStore("sessions", () => {
 	}
 
 	/**
+	 * Apply an incoming `session:goal-updated` event (null = goal cleared).
+	 * The map is the single source of truth for the goal status bar.
+	 */
+	function updateSessionGoal(sessionId: string, goal: SessionGoal | null): void {
+		sessionGoals.value.set(sessionId, goal);
+		triggerRef(sessionGoals);
+	}
+
+	/** Initial fetch for the goal status bar (live updates ride the event). */
+	async function fetchGoal(sessionId: string): Promise<SessionGoal | null> {
+		try {
+			const response = await platformApi.goalGet(sessionId);
+			const goal = response.success ? (response.goal ?? null) : null;
+			sessionGoals.value.set(sessionId, goal);
+			triggerRef(sessionGoals);
+			return goal;
+		} catch (error) {
+			console.error("[Sessions] Failed to fetch goal:", error);
+			return null;
+		}
+	}
+
+	/**
 	 * Pull the latest variable snapshot from the main process. Called on
 	 * session switch (initial fetch) and on any UI action that needs
 	 * fresh state without waiting for the next change event.
@@ -971,10 +1068,12 @@ export const useSessionsStore = defineStore("sessions", () => {
 		isLoading,
 		isActive,
 		sessionVariables,
+		sessionGoals,
 		currentSession,
 		sessionCount,
 		filteredSessions,
 		sidebarSessions,
+		radioSessions,
 		getSessionItem,
 		filteredSessionCount,
 		archivedSessions,
@@ -986,11 +1085,14 @@ export const useSessionsStore = defineStore("sessions", () => {
 		createSession,
 		createSessionWithoutSwitch,
 		switchSession,
+		clearCurrentSession,
 		deleteSession,
 		archiveSession,
 		updateSessionTokenStats,
 		updateSessionVariables,
 		fetchVariables,
+		updateSessionGoal,
+		fetchGoal,
 		setVariable,
 		deleteVariable,
 		setSessionName,

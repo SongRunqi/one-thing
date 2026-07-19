@@ -263,6 +263,7 @@ async function refreshThemes() {
   position: relative;
 }
 
+/* Square drafting box, no fill; state moves to the line. */
 .theme-trigger {
   width: 100%;
   min-height: 42px;
@@ -272,12 +273,13 @@ async function refreshThemes() {
   gap: 10px;
   padding: 7px 10px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   cursor: pointer;
   font: inherit;
   text-align: left;
+  transition: border-color 0.12s ease;
 }
 
 .theme-trigger:hover,
@@ -319,15 +321,18 @@ async function refreshThemes() {
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
+/* Preview strip: swatches stay, container keeps square corners.
+   Fixed 44px is intrinsic chip sizing (same exemption as toggles). */
 .theme-palette {
   width: 44px;
   height: 24px;
+  flex-shrink: 0;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   overflow: hidden;
-  border: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.22));
-  border-radius: 6px;
-  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
+  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border)));
+  border-radius: 0;
+  background: transparent;
 }
 
 .option-palette {
@@ -337,9 +342,10 @@ async function refreshThemes() {
 
 .theme-swatch {
   min-width: 0;
-  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.1);
+  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 45%, transparent);
 }
 
+/* Dropdown sheet: paper base (covers content below) + hard-offset ink shadow. */
 .theme-menu {
   position: absolute;
   z-index: 30;
@@ -348,11 +354,10 @@ async function refreshThemes() {
   right: 0;
   max-height: 280px;
   overflow-y: auto;
-  padding: 5px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--ui-surface-elevated-bg, var(--settings-paper, var(--bg-panel)));
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--settings-rule, var(--ui-border-default-border, var(--border))) 24%, transparent);
 }
 
 .theme-option {
@@ -362,9 +367,9 @@ async function refreshThemes() {
   grid-template-columns: auto minmax(0, 1fr) 18px;
   align-items: center;
   gap: 10px;
-  padding: 7px 8px;
+  padding: 8px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 0;
   background: transparent;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   cursor: pointer;
@@ -372,12 +377,22 @@ async function refreshThemes() {
   text-align: left;
 }
 
-.theme-option:hover {
-  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
+.theme-option + .theme-option {
+  border-top: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 45%, transparent);
 }
 
+.theme-option:hover {
+  background: transparent;
+}
+
+.theme-option:hover .theme-option-meta {
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
+}
+
+/* Selection lives in the left ink rule, not a fill. */
 .theme-option.selected {
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 10%, transparent);
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .theme-option-check {
@@ -405,17 +420,19 @@ async function refreshThemes() {
   gap: 7px;
   padding: 6px 10px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
-  background: var(--settings-paper, transparent);
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   cursor: pointer;
   font: inherit;
   font-size: 13px;
+  transition: border-color 0.12s ease, color 0.12s ease;
 }
 
 .action-btn:hover:not(:disabled) {
-  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  background: transparent;
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 .action-btn:disabled {
@@ -427,11 +444,13 @@ async function refreshThemes() {
   animation: spin 0.9s linear infinite;
 }
 
+/* Error: a left danger rule, no filled box. */
 .error-message {
-  padding: 9px 11px;
-  border: 1px solid var(--ui-status-danger-border, var(--text-error, var(--color-danger)));
-  border-radius: 8px;
-  background: var(--ui-status-danger-bg, transparent);
+  padding: 2px 0 2px 8px;
+  border: 0;
+  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
+  border-radius: 0;
+  background: transparent;
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
   font-size: 12px;
 }
@@ -449,7 +468,7 @@ async function refreshThemes() {
 
 @media (max-width: 720px) {
   .theme-select-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

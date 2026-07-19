@@ -10,7 +10,6 @@ export interface QueuedFileChangeSummary {
   fileCount: number
   additions: number
   deletions: number
-  selectedStepId?: string
 }
 
 export function isPatchLikeFile(file: MessageAttachment): boolean {

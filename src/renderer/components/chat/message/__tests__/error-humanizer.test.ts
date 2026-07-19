@@ -30,6 +30,14 @@ describe('humanizeStreamError', () => {
     expect(humanizeStreamError('Claude stream error: {"error":{"type":"overloaded_error"}}').title).toContain('不可用')
   })
 
+  it('maps 429 overload to provider unavailable, not rate limiting', () => {
+    const raw = 'kimi agent loop API error: 429 {"error":{"message":"The engine is currently overloaded, please try again later","type":"engine_overloaded_error"}}'
+    const result = humanizeStreamError(raw)
+    expect(result.title).toContain('不可用')
+    expect(result.provider).toBe('Kimi')
+    expect(result.retryable).toBe(true)
+  })
+
   it('maps network failures', () => {
     const result = humanizeStreamError('TypeError: fetch failed')
     expect(result.title).toContain('网络')

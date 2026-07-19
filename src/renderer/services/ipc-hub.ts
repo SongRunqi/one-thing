@@ -150,9 +150,27 @@ export function initializeIPCHub() {
         })
         break
 
+      case 'permission:queued':
+        store.handlePermissionQueued({
+          sessionId,
+          requestId: event.requestId,
+          messageId: event.messageId,
+          toolCallId: event.toolCallId,
+        })
+        break
+
+      case 'permission:settled':
+        store.handlePermissionSettled({
+          sessionId,
+          requestId: event.requestId,
+          toolCallIds: event.toolCallIds,
+          decision: event.decision,
+        })
+        break
+
       // Message lifecycle events (event-driven message creation)
       case 'message:user-created':
-        refreshGatewaySessionList(sessionId)
+        refreshSessionListIfUnknown(sessionId)
         store.handleMessageCreated({ sessionId, message: (event as any).message })
         break
 
@@ -205,6 +223,12 @@ export function initializeIPCHub() {
           })
         })
         break
+
+      case 'session:goal-updated':
+        import('@/stores/sessions').then(({ useSessionsStore }) => {
+          useSessionsStore().updateSessionGoal(sessionId, (event as any).goal ?? null)
+        })
+        break
     }
   })
 
@@ -250,14 +274,19 @@ export function initializeIPCHub() {
   console.log('[IPC Hub] Unified listeners registered (session:event + session:stream)')
 }
 
-function refreshGatewaySessionList(sessionId: string): void {
-  if (!sessionId.startsWith('gateway:')) return
-
+/**
+ * Sessions created in the main process (gateway conversations, the radio DJ's
+ * curation sessions, any future internal drives) never pass through the
+ * renderer's own create flow — the first the renderer hears of them is a
+ * message event for an id it does not know. Reload the list then, or the
+ * session stays invisible until an app restart.
+ */
+function refreshSessionListIfUnknown(sessionId: string): void {
   import('@/stores/sessions').then(({ useSessionsStore }) => {
     const sessionsStore = useSessionsStore()
     if (sessionsStore.getSessionItem(sessionId)) return
     void sessionsStore.loadSessions()
   }).catch(error => {
-    console.error('[IPC Hub] Failed to refresh gateway session list:', error)
+    console.error('[IPC Hub] Failed to refresh session list:', error)
   })
 }

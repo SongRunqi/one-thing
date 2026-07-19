@@ -2,8 +2,10 @@
   <section class="detail-section">
     <!-- Section header (outside group) -->
     <div class="section-header">
+      <!-- Not "Models": the sidebar anchor for the Models ledger matches
+           h3 text by prefix, and a second "Models" heading would be ambiguous. -->
       <h3 class="section-label">
-        Models <span class="count-badge">{{ selectedCount }} selected</span>
+        Available models <span class="count-badge">{{ selectedCount }} selected</span>
       </h3>
       <Button
         unstyled
@@ -736,20 +738,17 @@ function resetModelTableScroll() {
   margin-bottom: 12px;
 }
 
+/* Typography comes from the settings :deep(.section-label) layer; only layout lives here. */
 .section-label {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10.5px;
-  font-weight: 650;
-  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin: 0 0 0 2px;
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0;
 }
 
 .count-badge {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 11px;
   font-weight: 560;
   color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
@@ -757,14 +756,15 @@ function resetModelTableScroll() {
   letter-spacing: 0;
 }
 
+/* Text action: mono small, hover pulls an accent underline. */
 .refresh-btn {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 9px;
-  border: 1px solid var(--settings-rule-soft, transparent);
-  border-radius: 7px;
-  background: var(--settings-paper, transparent);
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
@@ -773,7 +773,9 @@ function resetModelTableScroll() {
 
 .refresh-btn:hover:not(:disabled) {
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  border-color: var(--settings-rule, transparent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .refresh-btn:disabled {
@@ -790,13 +792,8 @@ function resetModelTableScroll() {
   to { transform: rotate(360deg); }
 }
 
-/* ── Group container ── */
-.settings-group {
-  border: 1px solid var(--settings-rule, rgba(128, 128, 128, 0.1));
-  background: var(--settings-paper, color-mix(in srgb, var(--settings-paper-2, transparent) 44%, transparent));
-  border-radius: 8px;
-  overflow: hidden;
-}
+/* ── Group container ──
+   .settings-group chrome (border/fill/radius) is zeroed by the settings :deep() layer. */
 
 /* ── Model toolbar ── */
 .model-toolbar {
@@ -804,31 +801,31 @@ function resetModelTableScroll() {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.1));
+  padding: 10px 0;
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .model-search-field {
   flex: 1 1 280px;
-  min-width: 220px;
+  min-width: 0;
 }
 
 .model-search-field :deep(.app-input-control) {
   min-height: 32px;
   gap: 8px;
   padding: 0 9px;
-  border-color: var(--settings-rule-soft, rgba(128, 128, 128, 0.14));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--settings-paper, transparent) 82%, transparent);
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  transition: border-color 0.12s ease;
   box-shadow: none;
 }
 
 .model-search-field.is-focused :deep(.app-input-control) {
-  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, var(--settings-rule, transparent));
-  background: var(--settings-paper, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 8%, transparent);
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: transparent;
+  box-shadow: none;
 }
 
 .model-search-field :deep(.search-input) {
@@ -858,14 +855,13 @@ function resetModelTableScroll() {
   height: 18px;
   padding: 0;
   border: none;
-  border-radius: 4px;
   background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
+  transition: color 0.12s ease;
 }
 
 .search-clear:hover {
-  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
@@ -873,7 +869,7 @@ function resetModelTableScroll() {
   display: inline-flex;
   align-items: center;
   flex: 0 1 370px;
-  min-width: 260px;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -890,11 +886,11 @@ function resetModelTableScroll() {
 .add-model-input :deep(.app-input-control) {
   min-height: 32px;
   padding: 0 10px;
-  border-color: var(--settings-rule-soft, rgba(128, 128, 128, 0.14));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--settings-paper, transparent) 82%, transparent);
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  transition: border-color 0.12s ease;
   box-shadow: none;
 }
 
@@ -903,11 +899,12 @@ function resetModelTableScroll() {
 }
 
 .add-model-input.is-focused :deep(.app-input-control) {
-  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, var(--settings-rule, transparent));
-  background: var(--settings-paper, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 8%, transparent);
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: transparent;
+  box-shadow: none;
 }
 
+/* Primary action: accent line + accent ink, never a filled block. */
 .add-model-btn {
   display: inline-flex;
   align-items: center;
@@ -915,19 +912,19 @@ function resetModelTableScroll() {
   gap: 5px;
   height: 32px;
   padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 40%, transparent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 12%, transparent);
+  border: 1px solid var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+  transition: box-shadow 0.12s ease, opacity 0.12s ease;
 }
 
 .add-model-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 18%, transparent);
-  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 58%, transparent);
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .add-model-btn:disabled {
@@ -935,14 +932,14 @@ function resetModelTableScroll() {
   cursor: not-allowed;
 }
 
-/* ── Model list ── */
+/* ── Model list: hairline-separated ledger rows, hover/active live in the left rule ── */
 .model-list {
-  --virtual-table-bg: var(--settings-paper, transparent);
+  --virtual-table-bg: transparent;
   --virtual-table-head-bg: var(--settings-paper, transparent);
-  --virtual-table-row-bg: var(--settings-paper, transparent);
-  --virtual-table-row-hover-bg: color-mix(in srgb, var(--settings-paper-3, var(--settings-paper, transparent)) 62%, transparent);
-  --virtual-table-border: var(--settings-rule-soft, rgba(128, 128, 128, 0.06));
-  --virtual-table-strong-border: var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
+  --virtual-table-row-bg: transparent;
+  --virtual-table-row-hover-bg: transparent;
+  --virtual-table-border: var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  --virtual-table-strong-border: var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
   --virtual-table-fg: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   --virtual-table-muted-fg: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   --virtual-table-accent: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
@@ -957,7 +954,7 @@ function resetModelTableScroll() {
 }
 
 .model-list :deep(.virtual-table-header) {
-  border-bottom-color: var(--settings-rule-soft, rgba(128, 128, 128, 0.08));
+  border-bottom-color: var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .model-list :deep(.virtual-table-header-cell) {
@@ -993,27 +990,21 @@ function resetModelTableScroll() {
   cursor: pointer;
 }
 
+.model-list :deep(.virtual-table-row.model-row:hover) {
+  box-shadow: inset 2px 0 0 var(--settings-rule, var(--ui-border-default-border, var(--border)));
+}
+
 .model-list :deep(.virtual-table-row.model-row.selected .model-primary),
 .model-list :deep(.virtual-table-row.model-row.is-active .model-primary) {
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font-weight: 620;
 }
 
-.model-list :deep(.virtual-table-row.model-row.is-active .virtual-table-cell) {
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent);
+.model-list :deep(.virtual-table-row.model-row.is-active) {
+  box-shadow: inset 2px 0 0 var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
-.model-list :deep(.virtual-table-row.model-row.is-active::before) {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-}
-
+/* Drafting checkbox: square outline; checked = accent line + accent tick, no fill. */
 .model-check {
   display: inline-flex;
   align-items: center;
@@ -1021,16 +1012,16 @@ function resetModelTableScroll() {
   justify-self: center;
   width: 16px;
   height: 16px;
-  border: 1.5px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--settings-paper, transparent) 80%, transparent);
-  color: var(--ui-action-primary-fg, var(--text-btn-primary, var(--settings-paper)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   cursor: pointer;
-  transition: border-color 0.12s ease, background 0.12s ease;
+  transition: border-color 0.12s ease;
 }
 
 .model-check:hover {
-  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 34%, var(--settings-rule, transparent));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .model-check:focus-visible {
@@ -1040,7 +1031,7 @@ function resetModelTableScroll() {
 
 .model-check.checked {
   border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: transparent;
 }
 
 .model-check svg {
@@ -1088,18 +1079,22 @@ function resetModelTableScroll() {
   opacity: 0.82;
 }
 
+/* Outlined ring, zero fill — accent marks the active binding. */
 .model-active-pill {
   display: inline-flex;
   align-items: center;
-  height: 20px;
+  flex-shrink: 0;
+  height: 18px;
   padding: 0 7px;
-  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 36%, transparent);
+  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 65%, transparent);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 10%, transparent);
+  background: transparent;
   color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-  font-size: 11px;
-  font-weight: 620;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  font-weight: 560;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .model-ctx {
@@ -1128,28 +1123,29 @@ function resetModelTableScroll() {
   justify-content: flex-end;
   gap: 3px;
   height: 26px;
-  min-width: 116px;
+  max-width: 100%;
+  min-width: 0;
   padding: 0 5px 0 6px;
-  border: 1px solid var(--settings-rule-soft, rgba(128, 128, 128, 0.18));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--settings-paper, transparent) 78%, transparent);
-  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
+  background: transparent;
+  transition: border-color 0.12s ease;
 }
 
 .model-out-wrap:hover {
-  border-color: var(--settings-rule, rgba(128, 128, 128, 0.4));
-  background: var(--settings-paper, rgba(128, 128, 128, 0.05));
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  background: transparent;
 }
 
 .model-out-wrap:focus-within {
-  border-color: color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 24%, var(--settings-rule, transparent));
-  background: var(--settings-paper, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text))) 8%, transparent);
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: transparent;
+  box-shadow: none;
 }
 
 .model-out-wrap.overridden {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 42%, transparent);
-  background: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 8%, transparent);
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  background: transparent;
 }
 
 .model-out-wrap.overridden .out-icon {
@@ -1163,12 +1159,14 @@ function resetModelTableScroll() {
   --app-input-number-padding-x: 3px;
   --app-input-number-font-size: 11px;
 
-  min-width: 84px;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 22px;
   border: 0;
   background: transparent;
   box-shadow: none;
   font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-variant-numeric: tabular-nums;
 }
 
 .model-out-wrap :deep(.app-input-number.model-out-stepper:focus-within) {
@@ -1185,17 +1183,15 @@ function resetModelTableScroll() {
   height: 14px;
   padding: 0;
   border: none;
-  border-radius: 50%;
   background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: color 0.12s ease;
 }
 
 .model-out-clear:hover {
-  background: var(--ui-status-danger-bg, transparent);
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
 }
 
@@ -1208,15 +1204,15 @@ function resetModelTableScroll() {
   height: 24px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 5px;
+  border-radius: 0;
   background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 
 .model-caps-edit:hover {
-  background: var(--settings-paper-2, var(--ui-state-hover-bg, var(--hover)));
+  border-color: var(--settings-rule, var(--ui-border-default-border, var(--border)));
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
@@ -1226,7 +1222,7 @@ function resetModelTableScroll() {
 }
 
 .model-caps-edit.has-override {
-  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 40%, transparent);
+  border-color: color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 65%, transparent);
   color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
@@ -1237,13 +1233,15 @@ function resetModelTableScroll() {
   font-size: 13px;
 }
 
+/* Error held by a left rule, no filled block. */
 .error-message {
-  padding: 8px 12px;
-  background: var(--ui-status-danger-bg, transparent);
-  border-radius: 8px;
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
+  background: transparent;
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
   font-size: 12px;
   margin-bottom: 8px;
+  word-break: break-word;
 }
 
 @media (max-width: 720px) {
@@ -1262,13 +1260,14 @@ function resetModelTableScroll() {
   `.model-caps-popover ` so they don't leak.
 -->
 <style>
-/* Popover lives at <body> via Teleport; position is set inline. */
+/* Popover lives at <body> via Teleport; position is set inline.
+   Paper dialog in the ledger language: 1px rule + hard-offset ink shadow, no radii, no glow. */
 .model-caps-popover {
   z-index: 1000;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated, var(--bg-panel)));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  background: var(--ui-surface-app-bg, var(--bg));
+  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-radius: 0;
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 24%, transparent);
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -1291,12 +1290,14 @@ function resetModelTableScroll() {
   border: none;
   background: transparent;
   color: var(--ui-accent-primary-fg, var(--accent));
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
   cursor: pointer;
   padding: 0;
 }
 .model-caps-reset:hover {
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .model-caps-row {
@@ -1318,8 +1319,7 @@ function resetModelTableScroll() {
 .model-caps-tristate {
   display: inline-flex;
   border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  overflow: hidden;
+  border-radius: 0;
 }
 
 .tristate-btn {
@@ -1330,18 +1330,19 @@ function resetModelTableScroll() {
   padding: 3px 8px;
   cursor: pointer;
   border-right: 1px solid var(--ui-border-default-border, var(--border));
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: color 0.12s ease, box-shadow 0.12s ease;
 }
 .tristate-btn:last-child {
   border-right: none;
 }
 .tristate-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
 }
 .tristate-btn.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
+  background: transparent;
+  color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: inset 0 -2px 0 var(--ui-accent-primary-fg, var(--accent));
 }
 
 .model-caps-popover-hint {
@@ -1362,13 +1363,13 @@ function resetModelTableScroll() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
   cursor: pointer;
   text-transform: none;
   letter-spacing: 0;
+  transition: color 0.12s ease;
 }
 .model-caps-close:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
 }
 
@@ -1391,39 +1392,44 @@ function resetModelTableScroll() {
   min-width: 0;
 }
 
+/* Underline input: the line is the control. */
 .model-caps-id-control .app-input-control {
   min-height: 26px;
-  padding: 0 8px;
-  border-color: var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  background: var(--ui-surface-app-bg, var(--bg, transparent));
+  padding: 0 2px;
+  border: none;
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-radius: 0;
+  background: transparent;
   color: var(--ui-text-primary-fg, var(--text));
   box-shadow: none;
+  transition: border-color 0.12s ease;
 }
 
 .model-caps-id-control .model-caps-id-input {
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: var(--font-mono, 'SF Mono', Monaco, monospace);
   font-size: 12px;
 }
 
 .model-caps-id-control.is-focused .app-input-control {
-  border-color: var(--ui-border-default-border, var(--border));
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
   box-shadow: none;
 }
 
 .model-caps-id-save {
   height: 26px;
-  padding: 0 10px;
-  border: 1px solid transparent;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent);
+  padding: 0;
+  border: none;
+  background: transparent;
   color: var(--ui-accent-primary-fg, var(--accent));
-  border-radius: 6px;
+  font-family: var(--font-mono, monospace);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
+  transition: color 0.12s ease;
 }
-.model-caps-id-save:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, transparent);
+.model-caps-id-save:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .model-caps-id-save:disabled {
   opacity: 0.4;

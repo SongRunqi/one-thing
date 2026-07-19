@@ -1,4 +1,10 @@
-import type { AppSettings } from "@/types";
+import type {
+	AppSettings,
+	GetSessionUsageRequest,
+	GetUsageSummaryRequest,
+	PracticeConfigResponse,
+	PracticeSummaryRequest,
+} from "@/types";
 import type { SessionEventEnvelope } from "@shared/events";
 import type { PlatformApi, PlatformCapabilities } from "./types";
 
@@ -34,6 +40,7 @@ const imagePreviewUpdateHandlers = new Set<
 	(payload: ImagePreviewUpdatePayload) => void
 >();
 const TODO_PLAN_WEB_WINDOW_EVENT = "todo-plan:web-window-action";
+const MUSIC_UNSUPPORTED = "音乐电台仅在桌面端可用";
 const sharedEventSources = new Map<
 	string,
 	{
@@ -524,6 +531,23 @@ const webApi = {
 		}),
 	toggleSkillEnabled: (skillId: string, enabled: boolean) =>
 		postJson(`/api/skills/${encodeURIComponent(skillId)}/toggle`, { enabled }),
+	listSkillDirectories: () => requestJson("/api/skills/directories"),
+	addSkillDirectory: (request: {
+		path: string;
+		label?: string;
+		agentId?: string | null;
+	}) => postJson("/api/skills/directories", request),
+	updateSkillDirectory: (request: { id: string }) =>
+		postJson(
+			`/api/skills/directories/${encodeURIComponent(request.id)}/update`,
+			request,
+		),
+	removeSkillDirectory: (id: string) =>
+		requestJson(`/api/skills/directories/${encodeURIComponent(id)}`, {
+			method: "DELETE",
+		}),
+	setSkillAgent: (skillId: string, agentId: string | null) =>
+		postJson(`/api/skills/${encodeURIComponent(skillId)}/agent`, { agentId }),
 	executeSkill: (skillId: string, options: unknown) =>
 		postJson("/api/skills/execute", { skillId, options }),
 
@@ -612,6 +636,11 @@ const webApi = {
 	voiceRuntimeReady: () => postJson("/api/voice/runtime-ready"),
 	voiceRuntimeEvent: (event: unknown) =>
 		postJson("/api/voice/runtime-event", event),
+	voiceAudioChunk: (payload: unknown) => {
+		void postJson("/api/voice/audio-chunk", payload).catch(() => {
+			// Fire-and-forget PCM uplink; drops are tolerated on the web build.
+		});
+	},
 	onVoiceRuntimeCommand: (callback: (command: unknown) => void) =>
 		createEventSourceSubscription(
 			"/api/voice/runtime-commands",
@@ -659,6 +688,28 @@ const webApi = {
 		dispatchTodoPlanWindowAction("pin", { pinned });
 		return Promise.resolve({ success: true, pinned });
 	},
+
+	// The radio drives ncm-cli's mpv on the host machine, so a browser client
+	// would only make audio come out of the server. Unsupported by design.
+	musicGetState: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	musicSetup: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	onMusicEvent: () => () => {},
+	musicCommand: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	musicGetNowPlaying: () => Promise.resolve(null),
+	musicGetRadio: () =>
+		Promise.resolve({ active: false, intent: '', programmeLength: 0, canResume: false }),
+	musicOpenRadio: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	musicSearch: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	musicRequestSong: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	musicGetProgramme: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	musicProgrammeAction: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	musicListProviders: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	musicSetProvider: () => Promise.resolve({ success: false, error: MUSIC_UNSUPPORTED }),
+	musicGetLyrics: () => Promise.resolve(null),
+	onMusicLyrics: () => () => {},
+	onMusicNowPlaying: () => () => {},
+	onMusicDjSpeak: () => () => {},
+	musicDjSpeakDone: () => Promise.resolve(),
 
 	listAgents: () => requestJson("/api/agents"),
 	createAgent: (name: string, systemPrompt?: string) =>
@@ -926,6 +977,56 @@ const webApi = {
 	deleteVariable: (sessionId: string, name: string) =>
 		postJson("/api/variables/delete", { sessionId, name }),
 
+	// Session goals — Electron-only for now (see docs/design/goal-system.md)
+	goalGet: async () => ({
+		success: false,
+		error: "Goals are not supported in the web build",
+	}),
+	goalSet: async () => ({
+		success: false,
+		error: "Goals are not supported in the web build",
+	}),
+	goalDiffs: async () => ({
+		success: false,
+		error: "Goals are not supported in the web build",
+	}),
+
+	getUsageSummary: (request: GetUsageSummaryRequest) =>
+		postJson("/api/usage/summary", request),
+
+	getSessionUsage: (request: GetSessionUsageRequest) =>
+		postJson("/api/usage/session", request),
+
+	// Practice runs on the Electron main process; the web build has no engine.
+	// Values mirror ONETHING_PRACTICE_DEFAULT_CONFIG (no value import: the
+	// runtime practice module pulls node:fs into the bundle).
+	practiceStart: async () => ({ snapshot: { status: "idle" as const } }),
+	practicePause: async () => ({ snapshot: { status: "idle" as const } }),
+	practiceResume: async () => ({ snapshot: { status: "idle" as const } }),
+	practiceStop: async () => ({ snapshot: { status: "idle" as const } }),
+	practiceGetState: async () => ({ snapshot: { status: "idle" as const } }),
+	practiceLog: async () => {
+		throw new Error("Practice logging is not supported in the web build");
+	},
+	practiceSummary: async (request: PracticeSummaryRequest) => ({
+		granularity: request.granularity,
+		buckets: [],
+	}),
+	practiceRecent: async () => ({ records: [] }),
+	practiceGetConfig: async (): Promise<PracticeConfigResponse> => ({
+		config: {
+			kegel: { holdSec: 10, relaxSec: 5, reps: 20, sets: 3, setRestSec: 60, sound: true },
+			pomodoro: { minutes: 25, categories: ["学习", "看视频", "写作", "其他"] },
+		},
+	}),
+	practiceSetConfig: async (): Promise<PracticeConfigResponse> => ({
+		config: {
+			kegel: { holdSec: 10, relaxSec: 5, reps: 20, sets: 3, setRestSec: 60, sound: true },
+			pomodoro: { minutes: 25, categories: ["学习", "看视频", "写作", "其他"] },
+		},
+	}),
+	onPracticeEvent: () => () => {},
+
 	projectDirsList: () => requestJson("/api/project-dirs"),
 	projectDirsGet: (path: string) => postJson("/api/project-dirs/get", { path }),
 	projectDirsAdd: (path: string, description?: string) =>
@@ -989,59 +1090,14 @@ const webApi = {
 	getMemoryOverview: (agentId?: string) =>
 		postJson("/api/memory/overview", agentId ? { agentId } : {}),
 	readMemoryFile: (request: unknown) => postJson("/api/memory/read", request),
-	searchMemory: (request: unknown) => postJson("/api/memory/search", request),
 	appendMemory: (request: unknown) => postJson("/api/memory/append", request),
 	saveMemoryFile: (request: unknown) =>
 		postJson("/api/memory/save-file", request),
-	rebuildMemoryIndex: (agentId?: string) =>
-		postJson("/api/memory/index", agentId ? { agentId } : {}),
-	listMemoryProfile: (request?: unknown) =>
-		postJson("/api/memory/profile/list", request ?? {}),
-	searchMemoryProfile: (request: unknown) =>
-		postJson("/api/memory/profile/search", request),
-	upsertMemoryProfile: (request: unknown) =>
-		postJson("/api/memory/profile/upsert", request),
-	deleteMemoryProfile: (request: unknown) =>
-		postJson("/api/memory/profile/delete", request),
-	getMemoryProfileAudit: (request: unknown) =>
-		postJson("/api/memory/profile/audit", request),
-	exportMemoryProfile: (agentId?: string) =>
-		postJson("/api/memory/profile/export", agentId ? { agentId } : {}),
-	getMemoryGraphOverview: (agentId?: string) =>
-		postJson("/api/memory/graph/overview", agentId ? { agentId } : {}),
-	listMemoryGraphEntities: (request?: unknown) =>
-		postJson("/api/memory/graph/entities/list", request ?? {}),
-	upsertMemoryGraphEntity: (request: unknown) =>
-		postJson("/api/memory/graph/entities/upsert", request),
-	deleteMemoryGraphEntity: (request: unknown) =>
-		postJson("/api/memory/graph/entities/delete", request),
-	listMemoryGraphObservations: (request?: unknown) =>
-		postJson("/api/memory/graph/observations/list", request ?? {}),
-	upsertMemoryGraphObservation: (request: unknown) =>
-		postJson("/api/memory/graph/observations/upsert", request),
-	deleteMemoryGraphObservation: (request: unknown) =>
-		postJson("/api/memory/graph/observations/delete", request),
-	listMemoryGraphRelations: (request?: unknown) =>
-		postJson("/api/memory/graph/relations/list", request ?? {}),
-	upsertMemoryGraphRelation: (request: unknown) =>
-		postJson("/api/memory/graph/relations/upsert", request),
-	deleteMemoryGraphRelation: (request: unknown) =>
-		postJson("/api/memory/graph/relations/delete", request),
-	listMemoryGraphDuplicates: (request?: unknown) =>
-		postJson("/api/memory/graph/duplicates/list", request ?? {}),
-	mergeMemoryGraphDuplicate: (request: unknown) =>
-		postJson("/api/memory/graph/duplicates/merge", request),
-	ignoreMemoryGraphDuplicate: (request: unknown) =>
-		postJson("/api/memory/graph/duplicates/ignore", request),
-	getMemoryGraphAudit: (request: unknown) =>
-		postJson("/api/memory/graph/audit", request),
 	listMemoryLogs: (request?: unknown) =>
 		postJson("/api/memory/logs/list", request ?? {}),
 	getMemoryLogStats: () => postJson("/api/memory/logs/stats", {}),
 	openMemoryLogFolder: () => postJson("/api/memory/logs/open-folder", {}),
 	cleanupMemoryLogs: () => postJson("/api/memory/logs/cleanup", {}),
-	runMemoryDreaming: (agentId?: string) =>
-		postJson("/api/memory/dreaming/run", { agentId }),
 	saveMemoryCapture: (request?: unknown) =>
 		postJson("/api/memory/capture/save", request ?? {}),
 	discardMemoryCapture: (request?: unknown) =>
@@ -1051,7 +1107,8 @@ const webApi = {
 	// 会话列表一律元数据(与 Electron IPC GET_SESSIONS 行为一致);消息经
 	// activate/分页接口按会话加载,不存在全量含消息的列表请求。
 	getSessions: () => requestJson("/api/sessions"),
-	createSession: (name: string) => postJson("/api/sessions", { name }),
+	createSession: (name: string, options?: { sessionId?: string }) =>
+		postJson("/api/sessions", { name, sessionId: options?.sessionId }),
 	activateSession: (sessionId: string) =>
 		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/activate`),
 	getSession: (sessionId: string) =>
@@ -1124,6 +1181,11 @@ const webApi = {
 	getSessionUserMarkers: (sessionId: string) =>
 		requestJson(`/api/sessions/${encodeURIComponent(sessionId)}/user-markers`),
 	onSessionMessagesChanged: createSessionMessagesChangedSubscription,
+	// Web build has no in-process session LRU cache to report on; stub keeps
+	// the "cached" tab badge silently off instead of wiring a server endpoint.
+	getSessionCacheStats: () =>
+		Promise.resolve({ size: 0, maxSize: 0, cachedSessionIds: [] }),
+	evictSessionCache: () => Promise.resolve({ success: true }),
 	getChatHistory: (sessionId: string) =>
 		postJson("/api/chat/history", { sessionId }),
 	generateTitle: (message: string) => postJson("/api/chat/title", { message }),

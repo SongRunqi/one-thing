@@ -21,6 +21,7 @@ export default defineConfig({
       { find: '@onething/core/tools', replacement: resolve(projectRoot, 'packages/core/tools/index.ts') },
       { find: '@onething/core', replacement: resolve(projectRoot, 'packages/core/index.ts') },
       { find: '@onething/runtime/acp', replacement: resolve(projectRoot, 'packages/onething-runtime/src/acp/index.ts') },
+      { find: '@onething/runtime/external-agents', replacement: resolve(projectRoot, 'packages/onething-runtime/src/external-agents/index.ts') },
       { find: '@onething/runtime/auth', replacement: resolve(projectRoot, 'packages/onething-runtime/src/auth/index.ts') },
       { find: '@onething/runtime/mcp', replacement: resolve(projectRoot, 'packages/onething-runtime/src/mcp/index.ts') },
       { find: '@onething/runtime/media', replacement: resolve(projectRoot, 'packages/onething-runtime/src/media/index.ts') },
@@ -29,6 +30,8 @@ export default defineConfig({
       { find: '@onething/runtime/variables', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/index.ts') },
       { find: '@onething/runtime/agents', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/index.ts') },
       { find: '@onething/runtime/providers', replacement: resolve(projectRoot, 'packages/onething-runtime/src/providers/index.ts') },
+      { find: '@onething/runtime/usage', replacement: resolve(projectRoot, 'packages/onething-runtime/src/usage/index.ts') },
+      { find: '@onething/runtime/practice', replacement: resolve(projectRoot, 'packages/onething-runtime/src/practice/index.ts') },
       { find: '@onething/runtime/search', replacement: resolve(projectRoot, 'packages/onething-runtime/src/search/index.ts') },
       {
         find: /^@onething\/runtime\/sessions\/(.+)$/,

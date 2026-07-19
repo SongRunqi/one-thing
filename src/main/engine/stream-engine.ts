@@ -13,7 +13,7 @@ import {
 	type MainStreamEngineRuntime,
 } from "./stream-engine-runtime.js";
 import { getChannelSessionRouter } from "../channel/index.js";
-import { fileReadTracker } from "../tools/builtin/file-read-tracker.js";
+import { isSystemInternalSource } from "../channel/origin.js";
 
 export type StreamSenderPayload = OnethingStreamSenderPayload;
 export type StreamSender = OnethingStreamSender;
@@ -47,9 +47,16 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 		},
 		sender: StreamSender,
 	): Promise<void> {
-		// Reset per-turn file read tracking so stale reads from a previous
-		// user message don't validate edits in this new turn.
-		fileReadTracker.resetTurn(sessionId);
+		// System-internal re-drives (goal continuations, ...) have no channel
+		// identity behind them. The router would resolve their `api` origin to
+		// an anonymous channel identity, remap the command into an identity
+		// session and overwrite the session's memory-profile metadata — so
+		// they bypass routing entirely, like the in-run goal injection. The
+		// source set is shared with the counterpart-identity scans.
+		if (isSystemInternalSource(command.source)) {
+			await super.handleSendMessage(sessionId, command, sender);
+			return;
+		}
 
 		const routed = getChannelSessionRouter().route({
 			sessionId,
@@ -78,9 +85,6 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 		},
 		sender: StreamSender,
 	): Promise<void> {
-		// Reset per-turn file read tracking: edit-and-resend starts a new turn.
-		fileReadTracker.resetTurn(sessionId);
-
 		const routed = getChannelSessionRouter().route({
 			sessionId,
 			origin: command.origin,
@@ -95,20 +99,6 @@ export class StreamEngine extends OnethingStreamEngine<EventBus, StreamSender> {
 		};
 		await super.handleEditAndResend(routed.sessionId, nextCommand, sender);
 	}
-
-	override async handleRetryMessage(
-		sessionId: string,
-		command: { type?: string; messageId: string },
-		sender: StreamSender,
-	): Promise<void> {
-		// Retry starts a fresh tool-execution cycle; stale reads from the
-		// previously-failed turn should not validate edits.
-		fileReadTracker.resetTurn(sessionId);
-		await super.handleRetryMessage(sessionId, command, sender);
-	}
-
-	// handleResumeAfterConfirm is intentionally NOT overridden — it continues
-	// the current turn after a permission prompt, so reads should persist.
 
 	override steerMessage(
 		sessionId: string,

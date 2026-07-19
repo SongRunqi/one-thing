@@ -20,7 +20,8 @@ function mountTabBar(panelFocused: boolean) {
       tabs,
       activeTabId: 'chat',
       sessionId: 'session-1',
-      sessionName: 'Chat',
+      chatSessionNames: { 'session-1': 'Chat' },
+      cachedSessionIds: new Set<string>(),
       isBranchSession: false,
       showSidebarToggle: false,
       showSplitButton: true,
@@ -39,10 +40,9 @@ describe('TabBar split-panel focus', () => {
     expect(wrapper.find('[title="Equalize panels"]').exists()).toBe(true)
     expect(wrapper.find('.side-panel-toggle').exists()).toBe(true)
     expect(wrapper.find('.inspector-toggle').exists()).toBe(true)
-    expect(wrapper.find('.close-btn').exists()).toBe(true)
   })
 
-  it('collapses an unfocused panel header to just the close button', () => {
+  it('collapses an unfocused panel header down to just the tabs', () => {
     const wrapper = mountTabBar(false)
 
     expect(wrapper.find('.mock-agent-selector').exists()).toBe(false)
@@ -50,9 +50,10 @@ describe('TabBar split-panel focus', () => {
     expect(wrapper.find('[title="Equalize panels"]').exists()).toBe(false)
     expect(wrapper.find('.side-panel-toggle').exists()).toBe(false)
     expect(wrapper.find('.inspector-toggle').exists()).toBe(false)
-    expect(wrapper.find('.close-btn').exists()).toBe(true)
-    // Tabs themselves stay visible.
+    // Tabs (and each tab's own close button) stay visible — closing a panel
+    // now goes through closing its last tab, not a separate panel-level button.
     expect(wrapper.find('.tab-item').exists()).toBe(true)
+    expect(wrapper.find('.tab-close').exists()).toBe(true)
   })
 
   it('collapses a focused panel too when the header gets too narrow', async () => {
@@ -60,7 +61,9 @@ describe('TabBar split-panel focus', () => {
     const RealResizeObserver = globalThis.ResizeObserver
     globalThis.ResizeObserver = class {
       constructor(callback: (entries: Array<{ contentRect: { width: number } }>) => void) {
-        resizeCallback = callback
+        // TabBar mounts two observers (header width + tab-list overflow);
+        // only the first (header) drives the tier under test.
+        resizeCallback ??= callback
       }
 
       observe() {}
@@ -77,7 +80,7 @@ describe('TabBar split-panel focus', () => {
 
       expect(wrapper.find('[title="Split view"]').exists()).toBe(false)
       expect(wrapper.find('.mock-agent-selector').exists()).toBe(false)
-      expect(wrapper.find('.close-btn').exists()).toBe(true)
+      expect(wrapper.find('.tab-item').exists()).toBe(true)
 
       resizeCallback!([{ contentRect: { width: 700 } }])
       await nextTick()

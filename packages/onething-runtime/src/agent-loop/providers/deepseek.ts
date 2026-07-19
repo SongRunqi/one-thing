@@ -135,6 +135,8 @@ interface DeepSeekStreamChunk {
 		prompt_tokens: number;
 		completion_tokens: number;
 		total_tokens: number;
+		prompt_cache_hit_tokens?: number;
+		prompt_cache_miss_tokens?: number;
 	};
 	error?: {
 		message?: string;
@@ -218,10 +220,12 @@ function mapFinishReason(reason: string | null | undefined): AgentFinishReason {
 
 function usageFromChunk(chunk: DeepSeekStreamChunk): AgentUsage | undefined {
 	if (!chunk.usage) return undefined;
+	const cacheReadTokens = chunk.usage.prompt_cache_hit_tokens;
 	return {
 		inputTokens: chunk.usage.prompt_tokens,
 		outputTokens: chunk.usage.completion_tokens,
 		totalTokens: chunk.usage.total_tokens,
+		...(cacheReadTokens ? { cacheReadTokens } : {}),
 	};
 }
 
@@ -384,7 +388,8 @@ export function createDeepSeekAgentProvider(
 		if (request.maxTokens !== undefined) body.max_tokens = request.maxTokens;
 		if (request.thinking) body.thinking = { type: request.thinking };
 		if (request.thinking === "enabled" && request.reasoningEffort) {
-			body.reasoning_effort = request.reasoningEffort;
+			// DeepSeek only accepts high/max; anything lower clamps to high.
+			body.reasoning_effort = request.reasoningEffort === "max" ? "max" : "high";
 		}
 		if (request.temperature !== undefined && request.thinking !== "enabled") {
 			body.temperature = request.temperature;

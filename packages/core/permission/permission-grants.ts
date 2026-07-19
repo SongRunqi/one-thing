@@ -4,6 +4,19 @@ import type { JsonObject } from '../json.js'
 
 export type PermissionGrantScope = 'session' | 'workspace'
 
+/**
+ * Effect kinds that must never turn into a standing grant. Approving one of
+ * these is always a one-time answer — "yes, this change, now" — never "yes, and
+ * stop asking". A capability change repoints something the system itself acts
+ * on, so a standing grant would hand the assistant a way to widen its own reach
+ * without being asked again.
+ */
+const NEVER_GRANTABLE_TYPES: ReadonlySet<string> = new Set(['capability_change'])
+
+export function isGrantableType(type: string): boolean {
+  return !NEVER_GRANTABLE_TYPES.has(type)
+}
+
 export interface PermissionGrant {
   id: string
   scope: PermissionGrantScope
@@ -114,8 +127,19 @@ function ownerMatches(grant: PermissionGrant, input: PermissionGrantMatchInput):
   const grantHasOwner = grantUserId !== undefined || grantWorkspaceId !== undefined
   const inputHasOwner = inputUserId !== undefined || inputWorkspaceId !== undefined
 
-  if (!grantHasOwner && !inputHasOwner) return true
-  if (!grantHasOwner || !inputHasOwner) return false
+  // An ownerless SESSION grant binds the session itself, not a person. Only
+  // code mints these (system pre-grants like the radio DJ's music dir) —
+  // dialog approvals always inherit the ask's identity. They are minted in
+  // identity-less drive turns, and must keep working after a human talks in
+  // the session: from that moment permission enrichment stamps the latest
+  // real identity onto every ask (deliberate — goal/gateway approval routing
+  // needs it), which flipped these asks to "owned" and locked the ownerless
+  // grants out (field-hit 2026-07-17: DJ inbox writes denied right after the
+  // user chatted with the DJ). Ownerless WORKSPACE grants keep the strict
+  // rule — they outlive sessions and span identities, so broadening them
+  // would reopen the gateway impersonation hole.
+  if (!grantHasOwner) return grant.scope === 'session' ? true : !inputHasOwner
+  if (!inputHasOwner) return false
   return grantUserId === inputUserId && grantWorkspaceId === inputWorkspaceId
 }
 
@@ -130,6 +154,9 @@ function saveWorkspaceGrants(): void {
 }
 
 export function addGrant(input: PermissionGrantInput): PermissionGrant {
+  if (!isGrantableType(input.type)) {
+    throw new Error(`Permission type is never grantable: ${input.type}`)
+  }
   const now = Date.now()
   const grant: PermissionGrant = {
     id: crypto.randomBytes(8).toString('hex'),

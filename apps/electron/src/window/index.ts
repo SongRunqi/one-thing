@@ -150,7 +150,27 @@ function saveWindowState(window: ElectronBrowserWindow): void {
 }
 
 function saveTodoPlanWindowState(window: ElectronBrowserWindow | null, stableBounds?: ElectronWindowState): void {
+  cancelScheduledTodoPlanWindowStateSave()
   saveElectronTodoPlanWindowState(window, getWindowStateOptions(), stableBounds)
+}
+
+// Persisting on every resize/move tick reads+writes the state JSON per event
+// and makes dragging stutter; batch to one write after the gesture settles.
+let todoPlanStateSaveTimer: ReturnType<typeof setTimeout> | null = null
+
+function cancelScheduledTodoPlanWindowStateSave(): void {
+  if (!todoPlanStateSaveTimer) return
+  clearTimeout(todoPlanStateSaveTimer)
+  todoPlanStateSaveTimer = null
+}
+
+function scheduleTodoPlanWindowStateSave(window: ElectronBrowserWindow): void {
+  if (todoPlanStateSaveTimer) clearTimeout(todoPlanStateSaveTimer)
+  todoPlanStateSaveTimer = setTimeout(() => {
+    todoPlanStateSaveTimer = null
+    if (window.isDestroyed() || isHidingTodoPlanWindow || isSyncingTodoPlanNativeFrame) return
+    saveTodoPlanWindowState(window)
+  }, 250)
 }
 
 // Keep track of the settings window
@@ -309,10 +329,10 @@ function createTodoPlanBrowserWindow(
       }
     },
     onResize: window => {
-      if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) saveTodoPlanWindowState(window)
+      if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) scheduleTodoPlanWindowStateSave(window)
     },
     onMove: window => {
-      if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) saveTodoPlanWindowState(window)
+      if (!isHidingTodoPlanWindow && !isSyncingTodoPlanNativeFrame) scheduleTodoPlanWindowStateSave(window)
     },
     onClose: window => {
       saveTodoPlanWindowState(window)

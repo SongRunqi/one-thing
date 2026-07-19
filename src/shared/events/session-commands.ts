@@ -22,6 +22,29 @@ export interface SendMessageCommand {
   source?: 'text' | 'voice' | 'api' | string
   voice?: VoiceTranscriptMetadata
   origin?: MessageOrigin
+  /**
+   * Provider/model the caller resolved and displayed at the moment of
+   * sending (e.g. the renderer's model picker). When set, the engine uses
+   * it directly instead of re-deriving from session/global settings —
+   * optional so non-UI callers (gateway channels, headless clients) keep
+   * today's fallback behavior unchanged.
+   */
+  providerId?: string
+  model?: string
+  /**
+   * Pin the think mode for this turn, independent of the global per-model
+   * toggle. Only honored alongside providerId — meant for system-internal
+   * drives whose model comes from their own settings panel (e.g.
+   * settings.music.radioDj), where no ThinkToggle is watching the session.
+   */
+  thinking?: boolean
+  thinkingEffort?: string
+  /**
+   * System-internal drives (radio DJ wakes, …) set this so the drive prompt
+   * does not become the session title — those sessions already carry a real,
+   * deliberately chosen name.
+   */
+  suppressTitleGeneration?: boolean
 }
 
 export interface EditAndResendCommand {
@@ -31,6 +54,9 @@ export interface EditAndResendCommand {
   messageId: string
   newContent: string
   origin?: MessageOrigin
+  /** See SendMessageCommand.providerId/model. */
+  providerId?: string
+  model?: string
 }
 
 export interface AbortCommand {

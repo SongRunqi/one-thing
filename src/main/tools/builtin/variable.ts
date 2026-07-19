@@ -1,10 +1,12 @@
 import { createVariableTool } from '@onething/runtime/tools'
 import {
-  getVariableRegistry,
+  getGuardedVariableRegistryForTools,
   VariableError,
 } from '../../variables/index.js'
 
 export const VariableTool = createVariableTool({
-  getRegistry: getVariableRegistry,
+  // Guarded facade: external identity sessions (gateway IM / API) cannot
+  // read or write global-effect variables through the tool.
+  getRegistry: getGuardedVariableRegistryForTools,
   isVariableError: error => error instanceof VariableError,
 })

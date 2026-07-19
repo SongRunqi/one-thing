@@ -88,7 +88,7 @@
               :class="{ on: providerFilter === provider.id }"
               @click="setProviderFilter(provider.id)"
             >
-              {{ provider.name }}<span class="provider-cell-count">{{ providerOptions.get(provider.id)?.length || 0 }}</span>
+              {{ providerLabel(provider) }}<span class="provider-cell-count">{{ providerOptions.get(provider.id)?.length || 0 }}</span>
             </button>
           </div>
         </template>
@@ -123,9 +123,9 @@
               @mouseenter="focusIdx = entry.index"
             >
               <span
-                class="model-tick"
+                class="model-dot"
                 aria-hidden="true"
-              >✓</span>
+              />
               <span class="model-main">
                 <span class="model-line">
                   <span class="model-name">{{ entry.option.modelName }}</span>
@@ -163,9 +163,10 @@ import { ChevronDown, Search as SearchIcon } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import type { AIProvider, OpenRouterModel } from '../../../shared/ipc'
+import { providerFamilyDisplayName } from '../../../shared/provider-families'
 import ProviderIcon from '../settings/ProviderIcon.vue'
 import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
-import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
+import { isProviderConfigEnabled, resolveProviderModelSelection } from '@/stores/helpers/provider-model'
 
 interface Props {
   sessionId?: string
@@ -208,8 +209,6 @@ const currentSession = computed(() => {
 const currentSelection = computed(() => resolveProviderModelSelection({
   settings: settingsStore.settings,
   session: currentSession.value,
-  providers: settingsStore.availableProviders,
-  getCachedModels: providerId => settingsStore.getCachedModels(providerId),
 }))
 
 const currentProvider = computed(() => (currentSelection.value.providerId || 'claude') as AIProvider)
@@ -233,14 +232,14 @@ const visibleProviders = computed(() => {
     const selectedModels = config?.selectedModels || []
     const customDefaultModel = isCustom ? config?.model : ''
     const hasModels = selectedModels.length > 0 || (isCurrent && !!currentModel.value) || !!customDefaultModel
-    return config?.enabled !== false && hasModels
+    return isProviderConfigEnabled(config) && hasModels
   })
 })
 
 const providerOptions = computed(() => {
   const map = new Map<string, ModelPickerOption[]>()
   for (const provider of visibleProviders.value) {
-    map.set(provider.id, buildProviderModelOptions(provider.id, provider.name))
+    map.set(provider.id, buildProviderModelOptions(provider.id, providerLabel(provider)))
   }
   return map
 })
@@ -258,7 +257,7 @@ const filteredGroups = computed(() => {
     .filter(provider => providerFilter.value === 'all' || provider.id === providerFilter.value)
     .map(provider => ({
       providerId: provider.id,
-      providerName: provider.name,
+      providerName: providerLabel(provider),
       options: (providerOptions.value.get(provider.id) || [])
         .filter(option => matchesQuery(option, normalized))
         .map(option => ({ option, index: index++ })),
@@ -339,6 +338,10 @@ onUnmounted(() => {
   resizeObserver?.disconnect()
   resizeObserver = null
 })
+
+function providerLabel(provider: { id: string; name: string }): string {
+  return providerFamilyDisplayName(provider.id, provider.name)
+}
 
 function buildProviderModelOptions(providerId: string, providerName: string): ModelPickerOption[] {
   const config = settingsStore.settings?.ai?.providers?.[providerId]
@@ -431,10 +434,7 @@ function cycleProviderFilter(backwards: boolean) {
 }
 
 async function selectOption(option: ModelPickerOption) {
-  if (option.providerId !== currentProvider.value) {
-    settingsStore.updateAIProvider(option.providerId as AIProvider)
-  }
-  settingsStore.updateModel(option.modelId, option.providerId as AIProvider)
+  await settingsStore.saveAIProviderDefault(option.providerId as AIProvider, option.modelId)
 
   closeFlyout()
 
@@ -610,6 +610,11 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 
 /* ————— MODEL flyout (teleported into .composer-anchor) ————— */
 
+/* 画线风:方角,不用共享 shell 的 12px 圆角。 */
+.model-flyout.composer-extension-panel {
+  border-radius: 0;
+}
+
 .model-flyout :deep(.composer-extension-body) {
   max-height: min(304px, 40vh);
 }
@@ -638,8 +643,8 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
 }
 
-/* Provider filter: a segmented mono status line, same construction as the
-   composer toolbar cells. */
+/* Provider filter: 画线 tabs on the ruled line — the active tab draws an
+   ink stroke over the row's own rule instead of filling the cell. */
 .model-flyout-providers {
   display: flex;
   align-items: stretch;
@@ -654,13 +659,13 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 }
 
 .provider-cell {
+  position: relative;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   gap: 5px;
   padding: 0 10px;
   border: 0;
-  border-right: 0.5px solid var(--composer-extension-divider);
   background: transparent;
   color: var(--ui-text-muted-fg, var(--muted));
   font-family: var(--font-mono, monospace);
@@ -669,17 +674,35 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   letter-spacing: 1.2px;
   text-transform: uppercase;
   cursor: pointer;
-  transition: color 0.12s ease, background 0.12s ease;
+  transition: color 0.12s ease;
+}
+
+.provider-cell::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -0.5px;
+  height: 1.5px;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
 
 .provider-cell:hover {
-  background: var(--composer-extension-row-hover);
   color: var(--ui-text-primary-fg, var(--text));
 }
 
+.provider-cell:hover::after {
+  opacity: 0.3;
+}
+
 .provider-cell.on {
-  background: var(--composer-extension-row-hover);
   color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.provider-cell.on::after {
+  opacity: 1;
 }
 
 .provider-cell-count {
@@ -712,41 +735,42 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   background: var(--composer-extension-divider);
 }
 
+/* 画线风:行无底色无圆角,行与行之间一道极淡点线 —— 相邻的选中行与
+   hover 行不再是两块底色粘在一起,靠行首圈点区分。
+   圈点与 AgentSelector 同记号:hover/键盘焦点空心浮现,当前填实。 */
 .model-row {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
+  gap: 8px;
   min-height: 32px;
-  padding: 5px 8px;
-  border-radius: 8px;
+  padding: 6px 8px;
+  border-radius: 0;
   cursor: pointer;
 }
 
-.model-row.focused {
-  background: var(--composer-extension-row-hover);
+.model-row + .model-row {
+  border-top: 1px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 62%, transparent);
 }
 
-.model-row.current {
-  background: var(--composer-extension-row-selected);
+.model-dot {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border: 1.5px solid var(--ui-accent-primary-fg, var(--accent));
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.12s ease;
 }
 
-.model-row.current.focused {
-  background: var(--composer-extension-row-selected-hover);
+.model-row.focused .model-dot {
+  opacity: 0.45;
 }
 
-.model-tick {
-  width: 14px;
-  flex-shrink: 0;
-  padding-top: 1px;
-  color: transparent;
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
-}
-
-.model-row.current .model-tick {
-  color: var(--ui-accent-primary-fg, var(--accent));
+.model-row.current .model-dot {
+  background: var(--ui-accent-primary-fg, var(--accent));
+  opacity: 1;
 }
 
 .model-main {
@@ -765,13 +789,23 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
 }
 
 .model-name {
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
   font-size: 12.25px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color 0.12s ease;
+}
+
+.model-row.focused .model-name {
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.model-row.current .model-name {
+  color: var(--ui-accent-primary-fg, var(--accent));
+  font-weight: 600;
 }
 
 .model-id {
@@ -784,36 +818,41 @@ function capabilityLabels(providerId: string, model?: OpenRouterModel): string[]
   opacity: 0.75;
 }
 
+/* 侧栏注记:context 长度与能力 badge 都不再是药丸底色,
+   一律 mono 小字大写(同 agent-row-meta 记号),用留白而非填色分隔。 */
 .model-context {
   margin-left: auto;
   flex-shrink: 0;
-  padding: 1px 5px;
-  border-radius: 5px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
   font-family: var(--font-mono, monospace);
   font-size: 10px;
-  font-weight: 650;
+  font-weight: 500;
+  letter-spacing: 0.08em;
   line-height: 1.4;
 }
 
-/* Capabilities: one quiet accent tone; wrapping (not truncation) keeps every
-   badge visible at any composer width. */
+/* Capabilities: wrapping (not truncation) keeps every badge visible at any
+   composer width. */
 .model-badges {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  column-gap: 10px;
+  row-gap: 2px;
 }
 
 .model-badge {
   flex: 0 0 auto;
-  padding: 1px 5px;
-  border-radius: 5px;
   white-space: nowrap;
-  color: var(--ui-accent-primary-fg, var(--accent));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
-  font-size: 10px;
-  font-weight: 650;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  font-family: var(--font-mono, monospace);
+  font-size: 9.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
   line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.model-row.current .model-badge {
+  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, var(--ui-text-muted-fg, var(--muted)) 28%);
 }
 </style>

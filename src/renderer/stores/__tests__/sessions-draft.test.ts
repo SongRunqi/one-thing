@@ -55,6 +55,11 @@ describe('sessions draft New Chat', () => {
     const draft = store.openNewChatDraft('New Chat')
 
     expect(draft.kind).toBe('new-chat-draft')
+    // The draft id is the future session id: a plain v4 UUID (the exact
+    // format the main process accepts for client-supplied ids).
+    expect(draft.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    )
     expect(store.currentSessionId).toBe(draft.id)
     expect(store.currentSession?.id).toBe(draft.id)
     expect(store.sidebarSessions[0].id).toBe(draft.id)
@@ -165,26 +170,30 @@ describe('sessions draft New Chat', () => {
     await store.updateSessionPermissionMode(draft.id, 'dangerously-allow-all')
     await store.updateSessionModel(draft.id, 'codex', 'gpt-5.5')
 
-    electronApi.createSession.mockResolvedValue({
+    // The main process persists the session under the client-supplied id
+    // (the draft's own id) — echo it back like the real handler does.
+    electronApi.createSession.mockImplementation(
+      async (name: string, options?: { sessionId?: string }) => ({
+        success: true,
+        session: {
+          id: options?.sessionId ?? 'fresh-id',
+          name,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          messageCount: 0,
+        },
+      }),
+    )
+    electronApi.activateSession.mockImplementation(async (sessionId: string) => ({
       success: true,
       session: {
-        id: 'real-new',
+        id: sessionId,
         name: 'New Chat',
         createdAt: Date.now(),
         updatedAt: Date.now(),
         messageCount: 0,
       },
-    })
-    electronApi.activateSession.mockResolvedValue({
-      success: true,
-      session: {
-        id: 'real-new',
-        name: 'New Chat',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        messageCount: 0,
-      },
-    })
+    }))
     electronApi.getSessionMessagesPage.mockResolvedValue({
       success: true,
       messages: [],
@@ -199,15 +208,15 @@ describe('sessions draft New Chat', () => {
 
     const materialized = await store.materializeNewChatDraft(draft.id, 'New Chat')
 
-    expect(materialized?.id).toBe('real-new')
-    expect(electronApi.createSession).toHaveBeenCalledWith('New Chat')
+    // Identity is stable: the session persists under the draft's own id.
+    expect(materialized?.id).toBe(draft.id)
+    expect(electronApi.createSession).toHaveBeenCalledWith('New Chat', { sessionId: draft.id })
     expect(store.newChatDrafts).toEqual([])
-    expect(store.currentSessionId).toBe('real-new')
-    expect(store.sessions[0].id).toBe('real-new')
-    expect(store.sessions.some(session => session.id === draft.id)).toBe(false)
-    expect(electronApi.updateSessionAgent).toHaveBeenCalledWith('real-new', 'agent-research')
-    expect(electronApi.updateSessionPermissionMode).toHaveBeenCalledWith('real-new', 'dangerously-allow-all')
-    expect(electronApi.updateSessionModel).toHaveBeenCalledWith('real-new', 'codex', 'gpt-5.5')
+    expect(store.currentSessionId).toBe(draft.id)
+    expect(store.sessions[0].id).toBe(draft.id)
+    expect(electronApi.updateSessionAgent).toHaveBeenCalledWith(draft.id, 'agent-research')
+    expect(electronApi.updateSessionPermissionMode).toHaveBeenCalledWith(draft.id, 'dangerously-allow-all')
+    expect(electronApi.updateSessionModel).toHaveBeenCalledWith(draft.id, 'codex', 'gpt-5.5')
     expect(store.sessions[0]).toMatchObject({
       agentId: 'agent-research',
       permissionMode: 'dangerously-allow-all',

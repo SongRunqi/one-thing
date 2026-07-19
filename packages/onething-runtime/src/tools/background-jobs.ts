@@ -26,7 +26,13 @@ export interface BackgroundJob {
 
 const jobs = new Map<string, BackgroundJob>()
 let nextId = 1
-const BACKGROUND_LOG_FILENAME = /^background-\d+-[a-z0-9]+\.log$/
+const BACKGROUND_LOG_FILENAME = /^background-(\d+)-[a-z0-9]+\.log$/
+/**
+ * Logs younger than this are skipped by cleanup: a concurrent exec may have
+ * created the file but not yet registered its job (registration happens after
+ * the shell exits), so deleting fresh logs would race tool concurrency.
+ */
+const BACKGROUND_LOG_CLEANUP_GRACE_MS = 60_000
 let getBackgroundLogRootDir = (): string => path.join(os.tmpdir(), 'headless-core-tool-outputs')
 
 export function configureCoreBackgroundJobs(options: { getLogRootDir?: () => string } = {}): void {
@@ -107,9 +113,12 @@ export function cleanupBackgroundJobLogs(): number {
 
   let removed = 0
   try {
+    const now = Date.now()
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       if (!entry.isFile()) continue
-      if (!BACKGROUND_LOG_FILENAME.test(entry.name)) continue
+      const nameMatch = BACKGROUND_LOG_FILENAME.exec(entry.name)
+      if (!nameMatch) continue
+      if (now - Number(nameMatch[1]) < BACKGROUND_LOG_CLEANUP_GRACE_MS) continue
 
       const fullPath = path.join(dir, entry.name)
       if (retainedPaths.has(path.resolve(fullPath))) continue

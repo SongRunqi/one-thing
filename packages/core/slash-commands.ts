@@ -54,10 +54,52 @@ export const COMPACT_CONTEXT_SLASH_COMMAND: SharedSlashCommandDefinition = {
   insertText: '/compact ',
 }
 
+export const GOAL_SLASH_COMMAND: SharedSlashCommandDefinition = {
+  id: 'goal',
+  name: 'Session Goal',
+  description: 'Set or view a persistent goal the agent keeps working toward',
+  usage: '/goal [<objective> | pause | resume | clear | budget <tokens>]',
+  displayLabel: '/goal',
+  insertText: '/goal ',
+  allowArgs: true,
+}
+
+export const KEGEL_SLASH_COMMAND: SharedSlashCommandDefinition = {
+  id: 'kegel',
+  name: 'Kegel Practice',
+  description: '开始一组凯格尔练习(按当前参数)',
+  usage: '/kegel',
+  displayLabel: '/kegel',
+  insertText: '/kegel',
+}
+
+export const POMODORO_SLASH_COMMAND: SharedSlashCommandDefinition = {
+  id: 'pomodoro',
+  name: 'Pomodoro',
+  description: '开始一轮番茄钟,参数为分类(默认第一个分类)',
+  usage: '/pomodoro [分类]',
+  displayLabel: '/pomodoro',
+  insertText: '/pomodoro ',
+  allowArgs: true,
+}
+
+export const PRACTICE_STOP_SLASH_COMMAND: SharedSlashCommandDefinition = {
+  id: 'practice-stop',
+  name: 'Stop Practice',
+  description: '结束当前进行中的练习(凯格尔/番茄),中途结束也会记账',
+  usage: '/practice-stop',
+  displayLabel: '/practice-stop',
+  insertText: '/practice-stop',
+}
+
 export const SHARED_SLASH_COMMANDS = [
   NEW_SESSION_SLASH_COMMAND,
   CHANGE_DIRECTORY_SLASH_COMMAND,
   COMPACT_CONTEXT_SLASH_COMMAND,
+  GOAL_SLASH_COMMAND,
+  KEGEL_SLASH_COMMAND,
+  POMODORO_SLASH_COMMAND,
+  PRACTICE_STOP_SLASH_COMMAND,
 ] as const satisfies readonly SharedSlashCommandDefinition[]
 
 export function findSharedSlashCommand(id: string): SharedSlashCommandDefinition | undefined {

@@ -15,6 +15,7 @@ import type { PromptReferenceSnapshot } from './prompts.js'
 import type { SkillConditions, SkillReferenceSnapshot, SkillSource } from './skills.js'
 import type { VoiceTranscriptMetadata } from './voice.js'
 import type { MessageOrigin } from './channel-identity.js'
+import type { SessionGoal } from './goal.js'
 
 /**
  * @deprecated Kept as a type alias for one version so old persisted
@@ -30,6 +31,9 @@ export interface ContextVariable {
   scope?: 'global' | 'session'
   description?: string
   readonly?: boolean
+  // 'static' (default): rendered in the system prompt; 'turn': delivered in
+  // per-turn <context-update> blocks; 'on-demand': tool output only.
+  volatility?: 'static' | 'turn' | 'on-demand'
   updatedAt?: number
 }
 
@@ -80,6 +84,9 @@ export interface Step {
     inputTokens: number
     outputTokens: number
     totalTokens: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+    reasoningTokens?: number
   }
 }
 
@@ -133,6 +140,9 @@ export interface ChatMessage {
     inputTokens: number
     outputTokens: number
     totalTokens: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+    reasoningTokens?: number
   }
 }
 
@@ -159,13 +169,15 @@ export interface SessionMeta {
   isArchived?: boolean
   archivedAt?: number
   originIdentityKey?: string
-  memoryScopeId?: string
   memoryProfileId?: string
   lastConnector?: string
   lastSentAt?: number
   // Additional metadata for display (computed on save)
   messageCount?: number      // Number of messages in session
   previewText?: string       // First user message preview (truncated)
+  // Active project directory, surfaced into the list so the sidebar can group
+  // by project. Persisted per-session (meta.json); the fast index backfills it.
+  workingDirectory?: string
 }
 
 /**
@@ -176,6 +188,7 @@ export interface SessionDetails extends SessionMeta {
   workingDirectory?: string
   workingDirectoryRoots?: string[]
   variables?: ContextVariable[]
+  goal?: SessionGoal
   summary?: string
   summaryUpToMessageId?: string
   summaryCreatedAt?: number
@@ -187,7 +200,6 @@ export interface SessionDetails extends SessionMeta {
   lastInputTokens?: number
   contextSize?: number
   originIdentityKey?: string
-  memoryScopeId?: string
   memoryProfileId?: string
   lastConnector?: string
   lastSentAt?: number
@@ -216,6 +228,7 @@ export interface ChatSession {
   workingDirectory?: string  // Active project directory for this session
   workingDirectoryRoots?: string[] // Additional sandbox roots for this session
   variables?: ContextVariable[] // Session-scoped context variables
+  goal?: SessionGoal // Persistent session goal (see docs/design/goal-system.md)
   // Context compacting fields
   summary?: string              // Conversation summary for context window management
   summaryUpToMessageId?: string // ID of the last message included in the summary
@@ -229,7 +242,6 @@ export interface ChatSession {
   lastInputTokens?: number      // Last request's input tokens
   contextSize?: number          // Current context window size (last turn's input tokens)
   originIdentityKey?: string    // Stable identity-session routing key for channel/API sessions
-  memoryScopeId?: string        // Memory scope selected for this session's resolved identity
   memoryProfileId?: string      // User/profile whose memory workspace should be used
   lastConnector?: string        // Last IM/API connector that routed into this session
   lastSentAt?: number           // Last inbound user message timestamp for profile/channel auditing

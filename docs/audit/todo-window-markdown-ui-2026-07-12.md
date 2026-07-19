@@ -2,6 +2,23 @@
 
 日期:2026-07-12
 范围:Todo / Notes 独立窗口(及共用的聊天内卡片)的 Markdown 编辑与渲染链路。
+
+> **修复状态(2026-07-12 同日落地,未提交)**:
+> 已修复 —— R1(reveal 撤销行级 fold-hidden,含围栏行)、R2(数学/emoji/删除线统一豁免行内代码)、R3(MATH_RE 加 flanking)、R4(fold key 去位置化)、R5(围栏状态机:记 marker 字符+长度,闭合须匹配;表格 widget 也不再进围栏内)、R6(frontmatter 闭合遇空行即止)、R11(表格 input.size 按显示宽计 CJK×2)、R17(死 CSS 三组已删);
+> C1(Command Panel 补 pin-note + 容器查询阈值 360→240)、C2(创建前 clamp 到可见屏幕)、C3(transparent-window-root 仅 mac)、C4(find/switcher 互关)、C5(resize/move 存盘 250ms 防抖 + 直接保存取消挂起)、C6(--ui-surface-note-bg 补 var fallback)、C7/C8/C9(死规则/死参数/no-op 规则已删)、C10(popover/find bar 改画线风:去投影、1px 强墨线,顺带消除阴影裁剪)。
+> 未修(低优先级或有意保留):R7-R10、R12-R16、R18、R19、C11、C12。回归测试:markdown-live-preview.test.ts +9 用例、window-state.test.ts +4 用例。
+>
+> **追加修复(2026-07-12,用户上手后反馈,真实浏览器实测校准)**:
+> 1. **勾选框与文本不对齐**——`.md-live-task-checkbox` 定位从 `top: 50%`(1em slot 的一半,实测比文本中心低 2.45px)改为实测校准的 `top: 0.365em`(em 随字号等比;15/18/21px 下残差 <0.35px)。
+> 2. **光标在渲染 UI 附近移动异常**——新增 `EditorView.atomicRanges`(`buildMarkdownAtomicRanges`,从装饰集派生):隐藏行组(表格尾行/frontmatter/折叠代码/围栏行,含前后换行合并成组)与整行 widget(任务 marker、表格块、Properties、折叠摘要)成为原子单位,方向键一步跨越,不再出现 6 步不可见停留、逐行撑开布局、整表塌成原文行等问题。reveal 语义保留:选区覆盖(shift+方向/Cmd+A)仍显原文可编辑;revealed 的行自动失去 atomic(与 R1 的 markdownHiddenLineClass 联动)。行内语法(加粗/链接/emoji/数学)保持逐字 reveal 不变。附带行为变化:marker 后 Backspace 一键去掉整个 `- [ ] `(Notion 式);隐藏行组后 Backspace 删除整组(标准 CM atomic 语义,可 undo)。
+>
+> **第二轮修正(用户实测截图:光标浮在表格 widget 右边缘、按键"光标不动但 head 在动")**:第一版 atomic 的边界停靠点仍落在被 widget 整行替换的行上(表格块行首/行尾),caret 只能按 widget 几何画在边缘,且相邻原子共享边界产生一串视觉静止的停靠位。根因修正:① 全行 widget(表格块、Properties、折叠摘要、水平线 HorizontalRuleWidget)同样外扩 ±1;② 所有区间**按真重叠合并**成孤岛(相邻隐藏/widget 行经 ±1 外扩天然重叠 1 字符会合并;两个块之间仅"相触"的空行位置保留为停靠点,否则空行会不可达)。效果:整个表格/frontmatter/折叠块/HR 是一个孤岛,光标只停在相邻真实文本上。真浏览器全语法扫描(frontmatter/标题/粗斜删/行内码/数学/emoji/链接/引用/列表/任务/HR/表格/围栏码)左右上下四向遍历:**不可见 caret 异常 0 个**;剩 4 个行内 reveal 回流的像素巧合属设计固有(Obsidian 同)。编辑路径保留:点击/选区进表格 reveal 原文、单元格 input、Cmd+A。回归测试 +2(跨表一步直达、块间空行可达),共 105 用例过。
+>
+> **第三轮修正(用户实测:`- [ ] |` 处按左"光标不动且变大"、左右顺序颠倒)**:根因在 caret 的**画点**而非停靠点——`markdownWidgetCaretRect` 取边只看 `side` 基本忽略 `pos`,光标在 widget 末端(pos>0, side<0)画到左缘、起点某些 side 组合画到右缘,视觉上前后颠倒;高度用整行 line-height(21px)比正文 caret(17.5px)高 → "变大"。修复:取边严格随 `pos`(0=左缘、>0=右缘,side 仅对零长 widget 破平);高度改 fontSize×1.2 匹配正文。另修 `CodeBlockTopbarWidget` 缺 coordsAt → CM 默认把全宽工具条 rect 压平取右缘,代码块首行行首 caret 飞到 x=544 → 补 coordsAt 锚到工具条左缘下方。验证:复刻用户按键序列全部正确(左→框左缘、再左→上行尾、右→框左、再右→文本头,x 严格单调 46<74,高度 18≈17.5);全语法扫描以"caret x 随位置单调"强校验,排除 reveal 回流后**取边错误 0 个**。单测 +1(markdownWidgetCaretRect 四种 pos/side 组合),共 106 过。
+>
+> **第四轮修正(用户截图:折行任务行的 caret 卡在两视觉行中间的左缘)**:`markdownWidgetCaretRect` 垂直定位按整个 `.cm-line` 块居中,折行时行块是多行高 → caret 落在行与行之间。修复:垂直锚定改用 **widget 自身 rect**(勾选框就在它所在的视觉行内),行块居中仅作兜底;fallback 光标路径同理改用相邻字符 rect 定行。连带发现并修复:上一轮给 CodeBlockTopbarWidget 写的 coordsAt 锚错了行(以为代码文本在工具条下方,实际两者同带)→ 改为锚定"工具条之外第一个文本字符"的 rect,从左右两个方向进入代码块首行 caret 位置一致。验证(开 lineWrapping、320px 窄容器复刻截图):折行任务行行首 caret 落在勾选框所在的第一视觉行、第二视觉行位置正确;全语法折行左扫排除 reveal 回流后异常 0。注意:live-preview 的 caret 验证必须开 `EditorView.lineWrapping`,否则折行路径全部测不到。
+>
+> **第五轮(2026-07-12,用户决策:走"Typora 短期方案"——行内语法全面原子化)**:所有经 `addLivePreviewReplace` 产生的替换装饰统一打 `markdownAtomic: true` 标记(唯一出口,一处打标全覆盖),`buildMarkdownAtomicRanges` 由 widget 白名单改为按标记收集 → **全部隐藏语法**(强调/删除线/标题井号/引用尖括号/列表序号/链接括号+URL/数学 `$`/emoji/图片)对光标移动原子化,一步跨越。效果实测:全程方向键移动**零 reveal**(行内闪烁/回流彻底消失);打完 `**hi**` 即渲染;shift+方向选中即显源码(编辑路径);Backspace 智能解包(hiddenSyntaxDeleteHandler 先行,原子删除兜底);内边界打字正确落在格式内。全语法双向扫描 0 异常;剩余 8 个"同像素双停靠点"是隐藏定界符前/后两个不同输入目标(格式内/外),语义必需,Typora 同。编辑模型至此收敛为:**渲染态只读穿越 + 选区/点击/widget 三条编辑通道**。测试 106 过(3 个旧"逐字符穿越"规格测试更新为原子语义)。
 方法:两路并行审计——① Markdown live-preview 渲染逻辑(在真实 CodeMirror 6 + happy-dom 环境下用临时 vitest 用例逐条复现,标 ✅ 的均已实测确认);② 窗口/面板 CSS 布局链路(逐条对照源码核实)。
 
 ## 涉及链路

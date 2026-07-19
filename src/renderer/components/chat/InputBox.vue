@@ -19,7 +19,6 @@
           :file-changes="queuedFileChanges"
           @steer="steerQueuedMessage"
           @remove="removeQueuedMessage"
-          @review="reviewQueuedFileChanges"
         />
         <QuotedContext
           v-if="quotedText"
@@ -38,10 +37,40 @@
       <!-- Anchor keeps flyouts glued to the composer's top edge, floating
            above whatever is docked higher in the stack. -->
       <div class="composer-anchor">
+        <MusicStatusBar :expanded="musicBarExpanded" />
         <span
           class="composer-frame-label"
+          :class="{
+            listening: isVoiceRecordingActive,
+            transcribing: isVoiceTranscribingActive,
+            music: showsMusicLabel,
+          }"
+          :aria-hidden="showsMusicLabel ? undefined : 'true'"
+          :tabindex="showsMusicLabel ? 0 : undefined"
+          :role="showsMusicLabel ? 'button' : undefined"
+          :title="showsMusicLabel ? musicNowPlayingTitle : undefined"
+          @mouseenter="onMusicLabelEnter"
+          @mouseleave="onMusicLabelLeave"
+          @focus="onMusicLabelEnter"
+          @blur="onMusicLabelLeave"
+        >{{ composerFrameLabel }}<span
+          v-if="isVoiceRecordingActive"
+          class="composer-frame-elapsed"
+        >{{ formattedVoiceElapsed }}</span><span
+          v-else-if="showsMusicLabel"
+          class="composer-frame-note"
           aria-hidden="true"
-        >COMPOSER</span>
+        >♪</span></span>
+        <button
+          v-if="isVoiceRecordingActive"
+          class="composer-voice-cancel"
+          type="button"
+          title="Discard this recording"
+          @mousedown.prevent
+          @click.stop="cancelVoiceRecording"
+        >
+          esc cancel
+        </button>
         <Transition name="fade">
           <div
             v-if="commandFeedback"
@@ -100,7 +129,7 @@
 
         <div
           class="composer"
-          :class="{ focused: isFocused }"
+          :class="{ focused: isFocused, listening: isVoiceRecordingActive, transcribing: isVoiceTranscribingActive }"
           @click="focusEditor"
         >
           <!-- Input area -->
@@ -130,58 +159,6 @@
             />
           </div>
 
-          <div
-            v-if="voiceCaptureVisible"
-            class="voice-capture-bar"
-            :class="{ recording: isVoiceRecordingActive, transcribing: isVoiceTranscribingActive }"
-            :title="voiceCaptureHint"
-            aria-live="polite"
-            @click.stop
-          >
-            <span class="voice-capture-visual">
-              <Loader2
-                v-if="isVoiceTranscribingActive"
-                class="voice-spinner"
-                :size="14"
-                :stroke-width="2"
-              />
-              <span
-                v-else
-                class="voice-wave"
-                aria-hidden="true"
-              >
-                <span />
-                <span />
-                <span />
-                <span />
-                <span />
-              </span>
-            </span>
-            <span class="voice-capture-main">
-              <span class="voice-capture-title">{{ voiceCaptureTitle }}</span>
-              <span class="voice-capture-detail">{{ voiceCaptureDetail }}</span>
-            </span>
-            <Button
-              v-if="isVoiceRecordingActive"
-              text
-              size="small"
-              type="danger"
-              class="voice-capture-stop"
-              native-type="button"
-              title="Stop recording and transcribe"
-              @mousedown.prevent
-              @click.stop="handleVoiceButton"
-            >
-              <template #icon>
-                <Square
-                  :size="12"
-                  :stroke-width="2.4"
-                />
-              </template>
-              Stop
-            </Button>
-          </div>
-
           <!-- Bottom toolbar -->
           <div class="composer-toolbar">
             <div class="toolbar-left">
@@ -201,6 +178,7 @@
                   :aria-label="contextAriaLabel"
                   @mousedown.prevent
                   @click.stop
+                  @mouseenter="loadSessionUsageOnHover"
                 >
                   <span class="context-meter-prefix">ctx</span>
                   <span
@@ -237,6 +215,50 @@
               class="toolbar-right"
               @click.stop
             >
+              <Button
+                size="small"
+                class="voice-aux-btn tts-toggle-btn"
+                :class="{ 'tts-off': !replySpeechEnabled }"
+                native-type="button"
+                :title="replySpeechEnabled ? 'Voice replies on — click to mute' : 'Voice replies off — click to speak replies'"
+                @mousedown.prevent
+                @click.stop="toggleReplySpeech"
+              >
+                <template #icon>
+                  <Volume2
+                    v-if="replySpeechEnabled"
+                    :size="16"
+                    :stroke-width="2"
+                  />
+                  <VolumeX
+                    v-else
+                    :size="16"
+                    :stroke-width="2"
+                  />
+                </template>
+              </Button>
+              <Button
+                size="small"
+                class="voice-aux-btn call-btn"
+                :class="{ 'call-active': voiceStore.callActive }"
+                native-type="button"
+                :title="voiceCallButtonTitle"
+                @mousedown.prevent
+                @click.stop="handleCallButton"
+              >
+                <template #icon>
+                  <PhoneOff
+                    v-if="voiceStore.callActive"
+                    :size="15"
+                    :stroke-width="2.2"
+                  />
+                  <Phone
+                    v-else
+                    :size="15"
+                    :stroke-width="2"
+                  />
+                </template>
+              </Button>
               <Button
                 size="small"
                 class="voice-btn"
@@ -310,11 +332,12 @@
 import Button from '@/components/common/Button.vue'
 import Select from '@/components/common/Select.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
-import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, onBeforeUnmount, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
 import { useVoiceStore } from '@/stores/voice'
+import { useMusicStore } from '@/stores/music'
 import { usePromptsStore } from '@/stores/prompts'
 import { platformApi } from '@/platform'
 // Sub-components
@@ -326,6 +349,7 @@ import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
 import QueuePanel from './composer/QueuePanel.vue'
 import AttachmentRow from './composer/AttachmentRow.vue'
+import MusicStatusBar from './composer/MusicStatusBar.vue'
 import {
   decodeAttachmentText,
   hasDiffLikeContent,
@@ -334,11 +358,11 @@ import {
   type QueuedFileChangeSummary,
   type QueuedMessage,
 } from './composer/queued-message-utils'
-import { X, Square, Check, Loader2, Mic } from 'lucide-vue-next'
-import { findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
+import { X, Square, Check, Loader2, Mic, Phone, PhoneOff, Volume2, VolumeX } from 'lucide-vue-next'
+import { executeCommand, findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
-import type { MessageAttachment, PermissionMode } from '@/types'
+import type { GetSessionUsageResponse, MessageAttachment, PermissionMode } from '@/types'
 import type { SelectModelValue } from '@/components/common/select'
 import { DEFAULT_VOICE_SETTINGS } from '@shared/defaults/settings'
 import { getDiffFromStep } from '@/stores/helpers/tool-step-view'
@@ -374,6 +398,7 @@ const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
 const voiceStore = useVoiceStore()
+const musicStore = useMusicStore()
 const promptsStore = usePromptsStore()
 
 const PERMISSION_MODES: PermissionMode[] = ['normal', 'auto-accept-edits', 'dangerously-allow-all']
@@ -512,6 +537,41 @@ const contextAriaLabel = computed(() => {
   return `Context ${formatNumber(contextTokens.value)} tokens`
 })
 
+// Session cost: fetched from the token-billing ledger (docs/design/token-billing.md).
+// Fetched lazily on hover (not eagerly on mount/watch) so every InputBox mount in
+// tests doesn't fire a real platformApi call — this component has no dedicated
+// test file that mocks @/platform, and other InputBox specs mount it directly
+// against the real (unmocked) platform module. No watcher either: keyed by
+// sessionId and read through a computed so a stale value never renders.
+const sessionUsageEntry = ref<{ sessionId: string; response: GetSessionUsageResponse } | null>(null)
+let sessionUsageLoadingForSessionId: string | null = null
+
+const sessionUsage = computed(() => {
+  const entry = sessionUsageEntry.value
+  return entry && entry.sessionId === effectiveSessionId.value ? entry.response : null
+})
+
+function formatSessionCostUSD(value: number): string {
+  if (value === 0) return '$0.00'
+  return `$${value.toFixed(value < 1 ? 4 : 2)}`
+}
+
+function loadSessionUsageOnHover(): void {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId || sessionUsageLoadingForSessionId === sessionId) return
+  sessionUsageLoadingForSessionId = sessionId
+  platformApi.getSessionUsage({ sessionId })
+    .then((response) => {
+      sessionUsageEntry.value = { sessionId, response }
+    })
+    .catch(() => {
+      // Billing is best-effort display data; leave the meter usable without it.
+    })
+    .finally(() => {
+      if (sessionUsageLoadingForSessionId === sessionId) sessionUsageLoadingForSessionId = null
+    })
+}
+
 const contextTooltipText = computed(() => {
   const lines: string[] = []
   const percent = contextPercent.value
@@ -526,6 +586,11 @@ const contextTooltipText = computed(() => {
   if (totalTokens.value > 0) lines.push(`Total: ${formatNumber(totalTokens.value)} tokens`)
   if (activeModel.value) {
     lines.push(`Model: ${activeProvider.value ? `${activeProvider.value} / ` : ''}${activeModel.value}`)
+  }
+  const usage = sessionUsage.value
+  if (usage && (usage.apiCostUSD > 0 || usage.subscriptionCostUSD > 0)) {
+    if (usage.apiCostUSD > 0) lines.push(`Session cost: ${formatSessionCostUSD(usage.apiCostUSD)}`)
+    if (usage.subscriptionCostUSD > 0) lines.push(`Session cost (subscription est.): ${formatSessionCostUSD(usage.subscriptionCostUSD)}`)
   }
   return lines.join('\n')
 })
@@ -675,7 +740,6 @@ const voiceSettings = computed(() => settingsStore.settings.voice ?? DEFAULT_VOI
 const voiceStatus = computed(() => voiceStore.status ?? 'idle')
 const isVoiceRecordingActive = computed(() => voiceStatus.value === 'recording')
 const isVoiceTranscribingActive = computed(() => voiceStatus.value === 'transcribing')
-const voiceCaptureVisible = computed(() => isVoiceRecordingActive.value || isVoiceTranscribingActive.value)
 const voiceRecordingElapsedMs = ref(0)
 let voiceRecordingTimer: number | null = null
 
@@ -701,6 +765,10 @@ const voiceConfigurationError = computed(() => {
     const globalKey = (settingsStore.settings.ai.providers.openai as any)?.apiKey?.trim()
     if (!voiceKey && !globalKey) return 'OpenAI transcription is selected, but no OpenAI API key is configured'
   }
+  if (voice.asr.provider === 'doubao') {
+    const hasKey = voice.doubao?.apiKey?.trim() || (voice.doubao?.appId?.trim() && voice.doubao?.accessToken?.trim())
+    if (!hasKey) return 'Add a Doubao (Volcano Engine) API key in Voice settings'
+  }
   return ''
 })
 const voiceButtonTitle = computed(() => {
@@ -709,10 +777,171 @@ const voiceButtonTitle = computed(() => {
   if (voiceConfigurationError.value) return `${voiceConfigurationError.value}. Click to set up.`
   return 'Start voice input'
 })
+
+function cancelVoiceRecording() {
+  void voiceStore.stop('cancel', false)
+  showCommandFeedback('success', 'Recording discarded')
+}
+
+const replySpeechEnabled = computed(() => voiceSettings.value.tts.autoSpeak)
+
+function toggleReplySpeech() {
+  const settings = settingsStore.settings
+  void settingsStore.saveSettings({
+    ...settings,
+    voice: {
+      ...voiceSettings.value,
+      tts: {
+        ...voiceSettings.value.tts,
+        autoSpeak: !replySpeechEnabled.value,
+      },
+    },
+  })
+}
+
+const voiceCallButtonTitle = computed(() => {
+  if (voiceStore.callActive) return 'Hang up the voice call'
+  if (voiceConfigurationError.value) return `${voiceConfigurationError.value}. Click to set up.`
+  return 'Start a hands-free voice call'
+})
+
+async function handleCallButton() {
+  if (voiceStore.callActive) {
+    void voiceStore.endCall()
+    return
+  }
+  if (!effectiveSessionId.value) {
+    showCommandFeedback('error', 'Open a chat before starting a voice call')
+    return
+  }
+  const ready = await prepareVoiceInput()
+  if (!ready.success) {
+    showCommandFeedback('error', ready.error || 'Voice call needs setup')
+    return
+  }
+  const response = await voiceStore.startCall(effectiveSessionId.value)
+  if (response && !response.success) {
+    showCommandFeedback('error', response.error || 'Voice call could not start')
+  }
+}
+// Scheme「frame is the state」: during a voice turn the composer's own
+// frame carries the state — the caption flips to LISTENING + timer and the
+// live transcript ghosts into the entry as its placeholder.
+const musicBarExpanded = ref(false)
+let musicCollapseTimer: ReturnType<typeof setTimeout> | null = null
+
+function onMusicLabelEnter() {
+  if (!showsMusicLabel.value) return
+  if (musicCollapseTimer) {
+    clearTimeout(musicCollapseTimer)
+    musicCollapseTimer = null
+  }
+  musicBarExpanded.value = true
+}
+
+/**
+ * Delayed: the bar sits 9px above the tag, and without this the pointer crossing
+ * that gap would collapse the bar out from under itself. The bar takes over the
+ * hold once the pointer lands on it.
+ */
+function onMusicLabelLeave() {
+  if (musicCollapseTimer) clearTimeout(musicCollapseTimer)
+  musicCollapseTimer = setTimeout(() => {
+    musicBarExpanded.value = false
+    musicCollapseTimer = null
+  }, 220)
+}
+
+onBeforeUnmount(() => {
+  if (musicCollapseTimer) clearTimeout(musicCollapseTimer)
+})
+
 const composerPlaceholder = computed(() => {
-  if (isVoiceRecordingActive.value) return 'Listening...'
-  if (isVoiceTranscribingActive.value) return 'Transcribing...'
+  if (isVoiceRecordingActive.value) return voiceStore.lastTranscript || 'Listening...'
+  if (isVoiceTranscribingActive.value) return voiceStore.lastTranscript || 'Transcribing...'
+  // The original radio vision: lyrics live in the placeholder. Only while a
+  // song plays and only until the user types — a placeholder yields to input
+  // by nature, so the lyric never competes with composing. The host's patter
+  // deliberately does NOT ride this channel (field feedback) — its home is
+  // the status bar's scrolling caption; a static placeholder can't scroll a
+  // long line and just truncates it.
+  const lyricLine = musicStore.currentLyricLine
+  if (lyricLine) return `♪ ${lyricLine}`
   return 'Ask anything...'
+})
+
+/**
+ * The collapsed music state: the frame tag is already absolutely positioned, so
+ * saying NOW PLAYING here costs zero layout — and it doubles as the hover target
+ * for the bar. Voice wins: it is a live functional state, music is ambience.
+ */
+const musicIsPlaying = computed(
+  () => !!musicStore.nowPlaying && musicStore.nowPlaying.status !== 'stopped',
+)
+
+/** The host's patter TTS is on air while the song player is silent. */
+const musicIsSpeaking = computed(
+  () => !musicIsPlaying.value && musicStore.radio.active && !!musicStore.djPatter,
+)
+
+/** A start is in flight (patter synthesis → play spawn → verify): 换歌中, not 停了. */
+const musicIsTransitioning = computed(
+  () =>
+    !musicIsPlaying.value &&
+    !musicIsSpeaking.value &&
+    musicStore.radio.active &&
+    !!musicStore.radio.starting,
+)
+
+/** Songs waiting (station open or closed earlier), no sound — resume from here. */
+const musicIsStandby = computed(
+  () =>
+    !musicIsPlaying.value &&
+    !musicIsSpeaking.value &&
+    !musicIsTransitioning.value &&
+    musicStore.radio.canResume,
+)
+
+/**
+ * The music feature is set up, so the RADIO tag is the always-available summon
+ * handle: hovering it brings up the bar even at rest (nothing playing, no
+ * queue), which is exactly when the bar acts as the 开电台 launcher. Without a
+ * resting handle the launcher would be unreachable in the hover-summon model.
+ */
+const musicAvailable = computed(
+  () =>
+    settingsStore.settings.music?.enabled === true &&
+    musicStore.state.configured === true,
+)
+
+const showsMusicLabel = computed(
+  () =>
+    !isVoiceRecordingActive.value &&
+    !isVoiceTranscribingActive.value &&
+    (musicIsPlaying.value ||
+      musicIsSpeaking.value ||
+      musicIsTransitioning.value ||
+      musicIsStandby.value ||
+      musicAvailable.value),
+)
+
+const musicNowPlayingTitle = computed(() => {
+  if (musicIsSpeaking.value) return '主持人口播中 — 音乐马上接上'
+  if (musicIsTransitioning.value) return '换歌中 — 马上开始'
+  if (musicIsStandby.value) return '电台待命 — 悬停展开,可以继续播放'
+  if (musicIsPlaying.value) {
+    return musicStore.nowPlaying?.title
+      ? `${musicStore.nowPlaying.title} — 悬停展开播放器`
+      : undefined
+  }
+  return '电台 — 悬停展开,开一台'
+})
+
+const composerFrameLabel = computed(() => {
+  if (isVoiceRecordingActive.value) return 'LISTENING'
+  if (isVoiceTranscribingActive.value) return 'TRANSCRIBING'
+  if (showsMusicLabel.value) return musicIsPlaying.value ? 'NOW PLAYING' : 'RADIO'
+  return 'COMPOSER'
 })
 
 const formattedVoiceElapsed = computed(() => {
@@ -720,24 +949,6 @@ const formattedVoiceElapsed = computed(() => {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = String(totalSeconds % 60).padStart(2, '0')
   return `${minutes}:${seconds}`
-})
-
-const voiceCaptureTitle = computed(() => {
-  if (isVoiceTranscribingActive.value) return 'Transcribing'
-  return 'Listening'
-})
-
-const voiceCaptureDetail = computed(() => {
-  if (isVoiceRecordingActive.value && voiceStore.lastTranscript) return voiceStore.lastTranscript
-  if (isVoiceTranscribingActive.value && voiceStore.lastTranscript) return voiceStore.lastTranscript
-  if (isVoiceTranscribingActive.value) return 'Speech to text'
-  return formattedVoiceElapsed.value
-})
-
-const voiceCaptureHint = computed(() => {
-  const silenceSeconds = Math.max(0.5, voiceSettings.value.vad.silenceMs / 1000)
-  if (isVoiceTranscribingActive.value) return 'Converting speech to text'
-  return `Auto-stops after about ${silenceSeconds.toFixed(1)}s of silence. Press Stop to send now.`
 })
 
 function stopVoiceRecordingTimer() {
@@ -838,12 +1049,10 @@ function latestSessionFileChanges(): QueuedFileChangeSummary | null {
       fileKeys.add(diff.filePath || entry.step.id || entry.step.toolCallId || `${fileKeys.size}`)
     }
 
-    const selected = diffEntries[diffEntries.length - 1]?.step
     return {
       fileCount: fileKeys.size,
       additions,
       deletions,
-      selectedStepId: selected?.id || selected?.toolCallId,
     }
   }
 
@@ -875,11 +1084,6 @@ function queuedPatchAttachmentChanges(): QueuedFileChangeSummary | null {
   if (fileCount === 0) return null
   return { fileCount, additions, deletions }
 }
-
-function reviewQueuedFileChanges() {
-  chatStore.openInspectorToTab?.('diff', queuedFileChanges.value?.selectedStepId || '')
-}
-
 
 
 function showAttachmentResult(accepted: AttachedFile[], rejected: { message: string }[]) {
@@ -1003,7 +1207,13 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 
   // Escape order: flyout pickers close first (handled above); with no
-  // picker open, Escape clears the quoted context next.
+  // picker open, Escape cancels an in-progress voice recording, then
+  // clears the quoted context.
+  if (e.key === 'Escape' && isVoiceRecordingActive.value) {
+    e.preventDefault()
+    cancelVoiceRecording()
+    return
+  }
   if (e.key === 'Escape' && quotedText.value) {
     e.preventDefault()
     clearQuotedText()
@@ -1084,10 +1294,11 @@ async function sendMessage() {
         })
       }
 
-      const result = await command.execute({
+      // Dispatch through executeCommand — the single entry that resolves
+      // draft session ids before a command can leak them over IPC.
+      const result = await executeCommand(commandId, {
         sessionId: effectiveSessionId.value,
-        args: argsString.split(/\s+/).filter(Boolean),
-        rawArgs: argsString,
+        args: argsString,
       })
 
       if (result.success) {
@@ -1380,6 +1591,92 @@ defineExpose({
   user-select: none;
 }
 
+/* --- voice turn: the frame itself is the state --- */
+.composer-frame-label.listening {
+  color: var(--ui-status-danger-fg, #ef4444);
+}
+
+.composer-frame-label.transcribing {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.composer-frame-elapsed {
+  margin-left: 1em;
+  letter-spacing: 0.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+/* --- music: the tag is the whole collapsed state, and the hover target --- */
+
+/* The label is pointer-events: none by default so it never eats a click meant
+   for the composer. While music plays it has a job, so it takes them back. */
+.composer-frame-label.music {
+  pointer-events: auto;
+  cursor: default;
+}
+
+.composer-frame-label.music:hover,
+.composer-frame-label.music:focus-visible {
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.composer-frame-label.music:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 70%, transparent);
+  outline-offset: 2px;
+}
+
+.composer-frame-note {
+  margin-left: 0.5em;
+  letter-spacing: 0;
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.composer-voice-cancel {
+  position: absolute;
+  top: -8px;
+  right: 12px;
+  z-index: 2;
+  padding: 0 6px;
+  border: 0;
+  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--ui-text-muted-fg, var(--muted));
+  text-decoration: underline;
+  text-decoration-color: var(--ui-border-default-border, var(--border));
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.composer-voice-cancel:hover {
+  color: var(--ui-status-danger-fg, #ef4444);
+  text-decoration-color: currentColor;
+}
+
+.composer.listening {
+  animation: composer-listening-breathe 2.2s ease-in-out infinite;
+}
+
+@keyframes composer-listening-breathe {
+  0%, 100% {
+    border-color: var(--ui-status-danger-fg, #ef4444);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
+    box-shadow: var(--ui-status-danger-ring-shadow, 0 0 0 3px var(--ui-status-danger-bg, transparent));
+  }
+}
+
+.composer.transcribing {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, var(--ui-border-default-border, var(--border)));
+}
+
 .composer-anchor:has(.composer.focused) .composer-frame-label {
   color: var(--ui-accent-primary-fg, var(--accent));
 }
@@ -1503,113 +1800,6 @@ defineExpose({
   min-height: 42px;
 }
 
-.voice-capture-bar {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  margin: 0 12px 8px;
-  min-height: 36px;
-  padding: 7px 8px 7px 10px;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 82%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-tertiary, var(--ui-state-hover-bg, var(--hover)))) 86%, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.voice-capture-bar.recording {
-  border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
-  background: var(--ui-status-danger-bg, var(--ui-surface-elevated-bg, var(--bg-tertiary, var(--ui-state-hover-bg, var(--hover)))));
-}
-
-.voice-capture-bar.transcribing {
-  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, var(--ui-border-default-border, var(--border)));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, var(--ui-surface-elevated-bg, var(--bg-tertiary, var(--ui-state-hover-bg, var(--hover)))));
-}
-
-.voice-capture-visual {
-  width: 20px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.voice-wave {
-  width: 20px;
-  height: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-}
-
-.voice-wave span {
-  width: 2px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--ui-status-danger-fg, #ef4444);
-  animation: voice-wave 0.9s ease-in-out infinite;
-}
-
-.voice-wave span:nth-child(2) { animation-delay: 0.08s; }
-.voice-wave span:nth-child(3) { animation-delay: 0.16s; }
-.voice-wave span:nth-child(4) { animation-delay: 0.24s; }
-.voice-wave span:nth-child(5) { animation-delay: 0.32s; }
-
-.voice-capture-main {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.voice-capture-title {
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.voice-capture-detail {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  line-height: 1.2;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.voice-capture-stop {
-  --app-button-height: 26px;
-  --app-button-min-width: 0;
-  --app-button-padding-x: 8px;
-  --app-button-gap: 5px;
-  --app-button-font-size: 12px;
-  --app-button-hover-fill: var(--ui-status-danger-bg, transparent);
-  --app-button-hover-fg: var(--ui-status-danger-fg, #ef4444);
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
-
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px;
-  border: 1px solid var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
-  background: var(--ui-status-danger-bg, transparent);
-  color: var(--ui-status-danger-fg, #ef4444);
-  font-size: 12px;
-  font-weight: 650;
-  cursor: pointer;
-}
-
-.voice-capture-stop:hover {
-  background: var(--ui-status-danger-bg, transparent);
-}
 
 @keyframes attachment-spin {
   to {
@@ -1617,10 +1807,7 @@ defineExpose({
   }
 }
 
-@keyframes voice-wave {
-  0%, 100% { height: 5px; opacity: 0.58; }
-  50% { height: 15px; opacity: 1; }
-}
+
 
 /* Bottom toolbar: a segmented status line — full-bleed cells split by
    hairline dividers, annotated in mono. */
@@ -1729,6 +1916,7 @@ defineExpose({
 /* Cell dividers on the right-side buttons: their own `border: 0` resets
    would otherwise erase the shared cell rule. */
 .toolbar-right > .voice-btn,
+.toolbar-right > .voice-aux-btn,
 .toolbar-right > .send-btn {
   border: 0;
   border-left: 1px solid var(--composer-cell-divider);
@@ -2034,7 +2222,8 @@ defineExpose({
   font-weight: 650;
 }
 
-.voice-btn {
+.voice-btn,
+.voice-aux-btn {
   --app-button-height: 29px;
   --app-button-min-width: 29px;
   --app-button-padding-x: 0;
@@ -2061,7 +2250,8 @@ defineExpose({
   transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease, border-color 0.16s ease;
 }
 
-.voice-btn:hover:not(:disabled) {
+.voice-btn:hover:not(:disabled),
+.voice-aux-btn:hover:not(:disabled) {
   color: var(--ui-text-primary-fg, var(--text));
   background: var(--ui-state-hover-bg, var(--hover));
 }
@@ -2093,6 +2283,17 @@ defineExpose({
 
 .voice-spinner {
   animation: attachment-spin 0.8s linear infinite;
+}
+
+.tts-toggle-btn.tts-off {
+  color: var(--ui-text-muted-fg, var(--muted));
+  opacity: 0.65;
+}
+
+.call-btn.call-active {
+  color: var(--ui-status-danger-fg, #ef4444);
+  border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
+  background: var(--ui-status-danger-bg, transparent);
 }
 
 .voice-btn:disabled {
@@ -2181,14 +2382,5 @@ defineExpose({
   .input-area { padding: 8px 10px 0; }
   .composer-toolbar { padding: 0; }
   .composer-input { font-size: 15px; }
-  .voice-capture-bar {
-    grid-template-columns: 18px minmax(0, 1fr) auto;
-    margin: 0 8px 6px;
-  }
-  .voice-capture-main {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 2px;
-  }
 }
 </style>

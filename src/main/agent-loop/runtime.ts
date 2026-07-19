@@ -12,6 +12,7 @@ import type {
   AgentOutputModality,
   AgentPromptInjector,
   AgentProvider,
+  AgentReasoningEffort,
   AgentSkillContext,
   AgentTool,
   AgentToolPolicy,
@@ -52,7 +53,7 @@ export interface BuildAgentLoopRuntimeOptions {
   temperature?: number
   maxTokens?: number
   thinking?: 'enabled' | 'disabled'
-  reasoningEffort?: 'high' | 'max'
+  reasoningEffort?: AgentReasoningEffort
   maxTurns?: number
   beforeTurn?: AgentBeforeTurnHook
   afterTurn?: AgentAfterTurnHook

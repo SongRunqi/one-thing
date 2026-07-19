@@ -18,6 +18,19 @@ files:
   - "!node_modules/lxgw-wenkai-webfont"
   - "!node_modules/lxgw-wenkai-screen-webfont"
 
+# Native sherpa-onnx addon and its dylibs must stay on disk (loaded via
+# process dlopen; the darwin package already carries an @loader_path rpath).
+asarUnpack:
+  - "**/node_modules/sherpa-onnx-node/**"
+  - "**/node_modules/sherpa-onnx-darwin-arm64/**"
+  - "**/node_modules/sherpa-onnx-darwin-x64/**"
+  - "**/node_modules/sherpa-onnx-linux-x64/**"
+  - "**/node_modules/sherpa-onnx-linux-arm64/**"
+  - "**/node_modules/sherpa-onnx-win-x64/**"
+  # node-pty ships a native addon plus a `spawn-helper` binary it execs; neither
+  # can be loaded or run from inside the asar archive.
+  - "**/node_modules/node-pty/**"
+
 # Extra resources to include (copied to resources/ in the app bundle)
 extraResources:
   - from: resources/templates
@@ -34,6 +47,10 @@ extraResources:
       - "**/*"
   - from: resources/native
     to: native
+    filter:
+      - "**/*"
+  - from: resources/models
+    to: models
     filter:
       - "**/*"
 

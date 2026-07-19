@@ -1,41 +1,12 @@
 <template>
   <div class="message error">
     <div class="error-card">
-      <div class="error-title-row">
-        <svg
-          class="error-icon"
-          width="15"
-          height="15"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-        >
-          <circle
-            cx="12"
-            cy="12"
-            r="10"
-          />
-          <line
-            x1="12"
-            y1="8"
-            x2="12"
-            y2="12"
-          />
-          <line
-            x1="12"
-            y1="16"
-            x2="12.01"
-            y2="16"
-          />
-        </svg>
-        <span class="error-title">{{ humanized.title }}</span>
-      </div>
+      <span class="frame-label">
+        <span class="tag">ERROR</span>
+        <span class="zh">生成失败</span>
+      </span>
 
-      <div class="error-hint">
-        {{ humanized.hint }}
-      </div>
+      <pre class="error-raw">{{ rawDetails }}</pre>
 
       <div class="error-actions">
         <button
@@ -53,30 +24,15 @@
         >
           切换模型…
         </button>
-        <span class="error-meta">
-          <template v-if="metaText">{{ metaText }} · </template>{{ formattedTime }}
-        </span>
-        <button
-          class="error-detail-toggle"
-          type="button"
-          @click="detailsOpen = !detailsOpen"
-        >
-          技术详情 {{ detailsOpen ? '▾' : '▸' }}
-        </button>
+        <span class="error-meta">{{ formattedTime }}</span>
       </div>
-
-      <pre
-        v-if="detailsOpen"
-        class="error-raw"
-      >{{ rawDetails }}</pre>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useChatStore } from '@/stores/chat'
-import { humanizeStreamError } from './error-humanizer'
 
 interface Props {
   content: string
@@ -88,9 +44,6 @@ interface Props {
 
 const props = defineProps<Props>()
 const chatStore = useChatStore()
-const detailsOpen = ref(false)
-
-const humanized = computed(() => humanizeStreamError(props.content))
 
 const rawDetails = computed(() => {
   const parts = [props.content]
@@ -98,14 +51,6 @@ const rawDetails = computed(() => {
     parts.push(props.errorDetails)
   }
   return parts.join('\n\n')
-})
-
-const metaText = computed(() => {
-  const bits: string[] = []
-  if (humanized.value.provider) bits.push(humanized.value.provider)
-  if (humanized.value.status) bits.push(String(humanized.value.status))
-  if (humanized.value.code) bits.push(`code ${humanized.value.code}`)
-  return bits.join(' · ')
 })
 
 const formattedTime = computed(() => {
@@ -147,39 +92,58 @@ function handleSwitchModel() {
   animation: fadeIn 0.18s ease-out;
 }
 
+/* Blueprint frame family (see GoalSummaryCard): zero fill, one hairline
+   tinted with the danger ink, a punched legend on the top rule. The failure
+   belongs to the run, not to either speaker, so it spans the reading column. */
 .error-card {
-  border: 1px solid var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.25)));
-  border-left: 3px solid var(--ui-status-danger-fg, var(--text-error, rgb(220, 68, 68)));
-  border-radius: 10px;
-  background: var(--ui-surface-panel-bg, var(--bg-panel, transparent));
-  padding: 13px 16px 12px;
+  --err-ink: var(--ui-status-danger-fg, var(--text-error, rgb(220, 68, 68)));
+
+  position: relative;
+  margin-top: 7px;
+  border: 1px solid color-mix(in srgb, var(--err-ink) 45%, transparent);
+  border-radius: var(--radius-xs, 4px);
+  padding: 12px 12px 8px;
   /* Error copy is chrome, not content — always UI sans, even inside the
      message list where --font-body carries the user's reading font. */
   font-family: var(--font-sans, inherit);
 }
 
-.error-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.frame-label {
+  position: absolute;
+  top: -7px;
+  left: 12px;
+  z-index: 1;
+  display: inline-flex;
+  gap: 0.75em;
+  align-items: baseline;
+  padding: 0 6px;
+  background: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
+  user-select: none;
 }
 
-.error-icon {
-  color: var(--ui-status-danger-fg, var(--text-error, rgb(220, 68, 68)));
-  flex-shrink: 0;
+.frame-label .tag {
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--err-ink);
 }
 
-.error-title {
-  font-size: 13.5px;
+.frame-label .zh {
+  font-size: 11px;
   font-weight: 600;
   color: var(--ui-text-primary-fg, var(--text-primary));
-  line-height: 1.4;
 }
 
-.error-hint {
-  margin: 4px 0 10px 23px;
-  font-size: 12.5px;
+.error-raw {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
   line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-all;
   color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
@@ -187,72 +151,49 @@ function handleSwitchModel() {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-left: 23px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--ui-border-default-border, var(--border-color));
 }
 
 .error-btn {
-  border: 1px solid var(--ui-border-default-border, var(--border, rgba(128, 128, 128, 0.3)));
-  border-radius: 7px;
+  padding: 2px 10px;
+  border: 1px solid var(--ui-border-default-border, var(--border-color));
+  border-radius: 2px;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  padding: 3px 12px;
-  font-size: 12.5px;
-  font-weight: 500;
-  font-family: inherit;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  line-height: 1.6;
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
-  line-height: 1.5;
+  transition: color var(--transition-fast, 0.15s) ease,
+    border-color var(--transition-fast, 0.15s) ease;
 }
 
 .error-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover, rgba(128, 128, 128, 0.1)));
+  border-color: currentcolor;
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .error-btn.primary {
-  background: var(--ui-text-primary-fg, var(--text-primary));
-  border-color: var(--ui-text-primary-fg, var(--text-primary));
-  color: var(--ui-surface-chat-bg, var(--bg-chat, #fff));
+  border-color: color-mix(in srgb, var(--err-ink) 60%, transparent);
+  color: var(--err-ink);
 }
 
 .error-btn.primary:hover {
-  opacity: 0.85;
-  background: var(--ui-text-primary-fg, var(--text-primary));
+  border-color: currentcolor;
+  color: var(--err-ink);
 }
 
 .error-meta {
   margin-left: auto;
   font-family: var(--font-mono, monospace);
   font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--ui-text-faint-fg, var(--text-faint));
   white-space: nowrap;
-}
-
-.error-detail-toggle {
-  border: none;
-  background: none;
-  padding: 2px 4px;
-  font-size: 12px;
-  font-family: inherit;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  cursor: pointer;
-}
-
-.error-detail-toggle:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
-.error-raw {
-  margin: 10px 0 0 23px;
-  padding: 8px 10px;
-  max-height: 180px;
-  overflow: auto;
-  font-family: var(--font-mono, monospace);
-  font-size: 11.5px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-all;
-  border-radius: 6px;
-  background: var(--ui-surface-code-block-bg, var(--bg-code-block, rgba(128, 128, 128, 0.08)));
-  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 @keyframes fadeIn {

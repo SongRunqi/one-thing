@@ -51,6 +51,42 @@ type ImportMetaWithDebugEnv = ImportMeta & {
 	};
 };
 
+// Lazy to avoid a module-init cycle: sessions.ts (via settings.ts) touches
+// document/localStorage at import time, which chat.ts must not force on
+// DOM-less consumers. The dynamic import is cached after the first call.
+async function draftAwareSessionsStore() {
+	const { useSessionsStore } = await import("./sessions");
+	return useSessionsStore();
+}
+
+// Same module-init-cycle concern as draftAwareSessionsStore above.
+async function draftAwareSettingsStore() {
+	const { useSettingsStore } = await import("./settings");
+	return useSettingsStore();
+}
+
+/**
+ * What you see is what you send: resolve the provider/model exactly as the
+ * model picker displays it right now, so the send-triggering command can
+ * carry it explicitly instead of the engine re-deriving it later from
+ * session/global settings (which can have drifted — see
+ * packages/onething-runtime/src/providers/provider-config.ts).
+ */
+async function resolveSendProviderOverride(sessionId: string) {
+	const [sessionsStore, settingsStore] = await Promise.all([
+		draftAwareSessionsStore(),
+		draftAwareSettingsStore(),
+	]);
+	const { resolveProviderModelSelection } = await import(
+		"./helpers/provider-model"
+	);
+	const { providerId, model } = resolveProviderModelSelection({
+		settings: settingsStore.settings,
+		session: sessionsStore.getSessionItem(sessionId),
+	});
+	return providerId ? { providerId, model } : {};
+}
+
 // Stream chunk type from IPC
 interface StreamChunk {
 	type:
@@ -175,20 +211,8 @@ interface PermissionRequestData {
 export const useChatStore = defineStore("chat", () => {
 	// ============ Per-session 状态 ============
 
+	// Drives the right workbench panel's visibility.
 	const inspectorOpen = ref(false);
-	const activeInspectorTab = ref<
-		"context" | "request" | "browser" | "diff" | "console"
-	>("context");
-	const selectedToolCallId = ref("");
-
-	function openInspectorToTab(
-		tab: "context" | "request" | "browser" | "diff" | "console",
-		toolCallId = "",
-	) {
-		activeInspectorTab.value = tab;
-		selectedToolCallId.value = toolCallId;
-		inspectorOpen.value = true;
-	}
 
 	// Messages per session
 	const sessionMessages = shallowRef<Map<string, ChatMessage[]>>(new Map());
@@ -646,10 +670,11 @@ export const useChatStore = defineStore("chat", () => {
 		}
 	}
 
-	// ============ Inspector — request snapshots ring buffer ============
+	// ============ Request snapshots ring buffer ============
 	// Per-session list of the most recent outbound LLM requests (cap = 5).
 	// Populated from the `request:snapshot` event emitted by the stream runtime.
-	// Used by ChatInspectorPanel's Request tab.
+	// Has no UI consumer since the inspector panel was removed; kept as a
+	// diagnostic buffer that `getRequestSnapshots` exposes.
 	const REQUEST_SNAPSHOT_CAP = 5;
 	const sessionRequestSnapshots = ref<Map<string, RequestSnapshot[]>>(
 		new Map(),
@@ -909,6 +934,7 @@ export const useChatStore = defineStore("chat", () => {
 		toolCall.permissionId = data.requestId;
 		toolCall.canRespond = data.canRespond;
 		toolCall.requiresConfirmation = true;
+		toolCall.permissionQueued = false;
 		toolCall.status = "pending";
 
 		const step = message.steps?.find((s) => s.toolCallId === toolCall.id);
@@ -970,8 +996,10 @@ export const useChatStore = defineStore("chat", () => {
 
 			let toolCallChanged = false;
 			for (const toolCall of message.toolCalls || []) {
-				if (!toolCall.requiresConfirmation) continue;
+				if (!toolCall.requiresConfirmation && !toolCall.permissionQueued)
+					continue;
 				toolCall.requiresConfirmation = false;
+				toolCall.permissionQueued = false;
 				toolCall.canRespond = false;
 				toolCall.status = "cancelled";
 				toolCall.endTime = toolCall.endTime ?? now;
@@ -1004,6 +1032,7 @@ export const useChatStore = defineStore("chat", () => {
 					"Permission request cancelled because the stream was stopped.";
 				if (linkedToolCall) {
 					linkedToolCall.requiresConfirmation = false;
+					linkedToolCall.permissionQueued = false;
 					linkedToolCall.canRespond = false;
 					linkedToolCall.status = "cancelled";
 					linkedToolCall.endTime = linkedToolCall.endTime ?? now;
@@ -1011,6 +1040,7 @@ export const useChatStore = defineStore("chat", () => {
 					step.toolCall = linkedToolCall;
 				} else if (step.toolCall) {
 					step.toolCall.requiresConfirmation = false;
+					step.toolCall.permissionQueued = false;
 					step.toolCall.canRespond = false;
 					step.toolCall.status = "cancelled";
 					step.toolCall.endTime = step.toolCall.endTime ?? now;
@@ -2033,7 +2063,34 @@ export const useChatStore = defineStore("chat", () => {
 		sessionId: string,
 		content: string,
 		attachments?: MessageAttachment[],
+		options?: { source?: string },
 	) {
+		// What the model picker shows right now, resolved before the draft
+		// materializes so it reflects what the user actually saw when they
+		// hit send.
+		const providerOverride = await resolveSendProviderOverride(sessionId);
+
+		// Boundary guard: a new-chat draft id exists only in the renderer.
+		// Callers normally materialize first (ChatPanel), but this is the last
+		// stop before IPC — resolve here so no draft id ever reaches the main
+		// process regardless of the caller.
+		const sessionsStore = await draftAwareSessionsStore();
+		if (sessionsStore.isNewChatDraftId(sessionId)) {
+			const materialized =
+				await sessionsStore.materializeNewChatDraft(sessionId);
+			if (!materialized) {
+				// Never drop a message silently — the restored draft gets a
+				// visible error card.
+				addLocalMessage(sessionId, {
+					role: "error",
+					content:
+						"Failed to create the session — your message was not sent. Please try again.",
+				});
+				return false;
+			}
+			sessionId = materialized.id;
+		}
+
 		sessionError.value.set(sessionId, null);
 		sessionErrorDetails.value.set(sessionId, null);
 		triggerRef(sessionError);
@@ -2045,6 +2102,8 @@ export const useChatStore = defineStore("chat", () => {
 			type: "command:send-message",
 			content,
 			attachments,
+			...providerOverride,
+			...(options?.source ? { source: options.source } : {}),
 		});
 		return true;
 	}
@@ -2055,6 +2114,10 @@ export const useChatStore = defineStore("chat", () => {
 	 * model call, without aborting the current stream.
 	 */
 	async function steerMessage(sessionId: string, content: string) {
+		// A draft has no session in main, hence no stream to steer; emitting
+		// would strand the message in a queue keyed by an id that will never
+		// run. Materializing wouldn't help either — refuse instead.
+		if ((await draftAwareSessionsStore()).isNewChatDraftId(sessionId)) return false;
 		await platformApi.emitCommand(sessionId, {
 			type: "command:inject-steering",
 			content,
@@ -2067,6 +2130,8 @@ export const useChatStore = defineStore("chat", () => {
 	 * Queue a follow-up message for after the assistant would otherwise stop.
 	 */
 	async function queueFollowUpMessage(sessionId: string, content: string) {
+		// Same as steerMessage: no main-process session, nothing to follow up.
+		if ((await draftAwareSessionsStore()).isNewChatDraftId(sessionId)) return false;
 		await platformApi.emitCommand(sessionId, {
 			type: "command:inject-followup",
 			content,
@@ -2090,10 +2155,12 @@ export const useChatStore = defineStore("chat", () => {
 		sessionLoading.value.set(sessionId, true);
 		triggerRef(sessionLoading);
 
+		const providerOverride = await resolveSendProviderOverride(sessionId);
 		await platformApi.emitCommand(sessionId, {
 			type: "command:edit-and-resend",
 			messageId,
 			newContent,
+			...providerOverride,
 		});
 		return true;
 	}
@@ -2110,9 +2177,11 @@ export const useChatStore = defineStore("chat", () => {
 			sessionLoading.value.set(sessionId, true);
 			triggerRef(sessionLoading);
 
+			const providerOverride = await resolveSendProviderOverride(sessionId);
 			await platformApi.emitCommand(sessionId, {
 				type: "command:retry-message",
 				messageId,
+				...providerOverride,
 			});
 			return true;
 		}
@@ -2375,6 +2444,89 @@ export const useChatStore = defineStore("chat", () => {
 		applyPermissionRequest(data);
 	}
 
+	/**
+	 * A tool's ask is waiting behind another prompt in the session's serialized
+	 * permission queue: show a waiting state (no respond card yet).
+	 */
+	function handlePermissionQueued(data: {
+		sessionId: string;
+		requestId: string;
+		messageId: string;
+		toolCallId: string;
+	}) {
+		const messages = getSessionMessagesRef(data.sessionId);
+		const message =
+			messages.find((m) => m.id === data.messageId) ??
+			messages.find((m) =>
+				m.toolCalls?.some((tc) => tc.id === data.toolCallId),
+			);
+		const toolCall = message?.toolCalls?.find(
+			(tc) => tc.id === data.toolCallId,
+		);
+		if (!message || !toolCall) return;
+
+		toolCall.permissionQueued = true;
+		const step = message.steps?.find((s) => s.toolCallId === toolCall.id);
+		if (step && step.status !== "awaiting-confirmation") {
+			step.status = "awaiting-confirmation";
+			if (message.steps) {
+				message.steps = [...message.steps];
+			}
+		}
+		triggerRef(sessionMessages);
+	}
+
+	/**
+	 * A pending ask settled (locally, remotely, or via grant auto-resolve):
+	 * clear cards/waiting states for the head and all coalesced followers.
+	 */
+	function handlePermissionSettled(data: {
+		sessionId: string;
+		requestId: string;
+		toolCallIds: string[];
+		decision: "allowed" | "rejected";
+	}) {
+		const messages = getSessionMessagesRef(data.sessionId);
+		let changed = false;
+		for (const message of messages) {
+			let stepsChanged = false;
+			for (const toolCallId of data.toolCallIds) {
+				const toolCall = message.toolCalls?.find(
+					(tc) => tc.id === toolCallId,
+				);
+				if (!toolCall) continue;
+				if (!toolCall.permissionQueued && !toolCall.requiresConfirmation)
+					continue;
+
+				toolCall.permissionQueued = false;
+				toolCall.requiresConfirmation = false;
+				toolCall.canRespond = false;
+				if (toolCall.permissionId === data.requestId) {
+					toolCall.permissionId = undefined;
+				}
+				if (data.decision === "allowed" && toolCall.status === "pending") {
+					toolCall.status = "executing";
+				}
+				const step = message.steps?.find(
+					(s) => s.toolCallId === toolCallId,
+				);
+				if (step && step.status === "awaiting-confirmation") {
+					// Rejected asks are finalized by the failed tool result that
+					// follows immediately; only flip the allowed path back to running.
+					if (data.decision === "allowed") {
+						step.status = "running";
+					}
+					stepsChanged = true;
+				}
+				changed = true;
+			}
+			if (stepsChanged && message.steps) {
+				message.steps = [...message.steps];
+			}
+		}
+		if (changed) triggerRef(sessionMessages);
+	}
+
 	return {
 		// Per-session state maps
 		sessionMessages,
@@ -2412,6 +2564,8 @@ export const useChatStore = defineStore("chat", () => {
 		handleToolExecutionEnd,
 		handleSkillActivated,
 		handlePermissionRequest,
+		handlePermissionQueued,
+		handlePermissionSettled,
 		handleMessageCreated,
 		handleAssistantCreated,
 		handleMessageDeleted,
@@ -2454,10 +2608,6 @@ export const useChatStore = defineStore("chat", () => {
 		getSnapshot,
 		deleteSnapshot,
 
-		// Global Inspector State
 		inspectorOpen,
-		activeInspectorTab,
-		selectedToolCallId,
-		openInspectorToTab,
 	};
 });

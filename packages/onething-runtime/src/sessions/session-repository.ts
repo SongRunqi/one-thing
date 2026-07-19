@@ -345,6 +345,21 @@ export class OnethingSessionRepository<
     })
   }
 
+  /** Session goal is opaque to the repository; the goals module owns its shape. */
+  updateSessionGoal<TGoal>(sessionId: string, goal: TGoal | null): boolean {
+    return this.applySideEffectMutation(sessionId, {
+      mutateSession: session => {
+        const target = session as TSession & { goal?: TGoal }
+        if (goal === null) {
+          delete target.goal
+        } else {
+          target.goal = goal
+        }
+      },
+      syncSession: () => {},
+    })
+  }
+
   updateSessionTokenUsage(
     sessionId: string,
     usage: CoreSessionTokenUsage,

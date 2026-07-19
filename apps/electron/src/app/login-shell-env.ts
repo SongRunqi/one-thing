@@ -135,12 +135,50 @@ export function mergeMissingEnv(
 
   for (const [name, value] of Object.entries(source)) {
     if (!value) continue
+    if (name === 'PATH') continue // Never "missing" — see mergePathEnv.
     if (target[name]) continue
     target[name] = value
     merged.push(name)
   }
 
   return merged
+}
+
+/**
+ * Unions the login shell's PATH into the target, login-shell entries first.
+ *
+ * PATH is the one variable `mergeMissingEnv` can never repair, and the only one
+ * that really matters here: a GUI-launched app is always handed a PATH by
+ * launchd (`/usr/bin:/bin:/usr/sbin:/sbin`), so "fill in what's missing" always
+ * skips it — leaving every Homebrew/nvm/pipx binary invisible to a
+ * double-clicked build while working fine in a terminal-launched dev run.
+ *
+ * A union rather than a replacement: the login shell's order carries the user's
+ * intent (their nvm shim before /usr/bin), while keeping the inherited entries
+ * means we can only ever add resolvable commands, never take one away.
+ *
+ * @returns whether PATH changed.
+ */
+export function mergePathEnv(
+  target: NodeJS.ProcessEnv,
+  source: Record<string, string>,
+): boolean {
+  const incoming = source.PATH
+  if (!incoming) return false
+
+  const existing = target.PATH ?? ''
+  const seen = new Set<string>()
+  const entries: string[] = []
+  for (const entry of [...incoming.split(path.delimiter), ...existing.split(path.delimiter)]) {
+    if (!entry || seen.has(entry)) continue
+    seen.add(entry)
+    entries.push(entry)
+  }
+
+  const merged = entries.join(path.delimiter)
+  if (merged === existing) return false
+  target.PATH = merged
+  return true
 }
 
 async function readLoginShellEnv(
@@ -229,22 +267,34 @@ export async function hydrateProcessEnvFromLoginShell(
     return shellEnv
   }
 
+  /**
+   * PATH gets its own log line on purpose. When a packaged app cannot find a
+   * globally installed CLI, this line is the whole diagnosis — a variable count
+   * tells you nothing, and the failure otherwise surfaces as an unrelated
+   * "command not found" somewhere far away.
+   */
+  const apply = (shellEnv: Record<string, string>, source: string): string[] => {
+    const merged = mergeMissingEnv(targetEnv, shellEnv)
+    if (mergePathEnv(targetEnv, shellEnv)) {
+      merged.push('PATH')
+      options.logger?.log(`[Env] Repaired PATH from ${source}: ${targetEnv.PATH}`)
+    }
+    if (merged.length > 0) {
+      options.logger?.log(`[Env] Loaded ${merged.length} missing variables from ${source}`)
+    }
+    return merged
+  }
+
   // 缓存命中:同步注入(省掉 0.5~3.5s 的登录 shell),后台仍跑一次真实
   // shell 校正 rc 内部 source 等指纹覆盖不到的漂移。
   if (cachePath && fingerprint) {
     const cached = readLoginShellEnvCache(cachePath)
     if (cached && fingerprintEquals(cached.fingerprint, fingerprint)) {
-      const merged = mergeMissingEnv(targetEnv, cached.env)
-      if (merged.length > 0) {
-        options.logger?.log(`[Env] Loaded ${merged.length} missing variables from login shell cache`)
-      }
+      const merged = apply(cached.env, 'login shell cache')
       if (!options.disableBackgroundRefresh) {
         void readAndCacheShellEnv()
           .then(shellEnv => {
-            const corrected = mergeMissingEnv(targetEnv, shellEnv)
-            if (corrected.length > 0) {
-              options.logger?.log(`[Env] Background shell refresh added ${corrected.length} variables`)
-            }
+            apply(shellEnv, 'background shell refresh')
           })
           .catch((error: any) => {
             options.logger?.warn(`[Env] Background login shell refresh failed: ${error?.message || error}`)
@@ -255,12 +305,7 @@ export async function hydrateProcessEnvFromLoginShell(
   }
 
   try {
-    const shellEnv = await readAndCacheShellEnv()
-    const merged = mergeMissingEnv(targetEnv, shellEnv)
-    if (merged.length > 0) {
-      options.logger?.log(`[Env] Loaded ${merged.length} missing variables from login shell`)
-    }
-    return merged
+    return apply(await readAndCacheShellEnv(), 'login shell')
   } catch (error: any) {
     options.logger?.warn(`[Env] Failed to load login shell environment: ${error?.message || error}`)
     return []

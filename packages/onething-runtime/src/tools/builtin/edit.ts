@@ -24,6 +24,7 @@ import { prepareExactEditPreview, type ExactEdit } from "../edit-engine.js";
 import { trimDiff, truncateDiffForDisplay } from "../replacers.js";
 import {
 	countLineChanges,
+	hashTextFileSnapshot,
 	readTextFileSnapshot,
 	type TextFileSnapshot,
 } from "../file-snapshot.js";
@@ -157,7 +158,7 @@ export function createEditTool(
 	return Tool.define<typeof EditParameters, EditMetadata>("edit", {
 		name: "Edit",
 		description:
-			"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.\n\nRead the file first with the read tool. The edit will be blocked if the file has not been read in the current session.",
+			"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.\n\nRead the file first with the read tool. The edit will be blocked if the file has not been read in the current session, or if it changed on disk since you last saw it. A file you created or edited earlier in the session counts as seen — no re-read needed.",
 		category: "builtin",
 		enabled: true,
 		autoExecute: false,
@@ -256,21 +257,10 @@ export function createEditTool(
 			};
 			throwIfAborted();
 
-			// Read-before-edit guard: require explicit read() before mutation
-			if (adapters.fileReadTracker) {
-				const checkResult = adapters.fileReadTracker.check(
-					ctx.sessionId,
-					resolvedPath,
-				);
-				if (!checkResult.read) {
-					throw new Error(checkResult.reason);
-				}
-			}
-
 			return await withFileMutationQueue(resolvedPath, async () => {
 				throwIfAborted();
 
-				try {
+				{
 					const emitPlanMetadata = (plan: EditPlan) => {
 						const displayDiff = truncateDiffForDisplay(plan.diff);
 						ctx.updateResult?.({
@@ -309,11 +299,25 @@ export function createEditTool(
 						policyEffect?.metadata?.originalContentHash;
 					const policyDiff = ctx.approvedAnalysis?.preview?.diff;
 
-					let approvedPlan = buildEditPlan(
-						resolvedPath,
-						edits,
-						await readTextFileSnapshot(resolvedPath),
-					);
+					const snapshot = await readTextFileSnapshot(resolvedPath);
+					throwIfAborted();
+
+					// Read-before-edit guard: the model must have seen this exact
+					// content, either via read() or by having written it itself.
+					// A missing file falls through to buildEditPlan's clearer
+					// "File not found" error.
+					if (snapshot.exists && adapters.fileReadTracker) {
+						const checkResult = adapters.fileReadTracker.check(
+							ctx.sessionId,
+							resolvedPath,
+							snapshot.hash,
+						);
+						if (!checkResult.read) {
+							throw new Error(checkResult.reason);
+						}
+					}
+
+					let approvedPlan = buildEditPlan(resolvedPath, edits, snapshot);
 					throwIfAborted();
 
 					if (
@@ -336,6 +340,13 @@ export function createEditTool(
 						throwIfAborted();
 						if (latestSnapshot.hash === approvedPlan.originalContentHash) {
 							await writeTextFileAsync(resolvedPath, approvedPlan.contentNew);
+							// The model authored this content, so it has seen it: record
+							// it so a follow-up edit needs no intervening re-read.
+							adapters.fileReadTracker?.record(
+								ctx.sessionId,
+								resolvedPath,
+								hashTextFileSnapshot(true, approvedPlan.contentNew),
+							);
 							throwIfAborted();
 							break;
 						}
@@ -435,11 +446,6 @@ export function createEditTool(
 							afterContentHash: audit.afterHash,
 						},
 					};
-				} finally {
-					// Read record persists for the remainder of the turn (one user
-					// message + all its tool calls). Consecutive edits no longer
-					// require a re-read. The tracker resets at the start of the
-					// next user message via resetTurn().
 				}
 			});
 		},

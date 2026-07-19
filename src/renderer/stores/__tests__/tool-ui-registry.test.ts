@@ -4,7 +4,6 @@ import {
   getToolDisplayLabel,
   getToolIcon,
   getStatusLabel,
-  getInspectorTab,
 } from '../helpers/tool-ui-registry'
 
 describe('tool-ui-registry', () => {
@@ -42,10 +41,4 @@ describe('tool-ui-registry', () => {
     expect(getStatusLabel('streaming-input')).toBe('Preparing')
   })
 
-  it('maps tools to their inspector tab', () => {
-    expect(getInspectorTab('web_search')).toBe('browser')
-    expect(getInspectorTab('edit')).toBe('diff')
-    expect(getInspectorTab('read')).toBe('diff')
-    expect(getInspectorTab('bash')).toBe('console')
-  })
 })

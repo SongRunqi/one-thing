@@ -39,10 +39,10 @@
       ref="inputRef"
       v-model="localEditingName"
       class="session-name-input"
-      maxlength="50"
+      maxlength="120"
       @click.stop
-      @keydown.enter="confirmRename"
-      @keydown.esc="cancelRename"
+      @dblclick.stop
+      @keydown.stop="handleRenameKeydown"
       @blur="confirmRename"
     >
     <Tooltip
@@ -149,6 +149,18 @@ function startRename() {
   emit('start-rename')
 }
 
+function handleRenameKeydown(event: KeyboardEvent) {
+  // 中文输入法用 Enter 选词时 isComposing 为 true，此时不能当成「确认重命名」
+  if (event.isComposing) return
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    confirmRename()
+  } else if (event.key === 'Escape') {
+    event.preventDefault()
+    cancelRename()
+  }
+}
+
 function confirmRename() {
   emit('confirm-rename', localEditingName.value)
 }
@@ -159,18 +171,19 @@ function cancelRename() {
 </script>
 
 <style scoped>
-/* Session Item - Ledger (墨线): rows hang off the list's vertical rule via
-   a tick mark. No background fills, no radii — state lives in the line. */
+/* Session Item - 抽屉风（v7）：圆角行，hover/active 用主题软填充。
+   行包装盒(.app-menu-item)带 12px 内联起点，margin 拉回后填充满宽，
+   正文缩进 32px 与抽屉头标签(chevron 12 + gap 8)对齐。 */
 .session-item {
   position: relative;
   box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 33px;
-  /* 行包装盒(.app-menu-item)自带 12px 起点，这里再退 14px，正文落在 x=26 */
-  padding: 6px 10px 6px 14px;
-  margin: 0;
+  min-height: 30px;
+  padding: 6px 10px 6px 32px;
+  margin: 0 0 0 -12px;
+  border-radius: 7px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -179,46 +192,23 @@ function cancelRename() {
     max-height 0.25s ease,
     padding 0.25s ease,
     margin 0.25s ease,
-    opacity 0.2s ease;
+    opacity 0.2s ease,
+    background-color 0.12s ease;
 }
 
-/* Tick: connects the row to the ledger rule (rule sits at x=7 on the menu,
-   see SessionList .sidebar-menu::before; this box starts at x=12, hence the
-   negative offset). Branch rows hang off the tree lines instead. */
-.session-item:not(.branch)::before {
-  content: '';
-  position: absolute;
-  left: -5px;
-  top: 50%;
-  width: 7px;
-  height: 1px;
-  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
-  transition: width 0.12s ease, background-color 0.12s ease, height 0.12s ease;
+.session-item:hover {
+  background: var(--sidebar-row-hover-fill, var(--ui-state-hover-bg, var(--hover)));
 }
 
-.session-item:not(.branch):hover::before {
-  width: 12px;
-  background: var(--ui-text-muted-fg, var(--text-muted));
-}
-
-.session-item:not(.branch).active::before {
-  width: 14px;
-  height: 2px;
-  margin-top: -1px;
-  background: var(--ui-sidebar-item-active-border, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))));
-}
-
-/* Active branch rows light their └ connector instead of a tick */
-.session-item.branch.active .tree-line-segment.connector::after {
-  border-color: var(--ui-sidebar-item-active-border, var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent))));
-  opacity: 0.9;
+.session-item.active {
+  background: var(--sidebar-row-active-fill, var(--ui-state-selected-bg, var(--bg-selected)));
 }
 
 .session-item.hidden {
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
-  margin: 0;
+  margin: 0 0 0 -12px;
   opacity: 0;
   pointer-events: none;
   overflow: hidden;
@@ -297,13 +287,12 @@ function cancelRename() {
   transition: opacity 0.12s ease;
 }
 
-/* Generating indicator - 空心圆环（画线语言），呼吸而非闪烁 */
+/* Generating indicator - 实心小圆点（v7），呼吸而非闪烁 */
 .generating-dot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  border: 1px solid var(--ui-accent-primary-fg, var(--accent));
-  background: transparent;
+  background: var(--ui-accent-primary-fg, var(--accent));
   flex-shrink: 0;
   opacity: 0;
   transform: scale(0.8);
@@ -417,11 +406,13 @@ function cancelRename() {
 .session-name {
   flex: 1;
   min-width: 0;
-  font-size: var(--type-size-500);
+  /* v7：行文 13px（--type-size-500 是 14px，比设计稿大一号） */
+  font-size: 13px;
   font-weight: var(--type-body-weight);
   line-height: var(--type-chat-compact-line-height-px);
   letter-spacing: 0;
-  color: var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item)));
+  /* 72% 墨：比全墨的分组头轻一档（色阶来自 SessionList 的 --sidebar-row-* 派生链） */
+  color: var(--sidebar-row-fg, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -429,12 +420,12 @@ function cancelRename() {
 }
 
 .session-item:hover .session-name {
-  color: var(--ui-sidebar-item-hover-fg, var(--ui-text-primary-fg, var(--text-sidebar-item-hover)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-sidebar-item-hover)));
 }
 
 .session-item.active .session-name {
   font-weight: var(--type-label-weight);
-  color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 .session-name-input {
@@ -444,7 +435,7 @@ function cancelRename() {
   margin: 0;
   border: none;
   background: transparent;
-  font-size: var(--type-size-500);
+  font-size: 13px;
   font-weight: var(--type-body-weight);
   line-height: var(--type-chat-compact-line-height-px);
   color: var(--ui-sidebar-item-active-fg, var(--ui-text-primary-fg, var(--text)));

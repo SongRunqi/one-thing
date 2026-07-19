@@ -23,6 +23,7 @@ import {
 import { saveMediaImage } from "../../media/save-image.js";
 import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop/providers";
 import { updateSessionUsage } from "../../session/usage.js";
+import { recordUsage } from "../../usage/index.js";
 import { triggerManager } from "../triggers/index.js";
 import { runAfterAssistantResponseHooks } from "../../plugins/lifecycle.js";
 import type { ChatMessage, ChatSession } from "../../../shared/ipc.js";
@@ -77,8 +78,17 @@ export interface AgentLoopExecutorState {
 		outputTokens: number;
 		totalTokens: number;
 		durationMs?: number;
+		cacheReadTokens?: number;
+		cacheWriteTokens?: number;
+		reasoningTokens?: number;
 	};
-	lastTurnUsage?: { inputTokens: number; outputTokens: number };
+	lastTurnUsage?: {
+		inputTokens: number;
+		outputTokens: number;
+		cacheReadTokens?: number;
+		cacheWriteTokens?: number;
+		reasoningTokens?: number;
+	};
 	toolIterations: number;
 	skillManageCalled: boolean;
 	latestUserPrompt?: string;
@@ -385,6 +395,19 @@ export async function applyAgentLoopStreamChunk(
 		syncLastTurnUsage: (usage) => {
 			state.lastTurnUsage = usage;
 			state.ctx.lastTurnUsage = usage;
+			// Billing must never break the chat stream: isolate failures here.
+			try {
+				recordUsage({
+					sessionId: state.ctx.sessionId,
+					assistantMessageId: state.ctx.assistantMessageId,
+					providerId: state.ctx.providerId,
+					modelId: state.ctx.providerConfig.model,
+					source: "chat",
+					usage,
+				});
+			} catch (error) {
+				console.error("[AgentLoopExecutor] recordUsage failed:", error);
+			}
 		},
 		updateStepsUsageByTurn: (turnIndex, usage) => {
 			store.updateStepsUsageByTurn(

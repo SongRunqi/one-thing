@@ -57,6 +57,14 @@ export interface EvalModelResponse {
 export interface EvalModelCallOptions {
 	messages: EvalChatMessage[];
 	model: string;
+	/**
+	 * Preferred ORIGIN provider for this call (scene replays carry the
+	 * provider the incident actually ran on). Callers that can route
+	 * per-provider honor it when credentials resolve, and fall back to
+	 * their bound provider+model otherwise; callers that can't route
+	 * (CLI env-based client) ignore it.
+	 */
+	provider?: string;
 	tools?: EvalToolDef[];
 	/** Sampling params from the captured scene (params.json). */
 	temperature?: number;

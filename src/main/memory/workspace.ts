@@ -15,7 +15,6 @@ import {
 	resolveSoulMemoryRootPath as coreResolveSoulMemoryRootPath,
 } from "@onething/runtime/plugins";
 import {
-	canonicalKindFromCaptureKind as runtimeCanonicalKindFromCaptureKind,
 	isDurableCandidate as runtimeIsDurableCandidate,
 	sanitizeAgentPathSegment as runtimeSanitizeAgentPathSegment,
 } from "@onething/runtime/memory/workspace";
@@ -23,22 +22,14 @@ import {
 export {
 	CAPTURE_MAX_PENDING,
 	CAPTURE_PENDING_STORE_KEY,
-	CANONICAL_MIGRATION_STORE_KEY,
-	DREAMING_SCHEDULER_TASK_ID,
-	GRAPH_MIGRATION_STORE_KEY,
 	SOUL_MEMORY_PLUGIN_ID,
 	SOUL_MEMORY_RULES_PROMPT,
 	SOUL_TEMPLATE,
-	USER_SELF_ENTITY_ID,
 	asBullet,
-	canonicalTokens,
-	cosine,
 	dateString,
 	dateStringDaysAgo,
 	estimateTokens,
 	extractCandidateValue,
-	ftsQuery,
-	isIndexableMarkdownPath,
 	looksLikeNameValue,
 	normalizeBulletText,
 	normalizeForDedupe,
@@ -50,7 +41,6 @@ export {
 	sha,
 	slugifyMemoryKeyPart,
 	todayString,
-	tokenJaccard,
 	truncate,
 	writeIfMissing,
 } from "@onething/runtime/memory/workspace";
@@ -115,14 +105,6 @@ export function getWorkspace(
 		settings,
 		...plan,
 	};
-}
-
-export function canonicalKindFromCaptureKind(
-	kind: import("@onething/runtime/memory/types").CaptureCandidateKind | string,
-): import("../../shared/ipc.js").CanonicalMemoryKind {
-	return runtimeCanonicalKindFromCaptureKind(
-		kind,
-	) as import("../../shared/ipc.js").CanonicalMemoryKind;
 }
 
 export function isDurableCandidate(

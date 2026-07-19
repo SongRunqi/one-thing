@@ -25,7 +25,7 @@ interface SeenRequest {
   toolChoice?: AgentToolChoice
   tools?: string[]
   thinking?: 'enabled' | 'disabled'
-  reasoningEffort?: 'high' | 'max'
+  reasoningEffort?: AgentTurnRequest['reasoningEffort']
 }
 
 interface TestVisionProvider extends AgentProvider {
@@ -103,11 +103,6 @@ function activeMemorySettings(): AppSettings {
       soulMemory: {
         ...DEFAULT_SOUL_MEMORY_SETTINGS,
         enabled: true,
-        activeMemory: {
-          ...DEFAULT_SOUL_MEMORY_SETTINGS.activeMemory,
-          enabled: true,
-          timeoutMs: 4321,
-        },
       },
     },
   }
@@ -201,6 +196,7 @@ vi.mock('../../../mcp/index.js', () => ({
 vi.mock('../../../providers/model-registry.js', () => ({
   getModelContextLength: mocks.getModelContextLength,
   getModelMaxOutputTokens: mocks.getModelMaxOutputTokens,
+  getModelCapabilityEntry: vi.fn(() => undefined),
 }))
 
 vi.mock('../../../tools/index.js', () => ({
@@ -230,9 +226,24 @@ vi.mock('../../../project-dirs/index.js', () => ({
   buildProjectDirsPromptVars: mocks.buildProjectDirsPromptVars,
 }))
 
-vi.mock('../../../providers/agent-runtime.js', () => ({
-  createAgentProviderFromRuntime: vi.fn(() => mocks.visionProvider),
-}))
+vi.mock('../../../providers/agent-runtime.js', () => {
+  const createAgentProviderFromRuntime = vi.fn(
+    (_providerId?: string, _config?: unknown) => mocks.visionProvider,
+  )
+  return {
+    createAgentProviderFromRuntime,
+    isACPProviderRuntime: vi.fn((providerId: string) => providerId === 'acp'),
+    isDeepSeekProviderRuntime: vi.fn((providerId: string) => providerId === 'deepseek'),
+    // Mirrors the real implementation: acp/deepseek short-circuit, otherwise
+    // route to the (mocked) agent provider factory.
+    resolveProviderRuntimeRoute: vi.fn((providerId: string, config: unknown) => {
+      if (providerId === 'acp') return { kind: 'acp' }
+      if (providerId === 'deepseek') return { kind: 'deepseek' }
+      const provider = createAgentProviderFromRuntime(providerId, config)
+      return provider ? { kind: 'agent', provider } : { kind: 'unsupported' }
+    }),
+  }
+})
 
 vi.mock('../../context-compact.js', () => ({
   compactSessionContext: vi.fn(),

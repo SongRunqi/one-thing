@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sidebar v2 · 方案一/三 · 项目分组 + 按钮置顶</title>
+<style>
+  :root {
+    --ink: #1c1b18; --ink-2: #6f6c64; --ink-3: #a5a29a; --paper: #f3f2ee; --hair: #dcdad3;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+    padding: 48px 40px 80px;
+  }
+  .page-head { max-width: 900px; margin: 0 auto 14px; }
+  .page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.02em; }
+  .page-head p { margin-top: 8px; font-size: 13px; color: var(--ink-2); line-height: 1.75; }
+  .page-head code { font-family: "SF Mono", Menlo, monospace; font-size: 12px;
+    background: #e8e6df; padding: 1px 5px; border-radius: 4px; }
+  .legend { max-width: 900px; margin: 0 auto 34px; font-size: 12px; color: var(--ink-2);
+    line-height: 1.9; border-top: 1px solid var(--hair); padding-top: 14px; }
+  .legend b { color: var(--ink); }
+  .gallery { max-width: 900px; margin: 0 auto; display: flex; gap: 60px; flex-wrap: wrap; }
+  .scheme > header { margin-bottom: 14px; }
+  .scheme .num { font-size: 11px; letter-spacing: 0.22em; color: var(--ink-3); }
+  .scheme h2 { font-size: 16px; font-weight: 600; margin-top: 4px; }
+  .scheme .trait { margin-top: 6px; font-size: 12.5px; color: var(--ink-2);
+    line-height: 1.7; max-width: 340px; }
+  .scheme .trait b { color: var(--ink); font-weight: 600; }
+
+  .win {
+    width: 300px; height: 640px; border-radius: 10px; overflow: hidden; position: relative;
+    box-shadow: 0 1px 2px rgba(20,18,12,.08), 0 12px 32px rgba(20,18,12,.10);
+    display: flex; flex-direction: column; font-size: 13px;
+  }
+  .lights { display: flex; gap: 7px; padding: 14px 0 0 14px; flex-shrink: 0; }
+  .lights i { width: 11px; height: 11px; border-radius: 50%; background: rgba(0,0,0,.13); }
+  .ic { width: 16px; height: 16px; stroke: currentColor; stroke-width: 1.7; fill: none;
+        stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .scroll { flex: 1; overflow: hidden; min-height: 0; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  @keyframes blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+
+  /* ══ 方案一 v2 · 呼吸 ══════════════════════ */
+  .v1 { background: #fcfcfa; color: #1a1a18; }
+  .v1 .body { display: flex; flex-direction: column; height: 100%; padding-top: 14px; }
+  /* 顶部全局动作区:新会话 + workspace 图标行,和会话流上下彻底分开 */
+  .v1 .top { padding: 6px 26px 14px; border-bottom: 1px solid #efeee9; }
+  .v1 .newchat { padding: 4px 0 12px; color: #8e8b82; letter-spacing: 0.04em; cursor: pointer; }
+  .v1 .newchat:hover { color: #1a1a18; }
+  .v1 .actions { display: flex; align-items: center; gap: 16px; color: #c4c1b7; }
+  .v1 .actions .ic { cursor: pointer; }
+  .v1 .actions .ic:hover, .v1 .actions .ic.on { color: #1a1a18; }
+  .v1 .actions .sp { flex: 1; }
+  .v1 .scroll { padding: 8px 0 12px; }
+  .v1 .group { padding: 0 26px; margin-top: 20px; }
+  .v1 .group:first-child { margin-top: 8px; }
+  /* 项目组头:名字 + 极淡的计数 */
+  .v1 .ghead { display: flex; align-items: baseline; gap: 8px; margin-bottom: 9px; }
+  .v1 .gname { font-size: 11px; letter-spacing: 0.14em; color: #9c9990; text-transform: uppercase; }
+  .v1 .gname.live { color: #1a1a18; }
+  .v1 .gcount { font-size: 10px; color: #cbc8be; font-variant-numeric: tabular-nums; }
+  .v1 .item { position: relative; padding: 6px 0; color: #7d7a71; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.5; }
+  .v1 .item:hover { color: #1a1a18; }
+  .v1 .item.active { color: #1a1a18; font-weight: 550; }
+  .v1 .item.active::before { content: ''; position: absolute; left: -13px; top: 50%;
+    width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: #1a1a18; }
+  .v1 .item .gen { display: inline-block; width: 5px; height: 5px; border-radius: 50%;
+    background: #1a1a18; margin-left: 8px; vertical-align: 1px; animation: pulse 1.4s ease infinite; }
+  /* 未归类桶内部退回时间:更淡、缩进的小分隔 */
+  .v1 .subtime { font-size: 10px; color: #c4c1b7; letter-spacing: 0.1em; margin: 12px 0 4px; }
+
+  /* ══ 方案三 v2 · 终端 ══════════════════════ */
+  .v3 { background: #16181d; color: #b9c0b4;
+        font-family: "SF Mono", "JetBrains Mono", Menlo, monospace; font-size: 12px; }
+  .v3 .lights i { background: rgba(255,255,255,.14); }
+  .v3 .body { display: flex; flex-direction: column; height: 100%; }
+  /* 顶部像 tmux 顶栏:命令 + workspace 缩写行 */
+  .v3 .top { padding: 12px 16px 10px; border-bottom: 1px solid #23262c; }
+  .v3 .cmd { color: #6e7a72; padding: 2px 0 10px; cursor: pointer; }
+  .v3 .cmd:hover { color: #d6ddd0; }
+  .v3 .cmd b { color: #a6d189; font-weight: 500; }
+  .v3 .tabs { display: flex; gap: 12px; font-size: 11px; color: #6e7a72; }
+  .v3 .tabs span { cursor: pointer; }
+  .v3 .tabs span:hover { color: #d6ddd0; }
+  .v3 .tabs .on { color: #a6d189; }
+  .v3 .tabs .sp { flex: 1; }
+  .v3 .scroll { padding: 12px 16px; }
+  /* 项目组头 = 目录路径,天生契合终端 */
+  .v3 .ghead { color: #5c6461; padding: 14px 0 6px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .v3 .ghead:first-child { padding-top: 0; }
+  .v3 .ghead .p { color: #7f95bb; }
+  .v3 .ghead.live .p { color: #a6d189; }
+  .v3 .item { padding: 3.5px 0 3.5px 16px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; cursor: pointer; color: #9aa398; position: relative; }
+  .v3 .item:hover { color: #d6ddd0; }
+  .v3 .item.active { color: #e8ecdf; }
+  .v3 .item.active::before { content: '❯'; position: absolute; left: 0; color: #a6d189; }
+  .v3 .caret { display: inline-block; width: 7px; height: 13px; background: #a6d189;
+    vertical-align: -2px; margin-left: 6px; animation: blink 1.1s step-end infinite; }
+  .v3 .item .gen { color: #e5c890; }
+  .v3 .subtime { color: #4f5651; padding: 10px 0 3px 16px; }
+</style>
+</head>
+<body>
+
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 4.5a3.2 3.2 0 0 0-3.2 3.2c-2 .3-3.1 1.8-3.1 3.4 0 1.2.5 2.2 1.4 2.9-.3 2 1.2 4 3.5 4 .9 0 1.8-.4 2.4-1 .6.6 1.5 1 2.4 1 2.3 0 3.8-2 3.5-4 .9-.7 1.4-1.7 1.4-2.9 0-1.6-1.1-3.1-3.1-3.4A3.2 3.2 0 0 0 12 4.5z"/><path d="M12 4.5V18"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.7" cy="10" r="1.4"/><path d="M20.5 15.5 16 11l-7 7.5"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="5" y="8.5" width="14" height="10.5" rx="2.5"/><path d="M12 8.5V5.5"/><circle cx="12" cy="4" r="1.3"/><path d="M9.3 13.2v.8M14.7 13.2v.8M9.5 16.5h5"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 9.8h16M8.5 3.5v4M15.5 3.5v4M10.5 14.5l1.5 1.5 3-3"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M6 6a8.3 8.3 0 0 0 0 12M18 6a8.3 8.3 0 0 1 0 12"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/></symbol>
+</svg>
+
+<div class="page-head">
+  <h1>Sidebar v2 — 项目分组 + 按钮置顶</h1>
+  <p>只保留你喜欢的<b>方案一(呼吸)</b>和<b>方案三(终端)</b>。两处改动:①workspace 图标行 + 新会话搬到<b>顶部</b>,和会话流上下彻底分开;
+     ②会话从时间桶改成<b>按 <code>workingDirectory</code> 项目分组</b>。有 cwd 的进项目组,没有的落 <code>未归类</code> 桶、桶内退回时间。项目名用了你真实数据里的组。</p>
+</div>
+<div class="legend">
+  <b>分组顺序:</b>电台(live) → 置顶 → 各项目(按最近活跃) → 未归类。&nbsp;&nbsp;
+  <b>项目组头:</b>方案一是项目名 + 淡计数;方案三直接是目录路径,天生契合终端。&nbsp;&nbsp;
+  <b>未归类:</b>内部用极淡的 <code>今天/昨天</code> 小分隔兜底,以后可换成 AI 主题标签。
+</div>
+
+<div class="gallery">
+
+  <!-- ═══ 方案一 v2 ═══ -->
+  <section class="scheme">
+    <header>
+      <div class="num">方案一 · v2</div>
+      <h2>呼吸 · 项目分组</h2>
+      <div class="trait">顶部一行图标是全局入口,和下方会话流被一道淡线分开;项目名做组头,<b>零线条零底色</b>的性格不变。</div>
+    </header>
+    <div class="win v1">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="body">
+        <div class="top">
+          <div class="newchat">＋ 新会话</div>
+          <div class="actions">
+            <svg class="ic"><use href="#i-brain"/></svg>
+            <svg class="ic"><use href="#i-image"/></svg>
+            <svg class="ic"><use href="#i-bot"/></svg>
+            <svg class="ic"><use href="#i-task"/></svg>
+            <svg class="ic"><use href="#i-radio"/></svg>
+            <span class="sp"></span>
+            <svg class="ic"><use href="#i-gear"/></svg>
+          </div>
+        </div>
+        <div class="scroll">
+          <div class="group">
+            <div class="ghead"><span class="gname live">电台 · LIVE</span></div>
+            <div class="item">深夜爵士 · DJ 手记<span class="gen"></span></div>
+          </div>
+          <div class="group">
+            <div class="ghead"><span class="gname">置顶</span></div>
+            <div class="item">记忆系统 v2 设计</div>
+          </div>
+          <div class="group">
+            <div class="ghead"><span class="gname">start-electron</span><span class="gcount">6</span></div>
+            <div class="item active">窗口透明度丢帧排查</div>
+            <div class="item">Prompt Assembly 重构</div>
+            <div class="item">设置页画线风改版</div>
+          </div>
+          <div class="group">
+            <div class="ghead"><span class="gname">transreader-swift</span><span class="gcount">9</span></div>
+            <div class="item">菜单栏翻译窗抖动</div>
+            <div class="item">Flask 15487 端口占用</div>
+          </div>
+          <div class="group">
+            <div class="ghead"><span class="gname">rainny-asr</span><span class="gcount">9</span></div>
+            <div class="item">豆包 ASR 联调</div>
+          </div>
+          <div class="group">
+            <div class="ghead"><span class="gname">未归类</span><span class="gcount">14</span></div>
+            <div class="subtime">今天</div>
+            <div class="item">纳瓦尔宝典 读书笔记</div>
+            <div class="item">帮我起个项目名</div>
+            <div class="subtime">昨天</div>
+            <div class="item">周末去哪玩</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ 方案三 v2 ═══ -->
+  <section class="scheme">
+    <header>
+      <div class="num">方案三 · v2</div>
+      <h2>终端 · 目录即分组</h2>
+      <div class="trait">顶部像 tmux 顶栏:命令行 + workspace 缩写标签;项目组头直接写成<b>目录路径</b>,和等宽暗面气质天衣无缝。</div>
+    </header>
+    <div class="win v3">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="body">
+        <div class="top">
+          <div class="cmd"><b>+</b> new session</div>
+          <div class="tabs">
+            <span>mem</span><span>med</span><span>agt</span><span>tsk</span><span class="on">mus</span>
+            <span class="sp"></span><span>cfg</span>
+          </div>
+        </div>
+        <div class="scroll">
+          <div class="ghead live"># <span class="p">radio://</span> live</div>
+          <div class="item">深夜爵士 · DJ 手记 <span class="gen">▚</span></div>
+
+          <div class="ghead"># pinned</div>
+          <div class="item">记忆系统 v2 设计</div>
+
+          <div class="ghead"><span class="p">~/code/start-electron</span></div>
+          <div class="item active">窗口透明度丢帧排查<span class="caret"></span></div>
+          <div class="item">Prompt Assembly 重构</div>
+          <div class="item">设置页画线风改版</div>
+
+          <div class="ghead"><span class="p">~/code/transreader-swift</span></div>
+          <div class="item">菜单栏翻译窗抖动</div>
+          <div class="item">Flask 15487 端口占用</div>
+
+          <div class="ghead"><span class="p">~/code/rainny-asr</span></div>
+          <div class="item">豆包 ASR 联调</div>
+
+          <div class="ghead"># untracked <span style="color:#4f5651">(no cwd)</span></div>
+          <div class="subtime">today</div>
+          <div class="item">纳瓦尔宝典 读书笔记</div>
+          <div class="item">帮我起个项目名</div>
+          <div class="subtime">yesterday</div>
+          <div class="item">周末去哪玩</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

@@ -68,6 +68,83 @@ describe('onething runtime provider config helpers', () => {
     })
   })
 
+  it('mirrors the renderer resolver on partial session selections', () => {
+    // Rule shared with src/renderer/stores/helpers/provider-model.ts: a
+    // session provider without a model uses that provider's configured
+    // default; a model without a provider is ignored (no inference). Any
+    // divergence between the two resolvers shows one provider in the picker
+    // while requests go to another.
+    expect(getEffectiveProviderConfig(settings, {
+      lastProvider: 'openai',
+    })).toMatchObject({
+      providerId: 'openai',
+      model: 'gpt-4.1',
+    })
+
+    expect(getEffectiveProviderConfig(settings, {
+      lastModel: 'gpt-4.1',
+    })).toMatchObject({
+      providerId: 'deepseek',
+      model: 'deepseek-chat',
+    })
+  })
+
+  it('lets an explicit override win outright over session and global', () => {
+    // The send path (packages/core/engine/core-stream-engine.ts resolveProvider)
+    // passes the renderer's already-resolved selection here as `override` —
+    // when it's present and points at a configured provider, it's returned
+    // directly with no re-derivation, so there is no second independent
+    // computation of "what should this session use" to diverge from what
+    // the picker showed.
+    expect(getEffectiveProviderConfig(settings, {
+      lastProvider: 'deepseek',
+      lastModel: 'deepseek-chat',
+    }, {
+      providerId: 'openai',
+      model: 'gpt-4.1',
+    })).toEqual({
+      providerId: 'openai',
+      model: 'gpt-4.1',
+      providerConfig: {
+        model: 'gpt-4.1',
+        selectedModels: ['gpt-4.1'],
+        baseUrl: 'https://api.openai.com/v1',
+      },
+    })
+  })
+
+  it('falls back to the provider default model when the override omits a model', () => {
+    expect(getEffectiveProviderConfig(settings, null, {
+      providerId: 'openai',
+    })).toMatchObject({
+      providerId: 'openai',
+      model: 'gpt-4.1',
+    })
+  })
+
+  it('ignores an override pointing at an unconfigured provider and falls back to session/global', () => {
+    // A dangling override (e.g. the provider's config was deleted after the
+    // picker rendered) must not be trusted — same invariant as a stale
+    // session.lastProvider.
+    expect(getEffectiveProviderConfig(settings, {
+      lastProvider: 'openai',
+      lastModel: 'gpt-4.1-mini',
+    }, {
+      providerId: 'missing',
+      model: 'whatever',
+    })).toMatchObject({
+      providerId: 'openai',
+      model: 'gpt-4.1-mini',
+    })
+
+    expect(getEffectiveProviderConfig(settings, null, {
+      providerId: 'missing',
+    })).toMatchObject({
+      providerId: 'deepseek',
+      model: 'deepseek-chat',
+    })
+  })
+
   it('resolves custom provider API type from settings only', () => {
     expect(getProviderApiType(settings, 'custom-local')).toBe('anthropic')
     expect(getProviderApiType(settings, 'deepseek')).toBeUndefined()

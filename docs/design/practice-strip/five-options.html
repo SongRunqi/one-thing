@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>练习条 · 画线风五案</title>
+<style>
+/* ————————————————————————————————————————————
+   共享:纸与墨(与 command-palette 四案同一套)
+   ———————————————————————————————————————————— */
+:root {
+  --paper: #faf8f1;
+  --paper-deep: #f3efe5;
+  --ink: #29241c;
+  --ink-60: rgba(41, 36, 28, 0.62);
+  --ink-40: rgba(41, 36, 28, 0.42);
+  --ink-25: rgba(41, 36, 28, 0.25);
+  --ink-12: rgba(41, 36, 28, 0.12);
+  --a-red: #b8452c;      /* 案二 · 账条红格 */
+  --b-blue: #33647e;     /* 案三 · 制图青 */
+  --d-sepia: #7a5230;    /* 案四 · 赭石 */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #191611;
+    --paper-deep: #14110d;
+    --ink: #e8e1d2;
+    --ink-60: rgba(232, 225, 210, 0.66);
+    --ink-40: rgba(232, 225, 210, 0.45);
+    --ink-25: rgba(232, 225, 210, 0.28);
+    --ink-12: rgba(232, 225, 210, 0.14);
+    --a-red: #d8765c;
+    --b-blue: #7fb0c9;
+    --d-sepia: #c29a6b;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 48px 40px 96px;
+}
+.serif { font-family: Georgia, "Songti SC", "Noto Serif SC", serif; }
+
+.page-head { max-width: 900px; margin: 0 auto 44px; }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: ""; display: block; width: 88px;
+  border-bottom: 2px solid var(--ink); margin-top: 10px;
+}
+.page-head p { margin-top: 12px; color: var(--ink-60); max-width: 62em; }
+
+.options { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 64px; }
+
+.option .opt-head { margin-bottom: 16px; }
+.option .opt-head h2 { font-size: 15px; font-weight: 600; letter-spacing: 0.06em; }
+.option .opt-head h2 em {
+  font-style: normal; font-size: 12px; font-weight: 400;
+  color: var(--ink-60); margin-left: 10px; letter-spacing: 0.02em;
+}
+.option .opt-head p { font-size: 12px; color: var(--ink-60); margin-top: 4px; max-width: 60em; }
+
+/* ——— 状态帧 ——— */
+.frame { margin: 0 0 18px; }
+.frame > figcaption {
+  font-size: 11px; color: var(--ink-40); letter-spacing: 0.08em; margin-bottom: 6px;
+}
+.mock {
+  border: 1px solid var(--ink-25); background: var(--paper);
+  border-radius: 8px; overflow: hidden;
+}
+
+/* ——— 模拟 tab header(五案共用,保持中性) ——— */
+.tabbar {
+  display: flex; align-items: center; height: 40px;
+  padding: 0 12px 0 14px; position: relative;
+}
+.tabbar::after {  /* 基线 */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 1px; background: var(--ink-12); z-index: 0;
+}
+.tl { display: flex; gap: 6px; margin-right: 16px; }
+.tl i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-12); }
+.tb-tab {
+  font-size: 12.5px; color: var(--ink-60);
+  padding: 0 10px; height: 100%; display: flex; align-items: center; position: relative;
+}
+.tb-tab.active { color: var(--ink); }
+.tb-tab.active::after {
+  content: ""; position: absolute; left: 8px; right: 8px; bottom: 0;
+  height: 2px; background: var(--ink); z-index: 1;
+}
+.tb-tick { width: 1px; height: 14px; background: var(--ink-25); margin: 0 4px; }
+.tb-sp { flex: 1; }
+.tb-more { color: var(--ink-40); font-size: 14px; padding: 0 6px; }
+
+/* ——— 模拟正文(极淡,只为让条带有上下文) ——— */
+.ghost {
+  padding: 12px 18px 16px; color: var(--ink-25); font-size: 12px; line-height: 1.7;
+  user-select: none;
+}
+
+/* 通用小动词:下落一段点线的"可点"感 */
+.verb {
+  color: var(--ink); cursor: pointer;
+  border-bottom: 1.5px dotted var(--ink-40); padding-bottom: 1px;
+}
+.sep { color: var(--ink-25); margin: 0 8px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* ————————————————————————————————————————————
+   案一 · 隐线 — 基线即界面
+   条带没有自己的"面",只借用 tab header 的那条基线。
+   ———————————————————————————————————————————— */
+.v-a .strip { position: relative; }
+
+/* 静默:基线中央一小段加粗的墨,悬停显「练」 */
+.v-a .seam {
+  position: relative; height: 10px;
+}
+.v-a .seam .seg {
+  position: absolute; top: -2px; left: 50%; transform: translateX(-50%);
+  width: 38px; height: 3px; background: var(--ink-40); border-radius: 1px;
+}
+.v-a .seam .hint {
+  position: absolute; top: 3px; left: 50%; transform: translateX(-50%);
+  font-size: 10px; color: var(--ink-40); letter-spacing: 0.3em;
+}
+
+/* 展开:基线下方翻出一层浅抽屉,只有一行字 */
+.v-a .drawer {
+  display: flex; align-items: center; gap: 4px;
+  height: 40px; padding: 0 18px; font-size: 12px; color: var(--ink-60);
+  border-bottom: 1px solid var(--ink-12);
+}
+.v-a .drawer b { font-weight: 600; color: var(--ink); }
+.v-a .cat { color: var(--ink-60); margin: 0 3px; cursor: pointer; }
+.v-a .cat.on { color: var(--ink); border-bottom: 1.5px solid var(--ink); }
+
+/* 运行·凯格尔:基线上一段墨,收 10s 长出、放 5s 退回 */
+.v-a .run { height: 18px; position: relative; }
+.v-a .run .live {
+  position: absolute; top: -2px; left: 50%; transform: translateX(-50%);
+  height: 3px; background: var(--ink); border-radius: 1px;
+  animation: a-kegel 15s linear infinite;
+}
+@keyframes a-kegel {
+  0%   { width: 38px; }
+  66.6%{ width: 72%; }   /* 收 10s:墨慢慢聚拢生长 */
+  100% { width: 38px; }  /* 放 5s:退回 */
+}
+.v-a .run .meta {
+  position: absolute; right: 18px; top: 4px;
+  font-size: 10px; color: var(--ink-40); letter-spacing: 0.06em;
+}
+/* 运行·番茄:基线本身按进度着墨 */
+.v-a .run .fill {
+  position: absolute; top: -2px; left: 0; width: 44%; height: 3px;
+  background: var(--ink); border-radius: 0 1px 1px 0;
+}
+
+/* ————————————————————————————————————————————
+   案二 · 夹条 — 账本里的小纸条,正字计数
+   ———————————————————————————————————————————— */
+.v-b .slip {
+  margin-left: 96px; width: fit-content; min-width: 200px;
+  border: 1px solid var(--ink-25); border-top: 0;
+  border-radius: 0 0 6px 6px; background: var(--paper);
+  position: relative;
+}
+.v-b .slip.idle { padding: 4px 14px 5px; font-size: 11px; color: var(--ink-60); }
+.v-b .slip.idle .caretdown { color: var(--ink-40); margin-left: 8px; font-size: 9px; }
+
+.v-b .slip.open { width: 400px; padding: 0; }
+.v-b .slip.open::before {  /* 账本装订红线 */
+  content: ""; position: absolute; left: 64px; top: 0; bottom: 0;
+  border-left: 1px solid color-mix(in srgb, var(--a-red) 55%, transparent);
+}
+.v-b .row {
+  display: flex; align-items: baseline; gap: 10px;
+  min-height: 32px; padding: 7px 14px 0 16px; font-size: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--a-red) 22%, transparent);
+}
+.v-b .row:last-child { border-bottom: 0; }
+.v-b .row .name { width: 48px; flex: 0 0 48px; font-weight: 600; }
+.v-b .row .det { color: var(--ink-60); flex: 1; }
+.v-b .row .det input {
+  border: 0; outline: 0; background: transparent; font-size: 12px;
+  color: var(--ink); border-bottom: 1px dashed var(--ink-25); width: 120px;
+}
+.v-b .row .det input::placeholder { color: var(--ink-25); }
+
+.v-b .slip.run { padding: 5px 14px 6px; font-size: 12px; display: flex; align-items: baseline; gap: 10px; }
+.v-b .phase { font-weight: 600; }
+.v-b .phase.breathing { animation: b-pulse 15s ease-in-out infinite; }
+@keyframes b-pulse { 0% { opacity: .55; } 60% { opacity: 1; } 66.6% { opacity: 1; } 100% { opacity: .55; } }
+.v-b .tally { font-family: Georgia, "Songti SC", serif; letter-spacing: 3px; color: var(--ink); }
+.v-b .tally .part {  /* 正在写的那个「正」:横向裁一半,像笔画未完 */
+  display: inline-block; width: 0.5em; overflow: hidden; vertical-align: bottom;
+}
+.v-b .mini { font-size: 10.5px; color: var(--ink-40); }
+.v-b .leader { flex: 1; border-bottom: 1px dotted var(--ink-25); transform: translateY(-3px); min-width: 40px; }
+
+/* ————————————————————————————————————————————
+   案三 · 刻度 — 时间是一段被丈量的距离
+   ———————————————————————————————————————————— */
+.v-c .scale { position: relative; }
+
+.v-c .ticks {
+  height: 7px;
+  background: repeating-linear-gradient(90deg, var(--ink-12) 0 1px, transparent 1px 32px);
+  background-position: 18px 0; background-repeat: no-repeat; background-size: calc(100% - 36px) 100%;
+  margin: 0 0 1px;
+}
+.v-c .scale.idle .mark { position: absolute; right: 16px; top: 1px; font-size: 9px; color: var(--ink-25); letter-spacing: .2em; }
+
+.v-c .scale.open { height: 48px; border-bottom: 1px solid var(--ink-12); }
+.v-c .station {
+  position: absolute; top: 10px; font-size: 12px; color: var(--ink-60); white-space: nowrap;
+}
+.v-c .station i {
+  font-style: normal; color: var(--b-blue); margin-right: 7px; font-size: 10px;
+}
+.v-c .station .det { color: var(--ink-40); font-size: 10.5px; display: block; margin-top: 1px; }
+
+.v-c .scale.run { height: 26px; }
+.v-c .run-ticks {
+  position: absolute; left: 18px; right: 18px; top: 0; height: 10px;
+  background: repeating-linear-gradient(90deg, var(--ink-25) 0 1px, transparent 1px 5%);
+}
+.v-c .run-done {
+  position: absolute; left: 18px; top: 0; height: 12px; overflow: hidden;
+  background: repeating-linear-gradient(90deg, var(--ink) 0 1.5px, transparent 1.5px 5%);
+}
+.v-c .needle {
+  position: absolute; top: -4px; margin-left: -4px;
+  width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent;
+  border-top: 6px solid var(--b-blue);
+}
+.v-c .under {
+  position: absolute; top: 13px; font-size: 10px; color: var(--ink-60); letter-spacing: .04em;
+  transform: translateX(-50%); white-space: nowrap;
+}
+.v-c .under b { animation: b-pulse 15s ease-in-out infinite; }
+.v-c .right-meta { position: absolute; right: 18px; top: 12px; font-size: 10.5px; color: var(--ink-40); }
+
+/* ————————————————————————————————————————————
+   案四 · 息线 — 一根会呼吸的墨线
+   ———————————————————————————————————————————— */
+.v-d svg { display: block; width: 100%; }
+.v-d path { fill: none; stroke-linecap: round; }
+.v-d .pocket-acts {
+  position: absolute; left: 0; right: 0; top: 12px;
+  display: flex; justify-content: center; gap: 6px; font-size: 12px; color: var(--ink-60);
+}
+.v-d .stagepos { position: relative; }
+.v-d .breath-label {
+  position: absolute; left: 50%; transform: translateX(-50%); top: 2px;
+  font-size: 10.5px; color: var(--ink-60); letter-spacing: .2em;
+}
+.v-d .reps {
+  position: absolute; right: 18px; top: 8px; display: flex; gap: 5px; align-items: center;
+}
+.v-d .reps i { width: 5px; height: 5px; border-radius: 50%; border: 1px solid var(--ink-40); }
+.v-d .reps i.done { background: var(--ink); border-color: var(--ink); }
+.v-d .reps span { font-size: 10px; color: var(--ink-40); margin-left: 4px; }
+.v-d .pomo-meta {
+  position: absolute; right: 18px; top: 1px; font-size: 10.5px; color: var(--ink-40);
+  background: var(--paper); padding: 0 8px;
+}
+
+.v-d .breathing-path { animation: d-breathe 15s linear infinite; }
+@keyframes d-breathe {
+  0%    { d: path("M0 30 C 210 30, 330 30, 430 30 C 530 30, 650 30, 860 30"); }
+  66.6% { d: path("M0 30 C 210 30, 330 6, 430 6 C 530 6, 650 30, 860 30"); }
+  100%  { d: path("M0 30 C 210 30, 330 30, 430 30 C 530 30, 650 30, 860 30"); }
+}
+
+/* ————————————————————————————————————————————
+   案五 · 眉批 — 纯文字,书页上的批注
+   ———————————————————————————————————————————— */
+.v-e .note { font-family: Georgia, "Songti SC", "Noto Serif SC", serif; }
+.v-e .note.idle { text-align: right; padding: 2px 18px 4px; font-size: 11px; color: var(--ink-25); letter-spacing: .3em; }
+.v-e .note.open {
+  padding: 9px 18px 11px; font-size: 13px; color: var(--ink-60);
+  border-bottom: 1px solid var(--ink-12);
+}
+.v-e .note.open .item { color: var(--ink); cursor: pointer; border-bottom: 1.5px dotted var(--ink-40); padding-bottom: 1px; }
+.v-e .note.open .cat { color: var(--ink-60); cursor: pointer; margin: 0 2px; }
+.v-e .note.open .cat.on { color: var(--ink); border-bottom: 1.5px solid var(--ink); }
+
+.v-e .note.run { padding: 6px 18px 9px; font-size: 12.5px; color: var(--ink-60); position: relative; }
+.v-e .bigchar { font-size: 19px; color: var(--ink); font-weight: 600; margin-right: 8px; animation: b-pulse 15s ease-in-out infinite; }
+.v-e .note.run .underline {
+  position: absolute; left: 18px; bottom: 4px; height: 1px; background: var(--ink); width: 44%;
+}
+.v-e .note.run .underline-rest {
+  position: absolute; left: 18px; right: 18px; bottom: 4px; height: 1px;
+  background: var(--ink-12);
+}
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1>练习条 · 画线风五案</h1>
+  <p>
+    位置:tab header 与正文之间的一条水平带。三种状态:<b>静默</b>(无进行中的练习,几乎不可见)、
+    <b>展开</b>(点开后露出「凯格尔 / 番茄 / 补录」三个入口)、<b>运行</b>(显示当前相位与进度)。
+    凯格尔节律统一示意为「收 10″ / 放 5″ × 20」,番茄示意为「学习 · 25′」。
+    动画按真实节律循环(15 秒一循环),静态截图请以文字标注为准。
+  </p>
+</header>
+
+<div class="options">
+
+<!-- ═══════════════════════ 案一 · 隐线 ═══════════════════════ -->
+<section class="option v-a">
+  <div class="opt-head">
+    <h2>案一 · 隐线 <em>基线即界面,不新增任何面</em></h2>
+    <p>
+      练习条不占一条带,它就住在 tab header 已有的那条基线上。静默时是基线中央一小段略粗的墨;
+      运行凯格尔时这段墨随「收」慢慢生长、随「放」退回——肌肉的收放直接画在线上;
+      番茄则是基线从左向右着墨。整案零新增高度,是五案里最克制的一个。
+    </p>
+  </div>
+
+  <figure class="frame">
+    <figcaption>① 静默 — 基线中央一小段墨;悬停浮出「练」字,点击展开</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="strip seam"><span class="seg"></span><span class="hint">练</span></div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>② 展开 — 基线下翻出一层 40px 浅抽屉,只有一行字,再点收回</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="strip drawer">
+        <span><b>凯格尔</b>&nbsp; 收 10″ / 放 5″ × 20 &nbsp;<span class="verb">开始</span></span>
+        <span class="sep">·</span>
+        <span><b>番茄</b>&nbsp; <span class="cat on">学习</span><span class="cat">看视频</span><span class="cat">写作</span> &nbsp;<span class="verb">25′</span></span>
+        <span class="sep">·</span>
+        <span class="verb">补录一笔</span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>③ 运行 · 凯格尔 — 收 10″:墨从中央生长;放 5″:退回。右侧一行 10px 小注</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="strip run">
+        <span class="live"></span>
+        <span class="meta">凯格尔 · 12/20 · 组 2/3</span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>④ 运行 · 番茄 — 基线按进度着墨(示意 11′/25′),不打扰任何东西</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="strip run">
+        <span class="fill"></span>
+        <span class="meta">学习 · 剩 14′</span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+</section>
+
+<!-- ═══════════════════════ 案二 · 夹条 ═══════════════════════ -->
+<section class="option v-b">
+  <div class="opt-head">
+    <h2>案二 · 夹条 <em>账本里探出的小纸条,正字计数</em></h2>
+    <p>
+      一张从 header 下探出头的小纸条,像账本里夹着的便签——不通栏,只占它需要的宽度。
+      静默时报今日小计;展开成一张带装订红线的迷你账页;运行凯格尔时,完成的次数用「正」字
+      一笔一笔写出来(每五次一个正,正在做的那个字只写了一半)。
+    </p>
+  </div>
+
+  <figure class="frame">
+    <figcaption>① 静默 — 今日小计,一行 11px;没练过则整条消失</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="slip idle">今日 · 凯格尔 2 · 番茄 3<span class="caretdown">▾</span></div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>② 展开 — 迷你账页:三行红格,左侧装订线,名目对齐</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="slip open">
+        <div class="row"><span class="name">凯格尔</span><span class="det">收 10″ / 放 5″ × 20 · 3 组</span><span class="verb">开始</span></div>
+        <div class="row"><span class="name">番茄</span><span class="det">学习 · 看视频 · 写作</span><span class="verb">25′</span></div>
+        <div class="row"><span class="name">补录</span><span class="det"><input placeholder="俯卧撑 3×20"></span><span class="verb">记上</span></div>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>③ 运行 · 凯格尔 — 「收」字随相位明暗;12 次 = 正正 + 半个正</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="slip run">
+        <span class="phase breathing">收</span>
+        <span class="tally">正正<span class="part">正</span></span>
+        <span class="mini">12/20 · 组 2/3</span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>④ 运行 · 番茄 — 名目 + 点线引导 + 计时,像一笔正在登帐的流水</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="slip run">
+        <span class="phase">番茄 · 学习</span>
+        <span class="leader"></span>
+        <span class="mini">11′ / 25′</span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+</section>
+
+<!-- ═══════════════════════ 案三 · 刻度 ═══════════════════════ -->
+<section class="option v-c">
+  <div class="opt-head">
+    <h2>案三 · 刻度 <em>时间是一段被丈量的距离</em></h2>
+    <p>
+      整条是一把通栏的细刻度尺。番茄 25 分钟 = 25 格,凯格尔 20 次 = 20 格(每 5 格一根长刻),
+      走过的格子着墨,一枚制图青的针标出当下。展开时,三个入口像尺上的三个站点。
+      它是五案里唯一把「总量和剩余」画成空间的——一眼看出走到哪、还剩多远。
+    </p>
+  </div>
+
+  <figure class="frame">
+    <figcaption>① 静默 — 极淡的刻度虚存在,右端一个 9px「练」;点击任意处展开</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="scale idle"><div class="ticks"></div><span class="mark">练</span></div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>② 展开 — 尺加高,三个站点各带一枚青色菱标</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="scale open">
+        <div class="ticks"></div>
+        <span class="station" style="left:6%"><i>◆</i><span class="verb">凯格尔</span><span class="det">收 10″ / 放 5″ × 20</span></span>
+        <span class="station" style="left:42%"><i>◆</i><span class="verb">番茄 25′</span><span class="det">学习 · 看视频 · 写作</span></span>
+        <span class="station" style="left:78%"><i>◆</i><span class="verb">补录</span><span class="det">俯卧撑 3×20 …</span></span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>③ 运行 · 凯格尔 — 20 格,走过 12 格着墨;针下小注「收 7″」随相位明暗</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="scale run">
+        <div class="run-ticks"></div>
+        <div class="run-done" style="width:60%"></div>
+        <span class="needle" style="left:60%"></span>
+        <span class="under" style="left:60%"><b>收 7″</b> · 组 2/3</span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>④ 运行 · 番茄 — 25 格走过 11 格,针在 11′ 处,右端余量</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="scale run">
+        <div class="run-ticks" style="background:repeating-linear-gradient(90deg, var(--ink-25) 0 1px, transparent 1px 4%)"></div>
+        <div class="run-done" style="width:44%; background:repeating-linear-gradient(90deg, var(--ink) 0 1.5px, transparent 1.5px 4%)"></div>
+        <span class="needle" style="left:44%"></span>
+        <span class="under" style="left:44%">学习 · 11′</span>
+        <span class="right-meta">剩 14′</span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+</section>
+
+<!-- ═══════════════════════ 案四 · 息线 ═══════════════════════ -->
+<section class="option v-d">
+  <div class="opt-head">
+    <h2>案四 · 息线 <em>一根会呼吸的墨线</em></h2>
+    <p>
+      整条只有一根手绘感的墨线。静默时几乎是平的;展开时线向下松开一个「口袋」,入口藏在袋里;
+      运行凯格尔时,线的中段随「收」隆起、随「放」落平——这根线就是你的肌肉,收放节律直接可见,
+      不需要任何数字也能跟上节奏。它是给凯格尔体验做到极致的一案。
+    </p>
+  </div>
+
+  <figure class="frame">
+    <figcaption>① 静默 — 一根 ink-25 的静线,右端一点微小的加粗当把手</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="stagepos">
+        <svg viewBox="0 0 860 14" preserveAspectRatio="none" style="height:14px">
+          <path d="M0 7 C 160 6.5, 320 7.5, 480 7 S 720 6.6, 838 7" stroke="var(--ink-25)" stroke-width="1.2"/>
+          <path d="M838 7 h 12" stroke="var(--ink-60)" stroke-width="2.4"/>
+        </svg>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>② 展开 — 线松开一个口袋,入口在袋里;再点袋外,线绷回原样</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="stagepos">
+        <svg viewBox="0 0 860 46" preserveAspectRatio="none" style="height:46px">
+          <path d="M0 4 H 860" stroke="var(--ink-12)" stroke-width="1"/>
+          <path d="M0 4 C 110 4, 130 40, 240 40 L 620 40 C 730 40, 750 4, 860 4" stroke="var(--ink-40)" stroke-width="1.2"/>
+        </svg>
+        <div class="pocket-acts">
+          <span><b>凯格尔</b> 收10″/放5″×20 <span class="verb">开始</span></span>
+          <span class="sep">·</span>
+          <span><b>番茄</b> 学习 <span class="verb">25′</span></span>
+          <span class="sep">·</span>
+          <span class="verb">补录</span>
+        </div>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>③ 运行 · 凯格尔 — 收 10″ 中段隆起,放 5″ 落平;右侧圆点记组内次数</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="stagepos">
+        <span class="breath-label">收</span>
+        <svg viewBox="0 0 860 36" preserveAspectRatio="none" style="height:36px">
+          <path class="breathing-path" d="M0 30 C 210 30, 330 30, 430 30 C 530 30, 650 30, 860 30" stroke="var(--ink)" stroke-width="1.6"/>
+        </svg>
+        <div class="reps"><i class="done"></i><i class="done"></i><i class="done"></i><i></i><i></i><span>12/20 · 组2</span></div>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>④ 运行 · 番茄 — 虚线随时间逐渐变实(示意 44%),线尾余量小注</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="stagepos">
+        <svg viewBox="0 0 860 16" preserveAspectRatio="none" style="height:16px">
+          <path d="M0 8 H 860" stroke="var(--ink-25)" stroke-width="1" stroke-dasharray="2 5"/>
+          <path d="M0 8 H 860" pathLength="1" stroke="var(--d-sepia)" stroke-width="1.6" stroke-dasharray="1" stroke-dashoffset="0.56"/>
+        </svg>
+        <span class="pomo-meta">学习 · 剩 14′</span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+</section>
+
+<!-- ═══════════════════════ 案五 · 眉批 ═══════════════════════ -->
+<section class="option v-e">
+  <div class="opt-head">
+    <h2>案五 · 眉批 <em>纯文字,书页上的批注</em></h2>
+    <p>
+      没有任何图形——整条是一行宋体批注,像书页天头上的眉批。展开是一句可点的话,
+      运行时是一句会计数的话:相位字「收 / 放」放大领起,进度是这句话下面那条慢慢写长的底线。
+      给喜欢把界面当排版做的人;实现也最便宜,一个 flex 一行字。
+    </p>
+  </div>
+
+  <figure class="frame">
+    <figcaption>① 静默 — 右端一个极淡的「练」字,像铅笔轻轻标了一下</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="note idle">练</div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>② 展开 — 一句排好的话,点划线处可点;分类是文中选词</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="note open">
+        开始 —— <span class="item">凯格尔</span>〔收 10″ · 放 5″ · 二十次〕
+        <span class="sep">/</span>
+        <span class="item">番茄</span>:<span class="cat on">学习</span> <span class="cat">看视频</span> <span class="cat">写作</span>
+        <span class="sep">/</span>
+        <span class="item">补录一笔</span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>③ 运行 · 凯格尔 — 相位字领起,句子在计数;字随收放明暗</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="note run">
+        <span class="bigchar">收</span> 七秒 · 第 12 次,凡 20 · 第 2 组
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+
+  <figure class="frame">
+    <figcaption>④ 运行 · 番茄 — 进度是句子下那条慢慢写长的底线(已 11 分,墨线至 44%)</figcaption>
+    <div class="mock">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <div class="note run">
+        学习 · 已 11 分 · 余 14 分
+        <span class="underline-rest"></span>
+        <span class="underline"></span>
+      </div>
+      <div class="ghost">刚才那组串词的 TTS 已经换到语音轨了,音乐轨在口播时会自动闪避……</div>
+    </div>
+  </figure>
+</section>
+
+</div>
+</body>
+</html>

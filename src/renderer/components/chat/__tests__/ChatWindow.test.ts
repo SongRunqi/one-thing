@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Button from '../../common/Button.vue'
 import ChatWindow from '../ChatWindow.vue'
+import { useWorkspaceStore } from '@/stores/workspace'
 
 const mocks = vi.hoisted(() => {
   return {
@@ -12,14 +14,23 @@ const mocks = vi.hoisted(() => {
     chatPanelScrollToMessage: vi.fn().mockResolvedValue(true),
     sessionsStore: {
       currentSessionId: 'session-1',
+      isLoading: false,
       sessions: [
         {
           id: 'session-1',
           name: 'Project chat',
           workingDirectory: '/repo',
         },
+        {
+          id: 'session-2',
+          name: 'Second chat',
+          workingDirectory: '/repo',
+        },
       ],
       switchSession: vi.fn(),
+      clearCurrentSession: vi.fn(),
+      isNewChatDraftId: (sessionId: string) => sessionId.startsWith('draft:'),
+      discardNewChatDraft: vi.fn(),
       getSessionItem: vi.fn((sessionId: string) =>
         mocks.sessionsStore.sessions.find((item: any) => item.id === sessionId),
       ),
@@ -49,6 +60,15 @@ vi.mock('../TabBar.vue', () => ({
           @click="$emit('selectTab', tab.id)"
         >
           {{ tab.type }}
+        </Button>
+        <Button
+          v-for="tab in tabs"
+          :key="tab.id + '-close'"
+          unstyled
+          class="close-tab-btn"
+          @click="$emit('closeTab', tab.id)"
+        >
+          close {{ tab.type }}
         </Button>
         <Button
           unstyled
@@ -86,92 +106,22 @@ vi.mock('../ChatPanel.vue', () => ({
   },
 }))
 
-vi.mock('../ChatSidePanel.vue', () => ({
-  default: {
-    name: 'ChatSidePanel',
-    props: ['sessionId', 'workingDirectory', 'collapsed'],
-    emits: ['outlineTargetChange'],
-    methods: {
-      emitOutlineTarget(this: any) {
-        this.$emit('outlineTargetChange', this.collapsed ? null : this.$el.querySelector('.mock-outline-target'))
-      },
-    },
-    mounted(this: any) {
-      this.emitOutlineTarget()
-    },
-    updated(this: any) {
-      this.emitOutlineTarget()
-    },
-    template: `
-      <aside class="mock-chat-side-panel" :data-collapsed="String(!!collapsed)">
-        <div v-if="!collapsed" class="mock-outline-target" />
-      </aside>
-    `,
-  },
-}))
-
-vi.mock('../../SettingsPanel.vue', () => ({
-  default: {
-    name: 'SettingsPanel',
-    template: '<div class="mock-settings-panel" />',
-  },
-}))
-
 async function settle() {
   await nextTick()
   await Promise.resolve()
   await nextTick()
 }
 
-function installElectronAPI(activeTabIndex = 0) {
+function installElectronAPI() {
   Object.defineProperty(window, 'electronAPI', {
     configurable: true,
     value: {
-      getAppState: vi.fn().mockResolvedValue({
-        openTabs: [
-          { type: 'chat', sessionId: 'session-1' },
-          {
-            type: 'workbench',
-            workspaceRoot: '/repo',
-            initialFilePath: '/repo/src/a.ts',
-            activeFilePath: '/repo/src/a.ts',
-            title: 'repo',
-          },
-        ],
-        activeTabIndex,
-      }),
+      getAppState: vi.fn().mockResolvedValue({}),
       saveUIState: vi.fn().mockResolvedValue({ success: true }),
+      getSessionCacheStats: vi.fn().mockResolvedValue({ size: 0, maxSize: 10, cachedSessionIds: [] }),
+      evictSessionCache: vi.fn().mockResolvedValue({ success: true }),
     },
   })
-}
-
-let getRectSpy: ReturnType<typeof vi.spyOn> | null = null
-
-function installChatShell(width: number) {
-  getRectSpy?.mockRestore()
-  vi.stubGlobal('ResizeObserver', class ResizeObserver {
-    observe() {}
-    disconnect() {}
-  })
-  getRectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-    x: 0,
-    y: 0,
-    top: 0,
-    left: 0,
-    right: width,
-    bottom: 800,
-    width,
-    height: 800,
-    toJSON: () => ({}),
-  } as DOMRect)
-}
-
-function installWideChatShell() {
-  installChatShell(1200)
-}
-
-function installNarrowChatShell() {
-  installChatShell(900)
 }
 
 describe('ChatWindow tab switching', () => {
@@ -183,33 +133,27 @@ describe('ChatWindow tab switching', () => {
       removeItem: vi.fn(),
     })
     installElectronAPI()
-    installWideChatShell()
+    setActivePinia(createPinia())
+    // ChatWindow renders whatever its workspace leaf holds; seed the store
+    // the way hydration would.
+    useWorkspaceStore().openSession('session-1')
   })
 
   afterEach(() => {
-    getRectSpy?.mockRestore()
-    getRectSpy = null
     vi.unstubAllGlobals()
   })
 
-  it('does not restore persisted workbench tabs into the chat window', async () => {
-    const wrapper = mount(ChatWindow, {
-      props: {
-        sessionId: 'session-1',
-      },
-    })
+  it('renders only the chat tabs of its workspace leaf', async () => {
+    const wrapper = mount(ChatWindow)
     await settle()
 
     const buttons = wrapper.findAll('.tab-button')
     expect(buttons.map(button => button.attributes('data-type'))).toEqual(['chat'])
+    expect(buttons[0].attributes('data-active')).toBe('true')
   })
 
   it('provides a left-column footer region to host the chat composer', async () => {
-    const wrapper = mount(ChatWindow, {
-      props: {
-        sessionId: 'session-1',
-      },
-    })
+    const wrapper = mount(ChatWindow)
     await settle()
 
     const footer = wrapper.find('.layout-container-main .chat-footer')
@@ -219,81 +163,29 @@ describe('ChatWindow tab switching', () => {
     expect(wrapper.find('.layout-container-footer .chat-footer').exists()).toBe(false)
     expect(chatPanel.props('active')).toBe(true)
     expect(chatPanel.props('footerTarget')).toBe(footer.element)
+    expect(chatPanel.props('sessionId')).toBe('session-1')
   })
 
-  it('passes the side panel outline target to ChatPanel on wide chat windows', async () => {
+  it('forwards the shared side-panel props straight through to TabBar and ChatPanel', async () => {
     const wrapper = mount(ChatWindow, {
       props: {
-        sessionId: 'session-1',
+        sidePanelAvailable: true,
+        sidePanelCollapsed: false,
+        outlineRailTarget: document.createElement('div'),
       },
     })
     await settle()
 
-    const sidePanel = wrapper.find('.mock-chat-side-panel')
-    const outlineTarget = wrapper.find('.mock-outline-target')
     const chatPanel = wrapper.findComponent({ name: 'ChatPanel' })
-
-    expect(sidePanel.exists()).toBe(true)
-    expect(outlineTarget.exists()).toBe(true)
-    expect(chatPanel.props('outlineRailTarget')).toBe(outlineTarget.element)
-  })
-
-  it('collapses the right side panel to zero width', async () => {
-    const wrapper = mount(ChatWindow, {
-      props: {
-        sessionId: 'session-1',
-      },
-    })
-    await settle()
+    expect(wrapper.find('.mock-side-toggle').attributes('data-collapsed')).toBe('false')
+    expect(chatPanel.props('outlineRailTarget')).toBe(wrapper.props('outlineRailTarget'))
 
     await wrapper.find('.mock-side-toggle').trigger('click')
-    await settle()
-
-    const sidePanel = wrapper.find('.mock-chat-side-panel')
-    const sidebarRegion = wrapper.find('.layout-container-sidebar')
-    const containerStyle = wrapper.find('.layout-container').attributes('style')
-    const chatPanel = wrapper.findComponent({ name: 'ChatPanel' })
-
-    expect(containerStyle).toContain('--layout-container-sidebar-width: 0px')
-    expect(sidebarRegion.classes()).toContain('collapsed')
-    expect(sidePanel.attributes('data-collapsed')).toBe('true')
-    expect(chatPanel.props('outlineRailTarget')).toBeNull()
-  })
-
-  it('expands the right side panel from the persistent toggle on narrow chat windows', async () => {
-    vi.mocked(localStorage.getItem).mockReturnValue('true')
-    installNarrowChatShell()
-
-    const wrapper = mount(ChatWindow, {
-      props: {
-        sessionId: 'session-1',
-      },
-    })
-    await settle()
-
-    expect(wrapper.find('.mock-side-toggle').exists()).toBe(true)
-    expect(wrapper.find('.mock-chat-side-panel').exists()).toBe(false)
-
-    await wrapper.find('.mock-side-toggle').trigger('click')
-    await settle()
-
-    const sidePanel = wrapper.find('.mock-chat-side-panel')
-    const outlineTarget = wrapper.find('.mock-outline-target')
-    const containerStyle = wrapper.find('.layout-container').attributes('style')
-    const chatPanel = wrapper.findComponent({ name: 'ChatPanel' })
-
-    expect(containerStyle).toContain('--layout-container-sidebar-width: 268px')
-    expect(sidePanel.exists()).toBe(true)
-    expect(sidePanel.attributes('data-collapsed')).toBe('false')
-    expect(chatPanel.props('outlineRailTarget')).toBe(outlineTarget.element)
+    expect(wrapper.emitted('toggleSidePanel')).toHaveLength(1)
   })
 
   it('emits file opens for the app-level right workbench instead of creating a chat tab', async () => {
-    const wrapper = mount(ChatWindow, {
-      props: {
-        sessionId: 'session-1',
-      },
-    })
+    const wrapper = mount(ChatWindow)
     await settle()
 
     await wrapper.find('.open-file').trigger('click')
@@ -305,13 +197,8 @@ describe('ChatWindow tab switching', () => {
     expect(mocks.chatPanelRestore).not.toHaveBeenCalled()
   })
 
-  it('scrolls to a target message from the chat tab without restoring a workbench tab', async () => {
-    installElectronAPI(1)
-    const wrapper = mount(ChatWindow, {
-      props: {
-        sessionId: 'session-1',
-      },
-    })
+  it('scrolls to a target message from the chat tab', async () => {
+    const wrapper = mount(ChatWindow)
     await settle()
 
     const result = await (wrapper.vm as unknown as { scrollToMessage: (messageId: string) => Promise<boolean> })
@@ -321,5 +208,50 @@ describe('ChatWindow tab switching', () => {
     expect(result).toBe(true)
     expect(mocks.chatPanelRestore).not.toHaveBeenCalled()
     expect(mocks.chatPanelScrollToMessage).toHaveBeenCalledWith('message-1')
+  })
+
+  it('closing the only chat tab of a split panel closes the whole leaf in the store', async () => {
+    const workspace = useWorkspaceStore()
+    const newLeafId = workspace.splitLeaf('main', 'session-2', 'right')!
+
+    const wrapper = mount(ChatWindow, {
+      props: { panelId: newLeafId, canClose: true },
+    })
+    await settle()
+
+    await wrapper.find('.close-tab-btn').trigger('click')
+    await settle()
+
+    // The leaf collapsed away and its session's cache was released.
+    expect(workspace.leaves.map(leaf => leaf.id)).toEqual(['main'])
+    expect(vi.mocked((window as any).electronAPI.evictSessionCache)).toHaveBeenCalledWith('session-2')
+  })
+
+  it('closing the only chat tab of the only panel is refused', async () => {
+    const workspace = useWorkspaceStore()
+    const wrapper = mount(ChatWindow)
+    await settle()
+
+    await wrapper.find('.close-tab-btn').trigger('click')
+    await settle()
+
+    expect(workspace.tabsOf('main')).toHaveLength(1)
+    expect(wrapper.findAll('.tab-button').map(button => button.attributes('data-type'))).toEqual(['chat'])
+    expect(vi.mocked((window as any).electronAPI.evictSessionCache)).not.toHaveBeenCalled()
+  })
+
+  it('closing a draft tab discards the draft instead of evicting cache', async () => {
+    const workspace = useWorkspaceStore()
+    workspace.openSession('draft:abc')
+    const wrapper = mount(ChatWindow)
+    await settle()
+
+    const closeButtons = wrapper.findAll('.close-tab-btn')
+    await closeButtons[1].trigger('click')
+    await settle()
+
+    expect(mocks.sessionsStore.discardNewChatDraft).toHaveBeenCalledWith('draft:abc')
+    expect(vi.mocked((window as any).electronAPI.evictSessionCache)).not.toHaveBeenCalled()
+    expect(workspace.tabsOf('main').map(tab => tab.sessionId)).toEqual(['session-1'])
   })
 })

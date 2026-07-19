@@ -33,7 +33,6 @@ export interface ReplyTarget {
 export interface ResolvedIdentity {
   kind: ResolvedIdentityKind
   userId: string
-  memoryScopeId: string
   profileId?: string
   displayName?: string
   linkedClientUserId?: string
@@ -82,9 +81,12 @@ export interface ChannelUserLink {
 export interface ChannelUserProfile {
   id: string
   name: string
-  memoryScopeId: string
   isMain?: boolean
   source?: 'local' | 'channel' | 'manual'
+  /** Set for source 'channel': where this person was first observed. */
+  connector?: string
+  workspaceId?: string
+  externalUserId?: string
   createdAt: number
   updatedAt: number
   lastSentAt?: number

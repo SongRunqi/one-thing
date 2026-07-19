@@ -391,7 +391,7 @@ describe('renderer UI semantic variables', () => {
     const stepsPanel = readRendererFile('components/chat/StepsPanel.vue')
     const toolResultRenderer = readRendererFile('components/chat/ToolResultRenderer.vue')
     const toolStepDetails = readRendererFile('components/chat/ToolStepDetails.vue')
-    const toolDiffPreview = readRendererFile('components/chat/ToolDiffPreview.vue')
+    const toolContentPreview = readRendererFile('components/chat/ToolContentPreview.vue')
     const messageBubble = readRendererFile('components/chat/message/MessageBubble.vue')
     const messageThinking = readRendererFile('components/chat/message/MessageThinking.vue')
     const thinkToggle = readRendererFile('components/chat/ThinkToggle.vue')
@@ -415,7 +415,7 @@ describe('renderer UI semantic variables', () => {
     expect(stepsPanel).toContain('var(--ui-tool-danger-text-fg')
     expect(toolResultRenderer).toContain('var(--ui-tool-text-muted-fg')
     expect(toolStepDetails).toContain('var(--ui-tool-border-border')
-    expect(toolDiffPreview).toContain('var(--ui-tool-text-muted-fg')
+    expect(toolContentPreview).toContain('var(--ui-tool-text-muted-fg')
 
     // Theme-specific tool text colors must take precedence over the generic
     // neutral tiers, or every theme's dedicated dim tool color is shadowed
@@ -446,12 +446,14 @@ describe('renderer UI semantic variables', () => {
     const settingsPaperDefs = settingsPage.match(/--settings-paper:\s*var\(--ui-surface-[^)]+/g) ?? []
     const settingsSidebarDefs = settingsPage.match(/--settings-paper-2:\s*var\(--ui-sidebar-surface-bg/g) ?? []
     const settingsPanelDefs = settingsPage.match(/--settings-paper-3:\s*var\(--ui-surface-panel-bg/g) ?? []
-    expect(settingsPaperDefs).toHaveLength(3)
+    // Two definitions: the base layer and the IDE-refresh layer (the middle
+    // legacy layer was removed in the 2026-07 settings refactor).
+    expect(settingsPaperDefs).toHaveLength(2)
     expect(settingsPaperDefs.every(def => def.includes('--ui-surface-chat-bg'))).toBe(true)
-    expect(settingsSidebarDefs).toHaveLength(3)
-    expect(settingsPanelDefs).toHaveLength(3)
+    expect(settingsSidebarDefs).toHaveLength(2)
+    expect(settingsPanelDefs).toHaveLength(2)
     expect(sidebar).toContain('--ui-sidebar-surface-bg')
-    expect(sessionItem).toContain('var(--ui-sidebar-item-active-bg')
+    expect(sessionItem).toContain('var(--ui-sidebar-item-active-border')
     expect(sessionContextMenu).toContain('var(--ui-surface-menu-bg')
     expect(sessionContextMenu).toContain('var(--ui-surface-menu-hover-bg')
     expect(sessionContextMenu).toContain('var(--ui-surface-tooltip-shadow')
@@ -469,7 +471,8 @@ describe('renderer UI semantic variables', () => {
     expect(todoPopover).toContain('var(--todo-popover-height')
     expect(todoNotesActionPanel).toContain('var(--todo-action-row-min-height')
     expect(tabBar).toContain('var(--ui-tab-bar-surface-bg')
-    expect(tabItem).toContain('var(--ui-tab-bar-item-active-border')
+    expect(tabBar).toContain('var(--ui-tab-bar-item-active-fg')
+    expect(tabItem).toContain('var(--ot-active-text')
     expect(tooltip).toContain('var(--ui-surface-tooltip-bg')
     expect(tooltip).toContain('var(--ui-surface-tooltip-fg')
     expect(editorExtensions).toContain('var(--ui-editor-caret-fg')

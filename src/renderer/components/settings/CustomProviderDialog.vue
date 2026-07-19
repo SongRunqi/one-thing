@@ -228,24 +228,27 @@ function handleSave() {
 </script>
 
 <style scoped>
+/* Paper dialog in the ledger language: 1px rule + hard-offset ink shadow, no radii, no fills.
+   Uses the --ui-* fallback chain (the dialog renders outside the settings token scope). */
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: var(--z-modal);
-  backdrop-filter: blur(4px);
+  padding: 20px;
 }
 
 .dialog {
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: var(--ui-surface-app-bg, var(--bg));
+  border-radius: 0;
+  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 24%, transparent);
   width: 90%;
   max-width: 480px;
-  box-shadow: var(--shadow);
+  min-width: 0;
 }
 
 .custom-provider-dialog {
@@ -256,8 +259,8 @@ function handleSave() {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
 }
 
 .dialog-header svg {
@@ -266,23 +269,25 @@ function handleSave() {
 }
 
 .dialog-header h3 {
-  font-size: 16px;
-  font-weight: 600;
   margin: 0;
+  font-family: var(--font-display, var(--font-serif, serif));
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .dialog-body {
-  padding: 20px 24px;
+  padding: 16px 18px 4px;
   max-height: 60vh;
   overflow-y: auto;
+  min-width: 0;
 }
 
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
+  gap: 18px;
+  padding: 14px 18px 16px;
 }
 
 .custom-provider-dialog .dialog-actions {
@@ -291,11 +296,12 @@ function handleSave() {
 
 .dialog-actions-right {
   display: flex;
-  gap: 10px;
+  gap: 18px;
 }
 
 .form-group {
   margin-bottom: 16px;
+  min-width: 0;
 }
 
 .form-group:last-child {
@@ -304,125 +310,141 @@ function handleSave() {
 
 .form-label {
   display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  margin-bottom: 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  margin-bottom: 5px;
 }
 
 .form-label .required {
   color: var(--ui-status-danger-fg, var(--danger));
 }
 
+/* Underline inputs: the line is the control. */
 .form-input {
   width: 100%;
-  padding: 10px 14px;
-  background: var(--ui-surface-panel-bg, var(--panel));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: var(--radius-sm);
+  min-width: 0;
+  appearance: none;
+  padding: 4px 0 5px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-radius: 0;
   color: var(--ui-text-primary-fg, var(--text-primary));
-  font-size: 14px;
+  font-size: 13px;
   outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: border-color 0.15s ease;
 }
 
 .form-input:focus {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .form-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-faint-fg, var(--muted));
 }
 
 .form-hint {
-  font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--muted));
   margin-top: 6px;
+  overflow-wrap: anywhere;
 }
 
 .api-type-selector {
   display: flex;
   gap: 10px;
+  min-width: 0;
 }
 
+/* Square drafting boxes: state lives in the line, not a fill. */
 .api-type-btn {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px;
-  background: var(--ui-surface-panel-bg, var(--panel));
+  padding: 10px 8px;
+  background: transparent;
   border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: var(--radius-sm);
+  border-radius: 0;
   color: var(--ui-text-muted-fg, var(--text-muted));
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.api-type-btn svg {
+  flex-shrink: 0;
 }
 
 .api-type-btn:hover {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--ui-text-muted-fg, var(--text-muted));
   color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .api-type-btn.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  background: transparent;
   border-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: inset 0 -2px 0 var(--ui-accent-primary-fg, var(--accent));
   color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
+/* Error held by a left rule, no filled block. */
 .error-message {
-  padding: 12px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: var(--radius-sm);
+  padding: 2px 0 2px 8px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--ui-status-danger-fg, var(--danger));
   color: var(--ui-status-danger-fg, var(--danger));
-  font-size: 13px;
+  font-size: 12px;
   margin-top: 16px;
+  overflow-wrap: anywhere;
 }
 
+/* Footer text actions: mono ink, hover pulls an accent underline. */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  appearance: none;
+  padding: 0;
+  background: transparent;
   border: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.btn:hover {
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .btn.primary {
-  background: var(--ui-accent-primary-fg, var(--accent));
-  color: white;
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .btn.primary:hover {
-  background: var(--ui-action-primary-hover-bg, var(--ui-accent-primary-fg, var(--accent)));
-}
-
-.btn.secondary {
-  background: var(--ui-surface-panel-bg, var(--panel));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
-.btn.secondary:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-accent-primary-fg, var(--accent));
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .btn.danger {
-  background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  color: var(--ui-status-danger-fg, #ef4444);
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
 .btn.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: var(--ui-status-danger-fg, #ef4444);
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 </style>

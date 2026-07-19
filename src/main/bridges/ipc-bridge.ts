@@ -185,6 +185,11 @@ export class IPCBridge {
 
   // ── Safe IPC send ──────────────────────────────
 
+  /** Push a non-session event to the renderer (practice ticks, etc.). */
+  sendToRenderer(channel: string, payload: unknown): void {
+    this.safeSend(channel, payload)
+  }
+
   private safeSend(channel: string, payload: any): void {
     if (!this.sender || this.sender.isDestroyed()) {
       return

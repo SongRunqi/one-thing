@@ -116,35 +116,55 @@ onMounted(() => {
   justify-content: flex-end;
 }
 
+/* Job rows: ledger lines, no card chrome. */
 .job-card {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--ui-border-default-border, var(--border-color));
-  border-radius: 8px;
-  background: var(--ui-surface-panel-bg, var(--bg-secondary));
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 55%, transparent);
+  border-radius: 0;
+  background: transparent;
+}
+
+.job-card:last-child {
+  border-bottom: 0;
 }
 
 .job-main {
+  flex: 1;
   min-width: 0;
 }
 
 .job-title {
-  font-family: var(--font-mono);
+  font-family: var(--font-mono, monospace);
   font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   word-break: break-all;
 }
 
 .job-meta,
 .job-log {
+  margin-top: 6px;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+}
+
+.job-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
+  min-width: 0;
+}
+
+.job-log {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status {
@@ -161,25 +181,40 @@ onMounted(() => {
   color: var(--ui-text-secondary-fg, var(--text-secondary));
 }
 
+/* Outlined square buttons; danger actions carry a danger line. */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid var(--ui-border-default-border, var(--border-color));
-  border-radius: 8px;
-  padding: 6px 10px;
-  background: var(--ui-surface-app-bg, var(--bg-primary));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  flex-shrink: 0;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border-color)));
+  border-radius: 0;
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  font-size: 12px;
   cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .btn.danger {
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, var(--danger-color, #dc2626)));
+  color: var(--ui-status-danger-fg, var(--danger-color, #dc2626));
+}
+
+.btn.danger:hover:not(:disabled) {
+  border-color: var(--ui-status-danger-fg, var(--danger-color, #dc2626));
   color: var(--ui-status-danger-fg, var(--danger-color, #dc2626));
 }
 

@@ -140,6 +140,25 @@
             </SettingsField>
           </div>
           <div
+            v-else-if="voice.asr.provider === 'doubao'"
+            class="settings-grid settings-grid-compact"
+          >
+            <SettingsField
+              label="Doubao API key"
+              hint="One key covers both speech recognition and Doubao voices. Create it in the Volcano Engine speech console."
+            >
+              <input
+                class="form-input"
+                type="password"
+                autocomplete="off"
+                :value="voice.doubao.apiKey"
+                placeholder="Volcano Engine API key"
+                spellcheck="false"
+                @input="updateDoubao({ apiKey: value($event) })"
+              >
+            </SettingsField>
+          </div>
+          <div
             v-else
             class="settings-grid settings-grid-compact"
           >
@@ -202,6 +221,9 @@
                   <option value="qwen-tts">
                     Qwen / CosyVoice
                   </option>
+                  <option value="doubao">
+                    Doubao voices
+                  </option>
                 </select>
               </SettingsField>
 
@@ -234,6 +256,22 @@
                   :placeholder="hasOpenAIProviderKey ? 'Using global key' : 'sk-...'"
                   spellcheck="false"
                   @input="updateOpenAITTS({ apiKey: value($event) })"
+                >
+              </SettingsField>
+
+              <SettingsField
+                v-else-if="voice.tts.provider === 'doubao'"
+                label="Doubao API key"
+                hint="Shared with Doubao speech recognition; fill it once in either place."
+              >
+                <input
+                  class="form-input"
+                  type="password"
+                  autocomplete="off"
+                  :value="voice.doubao.apiKey"
+                  placeholder="Volcano Engine API key"
+                  spellcheck="false"
+                  @input="updateDoubao({ apiKey: value($event) })"
                 >
               </SettingsField>
 
@@ -380,6 +418,27 @@
             </div>
 
             <div
+              v-if="voice.tts.provider === 'doubao'"
+              class="settings-grid settings-grid-compact provider-config-grid"
+            >
+              <SettingsField label="Doubao voice">
+                <select
+                  class="form-input"
+                  :value="voice.doubao.speaker"
+                  @change="updateDoubao({ speaker: value($event) })"
+                >
+                  <option
+                    v-for="speaker in DOUBAO_SPEAKERS"
+                    :key="speaker.id"
+                    :value="speaker.id"
+                  >
+                    {{ speaker.name }}
+                  </option>
+                </select>
+              </SettingsField>
+            </div>
+
+            <div
               v-if="voice.tts.provider === 'openai-tts'"
               class="settings-grid settings-grid-compact provider-config-grid"
             >
@@ -407,6 +466,66 @@
             >
               {{ ttsSetupIssue }}
             </p>
+          </div>
+        </SettingRow>
+
+        <SettingRow
+          layout="stack"
+          label="Wake word"
+          description="Keep listening for a spoken wake phrase, then start a voice turn hands-free. Detection runs locally; audio only goes to the cloud after the wake phrase."
+        >
+          <div class="voice-replies-control">
+            <div class="voice-replies-toggle">
+              <div>
+                <span>Listen for the wake phrase</span>
+                <small>The mic stays open while onething runs.</small>
+              </div>
+              <label class="native-toggle">
+                <input
+                  type="checkbox"
+                  :checked="wakeWordEnabled"
+                  @change="setWakeWordEnabled(checked($event))"
+                >
+              </label>
+            </div>
+
+            <div
+              v-if="wakeWordEnabled"
+              class="settings-grid settings-grid-compact"
+            >
+              <SettingsField
+                label="Wake phrase"
+                hint="Chinese characters, 4+ recommended (e.g. 你好小一)."
+              >
+                <input
+                  class="form-input"
+                  :value="voice.wake.phrase"
+                  placeholder="你好小一"
+                  spellcheck="false"
+                  @input="updateWake({ phrase: value($event) })"
+                >
+              </SettingsField>
+              <SettingsField
+                label="Sensitivity"
+                hint="Higher triggers more easily but risks false wakes."
+              >
+                <select
+                  class="form-input"
+                  :value="voice.wake.sensitivity || 'medium'"
+                  @change="updateWake({ sensitivity: value($event) as any })"
+                >
+                  <option value="low">
+                    Low
+                  </option>
+                  <option value="medium">
+                    Medium
+                  </option>
+                  <option value="high">
+                    High
+                  </option>
+                </select>
+              </SettingsField>
+            </div>
           </div>
         </SettingRow>
 
@@ -558,6 +677,9 @@
               <option value="funasr-stream">
                 FunASR Streaming
               </option>
+              <option value="doubao">
+                Doubao Streaming
+              </option>
               <option value="openai-transcribe">
                 OpenAI Transcribe
               </option>
@@ -582,7 +704,7 @@
         <div class="settings-grid">
           <SettingsField
             label="OpenRouter ASR model"
-            hint="Use openai/whisper-1 if you want OpenRouter's OpenAI Whisper route."
+            hint="Use openai/whisper-1 if you want OpenRouter's OpenAI Whisper route. API keys and server URLs live under Voice input above."
           >
             <input
               class="form-input"
@@ -591,35 +713,7 @@
               @input="updateOpenRouterASR({ model: value($event) })"
             >
           </SettingsField>
-          <SettingsField
-            label="OpenRouter API key"
-            hint="Optional if your global OpenRouter provider already has a key."
-          >
-            <input
-              class="form-input"
-              type="password"
-              autocomplete="off"
-              :value="voice.asr.openrouter.apiKey"
-              spellcheck="false"
-              @input="updateOpenRouterASR({ apiKey: value($event) })"
-            >
-          </SettingsField>
         </div>
-
-        <SettingRow layout="stack">
-          <SettingsField
-            label="FunASR URL"
-            hint="Use ws:// or wss:// for streaming ASR. The legacy HTTP JSON endpoint only works with FunASR HTTP Server."
-          >
-            <input
-              class="form-input"
-              :value="voice.asr.funasr.url"
-              placeholder="ws://127.0.0.1:10095"
-              spellcheck="false"
-              @input="updateFunASR({ url: value($event) })"
-            >
-          </SettingsField>
-        </SettingRow>
       </SettingsGroup>
     </SettingsSection>
   </div>
@@ -648,6 +742,15 @@ const emit = defineEmits<{
 }>()
 
 const voice = computed<VoiceSettings>(() => props.settings.voice ?? DEFAULT_VOICE_SETTINGS)
+
+const DOUBAO_SPEAKERS = [
+  { id: 'zh_female_cancan_mars_bigtts', name: '灿灿(女声)' },
+  { id: 'zh_female_shuangkuaisisi_moon_bigtts', name: '爽快思思(女声)' },
+  { id: 'zh_male_wennuanahu_moon_bigtts', name: '温暖阿虎(男声)' },
+  { id: 'zh_male_yangguangqingnian_moon_bigtts', name: '阳光青年(男声)' },
+  { id: 'zh_female_linjianvhai_moon_bigtts', name: '邻家女孩(女声)' },
+  { id: 'zh_male_jingqiangkanye_moon_bigtts', name: '京腔侃爷(男声)' },
+]
 const showAdvanced = ref(false)
 const agents = ref<AgentDefinition[]>([])
 const asrTestStatus = ref<'idle' | 'recording' | 'testing' | 'success' | 'error'>('idle')
@@ -660,6 +763,9 @@ const ttsModelsMessage = ref('')
 let asrTestStream: MediaStream | null = null
 let asrTestRecorder: MediaRecorder | null = null
 const transcriptionDescription = computed(() => {
+  if (voice.value.asr.provider === 'doubao') {
+    return 'Realtime path. Streams microphone PCM to Doubao (Volcano Engine) streaming ASR; the cloud detects the end of your sentence.'
+  }
   if (voice.value.asr.provider === 'funasr-stream') {
     return 'Realtime path. Streams microphone PCM to your FunASR WebSocket server and receives partial transcripts.'
   }
@@ -705,6 +811,7 @@ const openRouterTTSVoiceHint = computed(() => {
   return 'Voice names depend on the selected OpenRouter model.'
 })
 const asrProviderLabel = computed(() => {
+  if (voice.value.asr.provider === 'doubao') return 'Doubao Streaming'
   if (voice.value.asr.provider === 'funasr-stream') return 'FunASR Streaming'
   if (voice.value.asr.provider === 'funasr-server') return 'FunASR Server'
   if (voice.value.asr.provider === 'openai-transcribe') return `OpenAI ${voice.value.asr.openai.model || 'Transcribe'}`
@@ -724,14 +831,20 @@ const configuredTTSProviderLabel = computed(() => {
   if (voice.value.tts.provider === 'openrouter-tts') return 'OpenRouter TTS'
   if (voice.value.tts.provider === 'openai-tts') return 'OpenAI TTS'
   if (voice.value.tts.provider === 'qwen-tts') return 'Qwen / CosyVoice'
+  if (voice.value.tts.provider === 'doubao') return 'Doubao voices'
   return 'System voice'
 })
+const hasDoubaoCredentials = computed(() => Boolean(
+  voice.value.doubao.apiKey?.trim()
+  || (voice.value.doubao.appId?.trim() && voice.value.doubao.accessToken?.trim()),
+))
 const ttsProviderHasRequiredConfig = computed(() => {
   if (voice.value.tts.provider === 'system-tts') return true
   if (voice.value.tts.provider === 'openrouter-tts') return hasOpenRouterTTSKey.value
   if (voice.value.tts.provider === 'openai-tts') {
     return Boolean(voice.value.tts.openai.apiKey?.trim() || hasOpenAIProviderKey.value)
   }
+  if (voice.value.tts.provider === 'doubao') return hasDoubaoCredentials.value
   return Boolean(voice.value.tts.qwen.baseUrl.trim() && voice.value.tts.qwen.apiKey?.trim())
 })
 const effectiveTTSProviderLabel = computed(() => {
@@ -752,6 +865,9 @@ const ttsSetupIssue = computed(() => {
   }
   if (voice.value.tts.provider === 'qwen-tts' && !voice.value.tts.qwen.apiKey?.trim()) {
     return 'Missing Qwen / CosyVoice API key; using System voice.'
+  }
+  if (voice.value.tts.provider === 'doubao' && !hasDoubaoCredentials.value) {
+    return 'Missing Doubao API key; using System voice.'
   }
   return ''
 })
@@ -778,6 +894,7 @@ const ttsProviderHint = computed(() => {
   if (voice.value.tts.provider === 'system-tts') return 'Recommended MVP path. It works without a paid TTS API.'
   if (voice.value.tts.provider === 'openrouter-tts') return 'Uses the same OpenRouter account as speech to text when available.'
   if (voice.value.tts.provider === 'openai-tts') return 'Uses OpenAI audio speech when a key is available; otherwise System voice is used.'
+  if (voice.value.tts.provider === 'doubao') return 'Streams Doubao (Volcano Engine) voices with the shared Doubao API key.'
   return 'Uses an OpenAI-compatible Qwen/CosyVoice speech endpoint when configured.'
 })
 const voiceSetupSummary = computed(() => {
@@ -793,7 +910,7 @@ const isTestingTTS = computed(() => ttsTestStatus.value === 'testing')
 const asrTestButtonLabel = computed(() => {
   if (asrTestStatus.value === 'recording') return 'Listening...'
   if (asrTestStatus.value === 'testing') return 'Checking...'
-  if (voice.value.asr.provider === 'funasr-stream') return 'Test in chat'
+  if (voice.value.asr.provider === 'funasr-stream' || voice.value.asr.provider === 'doubao') return 'Test in chat'
   return 'Test speech to text'
 })
 const ttsTestButtonLabel = computed(() => isTestingTTS.value ? 'Testing voice...' : 'Test voice')
@@ -861,6 +978,29 @@ function updateVoice(updates: Partial<VoiceSettings>) {
 
 function updateVAD(updates: Partial<VoiceSettings['vad']>) {
   updateVoice({ vad: { ...voice.value.vad, ...updates } })
+}
+
+function updateDoubao(updates: Partial<VoiceSettings['doubao']>) {
+  updateVoice({ doubao: { ...voice.value.doubao, ...updates } })
+}
+
+function updateWake(updates: Partial<VoiceSettings['wake']>) {
+  updateVoice({ wake: { ...voice.value.wake, ...updates } })
+}
+
+const wakeWordEnabled = computed(() => (
+  voice.value.alwaysOn && voice.value.wake.enabled && voice.value.wake.provider === 'sherpa-kws'
+))
+
+function setWakeWordEnabled(enabled: boolean) {
+  updateVoice({
+    alwaysOn: enabled,
+    wake: {
+      ...voice.value.wake,
+      enabled,
+      provider: 'sherpa-kws',
+    },
+  })
 }
 
 function updateConversation(updates: Partial<VoiceSettings['conversation']>) {
@@ -1050,7 +1190,7 @@ async function testSpeechToText() {
     return
   }
 
-  if (voice.value.asr.provider === 'funasr-stream') {
+  if (voice.value.asr.provider === 'funasr-stream' || voice.value.asr.provider === 'doubao') {
     asrTestStatus.value = 'success'
     asrTestMessage.value = 'Streaming ASR runs from the chat mic button so partial transcripts can appear live.'
     return
@@ -1122,6 +1262,11 @@ function getASRSetupIssue() {
 }
 
 function getASRProviderSetupIssue() {
+  if (voice.value.asr.provider === 'doubao') {
+    const doubao = voice.value.doubao
+    const hasKey = Boolean(doubao.apiKey?.trim() || (doubao.appId?.trim() && doubao.accessToken?.trim()))
+    return hasKey ? '' : 'Add a Doubao (Volcano Engine) API key before using Doubao speech.'
+  }
   if (voice.value.asr.provider === 'funasr-stream') {
     const url = voice.value.asr.funasr.url.trim()
     if (!url) return 'Add a FunASR WebSocket URL before testing speech to text.'
@@ -1211,40 +1356,41 @@ function normalizeASRTestError(error: any) {
 
 .voice-setup-summary {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
   gap: 14px;
   padding: 14px;
   border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  background: var(--settings-paper-2, var(--bg-secondary));
 }
 
 .voice-setup-copy {
   min-width: 0;
 }
 
+/* Status ring: outlined, zero fill — state lives in the line color */
 .voice-state-pill {
   display: inline-flex;
   align-items: center;
   width: fit-content;
   min-height: 22px;
-  padding: 3px 8px;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
+  padding: 3px 9px;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 999px;
-  background: var(--settings-paper-1, var(--bg-primary));
+  background: transparent;
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
-  font-size: 12px;
-  font-weight: 650;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .voice-state-pill.on {
-  border-color: var(--ui-status-success-border, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  border-color: var(--ui-status-success-fg, #15803d);
   color: var(--ui-status-success-fg, #15803d);
 }
 
 .voice-setup-copy h4 {
   margin: 10px 0 4px;
-  color: var(--settings-ink-1, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 14px;
   font-weight: 700;
   line-height: 1.25;
@@ -1268,8 +1414,7 @@ function normalizeASRTestError(error: any) {
   min-width: 0;
   padding: 10px;
   border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
-  background: var(--settings-paper-1, var(--bg-primary));
+  background: transparent;
 }
 
 .voice-setup-item span,
@@ -1290,7 +1435,7 @@ function normalizeASRTestError(error: any) {
   display: block;
   margin-top: 7px;
   overflow-wrap: anywhere;
-  color: var(--settings-ink-1, var(--ui-text-primary-fg, var(--text-primary)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 13px;
   font-weight: 700;
   line-height: 1.25;
@@ -1307,11 +1452,7 @@ function normalizeASRTestError(error: any) {
   color: var(--ui-status-warning-fg, #b45309);
 }
 
-.native-toggle input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-}
+/* .native-toggle visuals come from SettingsPage's global ledger toggle. */
 
 .voice-replies-control {
   display: flex;
@@ -1325,6 +1466,10 @@ function normalizeASRTestError(error: any) {
   justify-content: space-between;
   gap: 16px;
   min-height: 42px;
+}
+
+.voice-replies-toggle > div {
+  min-width: 0;
 }
 
 .voice-replies-toggle span,
@@ -1378,15 +1523,15 @@ function normalizeASRTestError(error: any) {
   color: var(--ui-status-success-fg, #15803d);
 }
 
+/* Read-only placeholder: dashed empty-state line, no fill */
 .readonly-provider {
   min-height: 34px;
   display: flex;
   align-items: center;
   padding: 8px 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-surface-input-bg, var(--input-bg, var(--bg-primary))) 70%, transparent);
-  color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  border: 1px dashed var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: transparent;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   font-size: 13px;
 }
 
@@ -1406,32 +1551,33 @@ function normalizeASRTestError(error: any) {
   line-height: 1.45;
 }
 
+/* Status lines: state hangs on a left ink rule, no filled block */
 .setup-status {
   flex-basis: 100%;
+  min-width: 0;
   margin: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
-  background: var(--settings-paper-2, var(--bg-secondary));
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: transparent;
   color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 12px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 
 .setup-status.success {
-  border-color: var(--ui-status-success-border, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  border-left-color: var(--ui-status-success-fg, #15803d);
   color: var(--ui-status-success-fg, #15803d);
 }
 
 .setup-status.error {
-  border-color: var(--ui-status-danger-border, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  border-left-color: var(--ui-status-danger-fg, #b91c1c);
   color: var(--ui-status-danger-fg, #b91c1c);
 }
 
 .setup-status.warning {
-  border-color: var(--ui-status-warning-border, var(--settings-rule-soft, var(--ui-border-default-border, var(--border))));
+  border-left-color: var(--ui-status-warning-fg, #92400e);
   color: var(--ui-status-warning-fg, #92400e);
-  background: color-mix(in srgb, var(--ui-surface-note-bg, var(--ui-status-warning-bg, #fef3c7)) 28%, var(--settings-paper-2, var(--bg-secondary)));
 }
 
 .provider-note {
@@ -1440,51 +1586,57 @@ function normalizeASRTestError(error: any) {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-  padding: 9px 10px;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
-  background: var(--settings-paper-2, var(--bg-secondary));
+  padding: 4px 0 4px 8px;
+  border-left: 2px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: transparent;
   color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
   font-size: 12px;
   line-height: 1.35;
+}
+
+.provider-note span {
+  min-width: 0;
 }
 
 .provider-note button {
   flex-shrink: 0;
   min-height: 28px;
   padding: 5px 9px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  background: var(--settings-paper-1, var(--bg-primary));
-  color: var(--settings-ink-1, var(--ui-text-primary-fg, var(--text-primary)));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: transparent;
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 12px;
-  font-weight: 600;
   cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
 }
 
-.secondary-button,
-.advanced-toggle {
+.provider-note button:hover {
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+}
+
+.secondary-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 7px;
   min-height: 32px;
   padding: 7px 12px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  background: var(--ui-action-secondary-bg, var(--button-bg, var(--bg-secondary)));
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: transparent;
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: 13px;
   cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease;
 }
 
 :deep(.setting-row-stack > .setting-row-control) {
   width: 100%;
 }
 
-.secondary-button:hover,
-.advanced-toggle:hover {
-  background: var(--ui-state-hover-bg, var(--hover-bg, var(--bg-tertiary)));
+.secondary-button:hover:not(:disabled) {
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 .secondary-button:disabled {
@@ -1496,22 +1648,33 @@ function normalizeASRTestError(error: any) {
   animation: spin 0.8s linear infinite;
 }
 
+/* Advanced expander: text action, underline carries the hover */
 .advanced-toggle {
+  display: block;
   width: 100%;
   margin: 0 0 12px;
+  padding: 6px 0;
   text-align: left;
-  justify-content: flex-start;
+  appearance: none;
+  border: none;
   background: transparent;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  cursor: pointer;
+  transition: color 0.12s ease;
 }
 
+.advanced-toggle:hover {
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+/* .form-input visuals come from SettingsPage's global ledger styles. */
 .form-input {
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  background: var(--ui-surface-input-bg, var(--input-bg, var(--bg-primary)));
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  font-size: 13px;
 }
 
 @media (max-width: 720px) {

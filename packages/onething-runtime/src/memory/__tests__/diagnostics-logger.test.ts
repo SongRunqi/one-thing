@@ -31,12 +31,12 @@ describe('runtime MemoryDiagnosticsLogger', () => {
     })
 
     logger.log({
-      subsystem: 'embedding',
-      operation: 'embed-texts',
+      subsystem: 'daily',
+      operation: 'append-note',
       stage: 'request',
       status: 'started',
       request: {
-        url: 'https://api.openai.com/v1/embeddings?api_key=sk-test',
+        url: 'https://api.openai.com/v1/chat?api_key=sk-test',
         apiKey: 'sk-test',
         prompt: 'x'.repeat(500),
       },
@@ -49,7 +49,7 @@ describe('runtime MemoryDiagnosticsLogger', () => {
       response: { candidates: 2 },
     })
 
-    const listed = await logger.list({ subsystem: 'embedding', limit: 20 })
+    const listed = await logger.list({ subsystem: 'daily', limit: 20 })
     expect(listed.entries).toHaveLength(1)
     expect(listed.entries[0].request?.apiKey).toBe('[redacted]')
     expect(String(listed.entries[0].request?.url)).toContain('api_key=%5Bredacted%5D')
@@ -57,7 +57,7 @@ describe('runtime MemoryDiagnosticsLogger', () => {
 
     const stats = await logger.stats()
     expect(stats.entriesInBuffer).toBe(2)
-    expect(stats.bySubsystem.embedding).toBe(1)
+    expect(stats.bySubsystem.daily).toBe(1)
     expect(fs.readdirSync(logRoot).some(file => file.endsWith('.jsonl'))).toBe(true)
   })
 
@@ -106,12 +106,12 @@ describe('runtime MemoryDiagnosticsLogger', () => {
         statusText: 'Unauthorized',
         headers: { 'content-type': 'application/json' },
       }),
-      { subsystem: 'embedding', operation: 'provider-http', runId: 'test-run', providerId: 'openai', model: 'text-embedding-3-small' },
+      { subsystem: 'capture', operation: 'provider-http', runId: 'test-run', providerId: 'openai', model: 'text-embedding-3-small' },
       logger,
     )
 
     await wrapped('https://api.openai.com/v1/embeddings?api_key=sk-test', { method: 'POST' })
-    const listed = await logger.list({ subsystem: 'embedding', status: 'error', limit: 10 })
+    const listed = await logger.list({ subsystem: 'capture', status: 'error', limit: 10 })
     expect(listed.entries.some(entry => entry.response?.status === 401)).toBe(true)
     expect(JSON.stringify(listed.entries)).not.toContain('sk-test')
   })

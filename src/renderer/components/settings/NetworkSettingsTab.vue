@@ -132,6 +132,11 @@ async function testProxy() {
 </script>
 
 <style scoped>
+/*
+ * Network tab — ledger 画线风.
+ * Rows, inputs, the native toggle, and .test-btn are drawn by the
+ * SettingsPage :deep() layer; only layout and the test-result ink live here.
+ */
 .tab-content {
   animation: fadeIn 0.15s ease;
 }
@@ -141,93 +146,34 @@ async function testProxy() {
   to { opacity: 1; }
 }
 
-.settings-section {
-  margin-bottom: 28px;
-}
-
-.section-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 0 0 12px 0;
-  opacity: 0.8;
-}
-
-.settings-card {
-  background: rgba(128, 128, 128, 0.06);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.card-row {
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
-}
-
-.card-row:last-child {
-  border-bottom: none;
-}
-
-.form-hint {
-  display: block;
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-}
-
-.native-toggle input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
-}
-
-.form-group {
-  margin: 0;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
+/* Proxy URL / bypass rules: full-width, shrinkable, single line + ellipsis. */
 .form-input {
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  background: var(--ui-surface-input-bg, var(--input-bg, var(--bg-primary)));
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  font-size: 13px;
-}
-
-.form-hint.error {
-  color: var(--ui-status-danger-fg, var(--danger, #d94848));
+  min-width: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .test-btn {
-  padding: 7px 12px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
-  background: var(--ui-action-secondary-bg, var(--button-bg, rgba(128, 128, 128, 0.08)));
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  font-size: 13px;
+  flex-shrink: 0;
+  padding: 6px 12px;
   cursor: pointer;
 }
 
+/* Disabled = dashed line + faint ink, not an opacity veil. */
 .test-btn:disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+  border-style: dashed;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .test-result {
   margin-left: 10px;
+  min-width: 0;
   font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
 .test-result.success {

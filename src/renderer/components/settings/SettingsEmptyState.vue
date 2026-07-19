@@ -44,15 +44,16 @@ defineProps<{
   text-align: center;
 }
 
+/* Empty slot drawn as a dashed square — a pencilled-in placeholder. */
 .settings-empty-icon {
   display: grid;
   place-items: center;
   width: 34px;
   height: 34px;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
+  border: 1px dashed var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
   color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
-  background: var(--settings-paper-2, var(--ui-surface-app-bg, var(--bg)));
+  background: transparent;
 }
 
 .settings-empty-title {

@@ -20,6 +20,7 @@ import {
   checkFileAccess,
 } from '../sandbox'
 import { getSettings } from '../../../stores/settings.js'
+import { getToolOutputsDir } from '../../../stores/paths.js'
 import { resetVariablesStoreForTests } from '../../../variables/store/index.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 
@@ -195,6 +196,9 @@ describe('sandbox', () => {
         '/shared',
         '/notes/personal',
         '/notes/work',
+        // App-generated artifacts (bash overflow logs): re-reading a tool
+        // result already adjudicated by the permission system.
+        getToolOutputsDir(),
         getDownloadsDirectory(),
       ])
     })

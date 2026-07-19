@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sidebar v6 · 四版自研 · 紧凑导航 + 项目即会话</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#edece8; color:#1c1b18;
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif; padding:44px 40px 80px; }
+  .head { max-width:1200px; margin:0 auto 30px; }
+  .head h1 { font-size:21px; font-weight:600; }
+  .head p { margin-top:8px; font-size:13px; color:#6f6c64; line-height:1.7; max-width:66em; }
+  .head b { color:#1c1b18; }
+  .head code { font-family:"SF Mono",Menlo,monospace; font-size:12px; background:#e2e0d9; padding:1px 5px; border-radius:4px; }
+  .gallery { max-width:1200px; margin:0 auto; display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(272px,1fr)); gap:44px 36px; justify-items:center; }
+  .scheme { width:272px; }
+  .scheme > header { margin-bottom:12px; }
+  .scheme .num { font-size:11px; letter-spacing:.2em; color:#a5a29a; }
+  .scheme h2 { font-size:15px; font-weight:600; margin-top:3px; }
+  .scheme .trait { margin-top:5px; font-size:12px; color:#6f6c64; line-height:1.6; }
+  .scheme .trait b { color:#1c1b18; font-weight:600; }
+
+  .win { width:272px; height:632px; border-radius:12px; overflow:hidden;
+    box-shadow:0 1px 2px rgba(20,18,12,.08),0 14px 34px rgba(20,18,12,.11);
+    display:flex; flex-direction:column; }
+  .lights { display:flex; gap:7px; padding:13px 0 4px 14px; flex-shrink:0; }
+  .lights i { width:10px; height:10px; border-radius:50%; background:rgba(0,0,0,.11); }
+  .ic { stroke:currentColor; stroke-width:1.65; fill:none; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+  .scroll { flex:1; overflow:hidden; min-height:0; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+  .gen { animation:pulse 1.4s ease infinite; }
+
+  /* ═══════════ 版本一 · 紧凑中性 ═══════════ */
+  .a { background:#fcfcfb; color:#26251f; }
+  .a .scroll { padding:5px 7px; }
+  .a .row { display:flex; align-items:center; gap:9px; height:29px; padding:0 9px; border-radius:7px; cursor:pointer; }
+  .a .row .ic { color:#6b685f; }
+  .a .row .lb { flex:1; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .a .row:hover { background:#f2f1ec; }
+  .a .row.on { background:#eae9e4; }
+  .a .row .kbd { font-size:10.5px; color:#9c9990; background:#eceae3; padding:1px 5px; border-radius:5px; }
+  .a .row .dot { width:5px; height:5px; border-radius:50%; background:#c0603f; }
+  .a .sec { display:flex; align-items:center; gap:4px; height:26px; padding:0 9px; margin-top:8px;
+    color:#adaaa1; font-size:11px; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; }
+  .a .sec .ch { width:12px; height:12px; }
+  .a .sec.cl .ch { transform:rotate(-90deg); }
+  .a .prev { padding:0 9px 6px 33px; margin-top:-2px; font-size:12px; color:#a8a59c;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .a .more { padding:0 9px; height:28px; display:flex; align-items:center; color:#adaaa1; font-size:12.5px; cursor:pointer; }
+  .a .foot { padding:6px 7px 9px; border-top:1px solid #efeee9; }
+  .a .foot .row .ic { color:#8a877e; }
+
+  /* ═══════════ 版本二 · 画线风 ═══════════ */
+  .b { background:#fbfaf6; color:#26241d; }
+  .b .scroll { padding:6px 0 4px; }
+  .b .row { display:flex; align-items:center; gap:10px; height:30px; padding:0 16px; cursor:pointer;
+    position:relative; color:#57534a; }
+  .b .row .ic { color:#8a8578; width:15px; height:15px; }
+  .b .row .lb { flex:1; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .b .row:hover { color:#26241d; }
+  .b .row:hover .ic { color:#26241d; }
+  .b .row.on { color:#26241d; font-weight:550; }
+  .b .row.on .ic { color:#26241d; }
+  .b .row.on::before { content:''; position:absolute; left:0; top:5px; bottom:5px; width:2px; background:#26241d; }
+  .b .row .kbd { font-size:10.5px; color:#a8a297; letter-spacing:.03em; }
+  .b .row .dot { width:5px; height:5px; border-radius:50%; background:#26241d; }
+  /* 分组头带一道贯穿细线 */
+  .b .sec { display:flex; align-items:center; gap:8px; height:28px; padding:0 16px; margin-top:10px;
+    color:#a8a297; font-size:11px; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; }
+  .b .sec .txt { flex-shrink:0; }
+  .b .sec .ln { flex:1; height:1px; background:#e7e3d9; }
+  .b .sec .ch { width:11px; height:11px; }
+  .b .sec.cl .ch { transform:rotate(-90deg); }
+  .b .prev { padding:0 16px 6px 41px; margin-top:-2px; font-size:12px; color:#aca699;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .b .more { padding:0 16px; height:28px; display:flex; align-items:center; color:#a8a297; font-size:12.5px; cursor:pointer; }
+  .b .foot { padding:7px 0 10px; border-top:1px solid #e7e3d9; }
+  .b .foot .row .ic { color:#8a8578; }
+
+  /* ═══════════ 版本三 · 图标栏 ═══════════ */
+  .c { background:#fbfbfa; color:#292824; }
+  /* 顶部导航压成一排小方按钮,极省纵向 */
+  .c .bar { display:flex; align-items:center; gap:5px; padding:8px 12px 8px; border-bottom:1px solid #eeece6; }
+  .c .newb { width:28px; height:28px; border-radius:8px; background:#26251f; color:#fff;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .c .bar .sp2 { width:4px; }
+  .c .sq { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    color:#7a7770; cursor:pointer; position:relative; }
+  .c .sq:hover { background:#f0efe9; color:#292824; }
+  .c .sq.on { color:#292824; }
+  .c .sq.on::after { content:''; position:absolute; bottom:3px; left:9px; right:9px; height:2px; border-radius:1px; background:#c0603f; }
+  .c .scroll { padding:6px 8px; }
+  .c .sec { display:flex; align-items:center; gap:4px; height:26px; padding:0 8px; margin-top:6px;
+    color:#adaaa1; font-size:11px; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; }
+  .c .sec .ch { width:12px; height:12px; }
+  .c .sec.cl .ch { transform:rotate(-90deg); }
+  .c .row { display:flex; align-items:center; gap:9px; height:30px; padding:0 9px; border-radius:8px; cursor:pointer; }
+  .c .row .ic { color:#6f6c64; }
+  .c .row .lb { flex:1; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .c .row:hover { background:#f2f1eb; }
+  .c .row.on { background:#eceae3; }
+  .c .row .dot { width:5px; height:5px; border-radius:50%; background:#c0603f; }
+  .c .prev { padding:0 9px 6px 33px; margin-top:-2px; font-size:12px; color:#a8a59c;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .c .more { padding:0 9px; height:28px; display:flex; align-items:center; color:#adaaa1; font-size:12.5px; cursor:pointer; }
+  .c .foot { padding:6px 8px 9px; border-top:1px solid #eeece6; }
+  .c .foot .row .ic { color:#8a877e; }
+
+  /* ═══════════ 版本四 · 柔和 accent ═══════════ */
+  .d { background:#f6f4ef; color:#2a2822; --ac:#5b60c4; }
+  .d .scroll { padding:6px 8px; }
+  .d .row { display:flex; align-items:center; gap:9px; height:30px; padding:0 10px; border-radius:9px; cursor:pointer; }
+  .d .row .ic { color:#7d7a71; }
+  .d .row .lb { flex:1; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .d .row:hover { background:#efece5; }
+  .d .row.on { background:color-mix(in srgb, var(--ac) 12%, transparent); color:var(--ac); }
+  .d .row.on .ic { color:var(--ac); }
+  .d .row .kbd { font-size:10.5px; color:#9c9990; background:#e9e6df; padding:1px 5px; border-radius:5px; }
+  .d .row .dot { width:5px; height:5px; border-radius:50%; background:var(--ac); }
+  .d .sec { display:flex; align-items:center; gap:4px; height:26px; padding:0 10px; margin-top:8px;
+    color:#a8a59c; font-size:11px; letter-spacing:.06em; cursor:pointer; }
+  .d .sec .ch { width:12px; height:12px; }
+  .d .sec.cl .ch { transform:rotate(-90deg); }
+  .d .prev { padding:0 10px 6px 34px; margin-top:-2px; font-size:12px; color:#a8a49a;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .d .more { padding:0 10px; height:28px; display:flex; align-items:center; color:#a8a59c; font-size:12.5px; cursor:pointer; }
+  .d .foot { padding:6px 8px 9px; border-top:1px solid #eae7e0; }
+  .d .foot .row .ic { color:#8a877e; }
+</style>
+</head>
+<body>
+
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-new" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 4.5a3.2 3.2 0 0 0-3.2 3.2c-2 .3-3.1 1.8-3.1 3.4 0 1.2.5 2.2 1.4 2.9-.3 2 1.2 4 3.5 4 .9 0 1.8-.4 2.4-1 .6.6 1.5 1 2.4 1 2.3 0 3.8-2 3.5-4 .9-.7 1.4-1.7 1.4-2.9 0-1.6-1.1-3.1-3.1-3.4A3.2 3.2 0 0 0 12 4.5z"/><path d="M12 4.5V18"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.7" cy="10" r="1.4"/><path d="M20.5 15.5 16 11l-7 7.5"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="5" y="8.5" width="14" height="10.5" rx="2.5"/><path d="M12 8.5V5.5"/><circle cx="12" cy="4" r="1.3"/><path d="M9.3 13.2v.8M14.7 13.2v.8M9.5 16.5h5"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 9.8h16M8.5 3.5v4M15.5 3.5v4M10.5 14.5l1.5 1.5 3-3"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M6 6a8.3 8.3 0 0 0 0 12M18 6a8.3 8.3 0 0 1 0 12"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M8 10l4 4 4-4"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h3.2a2 2 0 0 1 1.5.7l1 1.1h7.3a2 2 0 0 1 2 2v7.7a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2Z"/></symbol>
+</svg>
+
+<div class="head">
+  <h1>Sidebar v6 — 四版自研</h1>
+  <p>都用你喜欢那类的骨架,但<b>顶部导航做小了</b>(行高 29–30px、图标 15–16px),<b>项目即会话</b>:Projects 每行就是一条会话、点开直接进,平铺一层不折叠。
+     置顶/未归类是可折叠段,<b>设置沉左下角</b>,分组按 <code>workingDirectory</code>。四版性格不同:紧凑中性 / 画线风 / 图标栏 / 柔和 accent。</p>
+</div>
+
+<div class="gallery">
+
+  <!-- 版本一 · 紧凑中性 -->
+  <section class="scheme">
+    <header><div class="num">版本一</div><h2>紧凑中性</h2>
+      <div class="trait">最干净的一版:小圆角 pill 选中、灰阶克制。<b>把参考做对、做小。</b></div></header>
+    <div class="win a">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="scroll">
+        <div class="row on"><svg class="ic" width="16" height="16"><use href="#i-new"/></svg><span class="lb">新会话</span><span class="kbd">⌘N</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-brain"/></svg><span class="lb">记忆</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-image"/></svg><span class="lb">媒体</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-bot"/></svg><span class="lb">代理</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-task"/></svg><span class="lb">任务</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-radio"/></svg><span class="lb">电台</span><span class="dot gen"></span></div>
+        <div class="sec">置顶<svg class="ic ch" style="margin-left:2px"><use href="#i-chev"/></svg></div>
+        <div class="sec">项目</div>
+        <div class="row on"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">start-electron</span></div>
+        <div class="prev">窗口透明度丢帧排查…</div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">transreader-swift</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">智能高考</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">rainny-asr</span></div>
+        <div class="more">Show more</div>
+        <div class="sec cl">未归类<svg class="ic ch" style="margin-left:2px"><use href="#i-chev"/></svg></div>
+      </div>
+      <div class="foot"><div class="row"><svg class="ic" width="16" height="16"><use href="#i-gear"/></svg><span class="lb">设置</span></div></div>
+    </div>
+  </section>
+
+  <!-- 版本二 · 画线风 -->
+  <section class="scheme">
+    <header><div class="num">版本二</div><h2>画线风 · 墨线</h2>
+      <div class="trait">你 app 的本命:无填充,选中是一道左侧墨线,分组头拖一条贯穿细线。<b>能直接吃现有主题。</b></div></header>
+    <div class="win b">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="scroll">
+        <div class="row on"><svg class="ic"><use href="#i-new"/></svg><span class="lb">新会话</span><span class="kbd">⌘N</span></div>
+        <div class="row"><svg class="ic"><use href="#i-brain"/></svg><span class="lb">记忆</span></div>
+        <div class="row"><svg class="ic"><use href="#i-image"/></svg><span class="lb">媒体</span></div>
+        <div class="row"><svg class="ic"><use href="#i-bot"/></svg><span class="lb">代理</span></div>
+        <div class="row"><svg class="ic"><use href="#i-task"/></svg><span class="lb">任务</span></div>
+        <div class="row"><svg class="ic"><use href="#i-radio"/></svg><span class="lb">电台</span><span class="dot gen"></span></div>
+        <div class="sec"><span class="txt">置顶</span><span class="ln"></span><svg class="ic ch"><use href="#i-chev"/></svg></div>
+        <div class="sec"><span class="txt">项目</span><span class="ln"></span></div>
+        <div class="row on"><svg class="ic"><use href="#i-folder"/></svg><span class="lb">start-electron</span></div>
+        <div class="prev">窗口透明度丢帧排查…</div>
+        <div class="row"><svg class="ic"><use href="#i-folder"/></svg><span class="lb">transreader-swift</span></div>
+        <div class="row"><svg class="ic"><use href="#i-folder"/></svg><span class="lb">智能高考</span></div>
+        <div class="row"><svg class="ic"><use href="#i-folder"/></svg><span class="lb">rainny-asr</span></div>
+        <div class="more">Show more</div>
+        <div class="sec cl"><span class="txt">未归类</span><span class="ln"></span><svg class="ic ch"><use href="#i-chev"/></svg></div>
+      </div>
+      <div class="foot"><div class="row"><svg class="ic"><use href="#i-gear"/></svg><span class="lb">设置</span></div></div>
+    </div>
+  </section>
+
+  <!-- 版本三 · 图标栏 -->
+  <section class="scheme">
+    <header><div class="num">版本三</div><h2>图标栏 · 顶栏压扁</h2>
+      <div class="trait">导航压成顶部一排小方按钮,<b>只占一行高</b>,把纵向全让给会话列表;活跃项底部一道彩条。</div></header>
+    <div class="win c">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="bar">
+        <div class="newb"><svg class="ic" width="15" height="15"><use href="#i-plus"/></svg></div>
+        <div class="sp2"></div>
+        <div class="sq"><svg class="ic" width="16" height="16"><use href="#i-brain"/></svg></div>
+        <div class="sq"><svg class="ic" width="16" height="16"><use href="#i-image"/></svg></div>
+        <div class="sq"><svg class="ic" width="16" height="16"><use href="#i-bot"/></svg></div>
+        <div class="sq"><svg class="ic" width="16" height="16"><use href="#i-task"/></svg></div>
+        <div class="sq on"><svg class="ic" width="16" height="16"><use href="#i-radio"/></svg></div>
+      </div>
+      <div class="scroll">
+        <div class="sec">置顶<svg class="ic ch" style="margin-left:2px"><use href="#i-chev"/></svg></div>
+        <div class="sec">项目</div>
+        <div class="row on"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">start-electron</span></div>
+        <div class="prev">窗口透明度丢帧排查…</div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">transreader-swift</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">智能高考</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">rainny-asr</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">opencode</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">mario-game</span></div>
+        <div class="more">Show more</div>
+        <div class="sec cl">未归类<svg class="ic ch" style="margin-left:2px"><use href="#i-chev"/></svg></div>
+      </div>
+      <div class="foot"><div class="row"><svg class="ic" width="16" height="16"><use href="#i-gear"/></svg><span class="lb">设置</span></div></div>
+    </div>
+  </section>
+
+  <!-- 版本四 · 柔和 accent -->
+  <section class="scheme">
+    <header><div class="num">版本四</div><h2>柔和 · 单色强调</h2>
+      <div class="trait">一抹靛蓝作强调:选中行淡色底 + accent 字与图标,圆润友好。<b>唯一有彩色的一版。</b></div></header>
+    <div class="win d">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="scroll">
+        <div class="row on"><svg class="ic" width="16" height="16"><use href="#i-new"/></svg><span class="lb">新会话</span><span class="kbd">⌘N</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-brain"/></svg><span class="lb">记忆</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-image"/></svg><span class="lb">媒体</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-bot"/></svg><span class="lb">代理</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-task"/></svg><span class="lb">任务</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-radio"/></svg><span class="lb">电台</span><span class="dot gen"></span></div>
+        <div class="sec">置顶<svg class="ic ch" style="margin-left:2px"><use href="#i-chev"/></svg></div>
+        <div class="sec">项目</div>
+        <div class="row on"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">start-electron</span></div>
+        <div class="prev">窗口透明度丢帧排查…</div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">transreader-swift</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">智能高考</span></div>
+        <div class="row"><svg class="ic" width="16" height="16"><use href="#i-folder"/></svg><span class="lb">rainny-asr</span></div>
+        <div class="more">Show more</div>
+        <div class="sec cl">未归类<svg class="ic ch" style="margin-left:2px"><use href="#i-chev"/></svg></div>
+      </div>
+      <div class="foot"><div class="row"><svg class="ic" width="16" height="16"><use href="#i-gear"/></svg><span class="lb">设置</span></div></div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

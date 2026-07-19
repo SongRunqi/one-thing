@@ -25,6 +25,13 @@ export interface EvalRunCaseAttempt {
 	index: number;
 	pass: boolean;
 	reason: string;
+	/**
+	 * True when the attempt never produced a judgeable response (network
+	 * error, missing fixture, provider 4xx/5xx). Error attempts are excluded
+	 * from the pass-rate denominator — an infra outage must not read as a
+	 * behavioral failure and permanently depress a case's score history.
+	 */
+	error?: boolean;
 }
 
 /** Per-case detail carried in progress events and run detail. */
@@ -32,6 +39,19 @@ export interface EvalRunCaseDetail {
 	score: number;
 	caseId: string;
 	attempts: EvalRunCaseAttempt[];
+}
+
+/** Cheap per-attempt economics, aggregated into the run entry. */
+interface AttemptMetrics {
+	outputChars: number;
+	toolCalls: number;
+	totalTokens?: number;
+}
+
+/** Outcome of one judgeable attempt (result + optional economics). */
+interface CaseAttemptOutcome {
+	result: EvalResult;
+	metrics?: AttemptMetrics;
 }
 
 export interface EvalRunOptions {
@@ -51,6 +71,12 @@ export interface EvalRunOptions {
 	providerLabel?: string;
 	/** Model label recorded into results.jsonl (e.g. "gpt-4o-mini"). */
 	modelLabel?: string;
+	/**
+	 * Append the entry to results.jsonl (default true). Meta-runs (section
+	 * sensitivity audits, fidelity probes) set false so instrumentation runs
+	 * never become baselines for later comparisons.
+	 */
+	persistResults?: boolean;
 	/** Progress callback for UI streaming. */
 	onProgress?: (event: EvalRunProgressEvent) => void;
 	/** Abort signal for cancellation. */
@@ -84,9 +110,34 @@ export interface EvalRunResultEntry {
 	disabled?: string[];
 	cost?: string;
 	sentinelScores?: Record<string, number>;
+	/**
+	 * pass^k per sentinel case: true only when every attempt passed with no
+	 * errors. Sentinels are "must never regress" behavior — partial credit
+	 * (score 0.6) has no meaning for them; use this field as the gate.
+	 */
+	sentinelStrict?: Record<string, boolean>;
+	/** Infra-error attempts / total attempts across the run. */
+	errorRate?: number;
+	/**
+	 * True when errorRate exceeded the invalid threshold — the entry is
+	 * persisted for history but must be skipped by baseline comparisons
+	 * (its scores reflect the infrastructure, not the prompt).
+	 */
+	invalid?: boolean;
+	/** Mean economics over judgeable attempts — a correctness-neutral prompt
+	 * change that doubles output or tool chatter shows up here. */
+	metrics?: {
+		avgOutputChars: number;
+		avgToolCalls: number;
+		avgTotalTokens?: number;
+	};
 	/** True when the run was cancelled mid-way; aborted entries are not persisted. */
 	aborted?: boolean;
 }
+
+/** Above this error-attempt fraction the run's scores are considered
+ * infrastructure noise rather than prompt signal. */
+const INVALID_ERROR_RATE = 0.25;
 
 interface LoadedEvalCase extends CaseDefinition {
 	file: string;
@@ -118,9 +169,13 @@ export async function runEvals(
 
 	const scores: Record<string, number> = {};
 	const sentinelScores: Record<string, number> = {};
+	const sentinelStrict: Record<string, boolean> = {};
 	// Collect per-case per-attempt results for detail reporting
 	// (passed via onProgress, NOT persisted by runner — adapter decides storage)
 	const detailCases: Record<string, EvalRunCaseDetail> = {};
+	let totalAttempts = 0;
+	let totalErrors = 0;
+	const attemptMetrics: AttemptMetrics[] = [];
 
 	for (let ci = 0; ci < cases.length; ci++) {
 		if (options.signal?.aborted) break;
@@ -134,15 +189,27 @@ export async function runEvals(
 		});
 
 		let passes = 0;
-		let attempts = 0;
+		let fails = 0;
+		let errors = 0;
 		const caseAttempts: EvalRunCaseAttempt[] = [];
+
+		const pushAttempt = (attempt: EvalRunCaseAttempt) => {
+			caseAttempts.push(attempt);
+			options.onProgress?.({
+				type: "attempt-done",
+				caseId: case_.id,
+				attempt: attempt.index,
+				pass: attempt.pass,
+				reason: attempt.reason,
+			});
+		};
 
 		for (let i = 0; i < numRuns; i++) {
 			if (options.signal?.aborted) break;
-			attempts++;
+			totalAttempts++;
 
 			try {
-				const result = await runSingleCase({
+				const outcome = await runSingleCase({
 					caseDef: case_,
 					fixturesDir,
 					disabledSections: options.disabledSections,
@@ -150,57 +217,45 @@ export async function runEvals(
 					signal: options.signal,
 				});
 
-				if (!result) {
-					caseAttempts.push({
+				if (!outcome) {
+					errors++;
+					totalErrors++;
+					pushAttempt({
 						index: i + 1,
 						pass: false,
 						reason: "Fixture not found",
-					});
-					options.onProgress?.({
-						type: "attempt-done",
-						caseId: case_.id,
-						attempt: i + 1,
-						pass: false,
-						reason: "Fixture not found",
+						error: true,
 					});
 					continue;
 				}
 
+				const { result, metrics } = outcome;
 				if (result.pass) passes++;
-				caseAttempts.push({
-					index: i + 1,
-					pass: result.pass,
-					reason: result.reason,
-				});
-
-				options.onProgress?.({
-					type: "attempt-done",
-					caseId: case_.id,
-					attempt: i + 1,
-					pass: result.pass,
-					reason: result.reason,
-				});
+				else fails++;
+				if (metrics) attemptMetrics.push(metrics);
+				pushAttempt({ index: i + 1, pass: result.pass, reason: result.reason });
 			} catch (err) {
-				caseAttempts.push({
+				errors++;
+				totalErrors++;
+				pushAttempt({
 					index: i + 1,
 					pass: false,
 					reason: err instanceof Error ? err.message : "Unknown error",
-				});
-				options.onProgress?.({
-					type: "attempt-done",
-					caseId: case_.id,
-					attempt: i + 1,
-					pass: false,
-					reason: err instanceof Error ? err.message : "Unknown error",
+					error: true,
 				});
 			}
 		}
 
-		const score = attempts > 0 ? passes / attempts : 0;
+		// Pass rate over JUDGEABLE attempts only — error attempts carry no
+		// behavioral signal either way.
+		const judgeable = passes + fails;
+		const score = judgeable > 0 ? passes / judgeable : 0;
 		// Save per-case detail
 		detailCases[case_.id] = { score, caseId: case_.id, attempts: caseAttempts };
 		if (case_.isSentinel) {
 			sentinelScores[case_.id] = score;
+			// pass^k: any fail OR any error (missing evidence) breaks the gate.
+			sentinelStrict[case_.id] = passes > 0 && fails === 0 && errors === 0;
 		} else {
 			scores[case_.id] = score;
 		}
@@ -222,6 +277,36 @@ export async function runEvals(
 			: 0;
 
 	const aborted = options.signal?.aborted === true;
+	const errorRate = totalAttempts > 0 ? totalErrors / totalAttempts : 0;
+
+	const metrics =
+		attemptMetrics.length > 0
+			? {
+					avgOutputChars: Math.round(
+						attemptMetrics.reduce((a, m) => a + m.outputChars, 0) /
+							attemptMetrics.length,
+					),
+					avgToolCalls:
+						Math.round(
+							(attemptMetrics.reduce((a, m) => a + m.toolCalls, 0) /
+								attemptMetrics.length) *
+								100,
+						) / 100,
+					...(() => {
+						const withTokens = attemptMetrics.filter(
+							(m) => m.totalTokens != null,
+						);
+						return withTokens.length > 0
+							? {
+									avgTotalTokens: Math.round(
+										withTokens.reduce((a, m) => a + m.totalTokens!, 0) /
+											withTokens.length,
+									),
+								}
+							: {};
+					})(),
+				}
+			: undefined;
 
 	const entry: EvalRunResultEntry = {
 		ts: new Date().toISOString(),
@@ -235,12 +320,19 @@ export async function runEvals(
 		disabled: options.disabledSections,
 		sentinelScores:
 			Object.keys(sentinelScores).length > 0 ? sentinelScores : undefined,
+		sentinelStrict:
+			Object.keys(sentinelStrict).length > 0 ? sentinelStrict : undefined,
+		errorRate: totalErrors > 0 ? Math.round(errorRate * 1000) / 1000 : undefined,
+		invalid: errorRate > INVALID_ERROR_RATE || undefined,
+		metrics,
 		aborted: aborted || undefined,
 	};
 
 	// Append to results.jsonl — but never persist a cancelled run: a partial
 	// entry would silently become the baseline for later comparisons.
-	if (!aborted) {
+	// (Invalid entries ARE persisted — the history of infra failures is
+	// useful — but carry the invalid flag so comparisons skip them.)
+	if (!aborted && options.persistResults !== false) {
 		fs.appendFileSync(resultsPath, JSON.stringify(entry) + "\n", "utf-8");
 	}
 
@@ -324,7 +416,7 @@ async function runSingleCase(options: {
 	disabledSections?: string[];
 	callModel: EvalModelCaller;
 	signal?: AbortSignal;
-}): Promise<EvalResult | null> {
+}): Promise<CaseAttemptOutcome | null> {
 	const { caseDef, fixturesDir, disabledSections, callModel, signal } = options;
 
 	// Scene bundle cases (promoted from incidents) run through the mock
@@ -457,10 +549,18 @@ async function runSingleCase(options: {
 	});
 
 	// Evaluate
-	return evaluate(
+	const evalResult = evaluate(
 		{ expect: caseDef.expect as any },
 		{ content: response.content, toolCalls: response.toolCalls },
 	);
+	return {
+		result: evalResult,
+		metrics: {
+			outputChars: response.content.length,
+			toolCalls: response.toolCalls.length,
+			totalTokens: response.usage?.totalTokens,
+		},
+	};
 }
 
 /**
@@ -473,7 +573,7 @@ async function runSceneCase(options: {
 	disabledSections?: string[];
 	callModel: EvalModelCaller;
 	signal?: AbortSignal;
-}): Promise<EvalResult | null> {
+}): Promise<CaseAttemptOutcome | null> {
 	const { caseDef, disabledSections, callModel, signal } = options;
 	const sceneDir = path.resolve(caseDef.dir, caseDef.scene!);
 	const { loadSceneFromDir, runReplay } = await import("./replay.js");
@@ -486,6 +586,10 @@ async function runSceneCase(options: {
 		scene,
 		callModel,
 		disabledSections,
+		// Batch eval runs stay on the user-chosen eval binding — routing scene
+		// cases to their origin provider would mix models inside one mean and
+		// spend on endpoints the user didn't pick for this run.
+		preferOriginProvider: false,
 		rubric,
 		judgeModel: rubric
 			? { callModel, model: scene.params.model ?? "unknown" }
@@ -501,21 +605,32 @@ async function runSceneCase(options: {
 		signal,
 	});
 
+	const metrics: AttemptMetrics = {
+		outputChars: result.finalContent.length,
+		toolCalls: result.transcript.events.reduce(
+			(sum, e) => sum + (e.t === "assistant" ? (e.toolCalls?.length ?? 0) : 0),
+			0,
+		),
+	};
+
 	// Hard assertions still apply on top of the rubric verdict
 	const hard = evaluate(
 		{ expect: caseDef.expect as never },
 		{ content: result.finalContent, toolCalls: [] },
 	);
-	if (!hard.pass) return hard;
+	if (!hard.pass) return { result: hard, metrics };
 
 	if (rubric && result.verdict) {
 		return {
-			pass: result.verdict.pass,
-			score: result.verdict.pass ? 1 : 0,
-			reason: result.verdict.reason,
+			result: {
+				pass: result.verdict.pass,
+				score: result.verdict.pass ? 1 : 0,
+				reason: result.verdict.reason,
+			},
+			metrics,
 		};
 	}
-	return hard;
+	return { result: hard, metrics };
 }
 
 /** Raw message shape as serialized into .context.jsonl snapshot lines. */

@@ -234,7 +234,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
+import { isProviderConfigEnabled } from '@/stores/helpers/provider-model'
 import type { OpenRouterModel } from '../../../shared/ipc'
+import { providerFamilyDisplayName } from '../../../shared/provider-families'
 import ProviderIcon from '../settings/ProviderIcon.vue'
 
 interface Props {
@@ -286,9 +288,9 @@ const filteredProviders = computed(() => {
       const selectedModels = config?.selectedModels || []
       return {
         id: p.id,
-        name: p.name,
+        name: providerFamilyDisplayName(p.id, p.name),
         modelCount: selectedModels.length,
-        enabled: config?.enabled !== false,
+        enabled: isProviderConfigEnabled(config),
         isCustom: settingsStore.isCustomProvider(p.id),
       }
     })

@@ -40,28 +40,39 @@
           <span>{{ pageHistorySummary }}</span>
         </Button>
 
-        <div
+        <template
           v-for="(message, index) in messages"
           :key="message.id || index"
-          class="message-list-row"
-          :data-index="index"
-          :data-message-id="message.id"
         >
-          <MessageItem
-            :message="message"
-            :branches="getBranchesForMessage(message.id)"
-            :can-branch="canCreateBranch"
-            :is-highlighted="message.id === highlightedMessageId"
-            @edit="handleEdit"
-            @branch="handleBranch"
-            @go-to-branch="handleGoToBranch"
-            @text-selection="handleTextSelection"
-            @regenerate="handleRegenerate"
-            @execute-tool="handleExecuteTool"
-            @open-file="(filePath) => emit('openFile', filePath)"
-            @update-thinking-time="handleUpdateThinkingTime"
+          <div
+            class="message-list-row"
+            :data-index="index"
+            :data-message-id="message.id"
+          >
+            <MessageItem
+              :message="message"
+              :branches="getBranchesForMessage(message.id)"
+              :can-branch="canCreateBranch"
+              :is-highlighted="message.id === highlightedMessageId"
+              @edit="handleEdit"
+              @branch="handleBranch"
+              @go-to-branch="handleGoToBranch"
+              @text-selection="handleTextSelection"
+              @regenerate="handleRegenerate"
+              @execute-tool="handleExecuteTool"
+              @open-file="(filePath) => emit('openFile', filePath)"
+              @update-thinking-time="handleUpdateThinkingTime"
+            />
+          </div>
+
+          <!-- Goal outcome: belongs to the run, so it sits after the reply
+               that ended it rather than on the declaration that opened it. -->
+          <GoalSummaryCard
+            v-if="goalSummary && index === goalSummaryIndex"
+            :goal="goalSummary"
+            @review="emit('reviewGoal', props.sessionId || '')"
           />
-        </div>
+        </template>
 
         <div
           ref="bottomSentinelRef"
@@ -200,6 +211,7 @@ import Scrollbar from '@/components/common/Scrollbar.vue'
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdated } from 'vue'
 import type { ChatMessage, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
+import GoalSummaryCard from './message/GoalSummaryCard.vue'
 import SelectionToolbar from './message/SelectionToolbar.vue'
 import EmptyState from './EmptyState.vue'
 import AssistantMessageNavRail from './AssistantMessageNavRail.vue'
@@ -262,6 +274,7 @@ const emit = defineEmits<{
   editAndResend: [messageId: string, newContent: string]
   splitWithBranch: [sessionId: string]
   openFile: [filePath: string]
+  reviewGoal: [sessionId: string]
 }>()
 
 const chatStore = useChatStore()
@@ -688,6 +701,28 @@ const highlightedMessageId = computed(() => {
   if (!hasNavigated.value) return null
   if (currentUserMessageNavIndex.value < 0) return null
   return displayNavMarkers.value[currentUserMessageNavIndex.value]?.messageId ?? null
+})
+
+// A goal that has stopped running gets an outcome card in the timeline. Only
+// terminal states qualify — an active goal has nothing to summarize yet, and
+// resuming a paused one retracts the card.
+const GOAL_OUTCOME_STATUSES = new Set(['complete', 'paused', 'blocked', 'budget_limited'])
+
+const goalSummary = computed(() => {
+  const goal = props.sessionId ? sessionsStore.sessionGoals.get(props.sessionId) : null
+  return goal && GOAL_OUTCOME_STATUSES.has(goal.status) ? goal : null
+})
+
+// Anchor the card by completion time rather than pinning it to the end of the
+// list: the last message that predates the terminal transition is the reply
+// that produced it, so the card stays put once the conversation moves on.
+const goalSummaryIndex = computed(() => {
+  const goal = goalSummary.value
+  if (!goal) return -1
+  for (let i = props.messages.length - 1; i >= 0; i--) {
+    if ((props.messages[i]?.timestamp ?? 0) <= goal.updatedAt) return i
+  }
+  return -1
 })
 
 // Initialize navigation index when messages change

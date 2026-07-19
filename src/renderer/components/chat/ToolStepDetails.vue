@@ -14,7 +14,9 @@
     <span
       v-if="figGain"
       class="fig-tag fig-tag-right"
-    >{{ figGain }}</span>
+      :class="{ 'is-predicted': isFigGainPredicted }"
+      :title="isFigGainPredicted ? 'Predicted from the pending arguments' : undefined"
+    >{{ isFigGainPredicted ? '~' : '' }}{{ figGain }}</span>
 
     <div
       v-if="bashCommand"
@@ -43,19 +45,31 @@
       </template>
     </dl>
 
-    <ToolDiffPreview
-      v-if="activeDiff && !isFailedEdit"
+    <!-- Two states, never blurred together: before the tool runs the only
+         thing known is what the model streamed as arguments (a prediction),
+         and only after it runs does a real diff of the file exist. -->
+    <DiffView
+      v-if="settledDiff"
+      :diff="settledDiff.diff"
+      diff-style="unified"
+      :show-file-header="false"
+      :show-toolbar="false"
+      :expand-unchanged="false"
+      max-height="220px"
+      class="tool-step-diff"
+    />
+    <ToolContentPreview
+      v-else-if="showPreview"
       ref="streamingPreviewRef"
-      :diff="activeDiff"
-      :lines="activeDiffLines"
+      :lines="view.streamingPreviewLines"
       :status="view.status"
       :wrap="wrap !== false"
     />
 
-    <!-- Result output only when the diff doesn't already tell the story:
+    <!-- Result output only when the figure doesn't already tell the story:
          successful edit/write results ("Successfully edited …") duplicate
          the row title + diff and are suppressed. -->
-    <template v-if="!activeDiff && !isFailedEdit">
+    <template v-if="!hasFigure && !isFailedEdit">
       <div
         v-if="view.step.partialResult"
         class="detail-section result-section"
@@ -143,7 +157,8 @@ import type { ToolPartialResult } from '@/types'
 import type { ToolStepView } from '@/stores/helpers/tool-step-view'
 import { getToolUiCategory } from '@/stores/helpers/tool-ui-registry'
 import { chainWheelToScrollableAncestor, findScrollableWheelSource } from '@/utils/scroll-chain'
-import ToolDiffPreview from './ToolDiffPreview.vue'
+import ToolContentPreview from './ToolContentPreview.vue'
+import DiffView from './message/DiffView.vue'
 import ToolResultRenderer from './ToolResultRenderer.vue'
 
 const props = defineProps<{
@@ -152,7 +167,7 @@ const props = defineProps<{
   wrap?: boolean
 }>()
 
-const streamingPreviewRef = ref<InstanceType<typeof ToolDiffPreview> | null>(null)
+const streamingPreviewRef = ref<InstanceType<typeof ToolContentPreview> | null>(null)
 const detailsRef = ref<HTMLElement | null>(null)
 
 const figLabel = computed(() => (props.view.displayName || props.view.toolName || 'tool').toUpperCase())
@@ -170,14 +185,20 @@ const figStatus = computed(() => {
   }
 })
 
+/**
+ * Takeoff counts. Measured from the real patch once the tool has run;
+ * before that they are only predicted from the streamed arguments, so the
+ * preview marks them as such rather than passing them off as fact.
+ */
 const figGain = computed(() => {
-  const diff = props.view.diff || props.view.streamingDiff
-  if (!diff) return ''
+  const source = props.view.diff ?? props.view.streamingContent
+  if (!source) return ''
   const parts: string[] = []
-  if (diff.additions) parts.push(`+${diff.additions}`)
-  if (diff.deletions) parts.push(`−${diff.deletions}`)
+  if (source.additions) parts.push(`+${source.additions}`)
+  if (source.deletions) parts.push(`−${source.deletions}`)
   return parts.join(' / ')
 })
+const isFigGainPredicted = computed(() => !props.view.diff && !!props.view.streamingContent)
 
 /** Bash gets a shell-style `$ command` line instead of a key/value row. */
 const bashCommand = computed(() => {
@@ -186,9 +207,12 @@ const bashCommand = computed(() => {
   return typeof command === 'string' ? command : ''
 })
 
-const activeDiff = computed(() => props.view.diff || props.view.streamingDiff)
-const activeDiffLines = computed(() => props.view.diff ? props.view.diffLines : props.view.streamingDiffLines)
 const isFailedEdit = computed(() => props.view.toolName === 'edit' && (props.view.status === 'failed' || props.view.status === 'rejected'))
+/** The real patch, which only exists once the tool has run. */
+const settledDiff = computed(() => (props.view.diff && !isFailedEdit.value) ? props.view.diff : null)
+/** The streamed arguments, shown until the real patch lands. */
+const showPreview = computed(() => !props.view.diff && !isFailedEdit.value && props.view.streamingPreviewLines.length > 0)
+const hasFigure = computed(() => !!settledDiff.value || showPreview.value)
 const resultRenderKind = computed(() => props.view.toolName === 'bash' ? 'bash' : 'text')
 const resultForRenderer = computed<ToolPartialResult | null>(() => {
   if (!props.view.resultText) return null

@@ -41,6 +41,13 @@ export interface TurnEvalRecord {
 	signals: TurnSignals;
 	explicit: "up" | "down" | null;
 	judge: { score: number; category: string; reason: string } | null;
+	/**
+	 * True when this NORMAL turn was picked by random sampling. Negative-
+	 * signal capture only sees failures the user noticed; sampled normal
+	 * turns are the only channel through which silent failures (and the
+	 * real task distribution) enter the eval funnel.
+	 */
+	sampled?: boolean;
 	fixtureRef: string | null;
 	/** Incident bundle id (workbench W1+; the human-facing failure object). */
 	incidentRef?: string | null;
@@ -136,6 +143,15 @@ export function recordTurn(options: {
 	contextSnapshotRef?: string | null;
 	requestSnapshotRef?: string | null;
 	responseSnapshotRef?: string | null;
+	/**
+	 * Probability of exporting a NORMAL (no negative signal) turn's fixture
+	 * as a distribution sample. 0/undefined = off. Keep it low (~0.02) —
+	 * this exists to let silent failures and the real task distribution
+	 * into the funnel, not to fixture every turn.
+	 */
+	randomSampleRate?: number;
+	/** Injectable random source for tests (default Math.random). */
+	sampleRng?: () => number;
 	storeOptions?: OnethingStorePathOptions;
 }): void {
 	const mergedSignals: TurnSignals = { ...DEFAULT_SIGNALS, ...options.signals };
@@ -146,12 +162,17 @@ export function recordTurn(options: {
 		mergedSignals.streamAborted ||
 		mergedSignals.toolErrors > 0;
 
+	const sampled =
+		!hasNegativeSignal &&
+		(options.randomSampleRate ?? 0) > 0 &&
+		(options.sampleRng ?? Math.random)() < (options.randomSampleRate ?? 0);
+
 	// Auto-export fixture for turns with negative signals *before* writing the
 	// record, so exactly one record is ever written per turn (with fixtureRef
 	// already populated) instead of a placeholder followed by amends/duplicates
 	// that downstream readers (e.g. scripts/diagnose-weekly.mjs) would double-count.
 	let fixtureRef: string | null = null;
-	if (hasNegativeSignal) {
+	if (hasNegativeSignal || sampled) {
 		const fixture = createFixture({
 			workingDirectory: options.workingDirectory,
 			workingDirectoryRoots: options.workingDirectoryRoots,
@@ -189,6 +210,7 @@ export function recordTurn(options: {
 		signals: mergedSignals,
 		explicit: null,
 		judge: null,
+		sampled: sampled || undefined,
 		fixtureRef,
 		incidentRef: options.incidentRef ?? null,
 		promptSnapshotRef: options.promptSnapshotRef ?? null,

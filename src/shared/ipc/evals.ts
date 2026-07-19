@@ -93,6 +93,18 @@ export interface EvalRunResultEntry {
 	disabled?: string[];
 	cost?: string;
 	sentinelScores?: Record<string, number>;
+	/** pass^k per sentinel: true only when every attempt passed with no errors. */
+	sentinelStrict?: Record<string, boolean>;
+	/** Infra-error attempts / total attempts. */
+	errorRate?: number;
+	/** True when errorRate exceeded the invalid threshold — skip as baseline. */
+	invalid?: boolean;
+	/** Mean economics over judgeable attempts. */
+	metrics?: {
+		avgOutputChars: number;
+		avgToolCalls: number;
+		avgTotalTokens?: number;
+	};
 	/** True when the run was cancelled mid-way; aborted entries are not persisted. */
 	aborted?: boolean;
 }
@@ -162,7 +174,13 @@ export interface EvalsRunProgressEvent {
 			{
 				score: number;
 				caseId: string;
-				attempts: Array<{ index: number; pass: boolean; reason: string }>;
+				attempts: Array<{
+					index: number;
+					pass: boolean;
+					reason: string;
+					/** Infra error (excluded from the pass-rate denominator). */
+					error?: boolean;
+				}>;
 			}
 		>;
 	};

@@ -9,6 +9,7 @@ import {
 	type CoreTrigger,
 	type CoreTriggerContext,
 } from "@onething/core/engine";
+import { createGoalContinuationTrigger } from "./goal-continuation.js";
 import { createSkillReviewTrigger } from "./skill-review.js";
 import { createTurnEvaluationTrigger } from "./turn-evaluation.js";
 
@@ -32,5 +33,6 @@ export function registerBuiltinTriggers(): void {
 	if (builtinTriggersRegistered) return;
 	builtinTriggersRegistered = true;
 	triggerManager.register(createSkillReviewTrigger());
+	triggerManager.register(createGoalContinuationTrigger());
 	triggerManager.register(createTurnEvaluationTrigger());
 }

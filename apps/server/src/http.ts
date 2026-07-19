@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type {
@@ -34,6 +35,14 @@ export interface OnethingHttpServerOptions {
   corsOrigin?: string
   defaultUserId?: string
   defaultWorkspaceId?: string
+  /**
+   * Shared secret required as a Bearer token on every request. Identity headers
+   * (x-onething-user-id / x-onething-workspace-id) select an owner scope, so they
+   * are rejected unless this token is configured and presented — otherwise any
+   * process that can reach the port could read/write another owner's data by
+   * spoofing headers.
+   */
+  authToken?: string
 }
 
 interface RouteContext {
@@ -66,6 +75,13 @@ export function createOnethingServerRequestHandler(
   options: OnethingHttpServerOptions,
 ): OnethingServerRequestHandler {
   return (request, response) => {
+    if (request.method !== 'OPTIONS') {
+      const authError = checkRequestAuthorization(request, options)
+      if (authError) {
+        sendJson(response, 401, { success: false, error: authError }, options.corsOrigin)
+        return
+      }
+    }
     void handleRequest({
       request,
       response,
@@ -220,6 +236,8 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'POST' && pathname === '/api/chat/title') return handleGenerateTitle
   if (method === 'POST' && pathname === '/api/chat/messages') return handleChatMessages
   if (method === 'POST' && pathname === '/api/chat/token-usage') return handleChatTokenUsage
+  if (method === 'POST' && pathname === '/api/usage/summary') return handleGetUsageSummary
+  if (method === 'POST' && pathname === '/api/usage/session') return handleGetSessionUsage
   if (method === 'POST' && pathname === '/api/chat/update-session-pin') return handleUpdateSessionPin
   if (method === 'POST' && pathname === '/api/chat/add-system-message') return handleAddSystemMessage
   if (method === 'POST' && pathname === '/api/chat/remove-system-marker') return handleRemoveSystemMarkerMessage
@@ -245,31 +263,8 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (method === 'GET' && pathname === '/api/media/events') return handleMediaEvents
   if (method === 'POST' && pathname === '/api/memory/overview') return handleMemoryOverview
   if (method === 'POST' && pathname === '/api/memory/read') return handleMemoryRead
-  if (method === 'POST' && pathname === '/api/memory/search') return handleMemorySearch
   if (method === 'POST' && pathname === '/api/memory/append') return handleMemoryAppend
   if (method === 'POST' && pathname === '/api/memory/save-file') return handleMemorySaveFile
-  if (method === 'POST' && pathname === '/api/memory/index') return handleMemoryRebuildIndex
-  if (method === 'POST' && pathname === '/api/memory/dreaming/run') return handleMemoryRunDreaming
-  if (method === 'POST' && pathname === '/api/memory/profile/list') return handleMemoryProfileList
-  if (method === 'POST' && pathname === '/api/memory/profile/search') return handleMemoryProfileSearch
-  if (method === 'POST' && pathname === '/api/memory/profile/upsert') return handleMemoryProfileUpsert
-  if (method === 'POST' && pathname === '/api/memory/profile/delete') return handleMemoryProfileDelete
-  if (method === 'POST' && pathname === '/api/memory/profile/audit') return handleMemoryProfileAudit
-  if (method === 'POST' && pathname === '/api/memory/profile/export') return handleMemoryProfileExport
-  if (method === 'POST' && pathname === '/api/memory/graph/overview') return handleMemoryGraphOverview
-  if (method === 'POST' && pathname === '/api/memory/graph/entities/list') return handleMemoryGraphEntitiesList
-  if (method === 'POST' && pathname === '/api/memory/graph/entities/upsert') return handleMemoryGraphEntitiesUpsert
-  if (method === 'POST' && pathname === '/api/memory/graph/entities/delete') return handleMemoryGraphEntitiesDelete
-  if (method === 'POST' && pathname === '/api/memory/graph/observations/list') return handleMemoryGraphObservationsList
-  if (method === 'POST' && pathname === '/api/memory/graph/observations/upsert') return handleMemoryGraphObservationsUpsert
-  if (method === 'POST' && pathname === '/api/memory/graph/observations/delete') return handleMemoryGraphObservationsDelete
-  if (method === 'POST' && pathname === '/api/memory/graph/relations/list') return handleMemoryGraphRelationsList
-  if (method === 'POST' && pathname === '/api/memory/graph/relations/upsert') return handleMemoryGraphRelationsUpsert
-  if (method === 'POST' && pathname === '/api/memory/graph/relations/delete') return handleMemoryGraphRelationsDelete
-  if (method === 'POST' && pathname === '/api/memory/graph/duplicates/list') return handleMemoryGraphDuplicatesList
-  if (method === 'POST' && pathname === '/api/memory/graph/duplicates/merge') return handleMemoryGraphDuplicatesMerge
-  if (method === 'POST' && pathname === '/api/memory/graph/duplicates/ignore') return handleMemoryGraphDuplicatesIgnore
-  if (method === 'POST' && pathname === '/api/memory/graph/audit') return handleMemoryGraphAudit
   if (method === 'POST' && pathname === '/api/memory/logs/list') return handleMemoryLogsList
   if (method === 'POST' && pathname === '/api/memory/logs/stats') return handleMemoryLogsStats
   if (method === 'POST' && pathname === '/api/memory/logs/open-folder') return handleMemoryLogsOpenFolder
@@ -640,6 +635,21 @@ async function handleChatTokenUsage(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await adapter.getTokenUsage(body?.sessionId ?? '', context.requestContext), context.corsOrigin)
 }
 
+async function handleGetUsageSummary(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.usage
+  if (!adapter) return sendNotImplemented(context, 'usage.getSummary')
+  const body = await readJson<{ granularity?: 'day' | 'week' | 'month'; count?: number }>(context.request)
+  const granularity = body?.granularity === 'week' || body?.granularity === 'month' ? body.granularity : 'day'
+  sendJson(context.response, 200, await adapter.getSummary({ granularity, count: body?.count }, context.requestContext), context.corsOrigin)
+}
+
+async function handleGetSessionUsage(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.usage
+  if (!adapter) return sendNotImplemented(context, 'usage.getSessionUsage')
+  const body = await readJson<{ sessionId?: string }>(context.request)
+  sendJson(context.response, 200, await adapter.getSessionUsage(body?.sessionId ?? '', context.requestContext), context.corsOrigin)
+}
+
 async function handleUpdateSessionPin(context: RouteContext): Promise<void> {
   const adapter = context.runtime.chat
   if (!adapter?.updateSessionPin) return sendNotImplemented(context, 'chat.updateSessionPin')
@@ -878,54 +888,10 @@ const handleMemoryOverview = (context: RouteContext) =>
   handleMemoryCall(context, 'overview', 'memory.overview')
 const handleMemoryRead = (context: RouteContext) =>
   handleMemoryCall(context, 'read', 'memory.read')
-const handleMemorySearch = (context: RouteContext) =>
-  handleMemoryCall(context, 'search', 'memory.search')
 const handleMemoryAppend = (context: RouteContext) =>
   handleMemoryCall(context, 'append', 'memory.append')
 const handleMemorySaveFile = (context: RouteContext) =>
   handleMemoryCall(context, 'saveFile', 'memory.saveFile')
-const handleMemoryRebuildIndex = (context: RouteContext) =>
-  handleMemoryCall(context, 'rebuildIndex', 'memory.rebuildIndex')
-const handleMemoryProfileList = (context: RouteContext) =>
-  handleMemoryCall(context, 'profileList', 'memory.profileList')
-const handleMemoryProfileSearch = (context: RouteContext) =>
-  handleMemoryCall(context, 'profileSearch', 'memory.profileSearch')
-const handleMemoryProfileUpsert = (context: RouteContext) =>
-  handleMemoryCall(context, 'profileUpsert', 'memory.profileUpsert')
-const handleMemoryProfileDelete = (context: RouteContext) =>
-  handleMemoryCall(context, 'profileDelete', 'memory.profileDelete')
-const handleMemoryProfileAudit = (context: RouteContext) =>
-  handleMemoryCall(context, 'profileAudit', 'memory.profileAudit')
-const handleMemoryProfileExport = (context: RouteContext) =>
-  handleMemoryCall(context, 'profileExport', 'memory.profileExport')
-const handleMemoryGraphOverview = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphOverview', 'memory.graphOverview')
-const handleMemoryGraphEntitiesList = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphEntitiesList', 'memory.graphEntitiesList')
-const handleMemoryGraphEntitiesUpsert = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphEntitiesUpsert', 'memory.graphEntitiesUpsert')
-const handleMemoryGraphEntitiesDelete = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphEntitiesDelete', 'memory.graphEntitiesDelete')
-const handleMemoryGraphObservationsList = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphObservationsList', 'memory.graphObservationsList')
-const handleMemoryGraphObservationsUpsert = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphObservationsUpsert', 'memory.graphObservationsUpsert')
-const handleMemoryGraphObservationsDelete = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphObservationsDelete', 'memory.graphObservationsDelete')
-const handleMemoryGraphRelationsList = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphRelationsList', 'memory.graphRelationsList')
-const handleMemoryGraphRelationsUpsert = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphRelationsUpsert', 'memory.graphRelationsUpsert')
-const handleMemoryGraphRelationsDelete = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphRelationsDelete', 'memory.graphRelationsDelete')
-const handleMemoryGraphDuplicatesList = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphDuplicatesList', 'memory.graphDuplicatesList')
-const handleMemoryGraphDuplicatesMerge = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphDuplicatesMerge', 'memory.graphDuplicatesMerge')
-const handleMemoryGraphDuplicatesIgnore = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphDuplicatesIgnore', 'memory.graphDuplicatesIgnore')
-const handleMemoryGraphAudit = (context: RouteContext) =>
-  handleMemoryCall(context, 'graphAudit', 'memory.graphAudit')
 const handleMemoryLogsList = (context: RouteContext) =>
   handleMemoryCall(context, 'logsList', 'memory.logsList')
 const handleMemoryLogsStats = (context: RouteContext) =>
@@ -934,8 +900,6 @@ const handleMemoryLogsOpenFolder = (context: RouteContext) =>
   handleMemoryCall(context, 'logsOpenFolder', 'memory.logsOpenFolder')
 const handleMemoryLogsCleanup = (context: RouteContext) =>
   handleMemoryCall(context, 'logsCleanup', 'memory.logsCleanup')
-const handleMemoryRunDreaming = (context: RouteContext) =>
-  handleMemoryCall(context, 'runDreaming', 'memory.runDreaming')
 const handleMemoryCaptureSave = (context: RouteContext) =>
   handleMemoryCall(context, 'captureSave', 'memory.captureSave')
 const handleMemoryCaptureDiscard = (context: RouteContext) =>
@@ -1812,8 +1776,8 @@ async function handleListSessions(context: RouteContext): Promise<void> {
 }
 
 async function handleCreateSession(context: RouteContext): Promise<void> {
-  const body = await readJson<{ name?: string }>(context.request)
-  sendJson(context.response, 200, await context.runtime.sessions.create(body?.name || 'New Chat', context.requestContext), context.corsOrigin)
+  const body = await readJson<{ name?: string; sessionId?: string }>(context.request)
+  sendJson(context.response, 200, await context.runtime.sessions.create(body?.name || 'New Chat', context.requestContext, body?.sessionId), context.corsOrigin)
 }
 
 async function handleGetSession(context: RouteContext): Promise<void> {
@@ -2176,12 +2140,42 @@ function getRuntimeRequestContext(
   request: IncomingMessage,
   options: OnethingHttpServerOptions,
 ): RuntimeRequestContext {
+  // Identity headers select an owner scope; checkRequestAuthorization has already
+  // rejected them unless the configured Bearer token was presented, so honoring
+  // them here is safe only when a token is configured.
+  const identityTrusted = Boolean(options.authToken)
   return {
-    userId: readHeader(request, 'x-onething-user-id') || options.defaultUserId || 'local-user',
-    workspaceId: readHeader(request, 'x-onething-workspace-id') || options.defaultWorkspaceId || 'default',
+    userId: (identityTrusted ? readHeader(request, 'x-onething-user-id') : undefined)
+      || options.defaultUserId || 'local-user',
+    workspaceId: (identityTrusted ? readHeader(request, 'x-onething-workspace-id') : undefined)
+      || options.defaultWorkspaceId || 'default',
     authToken: readBearerToken(request),
     origin: readHeader(request, 'origin'),
   }
+}
+
+function checkRequestAuthorization(
+  request: IncomingMessage,
+  options: OnethingHttpServerOptions,
+): string | undefined {
+  if (options.authToken) {
+    const bearer = readBearerToken(request)
+    if (!bearer || !tokenMatches(bearer, options.authToken)) {
+      return 'Unauthorized: this server requires a Bearer token (ONETHING_SERVER_TOKEN).'
+    }
+    return undefined
+  }
+  if (readHeader(request, 'x-onething-user-id') || readHeader(request, 'x-onething-workspace-id')) {
+    return 'Unauthorized: identity headers are rejected unless the server has an auth token configured (ONETHING_SERVER_TOKEN).'
+  }
+  return undefined
+}
+
+function tokenMatches(provided: string, expected: string): boolean {
+  // Hash both sides so the comparison is constant-time regardless of length.
+  const providedDigest = createHash('sha256').update(provided).digest()
+  const expectedDigest = createHash('sha256').update(expected).digest()
+  return timingSafeEqual(providedDigest, expectedDigest)
 }
 
 function readHeader(request: IncomingMessage, name: string): string | undefined {

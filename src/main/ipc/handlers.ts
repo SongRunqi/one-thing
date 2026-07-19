@@ -30,10 +30,16 @@ import { registerSearchHandlers } from "@onething/electron-host/search/ipc";
 import { registerAppStateHandlers } from "./app-state.js";
 import { registerTodoPlanHandlers } from "../todo-plan/ipc.js";
 import { registerVoiceHandlers } from "../voice/ipc.js";
+import { registerMusicHandlers } from "../music/ipc.js";
+import { startMusicNowPlayingWatch } from "../music/service.js";
+import { startRadioConductor } from "../music/radio.js";
 import { registerACPHandlers, initializeACP, shutdownACP } from "./acp.js";
 import { registerGatewayHandlers } from "../gateway/ipc.js";
 import { registerChannelIdentityHandlers } from "./channel-identity.js";
+import { registerGoalHandlers } from "./goal.js";
 import { registerEvalsHandlers } from "./evals.js";
+import { registerUsageHandlers } from "./usage.js";
+import { registerPracticeHandlers } from "./practice.js";
 import { getEventBus } from "../events/index.js";
 import { sanitizeRendererOrigin } from "../channel/index.js";
 
@@ -64,10 +70,22 @@ export function initializeIPC() {
 	registerAppStateHandlers();
 	registerTodoPlanHandlers();
 	registerVoiceHandlers();
+	registerMusicHandlers();
+	// Safe at startup, unlike the keepalive: watching is a file stat on a timer,
+	// and `ncm-cli state` cannot start a player even when it does run. Nothing
+	// here can make sound.
+	startMusicNowPlayingWatch();
+	// Also inert while the radio is off: every sample starts with a brief read
+	// that says "inactive" and returns. Sound only ever follows a user opening
+	// the station in conversation.
+	startRadioConductor();
 	registerACPHandlers();
 	registerGatewayHandlers();
 	registerChannelIdentityHandlers();
+	registerGoalHandlers();
 	registerEvalsHandlers();
+	registerUsageHandlers();
+	registerPracticeHandlers();
 	registerCommandHandler();
 }
 

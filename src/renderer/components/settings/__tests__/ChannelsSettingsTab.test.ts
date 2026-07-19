@@ -145,7 +145,7 @@ describe('ChannelsSettingsTab', () => {
             {
               id: 'local-owner',
               name: 'Local user',
-              memoryScopeId: 'client:local-owner',
+              
               isMain: true,
               createdAt: 1,
               updatedAt: 1,
@@ -154,7 +154,9 @@ describe('ChannelsSettingsTab', () => {
             {
               id: 'channel-wechat-default-wechat-user-1',
               name: 'WeChat user',
-              memoryScopeId: 'channel:wechat:default:wechat-user-1',
+              connector: 'wechat',
+              workspaceId: 'default',
+              externalUserId: 'wechat-user-1',
               source: 'channel',
               createdAt: 2,
               updatedAt: 2,

@@ -124,7 +124,8 @@
 import Button from '@/components/common/Button.vue'
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { FileDiff, parsePatchFiles } from '@pierre/diffs'
-import { createDomButton } from '@/components/common/dom-button'
+import { DIFF_THEME_NAME, registerDiffTheme } from './diff-theme'
+import { createDomButton, type MountedDomButton } from '@/components/common/dom-button'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import type {
   FileDiffOptions,
@@ -134,6 +135,10 @@ import type {
   ChangeTypes,
   FileContents
 } from '@pierre/diffs'
+
+// Has to happen before the first FileDiff is constructed: the library resolves
+// a theme by name and caches it forever, so it must find ours already there.
+registerDiffTheme()
 
 interface Props {
   /** Raw unified diff content string */
@@ -246,47 +251,45 @@ function getCurrentTheme(): 'light' | 'dark' {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-/** Get CSS variable value from document */
-function getCSSVar(name: string): string {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-}
-
-/** Generate custom CSS to match app theme */
+/**
+ * Bridge the library's surface colours onto the app's palette. The theme in
+ * diff-theme.ts covers the text; this covers what sits behind it.
+ *
+ * Two details here are load-bearing and were both wrong before:
+ *
+ * - The `:host` selector. wrapUnsafeCSS() drops this string into
+ *   `@layer unsafe { … }` verbatim and adds no selector of its own, so bare
+ *   declarations parse to zero rules and the whole block is silently discarded.
+ * - The `-override` suffix. The library writes the un-suffixed names (e.g.
+ *   `--diffs-bg-addition`) as inline styles computed from the theme, and inline
+ *   beats a stylesheet rule; only the `-override` hooks it reads first can win.
+ *
+ * Values stay as `var()` references rather than resolved colours, so a theme
+ * switch re-resolves in CSS with no re-render.
+ */
 function generateCustomCSS(): string {
-  const isDark = getCurrentTheme() === 'dark'
-
   return `
-    /* Background colors */
-    --diffs-background: ${getCSSVar('--bg-code-block')};
-    --diffs-border-color: ${getCSSVar('--border-code')};
+    :host {
+      /* The three colours every other diff shade is mixed from: changed line
+         numbers, the indicator bars, the word-level emphasis, the +N/-N counts.
+         They have to be set here rather than in the theme — see diff-theme.ts
+         on why theme.colors cannot carry them. */
+      --diffs-addition-color-override: var(--ui-status-success-fg);
+      --diffs-deletion-color-override: var(--ui-status-danger-fg);
+      --diffs-modified-color-override: var(--ui-status-warning-fg);
 
-    /* Addition colors (green) */
-    --diffs-addition-background: ${getCSSVar('--diff-add-bg')};
-    --diffs-addition-color: ${getCSSVar('--diff-add-text')};
-    --diffs-addition-indicator: ${getCSSVar('--text-success')};
+      /* Surfaces. The library would otherwise colour-mix these out of the
+         background; we have a designed palette, so use it. */
+      --diffs-bg-addition-override: var(--diff-add-bg);
+      --diffs-bg-deletion-override: var(--diff-del-bg);
+      --diffs-bg-separator-override: var(--diff-hunk-bg);
+      --diffs-bg-context-override: var(--ui-surface-code-block-bg);
+      --diffs-bg-hover-override: var(--ui-state-hover-bg);
 
-    /* Deletion colors (red) */
-    --diffs-deletion-background: ${getCSSVar('--diff-del-bg')};
-    --diffs-deletion-color: ${getCSSVar('--diff-del-text')};
-    --diffs-deletion-indicator: ${getCSSVar('--text-error')};
+      --diffs-fg-number-override: var(--ui-text-muted-fg);
 
-    /* Context/hunk colors */
-    --diffs-context-background: ${getCSSVar('--bg-code-block')};
-    --diffs-hunk-background: ${getCSSVar('--diff-hunk-bg')};
-    --diffs-hunk-color: ${getCSSVar('--diff-hunk-text')};
-
-    /* Line number colors */
-    --diffs-line-number-color: ${getCSSVar('--text-muted')};
-    --diffs-line-number-background: ${isDark ? getCSSVar('--bg-code-header') : getCSSVar('--bg-code-block')};
-
-    /* Text colors */
-    --diffs-text-color: ${getCSSVar('--text-code-block')};
-
-    /* Hover states */
-    --diffs-hover-background: ${getCSSVar('--bg-hover')};
-
-    /* Selection */
-    --diffs-selection-background: ${getCSSVar('--bg-selected')};
+      --diffs-font-family: var(--font-mono);
+    }
   `.trim()
 }
 
@@ -295,10 +298,14 @@ function createOptions(): FileDiffOptions<undefined> {
   const isDark = getCurrentTheme() === 'dark'
 
   return {
+    // One theme for both: its colours are var() references, so light and dark
+    // are already distinguished by the app's tokens rather than by the theme.
     theme: {
-      dark: 'github-dark',
-      light: 'github-light'
+      dark: DIFF_THEME_NAME,
+      light: DIFF_THEME_NAME
     },
+    // Still needed — it sets `color-scheme`, which decides the light-dark()
+    // branch of the shades the library mixes itself.
     themeType: isDark ? 'dark' : 'light',
     diffStyle: currentDiffStyle.value,  // Use internal state for dynamic switching
     diffIndicators: 'bars',  // Modern bar indicators
@@ -315,32 +322,18 @@ function createOptions(): FileDiffOptions<undefined> {
 
 /** Render the diff using @pierre/diffs */
 async function renderDiff() {
-  if (!containerWrapperRef.value) {
-    console.debug('[DiffView] Wrapper ref not ready')
-    return
-  }
-  if (!props.diff || !hasContent.value) {
-    console.debug('[DiffView] No diff content')
-    return
-  }
+  if (!containerWrapperRef.value) return
+  if (!props.diff || !hasContent.value) return
 
   try {
     // Parse the unified diff string
     const patches: ParsedPatch[] = parsePatchFiles(props.diff)
-
-    if (!patches || patches.length === 0) {
-      console.debug('[DiffView] No patches parsed')
-      return
-    }
+    if (!patches || patches.length === 0) return
 
     const firstPatch = patches[0]
-    if (!firstPatch.files || firstPatch.files.length === 0) {
-      console.debug('[DiffView] No files in first patch')
-      return
-    }
+    if (!firstPatch.files || firstPatch.files.length === 0) return
 
     const fileDiff = firstPatch.files[0]
-    console.debug('[DiffView] File:', fileDiff.name, 'Type:', fileDiff.type, 'Hunks:', fileDiff.hunks?.length)
 
     // Clean up previous instance
     if (fileDiffInstance) {
@@ -381,8 +374,6 @@ async function renderDiff() {
       containerWrapper: containerWrapperRef.value  // Let library create diffs-container
     })
 
-    console.debug('[DiffView] Render complete')
-    console.debug('[DiffView] Created element:', containerWrapperRef.value.firstElementChild?.tagName)
   } catch (err) {
     console.error('[DiffView] Failed to render diff:', err)
   }
@@ -419,15 +410,14 @@ async function copyDiffContent() {
   }, 2000)
 }
 
-/** Update theme when it changes */
+/**
+ * Colours are var() references, so the browser re-resolves them on its own; the
+ * only thing a theme switch still has to push is `color-scheme`, which no
+ * variable can carry. Notably this means no re-highlight.
+ */
 function updateTheme() {
-  if (fileDiffInstance) {
-    const isDark = getCurrentTheme() === 'dark'
-    fileDiffInstance.setThemeType(isDark ? 'dark' : 'light')
-
-    // Re-render to apply new custom CSS variables
-    renderDiff()
-  }
+  if (!fileDiffInstance) return
+  fileDiffInstance.setThemeType(getCurrentTheme())
 }
 
 /** Get lucide icon SVG string */
@@ -457,6 +447,16 @@ function getFileIconName(type: ChangeTypes): string {
   return iconMap[type] || 'file'
 }
 
+// Header buttons are Vue trees mounted imperatively via render(); they live in
+// the library's shadow DOM, out of reach of unmountDomButtons(), so we hold the
+// handles ourselves and tear them down explicitly.
+let headerButtons: MountedDomButton[] = []
+
+function releaseHeaderButtons() {
+  for (const mounted of headerButtons) mounted.unmount()
+  headerButtons = []
+}
+
 /** Create header button element */
 function createHeaderButton(
   iconName: string,
@@ -472,11 +472,16 @@ function createHeaderButton(
     },
   })
   mounted.button.innerHTML = getLucideIconSVG(iconName, 14)
+  headerButtons.push(mounted)
   return mounted
 }
 
 /** Render custom file header with metadata */
 function renderHeaderMetadata(headerProps: RenderHeaderMetadataProps): HTMLElement {
+  // The library discards the previous header on every render — drop its buttons
+  // before building new ones.
+  releaseHeaderButtons()
+
   const wrapper = document.createElement('div')
   wrapper.className = 'diff-header-metadata'
 
@@ -601,6 +606,8 @@ onUnmounted(() => {
     fileDiffInstance.cleanUp()
     fileDiffInstance = null
   }
+
+  releaseHeaderButtons()
 
   if (themeObserver) {
     themeObserver.disconnect()

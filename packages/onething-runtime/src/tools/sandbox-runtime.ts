@@ -24,6 +24,13 @@ export interface OnethingToolSandboxRuntimeAdapters {
   getDefaultWorkingDirectory?: () => string | undefined
   getHostPath?: (name: string) => string | undefined
   getNoteDirectories?: () => Array<string | undefined>
+  /**
+   * Directories of app-generated artifacts the model is already entitled to —
+   * e.g. the bash tool's overflow logs ("Output truncated… full output saved
+   * to"). Reading those back is re-reading a tool result the permission system
+   * already adjudicated; prompting for it is pure friction.
+   */
+  getAppArtifactDirectories?: () => Array<string | undefined>
   homeDir?: string
 }
 
@@ -107,8 +114,11 @@ export function getOnethingDefaultReadRoots(
   const adapters = adaptersWith(adaptersOverride)
   const noteDirectories = (adapters.getNoteDirectories?.() ?? [])
     .filter((dir): dir is string => typeof dir === 'string')
+  const artifactDirectories = (adapters.getAppArtifactDirectories?.() ?? [])
+    .filter((dir): dir is string => typeof dir === 'string')
   return uniqueCorePaths([
     ...noteDirectories,
+    ...artifactDirectories,
     getOnethingDownloadsDirectory(adapters),
   ])
 }

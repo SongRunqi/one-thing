@@ -17,9 +17,14 @@ import { getProjectsStore } from '../project-dirs/index.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import { getVariablesStore } from './store/index.js'
 import type { GlobalStoreGateway } from '@onething/runtime/variables/providers/global-store'
+import type { GoalVariableGateway } from '@onething/runtime/variables/providers/goal'
+import type { MusicRadioGateway } from '@onething/runtime/variables/providers/music-radio'
 import type { SessionStoreGateway } from '@onething/runtime/variables/providers/session-store'
 import type { WorkdirGateway } from '@onething/runtime/variables/providers/core'
 import type { NoteVarName, NotesGateway } from '@onething/runtime/variables/providers/notes'
+import { getGoal, goalLimits } from '../goals/index.js'
+import { getMusicNowPlaying } from '../music/service.js'
+import { getRadioStore } from '../music/radio.js'
 
 // ── Workdir gateway ─────────────────────────────────
 
@@ -147,4 +152,29 @@ function readNoteFromStore(which: NoteVarName): string {
  */
 export function notifyNotesDirChanged(): void {
   // intentionally empty
+}
+
+// ── Goal gateway ────────────────────────────────────
+// Read-only view for the GoalProvider; all writes go through the
+// GoalManager (src/main/goals), which is the single writer.
+
+export const goalVariableGateway: GoalVariableGateway = {
+  read: sessionId => getGoal(sessionId),
+  limits: () => goalLimits(),
+}
+
+// ── Music/radio gateway ─────────────────────────────
+// Cache-backed only: the watcher's snapshot and the radio store's files. A
+// provider runs on every turn and must never cost a subprocess.
+
+export const musicRadioGateway: MusicRadioGateway = {
+  getNowPlaying: () => {
+    const nowPlaying = getMusicNowPlaying()
+    return nowPlaying ? { status: nowPlaying.status, title: nowPlaying.title } : null
+  },
+  getRadio: () => {
+    const brief = getRadioStore().readBrief()
+    return { active: brief.active, intent: brief.intent, lastError: brief.lastError }
+  },
+  getProgrammeLength: () => getRadioStore().readProgramme().entries.length,
 }

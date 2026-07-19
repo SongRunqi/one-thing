@@ -4,74 +4,47 @@ import {
 	applyDailyNoteLineReplace,
 	applyDailyNoteCaptureActions,
 	applyDailyNoteCaptureActionsWithAdapters,
-	applyDreamingMemoryActions,
 	applyMemoryReviewCandidate,
 	applyPlainReviewCandidateToContent,
 	applySoulMemoryStatusMutationPlan,
 	assertSoulMemoryAccessibleRelativePath,
 	buildSoulMemoryAppendPayload,
 	buildSoulMemoryRewriteFollowUp,
-	buildActiveMemoryFilterPrompt,
-	buildActiveMemoryPromptStyleLines,
-	buildActiveMemoryRecallQuery,
-	buildSoulMemoryDailyContextFragment,
-	buildSoulMemoryFtsQuery,
 	buildSoulMemoryCaptureDedupeTextWithAdapters,
 	buildSoulMemoryCaptureInput,
 	buildSoulMemoryCaptureInputWithAdapters,
 	buildSoulMemoryCaptureCommandStatusInput,
-	buildSoulMemoryCanonicalGraphMigrationCandidates,
-	buildSoulMemoryCanonicalProfileSummary,
-	buildSoulMemoryCanonicalSearchHits,
-	buildSoulMemoryDreamingInput,
-	buildSoulMemoryDreamingStatus,
 	buildSoulMemoryExistingMemorySummary,
 	buildHermesMemoryPromptFragment,
-	buildSoulMemoryGraphProfileSummary,
-	buildSoulMemoryGraphSearchHits,
-	buildSoulMemoryIndexDirtyDiagnostic,
 	buildSoulMemoryManagedFileCandidates,
-	buildSoulMemoryMarkdownSearchHits,
 	buildSoulMemoryOverview,
 	buildSoulMemoryPendingCaptureMigrationCandidates,
 	buildSoulMemoryPromptFragments,
-	buildSoulMemoryPublicDreamingStatus,
-	buildSoulMemoryRecentDailyContextFragmentWithAdapters,
 	buildSoulMemoryReviewStatus,
 	buildSoulMemoryReviewStatusWithAdapters,
 	buildSoulMemoryReviewInput,
 	buildSoulMemoryReviewInputWithAdapters,
 	buildSoulMemoryReviewCommandRunContext,
-	buildSoulMemorySearchResult,
-	chunkSoulMemoryText,
 	cleanReviewDocumentText,
-	clampActiveMemorySearchQuery,
 	compactSoulMemoryCaptureInput,
 	CORE_HERMES_MEMORY_DELIMITER,
-	CORE_SOUL_MEMORY_DEFAULT_INDEX_STATUS,
-	CORE_SOUL_MEMORY_BEFORE_CONTEXT_COMPACT_HOOK_ID,
 	CORE_SOUL_MEMORY_CAPTURE_HOOK_ID,
 	CORE_SOUL_MEMORY_CAPTURE_COMMAND_USAGE,
 	CORE_SOUL_MEMORY_CAPTURE_MODE_USAGE,
 	CORE_SOUL_MEMORY_CAPTURE_SYSTEM_PROMPT,
 	CORE_SOUL_MEMORY_DAILY_NOTE_EXTRACTION_SYSTEM_PROMPT,
 	CORE_SOUL_MEMORY_COMMAND_SPECS,
-	CORE_SOUL_MEMORY_DREAMING_COMMAND_USAGE,
-	CORE_SOUL_MEMORY_DREAMING_SYSTEM_PROMPT,
 	CORE_SOUL_MEMORY_GET_COMMAND_USAGE,
 	CORE_SOUL_MEMORY_MANIFEST,
-	CORE_SOUL_MEMORY_MEMORY_FLUSH_SYSTEM_PROMPT,
 	CORE_SOUL_MEMORY_PLUGIN_ID,
 	CORE_SOUL_MEMORY_REVIEW_COMMAND_USAGE,
 	CORE_SOUL_MEMORY_REVIEW_LAST_TURN_KEY_PREFIX,
 	CORE_SOUL_MEMORY_PROMPT_CONTEXT_PROVIDER_ID,
 	CORE_SOUL_MEMORY_REVIEW_HOOK_ID,
 	CORE_SOUL_MEMORY_REVIEW_SYSTEM_PROMPT,
-	CORE_SOUL_MEMORY_SEARCH_COMMAND_USAGE,
 	CORE_SOUL_MEMORY_TOOL_SPECS,
 	CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
 	countMemoryReviewUserTurns,
-	cosineSoulMemoryVector,
 	createSoulMemoryTimelineEntry,
 	createSoulMemoryToolProvider,
 	dedupeSoulMemoryCaptureLines,
@@ -85,69 +58,34 @@ import {
 	formatHermesMemoryEntries,
 	formatSoulMemoryDateString,
 	formatSoulMemoryDateStringDaysAgo,
-	formatSoulMemoryHits,
-	formatSoulMemoryDreamingStatus,
-	formatSoulMemoryDreamingRunSummary,
-	formatSoulMemoryActiveMemoryStatus,
 	formatSoulMemoryCaptureCommandStatus,
-	formatSoulMemoryCommandCanonicalLookup,
 	formatSoulMemoryCommandFileExcerpt,
 	formatSoulMemoryCommandStatus,
-	formatSoulMemoryCanonicalProfileExport,
-	formatSoulMemoryCanonicalDisplayText,
-	formatSoulMemoryIndexCommandResult,
-	formatSoulMemoryMaybeTimestamp,
-	formatSoulMemoryMessagesForFlush,
 	formatSoulMemoryRememberCommandResult,
 	formatSoulMemoryReviewIntervalNotification,
 	formatSoulMemoryReviewStatus,
 	formatSoulMemoryReviewToggleNotification,
 	formatSoulMemoryToolModelRef,
 	formatMemoryReviewConversation,
-	formatSoulMemoryGraphSearchContent,
-	getSoulMemoryActiveMemoryCooldown,
-	getSoulMemoryDreamingNextRunStatus,
 	getMemoryReviewProgress,
 	hashSoulMemoryText,
 	getCoreSoulMemoryCommandSpec,
 	getCoreSoulMemoryToolSpec,
-	isSingletonSoulMemoryGraphObservation,
-	handleSoulMemoryActiveMemoryCommand,
 	handleSoulMemoryCaptureCommand,
 	handleSoulMemoryCommandGet,
-	handleSoulMemoryDreamingCommand,
 	handleSoulMemoryGetTool,
 	handleSoulMemoryMemoryCommand,
 	handleSoulMemoryMemoryTool,
 	handleSoulMemoryReviewCommand,
-	handleSoulMemorySearchTool,
 	handleSoulMemorySoulCommand,
 	handleSoulMemorySoulGetTool,
 	handleSoulMemorySoulUpdateTool,
 	hasExplicitMemoryIntent,
 	isLikelyRawRequestEcho,
 	estimateSoulMemoryTokens,
-	CoreSoulMemoryActiveMemoryRuntime,
-	CoreSoulMemoryIndexTracker,
-	CoreSoulMemoryIndexSyncScheduler,
-	createSoulMemoryDailyIndexFile,
-	createSoulMemoryRootMemoryIndexFile,
-	getSoulMemoryDailyDateFromFileName,
-	markSoulMemoryIndexCleanState,
-	markSoulMemoryIndexDirtyState,
 	normalizeSoulMemoryBulletText,
 	normalizeSoulMemoryForDedupe,
 	normalizeSoulMemoryRelativePath,
-	normalizeSoulMemorySearchLimit,
-	normalizeSoulMemoryDreamingTimezoneInput,
-	normalizeSoulMemoryCanonicalMergeCandidates,
-	normalizeSoulMemoryGraphMergeCandidates,
-	normalizeSoulMemoryGraphEntityType,
-	normalizeSoulMemoryGraphObservationKind,
-	normalizeSoulMemoryGraphRelationType,
-	normalizeSoulMemoryGraphStatus,
-	normalizeActiveMemoryFilterResult,
-	parseSoulMemoryActiveMemoryCommand,
 	parseSoulMemoryCaptureCommand,
 	parseSoulMemoryRootCommand,
 	planHermesMemoryEntryAdd,
@@ -155,33 +93,14 @@ import {
 	planHermesMemoryTextReplace,
 	parseDailyNoteBullets,
 	parseDailyNoteCaptureResult,
-	parseDreamingOutput,
 	parseMemoryReviewModelResult,
 	patchSoulMemorySettingsSection,
 	patchSoulMemorySettingsSectionWithAdapters,
-	planSoulMemoryCaptureDiscardStatusMutation,
 	planSoulMemoryCaptureErrorStatusMutation,
 	planSoulMemoryCaptureRuntimeStatusMutation,
 	planSoulMemoryCaptureSuccessStatusMutation,
-	planSoulMemoryDreamingErrorStatusMutation,
-	planSoulMemoryDreamingRunStatusMutation,
-	planSoulMemoryGraphDuplicateIgnore,
-	planSoulMemoryGraphDuplicateMerge,
-	planSoulMemoryGraphEntityDelete,
-	planSoulMemoryGraphEntityUpsert,
-	planSoulMemoryGraphObservationDelete,
-	planSoulMemoryGraphObservationUpsert,
-	planSoulMemoryGraphRelationDelete,
-	planSoulMemoryGraphRelationUpsert,
-	planSoulMemoryGraphSingletonObservationReconciliation,
-	planSoulMemoryManualDreamingRun,
 	planSoulMemoryWorkspacePaths,
-	prepareSoulMemoryGraphObservationInput,
 	planSoulMemoryDailyNoteAppend,
-	planSoulMemoryIndexFileWrite,
-	planSoulMemoryIndexFreshness,
-	planSoulMemoryIndexSyncWork,
-	planSoulMemoryProfileUpsert,
 	planSoulMemoryReviewAppliedStatusMutation,
 	planSoulMemoryReviewErrorStatusMutation,
 	planSoulMemoryReviewNoneStatusMutation,
@@ -189,13 +108,7 @@ import {
 	readSoulMemoryFileExcerptFromContent,
 	readSoulMemoryManagedFileExcerptWithAdapters,
 	readSoulMemoryManagedFileWithAdapters,
-	refreshSoulMemoryIndexStatus,
-	recordSoulMemoryActiveMemoryTimeout,
-	runSoulMemoryActiveMemoryRecall,
-	runSoulMemoryCanonicalEmbeddingWithAdapters,
 	runSoulMemoryCapture,
-	runSoulMemoryDreamingSweep,
-	runSoulMemoryManualDreamingWithAdapters,
 	runSoulMemoryReview,
 	sanitizeHermesMemoryEntry,
 	getSoulMemoryPendingCaptures,
@@ -204,7 +117,6 @@ import {
 	discardSoulMemoryPendingCaptureWithAdapters,
 	listSoulMemoryManagedFilesWithAdapters,
 	saveSoulMemoryManagedFileWithAdapters,
-	isSoulMemoryIndexableMarkdownRelativePath,
 	memoryReviewLastTurnKey,
 	removeSoulMemoryPendingCapture,
 	resolveSoulMemoryProviderConfig,
@@ -216,55 +128,17 @@ import {
 	resolveSoulMemoryToolProviderSelection,
 	resolveSoulMemoryManagedFileMetadata,
 	sanitizeSoulMemoryAgentPathSegment,
-	rowToSoulMemoryCanonicalAuditEvent,
-	rowToSoulMemoryCanonicalMemory,
-	rowToSoulMemoryChunk,
-	rowToSoulMemoryGraphAuditEvent,
-	rowToSoulMemoryGraphDuplicate,
-	rowToSoulMemoryGraphEntity,
-	rowToSoulMemoryGraphObservation,
-	rowToSoulMemoryGraphRelation,
 	selectSoulMemoryPendingCapture,
-	selectSoulMemoryCanonicalDuplicate,
-	selectSoulMemoryGraphObservationDuplicateCandidate,
-	collectSoulMemoryDailyDreamingSourcesWithAdapters,
-	canonicalSoulMemoryKindFromCaptureKind,
-	canonicalSoulMemoryTokens,
-	deriveSoulMemoryCanonicalInput,
-	selectSoulMemorySearchHits,
-	selectSoulMemoryDailyContextFiles,
-	selectSoulMemoryDailyDreamingSources,
-	selectSoulMemoryGraphRelatedProjectEntityIds,
 	setSoulMemoryPendingCaptures,
-	shouldSkipSoulMemoryIndexDirectoryName,
-	shouldSkipSoulMemoryIndexFileWrite,
-	shouldInjectSoulMemoryDailyContext,
 	extractSoulMemoryCandidateValue,
 	isDurableSoulMemoryCaptureCandidate,
 	looksLikeSoulMemoryNameValue,
 	sanitizeSoulMemoryKey,
-	scoreSoulMemoryCanonicalDuplicateCandidate,
 	slugifySoulMemoryKeyPart,
 	soulMemoryToolProviderAuthError,
-	isSoulMemoryIndexMarkdownFileName,
 	takeSoulMemoryPendingCapture,
-	selectSoulMemoryMmrHits,
-	scoreSoulMemorySearchHit,
 	sortManagedMemoryFiles,
 	soulMemoryAsBullet,
-	soulMemoryActiveMemoryKey,
-	soulMemoryActiveMemorySessionDisabledKey,
-	soulMemoryCircuitKey,
-	soulMemoryGraphDisplayName,
-	soulMemoryGraphEntityIdFor,
-	soulMemoryGraphEntityFtsContent,
-	soulMemoryGraphEntityInput,
-	soulMemoryGraphInputsFromCandidate,
-	soulMemoryGraphObservationFtsContent,
-	soulMemoryGraphRelationFtsContent,
-	soulMemoryGraphSlotFromCandidate,
-	soulMemoryTokenJaccard,
-	soulMemoryTemporalFactor,
 	previewSoulMemoryLine,
 	truncateSoulMemoryText,
 	splitHermesMemoryEntries,
@@ -273,11 +147,6 @@ import {
 describe("onething runtime soul-memory helpers", () => {
 	it("owns the soul-memory plugin manifest in onething runtime", () => {
 		expect(CORE_SOUL_MEMORY_PLUGIN_ID).toBe("soul-memory");
-		expect(CORE_SOUL_MEMORY_DEFAULT_INDEX_STATUS).toEqual({
-			indexedFiles: 0,
-			indexedChunks: 0,
-			ftsTokenizer: "unknown",
-		});
 		expect(CORE_SOUL_MEMORY_REVIEW_LAST_TURN_KEY_PREFIX).toBe(
 			"memoryReviewLastTurn:",
 		);
@@ -291,16 +160,13 @@ describe("onething runtime soul-memory helpers", () => {
 			name: "soul-memory",
 			version: "1.0.0",
 			description:
-				"SOUL.md prompt context, SQLite graph memory, AI notes recall, and compact-time memory flush",
+				"SOUL.md prompt context, Hermes file memory (USER.md/MEMORY.md), daily-note capture, and periodic review",
 			author: "onething",
 		});
 	});
 
 	it("keeps plugin registration protocol and command parsing in core", () => {
 		expect(CORE_SOUL_MEMORY_PROMPT_CONTEXT_PROVIDER_ID).toBe("soul-memory");
-		expect(CORE_SOUL_MEMORY_BEFORE_CONTEXT_COMPACT_HOOK_ID).toBe(
-			"memory-flush",
-		);
 		expect(CORE_SOUL_MEMORY_CAPTURE_HOOK_ID).toBe("memory-capture");
 		expect(CORE_SOUL_MEMORY_REVIEW_HOOK_ID).toBe("memory-review");
 
@@ -308,19 +174,13 @@ describe("onething runtime soul-memory helpers", () => {
 			"soul_get",
 			"soul_update",
 			"memory",
-			"memory_search",
 			"memory_get",
 		]);
 		expect(getCoreSoulMemoryToolSpec("soul_update")).toMatchObject({
 			permissionGuard: "permission-gated",
 		});
-		expect(getCoreSoulMemoryToolSpec("memory_search")).toMatchObject({
-			permissionGuard: "safe",
-		});
 
 		expect(CORE_SOUL_MEMORY_COMMAND_SPECS.map((spec) => spec.name)).toEqual([
-			"/active-memory",
-			"/dreaming",
 			"/memory",
 			"/soul",
 		]);
@@ -328,14 +188,6 @@ describe("onething runtime soul-memory helpers", () => {
 			"review <subcommand>",
 		);
 
-		expect(parseSoulMemoryActiveMemoryCommand("off --global")).toEqual({
-			action: "off",
-			isGlobal: true,
-		});
-		expect(parseSoulMemoryActiveMemoryCommand("")).toEqual({
-			action: "status",
-			isGlobal: false,
-		});
 		expect(parseSoulMemoryRootCommand("capture mode auto")).toEqual({
 			action: "capture",
 			rest: ["mode", "auto"],
@@ -345,9 +197,6 @@ describe("onething runtime soul-memory helpers", () => {
 			subcommand: "save",
 			id: "abc123",
 		});
-		expect(formatSoulMemoryActiveMemoryStatus(true, false)).toBe(
-			"Active Memory is on globally and on for this session",
-		);
 		expect(
 			formatSoulMemoryCaptureCommandStatus({
 				enabled: true,
@@ -361,9 +210,6 @@ describe("onething runtime soul-memory helpers", () => {
 		);
 		expect(CORE_SOUL_MEMORY_DAILY_NOTE_EXTRACTION_SYSTEM_PROMPT).toContain(
 			"Return markdown bullets only",
-		);
-		expect(CORE_SOUL_MEMORY_MEMORY_FLUSH_SYSTEM_PROMPT).toBe(
-			CORE_SOUL_MEMORY_DAILY_NOTE_EXTRACTION_SYSTEM_PROMPT,
 		);
 	});
 
@@ -389,195 +235,11 @@ describe("onething runtime soul-memory helpers", () => {
 		expect(extractSoulMemoryCandidateValue("User's name is Ada.")).toBe("Ada");
 		expect(looksLikeSoulMemoryNameValue("Ada Lovelace")).toBe(true);
 		expect(looksLikeSoulMemoryNameValue("prefers compact UI")).toBe(false);
-		expect(canonicalSoulMemoryKindFromCaptureKind("episodic")).toBe("fact");
 		expect(isDurableSoulMemoryCaptureCandidate({ kind: "summary" })).toBe(
 			false,
 		);
 		expect(isDurableSoulMemoryCaptureCandidate({ kind: "fact" })).toBe(true);
-		expect([...canonicalSoulMemoryTokens("Headless core, core CLI")]).toEqual([
-			"headless",
-			"core",
-			"cli",
-		]);
-		expect(
-			soulMemoryTokenJaccard("headless core cli", "headless core gateway"),
-		).toBeCloseTo(0.5);
-		expect(cosineSoulMemoryVector([1, 0], [0, 1])).toBeCloseTo(0);
-		expect(cosineSoulMemoryVector([1, 1], [1, 1])).toBeCloseTo(1);
 		expect(CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID).toBe("user:self");
-		expect(soulMemoryGraphEntityIdFor("user", "Ada")).toBe("user:self");
-		expect(soulMemoryGraphEntityIdFor("project", "Headless Core")).toBe(
-			"project:headless-core",
-		);
-		expect(soulMemoryGraphDisplayName(' "Headless   Core" ')).toBe(
-			"Headless Core",
-		);
-		expect(
-			soulMemoryGraphSlotFromCandidate(
-				{
-					kind: "preference",
-					source: "user",
-					confidence: 0.8,
-					text: "用户偏好中文回答。",
-					value: "中文回答",
-				},
-				"preference",
-				"中文回答",
-			),
-		).toBe("language_preference");
-		expect(
-			soulMemoryGraphEntityInput({
-				source: "capture",
-				entityType: "person",
-				name: "me",
-			}),
-		).toEqual({
-			source: "capture",
-			id: "user:self",
-			entityType: "user",
-			name: "self",
-			displayName: "User",
-		});
-		expect(
-			soulMemoryGraphInputsFromCandidate(
-				{
-					kind: "decision",
-					source: "conversation",
-					confidence: 0.82,
-					text: "Use headless core for Gateway.",
-					value: "Use headless core for Gateway",
-					entityName: "Gateway",
-					relationType: "depends_on",
-					toEntityType: "tech",
-					toEntityName: "Core Runtime",
-				},
-				{
-					source: "review",
-					sessionId: "s1",
-					messageId: "m1",
-				},
-			),
-		).toEqual({
-			entities: [
-				{
-					source: "review",
-					sessionId: "s1",
-					messageId: "m1",
-					entityType: "user",
-					name: "self",
-					confidence: 0.82,
-					sensitivity: "normal",
-					id: "user:self",
-					displayName: "User",
-				},
-				{
-					source: "review",
-					sessionId: "s1",
-					messageId: "m1",
-					entityType: "tech",
-					name: "Core Runtime",
-					confidence: 0.82,
-					sensitivity: "normal",
-					displayName: "Core Runtime",
-				},
-				{
-					source: "review",
-					sessionId: "s1",
-					messageId: "m1",
-					entityType: "project",
-					name: "Gateway",
-					confidence: 0.82,
-					sensitivity: "normal",
-					displayName: "Gateway",
-				},
-			],
-			observations: [
-				{
-					source: "review",
-					sessionId: "s1",
-					messageId: "m1",
-					entityId: "project:gateway",
-					kind: "decision",
-					slot: "decision_use_headless_core_for_gateway",
-					value: "Use headless core for Gateway",
-					text: "Use headless core for Gateway.",
-					confidence: 0.82,
-					sensitivity: "normal",
-					status: "active",
-				},
-			],
-			relations: [
-				{
-					source: "review",
-					sessionId: "s1",
-					messageId: "m1",
-					fromEntityId: "user:self",
-					relationType: "depends_on",
-					toEntityId: "tech:core-runtime",
-					text: "Use headless core for Gateway.",
-					confidence: 0.82,
-					sensitivity: "normal",
-					status: "active",
-				},
-			],
-		});
-		expect(
-			normalizeSoulMemoryGraphMergeCandidates(
-				[
-					{
-						kind: "project",
-						text: "Gateway uses the headless core.",
-						entityType: "project",
-						entityName: "Gateway",
-						relationType: "uses",
-						toEntityType: "tech",
-						toEntityName: "Headless Core",
-						explicit: true,
-					},
-				],
-				0.77,
-			),
-		).toEqual([
-			{
-				kind: "project",
-				source: "conversation",
-				confidence: 0.77,
-				text: "Gateway uses the headless core.",
-				entityType: "project",
-				entityName: "Gateway",
-				relationType: "uses",
-				toEntityType: "tech",
-				toEntityName: "Headless Core",
-				sensitivity: "normal",
-				target: "memory",
-				explicit: true,
-			},
-		]);
-		expect(
-			normalizeSoulMemoryCanonicalMergeCandidates(
-				[
-					{
-						kind: "preference",
-						text: "User prefers compact status updates.",
-						memoryKey: "user.preference.status",
-						value: "compact status updates",
-					},
-				],
-				0.66,
-			),
-		).toEqual([
-			{
-				kind: "preference",
-				source: "conversation",
-				confidence: 0.66,
-				text: "User prefers compact status updates.",
-				memoryKey: "user.preference.status",
-				value: "compact status updates",
-				sensitivity: "normal",
-				target: "memory",
-				explicit: undefined,
-			},
-		]);
 		expect(
 			buildSoulMemoryPendingCaptureMigrationCandidates([
 				{
@@ -616,777 +278,12 @@ describe("onething runtime soul-memory helpers", () => {
 				explicit: true,
 			},
 		]);
-		expect(
-			buildSoulMemoryCanonicalGraphMigrationCandidates([
-				{
-					kind: "preference",
-					confidence: 0.81,
-					text: "User prefers compact updates.",
-					memoryKey: "user.preference.status",
-					value: "compact updates",
-					sensitivity: "sensitive",
-				},
-			]),
-		).toEqual([
-			{
-				kind: "preference",
-				source: "user",
-				confidence: 0.81,
-				text: "User prefers compact updates.",
-				memoryKey: "user.preference.status",
-				value: "compact updates",
-				sensitivity: "sensitive",
-				target: "memory",
-				explicit: true,
-			},
-		]);
-	});
-
-	it("derives canonical memory inputs in core", () => {
-		expect(
-			deriveSoulMemoryCanonicalInput(
-				{
-					kind: "identity",
-					source: "user",
-					confidence: 0.9,
-					text: "My name is Ada.",
-				},
-				{
-					source: "capture",
-					evidence: "message text",
-					sessionId: "s1",
-					messageId: "m1",
-				},
-			),
-		).toEqual({
-			memoryKey: "user.name",
-			kind: "identity",
-			subject: "user",
-			value: "Ada",
-			text: "User's name is Ada.",
-			confidence: 0.9,
-			sensitivity: "normal",
-			source: "capture",
-			evidence: "message text",
-			sessionId: "s1",
-			messageId: "m1",
-		});
-		expect(
-			deriveSoulMemoryCanonicalInput(
-				{
-					kind: "decision",
-					source: "conversation",
-					confidence: 0.8,
-					text: "Use headless core for CLI gateway.",
-					memoryKey: " Project Decision / Core ",
-					value: "Headless core for CLI gateway",
-					sensitivity: "sensitive",
-				},
-				{
-					source: "review",
-				},
-			),
-		).toMatchObject({
-			memoryKey: "project.decision.core",
-			kind: "decision",
-			subject: "project",
-			value: "Headless core for CLI gateway",
-			text: "Use headless core for CLI gateway.",
-			sensitivity: "sensitive",
-			source: "review",
-		});
-		expect(
-			deriveSoulMemoryCanonicalInput(
-				{
-					kind: "summary",
-					source: "assistant",
-					confidence: 0.4,
-					text: "Transient summary",
-				},
-				{
-					source: "capture",
-				},
-			),
-		).toBeNull();
-	});
-
-	it("plans profile upserts in core", () => {
-		expect(
-			planSoulMemoryProfileUpsert({
-				kind: "decision",
-				memoryKey: "project.decision.core",
-				value: "Use headless core",
-			}),
-		).toEqual({
-			action: "create",
-			input: {
-				memoryKey: "project.decision.core",
-				kind: "decision",
-				subject: "project",
-				value: "Use headless core",
-				text: "Use headless core",
-				confidence: 1,
-				sensitivity: "normal",
-				source: "panel",
-				evidence: "Edited in Memory User Profile panel.",
-			},
-		});
-
-		expect(
-			planSoulMemoryProfileUpsert(
-				{
-					kind: "preference",
-					value: "compact updates",
-					text: "User prefers compact updates.",
-				},
-				{
-					memoryKey: "user.preference.status",
-					subject: "user",
-					confidence: 0.7,
-					sensitivity: "sensitive",
-					evidence: "Existing evidence.",
-				},
-			),
-		).toEqual({
-			action: "update",
-			input: {
-				memoryKey: "user.preference.status",
-				kind: "preference",
-				subject: "user",
-				value: "compact updates",
-				text: "User prefers compact updates.",
-				confidence: 0.7,
-				sensitivity: "sensitive",
-				source: "panel",
-				evidence: "Existing evidence.",
-			},
-		});
-	});
-
-	it("selects canonical memory duplicates in core", () => {
-		const input = {
-			memoryKey: "user.preference.theme",
-			normalizedText: "user preference theme dark mode",
-			embedding: [1, 0],
-		};
-
-		expect(
-			scoreSoulMemoryCanonicalDuplicateCandidate(input, {
-				text: "User prefers dark mode.",
-				normalizedText: "user preference theme dark mode",
-			}),
-		).toBe(1);
-		expect(
-			selectSoulMemoryCanonicalDuplicate({
-				input,
-				sameKey: {
-					record: "same-key",
-					memoryKey: "user.preference.theme",
-					text: "Existing same key",
-				},
-				candidates: [],
-				threshold: 0.9,
-			})?.record,
-		).toBe("same-key");
-		expect(
-			selectSoulMemoryCanonicalDuplicate({
-				input,
-				candidates: [
-					{
-						record: "weak",
-						memoryKey: "user.preference.editor",
-						text: "User prefers compact editors.",
-						normalizedText: "compact editor",
-						embeddingJson: JSON.stringify([0, 1]),
-					},
-					{
-						record: "vector-match",
-						memoryKey: "user.preference.ui",
-						text: "Theme preference.",
-						normalizedText: "theme preference",
-						embeddingJson: JSON.stringify([0.98, 0.02]),
-					},
-				],
-				threshold: 0.9,
-			})?.record,
-		).toBe("vector-match");
-	});
-
-	it("builds canonical and graph profile summaries in core", () => {
-		expect(
-			buildSoulMemoryCanonicalProfileSummary({
-				maxChars: 1000,
-				memories: [
-					{
-						memoryKey: "user.name",
-						kind: "identity",
-						text: "User's name is Ada.",
-						confidence: 0.91,
-					},
-					{
-						memoryKey: "project.decision.core",
-						kind: "decision",
-						text: "Use headless core for CLI gateway.",
-						confidence: 0.82,
-					},
-				],
-			}),
-		).toBe(
-			[
-				"## Identity",
-				"- user.name: User's name is Ada. (0.91)",
-				"",
-				"## Decisions",
-				"- project.decision.core: Use headless core for CLI gateway. (0.82)",
-			].join("\n"),
-		);
-
-		const relations = [
-			{
-				fromEntityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				relationType: "works_on",
-				toEntityId: "project:headless-core",
-				text: "User works on headless core.",
-				status: "active",
-			},
-			{
-				fromEntityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				relationType: "works_on",
-				toEntityId: "project:archived",
-				text: "Old project.",
-				status: "deleted",
-			},
-		];
-		expect(selectSoulMemoryGraphRelatedProjectEntityIds(relations)).toEqual([
-			"project:headless-core",
-		]);
-		expect(
-			buildSoulMemoryGraphProfileSummary({
-				maxChars: 1000,
-				userObservations: [
-					{
-						entityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-						slot: "language_preference",
-						text: "User prefers Chinese replies.",
-						confidence: 0.9,
-						status: "active",
-					},
-				],
-				userRelations: relations,
-				projectObservations: [
-					{
-						entityId: "project:headless-core",
-						entityDisplayName: "Headless Core",
-						slot: "goal",
-						text: "Extract Electron-free core.",
-						confidence: 0.88,
-						status: "active",
-					},
-				],
-				resolveEntityLabel: (entityId) =>
-					entityId === CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID ? "User" : entityId,
-			}),
-		).toBe(
-			[
-				"## User",
-				"- language_preference: User prefers Chinese replies. (0.90)",
-				"",
-				"## User Relations",
-				"- User --works_on--> project:headless-core: User works on headless core.",
-				"",
-				"## Related Projects",
-				"- Headless Core / goal: Extract Electron-free core.",
-			].join("\n"),
-		);
-	});
-
-	it("plans graph entity upserts in core", () => {
-		const created = planSoulMemoryGraphEntityUpsert({
-			input: {
-				entityType: "project",
-				name: "Headless Core",
-				aliases: ["core"],
-				source: "capture",
-			},
-			now: 1000,
-			highConfidenceThreshold: 0.8,
-		});
-		expect(created).toMatchObject({
-			action: "create",
-			entity: {
-				id: "project:headless-core",
-				entityType: "project",
-				name: "Headless Core",
-				displayName: "Headless Core",
-				aliases: ["core", "Headless Core"],
-				confidence: 0.8,
-				sensitivity: "normal",
-				source: "capture",
-				createdAt: 1000,
-				updatedAt: 1000,
-			},
-		});
-		expect(created.ftsContent).toBe(
-			soulMemoryGraphEntityFtsContent(created.entity),
-		);
-
-		expect(
-			planSoulMemoryGraphEntityUpsert({
-				input: {
-					entityType: "project",
-					name: "Headless Core",
-					source: "capture",
-					confidence: 0.5,
-				},
-				existing: created.entity,
-				now: 2000,
-				highConfidenceThreshold: 0.8,
-			}).action,
-		).toBe("duplicate");
-
-		const updated = planSoulMemoryGraphEntityUpsert({
-			input: {
-				entityType: "project",
-				name: "Headless Core",
-				displayName: "Headless Core Runtime",
-				aliases: ["core-runtime"],
-				source: "review",
-				confidence: 0.95,
-			},
-			existing: created.entity,
-			now: 3000,
-			highConfidenceThreshold: 0.8,
-		});
-		expect(updated).toMatchObject({
-			action: "update",
-			entity: {
-				id: "project:headless-core",
-				displayName: "Headless Core Runtime",
-				aliases: [
-					"core",
-					"Headless Core",
-					"core-runtime",
-					"Headless Core Runtime",
-				],
-				confidence: 0.95,
-				source: "review",
-				updatedAt: 3000,
-			},
-		});
-	});
-
-	it("plans graph observation upserts in core", () => {
-		const prepared = prepareSoulMemoryGraphObservationInput({
-			input: {
-				entityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				kind: "preference",
-				slot: "language_preference",
-				value: "Chinese replies",
-				text: "User prefers Chinese replies.",
-				source: "capture",
-				confidence: 0.7,
-			},
-			now: 1000,
-			highConfidenceThreshold: 0.8,
-		});
-		expect(prepared).toMatchObject({
-			entityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-			kind: "preference",
-			slot: "language_preference",
-			value: "Chinese replies",
-			text: "User prefers Chinese replies.",
-			confidence: 0.7,
-			sensitivity: "normal",
-			status: "active",
-			embeddingInput: [
-				CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				"language_preference",
-				"User prefers Chinese replies.",
-				"Chinese replies",
-			].join("\n"),
-		});
-		expect(
-			isSingletonSoulMemoryGraphObservation(prepared.kind, prepared.slot),
-		).toBe(true);
-
-		const existing = {
-			id: "obs-1",
-			entityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-			kind: "preference" as const,
-			slot: "language_preference",
-			value: "Chinese replies",
-			text: "User prefers Chinese replies.",
-			confidence: 0.6,
-			sensitivity: "sensitive" as const,
-			source: "manual",
-			status: "active" as const,
-			createdAt: 500,
-			updatedAt: 500,
-		};
-		const update = planSoulMemoryGraphObservationUpsert({
-			prepared,
-			existingById: existing,
-		});
-		expect(update).toMatchObject({
-			action: "update",
-			observation: {
-				id: "obs-1",
-				confidence: 0.7,
-				sensitivity: "sensitive",
-				updatedAt: 1000,
-			},
-		});
-		expect(update.ftsContent).toBe(
-			soulMemoryGraphObservationFtsContent(update.observation),
-		);
-
-		const duplicate = planSoulMemoryGraphObservationUpsert({
-			prepared,
-			activeSameSlot: existing,
-		});
-		expect(duplicate).toMatchObject({
-			action: "duplicate",
-			duplicateReason: "same singleton slot value",
-			observation: {
-				id: "obs-1",
-				confidence: 0.7,
-				updatedAt: 1000,
-			},
-		});
-
-		const conflictPrepared = prepareSoulMemoryGraphObservationInput({
-			input: {
-				entityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				kind: "preference",
-				slot: "language_preference",
-				value: "English replies",
-				text: "User prefers English replies.",
-				source: "capture",
-			},
-			now: 2000,
-			highConfidenceThreshold: 0.8,
-		});
-		const conflict = planSoulMemoryGraphObservationUpsert({
-			prepared: conflictPrepared,
-			activeSameSlot: existing,
-		});
-		expect(conflict).toMatchObject({
-			action: "conflict",
-			supersededObservation: {
-				id: "obs-1",
-			},
-			observation: {
-				entityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				slot: "language_preference",
-				value: "English replies",
-				confidence: 0.8,
-				createdAt: 2000,
-				updatedAt: 2000,
-			},
-		});
-		expect(
-			selectSoulMemoryGraphObservationDuplicateCandidate({
-				normalizedText: conflict.normalizedText,
-				threshold: 0.4,
-				candidates: [
-					{
-						id: "weak",
-						text: "Unrelated editor preference",
-						normalizedText: "editor preference",
-					},
-					{
-						id: "strong",
-						text: "User prefers English replies.",
-						normalizedText: "user self language preference english replies",
-					},
-				],
-			}),
-		).toMatchObject({
-			id: "strong",
-			reason: "Similar observation: User prefers English replies.",
-		});
-		expect(
-			planSoulMemoryGraphSingletonObservationReconciliation([
-				{
-					...existing,
-					id: "older",
-					confidence: 0.95,
-					updatedAt: 1000,
-				},
-				{
-					...existing,
-					id: "keeper",
-					confidence: 0.7,
-					updatedAt: 3000,
-				},
-				{
-					...existing,
-					id: "fact-1",
-					kind: "fact",
-					slot: "misc",
-					updatedAt: 2000,
-				},
-				{
-					...existing,
-					id: "fact-2",
-					kind: "fact",
-					slot: "misc",
-					updatedAt: 1000,
-				},
-			]),
-		).toEqual([
-			{
-				observationId: "older",
-				supersededBy: "keeper",
-				reason: "singleton observation slot reconciliation",
-				entityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				kind: "preference",
-				slot: "language_preference",
-			},
-		]);
-	});
-
-	it("plans graph relation upserts in core", () => {
-		const created = planSoulMemoryGraphRelationUpsert({
-			input: {
-				fromEntityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				relationType: "works on",
-				toEntityId: "project:headless-core",
-				source: "capture",
-			},
-			fromDisplayName: "User",
-			toDisplayName: "Headless Core",
-			now: 1000,
-			highConfidenceThreshold: 0.8,
-		});
-		expect(created).toMatchObject({
-			action: "create",
-			relationType: "works_on",
-			relation: {
-				fromEntityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				fromDisplayName: "User",
-				relationType: "works_on",
-				toEntityId: "project:headless-core",
-				toDisplayName: "Headless Core",
-				text: "User works on Headless Core.",
-				confidence: 0.8,
-				sensitivity: "normal",
-				source: "capture",
-				status: "active",
-				createdAt: 1000,
-				updatedAt: 1000,
-			},
-			embeddingInput: [
-				CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				"works_on",
-				"project:headless-core",
-				"User works on Headless Core.",
-			].join("\n"),
-		});
-		expect(created.relation.id).toMatch(/^[a-f0-9]{64}$/);
-		expect(created.ftsContent).toBe(
-			soulMemoryGraphRelationFtsContent(created.relation),
-		);
-
-		const existing = {
-			...created.relation,
-			id: "rel-1",
-			confidence: 0.6,
-			sensitivity: "sensitive" as const,
-			source: "manual",
-			createdAt: 500,
-			updatedAt: 500,
-		};
-		const updated = planSoulMemoryGraphRelationUpsert({
-			input: {
-				id: "rel-1",
-				fromEntityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-				relationType: "works_on",
-				toEntityId: "project:headless-core",
-				text: "User actively works on the headless core.",
-				source: "review",
-				confidence: 0.9,
-			},
-			existingById: existing,
-			fromDisplayName: "User",
-			toDisplayName: "Headless Core",
-			now: 2000,
-			highConfidenceThreshold: 0.8,
-		});
-		expect(updated).toMatchObject({
-			action: "update",
-			relation: {
-				id: "rel-1",
-				text: "User actively works on the headless core.",
-				confidence: 0.9,
-				sensitivity: "sensitive",
-				source: "review",
-				updatedAt: 2000,
-			},
-		});
-
-		expect(
-			planSoulMemoryGraphRelationUpsert({
-				input: {
-					fromEntityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-					relationType: "works_on",
-					toEntityId: "project:headless-core",
-					source: "capture",
-				},
-				existingRelation: existing,
-				now: 3000,
-				highConfidenceThreshold: 0.8,
-			}),
-		).toMatchObject({
-			action: "duplicate",
-			relation: {
-				id: "rel-1",
-			},
-		});
-	});
-
-	it("formats graph memory search content in core", () => {
-		expect(
-			formatSoulMemoryGraphSearchContent({
-				type: "entity",
-				value: {
-					id: "project:headless-core",
-					entityType: "project",
-					name: "Headless Core",
-					displayName: "Headless Core",
-					aliases: ["core", "runtime"],
-					confidence: 0.9,
-					sensitivity: "normal",
-					source: "capture",
-					createdAt: 1000,
-					updatedAt: 1000,
-				},
-			}),
-		).toBe(
-			"project:headless-core: Headless Core (project) aliases: core, runtime",
-		);
-		expect(
-			formatSoulMemoryGraphSearchContent(
-				{
-					type: "observation",
-					value: {
-						id: "obs-1",
-						entityId: "project:headless-core",
-						kind: "project",
-						slot: "goal",
-						value: "Extract core",
-						text: "Extract Electron-free core.",
-						confidence: 0.9,
-						sensitivity: "normal",
-						source: "capture",
-						status: "active",
-						createdAt: 1000,
-						updatedAt: 1000,
-					},
-				},
-				(entityId) =>
-					entityId === "project:headless-core" ? "Headless Core" : entityId,
-			),
-		).toBe("Headless Core goal: Extract Electron-free core.");
-		expect(
-			formatSoulMemoryGraphSearchContent(
-				{
-					type: "relation",
-					value: {
-						id: "rel-1",
-						fromEntityId: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-						relationType: "works_on",
-						toEntityId: "project:headless-core",
-						text: "User works on Headless Core.",
-						confidence: 0.8,
-						sensitivity: "normal",
-						source: "capture",
-						status: "active",
-						createdAt: 1000,
-						updatedAt: 1000,
-					},
-				},
-				(entityId) =>
-					entityId === CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID
-						? "User"
-						: "Headless Core",
-			),
-		).toBe("User --works_on--> Headless Core: User works on Headless Core.");
-	});
-
-	it("handles active-memory commands in core through settings and store adapters", async () => {
-		let settings = {
-			general: {
-				soulMemory: {
-					activeMemory: {
-						enabled: true,
-					},
-				},
-			},
-		};
-		const values = new Map<string, unknown>();
-		const notifications: string[] = [];
-		const run = (args: string) =>
-			handleSoulMemoryActiveMemoryCommand({
-				args,
-				ctx: {
-					sessionId: "session-1",
-					notify: (message) => notifications.push(message),
-				},
-				store: {
-					get: <T = unknown>(key: string) => values.get(key) as T | undefined,
-					set: (key, value) => {
-						values.set(key, value);
-					},
-					delete: (key) => {
-						values.delete(key);
-					},
-				},
-				getSettings: () => settings,
-				saveSettings: (next) => {
-					settings = next;
-				},
-				getGlobalEnabled: (current) =>
-					current.general.soulMemory.activeMemory.enabled !== false,
-				setGlobalEnabled: (current, enabled) => ({
-					...current,
-					general: {
-						...current.general,
-						soulMemory: {
-							...current.general.soulMemory,
-							activeMemory: {
-								...current.general.soulMemory.activeMemory,
-								enabled,
-							},
-						},
-					},
-				}),
-			});
-
-		await run("off --global");
-		expect(settings.general.soulMemory.activeMemory.enabled).toBe(false);
-		expect(notifications.at(-1)).toBe("Active Memory is off globally");
-
-		await run("off");
-		const key = soulMemoryActiveMemorySessionDisabledKey("session-1");
-		expect(values.get(key)).toBe(true);
-		expect(notifications.at(-1)).toBe("Active Memory is off for this session");
-
-		await run("status");
-		expect(notifications.at(-1)).toBe(
-			"Active Memory is off globally and off for this session",
-		);
-
-		await run("on");
-		expect(values.has(key)).toBe(false);
-		expect(notifications.at(-1)).toBe("Active Memory is on");
 	});
 
 	it("handles memory capture commands in core through capture adapters", async () => {
 		expect(
 			buildSoulMemoryCaptureCommandStatusInput({
 				capture: {
-					enabled: true,
 					mode: "auto",
 				},
 				pending: [{ id: "pending-abcdef", content: "candidate memory" }],
@@ -1410,8 +307,7 @@ describe("onething runtime soul-memory helpers", () => {
 		const savedIds: Array<string | undefined> = [];
 		const discardedIds: Array<string | undefined> = [];
 		let capture = {
-			enabled: false,
-			mode: "explicit-only",
+			mode: "off" as "explicit-only" | "auto" | "off",
 		};
 		const run = (rest: string[]) =>
 			handleSoulMemoryCaptureCommand({
@@ -1421,7 +317,7 @@ describe("onething runtime soul-memory helpers", () => {
 					notify: (message, level) => notifications.push({ message, level }),
 				},
 				getStatus: () => ({
-					enabled: capture.enabled,
+					enabled: capture.mode !== "off",
 					mode: capture.mode,
 					pending: [{ id: "pending-abcdef", content: "candidate memory" }],
 					lastCaptureError: "last error",
@@ -1451,7 +347,7 @@ describe("onething runtime soul-memory helpers", () => {
 		expect(notifications.at(-1)?.message).toContain("Last error: last error");
 
 		await run(["on"]);
-		expect(capture.enabled).toBe(true);
+		expect(capture.mode).toBe("auto");
 		expect(notifications.at(-1)?.message).toBe("Memory Capture is on");
 
 		await run(["mode", "auto"]);
@@ -1496,18 +392,11 @@ describe("onething runtime soul-memory helpers", () => {
 					sessionId: "session-1",
 					notify: (message, level) => notifications.push({ message, level }),
 				},
-				handleDreaming: async (commandArgs) => {
-					calls.push(`dreaming:${commandArgs}`);
-				},
 				handleReview: async (commandArgs) => {
 					calls.push(`review:${commandArgs}`);
 				},
 				handleCapture: async (rest) => {
 					calls.push(`capture:${rest.join(" ")}`);
-				},
-				search: async (query) => {
-					calls.push(`search:${query}`);
-					return `search result for ${query}`;
 				},
 				get: async (path) => {
 					calls.push(`get:${path}`);
@@ -1517,48 +406,32 @@ describe("onething runtime soul-memory helpers", () => {
 					calls.push(`${input.action}:${input.content}`);
 					return `remembered ${input.content}`;
 				},
-				index: async () => {
-					calls.push("index");
-					return { indexedFiles: 3, indexedChunks: 9 };
-				},
 				status: async () => {
 					calls.push("status");
 					return "memory status";
 				},
 			});
 
-		await run("dreaming run now");
 		await run("review status");
 		await run("capture status");
-		await run("search prior decision");
 		await run("get entity:abc");
 		await run("remember durable fact");
 		await run("append another fact");
-		await run("index");
 		await run("unknown");
 
 		expect(calls).toEqual([
-			"dreaming:run now",
 			"review:status",
 			"capture:status",
-			"search:prior decision",
 			"get:entity:abc",
 			"remember:durable fact",
 			"append:another fact",
-			"index",
 			"status",
 		]);
-		expect(notifications.map((item) => item.message)).toContain(
-			"search result for prior decision",
-		);
 		expect(notifications.map((item) => item.message)).toContain(
 			"get result for entity:abc",
 		);
 		expect(notifications.map((item) => item.message)).toContain(
 			"remembered durable fact",
-		);
-		expect(notifications.map((item) => item.message)).toContain(
-			formatSoulMemoryIndexCommandResult({ indexedFiles: 3, indexedChunks: 9 }),
 		);
 		expect(notifications.at(-1)?.message).toBe("memory status");
 	});
@@ -1575,36 +448,23 @@ describe("onething runtime soul-memory helpers", () => {
 					sessionId: "session-1",
 					notify: (message, level) => notifications.push({ message, level }),
 				},
-				handleDreaming: async () => {},
 				handleReview: async () => {},
 				handleCapture: async () => {},
-				search: async () => "search",
 				get: async () => "get",
 				remember: async () => "remember",
-				index: async () => ({ indexedFiles: 0, indexedChunks: 0 }),
 				status: async () => "status",
 			});
 
-		await run("search");
 		await run("get");
 		await run("remember");
 
 		expect(notifications).toEqual([
-			{ message: CORE_SOUL_MEMORY_SEARCH_COMMAND_USAGE, level: "warn" },
 			{ message: CORE_SOUL_MEMORY_GET_COMMAND_USAGE, level: "warn" },
 			{ message: "Usage: /memory remember <text>", level: "warn" },
 		]);
 	});
 
 	it("formats memory get and remember command adapter results in core", async () => {
-		const canonical = {
-			memoryKey: "profile:timezone",
-			text: "User prefers UTC",
-			kind: "preference",
-			subject: "user",
-			value: "UTC",
-			confidence: 0.875,
-		};
 		const excerpt = {
 			relativePath: "MEMORY.md",
 			text: "line 4",
@@ -1614,14 +474,6 @@ describe("onething runtime soul-memory helpers", () => {
 			truncated: true,
 		};
 
-		expect(formatSoulMemoryCommandCanonicalLookup(canonical)).toBe(
-			[
-				"profile:timezone",
-				"User prefers UTC",
-				"Kind: preference",
-				"Confidence: 0.88",
-			].join("\n"),
-		);
 		expect(formatSoulMemoryCommandFileExcerpt(excerpt)).toBe(
 			["MEMORY.md:4-4", "line 4", "More content available from line 5."].join(
 				"\n\n",
@@ -1632,532 +484,10 @@ describe("onething runtime soul-memory helpers", () => {
 				relativePath: "memory/2026-06-25.md",
 			}),
 		).toBe("Remembered in memory/2026-06-25.md");
-		expect(
-			formatSoulMemoryCanonicalProfileExport({
-				exportedAt: new Date("2026-06-25T08:00:00.000Z"),
-				memories: [
-					{
-						memoryKey: "profile:timezone",
-						kind: "preference",
-						confidence: 0.875,
-						text: "User prefers UTC",
-					},
-				],
-			}),
-		).toBe(
-			[
-				"# Canonical User Profile",
-				"",
-				"Exported: 2026-06-25T08:00:00.000Z",
-				"",
-				"- **profile:timezone** (preference, 0.88): User prefers UTC",
-			].join("\n"),
-		);
-		const canonicalRecord = rowToSoulMemoryCanonicalMemory({
-			id: "mem-1",
-			memory_key: "profile:timezone",
-			kind: "preference",
-			subject: "user",
-			value: "UTC",
-			text: "User prefers UTC",
-			confidence: 0.875,
-			sensitivity: null,
-			source: "capture",
-			evidence: "",
-			session_id: null,
-			message_id: "msg-1",
-			created_at: 100,
-			updated_at: 200,
-			deleted_at: null,
-		});
-		expect(canonicalRecord).toEqual({
-			id: "mem-1",
-			memoryKey: "profile:timezone",
-			kind: "preference",
-			subject: "user",
-			value: "UTC",
-			text: "User prefers UTC",
-			confidence: 0.875,
-			sensitivity: "normal",
-			source: "capture",
-			evidence: undefined,
-			sessionId: undefined,
-			messageId: "msg-1",
-			createdAt: 100,
-			updatedAt: 200,
-			deletedAt: undefined,
-		});
-		expect(formatSoulMemoryCanonicalDisplayText(canonicalRecord)).toBe(
-			"profile:timezone: User prefers UTC",
-		);
-		expect(
-			rowToSoulMemoryCanonicalAuditEvent({
-				id: "event-1",
-				memory_id: "mem-1",
-				action: "create",
-				created_at: 300,
-				payload_json: '{"memoryKey":"profile:timezone","ignored":null}',
-			}),
-		).toEqual({
-			id: "event-1",
-			memoryId: "mem-1",
-			action: "create",
-			createdAt: 300,
-			payload: { memoryKey: "profile:timezone", ignored: null },
-		});
-		expect(
-			rowToSoulMemoryCanonicalAuditEvent({
-				id: "event-2",
-				memory_id: "mem-1",
-				action: "bad-json",
-				created_at: 400,
-				payload_json: "{",
-			}).payload,
-		).toEqual({});
-		expect(normalizeSoulMemoryGraphStatus("conflict")).toBe("conflict");
-		expect(normalizeSoulMemoryGraphStatus("unknown")).toBe("active");
-		expect(normalizeSoulMemoryGraphEntityType("organization")).toBe(
-			"organization",
-		);
-		expect(normalizeSoulMemoryGraphEntityType("wat")).toBe("concept");
-		expect(normalizeSoulMemoryGraphObservationKind("episodic")).toBe(
-			"episodic",
-		);
-		expect(normalizeSoulMemoryGraphObservationKind("wat")).toBe("fact");
-		expect(normalizeSoulMemoryGraphRelationType("depends on")).toBe(
-			"depends_on",
-		);
-		expect(
-			rowToSoulMemoryGraphEntity({
-				id: "entity-1",
-				entity_type: "person",
-				name: "Ada",
-				display_name: "Ada Lovelace",
-				aliases_json: '["Ada",""]',
-				confidence: 0.9,
-				sensitivity: null,
-				source: "capture",
-				evidence: "",
-				created_at: 1,
-				updated_at: 2,
-				deleted_at: null,
-			}),
-		).toEqual({
-			id: "entity-1",
-			entityType: "person",
-			name: "Ada",
-			displayName: "Ada Lovelace",
-			aliases: ["Ada"],
-			confidence: 0.9,
-			sensitivity: "normal",
-			source: "capture",
-			evidence: undefined,
-			createdAt: 1,
-			updatedAt: 2,
-			deletedAt: undefined,
-		});
-		expect(
-			rowToSoulMemoryGraphObservation({
-				id: "obs-1",
-				entity_id: "entity-1",
-				entity_display_name: "Ada Lovelace",
-				kind: "preference",
-				slot: "timezone",
-				value: "UTC",
-				text: "Ada prefers UTC.",
-				confidence: 0.8,
-				sensitivity: "sensitive",
-				source: "capture",
-				evidence: null,
-				session_id: "s1",
-				message_id: null,
-				status: "superseded",
-				created_at: 3,
-				updated_at: 4,
-				deleted_at: null,
-			}),
-		).toMatchObject({
-			id: "obs-1",
-			entityId: "entity-1",
-			kind: "preference",
-			status: "superseded",
-			sensitivity: "sensitive",
-			sessionId: "s1",
-			messageId: undefined,
-		});
-		expect(
-			rowToSoulMemoryGraphRelation({
-				id: "rel-1",
-				from_entity_id: "project:a",
-				from_display_name: null,
-				relation_type: "depends_on",
-				to_entity_id: "tech:b",
-				to_display_name: "Tech B",
-				text: "Project A depends on Tech B.",
-				confidence: 0.7,
-				sensitivity: "secret",
-				source: "capture",
-				evidence: "",
-				session_id: null,
-				message_id: "m1",
-				status: "unknown",
-				created_at: 5,
-				updated_at: 6,
-				deleted_at: null,
-			}),
-		).toMatchObject({
-			id: "rel-1",
-			fromEntityId: "project:a",
-			fromDisplayName: undefined,
-			toDisplayName: "Tech B",
-			status: "active",
-			sensitivity: "secret",
-			messageId: "m1",
-		});
-		expect(
-			rowToSoulMemoryGraphDuplicate({
-				id: "dup-1",
-				kind: "entity",
-				source_id: "old",
-				target_id: "new",
-				score: 0.99,
-				reason: "same thing",
-				status: "pending",
-				created_at: 7,
-				updated_at: 8,
-			}),
-		).toEqual({
-			id: "dup-1",
-			kind: "entity",
-			sourceId: "old",
-			targetId: "new",
-			score: 0.99,
-			reason: "same thing",
-			status: "pending",
-			createdAt: 7,
-			updatedAt: 8,
-		});
-		expect(
-			planSoulMemoryGraphDuplicateMerge(
-				{
-					id: "dup-1",
-					kind: "entity",
-					source_id: "old",
-					target_id: "new",
-					score: 0.99,
-					reason: "same thing",
-					status: "pending",
-					created_at: 7,
-					updated_at: 8,
-				},
-				900,
-			),
-		).toMatchObject({
-			duplicateStatus: { id: "dup-1", status: "merged", updatedAt: 900 },
-			operations: [
-				{
-					type: "reassign-observation-entity",
-					sourceId: "old",
-					targetId: "new",
-					updatedAt: 900,
-				},
-				{
-					type: "reassign-relation-from-entity",
-					sourceId: "old",
-					targetId: "new",
-					updatedAt: 900,
-				},
-				{
-					type: "reassign-relation-to-entity",
-					sourceId: "old",
-					targetId: "new",
-					updatedAt: 900,
-				},
-				{ type: "soft-delete-entity", id: "old", deletedAt: 900 },
-			],
-			ftsDeletes: [{ ownerKind: "entity", ownerId: "old" }],
-			auditEvents: [
-				{ memoryId: "new", action: "merge" },
-				{ memoryId: "old", action: "merge" },
-			],
-		});
-		expect(
-			planSoulMemoryGraphDuplicateMerge(
-				{
-					id: "dup-2",
-					kind: "observation",
-					source_id: "obs-old",
-					target_id: "obs-new",
-					score: 0.91,
-					reason: "same observation",
-					status: "pending",
-					created_at: 1,
-					updated_at: 2,
-				},
-				901,
-			),
-		).toMatchObject({
-			operations: [
-				{
-					type: "soft-delete-observation",
-					id: "obs-old",
-					status: "superseded",
-					deletedAt: 901,
-				},
-			],
-			ftsDeletes: [{ ownerKind: "observation", ownerId: "obs-old" }],
-		});
-		expect(
-			planSoulMemoryGraphDuplicateMerge(
-				{
-					id: "dup-3",
-					kind: "relation",
-					source_id: "rel-old",
-					target_id: "rel-new",
-					score: 0.9,
-					reason: "same relation",
-					status: "pending",
-					created_at: 1,
-					updated_at: 2,
-				},
-				902,
-			),
-		).toMatchObject({
-			operations: [
-				{
-					type: "soft-delete-relation",
-					id: "rel-old",
-					status: "superseded",
-					deletedAt: 902,
-				},
-			],
-			ftsDeletes: [{ ownerKind: "relation", ownerId: "rel-old" }],
-		});
-		expect(
-			planSoulMemoryGraphDuplicateIgnore(
-				{
-					id: "dup-4",
-					kind: "entity",
-					source_id: "source",
-					target_id: "target",
-					score: 0.7,
-					reason: "different",
-					status: "pending",
-					created_at: 1,
-					updated_at: 2,
-				},
-				903,
-			),
-		).toMatchObject({
-			operations: [],
-			ftsDeletes: [],
-			duplicateStatus: { id: "dup-4", status: "ignored", updatedAt: 903 },
-			auditEvents: [
-				{ memoryId: "source", action: "ignore" },
-				{ memoryId: "target", action: "ignore" },
-			],
-		});
-		const graphEntityDeletePlan = planSoulMemoryGraphEntityDelete(
-			{
-				id: "entity-delete",
-				entityType: "person",
-				name: "Ada",
-				displayName: "Ada",
-				aliases: [],
-				confidence: 0.9,
-				sensitivity: "normal",
-				source: "panel",
-				evidence: "manual",
-				createdAt: 1,
-				updatedAt: 2,
-			},
-			904,
-		);
-		expect(graphEntityDeletePlan).toMatchObject({
-			operations: [
-				{ type: "soft-delete-entity", id: "entity-delete", deletedAt: 904 },
-				{
-					type: "soft-delete-observations-by-entity",
-					entityId: "entity-delete",
-					status: "deleted",
-					deletedAt: 904,
-				},
-				{
-					type: "soft-delete-relations-by-entity",
-					entityId: "entity-delete",
-					status: "deleted",
-					deletedAt: 904,
-				},
-			],
-			ftsDeletes: [
-				{
-					mode: "owner-or-id",
-					ownerId: "entity-delete",
-					id: "entity:entity-delete",
-				},
-			],
-			auditEvents: [
-				{
-					memoryId: "entity-delete",
-					action: "delete",
-					payload: { deletedAt: 904 },
-				},
-			],
-		});
-		expect(() =>
-			planSoulMemoryGraphEntityDelete(
-				{
-					id: CORE_SOUL_MEMORY_USER_SELF_ENTITY_ID,
-					entityType: "person",
-					name: "User",
-					displayName: "User",
-					aliases: [],
-					confidence: 1,
-					sensitivity: "normal",
-					source: "system",
-					createdAt: 1,
-					updatedAt: 2,
-				},
-				905,
-			),
-		).toThrow("user:self cannot be deleted");
-		expect(
-			planSoulMemoryGraphObservationDelete(
-				{
-					id: "obs-delete",
-					entityId: "entity-delete",
-					entityDisplayName: "Ada",
-					kind: "fact",
-					slot: "testing",
-					value: "Ada writes tests.",
-					text: "Ada writes tests.",
-					confidence: 0.8,
-					sensitivity: "normal",
-					status: "active",
-					source: "panel",
-					createdAt: 1,
-					updatedAt: 2,
-				},
-				906,
-			),
-		).toMatchObject({
-			operations: [
-				{
-					type: "soft-delete-observation",
-					id: "obs-delete",
-					status: "deleted",
-					deletedAt: 906,
-				},
-			],
-			ftsDeletes: [{ ownerKind: "observation", ownerId: "obs-delete" }],
-			auditEvents: [
-				{
-					memoryId: "obs-delete",
-					action: "delete",
-					payload: { deletedAt: 906 },
-				},
-			],
-		});
-		expect(
-			planSoulMemoryGraphRelationDelete(
-				{
-					id: "rel-delete",
-					fromEntityId: "entity-delete",
-					relationType: "uses",
-					toEntityId: "tool:test",
-					text: "Ada uses tests.",
-					confidence: 0.7,
-					sensitivity: "normal",
-					status: "active",
-					source: "panel",
-					createdAt: 1,
-					updatedAt: 2,
-				},
-				907,
-			),
-		).toMatchObject({
-			operations: [
-				{
-					type: "soft-delete-relation",
-					id: "rel-delete",
-					status: "deleted",
-					deletedAt: 907,
-				},
-			],
-			ftsDeletes: [{ ownerKind: "relation", ownerId: "rel-delete" }],
-			auditEvents: [
-				{
-					memoryId: "rel-delete",
-					action: "delete",
-					payload: { deletedAt: 907 },
-				},
-			],
-		});
-		expect(
-			rowToSoulMemoryGraphAuditEvent({
-				id: "graph-event-1",
-				memory_id: "entity-1",
-				action: "update",
-				created_at: 9,
-				payload_json: '{"id":"entity-1"}',
-			}),
-		).toEqual({
-			id: "graph-event-1",
-			memoryId: "entity-1",
-			action: "update",
-			createdAt: 9,
-			payload: { id: "entity-1" },
-		});
-		expect(
-			rowToSoulMemoryGraphAuditEvent({
-				id: "graph-event-2",
-				memory_id: "entity-1",
-				action: "bad-json",
-				created_at: 10,
-				payload_json: "[",
-			}).payload,
-		).toEqual({});
-
-		await expect(
-			handleSoulMemoryCommandGet({
-				path: "entity:e1",
-				getGraph: (path) => ({
-					type: "entity",
-					output: `graph ${path}`,
-					metadata: { id: "e1" },
-				}),
-				getCanonical: () => {
-					throw new Error("graph should win");
-				},
-				readFileExcerpt: () => {
-					throw new Error("graph should win");
-				},
-			}),
-		).resolves.toBe("graph entity:e1");
-
-		await expect(
-			handleSoulMemoryCommandGet({
-				path: "profile:timezone",
-				getGraph: () => null,
-				getCanonical: () => canonical,
-				readFileExcerpt: () => {
-					throw new Error("canonical should win");
-				},
-			}),
-		).resolves.toBe(
-			[
-				"profile:timezone",
-				"User prefers UTC",
-				"Kind: preference",
-				"Confidence: 0.88",
-			].join("\n"),
-		);
 
 		await expect(
 			handleSoulMemoryCommandGet({
 				path: "MEMORY.md",
-				getGraph: () => null,
-				getCanonical: () => null,
 				readFileExcerpt: () => excerpt,
 			}),
 		).resolves.toBe(
@@ -2165,129 +495,6 @@ describe("onething runtime soul-memory helpers", () => {
 				"\n\n",
 			),
 		);
-	});
-
-	it("handles dreaming commands in core through scheduler and settings adapters", async () => {
-		const notifications: Array<{
-			message: string;
-			level?: "info" | "warn" | "error";
-		}> = [];
-		const patches: Array<{
-			enabled?: boolean;
-			frequency?: string;
-			timezone?: string;
-		}> = [];
-		let runRecord: { ok: boolean; error?: string; result?: any } = {
-			ok: true,
-			result: {
-				status: "ok",
-				applied: 2,
-				sourceFiles: ["memory/2026-06-25.md"],
-				nextRunAt: Date.UTC(2026, 5, 26, 8, 0, 0),
-			},
-		};
-		const events: string[] = [];
-		const run = (args: string) =>
-			handleSoulMemoryDreamingCommand({
-				args,
-				ctx: {
-					sessionId: "session-1",
-					notify: (message, level) => notifications.push({ message, level }),
-				},
-				getStatus: () => "dreaming status",
-				saveSettingsPatch: (patch) => {
-					patches.push(patch);
-					return {
-						enabled: patch.enabled ?? true,
-						frequency: patch.frequency ?? "0 8 * * *",
-						timezone: patch.timezone ?? "UTC",
-					};
-				},
-				clearLastRun: () => {
-					events.push("clear");
-				},
-				refreshSchedule: () => {
-					events.push("refresh");
-				},
-				runNow: () => runRecord,
-				getTimezone: () => "UTC",
-				validateFrequency: (frequency) => {
-					if (frequency === "bad cron") throw new Error("bad cron");
-				},
-				isValidTimezone: (timezone) =>
-					timezone === "UTC" || timezone === "Asia/Shanghai",
-			});
-
-		await run("status");
-		expect(notifications.at(-1)?.message).toBe("dreaming status");
-
-		await run("off");
-		expect(patches.at(-1)).toEqual({ enabled: false });
-		expect(events.slice(-2)).toEqual(["clear", "refresh"]);
-		expect(notifications.at(-1)?.message).toBe("Memory Dreaming is off");
-
-		await run("run");
-		expect(notifications.at(-2)?.message).toBe(
-			"Memory Dreaming sweep started.",
-		);
-		expect(notifications.at(-1)?.message).toContain("Memory Dreaming ok.");
-		expect(notifications.at(-1)?.message).toContain("Applied: 2");
-
-		runRecord = { ok: false, error: "scheduler failed" };
-		await run("run");
-		expect(notifications.at(-1)).toEqual({
-			message: "Memory Dreaming failed: scheduler failed",
-			level: "error",
-		});
-
-		runRecord = { ok: true, result: null };
-		await run("run");
-		expect(notifications.at(-1)).toEqual({
-			message: "Memory Dreaming did not run because soul-memory is disabled.",
-			level: "warn",
-		});
-
-		await run("frequency 0 8 * * *");
-		expect(patches.at(-1)).toEqual({ frequency: "0 8 * * *" });
-		expect(notifications.at(-1)?.message).toBe("dreaming status");
-
-		await run("frequency");
-		expect(notifications.at(-1)).toEqual({
-			message: "/dreaming frequency <5-field cron>",
-			level: "warn",
-		});
-
-		await run("frequency bad cron");
-		expect(notifications.at(-1)).toEqual({
-			message: "Invalid dreaming cron: bad cron",
-			level: "warn",
-		});
-
-		await run("timezone system");
-		expect(patches.at(-1)).toEqual({ timezone: "" });
-
-		await run("timezone Mars/Base");
-		expect(notifications.at(-1)).toEqual({
-			message: "Invalid timezone: Mars/Base",
-			level: "warn",
-		});
-
-		await run("model");
-		expect(notifications.at(-1)?.message).toBe(
-			[
-				"Memory Dreaming now uses the Tools tool provider/model.",
-				"dreaming status",
-			].join("\n"),
-		);
-
-		await run("wat");
-		expect(notifications.at(-1)).toEqual({
-			message: CORE_SOUL_MEMORY_DREAMING_COMMAND_USAGE,
-			level: "warn",
-		});
-
-		expect(normalizeSoulMemoryDreamingTimezoneInput(" local ")).toBe("");
-		expect(normalizeSoulMemoryDreamingTimezoneInput("UTC")).toBe("UTC");
 	});
 
 	it("handles memory review commands in core through status settings and run adapters", async () => {
@@ -2742,48 +949,11 @@ describe("onething runtime soul-memory helpers", () => {
 		]);
 	});
 
-	it("formats memory_search tool results in core through search adapters", async () => {
-		const calls: Array<{ query: string; limit?: number; minScore?: number }> =
-			[];
-		const result = await handleSoulMemorySearchTool({
-			args: {
-				query: "launch notes",
-				limit: 3,
-				maxResults: 2,
-				minScore: 0.4,
-			},
-			search: (input) => {
-				calls.push(input);
-				return [
-					{ path: "MEMORY.md", score: 0.9, content: "Launch decision" },
-					{ path: "USER.md", score: 0.8, content: "Preference" },
-				];
-			},
-			formatHits: (hits) =>
-				hits.map((hit) => `${hit.path}:${hit.score}`).join("\n"),
-		});
-
-		expect(calls).toEqual([{ query: "launch notes", limit: 2, minScore: 0.4 }]);
-		expect(result).toEqual({
-			title: "Memory search: launch notes",
-			output: "MEMORY.md:0.9\nUSER.md:0.8",
-			metadata: {
-				count: 2,
-				hits: [
-					{ path: "MEMORY.md", score: 0.9, content: "Launch decision" },
-					{ path: "USER.md", score: 0.8, content: "Preference" },
-				],
-			},
-		});
-	});
-
-	it("resolves memory_get tool results in core using graph, canonical, then file fallback", async () => {
+	it("resolves memory_get tool results in core through file excerpt adapters", async () => {
 		await expect(
 			handleSoulMemoryGetTool({
 				args: { path: "MEMORY.md" },
 				enabled: false,
-				getGraph: () => null,
-				getCanonical: () => null,
 				readFileExcerpt: () => {
 					throw new Error("should not read when disabled");
 				},
@@ -2796,60 +966,8 @@ describe("onething runtime soul-memory helpers", () => {
 
 		await expect(
 			handleSoulMemoryGetTool({
-				args: { path: "entity:e1" },
-				enabled: true,
-				getGraph: (path) => ({
-					type: path.split(":")[0],
-					output: "Graph entity output",
-					metadata: { id: "e1" },
-				}),
-				getCanonical: () => null,
-				readFileExcerpt: () => {
-					throw new Error("graph should win");
-				},
-			}),
-		).resolves.toEqual({
-			title: "Graph memory: entity",
-			output: "Graph entity output",
-			metadata: { id: "e1" },
-		});
-
-		await expect(
-			handleSoulMemoryGetTool({
-				args: { path: "profile:timezone" },
-				enabled: true,
-				getGraph: () => null,
-				getCanonical: () => ({
-					memoryKey: "profile:timezone",
-					text: "User prefers UTC",
-					kind: "preference",
-					subject: "user",
-					value: "UTC",
-					confidence: 0.875,
-					evidence: "Asked for UTC.",
-				}),
-				readFileExcerpt: () => {
-					throw new Error("canonical should win");
-				},
-			}),
-		).resolves.toMatchObject({
-			title: "Canonical memory: profile:timezone",
-			output: [
-				"profile:timezone: User prefers UTC",
-				"Kind: preference",
-				"Subject: user",
-				"Value: UTC",
-				"Confidence: 0.88",
-				"Evidence: Asked for UTC.",
-			].join("\n"),
-		});
-
-		await expect(
-			handleSoulMemoryGetTool({
 				args: { path: "MEMORY.md", startLine: 2, lines: 2 },
 				enabled: true,
-				getGraph: () => null,
-				getCanonical: () => null,
 				readFileExcerpt: (args) => ({
 					relativePath: args.path,
 					text: "line 2\nline 3",
@@ -2920,27 +1038,8 @@ describe("onething runtime soul-memory helpers", () => {
 	it("formats memory status command output in core", () => {
 		const output = formatSoulMemoryCommandStatus({
 			root: "/memory-root",
-			dbPath: "/memory-root/memory.db",
 			userPath: "/memory-root/USER.md",
 			memoryPath: "/memory-root/MEMORY.md",
-			graph: {
-				entities: 2,
-				observations: 3,
-				relations: 4,
-				pendingDuplicates: 1,
-			},
-			canonicalRows: 5,
-			index: {
-				indexedFiles: 6,
-				indexedChunks: 7,
-				ftsTokenizer: "unicode61",
-				embeddingProvider: "deepseek",
-				embeddingModel: "embedding-model",
-				lastError: "index failed",
-				lastDreamingAt: Date.UTC(2026, 5, 25, 8, 0, 0),
-				lastDreamingStatus: "ok",
-				lastDreamingApplied: 2,
-			},
 			review: {
 				enabled: true,
 				interval: 4,
@@ -2949,231 +1048,15 @@ describe("onething runtime soul-memory helpers", () => {
 				lastStatus: "ok",
 				lastApplied: 1,
 			},
-			dreaming: {
-				enabled: true,
-				frequency: "0 8 * * *",
-				timezone: "UTC",
-				nextRunAt: Date.UTC(2026, 5, 26, 8, 0, 0),
-			},
 		});
 
 		expect(output).toContain("Root: /memory-root");
-		expect(output).toContain(
-			"Graph memory: 2 entities, 3 observations, 4 relations, 1 possible duplicates",
-		);
-		expect(output).toContain("Legacy canonical rows: 5");
-		expect(output).toContain("Embeddings: deepseek/embedding-model");
+		expect(output).toContain("USER.md: /memory-root/USER.md");
+		expect(output).toContain("MEMORY.md: /memory-root/MEMORY.md");
 		expect(output).toContain(
 			"Memory Review: on, every 4 user turns (2 until next)",
 		);
-		expect(output).toContain("Dreaming: on (0 8 * * *)");
-		expect(output).toContain("Last error: index failed");
-	});
-
-	it("chunks indexed memory text with overlap without host workspace state", () => {
-		const chunks = chunkSoulMemoryText(
-			["alpha beta", "gamma delta", "epsilon zeta", "eta theta"].join("\n"),
-			5,
-			2,
-			(value) => value.split(/\s+/).filter(Boolean).length,
-		);
-
-		expect(chunks).toEqual([
-			{
-				content: "alpha beta\ngamma delta\nepsilon zeta",
-				startLine: 1,
-				endLine: 3,
-				tokenCount: 6,
-			},
-			{
-				content: "epsilon zeta\neta theta",
-				startLine: 3,
-				endLine: 4,
-				tokenCount: 4,
-			},
-		]);
-	});
-
-	it("normalizes search limits and selects MMR hits without database access", () => {
-		expect(normalizeSoulMemorySearchLimit("8", 4)).toBe(8);
-		expect(normalizeSoulMemorySearchLimit("bad", 30)).toBe(20);
-		expect(
-			scoreSoulMemorySearchHit({
-				keywordScore: 1,
-				vectorScore: 0.5,
-				factor: 0.5,
-			}),
-		).toBeCloseTo(0.3875);
-		expect(
-			scoreSoulMemorySearchHit({
-				keywordScore: 0,
-				vectorScore: 0.5,
-				keywordWeight: 0.6,
-				vectorWeight: 0.4,
-				factor: 1.35,
-			}),
-		).toBeCloseTo(0.27);
-		expect(scoreSoulMemorySearchHit({ keywordScore: 0.25 })).toBeCloseTo(
-			0.1375,
-		);
-		expect(
-			buildSoulMemoryGraphSearchHits({
-				limit: 2,
-				minScore: 0.2,
-				candidates: [
-					{
-						ownerType: "entity",
-						ownerId: "project:headless-core",
-						content: "Headless Core",
-						keywordScore: 1,
-					},
-					{
-						ownerType: "observation",
-						ownerId: "obs-low",
-						content: "Low score",
-						vectorScore: 0.1,
-					},
-					{
-						ownerType: "relation",
-						ownerId: "rel-1",
-						content: "User works on headless core.",
-						vectorScore: 0.8,
-					},
-				],
-			}).map((hit) => ({
-				path: hit.path,
-				kind: hit.kind,
-				score: Number(hit.score.toFixed(3)),
-			})),
-		).toEqual([
-			{ path: "entity:project:headless-core", kind: "graph", score: 0.81 },
-			{ path: "relation:rel-1", kind: "graph", score: 0.432 },
-		]);
-		expect(
-			buildSoulMemoryCanonicalSearchHits({
-				limit: 1,
-				candidates: [
-					{
-						id: "memory-low",
-						memoryKey: "user.fact.low",
-						displayText: "low",
-						keywordScore: 0.1,
-					},
-					{
-						id: "memory-pref",
-						memoryKey: "user.preference.status",
-						displayText: "user.preference.status: compact updates",
-						keywordScore: 0.5,
-						vectorScore: 0.75,
-					},
-				],
-			}),
-		).toMatchObject([
-			{
-				id: "memory-pref",
-				path: "profile:user.preference.status",
-				kind: "canonical",
-				content: "user.preference.status: compact updates",
-			},
-		]);
-
-		const hits = [
-			{ path: "a.md", chunkIndex: 1, score: 0.95, id: "a1" },
-			{ path: "a.md", chunkIndex: 2, score: 0.9, id: "a2" },
-			{ path: "b.md", chunkIndex: 1, score: 0.8, id: "b1" },
-		];
-		expect(selectSoulMemoryMmrHits(hits, 2).map((hit) => hit.id)).toEqual([
-			"a1",
-			"b1",
-		]);
-		const searchResult = buildSoulMemorySearchResult({
-			graphHits: [hits[2]],
-			markdownHits: [hits[0], hits[1]],
-			limit: 2,
-			mmrEnabled: true,
-			embeddingsEnabled: true,
-		});
-		expect(searchResult.selected.map((hit) => hit.id)).toEqual(["a1", "b1"]);
-		expect(searchResult.summary).toEqual({
-			graphHits: 1,
-			markdownCandidates: 2,
-			returned: 2,
-			usedMmr: true,
-			usedEmbeddings: true,
-		});
-	});
-
-	it("builds markdown search hits and final selection in core", () => {
-		const now = new Date("2026-06-25T00:00:00Z").getTime();
-		const hits = buildSoulMemoryMarkdownSearchHits({
-			temporalDecayHalfLifeDays: 7,
-			minScore: 0.2,
-			now,
-			candidates: [
-				{
-					chunk: {
-						id: "daily-old",
-						path: "memory/2026-06-01.md",
-						kind: "daily",
-						date: "2026-06-01",
-						chunkIndex: 1,
-						startLine: 1,
-						endLine: 2,
-						content: "Old daily note",
-					},
-					keywordScore: 0.2,
-				},
-				{
-					chunk: {
-						id: "memory-1",
-						path: "MEMORY.md",
-						kind: "memory",
-						chunkIndex: 1,
-						startLine: 10,
-						endLine: 12,
-						content: "Stable memory",
-					},
-					keywordScore: 0.8,
-					vectorScore: 0.6,
-				},
-				{
-					chunk: {
-						id: "daily-recent",
-						path: "memory/2026-06-24.md",
-						kind: "daily",
-						date: "2026-06-24",
-						chunkIndex: 1,
-						startLine: 3,
-						endLine: 5,
-						content: "Recent daily note",
-					},
-					vectorScore: 0.7,
-				},
-			],
-		});
-
-		expect(hits.map((hit) => hit.id)).toEqual(["memory-1", "daily-recent"]);
-		expect(hits[0]).toMatchObject({
-			path: "MEMORY.md",
-			kind: "memory",
-			content: "Stable memory",
-			keywordScore: 0.8,
-			vectorScore: 0.6,
-		});
-
-		expect(
-			selectSoulMemorySearchHits(
-				[
-					{ id: "a1", path: "a.md", chunkIndex: 1, score: 0.95 },
-					{ id: "a2", path: "a.md", chunkIndex: 2, score: 0.9 },
-					{ id: "b1", path: "b.md", chunkIndex: 1, score: 0.8 },
-				],
-				{
-					limit: 2,
-					mmrEnabled: true,
-				},
-			).map((hit) => hit.id),
-		).toEqual(["a1", "b1"]);
+		expect(output).toContain("Last review:");
 	});
 
 	it("validates accessible managed memory relative paths in core", () => {
@@ -3195,66 +1078,6 @@ describe("onething runtime soul-memory helpers", () => {
 				allowDreams: true,
 			}),
 		).toBe("DREAMS.md");
-	});
-
-	it("formats temporal helpers and flush inputs in core", () => {
-		const now = new Date("2026-06-25T00:00:00").getTime();
-		expect(soulMemoryTemporalFactor({ kind: "memory" }, 7, now)).toBe(1);
-		expect(
-			soulMemoryTemporalFactor({ kind: "daily", date: "2026-06-18" }, 7, now),
-		).toBeCloseTo(0.5);
-		expect(formatSoulMemoryMaybeTimestamp(undefined)).toBe("never");
-		expect(
-			formatSoulMemoryMessagesForFlush(
-				[
-					{ role: "system", content: "ignore" },
-					{ role: "user", content: "hello" },
-					{ role: "assistant", content: "hi" },
-				],
-				200,
-			),
-		).toBe("User: hello\n\nAssistant: hi");
-	});
-
-	it("keeps active-memory cache and circuit breaker state in core", async () => {
-		let now = 1000;
-		const runtime = new CoreSoulMemoryActiveMemoryRuntime({ now: () => now });
-
-		expect(runtime.getCache("query")).toBeUndefined();
-		runtime.setCache("query", "summary", 50);
-		expect(runtime.getCache("query")).toBe("summary");
-		now = 1051;
-		expect(runtime.getCache("query")).toBeUndefined();
-
-		runtime.setCache("empty", null, 100);
-		expect(runtime.getCache("empty")).toBeNull();
-
-		const settings = {
-			circuitBreakerMaxTimeouts: 2,
-			circuitBreakerCooldownMs: 500,
-		};
-		expect(runtime.getCooldown("provider:model")).toEqual({
-			active: false,
-			remainingMs: 0,
-		});
-		runtime.recordTimeout("provider:model", settings);
-		expect(runtime.getCooldown("provider:model")).toEqual({
-			active: false,
-			remainingMs: 0,
-		});
-		runtime.recordTimeout("provider:model", settings);
-		expect(runtime.getCooldown("provider:model")).toEqual({
-			active: true,
-			remainingMs: 500,
-			cooldownUntil: 1551,
-			timeoutCount: 2,
-		});
-		runtime.clearTimeout("provider:model");
-		expect(runtime.getCooldown("provider:model").active).toBe(false);
-
-		await expect(
-			runtime.withTimeout(new Promise<string>(() => undefined), 1),
-		).rejects.toThrow("timeout");
 	});
 
 	it("builds capture and dreaming prompt inputs in core", async () => {
@@ -3306,111 +1129,7 @@ describe("onething runtime soul-memory helpers", () => {
 		).toContain("Latest assistant response:\nnoted");
 
 		expect(
-			buildSoulMemoryDreamingInput(
-				[
-					{
-						relativePath: "2026-06-25.md",
-						sourceType: "daily",
-						content: "Today we moved logic to core.",
-					},
-				],
-				1000,
-			),
-		).toBe("## daily:2026-06-25.md\nToday we moved logic to core.");
-
-		const now = new Date("2026-06-25T00:00:00Z").getTime();
-		expect(
-			selectSoulMemoryDailyDreamingSources(
-				[
-					{
-						sourceType: "daily",
-						relativePath: "memory/2026-06-25.md",
-						date: "2026-06-25",
-						content: "# 2026-06-25\nFresh note",
-						mtimeMs: 300,
-					},
-					{
-						sourceType: "daily",
-						relativePath: "memory/2026-06-24.md",
-						date: "2026-06-24",
-						content: "# 2026-06-24\nOlder note",
-						mtimeMs: 400,
-					},
-					{
-						sourceType: "daily",
-						relativePath: "memory/2026-06-10.md",
-						date: "2026-06-10",
-						content: "Too old",
-						mtimeMs: 500,
-					},
-					{
-						sourceType: "daily",
-						relativePath: "memory/heading-only.md",
-						content: "# 2026-06-25\n",
-						mtimeMs: 600,
-					},
-				],
-				{
-					now,
-					lookbackDays: 7,
-					maxSourceFiles: 1,
-				},
-			).map((source) => source.relativePath),
-		).toEqual(["memory/2026-06-24.md"]);
-
-		await expect(
-			collectSoulMemoryDailyDreamingSourcesWithAdapters(
-				[
-					{
-						kind: "daily",
-						absolutePath: "/memory/2026-06-25.md",
-						relativePath: "memory/2026-06-25.md",
-						date: "2026-06-25",
-					},
-					{
-						kind: "profile",
-						absolutePath: "/memory/USER.md",
-						relativePath: "USER.md",
-					},
-					{
-						kind: "daily",
-						absolutePath: "/memory/missing.md",
-						relativePath: "memory/missing.md",
-					},
-					{
-						kind: "daily",
-						absolutePath: "/memory/heading-only.md",
-						relativePath: "memory/heading-only.md",
-						date: "2026-06-25",
-					},
-				],
-				{
-					now,
-					lookbackDays: 7,
-					maxSourceFiles: 2,
-					statFile: (absolutePath) =>
-						absolutePath.includes("missing")
-							? null
-							: { mtimeMs: absolutePath.includes("heading") ? 600 : 500 },
-					readFile: (absolutePath) =>
-						absolutePath.includes("heading")
-							? "# 2026-06-25\n"
-							: "Useful daily note",
-				},
-			),
-		).resolves.toEqual([
-			{
-				sourceType: "daily",
-				relativePath: "memory/2026-06-25.md",
-				content: "Useful daily note",
-				mtimeMs: 500,
-				date: "2026-06-25",
-			},
-		]);
-
-		expect(
 			buildSoulMemoryExistingMemorySummary({
-				graphSummary: "User prefers concise updates.",
 				memoryContent: "Project uses Bun.",
 			}),
 		).toContain("## Existing MEMORY.md");
@@ -3474,9 +1193,6 @@ describe("onething runtime soul-memory helpers", () => {
 			soulPath: "/memory/SOUL.md",
 			soulContent: "Soul content",
 			hermesFileMemory: "Hermes memory",
-			graphProfile: "Graph facts",
-			dailyContext: "Daily notes",
-			activeMemory: "Active recall",
 		});
 
 		expect(
@@ -3485,20 +1201,16 @@ describe("onething runtime soul-memory helpers", () => {
 			"developer:memory/soul-memory-rules",
 			"developer:plugins/soul-memory/SOUL.md",
 			"user:plugins/soul-memory/hermes-file-memory",
-			"user:plugins/soul-memory/graph-profile",
-			"user:plugins/soul-memory/recent-daily-memory",
-			"user:plugins/soul-memory/active-memory",
 		]);
 		expect(fragments[1].content).toContain("Path: /memory/SOUL.md");
-		expect(fragments[3].content).toContain(
-			"<graph_memory>\nGraph facts\n</graph_memory>",
-		);
-		expect(fragments[4].content).toContain(
-			"<recent_daily_memory>\nDaily notes\n</recent_daily_memory>",
-		);
-		expect(fragments[5].content).toContain(
-			"<active_memory_plugin>\nActive recall\n</active_memory_plugin>",
-		);
+
+		const emptyFragments = buildSoulMemoryPromptFragments({
+			rulesPrompt: "Rules",
+			soulPath: "/memory/SOUL.md",
+			soulContent: "# SOUL.md\n\n",
+			hermesFileMemory: null,
+		});
+		expect(emptyFragments[1].content).toContain("(empty — SOUL.md has no persona content yet");
 	});
 
 	it("patches nested soul-memory settings sections without host store access", () => {
@@ -3592,257 +1304,6 @@ describe("onething runtime soul-memory helpers", () => {
 		expect(settings.general.soulMemory.review.intervalTurns).toBe(12);
 	});
 
-	it("formats hits and stable keys in core", () => {
-		expect(
-			formatSoulMemoryHits([
-				{
-					path: "MEMORY.md",
-					startLine: 1,
-					endLine: 2,
-					score: 0.91234,
-					content: "A useful memory snippet.",
-				},
-			]),
-		).toBe("1. MEMORY.md:1-2 score=0.912\nA useful memory snippet.");
-
-		expect(
-			soulMemoryActiveMemoryKey(
-				"agent",
-				"session",
-				"query",
-				(value) => `hash:${value.length}`,
-			),
-		).toBe("hash:19");
-		expect(soulMemoryCircuitKey(undefined, "model")).toBe("unknown:model");
-	});
-
-	it("decides daily context injection without session store access", () => {
-		expect(
-			shouldInjectSoulMemoryDailyContext({
-				settings: { enabled: false, mode: "always" },
-				sessionId: "s1",
-				userTurnCount: 10,
-			}),
-		).toBe(false);
-		expect(
-			shouldInjectSoulMemoryDailyContext({
-				settings: { enabled: true, mode: "always" },
-			}),
-		).toBe(true);
-		expect(
-			shouldInjectSoulMemoryDailyContext({
-				settings: { enabled: true, mode: "session-start" },
-			}),
-		).toBe(false);
-		expect(
-			shouldInjectSoulMemoryDailyContext({
-				settings: { enabled: true, mode: "session-start" },
-				sessionId: "s1",
-				userTurnCount: 1,
-			}),
-		).toBe(true);
-		expect(
-			shouldInjectSoulMemoryDailyContext({
-				settings: { enabled: true, mode: "session-start" },
-				sessionId: "s1",
-				userTurnCount: 2,
-			}),
-		).toBe(false);
-	});
-
-	it("selects and formats daily context files in core", () => {
-		expect(
-			selectSoulMemoryDailyContextFiles(
-				[
-					{ name: "2026-06-24.md", isFile: true },
-					{ name: "2026-06-25-work.md", isFile: true },
-					{ name: "2026-06-25.md", isFile: true },
-					{ name: "2026-06-23.md", isFile: true },
-					{ name: "2026-06-25.txt", isFile: true },
-					{ name: "2026-06-25-dir.md", isFile: false },
-				],
-				new Set(["2026-06-24", "2026-06-25"]),
-			),
-		).toEqual([
-			{ date: "2026-06-25", name: "2026-06-25-work.md" },
-			{ date: "2026-06-25", name: "2026-06-25.md" },
-			{ date: "2026-06-24", name: "2026-06-24.md" },
-		]);
-
-		expect(
-			buildSoulMemoryDailyContextFragment(
-				[
-					{
-						relativePath: "memory/2026-06-25.md",
-						content: "  Today moved logic.  ",
-					},
-					{ relativePath: "memory/empty.md", content: "   " },
-					{ relativePath: "memory/2026-06-24.md", content: "Yesterday notes." },
-				],
-				1000,
-			),
-		).toBe(
-			[
-				"## memory/2026-06-25.md",
-				"",
-				"Today moved logic.",
-				"",
-				"## memory/2026-06-24.md",
-				"",
-				"Yesterday notes.",
-			].join("\n"),
-		);
-
-		expect(
-			buildSoulMemoryDailyContextFragment(
-				[{ relativePath: "memory/empty.md", content: "   " }],
-				1000,
-			),
-		).toBeNull();
-	});
-
-	it("builds recent daily context through core filesystem adapters", async () => {
-		const readPaths: Array<{ path: string; maxChars: number }> = [];
-		const fragment =
-			await buildSoulMemoryRecentDailyContextFragmentWithAdapters({
-				root: "/workspace",
-				memoryDir: "/workspace/memory",
-				sessionId: "s1",
-				settings: {
-					enabled: true,
-					mode: "session-start",
-					daysBack: 1,
-					maxChars: 1000,
-				},
-				adapters: {
-					userTurnCount: () => 1,
-					dateForDaysAgo: (daysAgo) =>
-						daysAgo === 0 ? "2026-06-25" : "2026-06-24",
-					async listEntries() {
-						return [
-							{ name: "2026-06-25.md", isFile: true },
-							{ name: "2026-06-24-work.md", isFile: true },
-							{ name: "2026-06-23.md", isFile: true },
-							{ name: "2026-06-25.txt", isFile: true },
-						];
-					},
-					joinPath: (root, name) => `${root}/${name}`,
-					relativePath: (root, absolutePath) =>
-						absolutePath.replace(`${root}/`, ""),
-					readContent: (absolutePath, maxChars) => {
-						readPaths.push({ path: absolutePath, maxChars });
-						return absolutePath.endsWith("2026-06-25.md")
-							? "Today note."
-							: "Yesterday work note.";
-					},
-				},
-			});
-
-		expect(fragment).toBe(
-			[
-				"## memory/2026-06-25.md",
-				"",
-				"Today note.",
-				"",
-				"## memory/2026-06-24-work.md",
-				"",
-				"Yesterday work note.",
-			].join("\n"),
-		);
-		expect(readPaths).toEqual([
-			{ path: "/workspace/memory/2026-06-25.md", maxChars: 1000 },
-			{ path: "/workspace/memory/2026-06-24-work.md", maxChars: 1000 },
-		]);
-
-		await expect(
-			buildSoulMemoryRecentDailyContextFragmentWithAdapters({
-				root: "/workspace",
-				memoryDir: "/workspace/memory",
-				sessionId: "s1",
-				settings: {
-					enabled: true,
-					mode: "session-start",
-					daysBack: 1,
-					maxChars: 1000,
-				},
-				adapters: {
-					userTurnCount: () => 2,
-					dateForDaysAgo: () => "2026-06-25",
-					listEntries: async () => {
-						throw new Error("should be gated before listing");
-					},
-					joinPath: (root, name) => `${root}/${name}`,
-					relativePath: (root, absolutePath) =>
-						absolutePath.replace(`${root}/`, ""),
-					readContent: () => "",
-				},
-			}),
-		).resolves.toBeNull();
-
-		await expect(
-			buildSoulMemoryRecentDailyContextFragmentWithAdapters({
-				root: "/workspace",
-				memoryDir: "/workspace/memory",
-				sessionId: "s1",
-				settings: {
-					enabled: true,
-					mode: "always",
-					daysBack: 0,
-					maxChars: 1000,
-				},
-				adapters: {
-					dateForDaysAgo: () => "2026-06-25",
-					listEntries: async () => {
-						throw new Error("directory unavailable");
-					},
-					joinPath: (root, name) => `${root}/${name}`,
-					relativePath: (root, absolutePath) =>
-						absolutePath.replace(`${root}/`, ""),
-					readContent: () => "",
-				},
-			}),
-		).resolves.toBeNull();
-	});
-
-	it("updates active-memory timeout circuit breaker state in core", () => {
-		const settings = {
-			circuitBreakerMaxTimeouts: 2,
-			circuitBreakerCooldownMs: 5000,
-		};
-		const first = recordSoulMemoryActiveMemoryTimeout({
-			settings,
-			now: 1000,
-		});
-		expect(first).toEqual({
-			count: 1,
-			cooldownUntil: 0,
-		});
-		expect(
-			getSoulMemoryActiveMemoryCooldown({ state: first, now: 1000 }),
-		).toEqual({
-			active: false,
-			remainingMs: 0,
-		});
-
-		const second = recordSoulMemoryActiveMemoryTimeout({
-			existing: first,
-			settings,
-			now: 2000,
-		});
-		expect(second).toEqual({
-			count: 2,
-			cooldownUntil: 7000,
-		});
-		expect(
-			getSoulMemoryActiveMemoryCooldown({ state: second, now: 2500 }),
-		).toEqual({
-			active: true,
-			remainingMs: 4500,
-			cooldownUntil: 7000,
-			timeoutCount: 2,
-		});
-	});
-
 	it("builds timeline entries and status text in core", () => {
 		expect(
 			createSoulMemoryTimelineEntry(
@@ -3856,24 +1317,6 @@ describe("onething runtime soul-memory helpers", () => {
 			title: "Dreamed",
 			status: "ok",
 		});
-
-		expect(
-			formatSoulMemoryDreamingStatus({
-				enabled: true,
-				frequency: "0 9 * * *",
-				timezone: "",
-				model: "deepseek/deepseek-chat",
-				lookbackDays: 7,
-				maxSourceFiles: 5,
-				maxPromotions: 3,
-				minScore: 0.7,
-				timeoutMs: 30000,
-				lastSourceFiles: ["a.md", "b.md"],
-				inFlight: false,
-				lastStatus: "ok",
-				lastApplied: 2,
-			}),
-		).toContain("Last result: ok, applied 2");
 
 		expect(
 			formatSoulMemoryReviewStatus({
@@ -3890,13 +1333,8 @@ describe("onething runtime soul-memory helpers", () => {
 		).toContain("Last reviewed turn: 8");
 	});
 
-	it("builds dreaming and review status DTOs in core", () => {
+	it("builds review status DTOs in core", () => {
 		const storeValues = new Map<string, unknown>([
-			["lastDreamingNextRunAt", 200],
-			["lastDreamingAt", 300],
-			["lastDreamingApplied", 4],
-			["lastDreamingStatus", "stored-dream"],
-			["lastDreamingSourceFiles", ["memory/2026-01-01.md"]],
 			["lastReviewAt", 500],
 			["lastReviewApplied", 2],
 			["lastReviewStatus", "stored-review"],
@@ -3905,68 +1343,6 @@ describe("onething runtime soul-memory helpers", () => {
 		const store = {
 			get: <T>(key: string) => storeValues.get(key) as T | undefined,
 		};
-
-		expect(
-			buildSoulMemoryDreamingStatus({
-				settings: {
-					enabled: true,
-					frequency: "0 9 * * *",
-					timezone: "Asia/Shanghai",
-					lookbackDays: 7,
-					maxSourceFiles: 5,
-					maxPromotions: 3,
-					minScore: 0.8,
-					timeoutMs: 30000,
-				},
-				model: "deepseek/deepseek-chat",
-				next: { nextRunAt: 100 },
-				scheduled: { nextRunAt: 50, lastRunReason: "scheduled" },
-				store,
-				runtimeStatus: {
-					lastDreamingStatus: "runtime-dream",
-					lastDreamingNextRunAt: 900,
-				},
-				inFlight: true,
-			}),
-		).toMatchObject({
-			nextRunAt: 50,
-			lastRunAt: 300,
-			lastApplied: 4,
-			lastStatus: "stored-dream",
-			lastSourceFiles: ["memory/2026-01-01.md"],
-			inFlight: true,
-		});
-
-		expect(
-			buildSoulMemoryPublicDreamingStatus({
-				settings: {
-					enabled: true,
-					frequency: "0 9 * * *",
-					timezone: "UTC",
-					lookbackDays: 7,
-					maxSourceFiles: 5,
-					maxPromotions: 3,
-					minScore: 0.8,
-					timeoutMs: 30000,
-				},
-				resolveNextRunAt: () => 123,
-			}).nextRunAt,
-		).toBe(123);
-		expect(
-			buildSoulMemoryPublicDreamingStatus({
-				settings: {
-					enabled: false,
-					frequency: "0 9 * * *",
-					timezone: "UTC",
-					lookbackDays: 7,
-					maxSourceFiles: 5,
-					maxPromotions: 3,
-					minScore: 0.8,
-					timeoutMs: 30000,
-				},
-				resolveNextRunAt: () => 123,
-			}).nextRunAt,
-		).toBeUndefined();
 
 		expect(
 			buildSoulMemoryReviewStatus({
@@ -4045,11 +1421,9 @@ describe("onething runtime soul-memory helpers", () => {
 				memoryPath: "/memory-root/MEMORY.md",
 				dreamsPath: "/memory-root/DREAMS.md",
 				todayPath: "/memory-root/memory/2026-06-25.md",
-				dbPath: "/memory-root/memory.sqlite",
 				settings: { enabled: true },
 			},
 			status: {
-				chunks: 1,
 				lastCaptureStatus: "runtime-capture",
 			},
 			captureStatusStore: {
@@ -4059,10 +1433,7 @@ describe("onething runtime soul-memory helpers", () => {
 						lastCaptureStatus: "stored-capture",
 					})[key] as T | undefined,
 			},
-			dreaming: { enabled: true },
 			pendingCaptures: [{ id: "capture-1" }],
-			canonicalCount: 3,
-			graph: { entities: 2 },
 			files: [{ relativePath: "MEMORY.md" }],
 		});
 
@@ -4071,236 +1442,21 @@ describe("onething runtime soul-memory helpers", () => {
 			agentId: "agent-a",
 			root: "/memory-root",
 			status: {
-				chunks: 1,
 				lastCaptureAt: 700,
 				lastCaptureStatus: "stored-capture",
 			},
 			pendingCaptures: [{ id: "capture-1" }],
-			canonicalCount: 3,
-			graph: { entities: 2 },
 			files: [{ relativePath: "MEMORY.md" }],
 		});
 	});
 
-	it("resolves dreaming next-run status through an injected scheduler", () => {
-		const from = new Date("2026-06-25T00:00:00Z");
-		expect(
-			getSoulMemoryDreamingNextRunStatus(
-				{ frequency: "0 9 * * *", timezone: "Asia/Shanghai" },
-				(_frequency, _timezone, inputFrom) => inputFrom.getTime() + 1000,
-				from,
-			),
-		).toEqual({ nextRunAt: from.getTime() + 1000 });
-
-		expect(
-			getSoulMemoryDreamingNextRunStatus(
-				{ frequency: "bad", timezone: "UTC" },
-				() => {
-					throw new Error("invalid cron");
-				},
-				from,
-			),
-		).toEqual({ error: "invalid cron" });
-	});
-
-	it("plans dreaming run store and runtime status mutations in core", async () => {
-		expect(
-			planSoulMemoryDreamingRunStatusMutation({
-				status: "applied",
-				applied: 2,
-				sourceFiles: ["memory/2026-06-25.md"],
-				runAt: 100,
-				nextRunAt: 200,
-			}),
-		).toEqual({
-			storeSet: [
-				["lastDreamingAt", 100],
-				["lastDreamingApplied", 2],
-				["lastDreamingStatus", "applied"],
-				["lastDreamingSourceFiles", ["memory/2026-06-25.md"]],
-				["lastDreamingNextRunAt", 200],
-			],
-			storeDelete: ["lastDreamingError"],
-			runtimePatch: {
-				lastDreamingAt: 100,
-				lastDreamingApplied: 2,
-				lastDreamingStatus: "applied",
-				lastDreamingSourceFiles: ["memory/2026-06-25.md"],
-				lastDreamingNextRunAt: 200,
-			},
-			runtimeDelete: ["lastDreamingError"],
-		});
-
-		expect(
-			planSoulMemoryDreamingErrorStatusMutation("provider unavailable"),
-		).toEqual({
-			storeSet: [["lastDreamingError", "provider unavailable"]],
-			storeDelete: [],
-			runtimePatch: {
-				lastDreamingError: "provider unavailable",
-				lastDreamingStatus: "error",
-			},
-			runtimeDelete: [],
-		});
-
-		expect(
-			planSoulMemoryCaptureSuccessStatusMutation({
-				status: "approved",
-				capturedAt: 123,
-			}),
-		).toEqual({
-			storeSet: [
-				["lastCaptureAt", 123],
-				["lastCaptureStatus", "approved"],
-			],
-			storeDelete: ["lastCaptureError"],
-			runtimePatch: {
-				lastCaptureAt: 123,
-				lastCaptureStatus: "approved",
-			},
-			runtimeDelete: ["lastCaptureError"],
-		});
-		expect(planSoulMemoryCaptureErrorStatusMutation("capture failed")).toEqual({
-			storeSet: [
-				["lastCaptureError", "capture failed"],
-				["lastCaptureStatus", "error"],
-			],
-			storeDelete: [],
-			runtimePatch: {
-				lastCaptureError: "capture failed",
-				lastCaptureStatus: "error",
-			},
-			runtimeDelete: [],
-		});
-		expect(planSoulMemoryCaptureDiscardStatusMutation()).toEqual({
-			storeSet: [["lastCaptureStatus", "discarded"]],
-			storeDelete: [],
-			runtimePatch: {
-				lastCaptureStatus: "discarded",
-			},
-			runtimeDelete: [],
-		});
-		expect(planSoulMemoryCaptureRuntimeStatusMutation("none")).toEqual({
-			storeSet: [],
-			storeDelete: [],
-			runtimePatch: {
-				lastCaptureStatus: "none",
-			},
-			runtimeDelete: [],
-		});
-
-		expect(
-			formatSoulMemoryDreamingRunSummary({
-				status: "applied",
-				applied: 2,
-				sourceFiles: ["memory/2026-06-25.md"],
-				nextRunAt: Date.UTC(2026, 5, 26, 1, 0, 0),
-				timezone: "UTC",
-			}),
-		).toContain("Sources: memory/2026-06-25.md");
-		expect(
-			formatSoulMemoryDreamingRunSummary({
-				status: "skipped",
-				applied: 0,
-				sourceFiles: [],
-			}),
-		).toContain("Sources: none");
-
-		expect(
-			planSoulMemoryManualDreamingRun({
-				defaultAgentId: "default",
-				hasActivePluginApi: true,
-			}),
-		).toEqual({
-			route: "scheduler",
-			agentId: "default",
-			reason: "manual",
-			force: true,
-		});
-		expect(
-			planSoulMemoryManualDreamingRun({
-				agentId: "agent-2",
-				defaultAgentId: "default",
-				hasActivePluginApi: true,
-			}),
-		).toEqual({
-			route: "plugin-api",
-			agentId: "agent-2",
-			reason: "manual",
-			force: true,
-		});
-		expect(
-			planSoulMemoryManualDreamingRun({
-				agentId: "agent-2",
-				defaultAgentId: "default",
-				hasActivePluginApi: false,
-			}),
-		).toEqual({
-			route: "scheduler",
-			agentId: "agent-2",
-			reason: "manual",
-			force: true,
-		});
-
-		await expect(
-			runSoulMemoryManualDreamingWithAdapters({
-				agentId: "agent-2",
-				defaultAgentId: "default",
-				hasActivePluginApi: true,
-				runWithPluginApi: async (plan) => ({
-					source: plan.route,
-					agentId: plan.agentId,
-				}),
-				runWithScheduler: async () => {
-					throw new Error("scheduler should not run");
-				},
-			}),
-		).resolves.toEqual({
-			source: "plugin-api",
-			agentId: "agent-2",
-		});
-
-		await expect(
-			runSoulMemoryManualDreamingWithAdapters({
-				agentId: "agent-2",
-				defaultAgentId: "default",
-				hasActivePluginApi: false,
-				runWithPluginApi: async () => {
-					throw new Error("plugin should not run");
-				},
-				runWithScheduler: async (plan) => ({
-					ok: true,
-					result: {
-						source: plan.route,
-						agentId: plan.agentId,
-					},
-				}),
-			}),
-		).resolves.toEqual({
-			source: "scheduler",
-			agentId: "agent-2",
-		});
-
-		await expect(
-			runSoulMemoryManualDreamingWithAdapters({
-				defaultAgentId: "default",
-				hasActivePluginApi: false,
-				runWithPluginApi: async () => null,
-				runWithScheduler: async () => ({
-					ok: false,
-					error: "scheduler failed",
-				}),
-			}),
-		).rejects.toThrow("scheduler failed");
-	});
-
 	it("applies status mutation plans to an injected store and runtime status in core", () => {
 		const storeValues = new Map<string, unknown>([
-			["lastDreamingError", "old error"],
+			["lastCaptureError", "old error"],
 		]);
 		const runtimeStatus = {
-			lastDreamingError: "old error",
-			lastDreamingStatus: "error",
+			lastCaptureError: "old error" as string | undefined,
+			lastCaptureStatus: "error",
 		};
 
 		applySoulMemoryStatusMutationPlan({
@@ -4309,238 +1465,19 @@ describe("onething runtime soul-memory helpers", () => {
 				delete: (key) => storeValues.delete(key),
 			},
 			runtimeStatus,
-			plan: planSoulMemoryDreamingRunStatusMutation({
-				status: "applied",
-				applied: 1,
-				sourceFiles: ["memory/2026-06-25.md"],
-				runAt: 100,
-				nextRunAt: 200,
+			plan: planSoulMemoryCaptureSuccessStatusMutation({
+				status: "approved",
+				capturedAt: 100,
 			}),
 		});
 
-		expect(storeValues.get("lastDreamingStatus")).toBe("applied");
-		expect(storeValues.has("lastDreamingError")).toBe(false);
+		expect(storeValues.get("lastCaptureStatus")).toBe("approved");
+		expect(storeValues.has("lastCaptureError")).toBe(false);
 		expect(runtimeStatus).toMatchObject({
-			lastDreamingStatus: "applied",
-			lastDreamingApplied: 1,
-			lastDreamingNextRunAt: 200,
+			lastCaptureAt: 100,
+			lastCaptureStatus: "approved",
 		});
-		expect(runtimeStatus.lastDreamingError).toBeUndefined();
-	});
-
-	it("runs memory dreaming sweep in core through model and memory adapters", async () => {
-		let nowMs = 1000;
-		const runAt = new Date("2026-06-25T08:00:00Z");
-		const dreaming = {
-			enabled: true,
-			frequency: "0 8 * * *",
-			timezone: "UTC",
-			lookbackDays: 7,
-			maxSourceFiles: 3,
-			maxPromotions: 2,
-			minScore: 0.7,
-			timeoutMs: 1000,
-			maxInputChars: 4000,
-		};
-		const statusPlans: unknown[] = [];
-		const diagnostics: unknown[] = [];
-		let generatedPrompt = "";
-		const base = {
-			reason: "manual",
-			enabled: true,
-			dreaming,
-			force: true,
-			now: runAt,
-			hash: (value: string) => `hash:${value.length}:${value.slice(0, 8)}`,
-			collectSources: () => [
-				{
-					relativePath: "memory/2026-06-25.md",
-					sourceType: "daily",
-					content: "- 用户今天确认 start-electron 使用 Bun scripts。",
-				},
-			],
-			getNextRunAt: () => ({ nextRunAt: Date.UTC(2026, 5, 26, 8, 0, 0) }),
-			getExistingMemory: () => "- Existing durable memory.",
-			resolveProvider: () => ({
-				provider: { id: "provider" },
-				modelRef: "deepseek/deepseek-chat",
-				source: "tools",
-			}),
-			generateDreaming: ({
-				system,
-				prompt,
-			}: {
-				system: string;
-				prompt: string;
-			}) => {
-				expect(system).toContain(CORE_SOUL_MEMORY_DREAMING_SYSTEM_PROMPT);
-				expect(system).toContain("score >= 0.7");
-				generatedPrompt = prompt;
-				return JSON.stringify({
-					action: "dream",
-					confidence: 0.9,
-					memories: [
-						{
-							action: "add",
-							confidence: 0.92,
-							content: "User prefers Bun scripts in start-electron.",
-						},
-					],
-				});
-			},
-			applyMemoryActions: () => ({
-				applied: 1,
-				block: "- User prefers Bun scripts in start-electron.",
-				added: 1,
-				replaced: 0,
-				removed: 0,
-				skipped: 0,
-			}),
-			applyStatusMutation: (plan: unknown) => {
-				statusPlans.push(plan);
-			},
-			logDiagnostic: (event: unknown) => diagnostics.push(event),
-			nowMs: () => nowMs,
-		};
-
-		await expect(runSoulMemoryDreamingSweep(base)).resolves.toMatchObject({
-			status: "applied",
-			applied: 1,
-			sourceFiles: ["memory/2026-06-25.md"],
-			memory: "- User prefers Bun scripts in start-electron.",
-			runAt: runAt.getTime(),
-			nextRunAt: Date.UTC(2026, 5, 26, 8, 0, 0),
-		});
-		expect(generatedPrompt).toContain(
-			"Existing memory:\n- Existing durable memory.",
-		);
-		expect(generatedPrompt).toContain("Daily notes to consolidate:");
-		expect(statusPlans.at(-1)).toMatchObject({
-			storeSet: [
-				["lastDreamingAt", runAt.getTime()],
-				["lastDreamingApplied", 1],
-				["lastDreamingStatus", "applied"],
-				["lastDreamingSourceFiles", ["memory/2026-06-25.md"]],
-				["lastDreamingNextRunAt", Date.UTC(2026, 5, 26, 8, 0, 0)],
-			],
-		});
-		expect(diagnostics).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					operation: "sweep",
-					stage: "start",
-					status: "started",
-				}),
-				expect.objectContaining({
-					operation: "model-sweep",
-					stage: "request",
-					status: "started",
-				}),
-				expect.objectContaining({
-					operation: "sweep",
-					stage: "finish",
-					status: "ok",
-				}),
-			]),
-		);
-
-		nowMs = 2000;
-		statusPlans.length = 0;
-		await expect(
-			runSoulMemoryDreamingSweep({
-				...base,
-				collectSources: () => [],
-			}),
-		).resolves.toMatchObject({
-			status: "skipped",
-			applied: 0,
-			sourceFiles: [],
-			memory: "NONE",
-		});
-		expect(statusPlans.at(-1)).toMatchObject({
-			storeSet: [
-				["lastDreamingAt", runAt.getTime()],
-				["lastDreamingApplied", 0],
-				["lastDreamingStatus", "skipped"],
-				["lastDreamingSourceFiles", []],
-				["lastDreamingNextRunAt", Date.UTC(2026, 5, 26, 8, 0, 0)],
-			],
-		});
-	});
-
-	it("skips and records memory dreaming errors in core", async () => {
-		const runAt = new Date("2026-06-25T08:00:00Z");
-		const dreaming = {
-			enabled: true,
-			frequency: "0 8 * * *",
-			timezone: "UTC",
-			lookbackDays: 7,
-			maxSourceFiles: 3,
-			maxPromotions: 2,
-			minScore: 0.7,
-			timeoutMs: 1000,
-			maxInputChars: 4000,
-		};
-		const statusPlans: unknown[] = [];
-		const diagnostics: unknown[] = [];
-		const base = {
-			reason: "scheduled",
-			enabled: true,
-			dreaming,
-			now: runAt,
-			hash: (value: string) => `hash:${value.length}`,
-			collectSources: () => [
-				{ relativePath: "memory/2026-06-25.md", content: "- durable source" },
-			],
-			getNextRunAt: () => ({ nextRunAt: 123 }),
-			getExistingMemory: () => "",
-			resolveProvider: () => ({
-				provider: {},
-				modelRef: "deepseek/deepseek-chat",
-			}),
-			generateDreaming: () => {
-				throw new Error("provider failed");
-			},
-			applyMemoryActions: () => ({
-				applied: 0,
-				block: "",
-				added: 0,
-				replaced: 0,
-				removed: 0,
-				skipped: 0,
-			}),
-			applyStatusMutation: (plan: unknown) => {
-				statusPlans.push(plan);
-			},
-			logDiagnostic: (event: unknown) => diagnostics.push(event),
-			nowMs: () => 3000,
-		};
-
-		await expect(
-			runSoulMemoryDreamingSweep({
-				...base,
-				enabled: false,
-			}),
-		).resolves.toBeNull();
-		expect(statusPlans).toHaveLength(0);
-		expect(diagnostics.at(-1)).toMatchObject({
-			operation: "sweep",
-			stage: "gate",
-			status: "skipped",
-			summary: "Soul-memory is disabled.",
-		});
-
-		await expect(runSoulMemoryDreamingSweep(base)).rejects.toThrow(
-			"provider failed",
-		);
-		expect(statusPlans.at(-1)).toEqual(
-			planSoulMemoryDreamingErrorStatusMutation("provider failed"),
-		);
-		expect(diagnostics.at(-1)).toMatchObject({
-			operation: "sweep",
-			stage: "finish",
-			status: "error",
-		});
+		expect(runtimeStatus.lastCaptureError).toBeUndefined();
 	});
 
 	it("runs memory capture in core through model and daily-note adapters", async () => {
@@ -4957,7 +1894,6 @@ describe("onething runtime soul-memory helpers", () => {
 				root: "/repo/memory-root",
 				memoryPath: "/repo/memory-root/MEMORY.md",
 				todayPath: "/repo/memory-root/memory/2026-06-25.md",
-				target: "daily",
 			}),
 		).toEqual({
 			absolutePath: "/repo/memory-root/memory/2026-06-25.md",
@@ -5249,14 +2185,6 @@ describe("onething runtime soul-memory helpers", () => {
 			totalLines: 2,
 		});
 
-		expect(isSoulMemoryIndexableMarkdownRelativePath("MEMORY.md")).toBe(true);
-		expect(
-			isSoulMemoryIndexableMarkdownRelativePath("memory/2026-06-25.md"),
-		).toBe(true);
-		expect(
-			isSoulMemoryIndexableMarkdownRelativePath("memory/.dreams/private.md"),
-		).toBe(false);
-		expect(isSoulMemoryIndexableMarkdownRelativePath("SOUL.md")).toBe(false);
 		expect(normalizeSoulMemoryRelativePath("memory\\2026-06-25.md")).toBe(
 			"memory/2026-06-25.md",
 		);
@@ -5276,8 +2204,6 @@ describe("onething runtime soul-memory helpers", () => {
 		expect(previewSoulMemoryLine("  hello\n\tcore   memory  ", 50)).toBe(
 			"hello core memory",
 		);
-		expect(buildSoulMemoryFtsQuery("alpha beta")).toBe('"alpha" OR "beta"');
-		expect(buildSoulMemoryFtsQuery('""')).toBe('""""""');
 		expect(sanitizeSoulMemoryAgentPathSegment("agent/a:b", "default")).toBe(
 			"agent_a_b",
 		);
@@ -5327,7 +2253,6 @@ describe("onething runtime soul-memory helpers", () => {
 		});
 
 		const writes = new Map<string, { content: string; mtimeMs: number }>();
-		const indexableWrites: string[] = [];
 		await expect(
 			saveSoulMemoryManagedFileWithAdapters({
 				root: "/repo/memory-root",
@@ -5347,9 +2272,6 @@ describe("onething runtime soul-memory helpers", () => {
 						: null;
 				},
 				readFile: (absolutePath) => writes.get(absolutePath)?.content || "",
-				onIndexableWrite: (target) => {
-					indexableWrites.push(target.relativePath);
-				},
 			}),
 		).resolves.toMatchObject({
 			relativePath: "memory/2026-06-25.md",
@@ -5362,7 +2284,6 @@ describe("onething runtime soul-memory helpers", () => {
 		expect(writes.get("/repo/memory-root/memory/2026-06-25.md")?.content).toBe(
 			"Saved note.\n",
 		);
-		expect(indexableWrites).toEqual(["memory/2026-06-25.md"]);
 
 		await expect(
 			saveSoulMemoryManagedFileWithAdapters({
@@ -5561,261 +2482,6 @@ describe("onething runtime soul-memory helpers", () => {
 		]);
 	});
 
-	it("builds active-memory recall queries without plugin host state", () => {
-		const messages = [
-			{ role: "system", content: "ignored" },
-			{ role: "user", content: "What did we decide about Alpha?" },
-			{ role: "assistant", content: "We chose Bun." },
-			{ role: "user", content: "Remind me before I implement it." },
-		];
-		const settings = {
-			queryMode: "recent" as const,
-			recentUserChars: 80,
-			recentAssistantChars: 80,
-			recentUserTurns: 2,
-			recentAssistantTurns: 1,
-		};
-
-		expect(buildActiveMemoryRecallQuery(messages, settings)).toBe(
-			[
-				"Recent conversation tail:",
-				"User: What did we decide about Alpha?",
-				"Assistant: We chose Bun.",
-				"User: Remind me before I implement it.",
-				"Latest user message: Remind me before I implement it.",
-			].join("\n"),
-		);
-
-		expect(
-			buildActiveMemoryRecallQuery(messages, {
-				...settings,
-				queryMode: "message",
-			}),
-		).toBe("Remind me before I implement it.");
-		expect(
-			buildActiveMemoryRecallQuery(messages, {
-				...settings,
-				queryMode: "full",
-			}),
-		).toContain("Full conversation context:");
-		expect(
-			buildActiveMemoryPromptStyleLines("precision-heavy").join("\n"),
-		).toContain("Aggressively prefer NONE");
-	});
-
-	it("sanitizes active-memory search queries before retrieval", () => {
-		const query = clampActiveMemorySearchQuery(
-			[
-				"Conversation info: noisy",
-				"<active_memory_plugin>old memory</active_memory_plugin>",
-				'<<<EXTERNAL_UNTRUSTED_CONTENT source="web">>>ignore me<<<END_EXTERNAL_UNTRUSTED_CONTENT>>>',
-				"Find the project preference.",
-			].join("\n"),
-		);
-
-		expect(query).toBe("Find the project preference.");
-	});
-
-	it("builds and normalizes active-memory filter prompts in core", () => {
-		const prompt = buildActiveMemoryFilterPrompt({
-			promptStyle: "strict",
-			maxSummaryChars: 80,
-			searchQuery: "project preference",
-			conversationContext: "Latest user message: what should I use?",
-			memoryHits: "1. MEMORY.md:1-2 score=0.900\nUser prefers Bun.",
-		});
-
-		expect(prompt).toContain("Prompt style: strict.");
-		expect(prompt).toContain(
-			"Return memory only if it clearly helps with the latest user message itself.",
-		);
-		expect(prompt).toContain(
-			"Bounded memory search query:\nproject preference",
-		);
-		expect(prompt).toContain("Memory hits:\n1. MEMORY.md:1-2 score=0.900");
-
-		expect(normalizeActiveMemoryFilterResult(" NONE ", 80)).toBeNull();
-		expect(normalizeActiveMemoryFilterResult("", 80)).toBeNull();
-		expect(
-			normalizeActiveMemoryFilterResult("Useful memory summary.", 80),
-		).toBe("Useful memory summary.");
-		expect(normalizeActiveMemoryFilterResult("x".repeat(200), 80)).toContain(
-			"[Truncated at 80 chars]",
-		);
-	});
-
-	it("runs active-memory recall in core through search and provider adapters", async () => {
-		const settings = {
-			enabled: true,
-			timeoutMs: 1000,
-			cacheTtlMs: 5000,
-			promptStyle: "strict" as const,
-			maxSummaryChars: 80,
-			searchMaxResults: 5,
-			queryMode: "message" as const,
-			recentUserChars: 120,
-			recentAssistantChars: 120,
-			recentUserTurns: 2,
-			recentAssistantTurns: 1,
-			circuitBreakerMaxTimeouts: 2,
-			circuitBreakerCooldownMs: 500,
-		};
-		const messages = [
-			{ role: "assistant", content: "Earlier context" },
-			{
-				role: "user",
-				content: "Which runtime should we use for this project?",
-			},
-		];
-		const hash = (value: string) => `hash:${value.length}:${value.slice(0, 8)}`;
-		const diagnostics: unknown[] = [];
-		const logs: string[] = [];
-		let now = 1000;
-		const runtime = new CoreSoulMemoryActiveMemoryRuntime({ now: () => now });
-		const searchCalls: Array<{ query: string; limit: number }> = [];
-		const base = {
-			sessionId: "session-1",
-			agentId: "agent-1",
-			messages,
-			pluginEnabled: true,
-			sessionDisabled: false,
-			settings,
-			runtime,
-			hash,
-			search: (input: { query: string; limit: number }) => {
-				searchCalls.push(input);
-				return [{ path: "MEMORY.md", content: "Use Bun for scripts." }];
-			},
-			formatHits: (hits: Array<{ path: string; content: string }>) =>
-				hits.map((hit) => `${hit.path}: ${hit.content}`).join("\n"),
-			resolveProvider: () =>
-				null as { providerId: string; config: { model: string } } | null,
-			providerId: (provider: { providerId: string }) => provider.providerId,
-			providerModel: (provider: { config: { model: string } }) =>
-				provider.config.model,
-			generateFilter: () => {
-				throw new Error("raw fallback should not call filter model");
-			},
-			logDiagnostic: (event: unknown) => diagnostics.push(event),
-			logger: {
-				info: (message: string) => logs.push(message),
-				warn: (message: string) => logs.push(message),
-			},
-		};
-
-		await expect(runSoulMemoryActiveMemoryRecall(base)).resolves.toBe(
-			"MEMORY.md: Use Bun for scripts.",
-		);
-		expect(searchCalls).toEqual([
-			{ query: "Which runtime should we use for this project?", limit: 5 },
-		]);
-		expect(diagnostics).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ stage: "search", status: "started" }),
-				expect.objectContaining({ stage: "finish", status: "ok" }),
-			]),
-		);
-
-		now = 1100;
-		await expect(runSoulMemoryActiveMemoryRecall(base)).resolves.toBe(
-			"MEMORY.md: Use Bun for scripts.",
-		);
-		expect(searchCalls).toHaveLength(1);
-		expect(logs.some((message) => message.includes("cache-hit"))).toBe(true);
-
-		let generatedPrompt = "";
-		await expect(
-			runSoulMemoryActiveMemoryRecall({
-				...base,
-				sessionId: "session-2",
-				runtime: new CoreSoulMemoryActiveMemoryRuntime({ now: () => now }),
-				resolveProvider: () => ({
-					providerId: "deepseek",
-					config: { model: "deepseek-chat" },
-				}),
-				generateFilter: ({ system, prompt }) => {
-					expect(system).toContain("untrusted user notes");
-					generatedPrompt = prompt;
-					return "Filtered project runtime memory.";
-				},
-			}),
-		).resolves.toBe("Filtered project runtime memory.");
-		expect(generatedPrompt).toContain("Prompt style: strict.");
-		expect(generatedPrompt).toContain(
-			"Memory hits:\nMEMORY.md: Use Bun for scripts.",
-		);
-	});
-
-	it("skips active-memory recall in core when disabled or circuit-open", async () => {
-		const settings = {
-			enabled: true,
-			timeoutMs: 1000,
-			cacheTtlMs: 5000,
-			promptStyle: "balanced" as const,
-			maxSummaryChars: 80,
-			searchMaxResults: 5,
-			queryMode: "message" as const,
-			recentUserChars: 120,
-			recentAssistantChars: 120,
-			recentUserTurns: 2,
-			recentAssistantTurns: 1,
-			circuitBreakerMaxTimeouts: 1,
-			circuitBreakerCooldownMs: 500,
-		};
-		const diagnostics: Array<{
-			stage?: string;
-			status?: string;
-			summary?: string;
-		}> = [];
-		const runtime = new CoreSoulMemoryActiveMemoryRuntime({ now: () => 1000 });
-		const base = {
-			sessionId: "session-1",
-			agentId: "agent-1",
-			messages: [{ role: "user", content: "Need memory." }],
-			pluginEnabled: true,
-			sessionDisabled: false,
-			settings,
-			runtime,
-			hash: (value: string) => `hash:${value.length}`,
-			search: () => {
-				throw new Error("search should be skipped");
-			},
-			formatHits: () => "",
-			resolveProvider: () => ({
-				providerId: "deepseek",
-				config: { model: "deepseek-chat" },
-			}),
-			providerId: (provider: { providerId: string }) => provider.providerId,
-			providerModel: (provider: { config: { model: string } }) =>
-				provider.config.model,
-			generateFilter: () => "filtered",
-			logDiagnostic: (event: {
-				stage?: string;
-				status?: string;
-				summary?: string;
-			}) => diagnostics.push(event),
-		};
-
-		await expect(
-			runSoulMemoryActiveMemoryRecall({
-				...base,
-				pluginEnabled: false,
-			}),
-		).resolves.toBeNull();
-		expect(diagnostics.at(-1)).toMatchObject({
-			stage: "gate",
-			status: "skipped",
-			summary: "Active Memory is disabled.",
-		});
-
-		runtime.recordTimeout("deepseek:deepseek-chat", settings);
-		await expect(runSoulMemoryActiveMemoryRecall(base)).resolves.toBeNull();
-		expect(diagnostics.at(-1)).toMatchObject({
-			stage: "circuit-breaker",
-			status: "skipped",
-		});
-	});
-
 	it("parses daily-note add, replace, and remove mutations from compact JSON", () => {
 		expect(
 			parseDailyNoteCaptureResult(
@@ -5850,7 +2516,7 @@ describe("onething runtime soul-memory helpers", () => {
 			candidates: [
 				{
 					action: "add",
-					confidence: 0.9,
+						confidence: 0.9,
 					content: "用户今天在 start-electron 拆分 headless core。",
 				},
 				{
@@ -5994,136 +2660,6 @@ describe("onething runtime soul-memory helpers", () => {
 		});
 		expect(adapterContent).toContain("- 新的 adapter note。");
 		expect(adapterAppended).toEqual([["Adapter new note."]]);
-	});
-
-	it("parses dreaming memory JSON and legacy tagged output without host providers", () => {
-		expect(
-			parseDreamingOutput(
-				JSON.stringify({
-					action: "dream",
-					confidence: 0.9,
-					memories: [
-						{
-							action: "add",
-							confidence: 0.92,
-							content: "Project Alpha uses Bun for scripts.",
-						},
-						{
-							action: "replace",
-							oldText: "Project Alpha uses npm.",
-							newText: "Project Alpha uses Bun.",
-						},
-						{
-							action: "remove",
-							text: "Temporary troubleshooting note.",
-						},
-						{
-							action: "add",
-							sensitivity: "secret",
-							content: "secret token",
-						},
-					],
-				}),
-			),
-		).toEqual({
-			confidence: 0.9,
-			memory: [
-				"- Project Alpha uses Bun for scripts.",
-				"~ Project Alpha uses Bun.",
-				"- Temporary troubleshooting note.",
-			].join("\n"),
-			candidates: [
-				{
-					action: "add",
-					confidence: 0.92,
-					content: "Project Alpha uses Bun for scripts.",
-				},
-				{
-					action: "replace",
-					confidence: 0.9,
-					oldText: "Project Alpha uses npm.",
-					newText: "Project Alpha uses Bun.",
-				},
-				{
-					action: "remove",
-					confidence: 0.9,
-					text: "Temporary troubleshooting note.",
-				},
-			],
-		});
-
-		expect(
-			parseDreamingOutput(
-				"<durable_memory>\n- User prefers precise answers.\n</durable_memory>",
-			),
-		).toEqual({
-			confidence: 0.8,
-			memory: "- User prefers precise answers.",
-			candidates: [
-				{
-					action: "add",
-					confidence: 0.8,
-					content: "User prefers precise answers.",
-				},
-			],
-		});
-	});
-
-	it("applies dreaming memory actions through injected host adapters", async () => {
-		const actions: string[] = [];
-		const result = await applyDreamingMemoryActions({
-			maxPromotions: 5,
-			minScore: 0.7,
-			result: {
-				confidence: 0.9,
-				memory: "",
-				candidates: [
-					{ action: "add", confidence: 0.9, content: "New durable memory." },
-					{ action: "add", confidence: 0.9, content: "Keep existing memory." },
-					{
-						action: "replace",
-						confidence: 0.9,
-						oldText: "Old memory.",
-						newText: "Updated memory.",
-					},
-					{ action: "remove", confidence: 0.9, text: "Stale memory." },
-					{ action: "add", confidence: 0.2, content: "Low confidence memory." },
-				],
-			},
-			readExisting: () => ({
-				content: ["- Old memory.", "- Keep existing memory."].join("\n"),
-				entries: ["Old memory.", "Keep existing memory."],
-			}),
-			add: (content) => {
-				actions.push(`add:${content}`);
-			},
-			replace: (oldText, newText) => {
-				actions.push(`replace:${oldText}->${newText}`);
-				return { changed: oldText === "Old memory." };
-			},
-			remove: (text) => {
-				actions.push(`remove:${text}`);
-				return { changed: text === "Stale memory." };
-			},
-		});
-
-		expect(result).toEqual({
-			applied: 3,
-			block: [
-				"+ - New durable memory.",
-				"~ - Updated memory.",
-				"- - Stale memory.",
-			].join("\n"),
-			added: 1,
-			replaced: 1,
-			removed: 1,
-			skipped: 2,
-		});
-		expect(actions).toEqual([
-			"add:New durable memory.",
-			"replace:Old memory.->Updated memory.",
-			"remove:Stale memory.",
-		]);
 	});
 
 	it("parses memory review results and tracks review progress without main types", () => {
@@ -6664,546 +3200,4 @@ describe("onething runtime soul-memory helpers", () => {
 		]);
 	});
 
-	it("tracks markdown index dirty state transitions in core", () => {
-		const initial = {
-			dirty: true,
-			dirtyReason: "startup",
-			dirtyRevision: 1,
-			indexedRevision: 0,
-		};
-
-		const dirty = markSoulMemoryIndexDirtyState(initial, "filesystem-change");
-		expect(dirty).toEqual({
-			dirty: true,
-			dirtyReason: "filesystem-change",
-			dirtyRevision: 2,
-			indexedRevision: 0,
-		});
-
-		expect(markSoulMemoryIndexCleanState(dirty, 1)).toEqual({
-			dirty: true,
-			dirtyReason: "filesystem-change",
-			dirtyRevision: 2,
-			indexedRevision: 1,
-		});
-
-		expect(markSoulMemoryIndexCleanState(dirty, 2)).toEqual({
-			dirty: false,
-			dirtyReason: "",
-			dirtyRevision: 2,
-			indexedRevision: 2,
-		});
-
-		expect(
-			refreshSoulMemoryIndexStatus(
-				{
-					indexedFiles: 1,
-					indexedChunks: 2,
-					ftsTokenizer: "old",
-					lastError: "kept",
-				},
-				{
-					indexedFiles: 3,
-					indexedChunks: 4,
-				},
-				"unicode61",
-			),
-		).toEqual({
-			indexedFiles: 3,
-			indexedChunks: 4,
-			ftsTokenizer: "unicode61",
-			lastError: "kept",
-		});
-
-		expect(
-			buildSoulMemoryIndexDirtyDiagnostic({
-				reason: "filesystem-change",
-				state: dirty,
-				metadata: { relativePath: "memory/2026-06-25.md" },
-			}),
-		).toEqual({
-			subsystem: "index",
-			operation: "dirty-state",
-			stage: "mark",
-			status: "ok",
-			summary: "Markdown memory index marked dirty: filesystem-change",
-			metadata: {
-				revision: 2,
-				relativePath: "memory/2026-06-25.md",
-			},
-		});
-	});
-
-	it("builds markdown index file descriptors in core", () => {
-		expect(shouldSkipSoulMemoryIndexDirectoryName(".dreams")).toBe(true);
-		expect(shouldSkipSoulMemoryIndexDirectoryName("daily")).toBe(false);
-		expect(isSoulMemoryIndexMarkdownFileName("MEMORY.md")).toBe(true);
-		expect(isSoulMemoryIndexMarkdownFileName("image.png")).toBe(false);
-		expect(getSoulMemoryDailyDateFromFileName("2026-06-25-note.md")).toBe(
-			"2026-06-25",
-		);
-		expect(getSoulMemoryDailyDateFromFileName("MEMORY.md")).toBeUndefined();
-
-		expect(createSoulMemoryRootMemoryIndexFile("/repo/MEMORY.md")).toEqual({
-			absolutePath: "/repo/MEMORY.md",
-			relativePath: "MEMORY.md",
-			kind: "memory",
-		});
-		expect(
-			createSoulMemoryDailyIndexFile({
-				absolutePath: "/repo/memory/2026-06-25-note.md",
-				relativePath: "memory/2026-06-25-note.md",
-				fileName: "2026-06-25-note.md",
-			}),
-		).toEqual({
-			absolutePath: "/repo/memory/2026-06-25-note.md",
-			relativePath: "memory/2026-06-25-note.md",
-			kind: "daily",
-			date: "2026-06-25",
-		});
-	});
-
-	it("runs canonical embedding through core adapters with fallback diagnostics", async () => {
-		const settings = {
-			general: { soulMemory: { embeddings: { enabled: true } } },
-		};
-		const disabledSettings = {
-			general: { soulMemory: { embeddings: { enabled: false } } },
-		};
-		const resolveSettings = (
-			value: typeof settings | typeof disabledSettings,
-		) => ({
-			embeddings: {
-				enabled: value.general.soulMemory.embeddings.enabled,
-			},
-		});
-		let embedCalls = 0;
-
-		await expect(
-			runSoulMemoryCanonicalEmbeddingWithAdapters({
-				settings: disabledSettings,
-				text: "Skip embeddings",
-				getSettings: () => settings,
-				resolveSettings,
-				embedTexts: async () => {
-					embedCalls += 1;
-					return { vectors: [[1]], providerId: "unused", model: "unused" };
-				},
-				hashText: (value) => `hash:${value}`,
-				previewText: (value) => value,
-			}),
-		).resolves.toEqual({});
-		expect(embedCalls).toBe(0);
-
-		await expect(
-			runSoulMemoryCanonicalEmbeddingWithAdapters({
-				settings,
-				text: "Use embeddings",
-				getSettings: () => disabledSettings,
-				resolveSettings,
-				embedTexts: async (input) => {
-					embedCalls += 1;
-					expect(input.values).toEqual(["Use embeddings"]);
-					return {
-						vectors: [[0.1, 0.2]],
-						providerId: "deepseek",
-						model: "embedding-model",
-					};
-				},
-				hashText: (value) => `hash:${value}`,
-				previewText: (value) => value,
-			}),
-		).resolves.toEqual({
-			embedding: [0.1, 0.2],
-			provider: "deepseek",
-			model: "embedding-model",
-		});
-		expect(embedCalls).toBe(1);
-
-		const diagnostics: unknown[] = [];
-		const errors: string[] = [];
-		await expect(
-			runSoulMemoryCanonicalEmbeddingWithAdapters({
-				settings,
-				text: "Fallback text",
-				getSettings: () => settings,
-				resolveSettings,
-				embedTexts: async () => {
-					throw new Error("provider unavailable");
-				},
-				hashText: () => "0123456789abcdef9999",
-				previewText: (value, maxChars) => `${value.slice(0, maxChars)} preview`,
-				setLastError: (message) => errors.push(message),
-				logDiagnostic: (event) => diagnostics.push(event),
-			}),
-		).resolves.toEqual({});
-		expect(errors).toEqual([
-			"Canonical embedding unavailable; using text dedupe only: provider unavailable",
-		]);
-		expect(diagnostics).toEqual([
-			{
-				subsystem: "embedding",
-				operation: "graph-memory",
-				stage: "embed",
-				status: "fallback",
-				error: expect.any(Error),
-				metadata: {
-					textHash: "0123456789abcdef",
-					textPreview: "Fallback text preview",
-				},
-				summary:
-					"Graph/canonical embedding unavailable; text dedupe remains active.",
-			},
-		]);
-	});
-
-	it("plans markdown index freshness from live files and stored rows in core", () => {
-		const liveFiles = [
-			{
-				absolutePath: "/repo/memory/MEMORY.md",
-				relativePath: "memory/MEMORY.md",
-				kind: "memory" as const,
-				mtimeMs: 1000,
-				size: 10,
-			},
-			{
-				absolutePath: "/repo/memory/2026-06-25.md",
-				relativePath: "memory/2026-06-25.md",
-				kind: "daily" as const,
-				date: "2026-06-25",
-				mtimeMs: 2000,
-				size: 20,
-			},
-			{
-				absolutePath: "/repo/memory/new.md",
-				relativePath: "memory/new.md",
-				kind: "memory" as const,
-				mtimeMs: 3000,
-				size: 30,
-			},
-		];
-
-		const plan = planSoulMemoryIndexFreshness(liveFiles, [
-			{ path: "memory/MEMORY.md", mtime_ms: 1000.25, size: 10 },
-			{ path: "memory/2026-06-25.md", mtime_ms: 1990, size: 20 },
-			{ path: "memory/deleted.md", mtime_ms: 1500, size: 15 },
-		]);
-
-		expect(plan.files).toBe(liveFiles);
-		expect(plan.changedFiles.map((file) => file.relativePath)).toEqual([
-			"memory/2026-06-25.md",
-			"memory/new.md",
-		]);
-		expect(plan.deletedPaths).toEqual(["memory/deleted.md"]);
-
-		expect(
-			planSoulMemoryIndexFreshness(
-				liveFiles.slice(0, 1),
-				[{ path: "memory/MEMORY.md", mtime_ms: 1000.25, size: 10 }],
-				{
-					mtimeToleranceMs: 0.1,
-				},
-			).changedFiles.map((file) => file.relativePath),
-		).toEqual(["memory/MEMORY.md"]);
-	});
-
-	it("plans markdown index sync work from freshness in core", () => {
-		const unchanged = {
-			files: [
-				{
-					absolutePath: "/a",
-					relativePath: "a.md",
-					kind: "memory" as const,
-					mtimeMs: 1,
-					size: 1,
-				},
-			],
-			changedFiles: [],
-			deletedPaths: [],
-		};
-
-		expect(planSoulMemoryIndexSyncWork(unchanged)).toEqual({
-			filesToIndex: [],
-			shouldSkipNoChanges: true,
-		});
-		expect(planSoulMemoryIndexSyncWork(unchanged, { force: true })).toEqual({
-			filesToIndex: unchanged.files,
-			shouldSkipNoChanges: false,
-		});
-
-		const changed = {
-			...unchanged,
-			changedFiles: unchanged.files,
-		};
-		expect(planSoulMemoryIndexSyncWork(changed)).toEqual({
-			filesToIndex: unchanged.files,
-			shouldSkipNoChanges: false,
-		});
-
-		expect(
-			planSoulMemoryIndexSyncWork({
-				...unchanged,
-				deletedPaths: ["deleted.md"],
-			}),
-		).toEqual({
-			filesToIndex: [],
-			shouldSkipNoChanges: false,
-		});
-	});
-
-	it("plans markdown index file writes in core", () => {
-		expect(
-			shouldSkipSoulMemoryIndexFileWrite(
-				{ hash: "content-hash", mtime_ms: 123, size: 42 },
-				"content-hash",
-				{ mtimeMs: 123, size: 42 },
-			),
-		).toBe(true);
-		expect(
-			shouldSkipSoulMemoryIndexFileWrite(
-				{ hash: "old-hash", mtime_ms: 123, size: 42 },
-				"content-hash",
-				{ mtimeMs: 123, size: 42 },
-			),
-		).toBe(false);
-
-		const plan = planSoulMemoryIndexFileWrite({
-			file: {
-				absolutePath: "/repo/memory/2026-06-25.md",
-				relativePath: "memory/2026-06-25.md",
-				kind: "daily",
-				date: "2026-06-25",
-			},
-			stat: { mtimeMs: 123, size: 42 },
-			contentHash: "content-hash",
-			chunks: [
-				{ content: "alpha", startLine: 1, endLine: 1, tokenCount: 2 },
-				{ content: "beta", startLine: 2, endLine: 2, tokenCount: 3 },
-			],
-			oldChunkIds: ["old-1"],
-			embeddings: [[0.1, 0.2]],
-			embeddingProvider: "deepseek",
-			embeddingModel: "embedding-model",
-			indexedAt: 999,
-			hash: (value) => `hash:${value}`,
-		});
-
-		expect(plan.oldChunkIds).toEqual(["old-1"]);
-		expect(plan.file).toEqual({
-			path: "memory/2026-06-25.md",
-			kind: "daily",
-			absolutePath: "/repo/memory/2026-06-25.md",
-			mtimeMs: 123,
-			size: 42,
-			hash: "content-hash",
-			indexedAt: 999,
-		});
-		expect(plan.chunks).toEqual([
-			{
-				id: "hash:memory/2026-06-25.md:0:alpha",
-				path: "memory/2026-06-25.md",
-				kind: "daily",
-				date: "2026-06-25",
-				chunkIndex: 0,
-				startLine: 1,
-				endLine: 1,
-				content: "alpha",
-				hash: "hash:alpha",
-				tokenCount: 2,
-				embeddingJson: "[0.1,0.2]",
-				embeddingProvider: "deepseek",
-				embeddingModel: "embedding-model",
-				mtimeMs: 123,
-			},
-			{
-				id: "hash:memory/2026-06-25.md:1:beta",
-				path: "memory/2026-06-25.md",
-				kind: "daily",
-				date: "2026-06-25",
-				chunkIndex: 1,
-				startLine: 2,
-				endLine: 2,
-				content: "beta",
-				hash: "hash:beta",
-				tokenCount: 3,
-				embeddingJson: null,
-				embeddingProvider: null,
-				embeddingModel: null,
-				mtimeMs: 123,
-			},
-		]);
-		expect(plan.ftsRows).toEqual([
-			{
-				id: "hash:memory/2026-06-25.md:0:alpha",
-				path: "memory/2026-06-25.md",
-				content: "alpha",
-			},
-			{
-				id: "hash:memory/2026-06-25.md:1:beta",
-				path: "memory/2026-06-25.md",
-				content: "beta",
-			},
-		]);
-	});
-
-	it("maps indexed chunk rows in core", () => {
-		expect(
-			rowToSoulMemoryChunk({
-				id: "chunk-1",
-				path: "memory/2026-06-25.md",
-				kind: "daily",
-				date: "2026-06-25",
-				chunk_index: 2,
-				start_line: 10,
-				end_line: 14,
-				content: "remember this",
-				hash: "content-hash",
-				token_count: 3,
-				embedding_json: "[0.1,0.2]",
-				embedding_provider: "deepseek",
-				embedding_model: "embedding-model",
-				mtime_ms: 123,
-			}),
-		).toEqual({
-			id: "chunk-1",
-			path: "memory/2026-06-25.md",
-			kind: "daily",
-			date: "2026-06-25",
-			chunkIndex: 2,
-			startLine: 10,
-			endLine: 14,
-			content: "remember this",
-			hash: "content-hash",
-			tokenCount: 3,
-			embedding: [0.1, 0.2],
-			embeddingProvider: "deepseek",
-			embeddingModel: "embedding-model",
-			mtimeMs: 123,
-		});
-
-		expect(
-			rowToSoulMemoryChunk({
-				id: "chunk-2",
-				path: "MEMORY.md",
-				kind: "memory",
-				date: null,
-				chunk_index: 0,
-				start_line: 1,
-				end_line: 1,
-				content: "plain memory",
-				hash: "plain-hash",
-				token_count: 2,
-				embedding_json: null,
-				embedding_provider: null,
-				embedding_model: null,
-				mtime_ms: 456,
-			}),
-		).toMatchObject({
-			id: "chunk-2",
-			kind: "memory",
-			date: undefined,
-			embedding: undefined,
-			embeddingProvider: undefined,
-			embeddingModel: undefined,
-		});
-	});
-
-	it("owns markdown index dirty lifecycle in the core tracker", () => {
-		const tracker = new CoreSoulMemoryIndexTracker();
-
-		expect(tracker.getState()).toEqual({
-			dirty: true,
-			dirtyReason: "startup",
-			dirtyRevision: 1,
-			indexedRevision: 0,
-		});
-		expect(tracker.shouldSync()).toBe(true);
-
-		expect(tracker.markDirty("filesystem-change")).toEqual({
-			dirty: true,
-			dirtyReason: "filesystem-change",
-			dirtyRevision: 2,
-			indexedRevision: 0,
-		});
-		expect(tracker.markClean(1)).toEqual({
-			dirty: true,
-			dirtyReason: "filesystem-change",
-			dirtyRevision: 2,
-			indexedRevision: 1,
-		});
-		expect(tracker.markClean(2)).toEqual({
-			dirty: false,
-			dirtyReason: "",
-			dirtyRevision: 2,
-			indexedRevision: 2,
-		});
-		expect(tracker.shouldSync()).toBe(false);
-		expect(tracker.shouldSync(true)).toBe(true);
-		expect(tracker.dirty).toBe(false);
-		expect(tracker.dirtyRevision).toBe(2);
-		expect(tracker.indexedRevision).toBe(2);
-	});
-
-	it("schedules markdown index sync through the core scheduler", async () => {
-		const tracker = new CoreSoulMemoryIndexTracker();
-		const diagnostics: unknown[] = [];
-		const scheduledCallbacks: Array<() => void> = [];
-		let syncCalls = 0;
-		let resolveFirst: ((value: string) => void) | undefined;
-
-		const scheduler = new CoreSoulMemoryIndexSyncScheduler<
-			{ reason: string; force?: boolean },
-			string
-		>({
-			tracker,
-			sync: async (request) => {
-				syncCalls += 1;
-				if (syncCalls === 1) {
-					return new Promise<string>((resolve) => {
-						resolveFirst = resolve;
-					});
-				}
-				tracker.markClean(tracker.dirtyRevision);
-				return `synced:${request.reason}`;
-			},
-			logDiagnostic: (event) => diagnostics.push(event),
-			setTimeout: (callback) => {
-				scheduledCallbacks.push(callback);
-			},
-		});
-
-		expect(scheduler.schedule({ reason: "startup" })).toBe("scheduled");
-		expect(scheduler.isInFlight()).toBe(true);
-		expect(scheduler.schedule({ reason: "already-running" })).toBe(
-			"skipped-in-flight",
-		);
-		expect(syncCalls).toBe(1);
-
-		tracker.markDirty("during-sync");
-		const first = scheduler.getInFlight();
-		resolveFirst?.("first");
-		await first;
-		expect(scheduler.isInFlight()).toBe(false);
-		expect(scheduledCallbacks).toHaveLength(1);
-
-		scheduledCallbacks[0]();
-		await scheduler.getInFlight();
-		expect(syncCalls).toBe(2);
-		expect(tracker.dirty).toBe(false);
-		expect(diagnostics).toMatchObject([
-			{
-				status: "started",
-				summary: "Background index sync scheduled: startup",
-				metadata: { dirtyReason: "startup" },
-			},
-			{ status: "skipped", metadata: { reason: "already-running" } },
-			{
-				status: "started",
-				summary: "Background index sync scheduled: dirty-during-sync",
-				metadata: { dirtyReason: "during-sync" },
-			},
-		]);
-
-		expect(scheduler.schedule({ reason: "clean" })).toBe("skipped-clean");
-	});
 });

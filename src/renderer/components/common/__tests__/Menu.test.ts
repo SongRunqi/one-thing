@@ -140,8 +140,51 @@ describe('Menu', () => {
     await settle()
 
     const title = wrapper.find('.app-sub-menu-title')
-    expect(title.element.children[0]?.classList.contains('app-sub-menu-chevron')).toBe(true)
+    expect(title.element.children[0]?.classList.contains('app-sub-menu-chevron-hit')).toBe(true)
+    expect(title.element.children[0]?.firstElementChild?.classList.contains('app-sub-menu-chevron')).toBe(true)
     expect(title.element.children[1]?.classList.contains('app-sub-menu-icon')).toBe(true)
+  })
+
+  it('selects the submenu index on title click and toggles only via the chevron when title-action is select', async () => {
+    const onSelect = vi.fn()
+    const wrapper = mount(Menu, {
+      props: { onSelect },
+      slots: {
+        default: () => h(SubMenu, {
+          index: 'appearance',
+          title: 'Appearance',
+          expandIconPosition: 'start',
+          titleAction: 'select',
+        }, {
+          default: () => h(MenuItem, { index: 'theme', title: 'Theme' }),
+        }),
+      },
+    })
+
+    await settle()
+
+    // Title click selects the submenu's own index without expanding it.
+    await wrapper.find('.app-sub-menu-title').trigger('click')
+    await settle()
+
+    expect(onSelect).toHaveBeenCalledWith(
+      'appearance',
+      ['appearance'],
+      { index: 'appearance', indexPath: ['appearance'] },
+    )
+    expect(wrapper.find('.app-sub-menu-panel').exists()).toBe(false)
+
+    // Chevron click expands without emitting another selection.
+    await wrapper.find('.app-sub-menu-chevron-hit').trigger('click')
+    await settle()
+
+    expect(onSelect).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('.app-sub-menu-panel').exists()).toBe(true)
+
+    await wrapper.find('.app-sub-menu-chevron-hit').trigger('click')
+    await settle()
+
+    expect(wrapper.find('.app-sub-menu-panel').exists()).toBe(false)
   })
 
   it('ignores disabled menu items and disabled submenus', async () => {
@@ -302,5 +345,43 @@ describe('Menu', () => {
       ['session:one'],
       { index: 'session:one', indexPath: ['session:one'], route: undefined },
     )
+  })
+  it('lets Enter/Space through to inputs nested in a raw item instead of activating the menu item', async () => {
+    // 会话重命名框就长在 raw MenuItem 里。若菜单项把 Space 当激活键 preventDefault 掉，
+    // 用户在重命名时就打不出空格，还会顺带切换会话。
+    const onSelect = vi.fn()
+    const wrapper = mount(Menu, {
+      props: { onSelect },
+      slots: {
+        default: () => [
+          h(MenuItem, { index: 'session:one', raw: true }, {
+            default: () => h('input', { class: 'rename-input' }),
+          }),
+        ],
+      },
+    })
+
+    await settle()
+
+    const input = wrapper.find('.rename-input')
+
+    const space = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })
+    input.element.dispatchEvent(space)
+    await settle()
+    expect(space.defaultPrevented).toBe(false)
+    expect(onSelect).not.toHaveBeenCalled()
+
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    input.element.dispatchEvent(enter)
+    await settle()
+    expect(enter.defaultPrevented).toBe(false)
+    expect(onSelect).not.toHaveBeenCalled()
+
+    // 菜单项本体仍然响应 Space
+    const onItem = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true })
+    wrapper.find('[data-index="session:one"]').element.dispatchEvent(onItem)
+    await settle()
+    expect(onItem.defaultPrevented).toBe(true)
+    expect(onSelect).toHaveBeenCalledTimes(1)
   })
 })

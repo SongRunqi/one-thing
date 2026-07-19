@@ -37,6 +37,17 @@ export interface OnethingVoiceSettingsLike {
       hotwords?: string
     }
   }
+  doubao?: {
+    apiKey?: string
+    appId?: string
+    accessToken?: string
+    asrResourceId?: string
+    ttsResourceId?: string
+    endpoint?: string
+    endWindowMs?: number
+    speaker?: string
+    format?: string
+  }
   tts: {
     provider: string
     openai: {
@@ -201,6 +212,9 @@ export async function transcribeOnethingUtterance(
   if (settings.asr.provider === 'funasr-server') {
     return transcribeWithFunASR(request, settings, adapters)
   }
+  if (settings.asr.provider === 'doubao') {
+    return transcribeWithDoubao(request, settings, adapters)
+  }
   return transcribeWithOpenAI(request, settings, adapters)
 }
 
@@ -224,6 +238,9 @@ export function getOnethingVoiceInputConfigurationError(
     return settings.asr.funasr.url.trim()
       ? null
       : 'Add a FunASR server URL in Advanced settings before using voice input.'
+  }
+  if (settings.asr.provider === 'doubao') {
+    return getDoubaoConfigurationError(settings)
   }
   return getOpenAIKey(settings, adapters)
     ? null
@@ -390,6 +407,38 @@ async function transcribeWithFunASR(
   }
 }
 
+function getDoubaoConfigurationError(settings: OnethingVoiceSettingsLike): string | null {
+  const doubao = settings.doubao
+  const apiKey = (doubao?.apiKey || '').trim()
+  const appId = (doubao?.appId || '').trim()
+  const accessToken = (doubao?.accessToken || '').trim()
+  if (apiKey || (appId && accessToken)) return null
+  return 'Add a Doubao (Volcano Engine) API key in Voice settings before using Doubao speech.'
+}
+
+async function transcribeWithDoubao(
+  request: OnethingVoiceSubmitUtteranceRequest,
+  settings: OnethingVoiceSettingsLike,
+  adapters: OnethingVoiceProviderRuntimeAdapters,
+): Promise<OnethingVoiceTranscriptionResult> {
+  const configurationError = getDoubaoConfigurationError(settings)
+  if (configurationError) throw new Error(configurationError)
+
+  const { transcribeOnethingDoubaoUtterance } = await import('./volcano/asr-session.js')
+  const text = (await transcribeOnethingDoubaoUtterance({
+    audio: Buffer.from(request.audioBase64, 'base64'),
+    mimeType: request.mimeType,
+    settings: settings.doubao!,
+  })).trim()
+  if (!text) throw new Error('Doubao transcription returned an empty transcript.')
+  return {
+    text,
+    transcriptId: createTranscriptId(adapters),
+    provider: 'doubao',
+    model: 'bigmodel',
+  }
+}
+
 export async function synthesizeOnethingSpeech(
   text: string,
   settings: OnethingVoiceSettingsLike,
@@ -422,7 +471,65 @@ export async function streamSynthesizeOnethingSpeech(
   if (settings.tts.provider === 'qwen-tts') {
     return streamWithQwen(text, settings, handlers, adapters)
   }
+  if (settings.tts.provider === 'doubao') {
+    return streamWithDoubao(text, settings, handlers)
+  }
   return streamWithOpenAI(text, settings, handlers, adapters)
+}
+
+// One cached bidirectional connection per credential set so consecutive reply
+// sentences skip the WebSocket handshake.
+let doubaoTTSConnectionCache: { key: string; connection: any; idleTimer?: ReturnType<typeof setTimeout> } | null = null
+const DOUBAO_TTS_IDLE_MS = 30000
+
+async function streamWithDoubao(
+  text: string,
+  settings: OnethingVoiceSettingsLike,
+  handlers: OnethingVoiceSpeechStreamHandlers,
+): Promise<OnethingVoiceSpeechStreamResult> {
+  const doubao = settings.doubao
+  if (!doubao?.apiKey?.trim() && !(doubao?.appId?.trim() && doubao?.accessToken?.trim())) {
+    throw new Error('Add a Doubao (Volcano Engine) API key in Voice settings before using Doubao speech.')
+  }
+
+  const { OnethingDoubaoTTSConnection, getOnethingDoubaoTTSMimeType } = await import('./volcano/tts-session.js')
+  const key = JSON.stringify([doubao.apiKey, doubao.appId, doubao.accessToken, doubao.ttsResourceId, doubao.endpoint])
+
+  let connection = doubaoTTSConnectionCache?.key === key && doubaoTTSConnectionCache.connection.isUsable
+    ? doubaoTTSConnectionCache.connection
+    : null
+  if (!connection) {
+    doubaoTTSConnectionCache?.connection.close()
+    connection = new OnethingDoubaoTTSConnection(doubao)
+    doubaoTTSConnectionCache = { key, connection }
+    await connection.connect()
+  }
+  if (doubaoTTSConnectionCache?.idleTimer) clearTimeout(doubaoTTSConnectionCache.idleTimer)
+
+  const mimeType = getOnethingDoubaoTTSMimeType(doubao)
+  await handlers.onStart?.({ mimeType })
+  try {
+    await connection.synthesize(text, {
+      onChunk: (chunk: Uint8Array) => handlers.onChunk?.(chunk),
+    })
+  } catch (error) {
+    if (doubaoTTSConnectionCache?.connection === connection) {
+      doubaoTTSConnectionCache = null
+    }
+    connection.close()
+    throw error
+  }
+
+  const cache = doubaoTTSConnectionCache
+  if (cache && cache.connection === connection) {
+    cache.idleTimer = setTimeout(() => {
+      if (doubaoTTSConnectionCache?.connection === connection) {
+        doubaoTTSConnectionCache = null
+      }
+      connection.close()
+    }, DOUBAO_TTS_IDLE_MS)
+  }
+  return { mimeType }
 }
 
 async function streamWithOpenRouter(

@@ -204,14 +204,15 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 </script>
 
 <style scoped>
+/* Usage ledger: no card chrome — hairlines carry the structure. */
 .usage-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  padding: 12px 0 0;
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  background: transparent;
+  min-width: 0;
 }
 
 .usage-header {
@@ -219,6 +220,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .usage-title-row {
@@ -233,12 +235,17 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   font-weight: 620;
 }
 
+/* Outlined ring badge — no fill. */
 .usage-state {
-  padding: 2px 7px;
+  padding: 1px 7px 2px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 999px;
+  background: transparent;
   color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .usage-subtitle {
@@ -247,21 +254,27 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   font-size: 12px;
 }
 
+/* Text action: mono small, hover pulls an accent underline. */
 .usage-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
+  padding: 4px 0;
+  border: none;
   background: transparent;
-  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
   cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 560;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  transition: color 0.12s ease;
+}
+
+.usage-button:hover:not(:disabled) {
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .usage-button:disabled {
@@ -280,16 +293,17 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 .usage-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  gap: 0 16px;
 }
 
+/* Rows separated by hairlines instead of boxed tiles. */
 .usage-metric,
 .usage-panel,
 .limit-row,
 .additional-limits {
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
-  border-radius: 8px;
-  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
+  border: 0;
+  border-bottom: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  background: transparent;
 }
 
 .usage-metric {
@@ -297,7 +311,7 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   flex-direction: column;
   gap: 4px;
   min-width: 0;
-  padding: 10px;
+  padding: 8px 0;
 }
 
 .usage-metric span,
@@ -321,15 +335,15 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 .limit-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
 }
 
 .limit-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(140px, 0.42fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.42fr);
   align-items: center;
   gap: 12px;
-  padding: 10px;
+  padding: 8px 0;
 }
 
 .limit-copy {
@@ -343,41 +357,66 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font-size: 13px;
   font-weight: 560;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .limit-meter {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 48px;
+  grid-template-columns: minmax(0, 1fr) minmax(40px, auto);
   align-items: center;
   gap: 8px;
 }
 
+.limit-meter strong {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Meter as a drawn line: 1px hairline track, solid accent stroke for the used span. */
 .meter-track {
-  height: 7px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
+  position: relative;
+  height: 9px;
+  min-width: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.meter-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 0;
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
 }
 
 .meter-track span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
+  position: absolute;
+  left: 0;
+  top: calc(50% - 1px);
+  height: 2px;
+  border-radius: 0;
   background: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .usage-panel {
-  padding: 10px;
+  padding: 8px 0;
 }
 
 .usage-error {
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
   font-size: 12px;
   overflow-wrap: anywhere;
 }
 
 .additional-limits {
-  padding: 9px 10px;
+  padding: 8px 0;
 }
 
 .additional-limits summary {

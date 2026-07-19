@@ -37,6 +37,7 @@ describe('Gateway', () => {
     await channel.emit({
       channelId: 'test',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'hello',
       raw: {},
     })
@@ -44,6 +45,7 @@ describe('Gateway', () => {
     expect(bridge.handle).toHaveBeenCalledWith({
       channelId: 'test',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'hello',
       raw: {},
     })

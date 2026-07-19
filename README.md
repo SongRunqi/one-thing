@@ -6,6 +6,8 @@
 ![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript)
 
+[中文说明](./README.zh-CN.md)
+
 ## What is onething?
 
 onething is an Electron-based desktop application that brings together multiple AI providers with a local tool execution system. It is built around an event-driven streaming engine, a typed Electron IPC bridge, project-directory context, and a Vue interface for long-running chat sessions.
@@ -19,6 +21,13 @@ onething is an Electron-based desktop application that brings together multiple 
 - **Project context** - Project directories, per-session `workdir`, notes directories, and context variables can be surfaced to the model.
 - **Extensibility** - MCP servers, Codex-style skills, local plugins, custom themes, and provider model registries.
 - **Desktop workflow UI** - Chat sessions, streaming markdown, file/editor panels, search, media preview, and settings screens.
+
+## Download
+
+Prebuilt installers for macOS (Apple Silicon), Windows, and Linux are published on
+[GitHub Releases](https://github.com/SongRunqi/one-thing/releases). A download site
+with China-friendly mirrors lives in [`site/`](./site) (see
+[deployment guide](./docs/deploy/website-tencent-hk.md)).
 
 ## Quick Start
 
@@ -100,13 +109,27 @@ GitHub Actions build and test workflows live in [`.github/workflows`](./.github/
 
 ## Architecture
 
-onething follows Electron's three-process model:
+The repository is a monorepo. The Electron app is the primary host; a headless
+server and a browser build share the same runtime packages:
+
+```
+packages/core/              # Engine, sessions, permissions, tools, storage primitives
+packages/onething-runtime/  # App runtime: prompts, themes, memory, media, agents
+packages/gateway/           # WeChat/Telegram channel gateway (remote approval)
+apps/electron/              # Electron-host-specific IPC/preload pieces
+apps/server/                # Headless server (HTTP, default port 8787)
+apps/web/                   # Browser build of the renderer
+src/main, src/renderer      # The Electron app itself
+site/                       # Marketing/download website (static)
+```
+
+The Electron app follows the three-process model:
 
 - **Main Process** - Node.js backend with EventBus, StreamEngine, AI providers, tool execution, permissions, and persistence
 - **Renderer Process** - Vue 3 frontend with Pinia state management
 - **Preload Script** - Type-safe IPC bridge between main and renderer
 
-Key technologies: Electron, Vue 3, TypeScript, Pinia, Vercel AI SDK, better-sqlite3, electron-vite, and Vitest.
+Key technologies: Electron, Vue 3, TypeScript, Pinia, Vercel AI SDK, electron-vite, and Vitest.
 
 ## Documentation
 
@@ -129,6 +152,6 @@ Coding-agent guidance lives in [AGENTS.md](./AGENTS.md) and [CLAUDE.md](./CLAUDE
 | Desktop | Electron 39 |
 | Frontend | Vue 3 + TypeScript + Pinia |
 | AI SDK | Vercel AI SDK (`ai`) |
-| Storage | File-based JSON + better-sqlite3 session repository |
+| Storage | File-based JSON + per-session JSONL message logs |
 | Build | electron-vite + electron-builder |
 | Test | Vitest |

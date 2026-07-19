@@ -23,6 +23,11 @@ export type WorkdirPermissionPolicyInput = EnforcePermissionPolicyInput
 
 export interface CoreProviderAdapters {
   enforcePermission?: (input: WorkdirPermissionPolicyInput) => Promise<void>
+  /**
+   * Directories the user has already blessed (e.g. registered project dirs).
+   * Switching the workdir into one of these skips the permission barrier.
+   */
+  isPreauthorizedDirectory?: (path: string) => boolean | Promise<boolean>
 }
 
 const NAME_WORKDIR = 'workdir'
@@ -89,11 +94,63 @@ export class CoreProvider implements VariableProvider {
     }
 
     const resolved = await this.resolveExistingDirectory(input.value)
-    const roots = uniqueRoots(this.gateway.readRoots(ctx.sessionId), resolved)
+    const active = this.gateway.read(ctx.sessionId)
+    const existingRoots = this.gateway.readRoots(ctx.sessionId)
 
+    // set grants the same filesystem access as append (the new directory
+    // becomes a sandbox root), so it must pass the same barrier — otherwise
+    // set is a permission bypass around append.
+    await this.enforceSetPermission(ctx, resolved, active, existingRoots)
+
+    const roots = uniqueRoots(existingRoots, resolved)
     await this.gateway.write(ctx.sessionId, resolved)
     await this.gateway.writeRoots(ctx.sessionId, roots)
     return workdirVariable(resolved, roots)
+  }
+
+  private async enforceSetPermission(
+    ctx: VariableContext,
+    resolved: string,
+    active: string,
+    existingRoots: string[],
+  ): Promise<void> {
+    if (!ctx.messageId || !this.adapters.enforcePermission) return
+
+    const granted = [active, ...existingRoots]
+      .filter(Boolean)
+      .map(root => normalizePath(root))
+    const covered = granted.some(
+      root => resolved === root || resolved.startsWith(root + path.sep),
+    )
+    if (covered) return
+    if (await this.adapters.isPreauthorizedDirectory?.(resolved)) return
+
+    await this.adapters.enforcePermission({
+      sessionId: ctx.sessionId,
+      messageId: ctx.messageId,
+      toolCallId: ctx.toolCallId,
+      toolName: 'workdir',
+      workspaceRoot: active || resolved,
+      effects: [{
+        kind: 'external_directory',
+        resources: [resolved, path.join(resolved, '*')],
+        barrier: true,
+        external: true,
+        metadata: {
+          operation: 'set_workdir',
+          directory: resolved,
+          activeWorkingDirectory: active || undefined,
+        },
+      }],
+      preview: {
+        title: `Set work directory: ${resolved}`,
+        metadata: {
+          operation: 'set_workdir',
+          directory: resolved,
+          activeWorkingDirectory: active || undefined,
+        },
+      },
+    })
   }
 
   async append(ctx: VariableContext, input: SetInput): Promise<ContextVariable> {

@@ -38,7 +38,7 @@ describe('MemoryDiagnosticsLogger', () => {
     })
 
     logger.log({
-      subsystem: 'embedding',
+      subsystem: 'daily',
       operation: 'embed-texts',
       stage: 'request',
       status: 'started',
@@ -56,7 +56,7 @@ describe('MemoryDiagnosticsLogger', () => {
       response: { candidates: 2 },
     })
 
-    const listed = await logger.list({ subsystem: 'embedding', limit: 20 })
+    const listed = await logger.list({ subsystem: 'daily', limit: 20 })
     expect(listed.entries).toHaveLength(1)
     expect(listed.entries[0].request?.apiKey).toBe('[redacted]')
     expect(String(listed.entries[0].request?.url)).toContain('api_key=%5Bredacted%5D')
@@ -64,7 +64,7 @@ describe('MemoryDiagnosticsLogger', () => {
 
     const stats = await logger.stats()
     expect(stats.entriesInBuffer).toBe(2)
-    expect(stats.bySubsystem.embedding).toBe(1)
+    expect(stats.bySubsystem.daily).toBe(1)
     expect(fs.readdirSync(logDir()).some(file => file.endsWith('.jsonl'))).toBe(true)
   })
 
@@ -99,7 +99,7 @@ describe('MemoryDiagnosticsLogger', () => {
     })
   })
 
-  it('logs embedding HTTP failures through the diagnostics fetch wrapper', async () => {
+  it('logs provider HTTP failures through the diagnostics fetch wrapper', async () => {
     memoryDiagnosticsLogger.configure({
       enabled: true,
       retentionDays: 7,
@@ -113,11 +113,11 @@ describe('MemoryDiagnosticsLogger', () => {
         statusText: 'Unauthorized',
         headers: { 'content-type': 'application/json' },
       }),
-      { subsystem: 'embedding', operation: 'provider-http', runId: 'test-run', providerId: 'openai', model: 'text-embedding-3-small' },
+      { subsystem: 'capture', operation: 'provider-http', runId: 'test-run', providerId: 'openai', model: 'text-embedding-3-small' },
     )
 
     await wrapped('https://api.openai.com/v1/embeddings?api_key=sk-test', { method: 'POST' })
-    const listed = await memoryDiagnosticsLogger.list({ subsystem: 'embedding', status: 'error', limit: 10 })
+    const listed = await memoryDiagnosticsLogger.list({ subsystem: 'capture', status: 'error', limit: 10 })
     expect(listed.entries.some(entry => entry.response?.status === 401)).toBe(true)
     expect(JSON.stringify(listed.entries)).not.toContain('sk-test')
   })

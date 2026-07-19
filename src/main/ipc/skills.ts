@@ -4,24 +4,35 @@
  * Handles IPC communication for Hermes Agent SKILL.md operations
  */
 
+import fs from 'fs'
+import path from 'path'
 import { openElectronPath } from '@onething/electron-host/shell/operations'
 import {
   registerElectronSkillsIpcHandlers,
+  type ElectronSkillAddDirectoryRequest,
   type ElectronSkillDeleteRequest,
   type ElectronSkillOpenDirectoryRequest,
   type ElectronSkillReadFileRequest,
+  type ElectronSkillRemoveDirectoryRequest,
+  type ElectronSkillSetAgentRequest,
   type ElectronSkillToggleEnabledRequest,
+  type ElectronSkillUpdateDirectoryRequest,
   type ElectronSkillsGetAllRequest,
 } from '@onething/electron-host/ipc/skills'
 import {
+  addOnethingSkillDirectoryForIpc,
   createOnethingSkillForIpc,
   deleteOnethingSkillForIpc,
+  listOnethingSkillDirectoriesForIpc,
   listOnethingSkillsForIpc,
   openOnethingSkillDirectoryForIpc,
   readOnethingSkillFileForIpc,
   refreshOnethingSkillsForIpc,
+  removeOnethingSkillDirectoryForIpc,
+  setOnethingSkillAgentForIpc,
   type SkillSource,
   toggleOnethingSkillEnabledForIpc,
+  updateOnethingSkillDirectoryForIpc,
 } from '@onething/runtime/skills'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { SkillDefinition } from '../../shared/ipc.js'
@@ -64,6 +75,11 @@ export function registerSkillHandlers() {
       create: IPC_CHANNELS.SKILLS_CREATE,
       delete: IPC_CHANNELS.SKILLS_DELETE,
       toggleEnabled: IPC_CHANNELS.SKILLS_TOGGLE_ENABLED,
+      listDirectories: IPC_CHANNELS.SKILLS_LIST_DIRECTORIES,
+      addDirectory: IPC_CHANNELS.SKILLS_ADD_DIRECTORY,
+      updateDirectory: IPC_CHANNELS.SKILLS_UPDATE_DIRECTORY,
+      removeDirectory: IPC_CHANNELS.SKILLS_REMOVE_DIRECTORY,
+      setAgent: IPC_CHANNELS.SKILLS_SET_AGENT,
     },
     getAll: async (request?: ElectronSkillsGetAllRequest) => {
       return listOnethingSkillsForIpc({
@@ -131,9 +147,76 @@ export function registerSkillHandlers() {
         logger: console,
       })
     },
+    listDirectories: async () => {
+      return listOnethingSkillDirectoriesForIpc({
+        getSettings,
+        logger: console,
+      })
+    },
+    addDirectory: async (request: ElectronSkillAddDirectoryRequest) => {
+      return addOnethingSkillDirectoryForIpc({
+        path: request.path,
+        label: request.label,
+        agentId: request.agentId,
+        getSettings,
+        saveSettings,
+        validateDirectory: validateSkillDirectoryPath,
+        resolvePath: value => path.resolve(value),
+        invalidateSkillsCache: () => invalidateSkillsCache(),
+        logger: console,
+      })
+    },
+    updateDirectory: async (request: ElectronSkillUpdateDirectoryRequest) => {
+      return updateOnethingSkillDirectoryForIpc({
+        id: request.id,
+        enabled: request.enabled,
+        label: request.label,
+        agentId: request.agentId,
+        getSettings,
+        saveSettings,
+        invalidateSkillsCache: () => invalidateSkillsCache(),
+        logger: console,
+      })
+    },
+    removeDirectory: async (request: ElectronSkillRemoveDirectoryRequest) => {
+      return removeOnethingSkillDirectoryForIpc({
+        id: request.id,
+        getSettings,
+        saveSettings,
+        invalidateSkillsCache: () => invalidateSkillsCache(),
+        logger: console,
+      })
+    },
+    setAgent: async (request: ElectronSkillSetAgentRequest) => {
+      const current = getAllSkillsForDisplay().find(skill => skill.id === request.skillId)
+      return setOnethingSkillAgentForIpc({
+        skillId: request.skillId,
+        agentId: request.agentId,
+        currentEnabled: current?.enabled,
+        getSettings,
+        saveSettings,
+        invalidateSkillsCache: () => invalidateSkillsCache(),
+        logger: console,
+      })
+    },
   })
 
   console.log('[Skills IPC] Handlers registered')
+}
+
+function validateSkillDirectoryPath(dirPath: string): string | null {
+  if (!path.isAbsolute(dirPath)) {
+    return 'Directory path must be absolute'
+  }
+  try {
+    const stat = fs.statSync(dirPath)
+    if (!stat.isDirectory()) {
+      return 'Path is not a directory'
+    }
+  } catch {
+    return 'Directory does not exist or is not readable'
+  }
+  return null
 }
 
 /**

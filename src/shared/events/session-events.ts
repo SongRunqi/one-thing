@@ -8,16 +8,32 @@
  * The Session state machine reduces these events into SessionState.
  */
 
-import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ContextVariable, ThinkingEffort } from '../ipc.js'
+import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ContextVariable, SessionGoal, ThinkingEffort } from '../ipc.js'
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
 
 // ── Stream lifecycle ────────────────────────────
 
+export interface StreamCompleteUsage {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  durationMs?: number
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
+}
+
 export interface StreamCompleteData {
   sessionName?: string
-  usage?: { inputTokens: number; outputTokens: number; totalTokens: number; durationMs?: number }
-  lastTurnUsage?: { inputTokens: number; outputTokens: number }
+  usage?: StreamCompleteUsage
+  lastTurnUsage?: {
+    inputTokens: number
+    outputTokens: number
+    cacheReadTokens?: number
+    cacheWriteTokens?: number
+    reasoningTokens?: number
+  }
   aborted?: boolean
   error?: string
 }
@@ -145,6 +161,12 @@ export interface SessionVariablesUpdatedEvent {
   variables: ContextVariable[]
 }
 
+export interface SessionGoalUpdatedEvent {
+  type: 'session:goal-updated'
+  /** null after the goal is cleared */
+  goal: SessionGoal | null
+}
+
 
 // ── Params events ───────────────────────────────
 
@@ -229,6 +251,34 @@ export interface PermissionTimeoutEvent {
   requestId: string
 }
 
+/**
+ * A tool's permission ask is registered but waiting behind another prompt in
+ * the session's serialized permission queue (or coalesced onto an equivalent
+ * pending ask). No card should be shown yet — the UI can surface a
+ * "waiting for permission" state on the tool call instead of "executing".
+ */
+export interface PermissionQueuedEvent {
+  type: 'permission:queued'
+  /** The pending request this ask is queued behind / coalesced into. */
+  requestId: string
+  toolCallId: string
+  messageId: string
+}
+
+/**
+ * A pending permission ask settled (user decision, grant auto-resolve, or
+ * session cleanup). Lets every surface clear cards/waiting states for the
+ * head ask and all coalesced followers — including surfaces that did not
+ * originate the response (e.g. renderer when approved remotely).
+ */
+export interface PermissionSettledEvent {
+  type: 'permission:settled'
+  requestId: string
+  /** Head ask's tool call plus all coalesced followers'. */
+  toolCallIds: string[]
+  decision: 'allowed' | 'rejected'
+}
+
 // ── Tool lifecycle (fine-grained) ───────────────
 
 export interface ToolExecutingEvent {
@@ -303,11 +353,14 @@ export type SessionEvent =
   | ContextSizeUpdatedEvent
   | ContextCompactCompletedEvent
   | SessionVariablesUpdatedEvent
+  | SessionGoalUpdatedEvent
   | StreamParamsResolvingEvent
   | RequestSnapshotEvent
   | SkillActivatedEvent
   | PermissionRequestEvent
   | PermissionTimeoutEvent
+  | PermissionQueuedEvent
+  | PermissionSettledEvent
   | ToolExecutingEvent
   | ToolMetadataEvent
   | SessionRenamedEvent

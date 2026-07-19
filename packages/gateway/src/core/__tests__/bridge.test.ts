@@ -169,15 +169,16 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'hello',
       raw,
     })
 
     expect(channel.typingSignals).toEqual([
-      { userId: 'user-1', raw },
-      { userId: 'user-1', raw, status: 'cancel' },
+      { conversationId: 'user-1', userId: 'user-1', raw },
+      { conversationId: 'user-1', userId: 'user-1', raw, status: 'cancel' },
     ])
-    expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Echo: hello', raw }])
+    expect(channel.sent).toEqual([{ conversationId: 'user-1', userId: 'user-1', text: 'Echo: hello', raw }])
     expect(channel.sent.every(msg => msg.text.trim().length > 0)).toBe(true)
   })
 
@@ -213,6 +214,7 @@ describe('GatewayBridge', () => {
     const handlePromise = bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '需要工具',
       raw,
     })
@@ -223,6 +225,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '1',
       raw,
     })
@@ -272,6 +275,7 @@ describe('GatewayBridge', () => {
     const handlePromise = bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'create a tmp.md',
       raw,
     })
@@ -280,6 +284,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'reply-user',
+      conversationId: 'reply-user',
       text: '１',
       raw: { from_user_id: 'reply-user', context_token: 'token-1' },
     })
@@ -313,6 +318,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'hello',
       raw,
     })
@@ -321,7 +327,7 @@ describe('GatewayBridge', () => {
       'gateway:mock:user-1',
       'auto-accept-edits',
     )
-    expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Echo: hello', raw }])
+    expect(channel.sent).toEqual([{ conversationId: 'user-1', userId: 'user-1', text: 'Echo: hello', raw }])
   })
 
   it('serializes normal messages for one gateway conversation', async () => {
@@ -345,6 +351,7 @@ describe('GatewayBridge', () => {
     const first = bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'first',
       raw,
     })
@@ -352,6 +359,7 @@ describe('GatewayBridge', () => {
     const second = bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'second',
       raw,
     })
@@ -386,6 +394,7 @@ describe('GatewayBridge', () => {
     const slow = bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'slow',
       raw: { from_user_id: 'user-1' },
     })
@@ -394,6 +403,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-2',
+      conversationId: 'user-2',
       text: 'fast',
       raw: { from_user_id: 'user-2' },
     })
@@ -433,6 +443,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'needs tool',
       raw,
     })
@@ -441,6 +452,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '1',
       raw,
     })
@@ -470,6 +482,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'hello',
       raw,
     })
@@ -496,6 +509,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'hello',
       raw,
     })
@@ -528,13 +542,14 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'hello',
       raw,
     })
 
     expect(channel.sendAttempts.map(message => message.text)).toEqual([first, second])
     expect(channel.sent.map(message => message.text)).toEqual([first])
-    expect(channel.typingSignals.at(-1)).toEqual({ userId: 'user-1', raw, status: 'cancel' })
+    expect(channel.typingSignals.at(-1)).toEqual({ conversationId: 'user-1', userId: 'user-1', raw, status: 'cancel' })
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Aborted outbound text flush after send failure; dropped 1 segment(s), 2 char(s).'),
       expect.any(Error),
@@ -556,18 +571,21 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'first',
       raw,
     })
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '/new',
       raw,
     })
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'second',
       raw,
     })
@@ -596,12 +614,14 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '/new',
       raw,
     })
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'after new',
       raw,
     })
@@ -628,12 +648,13 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '/new session',
       raw,
     })
 
     expect(runtime.messages).toEqual([])
-    expect(channel.sent).toEqual([{ userId: 'user-1', text: '用法：/new', raw }])
+    expect(channel.sent).toEqual([{ conversationId: 'user-1', userId: 'user-1', text: '用法：/new', raw }])
   })
 
   it('recognizes shared renderer commands that do not have channel-side behavior', async () => {
@@ -651,12 +672,14 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '/cd /tmp/project',
       raw,
     })
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '/compact',
       raw,
     })
@@ -696,6 +719,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '/memory status',
       raw,
     })
@@ -714,7 +738,7 @@ describe('GatewayBridge', () => {
       userId: 'user-1',
       raw,
     })
-    expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Memory is ready', raw }])
+    expect(channel.sent).toEqual([{ conversationId: 'user-1', userId: 'user-1', text: 'Memory is ready', raw }])
   })
 
   it('lets unknown slash input continue as chat content', async () => {
@@ -736,6 +760,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'mock',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: '/skill explain this',
       raw,
       actor: {
@@ -764,7 +789,7 @@ describe('GatewayBridge', () => {
         }),
       }),
     })])
-    expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Echo: /skill explain this', raw }])
+    expect(channel.sent).toEqual([{ conversationId: 'user-1', userId: 'user-1', text: 'Echo: /skill explain this', raw }])
   })
 
   it('derives origin connector and workspace from account-scoped channel ids', async () => {
@@ -782,6 +807,7 @@ describe('GatewayBridge', () => {
     await bridge.handle({
       channelId: 'wechat:work',
       userId: 'user-1',
+      conversationId: 'user-1',
       text: 'hello',
       raw,
     })
@@ -802,7 +828,7 @@ describe('GatewayBridge', () => {
         }),
       }),
     })])
-    expect(channel.sent).toEqual([{ userId: 'user-1', text: 'Echo: hello', raw }])
+    expect(channel.sent).toEqual([{ conversationId: 'user-1', userId: 'user-1', text: 'Echo: hello', raw }])
   })
 })
 

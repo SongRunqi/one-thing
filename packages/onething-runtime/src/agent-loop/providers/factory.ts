@@ -15,10 +15,16 @@ import {
 	createACPAgentProvider,
 	type CoreACPAgentProviderOptions,
 } from "./acp.js";
+import { createExternalAgentProvider } from "../../external-agents/provider.js";
+import type {
+	ExternalAgentConnector,
+	ExternalAgentSessionLink,
+} from "../../external-agents/types.js";
 import {
 	resolveOnethingProviderBaseUrl,
 	type OnethingZhipuApiMode,
 } from "../../providers/zhipu.js";
+import { resolveOnethingModelCapabilities } from "../../providers/model-capability.js";
 
 export interface AgentProviderRuntimeOAuthToken {
 	accessToken: string;
@@ -65,6 +71,13 @@ export interface CreateAgentProviderFromRuntimeOptions {
 	acpCwd?: CoreACPAgentProviderOptions["cwd"];
 	codexRefreshOAuthToken?: CodexAgentProviderOptions["refreshOAuthToken"];
 	codexRequestDumper?: CodexAgentProviderOptions["requestDumper"];
+	/** Host-provided external agent connectors keyed by provider id. */
+	externalAgentConnectors?: Record<string, ExternalAgentConnector | undefined>;
+	resolveExternalAgentSessionLink?: (
+		providerId: string,
+		localSessionId: string,
+	) => ExternalAgentSessionLink | undefined;
+	onExternalAgentSessionLink?: (link: ExternalAgentSessionLink) => void;
 }
 
 export type AgentProviderRuntimeFactory = (
@@ -185,10 +198,105 @@ export function createAgentProviderFromRuntime(
 	config: AgentProviderRuntimeConfig,
 	options: CreateAgentProviderFromRuntimeOptions = {},
 ): AgentProvider | undefined {
-	return (
+	const provider =
 		agentProviderRuntimeFactories.get(providerId)?.(config, options) ??
-		createCustomAgentProviderFromRuntime(providerId, config, options)
-	);
+		createCustomAgentProviderFromRuntime(providerId, config, options);
+	if (!provider) return undefined;
+	// ACP/external-agent capabilities come from the connected agent itself —
+	// the model ledger has nothing to say about them.
+	if (providerId === "acp" || providerId === "claude-code-agent") return provider;
+	return withPerModelCapabilities(provider, providerId, config);
+}
+
+/**
+ * Per-model capability resolution: the provider's own capabilities describe
+ * its transport (modalities, structured tool results); the capability ledger
+ * answers the per-model booleans (reasoning/vision/tools/image output) so a
+ * multi-model provider (copilot, openrouter) stops inheriting whatever the
+ * session's initial model could do. The base capabilities stay as the shape
+ * template; ledger verdicts flip the flags and their capability tags.
+ */
+function withPerModelCapabilities(
+	provider: AgentProvider,
+	providerId: string,
+	config: AgentProviderRuntimeConfig,
+): AgentProvider {
+	const resolveBase = async (model: string): Promise<AgentModelCapabilities> =>
+		(await provider.getModelCapabilities?.(model)) ??
+		provider.capabilities ?? {
+			capabilities: ["text-input", "text-output"],
+			inputModalities: ["text"],
+			outputModalities: ["text"],
+		};
+
+	return {
+		...provider,
+		getModelCapabilities: async (model: string) => {
+			const base = await resolveBase(model);
+			const resolved = resolveOnethingModelCapabilities({
+				providerId,
+				modelId: model,
+				customApiType: config.apiType,
+				override: config.modelCapabilitiesByModel?.[model],
+				registryEntry: config.models?.[model],
+			});
+			const limits = config.models?.[model];
+
+			const capabilities = new Set<AgentCapability>(base.capabilities);
+			const inputModalities = new Set(base.inputModalities);
+			const outputModalities = new Set(base.outputModalities);
+
+			// A 'default' verdict means the ledger has no knowledge — the
+			// provider's own declaration stands untouched. Anything stronger
+			// (override, registry, pattern) wins over the snapshot.
+			const ledgerKnows = (capability: keyof typeof resolved.source): boolean =>
+				resolved.source[capability] !== "default";
+			const setTags = (enabled: boolean, tags: AgentCapability[]): void => {
+				for (const tag of tags) {
+					if (enabled) capabilities.add(tag);
+					else capabilities.delete(tag);
+				}
+			};
+
+			const reasoning = ledgerKnows("reasoning")
+				? resolved.reasoning
+				: base.supportsReasoning === true || base.capabilities.includes("reasoning");
+			const tools = ledgerKnows("tools")
+				? resolved.tools
+				: base.supportsTools !== false;
+			if (ledgerKnows("reasoning")) setTags(reasoning, ["reasoning"]);
+			if (ledgerKnows("tools")) setTags(tools, ["tool-calls", "structured-tool-results"]);
+			if (ledgerKnows("vision")) {
+				setTags(resolved.vision, ["vision-input", "file-input"]);
+				if (resolved.vision) {
+					inputModalities.add("image");
+					inputModalities.add("file");
+				} else {
+					inputModalities.delete("image");
+					inputModalities.delete("file");
+				}
+			}
+			if (ledgerKnows("imageOutput")) {
+				setTags(resolved.imageOutput, ["image-output"]);
+				if (resolved.imageOutput) outputModalities.add("image");
+				else outputModalities.delete("image");
+			}
+
+			return {
+				...base,
+				capabilities: [...capabilities],
+				inputModalities: [...inputModalities],
+				outputModalities: [...outputModalities],
+				supportsTools: tools,
+				supportsStructuredToolResults: tools
+					? base.supportsStructuredToolResults !== false
+					: false,
+				supportsReasoning: reasoning,
+				maxInputTokens: positiveInteger(limits?.contextLength) ?? base.maxInputTokens,
+				maxOutputTokens: positiveInteger(limits?.maxOutputTokens) ?? base.maxOutputTokens,
+			};
+		},
+	};
 }
 
 function isCustomAgentProviderRuntime(providerId: string): boolean {
@@ -296,6 +404,7 @@ function createCustomAgentProviderFromRuntime(
 		supportsReasoning: capabilities.reasoning,
 		supportsTools: capabilities.tools,
 		includeAssistantReasoning: capabilities.reasoning,
+		reasoningStyle: "openai-effort",
 	});
 }
 
@@ -336,6 +445,28 @@ registerAgentProviderRuntime(
 );
 
 registerAgentProviderRuntime(
+	"claude-code-agent",
+	(_config, options) => {
+		const connector = options.externalAgentConnectors?.["claude-code-agent"];
+		if (!connector) return undefined;
+
+		return createExternalAgentProvider({
+			providerId: "claude-code-agent",
+			connector,
+			localSessionId: options.localSessionId,
+			workingDirectory: options.workingDirectory,
+			resolveSessionLink: (localSessionId) =>
+				options.resolveExternalAgentSessionLink?.(
+					"claude-code-agent",
+					localSessionId,
+				),
+			onSessionLink: options.onExternalAgentSessionLink,
+		});
+	},
+	{ replace: true },
+);
+
+registerAgentProviderRuntime(
 	"codex",
 	(config, options) =>
 		createCodexAgentProvider({
@@ -362,6 +493,7 @@ registerAgentProviderRuntime(
 			supportsVision: true,
 			supportsReasoning: true,
 			maxTokensField: "max_completion_tokens",
+			reasoningStyle: "openai-effort",
 		}),
 	{ replace: true },
 );
@@ -377,6 +509,7 @@ registerAgentProviderRuntime(
 			fetchImpl: options.fetchImpl,
 			supportsVision: true,
 			supportsReasoning: true,
+			reasoningStyle: "openrouter-reasoning",
 		}),
 	{ replace: true },
 );
@@ -392,6 +525,7 @@ registerAgentProviderRuntime(
 			fetchImpl: options.fetchImpl,
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
+			reasoningStyle: "thinking-type",
 		}),
 	{ replace: true },
 );
@@ -407,6 +541,7 @@ registerAgentProviderRuntime(
 			fetchImpl: options.fetchImpl,
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
+			reasoningStyle: "zhipu-thinking",
 		}),
 	{ replace: true },
 );
@@ -423,6 +558,7 @@ registerAgentProviderRuntime(
 			supportsVision: true,
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
+			reasoningStyle: "grok-effort",
 		}),
 	{ replace: true },
 );
@@ -442,6 +578,7 @@ registerAgentProviderRuntime(
 			supportsVision: true,
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
+			reasoningStyle: "grok-effort",
 			resolveAuth: async () => ({ apiKey: accessToken }),
 		});
 	},

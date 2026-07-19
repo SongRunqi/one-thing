@@ -4,6 +4,7 @@ import {
 } from '@onething/electron-host/voice/ipc'
 import {
   IPC_CHANNELS,
+  type VoiceAudioChunkPayload,
   type VoiceRuntimeEvent,
   type VoiceStartRequest,
   type VoiceStopRequest,
@@ -41,6 +42,7 @@ export function registerVoiceHandlers(): void {
       getTTSModels: IPC_CHANNELS.VOICE_GET_TTS_MODELS,
       runtimeReady: IPC_CHANNELS.VOICE_RUNTIME_READY,
       runtimeEvent: IPC_CHANNELS.VOICE_RUNTIME_EVENT,
+      audioChunk: IPC_CHANNELS.VOICE_AUDIO_CHUNK,
     },
     getState: async () => {
       return getOnethingVoiceStateForIpc({
@@ -92,6 +94,9 @@ export function registerVoiceHandlers(): void {
         event: runtimeEvent as VoiceRuntimeEvent,
         handleRuntimeEvent: event => getVoiceService().handleRuntimeEvent(event),
       })
+    },
+    audioChunk: (payload: unknown) => {
+      getVoiceService().handleAudioChunk(payload as VoiceAudioChunkPayload)
     },
   })
 }

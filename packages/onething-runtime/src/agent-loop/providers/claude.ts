@@ -2,6 +2,11 @@ import { collectAgentTurnFromStream } from '@onething/core/agent-loop'
 import { agentToolMessageContentToText } from '@onething/core/agent-loop'
 import { undeliverableAttachmentText } from '@onething/core/agent-loop'
 import { readJsonSseData } from './sse.js'
+import {
+  ONETHING_CLAUDE_THINKING_BUDGETS,
+  onethingClaudeModelFamily,
+  type OnethingClaudeModelFamily,
+} from '../../providers/model-capability.js'
 import type {
   AgentContentPart,
   AgentFinishReason,
@@ -11,6 +16,8 @@ import type {
   AgentMessageContent,
   AgentModelCapabilities,
   AgentProvider,
+  AgentProviderData,
+  AgentReasoningEffort,
   AgentTool,
   AgentToolChoice,
   AgentTurn,
@@ -65,6 +72,10 @@ type ClaudeDocumentBlock = {
   cache_control?: ClaudeCacheControl
 }
 
+type ClaudeThinkingBlock = { type: 'thinking'; thinking: string; signature: string }
+
+type ClaudeRedactedThinkingBlock = { type: 'redacted_thinking'; data: string }
+
 type ClaudeToolResultContentBlock = ClaudeTextBlock | ClaudeImageBlock
 
 type ClaudeToolResultBlock = {
@@ -81,6 +92,8 @@ type ClaudeContentBlock =
   | ClaudeDocumentBlock
   | ClaudeToolUseBlock
   | ClaudeToolResultBlock
+  | ClaudeThinkingBlock
+  | ClaudeRedactedThinkingBlock
 
 type ClaudeMessage =
   | { role: 'user'; content: string | ClaudeContentBlock[] }
@@ -102,28 +115,31 @@ interface ClaudeStreamEvent {
     name?: string
     input?: AgentJsonValue
     text?: string
+    data?: string
   }
   delta?: {
     type?: string
     text?: string
     thinking?: string
+    signature?: string
     partial_json?: string
     stop_reason?: string | null
   }
-  usage?: {
-    input_tokens?: number
-    output_tokens?: number
-  }
+  usage?: ClaudeUsage
   message?: {
-    usage?: {
-      input_tokens?: number
-      output_tokens?: number
-    }
+    usage?: ClaudeUsage
   }
   error?: {
     message?: string
     type?: string
   }
+}
+
+interface ClaudeUsage {
+  input_tokens?: number
+  output_tokens?: number
+  cache_creation_input_tokens?: number
+  cache_read_input_tokens?: number
 }
 
 interface ToolUseAccumulator {
@@ -275,7 +291,35 @@ function toolResultContentBlocks(content: AgentMessageContent): string | ClaudeT
   return hasRichContent ? blocks : agentToolMessageContentToText(content)
 }
 
-function buildClaudeMessages(messages: AgentMessage[]): { system?: string; messages: ClaudeMessage[] } {
+/**
+ * Thinking blocks captured from earlier turns, replayed verbatim. Anthropic
+ * requires the assistant message that carried a tool_use to keep its thinking
+ * block (with signature) when the conversation is sent back, mirroring the
+ * codex encrypted-reasoning round-trip.
+ */
+function claudeThinkingReplayBlocks(message: AgentMessage): ClaudeContentBlock[] {
+  const blocks: ClaudeContentBlock[] = []
+  for (const data of message.providerData ?? []) {
+    if (data.provider !== 'claude') continue
+    if (data.type === 'thinking' && typeof data.signature === 'string' && data.signature) {
+      blocks.push({
+        type: 'thinking',
+        thinking: typeof data.thinking === 'string' ? data.thinking : '',
+        signature: data.signature,
+      })
+      continue
+    }
+    if (data.type === 'redacted-thinking' && typeof data.data === 'string' && data.data) {
+      blocks.push({ type: 'redacted_thinking', data: data.data })
+    }
+  }
+  return blocks
+}
+
+function buildClaudeMessages(
+  messages: AgentMessage[],
+  options?: { includeThinking?: boolean },
+): { system?: string; messages: ClaudeMessage[] } {
   const system: string[] = []
   const result: ClaudeMessage[] = []
 
@@ -309,6 +353,11 @@ function buildClaudeMessages(messages: AgentMessage[]): { system?: string; messa
           name: toolCall.name,
           input: parseToolArguments(toolCall.arguments),
         })
+      }
+      // Thinking blocks lead the message, but never alone — an assistant
+      // message consisting solely of thinking is rejected by the API.
+      if (options?.includeThinking && blocks.length > 0) {
+        blocks.unshift(...claudeThinkingReplayBlocks(message))
       }
       result.push({
         role: 'assistant',
@@ -362,11 +411,18 @@ function mapClaudeStopReason(reason: string | null | undefined): AgentFinishReas
   }
 }
 
-function usageFromAnthropic(inputTokens = 0, outputTokens = 0): AgentUsage {
+function usageFromAnthropic(
+  inputTokens = 0,
+  outputTokens = 0,
+  cacheReadTokens = 0,
+  cacheWriteTokens = 0,
+): AgentUsage {
   return {
     inputTokens,
     outputTokens,
     totalTokens: inputTokens + outputTokens,
+    ...(cacheReadTokens > 0 ? { cacheReadTokens } : {}),
+    ...(cacheWriteTokens > 0 ? { cacheWriteTokens } : {}),
   }
 }
 
@@ -377,6 +433,16 @@ function systemBody(options: ClaudeAgentProviderOptions, system: string | undefi
     { type: 'text', text: options.systemHeader },
     { type: 'text', text: system },
   ]
+}
+
+function claudeEffort(
+  effort: AgentReasoningEffort | undefined,
+  family: OnethingClaudeModelFamily,
+): 'low' | 'medium' | 'high' | 'xhigh' | 'max' {
+  if (effort === 'minimal') return 'low'
+  if (effort === 'xhigh') return family.supportsXhigh ? 'xhigh' : 'high'
+  if (effort === 'low' || effort === 'medium' || effort === 'max') return effort
+  return 'high'
 }
 
 function toolCallDoneEvent(
@@ -394,14 +460,39 @@ function toolCallDoneEvent(
   }
 }
 
+interface ThinkingAccumulator {
+  thinking: string
+  signature: string
+}
+
+function thinkingProviderData(entry: ThinkingAccumulator): AgentProviderData {
+  return {
+    provider: 'claude',
+    type: 'thinking',
+    thinking: entry.thinking,
+    signature: entry.signature,
+  }
+}
+
 async function* streamClaudeResponse(
   response: Response,
   turn: number,
 ): AsyncGenerator<AgentTurnStreamEvent, void, void> {
   const toolUses = new Map<number, ToolUseAccumulator>()
+  const thinkingBlocks = new Map<number, ThinkingAccumulator>()
   let inputTokens = 0
   let outputTokens = 0
+  let cacheReadTokens = 0
+  let cacheWriteTokens = 0
   let finishReason: AgentFinishReason = 'unknown'
+
+  const applyUsage = (usage: ClaudeUsage | undefined): void => {
+    if (!usage) return
+    inputTokens = usage.input_tokens ?? inputTokens
+    outputTokens = usage.output_tokens ?? outputTokens
+    cacheReadTokens = usage.cache_read_input_tokens ?? cacheReadTokens
+    cacheWriteTokens = usage.cache_creation_input_tokens ?? cacheWriteTokens
+  }
 
   for await (const event of readJsonSseData<ClaudeStreamEvent>(response, {
     sourceName: 'Claude agent loop',
@@ -411,13 +502,24 @@ async function* streamClaudeResponse(
       throw new Error(`Claude agent loop error: ${event.error?.message ?? 'unknown error'}`)
     }
 
-    if (event.message?.usage) {
-      inputTokens = event.message.usage.input_tokens ?? inputTokens
-      outputTokens = event.message.usage.output_tokens ?? outputTokens
+    applyUsage(event.message?.usage)
+    applyUsage(event.usage)
+
+    if (event.type === 'content_block_start' && event.content_block?.type === 'thinking') {
+      thinkingBlocks.set(event.index ?? 0, { thinking: '', signature: '' })
+      continue
     }
-    if (event.usage) {
-      inputTokens = event.usage.input_tokens ?? inputTokens
-      outputTokens = event.usage.output_tokens ?? outputTokens
+
+    if (event.type === 'content_block_start' && event.content_block?.type === 'redacted_thinking') {
+      const data = event.content_block.data
+      if (typeof data === 'string' && data) {
+        yield {
+          type: 'provider-data',
+          turn,
+          providerData: { provider: 'claude', type: 'redacted-thinking', data },
+        }
+      }
+      continue
     }
 
     if (event.type === 'content_block_start' && event.content_block?.type === 'tool_use') {
@@ -456,7 +558,14 @@ async function* streamClaudeResponse(
         continue
       }
       if (event.delta?.type === 'thinking_delta' && event.delta.thinking) {
+        const entry = thinkingBlocks.get(event.index ?? 0)
+        if (entry) entry.thinking += event.delta.thinking
         yield { type: 'reasoning-delta', turn, delta: event.delta.thinking }
+        continue
+      }
+      if (event.delta?.type === 'signature_delta' && event.delta.signature) {
+        const entry = thinkingBlocks.get(event.index ?? 0)
+        if (entry) entry.signature += event.delta.signature
         continue
       }
       if (event.delta?.type === 'input_json_delta') {
@@ -478,20 +587,29 @@ async function* streamClaudeResponse(
     }
 
     if (event.type === 'content_block_stop') {
-      const entry = toolUses.get(event.index ?? -1)
+      const index = event.index ?? -1
+      const thinkingEntry = thinkingBlocks.get(index)
+      if (thinkingEntry) {
+        // Signed blocks are replayed verbatim on later turns; unsigned ones
+        // (third-party anthropic-compatible endpoints) have nothing the API
+        // would verify, so skip them.
+        if (thinkingEntry.signature) {
+          yield { type: 'provider-data', turn, providerData: thinkingProviderData(thinkingEntry) }
+        }
+        thinkingBlocks.delete(index)
+        continue
+      }
+      const entry = toolUses.get(index)
       if (entry?.started) {
         yield toolCallDoneEvent(turn, entry)
-        toolUses.delete(event.index ?? -1)
+        toolUses.delete(index)
       }
       continue
     }
 
     if (event.type === 'message_delta') {
       finishReason = mapClaudeStopReason(event.delta?.stop_reason)
-      if (event.usage) {
-        inputTokens = event.usage.input_tokens ?? inputTokens
-        outputTokens = event.usage.output_tokens ?? outputTokens
-      }
+      applyUsage(event.usage)
     }
   }
 
@@ -503,7 +621,7 @@ async function* streamClaudeResponse(
     type: 'finish',
     turn,
     finishReason,
-    usage: usageFromAnthropic(inputTokens, outputTokens),
+    usage: usageFromAnthropic(inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens),
   }
 }
 
@@ -545,8 +663,11 @@ function applyPromptCacheBreakpoints(body: {
       ? (message.content ? [{ type: 'text', text: message.content }] : [])
       : [...message.content]
     if (blocks.length === 0) continue
+    const last = blocks[blocks.length - 1]
+    // cache_control is not allowed on thinking blocks.
+    if (last.type === 'thinking' || last.type === 'redacted_thinking') continue
     blocks[blocks.length - 1] = {
-      ...blocks[blocks.length - 1],
+      ...last,
       cache_control: { type: 'ephemeral' },
     }
     body.messages[i] = { ...message, content: blocks }
@@ -568,10 +689,17 @@ export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): 
     tools?: ClaudeTool[]
     tool_choice?: ClaudeToolChoice
     temperature?: number
+    thinking?:
+      | { type: 'adaptive' }
+      | { type: 'enabled'; budget_tokens: number }
+      | { type: 'disabled' }
+    output_config?: { effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' }
   }
 
   async function* streamTurn(request: AgentTurnRequest): AsyncGenerator<AgentTurnStreamEvent, void, void> {
-    const converted = buildClaudeMessages(request.messages)
+    const family = onethingClaudeModelFamily(request.model)
+    const thinkingEnabled = request.thinking === 'enabled'
+    const converted = buildClaudeMessages(request.messages, { includeThinking: thinkingEnabled })
     const tools = request.toolChoice === 'none' ? undefined : toClaudeTools(request.tools)
     const body: ClaudeRequestBody = {
       model: request.model,
@@ -580,13 +708,38 @@ export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): 
       stream: true,
     }
 
+    if (thinkingEnabled) {
+      const effort = claudeEffort(request.reasoningEffort, family)
+      if (family.alwaysThinking) {
+        // Fable/Mythos: thinking is always on and the param is rejected —
+        // only the effort knob is sent.
+        body.output_config = { effort }
+      } else if (family.adaptive) {
+        body.thinking = { type: 'adaptive' }
+        body.output_config = { effort }
+      } else {
+        const budget = ONETHING_CLAUDE_THINKING_BUDGETS[request.reasoningEffort ?? 'high']
+        body.thinking = { type: 'enabled', budget_tokens: budget }
+        // budget_tokens must stay below max_tokens.
+        if (body.max_tokens <= budget) body.max_tokens = budget + 4096
+      }
+    } else if (request.thinking === 'disabled' && family.adaptive && !family.alwaysThinking) {
+      // Sonnet 5 runs adaptive thinking when the param is omitted; an explicit
+      // off must be sent. Fable rejects 'disabled', hence the guard above.
+      body.thinking = { type: 'disabled' }
+    }
+
     const system = systemBody(options, converted.system)
     if (system) body.system = system
     if (tools?.length) {
       body.tools = tools
       body.tool_choice = toClaudeToolChoice(request.toolChoice)
     }
-    if (request.temperature !== undefined) body.temperature = request.temperature
+    // Extended thinking requires default sampling, and 4.7+/Sonnet 5/Fable
+    // reject temperature outright.
+    if (request.temperature !== undefined && !thinkingEnabled && !family.samplingRemoved) {
+      body.temperature = request.temperature
+    }
     if (options.promptCaching) applyPromptCacheBreakpoints(body)
 
     const headers: Record<string, string> = {

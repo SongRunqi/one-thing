@@ -279,28 +279,8 @@
                 {{ contentMetaText }}
               </div>
 
-              <div
-                v-if="contentKind === 'diff'"
-                class="collapse-panel-diff"
-                :class="{ wrap: wrapContent }"
-                data-collapse-panel-diff
-              >
-                <div class="collapse-panel-diff-lines">
-                  <div
-                    v-for="(line, index) in renderedDiffLines"
-                    :key="`${index}:${line.raw}`"
-                    class="collapse-panel-diff-line"
-                    :class="`line-${line.kind}`"
-                    data-collapse-panel-diff-line
-                  >
-                    <span class="collapse-panel-diff-prefix">{{ line.prefix }}</span>
-                    <span class="collapse-panel-diff-content">{{ line.content }}</span>
-                  </div>
-                </div>
-              </div>
-
               <pre
-                v-else-if="contentKind === 'code'"
+                v-if="contentKind === 'code'"
                 class="collapse-panel-code-block"
                 :class="{ wrap: wrapContent }"
                 data-collapse-panel-code
@@ -474,9 +454,6 @@ const contentMetaText = computed(() => {
   const parts = [props.filePath, props.language].filter(Boolean)
   return parts.join(' · ')
 })
-const renderedDiffLines = computed(() =>
-  normalizedContent.value.split(/\r?\n/).map(parseDiffLine)
-)
 const durationText = computed(() => {
   if (!props.showDuration) return ''
   const duration = currentDurationMs.value
@@ -621,32 +598,6 @@ function toTimestampMs(value?: number | Date): number | null {
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`
   return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`
-}
-
-interface RenderedDiffLine {
-  raw: string
-  prefix: string
-  content: string
-  kind: 'add' | 'delete' | 'hunk' | 'meta' | 'context'
-}
-
-function parseDiffLine(raw: string): RenderedDiffLine {
-  if (raw.startsWith('@@')) {
-    return { raw, prefix: '', content: raw, kind: 'hunk' }
-  }
-  if (raw.startsWith('+++') || raw.startsWith('---') || raw.startsWith('diff ') || raw.startsWith('index ')) {
-    return { raw, prefix: '', content: raw, kind: 'meta' }
-  }
-  if (raw.startsWith('+')) {
-    return { raw, prefix: '+', content: raw.slice(1), kind: 'add' }
-  }
-  if (raw.startsWith('-')) {
-    return { raw, prefix: '-', content: raw.slice(1), kind: 'delete' }
-  }
-  if (raw.startsWith(' ')) {
-    return { raw, prefix: '', content: raw.slice(1), kind: 'context' }
-  }
-  return { raw, prefix: '', content: raw, kind: 'context' }
 }
 
 function setCollapseTransitionHeight(element: Element) {
@@ -922,8 +873,7 @@ function clearCollapseTransitionHeight(element: Element) {
 }
 
 .collapse-panel-code-block,
-.collapse-panel-text-block,
-.collapse-panel-diff {
+.collapse-panel-text-block {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
@@ -967,93 +917,6 @@ function clearCollapseTransitionHeight(element: Element) {
   font-weight: 650;
   line-height: 1;
   text-transform: uppercase;
-}
-
-.collapse-panel-diff {
-  max-height: min(420px, 48vh);
-  padding: 0;
-  overscroll-behavior: contain;
-}
-
-.collapse-panel-diff.wrap {
-  overflow-x: hidden;
-}
-
-.collapse-panel-diff-lines {
-  width: max-content;
-  min-width: 100%;
-}
-
-.collapse-panel-diff.wrap .collapse-panel-diff-lines {
-  width: auto;
-  min-width: 0;
-}
-
-.collapse-panel-diff-line {
-  --collapse-panel-diff-row-bg: transparent;
-  display: flex;
-  align-items: stretch;
-  min-height: 19px;
-  background: var(--collapse-panel-diff-row-bg);
-  color: var(--ui-text-secondary-fg, var(--text-secondary));
-  white-space: pre;
-}
-
-.collapse-panel-diff-prefix {
-  display: inline-flex;
-  justify-content: center;
-  flex: 0 0 24px;
-  width: 24px;
-  padding: 1px 0;
-  border-left: 3px solid transparent;
-  color: var(--collapse-panel-muted-fg);
-  user-select: none;
-}
-
-.collapse-panel-diff-content {
-  flex: 1 1 auto;
-  min-width: max-content;
-  padding: 1px 12px 1px 2px;
-}
-
-.collapse-panel-diff.wrap .collapse-panel-diff-content {
-  min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.collapse-panel-diff-line.line-add {
-  --collapse-panel-diff-row-bg: var(--ui-status-success-bg, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.collapse-panel-diff-line.line-add .collapse-panel-diff-prefix {
-  border-left-color: var(--ui-status-success-fg, #10b981);
-  color: var(--ui-status-success-fg, #10b981);
-}
-
-.collapse-panel-diff-line.line-delete {
-  --collapse-panel-diff-row-bg: var(--ui-status-danger-bg, transparent);
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.collapse-panel-diff-line.line-delete .collapse-panel-diff-prefix {
-  border-left-color: var(--ui-status-danger-fg, #ef4444);
-  color: var(--ui-status-danger-fg, #ef4444);
-}
-
-.collapse-panel-diff-line.line-hunk,
-.collapse-panel-diff-line.line-meta {
-  --collapse-panel-diff-row-bg: color-mix(in srgb, var(--collapse-panel-border) 24%, transparent);
-  color: var(--collapse-panel-muted-fg);
-  font-weight: 560;
-}
-
-.collapse-panel-diff-line.line-hunk .collapse-panel-diff-content,
-.collapse-panel-diff-line.line-meta .collapse-panel-diff-content {
-  min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .collapse-panel.is-disabled {

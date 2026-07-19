@@ -33,7 +33,11 @@ import type {
 import type {
   ACPAgentConfig,
   ACPAgentState,
+  ACPClientRuntimeOptions,
   ACPConnectionStatus,
+  ACPPermissionDecision,
+  ACPPermissionMode,
+  ACPPermissionRequestContext,
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
 } from './types.js'
@@ -169,13 +173,18 @@ export class ACPClient {
   private lastUsedAtValue: number | undefined
   private sessions = new Map<string, ACPSessionRecord>()
   private updateQueues = new Map<string, BoundedAsyncQueue<ACPPromptStreamEvent>>()
+  /** acpSessionId → context of the currently streaming prompt (for permission attribution). */
+  private promptContexts = new Map<string, { localSessionId: string; messageId?: string; cwd: string }>()
   private terminals = new Map<string, TerminalRecord>()
   private activePromptCountValue = 0
   private stderrTail = ''
   private unexpectedExit = false
   private connectPromise: Promise<void> | null = null
 
-  constructor(private config: ACPAgentConfig) {}
+  constructor(
+    private config: ACPAgentConfig,
+    private runtimeOptions: ACPClientRuntimeOptions = {},
+  ) {}
 
   get id(): string {
     return this.config.id
@@ -368,6 +377,11 @@ export class ACPClient {
       Math.max(1, this.config.maxBufferedUpdates ?? DEFAULT_MAX_BUFFERED_UPDATES)
     )
     this.updateQueues.set(session.acpSessionId, queue)
+    this.promptContexts.set(session.acpSessionId, {
+      localSessionId: options.localSessionId,
+      messageId: options.messageId,
+      cwd: options.cwd,
+    })
     this.activePromptCountValue += 1
     this.lastUsedAtValue = Date.now()
 
@@ -418,6 +432,7 @@ export class ACPClient {
       })
       .finally(() => {
         this.updateQueues.delete(session.acpSessionId)
+        this.promptContexts.delete(session.acpSessionId)
         this.activePromptCountValue = Math.max(0, this.activePromptCountValue - 1)
         this.lastUsedAtValue = Date.now()
         if (options.abortSignal && abortListener) {
@@ -477,7 +492,41 @@ export class ACPClient {
   }
 
   private async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
-    const mode = this.config.permissionMode ?? 'allow'
+    const bridge = this.runtimeOptions.getPermissionBridge?.()
+    if (!bridge) {
+      // No interactive surface registered (headless server, tests): keep the
+      // legacy policy-driven resolution.
+      return this.resolvePermissionFromMode(this.config.permissionMode ?? 'allow', params)
+    }
+
+    let decision: ACPPermissionDecision
+    try {
+      decision = await bridge(this.buildPermissionContext(params))
+    } catch (error) {
+      console.warn(`[ACP:${this.id}] permission bridge failed; rejecting request:`, error)
+      return this.resolvePermissionFromMode('reject', params)
+    }
+
+    switch (decision.behavior) {
+      case 'allow':
+        return this.resolvePermissionFromMode('allow', params)
+      case 'reject':
+        return this.resolvePermissionFromMode('reject', params)
+      case 'select': {
+        const match = params.options.find(option => option.optionId === decision.optionId)
+        if (match) return { outcome: { outcome: 'selected', optionId: match.optionId } }
+        return this.resolvePermissionFromMode('reject', params)
+      }
+      case 'cancel':
+      default:
+        return { outcome: { outcome: 'cancelled' } }
+    }
+  }
+
+  private resolvePermissionFromMode(
+    mode: ACPPermissionMode,
+    params: RequestPermissionRequest,
+  ): RequestPermissionResponse {
     if (mode === 'reject') {
       const reject = params.options.find(option => option.kind.includes('reject')) ?? params.options[0]
       if (!reject) return { outcome: { outcome: 'cancelled' } }
@@ -487,6 +536,34 @@ export class ACPClient {
     const allow = params.options.find(option => option.kind.includes('allow')) ?? params.options[0]
     if (!allow) return { outcome: { outcome: 'cancelled' } }
     return { outcome: { outcome: 'selected', optionId: allow.optionId } }
+  }
+
+  private buildPermissionContext(params: RequestPermissionRequest): ACPPermissionRequestContext {
+    const promptContext = this.promptContexts.get(params.sessionId)
+    const sessionRecord = promptContext
+      ? undefined
+      : Array.from(this.sessions.values()).find(record => record.acpSessionId === params.sessionId)
+    const toolCall = params.toolCall
+    return {
+      agentId: this.config.id,
+      agentName: this.config.name,
+      localSessionId: promptContext?.localSessionId ?? sessionRecord?.localSessionId,
+      messageId: promptContext?.messageId,
+      cwd: promptContext?.cwd ?? sessionRecord?.cwd,
+      toolCall: toolCall
+        ? {
+            toolCallId: toolCall.toolCallId,
+            title: toolCall.title ?? undefined,
+            kind: toolCall.kind ?? undefined,
+            rawInput: toolCall.rawInput,
+          }
+        : undefined,
+      options: params.options.map(option => ({
+        optionId: option.optionId,
+        name: option.name,
+        kind: option.kind,
+      })),
+    }
   }
 
   private async sessionUpdate(params: SessionNotification): Promise<void> {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { JsonObject, JsonObjectProperty } from "@onething/core";
 import type { VariableVolatility } from "../../variables/types.js";
+import { isCapabilityVariable } from "../../variables/types.js";
 import { Tool } from "../tool.js";
 
 export type VariableAction = "list" | "set" | "append" | "remove" | "delete";
@@ -15,6 +16,7 @@ export interface RuntimeContextVariable {
 	readonly?: boolean;
 	volatility?: VariableVolatility;
 	description?: string;
+	updatedAt?: number;
 }
 
 export interface RuntimeVariableContext {
@@ -67,6 +69,7 @@ interface VariableMetadataVariable extends JsonObject {
 	readonly?: boolean;
 	volatility?: VariableVolatility;
 	description?: string;
+	updatedAt?: number;
 }
 
 interface VariableMetadata extends JsonObject {
@@ -121,14 +124,31 @@ function summarizeForMetadata(
 		readonly: v.readonly,
 		volatility: v.volatility,
 		description: v.description,
+		updatedAt: v.updatedAt,
 	}));
 }
 
-function renderForOutput(snapshot: RuntimeContextVariable[]): string {
+function formatAge(updatedAt: number, now: number): string {
+	const minutes = Math.floor(Math.max(0, now - updatedAt) / 60_000);
+	if (minutes < 1) return "just now";
+	if (minutes < 60) return `${minutes}m ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours}h ago`;
+	return `${Math.floor(hours / 24)}d ago`;
+}
+
+function renderForOutput(
+	snapshot: RuntimeContextVariable[],
+	now: number = Date.now(),
+): string {
 	if (snapshot.length === 0) return "No context variables are set.";
 	return snapshot
 		.map((v) => {
-			const flags = `${v.scope ? ` [${v.scope}]` : ""}${v.readonly ? " [readonly]" : ""}${v.volatility && v.volatility !== "static" ? ` [${v.volatility}]` : ""}`;
+			// Age makes stale state visible so the model can update or clean it
+			// up. Tool output is never part of the cached prompt prefix, so a
+			// live relative time is safe here (unlike in the prompt sections).
+			const age = v.updatedAt ? ` [updated ${formatAge(v.updatedAt, now)}]` : "";
+			const flags = `${v.scope ? ` [${v.scope}]` : ""}${v.readonly ? " [readonly]" : ""}${v.volatility && v.volatility !== "static" ? ` [${v.volatility}]` : ""}${age}`;
 			const desc = v.description ? ` - ${v.description}` : "";
 			if (v.values && v.values.length > 0) {
 				return `${v.name} = ${v.value || "(empty)"}\nvalues:\n${v.values.map((value, index) => `  [${index}] ${value}${index === 0 && v.value ? " (current)" : ""}`).join("\n")}${flags}${desc}`;
@@ -180,6 +200,34 @@ Project directories (the "project_dirs" list) are managed by a separate tool - c
 		renderKind: "text",
 
 		parameters: VariableParameters,
+
+		// Ordinary variables are the session's live state board and stay
+		// frictionless — no effect, no prompt. A capability variable is different:
+		// its value is a directory the system acts on, so repointing one is a
+		// proposal the user approves, not something that happens silently.
+		analyze(args) {
+			const name = args.name?.trim();
+			if (!name || args.action === "list") return { effects: [] };
+			if (!isCapabilityVariable(name)) return { effects: [] };
+
+			const value = args.value?.trim();
+			const title =
+				args.action === "delete"
+					? `Reset ${name} to its default`
+					: `Repoint ${name} to: ${value || ""}`;
+
+			return {
+				effects: [
+					{
+						kind: "capability_change" as const,
+						resources: value ? [value] : [name],
+						barrier: true,
+						metadata: { variable: name, value, action: args.action },
+					},
+				],
+				preview: { title, metadata: { variable: name, value } },
+			};
+		},
 
 		async execute(args, ctx) {
 			const registry = adapters.getRegistry();

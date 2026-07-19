@@ -11,13 +11,13 @@ function readRendererFile(relativePath: string): string {
 }
 
 describe('renderer highlight group variables', () => {
-  it('routes hljs, streaming tokens, and tool diff syntax through the same keyword group', () => {
+  // Tool diffs no longer carry their own highlighter: settled diffs render
+  // through @pierre/diffs (shiki), which is themed via --diff-* in DiffView.
+  it('routes hljs and streaming tokens through the same keyword group', () => {
     const hljsTheme = readRendererFile('styles/hljs-theme.css')
     const streamingCodeBlock = readRendererFile('components/chat/message/StreamingCodeBlock.vue')
-    const toolDiffPreview = readRendererFile('components/chat/ToolDiffPreview.vue')
 
     expect(hljsTheme).toContain('var(--hg-syntax-keyword-fg')
     expect(streamingCodeBlock).toContain('var(--hg-syntax-keyword-fg')
-    expect(toolDiffPreview).toContain('var(--hg-syntax-keyword-fg')
   })
 })

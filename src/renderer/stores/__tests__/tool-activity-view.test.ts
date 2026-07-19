@@ -71,7 +71,7 @@ describe('tool activity view', () => {
     expect(activity.additions).toBe(220)
     expect(activity.stats).toBe('+220 -0')
     expect(activity.hasDetails).toBe(true)
-    expect(activity.defaultExpanded).toBe(true)
+    expect(activity.defaultExpanded).toBe(false)
   })
 
   it('does not show character-count stats for completed tool output', () => {
@@ -226,7 +226,7 @@ describe('tool activity view', () => {
     expect(activity.stats).toBe('+3 -1')
   })
 
-  it('keeps permission and failed rows collapsed by default', () => {
+  it('opens a permission row and keeps failed rows collapsed', () => {
     const awaiting = buildToolActivityView(step({
       status: 'awaiting-confirmation',
       toolCall: tc({
@@ -240,8 +240,11 @@ describe('tool activity view', () => {
       toolCall: tc({ status: 'failed' }),
     }))
 
+    // The approval prompt only offers the file name and a +N -N tally, so the
+    // row itself has to carry the change the reader is being asked to allow.
     expect(awaiting.isAwaitingConfirmation).toBe(true)
-    expect(awaiting.defaultExpanded).toBe(false)
+    expect(awaiting.defaultExpanded).toBe(true)
+    // A failure is fully told by its row summary.
     expect(failed.status).toBe('failed')
     expect(failed.defaultExpanded).toBe(false)
   })

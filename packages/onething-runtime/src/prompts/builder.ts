@@ -23,10 +23,12 @@ import osDarwinRaw from "./content/os-darwin.md?raw";
 import osWin32Raw from "./content/os-win32.md?raw";
 import osLinuxRaw from "./content/os-linux.md?raw";
 import contextUpdateConventionRaw from "./content/context-update-convention.md?raw";
+import todoRulesRaw from "./content/todo-rules.md?raw";
 
 const normalizeContent = (s: string) => s.replace(/\n+$/, "");
 
 const CONTEXT_UPDATE_CONVENTION = normalizeContent(contextUpdateConventionRaw);
+const TODO_RULES = normalizeContent(todoRulesRaw);
 
 const AGENTS_MAX_BYTES = 32 * 1024;
 
@@ -40,6 +42,7 @@ export interface OnethingPromptHostAdapters {
 	getHomeDir?(): string;
 	getPlatform?(): NodeJS.Platform | string;
 	getMacOSAutomationDocsPath?(): string | undefined;
+	getTodoPlanDirectory?(): string | undefined;
 }
 
 export interface BuildOnethingPromptContextOptions
@@ -91,6 +94,8 @@ function coreOptions(
 		platform: ctx.platform ?? host?.getPlatform?.() ?? process.platform,
 		macOSAutomationDocsPath:
 			ctx.macOSAutomationDocsPath ?? host?.getMacOSAutomationDocsPath?.(),
+		todoPlanDirectory:
+			ctx.todoPlanDirectory ?? host?.getTodoPlanDirectory?.(),
 	};
 }
 
@@ -120,6 +125,12 @@ async function buildRuntimeSystemPrompt(
 		["known-projects", ctx.knownProjects?.hasAny && knownProjects(ctx)],
 		["skills", skills_(ctx)],
 		["os", os_(ctx)],
+		[
+			"todo",
+			ctx.hasTools && ctx.todoPlanDirectory
+				? todo(ctx, ctx.todoPlanDirectory)
+				: undefined,
+		],
 		["agents-md", loadAgentsMdInstructions(ctx.workingDirectory)],
 		// Mutable at runtime (the variable tool writes to it): kept last among
 		// the static sections so a change invalidates the smallest possible
@@ -245,6 +256,26 @@ function workdir(ctx: CoreBuildPromptContextOptions): string {
 		);
 	}
 	return lines.join("\n");
+}
+
+// The AI todo path is derived from the session id here, in the prompt. That is
+// what scopes it: a session can only name its own file, so there is no shared
+// bucket for two sessions to collide in.
+function todo(
+	ctx: CoreBuildPromptContextOptions,
+	todoDirectory: string,
+): string | undefined {
+	if (!ctx.sessionId) return undefined;
+	const homeDir = ctx.homeDir || os.homedir();
+	const aiTodo = path.join(todoDirectory, "sessions", ctx.sessionId, "ai-todo.md");
+	const userNotes = path.join(todoDirectory, "user-notes");
+	return [
+		"# Todo",
+		`Your AI todo for this session: ${displayPath(aiTodo, homeDir) ?? aiTodo}`,
+		`The user's todo notes: ${displayPath(userNotes, homeDir) ?? userNotes}`,
+		"",
+		TODO_RULES,
+	].join("\n");
 }
 
 function activeProject(project: CorePromptActiveProject): string {

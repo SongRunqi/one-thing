@@ -1998,14 +1998,12 @@ const MAIN_TODO_PLAN_STORE_FORBIDDEN_PATTERNS: RegExp[] = [
   /function\s+getElectronModule/,
   /function\s+countTasks/,
   /function\s+safeSlug/,
-  /function\s+hashKey/,
-  /function\s+workspaceKey/,
   /function\s+readDocument/,
   /function\s+writeFileEnsured/,
   /function\s+hasSubstantiveMarkdownContent/,
-  /workspace-ai-todo content is empty/,
+  /session-ai-todo content is empty/,
   /USER_NOTES_DIR/,
-  /WORKSPACES_DIR/,
+  /SESSIONS_DIR/,
 ]
 
 const MAIN_TODO_PLAN_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [

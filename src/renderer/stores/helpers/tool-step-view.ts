@@ -15,12 +15,23 @@ export interface ToolDiffData {
   afterContentHash?: string
 }
 
-export interface ToolDiffLine {
-  class: string
-  prefix: string
-  content: string
-  oldNum?: number | string
-  newNum?: number | string
+/**
+ * A line of the pre-execution preview.
+ *
+ * This is NOT a diff: before the tool runs, the only thing known is what the
+ * model streamed as arguments. A write has never read the old file, and an
+ * edit's `old_string` may not even match. So the preview shows the arguments
+ * as-is — no +/- markers, no file line numbers, nothing that would pass for
+ * ground truth.
+ */
+export interface ToolPreviewLine {
+  /**
+   * `content` — a line the write tool is about to put in the file.
+   * `old` / `new` — the two halves of an edit's replacement pair.
+   * `label` — a caption introducing the block that follows.
+   */
+  kind: 'content' | 'old' | 'new' | 'label'
+  text: string
 }
 
 export interface StreamingToolContent {
@@ -48,10 +59,8 @@ export interface ToolStepView {
   inlineResult: string | null
   errorPreview: string | null
   streamingContent: StreamingToolContent | null
-  streamingDiff: ToolDiffData | null
-  streamingDiffLines: ToolDiffLine[]
+  streamingPreviewLines: ToolPreviewLine[]
   diff: ToolDiffData | null
-  diffLines: ToolDiffLine[]
   argsJson: string | null
   resultText: string | null
   liveOutput: string | null
@@ -175,7 +184,6 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
   const isRejected = status === 'rejected'
   const diff = getDiffFromStep(step)
   const streamingContent = includeDetails ? getCachedStreamingContent(step, diff, status) : null
-  const streamingDiff = includeDetails ? getStreamingDiff(streamingContent) : null
   const filePath = getToolFilePath(toolCall, diff, streamingContent, step)
   const argsJson = includeDetails ? getArgsJson(step) : null
   const resultText = includeDetails ? getResultText(step) : null
@@ -216,10 +224,8 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
     inlineResult,
     errorPreview,
     streamingContent,
-    streamingDiff,
-    streamingDiffLines: includeDetails && streamingDiff ? parseStreamingDiffLines(streamingContent) : [],
+    streamingPreviewLines: includeDetails ? parseStreamingPreviewLines(streamingContent) : [],
     diff,
-    diffLines: includeDetails && diff ? parseDiffWithLineNumbers(diff.diff) : [],
     argsJson,
     resultText,
     liveOutput,
@@ -234,7 +240,10 @@ function shouldDefaultExpand(toolName: string, status: ToolRenderStatus): boolea
   // Live bash output is the one result the row title can't summarize —
   // show it while the command runs.
   if (status === 'executing' && toolName === 'bash') return true
-  if (status === 'streaming-input') {
+  // A row only opens itself when it wants a decision: an edit awaiting
+  // approval must show what it is about to do. Everything else stays folded —
+  // rows that merely happened are read on demand.
+  if (status === 'awaiting-confirmation') {
     const cat = getFileToolCategory(toolName)
     return cat === 'write' || cat === 'edit'
   }
@@ -308,7 +317,11 @@ export function getToolFilePath(
   return ''
 }
 
-export function getStreamingDiffStats(toolCall: ToolCall | undefined): { additions: number; deletions: number } | null {
+/**
+ * Line counts predicted from the streamed arguments. A prediction, not a
+ * measurement — the edit may still fail to apply.
+ */
+export function getStreamingChangeStats(toolCall: ToolCall | undefined): { additions: number; deletions: number } | null {
   if (!toolCall?.streamingArgs) return null
   const toolName = toolCall.toolName?.toLowerCase() || ''
   const cat = getFileToolCategory(toolName)
@@ -341,72 +354,32 @@ function getPathFromDetails(details: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
-function getStreamingDiff(streamingContent: StreamingToolContent | null): ToolDiffData | null {
-  if (!streamingContent) return null
-  if (streamingContent.kind === 'edit' && !streamingContent.replacements?.length) return null
-  return {
-    diff: '',
-    filePath: streamingContent.filePath,
-    additions: streamingContent.additions,
-    deletions: streamingContent.deletions || 0,
-  }
-}
-
-function parseStreamingDiffLines(streamingContent: StreamingToolContent | null): ToolDiffLine[] {
+function parseStreamingPreviewLines(streamingContent: StreamingToolContent | null): ToolPreviewLine[] {
   if (!streamingContent) return []
   if (streamingContent.kind === 'edit') {
-    return parseStreamingEditDiffLines(streamingContent.replacements || [])
+    return parseStreamingEditPreviewLines(streamingContent.replacements || [])
   }
   if (!streamingContent.content) return []
 
-  const lines = splitDisplayLines(streamingContent.content)
-  const result: ToolDiffLine[] = lines.map((line, index) => ({
-    class: 'diff-add',
-    prefix: '+',
-    content: line,
-    newNum: index + 1,
+  return splitDisplayLines(streamingContent.content).map(text => ({
+    kind: 'content' as const,
+    text,
   }))
-
-  return result
 }
 
-function parseStreamingEditDiffLines(replacements: StreamingEditReplacement[]): ToolDiffLine[] {
-  const result: ToolDiffLine[] = []
-  let oldLineNum = 1
-  let newLineNum = 1
+function parseStreamingEditPreviewLines(replacements: StreamingEditReplacement[]): ToolPreviewLine[] {
+  const result: ToolPreviewLine[] = []
+  const numbered = replacements.length > 1
 
-  replacements.forEach((replacement, replacementIndex) => {
-    if (replacementIndex > 0) {
-      result.push({
-        class: 'diff-hunk',
-        prefix: '',
-        content: `... edit ${replacementIndex + 1} ...`,
-        oldNum: '',
-        newNum: '',
-      })
+  replacements.forEach((replacement, index) => {
+    const suffix = numbered ? ` ${index + 1}` : ''
+    result.push({ kind: 'label', text: `Find${suffix}` })
+    for (const text of splitDisplayLines(replacement.oldText)) {
+      result.push({ kind: 'old', text })
     }
-
-    for (const change of diffLines(replacement.oldText, replacement.newText)) {
-      const lines = splitDisplayLines(change.value)
-      if (change.removed) {
-        for (const line of lines) {
-          result.push({ class: 'diff-del', prefix: '-', content: line, oldNum: oldLineNum, newNum: '' })
-          oldLineNum++
-        }
-        continue
-      }
-      if (change.added) {
-        for (const line of lines) {
-          result.push({ class: 'diff-add', prefix: '+', content: line, oldNum: '', newNum: newLineNum })
-          newLineNum++
-        }
-        continue
-      }
-      for (const line of lines) {
-        result.push({ class: '', prefix: ' ', content: line, oldNum: oldLineNum, newNum: newLineNum })
-        oldLineNum++
-        newLineNum++
-      }
+    result.push({ kind: 'label', text: `Replace with${suffix}` })
+    for (const text of splitDisplayLines(replacement.newText)) {
+      result.push({ kind: 'new', text })
     }
   })
 
@@ -822,64 +795,3 @@ export function getDiffFromStep(step: Step): ToolDiffData | null {
   return null
 }
 
-function getDiffLineClass(line: string): string {
-  if (line.startsWith('+') && !line.startsWith('+++')) return 'diff-add'
-  if (line.startsWith('-') && !line.startsWith('---')) return 'diff-del'
-  if (line.startsWith('@@')) return 'diff-hunk'
-  return ''
-}
-
-function parseHunkHeader(line: string): { oldStart: number; newStart: number } | null {
-  const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
-  if (!match) return null
-  return { oldStart: parseInt(match[1], 10), newStart: parseInt(match[2], 10) }
-}
-
-export function parseDiffWithLineNumbers(diff: string): ToolDiffLine[] {
-  const rawLines = diff.split('\n')
-  if (rawLines.length > 0 && rawLines[rawLines.length - 1] === '') {
-    rawLines.pop()
-  }
-
-  const result: ToolDiffLine[] = []
-  let oldLineNum = 0
-  let newLineNum = 0
-  let inHunk = false
-
-  for (const line of rawLines) {
-    if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('Index:') || line.startsWith('diff ')) {
-      continue
-    }
-
-    if (line.startsWith('@@')) {
-      const parsed = parseHunkHeader(line)
-      if (parsed) {
-        oldLineNum = parsed.oldStart
-        newLineNum = parsed.newStart
-        inHunk = true
-        result.push({ class: 'diff-hunk', prefix: '', content: '...', oldNum: '', newNum: '' })
-      }
-      continue
-    }
-
-    if (!inHunk || line.startsWith('\\ ')) continue
-
-    const lineClass = getDiffLineClass(line)
-    const prefix = line.charAt(0) || ' '
-    const content = line.slice(1)
-
-    if (lineClass === 'diff-del') {
-      result.push({ class: lineClass, prefix, content, oldNum: oldLineNum, newNum: '' })
-      oldLineNum++
-    } else if (lineClass === 'diff-add') {
-      result.push({ class: lineClass, prefix, content, oldNum: '', newNum: newLineNum })
-      newLineNum++
-    } else {
-      result.push({ class: '', prefix, content, oldNum: oldLineNum, newNum: newLineNum })
-      oldLineNum++
-      newLineNum++
-    }
-  }
-
-  return result
-}

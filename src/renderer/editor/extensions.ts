@@ -354,59 +354,50 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
     '.cm-content[contenteditable="true"]': {
       WebkitUserModify: spellcheck ? 'read-write' : 'read-write-plaintext-only',
     },
+    /* Ledger-style reference entry (docs/design/command-palette/
+       inkline-four-options.html, 案一 · 账页): no pill fill — a small kind
+       label, a hairline divider, the name in ink, all sitting on one ruled
+       accent line, matching the command palette's drawn-line language. */
     '.prompt-ref-widget': {
       position: 'relative',
       display: 'inline-flex',
       alignItems: 'center',
-      gap: '5px',
+      gap: '6px',
       boxSizing: 'border-box',
-      minHeight: '24px',
+      minHeight: '20px',
       maxWidth: '220px',
       margin: '0 2px',
-      padding: '2px 7px',
-      border: '1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 28%, var(--ui-border-default-border, var(--border)))',
-      borderRadius: '7px',
-      background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 9%, transparent)',
+      padding: '1px 2px 0',
+      borderBottom: '1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, transparent)',
+      background: 'transparent',
       color: 'var(--ui-text-primary-fg, var(--text))',
       verticalAlign: 'baseline',
       cursor: 'default',
-      lineHeight: '18px',
+      lineHeight: '17px',
     },
-    '.prompt-ref-widget.is-skill': {
-      borderColor: 'var(--ui-status-success-border, var(--ui-border-default-border, var(--border)))',
-      background: 'var(--ui-status-success-bg, transparent)',
-    },
-    '.prompt-ref-widget.is-command': {
-      borderColor: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 24%, var(--ui-border-default-border, var(--border)))',
-      background: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 7%, transparent)',
-    },
-    '.prompt-ref-widget-icon': {
-      width: '14px',
-      height: '14px',
-      borderRadius: '4px',
-      display: 'inline-grid',
-      placeItems: 'center',
-      background: 'color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 18%, transparent)',
-      color: 'var(--ui-accent-primary-fg, var(--accent))',
+    '.prompt-ref-widget-kind': {
+      flexShrink: '0',
+      paddingRight: '6px',
+      borderRight: '1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, transparent)',
+      color: 'var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--text-muted, var(--muted))))',
+      fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
       fontSize: '9px',
-      fontWeight: '700',
+      fontWeight: '600',
+      letterSpacing: '0.5px',
+      lineHeight: '12px',
+      textTransform: 'uppercase',
     },
-    '.prompt-ref-widget.is-skill .prompt-ref-widget-icon': {
-      background: 'var(--ui-status-success-bg, transparent)',
-      color: 'var(--ui-status-success-fg, var(--success, #2f8f5b))',
-    },
-    '.prompt-ref-widget.is-command .prompt-ref-widget-icon': {
-      background: 'color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 16%, transparent)',
-      color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
-      fontSize: '11px',
+    '.prompt-ref-widget:hover .prompt-ref-widget-kind, .prompt-ref-widget:focus-within .prompt-ref-widget-kind': {
+      color: 'var(--ui-accent-primary-fg, var(--accent))',
     },
     '.prompt-ref-widget-title': {
       minWidth: '0',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
+      fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace)',
       fontSize: '0.92em',
-      fontWeight: '650',
+      fontWeight: '600',
     },
     '.prompt-ref-widget-close': {
       width: '0',
@@ -438,7 +429,6 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       pointerEvents: 'auto',
     },
     '.prompt-ref-widget-close:hover': {
-      background: 'var(--ui-status-danger-bg, transparent)',
       color: 'var(--ui-status-danger-fg, var(--danger, #d14))',
     },
     '.prompt-ref-widget-popover': {

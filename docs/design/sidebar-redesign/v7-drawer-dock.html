@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sidebar v7 · 方案六 + 方案二的 dock</title>
+<style>
+  :root { --ink:#1c1b18; --ink-2:#6f6c64; --ink-3:#a5a29a; --paper:#f0efea; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--paper); color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+    padding:46px 40px 90px; -webkit-font-smoothing:antialiased; }
+  .page-head { max-width:900px; margin:0 auto 12px; }
+  .page-head h1 { font-size:22px; font-weight:600; letter-spacing:.02em; }
+  .page-head p { margin-top:8px; font-size:13px; color:var(--ink-2); line-height:1.75; max-width:70em; }
+  .page-head b { color:var(--ink); font-weight:600; }
+  .stage { max-width:900px; margin:34px auto 0; display:flex; justify-content:center; }
+
+  .ic { stroke:currentColor; stroke-width:1.7; fill:none; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+  .win { width:300px; height:648px; border-radius:11px; overflow:hidden; position:relative;
+    box-shadow:0 1px 2px rgba(20,18,12,.08),0 14px 34px rgba(20,18,12,.11);
+    display:flex; flex-direction:column; font-size:13px; }
+  .lights { display:flex; gap:7px; padding:14px 0 0 14px; flex-shrink:0; }
+  .lights i { width:11px; height:11px; border-radius:50%; background:rgba(0,0,0,.12); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  /* ══════ 方案六 · 折叠抽屉(原样) ══════ */
+  .drawer { background:#f7f6f2; color:#25241f; }
+  .drawer .body { display:flex; flex-direction:column; height:100%; padding-top:12px; min-height:0; }
+  .drawer .top { padding:6px 16px 12px; }
+  .drawer .newchat { color:#8b887f; cursor:pointer; padding:2px 0; }
+  .drawer .newchat:hover { color:#25241f; }
+  .drawer .scroll { flex:1; overflow-y:auto; min-height:0; padding:8px 10px 12px; }
+  .drawer .dhead { display:flex; align-items:center; gap:8px; padding:8px 8px; cursor:pointer; border-radius:8px; }
+  .drawer .dhead:hover { background:#efedE6; }
+  .drawer .dhead .chev { width:12px; height:12px; color:#a5a29a; transition:transform .15s; }
+  .drawer .dhead.closed .chev { transform:rotate(-90deg); }
+  .drawer .dhead b { font-size:12px; font-weight:600; color:#3f3d37; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .drawer .dhead .live { color:#25241f; }
+  .drawer .ditems { padding:2px 0 6px; }
+  .drawer .item { padding:5.5px 8px 5.5px 28px; color:#5f5c54; cursor:pointer; border-radius:7px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin:0 0; }
+  .drawer .item:hover { background:#efedE6; }
+  .drawer .item.active { background:#e7e4dc; color:#25241f; font-weight:550; }
+  .drawer .item .gen { display:inline-block; width:5px; height:5px; border-radius:50%; background:#25241f;
+    margin-left:7px; vertical-align:1px; animation:pulse 1.4s ease infinite; }
+  .drawer .subtime { font-size:10px; color:#b3b0a7; padding:8px 0 3px 28px; }
+
+  /* ══════ 方案二 · 底部悬浮胶囊 dock(原样,唯一替换的入口) ══════ */
+  .drawer .dockwrap { padding:10px 0 14px; display:flex; justify-content:center; flex-shrink:0; }
+  .drawer .dock { background:#fff; border-radius:999px; padding:9px 15px; display:flex; align-items:center; gap:15px;
+    box-shadow:0 3px 12px rgba(30,26,16,.13); color:#8b887f; }
+  .drawer .dock .ic { cursor:pointer; }
+  .drawer .dock .ic:hover { color:#26251f; }
+  .drawer .dock .on { color:#26251f; }
+  .drawer .dock .div { width:1px; height:15px; background:#e6e4de; }
+</style>
+</head>
+<body>
+
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 4.5a3.2 3.2 0 0 0-3.2 3.2c-2 .3-3.1 1.8-3.1 3.4 0 1.2.5 2.2 1.4 2.9-.3 2 1.2 4 3.5 4 .9 0 1.8-.4 2.4-1 .6.6 1.5 1 2.4 1 2.3 0 3.8-2 3.5-4 .9-.7 1.4-1.7 1.4-2.9 0-1.6-1.1-3.1-3.1-3.4A3.2 3.2 0 0 0 12 4.5z"/><path d="M12 4.5V18"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.7" cy="10" r="1.4"/><path d="M20.5 15.5 16 11l-7 7.5"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="5" y="8.5" width="14" height="10.5" rx="2.5"/><path d="M12 8.5V5.5"/><circle cx="12" cy="4" r="1.3"/><path d="M9.3 13.2v.8M14.7 13.2v.8M9.5 16.5h5"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 9.8h16M8.5 3.5v4M15.5 3.5v4M10.5 14.5l1.5 1.5 3-3"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M6 6a8.3 8.3 0 0 0 0 12M18 6a8.3 8.3 0 0 1 0 12"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M8 10l4 4 4-4"/></symbol>
+</svg>
+
+<div class="page-head">
+  <h1>Sidebar v7 — 方案六 + 方案二的 dock</h1>
+  <p><b>方案六(折叠抽屉)完全保持原样,只把它顶部的分段 pill 入口换成方案二的底部悬浮胶囊 dock。</b>其余一切不动。</p>
+</div>
+
+<div class="stage">
+  <div class="win drawer">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="body">
+      <div class="top">
+        <div class="newchat">＋ 新会话</div>
+      </div>
+      <div class="scroll">
+        <div class="dhead"><svg class="ic chev"><use href="#i-chev"/></svg><b class="live">电台 · LIVE</b></div>
+        <div class="ditems"><div class="item">深夜爵士 · DJ 手记<span class="gen"></span></div></div>
+
+        <div class="dhead"><svg class="ic chev"><use href="#i-chev"/></svg><b>start-electron</b></div>
+        <div class="ditems">
+          <div class="item active">窗口透明度丢帧排查</div>
+          <div class="item">Prompt Assembly 重构</div>
+          <div class="item">设置页画线风改版</div>
+          <div class="item">Token 计费面板</div>
+        </div>
+
+        <div class="dhead closed"><svg class="ic chev"><use href="#i-chev"/></svg><b>transreader-swift</b></div>
+        <div class="dhead closed"><svg class="ic chev"><use href="#i-chev"/></svg><b>rainny-asr</b></div>
+        <div class="dhead closed"><svg class="ic chev"><use href="#i-chev"/></svg><b>lenovo-scripts</b></div>
+
+        <div class="dhead"><svg class="ic chev"><use href="#i-chev"/></svg><b>未归类</b></div>
+        <div class="ditems">
+          <div class="subtime">今天</div>
+          <div class="item">纳瓦尔宝典 读书笔记</div>
+          <div class="item">帮我起个项目名</div>
+        </div>
+      </div>
+
+      <div class="dockwrap">
+        <div class="dock">
+          <svg class="ic" width="16" height="16"><use href="#i-brain"/></svg>
+          <svg class="ic" width="16" height="16"><use href="#i-image"/></svg>
+          <svg class="ic" width="16" height="16"><use href="#i-bot"/></svg>
+          <svg class="ic" width="16" height="16"><use href="#i-task"/></svg>
+          <svg class="ic on" width="16" height="16"><use href="#i-radio"/></svg>
+          <span class="div"></span>
+          <svg class="ic" width="16" height="16"><use href="#i-gear"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

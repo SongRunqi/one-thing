@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import {
-  writeTextFileAtomic,
+  withFileLockSync,
 } from '@onething/core/storage'
 import {
   CORE_HERMES_LONG_TERM_MEMORY_FILENAME,
@@ -82,6 +82,49 @@ async function readRaw(filePath: string): Promise<string> {
   return fsp.readFile(filePath, 'utf-8').catch(() => '')
 }
 
+function readRawSync(filePath: string): string {
+  try {
+    return fs.readFileSync(filePath, 'utf-8')
+  } catch {
+    return ''
+  }
+}
+
+function writeTextFileAtomicSync(absolutePath: string, content: string): void {
+  const tmpPath = `${absolutePath}.tmp-${process.pid}-${Date.now()}`
+  fs.writeFileSync(tmpPath, content, 'utf-8')
+  fs.renameSync(tmpPath, absolutePath)
+}
+
+// Hermes mutations are read-modify-write cycles on a shared markdown file.
+// Chat turns, background capture/review jobs, and (in multi-user deployments)
+// another process can all write the same file, so the whole cycle runs under
+// a per-file in-process queue plus the cross-process advisory file lock.
+const hermesWriteQueues = new Map<string, Promise<unknown>>()
+
+function mutateHermesFile<TPlan extends { next: string; changed: boolean }>(
+  absolutePath: string,
+  mutate: (existing: string) => TPlan,
+): Promise<TPlan> {
+  const previous = hermesWriteQueues.get(absolutePath) ?? Promise.resolve()
+  const run = previous.catch(() => undefined).then(() =>
+    withFileLockSync(`${absolutePath}.lock`, () => {
+      const plan = mutate(readRawSync(absolutePath))
+      if (plan.changed) {
+        writeTextFileAtomicSync(absolutePath, plan.next)
+      }
+      return plan
+    }),
+  )
+  hermesWriteQueues.set(absolutePath, run)
+  run.finally(() => {
+    if (hermesWriteQueues.get(absolutePath) === run) {
+      hermesWriteQueues.delete(absolutePath)
+    }
+  }).catch(() => {})
+  return run
+}
+
 export async function readHermesMemoryFile(
   workspace: HermesMemoryWorkspaceLike,
   target: HermesMemoryTarget,
@@ -101,9 +144,8 @@ export async function addHermesMemoryEntry(options: {
   content: string
 }): Promise<HermesMemoryMutationResult> {
   const file = getHermesMemoryFile(options.workspace, options.target)
-  const existing = await readRaw(file.absolutePath)
-  const plan = corePlanHermesMemoryEntryAdd(existing, options.content)
-  await writeTextFileAtomic(file.absolutePath, plan.next)
+  const plan = await mutateHermesFile(file.absolutePath, existing =>
+    corePlanHermesMemoryEntryAdd(existing, options.content))
 
   return {
     target: file.target,
@@ -124,16 +166,13 @@ export async function replaceHermesMemoryText(options: {
   replaceAll?: boolean
 }): Promise<HermesMemoryMutationResult> {
   const file = getHermesMemoryFile(options.workspace, options.target)
-  const existing = await readRaw(file.absolutePath)
-  const plan = corePlanHermesMemoryTextReplace({
-    existing,
-    oldText: options.oldText,
-    newText: options.newText,
-    replaceAll: options.replaceAll,
-  })
-  if (plan.changed) {
-    await writeTextFileAtomic(file.absolutePath, plan.next)
-  }
+  const plan = await mutateHermesFile(file.absolutePath, existing =>
+    corePlanHermesMemoryTextReplace({
+      existing,
+      oldText: options.oldText,
+      newText: options.newText,
+      replaceAll: options.replaceAll,
+    }))
 
   return {
     target: file.target,
@@ -153,15 +192,12 @@ export async function removeHermesMemoryText(options: {
   removeAll?: boolean
 }): Promise<HermesMemoryMutationResult> {
   const file = getHermesMemoryFile(options.workspace, options.target)
-  const existing = await readRaw(file.absolutePath)
-  const plan = corePlanHermesMemoryTextRemove({
-    existing,
-    text: options.text,
-    removeAll: options.removeAll,
-  })
-  if (plan.changed) {
-    await writeTextFileAtomic(file.absolutePath, plan.next)
-  }
+  const plan = await mutateHermesFile(file.absolutePath, existing =>
+    corePlanHermesMemoryTextRemove({
+      existing,
+      text: options.text,
+      removeAll: options.removeAll,
+    }))
 
   return {
     target: file.target,

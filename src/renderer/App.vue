@@ -140,26 +140,21 @@
                     v-show="activeWorkspaceView === 'chat'"
                     ref="chatContainerRef"
                     class="workspace-view workspace-view-chat"
-                    :show-settings="showSettings"
                     :sidebar-collapsed="sidebarCollapsed"
                     :sidebar-floating="sidebarFloating"
                     :show-hover-trigger="sidebarCollapsed && !sidebarFloating"
                     :media-panel-open="workspacePanelOpen"
-                    :show-diff-overlay="showDiffOverlay"
-                    :diff-overlay-data="diffOverlayData"
                     :is-inspector-open="inspectorOpen"
                     :reserve-sidebar-actions="reserveSidebarActions"
                     :layout-transitioning="sidebarActionAnimating"
-                    @close-settings="showSettings = false"
-                    @open-settings="showSettings = true"
                     @toggle-sidebar="handleSidebarToggle"
                     @open-search="openSearch"
                     @create-new-chat="createNewChat"
                     @show-floating-sidebar="handleTriggerEnter"
                     @hide-floating-sidebar="handleTriggerLeave"
-                    @close-diff-overlay="closeDiffOverlay"
                     @toggle-inspector="inspectorOpen = !inspectorOpen"
                     @open-file="openFileInRightWorkbench"
+                    @review-goal="openGoalReviewInRightWorkbench"
                   />
 
                   <MediaPanel
@@ -205,6 +200,7 @@
           </Splitter>
 
           <VoiceOverlay />
+          <VoiceCallPanel />
         </div>
       </SplitterPanel>
 
@@ -222,6 +218,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, computed, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
 import { useChatStore } from '@/stores/chat'
 import { useThemeStore } from '@/stores/themes'
@@ -242,20 +239,12 @@ import SearchWindow from '@/components/search/SearchWindow.vue'
 import TodoPlanWindow from '@/components/TodoPlanWindow.vue'
 import VoiceRuntimeWindow from '@/components/voice/VoiceRuntimeWindow.vue'
 import VoiceOverlay from '@/components/voice/VoiceOverlay.vue'
+import VoiceCallPanel from '@/components/voice/VoiceCallPanel.vue'
 import EvalsWorkbench from '@/components/evals/EvalsWorkbench.vue'
 import { useEvalsWorkbenchStore } from '@/stores/evalsWorkbench'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { platformApi } from '@/platform'
-
-
-// Type for diff overlay data
-interface DiffOverlayData {
-  filePath: string
-  workingDirectory: string
-  sessionId: string
-  isStaged: boolean
-}
 
 // Detect auxiliary windows from the hash. Keep it reactive because dev HMR
 // and BrowserWindow reuse can change the hash after App has already mounted.
@@ -278,13 +267,13 @@ function syncCurrentHash() {
 }
 
 const sessionsStore = useSessionsStore()
+const workspaceStore = useWorkspaceStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const themeStore = useThemeStore()
 const voiceStore = useVoiceStore()
 
 const appReady = ref(false)
-const showSettings = ref(false)
 const evalsWorkbenchStore = useEvalsWorkbenchStore()
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
 const appContentRef = ref<HTMLElement | null>(null)
@@ -306,12 +295,15 @@ function clampSidebarWidth(width: number): number {
 const sidebarWidth = ref(clampSidebarWidth(parseInt(localStorage.getItem('sidebarWidth') || '300', 10)))
 const sidebarResizing = ref(false)
 
-type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks'
+type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks' | 'music' | 'practice'
 type TodoPlanWebWindowActionDetail = {
   action?: 'open' | 'hide' | 'toggle' | 'pin'
 }
 
 const TODO_PLAN_WEB_WINDOW_EVENT = 'todo-plan:web-window-action'
+// Fired by PracticeStrip's menu (「参数与账页」/「查看进度」) — same pattern as
+// the todo-plan window event: deep components reach App through a window event.
+const PRACTICE_OPEN_WORKSPACE_EVENT = 'practice:open-workspace'
 
 // Main workspace panel state. These panels are launched from the sidebar
 // actions area and occupy the main content region instead of expanding from
@@ -319,22 +311,6 @@ const TODO_PLAN_WEB_WINDOW_EVENT = 'todo-plan:web-window-action'
 const activeWorkspacePanel = ref<WorkspacePanel | null>(null)
 const workspacePanelOpen = computed(() => activeWorkspacePanel.value !== null)
 const activeWorkspaceView = computed(() => activeWorkspacePanel.value ?? 'chat')
-
-// Diff overlay state
-const showDiffOverlay = ref(false)
-const diffOverlayData = ref<DiffOverlayData | null>(null)
-
-// Diff overlay functions
-function openDiffOverlay(data: DiffOverlayData) {
-  diffOverlayData.value = data
-  showDiffOverlay.value = true
-}
-
-function closeDiffOverlay() {
-  showDiffOverlay.value = false
-  diffOverlayData.value = null
-}
-
 
 function openWorkspacePanel(panel: WorkspacePanel) {
   if (sidebarFloating.value) {
@@ -345,6 +321,11 @@ function openWorkspacePanel(panel: WorkspacePanel) {
 
 function closeWorkspacePanel() {
   activeWorkspacePanel.value = null
+}
+
+function handlePracticeOpenWorkspace() {
+  if (isAuxiliaryWindow.value) return
+  openWorkspacePanel('practice')
 }
 
 function handleTodoPlanWebWindowAction(event: Event) {
@@ -415,6 +396,10 @@ useShortcuts({
   onToggleTodoPlan: () => {
     if (isAuxiliaryWindow.value) return
     window.dispatchEvent(new CustomEvent('todo-plan:toggle-card'))
+  },
+  onSelectTabByIndex: (digit) => {
+    if (isAuxiliaryWindow.value) return
+    chatContainerRef.value?.selectFocusedPanelTabByIndex?.(digit)
   },
 })
 
@@ -564,6 +549,13 @@ async function openFileInRightWorkbench(filePath: string) {
   inspectorOpen.value = true
   await nextTick()
   await rightWorkbenchRef.value?.openFile(filePath)
+}
+
+async function openGoalReviewInRightWorkbench(sessionId: string) {
+  if (!sessionId) return
+  inspectorOpen.value = true
+  await nextTick()
+  rightWorkbenchRef.value?.openGoalReview(sessionId)
 }
 
 // Close floating sidebar with animation
@@ -740,6 +732,7 @@ onMounted(async () => {
   console.info(`[Perf][Startup] renderer-mounted +${Math.round(performance.now())}ms since page load`)
   window.addEventListener('hashchange', syncCurrentHash)
   window.addEventListener(TODO_PLAN_WEB_WINDOW_EVENT, handleTodoPlanWebWindowAction)
+  window.addEventListener(PRACTICE_OPEN_WORKSPACE_EVENT, handlePracticeOpenWorkspace)
 
   const markdownCacheReady = ensureMarkdownCacheReady().catch((e) => {
     console.warn('[App] markdown cache init failed', e)
@@ -762,19 +755,19 @@ onMounted(async () => {
   // Initialize theme system (must be after settings load)
   await themeStore.initialize()
 
-  // Restore last session from saved app state
+  // Restore the workspace (tabs + split layout + focus) from saved app state.
+  // Must run after loadSessions: hydration validates every tab against the
+  // session list. The initial session activation follows from the restored
+  // active tab.
   const appState = await appStateReady
-  if (appState) {
-    if (appState.currentSessionId) {
-      const sessionExists = sessionsStore.sessions.some(s => s.id === appState.currentSessionId)
-      if (sessionExists) {
-        await sessionsStore.switchSession(appState.currentSessionId)
-      }
-    }
-    if (appState.sidebarCollapsed !== undefined) {
-      sidebarCollapsed.value = appState.sidebarCollapsed
-      reserveSidebarActions.value = appState.sidebarCollapsed
-    }
+  workspaceStore.hydrate(appState)
+  const restoredSessionId = workspaceStore.activeSessionId
+  if (restoredSessionId) {
+    await sessionsStore.switchSession(restoredSessionId)
+  }
+  if (appState?.sidebarCollapsed !== undefined) {
+    sidebarCollapsed.value = appState.sidebarCollapsed
+    reserveSidebarActions.value = appState.sidebarCollapsed
   }
 
   appReady.value = true
@@ -886,6 +879,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('hashchange', syncCurrentHash)
   window.removeEventListener(TODO_PLAN_WEB_WINDOW_EVENT, handleTodoPlanWebWindowAction)
+  window.removeEventListener(PRACTICE_OPEN_WORKSPACE_EVENT, handlePracticeOpenWorkspace)
 
   if (unsubscribeSettingsChanged) {
     unsubscribeSettingsChanged()

@@ -19,6 +19,19 @@
       :message-id="message.id"
     />
 
+    <!-- Goal declaration: the /goal command's user message, framed -->
+    <GoalSetMessage
+      v-else-if="isGoalSet"
+      :message="message"
+    />
+
+    <!-- Goal continuation: engine-injected user message, a blueprint tick -->
+    <GoalContinuationLine
+      v-else-if="isGoalInjected"
+      :content="message.content"
+      :timestamp="message.timestamp"
+    />
+
     <!-- Normal user/assistant message -->
     <div
       v-else
@@ -100,6 +113,27 @@
           @execute-tool="handleToolExecute"
           @open-file="(filePath) => emit('openFile', filePath)"
         />
+
+        <!-- Turn-volatile state board captured at send time. Rendered into
+             the model request as a <context-update> block; shown here so the
+             user can see exactly what state the model was told. -->
+        <div
+          v-if="message.role === 'user' && message.contextUpdate"
+          class="message-context-update"
+        >
+          <button
+            type="button"
+            class="context-update-toggle"
+            :aria-expanded="contextUpdateExpanded"
+            @click="contextUpdateExpanded = !contextUpdateExpanded"
+          >
+            context-update
+          </button>
+          <pre
+            v-if="contextUpdateExpanded"
+            class="context-update-body"
+          >{{ message.contextUpdate }}</pre>
+        </div>
 
         <!-- Inline error for assistant messages that failed mid-stream -->
         <div
@@ -185,6 +219,8 @@ import FileChip from '@/components/common/FileChip.vue'
 import { formatFileSize } from '@/utils/format'
 import MessageError from './message/MessageError.vue'
 import MessageSystem from './message/MessageSystem.vue'
+import GoalContinuationLine from './message/GoalContinuationLine.vue'
+import GoalSetMessage from './message/GoalSetMessage.vue'
 import MessageThinking from './message/MessageThinking.vue'
 import MessageBubble from './message/MessageBubble.vue'
 import MessageActions from './message/MessageActions.vue'
@@ -237,6 +273,7 @@ const emit = defineEmits<{
 // UI State
 const isEditing = ref(false)
 const editContent = ref('')
+const contextUpdateExpanded = ref(false)
 
 // Legacy messages carry steps without a data-steps contentPart placeholder;
 // only those need the standalone StepsPanel below the bubble.
@@ -251,6 +288,18 @@ const isLoadingMemory = computed(() => {
   if (!props.message.contentParts) return false
   return props.message.contentParts.some(part => part.type === 'loading-memory')
 })
+
+// Engine-injected goal continuation prompts persist as user messages so
+// history rebuilds replay them; the UI renders them as a hairline tick.
+const isGoalInjected = computed(
+  () => props.message.role === 'user' && props.message.origin?.source === 'goal',
+)
+
+// The /goal command's own declaration message — a real user message marked
+// at send time; rendered as the framed GOAL block.
+const isGoalSet = computed(
+  () => props.message.role === 'user' && props.message.source === 'goal-set',
+)
 
 const messageHasContent = computed(() => {
   if (props.message.content) return true
@@ -424,6 +473,44 @@ function handleUpdateThinkingTime(time: number) {
 
 /* Attachment layer above the bubble: no shell of its own, each thumb/chip
    carries its own surface. */
+.message-context-update {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.context-update-toggle {
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 10px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  opacity: 0.75;
+}
+
+.context-update-toggle:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.context-update-body {
+  margin: 0;
+  padding: 6px 8px;
+  max-width: min(74%, 680px);
+  overflow-x: auto;
+  border-left: 1px solid var(--ui-border-subtle, var(--border));
+  background: transparent;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 10.5px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  white-space: pre-wrap;
+}
+
 .message-attachments {
   display: flex;
   flex-direction: column;

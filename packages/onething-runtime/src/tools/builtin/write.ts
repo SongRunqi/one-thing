@@ -25,6 +25,7 @@ import {
 } from "../sandbox.js";
 import {
 	countLineChanges,
+	hashTextFileSnapshot,
 	readTextFileSnapshot,
 	type TextFileSnapshot,
 } from "../file-snapshot.js";
@@ -235,7 +236,7 @@ export function createWriteTool(
 			return await withFileMutationQueue(resolvedPath, async () => {
 				throwIfAborted();
 
-				try {
+				{
 					const emitPlanMetadata = (plan: WritePlan) => {
 						const displayDiff = truncateDiffForDisplay(plan.diff);
 						ctx.updateResult?.({
@@ -286,11 +287,13 @@ export function createWriteTool(
 					);
 					throwIfAborted();
 
-					// Read-before-write guard: for overwrites, require explicit read() first
+					// Read-before-write guard: an overwrite must be based on content
+					// the model has seen — via read(), or by having written it itself.
 					if (!approvedPlan.created && adapters.fileReadTracker) {
 						const checkResult = adapters.fileReadTracker.check(
 							ctx.sessionId,
 							resolvedPath,
+							approvedPlan.originalContentHash,
 						);
 						if (!checkResult.read) {
 							throw new Error(checkResult.reason);
@@ -344,6 +347,14 @@ export function createWriteTool(
 					throwIfAborted();
 
 					await writeTextFileAsync(resolvedPath, content);
+					// The model authored this content, so it has seen it: record it so
+					// a follow-up edit/write needs no intervening re-read. This is the
+					// common write-then-refine flow.
+					adapters.fileReadTracker?.record(
+						ctx.sessionId,
+						resolvedPath,
+						hashTextFileSnapshot(true, content),
+					);
 					throwIfAborted();
 
 					const audit = await recordFileMutationAudit({
@@ -413,11 +424,6 @@ export function createWriteTool(
 						metadata,
 						attachments: [{ type: "file" as const, path: resolvedPath }],
 					};
-				} finally {
-					// Read record persists for the remainder of the turn (one user
-					// message + all its tool calls). Consecutive edits/writes no
-					// longer require a re-read. The tracker resets at the start of
-					// the next user message via resetTurn().
 				}
 			});
 		},

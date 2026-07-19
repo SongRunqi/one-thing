@@ -34,9 +34,9 @@
         @mouseenter="highlightItem(index)"
       >
         <span
-          class="command-tick"
+          class="command-kind"
           aria-hidden="true"
-        >▸</span>
+        >{{ kindLabel(item.kind) }}</span>
         <div class="composer-extension-row-main">
           <div class="composer-extension-row-title">
             <template
@@ -51,6 +51,10 @@
               </template>
             </template>
           </div>
+          <span
+            class="command-leader"
+            aria-hidden="true"
+          />
           <div class="composer-extension-row-description">
             {{ item.description }}
           </div>
@@ -116,6 +120,19 @@ const emptyHint = computed(() => {
     : 'Type to narrow commands, prompts, and skills'
 })
 
+/** Margin-column label for the ledger layout: what kind of entry this row
+ * books (command / skill / action / prompt). */
+const KIND_LABELS: Partial<Record<ComposerExtensionItem['kind'], string>> = {
+  command: 'cmd',
+  skill: 'skill',
+  action: 'action',
+  prompt: 'prompt',
+}
+
+function kindLabel(kind: ComposerExtensionItem['kind']) {
+  return KIND_LABELS[kind] ?? kind
+}
+
 function selectItem(item: ComposerExtensionItem) {
   if (item.paletteItem) {
     emit('select', item.paletteItem)
@@ -133,7 +150,8 @@ interface TitleSegment {
 }
 
 /** Splits the command title around the first query match so the matched
- * characters render in accent, per the quietlines palette mockup. */
+ * characters render in accent, per the ledger mockup
+ * (docs/design/command-palette/inkline-four-options.html, 案一). */
 function titleSegments(title: string): TitleSegment[] {
   const query = props.query.trim().toLowerCase()
   if (!query) return [{ text: title, hit: false }]

@@ -12,12 +12,16 @@ const mocks = vi.hoisted(() => ({
     getFollowUpQueue: vi.fn(() => ({ kind: 'follow-up-queue' })),
   },
   modelSupportsImageGeneration: vi.fn(async () => false),
+  modelSupportsTools: vi.fn(async () => true),
+  getModelById: vi.fn(async () => undefined),
   processImageGenerationStream: vi.fn(async () => true),
   executeAgentLoopStreamGeneration: vi.fn(async () => ({ pausedForConfirmation: false })),
 }))
 
 vi.mock('../../../providers/model-registry.js', () => ({
   modelSupportsImageGeneration: mocks.modelSupportsImageGeneration,
+  modelSupportsTools: mocks.modelSupportsTools,
+  getModelById: mocks.getModelById,
 }))
 
 vi.mock('../image-stream.js', () => ({
@@ -149,5 +153,52 @@ describe('stream executor agent-loop routing', () => {
     }))
     expect(mocks.executeAgentLoopStreamGeneration).not.toHaveBeenCalled()
     expect(mocks.engine.removeController).toHaveBeenCalledWith('s1')
+  })
+
+  it('requests image output for codex oauth so the native image_generation tool attaches', async () => {
+    await executeMessageStream(params({
+      providerId: 'codex',
+      configWithApiKey: {
+        ...configWithApiKey,
+        model: 'gpt-5.5',
+        authContext: { kind: 'oauth' } as ProviderConfigWithKey['authContext'],
+      },
+    }))
+
+    expect(mocks.executeAgentLoopStreamGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: 'codex',
+        requestedOutputModalities: ['image'],
+      }),
+      [{ role: 'user', content: 'hello' }],
+      'Session',
+    )
+  })
+
+  it('does not request image output for codex without oauth', async () => {
+    await executeMessageStream(params({
+      providerId: 'codex',
+      configWithApiKey: { ...configWithApiKey, model: 'gpt-5.5' },
+    }))
+
+    expect(mocks.executeAgentLoopStreamGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedOutputModalities: undefined,
+      }),
+      [{ role: 'user', content: 'hello' }],
+      'Session',
+    )
+  })
+
+  it('does not request image output for non-codex providers', async () => {
+    await executeMessageStream(params())
+
+    expect(mocks.executeAgentLoopStreamGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedOutputModalities: undefined,
+      }),
+      [{ role: 'user', content: 'hello' }],
+      'Session',
+    )
   })
 })

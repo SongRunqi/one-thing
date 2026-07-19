@@ -13,17 +13,47 @@ export interface OnethingSerializedTab {
   title?: string
 }
 
+/** v2 chat workspace: the whole split tree (layout + per-leaf tabs). Mirrors the renderer's PersistedWorkspace shape. */
+export interface OnethingPersistedWorkspaceLeaf {
+  type: 'leaf'
+  id: string
+  size: number
+  sessions: string[]
+  activeIndex: number
+}
+
+export interface OnethingPersistedWorkspaceSplit {
+  type: 'split'
+  id: string
+  orientation: 'horizontal' | 'vertical'
+  size: number
+  children: OnethingPersistedWorkspaceNode[]
+}
+
+export type OnethingPersistedWorkspaceNode =
+  | OnethingPersistedWorkspaceLeaf
+  | OnethingPersistedWorkspaceSplit
+
+export interface OnethingPersistedWorkspace {
+  version: 2
+  activeLeafId: string
+  root: OnethingPersistedWorkspaceNode
+}
+
 export interface OnethingAppState {
   currentSessionId: string
   currentWorkspaceId: string | null
+  /** Legacy (v1) flat tab list; still readable for migration, no longer written. */
   openTabs?: OnethingSerializedTab[]
   activeTabIndex?: number
+  workspace?: OnethingPersistedWorkspace
   sidebarCollapsed?: boolean
 }
 
 export interface OnethingUiStatePatch {
   openTabs?: OnethingSerializedTab[]
   activeTabIndex?: number
+  workspace?: OnethingPersistedWorkspace
   sidebarCollapsed?: boolean
 }
 
@@ -76,6 +106,7 @@ export function mergeOnethingUiState(
     ...state,
     ...(uiState.openTabs !== undefined ? { openTabs: uiState.openTabs } : {}),
     ...(uiState.activeTabIndex !== undefined ? { activeTabIndex: uiState.activeTabIndex } : {}),
+    ...(uiState.workspace !== undefined ? { workspace: uiState.workspace } : {}),
     ...(uiState.sidebarCollapsed !== undefined ? { sidebarCollapsed: uiState.sidebarCollapsed } : {}),
   }
 }

@@ -7,13 +7,11 @@ import type {
 } from '../../shared/ipc.js'
 
 export const LOCAL_CLIENT_USER_ID = 'local-owner'
-export const LOCAL_MEMORY_SCOPE_ID = `client:${LOCAL_CLIENT_USER_ID}`
 
 export function createLocalClientIdentity(displayName = 'Local user'): ResolvedIdentity {
   return {
     kind: 'client-user',
     userId: LOCAL_CLIENT_USER_ID,
-    memoryScopeId: LOCAL_MEMORY_SCOPE_ID,
     profileId: LOCAL_CLIENT_USER_ID,
     displayName,
     linkedClientUserId: LOCAL_CLIENT_USER_ID,
@@ -69,6 +67,56 @@ export function sanitizeRendererOrigin(command: Record<string, unknown>): Messag
   return transport === 'voice'
     ? createVoiceOrigin()
     : createDesktopOrigin({ source })
+}
+
+/**
+ * Message sources stamped by system-internal re-drives (goal kicks /
+ * continuations). This set is THE single definition of "system-internal":
+ * the stream engine's router bypass and every counterpart-identity scan key
+ * off it. When a new internal emitter appears (scheduler re-drive, plugin
+ * push, ...), adding its source here updates all of them at once.
+ */
+export const SYSTEM_INTERNAL_MESSAGE_SOURCES: ReadonlySet<string> = new Set([
+  'goal',
+  // The radio conductor's DJ wake: a curation turn driven into the dedicated
+  // radio session when the programme runs low.
+  'radio',
+])
+
+export function isSystemInternalSource(source: string | undefined): boolean {
+  return source !== undefined && SYSTEM_INTERNAL_MESSAGE_SOURCES.has(source)
+}
+
+/**
+ * System-internal injections persist an origin so the renderer can fold
+ * them and routing can bypass identity resolution, but they carry no
+ * conversation counterpart. Scans that answer "who is the model talking to"
+ * must skip them — otherwise a goal-driven run shadows the real user's
+ * origin: the prompt context would tell the model it is talking to an
+ * unknown API user instead of its owner, permission enforcement would lose
+ * its user scope, and memory attribution would lose display metadata.
+ */
+export function isSystemInternalOrigin(origin: MessageOrigin): boolean {
+  return isSystemInternalSource(origin.source)
+}
+
+/**
+ * Newest origin that represents a real conversation counterpart, scanning
+ * backwards past system-internal injections. `role` narrows the scan (e.g.
+ * 'user' for memory attribution).
+ */
+export function latestRealOrigin(
+  messages: ReadonlyArray<{ role?: string; origin?: MessageOrigin }>,
+  options: { role?: string } = {},
+): MessageOrigin | undefined {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (!message?.origin) continue
+    if (options.role !== undefined && message.role !== options.role) continue
+    if (isSystemInternalOrigin(message.origin)) continue
+    return message.origin
+  }
+  return undefined
 }
 
 export function identitySessionKey(origin: MessageOrigin): string | undefined {

@@ -2,7 +2,7 @@ import type { Step, ToolCall } from '@/types'
 import {
   buildToolStepView,
   getDiffFromStep,
-  getStreamingDiffStats,
+  getStreamingChangeStats,
   getToolFilePath,
   type ToolDiffData,
   type ToolStepView,
@@ -189,7 +189,7 @@ function buildStats(diff: ToolDiffData | null, toolCall: ToolCall): ActivityStat
       text: additions || deletions ? `+${additions} -${deletions}` : '',
     }
   }
-  const streamingStats = getStreamingDiffStats(toolCall)
+  const streamingStats = getStreamingChangeStats(toolCall)
   if (streamingStats) {
     const { additions, deletions } = streamingStats
     return {

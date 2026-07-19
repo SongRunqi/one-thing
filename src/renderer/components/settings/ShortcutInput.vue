@@ -159,50 +159,68 @@ function clearShortcut() {
 </script>
 
 <style scoped>
+/*
+ * Key capsule — 画线风: transparent, square 1px rule, mono.
+ * State lives in the line: set = solid rule, empty = dashed faint,
+ * recording = dashed accent.
+ */
 .shortcut-input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-width: 140px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-width: min(140px, 100%);
+  max-width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   cursor: pointer;
-  transition: all 0.15s ease;
-  font-size: 13px;
+  transition: border-color 0.12s ease, color 0.12s ease;
+  font-size: 12px;
   gap: 8px;
 }
 
 .shortcut-input:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .shortcut-input:focus {
   outline: none;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 20%, transparent);
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+.shortcut-input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary))) 24%, transparent);
+  outline-offset: 1px;
+}
+
+.shortcut-input.empty {
+  border-style: dashed;
 }
 
 .shortcut-input.recording {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  border-style: dashed;
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .shortcut-input.empty .shortcut-display {
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  font-style: italic;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
 }
 
 .shortcut-display {
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
 }
 
 .recording-hint {
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  font-family: var(--font-mono, monospace);
+  white-space: nowrap;
   animation: pulse 1s ease-in-out infinite;
 }
 
@@ -215,32 +233,22 @@ function clearShortcut() {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   padding: 2px;
   border: none;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   cursor: pointer;
-  border-radius: 4px;
-  transition: all 0.15s ease;
+  transition: color 0.12s ease;
 }
 
 .clear-btn:hover {
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
-/* Light theme */
-html[data-theme='light'] .shortcut-input {
-  background: rgba(0, 0, 0, 0.03);
-  border-color: rgba(0, 0, 0, 0.1);
-}
-
-html[data-theme='light'] .shortcut-input:hover {
-  background: rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.15);
-}
-
-html[data-theme='light'] .clear-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
+@media (prefers-reduced-motion: reduce) {
+  .recording-hint {
+    animation: none;
+  }
 }
 </style>

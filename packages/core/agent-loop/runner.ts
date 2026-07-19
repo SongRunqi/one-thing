@@ -25,7 +25,7 @@ import {
   throwIfAgentAborted,
 } from './stream.js'
 import { applyPromptInjectors, createSkillPromptInjector } from './prompts.js'
-import { AgentLoopPauseForConfirmationError } from './errors.js'
+import { AgentLoopPauseForConfirmationError, isAgentLoopPauseForConfirmationError } from './errors.js'
 import { agentToolResultToMessageContentForCapabilities } from './tool-results.js'
 import {
   assertAgentProviderCanRunTurn,
@@ -34,18 +34,75 @@ import {
   assertAgentMessagesSupportedByCapabilities,
   resolveAgentModelCapabilities,
 } from './capabilities.js'
+import { toolCallSignature } from './tool-signature.js'
 
 const DEFAULT_MAX_TURNS = 8
+const DEFAULT_MAX_CONCURRENT_TOOLS = 8
+/** Identical call failed this many times consecutively → block the next one. */
+const DOOM_LOOP_FAILURE_THRESHOLD = 3
 
-type AgentToolInputStreamEvent =
-  | Extract<AgentTurnStreamEvent, { type: 'tool-call-start' }>
-  | Extract<AgentTurnStreamEvent, { type: 'tool-call-delta' }>
-  | Extract<AgentTurnStreamEvent, { type: 'tool-call-done' }>
+/**
+ * FIFO semaphore: at most `limit` wrapped operations run at once. Scoped to
+ * one runAgentLoop invocation, so the cap is per stream.
+ *
+ * A releasing task hands its slot directly to the oldest waiter (`active`
+ * stays counted for the handoff), so a synchronously arriving newcomer can
+ * never barge past the cap while a woken waiter is still resuming.
+ */
+function createConcurrencyGate(limit: number): <T>(fn: () => Promise<T>) => Promise<T> {
+  let active = 0
+  const waiters: (() => void)[] = []
+
+  return async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (active >= limit) {
+      await new Promise<void>(resolve => waiters.push(resolve))
+    } else {
+      active += 1
+    }
+    try {
+      return await fn()
+    } finally {
+      const next = waiters.shift()
+      if (next) next()
+      else active -= 1
+    }
+  }
+}
 
 interface ExecuteProviderTurnOptions {
   request: AgentTurnRequest
   provider: AgentLoopOptions['provider']
+  /**
+   * Invoked as soon as a tool call's arguments are complete. Executions run
+   * concurrently and are not awaited inside the stream loop; rejections
+   * (abort / pause-for-confirmation) are collected and rethrown after every
+   * execution has settled. Never invoked for externally-executed tool calls.
+   */
   onToolCallDone: (toolCall: AgentToolCall) => Promise<void>
+  /**
+   * Result of a tool the provider executed itself (`externallyExecuted`
+   * calls). The loop records it for observability but never synthesizes a
+   * tool message from it.
+   */
+  onExternalToolResult?: (toolCall: AgentToolCall, result: AgentToolResult) => void
+}
+
+interface ToolExecutionFailure {
+  index: number
+  error: Error
+}
+
+function throwPrioritizedTurnError(
+  failures: ToolExecutionFailure[],
+  streamError: unknown,
+): void {
+  const ordered = [...failures].sort((a, b) => a.index - b.index)
+  const abortFailure = ordered.find(failure => isAbortError(failure.error))
+  if (abortFailure) throw abortFailure.error
+  if (streamError) throw streamError
+  const pauseFailure = ordered.find(failure => isAgentLoopPauseForConfirmationError(failure.error))
+  if (pauseFailure) throw pauseFailure.error
+  if (ordered.length > 0) throw ordered[0].error
 }
 
 function isAbortError(error: Error): boolean {
@@ -62,13 +119,34 @@ function parseToolArguments(call: AgentToolCall): AgentJsonObject {
   return parsed
 }
 
+function safeParseToolArguments(call: AgentToolCall): AgentJsonObject {
+  try {
+    return parseToolArguments(call)
+  } catch {
+    // Unparseable args still deserve a stable signature: identical broken
+    // retries should trip the doom-loop guard too.
+    return { __rawArguments: call.arguments }
+  }
+}
+
+function addOptionalTokens(a: number | undefined, b: number | undefined): number | undefined {
+  if (a === undefined && b === undefined) return undefined
+  return (a ?? 0) + (b ?? 0)
+}
+
 function addUsage(a: AgentUsage | undefined, b: AgentUsage | undefined): AgentUsage | undefined {
   if (!a) return b
   if (!b) return a
+  const cacheReadTokens = addOptionalTokens(a.cacheReadTokens, b.cacheReadTokens)
+  const cacheWriteTokens = addOptionalTokens(a.cacheWriteTokens, b.cacheWriteTokens)
+  const reasoningTokens = addOptionalTokens(a.reasoningTokens, b.reasoningTokens)
   return {
     inputTokens: a.inputTokens + b.inputTokens,
     outputTokens: a.outputTokens + b.outputTokens,
     totalTokens: a.totalTokens + b.totalTokens,
+    ...(cacheReadTokens !== undefined ? { cacheReadTokens } : {}),
+    ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
   }
 }
 
@@ -101,18 +179,6 @@ function resolveToolChoice(
   return tools.some(tool => tool.name === requestedName)
     ? requested
     : 'none'
-}
-
-function isToolInputStreamEvent(event: AgentTurnStreamEvent): event is AgentToolInputStreamEvent {
-  return event.type === 'tool-call-start'
-    || event.type === 'tool-call-delta'
-    || event.type === 'tool-call-done'
-}
-
-function toolInputEventId(event: AgentToolInputStreamEvent): string {
-  return event.type === 'tool-call-done'
-    ? event.toolCall.id
-    : event.toolCallId
 }
 
 async function executeAgentToolCall(input: {
@@ -158,7 +224,7 @@ async function executeAgentToolCall(input: {
 }
 
 async function executeProviderTurn(options: ExecuteProviderTurnOptions): Promise<AgentTurn> {
-  const { request, provider, onToolCallDone } = options
+  const { request, provider, onToolCallDone, onExternalToolResult } = options
   if (provider.streamTurn || provider.runTurn) {
     let content = ''
     let reasoningContent = ''
@@ -167,22 +233,22 @@ async function executeProviderTurn(options: ExecuteProviderTurnOptions): Promise
     let pendingFinishEvent: Extract<AgentStreamEvent, { type: 'finish' }> | null = null
     const toolCalls: AgentToolCall[] = []
     const providerData: AgentProviderData[] = []
-    const bufferedToolEvents = new Map<string, AgentToolInputStreamEvent[]>()
-    const bufferedToolOrder: string[] = []
-    let activeToolCallId: string | null = null
+    const toolExecutions: Promise<void>[] = []
+    const toolFailures: ToolExecutionFailure[] = []
 
-    const rememberBufferedToolEvent = (event: AgentToolInputStreamEvent): void => {
-      const id = toolInputEventId(event)
-      const existing = bufferedToolEvents.get(id)
-      if (existing) {
-        existing.push(event)
+    const collectEvent = (event: AgentTurnStreamEvent): void => {
+      // Tool observation events are only valid from the provider when it
+      // executed the tool itself; drop the rest so a misbehaving provider
+      // cannot spoof results for locally executed tools.
+      if (
+        (event.type === 'tool-result'
+          || event.type === 'tool-metadata'
+          || event.type === 'tool-partial-result')
+        && !event.toolCall.externallyExecuted
+      ) {
         return
       }
-      bufferedToolEvents.set(id, [event])
-      bufferedToolOrder.push(id)
-    }
 
-    const collectAndEmit = async (event: AgentTurnStreamEvent): Promise<void> => {
       request.onEvent?.(event)
 
       switch (event.type) {
@@ -192,9 +258,27 @@ async function executeProviderTurn(options: ExecuteProviderTurnOptions): Promise
         case 'reasoning-delta':
           reasoningContent += event.delta
           break
-        case 'tool-call-done':
+        case 'tool-call-done': {
+          // Defensive: a provider re-emitting the same tool call id would
+          // otherwise double-execute and overwrite the first result.
+          if (toolCalls.some(call => call.id === event.toolCall.id)) break
           toolCalls.push(event.toolCall)
-          await onToolCallDone(event.toolCall)
+          // Externally-executed calls already ran inside the provider; the
+          // loop only records them and awaits the provider's tool-result.
+          if (event.toolCall.externallyExecuted) break
+          const index = toolExecutions.length
+          toolExecutions.push(
+            onToolCallDone(event.toolCall).catch((error: unknown) => {
+              toolFailures.push({
+                index,
+                error: error instanceof Error ? error : new Error(String(error)),
+              })
+            }),
+          )
+          break
+        }
+        case 'tool-result':
+          onExternalToolResult?.(event.toolCall, event.result)
           break
         case 'provider-data':
           providerData.push(event.providerData)
@@ -204,58 +288,27 @@ async function executeProviderTurn(options: ExecuteProviderTurnOptions): Promise
       }
     }
 
-    const flushBufferedToolEvents = async (): Promise<void> => {
-      while (!activeToolCallId && bufferedToolOrder.length > 0) {
-        const nextId = bufferedToolOrder.shift()!
-        const events = bufferedToolEvents.get(nextId) ?? []
-        bufferedToolEvents.delete(nextId)
-        activeToolCallId = nextId
-
-        for (const event of events) {
-          await collectAndEmit(event)
-          if (event.type === 'tool-call-done') {
-            activeToolCallId = null
-            break
-          }
+    let streamError: unknown
+    try {
+      for await (const event of streamAgentProviderTurnEvents(provider, { ...request, onEvent: undefined })) {
+        if (event.type === 'finish') {
+          finishReason = event.finishReason
+          usage = event.usage
+          pendingFinishEvent = event
+          continue
         }
+
+        collectEvent(event)
       }
+    } catch (error) {
+      streamError = error
     }
 
-    const handleToolInputEvent = async (event: AgentToolInputStreamEvent): Promise<void> => {
-      const id = toolInputEventId(event)
-      if (!activeToolCallId) {
-        activeToolCallId = id
-      }
+    // Converge before deciding the turn's fate: every execution settles first,
+    // so an abort or pause never strands still-running siblings.
+    await Promise.all(toolExecutions)
+    throwPrioritizedTurnError(toolFailures, streamError)
 
-      if (activeToolCallId !== id) {
-        rememberBufferedToolEvent(event)
-        return
-      }
-
-      await collectAndEmit(event)
-      if (event.type === 'tool-call-done') {
-        activeToolCallId = null
-        await flushBufferedToolEvents()
-      }
-    }
-
-    for await (const event of streamAgentProviderTurnEvents(provider, { ...request, onEvent: undefined })) {
-      if (event.type === 'finish') {
-        finishReason = event.finishReason
-        usage = event.usage
-        pendingFinishEvent = event
-        continue
-      }
-
-      if (isToolInputStreamEvent(event)) {
-        await handleToolInputEvent(event)
-        continue
-      }
-
-      await collectAndEmit(event)
-    }
-
-    await flushBufferedToolEvents()
     if (pendingFinishEvent) {
       request.onEvent?.(pendingFinishEvent)
     }
@@ -308,12 +361,21 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   assertAgentMessagesSupportedByCapabilities(messages, capabilities)
   const toolMap = new Map(tools.map(tool => [tool.name, tool]))
   const allToolResults: AgentLoopToolResult[] = []
+  const runGated = createConcurrencyGate(
+    Math.max(1, options.maxConcurrentTools ?? DEFAULT_MAX_CONCURRENT_TOOLS),
+  )
+  // Doom-loop guard: only *consecutively failing* identical (name + args)
+  // calls count toward the block — a model stuck retrying the same failing
+  // call gets an error instead of burning turns, while legitimate repeated
+  // polling (e.g. BashOutput with the same job id succeeding each time)
+  // never accumulates. A success resets its signature.
+  const toolFailureSignatureCounts = new Map<string, number>()
   let finalText = ''
   let finalReasoning = ''
   let finishReason: AgentFinishReason = 'unknown'
   let usage: AgentUsage | undefined
 
-  for (let turn = 1; ; turn++) {
+  for (let turn = 1; turn <= maxTurns; turn++) {
     throwIfAgentAborted(options.abortSignal)
     const replacementMessages = await runWithAgentAbort(options.abortSignal, () => options.beforeTurn?.({
       provider: options.provider,
@@ -333,7 +395,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
 
     options.onEvent?.({ type: 'turn-start', turn })
 
-    const pendingToolMessages: AgentMessage[] = []
+    const resultsByToolCallId = new Map<string, AgentToolResult>()
     const agentTurn = await runWithAgentAbort(options.abortSignal, () =>
       executeProviderTurn({
         request: {
@@ -351,15 +413,33 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           turn,
         },
         provider: options.provider,
-        onToolCallDone: async (toolCall) => {
-          const result = await executeAgentToolCall({
-            options,
-            toolMap,
-            turn,
-            toolCall,
-          })
-
+        onExternalToolResult: (toolCall, result) => {
           allToolResults.push({ toolCall, result })
+        },
+        onToolCallDone: async (toolCall) => {
+          const signature = toolCallSignature(toolCall.name, safeParseToolArguments(toolCall))
+          const priorFailures = toolFailureSignatureCounts.get(signature) ?? 0
+          let result: AgentToolResult
+          if (priorFailures >= DOOM_LOOP_FAILURE_THRESHOLD) {
+            result = {
+              content: '',
+              error: `Repeated identical tool call detected (${toolCall.name} failed ${priorFailures} times with the same arguments). Stop and reassess instead of retrying the same arguments.`,
+            }
+          } else {
+            result = await runGated(() => executeAgentToolCall({
+              options,
+              toolMap,
+              turn,
+              toolCall,
+            }))
+            if (result.error && !result.aborted) {
+              toolFailureSignatureCounts.set(signature, priorFailures + 1)
+            } else if (!result.error) {
+              toolFailureSignatureCounts.delete(signature)
+            }
+          }
+
+          resultsByToolCallId.set(toolCall.id, result)
           options.onEvent?.({ type: 'tool-result', turn, toolCall, result })
           if (options.abortSignal?.aborted || result.aborted) {
             throw createAgentAbortError()
@@ -367,14 +447,25 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           if (result.requiresConfirmation) {
             throw new AgentLoopPauseForConfirmationError(toolCall, result)
           }
-          pendingToolMessages.push({
-            role: 'tool',
-            toolCallId: toolCall.id,
-            content: agentToolResultToMessageContentForCapabilities(result, capabilities),
-          })
         },
       }))
     throwIfAgentAborted(options.abortSignal)
+
+    // Tool messages must mirror the assistant's declaration order, not the
+    // concurrent completion order. Externally-executed calls never get a
+    // tool message: their results live inside the provider's own transcript.
+    const pendingToolMessages: AgentMessage[] = []
+    for (const toolCall of agentTurn.message.toolCalls ?? []) {
+      if (toolCall.externallyExecuted) continue
+      const result = resultsByToolCallId.get(toolCall.id)
+      if (!result) continue
+      allToolResults.push({ toolCall, result })
+      pendingToolMessages.push({
+        role: 'tool',
+        toolCallId: toolCall.id,
+        content: agentToolResultToMessageContentForCapabilities(result, capabilities),
+      })
+    }
 
     // Per-round trace observation: `messages` still holds exactly what this
     // round's request carried (outputs are appended below). Errors in the
@@ -412,8 +503,11 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     usage = addUsage(usage, agentTurn.usage)
     options.onEvent?.({ type: 'turn-end', turn, finishReason, usage: agentTurn.usage })
 
-    const toolCalls = agentTurn.message.toolCalls ?? []
-    if (toolCalls.length === 0) {
+    // Externally-executed calls must not trigger another round: the provider
+    // already ran its full tool loop internally and the turn is complete.
+    const continuationToolCalls = (agentTurn.message.toolCalls ?? [])
+      .filter(call => !call.externallyExecuted)
+    if (continuationToolCalls.length === 0) {
       const replacementMessages = await runWithAgentAbort(options.abortSignal, () => options.afterTurn?.({
         provider: options.provider,
         model: options.model,

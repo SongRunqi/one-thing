@@ -2,6 +2,14 @@ import type { JsonObject, JsonValue } from '../json.js'
 
 export type AgentRole = 'system' | 'user' | 'assistant' | 'tool'
 
+/**
+ * Abstract reasoning-effort scale shared across providers. Each provider maps
+ * it onto its own knob (OpenAI reasoning_effort, Anthropic output_config.effort
+ * or budget_tokens, Gemini thinkingLevel/thinkingBudget, DeepSeek high/max, …)
+ * and clamps values it does not support to the nearest one it does.
+ */
+export type AgentReasoningEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
 export type AgentInputModality = 'text' | 'image' | 'file' | 'audio' | 'video'
 export type AgentOutputModality = 'text' | 'image' | 'file' | 'audio' | 'video'
 
@@ -82,6 +90,14 @@ export interface AgentToolCall {
   id: string
   name: string
   arguments: string
+  /**
+   * True when the provider itself already executed this tool (external agent
+   * backends: ACP / Claude Code / Codex / pi). The loop must not execute it
+   * locally, must not synthesize a tool message for it, and must not start
+   * another round because of it — the provider follows up with a matching
+   * `tool-result` event carrying the outcome it observed.
+   */
+  externallyExecuted?: boolean
 }
 
 export interface AgentMessage {
@@ -212,7 +228,7 @@ export interface AgentTurnTraceEvent {
     temperature?: number
     maxTokens?: number
     thinking?: 'enabled' | 'disabled'
-    reasoningEffort?: 'high' | 'max'
+    reasoningEffort?: AgentReasoningEffort
   }
   response: AgentTurn
   /** Tool result messages produced by this round's tool calls. */
@@ -231,6 +247,12 @@ export interface AgentUsage {
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  /** Tokens read from a provider-side prompt cache (subset of inputTokens, not additional). */
+  cacheReadTokens?: number
+  /** Tokens written to a provider-side prompt cache (billed separately from inputTokens). */
+  cacheWriteTokens?: number
+  /** Reasoning/thinking tokens (subset of outputTokens for most providers). */
+  reasoningTokens?: number
 }
 
 export type AgentFinishReason =
@@ -262,6 +284,12 @@ export type AgentStreamEvent =
   | { type: 'tool-result'; turn: number; toolCall: AgentToolCall; result: AgentToolResult }
   | { type: 'turn-end'; turn: number; finishReason: AgentFinishReason; usage?: AgentUsage }
 
+/**
+ * Events a provider may yield from streamTurn. The tool observation events
+ * (`tool-metadata` / `tool-partial-result` / `tool-result`) are only valid for
+ * tool calls marked `externallyExecuted` — for locally executed tools they are
+ * emitted by the loop itself and provider-emitted ones are dropped.
+ */
 export type AgentTurnStreamEvent = Extract<
   AgentStreamEvent,
   | { type: 'reasoning-delta' }
@@ -269,6 +297,9 @@ export type AgentTurnStreamEvent = Extract<
   | { type: 'tool-call-start' }
   | { type: 'tool-call-delta' }
   | { type: 'tool-call-done' }
+  | { type: 'tool-metadata' }
+  | { type: 'tool-partial-result' }
+  | { type: 'tool-result' }
   | { type: 'provider-data' }
   | { type: 'finish' }
 >
@@ -282,7 +313,7 @@ export interface AgentTurnRequest {
   temperature?: number
   maxTokens?: number
   thinking?: 'enabled' | 'disabled'
-  reasoningEffort?: 'high' | 'max'
+  reasoningEffort?: AgentReasoningEffort
   abortSignal?: AbortSignal
   onEvent?: (event: AgentStreamEvent) => void
   turn: number
@@ -321,10 +352,15 @@ export interface AgentLoopOptions {
   afterTurn?: AgentAfterTurnHook
   toolChoice?: AgentToolChoice
   maxTurns?: number
+  /**
+   * Cap on tool executions running at the same time within this loop
+   * (per stream; different sessions/streams are independent). Default 8.
+   */
+  maxConcurrentTools?: number
   temperature?: number
   maxTokens?: number
   thinking?: 'enabled' | 'disabled'
-  reasoningEffort?: 'high' | 'max'
+  reasoningEffort?: AgentReasoningEffort
   sessionId: string
   messageId: string
   workingDirectory?: string

@@ -6,86 +6,38 @@
         v-model="searchQuery"
         type="text"
         class="search-input"
-        placeholder="Search archived chats..."
+        placeholder="Search archived chats…"
+        aria-label="Search archived chats"
       >
       <!-- Grouping Mode Toggle -->
-      <div class="grouping-toggle">
+      <div
+        class="grouping-toggle"
+        role="group"
+        aria-label="Group archived chats"
+      >
         <Button
           unstyled
-          class="toggle-btn"
-          :class="{ active: groupingMode === 'date' }"
+          class="text-action toggle-action"
+          :class="{ 'is-active': groupingMode === 'date' }"
+          :aria-pressed="groupingMode === 'date'"
           title="Group by date"
           @click="groupingMode = 'date'"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <rect
-              x="3"
-              y="4"
-              width="18"
-              height="18"
-              rx="2"
-              ry="2"
-            />
-            <line
-              x1="16"
-              y1="2"
-              x2="16"
-              y2="6"
-            />
-            <line
-              x1="8"
-              y1="2"
-              x2="8"
-              y2="6"
-            />
-            <line
-              x1="3"
-              y1="10"
-              x2="21"
-              y2="10"
-            />
-          </svg>
+          date
         </Button>
+        <span
+          class="toggle-sep"
+          aria-hidden="true"
+        >/</span>
         <Button
           unstyled
-          class="toggle-btn"
-          :class="{ active: groupingMode === 'branch' }"
+          class="text-action toggle-action"
+          :class="{ 'is-active': groupingMode === 'branch' }"
+          :aria-pressed="groupingMode === 'branch'"
           title="Group by branch"
           @click="groupingMode = 'branch'"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <line
-              x1="6"
-              y1="3"
-              x2="6"
-              y2="15"
-            />
-            <circle
-              cx="18"
-              cy="6"
-              r="3"
-            />
-            <circle
-              cx="6"
-              cy="18"
-              r="3"
-            />
-            <path d="M18 9a9 9 0 0 1-9 9" />
-          </svg>
+          branch
         </Button>
       </div>
     </div>
@@ -93,117 +45,41 @@
     <!-- Archived Chats List -->
     <div class="content-body">
       <!-- Loading State -->
-      <div
+      <p
         v-if="sessionsStore.isLoading"
-        class="loading-state"
+        class="ledger-note"
       >
-        <div class="loading-spinner" />
-        <p>Loading archived chats...</p>
-      </div>
+        loading archived chats…
+      </p>
 
       <!-- Grouped Chats -->
-      <template v-else-if="groupedChats.length > 0">
-        <div
+      <div
+        v-else-if="groupedChats.length > 0"
+        class="ledger-body"
+      >
+        <section
           v-for="(group, index) in groupedChats"
           :key="`${group.label}-${group.sessions[0]?.id || index}`"
           class="chat-group"
         >
           <h4
-            class="group-title"
+            class="group-header"
             :class="{ collapsed: collapsedGroups.has(group.label) }"
+            role="button"
+            tabindex="0"
+            :aria-expanded="!collapsedGroups.has(group.label)"
             @click="toggleGroup(group.label)"
+            @keydown.enter.prevent="toggleGroup(group.label)"
+            @keydown.space.prevent="toggleGroup(group.label)"
           >
-            <!-- Chevron icon -->
-            <svg
-              class="group-chevron"
-              :class="{ collapsed: collapsedGroups.has(group.label) }"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-            <!-- Date icon -->
-            <svg
-              v-if="groupingMode === 'date'"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <rect
-                x="3"
-                y="4"
-                width="18"
-                height="18"
-                rx="2"
-                ry="2"
-              />
-              <line
-                x1="16"
-                y1="2"
-                x2="16"
-                y2="6"
-              />
-              <line
-                x1="8"
-                y1="2"
-                x2="8"
-                y2="6"
-              />
-              <line
-                x1="3"
-                y1="10"
-                x2="21"
-                y2="10"
-              />
-            </svg>
-            <!-- Branch icon for parent sessions -->
-            <svg
-              v-else-if="group.isParent"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-            </svg>
-            <!-- Branch icon for branch groups -->
-            <svg
-              v-else
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <line
-                x1="6"
-                y1="3"
-                x2="6"
-                y2="15"
-              />
-              <circle
-                cx="18"
-                cy="6"
-                r="3"
-              />
-              <circle
-                cx="6"
-                cy="18"
-                r="3"
-              />
-              <path d="M18 9a9 9 0 0 1-9 9" />
-            </svg>
-            {{ group.label }}
+            <span
+              class="group-mark"
+              aria-hidden="true"
+            >{{ collapsedGroups.has(group.label) ? '+' : '−' }}</span>
+            <span
+              class="group-title"
+              :title="group.label"
+            >{{ group.label }}</span>
             <span class="group-count">{{ group.sessions.length }}</span>
           </h4>
           <div
@@ -213,171 +89,77 @@
             <div
               v-for="session in group.sessions"
               :key="session.id"
-              class="chat-card"
+              class="chat-row"
               :class="{
                 active: sessionsStore.currentSessionId === session.id,
                 'is-branch': session.parentSessionId
               }"
+              role="button"
+              tabindex="0"
               @click="viewChat(session)"
+              @keydown.enter.prevent="viewChat(session)"
+              @keydown.space.prevent="viewChat(session)"
             >
-              <div
-                class="chat-icon"
-                :class="{ 'branch-icon': session.parentSessionId }"
-              >
-                <!-- Branch icon -->
-                <svg
+              <span
+                class="row-index"
+                aria-hidden="true"
+              />
+              <span
+                class="chat-name"
+                :title="session.name || 'Untitled Chat'"
+              >{{ session.name || 'Untitled Chat' }}</span>
+              <span class="chat-meta">
+                <!-- Branch parent indicator -->
+                <span
                   v-if="session.parentSessionId"
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <line
-                    x1="6"
-                    y1="3"
-                    x2="6"
-                    y2="15"
-                  />
-                  <circle
-                    cx="18"
-                    cy="6"
-                    r="3"
-                  />
-                  <circle
-                    cx="6"
-                    cy="18"
-                    r="3"
-                  />
-                  <path d="M18 9a9 9 0 0 1-9 9" />
-                </svg>
-                <!-- Chat icon -->
-                <svg
+                  class="chat-branch"
+                  :title="`Branched from ${getParentName(session.parentSessionId)}`"
+                >↳ {{ getParentName(session.parentSessionId) }}</span>
+                <span
                   v-else
-                  width="18"
-                  height="18"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                </svg>
-              </div>
-              <div class="chat-info">
-                <h5 class="chat-name">
-                  {{ session.name || 'Untitled Chat' }}
-                </h5>
-                <p class="chat-meta">
-                  <!-- Branch parent indicator -->
-                  <span
-                    v-if="session.parentSessionId"
-                    class="chat-branch"
-                  >
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="15 18 9 12 15 6" />
-                    </svg>
-                    {{ getParentName(session.parentSessionId) }}
-                  </span>
-                  <span
-                    v-else
-                    class="chat-time"
-                  >{{ formatTime(session.archivedAt || session.updatedAt) }}</span>
-                  <span
-                    v-if="session.messages?.length"
-                    class="chat-messages"
-                  >
-                    {{ session.messages.length }} messages
-                  </span>
-                  <!-- Show branch count if has children -->
-                  <span
-                    v-if="getBranchCount(session.id) > 0"
-                    class="chat-branches"
-                  >
-                    {{ getBranchCount(session.id) }} branch{{ getBranchCount(session.id) > 1 ? 'es' : '' }}
-                  </span>
-                </p>
-              </div>
-              <div class="chat-actions">
+                  class="chat-time"
+                >{{ formatTime(session.archivedAt || session.updatedAt) }}</span>
+                <span
+                  v-if="session.messages?.length"
+                  class="chat-messages"
+                >{{ session.messages.length }} msg</span>
+                <!-- Show branch count if has children -->
+                <span
+                  v-if="getBranchCount(session.id) > 0"
+                  class="chat-branches"
+                >{{ getBranchCount(session.id) }} branch{{ getBranchCount(session.id) > 1 ? 'es' : '' }}</span>
+              </span>
+              <span
+                class="chat-actions"
+                @click.stop
+              >
                 <Button
                   unstyled
-                  class="action-btn"
+                  class="text-action"
                   title="Restore"
-                  @click.stop="restoreChat(session)"
+                  @click="restoreChat(session)"
                 >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="1 4 1 10 7 10" />
-                    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                  </svg>
+                  restore
                 </Button>
                 <Button
                   unstyled
-                  class="action-btn danger"
+                  class="text-action is-danger"
                   title="Delete permanently"
-                  @click.stop="confirmDelete(session)"
+                  @click="confirmDelete(session)"
                 >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                  >
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
+                  delete
                 </Button>
-              </div>
+              </span>
             </div>
           </div>
-        </div>
-      </template>
+        </section>
+      </div>
 
       <!-- Empty State -->
       <div
         v-else
         class="empty-state"
       >
-        <div class="empty-icon">
-          <svg
-            width="48"
-            height="48"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <polyline points="21 8 21 21 3 21 3 8" />
-            <rect
-              x="1"
-              y="3"
-              width="22"
-              height="5"
-            />
-            <line
-              x1="10"
-              y1="12"
-              x2="14"
-              y2="12"
-            />
-          </svg>
-        </div>
         <p class="empty-text">
           No archived chats
         </p>
@@ -583,335 +365,357 @@ async function confirmDelete(session: ArchivedSession) {
 </script>
 
 <style scoped>
+/*
+ * Archived chats — 画线风 (ledger / ink-line).
+ * No fills, no radii: groups and rows hang on one vertical rule.
+ */
 .archived-chats-content {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-width: 0;
+  animation: ledger-fade 0.15s ease;
 }
 
+@keyframes ledger-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- header ---- */
 .content-header {
-  padding: 16px;
+  padding: 16px 4px 12px;
   display: flex;
-  gap: 10px;
-  align-items: center;
+  gap: 14px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .search-input {
-  flex: 1;
-  padding: 10px 14px;
-  font-size: 14px;
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-state-hover-bg, var(--hover));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 10px;
-  transition: all 0.15s ease;
+  flex: 1 1 160px;
+  min-width: 0;
+  padding: 4px 2px 5px;
+  font-size: 12px;
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0;
+  transition: border-color 0.12s ease;
 }
 
+.search-input:hover,
 .search-input:focus {
   outline: none;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .search-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-text-faint-fg, var(--muted));
 }
 
-/* Grouping Toggle */
+/* Grouping toggle: text actions, active one carries the accent underline */
 .grouping-toggle {
   display: flex;
-  gap: 2px;
-  padding: 3px;
-  background: var(--ui-state-hover-bg, var(--hover));
-  border-radius: 8px;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-.toggle-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
-  cursor: pointer;
-  transition: all 0.15s ease;
+.toggle-sep {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--muted));
 }
 
-.toggle-btn:hover {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: rgba(255, 255, 255, 0.06);
+.toggle-action {
+  padding: 4px 0;
 }
 
-html[data-theme='light'] .toggle-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-}
-
-.toggle-btn.active {
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+.toggle-action.is-active {
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .content-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 0 16px 16px;
+  padding: 0 4px 16px;
 }
 
-/* Loading State */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--ui-border-default-border, var(--border));
-  border-top-color: var(--ui-accent-primary-fg, var(--accent));
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin-bottom: 12px;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* Chat Groups */
-.chat-group {
-  margin-bottom: 24px;
-}
-
-.group-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+/* ---- notes / empty ---- */
+.ledger-note {
+  margin: 8px 0 0;
   font-size: 12px;
-  font-weight: 600;
-  color: var(--ui-text-muted-fg, var(--muted));
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0 0 12px;
-  padding: 4px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  user-select: none;
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
-.group-title:hover {
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--ui-text-primary-fg, var(--text));
+.empty-state {
+  padding: 8px 0 16px;
 }
 
-html[data-theme='light'] .group-title:hover {
-  background: rgba(0, 0, 0, 0.04);
+.empty-text {
+  font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  margin: 0 0 2px;
 }
 
-.group-title.collapsed {
-  margin-bottom: 8px;
+.empty-hint {
+  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  margin: 0;
 }
 
-.group-chevron {
-  flex-shrink: 0;
-  opacity: 0.5;
-  transition: transform 0.2s ease;
+/* ---- the ledger rule ---- */
+.ledger-body {
+  position: relative;
+  padding-left: 16px;
 }
 
-.group-chevron.collapsed {
-  transform: rotate(-90deg);
+.ledger-body::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
 }
 
-.group-count {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--ui-text-muted-fg, var(--muted));
-  background: rgba(255, 255, 255, 0.06);
-  padding: 2px 6px;
-  border-radius: 10px;
-  margin-left: auto;
+/* ---- groups ---- */
+.chat-group {
+  margin-bottom: 22px;
 }
 
-html[data-theme='light'] .group-count {
-  background: rgba(0, 0, 0, 0.06);
+.chat-group:last-child {
+  margin-bottom: 0;
 }
 
-/* Chat List */
-.chat-list {
+.group-header {
+  position: relative;
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
   gap: 8px;
-}
-
-.chat-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: var(--ui-state-hover-bg, var(--hover));
-  border: 1px solid transparent;
-  border-radius: 12px;
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold, 600);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ui-text-primary-fg, var(--text-primary));
   cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.chat-card:hover {
-  background: var(--ui-state-active-bg, var(--active));
-  border-color: var(--ui-border-default-border, var(--border));
-}
-
-.chat-card.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.chat-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--ui-state-active-bg, var(--active));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.chat-info {
-  flex: 1;
+  user-select: none;
   min-width: 0;
 }
 
-.chat-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text));
-  margin: 0 0 4px;
-  white-space: nowrap;
+.group-header::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  width: 10px;
+  height: 2px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+}
+
+.group-header:focus-visible {
+  outline: none;
+}
+
+.group-header:focus-visible::before,
+.group-header:hover::before {
+  background: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.group-header.collapsed {
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  margin-bottom: 0;
+}
+
+.group-mark {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  font-weight: var(--font-weight-normal, 400);
+  color: var(--ui-text-faint-fg, var(--muted));
+  flex-shrink: 0;
+  min-width: 10px;
+}
+
+.group-title {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-count {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: var(--font-weight-normal, 400);
+  color: var(--ui-text-faint-fg, var(--muted));
+  flex-shrink: 0;
+}
+
+/* ---- rows ---- */
+.chat-list {
+  counter-reset: chat-row;
+}
+
+.chat-row {
+  position: relative;
+  counter-increment: chat-row;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-height: 30px;
+  padding: 6px 0;
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.chat-row:first-child {
+  border-top: none;
+}
+
+/* Tick hanging the row on the rule */
+.chat-row::before {
+  content: '';
+  position: absolute;
+  left: -13px;
+  top: 50%;
+  width: 7px;
+  height: 1px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
+}
+
+.chat-row:hover::before {
+  width: 12px;
+  background: var(--ui-text-muted-fg, var(--text-muted));
+}
+
+.chat-row:focus-visible {
+  outline: none;
+}
+
+.chat-row.active::before,
+.chat-row:focus-visible::before {
+  width: 14px;
+  height: 2px;
+  background: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.row-index::before {
+  content: counter(chat-row, decimal-leading-zero);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  flex-shrink: 0;
+  min-width: 16px;
+  display: inline-block;
+}
+
+.chat-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--ui-text-primary-fg, var(--text-primary));
+}
+
+.chat-row.active .chat-name {
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .chat-meta {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  margin: 0;
+  align-items: baseline;
+  gap: 10px;
+  flex-shrink: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  min-width: 0;
+  max-width: 55%;
 }
 
-.chat-time {
-  opacity: 0.8;
-}
-
-.chat-messages::before {
-  content: '·';
-  margin-right: 8px;
+.chat-time,
+.chat-messages,
+.chat-branches {
+  white-space: nowrap;
 }
 
 .chat-branch {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--ui-accent-primary-fg, var(--accent));
-  font-size: 11px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.chat-branch svg {
-  opacity: 0.7;
+/* Branch rows sit one step in from the rule */
+.chat-row.is-branch {
+  padding-left: 16px;
 }
 
-.chat-branches {
-  color: var(--ui-text-muted-fg, var(--muted));
-  opacity: 0.8;
-}
-
-.chat-branches::before {
-  content: '·';
-  margin-right: 8px;
-}
-
-/* Branch styling */
-.chat-card.is-branch {
-  margin-left: 16px;
-  border-left: 2px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 30%, transparent);
-}
-
-.chat-icon.branch-icon {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-/* Chat Actions */
+/* ---- row actions ---- */
 .chat-actions {
   display: flex;
-  gap: 4px;
+  align-items: baseline;
+  gap: 12px;
+  flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.12s ease;
 }
 
-.chat-card:hover .chat-actions {
+.chat-row:hover .chat-actions,
+.chat-row:focus-visible .chat-actions,
+.chat-actions:focus-within {
   opacity: 1;
 }
 
-.action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
+/* ---- shared text-action ---- */
+.text-action {
+  appearance: none;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.12s ease;
 }
 
-.action-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+.text-action:hover:not(:disabled) {
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
-.action-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--ui-status-danger-fg, #ef4444);
+.text-action.is-danger:hover:not(:disabled) {
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
-/* Empty State */
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
+.text-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-.empty-icon {
-  color: var(--ui-text-muted-fg, var(--muted));
-  opacity: 0.5;
-  margin-bottom: 16px;
-}
-
-.empty-text {
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text));
-  margin: 0 0 4px;
-}
-
-.empty-hint {
-  font-size: 13px;
-  color: var(--ui-text-muted-fg, var(--muted));
-  margin: 0;
+@media (prefers-reduced-motion: reduce) {
+  .archived-chats-content {
+    animation: none;
+  }
 }
 </style>

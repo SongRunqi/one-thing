@@ -20,6 +20,7 @@ import type {
   PluginSkillRoot,
   SkillConditions,
   SkillDefinition,
+  SkillDirectoryConfig,
   SkillFile,
   SkillSource,
 } from './types.js'
@@ -44,9 +45,18 @@ const ONETHING_SKILLS_CONFIG_FILENAME = 'skills.yaml'
 export interface OnethingSkillsLoaderAdapters {
   getStorePath(): string
   listPluginSkillRoots?(): PluginSkillRoot[]
+  /** User-managed skill roots (settings.skills.customDirectories) */
+  listCustomSkillRoots?(): SkillDirectoryConfig[]
   isPackaged?(): boolean
   getResourcesPath?(): string | undefined
   getCwd?(): string
+  /**
+   * Veto for builtin skill directories (by basename). Used to expose only the
+   * ACTIVE music provider's CLI skill: every provider ships one, and prose
+   * for an absent CLI would only teach the model commands that cannot run.
+   * Absent adapter (or true) = keep, so non-music skills are unaffected.
+   */
+  isBuiltinSkillDirEnabled?(dirName: string): boolean
 }
 
 let configuredAdapters: OnethingSkillsLoaderAdapters | undefined
@@ -531,6 +541,11 @@ function skillIdFor(source: SkillSource, name: string, skillDir: string, ownerId
   const key = relativeKey && !relativeKey.startsWith('..') && !path.isAbsolute(relativeKey)
     ? relativeKey
     : name
+  // Custom roots are keyed by their directory config id so ids stay stable
+  // across path edits and never collide between roots.
+  if (source === 'custom') {
+    return ownerId ? `custom:${ownerId}:${key || name}` : `custom:${key || name}`
+  }
   if (source !== 'plugin') return `${source}:${key || name}`
   const hash = crypto.createHash('sha1').update(path.resolve(skillDir)).digest('hex').slice(0, 10)
   return ownerId ? `plugin:${ownerId}:${hash}:${key || name}` : `plugin:${hash}:${key || name}`
@@ -717,7 +732,11 @@ function loadBuiltinSkills(): SkillDefinition[] {
     return []
   }
 
-  const skills = loadSkillsFromPath(builtinPath, 'builtin', { recursive: true })
+  const loaded = loadSkillsFromPath(builtinPath, 'builtin', { recursive: true })
+  const veto = configuredAdapters?.isBuiltinSkillDirEnabled
+  const skills = veto
+    ? loaded.filter(skill => veto(path.basename(skill.directoryPath)) !== false)
+    : loaded
   logLoadedSkillRoot('Builtin skills path', builtinPath, skills)
 
   return skills
@@ -731,6 +750,33 @@ function loadPluginRootSkills(root: PluginSkillRoot): SkillDefinition[] {
     instructionContext: root.instructionContext,
   })
   logLoadedSkillRoot(`Plugin root (${root.pluginId}) path`, root.path, skills)
+  return skills
+}
+
+/**
+ * Load skills from user-managed custom roots. Skills inherit the root's
+ * agent binding so they can be scoped to a single agent.
+ */
+function loadCustomRootSkills(): SkillDefinition[] {
+  const roots = configuredAdapters?.listCustomSkillRoots?.() ?? []
+  const skills: SkillDefinition[] = []
+
+  for (const root of roots) {
+    if (root.enabled === false) continue
+    if (!root.path || !isExistingDirectory(root.path)) {
+      console.warn(`[Skills] Custom skills root missing or unreadable: ${root.path}`)
+      continue
+    }
+    const rootSkills = loadSkillsFromPath(root.path, 'custom', {
+      recursive: true,
+      ownerId: root.id,
+    })
+    for (const skill of rootSkills) {
+      skills.push(root.agentId ? { ...skill, agentId: root.agentId } : skill)
+    }
+    logLoadedSkillRoot(`Custom root (${root.label || root.id}) path`, root.path, rootSkills)
+  }
+
   return skills
 }
 
@@ -788,14 +834,18 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     ? loadProjectSkillsForDirectoryWithPaths(workingDirectory, userSkillsPath)
     : { projectSkills: [] as SkillDefinition[], projectSkillPaths: [] as string[] }
 
+  // User-managed custom skill roots.
+  const customSkills = loadCustomRootSkills()
+
   // Plugin-provided skill roots.
   const pluginSkills = (configuredAdapters?.listPluginSkillRoots?.() ?? []).flatMap(loadPluginRootSkills)
 
-  // Priority: project > user > plugin > builtin.
+  // Priority: project > user > custom > plugin > builtin.
   // First matching name wins.
   const allSkills = [
     ...projectSkills,
     ...userSkills,
+    ...customSkills,
     ...pluginSkills,
     ...builtinSkills,
   ]
@@ -810,7 +860,7 @@ export function loadAllSkills(workingDirectory?: string): SkillDefinition[] {
     return true
   })
 
-  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${pluginSkills.length} plugin skills`)
+  console.log(`[Skills] Loaded ${builtinSkills.length} builtin, ${userSkills.length} user, ${projectSkills.length} project, ${customSkills.length} custom, ${pluginSkills.length} plugin skills`)
   if (isSkillsDebugEnabled()) {
     console.log(`[Skills] Total skills (after dedup): ${dedupedSkills.length}, names:`, dedupedSkills.map(s => s.name))
   } else {

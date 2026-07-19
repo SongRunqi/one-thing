@@ -1,3 +1,4 @@
+import { relativePath } from '@onething/core/storage'
 import type {
   CoreSoulMemoryPromptFragment,
 } from '../plugins/index.js'
@@ -5,21 +6,16 @@ import {
   buildSoulMemoryPromptFragments as coreBuildSoulMemoryPromptFragments,
 } from '../plugins/index.js'
 import type { MemoryWorkspace } from './types.js'
-import { buildGraphProfileSummary } from './canonical.js'
-import { buildRecentDailyContextFragment } from './daily-context.js'
 import { buildHermesMemoryPromptFragment } from './hermes-file-memory.js'
 import {
   readLimited,
   SOUL_MEMORY_RULES_PROMPT,
 } from './workspace.js'
 
-export type SoulMemoryActiveRecallProvider = () => Promise<string | null> | string | null
-
 export interface BuildSoulMemoryPromptContextOptions {
   workspace: MemoryWorkspace
   sessionId?: string
   userTurnCount?: number
-  activeMemory?: string | null | SoulMemoryActiveRecallProvider
 }
 
 export async function buildSoulMemoryPromptContext(
@@ -30,23 +26,20 @@ export async function buildSoulMemoryPromptContext(
 
   const maxChars = workspace.settings.bootstrapMaxChars
   const hermesFileMemory = await buildHermesMemoryPromptFragment(workspace, maxChars)
-  const graphProfile = buildGraphProfileSummary(workspace)
-  const dailyContext = await buildRecentDailyContextFragment({
-    workspace,
-    sessionId: options.sessionId,
-    userTurnCount: options.userTurnCount,
-  })
-  const activeMemory = typeof options.activeMemory === 'function'
-    ? await options.activeMemory()
-    : options.activeMemory
+
+  // Daily notes are written by capture but not injected; tell the model where
+  // today's note lives so it can fetch it on demand with memory_get.
+  const todayRelativePath = relativePath(workspace.root, workspace.todayPath)
+  const memoryFilesNote = [
+    '',
+    `Memory root: ${workspace.root}`,
+    `Today's daily note: ${todayRelativePath} (not injected; read it with the memory_get tool when earlier activity from today matters).`,
+  ].join('\n')
 
   return coreBuildSoulMemoryPromptFragments({
-    rulesPrompt: SOUL_MEMORY_RULES_PROMPT,
+    rulesPrompt: `${SOUL_MEMORY_RULES_PROMPT}${memoryFilesNote}`,
     soulPath: workspace.soulPath,
     soulContent: readLimited(workspace.soulPath, maxChars),
     hermesFileMemory,
-    graphProfile,
-    dailyContext,
-    activeMemory,
   })
 }

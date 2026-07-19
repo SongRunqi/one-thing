@@ -52,6 +52,14 @@ export interface BashToolAdapters {
   getToolOutputsDir(): string
   getShellPath?(): string | undefined
   createOperations(options: BashOperationsOptions): BashOperations
+  /**
+   * Lets the host make a command workable before it runs — e.g. music: mpv
+   * only plays while a resident client holds ncm-cli's player daemon open, and
+   * bash is the only place that sees a play coming, because the model drives
+   * ncm-cli itself. Failures are logged and ignored: a host that cannot prepare
+   * must not stop the command from running and reporting its own error.
+   */
+  prepareForCommand?(command: string): Promise<void>
 }
 
 export interface BashMetadata {
@@ -319,6 +327,14 @@ To change the work directory for bash and file tools, use variable { action: "se
       }
 
       ctx.updateResult?.({ content: [], details: undefined })
+
+      if (adapters.prepareForCommand) {
+        try {
+          await adapters.prepareForCommand(command)
+        } catch (error) {
+          console.warn('[bash] host could not prepare for the command', error)
+        }
+      }
 
       const ops = adapters.createOperations({
         shellPath: adapters.getShellPath?.(),

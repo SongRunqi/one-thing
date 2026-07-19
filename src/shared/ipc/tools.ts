@@ -115,6 +115,9 @@ export interface ToolCall {
   // Pending permission request fields (set when permission:request fires)
   permissionId?: string       // ID of the pending permission request
   canRespond?: boolean        // Whether this UI can respond (vs read-only mirror)
+  // Waiting behind another prompt in the session's serialized permission
+  // queue (permission:queued fired, no card yet)
+  permissionQueued?: boolean
 }
 
 // Bash tool specific settings

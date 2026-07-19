@@ -5,11 +5,16 @@ import { platformApi } from '@/platform'
  */
 
 import { useSessionsStore } from '@/stores/sessions'
+import { useChatStore } from '@/stores/chat'
 import type { CommandDefinition, CommandResult } from '@/types/commands'
 import {
   CHANGE_DIRECTORY_SLASH_COMMAND,
   COMPACT_CONTEXT_SLASH_COMMAND,
+  GOAL_SLASH_COMMAND,
+  KEGEL_SLASH_COMMAND,
   NEW_SESSION_SLASH_COMMAND,
+  POMODORO_SLASH_COMMAND,
+  PRACTICE_STOP_SLASH_COMMAND,
 } from '@onething/core/slash-commands'
 /**
  * All registered commands
@@ -69,7 +74,11 @@ const commands: CommandDefinition[] = [
         nextDirectory = result.filePaths[0]
       }
 
-      const result = await platformApi.updateSessionWorkingDirectory(
+      // Go through the sessions store, not platformApi directly: on a
+      // new-chat draft the store buffers the directory on the draft (applied
+      // at materialization), while the raw IPC would silently no-op against
+      // a session id the main process has never seen.
+      const result = await useSessionsStore().updateSessionWorkingDirectory(
         context.sessionId,
         nextDirectory
       )
@@ -114,6 +123,178 @@ const commands: CommandDefinition[] = [
       return { success: true, message: 'Context compacted' }
     },
   },
+  {
+    id: GOAL_SLASH_COMMAND.id,
+    name: GOAL_SLASH_COMMAND.name,
+    description: GOAL_SLASH_COMMAND.description,
+    usage: GOAL_SLASH_COMMAND.usage,
+    displayLabel: GOAL_SLASH_COMMAND.displayLabel,
+    insertText: GOAL_SLASH_COMMAND.insertText,
+    async execute(context) {
+      const rawArgs = context.rawArgs.trim()
+      let sessionId = context.sessionId
+
+      // On a new-chat draft the goal RPCs would fail with "Session not
+      // found". Reads and updates short-circuit; creating a goal resolves a
+      // real session first (mirroring the regular send path).
+      const isDraft = context.isDraftSession
+
+      if (!rawArgs) {
+        if (isDraft) {
+          return { success: true, message: `No goal is set. ${GOAL_SLASH_COMMAND.usage}` }
+        }
+        const result = await platformApi.goalGet(sessionId)
+        if (!result.success) {
+          return { success: false, error: result.error || 'Failed to read goal' }
+        }
+        if (!result.goal) {
+          return { success: true, message: `No goal is set. ${GOAL_SLASH_COMMAND.usage}` }
+        }
+        const goal = result.goal
+        const budget = goal.tokenBudget ? `${goal.tokenBudget}` : 'unlimited'
+        return {
+          success: true,
+          message: `Goal [${goal.status}] ${goal.objective} — ${goal.tokensUsed} tokens used (budget ${budget}), ${goal.continuationCount} auto-continuations`,
+        }
+      }
+
+      const [keyword, ...rest] = rawArgs.split(/\s+/)
+      const lowered = keyword.toLowerCase()
+      // Reserved words act as subcommands only in their exact shape —
+      // "/goal clear the backlog" is an objective, not a destructive clear.
+      const isPause = lowered === 'pause' && rest.length === 0
+      const isResume = lowered === 'resume' && rest.length === 0
+      const isClear = lowered === 'clear' && rest.length === 0
+      const isBudget = lowered === 'budget' && rest.length <= 1
+
+      if (isDraft && (isPause || isResume || isBudget)) {
+        return { success: false, error: 'No goal is set for this session' }
+      }
+      if (isDraft && isClear) {
+        return { success: true, message: 'No goal is set' }
+      }
+
+      if (isPause || isResume) {
+        const result = await platformApi.goalSet({
+          sessionId,
+          action: 'update',
+          status: isPause ? 'paused' : 'active',
+        })
+        if (!result.success) return { success: false, error: result.error || 'Failed to update goal' }
+        // Resuming does not reset tokensUsed: without budget headroom the
+        // goal re-limits on the next turn, so warn instead of looking stuck.
+        const resumed = result.goal
+        const exhausted = isResume
+          && resumed?.tokenBudget !== undefined
+          && resumed.tokensUsed >= resumed.tokenBudget
+        return {
+          success: true,
+          message: isPause
+            ? 'Goal paused'
+            : exhausted
+              ? 'Goal resumed — token budget is already spent; raise it with /goal budget <tokens> or it will pause again immediately'
+              : 'Goal resumed',
+        }
+      }
+
+      if (isClear) {
+        const result = await platformApi.goalSet({ sessionId, action: 'clear' })
+        if (!result.success) return { success: false, error: result.error || 'Failed to clear goal' }
+        return { success: true, message: 'Goal cleared' }
+      }
+
+      if (isBudget) {
+        const value = rest[0]
+        // Strict integer only: parseInt would silently truncate "500k" to 500.
+        const parsed = value === 'off' ? null : value && /^\d+$/.test(value) ? Number.parseInt(value, 10) : Number.NaN
+        if (parsed !== null && (!Number.isFinite(parsed) || parsed <= 0)) {
+          return { success: false, error: 'Usage: /goal budget <tokens> (or "off" to remove the cap)' }
+        }
+        const result = await platformApi.goalSet({
+          sessionId,
+          action: 'update',
+          tokenBudget: parsed,
+        })
+        if (!result.success) return { success: false, error: result.error || 'Failed to set budget' }
+        // A raised budget alone does not un-park a budget-limited goal;
+        // point at the missing resume step instead of appearing to hang.
+        const hint = result.goal?.status === 'budget_limited' ? ' — run /goal resume to continue' : ''
+        return {
+          success: true,
+          message: (parsed === null ? 'Goal budget removed — no token cap' : `Goal budget set to ${parsed} tokens`) + hint,
+        }
+      }
+
+      const resolvedSessionId = await context.requireSession()
+      if (!resolvedSessionId) {
+        return { success: false, error: 'Failed to create a session for the goal' }
+      }
+      sessionId = resolvedSessionId
+
+      const result = await platformApi.goalSet({
+        sessionId,
+        action: 'create',
+        objective: rawArgs,
+      })
+      if (!result.success) return { success: false, error: result.error || 'Failed to set goal' }
+
+      // The goal declaration itself is the first drive: a visible user
+      // message marked 'goal-set' (rendered as the GOAL frame in chat).
+      // Main no longer emits a synthetic kick on create.
+      void useChatStore().sendMessage(sessionId, rawArgs, undefined, { source: 'goal-set' })
+      return { success: true, message: 'Goal set' }
+    },
+  },
+  {
+    id: KEGEL_SLASH_COMMAND.id,
+    name: KEGEL_SLASH_COMMAND.name,
+    description: KEGEL_SLASH_COMMAND.description,
+    usage: KEGEL_SLASH_COMMAND.usage,
+    displayLabel: KEGEL_SLASH_COMMAND.displayLabel,
+    insertText: KEGEL_SLASH_COMMAND.insertText,
+    async execute() {
+      const { usePracticeStore } = await import('@/stores/practice')
+      const store = usePracticeStore()
+      await store.init()
+      await store.startKegel()
+      return { success: true, message: '凯格尔开始 · 跟着音效走' }
+    },
+  },
+  {
+    id: POMODORO_SLASH_COMMAND.id,
+    name: POMODORO_SLASH_COMMAND.name,
+    description: POMODORO_SLASH_COMMAND.description,
+    usage: POMODORO_SLASH_COMMAND.usage,
+    displayLabel: POMODORO_SLASH_COMMAND.displayLabel,
+    insertText: POMODORO_SLASH_COMMAND.insertText,
+    async execute(context) {
+      const { usePracticeStore } = await import('@/stores/practice')
+      const store = usePracticeStore()
+      await store.init()
+      const categories = store.config?.pomodoro.categories ?? []
+      const requested = context.rawArgs.trim()
+      const category = requested || categories[0]
+      if (!category) return { success: false, error: '还没有可用的番茄分类' }
+      await store.startPomodoro(category)
+      return { success: true, message: `番茄开始 · ${category}` }
+    },
+  },
+  {
+    id: PRACTICE_STOP_SLASH_COMMAND.id,
+    name: PRACTICE_STOP_SLASH_COMMAND.name,
+    description: PRACTICE_STOP_SLASH_COMMAND.description,
+    usage: PRACTICE_STOP_SLASH_COMMAND.usage,
+    displayLabel: PRACTICE_STOP_SLASH_COMMAND.displayLabel,
+    insertText: PRACTICE_STOP_SLASH_COMMAND.insertText,
+    async execute() {
+      const { usePracticeStore } = await import('@/stores/practice')
+      const store = usePracticeStore()
+      await store.init()
+      if (!store.isRunning) return { success: false, error: '当前没有进行中的练习' }
+      await store.stop()
+      return { success: true, message: '已结束并记账' }
+    },
+  },
 ]
 
 let pluginCommands: CommandDefinition[] = []
@@ -135,10 +316,16 @@ export async function refreshPluginCommands(): Promise<CommandDefinition[]> {
         description: command.description,
         usage: command.usage,
         async execute(context) {
+          // Plugin commands run in the main process; a draft id would point
+          // at a session that does not exist there.
+          const sessionId = await context.requireSession()
+          if (!sessionId) {
+            return { success: false, error: `${command.name} needs a session` }
+          }
           const response = await platformApi.executePluginCommand(
             command.name,
             context.rawArgs,
-            context.sessionId,
+            sessionId,
           )
           if (!response.success) {
             return { success: false, error: response.error || `${command.name} failed` }
@@ -238,7 +425,14 @@ export function filterCommands(query: string): CommandDefinition[] {
 }
 
 /**
- * Execute a command by its ID
+ * Execute a command by its ID.
+ *
+ * This is the single dispatch point for slash commands, and the place where
+ * the session identity is resolved: a new chat is a renderer-local draft
+ * whose id the main process has never seen, so the context hands commands a
+ * `requireSession()` resolver instead of trusting `sessionId` blindly.
+ * Commands that persist per-session state through IPC must resolve first;
+ * commands that never call it stay side-effect-free on drafts.
  */
 export async function executeCommand(
   id: string,
@@ -256,9 +450,31 @@ export async function executeCommand(
   // Convert args string to array
   const argsArray = context.args ? context.args.trim().split(/\s+/) : []
 
-  return command.execute({
+  const sessionsStore = useSessionsStore()
+  const isDraftSession = sessionsStore.isNewChatDraftId(context.sessionId)
+  let materializedSessionId: string | undefined
+
+  const requireSession = async (): Promise<string | null> => {
+    if (!isDraftSession) return context.sessionId
+    if (materializedSessionId) return materializedSessionId
+    const materialized = await sessionsStore.materializeNewChatDraft(context.sessionId)
+    if (!materialized) return null
+    materializedSessionId = materialized.id
+    return materialized.id
+  }
+
+  const result = await command.execute({
     sessionId: context.sessionId,
+    isDraftSession,
+    requireSession,
     args: argsArray,
     rawArgs: context.args || '',
   })
+
+  // The draft was materialized into a real session mid-command: make the
+  // invoking UI follow it, unless the command already picked a target.
+  if (result.success && materializedSessionId && !result.switchToSessionId) {
+    return { ...result, switchToSessionId: materializedSessionId }
+  }
+  return result
 }

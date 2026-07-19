@@ -103,6 +103,14 @@
           @open-file="openFile"
         />
 
+        <GoalReviewWorkbench
+          v-else-if="tab.type === 'review'"
+          :key="`${tab.id}-${tab.reviewNonce ?? 0}`"
+          :session-id="tab.sessionId || sessionId"
+          @open-file="openFile"
+          @objective-resolved="(objective) => renameReviewTab(tab.id, objective)"
+        />
+
         <section
           v-else-if="tab.type === 'terminal'"
           class="workbench-terminal"
@@ -231,18 +239,19 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type Component } from 'vue'
-import { ArrowRight, FileText, Files, Globe2, Play, Terminal, X } from 'lucide-vue-next'
+import { ArrowRight, FileText, Files, GitCompare, Globe2, Play, Terminal, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import TabPane from '@/components/common/TabPane.vue'
 import EditorWorkbench from '@/components/editor/EditorWorkbench.vue'
+import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser'
+type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review'
 
 interface WorkbenchTab {
   id: string
@@ -250,6 +259,10 @@ interface WorkbenchTab {
   title: string
   filePath?: string
   workspaceRoot?: string
+  /** review tabs only: the session whose goal is under review. */
+  sessionId?: string
+  /** review tabs only: bumped to force a refetch on reopen. */
+  reviewNonce?: number
 }
 
 interface TerminalLine {
@@ -345,12 +358,14 @@ function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'file') return FileText
   if (type === 'terminal') return Terminal
   if (type === 'browser') return Globe2
+  if (type === 'review') return GitCompare
   return Files
 }
 
 function tabCategorySlot(type: WorkbenchTabType): number {
   if (type === 'terminal') return 6
   if (type === 'browser') return 7
+  if (type === 'review') return 4
   return 5
 }
 
@@ -440,6 +455,40 @@ function resolveFileWorkspaceRoot(filePath: string): string {
 
   if (filesWorkspaceRoot.value && isPathInsideRoot(filePath, filesWorkspaceRoot.value)) return filesWorkspaceRoot.value
   return parentDir(filePath)
+}
+
+/**
+ * One review tab per session rather than a new tab per click. Reopening bumps
+ * the nonce, which remounts the pane and refetches — the audit trail keeps
+ * growing while a goal runs, so a stale tab would quietly lie.
+ */
+function openGoalReview(reviewSessionId: string) {
+  const existing = openTabs.value.find(
+    tab => tab.type === 'review' && tab.sessionId === reviewSessionId,
+  )
+  if (existing) {
+    existing.reviewNonce = (existing.reviewNonce ?? 0) + 1
+    activeTabId.value = existing.id
+    return
+  }
+
+  const tab: WorkbenchTab = {
+    id: `review-${Date.now()}-${openTabs.value.length}`,
+    type: 'review',
+    title: 'Review',
+    sessionId: reviewSessionId,
+    reviewNonce: 0,
+  }
+  openTabs.value = [...openTabs.value, tab]
+  activeTabId.value = tab.id
+}
+
+/** The objective makes a far better tab title than a generic "Review". */
+function renameReviewTab(tabId: string, objective: string) {
+  const tab = openTabs.value.find(item => item.id === tabId)
+  if (!tab) return
+  const trimmed = objective.trim().split('\n')[0] || ''
+  tab.title = trimmed.length > 24 ? `${trimmed.slice(0, 24)}…` : trimmed || 'Review'
 }
 
 async function openFile(filePath: string) {
@@ -554,6 +603,7 @@ function navigateBrowser() {
 
 defineExpose({
   openFile,
+  openGoalReview,
 })
 </script>
 

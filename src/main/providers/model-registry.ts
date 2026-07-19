@@ -12,20 +12,21 @@ import {
 	getAllOnethingModels,
 	getOnethingModelById,
 	getOnethingModelCacheStatus,
+	getOnethingModelCapabilityEntry,
 	getOnethingModelContextLength,
 	getOnethingModelDisplayName,
 	getOnethingModelMaxOutputTokens,
 	getOnethingModelNameAliases,
 	getOnethingModelsForProvider,
+	onethingCapabilityEntryToOpenRouterModel,
 	onethingModelSupportsImageGeneration,
-	onethingModelSupportsReasoning,
-	onethingModelSupportsReasoningSync,
 	onethingModelSupportsTemperature,
 	onethingModelSupportsTools,
 	refreshAllOnethingProviderModels,
 	refreshOnethingProviderModels,
 	saveOnethingProviderModels,
 	searchOnethingModels,
+	type OnethingModelCapabilityEntry,
 	type OnethingModelRegistryQueryOptions,
 	type OnethingModelsDevResponse,
 	type OnethingOpenRouterModel,
@@ -229,6 +230,18 @@ function getProviderDirectFallbackModel(
 		return getCodexFallbackModel(modelId);
 	}
 
+	if (providerId === "claude-code-agent") {
+		const entry = getProviderConfigs()?.claude?.models?.[modelId];
+		if (entry) {
+			return onethingCapabilityEntryToOpenRouterModel(
+				entry,
+			) as OpenRouterModel;
+		}
+		return getClaudeCodeAgentFallbackModels().find(
+			(model) => model.id === modelId,
+		);
+	}
+
 	if (providerId === "github-copilot") {
 		const caps = detectModelCapabilities(modelId);
 		const inputModalities = ["text"];
@@ -268,10 +281,74 @@ function getProviderDirectFallbackModel(
 	return undefined;
 }
 
+function claudeCodeAgentFallbackModel(
+	id: string,
+	name: string,
+	contextLength: number,
+): OpenRouterModel {
+	return {
+		id,
+		name,
+		description: `${name} via local Claude Code CLI`,
+		context_length: contextLength,
+		architecture: {
+			modality: "text",
+			input_modalities: ["text"],
+			output_modalities: ["text"],
+			tokenizer: "unknown",
+		},
+		pricing: { prompt: "0", completion: "0", request: "0", image: "0" },
+		top_provider: {
+			context_length: contextLength,
+			max_completion_tokens: 64000,
+			is_moderated: false,
+		},
+		supported_parameters: ["reasoning"],
+	};
+}
+
+/**
+ * The CLI drives the same Claude models the API providers already know:
+ * reuse the claude provider's registry entries (real context windows and
+ * capability flags from models.dev) and only hard-code when the registry
+ * has never been populated.
+ */
+function getClaudeCodeAgentFallbackModels(): OpenRouterModel[] {
+	const claudeModels = getProviderConfigs()?.claude?.models ?? {};
+	const resolve = (
+		id: string,
+		name: string,
+		contextLength: number,
+	): OpenRouterModel => {
+		const entry = claudeModels[id];
+		if (!entry) return claudeCodeAgentFallbackModel(id, name, contextLength);
+		const model = onethingCapabilityEntryToOpenRouterModel(
+			entry,
+		) as OpenRouterModel;
+		return {
+			...model,
+			description: `${model.name || name} via local Claude Code CLI`,
+		};
+	};
+	return [
+		claudeCodeAgentFallbackModel(
+			"claude-code-agent",
+			"Default (CLI configured)",
+			200000,
+		),
+		resolve("claude-fable-5", "Claude Fable 5", 1000000),
+		resolve("claude-opus-4-8", "Claude Opus 4.8", 500000),
+		resolve("claude-sonnet-5", "Claude Sonnet 5", 500000),
+		resolve("claude-haiku-4-5", "Claude Haiku 4.5", 200000),
+	];
+}
+
 function getProviderFallbackModels(providerId: string): OpenRouterModel[] {
 	if (providerId === "codex") return getCodexFallbackModels();
 	if (providerId === "grok" || providerId === "grok-oauth")
 		return Object.values(GROK_FALLBACK_MODELS);
+	if (providerId === "claude-code-agent")
+		return getClaudeCodeAgentFallbackModels();
 	return [];
 }
 
@@ -393,6 +470,14 @@ export async function getModelById(
 	) as OpenRouterModel | undefined;
 }
 
+/** Numeric USD-per-1M-token pricing (input/output/cacheRead/cacheWrite) for cost math. */
+export function getModelCapabilityEntry(
+	modelId: string,
+	providerId?: string,
+): OnethingModelCapabilityEntry | undefined {
+	return getOnethingModelCapabilityEntry(getProviderConfigs(), modelId, providerId);
+}
+
 export async function getModelContextLength(
 	modelId: string,
 	providerId?: string,
@@ -435,27 +520,8 @@ export async function modelSupportsTemperature(
 	);
 }
 
-export async function modelSupportsReasoning(
-	modelId: string,
-	providerId?: string,
-): Promise<boolean> {
-	return onethingModelSupportsReasoning(
-		getProviderConfigs(),
-		modelId,
-		providerId,
-	);
-}
-
-export function modelSupportsReasoningSync(
-	modelId: string,
-	providerId?: string,
-): boolean {
-	return onethingModelSupportsReasoningSync(
-		getProviderConfigs(),
-		modelId,
-		providerId,
-	);
-}
+// modelSupportsReasoning(Sync) deleted 2026-07-18 — reasoning support is
+// resolved by @onething/runtime/providers/model-capability now.
 
 export async function modelSupportsImageGeneration(
 	modelId: string,

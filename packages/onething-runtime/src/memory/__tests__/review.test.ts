@@ -174,7 +174,6 @@ describe('runtime memory review helpers', () => {
     fs.writeFileSync(workspace.userPath, '# USER\n')
     fs.writeFileSync(workspace.memoryPath, '# MEMORY\n')
     const diagnostics: Array<{ operation: string; stage: string; status: string }> = []
-    const writes: string[] = []
     const statusMutations: unknown[] = []
     const notifications: string[] = []
 
@@ -218,9 +217,6 @@ describe('runtime memory review helpers', () => {
           status: event.status,
         })
       },
-      onIndexableWrite: target => {
-        writes.push(target.relativePath)
-      },
       now: () => 1_772_000_000_000,
     })
 
@@ -231,7 +227,6 @@ describe('runtime memory review helpers', () => {
       paths: ['MEMORY.md'],
     })
     expect(fs.readFileSync(workspace.memoryPath, 'utf-8')).toContain('用户正在把 onething 拆成 headless runtime。')
-    expect(writes).toEqual(['MEMORY.md'])
     expect(statusMutations.length).toBeGreaterThan(0)
     expect(notifications[0]).toContain('Memory Review saved 1 update')
     expect(diagnostics).toContainEqual({

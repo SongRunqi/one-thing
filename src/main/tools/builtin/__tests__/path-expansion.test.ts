@@ -82,9 +82,13 @@ describe("builtin file tool path expansion", () => {
 		const filePath = path.join(dir, "note.txt");
 		await fs.writeFile(filePath, "before\n", "utf-8");
 
+		// The file changes while the tool waits at the gate, and the model sees
+		// the new content — so the read guard has nothing to object to and the
+		// snapshot ordering is what's under test.
 		const ctx = createContext(
 			vi.fn(async () => {
 				await fs.writeFile(filePath, "after\n", "utf-8");
+				await ReadTool.execute({ path: filePath }, createContext());
 			}),
 		);
 
@@ -114,6 +118,7 @@ describe("builtin file tool path expansion", () => {
 		const ctx = createContext(
 			vi.fn(async () => {
 				await fs.writeFile(filePath, "latest\n", "utf-8");
+				await ReadTool.execute({ path: filePath }, createContext());
 			}),
 		);
 
@@ -131,5 +136,30 @@ describe("builtin file tool path expansion", () => {
 		// The diff is based on the post-gate snapshot ('latest'), not the original 'before'.
 		expect(result.metadata.diff).toContain("-latest");
 		expect(result.metadata.diff).toContain("+final");
+	});
+
+	it("edit rejects a gate-window change the model never saw", async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "onething-edit-race-"));
+		const filePath = path.join(dir, "note.txt");
+		await fs.writeFile(filePath, "before\n", "utf-8");
+
+		// Same race as above, except nothing shows the new content to the model:
+		// editing now would apply a decision made against content that is gone.
+		const ctx = createContext(
+			vi.fn(async () => {
+				await fs.writeFile(filePath, "after\n", "utf-8");
+			}),
+		);
+
+		await ReadTool.execute({ path: filePath }, ctx);
+
+		await expect(
+			EditTool.execute(
+				{ path: filePath, edits: [{ oldText: "after", newText: "done" }] },
+				ctx,
+			),
+		).rejects.toThrow("changed on disk");
+
+		await expect(fs.readFile(filePath, "utf-8")).resolves.toBe("after\n");
 	});
 });

@@ -27,7 +27,7 @@ interface ReferenceCardData {
   title: string
   body: string
   description?: string
-  icon: string
+  kindLabel: string
 }
 
 interface ReferenceRange {
@@ -74,9 +74,9 @@ class PromptRefWidget extends WidgetType {
     span.className = `prompt-ref-widget is-${this.card.kind}`
     span.contentEditable = 'false'
 
-    const icon = document.createElement('span')
-    icon.className = 'prompt-ref-widget-icon'
-    icon.textContent = this.card.icon
+    const kindLabel = document.createElement('span')
+    kindLabel.className = 'prompt-ref-widget-kind'
+    kindLabel.textContent = this.card.kindLabel
 
     const title = document.createElement('span')
     title.className = 'prompt-ref-widget-title'
@@ -104,7 +104,7 @@ class PromptRefWidget extends WidgetType {
       },
     })
 
-    span.append(icon, title, closeMount.host)
+    span.append(kindLabel, title, closeMount.host)
     span.addEventListener('mouseenter', () => this.showPopover(span))
     span.addEventListener('mouseleave', () => this.scheduleHidePopover())
     span.addEventListener('focusin', () => this.showPopover(span))
@@ -242,7 +242,7 @@ function promptToCard(prompt: PromptCardData | undefined, promptId: string): Ref
     title: prompt?.title || 'Missing prompt',
     body: prompt?.body || `Prompt "${promptId}" was not found.`,
     description: prompt?.description,
-    icon: 'P',
+    kindLabel: 'prompt',
   }
 }
 
@@ -253,7 +253,7 @@ function skillToCard(skill: SkillDefinition | undefined, skillName: string): Ref
     title: skill?.name || skillName,
     body: skill?.description || `Skill "${skillName}" was not found.`,
     description: skill ? `${skill.source} skill` : undefined,
-    icon: 'S',
+    kindLabel: 'skill',
   }
 }
 
@@ -264,7 +264,7 @@ function commandToCard(command: CommandDefinition | undefined, commandId: string
     title: `/${commandId}`,
     body: command?.usage || `/${commandId}`,
     description: command?.description,
-    icon: '/',
+    kindLabel: 'cmd',
   }
 }
 

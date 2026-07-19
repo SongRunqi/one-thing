@@ -1,5 +1,5 @@
 # CLAUDE.md
-
+组件化而不是创建新的组件。
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build & Development Commands
@@ -61,8 +61,11 @@ Notes:
   See `docs/design/session-storage-jsonl.md`; conversion: `scripts/convert-sessions.mjs`.
   Cross-session search/indexing belongs in apps/server — do not add a database to the
   Electron main process.
-- Memory IPC in the Electron main process proxies to the headless server
-  (`ONETHING_SERVER_URL`, default `127.0.0.1:8787`); memory features need apps/server running.
+- Memory is plain markdown (SOUL/USER/MEMORY.md + daily notes) owned by the soul-memory
+  plugin; the Electron memory panel talks to it in-process (no server dependency).
+  apps/server exposes the same 10 `/api/memory/*` endpoints for headless/web deployments
+  via the shared `createOnethingMemoryIpcHandlers` factory in
+  `packages/onething-runtime/src/memory/ipc.ts`.
 - Renderer code accesses the host through `platformApi` (`src/renderer/platform/`),
   never `window.electronAPI` directly.
 - System prompt assembly is a single "directory at top, copy below" builder in

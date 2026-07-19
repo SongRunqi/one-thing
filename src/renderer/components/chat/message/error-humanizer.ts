@@ -102,20 +102,23 @@ export function humanizeStreamError(rawContent: string): HumanizedError {
     }
   }
 
+  // Overload comes before the generic 429 branch: providers (Kimi, Claude)
+  // report server-side overload as 429 too, and that is not the caller's
+  // rate limit — "稍等重试" is right, "被限流" is a misdiagnosis.
+  if ((status !== undefined && status >= 500) || /overloaded|service unavailable|bad gateway/i.test(probe)) {
+    return {
+      ...base,
+      title: `${provider ?? '服务商'}服务暂时不可用`,
+      hint: '对方服务器故障或过载,稍后重试,或换一个模型继续。',
+      retryable: true,
+    }
+  }
+
   if (status === 429) {
     return {
       ...base,
       title: '请求过于频繁,已被限流',
       hint: '稍等几秒重试,或换一个模型继续。',
-      retryable: true,
-    }
-  }
-
-  if ((status !== undefined && status >= 500) || /overloaded|service unavailable|bad gateway/i.test(probe)) {
-    return {
-      ...base,
-      title: `${provider ?? '服务商'}服务暂时不可用`,
-      hint: '对方服务器故障,稍后重试,或换一个模型继续。',
       retryable: true,
     }
   }

@@ -17,6 +17,7 @@ import {
   type AgentSourceToolDefinition,
 } from '../agent-loop/tools.js'
 import { resolveAIToolName } from '../agent-loop/tool-names.js'
+import { isCoreExternalAgentProvider } from './external-agent-providers.js'
 import type { AgentTool } from '../agent-loop/types.js'
 import { toJsonObject, toJsonValue, type JsonObject } from '../json.js'
 
@@ -253,7 +254,7 @@ export interface CoreAgentLoopProviderConfigWithOptionalKey {
   apiKey?: string
 }
 
-export type CoreAgentLoopSkillSource = 'user' | 'project' | 'plugin' | 'builtin'
+export type CoreAgentLoopSkillSource = 'user' | 'project' | 'plugin' | 'builtin' | 'custom'
 
 export interface CoreAgentLoopSkillLike {
   id: string
@@ -735,7 +736,7 @@ export function shouldStartAgentLoopContextCompact(options: {
   compactEnabled: boolean
 }): boolean {
   if (options.turn <= 1) return false
-  if (options.providerId === 'acp') return false
+  if (isCoreExternalAgentProvider(options.providerId)) return false
   if (!options.compactEnabled) return false
   return true
 }
@@ -842,7 +843,7 @@ export function getAgentLoopContextBlockReason(options: {
   inputTokens?: number
 }): string | undefined {
   if (options.turn <= 1) return undefined
-  if (options.providerId === 'acp') return undefined
+  if (isCoreExternalAgentProvider(options.providerId)) return undefined
   if (!options.compactEnabled) return undefined
   if (!options.session) return undefined
   if (shouldSkipAutoCompactForProviderUsageMismatch({

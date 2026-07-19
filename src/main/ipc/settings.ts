@@ -21,6 +21,7 @@ import { getVoiceServiceSafe } from '../voice/service.js'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
 import { ACPManager } from '../acp/index.js'
 import { applyGatewaySettings } from '@onething/electron-host/gateway/lifecycle'
+import { startTodoPlanWatcher } from '../todo-plan/store.js'
 
 async function saveSettingsFromIpc(settings: SaveSettingsRequest, event: ElectronSettingsIpcEvent) {
   const result = await saveOnethingSettingsWithRuntimeEffectsForIpc({
@@ -43,6 +44,12 @@ async function saveSettingsFromIpc(settings: SaveSettingsRequest, event: Electro
   const normalizedSettings = result.settings
   await applyGatewaySettings(normalizedSettings).catch(error => {
     console.error('[Gateway] Failed to apply channel settings:', error)
+  })
+
+  // The todo directory is a setting; re-point the watcher if it moved. start()
+  // is a no-op when the directory is unchanged.
+  await startTodoPlanWatcher().catch(error => {
+    console.error('[todo-plan] Failed to restart watcher after settings change:', error)
   })
 
   broadcastElectronSettingsChanged({

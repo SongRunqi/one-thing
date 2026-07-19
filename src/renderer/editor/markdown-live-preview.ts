@@ -3,6 +3,7 @@ import {
   EditorSelection,
   EditorState,
   Prec,
+  RangeSet,
   StateEffect,
   StateField,
   type Extension,
@@ -139,7 +140,10 @@ const BLOCKQUOTE_RE = /^(\s*>+[ \t]+)(.*)$/
 const SETEXT_LIST_TYPING_RE = /^\s*-{1,2}\s*$/
 const TABLE_SEPARATOR_RE = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/
 const TABLE_ROW_RE = /^\s*\|.+\|\s*$/
-const MATH_RE = /(?<!\\)(\${1,2})([^$\n]+?)\1/g
+// Flanking rules (Pandoc-style) keep dollar amounts like "$5 and $10" from
+// being treated as math: content must not start/end with whitespace, and a
+// closing single "$" must not be immediately followed by a digit.
+const MATH_RE = /(?<!\\)(\${1,2})(?!\s)([^$\n]*?[^\s$])\1(?!\d)/g
 const STRIKETHROUGH_RE = /~~([^~\n]+?)~~/g
 const UNDERLINE_RE = /<u>([^<\n]+?)<\/u>/gi
 const INLINE_CODE_RE = /`([^`\n]+?)`/g
@@ -258,18 +262,28 @@ export function isLineActive(view: EditorView, lineFrom: number, lineTo: number)
   })
 }
 
-function markdownWidgetCaretRect(dom: HTMLElement, pos: number, side: number): Rect | null {
+// Exported for tests.
+export function markdownWidgetCaretRect(dom: HTMLElement, pos: number, side: number): Rect | null {
   const rect = dom.getBoundingClientRect()
   const line = dom.closest('.cm-line') as HTMLElement | null
   const lineRect = line?.getBoundingClientRect()
-  const height = markdownLineRectHeight(line)
+  const height = markdownTextCaretHeight(line)
+    || markdownLineRectHeight(line)
     || (Number.isFinite(rect.height) && rect.height > 0 ? rect.height : 16)
-  const top = lineRect
-    ? lineRect.top + Math.max(0, (lineRect.height - height) / 2)
-    : rect.top
-  const left = side < 0 || (side === 0 && pos <= 0)
-    ? rect.left
-    : rect.right
+  // Anchor vertically on the widget's own rect: on a wrapped line the line
+  // block spans several visual rows and centering on it parks the caret
+  // between rows; the widget rect pins it to the row the widget lives in.
+  const top = Number.isFinite(rect.height) && rect.height > 0
+    ? rect.top + (rect.height - height) / 2
+    : (lineRect ? lineRect.top + Math.max(0, (lineRect.height - height) / 2) : rect.top)
+  // The caret edge follows the position inside the replaced range: 0 sits
+  // before the widget, anything past it sits after. Deciding by `side` drew
+  // the caret on the wrong side of the widget (before-positions rendered
+  // after the checkbox and vice versa). `side` only breaks the tie for
+  // zero-length widgets, where both edges share one document position.
+  const left = pos > 0 || (pos === 0 && side > 0 && rect.width === 0)
+    ? rect.right
+    : rect.left
 
   return {
     left,
@@ -277,6 +291,15 @@ function markdownWidgetCaretRect(dom: HTMLElement, pos: number, side: number): R
     top,
     bottom: top + height,
   }
+}
+
+// Match the caret height CodeMirror uses on plain text (roughly the font's
+// ascent+descent) instead of the full line box, so the caret does not grow
+// when it lands next to a widget.
+function markdownTextCaretHeight(line: HTMLElement | null): number | null {
+  if (!line) return null
+  const fontSize = Number.parseFloat(getComputedStyle(line).fontSize)
+  return Number.isFinite(fontSize) && fontSize > 0 ? fontSize * 1.2 : null
 }
 
 function markdownLineRectHeight(line: HTMLElement | null): number | null {
@@ -837,6 +860,37 @@ class CodeBlockTopbarWidget extends WidgetType {
       widget.collapsed === this.collapsed
   }
 
+  // Without this, CodeMirror flattens the full-width toolbar rect and draws
+  // the line-start caret at the toolbar's RIGHT edge. Anchor it on the first
+  // code character outside the toolbar instead, so approaching the line from
+  // either direction yields the same caret position.
+  coordsAt(dom: HTMLElement): Rect | null {
+    const line = dom.closest('.cm-line') as HTMLElement | null
+    if (!line) return null
+
+    const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT, {
+      acceptNode: node => (dom.contains(node) || !node.textContent?.length)
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT,
+    })
+    const textNode = walker.nextNode()
+    if (textNode?.textContent?.length) {
+      const range = document.createRange()
+      range.setStart(textNode, 0)
+      range.setEnd(textNode, 1)
+      const rect = range.getClientRects()[0]
+      if (rect && rect.height > 0) {
+        return { left: rect.left, right: rect.left, top: rect.top, bottom: rect.bottom }
+      }
+    }
+
+    // Empty first code line: sit at the line's left edge below the toolbar.
+    const lineRect = line.getBoundingClientRect()
+    const height = markdownTextCaretHeight(line) || 16
+    const top = Math.min(Math.max(lineRect.top, dom.getBoundingClientRect().bottom), Math.max(lineRect.top, lineRect.bottom - height))
+    return { left: lineRect.left, right: lineRect.left, top, bottom: top + height }
+  }
+
   toDOM(view: EditorView): HTMLElement {
     const toolbar = document.createElement('span')
     toolbar.className = 'md-live-codeblock-topbar'
@@ -1086,7 +1140,7 @@ class MarkdownTableBlockWidget extends WidgetType {
         const input = document.createElement('input')
         input.className = 'md-live-table-cell-input'
         input.value = row.cells[columnIndex] ?? ''
-        input.size = Math.max(6, Math.min(48, input.value.length + 1))
+        input.size = tableCellInputSize(input.value)
         input.spellcheck = false
         input.readOnly = readOnly
         input.setAttribute('aria-label', `Table ${row.header ? 'header' : 'cell'} ${rowIndex + 1}, ${columnIndex + 1}`)
@@ -1096,7 +1150,7 @@ class MarkdownTableBlockWidget extends WidgetType {
         const commit = () => {
           if (committed) return
           const nextValue = input.value
-          input.size = Math.max(6, Math.min(48, nextValue.length + 1))
+          input.size = tableCellInputSize(nextValue)
           if (nextValue === originalValue || readOnly) return
           committed = true
           const nextTable = tableMarkdownWithUpdatedCell(this.block, rowIndex, columnIndex, nextValue)
@@ -1109,7 +1163,7 @@ class MarkdownTableBlockWidget extends WidgetType {
         input.addEventListener('mousedown', event => event.stopPropagation())
         input.addEventListener('click', event => event.stopPropagation())
         input.addEventListener('input', () => {
-          input.size = Math.max(6, Math.min(48, input.value.length + 1))
+          input.size = tableCellInputSize(input.value)
         })
         input.addEventListener('keydown', (event) => {
           event.stopPropagation()
@@ -1263,6 +1317,7 @@ class MarkdownEmojiWidget extends WidgetType {
 
 class MarkdownLivePreviewPlugin {
   decorations: DecorationSet
+  atomicRanges: RangeSet<Decoration>
   private normalizeScheduled = false
 
   constructor(
@@ -1270,6 +1325,7 @@ class MarkdownLivePreviewPlugin {
     private readonly options: MarkdownLivePreviewOptions = {},
   ) {
     this.decorations = buildMarkdownDecorations(view, this.options)
+    this.atomicRanges = buildMarkdownAtomicRanges(view.state, this.decorations)
     this.scheduleEmptyCodeBlockNormalization(view)
   }
 
@@ -1284,6 +1340,7 @@ class MarkdownLivePreviewPlugin {
       foldsChanged
     ) {
       this.decorations = buildMarkdownDecorations(update.view, this.options)
+      this.atomicRanges = buildMarkdownAtomicRanges(update.view.state, this.decorations)
     }
     if (update.docChanged || update.selectionSet) {
       this.scheduleEmptyCodeBlockNormalization(update.view)
@@ -1333,7 +1390,10 @@ function addLivePreviewReplace(
     ranges.push(Decoration.mark({ class: 'md-live-source-revealed' }).range(from, to))
     return
   }
-  ranges.push(Decoration.replace(spec).range(from, to))
+  // Every replaced (hidden) range is atomic for cursor motion — see
+  // buildMarkdownAtomicRanges. Revealed ranges become marks above and stay
+  // freely editable.
+  ranges.push(Decoration.replace({ ...spec, markdownAtomic: true }).range(from, to))
 }
 
 function shouldRevealMarkdownSourceRange(view: EditorView, from: number, to: number): boolean {
@@ -1341,6 +1401,27 @@ function shouldRevealMarkdownSourceRange(view: EditorView, from: number, to: num
     if (range.empty) return range.head > from && range.head < to
     return range.from < to && range.to > from
   })
+}
+
+// Hidden lines collapse to height 0; the reveal check must include the line
+// boundaries, otherwise the caret can sit on a zero-height line and typing
+// lands in invisible text.
+function isMarkdownHiddenLineRevealed(view: EditorView, from: number, to: number): boolean {
+  return view.state.selection.ranges.some((range) => {
+    if (range.empty) return range.head >= from && range.head <= to
+    return range.from <= to && range.to >= from
+  })
+}
+
+function markdownHiddenLineClass(
+  view: EditorView,
+  lineFrom: number,
+  lineTo: number,
+  baseClass: string,
+  hiddenClass: string,
+): string {
+  if (isMarkdownHiddenLineRevealed(view, lineFrom, lineTo)) return baseClass
+  return `${baseClass} ${hiddenClass}`
 }
 
 function markdownLivePreviewFeatures(options: MarkdownLivePreviewOptions): Required<MarkdownLivePreviewFeatures> {
@@ -1444,7 +1525,17 @@ function fallbackMarkdownLivePreviewCursorMarker(
   const left = markdownLivePreviewCursorLeft(view, safePosition)
   if (left === null) return null
 
-  const top = lineBlock.top + Math.max(0, (lineBlock.height - height) / 2)
+  // Prefer the visual row of the adjacent character: centering on the whole
+  // line block parks the caret between rows once the line wraps.
+  const charRect = (safePosition < view.state.doc.length ? view.coordsForChar(safePosition) : null)
+    || (safePosition > 0 ? view.coordsForChar(safePosition - 1) : null)
+  const lineElement = markdownLivePreviewLineElementAtPosition(view, safePosition)
+  let top = lineBlock.top + Math.max(0, (lineBlock.height - height) / 2)
+  if (charRect && lineElement) {
+    const lineElementRect = lineElement.getBoundingClientRect()
+    const rowOffset = charRect.top + ((charRect.bottom - charRect.top) - height) / 2 - lineElementRect.top
+    top = lineBlock.top + Math.max(0, rowOffset)
+  }
   return new RectangleMarker(className, left, top, null, height)
 }
 
@@ -1687,17 +1778,22 @@ function addLineFallbackDecorations(
     : new Map<number, MarkdownTableLineState>()
 
   for (const scanRange of scanRanges) {
-    let inFence = isLineInFencedCodeContent(view.state.doc, scanRange.from)
+    let fence = markdownFenceStateAtLine(view.state.doc, scanRange.from)
 
     for (let lineNumber = scanRange.from; lineNumber <= scanRange.to; lineNumber += 1) {
       const line = view.state.doc.line(lineNumber)
       if (frontMatter && lineNumber >= frontMatter.openingLineNumber && lineNumber <= frontMatter.closingLineNumber) {
         continue
       }
-      const lineInFence = inFence
-      const isFence = FENCE_RE.test(line.text)
-      const info = analyzeMarkdownLivePreviewLine(line.text, lineInFence)
-      const tableLine = tableLines.get(lineNumber)
+      const closesFence = fence !== null && markdownFenceClosing(line.text, fence)
+      const opensFence = fence === null ? markdownFenceOpening(line.text) : null
+      // Inside a fence only a matching closing line is a fence boundary; a
+      // shorter or different-marker fence (a markdown sample inside a
+      // ````-block) is plain code and must not toggle the state or render.
+      const info: MarkdownLivePreviewLineInfo = fence
+        ? (closesFence ? { kind: 'fence' } : { kind: 'code' })
+        : analyzeMarkdownLivePreviewLine(line.text, false)
+      const tableLine = fence === null ? tableLines.get(lineNumber) : undefined
 
       if (features.tables && tableLine) {
         addTableBlockDecoration(view, ranges, line.from, line.to, tableLine)
@@ -1707,13 +1803,18 @@ function addLineFallbackDecorations(
       if (features.tasks) addTaskDecoration(view, ranges, line.from, line.to, line.text, info)
       if (features.tables) addTableDecoration(view, ranges, line.from, line.to, line.text, info)
       if (info.kind !== 'table' && info.kind !== 'code' && info.kind !== 'fence') {
-        if (features.math) addMathDecorations(view, ranges, line.from, line.text)
-        addInlineFallbackDecorations(view, ranges, line.from, line.text)
-        if (features.images) addObsidianLinkDecorations(view, ranges, line.from, line.text, options, folded)
-        addEmojiDecorations(view, ranges, line.from, line.text)
+        const inlineCode = collectInlineCodeRanges(line.text, line.from)
+        if (features.math) addMathDecorations(view, ranges, line.from, line.text, inlineCode)
+        addInlineFallbackDecorations(view, ranges, line.from, line.text, inlineCode)
+        if (features.images) addObsidianLinkDecorations(view, ranges, line.from, line.text, options, folded, inlineCode)
+        addEmojiDecorations(view, ranges, line.from, line.text, inlineCode)
       }
 
-      if (isFence) inFence = !inFence
+      if (closesFence) {
+        fence = null
+      } else if (opensFence) {
+        fence = opensFence
+      }
     }
   }
 }
@@ -1725,7 +1826,13 @@ function collectMarkdownFrontMatterBlock(doc: EditorState['doc']): MarkdownFront
 
   for (let lineNumber = 2; lineNumber <= doc.lines; lineNumber += 1) {
     const line = doc.line(lineNumber)
-    if (!FRONT_MATTER_CLOSE_RE.test(line.text)) continue
+    if (!FRONT_MATTER_CLOSE_RE.test(line.text)) {
+      // A blank line before the closing fence means the leading "---" is a
+      // horizontal rule, not front matter — otherwise a document that starts
+      // with a divider swallows its body into the properties panel.
+      if (!line.text.trim()) return null
+      continue
+    }
     const contentLines: string[] = []
     for (let contentLineNumber = 2; contentLineNumber < lineNumber; contentLineNumber += 1) {
       contentLines.push(doc.line(contentLineNumber).text)
@@ -1762,7 +1869,9 @@ function addFrontMatterDecorations(
 
   for (let lineNumber = block.openingLineNumber + 1; lineNumber <= block.closingLineNumber; lineNumber += 1) {
     const line = doc.line(lineNumber)
-    ranges.push(Decoration.line({ class: 'md-live-line md-live-frontmatter-hidden md-live-fold-hidden' }).range(line.from))
+    ranges.push(Decoration.line({
+      class: markdownHiddenLineClass(view, line.from, line.to, 'md-live-line', 'md-live-frontmatter-hidden md-live-fold-hidden'),
+    }).range(line.from))
     addReplaceOrWidgetDecoration(view, ranges, line.from, line.to, new EmptyMarkdownWidget())
   }
 }
@@ -1910,7 +2019,9 @@ function addTableBlockDecoration(
     return
   }
 
-  ranges.push(Decoration.line({ class: 'md-live-line md-live-table-hidden md-live-fold-hidden' }).range(lineFrom))
+  ranges.push(Decoration.line({
+    class: markdownHiddenLineClass(view, lineFrom, lineTo, 'md-live-line', 'md-live-table-hidden md-live-fold-hidden'),
+  }).range(lineFrom))
   addReplaceOrWidgetDecoration(view, ranges, lineFrom, lineTo, new EmptyMarkdownWidget())
 }
 
@@ -1928,7 +2039,9 @@ function addFencedCodeDecorations(
   if (endLine.number === startLine.number + 1) return
   const codeRange = fencedCodeContentRange(doc, startLine.number, endLine.number)
   const code = doc.sliceString(codeRange.from, codeRange.to)
-  const foldKey = markdownFoldKey('code', startLine.from, `${startLine.text}\n${endLine.number - startLine.number}\n${code.slice(0, 240)}`)
+  // Content-signature key (like asset fold keys): a position-based key would
+  // change on every edit above the block and silently unfold it.
+  const foldKey = markdownFoldKey('code', 0, `${startLine.text}\n${endLine.number - startLine.number}\n${code.slice(0, 240)}`)
   const collapsed = folded.has(foldKey)
   const parsed = parseFenceSource(startLine.text)
   const contentLineCount = Math.max(0, endLine.number - startLine.number - 1)
@@ -1942,7 +2055,9 @@ function addFencedCodeDecorations(
     const lastCodeLine = lineNumber === endLine.number - 1
 
     if (isOpeningFence) {
-      ranges.push(Decoration.line({ class: 'md-live-line md-live-fence md-live-codeblock-fence-hidden' }).range(line.from))
+      ranges.push(Decoration.line({
+        class: markdownHiddenLineClass(view, line.from, line.to, 'md-live-line md-live-fence', 'md-live-codeblock-fence-hidden'),
+      }).range(line.from))
       addReplaceOrWidgetDecoration(view, ranges, line.from, line.to, new EmptyMarkdownWidget())
       continue
     }
@@ -1962,14 +2077,18 @@ function addFencedCodeDecorations(
           new CodeBlockFoldSummaryWidget(parsed.language, contentLineCount),
         )
       } else {
-        ranges.push(Decoration.line({ class: 'md-live-line md-live-fold-hidden' }).range(line.from))
+        ranges.push(Decoration.line({
+          class: markdownHiddenLineClass(view, line.from, line.to, 'md-live-line', 'md-live-fold-hidden'),
+        }).range(line.from))
         addReplaceOrWidgetDecoration(view, ranges, line.from, line.to, new EmptyMarkdownWidget())
       }
       continue
     }
 
     if (isClosingFence) {
-      ranges.push(Decoration.line({ class: 'md-live-line md-live-fence md-live-codeblock-fence-hidden' }).range(line.from))
+      ranges.push(Decoration.line({
+        class: markdownHiddenLineClass(view, line.from, line.to, 'md-live-line md-live-fence', 'md-live-codeblock-fence-hidden'),
+      }).range(line.from))
       addReplaceOrWidgetDecoration(view, ranges, line.from, line.to, new EmptyMarkdownWidget())
       continue
     }
@@ -2094,7 +2213,13 @@ function addImageDecoration(
   })
 }
 
-function addMathDecorations(view: EditorView, ranges: Range<Decoration>[], lineFrom: number, text: string): void {
+function addMathDecorations(
+  view: EditorView,
+  ranges: Range<Decoration>[],
+  lineFrom: number,
+  text: string,
+  inlineCode: InlineCodeRange[],
+): void {
   for (const match of text.matchAll(MATH_RE)) {
     const index = match.index ?? 0
     const delimiter = match[1]
@@ -2103,9 +2228,11 @@ function addMathDecorations(view: EditorView, ranges: Range<Decoration>[], lineF
     const from = lineFrom + index
     const contentFrom = from + delimiter.length
     const contentTo = contentFrom + content.length
+    const to = contentTo + delimiter.length
+    if (overlapsInlineCode(from, to, inlineCode)) continue
     addLivePreviewReplace(view, ranges, from, contentFrom, { inclusive: false })
     ranges.push(Decoration.mark({ class: 'md-live-math' }).range(contentFrom, contentTo))
-    addLivePreviewReplace(view, ranges, contentTo, contentTo + delimiter.length, { inclusive: false })
+    addLivePreviewReplace(view, ranges, contentTo, to, { inclusive: false })
   }
 }
 
@@ -2114,9 +2241,10 @@ function addInlineFallbackDecorations(
   ranges: Range<Decoration>[],
   lineFrom: number,
   text: string,
+  inlineCode: InlineCodeRange[],
 ): void {
-  addDelimitedInlineDecorations(view, ranges, lineFrom, text, STRIKETHROUGH_RE, 2, 2, 'md-live-strikethrough')
-  addDelimitedInlineDecorations(view, ranges, lineFrom, text, UNDERLINE_RE, 3, 4, 'md-live-underline')
+  addDelimitedInlineDecorations(view, ranges, lineFrom, text, STRIKETHROUGH_RE, 2, 2, 'md-live-strikethrough', inlineCode)
+  addDelimitedInlineDecorations(view, ranges, lineFrom, text, UNDERLINE_RE, 3, 4, 'md-live-underline', inlineCode)
 }
 
 function addObsidianLinkDecorations(
@@ -2126,8 +2254,8 @@ function addObsidianLinkDecorations(
   text: string,
   options: MarkdownLivePreviewOptions,
   folded: ReadonlySet<string>,
+  inlineCode: InlineCodeRange[],
 ): void {
-  const inlineCodeRanges = collectInlineCodeRanges(text, lineFrom)
   OBSIDIAN_LINK_RE.lastIndex = 0
   for (const match of text.matchAll(OBSIDIAN_LINK_RE)) {
     if (match.index === undefined || !match[1]) continue
@@ -2136,7 +2264,7 @@ function addObsidianLinkDecorations(
     const display = displayTargetLabel(target)
     const from = lineFrom + match.index
     const to = from + raw.length
-    if (inlineCodeRanges.some(range => rangesOverlap(from, to, range.from, range.to))) continue
+    if (overlapsInlineCode(from, to, inlineCode)) continue
     const embed = raw.startsWith('![[')
     const image = embed && isLikelyImageTarget(target)
     const foldKey = image ? markdownAssetFoldKey(raw) : ''
@@ -2149,8 +2277,17 @@ function addObsidianLinkDecorations(
   }
 }
 
-function collectInlineCodeRanges(text: string, lineFrom: number): Array<{ from: number; to: number }> {
-  const ranges: Array<{ from: number; to: number }> = []
+interface InlineCodeRange {
+  from: number
+  to: number
+}
+
+function overlapsInlineCode(from: number, to: number, inlineCode: InlineCodeRange[]): boolean {
+  return inlineCode.some(range => rangesOverlap(from, to, range.from, range.to))
+}
+
+function collectInlineCodeRanges(text: string, lineFrom: number): InlineCodeRange[] {
+  const ranges: InlineCodeRange[] = []
   let index = 0
 
   while (index < text.length) {
@@ -2187,8 +2324,10 @@ function addEmojiDecorations(
   ranges: Range<Decoration>[],
   lineFrom: number,
   text: string,
+  inlineCode: InlineCodeRange[],
 ): void {
   for (const match of findEmojiShortcodes(text)) {
+    if (overlapsInlineCode(lineFrom + match.from, lineFrom + match.to, inlineCode)) continue
     addLivePreviewReplace(view, ranges, lineFrom + match.from, lineFrom + match.to, {
       widget: new MarkdownEmojiWidget(match.emoji, match.name),
       inclusive: false,
@@ -2205,6 +2344,7 @@ function addDelimitedInlineDecorations(
   prefixLength: number,
   suffixLength: number,
   className: string,
+  inlineCode: InlineCodeRange[],
 ): void {
   pattern.lastIndex = 0
   for (const match of text.matchAll(pattern)) {
@@ -2213,6 +2353,7 @@ function addDelimitedInlineDecorations(
     const contentFrom = from + prefixLength
     const contentTo = from + match[0].length - suffixLength
     if (contentFrom >= contentTo) continue
+    if (overlapsInlineCode(from, from + match[0].length, inlineCode)) continue
     addLivePreviewReplace(view, ranges, from, contentFrom, { inclusive: false })
     ranges.push(Decoration.mark({ class: className }).range(contentFrom, contentTo))
     addLivePreviewReplace(view, ranges, contentTo, from + match[0].length, { inclusive: false })
@@ -2408,6 +2549,19 @@ function markdownAssetFoldKey(rawSource: string): string {
   return markdownFoldKey('asset', 0, rawSource)
 }
 
+const FULL_WIDTH_CHAR_RE = /[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFF60\uFFE0-\uFFE6\u{20000}-\u{3FFFD}]/u
+
+// input.size counts average character widths; CJK and other full-width
+// glyphs render about twice as wide, so weigh them double or CJK columns
+// come out half the needed width.
+function tableCellInputSize(value: string): number {
+  let width = 0
+  for (const char of value) {
+    width += FULL_WIDTH_CHAR_RE.test(char) ? 2 : 1
+  }
+  return Math.max(6, Math.min(48, width + 1))
+}
+
 function hashString(value: string): string {
   let hash = 5381
   for (let index = 0; index < value.length; index += 1) {
@@ -2449,8 +2603,65 @@ function isPrimaryLineMarker(text: string, lineFrom: number, markerFrom: number)
 function markdownLivePreviewPlugin(options: MarkdownLivePreviewOptions): Extension {
   return ViewPlugin.define(
     view => new MarkdownLivePreviewPlugin(view, options),
-    { decorations: value => value.decorations },
+    {
+      decorations: value => value.decorations,
+      provide: plugin => EditorView.atomicRanges.of(
+        view => view.plugin(plugin)?.atomicRanges ?? RangeSet.empty,
+      ),
+    },
   )
+}
+
+const atomicRangeMarker = Decoration.mark({})
+const HIDDEN_LINE_CLASS_RE = /\bmd-live-fold-hidden\b|\bmd-live-codeblock-fence-hidden\b/
+
+// Cursor motion treats hidden ranges as single units so arrow keys never
+// stop on positions with no visible caret (Typora-style). Zero-height hidden
+// lines and lines fully replaced by a widget are extended across their
+// surrounding newlines and merged with touching neighbours, so a whole
+// rendered block is one island whose motion stops sit on real text of the
+// adjacent lines. Partial-line replaces (inline syntax delimiters, checkbox
+// markers, emoji, links) stay exact and are crossed in one step. Revealed
+// ranges become marks instead of replaces and automatically stop being
+// atomic; a selection spanning an atom still reveals the raw source, which
+// remains the editing path for hidden syntax.
+function buildMarkdownAtomicRanges(state: EditorState, decorations: DecorationSet): RangeSet<Decoration> {
+  const doc = state.doc
+  const intervals: Array<{ from: number, to: number }> = []
+
+  const cursor = decorations.iter()
+  while (cursor.value) {
+    const spec = cursor.value.spec as { class?: string, markdownAtomic?: boolean }
+    if (cursor.from === cursor.to && typeof spec.class === 'string' && HIDDEN_LINE_CLASS_RE.test(spec.class)) {
+      const line = doc.lineAt(cursor.from)
+      intervals.push({ from: Math.max(0, line.from - 1), to: Math.min(doc.length, line.to + 1) })
+    } else if (cursor.from < cursor.to && spec.markdownAtomic === true) {
+      const line = doc.lineAt(cursor.from)
+      const fullLine = cursor.from === line.from && cursor.to === line.to
+      intervals.push(fullLine
+        ? { from: Math.max(0, cursor.from - 1), to: Math.min(doc.length, cursor.to + 1) }
+        : { from: cursor.from, to: cursor.to })
+    }
+    cursor.next()
+  }
+  if (!intervals.length) return RangeSet.empty
+
+  intervals.sort((a, b) => a.from - b.from || a.to - b.to)
+  const merged: Array<{ from: number, to: number }> = []
+  for (const interval of intervals) {
+    const last = merged[merged.length - 1]
+    // Strict overlap only: consecutive hidden/widget lines overlap by one
+    // character across their shared newline and merge into one island, while
+    // two blocks separated by an empty line merely touch at that position —
+    // it must stay a valid stop or the empty line becomes unreachable.
+    if (last && interval.from < last.to) {
+      last.to = Math.max(last.to, interval.to)
+    } else {
+      merged.push({ ...interval })
+    }
+  }
+
+  return RangeSet.of(merged.map(interval => atomicRangeMarker.range(interval.from, interval.to)), false)
 }
 
 const linkHandler = EditorView.domEventHandlers({
@@ -2620,11 +2831,7 @@ function parseCompletableFenceLine(text: string): CompletableFenceLine | null {
 }
 
 function isOpeningFenceLine(doc: EditorView['state']['doc'], lineNumber: number): boolean {
-  let inFence = false
-  for (let number = 1; number < lineNumber; number += 1) {
-    if (FENCE_RE.test(doc.line(number).text)) inFence = !inFence
-  }
-  return !inFence
+  return markdownFenceStateAtLine(doc, lineNumber) === null
 }
 
 function hasAdjacentClosingFence(
@@ -2659,15 +2866,18 @@ function findFencedCodeBlockAtPosition(
   position: number,
 ): FencedCodeBlockRange | null {
   let openingLine: ReturnType<typeof doc.line> | null = null
+  let fence: MarkdownFenceState | null = null
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber += 1) {
     const line = doc.line(lineNumber)
-    if (!FENCE_RE.test(line.text)) continue
 
-    if (!openingLine) {
-      openingLine = line
+    if (!fence) {
+      fence = markdownFenceOpening(line.text)
+      if (fence) openingLine = line
       continue
     }
+
+    if (!markdownFenceClosing(line.text, fence) || !openingLine) continue
 
     const closingLine = line
     const blockFrom = openingLine.from
@@ -2683,6 +2893,7 @@ function findFencedCodeBlockAtPosition(
     }
 
     openingLine = null
+    fence = null
   }
 
   return null
@@ -2795,17 +3006,52 @@ function deleteHiddenLineMarker(
   return true
 }
 
-function isLineInFencedCodeContent(doc: EditorView['state']['doc'], lineNumber: number): boolean {
-  let openingLineNumber = 0
-  for (let number = 1; number <= doc.lines; number += 1) {
-    const line = doc.line(number)
-    if (!FENCE_RE.test(line.text)) continue
-    if (!openingLineNumber) {
-      openingLineNumber = number
-      continue
+interface MarkdownFenceState {
+  markerChar: '`' | '~'
+  markerLength: number
+}
+
+const FENCE_MARKER_RE = /^\s*(`{3,}|~{3,})(.*)$/
+
+function markdownFenceOpening(text: string): MarkdownFenceState | null {
+  const match = text.match(FENCE_MARKER_RE)
+  if (!match) return null
+  const markerChar = match[1][0] as '`' | '~'
+  // CommonMark: a backtick fence cannot carry backticks in its info string.
+  if (markerChar === '`' && match[2].includes('`')) return null
+  return { markerChar, markerLength: match[1].length }
+}
+
+function markdownFenceClosing(text: string, fence: MarkdownFenceState): boolean {
+  const match = text.match(FENCE_MARKER_RE)
+  if (!match) return false
+  return match[1][0] === fence.markerChar
+    && match[1].length >= fence.markerLength
+    && match[2].trim() === ''
+}
+
+// Fence state just before the given line: null when outside a fence,
+// otherwise the marker of the still-open fence.
+function markdownFenceStateAtLine(doc: EditorView['state']['doc'], lineNumber: number): MarkdownFenceState | null {
+  let fence: MarkdownFenceState | null = null
+  for (let number = 1; number < lineNumber; number += 1) {
+    const text = doc.line(number).text
+    if (fence) {
+      if (markdownFenceClosing(text, fence)) fence = null
+    } else {
+      fence = markdownFenceOpening(text)
     }
-    if (lineNumber > openingLineNumber && lineNumber < number) return true
-    openingLineNumber = 0
+  }
+  return fence
+}
+
+// True only for content lines strictly inside a *closed* fenced block.
+function isLineInFencedCodeContent(doc: EditorView['state']['doc'], lineNumber: number): boolean {
+  const fence = markdownFenceStateAtLine(doc, lineNumber)
+  if (!fence) return false
+  if (markdownFenceClosing(doc.line(lineNumber).text, fence)) return false
+  for (let number = lineNumber + 1; number <= doc.lines; number += 1) {
+    if (markdownFenceClosing(doc.line(number).text, fence)) return true
   }
   return false
 }
@@ -3037,7 +3283,9 @@ const theme = EditorView.theme({
   '.md-live-task-checkbox': {
     position: 'absolute',
     left: '0',
-    top: '50%',
+    // Center anchor calibrated against the first-row text center (em-scaled
+    // so it tracks the editor font size); 50% of the 1em slot sat ~2.4px low.
+    top: '0.365em',
     transform: 'translateY(-50%)',
     '--app-button-height': '16px',
     '--app-button-min-width': '16px',
@@ -3080,9 +3328,6 @@ const theme = EditorView.theme({
     fontSize: '11px',
     fontWeight: '700',
     lineHeight: '1',
-  },
-  '.md-live-list-marker, .md-live-quote-marker, .md-live-fence-marker': {
-    color: 'var(--ui-text-muted-fg, var(--text-muted, var(--muted)))',
   },
   '.md-live-list-marker-widget': {
     minWidth: '1.35em',
@@ -3144,11 +3389,6 @@ const theme = EditorView.theme({
   },
   '.md-live-fold-button:active': {
     transform: 'translateY(1px)',
-  },
-  '.md-live-fold-summary-line': {
-    paddingLeft: 'var(--md-live-code-padding-x) !important',
-    paddingRight: 'var(--md-live-code-padding-x) !important',
-    backgroundColor: 'transparent',
   },
   '.md-live-codeblock-fold-summary-line': {
     position: 'relative',
@@ -3247,18 +3487,6 @@ const theme = EditorView.theme({
     lineHeight: '0 !important',
     overflow: 'hidden',
     backgroundColor: 'transparent',
-  },
-  '.md-live-codeblock-fence-toolbar': {
-    display: 'flex !important',
-    alignItems: 'center',
-    minHeight: '28px',
-    marginTop: '0.45em',
-    padding: '2px var(--md-live-code-padding-x) !important',
-    borderTopLeftRadius: '10px',
-    borderTopRightRadius: '10px',
-    lineHeight: '1.2 !important',
-    overflow: 'hidden',
-    backgroundColor: 'var(--md-live-code-bg)',
   },
   '.md-live-codeblock-topbar': {
     position: 'absolute',

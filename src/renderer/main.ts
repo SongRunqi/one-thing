@@ -12,7 +12,10 @@ import './styles/main.css'
 // is drawn by `.todo-plan-window` (border-radius: 22px). The global opaque
 // `html/body/#app` background would otherwise fill the square behind it and
 // peek out at the corners, so flag the root to make those layers transparent.
-if (window.location.hash.startsWith('#/todo-plan')) {
+// Only macOS creates the window with `transparent: true`; elsewhere the window
+// is opaque and a transparent root would expose the mismatched native
+// background color at the corners instead.
+if (window.location.hash.startsWith('#/todo-plan') && /Mac/i.test(navigator.userAgent)) {
   document.documentElement.classList.add('transparent-window-root')
 }
 

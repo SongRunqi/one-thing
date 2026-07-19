@@ -82,11 +82,12 @@ export async function hasValidCredentials(providerId: string, providerConfig: Pr
  */
 export function getEffectiveProviderConfig(
   settings: AppSettings,
-  sessionId: string
+  sessionId: string,
+  override?: { providerId?: string; model?: string } | null
 ): { providerId: string; providerConfig: ProviderConfig | undefined; model: string } {
   return getEffectiveOnethingProviderConfig(settings, sessionId, {
     getSession: id => store.getSession(id),
-  })
+  }, override)
 }
 
 /**

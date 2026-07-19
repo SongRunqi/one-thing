@@ -75,6 +75,7 @@ export class WechatChannel implements Channel {
       await this.handler?.({
         channelId: this.id,
         userId: msg.from_user_id,
+        conversationId: msg.from_user_id,
         text: textItem.text_item.text,
         raw: msg,
         ...(actor ? { actor } : {}),
@@ -101,7 +102,7 @@ export class WechatChannel implements Channel {
       return
     }
 
-    await (this.options.sendText ?? sendText)(this.auth, msg.userId, msg.raw.context_token ?? '', msg.text)
+    await (this.options.sendText ?? sendText)(this.auth, msg.conversationId, msg.raw.context_token ?? '', msg.text)
   }
 
   async typing(msg: TypingMessage): Promise<void> {
@@ -204,7 +205,7 @@ export class WechatChannel implements Channel {
     if (!this.auth || !isWeixinMessage(msg.raw)) return
     await (this.options.sendTyping ?? sendTyping)(
       this.auth,
-      msg.userId,
+      msg.conversationId,
       msg.raw.context_token,
       msg.status === 'cancel' ? 2 : 1,
     )

@@ -13,7 +13,7 @@ export interface CoreSnapshotSkillFile {
   type: 'markdown' | 'script' | 'template' | 'other'
 }
 
-export type CoreSnapshotSkillSource = 'user' | 'project' | 'plugin' | 'builtin'
+export type CoreSnapshotSkillSource = 'user' | 'project' | 'plugin' | 'builtin' | 'custom'
 export type CoreSnapshotToolRenderKind = 'text' | 'bash' | 'diff' | 'file' | 'search' | 'image' | 'custom'
 
 export interface CoreSnapshotSkillConditions {
@@ -209,7 +209,7 @@ export interface BuildSystemPromptSnapshotWithAdaptersOptions<
     providerId: string
     settings: TSettings
   }): CoreSystemPromptSnapshotAgentLoopStream
-  getSkills(workingDirectory?: string): TSkill[]
+  getSkills(workingDirectory?: string, agentId?: string): TSkill[]
   initializeTools?(context: CoreSystemPromptSnapshotToolInitContext<TSkill>): Promise<void> | void
   getEnabledTools(toolSettings?: CoreSystemPromptSnapshotToolMap<TSettings>): Promise<TTool[]> | TTool[]
   getMCPRouterTool(): TTool | null
@@ -409,7 +409,7 @@ export async function buildSystemPromptSnapshotWithAdapters<
     settings,
   })
   const skillsEnabled = settings.skills?.enableSkills !== false
-  const enabledSkills = skillsEnabled ? options.getSkills(session.workingDirectory) : []
+  const enabledSkills = skillsEnabled ? options.getSkills(session.workingDirectory, session.agentId) : []
   const enableToolCalls = settings.tools?.enableToolCalls !== false
   const providerRecord = provider.providerConfig as Record<string, unknown>
 

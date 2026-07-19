@@ -362,8 +362,9 @@ describe('Permission', () => {
         metadata: {},
       })
 
+      // Equivalent concurrent asks coalesce into a single visible prompt.
       const pending = Permission.getPending('session-level-session')
-      expect(pending).toHaveLength(2)
+      expect(pending).toHaveLength(1)
 
       // Approve the first one with 'session' scope
       Permission.respond({
@@ -400,8 +401,9 @@ describe('Permission', () => {
         workingDirectory: '/workspace',
       })
 
+      // Equivalent concurrent asks coalesce into a single visible prompt.
       const pending = Permission.getPending('ws-level-session')
-      expect(pending).toHaveLength(2)
+      expect(pending).toHaveLength(1)
 
       Permission.respond({
         sessionId: 'ws-level-session',

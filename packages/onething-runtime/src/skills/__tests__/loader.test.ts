@@ -8,12 +8,14 @@ import {
   getUserSkillsPath,
   loadAllSkills,
 } from '../loader.js'
-import type { PluginSkillRoot } from '../types.js'
+import type { PluginSkillRoot, SkillDirectoryConfig } from '../types.js'
 
 let root = ''
 let storePath = ''
 let projectDir = ''
 let pluginRoot = ''
+let customRoot = ''
+let customRoots: SkillDirectoryConfig[] = []
 
 function writeSkill(skillsRoot: string, dirname: string, name = dirname): void {
   const dir = path.join(skillsRoot, dirname)
@@ -35,6 +37,8 @@ describe('onething skills loader runtime', () => {
     storePath = path.join(root, 'store')
     projectDir = path.join(root, 'workspace', 'app')
     pluginRoot = path.join(root, 'plugin-skills')
+    customRoot = path.join(root, 'custom-skills')
+    customRoots = []
 
     const builtinRoot = path.join(root, 'resources', 'skills')
     const userRoot = path.join(storePath, 'skills')
@@ -57,6 +61,7 @@ describe('onething skills loader runtime', () => {
         pluginId: 'plugin-a',
         path: pluginRoot,
       }],
+      listCustomSkillRoots: () => customRoots,
     })
   })
 
@@ -79,5 +84,27 @@ describe('onething skills loader runtime', () => {
     expect(byName.get('user-only')?.source).toBe('user')
     expect(byName.get('plugin-only')?.source).toBe('plugin')
     expect(byName.get('builtin-only')?.source).toBe('builtin')
+  })
+
+  it('loads custom roots with stable ids and agent bindings, skipping disabled or missing roots', () => {
+    writeSkill(customRoot, 'shared')
+    writeSkill(customRoot, 'custom-only')
+    customRoots = [
+      { id: 'dir-1', path: customRoot, agentId: 'writer', enabled: true },
+      { id: 'dir-off', path: customRoot, enabled: false },
+      { id: 'dir-missing', path: path.join(root, 'nope'), enabled: true },
+    ]
+
+    const skills = loadAllSkills()
+    const byName = new Map(skills.map(skill => [skill.name, skill]))
+
+    const customOnly = byName.get('custom-only')
+    expect(customOnly?.source).toBe('custom')
+    expect(customOnly?.id).toBe('custom:dir-1:custom-only')
+    expect(customOnly?.agentId).toBe('writer')
+    // Name collision: user root outranks custom roots.
+    expect(byName.get('shared')?.source).toBe('user')
+    // Disabled and missing roots contribute nothing extra.
+    expect(skills.filter(skill => skill.source === 'custom')).toHaveLength(1)
   })
 })

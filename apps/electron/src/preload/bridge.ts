@@ -2,6 +2,10 @@ import { clipboard, contextBridge, ipcRenderer, webUtils } from "electron";
 import { IPC_CHANNELS } from "../../../../src/shared/ipc.js";
 import type {
 	GetSessionMessagesPageRequest,
+	GetSessionUsageRequest,
+	GetSessionUsageResponse,
+	GetUsageSummaryRequest,
+	GetUsageSummaryResponse,
 	MediaQuery,
 	MarkdownResolveAssetRequest,
 	MarkdownSaveAttachmentsRequest,
@@ -22,6 +26,18 @@ import type {
 	SearchWindowOpenOptions,
 	SearchWindowShownPayload,
 	TodoPlanWindowActionRequest,
+	PracticeConfigResponse,
+	PracticeEventPayload,
+	PracticeLogRequest,
+	PracticeLogResponse,
+	PracticeRecentRequest,
+	PracticeRecentResponse,
+	PracticeSetConfigRequest,
+	PracticeStartRequest,
+	PracticeStateResponse,
+	PracticeStopRequest,
+	PracticeSummaryRequest,
+	PracticeSummaryResult,
 } from "../../../../src/shared/ipc.js";
 
 const electronAPI = {
@@ -145,8 +161,11 @@ const electronAPI = {
 	// Session methods
 	getSessions: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SESSIONS),
 
-	createSession: (name: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, { name }),
+	createSession: (name: string, options?: { sessionId?: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, {
+			name,
+			sessionId: options?.sessionId,
+		}),
 
 	switchSession: (sessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SWITCH_SESSION, { sessionId }),
@@ -234,6 +253,72 @@ const electronAPI = {
 
 	deleteVariable: (sessionId: string, name: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_DELETE, { sessionId, name }),
+
+	// ── Session goals ───────────────────────────────────────────
+	// Live updates arrive through the session:goal-updated event; these
+	// RPCs are the initial fetch and the /goal command's mutations.
+	goalGet: (sessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.GOAL_GET, { sessionId }),
+
+	goalSet: (request: {
+		sessionId: string
+		action: "create" | "update" | "clear"
+		objective?: string
+		status?: "active" | "paused"
+		tokenBudget?: number | null
+	}) => ipcRenderer.invoke(IPC_CHANNELS.GOAL_SET, request),
+
+	goalDiffs: (sessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.GOAL_DIFFS, { sessionId }),
+
+	// ── Token usage / billing ───────────────────────────────────
+	getUsageSummary: (
+		request: GetUsageSummaryRequest,
+	): Promise<GetUsageSummaryResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.GET_USAGE_SUMMARY, request),
+
+	getSessionUsage: (
+		request: GetSessionUsageRequest,
+	): Promise<GetSessionUsageResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_USAGE, request),
+
+	// ── Practice (kegel / pomodoro / exercise log) ──────────────
+	practiceStart: (request: PracticeStartRequest): Promise<PracticeStateResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_START, request),
+
+	practicePause: (): Promise<PracticeStateResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_PAUSE),
+
+	practiceResume: (): Promise<PracticeStateResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_RESUME),
+
+	practiceStop: (request?: PracticeStopRequest): Promise<PracticeStateResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_STOP, request),
+
+	practiceGetState: (): Promise<PracticeStateResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_GET_STATE),
+
+	practiceLog: (request: PracticeLogRequest): Promise<PracticeLogResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_LOG, request),
+
+	practiceSummary: (request: PracticeSummaryRequest): Promise<PracticeSummaryResult> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_SUMMARY, request),
+
+	practiceRecent: (request: PracticeRecentRequest): Promise<PracticeRecentResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_RECENT, request),
+
+	practiceGetConfig: (): Promise<PracticeConfigResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_GET_CONFIG),
+
+	practiceSetConfig: (request: PracticeSetConfigRequest): Promise<PracticeConfigResponse> =>
+		ipcRenderer.invoke(IPC_CHANNELS.PRACTICE_SET_CONFIG, request),
+
+	onPracticeEvent: (callback: (payload: PracticeEventPayload) => void) => {
+		const listener = (_event: any, payload: PracticeEventPayload) => callback(payload);
+		ipcRenderer.on(IPC_CHANNELS.PRACTICE_EVENT, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.PRACTICE_EVENT, listener);
+	},
 
 	// Project directories — independent module
 	projectDirsList: () => ipcRenderer.invoke(IPC_CHANNELS.PROJECT_DIRS_LIST),
@@ -336,6 +421,12 @@ const electronAPI = {
 				listener,
 			);
 	},
+
+	// In-memory session LRU cache (main process): stats + eviction on tab close
+	getSessionCacheStats: () =>
+		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_CACHE_STATS),
+	evictSessionCache: (sessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.EVICT_SESSION_CACHE, { sessionId }),
 
 	// System message methods (for /files command persistence)
 	addSystemMessage: (
@@ -454,12 +545,77 @@ const electronAPI = {
 	voiceRuntimeEvent: (event: any) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VOICE_RUNTIME_EVENT, event),
 
+	voiceAudioChunk: (payload: any) =>
+		ipcRenderer.send(IPC_CHANNELS.VOICE_AUDIO_CHUNK, payload),
+
 	onVoiceRuntimeCommand: (callback: (command: any) => void) => {
 		const listener = (_event: any, command: any) => callback(command);
 		ipcRenderer.on(IPC_CHANNELS.VOICE_RUNTIME_COMMAND, listener);
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.VOICE_RUNTIME_COMMAND, listener);
 	},
+
+	// Music radio methods
+	musicGetState: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_STATE),
+
+	musicSetup: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SETUP, request),
+
+	onMusicEvent: (callback: (event: any) => void) => {
+		const listener = (_event: any, event: any) => callback(event);
+		ipcRenderer.on(IPC_CHANNELS.MUSIC_EVENT, listener);
+		return () => ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_EVENT, listener);
+	},
+
+	musicCommand: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_COMMAND, request),
+
+	musicGetNowPlaying: () =>
+		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_NOW_PLAYING),
+
+	musicGetRadio: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_RADIO),
+
+	musicOpenRadio: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_OPEN_RADIO, request),
+
+	musicSearch: (request: any) => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SEARCH, request),
+
+	musicRequestSong: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_REQUEST_SONG, request),
+
+	musicGetProgramme: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_PROGRAMME),
+
+	musicProgrammeAction: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_PROGRAMME_ACTION, request),
+
+	musicListProviders: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_LIST_PROVIDERS),
+
+	musicSetProvider: (request: any) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_SET_PROVIDER, request),
+
+	musicGetLyrics: () => ipcRenderer.invoke(IPC_CHANNELS.MUSIC_GET_LYRICS),
+
+	onMusicLyrics: (callback: (lyrics: any) => void) => {
+		const listener = (_event: any, lyrics: any) => callback(lyrics);
+		ipcRenderer.on(IPC_CHANNELS.MUSIC_LYRICS, listener);
+		return () => ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_LYRICS, listener);
+	},
+
+	onMusicNowPlaying: (callback: (nowPlaying: any) => void) => {
+		const listener = (_event: any, nowPlaying: any) => callback(nowPlaying);
+		ipcRenderer.on(IPC_CHANNELS.MUSIC_NOW_PLAYING, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_NOW_PLAYING, listener);
+	},
+
+	onMusicDjSpeak: (callback: (speak: any) => void) => {
+		const listener = (_event: any, speak: any) => callback(speak);
+		ipcRenderer.on(IPC_CHANNELS.MUSIC_DJ_SPEAK, listener);
+		return () => ipcRenderer.removeListener(IPC_CHANNELS.MUSIC_DJ_SPEAK, listener);
+	},
+
+	musicDjSpeakDone: (id: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.MUSIC_DJ_SPEAK_DONE, { id }),
 
 	getSystemTheme: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SYSTEM_THEME),
 
@@ -690,6 +846,28 @@ const electronAPI = {
 			skillId,
 			enabled,
 		}),
+
+	listSkillDirectories: () =>
+		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_LIST_DIRECTORIES),
+
+	addSkillDirectory: (request: {
+		path: string;
+		label?: string;
+		agentId?: string | null;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_ADD_DIRECTORY, request),
+
+	updateSkillDirectory: (request: {
+		id: string;
+		enabled?: boolean;
+		label?: string;
+		agentId?: string | null;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_UPDATE_DIRECTORY, request),
+
+	removeSkillDirectory: (id: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_REMOVE_DIRECTORY, { id }),
+
+	setSkillAgent: (skillId: string, agentId: string | null) =>
+		ipcRenderer.invoke(IPC_CHANNELS.SKILLS_SET_AGENT, { skillId, agentId }),
 
 	// Message update methods
 	updateMessageThinkingTime: (
@@ -977,12 +1155,6 @@ const electronAPI = {
 		full?: boolean;
 	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_READ, request),
 
-	searchMemory: (request: {
-		query: string;
-		agentId?: string;
-		limit?: number | string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SEARCH, request),
-
 	appendMemory: (request: {
 		content: string;
 		agentId?: string;
@@ -995,140 +1167,6 @@ const electronAPI = {
 		content: string;
 		agentId?: string;
 	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_SAVE_FILE, request),
-
-	rebuildMemoryIndex: (agentId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_INDEX, { agentId }),
-
-	runMemoryDreaming: (agentId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_RUN_DREAMING, { agentId }),
-
-	listMemoryProfile: (request?: {
-		agentId?: string;
-		query?: string;
-		includeDeleted?: boolean;
-		limit?: number;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_LIST, request),
-
-	searchMemoryProfile: (request: {
-		agentId?: string;
-		query?: string;
-		includeDeleted?: boolean;
-		limit?: number;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_SEARCH, request),
-
-	upsertMemoryProfile: (request: {
-		agentId?: string;
-		id?: string;
-		memoryKey?: string;
-		kind: string;
-		subject?: string;
-		value: string;
-		text?: string;
-		confidence?: number;
-		sensitivity?: string;
-		evidence?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_UPSERT, request),
-
-	deleteMemoryProfile: (request: { agentId?: string; id: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_DELETE, request),
-
-	getMemoryProfileAudit: (request: { agentId?: string; id: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_AUDIT, request),
-
-	exportMemoryProfile: (agentId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_PROFILE_EXPORT, { agentId }),
-
-	getMemoryGraphOverview: (agentId?: string) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OVERVIEW, { agentId }),
-
-	listMemoryGraphEntities: (request?: {
-		agentId?: string;
-		query?: string;
-		includeDeleted?: boolean;
-		limit?: number;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_LIST, request),
-
-	upsertMemoryGraphEntity: (request: {
-		agentId?: string;
-		id?: string;
-		entityType: string;
-		name: string;
-		displayName?: string;
-		aliases?: string[];
-		confidence?: number;
-		sensitivity?: string;
-		evidence?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_UPSERT, request),
-
-	deleteMemoryGraphEntity: (request: { agentId?: string; id: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_ENTITIES_DELETE, request),
-
-	listMemoryGraphObservations: (request?: {
-		agentId?: string;
-		query?: string;
-		includeDeleted?: boolean;
-		limit?: number;
-		entityId?: string;
-	}) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_LIST, request),
-
-	upsertMemoryGraphObservation: (request: {
-		agentId?: string;
-		id?: string;
-		entityId: string;
-		kind: string;
-		slot: string;
-		value: string;
-		text?: string;
-		confidence?: number;
-		sensitivity?: string;
-		evidence?: string;
-		status?: string;
-	}) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_UPSERT, request),
-
-	deleteMemoryGraphObservation: (request: { agentId?: string; id: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_OBSERVATIONS_DELETE, request),
-
-	listMemoryGraphRelations: (request?: {
-		agentId?: string;
-		query?: string;
-		includeDeleted?: boolean;
-		limit?: number;
-		entityId?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_LIST, request),
-
-	upsertMemoryGraphRelation: (request: {
-		agentId?: string;
-		id?: string;
-		fromEntityId: string;
-		relationType: string;
-		toEntityId: string;
-		text?: string;
-		confidence?: number;
-		sensitivity?: string;
-		evidence?: string;
-		status?: string;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_UPSERT, request),
-
-	deleteMemoryGraphRelation: (request: { agentId?: string; id: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_RELATIONS_DELETE, request),
-
-	listMemoryGraphDuplicates: (request?: {
-		agentId?: string;
-		query?: string;
-		includeDeleted?: boolean;
-		limit?: number;
-	}) => ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_LIST, request),
-
-	mergeMemoryGraphDuplicate: (request: { agentId?: string; id: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_MERGE, request),
-
-	ignoreMemoryGraphDuplicate: (request: { agentId?: string; id: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_DUPLICATES_IGNORE, request),
-
-	getMemoryGraphAudit: (request: { agentId?: string; id: string }) =>
-		ipcRenderer.invoke(IPC_CHANNELS.MEMORY_GRAPH_AUDIT, request),
 
 	listMemoryLogs: (request?: {
 		limit?: number;

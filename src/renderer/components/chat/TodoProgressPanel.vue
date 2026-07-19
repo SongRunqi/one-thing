@@ -112,10 +112,8 @@ import { platformApi } from '@/platform'
 
 const props = withDefaults(defineProps<{
   sessionId?: string
-  workingDirectory?: string
 }>(), {
   sessionId: undefined,
-  workingDirectory: undefined,
 })
 
 const emit = defineEmits<{
@@ -127,8 +125,7 @@ const loading = ref(false)
 const error = ref('')
 let cleanupChanged: (() => void) | null = null
 
-const effectiveWorkingDirectory = computed(() => props.workingDirectory || '')
-const todoDocument = computed<TodoPlanDocument | null>(() => snapshot.value?.workspaceAiTodo ?? null)
+const todoDocument = computed<TodoPlanDocument | null>(() => snapshot.value?.sessionAiTodo ?? null)
 const documentTitle = computed(() => {
   const document = todoDocument.value
   if (!document) return 'AI Todo'
@@ -156,14 +153,14 @@ function applyDocument(document: TodoPlanDocument) {
   snapshot.value = {
     directory: snapshot.value?.directory || '',
     userNotes: snapshot.value?.userNotes || [],
-    workspaceAiTodo: document,
+    sessionAiTodo: document,
   }
 }
 
 function shouldRefreshChanged(data: TodoPlanChangedPayload) {
   if (data.scope === 'global-user' || data.scope === 'all') return true
-  if (data.scope === 'workspace-ai-todo') {
-    return (data.workingDirectory || '') === effectiveWorkingDirectory.value
+  if (data.scope === 'session-ai-todo') {
+    return Boolean(props.sessionId) && data.sessionId === props.sessionId
   }
   return false
 }
@@ -174,7 +171,6 @@ async function loadSnapshot() {
   try {
     const response = await platformApi.getTodoPlan({
       sessionId: props.sessionId,
-      workingDirectory: effectiveWorkingDirectory.value || undefined,
     })
     if (!response.success) {
       error.value = response.error || 'Unable to load todo'
@@ -191,7 +187,7 @@ async function loadSnapshot() {
 }
 
 watch(
-  [() => props.sessionId, effectiveWorkingDirectory],
+  () => props.sessionId,
   () => {
     loadSnapshot()
   },
@@ -213,7 +209,7 @@ onMounted(() => {
   loadSnapshot()
   cleanupChanged = platformApi.onTodoPlanChanged((data) => {
     if (!shouldRefreshChanged(data)) return
-    if (data.scope === 'workspace-ai-todo' && data.document) {
+    if (data.scope === 'session-ai-todo' && data.document) {
       applyDocument(data.document)
       return
     }

@@ -7,10 +7,7 @@
       @mousedown.stop
       @click.stop
     >
-      <header
-        v-if="variant !== 'command'"
-        class="composer-extension-header"
-      >
+      <header class="composer-extension-header">
         <div class="composer-extension-title">
           <slot name="icon" />
           <span>{{ title }}</span>
@@ -362,22 +359,55 @@ withDefaults(defineProps<{
   opacity: 0.68;
 }
 
-/* Command palette follows the quietlines mockup
-   (docs/design/mockups/od-1-quietlines.html): full-bleed rows on a quiet
-   6px card, ▸ tick + accent command on the selected row, fixed command
-   column so descriptions align, kbd hints on the right. */
+/* Command palette follows the ledger mockup
+   (docs/design/command-palette/inkline-four-options.html, 案一 · 账页):
+   every entry sits on a ruled accent line, a vertical binding rule
+   separates the kind margin from the entry, and a dotted leader bridges
+   command → description. Selecting an entry "books" it — kind and title
+   gain ink, ⏎ lands at the line's end — no background fill anywhere. */
 .command-palette-panel {
   --command-palette-row-height: 34px;
   --command-palette-accent: var(--ui-accent-primary-fg, var(--accent));
+  --command-palette-rule: color-mix(in srgb, var(--command-palette-accent) 22%, transparent);
+  --command-palette-margin-col: 52px;
 
   border-color: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 42%, transparent);
   border-radius: 6px;
   box-shadow: 0 22px 48px rgba(0, 0, 0, 0.5);
 }
 
+/* Binding rule: one vertical accent hairline spanning header, list and
+   hints, fixed in place while the list scrolls beneath it. Suppressed in
+   message states (empty / loading / error) where it would cross the text. */
+.command-palette-panel:has(.composer-extension-body)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--command-palette-margin-col);
+  border-left: 1px solid color-mix(in srgb, var(--command-palette-accent) 45%, transparent);
+  pointer-events: none;
+}
+
+.command-palette-panel .composer-extension-header {
+  min-height: var(--command-palette-row-height);
+  padding: 4px 16px 4px calc(var(--command-palette-margin-col) + 12px);
+  border-bottom: 1px solid var(--command-palette-rule);
+}
+
+.command-palette-panel .composer-extension-count {
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+}
+
 .command-palette-panel .composer-extension-body {
-  max-height: min(calc(var(--command-palette-row-height) * 6 + 12px), 30vh, 286px);
-  padding: 6px 0;
+  max-height: min(calc(var(--command-palette-row-height) * 6), 30vh, 286px);
+  padding: 0;
   scrollbar-gutter: stable;
 }
 
@@ -392,31 +422,46 @@ withDefaults(defineProps<{
    No transition either: paging scrolls instantly, and a fading highlight
    would ride along with the old row for ~120ms before settling. */
 .command-palette-panel :deep(.composer-extension-row) {
-  grid-template-columns: 26px minmax(0, 1fr) auto;
+  grid-template-columns: var(--command-palette-margin-col) minmax(0, 1fr) auto;
   align-items: baseline;
-  gap: 10px;
+  gap: 12px;
   min-height: var(--command-palette-row-height);
-  padding: 8px 18px 8px 8px;
+  padding: 8px 16px 8px 0;
+  border-bottom: 1px solid var(--command-palette-rule);
   border-radius: 0;
   transition: none;
 }
 
+/* The hints footer's top rule takes over under the last entry. */
+.command-palette-panel :deep(.composer-extension-row:last-child) {
+  border-bottom: none;
+}
+
+.command-palette-panel :deep(.composer-extension-row:hover),
 .command-palette-panel :deep(.composer-extension-row.selected),
 .command-palette-panel :deep(.composer-extension-row.selected:hover) {
-  background: color-mix(in srgb, var(--command-palette-accent) 7%, transparent);
+  background: none;
 }
 
-.command-palette-panel :deep(.command-tick) {
+.command-palette-panel :deep(.command-kind) {
   align-self: center;
-  color: transparent;
+  overflow: hidden;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
   font-family: var(--font-mono, monospace);
-  font-size: 11px;
+  font-size: 9.5px;
+  letter-spacing: 0.4px;
   line-height: 1;
   text-align: center;
+  text-transform: uppercase;
 }
 
-.command-palette-panel :deep(.composer-extension-row.selected .command-tick) {
+.command-palette-panel :deep(.composer-extension-row:hover .command-kind) {
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.command-palette-panel :deep(.composer-extension-row.selected .command-kind) {
   color: var(--command-palette-accent);
+  font-weight: 650;
 }
 
 .command-palette-panel :deep(.composer-extension-row-icon) {
@@ -424,39 +469,70 @@ withDefaults(defineProps<{
 }
 
 .command-palette-panel :deep(.composer-extension-row-main) {
-  display: grid;
-  grid-template-columns: minmax(110px, max-content) minmax(0, 1fr);
+  display: flex;
+  flex-direction: row;
   align-items: baseline;
-  gap: 10px;
+  gap: 0;
   overflow: hidden;
 }
 
 .command-palette-panel :deep(.composer-extension-row-title) {
+  flex: none;
   font-family: var(--font-mono, monospace);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.15;
 }
 
-.command-palette-panel :deep(.command-hit),
 .command-palette-panel :deep(.composer-extension-row.selected .composer-extension-row-title) {
+  font-weight: 700;
+}
+
+.command-palette-panel :deep(.command-hit) {
   color: var(--command-palette-accent);
 }
 
+/* Dotted leader bridging entry name → description, ledger style. */
+.command-palette-panel :deep(.command-leader) {
+  flex: 1 1 28px;
+  min-width: 28px;
+  align-self: center;
+  margin: 0 10px;
+  border-bottom: 1px dotted color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 42%, transparent);
+  transform: translateY(2px);
+}
+
 .command-palette-panel :deep(.composer-extension-row-description) {
+  flex: 0 1 auto;
   color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.15;
+  opacity: 0.72;
+}
+
+.command-palette-panel :deep(.composer-extension-row:hover .composer-extension-row-description) {
+  opacity: 0.9;
+}
+
+.command-palette-panel :deep(.composer-extension-row.selected .composer-extension-row-description) {
+  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
+  opacity: 1;
 }
 
 .command-palette-panel :deep(.composer-extension-row-kbd) {
   justify-self: end;
   min-width: 1.5em;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  color: var(--command-palette-accent);
   font-family: var(--font-mono, monospace);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.15;
   text-align: right;
+}
+
+.command-palette-panel .composer-extension-hints {
+  margin: 0;
+  padding: 7px 16px 8px calc(var(--command-palette-margin-col) + 12px);
+  border-top: 1px solid var(--command-palette-rule);
 }
 
 .composer-extension-enter-active {
@@ -488,8 +564,12 @@ withDefaults(defineProps<{
     max-height: min(220px, 38vh);
   }
 
+  .command-palette-panel {
+    --command-palette-margin-col: 44px;
+  }
+
   .command-palette-panel .composer-extension-body {
-    max-height: min(calc(var(--command-palette-row-height) * 4 + 12px), 34vh);
+    max-height: min(calc(var(--command-palette-row-height) * 4), 34vh);
   }
 
   :deep(.composer-extension-row) {
@@ -497,11 +577,7 @@ withDefaults(defineProps<{
   }
 
   .command-palette-panel :deep(.composer-extension-row) {
-    grid-template-columns: 20px minmax(0, 1fr);
-  }
-
-  .command-palette-panel :deep(.composer-extension-row-main) {
-    grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+    grid-template-columns: var(--command-palette-margin-col) minmax(0, 1fr);
   }
 
   :deep(.composer-extension-row-meta),

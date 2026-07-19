@@ -40,6 +40,7 @@ export {
   updateSessionWorkingDirectory,
   updateSessionWorkingDirectoryRoots,
   updateSessionVariables,
+  updateSessionGoal,
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
   updateSessionContextSize,
@@ -55,6 +56,8 @@ export {
   initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
+  invalidateSessionCache,
+  getSessionCacheStats,
 } from './sessions.js'
 
 // Ensure all necessary directories exist on startup

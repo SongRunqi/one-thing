@@ -19,7 +19,10 @@ import {
   type CoreProviderErrorDetails,
   type CoreResolvedProviderConfigForChat,
   type CoreSessionProviderSelection,
+  type CoreProviderSelectionOverride,
 } from './provider-config.js'
+
+export type { CoreProviderSelectionOverride } from './provider-config.js'
 
 export type OnethingProviderErrorDetails = CoreProviderErrorDetails
 
@@ -200,12 +203,34 @@ export function getEffectiveOnethingProviderConfig<
   settings: CoreAppSettingsWithAI<TProvider>,
   sessionId: string,
   adapters: Pick<OnethingProviderRuntimeAdapters<TProvider, CoreProviderAuthLike, TSession>, 'getSession'>,
+  override?: CoreProviderSelectionOverride | null,
 ): CoreEffectiveProviderConfig<TProvider> {
-  const resolved = getCoreEffectiveProviderConfig(settings, adapters.getSession?.(sessionId))
-  return {
-    ...resolved,
-    providerConfig: withResolvedProviderBaseUrl(resolved.providerId, resolved.providerConfig),
+  const resolved = getCoreEffectiveProviderConfig(settings, adapters.getSession?.(sessionId), override)
+  let providerConfig = withResolvedProviderBaseUrl(resolved.providerId, resolved.providerConfig)
+  // This is the single chokepoint both resolution chains share (see the
+  // deepseek-goes-codex incident), so a pinned think mode applied HERE is the
+  // one place it cannot diverge: the turn's thinking is read off
+  // providerConfig.thinkingByModel[model] downstream, for every provider that
+  // supports it, and the caller's settings stay untouched.
+  if (providerConfig && typeof override?.thinking === 'boolean') {
+    const record = providerConfig as TProvider & {
+      thinkingByModel?: Record<string, boolean | undefined>
+      thinkingEffortByModel?: Record<string, unknown>
+    }
+    providerConfig = {
+      ...record,
+      thinkingByModel: { ...record.thinkingByModel, [resolved.model]: override.thinking },
+      ...(override.thinking && override.thinkingEffort
+        ? {
+            thinkingEffortByModel: {
+              ...record.thinkingEffortByModel,
+              [resolved.model]: override.thinkingEffort,
+            },
+          }
+        : {}),
+    }
   }
+  return { ...resolved, providerConfig }
 }
 
 export function getOnethingCustomProviderConfig<

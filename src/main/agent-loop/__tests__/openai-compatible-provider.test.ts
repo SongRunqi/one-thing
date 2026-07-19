@@ -122,6 +122,7 @@ describe('OpenAI-compatible agent provider', () => {
       fetchImpl,
       supportsReasoning: true,
       includeAssistantReasoning: true,
+      reasoningStyle: 'thinking-type',
     })
 
     await provider.runTurn!({
@@ -139,6 +140,58 @@ describe('OpenAI-compatible agent provider', () => {
       content: null,
       reasoning_content: 'previous thinking',
     })
+  })
+
+  it('forwards thinking and reasoning_effort and omits temperature when thinking is enabled', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
+      'data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}\n\n',
+      'data: [DONE]\n\n',
+    ]))
+    const provider = createOpenAICompatibleAgentProvider({
+      providerId: 'kimi',
+      apiKey: 'test-key',
+      baseUrl: 'https://kimi.test/v1',
+      defaultBaseUrl: 'https://api.moonshot.cn/v1',
+      fetchImpl,
+      supportsReasoning: true,
+      includeAssistantReasoning: true,
+      reasoningStyle: 'thinking-type',
+    })
+
+    await provider.runTurn!({
+      model: 'kimi-k2.6',
+      messages: [{ role: 'user', content: 'hello' }],
+      thinking: 'enabled',
+      temperature: 0.6,
+      turn: 1,
+    })
+    await provider.runTurn!({
+      model: 'kimi-k3',
+      messages: [{ role: 'user', content: 'hello' }],
+      reasoningEffort: 'max',
+      temperature: 0.6,
+      turn: 1,
+    })
+    await provider.runTurn!({
+      model: 'moonshot-v1-128k',
+      messages: [{ role: 'user', content: 'hello' }],
+      temperature: 0.6,
+      turn: 1,
+    })
+
+    const enabledBody = JSON.parse(fetchImpl.mock.calls[0][1].body)
+    expect(enabledBody.thinking).toEqual({ type: 'enabled' })
+    expect(enabledBody.temperature).toBeUndefined()
+
+    const k3Body = JSON.parse(fetchImpl.mock.calls[1][1].body)
+    expect(k3Body.thinking).toBeUndefined()
+    expect(k3Body.reasoning_effort).toBe('max')
+    expect(k3Body.temperature).toBe(0.6)
+
+    const plainBody = JSON.parse(fetchImpl.mock.calls[2][1].body)
+    expect(plainBody.thinking).toBeUndefined()
+    expect(plainBody.reasoning_effort).toBeUndefined()
+    expect(plainBody.temperature).toBe(0.6)
   })
 
   it('attaches response bodies to API errors for downstream detail extraction', async () => {

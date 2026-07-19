@@ -55,4 +55,22 @@ describe('splitVariablesForPrompt', () => {
       v({ name: 'hidden', value: 'x', volatility: 'on-demand' }),
     ])).toBe('')
   })
+
+  it('marks static variables unchanged for 14+ days as stale (constant marker)', () => {
+    const DAY = 24 * 60 * 60 * 1000
+    const now = 100 * DAY
+    const { systemText, turnText } = splitVariablesForPrompt([
+      v({ name: 'fresh', value: 'a', updatedAt: now - DAY }),
+      v({ name: 'old', value: 'b', updatedAt: now - 15 * DAY }),
+      v({ name: 'no_timestamp', value: 'c' }),
+      v({ name: 'old_turn', value: 'd', volatility: 'turn', updatedAt: now - 15 * DAY }),
+    ], { now })
+    expect(systemText).toBe([
+      '- fresh: a',
+      '- old: b [stale: unchanged for 14+ days — update or delete if no longer true]',
+      '- no_timestamp: c',
+    ].join('\n'))
+    // Turn channel is recomputed every turn — never marked stale.
+    expect(turnText).toBe('- old_turn: d')
+  })
 })

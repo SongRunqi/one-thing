@@ -22,23 +22,22 @@ import { createHash } from "node:crypto";
 import * as fs from "fs/promises";
 import path from "node:path";
 import { getEventBus } from "../events/index.js";
+import { getProjectsStore } from "../project-dirs/index.js";
+import * as appStore from "../store.js";
 import { expandPath } from "../tools/core/sandbox.js";
 import { enforcePermissionPolicy } from "../tools/core/permission-policy.js";
-import { BackgroundJobsProvider } from "@onething/runtime/variables/providers/background-jobs";
-import { CoreProvider } from "@onething/runtime/variables/providers/core";
-import { DateTimeProvider } from "@onething/runtime/variables/providers/datetime";
-import { GitBranchProvider } from "@onething/runtime/variables/providers/git-branch";
-import { GlobalStoreProvider } from "@onething/runtime/variables/providers/global-store";
-import { NotesProvider } from "@onething/runtime/variables/providers/notes";
-import { SessionStoreProvider } from "@onething/runtime/variables/providers/session-store";
 import { getVariableRegistry } from "@onething/runtime/variables/registry";
+import { registerStandardVariableProviders } from "@onething/runtime/variables/bootstrap";
 import { getVariablesStore } from "./store/index.js";
 import type { VariableProvider } from "@onething/runtime/variables";
+import { createChannelSessionGuard } from "./channel-guard.js";
 import {
 	notesGateway,
 	globalStoreGateway,
 	sessionStoreGateway,
 	workdirGateway,
+	goalVariableGateway,
+	musicRadioGateway,
 } from "./gateways.js";
 import {
 	splitVariablesForPrompt,
@@ -57,17 +56,32 @@ export function bootstrapVariableSystem(): void {
 	getVariablesStore().initialize();
 
 	const registry = getVariableRegistry();
-	registry.register(
-		new CoreProvider(workdirGateway, {
+	registerStandardVariableProviders(registry, {
+		workdir: workdirGateway,
+		notes: notesGateway,
+		globalStore: globalStoreGateway,
+		sessionStore: sessionStoreGateway,
+		goal: goalVariableGateway,
+		musicRadio: musicRadioGateway,
+		core: {
 			enforcePermission: enforcePermissionPolicy,
-		}),
-	);
-	registry.register(new BackgroundJobsProvider());
-	registry.register(new DateTimeProvider());
-	registry.register(new GitBranchProvider(workdirGateway));
-	registry.register(new NotesProvider(notesGateway));
-	registry.register(new GlobalStoreProvider(globalStoreGateway));
-	registry.register(new SessionStoreProvider(sessionStoreGateway));
+			// Registered project directories are user-blessed: switching the
+			// workdir into one (or a subdirectory) never prompts.
+			isPreauthorizedDirectory: (dir) => {
+				try {
+					const target = path.resolve(dir);
+					return getProjectsStore()
+						.list()
+						.some((project) => {
+							const root = path.resolve(project.path);
+							return target === root || target.startsWith(root + path.sep);
+						});
+				} catch {
+					return false;
+				}
+			},
+		},
+	});
 
 	// Migrate old ~/.onething/notes to ~/.onething/memory if needed, then make
 	// sure the configured ai_note_dir exists on disk. ensure must run after the
@@ -189,8 +203,66 @@ async function ensureAiNoteDir(): Promise<void> {
 export async function listContextVariables(
 	sessionId: string,
 ): Promise<ContextVariable[]> {
-	return getVariableRegistry().list({ sessionId });
+	return channelGuard.filterVariablesForSession(
+		sessionId,
+		await getVariableRegistry().list({ sessionId }),
+	);
 }
+
+// Channel-session trust guard — see ./channel-guard.ts for the rules.
+const channelGuard = createChannelSessionGuard((sessionId) =>
+	appStore.getSession(sessionId),
+);
+
+/**
+ * Registry facade for the `variable` tool: enforces the channel-session
+ * trust guard on top of the raw registry. The raw registry stays available
+ * for host-internal callers (IPC inspector, prompt build funnels through
+ * listContextVariables above).
+ */
+export function getGuardedVariableRegistryForTools(): Pick<
+	VariableRegistryLike,
+	"list" | "set" | "append" | "remove" | "delete"
+> {
+	const registry = getVariableRegistry();
+	return {
+		list: async (ctx) =>
+			channelGuard.filterVariablesForSession(
+				ctx.sessionId,
+				await registry.list(ctx),
+			),
+		set: (ctx, input) => {
+			channelGuard.assertExternalWriteAllowed(
+				ctx.sessionId,
+				input.name,
+				input.scope,
+			);
+			return registry.set(ctx, input);
+		},
+		append: (ctx, input) => {
+			channelGuard.assertExternalWriteAllowed(
+				ctx.sessionId,
+				input.name,
+				input.scope,
+			);
+			return registry.append(ctx, input);
+		},
+		remove: (ctx, input) => {
+			channelGuard.assertExternalWriteAllowed(
+				ctx.sessionId,
+				input.name,
+				input.scope,
+			);
+			return registry.remove(ctx, input);
+		},
+		delete: (ctx, name, scope) => {
+			channelGuard.assertExternalWriteAllowed(ctx.sessionId, name, scope);
+			return registry.delete(ctx, name, scope);
+		},
+	};
+}
+
+type VariableRegistryLike = ReturnType<typeof getVariableRegistry>;
 
 /**
  * Build both prompt channels for context variables:

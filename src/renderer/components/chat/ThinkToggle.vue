@@ -4,7 +4,10 @@
     class="thinking-control"
     @click.stop
   >
-    <Tooltip :text="tooltipText" :disabled="tooltipDisabled">
+    <Tooltip
+      :text="tooltipText"
+      :disabled="tooltipDisabled"
+    >
       <Select
         class="think-select"
         :class="{ active: selectionActive }"
@@ -61,6 +64,7 @@ import type { AIProvider, OpenRouterModel, ThinkingEffort } from '../../../share
 import type { SelectModelValue, SelectOptionLike } from '@/components/common/select'
 import Tooltip from '../common/Tooltip.vue'
 import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
+import { resolveOnethingModelCapabilities } from '@onething/runtime/providers/model-capability'
 
 interface Props {
   sessionId?: string
@@ -131,10 +135,6 @@ const THINKING_PAIRS: Record<string, { normal: string; thinking: string }> = {
   deepseek: { normal: 'deepseek-chat', thinking: 'deepseek-reasoner' },
 }
 
-const DEEPSEEK_EFFORT_OPTIONS: EffortOption[] = [
-  { value: 'high', label: 'High' },
-  { value: 'max', label: 'Max' },
-]
 
 const CODEX_FALLBACK_EFFORT_OPTIONS: EffortOption[] = [
   { value: 'minimal', label: 'Minimal' },
@@ -166,8 +166,6 @@ const currentSession = computed(() => {
 const currentSelection = computed(() => resolveProviderModelSelection({
   settings: settingsStore.settings,
   session: currentSession.value,
-  providers: settingsStore.availableProviders,
-  getCachedModels: providerId => settingsStore.getCachedModels(providerId),
 }))
 
 const currentProvider = computed(() => currentSelection.value.providerId)
@@ -187,16 +185,54 @@ const codexMetadata = computed<CodexModelMetadata>(() => {
 
 const isCodexProvider = computed(() => currentProvider.value === 'codex')
 
-const isNativeThinkingModel = computed(() => {
-  if (isCodexProvider.value && currentModel.value) return true
-  if (currentProvider.value !== 'deepseek') return false
-  return /(^|[^a-z])v4/.test(currentModel.value.toLowerCase())
+const customProviderApiType = computed<'openai' | 'anthropic' | null>(() => {
+  const id = currentProvider.value
+  if (!id?.startsWith('custom-')) return null
+  const custom = settingsStore.settings?.ai?.customProviders?.find((entry) => entry.id === id)
+  return custom?.apiType ?? 'openai'
 })
 
+// Single source of truth: the model-capability ledger. Same resolver the
+// engine uses — no local pattern lists.
+const resolvedCapabilities = computed(() => {
+  if (!currentProvider.value || !currentModel.value) return null
+  const providerConfig = settingsStore.settings?.ai?.providers?.[currentProvider.value]
+  return resolveOnethingModelCapabilities({
+    providerId: currentProvider.value,
+    modelId: currentModel.value,
+    customApiType: customProviderApiType.value ?? undefined,
+    override: providerConfig?.modelCapabilitiesByModel?.[currentModel.value],
+    registryEntry: providerConfig?.models?.[currentModel.value],
+    modelMetadata: cachedModelInfo.value,
+  })
+})
+
+const isNativeThinkingModel = computed(() => {
+  const resolved = resolvedCapabilities.value
+  if (!resolved?.reasoning) return false
+  const profile = resolved.reasoningProfile
+  // Always-thinking models with no knob (kimi k2-code, deepseek-reasoner)
+  // expose nothing to configure — hide the control (or fall through to the
+  // legacy model-pair toggle below).
+  return !!profile && (profile.toggleable || profile.efforts.length > 0)
+})
+
+// What the provider does when nothing is configured comes from the ledger's
+// profile (e.g. Claude only defaults on for Sonnet 5 / Fable; DeepSeek V4
+// only thinks when explicitly enabled).
+const defaultThinkingOn = computed(
+  () => resolvedCapabilities.value?.reasoningProfile?.defaultOn ?? true,
+)
+
 const nativeThinkingEnabled = computed(() => {
+  // Models whose reasoning cannot be turned off (o-series, grok, fable)
+  // always count as thinking, regardless of any stored toggle.
+  if (resolvedCapabilities.value?.reasoningProfile?.toggleable === false) return true
   const map =
     settingsStore.settings?.ai?.providers?.[currentProvider.value]?.thinkingByModel
-  return map?.[currentModel.value] !== false
+  const stored = map?.[currentModel.value]
+  if (typeof stored === 'boolean') return stored
+  return defaultThinkingOn.value
 })
 
 const pair = computed(() => {
@@ -234,8 +270,12 @@ const codexEffortOptions = computed<EffortOption[]>(() => {
 })
 
 const effortOptions = computed<EffortOption[]>(() => {
+  // Codex keeps its provider-direct metadata source (supportedReasoningEfforts);
+  // every other provider's levels come from the capability ledger's profile.
   if (isCodexProvider.value) return codexEffortOptions.value
-  return DEEPSEEK_EFFORT_OPTIONS
+  const profile = resolvedCapabilities.value?.reasoningProfile
+  if (!profile) return []
+  return profile.efforts.map(value => ({ value, label: EFFORT_LABELS[value] }))
 })
 
 const defaultEffort = computed<ThinkingEffort>(() => {
@@ -243,7 +283,7 @@ const defaultEffort = computed<ThinkingEffort>(() => {
     const metadataDefault = normalizeEffort(codexMetadata.value.defaultReasoningEffort)
     return metadataDefault && metadataDefault !== 'max' ? metadataDefault : 'medium'
   }
-  return 'high'
+  return resolvedCapabilities.value?.reasoningProfile?.defaultEffort ?? 'high'
 })
 
 const currentEffort = computed<ThinkingEffort>(() => {
@@ -304,7 +344,7 @@ const currentServiceTierLabel = computed(() => {
 const currentSelectionLabel = computed(() => {
   const thinkingLabel = !thinking.value
     ? 'Off'
-    : isNativeThinkingModel.value
+    : isNativeThinkingModel.value && effortOptions.value.length > 0
       ? currentEffortLabel.value
       : 'On'
   return currentServiceTierLabel.value
@@ -349,14 +389,20 @@ const tooltipText = computed(() => {
 })
 
 const thinkingOptions = computed<ThinkOption[]>(() => {
-  if (isNativeThinkingModel.value) {
+  // No Off for models whose reasoning cannot be disabled (o-series, grok,
+  // fable) — offering one would silently do nothing.
+  const offOptions: ThinkOption[] =
+    resolvedCapabilities.value?.reasoningProfile?.toggleable === false
+      ? []
+      : [{ kind: 'off', label: 'Off' }]
+  if (isNativeThinkingModel.value && effortOptions.value.length > 0) {
     return [
-      { kind: 'off', label: 'Off' },
+      ...offOptions,
       ...effortOptions.value.map((option) => ({ kind: 'effort' as const, ...option })),
     ]
   }
   return [
-    { kind: 'off', label: 'Off' },
+    ...offOptions,
     { kind: 'on', label: 'On' },
   ]
 })
@@ -425,7 +471,10 @@ function optionKey(option: ThinkOption): string {
 
 function isOptionSelected(option: ThinkOption): boolean {
   if (option.kind === 'off') return !thinking.value
-  if (option.kind === 'on') return thinking.value && !isNativeThinkingModel.value
+  if (option.kind === 'on') {
+    return thinking.value
+      && (!isNativeThinkingModel.value || effortOptions.value.length === 0)
+  }
   if (option.kind === 'speed') return option.value === currentServiceTier.value
   return thinking.value && currentEffort.value === option.value
 }
@@ -493,36 +542,12 @@ async function setNativeThinkingEnabled(enabled: boolean, effort?: ThinkingEffor
   const model = currentModel.value
   if (!provider || !model) return
 
-  const settings = settingsStore.settings
-  if (!settings) return
-
-  const cfg = settings.ai.providers[provider] ?? {
-    apiKey: '',
-    model: '',
-    selectedModels: [],
-  }
-  const thinkingMap = { ...(cfg.thinkingByModel ?? {}) }
-  thinkingMap[model] = enabled
-
-  const nextConfig = { ...cfg, thinkingByModel: thinkingMap }
-  if (effort) {
-    nextConfig.thinkingEffortByModel = {
-      ...(cfg.thinkingEffortByModel ?? {}),
-      [model]: isCodexProvider.value && effort === 'max' ? 'high' : effort,
-    }
-  }
-
-  settingsStore.settings = {
-    ...settings,
-    ai: {
-      ...settings.ai,
-      providers: {
-        ...settings.ai.providers,
-        [provider]: nextConfig,
-      },
-    },
-  }
-  await settingsStore.saveSettings(settingsStore.settings)
+  await settingsStore.updateProviderThinking(provider, model, {
+    enabled,
+    ...(effort
+      ? { effort: isCodexProvider.value && effort === 'max' ? 'high' as const : effort }
+      : {}),
+  })
 }
 
 async function setNativeThinkingEffort(effort: ThinkingEffort): Promise<void> {
@@ -534,35 +559,7 @@ async function setCodexServiceTier(serviceTier: string | null): Promise<void> {
   const model = currentModel.value
   if (provider !== 'codex' || !model) return
 
-  const settings = settingsStore.settings
-  if (!settings) return
-
-  const cfg = settings.ai.providers[provider] ?? {
-    apiKey: '',
-    model: '',
-    selectedModels: [],
-  }
-  const serviceTierMap = { ...(cfg.serviceTierByModel ?? {}) }
-  if (serviceTier) {
-    serviceTierMap[model] = serviceTier
-  } else {
-    delete serviceTierMap[model]
-  }
-
-  settingsStore.settings = {
-    ...settings,
-    ai: {
-      ...settings.ai,
-      providers: {
-        ...settings.ai.providers,
-        [provider]: {
-          ...cfg,
-          serviceTierByModel: serviceTierMap,
-        },
-      },
-    },
-  }
-  await settingsStore.saveSettings(settingsStore.settings)
+  await settingsStore.updateProviderThinking(provider, model, { serviceTier })
 }
 
 async function setLegacyPairThinking(enabled: boolean): Promise<void> {
@@ -571,7 +568,7 @@ async function setLegacyPairThinking(enabled: boolean): Promise<void> {
   const target = enabled ? pair.value.thinking : pair.value.normal
   const provider = currentProvider.value as AIProvider
 
-  settingsStore.updateModel(target, provider)
+  await settingsStore.saveAIProviderDefault(provider, target)
 
   const sid = props.sessionId || sessionsStore.currentSessionId
   if (sid) {

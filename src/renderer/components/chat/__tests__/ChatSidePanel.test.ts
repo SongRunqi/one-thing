@@ -43,6 +43,13 @@ vi.mock('../TodoProgressPanel.vue', () => ({
   },
 }))
 
+vi.mock('../VariablesPanel.vue', () => ({
+  default: {
+    name: 'VariablesPanel',
+    template: '<div class="mock-variables-panel" />',
+  },
+}))
+
 async function settle() {
   await nextTick()
   await Promise.resolve()
@@ -74,7 +81,7 @@ describe('ChatSidePanel', () => {
     vi.unstubAllGlobals()
   })
 
-  it('renders three elastic sections with outline focused by default', async () => {
+  it('renders four elastic sections with outline focused by default', async () => {
     const wrapper = mount(ChatSidePanel, {
       props: {
         sessionId: 'session-1',
@@ -84,11 +91,12 @@ describe('ChatSidePanel', () => {
 
     await settle()
 
-    expect(wrapper.findAll('.chat-side-esec')).toHaveLength(3)
+    expect(wrapper.findAll('.chat-side-esec')).toHaveLength(4)
     expect(focusedSections(wrapper)).toEqual(['Outline'])
     // 子面板常驻挂载,未聚焦时也在(压成 0 高)
     expect(wrapper.find('.mock-system-prompt-panel').exists()).toBe(true)
     expect(wrapper.find('.mock-todo-progress-panel').exists()).toBe(true)
+    expect(wrapper.find('.mock-variables-panel').exists()).toBe(true)
   })
 
   it('moves focus on summary click and persists it', async () => {
@@ -126,7 +134,7 @@ describe('ChatSidePanel', () => {
     expect(focusedSections(wrapper)).toEqual(['System prompt'])
   })
 
-  it('falls back to two sections when todo is disabled', async () => {
+  it('drops the todo section when todo is disabled', async () => {
     settingsStore.settings.general.todoPlan.enabled = false
     localStorage.setItem('chatSideFocusedSection', 'todo')
 
@@ -139,7 +147,7 @@ describe('ChatSidePanel', () => {
 
     await settle()
 
-    expect(wrapper.findAll('.chat-side-esec')).toHaveLength(2)
+    expect(wrapper.findAll('.chat-side-esec')).toHaveLength(3)
     expect(focusedSections(wrapper)).toEqual(['Outline'])
   })
 
@@ -157,6 +165,7 @@ describe('ChatSidePanel', () => {
 
     expect(wrapper.find('.mock-system-prompt-panel').exists()).toBe(false)
     expect(wrapper.find('.mock-todo-progress-panel').exists()).toBe(false)
+    expect(wrapper.find('.mock-variables-panel').exists()).toBe(false)
     expect(wrapper.findAll('.chat-side-esec')).toHaveLength(2)
     expect(wrapper.find('.chat-side-draft-state').text()).toBe('System prompt will appear after the chat starts.')
     expect(wrapper.find('[title="Refresh system prompt"]').attributes('disabled')).toBeDefined()
@@ -176,8 +185,41 @@ describe('ChatSidePanel', () => {
     todoPanel.vm.$emit('progressChange', { done: 4, total: 7, currentText: 'Fix crash recovery' })
     await settle()
 
-    const todoSummary = wrapper.findAll('.chat-side-esum-live').at(-1)
-    expect(todoSummary?.text()).toBe('4/7 · Fix crash recovery')
+    const todoSummary = wrapper.find('.chat-side-todo-section .chat-side-esum-live')
+    expect(todoSummary.text()).toBe('4/7 · Fix crash recovery')
+  })
+
+  it('shows the variables live summary from panel summary events', async () => {
+    const wrapper = mount(ChatSidePanel, {
+      props: {
+        sessionId: 'session-1',
+        workingDirectory: '/repo',
+      },
+    })
+
+    await settle()
+
+    const variablesPanel = wrapper.findComponent({ name: 'VariablesPanel' })
+    variablesPanel.vm.$emit('summaryChange', '5 · workdir')
+    await settle()
+
+    const variablesSummary = wrapper.find('.chat-side-variables-section .chat-side-esum-live')
+    expect(variablesSummary.text()).toBe('5 · workdir')
+  })
+
+  it('falls back to outline when variables focus is stored but session is a draft', async () => {
+    localStorage.setItem('chatSideFocusedSection', 'variables')
+
+    const wrapper = mount(ChatSidePanel, {
+      props: {
+        sessionId: 'draft:one',
+        workingDirectory: '/repo',
+      },
+    })
+
+    await settle()
+
+    expect(focusedSections(wrapper)).toEqual(['Outline'])
   })
 
   it('updates the outline live summary from window events for the same session', async () => {

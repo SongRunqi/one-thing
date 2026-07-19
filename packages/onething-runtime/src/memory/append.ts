@@ -5,7 +5,6 @@ import {
 import type { MemoryWorkspace } from './types.js'
 import type { MemoryDiagnosticsLogInput } from './diagnostics-logger.js'
 import {
-  isIndexableMarkdownPath,
   previewLine,
   sha,
 } from './workspace.js'
@@ -22,7 +21,6 @@ export async function appendMemoryNote(options: {
   filePath?: string
   heading?: string
   logDiagnostic?: (input: MemoryDiagnosticsLogInput) => void
-  onIndexableWrite?: (target: CoreSoulMemoryResolvedPath) => void | Promise<void>
 }): Promise<CoreSoulMemoryResolvedPath> {
   if (!options.workspace.settings.enabled) {
     throw new Error('Soul-memory is disabled in settings')
@@ -57,10 +55,6 @@ export async function appendMemoryNote(options: {
       contentPreview: previewLine(payload.content, 180),
     },
   })
-
-  if (isIndexableMarkdownPath(target.relativePath)) {
-    await options.onIndexableWrite?.(target)
-  }
 
   return target
 }

@@ -17,6 +17,7 @@ import {
 import { initializeStores, flushAllPendingSaves } from "@main/store.js";
 import { getSettings, initializeSettings } from "@main/stores/settings.js";
 import { initializeToolRegistry } from "@main/tools/index.js";
+import { startTodoPlanWatcher } from "@main/todo-plan/store.js";
 import { configureSandboxHost } from "@main/tools/core/sandbox.js";
 import {
 	getConversationRuntime,
@@ -26,6 +27,7 @@ import {
 	shutdownStreamEngine,
 } from "@main/engine/index.js";
 import { registerBuiltinTriggers } from "@main/engine/triggers/index.js";
+import { bootstrapGoalStreamBreakers } from "@main/goals/runtime-hooks.js";
 import {
 	configureStorePathHost,
 	getMediaImagesDir,
@@ -44,6 +46,8 @@ import {
 	shutdownSessionLayer,
 } from "@main/session/index.js";
 import { Permission } from "@main/permission/index.js";
+import { disposeMusicService } from "@main/music/service.js";
+import { disposeRadioConductor } from "@main/music/radio.js";
 import { bootstrapVariableSystem } from "@main/variables/index.js";
 import { bootstrapProjectDirs } from "@main/project-dirs/index.js";
 import { warmSearchWindow } from "@onething/electron-host/search/window";
@@ -180,6 +184,11 @@ async function initializeElectronReadyServices(): Promise<void> {
 	// tool registry so the variable tool finds a populated registry.
 	bootstrapVariableSystem();
 
+	// Goal stream breakers: error → retry/blocked, abort → paused, complete →
+	// usage flush. Without this subscription goals never leave 'active' and
+	// their accounting never persists (the headless backend wires it too).
+	bootstrapGoalStreamBreakers();
+
 	// Bootstrap project-dirs subsystem (independent storage). Order doesn't
 	// matter relative to variables, but must precede tool registry so the
 	// project_dirs tool finds a warm store.
@@ -190,6 +199,11 @@ async function initializeElectronReadyServices(): Promise<void> {
 
 	// Initialize IPC handlers
 	initializeIPC();
+
+	// Watch the todo store: the AI edits its todo with the plain write/edit
+	// tools, so nothing else would tell the UI those edits landed.
+	await startTodoPlanWatcher();
+
 	markStartup("services-ready");
 }
 
@@ -237,6 +251,7 @@ function startPostWindowServices(): void {
 	refreshModelsOnFirstStartup().catch((err) => {
 		console.error("[Models] First-startup refresh failed (non-blocking):", err);
 	});
+
 
 	// Gateway is an Electron-hosted service. Enable from Settings > Channels
 	// or with legacy gateway env vars so IM messages enter the real onething runtime.
@@ -331,6 +346,10 @@ export function startOnethingElectronMain(): void {
 		beforeQuit: {
 			markVoiceQuitRequested,
 			shutdownVoiceService: () => getVoiceService().shutdown(),
+			shutdownMusicService: () => {
+				disposeRadioConductor();
+				disposeMusicService();
+			},
 			unregisterGlobalWindowShortcuts,
 			shutdownGateway,
 			shutdownMCP,

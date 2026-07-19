@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { addHermesMemoryEntry } from '../hermes-file-memory.js'
 import { buildSoulMemoryPromptContext } from '../prompt-context.js'
 import type { MemoryWorkspace, ResolvedSoulMemorySettings } from '../types.js'
@@ -15,43 +15,7 @@ function makeSettings(overrides: Partial<ResolvedSoulMemorySettings> = {}): Reso
     directoryMode: 'custom',
     customDirectory: '',
     bootstrapMaxChars: 2000,
-    activeMemory: {
-      enabled: true,
-      queryMode: 'recent',
-      promptStyle: 'balanced',
-      timeoutMs: 1000,
-      cacheTtlMs: 1000,
-      maxSummaryChars: 1000,
-      recentUserTurns: 3,
-      recentAssistantTurns: 3,
-      recentUserChars: 1000,
-      recentAssistantChars: 1000,
-      circuitBreakerMaxTimeouts: 3,
-      circuitBreakerCooldownMs: 1000,
-    },
-    search: {
-      enabled: true,
-      chunkTokens: 500,
-      chunkOverlap: 80,
-      maxResults: 5,
-      mmrEnabled: false,
-      temporalDecayHalfLifeDays: 30,
-    },
-    embeddings: {
-      enabled: false,
-      providerId: 'auto',
-      customProviderId: '',
-      apiKey: '',
-      model: '',
-      baseUrl: '',
-      dimensions: 0,
-    },
-    memoryFlush: {
-      enabled: false,
-      maxInputChars: 4000,
-    },
     capture: {
-      enabled: false,
       mode: 'off',
       maxInputChars: 4000,
       timeoutMs: 1000,
@@ -63,35 +27,6 @@ function makeSettings(overrides: Partial<ResolvedSoulMemorySettings> = {}): Reso
       timeoutMs: 1000,
       maxCandidates: 10,
       minConfidence: 0.7,
-    },
-    canonicalMemory: {
-      enabled: false,
-      store: 'sqlite',
-      highConfidenceThreshold: 0.85,
-      semanticDedupeThreshold: 0.9,
-    },
-    dreaming: {
-      enabled: false,
-      frequency: '0 3 * * *',
-      timezone: 'UTC',
-      model: '',
-      sources: ['daily'],
-      lookbackDays: 7,
-      maxSourceFiles: 10,
-      maxSessions: 0,
-      maxMessagesPerSession: 0,
-      maxInputChars: 4000,
-      maxPromotions: 5,
-      minScore: 0.8,
-      minRecallCount: 1,
-      minUniqueSources: 1,
-      timeoutMs: 1000,
-    },
-    dailyContext: {
-      enabled: true,
-      mode: 'always',
-      daysBack: 0,
-      maxChars: 1000,
     },
     read: {
       defaultLines: 80,
@@ -135,10 +70,9 @@ afterEach(() => {
 })
 
 describe('runtime soul-memory prompt context', () => {
-  it('assembles SOUL, Hermes, daily context, and active recall fragments', async () => {
+  it('assembles rules, SOUL, and Hermes file-memory fragments', async () => {
     const workspace = makeWorkspace()
     fs.writeFileSync(workspace.soulPath, '# SOUL.md\n\n用户喜欢直接看实现结论。\n')
-    fs.writeFileSync(workspace.todayPath, '- 今天推进了 gateway 接入 onething runtime。\n')
     await addHermesMemoryEntry({
       workspace,
       target: 'user',
@@ -154,7 +88,6 @@ describe('runtime soul-memory prompt context', () => {
       workspace,
       sessionId: 'session-1',
       userTurnCount: 3,
-      activeMemory: () => 'Active recall: gateway should not own an AgentEngine.',
     })
 
     const sources = fragments.map(fragment => fragment.source)
@@ -163,25 +96,18 @@ describe('runtime soul-memory prompt context', () => {
     expect(sources).toContain('memory/soul-memory-rules')
     expect(sources).toContain('plugins/soul-memory/SOUL.md')
     expect(sources).toContain('plugins/soul-memory/hermes-file-memory')
-    expect(sources).toContain('plugins/soul-memory/recent-daily-memory')
-    expect(sources).toContain('plugins/soul-memory/active-memory')
     expect(content).toContain('# Soul Memory Rules')
     expect(content).toContain('用户喜欢直接看实现结论')
     expect(content).toContain('用户喜欢具体实现细节')
     expect(content).toContain('Gateway conversation uses the onething runtime')
-    expect(content).toContain('今天推进了 gateway 接入 onething runtime')
-    expect(content).toContain('<active_memory_plugin>')
   })
 
   it('does not resolve prompt fragments when soul-memory is disabled', async () => {
-    const activeMemory = vi.fn(() => 'should not be called')
     const workspace = makeWorkspace(makeSettings({ enabled: false }))
 
     await expect(buildSoulMemoryPromptContext({
       workspace,
       sessionId: 'session-1',
-      activeMemory,
     })).resolves.toEqual([])
-    expect(activeMemory).not.toHaveBeenCalled()
   })
 })

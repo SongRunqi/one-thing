@@ -137,6 +137,11 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
   to { opacity: 1; }
 }
 
+/*
+ * Shortcuts ledger — 画线风.
+ * Section title, card chrome, and row rules come from SettingsPage's
+ * global :deep() layer; only layout lives here.
+ */
 .settings-section {
   margin-bottom: 32px;
 }
@@ -145,29 +150,10 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
   margin-bottom: 0;
 }
 
-.section-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 0 0 12px 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  opacity: 0.8;
-}
-
 .section-desc {
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   margin-bottom: 16px;
-}
-
-.settings-card {
-  background: rgba(128, 128, 128, 0.06);
-  border-radius: 10px;
-  overflow: hidden;
 }
 
 .shortcuts-list {
@@ -179,33 +165,28 @@ function updateShortcut(key: keyof ShortcutSettings, shortcut: KeyboardShortcut 
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
-}
-
-.shortcut-row:last-child {
-  border-bottom: none;
+  gap: 16px;
+  min-width: 0;
 }
 
 .shortcut-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .shortcut-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shortcut-desc {
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-}
-
-/* Light theme */
-html[data-theme='light'] .shortcut-row {
-  border-color: rgba(0, 0, 0, 0.08);
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
 }
 </style>

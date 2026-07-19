@@ -223,6 +223,11 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
 </script>
 
 <style scoped>
+/*
+ * MCP settings — 画线风 (ledger).
+ * No background fills, no radii: state lives in the line.
+ * Toggle visuals come from the SettingsPage :deep() layer (.toggle > input + .toggle-slider).
+ */
 .mcp-settings {
   animation: fadeIn 0.15s ease;
 }
@@ -240,89 +245,26 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
   margin-bottom: 0;
 }
 
-.section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0 0 16px 0;
-}
-
 .form-group {
   margin-bottom: 16px;
-}
-
-.form-label {
-  display: block;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  margin-bottom: 8px;
-}
-
-.form-hint {
-  font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  margin-top: 6px;
 }
 
 .toggle-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
-.toggle {
-  position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
+.toggle-row .form-label {
+  margin-bottom: 0;
 }
 
-.toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(120, 120, 128, 0.32);
-  border-radius: 12px;
-  transition: 0.2s;
-}
-
-.toggle-slider:before {
-  position: absolute;
-  content: "";
-  height: 20px;
-  width: 20px;
-  left: 2px;
-  bottom: 2px;
-  background-color: white;
-  border-radius: 50%;
-  transition: 0.2s;
-}
-
-.toggle input:checked + .toggle-slider {
-  background-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.toggle input:checked + .toggle-slider:before {
-  transform: translateX(20px);
-}
-
-/* Dialog styles */
+/* ---- delete confirmation: paper dialog in the ledger language ---- */
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -335,49 +277,37 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
   width: 100%;
   max-width: 480px;
   background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 16px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-  animation: slideUp 0.2s ease;
+  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 24%, transparent);
 }
 
 .dialog.small {
   max-width: 400px;
 }
 
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .dialog-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
 }
 
 .dialog-header h3 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-family: var(--font-display, var(--font-serif, serif));
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold, 600);
   color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .dialog-content {
-  padding: 24px;
+  padding: 16px 18px 4px;
 }
 
 .dialog-content p {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--ui-text-primary-fg, var(--text-primary));
   line-height: 1.6;
 }
@@ -385,37 +315,36 @@ async function handleImportServers(servers: MCPServerConfig[], selectedIndexes: 
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
+  gap: 18px;
+  padding: 14px 18px 16px;
 }
 
+/* Footer actions as text buttons: mono, no fill, underline on hover */
 .btn {
-  padding: 10px 20px;
+  appearance: none;
+  background: transparent;
   border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.12s ease;
 }
 
-.btn.secondary {
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
+.btn:hover:not(:disabled) {
   color: var(--ui-text-primary-fg, var(--text-primary));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.btn.secondary:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .btn.danger {
-  background: var(--ui-status-danger-fg, #ef4444);
-  color: white;
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
-.btn.danger:hover {
-  background: var(--ui-status-danger-fg, #dc2626);
+.btn.danger:hover:not(:disabled) {
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 </style>

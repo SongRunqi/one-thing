@@ -40,6 +40,11 @@ describe("onething builtin provider metadata", () => {
 			requiresOAuth: true,
 			oauthFlow: "authorization-code",
 		});
-		expect(onethingBaseBuiltinProviders.at(-1)?.id).toBe("acp");
+		// Base list = portable + local-machine agent providers (Electron only).
+		expect(
+			onethingBaseBuiltinProviders
+				.slice(onethingPortableBuiltinProviders.length)
+				.map((provider) => provider.id),
+		).toEqual(["acp", "claude-code-agent"]);
 	});
 });

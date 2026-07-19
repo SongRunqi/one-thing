@@ -1,28 +1,24 @@
 <template>
   <div class="agents-panel">
-    <header class="agents-header">
-      <div class="agents-title">
-        <Bot
-          :size="21"
-          :stroke-width="1.7"
-        />
-        <div>
-          <h2>Agents</h2>
-          <p>{{ agentsStore.agents.length }} configured</p>
-        </div>
+    <header class="ledger-header">
+      <div class="ledger-heading">
+        <h2 class="ledger-title">
+          <span>Agents</span>
+          <span class="ledger-count">{{ agentsStore.agents.length }}</span>
+        </h2>
+        <p class="ledger-sub">
+          System prompts that shape each conversation.
+        </p>
       </div>
-      <Button
-        unstyled
-        class="agents-primary-action"
-        native-type="button"
-        @click="startCreate"
-      >
-        <Plus
-          :size="15"
-          :stroke-width="2"
-        />
-        <span>New Agent</span>
-      </Button>
+      <div class="ledger-actions">
+        <button
+          class="text-action"
+          type="button"
+          @click="startCreate"
+        >
+          + new agent
+        </button>
+      </div>
     </header>
 
     <div
@@ -30,160 +26,162 @@
       :class="{ 'detail-active': agentDetailActive }"
     >
       <aside class="agents-list">
-        <div
+        <p
           v-if="agentsStore.isLoading"
-          class="agents-state"
+          class="ledger-note"
         >
-          Loading agents...
-        </div>
-        <div
+          loading…
+        </p>
+        <p
           v-else-if="agentsStore.error"
-          class="agents-state error"
+          class="ledger-error"
         >
           {{ agentsStore.error }}
-        </div>
-
-        <Button
-          v-for="agent in agentsStore.agents"
-          :key="agent.id"
-          unstyled
-          class="agent-item"
-          :class="{ active: !isCreating && agent.id === activeAgentId }"
-          native-type="button"
-          @click="selectAgent(agent.id)"
+        </p>
+        <p
+          v-else-if="agentsStore.agents.length === 0"
+          class="ledger-note"
         >
-          <span class="agent-item-main">
-            <span class="agent-item-name">{{ agent.name }}</span>
-            <span class="agent-item-meta">
-              {{ agent.isDefault ? 'Default' : formatUpdated(agent.updatedAt) }}
-            </span>
-          </span>
-          <Check
-            v-if="!isCreating && agent.id === activeAgentId"
-            :size="15"
-            :stroke-width="2.2"
-          />
-        </Button>
+          No agents configured yet.
+        </p>
+
+        <div class="ledger-body">
+          <ol class="agent-rows">
+            <li
+              v-for="agent in agentsStore.agents"
+              :key="agent.id"
+              class="agent-row"
+              :class="{ 'is-active': !isCreating && agent.id === activeAgentId }"
+            >
+              <button
+                class="row-line"
+                type="button"
+                @click="selectAgent(agent.id)"
+              >
+                <span
+                  class="row-name"
+                  :title="agent.name"
+                >{{ agent.name }}</span>
+                <span
+                  v-if="agent.isDefault"
+                  class="agent-chip"
+                  title="Default agent"
+                >default</span>
+                <span
+                  v-else
+                  class="row-meta"
+                >{{ formatUpdated(agent.updatedAt) }}</span>
+              </button>
+            </li>
+          </ol>
+        </div>
       </aside>
 
       <section class="agent-editor">
-        <div class="agent-editor-header">
-          <Button
-            unstyled
-            class="back-btn icon-btn"
-            native-type="button"
+        <div class="editor-header">
+          <button
+            class="text-action back-btn"
+            type="button"
             title="Back to list"
             @click="agentDetailActive = false"
           >
-            <ArrowLeft :size="16" />
-          </Button>
-          <div class="agent-editor-title">
-            <h3>{{ isCreating ? 'New Agent' : selectedAgent?.name || 'Agent' }}</h3>
-            <span>{{ isCreating ? 'Draft' : selectedAgent?.isDefault ? 'Default agent' : 'Custom agent' }}</span>
+            ‹ back
+          </button>
+          <div class="editor-title">
+            <h3 :title="isCreating ? 'New Agent' : selectedAgent?.name || 'Agent'">
+              {{ isCreating ? 'New Agent' : selectedAgent?.name || 'Agent' }}
+            </h3>
+            <span>{{ isCreating ? 'draft' : selectedAgent?.isDefault ? 'default agent' : 'custom agent' }}</span>
           </div>
-          <Button
+          <button
             v-if="canDelete"
-            unstyled
-            class="agent-icon-button danger"
-            native-type="button"
+            class="text-action is-danger"
+            type="button"
             title="Delete agent"
             :disabled="saving"
             @click="deleteSelectedAgent"
           >
-            <Trash2
-              :size="15"
-              :stroke-width="2"
-            />
-          </Button>
+            delete
+          </button>
         </div>
 
-        <div class="agent-editor-scroll">
-          <label class="agent-field">
-            <span>Name</span>
-            <input
-              v-model="formName"
-              class="agent-input"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-            >
-          </label>
+        <div class="editor-scroll">
+          <div class="editor-body">
+            <label class="agent-field">
+              <span class="field-label">Name</span>
+              <input
+                v-model="formName"
+                class="ledger-input"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+              >
+            </label>
 
-          <div class="agent-field">
-            <div class="agent-prompt-header">
-              <span>System Prompt</span>
-              <div class="prompt-counters">
-                <span class="prompt-counter-badge">{{ formPrompt.length }} chars</span>
-                <span class="prompt-counter-badge">{{ wordCount(formPrompt) }} words</span>
+            <div class="agent-field">
+              <div class="prompt-header">
+                <span class="field-label">System Prompt</span>
+                <span class="prompt-counters">
+                  <span class="prompt-counter">{{ formPrompt.length }} chars</span>
+                  <span class="prompt-counter">{{ wordCount(formPrompt) }} words</span>
+                </span>
               </div>
-            </div>
 
-            <div class="prompt-templates-panel">
-              <span class="templates-label">Quick Templates:</span>
-              <div class="templates-list">
-                <Button
+              <div class="prompt-templates">
+                <span class="templates-label">templates</span>
+                <button
                   v-for="tpl in promptTemplates"
                   :key="tpl.name"
-                  unstyled
-                  class="template-chip"
-                  native-type="button"
+                  class="text-action template-action"
+                  type="button"
+                  :title="`Use the ${tpl.name} template`"
                   @click="applyTemplate(tpl.prompt)"
                 >
                   {{ tpl.name }}
-                </Button>
+                </button>
               </div>
+
+              <textarea
+                v-model="formPrompt"
+                class="ledger-textarea"
+                rows="14"
+                spellcheck="true"
+                placeholder="Instruct the AI on how it should behave..."
+              />
             </div>
 
-            <textarea
-              v-model="formPrompt"
-              class="agent-textarea monospace"
-              rows="14"
-              spellcheck="true"
-              placeholder="Instruct the AI on how it should behave..."
-            />
+            <p
+              v-if="formError"
+              class="ledger-error form-note"
+            >
+              {{ formError }}
+            </p>
+            <p
+              v-else-if="formFeedback"
+              class="ledger-note form-note"
+            >
+              {{ formFeedback }}
+            </p>
           </div>
-
-          <p
-            v-if="formError"
-            class="agent-feedback error"
-          >
-            {{ formError }}
-          </p>
-          <p
-            v-else-if="formFeedback"
-            class="agent-feedback"
-          >
-            {{ formFeedback }}
-          </p>
         </div>
 
-        <div class="agent-editor-actions">
-          <Button
-            unstyled
-            class="agent-secondary-action"
-            native-type="button"
+        <div class="editor-footer">
+          <button
+            class="text-action"
+            type="button"
             :disabled="saving"
             @click="resetForm"
           >
-            <X
-              :size="15"
-              :stroke-width="2"
-            />
-            <span>Cancel</span>
-          </Button>
-          <Button
-            unstyled
-            class="agents-primary-action"
-            native-type="button"
+            cancel
+          </button>
+          <button
+            class="text-action is-primary"
+            type="button"
             :disabled="saving"
             @click="saveAgent"
           >
-            <Save
-              :size="15"
-              :stroke-width="2"
-            />
-            <span>{{ saving ? 'Saving' : 'Save' }}</span>
-          </Button>
+            {{ saving ? 'saving…' : 'save' }}
+          </button>
         </div>
       </section>
     </div>
@@ -191,9 +189,7 @@
 </template>
 
 <script setup lang="ts">
-import Button from '@/components/common/Button.vue'
 import { computed, onMounted, ref, watch } from 'vue'
-import { Bot, Check, Plus, Save, Trash2, X, ArrowLeft } from 'lucide-vue-next'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 
 const agentsStore = useAgentsStore()
@@ -365,471 +361,533 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+/*
+ * Agents ledger — 画线风.
+ * No background fills, no radii: state lives in the line.
+ * Agents hang as numbered rows on one vertical ink rule;
+ * the editor is a plain sheet with rule-hung field labels.
+ */
 .agents-panel {
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg, var(--text-primary));
   background: transparent;
+  animation: ledger-fade 0.15s ease;
+  container-type: inline-size;
 }
 
-.agents-header {
-  min-height: 74px;
+@keyframes ledger-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---- header ---- */
+.ledger-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 22px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle)) 45%, transparent);
+  padding: 16px 18px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
 }
 
-.agents-title {
+.ledger-heading {
   min-width: 0;
+}
+
+.ledger-title {
   display: flex;
-  align-items: center;
-  gap: 11px;
-}
-
-.agents-title svg {
-  flex: 0 0 auto;
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.agents-title h2,
-.agent-editor-title h3 {
+  align-items: baseline;
+  gap: 8px;
   margin: 0;
-  line-height: 1.2;
-  letter-spacing: -0.2px;
+  font-family: var(--font-display, var(--font-serif, serif));
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
-.agents-title h2 {
-  font-size: 20px;
-  font-weight: 750;
+.ledger-title > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.agents-title p,
-.agent-editor-title span {
+.ledger-count {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  font-weight: var(--font-weight-normal, 400);
+  color: var(--ui-text-faint-fg, var(--muted));
+}
+
+.ledger-sub {
   margin: 3px 0 0;
-  color: var(--ui-text-muted-fg, var(--muted));
   font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+.ledger-actions {
+  display: flex;
+  gap: 16px;
+  flex-shrink: 0;
+  padding-bottom: 2px;
+}
+
+/* ---- notes & errors ---- */
+.ledger-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  word-break: break-word;
+}
+
+.ledger-error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  padding-left: 8px;
+  word-break: break-word;
+}
+
+.form-note {
+  margin: 0;
+  min-height: 17px;
+}
+
+/* ---- layout ---- */
 .agents-layout {
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(200px, 290px) minmax(0, 1fr);
-  gap: 16px;
-  padding: 16px 22px 22px;
+  gap: 20px;
+  padding: 12px 18px 18px;
   position: relative;
   overflow: hidden;
 }
 
-/* Custom Scrollbars */
+/* Custom scrollbars (kept from before — no nested scroll areas added) */
 .agents-list::-webkit-scrollbar,
-.agent-editor-scroll::-webkit-scrollbar {
+.editor-scroll::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 .agents-list::-webkit-scrollbar-track,
-.agent-editor-scroll::-webkit-scrollbar-track {
+.editor-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
 .agents-list::-webkit-scrollbar-thumb,
-.agent-editor-scroll::-webkit-scrollbar-thumb {
+.editor-scroll::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 18%, transparent);
-  border-radius: 3px;
 }
 
 .agents-list::-webkit-scrollbar-thumb:hover,
-.agent-editor-scroll::-webkit-scrollbar-thumb:hover {
+.editor-scroll::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted)) 32%, transparent);
 }
 
-/* List Column styling */
+/* ---- list column ---- */
 .agents-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
+  padding: 4px 2px 8px 0;
   background: transparent;
-  border-radius: 0;
-  border: 0;
-  padding: 8px 0;
-  transition: none;
 }
 
-.agent-item {
+/* The vertical ink rule the rows hang on */
+.ledger-body {
+  position: relative;
+  padding-left: 16px;
+  margin-top: 6px;
+}
+
+.ledger-body::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
+}
+
+/* ---- agent rows (register numbering) ---- */
+.agent-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: agent-row;
+}
+
+.agent-row {
+  position: relative;
+  counter-increment: agent-row;
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+}
+
+.agent-row:first-child {
+  border-top: none;
+}
+
+/* Tick hanging each row on the rule */
+.agent-row::before {
+  content: '';
+  position: absolute;
+  left: -13px;
+  top: 50%;
+  width: 7px;
+  height: 1px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  transition: width 0.12s ease, height 0.12s ease, background-color 0.12s ease;
+}
+
+.agent-row:hover::before {
+  width: 12px;
+  background: var(--ui-text-muted-fg, var(--text-muted));
+}
+
+/* Active agent: heavier accent tick + accent figure number */
+.agent-row.is-active::before {
+  width: 14px;
+  height: 2px;
+  background: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.row-line {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
   width: 100%;
-  padding: 11px 13px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  min-height: 30px;
+  padding: 6px 0;
+  appearance: none;
   background: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
+  border: none;
   text-align: left;
+  font: inherit;
+  color: inherit;
   cursor: pointer;
-  outline: none;
-  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
 }
 
-.agent-item.app-button.is-unstyled {
-  --app-button-fill: transparent;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-border: transparent;
-  --app-button-hover-shadow: none;
+/* Figure number, like rows on a blueprint sheet */
+.row-line::before {
+  content: counter(agent-row, decimal-leading-zero);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  flex-shrink: 0;
+  min-width: 16px;
 }
 
-.agent-item:hover,
-.agent-item:focus-visible {
-  background: var(--ui-state-hover-bg, var(--hover));
-  border-color: transparent;
+.agent-row.is-active .row-line::before {
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
-.agent-item.active {
-  --app-button-fill: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover))));
-  --app-button-hover-fill: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--active, var(--ui-state-hover-bg, var(--hover)))));
-
-  background: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover)))) !important;
-  color: var(--ui-state-selected-fg, var(--ui-text-primary-fg, var(--text)));
-  border-color: transparent;
-  box-shadow: inset 2px 0 0 var(--ui-state-selected-border, var(--ui-accent-primary-fg, var(--accent)));
-}
-
-.agent-item.active:hover,
-.agent-item.active:focus-visible {
-  background: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--active, var(--ui-state-hover-bg, var(--hover))))) !important;
-}
-
-.agent-item-main {
+.row-name {
+  flex: 1;
   min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.agent-item-name {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  font-weight: 650;
-  line-height: 1.3;
-}
-
-.agent-item-meta {
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-}
-
-.agents-state {
-  padding: 14px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
   font-size: 12px;
-  text-align: center;
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
-.agents-state.error,
-.agent-feedback.error {
-  color: var(--ui-status-danger-fg, #ef4444);
+.row-meta {
+  flex-shrink: 0;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  white-space: nowrap;
 }
 
-/* Premium Form Editor styling */
+/* Default agent: outlined ring, zero fill — accent marks the binding */
+.agent-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1;
+  padding: 2px 7px 3px;
+  border: 1px solid color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 65%, transparent);
+  border-radius: 9px;
+  color: var(--ui-accent-primary-fg, var(--accent));
+  background: transparent;
+  white-space: nowrap;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- editor sheet ---- */
 .agent-editor {
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-radius: 0;
   background: transparent;
-  border: 0;
-  box-shadow: none;
 }
 
-.agent-editor-header {
+.editor-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: baseline;
   gap: 12px;
-  padding: 14px 20px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
-  background: transparent;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
 }
 
 .agent-editor .back-btn {
-  display: none; /* Hidden on split views */
+  display: none; /* shown in stacked/side mode only */
+  flex-shrink: 0;
 }
 
-.agent-editor-title {
-  min-width: 0;
-}
-
-.agent-editor-title h3 {
-  overflow-wrap: anywhere;
-  font-size: 15px;
-  font-weight: 720;
-}
-
-.agent-editor-scroll {
+.editor-title {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.editor-title h3 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display, var(--font-serif, serif));
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--ui-text-primary-fg, var(--text-primary));
+}
+
+.editor-title span {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  white-space: nowrap;
+}
+
+.editor-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: 14px 2px 14px 0;
+}
+
+/* Editor fields hang on their own rule */
+.editor-body {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
+  padding-left: 16px;
+}
+
+.editor-body::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
 }
 
 .agent-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-.agent-field > span,
-.agent-prompt-header > span {
-  color: var(--ui-text-muted-fg, var(--muted));
+/* Field label: section-header tick language */
+.field-label {
+  position: relative;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold, 600);
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
-.agent-input,
-.agent-textarea {
+.editor-body .field-label::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  width: 10px;
+  height: 2px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+}
+
+/* Inputs: state lives in the bottom line */
+.ledger-input {
   width: 100%;
   box-sizing: border-box;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-surface-input-bg, var(--bg-input, var(--bg)));
-  color: var(--ui-text-primary-fg, var(--text));
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0;
+  padding: 2px 2px 6px;
   font: inherit;
   font-size: 13px;
+  color: var(--ui-text-primary-fg, var(--text-primary));
   outline: none;
-  transition: all 0.2s ease;
+  transition: border-color 0.12s ease;
 }
 
-.agent-input {
-  height: 38px;
-  padding: 0 12px;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+.ledger-input:hover:not(:disabled),
+.ledger-input:focus {
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
-.agent-textarea {
+/* Prompt: an editable excerpt held by a left rule, no filled block */
+.ledger-textarea {
+  width: 100%;
+  box-sizing: border-box;
   min-height: 220px;
-  flex: 1;
   resize: vertical;
-  padding: 12px;
-  line-height: 1.5;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.03);
-}
-
-.agent-input:hover:not(:disabled),
-.agent-textarea:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, var(--ui-accent-primary-fg, var(--accent)));
-}
-
-.agent-input:focus,
-.agent-textarea:focus {
-  border-color: var(--ui-accent-primary-fg, var(--accent)) !important;
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
-  box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent), inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
-}
-
-.agent-textarea.monospace {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0;
+  padding: 4px 2px 8px 10px;
   font-family: var(--font-mono, monospace);
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.agent-feedback {
-  min-height: 17px;
-  margin: 0;
-  color: var(--ui-status-success-fg, #10b981);
   font-size: 12px;
-  font-weight: 550;
-}
-
-.agent-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px 20px;
-  border-top: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
-  background: transparent;
-}
-
-/* Buttons and Controls */
-.agents-primary-action,
-.agent-secondary-action,
-.agent-icon-button {
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  line-height: 1.6;
+  color: var(--ui-text-primary-fg, var(--text-primary));
   outline: none;
+  transition: border-color 0.12s ease;
 }
 
-.agents-primary-action {
-  height: 34px;
-  padding: 0 14px;
-  background: var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent)));
-  color: var(--ui-action-primary-fg, #ffffff) !important;
-  border-color: var(--ui-action-primary-border, transparent);
-  box-shadow: var(--ui-action-primary-shadow, 0 1px 2px rgba(0, 0, 0, 0.04));
+.ledger-textarea::placeholder {
+  color: var(--ui-text-faint-fg, var(--muted));
 }
 
-.agents-primary-action:hover:not(:disabled) {
-  background: var(--ui-action-primary-hover-bg, var(--ui-action-primary-bg, var(--accent)));
-  transform: translateY(-1px);
-  box-shadow: var(--ui-action-primary-hover-shadow, 0 3px 8px rgba(0, 0, 0, 0.08));
+.ledger-textarea:hover:not(:disabled),
+.ledger-textarea:focus {
+  border-left-color: var(--ui-accent-primary-fg, var(--accent));
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
-.agents-primary-action:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.agent-secondary-action {
-  height: 34px;
-  padding: 0 14px;
-  background: var(--ui-action-secondary-bg, var(--ui-state-hover-bg, var(--hover)));
-  color: var(--ui-action-secondary-fg, var(--ui-text-primary-fg, var(--text)));
-  border-color: var(--ui-border-default-border, var(--border));
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
-}
-
-.agent-secondary-action:hover:not(:disabled) {
-  background: var(--ui-state-hover-bg, var(--hover));
-  border-color: var(--ui-border-default-border, var(--border));
-  transform: translateY(-1px);
-}
-
-.agent-secondary-action:active:not(:disabled) {
-  transform: scale(0.98);
-}
-
-.agent-icon-button {
-  width: 34px;
-  height: 34px;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
-  border: 1px solid transparent;
-}
-
-.agent-icon-button:hover:not(:disabled) {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-  border-color: var(--ui-border-subtle-border, var(--border-subtle));
-  transform: translateY(-1px);
-}
-
-.agent-icon-button.danger:hover:not(:disabled) {
-  color: var(--ui-status-danger-fg, #ef4444);
-  background: var(--ui-status-danger-bg, transparent);
-  border-color: var(--ui-status-danger-border, #ef4444);
-}
-
-.agents-primary-action:disabled,
-.agent-secondary-action:disabled,
-.agent-icon-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-/* Prompt Editor Enhancements */
-.agent-prompt-header {
+/* Prompt header: label + mono counters */
+.prompt-header {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .prompt-counters {
   display: flex;
-  gap: 6px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
-.prompt-counter-badge {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--ui-text-muted-fg);
-  background: transparent;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
+.prompt-counter {
+  font-family: var(--font-mono, monospace);
   font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  white-space: nowrap;
 }
 
-.prompt-templates-panel {
+/* Templates: a line of text actions, wraps when narrow */
+.prompt-templates {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  padding: 0;
-  background: transparent;
-  border-radius: 0;
-  border: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.prompt-templates-panel::-webkit-scrollbar {
-  display: none;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .templates-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--ui-text-secondary-fg);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ui-text-faint-fg, var(--muted));
   white-space: nowrap;
 }
 
-.templates-list {
+.template-action {
+  text-transform: lowercase;
+  white-space: nowrap;
+}
+
+/* ---- footer actions ---- */
+.editor-footer {
   display: flex;
-  gap: 6px;
+  justify-content: flex-end;
+  gap: 18px;
+  padding: 12px 2px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
 }
 
-.template-chip {
+/* ---- shared text actions ---- */
+.text-action {
+  appearance: none;
   background: transparent;
-  border: 0;
-  border-radius: 6px;
-  color: var(--ui-text-secondary-fg);
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
-  font-weight: 600;
-  padding: 4px 8px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
-  white-space: nowrap;
-  box-shadow: none;
-  transition: background 0.14s ease, color 0.14s ease;
+  transition: color 0.12s ease;
 }
 
-.template-chip.app-button.is-unstyled {
-  --app-button-fill: transparent;
-  --app-button-hover-fill: var(--ui-state-hover-bg, var(--hover));
-  --app-button-hover-border: transparent;
-  --app-button-hover-shadow: none;
+.text-action:hover:not(:disabled) {
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
-.template-chip:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg);
+.text-action.is-danger:hover:not(:disabled) {
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
+.text-action.is-primary {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
 
+.text-action.is-primary:hover:not(:disabled) {
+  color: var(--ui-accent-primary-fg, var(--accent));
+}
 
-/* Slide stacked styling for side mode */
+.text-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.text-action:focus-visible,
+.row-line:focus-visible {
+  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline-offset: 2px;
+}
+
+.ledger-input:focus-visible,
+.ledger-textarea:focus-visible {
+  outline: none;
+}
+
+/* ---- stacked slide layout (workspace side panel) ---- */
 .mode-side .agents-layout {
   display: block;
   position: relative;
@@ -845,6 +903,8 @@ onMounted(async () => {
   position: absolute;
   top: 0;
   left: 0;
+  padding: 8px 12px 12px;
+  box-sizing: border-box;
   transform: translateX(0);
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 1;
@@ -856,9 +916,12 @@ onMounted(async () => {
   position: absolute;
   top: 0;
   left: 0;
+  padding: 0 12px 12px;
+  box-sizing: border-box;
   transform: translateX(100%);
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   z-index: 2;
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
 }
 
 .mode-side .detail-active .agents-list {
@@ -870,10 +933,11 @@ onMounted(async () => {
 }
 
 .mode-side .agent-editor .back-btn {
-  display: inline-flex;
+  display: inline-block;
 }
 
-@media (max-width: 768px) {
+/* Narrow panel (not just narrow viewport): stack list/editor as slide-over */
+@container (max-width: 640px) {
   .agents-layout {
     display: block;
     position: relative;
@@ -889,6 +953,8 @@ onMounted(async () => {
     position: absolute;
     top: 0;
     left: 0;
+    padding: 8px 12px 12px;
+    box-sizing: border-box;
     transform: translateX(0);
     transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 1;
@@ -900,9 +966,12 @@ onMounted(async () => {
     position: absolute;
     top: 0;
     left: 0;
+    padding: 0 12px 12px;
+    box-sizing: border-box;
     transform: translateX(100%);
     transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
     z-index: 2;
+    background: var(--ui-surface-panel-bg, var(--bg-panel));
   }
 
   .detail-active .agents-list {
@@ -914,7 +983,20 @@ onMounted(async () => {
   }
 
   .agent-editor .back-btn {
-    display: inline-flex;
+    display: inline-block;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agents-panel {
+    animation: none;
+  }
+
+  .agents-list,
+  .agent-editor,
+  .mode-side .agents-list,
+  .mode-side .agent-editor {
+    transition: none;
   }
 }
 </style>

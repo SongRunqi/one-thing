@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   sessionsStore: {
     currentSessionId: 'session-1',
     sessions: [{ id: 'session-1', name: 'Test', messageCount: 1 }],
+    sessionGoals: new Map(),
     createBranch: vi.fn(),
     switchSession: vi.fn(),
   },

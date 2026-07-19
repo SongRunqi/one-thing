@@ -23,7 +23,6 @@ const mocks = vi.hoisted(() => ({
     resolvedIdentity: {
       kind: 'channel-user',
       userId: 'channel:wechat_default_user-1',
-      memoryScopeId: 'channel:wechat:default:user-1',
       profileId: 'channel-wechat-default-user-1',
       displayName: 'user-1',
       externalUserKey: 'wechat:default:user-1',
@@ -116,7 +115,6 @@ describe('ChannelSessionRouter', () => {
     })
     // memoryProfileId is the single routing key; the legacy scope field is no
     // longer written.
-    expect(session.memoryScopeId).toBeUndefined()
   })
 
   it('routes non-gateway IM messages to identity sessions', () => {

@@ -17,7 +17,6 @@ const {
   getModelContextLength,
   getModelMaxOutputTokens,
   modelSupportsImageGeneration,
-  modelSupportsReasoningSync,
 } = await import('../model-registry.js')
 
 function entry(
@@ -89,8 +88,7 @@ describe('model registry metadata lookups', () => {
     state.settings.ai.providers.custom.models!['shared-model'].supportsReasoning = false
     state.settings.ai.providers.custom.models!['shared-model'].supportsImageOutput = false
 
-    expect(modelSupportsReasoningSync('shared-model', 'custom')).toBe(false)
-    expect(modelSupportsReasoningSync('shared-model', 'openai')).toBe(true)
+    // Reasoning scoping moved to model-capability.test.ts (runtime package).
     await expect(modelSupportsImageGeneration('shared-model', 'custom')).resolves.toBe(false)
     await expect(modelSupportsImageGeneration('shared-model', 'openai')).resolves.toBe(true)
   })

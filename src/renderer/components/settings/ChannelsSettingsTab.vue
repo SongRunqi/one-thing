@@ -539,17 +539,11 @@ function workspaceValue(value?: string): string {
 }
 
 function parseChannelProfile(profile: ChannelUserProfile): ObservedChannelUser | null {
-  const prefix = 'channel:'
-  if (!profile.memoryScopeId.startsWith(prefix)) return null
-  const parts = profile.memoryScopeId.slice(prefix.length).split(':')
-  if (parts.length < 3) return null
-  const [connector, workspaceId, ...externalParts] = parts
-  const externalUserId = externalParts.join(':')
-  if (!connector || !externalUserId) return null
+  if (!profile.connector || !profile.externalUserId) return null
   return {
-    connector,
-    workspaceId: workspaceValue(workspaceId),
-    externalUserId,
+    connector: profile.connector,
+    workspaceId: workspaceValue(profile.workspaceId),
+    externalUserId: profile.externalUserId,
   }
 }
 
@@ -1130,31 +1124,34 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   max-width: 100%;
 }
 
+/* Status rings: outlined, zero fill — the line color is the state */
 .status-pill {
   display: inline-flex;
   align-items: center;
   min-height: 24px;
   padding: 0 9px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   border-radius: 999px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  background: transparent;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  font-family: var(--font-mono, monospace);
   font-size: var(--type-meta-size);
   line-height: 1;
   white-space: nowrap;
 }
 
 .status-pill.success {
-  border-color: var(--ui-status-success-border, var(--ui-border-default-border, var(--border)));
+  border-color: var(--ui-status-success-fg, var(--ui-border-default-border, var(--border)));
   color: var(--ui-status-success-fg, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 .status-pill.pending {
-  border-color: var(--ui-status-warning-border, var(--ui-border-default-border, var(--border)));
+  border-color: var(--ui-status-warning-fg, var(--ui-border-default-border, var(--border)));
   color: var(--ui-status-warning-fg, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 .status-pill.error {
-  border-color: var(--ui-status-danger-border, var(--ui-border-default-border, var(--border)));
+  border-color: var(--ui-status-danger-fg, var(--ui-border-default-border, var(--border)));
   color: var(--ui-status-danger-fg, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
@@ -1194,23 +1191,41 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   justify-content: center;
   gap: 6px;
   min-height: 30px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 7px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  background: var(--ui-surface-muted-bg, var(--bg-secondary));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: transparent;
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
   font-size: var(--type-meta-size);
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.channel-action:hover:not(:disabled),
+.icon-action:hover:not(:disabled) {
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
 .channel-action {
   padding: 0 10px;
 }
 
+/* Primary = accent line + accent ink, no fill */
 .channel-action.primary {
-  border-color: var(--ui-action-primary-border, var(--ui-border-selected-border, var(--border)));
-  color: var(--ui-action-primary-bg, var(--ui-accent-primary-fg, var(--accent)));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+.channel-action.primary:hover:not(:disabled) {
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  box-shadow: inset 0 -2px 0 var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .icon-action.danger {
+  color: var(--ui-status-danger-fg, var(--ui-text-primary-fg, var(--text-primary)));
+}
+
+.icon-action.danger:hover:not(:disabled) {
+  border-color: var(--ui-status-danger-fg, var(--ui-text-primary-fg, var(--text-primary)));
   color: var(--ui-status-danger-fg, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
@@ -1266,7 +1281,7 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   gap: 10px;
   min-width: 0;
   padding: 12px 0;
-  border-top: 1px solid var(--ui-border-subtle-border, var(--border));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border)));
 }
 
 .wechat-account-header {
@@ -1352,7 +1367,7 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
 .binding-row {
   min-height: 44px;
   padding: 8px 0;
-  border-top: 1px solid var(--ui-border-subtle-border, var(--border));
+  border-top: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border)));
 }
 
 .profile-main,
@@ -1397,7 +1412,9 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   min-width: 0;
   overflow: hidden;
   font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .binding-form {
@@ -1440,20 +1457,21 @@ async function openQrUrl(account: WechatAccountStatus): Promise<void> {
   padding: 2px 0 0;
 }
 
+/* QR frame: square rule; the QR image carries its own light quiet zone */
 .qr-code-box {
   display: grid;
   flex: 0 0 auto;
-  width: 128px;
-  height: 128px;
+  width: min(128px, 100%);
+  aspect-ratio: 1;
   place-items: center;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: transparent;
 }
 
 .qr-code-image {
-  width: 112px;
-  height: 112px;
+  width: 87.5%;
+  max-width: 112px;
+  aspect-ratio: 1;
   object-fit: contain;
 }
 

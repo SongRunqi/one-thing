@@ -1,8 +1,4 @@
-import {
-  classifyCommand,
-  createBashTool,
-  parseCommand,
-} from '@onething/runtime/tools'
+import { classifyCommand, createBashTool, parseCommand } from '@onething/runtime/tools'
 import { getSettings } from '../../stores/settings.js'
 import { getToolOutputsDir } from '../../stores/paths.js'
 import { createLocalBashOperations } from '../core/bash-executor.js'

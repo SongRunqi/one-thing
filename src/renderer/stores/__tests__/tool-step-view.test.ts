@@ -3,7 +3,6 @@ import {
   buildToolStepView,
   buildSyntheticToolCall,
   clearStreamingContentCache,
-  parseDiffWithLineNumbers,
   stepFromToolCall,
 } from '../helpers/tool-step-view'
 import type { Step, ToolCall } from '@/types'
@@ -38,7 +37,7 @@ beforeEach(() => {
 })
 
 describe('buildToolStepView', () => {
-  it('keeps write streaming details available and expanded by default', () => {
+  it('keeps write streaming details available but folded', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         status: 'input-streaming',
@@ -52,7 +51,8 @@ describe('buildToolStepView', () => {
     expect(view.fileName).toBe('a.ts')
     expect(view.streamingContent?.content).toBe('hello\nworld')
     expect(view.hasDetails).toBe(true)
-    expect(view.defaultExpanded).toBe(true)
+    // Nothing is being asked of the reader yet, so the row stays quiet.
+    expect(view.defaultExpanded).toBe(false)
   })
 
   it('can build a lightweight row without parsing heavy details', () => {
@@ -67,11 +67,11 @@ describe('buildToolStepView', () => {
     expect(view.preview).toBe('a.ts')
     expect(view.filePath).toBe('/Users/me/project/src/a.ts')
     expect(view.streamingContent).toBeNull()
-    expect(view.streamingDiffLines).toEqual([])
+    expect(view.streamingPreviewLines).toEqual([])
     expect(view.argsJson).toBeNull()
     expect(view.resultText).toBeNull()
     expect(view.hasDetails).toBe(true)
-    expect(view.defaultExpanded).toBe(true)
+    expect(view.defaultExpanded).toBe(false)
   })
 
   it('uses diff as the authoritative write detail once available', () => {
@@ -96,7 +96,9 @@ describe('buildToolStepView', () => {
     expect(view.filePath).toBe('/Users/me/project/src/a.ts')
     expect(view.fileName).toBe('a.ts')
     expect(view.isAwaitingConfirmation).toBe(true)
-    expect(view.defaultExpanded).toBe(false)
+    // An edit waiting on approval is the one row that opens itself: the reader
+    // is being asked to decide, so the change has to be in front of them.
+    expect(view.defaultExpanded).toBe(true)
   })
 
   it('keeps bash rows expandable so the full command is always reachable', () => {
@@ -200,8 +202,8 @@ describe('buildToolStepView', () => {
     expect(view.streamingContent?.additions).toBe(220)
     expect(view.streamingContent?.isTruncated).toBe(false)
     expect(view.streamingContent?.omittedLines).toBe(0)
-    expect(view.streamingDiffLines.some(line => line.content.includes('lines omitted'))).toBe(false)
-    expect(view.streamingDiffLines).toHaveLength(220)
+    expect(view.streamingPreviewLines.some(line => line.text.includes('lines omitted'))).toBe(false)
+    expect(view.streamingPreviewLines).toHaveLength(220)
   })
 
   it('keeps streaming write rendered rows aligned with additions for trailing newlines', () => {
@@ -213,11 +215,27 @@ describe('buildToolStepView', () => {
     }))
 
     expect(view.streamingContent?.additions).toBe(2)
-    expect(view.streamingDiffLines).toHaveLength(2)
-    expect(view.streamingDiffLines.map(line => line.content)).toEqual(['line 1', 'line 2'])
+    expect(view.streamingPreviewLines).toEqual([
+      { kind: 'content', text: 'line 1' },
+      { kind: 'content', text: 'line 2' },
+    ])
   })
 
-  it('renders streaming edit replacements as a real diff preview', () => {
+  it('previews a streaming write as plain content, never as diff additions', () => {
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        status: 'input-streaming',
+        streamingArgs: JSON.stringify({ path: 'src/new.ts', content: 'alpha\nbeta\n' }),
+      }),
+    }))
+
+    // A write has never read the old file, so nothing here may claim to be an
+    // addition relative to it.
+    expect(view.streamingPreviewLines.every(line => line.kind === 'content')).toBe(true)
+    expect(view.streamingPreviewLines.every(line => !line.text.startsWith('+'))).toBe(true)
+  })
+
+  it('previews a streaming edit as its find/replace pair, without file line numbers', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         toolId: 'edit',
@@ -226,17 +244,24 @@ describe('buildToolStepView', () => {
         streamingArgs: JSON.stringify({
           path: 'src/app.ts',
           edits: [{
-            oldText: 'const a = 1\nconst shared = true\nconst b = 2\n',
-            newText: 'const a = 1\nconst shared = true\nconst b = 3\n',
+            oldText: 'const a = 1\nconst b = 2\n',
+            newText: 'const a = 1\nconst b = 3\n',
           }],
         }),
       }),
     }))
 
-    expect(view.streamingDiff?.additions).toBe(1)
-    expect(view.streamingDiff?.deletions).toBe(1)
-    expect(view.streamingDiffLines.map(line => line.class)).toEqual(['', '', 'diff-del', 'diff-add'])
-    expect(view.streamingDiffLines[1]).toMatchObject({ class: '', content: 'const shared = true' })
+    expect(view.streamingPreviewLines).toEqual([
+      { kind: 'label', text: 'Find' },
+      { kind: 'old', text: 'const a = 1' },
+      { kind: 'old', text: 'const b = 2' },
+      { kind: 'label', text: 'Replace with' },
+      { kind: 'new', text: 'const a = 1' },
+      { kind: 'new', text: 'const b = 3' },
+    ])
+    // Line numbers would be fabricated: the offsets are within the replacement,
+    // not positions in the file, which nothing has read yet.
+    expect(view.streamingPreviewLines.every(line => !('oldNum' in line))).toBe(true)
   })
 
   it('keeps deletion-only streaming edits visible', () => {
@@ -253,14 +278,15 @@ describe('buildToolStepView', () => {
     }))
 
     expect(view.streamingContent?.content).toBe('')
-    expect(view.streamingDiff?.additions).toBe(0)
-    expect(view.streamingDiff?.deletions).toBe(1)
-    expect(view.streamingDiffLines).toEqual([
-      { class: 'diff-del', prefix: '-', content: 'remove me', oldNum: 1, newNum: '' },
+    expect(view.streamingContent?.deletions).toBe(1)
+    expect(view.streamingPreviewLines).toEqual([
+      { kind: 'label', text: 'Find' },
+      { kind: 'old', text: 'remove me' },
+      { kind: 'label', text: 'Replace with' },
     ])
   })
 
-  it('keeps streaming edit line numbers continuous across replacements', () => {
+  it('numbers the labels when a streaming edit has several replacements', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         toolId: 'edit',
@@ -269,25 +295,22 @@ describe('buildToolStepView', () => {
         streamingArgs: JSON.stringify({
           path: 'src/app.ts',
           edits: [
-            { oldText: 'old one\n', newText: 'new one\nnew extra\n' },
+            { oldText: 'old one\n', newText: 'new one\n' },
             { oldText: 'old two\n', newText: 'new two\n' },
           ],
         }),
       }),
     }))
 
-    const changedRows = view.streamingDiffLines.filter(line => line.class === 'diff-del' || line.class === 'diff-add')
-
-    expect(changedRows).toEqual([
-      { class: 'diff-del', prefix: '-', content: 'old one', oldNum: 1, newNum: '' },
-      { class: 'diff-add', prefix: '+', content: 'new one', oldNum: '', newNum: 1 },
-      { class: 'diff-add', prefix: '+', content: 'new extra', oldNum: '', newNum: 2 },
-      { class: 'diff-del', prefix: '-', content: 'old two', oldNum: 2, newNum: '' },
-      { class: 'diff-add', prefix: '+', content: 'new two', oldNum: '', newNum: 3 },
+    expect(view.streamingPreviewLines.filter(line => line.kind === 'label').map(line => line.text)).toEqual([
+      'Find 1',
+      'Replace with 1',
+      'Find 2',
+      'Replace with 2',
     ])
   })
 
-  it('renders all rows for large streaming edit diffs without the 160 row cap', () => {
+  it('renders every row of a large streaming edit without a cap', () => {
     const oldText = Array.from({ length: 180 }, (_, index) => `old ${index + 1}`).join('\n')
     const newText = Array.from({ length: 180 }, (_, index) => `new ${index + 1}`).join('\n')
     const view = buildToolStepView(step({
@@ -302,10 +325,10 @@ describe('buildToolStepView', () => {
       }),
     }))
 
-    expect(view.streamingDiff?.additions).toBe(180)
-    expect(view.streamingDiff?.deletions).toBe(180)
-    expect(view.streamingDiffLines).toHaveLength(360)
-    expect(view.streamingDiffLines.some(line => line.content.includes('diff lines omitted'))).toBe(false)
+    expect(view.streamingContent?.additions).toBe(180)
+    expect(view.streamingContent?.deletions).toBe(180)
+    // 180 old + 180 new + the two labels.
+    expect(view.streamingPreviewLines).toHaveLength(362)
   })
 
   it('extracts filePath from step.result payload if args.path is missing', () => {
@@ -394,11 +417,3 @@ describe('buildSyntheticToolCall', () => {
   })
 })
 
-describe('parseDiffWithLineNumbers', () => {
-  it('parses additions and deletions with line numbers', () => {
-    const lines = parseDiffWithLineNumbers('--- a\n+++ b\n@@ -1,2 +1,2 @@\n-old\n same\n+new\n')
-    expect(lines.map(line => line.class)).toEqual(['diff-hunk', 'diff-del', '', 'diff-add'])
-    expect(lines[1].oldNum).toBe(1)
-    expect(lines[3].newNum).toBe(2)
-  })
-})

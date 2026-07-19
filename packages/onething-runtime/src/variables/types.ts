@@ -66,6 +66,7 @@ export type VariableErrorCode =
   | 'WORKDIR_NOT_FOUND'
   | 'NO_PROVIDER'
   | 'PROVIDER_CONFLICT'
+  | 'FORBIDDEN'
 
 export class VariableError extends Error {
   constructor(public readonly code: VariableErrorCode, message: string) {
@@ -80,6 +81,29 @@ export const VARIABLE_LIMITS = {
   MAX_NAME_LENGTH: 64,
 } as const
 
+/**
+ * Variables whose value is not just text: the system reads it and acts on it.
+ * The note directories decide where notes are written and — because the
+ * note-skills plugin scans them recursively for SKILL.md — which skills load.
+ *
+ * Repointing one changes what the assistant can reach, so the `variable` tool
+ * raises a permission effect for these instead of writing them silently the way
+ * it writes ordinary state. The assistant may still propose the change; the
+ * user approves it.
+ *
+ * This list is the seed of a real capability registry — see
+ * docs/design/capability-registry.md.
+ */
+export const CAPABILITY_VARIABLE_NAMES = Object.freeze([
+  'ai_note_dir',
+  'user_note_dir',
+  'work_note_dir',
+] as const)
+
+export function isCapabilityVariable(name: string): boolean {
+  return (CAPABILITY_VARIABLE_NAMES as readonly string[]).includes(name.trim())
+}
+
 export const RESERVED_NAMES = Object.freeze([
   'workdir',
   'cwd',
@@ -90,6 +114,7 @@ export const RESERVED_NAMES = Object.freeze([
   'datetime',
   'git_branch',
   'background_jobs',
+  'goal',
 ] as const)
 
 export type ReservedName = (typeof RESERVED_NAMES)[number]

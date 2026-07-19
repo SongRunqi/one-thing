@@ -15,7 +15,6 @@ import {
   getOnethingModelsForProvider,
   mergeOnethingModelsById,
   onethingModelSupportsImageGeneration,
-  onethingModelSupportsReasoningSync,
   refreshAllOnethingProviderModels,
   refreshOnethingProviderModels,
   saveOnethingProviderModels,
@@ -113,7 +112,7 @@ describe('onething model registry helpers', () => {
       },
     }
 
-    expect(onethingModelSupportsReasoningSync(scopedProviders, 'shared-model', 'custom')).toBe(true)
+    // Reasoning override scoping is covered by model-capability.test.ts now.
     expect(onethingModelSupportsImageGeneration(scopedProviders, 'shared-model', 'custom')).toBe(true)
   })
 

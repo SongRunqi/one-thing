@@ -80,6 +80,7 @@
 import Button from '@/components/common/Button.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Search } from 'lucide-vue-next'
+import { isEditableTarget } from '@/utils/editable-target'
 import {
   TODO_NOTES_ACTION_GROUPS,
   type TodoNotesAction,
@@ -190,7 +191,11 @@ function shortcutParts(shortcut: string): string[] {
 function handleKeydown(event: KeyboardEvent) {
   if (!props.visible || event.isComposing) return
   const target = event.target as Node | null
-  if (target && !panelRef.value?.contains(target) && event.key.length === 1 && !event.metaKey && !event.ctrlKey) {
+  const insidePanel = !!(target && panelRef.value?.contains(target))
+  // 面板外正在编辑别的输入框（如会话重命名）时完全让行：
+  // 否则单字符会被抢焦点、Enter/Escape 会被这里吞掉。
+  if (!insidePanel && isEditableTarget(event.target)) return
+  if (target && !insidePanel && event.key.length === 1 && !event.metaKey && !event.ctrlKey) {
     inputRef.value?.focus()
   }
 

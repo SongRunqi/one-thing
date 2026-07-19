@@ -115,9 +115,9 @@ const snapshot = {
 			totalTasks: 1,
 		},
 	],
-	workspaceAiTodo: {
-		id: "workspace-ai-todo",
-		scope: "workspace-ai-todo" as const,
+	sessionAiTodo: {
+		id: "session-ai-todo",
+		scope: "session-ai-todo" as const,
 		title: "AI Todo",
 		role: "assistant" as const,
 		filePath: "/tmp/ai-todo.md",
@@ -146,7 +146,7 @@ function installElectronApi() {
 					document: {
 						...snapshot.userNotes[0],
 						scope: request.scope,
-						id: request.id || "workspace-ai-todo",
+						id: request.id || "session-ai-todo",
 						content: request.content,
 					},
 				}),
@@ -442,7 +442,7 @@ describe("TodoPlanPanel", () => {
 		await settle();
 
 		expect(wrapper.find(".note-switcher").exists()).toBe(false);
-		expect(storage.todoPlanCardActiveId).toBe("workspace-ai-todo");
+		expect(storage.todoPlanCardActiveId).toBe("session-ai-todo");
 		wrapper.unmount();
 	});
 
@@ -653,7 +653,7 @@ describe("TodoPlanPanel", () => {
 				userNotes: snapshot.userNotes,
 			},
 		});
-		localStorage.setItem("todoPlanCardActiveId", "workspace-ai-todo");
+		localStorage.setItem("todoPlanCardActiveId", "session-ai-todo");
 
 		const wrapper = mount(TodoPlanPanel, {
 			attachTo: document.body,
@@ -671,7 +671,7 @@ describe("TodoPlanPanel", () => {
 	});
 
 	it("keeps standalone window and chat card storage state independent", async () => {
-		localStorage.setItem("todoPlanWindowActiveId", "workspace-ai-todo");
+		localStorage.setItem("todoPlanWindowActiveId", "session-ai-todo");
 		localStorage.setItem("todoPlanCardActiveId", "user-todo-1");
 
 		const standalone = mount(TodoPlanPanel, {
@@ -702,7 +702,7 @@ describe("TodoPlanPanel", () => {
 	});
 
 	it("refreshes the active workspace todo when the todo tool broadcasts a matching change", async () => {
-		localStorage.setItem("todoPlanCardActiveId", "workspace-ai-todo");
+		localStorage.setItem("todoPlanCardActiveId", "session-ai-todo");
 		const wrapper = mount(TodoPlanPanel, {
 			attachTo: document.body,
 			props: { sessionId: "session-1", workingDirectory: "/repo" },
@@ -716,11 +716,11 @@ describe("TodoPlanPanel", () => {
 		).toContain("Review work");
 
 		todoPlanChangedHandler?.({
-			scope: "workspace-ai-todo",
+			scope: "session-ai-todo",
 			sessionId: "session-1",
 			workingDirectory: "/repo",
 			document: {
-				...snapshot.workspaceAiTodo,
+				...snapshot.sessionAiTodo,
 				content:
 					"# AI Todo\n\n## Now\n- [x] Review work\n- [ ] Ship the refresh fix",
 				updatedAt: 2,
@@ -736,7 +736,7 @@ describe("TodoPlanPanel", () => {
 	});
 
 	it("does not overwrite local draft edits with an incoming todo broadcast", async () => {
-		localStorage.setItem("todoPlanCardActiveId", "workspace-ai-todo");
+		localStorage.setItem("todoPlanCardActiveId", "session-ai-todo");
 		const wrapper = mount(TodoPlanPanel, {
 			attachTo: document.body,
 			props: { sessionId: "session-1", workingDirectory: "/repo" },
@@ -747,11 +747,11 @@ describe("TodoPlanPanel", () => {
 		await settle();
 
 		todoPlanChangedHandler?.({
-			scope: "workspace-ai-todo",
+			scope: "session-ai-todo",
 			sessionId: "session-1",
 			workingDirectory: "/repo",
 			document: {
-				...snapshot.workspaceAiTodo,
+				...snapshot.sessionAiTodo,
 				content: "# AI Todo\n\nExternal tool update",
 				updatedAt: 2,
 			},

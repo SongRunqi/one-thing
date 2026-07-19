@@ -42,10 +42,10 @@ export function createOnethingStreamProviderAdapter<
   options: OnethingStreamProviderAdapterOptions<TProvider, TSettings, TAuth, TSession>,
 ): StreamEngineProviderAdapter<TSettings, TProvider | undefined, TAuth> {
   return {
-    getEffectiveConfig(settings, sessionId) {
+    getEffectiveConfig(settings, sessionId, override) {
       return getEffectiveOnethingProviderConfig<TProvider, TSession>(settings, sessionId, {
         getSession: options.getSession,
-      })
+      }, override)
     },
     resolveAuth(providerId, providerConfig) {
       return resolveOnethingProviderAuth<TProvider, TAuth>(providerId, providerConfig, {

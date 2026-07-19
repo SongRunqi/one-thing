@@ -9,6 +9,11 @@ import {
 } from '@onething/runtime/agent-loop/providers'
 import type { OAuthToken } from '../../../shared/ipc.js'
 import { ACPManager } from '../../acp/index.js'
+import {
+  getExternalAgentConnectors,
+  persistExternalAgentSessionLink,
+  resolveExternalAgentSessionLink,
+} from '../../external-agents/index.js'
 import { authService } from '../../auth/auth-service.js'
 import type { ProviderAuthContext } from '../../auth/types.js'
 import { createRequiredAppFetch } from '../../providers/bound-fetch.js'
@@ -71,6 +76,11 @@ export function createAgentProviderFromRuntime(
     fetchImpl: options.fetchImpl ?? createRequiredAppFetch({ policy: 'streaming' }),
     acpStreamPrompt: options.acpStreamPrompt ?? ((model, promptOptions) => ACPManager.streamPrompt(model, promptOptions)),
     acpCwd: options.acpCwd ?? (() => process.cwd()),
+    externalAgentConnectors: options.externalAgentConnectors ?? getExternalAgentConnectors(),
+    resolveExternalAgentSessionLink:
+      options.resolveExternalAgentSessionLink ?? resolveExternalAgentSessionLink,
+    onExternalAgentSessionLink:
+      options.onExternalAgentSessionLink ?? persistExternalAgentSessionLink,
     codexRefreshOAuthToken: options.codexRefreshOAuthToken ?? createCodexRefreshOAuthToken(config),
     codexRequestDumper: options.codexRequestDumper ?? dumpProviderRequest,
   })

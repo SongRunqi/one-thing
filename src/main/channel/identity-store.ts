@@ -9,10 +9,7 @@ import {
   readJsonFile,
   writeJsonFile,
 } from '../stores/paths.js'
-import {
-  LOCAL_CLIENT_USER_ID,
-  LOCAL_MEMORY_SCOPE_ID,
-} from './origin.js'
+import { LOCAL_CLIENT_USER_ID } from './origin.js'
 
 interface ChannelIdentityStoreData {
   profiles: ChannelUserProfile[]
@@ -43,7 +40,6 @@ function defaultProfile(now = Date.now()): ChannelUserProfile {
   return {
     id: LOCAL_CLIENT_USER_ID,
     name: 'Local user',
-    memoryScopeId: LOCAL_MEMORY_SCOPE_ID,
     isMain: true,
     source: 'local',
     createdAt: now,
@@ -51,13 +47,25 @@ function defaultProfile(now = Date.now()): ChannelUserProfile {
   }
 }
 
-function channelMemoryScope(input: {
-  connector: string
-  workspaceId?: string
-  externalUserId: string
-}): string {
-  const workspaceId = normalizeWorkspaceId(input.workspaceId) || 'default'
-  return `channel:${sanitizeProfileId(input.connector, 'unknown')}:${sanitizeProfileId(workspaceId, 'default')}:${sanitizeProfileId(input.externalUserId, 'unknown')}`
+// Older stores stamped profiles with a memoryScopeId ("channel:<connector>:<ws>:<user>"
+// or "client:<id>"); the scope never fed any path and is deprecated. Channel
+// coordinates are now explicit fields, migrated lazily from the legacy value.
+interface LegacyScopedProfile extends ChannelUserProfile {
+  memoryScopeId?: string
+}
+
+function migrateLegacyProfile(profile: LegacyScopedProfile): ChannelUserProfile {
+  const scope = profile.memoryScopeId
+  if (scope?.startsWith('channel:') && !profile.connector) {
+    const [connector, workspaceId, ...rest] = scope.slice('channel:'.length).split(':')
+    if (connector && rest.length) {
+      profile.connector = connector
+      profile.workspaceId = workspaceId || 'default'
+      profile.externalUserId = rest.join(':')
+    }
+  }
+  delete profile.memoryScopeId
+  return profile
 }
 
 function channelProfileId(input: {
@@ -77,7 +85,7 @@ function readStore(): ChannelIdentityStoreData {
     profiles.unshift(defaultProfile(now))
   }
   return {
-    profiles,
+    profiles: profiles.map(profile => migrateLegacyProfile(profile)),
     links: Array.isArray(data.links) ? data.links : [],
     deliveries: Array.isArray(data.deliveries) ? data.deliveries : [],
   }
@@ -111,7 +119,11 @@ export class ChannelIdentityStore {
     name: string
     isMain?: boolean
     source?: ChannelUserProfile['source']
-    memoryScopeId?: string
+    channel?: {
+      connector: string
+      workspaceId?: string
+      externalUserId: string
+    }
   }): ChannelUserProfile {
     const now = Date.now()
     const data = readStore()
@@ -126,7 +138,11 @@ export class ChannelIdentityStore {
 
     if (existing) {
       existing.name = input.name.trim() || existing.name
-      existing.memoryScopeId = input.memoryScopeId || existing.memoryScopeId
+      if (input.channel) {
+        existing.connector = input.channel.connector
+        existing.workspaceId = normalizeWorkspaceId(input.channel.workspaceId) || 'default'
+        existing.externalUserId = input.channel.externalUserId
+      }
       existing.source = input.source || existing.source
       existing.isMain = input.isMain === undefined ? existing.isMain : input.isMain
       existing.updatedAt = now
@@ -137,9 +153,15 @@ export class ChannelIdentityStore {
     const profile: ChannelUserProfile = {
       id,
       name: input.name.trim() || id,
-      memoryScopeId: input.memoryScopeId || (id === LOCAL_CLIENT_USER_ID ? LOCAL_MEMORY_SCOPE_ID : `client:${id}`),
       isMain: input.isMain === true,
       source: input.source || 'manual',
+      ...(input.channel
+        ? {
+            connector: input.channel.connector,
+            workspaceId: normalizeWorkspaceId(input.channel.workspaceId) || 'default',
+            externalUserId: input.channel.externalUserId,
+          }
+        : {}),
       createdAt: now,
       updatedAt: now,
     }
@@ -181,7 +203,6 @@ export class ChannelIdentityStore {
       id: clientUserId,
       name: displayName || clientUserId,
       source: clientUserId === LOCAL_CLIENT_USER_ID ? 'local' : 'manual',
-      memoryScopeId: clientUserId === LOCAL_CLIENT_USER_ID ? LOCAL_MEMORY_SCOPE_ID : `client:${clientUserId}`,
       isMain: clientUserId === LOCAL_CLIENT_USER_ID,
     })
   }
@@ -199,7 +220,7 @@ export class ChannelIdentityStore {
       id,
       name: input.displayName || input.externalUserId,
       source: 'channel',
-      memoryScopeId: channelMemoryScope(input),
+      channel: input,
     })
   }
 

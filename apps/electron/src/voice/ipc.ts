@@ -5,6 +5,10 @@ export interface ElectronIpcMainLike {
     channel: string,
     listener: (event: unknown, ...args: TArgs) => unknown,
   ): void
+  on?<TArgs extends unknown[]>(
+    channel: string,
+    listener: (event: unknown, ...args: TArgs) => unknown,
+  ): void
 }
 
 export interface ElectronVoiceIpcChannels {
@@ -19,6 +23,7 @@ export interface ElectronVoiceIpcChannels {
   getTTSModels: string
   runtimeReady: string
   runtimeEvent: string
+  audioChunk?: string
 }
 
 export interface ElectronVoiceIpcInvokeEvent {
@@ -42,6 +47,7 @@ export interface RegisterElectronVoiceIpcHandlersOptions {
   getTTSModels(request?: ElectronVoiceTTSModelsRequest): unknown
   runtimeReady(sender: unknown): unknown
   runtimeEvent(event: unknown): unknown
+  audioChunk?(payload: unknown): void
   ipcMain?: ElectronIpcMainLike
 }
 
@@ -93,4 +99,12 @@ export function registerElectronVoiceIpcHandlers(
   host.handle(options.channels.runtimeEvent, (_event, event: unknown) => {
     return options.runtimeEvent(event)
   })
+
+  // High-frequency PCM uplink; fire-and-forget so the runtime window never
+  // blocks its audio callback on an invoke round trip.
+  if (options.channels.audioChunk && options.audioChunk && host.on) {
+    host.on(options.channels.audioChunk, (_event, payload: unknown) => {
+      options.audioChunk?.(payload)
+    })
+  }
 }

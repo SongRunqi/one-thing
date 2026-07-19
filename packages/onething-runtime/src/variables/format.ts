@@ -4,12 +4,23 @@ import type { ContextVariable } from './types.js'
 export interface FormatOptions {
   collapseHome?: boolean
   maxValueLength?: number
+  /** Reference clock for staleness marking (tests). Defaults to Date.now(). */
+  now?: number
 }
 
-const DEFAULT_OPTIONS: Required<FormatOptions> = {
+const DEFAULT_OPTIONS: Omit<Required<FormatOptions>, 'now'> = {
   collapseHome: true,
   maxValueLength: 512,
 }
+
+/**
+ * Static variables older than this get a constant [stale] marker in the
+ * system-prompt channel. The marker text carries no live age — crossing the
+ * threshold changes the prompt bytes exactly once per variable (one
+ * prompt-cache miss), instead of every day.
+ */
+const STALE_AFTER_MS = 14 * 24 * 60 * 60 * 1000
+const STALE_MARKER = ' [stale: unchanged for 14+ days — update or delete if no longer true]'
 
 function collapse(value: string, home: string): string {
   if (!home || !value.startsWith(home)) return value
@@ -23,7 +34,8 @@ function truncate(value: string, max: number): string {
 
 function renderLines(
   variables: ContextVariable[],
-  opts: Required<FormatOptions>,
+  opts: Omit<Required<FormatOptions>, 'now'> & { now: number },
+  markStale: boolean,
 ): string {
   const home = opts.collapseHome ? os.homedir() : ''
   const lines: string[] = []
@@ -44,7 +56,12 @@ function renderLines(
     const collapsed = home ? collapse(displayValue, home) : displayValue
     const trimmed = truncate(collapsed, opts.maxValueLength)
     const note = v.description ? ` (${v.description})` : ''
-    lines.push(`- ${v.name}: ${trimmed}${note}`)
+    const stale = markStale
+      && v.updatedAt !== undefined
+      && opts.now - v.updatedAt > STALE_AFTER_MS
+      ? STALE_MARKER
+      : ''
+    lines.push(`- ${v.name}: ${trimmed}${note}${stale}`)
   }
 
   return lines.join('\n')
@@ -78,11 +95,14 @@ export function splitVariablesForPrompt(
   variables: ContextVariable[],
   options: FormatOptions = {},
 ): VariablePromptSections {
-  const opts = { ...DEFAULT_OPTIONS, ...options }
+  const opts = { ...DEFAULT_OPTIONS, now: Date.now(), ...options }
   const statics = variables.filter(v => (v.volatility ?? 'static') === 'static')
   const turns = variables.filter(v => v.volatility === 'turn')
   return {
-    systemText: renderLines(statics, opts),
-    turnText: renderLines(turns, opts),
+    // Only the static channel gets stale marking: it sits in the prompt on
+    // every turn, so forgotten state there is what pollutes context. Turn
+    // variables are recomputed each turn and never go stale.
+    systemText: renderLines(statics, opts, true),
+    turnText: renderLines(turns, opts, false),
   }
 }

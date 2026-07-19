@@ -126,8 +126,10 @@ describe('electron settings window', () => {
 
     const result = openElectronSettingsWindow(options) as any
 
-    expect(result.options.transparent).toBe(true)
-    expect(result.options.backgroundColor).toBeUndefined()
+    // Opaque even on mac: transparency forces per-frame desktop compositing
+    // and drops animation frames on ProMotion displays.
+    expect(result.options.transparent).toBeUndefined()
+    expect(result.options.backgroundColor).toBe(options.backgroundColor)
     expect(result.options.titleBarStyle).toBe('hiddenInset')
     expect(result.loadFile).toHaveBeenCalledWith('/dist/renderer/index.html', {
       hash: '/settings?theme=light&colorTheme=green',

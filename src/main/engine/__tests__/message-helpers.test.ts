@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChatMessage } from '../../../shared/ipc.js'
 import {
   buildHistoryMessages,
+  collapseSupersededGoalDrives,
   filterHistoryForNonToolAPI,
   sanitizeToolResultForAI,
 } from '../stream/message-helpers.js'
@@ -14,6 +15,46 @@ function message(index: number, role: 'user' | 'assistant'): ChatMessage {
     timestamp: index,
   }
 }
+
+describe('collapseSupersededGoalDrives', () => {
+  function goalDrive(index: number, content = 'Continue working toward the active session goal. <long template>'): ChatMessage {
+    return {
+      id: `goal-${index}`,
+      role: 'user',
+      content,
+      timestamp: index,
+      origin: { transport: 'api', source: 'goal', receivedAt: index },
+    } as ChatMessage
+  }
+
+  it('keeps only the newest goal drive verbatim and shrinks older ones to a marker', () => {
+    const messages = [
+      message(1, 'user'),
+      message(2, 'assistant'),
+      goalDrive(3),
+      message(4, 'assistant'),
+      goalDrive(5),
+      message(6, 'assistant'),
+      goalDrive(7),
+    ]
+
+    const collapsed = collapseSupersededGoalDrives(messages)
+
+    expect(collapsed[2].content).toContain('superseded')
+    expect(collapsed[4].content).toContain('superseded')
+    expect(collapsed[6].content).toBe(goalDrive(7).content)
+    // Roles preserved so provider role alternation stays intact.
+    expect(collapsed.map(m => m.role)).toEqual(messages.map(m => m.role))
+    // Non-goal messages untouched.
+    expect(collapsed[0]).toBe(messages[0])
+    expect(collapsed[1]).toBe(messages[1])
+  })
+
+  it('returns the array unchanged when no goal drives exist', () => {
+    const messages = [message(1, 'user'), message(2, 'assistant')]
+    expect(collapseSupersededGoalDrives(messages)).toBe(messages)
+  })
+})
 
 describe('buildHistoryMessages', () => {
   it('uses summary plus recent messages when the summary anchor exists', () => {

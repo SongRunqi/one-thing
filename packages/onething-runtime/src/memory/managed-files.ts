@@ -15,7 +15,59 @@ import {
   type CoreSoulMemoryResolvedPath,
 } from '../plugins/index.js'
 import type { MemoryWorkspace } from './types.js'
-import { listMemoryIndexFiles } from './indexer.js'
+import {
+  joinPaths,
+  listDirectoryEntries,
+  relativePath as relativePathOf,
+} from '@onething/core/storage'
+import { getSoulMemoryDailyDateFromFileName } from '../plugins/index.js'
+
+interface DailyMemoryFileCandidate {
+  absolutePath: string
+  relativePath: string
+  kind: 'memory' | 'daily'
+  date?: string
+}
+
+async function listDailyMemoryFiles(workspace: MemoryWorkspace): Promise<DailyMemoryFileCandidate[]> {
+  const files: DailyMemoryFileCandidate[] = []
+  const rootMemoryStat = await statPath(workspace.memoryPath)
+  if (rootMemoryStat?.isFile()) {
+    files.push({
+      absolutePath: workspace.memoryPath,
+      relativePath: 'MEMORY.md',
+      kind: 'memory',
+    })
+  }
+
+  async function walk(dir: string): Promise<void> {
+    let entries: Awaited<ReturnType<typeof listDirectoryEntries>>
+    try {
+      entries = await listDirectoryEntries(dir)
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const absolutePath = joinPaths(dir, entry.name)
+      if (entry.isDirectory) {
+        if (entry.name.startsWith('.')) continue
+        await walk(absolutePath)
+        continue
+      }
+      if (!entry.isFile || !entry.name.toLowerCase().endsWith('.md')) continue
+      const date = getSoulMemoryDailyDateFromFileName(entry.name)
+      files.push({
+        absolutePath,
+        relativePath: relativePathOf(workspace.root, absolutePath),
+        kind: 'daily',
+        ...(date ? { date } : {}),
+      })
+    }
+  }
+
+  await walk(workspace.memoryDir)
+  return files
+}
 
 async function readTextFilePrefix(filePath: string, maxBytes: number): Promise<string> {
   if (maxBytes <= 0) return ''
@@ -47,7 +99,7 @@ async function countTextFileLines(filePath: string): Promise<number> {
 export async function listManagedMemoryFiles(
   workspace: MemoryWorkspace,
 ): Promise<CoreSoulMemoryManagedFile[]> {
-  const indexedFiles = await listMemoryIndexFiles(workspace)
+  const indexedFiles = await listDailyMemoryFiles(workspace)
   return coreListSoulMemoryManagedFilesWithAdapters({
     soulPath: workspace.soulPath,
     userPath: workspace.userPath,
@@ -86,7 +138,6 @@ export async function saveManagedMemoryFile(options: {
   workspace: MemoryWorkspace
   path: string
   content: string
-  onIndexableWrite?: (target: CoreSoulMemoryResolvedPath) => void | Promise<void>
 }): Promise<CoreSoulMemoryManagedFile> {
   return coreSaveSoulMemoryManagedFileWithAdapters({
     root: options.workspace.root,
@@ -95,6 +146,5 @@ export async function saveManagedMemoryFile(options: {
     writeFile: (absolutePath, content) => writeTextFileAtomic(absolutePath, content),
     statFile: absolutePath => statPath(absolutePath),
     readFile: absolutePath => readTextFileAsync(absolutePath),
-    onIndexableWrite: options.onIndexableWrite,
   })
 }

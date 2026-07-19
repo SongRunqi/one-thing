@@ -18,6 +18,7 @@
 import * as store from "../store.js";
 import type { EvalModelCaller } from "@onething/runtime";
 import { onethingBaseBuiltinProviders } from "@onething/runtime/providers";
+import { recordUsage } from "../usage/index.js";
 
 interface ResolvedEvalsCredentials {
 	ok: boolean;
@@ -70,7 +71,30 @@ export function createEvalsModelCaller(
 	model: string,
 ): EvalModelCaller {
 	return async (opts) => {
-		const credentials = resolveEvalsCredentials(providerId);
+		// Scene replays carry the ORIGIN provider/model (scene/params.json).
+		// Route to that provider when its credentials resolve — otherwise a
+		// claude incident would silently "reproduce" on the eval-default
+		// endpoint while the transcript claims the original model. When the
+		// origin can't be served, fall back to the eval binding INCLUDING its
+		// model name (the origin model doesn't exist on the fallback endpoint).
+		let effectiveModel = model;
+		let effectiveProviderId = providerId;
+		let credentials = resolveEvalsCredentials(providerId);
+		if (opts.provider && opts.provider !== providerId) {
+			const origin = resolveEvalsCredentials(opts.provider);
+			if (origin.ok) {
+				credentials = origin;
+				effectiveProviderId = opts.provider;
+				effectiveModel = opts.model || model;
+			} else {
+				console.warn(
+					`[Evals] Origin provider "${opts.provider}" unavailable (${origin.reason}); falling back to ${providerId}/${model}`,
+				);
+			}
+		} else if (opts.provider === providerId && opts.model) {
+			// Same provider: honor the scene's exact model.
+			effectiveModel = opts.model;
+		}
 		if (!credentials.ok) {
 			throw new Error(credentials.reason);
 		}
@@ -78,7 +102,7 @@ export function createEvalsModelCaller(
 		const baseUrl = credentials.baseUrl!;
 
 		const body: Record<string, unknown> = {
-			model,
+			model: effectiveModel,
 			messages: opts.messages.map((m) => {
 				// Full tool-calling protocol so agent-loop replay is faithful
 				if (m.role === "tool") {
@@ -163,6 +187,23 @@ export function createEvalsModelCaller(
 				}
 			})(),
 		}));
+
+		if (data.usage) {
+			try {
+				recordUsage({
+					providerId: effectiveProviderId,
+					modelId: effectiveModel,
+					source: "evals",
+					usage: {
+						inputTokens: data.usage.prompt_tokens ?? 0,
+						outputTokens: data.usage.completion_tokens ?? 0,
+						totalTokens: data.usage.total_tokens,
+					},
+				});
+			} catch (error) {
+				console.error("[Evals] recordUsage failed:", error);
+			}
+		}
 
 		return {
 			content: message.content || "",

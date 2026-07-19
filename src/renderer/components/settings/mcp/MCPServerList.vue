@@ -135,6 +135,7 @@ defineEmits<Emits>()
 </script>
 
 <style scoped>
+/* MCP server list — 画线风 (ledger): text actions, hairline rows, no fills. */
 .settings-section {
   margin-bottom: 32px;
 }
@@ -142,96 +143,97 @@ defineEmits<Emits>()
 .section-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+  align-items: baseline;
+  gap: 16px;
+  margin-bottom: 12px;
 }
 
-.section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin: 0;
+.section-header .section-title {
+  flex: 1;
+  min-width: 0;
 }
 
 .header-actions {
   display: flex;
-  gap: 8px;
+  align-items: baseline;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+/* Text actions: mono, no fill, underline on hover */
+.import-btn,
+.add-server-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.import-btn svg,
+.add-server-btn svg {
+  width: 12px;
+  height: 12px;
 }
 
 .import-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .import-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .add-server-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-accent-primary-fg, var(--accent));
-  color: white;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .add-server-btn:hover {
-  background: var(--ui-action-primary-hover-bg, var(--ui-accent-primary-fg, var(--accent)));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
+/* Empty state: dashed frame, faint ink, no fill */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 24px;
+  padding: 40px 24px;
   text-align: center;
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
-  border-radius: 12px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
+  background: transparent;
+  border: 1px dashed var(--ui-border-default-border, var(--border));
 }
 
 .empty-state svg {
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  opacity: 0.5;
-  margin-bottom: 16px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  margin-bottom: 14px;
 }
 
 .empty-state p {
   margin: 0;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .empty-state .hint {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ui-text-muted-fg, var(--text-muted));
   margin-top: 4px;
 }
 
+/* Ledger rows: items draw their own hairlines */
 .servers-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 </style>

@@ -14,6 +14,7 @@ export type {
   BuildOnethingAgentLoopStreamRuntimeResult,
   OnethingAgentLoopChatSettings,
   OnethingAgentLoopContextBudget,
+  OnethingAgentLoopGoalHooks,
   OnethingAgentLoopLogger,
   OnethingAgentLoopPendingMessageQueue,
   OnethingAgentLoopProjectPromptVars,

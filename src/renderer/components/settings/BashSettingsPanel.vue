@@ -252,20 +252,15 @@ function removeDirectory(index: number) {
 </script>
 
 <style scoped>
+/*
+ * Bash settings — 画线风.
+ * Toggle visuals (.toggle > input + .toggle-slider) and .section-title
+ * chrome are drawn by the SettingsPage :deep() layer; nothing local.
+ */
 .settings-section {
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.section-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 0 0 16px 0;
-  opacity: 0.8;
+  border-top: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
 }
 
 .form-group {
@@ -279,19 +274,18 @@ function removeDirectory(index: number) {
 .form-label {
   font-size: 13px;
   font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
   display: block;
   margin-bottom: 6px;
 }
 
 .form-hint {
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   margin-top: 4px;
   margin-bottom: 0;
 }
 
-/* Toggle */
 .toggle-row {
   display: flex;
   align-items: center;
@@ -299,75 +293,27 @@ function removeDirectory(index: number) {
   gap: 12px;
 }
 
-.toggle {
-  position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
-  flex-shrink: 0;
-}
-
-.toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--ui-surface-sidebar-bg, var(--panel-2));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 24px;
-  transition: 0.15s;
-}
-
-.toggle-slider::before {
-  position: absolute;
-  content: "";
-  height: 18px;
-  width: 18px;
-  left: 2px;
-  bottom: 2px;
-  background-color: var(--ui-text-primary-fg, var(--text-primary));
-  border-radius: 50%;
-  transition: 0.15s;
-}
-
-.toggle input:checked + .toggle-slider {
-  background-color: var(--ui-accent-primary-fg, var(--accent));
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.toggle input:checked + .toggle-slider::before {
-  transform: translateX(20px);
-  background-color: white;
-}
-
-/* Text Input */
+/* Text input: square drafting box, transparent, mono for paths/commands. */
 .text-input {
   width: 100%;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
+  min-width: 0;
+  padding: 9px 11px;
+  font-family: var(--font-mono, monospace);
+  font-size: 12.5px;
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  background: transparent;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
   outline: none;
   transition: border-color 0.15s;
 }
 
 .text-input:focus {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .text-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  opacity: 0.7;
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--text-muted)));
 }
 
 /* Input with button */
@@ -381,28 +327,28 @@ function removeDirectory(index: number) {
 }
 
 .browse-btn {
-  padding: 10px 16px;
+  padding: 9px 14px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
+  background: transparent;
+  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: border-color 0.15s, color 0.15s;
   white-space: nowrap;
 }
 
 .browse-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  border-color: var(--ui-accent-primary-fg, var(--accent));
+  background: transparent;
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
-/* Directory List */
+/* Directory list: ledger rows on hairlines, no boxes. */
 .directory-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
   margin-top: 12px;
   margin-bottom: 12px;
 }
@@ -412,16 +358,18 @@ function removeDirectory(index: number) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 12px;
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
+  padding: 7px 0;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border))) 55%, transparent);
 }
 
 .directory-path {
-  font-size: 13px;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  font-family: var(--font-mono, monospace);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -431,48 +379,53 @@ function removeDirectory(index: number) {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   padding: 4px;
   background: transparent;
   border: none;
-  border-radius: 4px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  border-radius: 0;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
   cursor: pointer;
-  transition: all 0.15s;
+  transition: color 0.15s;
 }
 
 .remove-btn:hover {
-  background: rgba(239, 68, 68, 0.15);
-  color: rgb(239, 68, 68);
+  background: transparent;
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
+/* Empty state: dashed frame + faint ink. */
 .empty-hint {
   font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  padding: 12px;
-  background: var(--ui-state-hover-bg, var(--hover));
-  border-radius: 8px;
+  color: var(--settings-ink-4, var(--ui-text-faint-fg, var(--text-muted)));
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px dashed var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  border-radius: 0;
   margin-top: 12px;
   margin-bottom: 12px;
 }
 
+/* Add row: text action, underline carries the hover. */
 .add-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  padding: 4px 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
   background: transparent;
-  border: 1px dashed var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
+  border: 0;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: color 0.15s;
 }
 
 .add-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  border-style: solid;
+  background: transparent;
+  color: var(--settings-ink, var(--ui-text-primary-fg, var(--text-primary)));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 </style>

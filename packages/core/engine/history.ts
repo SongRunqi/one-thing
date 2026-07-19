@@ -737,11 +737,25 @@ export function historyMessagesForLog(
 	});
 }
 
+const RESUME_TERMINAL_TOOL_CALL_STATUSES = new Set([
+	"completed",
+	"failed",
+	"cancelled",
+	"input-streaming",
+]);
+
 export function buildResumeHistoryAfterToolConfirmation(
 	historyWithoutCurrent: CoreHistoryMessage[],
 	assistantMessage: CoreResumeAssistantMessage,
 ): CoreHistoryMessage[] {
-	const toolCalls = assistantMessage.toolCalls ?? [];
+	// Non-terminal siblings (pending/queued/executing) must not be reported as
+	// failed `{error: null}` results — drop them from both sides so the pairing
+	// stays 1:1 and the model never sees fabricated outcomes.
+	const toolCalls = (assistantMessage.toolCalls ?? []).filter(
+		(toolCall) =>
+			toolCall.status === undefined ||
+			RESUME_TERMINAL_TOOL_CALL_STATUSES.has(toolCall.status),
+	);
 	return [
 		...historyWithoutCurrent,
 		{

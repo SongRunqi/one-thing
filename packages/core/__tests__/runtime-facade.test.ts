@@ -94,7 +94,6 @@ describe('createOnethingRuntimeFacade', () => {
         }),
       },
       memory: {
-        runDreaming: vi.fn(async request => ({ success: true, result: request })),
         captureSave: vi.fn(async request => ({ success: true, target: request })),
         captureDiscard: vi.fn(async request => ({ success: true, request })),
       },
@@ -253,10 +252,6 @@ describe('createOnethingRuntimeFacade', () => {
     await expect(runtime.memory?.captureDiscard?.({ id: 'capture-1' })).resolves.toEqual({
       success: true,
       request: { id: 'capture-1' },
-    })
-    await expect(runtime.memory?.runDreaming?.({ agentId: 'default' })).resolves.toEqual({
-      success: true,
-      result: { agentId: 'default' },
     })
     await expect(runtime.scheduler?.listTasks()).resolves.toEqual({ success: true, tasks: [] })
     await expect(runtime.plugins?.list?.()).resolves.toEqual({ success: true, plugins: [] })

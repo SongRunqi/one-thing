@@ -1661,4 +1661,36 @@ describe('core agent-loop executor helpers', () => {
       { type: 'data-steps', turnIndex: 2 },
     ])
   })
+
+  it('keeps the steps anchor at its streamed position when text follows the tool call (external agents)', () => {
+    // External agents interleave text → tool → text inside one turn: the
+    // dispatch records the anchor inline, and persistence must not append a
+    // second anchor at the end (which would yank the cards below the text).
+    const turn = createAgentLoopExecutorTurnState<unknown, { type: string; content?: string; turnIndex?: number }>()
+    turn.orderedParts.push({ type: 'text', content: 'before ', turnIndex: 0 })
+
+    const sent: unknown[] = []
+    dispatchAgentLoopToolContentPartsWithAdapters({
+      turn,
+      turnIndex: 0,
+      emitter: { sendContentPart: part => sent.push(part) },
+    })
+    turn.toolCalls.push({ id: 'call-1' })
+    // Post-tool text arrives after the anchor.
+    turn.orderedParts.push({ type: 'text', content: ' after', turnIndex: 0 })
+
+    expect(turn.orderedParts).toEqual([
+      { type: 'text', content: 'before ', turnIndex: 0 },
+      { type: 'data-steps', turnIndex: 0 },
+      { type: 'text', content: ' after', turnIndex: 0 },
+    ])
+    expect(planAgentLoopTurnContentPersistence(turn, 0)).toEqual({
+      persistParts: [
+        { type: 'text', content: 'before ', turnIndex: 0 },
+        { type: 'data-steps', turnIndex: 0 },
+        { type: 'text', content: ' after', turnIndex: 0 },
+      ],
+      immediateParts: [],
+    })
+  })
 })

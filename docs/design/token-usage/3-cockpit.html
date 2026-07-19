@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方案三 · 深色仪表舱 — Token Usage</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --surface: #1a1a19;
+    --surface-2: #212120;
+    --ink: #f2f1ec;
+    --ink-2: #b9b8ae;
+    --ink-3: #7d7c74;
+    --rule: #34342f;
+    --glow: #3987e5;
+    /* 分类五色（深色面已过校验）：input / output / cache-read / cache-write / reasoning */
+    --c-input: #3987e5;
+    --c-output: #008300;
+    --c-cread: #d55181;
+    --c-cwrite: #c98500;
+    --c-reason: #199e70;
+    --warn: #fab219;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #101010;
+    color: var(--ink);
+    font-family: -apple-system, "PingFang SC", sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px;
+  }
+  .panel {
+    width: 660px;
+    max-width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 26px 30px 28px;
+    box-shadow: 0 20px 50px rgba(0,0,0,.5);
+  }
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 22px;
+  }
+  header h1 {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .22em;
+    color: var(--ink-3);
+    text-transform: uppercase;
+  }
+  .range-tabs { display: inline-flex; background: var(--surface-2); border-radius: 7px; padding: 2px; }
+  .range-tabs button {
+    border: none; background: none; color: var(--ink-3);
+    font: inherit; font-size: 12px;
+    padding: 3px 14px; border-radius: 5px; cursor: pointer;
+  }
+  .range-tabs button.active { background: var(--rule); color: var(--ink); }
+
+  /* ── 主仪表：本月合计 + 预算油量带 ── */
+  .hero {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 30px;
+    align-items: end;
+    padding-bottom: 22px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .hero .big {
+    font-family: var(--mono);
+    font-size: 44px;
+    font-weight: 300;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+  .hero .big small { font-size: 15px; color: var(--ink-3); font-weight: 400; letter-spacing: 0; }
+  .hero .caption { font-size: 11.5px; color: var(--ink-3); margin-top: 8px; }
+  .hero .caption b { color: var(--ink-2); font-weight: 500; }
+
+  .fuel { padding-bottom: 4px; }
+  .fuel .fuel-head {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--ink-3); margin-bottom: 7px;
+  }
+  .fuel .fuel-head b { color: var(--ink-2); font-family: var(--mono); font-weight: 500; }
+  .fuel-band {
+    position: relative;
+    height: 14px;
+    background: var(--surface-2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .fuel-band .fill {
+    position: absolute; inset: 0 auto 0 0;
+    width: 63%;
+    background: linear-gradient(90deg, #1c5cab, var(--glow));
+    border-radius: 3px 0 0 3px;
+  }
+  .fuel-band .ticks {
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), var(--surface) calc(10% - 1px) 10%);
+  }
+  .fuel-band .mark-80 {
+    position: absolute; top: -3px; bottom: -3px; left: 80%;
+    width: 2px; background: var(--warn);
+  }
+  .fuel .fuel-foot {
+    display: flex; justify-content: space-between;
+    font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-top: 5px;
+  }
+  .fuel .fuel-foot .warn-label { color: var(--warn); }
+
+  /* ── 30 日走势 sparkline ── */
+  .spark-section { padding: 18px 0 20px; border-bottom: 1px solid var(--rule); }
+  .section-label {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 11px; letter-spacing: .14em; color: var(--ink-3);
+    margin-bottom: 10px;
+  }
+  .section-label .val { font-family: var(--mono); letter-spacing: 0; color: var(--ink-2); }
+  .spark-wrap { position: relative; }
+  svg.spark { display: block; width: 100%; height: 64px; }
+  .spark .line { fill: none; stroke: var(--glow); stroke-width: 2; stroke-linejoin: round; }
+  .spark .area { fill: url(#fade); }
+  .spark .base { stroke: var(--rule); stroke-width: 1; }
+  .spark .dot { fill: var(--glow); stroke: var(--surface); stroke-width: 2; }
+  .spark-label {
+    position: absolute; right: 0; top: -4px;
+    font-family: var(--mono); font-size: 10px; color: var(--ink-2);
+  }
+
+  /* ── Token 构成堆叠条 ── */
+  .compo-section { padding: 18px 0 20px; border-bottom: 1px solid var(--rule); }
+  .compo-bar {
+    display: flex;
+    height: 18px;
+    border-radius: 4px;
+    overflow: hidden;
+    gap: 2px; /* 2px 表面缝隙分隔堆叠段 */
+    background: var(--surface);
+  }
+  .compo-bar i { display: block; height: 100%; }
+  .compo-legend {
+    display: flex; flex-wrap: wrap; gap: 6px 18px;
+    margin-top: 10px;
+    font-size: 11px; color: var(--ink-2);
+  }
+  .compo-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .compo-legend i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .compo-legend b { font-family: var(--mono); font-weight: 500; color: var(--ink-3); }
+
+  /* ── 模型榜 ── */
+  .board { padding-top: 18px; }
+  .board-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 74px;
+    gap: 12px;
+    align-items: center;
+    padding: 5px 0;
+  }
+  .board-row .name { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .board-row .name em { font-style: normal; font-size: 9.5px; color: var(--ink-3); border: 1px solid var(--rule); border-radius: 3px; padding: 0 4px; margin-left: 6px; vertical-align: 1px; }
+  .board-row .track { position: relative; height: 4px; background: var(--surface-2); border-radius: 2px; }
+  .board-row .track i { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--glow); }
+  .board-row .amt {
+    font-family: var(--mono); font-size: 11.5px; text-align: right;
+    color: var(--ink); font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+  <div class="panel">
+    <header>
+      <h1>Token Usage · 仪表</h1>
+      <div class="range-tabs">
+        <button>日</button><button>周</button><button class="active">月</button>
+      </div>
+    </header>
+
+    <div class="hero">
+      <div>
+        <div class="big">$50.67<small> /7月</small></div>
+        <div class="caption">API 实付 <b>$12.47</b> · 订阅折算 <b>$38.20</b> · <b>1,284</b> turns</div>
+      </div>
+      <div class="fuel">
+        <div class="fuel-head"><span>月度预算</span><b>63% of $80.00</b></div>
+        <div class="fuel-band">
+          <span class="fill"></span>
+          <span class="ticks"></span>
+          <span class="mark-80"></span>
+        </div>
+        <div class="fuel-foot"><span>$0</span><span class="warn-label">$64 提醒线</span><span>$80</span></div>
+      </div>
+    </div>
+
+    <div class="spark-section">
+      <div class="section-label"><span>近 30 日 · 每日合计</span><span class="val">峰值 07-17 $5.32</span></div>
+      <div class="spark-wrap">
+        <svg class="spark" viewBox="0 0 600 64" preserveAspectRatio="none" aria-label="近30日每日花费走势">
+          <defs>
+            <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#3987e5" stop-opacity=".25"/>
+              <stop offset="1" stop-color="#3987e5" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <line class="base" x1="0" y1="60" x2="600" y2="60"/>
+          <path class="area" d="M0,52 L21,49 L42,55 L63,44 L84,38 L105,50 L126,53 L147,46 L168,40 L189,57 L210,52 L231,42 L252,35 L273,48 L294,55 L315,50 L336,38 L357,26 L378,32 L399,44 L420,55 L441,58 L462,46 L483,52 L504,56 L525,42 L546,12 L567,38 L588,50 L600,49 L600,60 L0,60 Z"/>
+          <path class="line" d="M0,52 L21,49 L42,55 L63,44 L84,38 L105,50 L126,53 L147,46 L168,40 L189,57 L210,52 L231,42 L252,35 L273,48 L294,55 L315,50 L336,38 L357,26 L378,32 L399,44 L420,55 L441,58 L462,46 L483,52 L504,56 L525,42 L546,12 L567,38 L588,50 L600,49"/>
+          <circle class="dot" cx="546" cy="12" r="4"/>
+        </svg>
+        <span class="spark-label">07-17</span>
+      </div>
+    </div>
+
+    <div class="compo-section">
+      <div class="section-label"><span>Token 构成 · 46.3M</span><span class="val">缓存命中省 $19.8</span></div>
+      <div class="compo-bar">
+        <i style="flex: 6.2; background: var(--c-input)" title="输入 6.2M"></i>
+        <i style="flex: 3.1; background: var(--c-output)" title="输出 3.1M"></i>
+        <i style="flex: 34.8; background: var(--c-cread)" title="缓存读 34.8M"></i>
+        <i style="flex: 1.9; background: var(--c-cwrite)" title="缓存写 1.9M"></i>
+        <i style="flex: 0.6; background: var(--c-reason)" title="推理 0.3M"></i>
+      </div>
+      <div class="compo-legend">
+        <span><i style="background:var(--c-input)"></i>输入 <b>6.2M</b></span>
+        <span><i style="background:var(--c-output)"></i>输出 <b>3.1M</b></span>
+        <span><i style="background:var(--c-cread)"></i>缓存读 <b>34.8M</b></span>
+        <span><i style="background:var(--c-cwrite)"></i>缓存写 <b>1.9M</b></span>
+        <span><i style="background:var(--c-reason)"></i>推理 <b>0.3M</b></span>
+      </div>
+    </div>
+
+    <div class="board">
+      <div class="section-label"><span>按模型</span><span class="val">5 个在用</span></div>
+      <div class="board-row">
+        <span class="name">gpt-5.2-codex<em>订阅估</em></span>
+        <span class="track"><i style="width:100%"></i></span>
+        <span class="amt">$21.40</span>
+      </div>
+      <div class="board-row">
+        <span class="name">claude-sonnet-4.5</span>
+        <span class="track"><i style="width:42%"></i></span>
+        <span class="amt">$8.92</span>
+      </div>
+      <div class="board-row">
+        <span class="name">claude-code<em>订阅估</em></span>
+        <span class="track"><i style="width:34%"></i></span>
+        <span class="amt">$7.35</span>
+      </div>
+      <div class="board-row">
+        <span class="name">deepseek-v3.2</span>
+        <span class="track"><i style="width:8%"></i></span>
+        <span class="amt">$1.71</span>
+      </div>
+      <div class="board-row">
+        <span class="name">gemini-2.5-flash</span>
+        <span class="track"><i style="width:5%"></i></span>
+        <span class="amt">$1.13</span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

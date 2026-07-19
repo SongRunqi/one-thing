@@ -59,6 +59,8 @@ describe('saveOnethingSettingsWithRuntimeEffects', () => {
       settings: normalizedSettings,
     })
     expect(calls).toEqual([
+      // First 'get' feeds the registry-owned-field merge before persisting.
+      'get',
       'save:false',
       'get',
       'provider',

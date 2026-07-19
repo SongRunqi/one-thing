@@ -75,7 +75,7 @@ export interface InitContext {
     id: string
     name: string
     description: string
-    source: 'user' | 'project' | 'plugin' | 'builtin'
+    source: 'user' | 'project' | 'plugin' | 'builtin' | 'custom'
     category?: string
     tags?: string[]
     relatedSkills?: string[]

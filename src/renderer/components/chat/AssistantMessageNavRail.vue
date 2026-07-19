@@ -553,21 +553,20 @@ onUnmounted(() => {
   width: 100%;
   height: 24px;
   min-height: 24px;
-  padding: 0 26px 0 8px;
+  padding: 0 26px 0 10px;
   overflow: hidden;
-  border-radius: 6px;
-  transition:
-    background-color 0.12s ease,
-    color 0.12s ease;
+  transition: color 0.12s ease;
 }
 
-.assistant-nav-rail.placement-side .assistant-nav-row:hover,
-.assistant-nav-rail.placement-side .assistant-nav-row:focus-visible {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
-}
-
-.assistant-nav-rail.placement-side .assistant-nav-row.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+/* 当前条目:行首一截朱砂描线,同 SessionItem 的 active tick */
+.assistant-nav-rail.placement-side .assistant-nav-row.active::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 0;
+  width: 2px;
+  background: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .assistant-nav-label {
@@ -625,6 +624,13 @@ onUnmounted(() => {
 .assistant-nav-card.open .assistant-nav-row:hover .assistant-nav-label,
 .assistant-nav-card.open .assistant-nav-row:focus-visible .assistant-nav-label {
   color: var(--ui-accent-primary-fg, var(--accent));
+  opacity: 1;
+}
+
+/* 画线风:侧栏内 hover 只把字压深,不染 accent、不铺底色 */
+.assistant-nav-rail.placement-side .assistant-nav-row:hover .assistant-nav-label,
+.assistant-nav-rail.placement-side .assistant-nav-row:focus-visible .assistant-nav-label {
+  color: var(--ui-text-primary-fg, var(--text));
   opacity: 1;
 }
 
@@ -686,6 +692,17 @@ onUnmounted(() => {
   opacity: 1;
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 84%, var(--ui-text-muted-fg, var(--muted)));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 8%, transparent);
+}
+
+/* 画线风:侧栏内 hover 尾线压深为墨色,active 为朱砂细线、无光晕 */
+.assistant-nav-rail.placement-side .assistant-nav-row:hover .assistant-nav-marker,
+.assistant-nav-rail.placement-side .assistant-nav-row:focus-visible .assistant-nav-marker {
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 55%, transparent);
+}
+
+.assistant-nav-rail.placement-side .assistant-nav-row.active .assistant-nav-marker {
+  background: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: none;
 }
 
 .assistant-nav-scroll-thumb {

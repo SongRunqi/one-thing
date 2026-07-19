@@ -83,7 +83,9 @@ describe('composer extension pickers', () => {
     })
 
     expect(wrapper.find('.composer-extension-panel.command-palette-panel').exists()).toBe(true)
-    expect(wrapper.find('.composer-extension-header').exists()).toBe(false)
+    // Ledger layout: the command variant shows the ruled header line too.
+    expect(wrapper.find('.composer-extension-header').exists()).toBe(true)
+    expect(wrapper.findAll('.command-kind').map(kind => kind.text())).toEqual(['cmd', 'cmd'])
     expect(wrapper.find('.command-palette-list').attributes('role')).toBe('listbox')
     expect(wrapper.find('.command-palette-list').attributes('aria-activedescendant')).toContain('command-palette-option-1')
     expect(wrapper.find('.composer-extension-row').attributes('role')).toBe('option')

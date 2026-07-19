@@ -167,6 +167,9 @@ vi.mock('electron', () => ({
   },
   app: mocks.app,
   nativeTheme: { shouldUseDarkColors: false },
+  screen: {
+    getAllDisplays: () => [{ workArea: { x: 0, y: 0, width: 1920, height: 1080 } }],
+  },
 }))
 
 vi.mock('../stores/paths.js', async (importOriginal) => {
@@ -784,6 +787,9 @@ describe('todo plan standalone window controls', () => {
         height: 700,
       }
       win.emit('resize')
+
+      // Resize persistence is debounced (250ms) so drag gestures batch into one write.
+      vi.advanceTimersByTime(250)
 
       expect(mocks.writeJsonFile).toHaveBeenCalledTimes(1)
       expect(mocks.writeJsonFile).toHaveBeenLastCalledWith('/tmp/window-state.json', {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
+  clampElectronWindowStateToDisplays,
   readElectronSearchWindowSize,
   readElectronTodoPlanWindowState,
   readElectronWindowState,
@@ -176,5 +177,35 @@ describe('electron window state persistence', () => {
         y: 2,
       },
     })
+  })
+})
+
+describe('clampElectronWindowStateToDisplays', () => {
+  const primary = { x: 0, y: 0, width: 1512, height: 945 }
+  const external = { x: 1512, y: -200, width: 2560, height: 1440 }
+
+  it('keeps states without a position or without displays untouched', () => {
+    expect(clampElectronWindowStateToDisplays({ width: 460, height: 640 }, [primary]))
+      .toEqual({ width: 460, height: 640 })
+    expect(clampElectronWindowStateToDisplays({ width: 460, height: 640, x: 9000, y: 9000 }, []))
+      .toEqual({ width: 460, height: 640, x: 9000, y: 9000 })
+  })
+
+  it('keeps windows that sufficiently overlap a display', () => {
+    const state = { width: 460, height: 640, x: 1600, y: 100 }
+    expect(clampElectronWindowStateToDisplays(state, [primary, external])).toEqual(state)
+  })
+
+  it('pulls a window back after its display disappears', () => {
+    const onExternal = { width: 460, height: 640, x: 2000, y: 120 }
+    const clamped = clampElectronWindowStateToDisplays(onExternal, [primary])
+    expect(clamped).toEqual({ width: 460, height: 640, x: 1512 - 460, y: 120 })
+  })
+
+  it('clamps windows that are barely visible at a display edge', () => {
+    const barelyVisible = { width: 460, height: 640, x: 1512 - 20, y: 945 - 20 }
+    const clamped = clampElectronWindowStateToDisplays(barelyVisible, [primary])
+    expect(clamped.x).toBe(1512 - 460)
+    expect(clamped.y).toBe(945 - 640)
   })
 })

@@ -554,15 +554,23 @@ async function handlePromote() {
 }
 
 .evals-fixtures-count {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--settings-ink-4);
 }
 
+/* Fixture rows: hairline ledger rows; expansion is a left ink rule */
 .evals-fixture-row {
-  border: 1px solid var(--settings-rule-soft);
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--settings-paper-3);
+  border-bottom: 1px solid var(--settings-rule-soft);
+}
+
+.evals-fixture-row:first-of-type {
+  border-top: 1px solid var(--settings-rule-soft);
+}
+
+.evals-fixture-row.expanded {
+  box-shadow: inset 2px 0 0 var(--settings-accent);
 }
 
 .evals-fixture-summary {
@@ -570,32 +578,40 @@ async function handlePromote() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 10px 4px 10px 8px;
   cursor: pointer;
-  transition: border-color 0.12s ease;
 }
 
-.evals-fixture-summary:hover {
-  background: color-mix(in srgb, var(--settings-accent) 5%, transparent);
+.evals-fixture-summary:hover .evals-fixture-preview {
+  color: var(--settings-ink);
 }
 
 .evals-fixture-meta {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 140px;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 200px;
 }
 
 .evals-fixture-date {
   font-size: 12px;
   color: var(--settings-ink-2);
   font-weight: 520;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .evals-fixture-provider {
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
   color: var(--settings-ink-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .evals-fixture-preview {
@@ -614,31 +630,35 @@ async function handlePromote() {
   flex-shrink: 0;
 }
 
+/* Text action: mono small, accent underline on hover */
 .evals-small-btn {
-  padding: 3px 8px;
-  border: 1px solid var(--settings-rule);
-  border-radius: 4px;
-  background: var(--settings-paper);
+  appearance: none;
+  padding: 2px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-mono, monospace);
   color: var(--settings-ink-3);
   font-size: 11px;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: color 0.12s ease;
 }
 
 .evals-small-btn:hover {
-  border-color: color-mix(in srgb, var(--settings-accent) 30%, var(--settings-rule));
-  color: var(--settings-accent);
+  color: var(--settings-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--settings-accent);
 }
 
 .evals-fixture-details {
-  padding: 14px;
-  border-top: 1px solid var(--settings-rule-soft);
-  background: color-mix(in srgb, var(--settings-paper) 50%, var(--settings-paper-3));
+  padding: 4px 4px 14px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--settings-rule-soft) 32%, transparent);
 }
 
 .evals-fixture-json {
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
   color: var(--settings-ink-2);
   white-space: pre-wrap;
@@ -648,30 +668,31 @@ async function handlePromote() {
   line-height: 1.5;
 }
 
-/* Promote dialog */
+/* Promote dialog: paper sheet, hard-offset ink shadow */
 .evals-promote-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
+  z-index: var(--z-toast, 100);
+  padding: 20px;
 }
 
 .evals-promote-dialog {
   background: var(--settings-paper);
   border: 1px solid var(--settings-rule);
-  border-radius: 10px;
+  border-radius: 0;
   padding: 24px;
-  width: 520px;
-  max-width: 92vw;
+  width: 100%;
+  max-width: 520px;
   max-height: 85vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--settings-rule) 40%, transparent);
 }
 
 .evals-promote-dialog h3 {
@@ -700,23 +721,48 @@ async function handlePromote() {
 .evals-form-input,
 .evals-form-select,
 .evals-form-textarea {
-  padding: 7px 10px;
+  padding: 6px 8px;
   border: 1px solid var(--settings-rule);
-  border-radius: 5px;
-  background: var(--settings-paper-3);
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink);
   font-size: 13px;
   font-family: inherit;
+  min-width: 0;
+}
+
+.evals-form-input:focus,
+.evals-form-select:focus,
+.evals-form-textarea:focus {
+  outline: none;
+  border-color: var(--settings-accent);
 }
 
 .evals-form-textarea {
   resize: vertical;
 }
 
-.evals-action-btn.primary {
-  background: var(--settings-accent);
-  color: white;
+/* Outlined buttons: state lives in the edge line, never a fill */
+.evals-action-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--settings-rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-ink-2);
+  font-size: 13px;
+  font-weight: 520;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.evals-action-btn:hover {
+  color: var(--settings-ink);
   border-color: var(--settings-accent);
+}
+
+.evals-action-btn.primary {
+  border-color: var(--settings-accent);
+  color: var(--settings-accent);
 }
 
 .evals-loading,
@@ -733,11 +779,10 @@ async function handlePromote() {
 }
 
 /* ── Promote dialog: enhanced styles ── */
+/* Response excerpt held by a left rule, no filled block */
 .evals-response-preview {
-  border: 1px solid var(--settings-rule-soft);
-  border-radius: 6px;
-  padding: 10px 12px;
-  background: var(--settings-paper-3);
+  border-left: 1px solid color-mix(in srgb, var(--settings-rule) 55%, transparent);
+  padding: 2px 0 2px 10px;
 }
 
 .evals-section-label {
@@ -763,36 +808,38 @@ async function handlePromote() {
   gap: 6px;
 }
 
+/* Badges: outlined rings, zero fill — colour lives in ink and edge */
 .evals-meta-badge {
   font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: var(--settings-rule-soft);
-  color: var(--settings-ink-4);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  padding: 1px 8px 2px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--settings-rule) 80%, transparent);
+  background: transparent;
+  color: var(--settings-ink-3);
   font-weight: 520;
 }
 
 .evals-meta-badge.has-tools {
-  background: var(--ui-status-success-bg);
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, #27ae60));
   color: var(--ui-status-success-fg, #27ae60);
 }
 
 .evals-meta-badge.no-tools {
-  background: var(--ui-status-danger-bg);
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #e74c3c));
   color: var(--ui-status-danger-fg, #e74c3c);
 }
 
 .evals-expect-builder {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .evals-expect-group {
-  border: 1px solid var(--settings-rule-soft);
-  border-radius: 5px;
-  padding: 8px 10px;
-  background: var(--settings-paper-3);
+  border-left: 1px solid color-mix(in srgb, var(--settings-rule) 55%, transparent);
+  padding: 2px 0 2px 10px;
 }
 
 .evals-expect-group-title {
@@ -821,9 +868,10 @@ async function handlePromote() {
 
 .evals-auto-badge {
   font-size: 9px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: var(--ui-status-info-bg, color-mix(in srgb, #3498db 15%, transparent));
+  padding: 1px 6px 2px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-status-info-border, var(--ui-status-info-fg, #3498db));
+  background: transparent;
   color: var(--ui-status-info-fg, #3498db);
   font-weight: 600;
 }
@@ -837,14 +885,21 @@ async function handlePromote() {
 }
 
 .evals-num-input {
-  width: 60px;
+  max-width: 64px;
+  min-width: 0;
   padding: 3px 6px;
   border: 1px solid var(--settings-rule);
-  border-radius: 4px;
-  background: var(--settings-paper);
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink);
   font-size: 12px;
   font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.evals-num-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
 }
 
 .evals-snapshot-links {
@@ -862,6 +917,7 @@ async function handlePromote() {
 }
 
 .evals-link:hover {
-  opacity: 0.8;
+  color: var(--settings-ink);
+  text-decoration-color: var(--settings-accent);
 }
 </style>

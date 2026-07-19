@@ -24,6 +24,8 @@ const runtimes: OnethingServerRuntime[] = []
 const tempDirs: string[] = []
 const originalOnethingStorePath = process.env.ONETHING_STORE_PATH
 
+const TEST_SERVER_AUTH_TOKEN = 'test-server-token'
+
 type SettingsResponse = { success: boolean; settings?: AppSettings; error?: string }
 
 beforeEach(async () => {
@@ -86,7 +88,8 @@ describe('createOnethingHttpServer', () => {
         active,
       },
     })
-    const server = await listen(createOnethingHttpServer({ runtime }))
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
 
     await expect(fetchJson(`${baseUrl(server)}/api/streams/active`, {
       headers: contextHeaders('alice', 'streams-workspace'),
@@ -117,7 +120,8 @@ describe('createOnethingHttpServer', () => {
         testProxy,
       },
     })
-    const server = await listen(createOnethingHttpServer({ runtime }))
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
     const headers = contextHeaders('alice', 'network-workspace')
 
     await expect(fetchJson(`${baseUrl(server)}/api/network/test-proxy`, {
@@ -162,7 +166,8 @@ describe('createOnethingHttpServer', () => {
         executeAction,
       },
     })
-    const server = await listen(createOnethingHttpServer({ runtime }))
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
     const headers = contextHeaders('alice', 'search-workspace')
 
     await expect(fetchJson(`${baseUrl(server)}/api/search/query`, {
@@ -229,6 +234,7 @@ describe('createOnethingHttpServer', () => {
     })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -329,6 +335,7 @@ describe('createOnethingHttpServer', () => {
     })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -424,6 +431,7 @@ describe('createOnethingHttpServer', () => {
     })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -530,6 +538,7 @@ describe('createOnethingHttpServer', () => {
     })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -662,6 +671,7 @@ describe('createOnethingHttpServer', () => {
     })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -780,29 +790,16 @@ describe('createOnethingHttpServer', () => {
     expect(afterRemove.agents.some((agent: any) => agent.config.id === 'web-acp')).toBe(false)
   })
 
-  it('serves owner-scoped memory profile and graph state through the development runtime', async () => {
+  it('serves owner-scoped memory files, captures, and logs through the development runtime', async () => {
     const dataRoot = await createTempDir('onething-memory-data-')
     const workspaceRoot = await createTempDir('onething-memory-workspace-')
-    const promotedDreamingMemory = 'Web runtime dreaming promoted a durable note.'
-    const generateDreaming = vi.fn(async () => JSON.stringify({
-      action: 'dream',
-      confidence: 0.95,
-      memories: [
-        {
-          action: 'add',
-          confidence: 0.95,
-          content: promotedDreamingMemory,
-        },
-      ],
-      memory: `- ${promotedDreamingMemory}`,
-    }))
     const serverRuntime = createDevelopmentOnethingServerRuntime({
       dataRoot,
       workspaceRoot,
-      memoryDreamingGenerateText: generateDreaming,
     })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -870,28 +867,12 @@ describe('createOnethingHttpServer', () => {
     expect(readFileResponse.success).toBe(true)
     expect(readFileResponse.file.text).toContain(managedText)
 
-    const indexResponse = await fetchJson(`${baseUrlValue}/api/memory/index`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(indexResponse.success).toBe(true)
-    expect(indexResponse.status.indexedFiles).toBeGreaterThan(0)
-
-    const searchResponse = await fetchJson(`${baseUrlValue}/api/memory/search`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ query: managedText }),
-    })
-    expect(searchResponse.success).toBe(true)
-    expect(searchResponse.hits.some((hit: { content: string }) => hit.content.includes(managedText))).toBe(true)
-
-    const bobSearchResponse = await fetchJson(`${baseUrlValue}/api/memory/search`, {
+    const bobReadResponse = await fetchJson(`${baseUrlValue}/api/memory/read`, {
       method: 'POST',
       headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ query: managedText }),
+      body: JSON.stringify({ path: 'MEMORY.md', full: true }),
     })
-    expect(bobSearchResponse).toEqual({ success: true, hits: [] })
+    expect(bobReadResponse.file?.text ?? '').not.toContain(managedText)
 
     const appended = await fetchJson(`${baseUrlValue}/api/memory/append`, {
       method: 'POST',
@@ -953,114 +934,6 @@ describe('createOnethingHttpServer', () => {
     })
     expect(overviewAfterDecisions.overview.pendingCaptures).toEqual([])
 
-    const dreamingRun = await fetchJson(`${baseUrlValue}/api/memory/dreaming/run`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ agentId: 'default' }),
-    })
-    expect(dreamingRun.success).toBe(true)
-    expect(dreamingRun.result).toMatchObject({
-      status: 'applied',
-      applied: 1,
-    })
-    expect(dreamingRun.result.sourceFiles.some((file: string) => /^memory\/\d{4}-\d{2}-\d{2}\.md$/.test(file))).toBe(true)
-    expect(generateDreaming).toHaveBeenCalledWith(expect.objectContaining({
-      provider: expect.objectContaining({
-        providerId: 'local',
-        model: 'local-echo',
-      }),
-      context: expect.objectContaining({
-        userId: 'alice',
-        workspaceId: 'memory-workspace',
-      }),
-    }))
-
-    const memoryAfterDreaming = await fetchJson(`${baseUrlValue}/api/memory/read`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ path: 'MEMORY.md', full: true }),
-    })
-    expect(memoryAfterDreaming.success).toBe(true)
-    expect(memoryAfterDreaming.file.text).toContain(promotedDreamingMemory)
-
-    const overviewAfterDreaming = await fetchJson(`${baseUrlValue}/api/memory/overview`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(overviewAfterDreaming.overview.status.lastDreamingStatus).toBe('applied')
-    expect(overviewAfterDreaming.overview.status.lastDreamingApplied).toBe(1)
-    expect(overviewAfterDreaming.overview.dreaming.lastStatus).toBe('applied')
-    expect(overviewAfterDreaming.overview.dreaming.lastApplied).toBe(1)
-
-    const createdProfile = await fetchJson(`${baseUrlValue}/api/memory/profile/upsert`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        kind: 'preference',
-        value: 'likes concise answers',
-        confidence: 0.9,
-      }),
-    })
-    expect(createdProfile.success).toBe(true)
-    expect(createdProfile.memory.value).toBe('likes concise answers')
-
-    const aliceProfiles = await fetchJson(`${baseUrlValue}/api/memory/profile/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(aliceProfiles.memories.map((memory: { value: string }) => memory.value)).toContain('likes concise answers')
-
-    const bobProfiles = await fetchJson(`${baseUrlValue}/api/memory/profile/list`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(bobProfiles).toEqual({ success: true, memories: [] })
-
-    const profileAudit = await fetchJson(`${baseUrlValue}/api/memory/profile/audit`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ id: createdProfile.memory.id }),
-    })
-    expect(profileAudit.success).toBe(true)
-    expect(profileAudit.events.length).toBeGreaterThan(0)
-
-    const exportedProfile = await fetchJson(`${baseUrlValue}/api/memory/profile/export`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({}),
-    })
-    expect(exportedProfile.success).toBe(true)
-    expect(exportedProfile.markdown).toContain('likes concise answers')
-
-    const projectEntity = await fetchJson(`${baseUrlValue}/api/memory/graph/entities/upsert`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        entityType: 'project',
-        name: 'web-runtime',
-        displayName: 'Web runtime',
-      }),
-    })
-    expect(projectEntity.success).toBe(true)
-    expect(projectEntity.entity.displayName).toBe('Web runtime')
-
-    const aliceEntities = await fetchJson(`${baseUrlValue}/api/memory/graph/entities/list`, {
-      method: 'POST',
-      headers: { ...aliceHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ query: 'web-runtime' }),
-    })
-    expect(aliceEntities.entities.map((entity: { id: string }) => entity.id)).toContain(projectEntity.entity.id)
-
-    const bobEntities = await fetchJson(`${baseUrlValue}/api/memory/graph/entities/list`, {
-      method: 'POST',
-      headers: { ...bobHeaders, 'content-type': 'application/json' },
-      body: JSON.stringify({ query: 'web-runtime' }),
-    })
-    expect(bobEntities).toEqual({ success: true, entities: [] })
-
     const logStats = await fetchJson(`${baseUrlValue}/api/memory/logs/stats`, {
       method: 'POST',
       headers: { ...aliceHeaders, 'content-type': 'application/json' },
@@ -1076,7 +949,7 @@ describe('createOnethingHttpServer', () => {
       body: JSON.stringify({ subsystem: 'ipc', limit: 5 }),
     })
     expect(logList.success).toBe(true)
-    expect(logList.entries.some((entry: { operation: string }) => entry.operation === 'graph-entity-upsert')).toBe(true)
+    expect(logList.entries.some((entry: { operation: string }) => entry.operation === 'memory-save-file')).toBe(true)
 
     const openedLogFolder = await fetchJson(`${baseUrlValue}/api/memory/logs/open-folder`, {
       method: 'POST',
@@ -1104,6 +977,7 @@ describe('createOnethingHttpServer', () => {
     })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -1204,7 +1078,8 @@ describe('createOnethingHttpServer', () => {
         getRun,
       },
     })
-    const server = await listen(createOnethingHttpServer({ runtime }))
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
     const baseUrlValue = baseUrl(server)
     const headers = contextHeaders('alice', 'scheduler-workspace')
     const jsonHeaders = { ...headers, 'content-type': 'application/json' }
@@ -1294,6 +1169,18 @@ describe('createOnethingHttpServer', () => {
     const removeSystemMarkerMessage = vi.fn(async () => ({ success: true, removedId: 'system-1' }))
     const removeMessage = vi.fn(async () => ({ success: true }))
     const updateMessageThinkingTime = vi.fn(async () => ({ success: true }))
+    const getUsageSummary = vi.fn(async () => ({
+      granularity: 'day',
+      buckets: [{ records: 0, apiCostUSD: 0, subscriptionCostUSD: 0 }],
+      totalApiCostUSD: 0,
+      totalSubscriptionCostUSD: 0,
+    }))
+    const getSessionUsage = vi.fn(async () => ({
+      apiCostUSD: 0,
+      subscriptionCostUSD: 0,
+      turnCount: 0,
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: 0 },
+    }))
     const runtime = createOnethingRuntimeFacade({
       sessions: {
         list: async () => ({ success: true, sessions: [] }),
@@ -1310,6 +1197,10 @@ describe('createOnethingHttpServer', () => {
         removeMessage,
         updateMessageThinkingTime,
       },
+      usage: {
+        getSummary: getUsageSummary,
+        getSessionUsage,
+      },
       commands: {
         emit: async () => ({ success: true }),
       },
@@ -1317,7 +1208,8 @@ describe('createOnethingHttpServer', () => {
         subscribe: () => () => {},
       },
     })
-    const server = await listen(createOnethingHttpServer({ runtime }))
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
     const baseUrlValue = baseUrl(server)
     const headers = contextHeaders('alice', 'chat-workspace')
     const jsonHeaders = { ...headers, 'content-type': 'application/json' }
@@ -1358,6 +1250,31 @@ describe('createOnethingHttpServer', () => {
         contextSize: 1,
       },
     })
+    await expect(fetchJson(`${baseUrlValue}/api/usage/summary`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ granularity: 'day', count: 3 }),
+    })).resolves.toEqual({
+      granularity: 'day',
+      buckets: [{ records: 0, apiCostUSD: 0, subscriptionCostUSD: 0 }],
+      totalApiCostUSD: 0,
+      totalSubscriptionCostUSD: 0,
+    })
+    expect(getUsageSummary).toHaveBeenCalledWith(
+      { granularity: 'day', count: 3 },
+      expect.anything(),
+    )
+    await expect(fetchJson(`${baseUrlValue}/api/usage/session`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ sessionId: 'session-1' }),
+    })).resolves.toEqual({
+      apiCostUSD: 0,
+      subscriptionCostUSD: 0,
+      turnCount: 0,
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0, total: 0 },
+    })
+    expect(getSessionUsage).toHaveBeenCalledWith('session-1', expect.anything())
     await expect(fetchJson(`${baseUrlValue}/api/chat/update-session-pin`, {
       method: 'POST',
       headers: jsonHeaders,
@@ -1432,7 +1349,8 @@ describe('createOnethingHttpServer', () => {
         subscribe: () => () => {},
       },
     })
-    const server = await listen(createOnethingHttpServer({ runtime }))
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN, runtime }))
     const headers = contextHeaders('alice', 'branch-workspace')
 
     await expect(fetchJson(`${baseUrl(server)}/api/sessions/branch`, {
@@ -1462,6 +1380,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -1645,6 +1564,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -1705,6 +1625,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -1881,6 +1802,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -1968,6 +1890,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -2049,6 +1972,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot, dataRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -2138,6 +2062,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const baseUrlValue = baseUrl(server)
@@ -2460,7 +2385,7 @@ describe('createOnethingHttpServer', () => {
     }))
     const update = vi.fn(async (request: unknown) => ({
       success: true,
-      document: { id: 'workspace-ai-todo', request },
+      document: { id: 'session-ai-todo', request },
     }))
     const renameNote = vi.fn(async (request: unknown) => ({
       success: true,
@@ -2572,12 +2497,12 @@ describe('createOnethingHttpServer', () => {
     await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/update`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ scope: 'workspace-ai-todo', content: '- [ ] Ship' }),
+      body: JSON.stringify({ scope: 'session-ai-todo', content: '- [ ] Ship' }),
     })).resolves.toEqual({
       success: true,
       document: {
-        id: 'workspace-ai-todo',
-        request: { scope: 'workspace-ai-todo', content: '- [ ] Ship' },
+        id: 'session-ai-todo',
+        request: { scope: 'session-ai-todo', content: '- [ ] Ship' },
       },
     })
     await expect(fetchJson(`${baseUrl(server)}/api/todo-plan/rename`, {
@@ -2692,6 +2617,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const aliceHeaders = contextHeaders('alice', 'tool-workspace')
@@ -3034,6 +2960,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
 
@@ -3115,6 +3042,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
 
@@ -3287,6 +3215,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const aliceHeaders = contextHeaders('alice', 'mcp-workspace')
@@ -3373,6 +3302,7 @@ describe('createOnethingHttpServer', () => {
     })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
     const aliceHeaders = contextHeaders('alice', 'mcp-client')
@@ -3466,6 +3396,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
 
@@ -3534,6 +3465,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
 
@@ -3587,6 +3519,7 @@ describe('createOnethingHttpServer', () => {
 	    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
 	    runtimes.push(serverRuntime)
 	    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
 	      runtime: serverRuntime.runtime,
 	    }))
 
@@ -3679,6 +3612,7 @@ describe('createOnethingHttpServer', () => {
 	    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
 	    runtimes.push(serverRuntime)
 	    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
 	      runtime: serverRuntime.runtime,
 	    }))
 
@@ -3777,6 +3711,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
 
@@ -3899,6 +3834,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
 
@@ -3960,6 +3896,7 @@ describe('createOnethingHttpServer', () => {
     const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
     }))
 
@@ -4081,6 +4018,44 @@ describe('createOnethingHttpServer', () => {
     })
     expect(afterClear).toEqual({ success: true, sessionGrants: [], workspaceGrants: [] })
   })
+
+  it('rejects identity headers when no auth token is configured', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const spoofed = await fetch(`${baseUrl(server)}/api/settings`, {
+      headers: { 'x-onething-user-id': 'someone-else' },
+    })
+    expect(spoofed.status).toBe(401)
+
+    const plain = await fetch(`${baseUrl(server)}/api/capabilities`)
+    expect(plain.status).toBe(200)
+  })
+
+  it('requires a matching bearer token for every request when configured', async () => {
+    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      authToken: TEST_SERVER_AUTH_TOKEN,
+      runtime: serverRuntime.runtime,
+    }))
+
+    const missing = await fetch(`${baseUrl(server)}/api/capabilities`)
+    expect(missing.status).toBe(401)
+
+    const wrong = await fetch(`${baseUrl(server)}/api/capabilities`, {
+      headers: { authorization: 'Bearer wrong-token' },
+    })
+    expect(wrong.status).toBe(401)
+
+    const authorized = await fetch(`${baseUrl(server)}/api/capabilities`, {
+      headers: { authorization: `Bearer ${TEST_SERVER_AUTH_TOKEN}` },
+    })
+    expect(authorized.status).toBe(200)
+  })
 })
 
 async function listen(server: Server): Promise<Server> {
@@ -4092,6 +4067,7 @@ async function listen(server: Server): Promise<Server> {
 
 function contextHeaders(userId: string, workspaceId: string): Record<string, string> {
   return {
+    'authorization': `Bearer ${TEST_SERVER_AUTH_TOKEN}`,
     'x-onething-user-id': userId,
     'x-onething-workspace-id': workspaceId,
   }

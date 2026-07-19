@@ -31,8 +31,12 @@ export function openElectronSettingsWindow(options: ElectronSettingsWindowOption
     minWidth: 700,
     minHeight: 500,
     show: false,
-    transparent: options.isMac,
-    backgroundColor: options.isMac ? undefined : options.backgroundColor,
+    // Opaque on purpose: a transparent window forces per-frame alpha
+    // compositing with the desktop, which halves presented FPS on ProMotion
+    // displays and makes in-window animations visibly stutter. The settings
+    // page paints a full-bleed opaque paper background, so transparency
+    // bought nothing.
+    backgroundColor: options.backgroundColor,
     titleBarStyle: options.isMac ? 'hiddenInset' : 'default',
     trafficLightPosition: options.isMac ? { x: 16, y: 16 } : undefined,
     modal: false,

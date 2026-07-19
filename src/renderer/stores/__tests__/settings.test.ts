@@ -35,4 +35,32 @@ describe('settings store', () => {
       selectedModels: [],
     }))
   })
+
+  it('saveAIProviderDefault persists the new global default via saveSettings (not just an in-memory mutation)', async () => {
+    const saveSettings = vi.fn((settings: unknown) =>
+      Promise.resolve({ success: true, settings }),
+    )
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: {
+        saveSettings,
+        onSystemThemeChanged: vi.fn(() => () => {}),
+        getSystemTheme: vi.fn().mockResolvedValue({ success: true, theme: 'light' }),
+      },
+    })
+
+    const { useSettingsStore } = await import('../settings')
+    const settingsStore = useSettingsStore()
+
+    await settingsStore.saveAIProviderDefault('local', 'local-echo')
+
+    expect(saveSettings).toHaveBeenCalledTimes(1)
+    const [savedSettings] = saveSettings.mock.calls[0] as [
+      { ai: { provider: string; providers: Record<string, { model: string }> } },
+    ]
+    expect(savedSettings.ai.provider).toBe('local')
+    expect(savedSettings.ai.providers.local.model).toBe('local-echo')
+    expect(settingsStore.settings.ai.provider).toBe('local')
+    expect(settingsStore.settings.ai.providers.local.model).toBe('local-echo')
+  })
 })

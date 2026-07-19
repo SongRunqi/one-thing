@@ -47,6 +47,7 @@ import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine } from '.
 import { registerBuiltinTriggers } from '../engine/triggers/index.js'
 import { Permission } from '../permission/index.js'
 import { bootstrapVariableSystem } from '../variables/index.js'
+import { bootstrapGoalStreamBreakers } from '../goals/runtime-hooks.js'
 import { bootstrapProjectDirs } from '../project-dirs/index.js'
 import { initializeSessionSkills } from '../skills/session-skills.js'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
@@ -105,6 +106,7 @@ export class HeadlessBackend {
     )
 
     bootstrapVariableSystem()
+    bootstrapGoalStreamBreakers()
     bootstrapProjectDirs()
     await initializeHeadlessToolRegistry()
     await initializeSessionSkills()

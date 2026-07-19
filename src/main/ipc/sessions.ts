@@ -24,6 +24,7 @@ import {
   updateOnethingSessionPermissionMode,
   updateOnethingSessionWorkingDirectory,
 } from '@onething/runtime/sessions'
+import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '../todo-plan/store.js'
 import { IPC_CHANNELS } from '../../shared/ipc.js'
 import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest } from '../../shared/ipc.js'
 import * as store from '../store.js'
@@ -37,6 +38,10 @@ import {
 } from '../session/usage.js'
 
 export { clearSessionUsage, getSessionUsage, updateSessionUsage } from '../session/usage.js'
+
+// Renderer-supplied session ids (draft ids that materialize in place) must be
+// plain v4 UUIDs — they end up as session storage directory names.
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export function registerSessionHandlers() {
   registerElectronSessionIpcHandlers({
@@ -62,7 +67,11 @@ export function registerSessionHandlers() {
           return activateOnethingSessionForIpc({
             sessionId,
             getSessionDetails: id => store.getSessionDetails(id),
-            setCurrentSessionId: id => store.setCurrentSessionId(id),
+            setCurrentSessionId: (id) => {
+              store.setCurrentSessionId(id)
+              // The detached todo window renders whichever session is active.
+              notifyTodoPlanActiveSessionChanged()
+            },
             logger: console,
           })
         },
@@ -120,9 +129,21 @@ export function registerSessionHandlers() {
       {
         channel: IPC_CHANNELS.CREATE_SESSION,
         handle: async (request) => {
-          const { name } = request as { name?: string }
+          const { name, sessionId } = request as { name?: string; sessionId?: string }
+          // Client-supplied ids keep session identity stable from the renderer's
+          // draft phase onwards (the draft id *is* the future session id). The
+          // id becomes a storage path segment, so accept only the exact UUID
+          // format the renderer generates, and never adopt an existing session.
+          if (sessionId !== undefined) {
+            if (!UUID_V4_RE.test(sessionId)) {
+              return { success: false, error: 'Invalid session id' }
+            }
+            if (await store.getSession(sessionId)) {
+              return { success: false, error: 'Session id already exists' }
+            }
+          }
           return createOnethingSessionForIpc({
-            sessionId: uuidv4(),
+            sessionId: sessionId ?? uuidv4(),
             name,
             createSession: (id, nextName) => store.createSession(id, nextName),
             logger: console,
@@ -136,7 +157,11 @@ export function registerSessionHandlers() {
           return switchOnethingSessionForIpc({
             sessionId,
             getSession: id => store.getSession(id),
-            setCurrentSessionId: id => store.setCurrentSessionId(id),
+            setCurrentSessionId: (id) => {
+              store.setCurrentSessionId(id)
+              // The detached todo window renders whichever session is active.
+              notifyTodoPlanActiveSessionChanged()
+            },
             logger: console,
           })
         },
@@ -158,7 +183,17 @@ export function registerSessionHandlers() {
           const { sessionId } = request as { sessionId: string }
           return deleteOnethingSessionForIpc({
             sessionId,
-            deleteSession: id => store.deleteSession(id),
+            deleteSession: (id) => {
+              const result = store.deleteSession(id)
+              // The AI todo is keyed by session id, so it goes with the session
+              // — including any children the delete cascaded to.
+              for (const deletedId of result.deletedIds) {
+                deleteSessionAiTodo(deletedId).catch(error => {
+                  console.error('[todo-plan] Failed to delete session AI todo:', error)
+                })
+              }
+              return result
+            },
             logger: console,
           })
         },
@@ -281,6 +316,18 @@ export function registerSessionHandlers() {
             },
             logger: console,
           })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.GET_SESSION_CACHE_STATS,
+        handle: async () => store.getSessionCacheStats(),
+      },
+      {
+        channel: IPC_CHANNELS.EVICT_SESSION_CACHE,
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          store.invalidateSessionCache(sessionId)
+          return { success: true }
         },
       },
       {

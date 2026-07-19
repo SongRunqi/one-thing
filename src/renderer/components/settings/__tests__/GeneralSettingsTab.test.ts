@@ -29,4 +29,28 @@ describe('GeneralSettingsTab', () => {
     const toggle = wrapper.find('input[aria-label="use agent loop streaming"]')
     expect(toggle.exists()).toBe(false)
   })
+
+  it('exposes max turns per run and emits a clamped update', async () => {
+    const settings = createDefaultSettings()
+
+    const wrapper = mount(GeneralSettingsTab, {
+      props: { settings },
+      global: {
+        stubs: {
+          ThemeSelectorPanel: { template: '<div />' },
+          InputNumber: { template: '<input @change="$emit(\'update:model-value\', 9999)" />' },
+        },
+      },
+    })
+
+    const maxTurnsInput = wrapper.find('input[aria-label="max turns per run"]')
+    expect(maxTurnsInput.exists()).toBe(true)
+
+    await maxTurnsInput.trigger('change')
+
+    const emitted = wrapper.emitted('update:settings')
+    expect(emitted).toBeTruthy()
+    const lastPatch = emitted![emitted!.length - 1][0] as { chat?: { maxTurns?: number } }
+    expect(lastPatch.chat?.maxTurns).toBe(500)
+  })
 })

@@ -766,7 +766,7 @@ describe("agent-loop stream entry integration", () => {
 			);
 
 			expect(result.pausedForConfirmation).toBe(false);
-			expect(mocks.getSkillsForSession).toHaveBeenCalledWith("/tmp/project");
+			expect(mocks.getSkillsForSession).toHaveBeenCalledWith("/tmp/project", undefined);
 			expect(providerRequests).toHaveLength(1);
 			expect(messageContents(providerRequests[0])).toEqual([
 				"system prompt with repo-skill",

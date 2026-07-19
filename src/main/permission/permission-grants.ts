@@ -1,11 +1,14 @@
 import { configureOnethingPermissionGrantStorage } from '@onething/runtime/permissions'
 import { getPermissionsDir, readJsonFile, writeJsonFile } from '../stores/paths.js'
+import { registerBuiltinCapabilities } from './capabilities.js'
 
 configureOnethingPermissionGrantStorage({
   getPermissionsDir,
   readJsonFile,
   writeJsonFile,
 })
+
+registerBuiltinCapabilities()
 
 export {
   addGrant,

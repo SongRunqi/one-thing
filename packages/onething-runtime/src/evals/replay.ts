@@ -252,10 +252,18 @@ export interface ReplayOptions {
 	useCapturedPrompt?: boolean;
 	/** Ablate prompt sections (design D6 diagnosis). */
 	disabledSections?: string[];
+	/**
+	 * Route the call to the scene's ORIGIN provider (default true —
+	 * reproduction contexts want the original endpoint). The eval-set
+	 * runner sets false so batch runs stay on the user-chosen binding
+	 * (predictable cost, single-model mean).
+	 */
+	preferOriginProvider?: boolean;
 	/** AI simulator for unmatched tool calls (W4). Absent → stub. */
 	simulateTool?: ToolSimulator;
-	/** Judge the outcome against this rubric (👎 note / AI rubric). */
-	rubric?: string;
+	/** Judge the outcome against this rubric (👎 note / AI rubric).
+	 * An array is a clause checklist: violating any clause fails. */
+	rubric?: string | string[];
 	/** Separate caller for judging (cheap analysis model). */
 	judgeModel?: { callModel: EvalModelCaller; model: string };
 	maxRounds?: number;
@@ -356,6 +364,13 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
 			const response = await options.callModel({
 				messages,
 				model: scene.params.model || options.header.model,
+				// The scene's ORIGIN provider — callers that can route per-provider
+				// (desktop adapter) reproduce against the original endpoint instead
+				// of silently testing a different model under the original's name.
+				provider:
+					options.preferOriginProvider === false
+						? undefined
+						: scene.params.provider,
 				tools: tools.length ? tools : undefined,
 				temperature: scene.params.temperature,
 				maxTokens: scene.params.maxTokens,
@@ -456,7 +471,9 @@ export async function runReplay(options: ReplayOptions): Promise<ReplayResult> {
 					t: "judge",
 					pass: verdict.pass,
 					reason: verdict.reason,
-					rubric: options.rubric,
+					rubric: Array.isArray(options.rubric)
+						? options.rubric.join("\n")
+						: options.rubric,
 				});
 			}
 		} catch (error) {

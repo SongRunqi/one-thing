@@ -26,7 +26,7 @@ export interface StreamEnginePermissionAdapter {
 }
 
 export interface StreamEngineSkillsAdapter<TSkill = unknown> {
-  getForSession(workingDirectory?: string): TSkill[]
+  getForSession(workingDirectory?: string, agentId?: string): TSkill[]
 }
 
 export interface StreamEnginePromptResolution<TContentPart = unknown> {
@@ -68,7 +68,8 @@ export interface StreamEngineHistoryAdapter<TSession = unknown, TMessage = unkno
 export interface StreamEngineProviderAdapter<TSettings = unknown, TProviderConfig = unknown, TAuthContext = unknown> {
   getEffectiveConfig(
     settings: TSettings,
-    sessionId: string
+    sessionId: string,
+    override?: { providerId?: string; model?: string; thinking?: boolean; thinkingEffort?: string } | null
   ): { providerId: string; providerConfig: TProviderConfig; model: string }
   resolveAuth(providerId: string, providerConfig: TProviderConfig): Promise<TAuthContext | null>
   getApiType(settings: TSettings, providerId: string): unknown

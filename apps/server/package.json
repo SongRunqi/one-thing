@@ -8,7 +8,7 @@
     "./http": "./src/http.ts"
   },
   "dependencies": {
-    "@onething/core": "file:../../packages/core"
+    "@onething/core": "file:../../packages/core",
+    "@onething/runtime": "file:../../packages/onething-runtime"
   }
 }
-

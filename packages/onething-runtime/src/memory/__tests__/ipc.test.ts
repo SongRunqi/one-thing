@@ -17,31 +17,8 @@ function createAdapters(overrides: Partial<OnethingMemoryIpcAdapters> = {}): One
     },
     getOverview: vi.fn(async () => ({ enabled: true })),
     readManagedFile: vi.fn(async () => ({ content: 'file' })),
-    searchPanel: vi.fn(async () => [{ id: 'hit' }]),
     appendPanel: vi.fn(async () => ({ relativePath: 'memory.md' })),
     saveManagedFile: vi.fn(async () => ({ relativePath: 'MEMORY.md' })),
-    rebuildIndex: vi.fn(async () => ({ indexedChunks: 1 })),
-    runDreamingNow: vi.fn(async () => ({ applied: 1 })),
-    listProfile: vi.fn(async () => []),
-    searchProfile: vi.fn(async () => []),
-    upsertProfile: vi.fn(async () => ({ id: 'profile' })),
-    deleteProfile: vi.fn(async () => undefined),
-    getProfileAudit: vi.fn(async () => []),
-    exportProfile: vi.fn(async () => '# Profile'),
-    getGraphOverview: vi.fn(async () => ({ entities: 1 })),
-    listGraphEntities: vi.fn(async () => []),
-    upsertGraphEntity: vi.fn(async () => ({ id: 'entity:user:self' })),
-    deleteGraphEntity: vi.fn(async () => undefined),
-    listGraphObservations: vi.fn(async () => []),
-    upsertGraphObservation: vi.fn(async () => ({ id: 'obs' })),
-    deleteGraphObservation: vi.fn(async () => undefined),
-    listGraphRelations: vi.fn(async () => []),
-    upsertGraphRelation: vi.fn(async () => ({ id: 'rel' })),
-    deleteGraphRelation: vi.fn(async () => undefined),
-    listGraphDuplicates: vi.fn(async () => []),
-    mergeGraphDuplicate: vi.fn(async () => undefined),
-    ignoreGraphDuplicate: vi.fn(async () => undefined),
-    getGraphAudit: vi.fn(async () => []),
     savePendingCapture: vi.fn(async () => ({ id: 'capture' })),
     discardPendingCapture: vi.fn(async () => undefined),
     ...overrides,
@@ -53,41 +30,67 @@ describe('runtime memory IPC handlers', () => {
     const adapters = createAdapters()
     const handlers = createOnethingMemoryIpcHandlers(adapters)
 
-    const response = await handlers.search({ query: 'secret token', limit: 5 })
+    const response = await handlers.append({ target: 'daily', heading: 'Note', content: 'hello' })
 
-    expect(response).toEqual({ success: true, hits: [{ id: 'hit' }] })
-    expect(adapters.searchPanel).toHaveBeenCalledWith({ query: 'secret token', limit: 5 })
+    expect(response).toEqual({ success: true, target: { relativePath: 'memory.md' } })
+    expect(adapters.appendPanel).toHaveBeenCalledWith({ target: 'daily', heading: 'Note', content: 'hello' })
     expect(adapters.logDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
       subsystem: 'ipc',
-      operation: 'memory-search',
+      operation: 'memory-append',
       stage: 'request',
       status: 'started',
     }))
     expect(adapters.logDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
       subsystem: 'ipc',
-      operation: 'memory-search',
+      operation: 'memory-append',
       stage: 'response',
       status: 'ok',
     }))
+  })
+
+  it('serves overview, read, and pending-capture operations', async () => {
+    const adapters = createAdapters()
+    const handlers = createOnethingMemoryIpcHandlers(adapters)
+
+    await expect(handlers.overview({ agentId: 'agent-1' })).resolves.toEqual({
+      success: true,
+      overview: { enabled: true },
+    })
+    expect(adapters.getOverview).toHaveBeenCalledWith('agent-1')
+
+    await expect(handlers.read({ path: 'MEMORY.md' })).resolves.toEqual({
+      success: true,
+      file: { content: 'file' },
+    })
+    expect(adapters.readManagedFile).toHaveBeenCalledWith({ path: 'MEMORY.md' })
+
+    await expect(handlers.captureSave({ id: 'cap-1' })).resolves.toEqual({
+      success: true,
+      target: { id: 'capture' },
+    })
+    expect(adapters.savePendingCapture).toHaveBeenCalledWith('cap-1')
+
+    await expect(handlers.captureDiscard({ id: 'cap-2' })).resolves.toEqual({ success: true })
+    expect(adapters.discardPendingCapture).toHaveBeenCalledWith('cap-2')
   })
 
   it('converts adapter failures into IPC failure responses', async () => {
     const onError = vi.fn()
     const adapters = createAdapters({
       onError,
-      deleteGraphEntity: vi.fn(async () => {
-        throw new Error('cannot delete self')
+      saveManagedFile: vi.fn(async () => {
+        throw new Error('cannot save file')
       }),
     })
     const handlers = createOnethingMemoryIpcHandlers(adapters)
 
-    await expect(handlers.graphEntitiesDelete({ id: 'entity:user:self' })).resolves.toEqual({
+    await expect(handlers.saveFile({ path: 'MEMORY.md', content: 'x' })).resolves.toEqual({
       success: false,
-      error: 'cannot delete self',
+      error: 'cannot save file',
     })
-    expect(onError).toHaveBeenCalledWith('graph-entity-delete', expect.any(Error))
+    expect(onError).toHaveBeenCalledWith('save-file', expect.any(Error))
     expect(adapters.logDiagnostic).toHaveBeenCalledWith(expect.objectContaining({
-      operation: 'graph-entity-delete',
+      operation: 'memory-save-file',
       stage: 'response',
       status: 'error',
     }))

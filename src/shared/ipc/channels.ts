@@ -50,6 +50,8 @@ export const IPC_CHANNELS = {
 	GET_SESSION_MESSAGES_PAGE: "sessions:get-messages-page", // Returns a cursor-addressed ChatMessage page
 	GET_SESSION_USER_MARKERS: "sessions:get-user-markers", // Returns lightweight user-message nav markers
 	SESSION_MESSAGES_CHANGED: "sessions:messages-changed", // Event: messages added/updated
+	GET_SESSION_CACHE_STATS: "sessions:get-cache-stats", // Returns in-memory LRU cache stats
+	EVICT_SESSION_CACHE: "sessions:evict-cache", // Evicts a session from the in-memory LRU cache
 
 	// Settings related
 	GET_SETTINGS: "settings:get",
@@ -73,6 +75,50 @@ export const IPC_CHANNELS = {
 	VOICE_RUNTIME_COMMAND: "voice:runtime-command",
 	VOICE_RUNTIME_EVENT: "voice:runtime-event",
 	VOICE_RUNTIME_READY: "voice:runtime-ready",
+	VOICE_AUDIO_CHUNK: "voice:audio-chunk",
+
+	// Music radio related
+	MUSIC_GET_STATE: "music:get-state",
+	MUSIC_SETUP: "music:setup",
+	MUSIC_EVENT: "music:event",
+	/** Transport controls for the composer's music bar (main -> ncm-cli directly). */
+	MUSIC_COMMAND: "music:command",
+	/** main -> renderer: what is playing, or null when nothing is. */
+	MUSIC_NOW_PLAYING: "music:now-playing",
+	/**
+	 * renderer -> main pull of the same answer. MUSIC_NOW_PLAYING only fires on
+	 * change, so a renderer that subscribes mid-song (reload, second window)
+	 * must ask once or it waits until the next track for its first update.
+	 */
+	MUSIC_GET_NOW_PLAYING: "music:get-now-playing",
+	/** renderer -> main: radio brief snapshot (active/intent/lastError). */
+	MUSIC_GET_RADIO: "music:get-radio",
+	/** main -> renderer: the current song's timed lyrics, once per song start. */
+	MUSIC_LYRICS: "music:lyrics",
+	/** renderer -> main pull of the same (reload mid-song). */
+	MUSIC_GET_LYRICS: "music:get-lyrics",
+	/**
+	 * main -> renderer: the DJ's synthesized patter to play in the gap before a
+	 * song. Audio rides here (not mpv) so music and voice stay on separate
+	 * tracks; the renderer plays it and acks on MUSIC_DJ_SPEAK_DONE.
+	 */
+	MUSIC_DJ_SPEAK: "music:dj-speak",
+	/** renderer -> main: DJ patter finished (or failed) playing, keyed by id. */
+	MUSIC_DJ_SPEAK_DONE: "music:dj-speak-done",
+	/** renderer -> main: open/retune the station from the bar (empty intent = DJ's call). */
+	MUSIC_OPEN_RADIO: "music:open-radio",
+	/** renderer -> main: song search for the panel's request box. */
+	MUSIC_SEARCH: "music:search",
+	/** renderer -> main: cut a named song in as the next track. */
+	MUSIC_REQUEST_SONG: "music:request-song",
+	/** renderer -> main: the visible programme queue for the panel. */
+	MUSIC_GET_PROGRAMME: "music:get-programme",
+	/** renderer -> main: panel edits (remove=skip signal, promote, move). */
+	MUSIC_PROGRAMME_ACTION: "music:programme-action",
+	/** renderer -> main: available music CLI providers (settings selector). */
+	MUSIC_LIST_PROVIDERS: "music:list-providers",
+	/** renderer -> main: switch the music CLI provider (a retune: programme cleared). */
+	MUSIC_SET_PROVIDER: "music:set-provider",
 
 	// Gateway / IM channel related
 	GATEWAY_GET_STATUS: "gateway:get-status",
@@ -192,6 +238,11 @@ export const IPC_CHANNELS = {
 	SKILLS_CREATE: "skills:create",
 	SKILLS_DELETE: "skills:delete",
 	SKILLS_TOGGLE_ENABLED: "skills:toggle-enabled",
+	SKILLS_LIST_DIRECTORIES: "skills:list-directories",
+	SKILLS_ADD_DIRECTORY: "skills:add-directory",
+	SKILLS_UPDATE_DIRECTORY: "skills:update-directory",
+	SKILLS_REMOVE_DIRECTORY: "skills:remove-directory",
+	SKILLS_SET_AGENT: "skills:set-agent",
 
 	// Theme related
 	THEME_GET_ALL: "themes:get-all",
@@ -247,6 +298,11 @@ export const IPC_CHANNELS = {
 	VARIABLES_SET: "variables:set",
 	VARIABLES_DELETE: "variables:delete",
 
+	// Session goals
+	GOAL_GET: "goal:get",
+	GOAL_SET: "goal:set",
+	GOAL_DIFFS: "goal:diffs",
+
 	// Project directories — independent module
 	PROJECT_DIRS_LIST: "project-dirs:list",
 	PROJECT_DIRS_GET: "project-dirs:get",
@@ -265,33 +321,10 @@ export const IPC_CHANNELS = {
 	// Soul / Memory panel
 	MEMORY_OVERVIEW: "memory:overview",
 	MEMORY_READ: "memory:read",
-	MEMORY_SEARCH: "memory:search",
 	MEMORY_APPEND: "memory:append",
 	MEMORY_SAVE_FILE: "memory:save-file",
-	MEMORY_INDEX: "memory:index",
-	MEMORY_RUN_DREAMING: "memory:run-dreaming",
 	MEMORY_CAPTURE_SAVE: "memory:capture-save",
 	MEMORY_CAPTURE_DISCARD: "memory:capture-discard",
-	MEMORY_PROFILE_LIST: "memory.profile:list",
-	MEMORY_PROFILE_SEARCH: "memory.profile:search",
-	MEMORY_PROFILE_UPSERT: "memory.profile:upsert",
-	MEMORY_PROFILE_DELETE: "memory.profile:delete",
-	MEMORY_PROFILE_AUDIT: "memory.profile:audit",
-	MEMORY_PROFILE_EXPORT: "memory.profile:export",
-	MEMORY_GRAPH_OVERVIEW: "memory.graph:overview",
-	MEMORY_GRAPH_ENTITIES_LIST: "memory.graph.entities:list",
-	MEMORY_GRAPH_ENTITIES_UPSERT: "memory.graph.entities:upsert",
-	MEMORY_GRAPH_ENTITIES_DELETE: "memory.graph.entities:delete",
-	MEMORY_GRAPH_OBSERVATIONS_LIST: "memory.graph.observations:list",
-	MEMORY_GRAPH_OBSERVATIONS_UPSERT: "memory.graph.observations:upsert",
-	MEMORY_GRAPH_OBSERVATIONS_DELETE: "memory.graph.observations:delete",
-	MEMORY_GRAPH_RELATIONS_LIST: "memory.graph.relations:list",
-	MEMORY_GRAPH_RELATIONS_UPSERT: "memory.graph.relations:upsert",
-	MEMORY_GRAPH_RELATIONS_DELETE: "memory.graph.relations:delete",
-	MEMORY_GRAPH_DUPLICATES_LIST: "memory.graph.duplicates:list",
-	MEMORY_GRAPH_DUPLICATES_MERGE: "memory.graph.duplicates:merge",
-	MEMORY_GRAPH_DUPLICATES_IGNORE: "memory.graph.duplicates:ignore",
-	MEMORY_GRAPH_AUDIT: "memory.graph:audit",
 	MEMORY_LOGS_LIST: "memory.logs:list",
 	MEMORY_LOGS_STATS: "memory.logs:stats",
 	MEMORY_LOGS_OPEN_FOLDER: "memory.logs:open-folder",
@@ -335,6 +368,19 @@ export const IPC_CHANNELS = {
 	TODO_PLAN_SET_WINDOW_PINNED: "todo-plan:set-window-pinned",
 	TODO_PLAN_CHANGED: "todo-plan:changed",
 
+	// Practice (kegel / pomodoro / exercise log)
+	PRACTICE_START: "practice:start",
+	PRACTICE_PAUSE: "practice:pause",
+	PRACTICE_RESUME: "practice:resume",
+	PRACTICE_STOP: "practice:stop",
+	PRACTICE_GET_STATE: "practice:get-state",
+	PRACTICE_LOG: "practice:log",
+	PRACTICE_SUMMARY: "practice:summary",
+	PRACTICE_RECENT: "practice:recent",
+	PRACTICE_GET_CONFIG: "practice:get-config",
+	PRACTICE_SET_CONFIG: "practice:set-config",
+	PRACTICE_EVENT: "practice:event",
+
 	// Evals (prompt evaluation) related
 	EVALS_RECORD_DOWNVOTE: "evals:record-downvote",
 
@@ -372,4 +418,8 @@ export const IPC_CHANNELS = {
 	EVALS_DIAGNOSE_PROGRESS: "evals:diagnose-progress",
 	EVALS_ROUND_LIST: "evals:round-list",
 	EVALS_ROUND_REPLAY: "evals:round-replay",
+
+	// Token usage / billing
+	GET_USAGE_SUMMARY: "usage:get-summary",
+	GET_SESSION_USAGE: "usage:get-session",
 } as const;

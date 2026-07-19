@@ -111,6 +111,7 @@ export type {
   AgentProvider,
   AgentPromptInjectionContext,
   AgentPromptInjector,
+  AgentReasoningEffort,
   AgentRole,
   AgentRunnableProvider,
   AgentSkillContext,

@@ -1,5 +1,6 @@
 import { Permission } from './index.js'
 import * as PermissionGrants from './permission-grants.js'
+import { coversAll } from './capability-registry.js'
 import { toJsonObject } from '../json.js'
 
 export type PermissionPolicyMode = Permission.Mode
@@ -60,6 +61,18 @@ export interface PermissionPolicyResult {
   grantId?: string
 }
 
+/**
+ * Covered by a capability the app or the user declared — see
+ * ./capability-registry.js. Not a grant: nobody was asked, because the answer
+ * was decided ahead of time and is listed in settings.
+ */
+function isCapabilityCovered(effect: PermissionEffect): boolean {
+  if (effect.resources.length === 0) return false
+  if (isAutoAcceptedEditEffect(effect)) return coversAll(effect.resources, 'write')
+  if (effect.kind === 'read') return coversAll(effect.resources, 'read')
+  return false
+}
+
 function isHardDeny(effect: PermissionEffect): boolean {
   return effect.metadata?.hardDeny === true
 }
@@ -85,7 +98,9 @@ export function decidePermission(input: PermissionPolicyInput): PermissionPolicy
     return { decision: 'allow' }
   }
 
-  const promptEffects = input.effects.filter(effect => effect.kind !== 'read')
+  const promptEffects = input.effects.filter(
+    effect => effect.kind !== 'read' && !isCapabilityCovered(effect),
+  )
   if (promptEffects.length === 0) return { decision: 'allow' }
 
   const matchGrant = input.grantMatcher ?? PermissionGrants.matchGrant
@@ -117,6 +132,10 @@ function titleForEffect(input: EnforcePermissionPolicyInput, effect: PermissionE
   if (input.preview?.title) return input.preview.title
   if (effect.kind === 'bash') return String(effect.metadata?.command || 'Run bash command')
   if (effect.kind === 'mcp') return `Run MCP tool: ${input.toolName}`
+  if (effect.kind === 'capability_change') {
+    const target = String(effect.metadata?.variable || input.toolName)
+    return `Repoint ${target} to: ${String(effect.metadata?.value || effect.resources[0] || '')}`
+  }
   if (effect.kind === 'external_directory') return `Access directory outside project: ${effect.resources[0] || ''}`
   if (effect.kind === 'sensitive_file_read') return `Read sensitive file: ${String(effect.metadata?.path || effect.resources[0] || '')}`
   if (effect.kind === 'file_write') return `Write file: ${String(effect.metadata?.path || effect.resources[0] || '')}`

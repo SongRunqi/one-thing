@@ -33,4 +33,25 @@ describe('useMarkdownRenderer', () => {
     expect(html).toContain(':rocket:')
     expect(html).not.toContain('🚀')
   })
+
+  it('rewrites sandbox: image sources to file:// URLs', () => {
+    const html = renderMarkdown('![cat](<sandbox:/Users/me/cute cat.png>)', false, { surface: 'document' })
+
+    expect(html).toContain('src="file:///Users/me/cute%20cat.png"')
+    expect(html).not.toContain('sandbox:')
+  })
+
+  it('rewrites bare absolute-path image sources to file:// URLs', () => {
+    const html = renderMarkdown('![shot](/Users/me/pic.png)', false, { surface: 'document' })
+
+    expect(html).toContain('src="file:///Users/me/pic.png"')
+  })
+
+  it('leaves remote and media image sources untouched', () => {
+    const remote = renderMarkdown('![web](https://example.com/a.png)', false, { surface: 'document' })
+    const media = renderMarkdown('![Generated Image|mediaId:abc](media://abc.png)', false, { surface: 'document' })
+
+    expect(remote).toContain('src="https://example.com/a.png"')
+    expect(media).toContain('src="media://abc.png"')
+  })
 })

@@ -260,10 +260,10 @@
         ref="bodyRef"
         class="panel-body"
       >
-        <MarkdownDocumentEditor
+        <component
+          :is="noteEditorComponent"
           ref="editorRef"
           :model-value="draft"
-          class="markdown-editor"
           surface="todo-notes"
           :document-id="activeDocument?.id || 'todo-notes'"
           :document-path="activeDocument?.filePath || ''"
@@ -272,8 +272,6 @@
           :features="todoMarkdownFeatures"
           :toolbar="false"
           placeholder="# Untitled Note"
-          :min-height="120"
-          :max-height="100000"
           :spellcheck="true"
           :source-toggle="false"
           @update:model-value="handleDraftUpdate"
@@ -508,6 +506,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import type { TodoPlanDocument, TodoPlanSnapshot } from '@/types'
 import MarkdownDocumentEditor from '@/editor/MarkdownDocumentEditor.vue'
+import ProseNoteEditor from '@/editor/prose/ProseNoteEditor.vue'
 import type { MarkdownCommand, MarkdownDocumentEditorHandle, MarkdownFeatureSet } from '@/editor/markdown-document'
 import { handleMarkdownAttachmentPaste } from '@/editor/markdown-attachments'
 import type { MarkdownAssetResolution } from '@shared/ipc/markdown'
@@ -607,6 +606,11 @@ const todoMarkdownFeatures: MarkdownFeatureSet = {
   frontmatter: true,
 }
 const editorSettings = computed(() => settingsStore.settings.general.editor)
+// Render-first (ProseMirror) engine behind a settings flag; CodeMirror stays
+// the default and the fallback. Both implement MarkdownDocumentEditorHandle.
+const noteEditorComponent = computed(() =>
+  editorSettings.value?.noteEngine === 'prosemirror' ? ProseNoteEditor : MarkdownDocumentEditor,
+)
 
 const isStandalone = computed(() => props.standalone === true)
 const panelStyle = computed(() => {
@@ -615,16 +619,19 @@ const panelStyle = computed(() => {
 })
 const popoverOpen = computed(() => switcherOpen.value || actionPanelOpen.value || findOpen.value)
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId || undefined)
+// Standalone runs in its own window, where the sessions store is never
+// populated, so the session is whatever the host resolved the snapshot to.
+const resolvedSessionId = computed(() => effectiveSessionId.value || snapshot.value?.sessionId || undefined)
 const effectiveWorkingDirectory = computed(() => {
   if (props.workingDirectory !== undefined) return props.workingDirectory || undefined
-  const session = sessionsStore.sessions.find(item => item.id === effectiveSessionId.value)
+  const session = sessionsStore.sessions.find(item => item.id === resolvedSessionId.value)
   return session?.workingDirectory || undefined
 })
 const allDocuments = computed(() => {
   if (!snapshot.value) return []
   return [
     ...snapshot.value.userNotes,
-    ...(snapshot.value.workspaceAiTodo ? [snapshot.value.workspaceAiTodo] : []),
+    ...(snapshot.value.sessionAiTodo ? [snapshot.value.sessionAiTodo] : []),
   ]
 })
 const activeDocument = computed(() => allDocuments.value.find(doc => doc.id === activeId.value) || allDocuments.value[0])
@@ -645,6 +652,7 @@ const actionContext = computed<TodoNotesActionContext>(() => ({
 const todoActions = computed<TodoNotesAction[]>(() => {
   const context = actionContext.value
   const canDelete = context.canDeleteNote
+  const activePinned = context.activeDocument ? isNotePinned(context.activeDocument.id) : false
   return [
     {
       id: 'create-note',
@@ -675,6 +683,18 @@ const todoActions = computed<TodoNotesAction[]>(() => {
       enabled: canDelete,
       keywords: ['remove'],
       run: deleteNote,
+    },
+    {
+      id: 'pin-note',
+      title: activePinned ? 'Unpin Note' : 'Pin Note',
+      subtitle: canDelete
+        ? (activePinned ? 'Remove the current note from the top of the list' : 'Keep the current note at the top of the list')
+        : 'Only user notes can be pinned',
+      group: 'Note Actions',
+      icon: Pin,
+      enabled: canDelete,
+      keywords: ['favorite', 'top', 'unpin'],
+      run: toggleActiveNotePinned,
     },
     {
       id: 'reveal-notes-folder',
@@ -748,7 +768,7 @@ const filteredUserNotes = computed(() => {
   return notes.filter(note => documentMatchesQuery(note, query))
 })
 const filteredSystemNotes = computed(() => {
-  const document = snapshot.value?.workspaceAiTodo
+  const document = snapshot.value?.sessionAiTodo
   if (!document) return []
   const query = switcherQuery.value.trim().toLowerCase()
   if (!query || documentMatchesQuery(document, query)) return [document]
@@ -789,7 +809,7 @@ watch([pinned, collapsed], () => {
   }
 })
 
-watch([effectiveSessionId, effectiveWorkingDirectory], () => {
+watch(effectiveSessionId, () => {
   loadSnapshot()
 })
 
@@ -805,12 +825,11 @@ watch(activeFindIndex, () => {
 async function loadSnapshot() {
   const response = await platformApi.getTodoPlan({
     sessionId: effectiveSessionId.value,
-    workingDirectory: effectiveWorkingDirectory.value,
   })
   if (!response.success || !response.snapshot) return
   snapshot.value = response.snapshot
   if (!allDocuments.value.some(doc => doc.id === activeId.value)) {
-    const fallbackDocument = response.snapshot.userNotes[0] || response.snapshot.workspaceAiTodo
+    const fallbackDocument = response.snapshot.userNotes[0] || response.snapshot.sessionAiTodo
     if (fallbackDocument) {
       selectDocument(fallbackDocument.id, false)
     } else {
@@ -836,6 +855,12 @@ function writePinnedNoteIds(ids: Set<string>) {
 
 function isNotePinned(id: string): boolean {
   return pinnedNoteIds.value.has(id)
+}
+
+function toggleActiveNotePinned() {
+  const document = activeDocument.value
+  if (!document || document.scope !== 'user-note') return
+  toggleNotePinned(document.id)
 }
 
 function toggleNotePinned(id: string) {
@@ -906,7 +931,6 @@ async function saveDraft() {
     scope: document.scope,
     id: document.scope === 'user-note' ? document.id : undefined,
     sessionId: effectiveSessionId.value,
-    workingDirectory: effectiveWorkingDirectory.value,
     content: draft.value,
   })
   if (response.success && response.document) {
@@ -925,8 +949,8 @@ function applyDocument(document: TodoPlanDocument) {
       ? snapshot.value.userNotes.map(note => note.id === document.id ? document : note)
       : [...snapshot.value.userNotes, document]
     snapshot.value = { ...snapshot.value, userNotes: nextNotes }
-  } else if (document.scope === 'workspace-ai-todo') {
-    snapshot.value = { ...snapshot.value, workspaceAiTodo: document }
+  } else if (document.scope === 'session-ai-todo') {
+    snapshot.value = { ...snapshot.value, sessionAiTodo: document }
   }
 
   if (isActiveDocument && !hasLocalDraftChanges) {
@@ -984,6 +1008,7 @@ async function deleteUserNote(id: string) {
 function openSwitcher() {
   actionPanelOpen.value = false
   formatBufferOpen.value = false
+  findOpen.value = false
   switcherOpen.value = true
   switcherQuery.value = ''
   resetSwitcherSelection()
@@ -1059,6 +1084,7 @@ async function runAction(action: TodoNotesAction) {
 function openFind() {
   actionPanelOpen.value = false
   formatBufferOpen.value = false
+  switcherOpen.value = false
   findOpen.value = true
   nextTick(() => {
     findInputRef.value?.focus()
@@ -1355,9 +1381,11 @@ function handlePanelMouseLeave() {
   collapseToEdge()
 }
 
-function shouldRefreshChanged(data: { scope: string; sessionId?: string; workingDirectory?: string }) {
+function shouldRefreshChanged(data: { scope: string; sessionId?: string }) {
   if (data.scope === 'global-user' || data.scope === 'all') return true
-  if (data.scope === 'workspace-ai-todo') return (data.workingDirectory || '') === (effectiveWorkingDirectory.value || '')
+  if (data.scope === 'session-ai-todo') {
+    return Boolean(resolvedSessionId.value) && data.sessionId === resolvedSessionId.value
+  }
   return false
 }
 
@@ -1396,10 +1424,11 @@ onUnmounted(() => {
 <style scoped>
 .todo-plan-panel {
   --todo-plan-nav-gutter: 52px;
-  --todo-card-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-note-bg) 8%);
+  --todo-card-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-note-bg, var(--color-warning-bg)) 8%);
   --todo-card-bg-soft: color-mix(in srgb, var(--todo-card-bg) 86%, var(--ui-surface-app-bg, var(--bg-app)) 14%);
   --todo-rule: var(--ui-border-default-border, var(--border-default));
   --todo-rule-soft: color-mix(in srgb, var(--todo-rule) 58%, transparent);
+  --todo-rule-strong: var(--ui-border-strong-border, var(--border-strong, var(--todo-rule)));
   --todo-text: var(--ui-text-primary-fg, var(--text));
   --todo-muted: var(--ui-text-muted-fg, var(--muted));
   --todo-accent: var(--ui-accent-primary-fg, var(--accent));
@@ -1410,7 +1439,9 @@ onUnmounted(() => {
   --todo-popover-top: clamp(58px, 12vh, 88px);
   --todo-popover-width: min(520px, calc(100% - (var(--todo-popover-inline-inset) * 2)));
   --todo-popover-radius: 14px;
-  --todo-popover-shadow: var(--ui-surface-tooltip-shadow, var(--shadow-floating));
+  /* Ink-line style: floating layers separate with a 1px rule, not a shadow
+     (the panel's overflow:hidden clipped large shadows anyway). */
+  --todo-popover-shadow: none;
   --todo-popover-bg: var(--ui-surface-app-bg, var(--bg-app));
   --todo-popover-search-bg: var(--todo-popover-bg);
   --todo-popover-search-height: 46px;
@@ -1440,10 +1471,6 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-.todo-plan-panel.popover-open {
-  overflow: hidden;
-}
-
 .todo-plan-panel.collapsed {
   top: 74px;
   right: 0;
@@ -1455,10 +1482,6 @@ onUnmounted(() => {
   background: transparent;
   box-shadow: none;
   overflow: visible;
-}
-
-.todo-plan-panel.collapsed:hover {
-  transform: translateX(-1px);
 }
 
 .todo-plan-panel.standalone {
@@ -1838,7 +1861,7 @@ onUnmounted(() => {
 
 }
 
-@container (max-width: 360px) {
+@container (max-width: 240px) {
   .switcher-header-row {
     height: 30px;
     font-size: 13px;
@@ -1873,9 +1896,9 @@ onUnmounted(() => {
   width: min(340px, calc(100% - 28px));
   height: 40px;
   padding: 0 8px 0 12px;
-  border: 1px solid var(--todo-rule);
+  border: 1px solid var(--todo-rule-strong);
   border-radius: 11px;
-  box-shadow: var(--ui-surface-tooltip-shadow, var(--shadow-md));
+  box-shadow: none;
   font-size: 14px;
   line-height: 1;
 }

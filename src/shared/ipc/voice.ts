@@ -8,17 +8,36 @@ export type VoiceRuntimeStatus =
   | 'speaking'
   | 'error'
 
-export type VoiceASRProvider = 'funasr-stream' | 'openai-transcribe' | 'openrouter-transcribe' | 'funasr-server'
-export type VoiceTTSProvider = 'system-tts' | 'openrouter-tts' | 'openai-tts' | 'qwen-tts'
+export type VoiceASRProvider = 'funasr-stream' | 'openai-transcribe' | 'openrouter-transcribe' | 'funasr-server' | 'doubao'
+export type VoiceTTSProvider = 'system-tts' | 'openrouter-tts' | 'openai-tts' | 'qwen-tts' | 'doubao'
 export type VoiceEndpointingMode = 'fast' | 'balanced' | 'patient' | 'custom'
+export type VoiceWakeSensitivity = 'low' | 'medium' | 'high'
 
 export interface VoiceWakeSettings {
   enabled: boolean
   phrase: string
-  provider: 'porcupine-web' | 'web-speech'
+  provider: 'porcupine-web' | 'web-speech' | 'sherpa-kws'
+  sensitivity?: VoiceWakeSensitivity
   accessKey?: string
   keywordPath?: string
   modelPath?: string
+}
+
+// Shared Volcano Engine (Doubao) credentials and tuning for both ASR and TTS.
+// Only apiKey (or the legacy appId+accessToken pair) is surfaced in the UI;
+// the rest is normalized to defaults and editable via settings.json.
+export interface VoiceDoubaoSettings {
+  apiKey?: string
+  appId?: string
+  accessToken?: string
+  asrResourceId?: string
+  ttsResourceId?: string
+  endpoint?: string
+  endWindowMs?: number
+  /** Two-pass recognition: stream partials, re-recognize each utterance for the final. */
+  twoPass?: boolean
+  speaker?: string
+  format?: 'mp3' | 'ogg_opus' | 'pcm'
 }
 
 export interface VoiceVADSettings {
@@ -92,6 +111,22 @@ export interface VoiceSettings {
   vad: VoiceVADSettings
   asr: VoiceASRSettings
   tts: VoiceTTSSettings
+  doubao: VoiceDoubaoSettings
+}
+
+// Raw PCM uplink from the voice runtime window to the main process
+// (used by main-process ASR/KWS providers such as Doubao and sherpa-kws).
+export interface VoiceAudioChunkPayload {
+  sessionId?: string
+  /** int16 little-endian mono PCM. */
+  chunkBase64?: string
+  sampleRate?: number
+  /** wake: feed keyword spotting + pre-roll; recording: feed the active ASR session. */
+  phase?: 'wake' | 'recording'
+  /** Marks the end of the utterance; main finalizes the ASR session. */
+  last?: boolean
+  /** With last: drop the session without submitting a transcript. */
+  abort?: boolean
 }
 
 export interface VoiceTranscriptMetadata {
@@ -127,6 +162,8 @@ export interface VoiceRuntimeState {
   status: VoiceRuntimeStatus
   enabled: boolean
   runtimeReady: boolean
+  /** A hands-free voice call is connected (continuous listen/reply loop). */
+  callActive?: boolean
   currentSessionId?: string
   lastTranscript?: string
   lastMilestone?: VoiceLatencyMilestone
@@ -146,6 +183,7 @@ export type VoiceEvent =
   | { type: 'latency-milestone'; milestone: VoiceLatencyMilestone }
   | { type: 'playback-start'; requestId?: string }
   | { type: 'playback-end'; requestId?: string }
+  | { type: 'playback-idle' }
   | { type: 'error'; error: string; recoverable?: boolean }
 
 export type VoiceRuntimeEvent = VoiceEvent
@@ -155,6 +193,7 @@ export type VoiceRuntimeCommand =
   | { type: 'start-wake'; settings: VoiceSettings; sessionId?: string }
   | { type: 'start-recording'; settings: VoiceSettings; sessionId?: string; reason?: string }
   | { type: 'stop'; reason?: string; submit?: boolean }
+  | { type: 'stop-recording'; reason?: string }
   | { type: 'stop-playback' }
   | { type: 'play-audio'; requestId?: string; audioBase64: string; mimeType: string }
   | { type: 'play-audio-stream-start'; requestId: string; mimeType: string }
@@ -164,7 +203,7 @@ export type VoiceRuntimeCommand =
 
 export interface VoiceStartRequest {
   sessionId?: string
-  reason?: 'manual' | 'wake' | 'resume'
+  reason?: 'manual' | 'wake' | 'resume' | 'call'
 }
 
 export interface VoiceStopRequest {

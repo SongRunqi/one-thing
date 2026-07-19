@@ -6,6 +6,12 @@
  * - Judge only turns with negative implicit signals + random 10% sample.
  * - Output: score (0-1), category (failure classification), reason (one sentence).
  * - Requires calibration: human-annotated set of >=20 turns, judge accuracy >=85%.
+ *
+ * Both judges use reasoning-first output: the model writes a short plain-text
+ * analysis, then emits the verdict as a single JSON object on the last line.
+ * The analysis is discarded after parsing — asking the model to think before
+ * deciding measurably improves judgement quality on complex cases, at the
+ * cost of a few hundred extra output tokens per call.
  */
 
 /**
@@ -50,7 +56,12 @@ export function buildJudgePrompt(): string {
 	return [
 		"You are an expert evaluator of AI chat assistant responses. Your job is to judge whether an AI assistant responded appropriately to a user request, given the system prompt instructions it was given.",
 		"",
-		"Output a JSON object with:",
+		"Work in two steps:",
+		"1. Analysis — think through the evaluation in a few plain-text sentences: what the instructions required, what the assistant actually did, and where (if anywhere) they diverge. This analysis is discarded after parsing; it exists to make your verdict more accurate.",
+		"2. Verdict — output a single JSON object as the LAST line of your response (no code fence):",
+		'{"score": <number 0-1>, "category": "<category>", "reason": "<one sentence>"}',
+		"",
+		"Fields:",
 		"- score: number between 0 and 1 (1 = perfect, 0 = completely wrong)",
 		"- category: one of:",
 		...JUDGE_CATEGORIES.map((c) => `  - ${c}`),
@@ -103,39 +114,62 @@ export function buildJudgeUserMessage(input: JudgeInput): string {
 	parts.push("# Assistant Response");
 	parts.push(input.assistantResponse.slice(0, 4000));
 	parts.push("");
-	parts.push("Evaluate the assistant response. Return JSON only.");
+	parts.push(
+		"Evaluate the assistant response: write your brief analysis, then the JSON verdict as the last line.",
+	);
 
 	return parts.join("\n");
 }
 
+// ── Verdict extraction (shared) ────────────────────────
+//
+// Reasoning-first output means the JSON verdict FOLLOWS free text that may
+// itself contain braces. Candidates are tried in order: fenced blocks (last
+// first), the last balanced {...} object, then legacy greedy fallbacks for
+// old-style JSON-only outputs.
+
+function extractLastBalancedObject(text: string): string | null {
+	const end = text.lastIndexOf("}");
+	if (end < 0) return null;
+	let depth = 0;
+	for (let i = end; i >= 0; i--) {
+		const ch = text[i];
+		if (ch === "}") depth++;
+		else if (ch === "{") {
+			depth--;
+			if (depth === 0) return text.slice(i, end + 1);
+		}
+	}
+	return null;
+}
+
+function extractJsonCandidates(output: string): string[] {
+	const candidates: string[] = [];
+	const fences = [...output.matchAll(/```(?:json)?\s*([\s\S]*?)```/g)];
+	for (let i = fences.length - 1; i >= 0; i--) {
+		candidates.push(fences[i][1].trim());
+	}
+	const balanced = extractLastBalancedObject(output);
+	if (balanced) candidates.push(balanced);
+	const greedy = output.match(/\{[\s\S]*\}/);
+	if (greedy) candidates.push(greedy[0]);
+	candidates.push(output.trim());
+	return candidates;
+}
+
 /**
- * Parse judge output (robust against markdown code fences).
+ * Parse judge output (robust against markdown code fences and the
+ * reasoning text preceding the verdict).
  */
 export function parseJudgeOutput(output: string): JudgeResult | null {
-	try {
-		// Try direct JSON parse
-		return validateJudgeResult(JSON.parse(output));
-	} catch {
-		// Try extracting from markdown code fence
-		const fenceMatch = output.match(/```(?:json)?\s*([\s\S]*?)```/);
-		if (fenceMatch) {
-			try {
-				return validateJudgeResult(JSON.parse(fenceMatch[1].trim()));
-			} catch {
-				// Fall through
-			}
+	for (const candidate of extractJsonCandidates(output)) {
+		try {
+			return validateJudgeResult(JSON.parse(candidate));
+		} catch {
+			// try next candidate
 		}
-		// Try extracting first JSON object
-		const jsonMatch = output.match(/\{[\s\S]*\}/);
-		if (jsonMatch) {
-			try {
-				return validateJudgeResult(JSON.parse(jsonMatch[0]));
-			} catch {
-				// Fall through
-			}
-		}
-		return null;
 	}
+	return null;
 }
 
 // ── Rubric judging (workbench W2/W4, design D5) ────────
@@ -150,9 +184,19 @@ export interface RubricVerdict {
 	reason: string;
 }
 
+/**
+ * Normalize a rubric into judgeable clauses. A string is one clause; an
+ * array is a checklist where EVERY clause must hold for pass=true.
+ */
+export function normalizeRubricClauses(rubric: string | string[]): string[] {
+	const raw = Array.isArray(rubric) ? rubric : [rubric];
+	return raw.map((r) => r.trim()).filter(Boolean);
+}
+
 export function buildRubricJudgeMessages(options: {
-	/** The expectation to judge against (👎 note or AI-extracted rubric). */
-	rubric: string;
+	/** The expectation(s) to judge against (👎 note or AI-extracted rubric).
+	 * An array is a clause checklist: violating any clause fails the verdict. */
+	rubric: string | string[];
 	userMessage: string;
 	/** Compact text view of the replay transcript (transcriptToText). */
 	transcriptText: string;
@@ -161,16 +205,19 @@ export function buildRubricJudgeMessages(options: {
 	/** Fraction of tool results that were simulated/stubbed, for honesty. */
 	mockCaveat?: string;
 }): { system: string; user: string } {
+	const clauses = normalizeRubricClauses(options.rubric);
 	const system = [
-		"You judge whether an AI assistant's behavior satisfies a specific expectation.",
-		"Answer ONLY with a JSON object: {\"pass\": boolean, \"reason\": \"one sentence\"}.",
-		"pass=true only when the behavior clearly satisfies the expectation; be strict.",
+		"You judge whether an AI assistant's behavior satisfies specific expectations.",
+		"Work in two steps:",
+		"1. Analysis — reason briefly (plain text) through each numbered expectation against the replayed behavior. This analysis is discarded after parsing.",
+		'2. Verdict — output a single JSON object as the LAST line (no code fence): {"pass": boolean, "reason": "one sentence"}.',
+		"pass=true only when the behavior clearly satisfies EVERY numbered expectation; if any single expectation is clearly violated, pass=false. Be strict.",
 		"Tool results marked simulated/stub are replay mocks — judge the assistant's INTENT and actions, not mock content quality.",
 	].join("\n");
 
 	const parts = [
-		"# Expectation (judge against this)",
-		options.rubric,
+		"# Expectations (the behavior must satisfy ALL of these)",
+		...clauses.map((c, i) => `${i + 1}. ${c}`),
 		"",
 		"# User request",
 		options.userMessage,
@@ -187,19 +234,15 @@ export function buildRubricJudgeMessages(options: {
 		parts.push(`# Replay note`, options.mockCaveat, "");
 	}
 	parts.push("# Replayed behavior (judge this)", options.transcriptText, "");
-	parts.push("Return the JSON verdict only.");
+	parts.push(
+		"Write your brief analysis, then the JSON verdict as the last line.",
+	);
 
 	return { system, user: parts.join("\n") };
 }
 
 export function parseRubricVerdict(output: string): RubricVerdict | null {
-	const candidates = [output];
-	const fence = output.match(/```(?:json)?\s*([\s\S]*?)```/);
-	if (fence) candidates.push(fence[1].trim());
-	const obj = output.match(/\{[\s\S]*\}/);
-	if (obj) candidates.push(obj[0]);
-
-	for (const candidate of candidates) {
+	for (const candidate of extractJsonCandidates(output)) {
 		try {
 			const parsed = JSON.parse(candidate);
 			if (typeof parsed?.pass === "boolean") {

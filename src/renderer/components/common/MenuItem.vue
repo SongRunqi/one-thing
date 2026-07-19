@@ -55,6 +55,7 @@ import {
   type MenuRoute,
   type MenuRegisteredItem,
 } from './menu'
+import { isEditableTarget } from '@/utils/editable-target'
 
 defineOptions({
   name: 'MenuItem',
@@ -150,6 +151,8 @@ function handleClick(event: MouseEvent) {
 function handleKeydown(event: KeyboardEvent) {
   if (disabled.value) return
   if (event.key !== 'Enter' && event.key !== ' ') return
+  // raw 插槽里可能嵌了输入控件（如会话重命名框），Enter/Space 属于它们，不能当菜单激活键吞掉
+  if (isEditableTarget(event.target)) return
 
   event.preventDefault()
   const item = buildClickedItem()

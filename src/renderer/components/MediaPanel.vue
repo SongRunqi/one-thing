@@ -7,7 +7,6 @@
     <div
       v-if="mode !== 'main'"
       class="media-nav"
-      :class="{ 'media-nav-tasks': activeNav === 'tasks' }"
     >
       <div class="traffic-lights-space" />
       <div class="nav-items">
@@ -17,6 +16,7 @@
           unstyled
           class="nav-item"
           :class="{ active: activeNav === item.id }"
+          :aria-pressed="activeNav === item.id"
           @click="activeNav = item.id"
         >
           <component
@@ -28,7 +28,7 @@
           <span class="nav-label">{{ item.label }}</span>
           <span
             v-if="item.id === 'media' && mediaStore.assets.length > 0"
-            class="nav-badge"
+            class="nav-count"
           >
             {{ mediaStore.assets.length }}
           </span>
@@ -37,26 +37,11 @@
       <div class="nav-footer">
         <Button
           unstyled
-          class="nav-close-btn"
+          class="text-action nav-close"
           title="Close panel"
           @click="$emit('close')"
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-          >
-            <line
-              x1="19"
-              y1="12"
-              x2="5"
-              y2="12"
-            />
-            <polyline points="12 19 5 12 12 5" />
-          </svg>
+          close
         </Button>
       </div>
     </div>
@@ -76,23 +61,12 @@
         />
         <Button
           unstyled
-          class="main-panel-close"
+          class="text-action main-panel-close"
           native-type="button"
           title="Close"
           @click="$emit('close')"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-          >
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-          </svg>
+          close
         </Button>
       </div>
 
@@ -152,12 +126,12 @@
           </div>
 
           <div class="content-body">
-            <div
+            <p
               v-if="mediaStore.isLoading || mediaStore.isRebuilding"
-              class="loading-state"
+              class="ledger-note"
             >
-              <LoadingSpinner :label="mediaLoadingLabel" />
-            </div>
+              {{ mediaLoadingLabel }}
+            </p>
 
             <template v-else-if="activeKind === 'image' && filteredAssets.length > 0">
               <div class="media-grid">
@@ -165,7 +139,12 @@
                   v-for="asset in filteredAssets"
                   :key="asset.id"
                   class="media-item"
+                  :class="{ 'is-selected': selectedAsset?.id === asset.id }"
+                  role="button"
+                  tabindex="0"
                   @click="openAsset(asset)"
+                  @keydown.enter.prevent="openAsset(asset)"
+                  @keydown.space.prevent="openAsset(asset)"
                 >
                   <img
                     :src="mediaStore.getImageUrl(asset)"
@@ -188,17 +167,7 @@
                     title="Remove from library"
                     @click.stop="removeAsset(asset.id)"
                   >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
-                      <polyline points="3 6 5 6 21 6" />
-                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    </svg>
+                    remove
                   </Button>
                 </div>
               </div>
@@ -216,25 +185,29 @@
                   @keydown.enter.prevent="openAsset(asset)"
                   @keydown.space.prevent="openAsset(asset)"
                 >
-                  <component
-                    :is="kindIcon(asset.kind)"
-                    :size="18"
-                    :stroke-width="1.8"
-                    class="asset-row-icon"
+                  <span
+                    class="row-index"
+                    aria-hidden="true"
                   />
-                  <span class="asset-row-main">
-                    <span class="asset-row-title">{{ assetTitle(asset) }}</span>
-                    <span class="asset-row-meta">{{ assetSubtitle(asset) }}</span>
-                  </span>
+                  <span
+                    class="asset-row-title"
+                    :title="assetTitle(asset)"
+                  >{{ assetTitle(asset) }}</span>
+                  <span class="asset-row-meta">{{ assetSubtitle(asset) }}</span>
                   <span class="asset-source">{{ sourceLabel(asset.source) }}</span>
-                  <Button
-                    unstyled
-                    class="row-remove"
-                    title="Remove from library"
-                    @click.stop="removeAsset(asset.id)"
+                  <span
+                    class="asset-row-actions"
+                    @click.stop
                   >
-                    Remove
-                  </Button>
+                    <Button
+                      unstyled
+                      class="text-action is-danger"
+                      title="Remove from library"
+                      @click="removeAsset(asset.id)"
+                    >
+                      remove
+                    </Button>
+                  </span>
                 </div>
               </div>
             </template>
@@ -243,13 +216,6 @@
               v-else
               class="empty-state"
             >
-              <div class="empty-icon">
-                <component
-                  :is="kindIcon(activeKind)"
-                  :size="48"
-                  :stroke-width="1.5"
-                />
-              </div>
               <p class="empty-text">
                 {{ emptyTitle }}
               </p>
@@ -266,14 +232,15 @@
               class="inspector-drawer"
             >
               <div class="drawer-header">
-                <span class="drawer-title">Media Details</span>
+                <span class="drawer-title">Media details</span>
                 <Button
                   unstyled
-                  class="drawer-close-btn"
+                  class="text-action"
                   native-type="button"
+                  title="Close details"
                   @click="selectedAsset = null"
                 >
-                  <X :size="16" />
+                  close
                 </Button>
               </div>
 
@@ -298,92 +265,89 @@
                   </div>
                 </div>
 
-                <div class="drawer-section">
-                  <h4 class="section-heading">
-                    File Information
-                  </h4>
-                  <div class="specs-list">
-                    <div class="spec-row">
-                      <span class="spec-label">Name</span>
-                      <span
-                        class="spec-val truncate"
-                        :title="selectedAsset.fileName"
-                      >{{ selectedAsset.fileName }}</span>
-                    </div>
-                    <div class="spec-row">
-                      <span class="spec-label">Format</span>
-                      <span class="spec-val">{{ selectedAsset.mimeType }}</span>
-                    </div>
-                    <div
-                      v-if="selectedAsset.width && selectedAsset.height"
-                      class="spec-row"
-                    >
-                      <span class="spec-label">Resolution</span>
-                      <span class="spec-val">{{ selectedAsset.width }} × {{ selectedAsset.height }}</span>
-                    </div>
-                    <div class="spec-row">
-                      <span class="spec-label">Size</span>
-                      <span class="spec-val">{{ formatBytes(selectedAsset.size) }}</span>
-                    </div>
-                    <div class="spec-row">
-                      <span class="spec-label">Created</span>
-                      <span class="spec-val">{{ new Date(selectedAsset.createdAt).toLocaleString() }}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Prompt Details (if AI Generated) -->
-                <div
-                  v-if="selectedAsset.metadata?.prompt"
-                  class="drawer-section"
-                >
-                  <div class="section-title-with-action">
+                <div class="drawer-ledger">
+                  <div class="drawer-section">
                     <h4 class="section-heading">
-                      AI Generation Prompt
+                      File information
                     </h4>
-                    <Button
-                      unstyled
-                      class="copy-text-btn"
-                      native-type="button"
-                      title="Copy prompt"
-                      @click="copyPromptText(selectedAsset.metadata.prompt)"
-                    >
-                      <component
-                        :is="copiedPrompt ? Check : Copy"
-                        :size="13"
-                      />
-                      <span>{{ copiedPrompt ? 'Copied' : 'Copy' }}</span>
-                    </Button>
+                    <div class="specs-list">
+                      <div class="spec-row">
+                        <span class="spec-label">Name</span>
+                        <span
+                          class="spec-val"
+                          :title="selectedAsset.fileName"
+                        >{{ selectedAsset.fileName }}</span>
+                      </div>
+                      <div class="spec-row">
+                        <span class="spec-label">Format</span>
+                        <span
+                          class="spec-val"
+                          :title="selectedAsset.mimeType"
+                        >{{ selectedAsset.mimeType }}</span>
+                      </div>
+                      <div
+                        v-if="selectedAsset.width && selectedAsset.height"
+                        class="spec-row"
+                      >
+                        <span class="spec-label">Resolution</span>
+                        <span class="spec-val">{{ selectedAsset.width }} × {{ selectedAsset.height }}</span>
+                      </div>
+                      <div class="spec-row">
+                        <span class="spec-label">Size</span>
+                        <span class="spec-val">{{ formatBytes(selectedAsset.size) }}</span>
+                      </div>
+                      <div class="spec-row">
+                        <span class="spec-label">Created</span>
+                        <span class="spec-val">{{ new Date(selectedAsset.createdAt).toLocaleString() }}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div class="prompt-text-card">
-                    {{ selectedAsset.metadata.prompt }}
-                  </div>
-                </div>
 
-                <div
-                  v-if="selectedAsset.metadata?.revisedPrompt"
-                  class="drawer-section"
-                >
-                  <div class="section-title-with-action">
-                    <h4 class="section-heading">
-                      Revised Prompt
-                    </h4>
-                    <Button
-                      unstyled
-                      class="copy-text-btn"
-                      native-type="button"
-                      title="Copy revised prompt"
-                      @click="copyRevisedPromptText(selectedAsset.metadata.revisedPrompt)"
-                    >
-                      <component
-                        :is="copiedRevisedPrompt ? Check : Copy"
-                        :size="13"
-                      />
-                      <span>{{ copiedRevisedPrompt ? 'Copied' : 'Copy' }}</span>
-                    </Button>
+                  <!-- Prompt Details (if AI Generated) -->
+                  <div
+                    v-if="selectedAsset.metadata?.prompt"
+                    class="drawer-section"
+                  >
+                    <div class="section-title-with-action">
+                      <h4 class="section-heading">
+                        Prompt
+                      </h4>
+                      <Button
+                        unstyled
+                        class="text-action"
+                        native-type="button"
+                        title="Copy prompt"
+                        @click="copyPromptText(selectedAsset.metadata.prompt)"
+                      >
+                        {{ copiedPrompt ? 'copied' : 'copy' }}
+                      </Button>
+                    </div>
+                    <div class="prompt-excerpt">
+                      {{ selectedAsset.metadata.prompt }}
+                    </div>
                   </div>
-                  <div class="prompt-text-card">
-                    {{ selectedAsset.metadata.revisedPrompt }}
+
+                  <div
+                    v-if="selectedAsset.metadata?.revisedPrompt"
+                    class="drawer-section"
+                  >
+                    <div class="section-title-with-action">
+                      <h4 class="section-heading">
+                        Revised prompt
+                      </h4>
+                      <Button
+                        unstyled
+                        class="text-action"
+                        native-type="button"
+                        title="Copy revised prompt"
+                        @click="copyRevisedPromptText(selectedAsset.metadata.revisedPrompt)"
+                      >
+                        {{ copiedRevisedPrompt ? 'copied' : 'copy' }}
+                      </Button>
+                    </div>
+                    <div class="prompt-excerpt">
+                      {{ selectedAsset.metadata.revisedPrompt }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -393,34 +357,31 @@
                 <Button
                   v-if="selectedAsset.filePath"
                   unstyled
-                  class="drawer-action-btn secondary"
+                  class="text-action"
                   native-type="button"
+                  title="Open in the default application"
                   @click="openFileExternally(selectedAsset)"
                 >
-                  <ExternalLink :size="14" />
-                  <span>Open Externally</span>
+                  open externally
                 </Button>
                 <Button
                   v-if="selectedAsset.filePath"
                   unstyled
-                  class="drawer-action-btn secondary"
+                  class="text-action"
                   native-type="button"
+                  title="Copy file path"
                   @click="copyFilePath(selectedAsset.filePath)"
                 >
-                  <component
-                    :is="copiedPath ? Check : Copy"
-                    :size="14"
-                  />
-                  <span>Copy Path</span>
+                  {{ copiedPath ? 'copied' : 'copy path' }}
                 </Button>
                 <Button
                   unstyled
-                  class="drawer-action-btn danger"
+                  class="text-action is-danger"
                   native-type="button"
+                  title="Remove from library"
                   @click="deleteAssetFromDrawer(selectedAsset)"
                 >
-                  <Trash2 :size="14" />
-                  <span>Delete</span>
+                  delete
                 </Button>
               </div>
             </div>
@@ -455,6 +416,24 @@
         </section>
 
         <section
+          v-if="hasMountedNav('music')"
+          v-show="activeNav === 'music'"
+          class="workspace-panel-view workspace-panel-content-view"
+          data-workspace-panel-view="music"
+        >
+          <MusicPanelContent />
+        </section>
+
+        <section
+          v-if="hasMountedNav('practice')"
+          v-show="activeNav === 'practice'"
+          class="workspace-panel-view workspace-panel-content-view"
+          data-workspace-panel-view="practice"
+        >
+          <PracticePanelContent :active="activeNav === 'practice'" />
+        </section>
+
+        <section
           v-if="hasMountedNav('archive')"
           v-show="activeNav === 'archive'"
           class="workspace-panel-view workspace-panel-content-view"
@@ -471,15 +450,17 @@
 import Button from '@/components/common/Button.vue'
 import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vue'
 import AgentsPanelContent from './AgentsPanelContent.vue'
+import MusicPanelContent from './MusicPanelContent.vue'
 import ArchivedChatsContent from './ArchivedChatsContent.vue'
 import FilterSearchInput from './common/FilterSearchInput.vue'
-import LoadingSpinner from './common/LoadingSpinner.vue'
 import Select from './common/Select.vue'
 import MemoryPanelContent from './memory/MemoryPanelContent.vue'
 import SchedulerPanelContent from './SchedulerPanelContent.vue'
+import PracticePanelContent from './PracticePanelContent.vue'
 import { useMediaStore } from '@/stores/media'
 import type { MediaAsset, MediaKind, MediaSource } from '@/types'
 import {
+  Activity,
   Archive,
   Bot,
   Brain,
@@ -487,16 +468,12 @@ import {
   FileText,
   Images,
   Music,
+  Radio,
   Video,
-  X,
-  Copy,
-  ExternalLink,
-  Trash2,
-  Check,
 } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 
-type WorkspacePanelNav = 'media' | 'memory' | 'agents' | 'tasks' | 'archive'
+type WorkspacePanelNav = 'media' | 'memory' | 'agents' | 'tasks' | 'music' | 'practice' | 'archive'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -531,11 +508,13 @@ const navItems: Array<{ id: WorkspacePanelNav; label: string; icon: Component }>
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'agents', label: 'Agents', icon: Bot },
   { id: 'tasks', label: 'Tasks', icon: CalendarClock },
+  { id: 'music', label: 'Music', icon: Radio },
+  { id: 'practice', label: 'Practice', icon: Activity },
   { id: 'archive', label: 'Archived Chats', icon: Archive },
 ]
 
 function normalizeNav(tab?: string | null): WorkspacePanelNav | null {
-  if (tab === 'media' || tab === 'memory' || tab === 'agents' || tab === 'tasks' || tab === 'archive') {
+  if (tab === 'media' || tab === 'memory' || tab === 'agents' || tab === 'tasks' || tab === 'music' || tab === 'practice' || tab === 'archive') {
     return tab
   }
   return null
@@ -556,7 +535,7 @@ const searchPlaceholder = computed(() =>
 )
 
 const mediaLoadingLabel = computed(() =>
-  mediaStore.isRebuilding ? 'Indexing media...' : 'Loading media...'
+  mediaStore.isRebuilding ? 'indexing media…' : 'loading media…'
 )
 
 const activeKindModel = computed({
@@ -791,6 +770,10 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/*
+ * Workspace panel shell + media view — 画线风 (ledger / ink-line).
+ * No background fills, no radii: state lives in the line.
+ */
 .media-panel {
   width: 560px;
   height: 100%;
@@ -800,6 +783,12 @@ onUnmounted(() => {
   display: flex;
   background: var(--ui-surface-panel-bg, var(--ui-surface-app-bg, var(--bg)));
   overflow: hidden;
+  animation: ledger-fade 0.15s ease;
+}
+
+@keyframes ledger-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .media-panel.mode-main {
@@ -811,33 +800,14 @@ onUnmounted(() => {
   background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
 }
 
+/* ---- nav rail ---- */
 .media-nav {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border-right: 1px solid var(--ui-border-default-border, var(--border));
-  box-shadow:
-    2px 0 8px rgba(0, 0, 0, 0.1),
-    4px 0 16px rgba(0, 0, 0, 0.05);
+  border-right: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
   z-index: 1;
-}
-
-.media-nav.media-nav-tasks {
-  border-right-color: transparent;
-  background: var(--ui-surface-panel-bg, var(--bg-panel, var(--bg)));
-  box-shadow: none;
-}
-
-html[data-theme='light'] .media-nav {
-  box-shadow:
-    2px 0 8px rgba(0, 0, 0, 0.04),
-    4px 0 16px rgba(0, 0, 0, 0.02);
-}
-
-html[data-theme='light'] .media-nav.media-nav-tasks {
-  box-shadow: none;
 }
 
 .traffic-lights-space {
@@ -850,36 +820,21 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 8px;
-  gap: 4px;
+  padding: 8px 0;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .nav-footer {
-  padding: 8px;
-}
-
-.nav-close-btn,
-.nav-item {
-  border: none;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.nav-close-btn {
   display: flex;
-  align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 40px;
-  border-radius: 8px;
+  padding: 10px 8px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
 }
 
-.nav-close-btn:hover,
-.nav-item:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
+.nav-close {
+  padding: 4px 6px;
 }
 
 .nav-item {
@@ -888,38 +843,65 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 12px 8px;
-  border-radius: 8px;
-  min-width: 72px;
+  padding: 11px 10px;
+  min-width: 68px;
+  border: none;
+  background: transparent;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+/* Active nav item hangs a tick on the rail — no fill. */
+.nav-item::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 0;
+  background: var(--ui-accent-primary-fg, var(--accent));
+  transition: height 0.12s ease;
+}
+
+.nav-item:hover {
+  color: var(--ui-text-primary-fg, var(--text-primary));
+}
+
+.nav-item:focus-visible {
+  outline: 1px solid var(--ui-accent-primary-fg, var(--accent));
+  outline-offset: -1px;
 }
 
 .nav-item.active {
-  background: var(--ui-state-active-bg, var(--active));
-  color: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-text-primary-fg, var(--text-primary));
+}
+
+.nav-item.active::before {
+  height: 22px;
 }
 
 .nav-label {
   font-size: 11px;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium, 500);
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.nav-badge {
+.nav-count {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
+  top: 5px;
+  right: 8px;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 10px;
-  font-weight: 600;
-  color: white;
-  background: var(--ui-accent-primary-fg, var(--accent));
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  color: var(--ui-text-faint-fg, var(--muted));
 }
 
+/* ---- content column ---- */
 .media-content {
   flex: 1 1 auto;
   display: flex;
@@ -955,6 +937,10 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   flex-direction: column;
 }
 
+.workspace-panel-media-view {
+  position: relative;
+}
+
 .mode-main .media-content {
   padding: 0;
 }
@@ -964,9 +950,8 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 0 12px 0 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 7%, transparent);
-  background: var(--ui-surface-chat-bg, var(--ui-surface-app-bg, var(--bg)));
+  padding: 0 14px 0 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
   -webkit-app-region: drag;
 }
 
@@ -988,31 +973,18 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 
 .main-panel-close {
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
-  cursor: pointer;
+  padding: 6px 2px;
   -webkit-app-region: no-drag;
 }
 
-.main-panel-close:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
+/* ---- media toolbar ---- */
 .content-header {
   position: relative;
   z-index: calc(var(--z-dropdown, 1000) + 5);
   padding: 16px 4px 12px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
   overflow: visible;
 }
@@ -1042,8 +1014,49 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 
 .mode-side .media-kind-filter,
 .mode-side .media-source-filter {
-  flex: 1 1 calc(50% - 4px);
+  flex: 1 1 calc(50% - 5px);
   min-width: 0;
+}
+
+/* Ledger-ify shared toolbar controls: transparent, bottom rule only. */
+.media-filter-bar :deep(.filter-search) {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.media-filter-bar :deep(.filter-search:focus-within),
+.media-filter-bar :deep(.filter-search:hover) {
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: none;
+}
+
+.media-filter-bar :deep(.app-select-control) {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 70%, transparent);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.media-filter-bar :deep(.app-select-control:hover),
+.media-filter-bar :deep(.app-select-control:focus-within) {
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: none;
+}
+
+/* Paper dropdown: square, hard shadow. */
+.media-filter-bar :deep(.app-select-dropdown) {
+  background: var(--ui-surface-app-bg, var(--bg));
+  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  border-radius: 0;
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 24%, transparent);
+}
+
+.media-filter-bar :deep(.app-select-option) {
+  border-radius: 0;
 }
 
 .media-select-label {
@@ -1055,7 +1068,7 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 
 .media-select-icon {
   flex: 0 0 auto;
-  color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
 .media-select-text {
@@ -1077,39 +1090,30 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   padding: 0 4px;
 }
 
-.loading-state,
-.empty-state {
-  flex: 1 1 auto;
-  box-sizing: border-box;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 0;
-  padding: 20px;
-  text-align: center;
-  color: var(--ui-text-muted-fg, var(--muted));
+/* ---- notes / empty state ---- */
+.ledger-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
 }
 
-.empty-icon {
-  opacity: 0.5;
-  margin-bottom: 16px;
+.empty-state {
+  padding: 8px 0 16px;
 }
 
 .empty-text {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ui-text-primary-fg, var(--text));
-  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  margin: 0 0 2px;
 }
 
 .empty-hint {
-  font-size: 13px;
-  color: var(--ui-text-muted-fg, var(--muted));
+  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--muted));
   margin: 0;
 }
 
+/* ---- image grid ---- */
 .media-grid {
   column-width: 138px;
   column-gap: 12px;
@@ -1121,54 +1125,249 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   column-width: 168px;
 }
 
-/* Inline Media Inspector Drawer Styling */
+.media-item {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 12px;
+  line-height: normal;
+  overflow: hidden;
+  cursor: pointer;
+  break-inside: avoid;
+  transform: translateZ(0);
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+  transition: outline-color 0.12s ease;
+}
+
+.media-item:hover {
+  outline-color: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
+}
+
+.media-item:focus-visible,
+.media-item.is-selected {
+  outline-color: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.media-thumbnail {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+}
+
+/* Caption over the image itself: pictorial context, scrim stays. */
+.media-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 9px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.82));
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.media-item:hover .media-overlay,
+.media-item:focus-visible .media-overlay,
+.media-item.is-selected .media-overlay {
+  opacity: 1;
+}
+
+.delete-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 3px 7px;
+  border: none;
+  background: rgba(0, 0, 0, 0.62);
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+.media-item:hover .delete-btn,
+.media-item:focus-visible .delete-btn,
+.delete-btn:focus-visible {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  color: rgba(255, 255, 255, 1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.media-title {
+  font-size: 11px;
+  color: white;
+  margin: 0 0 4px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.media-meta {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* ---- non-image asset list: ledger register ---- */
+.asset-list {
+  position: relative;
+  padding-left: 16px;
+  padding-bottom: 16px;
+  counter-reset: asset-row;
+}
+
+.asset-list::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
+}
+
+.asset-row {
+  position: relative;
+  counter-increment: asset-row;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-height: 30px;
+  padding: 6px 0;
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
+  cursor: pointer;
+}
+
+.asset-row:first-child {
+  border-top: none;
+}
+
+.asset-row::before {
+  content: '';
+  position: absolute;
+  left: -13px;
+  top: 50%;
+  width: 7px;
+  height: 1px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  transition: width 0.12s ease, background-color 0.12s ease;
+}
+
+.asset-row:hover::before {
+  width: 12px;
+  background: var(--ui-text-muted-fg, var(--text-muted));
+}
+
+.asset-row:focus-visible {
+  outline: none;
+}
+
+.asset-row:focus-visible::before {
+  width: 14px;
+  height: 2px;
+  background: var(--ui-accent-primary-fg, var(--accent));
+}
+
+.row-index::before {
+  content: counter(asset-row, decimal-leading-zero);
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  flex-shrink: 0;
+  min-width: 16px;
+  display: inline-block;
+}
+
+.asset-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ui-text-primary-fg, var(--text-primary));
+}
+
+.asset-row-meta {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.asset-source {
+  font-size: 11px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.asset-row-actions {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.asset-row:hover .asset-row-actions,
+.asset-row:focus-visible .asset-row-actions,
+.asset-row-actions:focus-within {
+  opacity: 1;
+}
+
+/* ---- inspector drawer: paper sheet ---- */
 .inspector-drawer {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
   width: 330px;
-  background: var(--ui-surface-elevated-bg, var(--bg-elevated));
-  border-left: 1px solid var(--ui-border-default-border, var(--border));
-  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.08);
+  max-width: 100%;
+  background: var(--ui-surface-app-bg, var(--bg));
+  border-left: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
   display: flex;
   flex-direction: column;
   z-index: 100;
   overflow: hidden;
-  transition: width 0.2s ease;
+}
+
+.mode-side .inspector-drawer {
+  width: 100%;
+  border-left: none;
 }
 
 .drawer-header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--ui-border-subtle-border);
-  background: var(--ui-surface-panel-bg);
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  flex-shrink: 0;
 }
 
 .drawer-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ui-text-primary-fg);
-}
-
-.drawer-close-btn {
-  background: transparent;
-  border: none;
-  color: var(--ui-text-muted-fg);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.drawer-close-btn:hover {
-  background: var(--ui-state-hover-bg);
-  color: var(--ui-text-primary-fg);
+  font-family: var(--font-display, var(--font-serif, serif));
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold, 600);
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .drawer-scroll-body {
@@ -1183,14 +1382,13 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
 .drawer-preview-box {
   width: 100%;
   aspect-ratio: 16 / 10;
-  background: var(--ui-surface-panel-bg);
-  border-radius: 8px;
-  border: 1px solid var(--ui-border-subtle-border);
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  flex-shrink: 0;
 }
 
 .drawer-preview-img {
@@ -1198,156 +1396,128 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   height: 100%;
   object-fit: contain;
   cursor: zoom-in;
-  transition: filter 0.2s ease;
-}
-
-.drawer-preview-img:hover {
-  filter: brightness(0.95);
 }
 
 .drawer-preview-fallback {
-  color: var(--ui-text-muted-fg);
+  color: var(--ui-text-faint-fg, var(--muted));
+}
+
+/* Detail sections hang on one rule, like the ledger body. */
+.drawer-ledger {
+  position: relative;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.drawer-ledger::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 72%, transparent);
 }
 
 .drawer-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .section-heading {
+  position: relative;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--font-weight-semibold, 600);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--ui-text-muted-fg);
+  letter-spacing: 0.05em;
+  color: var(--ui-text-primary-fg, var(--text-primary));
   margin: 0;
+}
+
+.section-heading::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  width: 10px;
+  height: 2px;
+  background: var(--ui-border-strong-border, var(--border-strong, var(--border)));
 }
 
 .section-title-with-action {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-}
-
-.copy-text-btn {
-  background: transparent;
-  border: none;
-  color: var(--ui-accent-primary-fg);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-}
-
-.copy-text-btn:hover {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent);
+  gap: 10px;
 }
 
 .specs-list {
-  background: var(--ui-surface-panel-bg);
-  border: 1px solid var(--ui-border-subtle-border);
-  border-radius: 8px;
-  padding: 4px 12px;
+  min-width: 0;
 }
 
 .spec-row {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
+  gap: 12px;
+  padding: 6px 0;
   font-size: 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-subtle-border) 40%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--ui-tool-border-border, var(--border-subtle, var(--border))) 32%, transparent);
 }
 
-.spec-row:last-child {
-  border-bottom: none;
+.spec-row:first-child {
+  border-top: none;
 }
 
 .spec-label {
-  color: var(--ui-text-secondary-fg);
-  font-weight: 500;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .spec-val {
-  color: var(--ui-text-primary-fg);
-  font-weight: 600;
+  color: var(--ui-text-primary-fg, var(--text-primary));
   min-width: 0;
   text-align: right;
-}
-
-.spec-val.truncate {
-  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.prompt-text-card {
-  background: var(--ui-surface-panel-bg);
-  border: 1px solid var(--ui-border-subtle-border);
-  border-radius: 8px;
-  padding: 10px 12px;
+/* Prompt excerpt: quoted text held by a left rule, no filled block. */
+.prompt-excerpt {
+  margin: 0;
+  padding: 2px 0 2px 10px;
+  border-left: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
   font-family: var(--font-mono, monospace);
   font-size: 11px;
-  line-height: 1.5;
-  color: var(--ui-text-primary-fg);
-  max-height: 120px;
-  overflow-y: auto;
+  line-height: 1.6;
+  color: var(--ui-text-muted-fg, var(--text-muted));
   white-space: pre-wrap;
   word-break: break-word;
+  max-height: 140px;
+  overflow-y: auto;
 }
 
 .drawer-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--ui-border-subtle-border);
-  background: var(--ui-surface-panel-bg);
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
+  flex-shrink: 0;
 }
 
-.drawer-action-btn {
-  height: 34px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+.drawer-footer .is-danger {
+  margin-left: auto;
 }
 
-.drawer-action-btn.secondary {
-  background: var(--ui-state-hover-bg);
-  color: var(--ui-text-primary-fg);
-  border-color: var(--ui-border-default-border);
-}
-
-.drawer-action-btn.secondary:hover {
-  background: var(--ui-state-active-bg);
-}
-
-.drawer-action-btn.danger {
-  background: transparent;
-  color: var(--ui-status-danger-fg, #ef4444);
-  border-color: var(--ui-status-danger-border, #ef4444);
-}
-
-.drawer-action-btn.danger:hover {
-  background: var(--ui-status-danger-bg, transparent);
-  border-color: var(--ui-status-danger-fg, #ef4444);
-}
-
-/* Animations for Drawer */
+/* Drawer slide */
 .drawer-enter-active,
 .drawer-leave-active {
   transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1358,190 +1528,44 @@ html[data-theme='light'] .media-nav.media-nav-tasks {
   transform: translateX(100%);
 }
 
-/* Adaptive styles for Drawer in Sidebar mode */
-.mode-side .inspector-drawer {
-  width: 100%;
-}
-
-.media-item {
-  position: relative;
-  display: inline-block;
-  width: 100%;
-  margin: 0 0 12px;
-  line-height: normal;
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: pointer;
-  break-inside: avoid;
-  transform: translateZ(0);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  background: var(--ui-state-hover-bg, var(--hover));
-}
-
-.media-item:hover {
-  transform: scale(1.02);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-}
-
-.media-thumbnail {
-  width: 100%;
-  height: auto;
-  display: block;
-  object-fit: contain;
-}
-
-.media-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 9px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.82));
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.media-item:hover .media-overlay {
-  opacity: 1;
-}
-
-.delete-btn {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.62);
-  border: none;
-  border-radius: 6px;
-  color: white;
-  cursor: pointer;
-  opacity: 0;
-  transition: all 0.2s ease;
-}
-
-.media-item:hover .delete-btn {
-  opacity: 1;
-}
-
-.delete-btn:hover {
-  background: rgba(220, 38, 38, 0.9);
-}
-
-.media-title {
-  font-size: 11px;
-  color: white;
-  margin: 0 0 4px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.media-meta {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.72);
-}
-
-.asset-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-bottom: 16px;
-}
-
-.asset-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 56px;
-  padding: 10px 12px;
-  text-align: left;
-  color: var(--ui-text-primary-fg, var(--text));
-  background: var(--ui-surface-panel-bg, var(--bg-panel));
-  border: 1px solid var(--ui-border-subtle-border, var(--border-subtle));
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.asset-row:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
-}
-
-.asset-row-icon {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  flex-shrink: 0;
-}
-
-.asset-row-main {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.asset-row-title {
-  font-size: 13px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.asset-row-meta,
-.asset-source {
-  font-size: 11px;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.row-remove {
-  flex-shrink: 0;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 6px;
+/* ---- shared text-action ---- */
+.text-action {
+  appearance: none;
   background: transparent;
-  color: var(--ui-text-muted-fg, var(--muted));
+  border: none;
+  padding: 0;
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
-  padding: 5px 7px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
+  transition: color 0.12s ease;
 }
 
-.row-remove:hover {
-  color: var(--ui-status-danger-fg, var(--danger, #dc2626));
-  border-color: currentColor;
+.text-action:hover:not(:disabled) {
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
-/* Clean up duplicate headers inside embedded workspace content */
-.media-panel :deep(.tasks-header) {
-  min-height: auto !important;
-  padding: 10px 14px 10px !important;
-  border-bottom: none !important;
-}
-.media-panel :deep(.tasks-header .header-copy) {
-  display: none !important;
+.text-action.is-danger:hover:not(:disabled) {
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  text-decoration-color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
-.media-panel :deep(.agents-header) {
-  min-height: auto !important;
-  padding: 10px 14px 10px !important;
-  border-bottom: none !important;
-}
-.media-panel :deep(.agents-header .agents-title) {
-  display: none !important;
+.text-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-.media-panel :deep(.memory-header) {
-  padding: 10px 14px 8px !important;
-}
-.media-panel :deep(.memory-header .memory-title) {
-  display: none !important;
-}
+@media (prefers-reduced-motion: reduce) {
+  .media-panel {
+    animation: none;
+  }
 
+  .drawer-enter-active,
+  .drawer-leave-active {
+    transition: none;
+  }
+}
 </style>

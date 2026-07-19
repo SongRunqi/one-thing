@@ -210,6 +210,22 @@ export const acpBuiltinProvider: OnethingBuiltinProviderDefinition = {
 	},
 };
 
+export const claudeCodeAgentBuiltinProvider: OnethingBuiltinProviderDefinition =
+	{
+		id: "claude-code-agent",
+		info: {
+			id: "claude-code-agent",
+			name: "Claude Code Agent",
+			description:
+				"Drive your locally installed Claude Code CLI as an in-app agent (uses your existing subscription login)",
+			defaultBaseUrl: "",
+			defaultModel: "claude-code-agent",
+			icon: "claude-code",
+			supportsCustomBaseUrl: false,
+			requiresApiKey: false,
+		},
+	};
+
 export const onethingPortableBuiltinProviders: OnethingBuiltinProviderDefinition[] =
 	[
 		openaiBuiltinProvider,
@@ -227,4 +243,8 @@ export const onethingPortableBuiltinProviders: OnethingBuiltinProviderDefinition
 	];
 
 export const onethingBaseBuiltinProviders: OnethingBuiltinProviderDefinition[] =
-	[...onethingPortableBuiltinProviders, acpBuiltinProvider];
+	[
+		...onethingPortableBuiltinProviders,
+		acpBuiltinProvider,
+		claudeCodeAgentBuiltinProvider,
+	];

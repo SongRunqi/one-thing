@@ -75,6 +75,43 @@ function setup(provider: 'codex' | 'deepseek' = 'codex', serviceTierByModel?: Re
       mocks.settingsStore.settings = newSettings
     }),
     updateModel: vi.fn(),
+    saveAIProviderDefault: vi.fn(async (provider: string, model: string) => {
+      mocks.settingsStore.settings.ai.provider = provider
+      mocks.settingsStore.settings.ai.providers[provider] = {
+        ...mocks.settingsStore.settings.ai.providers[provider],
+        model,
+      }
+    }),
+    updateProviderThinking: vi.fn(async (
+      provider: string,
+      model: string,
+      patch: { enabled?: boolean; effort?: string; serviceTier?: string | null },
+    ) => {
+      const current = mocks.settingsStore.settings.ai.providers[provider] ?? {}
+      const nextConfig = { ...current }
+      if (patch.enabled !== undefined) {
+        nextConfig.thinkingByModel = { ...(current.thinkingByModel ?? {}), [model]: patch.enabled }
+      }
+      if (patch.effort !== undefined) {
+        nextConfig.thinkingEffortByModel = { ...(current.thinkingEffortByModel ?? {}), [model]: patch.effort }
+      }
+      if (patch.serviceTier !== undefined) {
+        const serviceTierMap = { ...(current.serviceTierByModel ?? {}) }
+        if (patch.serviceTier) serviceTierMap[model] = patch.serviceTier
+        else delete serviceTierMap[model]
+        nextConfig.serviceTierByModel = serviceTierMap
+      }
+      mocks.settingsStore.settings = {
+        ...mocks.settingsStore.settings,
+        ai: {
+          ...mocks.settingsStore.settings.ai,
+          providers: {
+            ...mocks.settingsStore.settings.ai.providers,
+            [provider]: nextConfig,
+          },
+        },
+      }
+    }),
   })
   mocks.sessionsStore = reactive({
     currentSessionId: 'session-1',
@@ -170,7 +207,10 @@ describe('ThinkToggle', () => {
       props: { sessionId: 'session-1' },
     })
 
-    expect(wrapper.find('.think-value').text()).toBe('High')
+    // DeepSeek V4 only thinks when explicitly enabled — the unset default now
+    // displays Off, matching what the engine actually sends (previously the
+    // UI showed thinking as on while no parameter went out).
+    expect(wrapper.find('.think-value').text()).toBe('Off')
 
     await openPanel(wrapper)
 
@@ -181,6 +221,11 @@ describe('ThinkToggle', () => {
     expect(panelText()).not.toContain('Low')
     expect(panelText()).not.toContain('Medium')
     expect(panelText()).not.toContain('X High')
+
+    await clickPanelOption('High')
+    expect(wrapper.find('.think-value').text()).toBe('High')
+    expect(mocks.settingsStore.settings.ai.providers.deepseek.thinkingByModel['deepseek-v4']).toBe(true)
+    expect(mocks.settingsStore.settings.ai.providers.deepseek.thinkingEffortByModel['deepseek-v4']).toBe('high')
   })
 
   it('stores legacy pair thinking selection on a draft chat', async () => {
@@ -204,7 +249,7 @@ describe('ThinkToggle', () => {
     await openPanel(wrapper)
     await clickPanelOption('On')
 
-    expect(mocks.settingsStore.updateModel).toHaveBeenCalledWith('deepseek-reasoner', 'deepseek')
+    expect(mocks.settingsStore.saveAIProviderDefault).toHaveBeenCalledWith('deepseek', 'deepseek-reasoner')
     expect(mocks.sessionsStore.updateSessionModel).toHaveBeenCalledWith('draft:one', 'deepseek', 'deepseek-reasoner')
     expect(wrapper.find('.think-value').text()).toBe('On')
   })

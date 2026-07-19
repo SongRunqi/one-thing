@@ -8,6 +8,10 @@
 
 import type { AppSettings, ProviderConfig, ToolSettings } from '../../../shared/ipc.js'
 import * as modelRegistry from '../../providers/model-registry.js'
+import {
+  CODEX_NATIVE_IMAGE_GENERATION_TOOL,
+  getCodexNativeToolsForConfig,
+} from './codex-native-tools.js'
 import { processImageGenerationStream } from './image-stream.js'
 import {
   executeAgentLoopStreamGeneration,
@@ -70,13 +74,44 @@ export interface StreamExecutionResult {
  * @param abortController Optional abort controller for cancellation
  * @returns Result indicating how the stream was handled
  */
+/**
+ * Resolve the requested output modalities for this stream.
+ * Mirrors the system-prompt snapshot's native-tool resolution
+ * (getNativeProviderTools) so the request body matches what the
+ * prompt tells the model: when the Codex native image_generation
+ * tool is available, request image output so the provider attaches it.
+ */
+async function resolveRequestedOutputModalities(
+  params: StreamExecutionParams,
+): Promise<AgentOutputModality[] | undefined> {
+  if (params.requestedOutputModalities) return params.requestedOutputModalities
+  try {
+    const nativeTools = await getCodexNativeToolsForConfig({
+      providerId: params.providerId,
+      providerConfig: params.configWithApiKey,
+      toolSettings: params.toolSettings,
+      supportsTools: await modelRegistry.modelSupportsTools(
+        params.configWithApiKey.model,
+        params.providerId,
+      ),
+    })
+    return nativeTools.includes(CODEX_NATIVE_IMAGE_GENERATION_TOOL) ? ['image'] : undefined
+  } catch (error) {
+    console.warn('[StreamExecutor] Failed to resolve native provider tools:', error)
+    return undefined
+  }
+}
+
 export async function executeMessageStream(
   params: StreamExecutionParams,
   abortController?: AbortController
 ): Promise<StreamExecutionResult> {
   const engine = getStreamEngine()
   const result = await executeCoreMessageStream({
-    params,
+    params: {
+      ...params,
+      requestedOutputModalities: await resolveRequestedOutputModalities(params),
+    },
     controller: abortController,
     createController: () => new AbortController(),
     registry: {

@@ -5,10 +5,11 @@
 </template>
 
 <style scoped>
+/* Ledger: groups are chunks of rows on the page, not filled cards. */
 .settings-group {
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
-  background: var(--settings-paper-3, var(--ui-surface-panel-bg, var(--panel)));
-  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
 }
 </style>

@@ -11,7 +11,7 @@ import TodoPlanPanel from './chat/TodoPlanPanel.vue'
 <style scoped>
 .todo-plan-window {
   --todo-window-radius: 22px;
-  --todo-window-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-note-bg) 8%);
+  --todo-window-bg: color-mix(in srgb, var(--ui-surface-elevated-bg, var(--bg-elevated, var(--panel))) 92%, var(--ui-surface-note-bg, var(--color-warning-bg)) 8%);
 
   width: 100vw;
   height: 100vh;
@@ -35,7 +35,4 @@ import TodoPlanPanel from './chat/TodoPlanPanel.vue'
   backdrop-filter: none;
 }
 
-:deep(.todo-plan-panel.collapsed) {
-  inset: 12px auto auto 12px;
-}
 </style>

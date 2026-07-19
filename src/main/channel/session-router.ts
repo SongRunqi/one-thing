@@ -72,7 +72,6 @@ export class ChannelSessionRouter {
       preserveSessionId: input.preserveSessionId === true,
       transport: origin.transport,
       connector: originConnector(origin),
-      memoryScopeId: origin.resolvedIdentity?.memoryScopeId,
     })
 
     return {

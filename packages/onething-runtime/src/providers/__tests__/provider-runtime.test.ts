@@ -67,6 +67,36 @@ describe('onething provider runtime', () => {
     })
   })
 
+  it('pins a per-resolution think mode without touching the caller settings', () => {
+    // System drives (radio DJ) carry thinking on the override; it must land in
+    // providerConfig.thinkingByModel[effective model] — the one key every
+    // provider's thinking resolution reads — and nowhere else.
+    const resolved = getEffectiveOnethingProviderConfig(settings, 'session-1', {
+      getSession: () => null,
+    }, { providerId: 'deepseek', model: 'deepseek-chat', thinking: true, thinkingEffort: 'high' })
+
+    expect(resolved.providerConfig).toMatchObject({
+      thinkingByModel: { 'deepseek-chat': true },
+      thinkingEffortByModel: { 'deepseek-chat': 'high' },
+    })
+    // The source settings object stays untouched.
+    expect(
+      (settings.ai.providers.deepseek as { thinkingByModel?: unknown }).thinkingByModel,
+    ).toBeUndefined()
+
+    // thinking: false pins "off" and drops no effort entry.
+    const disabled = getEffectiveOnethingProviderConfig(settings, 'session-1', {
+      getSession: () => null,
+    }, { providerId: 'deepseek', thinking: false })
+    expect(disabled.providerConfig).toMatchObject({ thinkingByModel: { 'deepseek-chat': false } })
+
+    // No thinking on the override → config passes through untouched.
+    const plain = getEffectiveOnethingProviderConfig(settings, 'session-1', {
+      getSession: () => null,
+    }, { providerId: 'deepseek' })
+    expect((plain.providerConfig as { thinkingByModel?: unknown }).thinkingByModel).toBeUndefined()
+  })
+
   it('resolves Zhipu API mode into the matching endpoint', async () => {
     const zhipuSettings = {
       ai: {

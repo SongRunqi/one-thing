@@ -218,6 +218,7 @@ import type { AppSettings, ToolDefinition } from '@/types'
 import type { ThinkingEffort } from '@shared/ipc/providers'
 import type { PermissionMode, WebSearchSettings } from '@shared/ipc/tools'
 import { useSettingsStore } from '@/stores/settings'
+import { isProviderConfigEnabled } from '@/stores/helpers/provider-model'
 import BashSettingsPanel from './BashSettingsPanel.vue'
 import BackgroundJobsPanel from './BackgroundJobsPanel.vue'
 import {
@@ -254,7 +255,7 @@ const displayTools = computed(() => {
 const configuredProviders = computed(() => {
   return settingsStore.availableProviders.filter(provider => {
     const config = props.settings.ai.providers[provider.id]
-    return config?.enabled !== false && getProviderModelIds(provider.id).length > 0
+    return isProviderConfigEnabled(config) && getProviderModelIds(provider.id).length > 0
   })
 })
 
@@ -440,6 +441,11 @@ function updateBraveApiKey(apiKey: string) {
 </script>
 
 <style scoped>
+/*
+ * Tools tab — ledger 画线风.
+ * Toggle (`.toggle > input + .toggle-slider`), inputs, and rows are drawn by
+ * the SettingsPage :deep() layer; only layout and the category ring live here.
+ */
 .tab-content {
   animation: fadeIn 0.15s ease;
 }
@@ -449,178 +455,27 @@ function updateBraveApiKey(apiKey: string) {
   to { opacity: 1; }
 }
 
-.settings-section {
-  margin-bottom: 28px;
-}
-
-.settings-section:last-child {
-  margin-bottom: 0;
-}
-
-.settings-card {
-  background: rgba(128, 128, 128, 0.06);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.card-row {
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.08);
-}
-
-.card-row:last-child {
-  border-bottom: none;
-}
-
-.section-title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 0 0 12px 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  opacity: 0.8;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group:last-child {
-  margin-bottom: 0;
-}
-
-.form-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-}
-
-.form-hint {
-  font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  margin-top: 4px;
-}
-
-/* Toggle */
-.toggle-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.toggle {
-  position: relative;
-  display: inline-block;
-  width: 44px;
-  height: 24px;
-}
-
-.toggle.small {
-  width: 36px;
-  height: 20px;
-}
-
-.toggle input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: var(--ui-surface-sidebar-bg, var(--panel-2));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 24px;
-  transition: 0.15s;
-}
-
-.toggle-slider::before {
-  position: absolute;
-  content: "";
-  height: 18px;
-  width: 18px;
-  left: 2px;
-  bottom: 2px;
-  background-color: var(--ui-text-primary-fg, var(--text-primary));
-  border-radius: 50%;
-  transition: 0.15s;
-}
-
-.toggle.small .toggle-slider::before {
-  height: 14px;
-  width: 14px;
-}
-
-.toggle input:checked + .toggle-slider {
-  background-color: var(--ui-accent-primary-fg, var(--accent));
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.toggle input:checked + .toggle-slider::before {
-  transform: translateX(20px);
-  background-color: white;
-}
-
-.toggle.small input:checked + .toggle-slider::before {
-  transform: translateX(16px);
-}
-
-.toggle input:disabled + .toggle-slider {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Empty State */
-.empty-state {
-  padding: 24px;
-  text-align: center;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-}
-
-/* Tools List */
-.tools-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.tool-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.tool-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-
+/* Tools list rows: name + outlined category ring on the left, toggle right. */
 .tool-name {
+  min-width: 0;
+  overflow-wrap: break-word;
   font-size: 13px;
   font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
+  color: var(--settings-ink-2, var(--ui-text-primary-fg, var(--text-primary)));
 }
 
+/* Badge as a stroked ring: transparent fill, accent line + accent ink. */
 .tool-category {
+  margin-left: 8px;
   font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 12%, transparent);
-  color: var(--ui-accent-primary-fg, var(--accent));
+  line-height: 1;
+  padding: 2px 7px 3px;
+  border: 1px solid color-mix(in srgb, var(--settings-accent, var(--ui-accent-primary-fg, var(--accent))) 65%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  white-space: nowrap;
+  vertical-align: 1px;
 }
 
 .tool-controls {
@@ -630,39 +485,22 @@ function updateBraveApiKey(apiKey: string) {
   flex-shrink: 0;
 }
 
-.control-label {
-  font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  min-width: 80px;
-}
-
-/* Form Input */
+/* Inputs and selects: visuals come from the global layer; keep them
+   shrinkable and single-line so long values never break the row. */
 .form-input {
   width: 100%;
-  padding: 10px 12px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  background-color: var(--ui-surface-panel-bg, var(--panel));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  transition: all 0.15s ease;
+  min-width: 0;
+  padding: 6px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.form-input:hover {
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  background-color: var(--ui-surface-sidebar-bg, var(--panel-2));
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 15%, transparent);
-}
-
-.form-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  opacity: 0.6;
+/* Disabled = dashed line + faint ink, not an opacity veil. */
+.form-input:disabled {
+  border-style: dashed;
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--text-muted)));
+  cursor: not-allowed;
 }
 
 .mode-select {
@@ -670,24 +508,6 @@ function updateBraveApiKey(apiKey: string) {
 }
 
 .model-setting-select {
-  min-width: 220px;
   max-width: min(360px, 100%);
-}
-
-/* Link */
-.link {
-  color: var(--ui-accent-primary-fg, var(--accent));
-  text-decoration: none;
-}
-
-.link:hover {
-  text-decoration: underline;
-}
-
-/* Responsive */
-@media (max-width: 480px) {
-  .tool-item {
-    padding: 12px;
-  }
 }
 </style>

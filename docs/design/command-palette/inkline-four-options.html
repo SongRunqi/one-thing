@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>命令面板 · 画线风四案</title>
+<style>
+/* ————————————————————————————————————————————
+   共享:纸与墨
+   ———————————————————————————————————————————— */
+:root {
+  --paper: #faf8f1;
+  --paper-deep: #f3efe5;
+  --ink: #29241c;
+  --ink-60: rgba(41, 36, 28, 0.62);
+  --ink-40: rgba(41, 36, 28, 0.42);
+  --ink-25: rgba(41, 36, 28, 0.25);
+  --ink-12: rgba(41, 36, 28, 0.12);
+  --a-red: #b8452c;      /* 案一 · 账页红格 */
+  --b-blue: #33647e;     /* 案二 · 制图青 */
+  --c-green: #3f6b4f;    /* 案三 · 校对绿笔 */
+  --d-sepia: #7a5230;    /* 案四 · 赭石线谱 */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #191611;
+    --paper-deep: #14110d;
+    --ink: #e8e1d2;
+    --ink-60: rgba(232, 225, 210, 0.66);
+    --ink-40: rgba(232, 225, 210, 0.45);
+    --ink-25: rgba(232, 225, 210, 0.28);
+    --ink-12: rgba(232, 225, 210, 0.14);
+    --a-red: #d8765c;
+    --b-blue: #7fb0c9;
+    --c-green: #86b795;
+    --d-sepia: #c29a6b;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 48px 40px 80px;
+}
+
+.page-head { max-width: 1240px; margin: 0 auto 40px; }
+.page-head h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.page-head h1::after {
+  content: "";
+  display: block;
+  width: 88px;
+  border-bottom: 2px solid var(--ink);
+  margin-top: 10px;
+}
+.page-head p {
+  margin-top: 12px;
+  color: var(--ink-60);
+  max-width: 62em;
+}
+
+.options {
+  max-width: 1240px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 48px 56px;
+}
+@media (max-width: 900px) { .options { grid-template-columns: 1fr; } }
+
+.option .opt-head { margin-bottom: 16px; }
+.option .opt-head h2 { font-size: 15px; font-weight: 600; letter-spacing: 0.06em; }
+.option .opt-head h2 em {
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-60);
+  margin-left: 10px;
+  letter-spacing: 0.02em;
+}
+.option .opt-head p { font-size: 12px; color: var(--ink-60); margin-top: 4px; }
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: stretch;
+  max-width: 400px;
+}
+
+/* composer 输入框示意(四案共用,保持中性) */
+.composer {
+  border: 1px solid var(--ink-25);
+  border-radius: 10px;
+  background: var(--paper);
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+.composer .q { font-family: ui-monospace, Menlo, monospace; }
+.composer .caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 16px;
+  background: var(--ink);
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+.composer .ghost { margin-left: auto; color: var(--ink-25); font-size: 12px; letter-spacing: 0.08em; }
+@media (prefers-reduced-motion: reduce) {
+  .composer .caret { animation: none; }
+  * { transition: none !important; }
+}
+
+/* ————————————————————————————————————————————
+   案一 · 账页 — 横向红格,条目落在格线上,点线引导
+   ———————————————————————————————————————————— */
+.v-a .panel {
+  background: var(--paper);
+  border: 1px solid var(--ink-25);
+  position: relative;
+  padding-left: 0;
+}
+/* 左侧红色边栏线,账本装订线 */
+.v-a .panel::before {
+  content: "";
+  position: absolute;
+  left: 52px;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid color-mix(in srgb, var(--a-red) 55%, transparent);
+}
+.v-a .ledger-head,
+.v-a .row,
+.v-a .ledger-foot {
+  display: flex;
+  align-items: baseline;
+  min-height: 34px;
+  border-bottom: 1px solid color-mix(in srgb, var(--a-red) 22%, transparent);
+  padding: 7px 14px 0 0;
+}
+.v-a .ledger-head {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: var(--ink-60);
+}
+.v-a .ledger-head .cnt { margin-left: auto; letter-spacing: 0.06em; }
+.v-a .kind {
+  flex: 0 0 52px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--ink-40);
+}
+.v-a .row { cursor: pointer; }
+.v-a .name { margin-left: 14px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; white-space: nowrap; }
+.v-a .name .hit { color: var(--a-red); }
+.v-a .leader {
+  flex: 1;
+  margin: 0 10px;
+  border-bottom: 1px dotted var(--ink-25);
+  transform: translateY(-4px);
+}
+.v-a .desc {
+  font-size: 12px;
+  color: var(--ink-40);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 46%;
+}
+.v-a .row:hover .desc { color: var(--ink-60); }
+.v-a .row.sel .kind { color: var(--a-red); font-weight: 600; }
+.v-a .row.sel .name { font-weight: 700; }
+.v-a .row.sel .desc { color: var(--ink); }
+.v-a .row .enter { width: 20px; text-align: right; color: var(--a-red); font-size: 12px; visibility: hidden; margin-left: 8px; }
+.v-a .row.sel .enter { visibility: visible; }
+.v-a .ledger-foot {
+  border-bottom: none;
+  font-size: 11px;
+  color: var(--ink-40);
+  letter-spacing: 0.05em;
+  gap: 14px;
+}
+.v-a .ledger-foot span:first-child { flex: 0 0 52px; text-align: center; }
+
+/* ————————————————————————————————————————————
+   案二 · 制图 — 坐标纸,角部十字规线,尺寸标注,图签栏
+   ———————————————————————————————————————————— */
+.v-b { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+.v-b .panel {
+  position: relative;
+  background:
+    repeating-linear-gradient(0deg, var(--ink-12) 0 0.5px, transparent 0.5px 12px),
+    repeating-linear-gradient(90deg, var(--ink-12) 0 0.5px, transparent 0.5px 12px),
+    var(--paper);
+  border: 1px solid var(--ink-40);
+  margin: 10px;
+}
+/* 角部十字规线 */
+.v-b .panel .tick {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+.v-b .tick::before, .v-b .tick::after { content: ""; position: absolute; background: var(--ink); }
+.v-b .tick::before { width: 20px; height: 1px; top: 50%; }
+.v-b .tick::after { width: 1px; height: 20px; left: 50%; }
+.v-b .tick.tl { top: -10px; left: -10px; }
+.v-b .tick.tr { top: -10px; right: -10px; }
+.v-b .tick.bl { bottom: -10px; left: -10px; }
+.v-b .tick.br { bottom: -10px; right: -10px; }
+
+.v-b .row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  align-items: start;
+  padding: 8px 12px 8px 0;
+  cursor: pointer;
+}
+.v-b .row:hover { background: color-mix(in srgb, var(--b-blue) 7%, transparent); }
+.v-b .idx {
+  text-align: center;
+  font-size: 10px;
+  color: var(--ink-40);
+  padding-top: 3px;
+}
+.v-b .name { font-size: 13px; }
+.v-b .name .hit { color: var(--b-blue); text-decoration: underline; text-underline-offset: 3px; }
+.v-b .desc { grid-column: 2; font-size: 11px; color: var(--ink-40); margin-top: 2px; }
+.v-b .kind {
+  font-size: 10px;
+  color: var(--ink-60);
+  padding-top: 4px;
+}
+.v-b .kind::before { content: "["; color: var(--ink-25); }
+.v-b .kind::after { content: "]"; color: var(--ink-25); }
+/* 选中:左缘蓝色短标 + 右侧尺寸标注括线 */
+.v-b .row.sel { background: color-mix(in srgb, var(--b-blue) 10%, transparent); }
+.v-b .row.sel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  border-left: 2px solid var(--b-blue);
+}
+.v-b .dim {
+  display: none;
+  position: absolute;
+  right: -24px;
+  top: 3px;
+  bottom: 3px;
+  border-right: 1px solid var(--b-blue);
+  width: 8px;
+}
+.v-b .dim::before, .v-b .dim::after { content: ""; position: absolute; right: -4px; width: 9px; height: 1px; background: var(--b-blue); }
+.v-b .dim::before { top: 0; }
+.v-b .dim::after { bottom: 0; }
+.v-b .dim b {
+  position: absolute;
+  right: -18px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--b-blue);
+}
+.v-b .row.sel .dim { display: block; }
+/* 图签栏(标题栏式页脚) */
+.v-b .block {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid var(--ink-40);
+  font-size: 10px;
+  color: var(--ink-60);
+  background: var(--paper);
+}
+.v-b .block span {
+  padding: 5px 8px;
+  border-right: 1px solid var(--ink-25);
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+.v-b .block span:last-child { border-right: none; }
+.v-b .sheet-no {
+  position: absolute;
+  top: -8px;
+  right: 4px;
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  color: var(--ink-40);
+  background: var(--paper-deep);
+  padding: 0 6px;
+}
+
+/* ————————————————————————————————————————————
+   案三 · 校雠 — 校对稿,衬线正文,页边校对符,绿笔圈点
+   ———————————————————————————————————————————— */
+.v-c { font-family: Georgia, "Songti SC", "Noto Serif SC", serif; }
+.v-c .panel {
+  background: var(--paper);
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  padding: 14px 20px 10px 0;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+}
+.v-c .proof-head {
+  padding-left: 56px;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--ink-40);
+  margin-bottom: 8px;
+}
+.v-c .row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  padding: 5px 0 5px 56px;
+  cursor: pointer;
+}
+/* 页边校对符:按条目类别 */
+.v-c .mark {
+  position: absolute;
+  left: 0;
+  width: 56px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--ink-25);
+}
+.v-c .row:hover .mark { color: var(--ink-60); }
+.v-c .name { font-weight: 700; font-size: 14px; white-space: nowrap; position: relative; }
+.v-c .name .hit {
+  border-bottom: 3px double var(--c-green);
+  padding-bottom: 1px;
+}
+.v-c .desc { font-size: 12.5px; color: var(--ink-60); margin-left: 12px; font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 选中:绿笔手绘圈点 */
+.v-c .row.sel .mark { color: var(--c-green); font-weight: 700; }
+.v-c .row.sel .name::after {
+  content: "";
+  position: absolute;
+  inset: -5px -12px -7px -8px;
+  border: 1.5px solid var(--c-green);
+  border-radius: 48% 52% 50% 50% / 62% 58% 42% 44%;
+  transform: rotate(-1.4deg);
+  pointer-events: none;
+}
+.v-c .row.sel .desc { color: var(--ink); font-style: normal; margin-left: 24px; }
+.v-c .colophon {
+  margin-top: 10px;
+  padding: 8px 0 2px 56px;
+  border-top: 1px dotted var(--ink-25);
+  font-size: 11px;
+  color: var(--ink-40);
+  letter-spacing: 0.12em;
+}
+
+/* ————————————————————————————————————————————
+   案四 · 线谱 — 一根竖线贯穿,条目为站点,选中画圈成结
+   ———————————————————————————————————————————— */
+.v-d .panel {
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--ink-12);
+  border-radius: 4px;
+  padding: 12px 0 6px;
+}
+/* 主线 */
+.v-d .panel::before {
+  content: "";
+  position: absolute;
+  left: 30px;
+  top: 14px;
+  bottom: 34px;
+  border-left: 1.5px solid var(--d-sepia);
+}
+/* 端点箭头 */
+.v-d .panel::after {
+  content: "";
+  position: absolute;
+  left: 27px;
+  bottom: 28px;
+  width: 7px;
+  height: 7px;
+  border-left: 1.5px solid var(--d-sepia);
+  border-bottom: 1.5px solid var(--d-sepia);
+  transform: rotate(-45deg);
+}
+.v-d .row {
+  position: relative;
+  padding: 6px 16px 6px 52px;
+  cursor: pointer;
+}
+/* 站点横刻 */
+.v-d .row::before {
+  content: "";
+  position: absolute;
+  left: 25px;
+  top: 15px;
+  width: 11px;
+  height: 1.5px;
+  background: var(--d-sepia);
+  transition: width 0.15s ease;
+}
+.v-d .row:hover::before { width: 18px; }
+.v-d .head { display: flex; align-items: baseline; gap: 10px; }
+.v-d .name { font-size: 13.5px; font-weight: 500; }
+.v-d .name .hit { color: var(--d-sepia); font-weight: 700; }
+.v-d .kind { margin-left: auto; font-size: 10px; color: var(--ink-40); letter-spacing: 0.14em; }
+.v-d .desc { font-size: 11.5px; color: var(--ink-40); margin-top: 1px; }
+/* 选中:站点结成空心圆,文字提墨 */
+.v-d .row.sel::before {
+  width: 11px;
+  height: 11px;
+  left: 25.5px;
+  top: 10px;
+  background: var(--paper);
+  border: 1.5px solid var(--d-sepia);
+  border-radius: 50%;
+}
+.v-d .row.sel .name { font-weight: 700; }
+.v-d .row.sel .desc { color: var(--ink-60); }
+.v-d .row.sel .kind { color: var(--d-sepia); }
+.v-d .hints {
+  margin-top: 8px;
+  padding: 6px 16px 2px 52px;
+  font-size: 10.5px;
+  color: var(--ink-40);
+  letter-spacing: 0.08em;
+  display: flex;
+  gap: 14px;
+}
+
+.footnote {
+  max-width: 1240px;
+  margin: 56px auto 0;
+  font-size: 12px;
+  color: var(--ink-40);
+  border-top: 1px solid var(--ink-12);
+  padding-top: 14px;
+}
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1>命令面板 · 画线风四案</h1>
+  <p>InputBox 里键入 <code>/</code> 唤起的 command / skill / prompt 选单。四案共用同一份数据 —— 查询 “co”,选中第二项 /commit —— 只有结构语言不同:横格、坐标纸、校对稿、单线谱。</p>
+</header>
+
+<main class="options">
+
+  <!-- ============ 案一 · 账页 ============ -->
+  <section class="option v-a">
+    <div class="opt-head">
+      <h2>案一 · 账页<em>横向红格 + 点线引导,条目是账上的一笔</em></h2>
+      <p>每行落在一条格线上;左侧装订线隔出类别栏,标题与描述之间用点线牵引。选中即“记账”:类别提红、名目加粗、行尾落 ⏎。</p>
+    </div>
+    <div class="stage">
+      <div class="panel" role="listbox" aria-label="命令簿">
+        <div class="ledger-head"><span class="kind">类</span><span style="margin-left:14px">命令簿</span><span class="cnt">6 条</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="kind">命令</span><span class="name">/<span class="hit">co</span>mpact</span><span class="leader"></span><span class="desc">压缩会话历史,保留关键脉络</span><span class="enter">⏎</span></div>
+        <div class="row sel" role="option" aria-selected="true"><span class="kind">技能</span><span class="name">/<span class="hit">co</span>mmit</span><span class="leader"></span><span class="desc">从暂存改动起草提交信息</span><span class="enter">⏎</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="kind">技能</span><span class="name">/<span class="hit">co</span>de-review</span><span class="leader"></span><span class="desc">审查当前分支的改动</span><span class="enter">⏎</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="kind">命令</span><span class="name">/<span class="hit">co</span>nfig</span><span class="leader"></span><span class="desc">打开设置</span><span class="enter">⏎</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="kind">命令</span><span class="name">/<span class="hit">co</span>ntext</span><span class="leader"></span><span class="desc">查看当前上下文占用</span><span class="enter">⏎</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="kind">词</span><span class="name">/<span class="hit">co</span>pywriter</span><span class="leader"></span><span class="desc">我的文案润色提示词</span><span class="enter">⏎</span></div>
+        <div class="ledger-foot"><span>记</span><span>↑↓ 移动 · ⏎ 执行 · tab 补全 · esc 收起</span></div>
+      </div>
+      <div class="composer"><span class="q">/co</span><span class="caret"></span><span class="ghost">⌘K</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 案二 · 制图 ============ -->
+  <section class="option v-b">
+    <div class="opt-head">
+      <h2>案二 · 制图<em>坐标纸 + 角部规线 + 尺寸标注,选单是一张图纸</em></h2>
+      <p>底衬细坐标格,四角伸出十字规线;条目带件号,类别写成 [标注]。选中项右侧拉出尺寸括线标 ⏎,页脚是四格图签栏。</p>
+    </div>
+    <div class="stage">
+      <div class="panel" role="listbox" aria-label="Command sheet">
+        <span class="tick tl"></span><span class="tick tr"></span><span class="tick bl"></span><span class="tick br"></span>
+        <span class="sheet-no">SHT 01 · /co</span>
+        <div class="row" role="option" aria-selected="false"><span class="idx">01</span><span class="name">/<span class="hit">co</span>mpact</span><span class="kind">cmd</span><span class="desc">压缩会话历史,保留关键脉络</span></div>
+        <div class="row sel" role="option" aria-selected="true"><span class="idx">02</span><span class="name">/<span class="hit">co</span>mmit</span><span class="kind">skill</span><span class="desc">从暂存改动起草提交信息</span><span class="dim"><b>⏎</b></span></div>
+        <div class="row" role="option" aria-selected="false"><span class="idx">03</span><span class="name">/<span class="hit">co</span>de-review</span><span class="kind">skill</span><span class="desc">审查当前分支的改动</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="idx">04</span><span class="name">/<span class="hit">co</span>nfig</span><span class="kind">cmd</span><span class="desc">打开设置</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="idx">05</span><span class="name">/<span class="hit">co</span>ntext</span><span class="kind">cmd</span><span class="desc">查看当前上下文占用</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="idx">06</span><span class="name">/<span class="hit">co</span>pywriter</span><span class="kind">prompt</span><span class="desc">我的文案润色提示词</span></div>
+        <div class="block"><span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 关闭</span></div>
+      </div>
+      <div class="composer"><span class="q">/co</span><span class="caret"></span><span class="ghost">⌘K</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 案三 · 校雠 ============ -->
+  <section class="option v-c">
+    <div class="opt-head">
+      <h2>案三 · 校雠<em>校对稿 + 页边符号 + 绿笔圈点,选中即批注</em></h2>
+      <p>衬线排版,条目像稿纸上的一行行文字,页边留校对符(〇命令 △技能 ◇提示词)。选中项被绿笔手绘一圈,命中字符走双下划线。</p>
+    </div>
+    <div class="stage">
+      <div class="panel" role="listbox" aria-label="校样">
+        <div class="proof-head">命 令 校 样</div>
+        <div class="row" role="option" aria-selected="false"><span class="mark">〇</span><span class="name">/<span class="hit">co</span>mpact</span><span class="desc">压缩会话历史,保留关键脉络</span></div>
+        <div class="row sel" role="option" aria-selected="true"><span class="mark">△ 取</span><span class="name">/<span class="hit">co</span>mmit</span><span class="desc">从暂存改动起草提交信息</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="mark">△</span><span class="name">/<span class="hit">co</span>de-review</span><span class="desc">审查当前分支的改动</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="mark">〇</span><span class="name">/<span class="hit">co</span>nfig</span><span class="desc">打开设置</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="mark">〇</span><span class="name">/<span class="hit">co</span>ntext</span><span class="desc">查看当前上下文占用</span></div>
+        <div class="row" role="option" aria-selected="false"><span class="mark">◇</span><span class="name">/<span class="hit">co</span>pywriter</span><span class="desc">我的文案润色提示词</span></div>
+        <div class="colophon">「↑↓ 移行 · ⏎ 取用 · tab 补全 · esc 掩卷」</div>
+      </div>
+      <div class="composer"><span class="q">/co</span><span class="caret"></span><span class="ghost">⌘K</span></div>
+    </div>
+  </section>
+
+  <!-- ============ 案四 · 线谱 ============ -->
+  <section class="option v-d">
+    <div class="opt-head">
+      <h2>案四 · 线谱<em>一根竖线贯穿到底,条目是线上的站点</em></h2>
+      <p>整个面板只画一根线:每个条目在线上刻一道站点,悬停刻痕伸长,选中处结成空心圆。线的末端收一个箭头,指向快捷键提示。</p>
+    </div>
+    <div class="stage">
+      <div class="panel" role="listbox" aria-label="命令线">
+        <div class="row" role="option" aria-selected="false"><div class="head"><span class="name">/<span class="hit">co</span>mpact</span><span class="kind">命令</span></div><div class="desc">压缩会话历史,保留关键脉络</div></div>
+        <div class="row sel" role="option" aria-selected="true"><div class="head"><span class="name">/<span class="hit">co</span>mmit</span><span class="kind">技能</span></div><div class="desc">从暂存改动起草提交信息</div></div>
+        <div class="row" role="option" aria-selected="false"><div class="head"><span class="name">/<span class="hit">co</span>de-review</span><span class="kind">技能</span></div><div class="desc">审查当前分支的改动</div></div>
+        <div class="row" role="option" aria-selected="false"><div class="head"><span class="name">/<span class="hit">co</span>nfig</span><span class="kind">命令</span></div><div class="desc">打开设置</div></div>
+        <div class="row" role="option" aria-selected="false"><div class="head"><span class="name">/<span class="hit">co</span>ntext</span><span class="kind">命令</span></div><div class="desc">查看当前上下文占用</div></div>
+        <div class="row" role="option" aria-selected="false"><div class="head"><span class="name">/<span class="hit">co</span>pywriter</span><span class="kind">提示词</span></div><div class="desc">我的文案润色提示词</div></div>
+        <div class="hints"><span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span></div>
+      </div>
+      <div class="composer"><span class="q">/co</span><span class="caret"></span><span class="ghost">⌘K</span></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footnote">
+  对应实现位:src/renderer/components/chat/CommandPicker.vue + ComposerExtensionPanel.vue(variant="command")。四案均只依赖 hairline / 点线 / 手绘圈,不引入填充色块与阴影层级,可直接映射到 quietlines token。
+</footer>
+
+</body>
+</html>

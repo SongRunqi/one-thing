@@ -1,5 +1,21 @@
 import type { TriggerContext, Trigger } from "./index.js";
 import { getSkillsForSession } from "../../skills/session-skills.js";
+import * as store from "../../store.js";
+
+/**
+ * Distribution-sampling rate for NORMAL turns (settings.evals.sampleRate).
+ * Off unless explicitly configured — negative-signal capture alone only
+ * sees failures the user noticed.
+ */
+function getEvalsSampleRate(): number {
+	try {
+		const rate = (store.getSettings() as { evals?: { sampleRate?: unknown } })
+			?.evals?.sampleRate;
+		return typeof rate === "number" && rate > 0 && rate <= 1 ? rate : 0;
+	} catch {
+		return 0;
+	}
+}
 
 interface TurnEvalContext {
 	turnId: string;
@@ -221,6 +237,7 @@ export function createTurnEvaluationTrigger(): Trigger {
 					userMessage: evalCtx.lastUserMessage,
 					assistantResponse,
 					incidentRef,
+					randomSampleRate: getEvalsSampleRate(),
 					storeOptions: {},
 				});
 			} catch (error) {

@@ -1,0 +1,752 @@
+<title>侧栏 × 空间 · 交互样板</title>
+<style>
+  :root {
+    --paper: #faf8f1;
+    --paper-deep: #f3efe5;
+    --ink: #29241c;
+    --ink-soft: rgba(41, 36, 28, 0.62);
+    --ink-faint: rgba(41, 36, 28, 0.38);
+    --rule: rgba(41, 36, 28, 0.16);
+    --rule-soft: rgba(41, 36, 28, 0.09);
+    --sepia: #7a5230;
+    --red: #b8452c;
+    --blue: #33647e;
+    --frame-shadow: 0 18px 50px rgba(41, 36, 28, 0.12);
+    --serif: Georgia, "Songti SC", "Noto Serif SC", serif;
+    --sans: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #191611;
+      --paper-deep: #14110d;
+      --ink: #e8e1d2;
+      --ink-soft: rgba(232, 225, 210, 0.62);
+      --ink-faint: rgba(232, 225, 210, 0.38);
+      --rule: rgba(232, 225, 210, 0.18);
+      --rule-soft: rgba(232, 225, 210, 0.09);
+      --sepia: #c29a6b;
+      --red: #d8765c;
+      --blue: #7fb0c9;
+      --frame-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #191611;
+    --paper-deep: #14110d;
+    --ink: #e8e1d2;
+    --ink-soft: rgba(232, 225, 210, 0.62);
+    --ink-faint: rgba(232, 225, 210, 0.38);
+    --rule: rgba(232, 225, 210, 0.18);
+    --rule-soft: rgba(232, 225, 210, 0.09);
+    --sepia: #c29a6b;
+    --red: #d8765c;
+    --blue: #7fb0c9;
+    --frame-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  }
+  :root[data-theme="light"] {
+    --paper: #faf8f1;
+    --paper-deep: #f3efe5;
+    --ink: #29241c;
+    --ink-soft: rgba(41, 36, 28, 0.62);
+    --ink-faint: rgba(41, 36, 28, 0.38);
+    --rule: rgba(41, 36, 28, 0.16);
+    --rule-soft: rgba(41, 36, 28, 0.09);
+    --sepia: #7a5230;
+    --red: #b8452c;
+    --blue: #33647e;
+    --frame-shadow: 0 18px 50px rgba(41, 36, 28, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper-deep);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page {
+    max-width: 1060px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+
+  /* ── 页头 ─────────────────────────── */
+  .masthead { margin-bottom: 8px; }
+  .masthead .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+  }
+  .masthead h1 {
+    font-family: var(--serif);
+    font-size: 30px;
+    font-weight: 500;
+    margin: 6px 0 4px;
+    text-wrap: balance;
+  }
+  .masthead p {
+    margin: 0 0 28px;
+    color: var(--ink-soft);
+    max-width: 46em;
+  }
+  .masthead p b { color: var(--ink); font-weight: 600; }
+
+  /* ── 应用框 ───────────────────────── */
+  .frame {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    box-shadow: var(--frame-shadow);
+    overflow: hidden;
+  }
+  .titlebar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px 0;
+  }
+  .traffic { display: flex; gap: 7px; padding-right: 10px; }
+  .traffic i {
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    border: 1px solid var(--rule);
+    background: transparent;
+  }
+
+  /* ── ① 空间切换器 ─────────────────── */
+  .space-rail {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    overflow: hidden;
+  }
+  .space-chip {
+    appearance: none;
+    background: none;
+    border: none;
+    font: inherit;
+    color: var(--ink-soft);
+    font-family: var(--serif);
+    font-size: 14px;
+    padding: 6px 14px 8px;
+    cursor: pointer;
+    position: relative;
+    white-space: nowrap;
+  }
+  .space-chip .count {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+    margin-left: 5px;
+    vertical-align: 1px;
+  }
+  .space-chip::after {
+    content: "";
+    position: absolute;
+    left: 12px; right: 12px; bottom: 2px;
+    height: 2px;
+    background: var(--sepia);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 0.25s ease;
+  }
+  .space-chip:hover { color: var(--ink); }
+  .space-chip.active { color: var(--ink); }
+  .space-chip.active::after { transform: scaleX(1); }
+  .space-chip:focus-visible,
+  .frame button:focus-visible {
+    outline: 1.5px solid var(--blue);
+    outline-offset: 2px;
+  }
+  .space-new {
+    appearance: none; background: none; border: none; font: inherit;
+    color: var(--ink-faint);
+    padding: 6px 10px 8px;
+    cursor: pointer;
+    font-size: 15px;
+  }
+  .space-new:hover { color: var(--ink); }
+  .space-archived {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    padding: 6px 4px 8px;
+    white-space: nowrap;
+  }
+  .space-archived b {
+    font-weight: 400;
+    border-bottom: 1px dashed var(--rule);
+    cursor: default;
+  }
+  .rail-rule { border-bottom: 1px solid var(--rule); }
+
+  /* ── 主体两栏 ─────────────────────── */
+  .body-cols {
+    display: flex;
+    min-height: 480px;
+  }
+  .workspace-view {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    transition: opacity 0.16s ease;
+  }
+  .workspace-view.switching { opacity: 0; }
+
+  /* ── 侧栏 ────────────────────────── */
+  .sidebar {
+    width: 248px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    background: var(--paper);
+  }
+  .session-scroll { flex: 1; overflow-y: auto; padding: 10px 0 4px; }
+
+  .group-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    padding: 12px 16px 4px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .group-label:first-child { padding-top: 4px; }
+  .group-label .n { letter-spacing: 0; }
+
+  .session-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 16px;
+    cursor: default;
+    position: relative;
+  }
+  .session-row:hover { background: var(--rule-soft); }
+  .session-row .title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .session-row .time {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+    flex-shrink: 0;
+  }
+  .session-row.current .title { color: var(--ink); font-weight: 500; }
+  .session-row.current::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 4px; bottom: 4px;
+    width: 2px;
+    background: var(--red);
+  }
+  .session-row .star { color: var(--red); font-size: 10px; flex-shrink: 0; }
+  .session-row.branch { padding-left: 30px; }
+  .session-row.branch::after {
+    content: "";
+    position: absolute;
+    left: 19px; top: 0; bottom: 50%;
+    width: 7px;
+    border-left: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+
+  /* 更早:封顶折叠 */
+  .older-toggle {
+    appearance: none; background: none; border: none;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    width: 100%;
+    text-align: left;
+    padding: 12px 16px 4px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .older-toggle:hover { color: var(--ink-soft); }
+  .older-toggle .n { letter-spacing: 0; }
+  .older-body { display: none; }
+  .older-body.open { display: block; }
+  .older-more {
+    display: block;
+    padding: 5px 16px 8px;
+    font-size: 12px;
+    color: var(--blue);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .older-more:hover { text-decoration: underline; }
+
+  /* 侧栏脚部:历史入口 + 分流说明 */
+  .sidebar-foot { border-top: 1px solid var(--rule); padding: 10px 16px 12px; }
+  .history-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 13px;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .history-link:hover { color: var(--blue); }
+  .history-link .kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--ink-faint);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+  .diverted {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    line-height: 1.7;
+    color: var(--ink-faint);
+  }
+
+  /* ── 右侧:tabs + 现场 ─────────────── */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .tabbar {
+    display: flex;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--rule);
+    padding: 6px 10px 0;
+    gap: 2px;
+  }
+  .tab {
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    padding: 5px 12px 7px;
+    position: relative;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+  .tab.active { color: var(--ink); }
+  .tab.active::after {
+    content: "";
+    position: absolute;
+    left: 10px; right: 10px; bottom: 0;
+    height: 1.5px;
+    background: var(--ink);
+  }
+  .panes { flex: 1; display: flex; }
+  .pane {
+    flex: 1;
+    min-width: 0;
+    padding: 26px 30px;
+    background:
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0,
+        transparent 27px,
+        var(--rule-soft) 27px,
+        var(--rule-soft) 28px
+      );
+  }
+  .pane + .pane { border-left: 1px solid var(--rule); }
+  .pane h3 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 17px;
+    margin: 0 0 2px;
+  }
+  .pane .sub {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    margin-bottom: 22px;
+  }
+  .stub { max-width: 34em; margin-bottom: 18px; }
+  .stub .who {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .stub .line { color: var(--ink-soft); font-size: 13px; }
+
+  /* ── 标注 ────────────────────────── */
+  .callout {
+    display: inline-flex;
+    width: 15px; height: 15px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--sepia);
+    border-radius: 50%;
+    color: var(--sepia);
+    font-family: var(--mono);
+    font-size: 9px;
+    flex-shrink: 0;
+    transform: translateY(-1px);
+    user-select: none;
+  }
+  .notes {
+    margin-top: 36px;
+    columns: 2;
+    column-gap: 48px;
+  }
+  @media (max-width: 760px) { .notes { columns: 1; } }
+  .note {
+    break-inside: avoid;
+    display: flex;
+    gap: 10px;
+    padding: 10px 0 14px;
+    border-top: 1px solid var(--rule);
+  }
+  .note .callout { margin-top: 4px; }
+  .note h4 {
+    margin: 0 0 3px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .note p { margin: 0; font-size: 13px; color: var(--ink-soft); }
+  .hint {
+    margin-top: 28px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .space-chip::after { transition: none; }
+    .workspace-view { transition: none; }
+  }
+</style>
+
+<div class="page">
+  <header class="masthead">
+    <div class="eyebrow">0nething · design mockup · 2026-07</div>
+    <h1>侧栏 × 空间</h1>
+    <p>一个空间 = 一件正在推进的事的完整工作现场(tabs、分屏、侧栏会话)。<b>点上方空间名切换</b>,注意左侧列表、右侧 tabs 和分屏布局是一起换的。检索型需求只占侧栏底部一行。</p>
+  </header>
+
+  <div class="frame">
+    <div class="titlebar">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <nav class="space-rail" id="spaceRail" aria-label="空间切换器"></nav>
+      <button class="space-new" title="新建空间">＋</button>
+      <div class="space-archived"><span class="callout">6</span> 已归档 · <b>工具并发审计</b> <b>官网上线</b></div>
+    </div>
+    <div class="rail-rule"></div>
+
+    <div class="body-cols">
+      <div class="workspace-view" id="workspaceView">
+        <aside class="sidebar">
+          <div class="session-scroll" id="sessionScroll"></div>
+          <div class="sidebar-foot">
+            <div class="history-link" title="打开全局历史(跨空间搜索 + 按月浏览)">
+              <span><span class="callout">4</span> 全部历史</span>
+              <span class="kbd">⇧⌘F</span>
+            </div>
+            <div class="diverted" id="divertedNote"></div>
+          </div>
+        </aside>
+
+        <div class="main">
+          <div class="tabbar" id="tabbar"></div>
+          <div class="panes" id="panes"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="notes">
+    <div class="note">
+      <span class="callout">1</span>
+      <div>
+        <h4>空间切换器</h4>
+        <p>弹性墨签,复用 tab header 的视觉语言。切空间 = 整个现场(侧栏 + tabs + 分屏树)一起换,持久化为 v3:每空间一棵现成的 v2 树。⌘1…9 直达。</p>
+      </div>
+    </div>
+    <div class="note">
+      <span class="callout">2</span>
+      <div>
+        <h4>收件箱 = 默认空间</h4>
+        <p>未归属会话(spaceId 为空)都住这里,随手聊的不用管理。它是唯一会无限增长的列表,所以「更早」封顶折叠:默认收起,展开也只露 8 条,再往下引到历史页。</p>
+      </div>
+    </div>
+    <div class="note">
+      <span class="callout">3</span>
+      <div>
+        <h4>空间内侧栏:归组自动发生</h4>
+        <p>在空间里新开的会话天然属于该空间,无需事后整理。会话量天然是十几条的量级,时间分组在这里重新变得好用;分支子树跟根走。</p>
+      </div>
+    </div>
+    <div class="note">
+      <span class="callout">4</span>
+      <div>
+        <h4>检索型出口:只占一行</h4>
+        <p>「全部历史」跳 Search Everywhere / archive panel:跨空间全文搜索、按月浏览、批量清理。检索的形态是搜索框 + 结果页,不是侧栏滚动。</p>
+      </div>
+    </div>
+    <div class="note">
+      <span class="callout">5</span>
+      <div>
+        <h4>机器会话分流</h4>
+        <p>电台 DJ 轮换、goal 续推、practice、渠道会话按 originIdentityKey / agentId 分流:或指派进对应空间,或不进侧栏只在历史页可查。脚注只报数,不占行。</p>
+      </div>
+    </div>
+    <div class="note">
+      <span class="callout">6</span>
+      <div>
+        <h4>空间归档:一件事的收口</h4>
+        <p>事情做完,归档整个空间:从切换器消失,会话保留、历史页可搜、可恢复。比一条条清理会话体面得多。</p>
+      </div>
+    </div>
+  </section>
+
+  <p class="hint">试试:切换三个空间对比布局 · 在「收件箱」点开「更早」 · 本页仅为交互样板,数据为静态样例。</p>
+</div>
+
+<script>
+  const spaces = [
+    {
+      id: 'inbox',
+      name: '收件箱',
+      count: 128,
+      diverted: '已分流 <span class="callout">5</span> 电台轮换 ×12 · goal 续推 ×5 · 渠道 ×8',
+      groups: [
+        { label: '置顶', items: [
+          { t: 'prompt 评估工作台', time: '', star: true },
+        ]},
+        { label: '今天', items: [
+          { t: 'sidebar 设计讨论', time: '14:02', current: true },
+          { t: 'oklch 近中性色泛粉排查', time: '11:26' },
+        ]},
+        { label: '昨天', items: [
+          { t: '设置页审计跟进', time: '昨天' },
+          { t: 'provider 档位映射确认', time: '昨天', branch: true },
+        ]},
+        { label: '过去 7 天', items: [
+          { t: '透明窗口丢帧 trace', time: '周四' },
+          { t: 'token 计费面板样式', time: '周二' },
+        ]},
+      ],
+      older: {
+        total: 96,
+        items: [
+          { t: '外部 Agent 权限桥讨论', time: '7月2日' },
+          { t: '命令面板画线风四案', time: '6月28日' },
+          { t: 'JSONL 迁移回滚预案', time: '6月25日' },
+        ],
+      },
+      tabs: ['sidebar 设计讨论', 'oklch 泛粉排查'],
+      panes: [
+        {
+          title: 'sidebar 设计讨论',
+          sub: 'claude-fable-5 · 今天 14:02',
+          stubs: [
+            { who: 'you', line: '现在只按时间分组,一多起来就不好管理,怎么设计?' },
+            { who: 'assistant', line: '时间分组回答的是"什么时候聊的",但你找会话时问的是"关于什么的那个会话"……' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'radio',
+      name: '电台改版',
+      count: 9,
+      diverted: '本空间收纳 <span class="callout">5</span> DJ 轮换会话 ×12(折叠,不进列表)',
+      groups: [
+        { label: '置顶', items: [
+          { t: 'DJ 口播 P4 主线', time: '', star: true, current: true },
+        ]},
+        { label: '今天', items: [
+          { t: 'TTS 音轨分离验证', time: '13:40' },
+          { t: '真机放音问题记录', time: '10:15', branch: true },
+        ]},
+        { label: '过去 7 天', items: [
+          { t: 'conductor 续流排查', time: '周五' },
+          { t: '节目单面板交互', time: '周三' },
+          { t: 'NCM daemon 权限卡死复盘', time: '周一' },
+        ]},
+      ],
+      older: null,
+      tabs: ['DJ 口播 P4 主线', '节目单面板交互'],
+      panes: [
+        {
+          title: 'DJ 口播 P4 主线',
+          sub: 'pause → 口播 → resume · 音乐轨 / 语音轨分离',
+          stubs: [
+            { who: 'you', line: '每首歌串词 TTS 的时序,先把 pause 和 resume 的边界定下来。' },
+            { who: 'assistant', line: '建议以曲目切换事件为锚点:上一曲 fade-out 完成后才起 TTS……' },
+          ],
+        },
+        {
+          title: '节目单面板',
+          sub: '删 = skipped 信号 · 与点歌双入口',
+          stubs: [
+            { who: 'assistant', line: '节目单里被删除的曲目应当作为 skipped 信号回流给选歌会话。' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'memory',
+      name: '记忆系统 v2',
+      count: 6,
+      diverted: '',
+      groups: [
+        { label: '今天', items: [
+          { t: 'capture 单 mode 字段收敛', time: '09:48', current: true },
+        ]},
+        { label: '昨天', items: [
+          { t: 'review 空闲触发设计', time: '昨天' },
+        ]},
+        { label: '过去 7 天', items: [
+          { t: '多用户 scope 双层隔离', time: '周四' },
+          { t: '检索线整删评审', time: '周三', branch: true },
+        ]},
+      ],
+      older: null,
+      tabs: ['capture 单 mode 字段收敛'],
+      panes: [
+        {
+          title: 'capture 单 mode 字段收敛',
+          sub: '长期记忆只走 hermes 工具 · 直晋升已回滚',
+          stubs: [
+            { who: 'you', line: 'capture 的 mode 字段最终收敛成几个值?' },
+            { who: 'assistant', line: '单一 mode 字段,直晋升 MEMORY.md 的路径已按你的意见移除……' },
+          ],
+        },
+      ],
+    },
+  ];
+
+  let activeId = 'inbox';
+  let olderOpen = false;
+
+  const rail = document.getElementById('spaceRail');
+  const scroll = document.getElementById('sessionScroll');
+  const tabbar = document.getElementById('tabbar');
+  const panes = document.getElementById('panes');
+  const diverted = document.getElementById('divertedNote');
+  const view = document.getElementById('workspaceView');
+
+  function esc(s) {
+    return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  }
+
+  function renderRail() {
+    rail.innerHTML = spaces.map((s, i) => `
+      <button class="space-chip ${s.id === activeId ? 'active' : ''}" data-id="${s.id}">
+        ${i === 0 ? '<span class="callout">1</span> ' : ''}${esc(s.name)}<span class="count">${s.count}</span>
+      </button>
+    `).join('');
+    rail.querySelectorAll('.space-chip').forEach(btn => {
+      btn.addEventListener('click', () => switchSpace(btn.dataset.id));
+    });
+  }
+
+  function rowHtml(item) {
+    return `
+      <div class="session-row ${item.current ? 'current' : ''} ${item.branch ? 'branch' : ''}">
+        ${item.star ? '<span class="star">★</span>' : ''}
+        <span class="title">${esc(item.t)}</span>
+        <span class="time">${esc(item.time || '')}</span>
+      </div>
+    `;
+  }
+
+  function renderSidebar(space) {
+    let html = space.groups.map((g, gi) => `
+      <div class="group-label">
+        <span>${gi === 0 && space.id !== 'inbox' ? '<span class="callout">3</span> ' : ''}${esc(g.label)}</span>
+        <span class="n">${g.items.length}</span>
+      </div>
+      ${g.items.map(rowHtml).join('')}
+    `).join('');
+
+    if (space.older) {
+      html += `
+        <button class="older-toggle" id="olderToggle" aria-expanded="${olderOpen}">
+          <span><span class="callout">2</span> 更早 ${olderOpen ? '▾' : '▸'}</span>
+          <span class="n">${space.older.total}</span>
+        </button>
+        <div class="older-body ${olderOpen ? 'open' : ''}">
+          ${space.older.items.map(rowHtml).join('')}
+          <a class="older-more">在历史中查看其余 ${space.older.total - space.older.items.length} 条 →</a>
+        </div>
+      `;
+    }
+    scroll.innerHTML = html;
+    const toggle = document.getElementById('olderToggle');
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        olderOpen = !olderOpen;
+        renderSidebar(space);
+      });
+    }
+  }
+
+  function renderMain(space) {
+    tabbar.innerHTML = space.tabs.map((t, i) =>
+      `<div class="tab ${i === 0 ? 'active' : ''}">${esc(t)}</div>`
+    ).join('');
+    panes.innerHTML = space.panes.map(p => `
+      <div class="pane">
+        <h3>${esc(p.title)}</h3>
+        <div class="sub">${esc(p.sub)}</div>
+        ${p.stubs.map(st => `
+          <div class="stub">
+            <div class="who">${esc(st.who)}</div>
+            <div class="line">${esc(st.line)}</div>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+    diverted.innerHTML = space.diverted;
+    diverted.style.display = space.diverted ? '' : 'none';
+  }
+
+  function renderSpace() {
+    const space = spaces.find(s => s.id === activeId);
+    renderRail();
+    renderSidebar(space);
+    renderMain(space);
+  }
+
+  function switchSpace(id) {
+    if (id === activeId) return;
+    activeId = id;
+    view.classList.add('switching');
+    setTimeout(() => {
+      renderSpace();
+      view.classList.remove('switching');
+    }, 160);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key >= '1' && e.key <= '9') {
+      const target = spaces[Number(e.key) - 1];
+      if (target) { e.preventDefault(); switchSpace(target.id); }
+    }
+  });
+
+  renderSpace();
+</script>

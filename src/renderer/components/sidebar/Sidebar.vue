@@ -17,6 +17,15 @@
       <!-- Sidebar Header: traffic lights space -->
       <SidebarHeader />
 
+      <!-- 方案六 · 顶部「＋ 新会话」：固定在滚动区之外的文本入口 -->
+      <button
+        type="button"
+        class="sidebar-newchat"
+        @click="$emit('create-new-chat')"
+      >
+        ＋ 新会话
+      </button>
+
       <!-- Session List: workspace actions live inside the same scroll panel -->
       <SessionList
         :groups="groupedSessions"
@@ -25,7 +34,6 @@
         :is-session-generating="chatStore.isSessionGenerating"
         :editing-session-id="editingSessionId"
         :editing-name="editingName"
-        @create-new-chat="$emit('create-new-chat')"
         @menu-select="handleSidebarMenuSelect"
         @context-menu="openContextMenu"
         @toggle-collapse="sessionOrganizer.toggleCollapse"
@@ -35,34 +43,43 @@
         @overflow-change="handleOverflowChange"
       />
 
-      <!-- Bottom bar: low-frequency library entries live here as an icon
-           row so the session list owns the prime sidebar real estate -->
-      <div class="sidebar-bottom">
-        <div class="sidebar-bottom-actions">
-          <Button
+      <!-- Bottom dock (方案二/v7 原样): 裸 16px 线性图标浮在白胶囊里，
+           单色墨系（rest 灰 → hover/active 墨），设置在分隔线右侧。 -->
+      <div class="sidebar-dock">
+        <div class="sidebar-dock-pill">
+          <button
             v-for="action in workspaceActions"
             :key="action.id"
-            text
-            circle
-            class="sidebar-bottom-btn workspace-action-btn"
+            type="button"
+            class="sidebar-dock-icon"
             :class="{ 'is-active': activeWorkspacePanel === action.id }"
             :title="action.label"
             :aria-label="action.label"
-            :icon="action.icon"
-            :style="workspaceActionStyle(action.categorySlot)"
             @click="$emit('open-workspace-panel', action.id)"
+          >
+            <component
+              :is="action.icon"
+              :size="16"
+              :stroke-width="1.7"
+            />
+          </button>
+          <span
+            class="sidebar-dock-divider"
+            aria-hidden="true"
           />
+          <button
+            type="button"
+            class="sidebar-dock-icon"
+            title="Settings"
+            aria-label="Settings"
+            @click="$emit('open-settings')"
+          >
+            <Settings
+              :size="16"
+              :stroke-width="1.7"
+            />
+          </button>
         </div>
-        <div class="sidebar-bottom-spacer" />
-        <Button
-          text
-          circle
-          class="sidebar-bottom-btn"
-          title="Settings"
-          aria-label="Settings"
-          :icon="Settings"
-          @click="$emit('open-settings')"
-        />
       </div>
 
       <!-- Context Menu -->
@@ -81,12 +98,11 @@
 </template>
 
 <script setup lang="ts">
-import Button from '@/components/common/Button.vue'
 import Space from '@/components/common/Space.vue'
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
-import { Bot, Brain, CalendarClock, Images, Settings } from 'lucide-vue-next'
+import { Bot, Brain, CalendarClock, Images, Radio, Settings } from 'lucide-vue-next'
 import SidebarHeader from './SidebarHeader.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
@@ -98,11 +114,11 @@ interface Props {
   floatingClosing?: boolean
   noTransition?: boolean
   mediaPanelOpen?: boolean
-  activeWorkspacePanel?: 'memory' | 'media' | 'agents' | 'tasks' | null
+  activeWorkspacePanel?: 'memory' | 'media' | 'agents' | 'tasks' | 'music' | 'practice' | null
   width?: number
 }
 
-type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks'
+type WorkspacePanel = 'memory' | 'media' | 'agents' | 'tasks' | 'music' | 'practice'
 
 const props = withDefaults(defineProps<Props>(), {
   collapsed: false,
@@ -130,10 +146,11 @@ const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
 
 const workspaceActions = [
-  { id: 'memory' as const, label: 'Memory', icon: Brain, categorySlot: 1 },
-  { id: 'media' as const, label: 'Media', icon: Images, categorySlot: 2 },
-  { id: 'agents' as const, label: 'Agents', icon: Bot, categorySlot: 3 },
-  { id: 'tasks' as const, label: 'Tasks', icon: CalendarClock, categorySlot: 4 },
+  { id: 'memory' as const, label: 'Memory', icon: Brain },
+  { id: 'media' as const, label: 'Media', icon: Images },
+  { id: 'agents' as const, label: 'Agents', icon: Bot },
+  { id: 'tasks' as const, label: 'Tasks', icon: CalendarClock },
+  { id: 'music' as const, label: 'Music', icon: Radio },
 ]
 
 // Composable
@@ -191,8 +208,39 @@ const filteredSessions = computed(() => {
   )
 })
 
+/**
+ * The radio DJ's curation sessions as a sidebar group of their own —
+ * filtered out of the public list (they drive themselves and would read as
+ * ghosts there), but one expand away. Clicking opens in the main chat like
+ * any session. Synthesizing a SessionGroup buys SubMenu's collapse, the
+ * 5-visible/show-more limit and the context menu for free.
+ */
+const musicGroup = computed(() => {
+  const radioSessions = sessionsStore.radioSessions
+  if (radioSessions.length === 0) return null
+  return {
+    key: 'music',
+    label: 'Music · 电台',
+    sessions: radioSessions.map((session): SessionWithBranches => ({
+      ...session,
+      branches: [],
+      depth: 0,
+      hasBranches: false,
+      isCollapsed: false,
+      isLastChild: false,
+      branchCount: 0,
+      isHidden: false,
+      lastBranchUpdate: session.updatedAt,
+      ancestorsLastChild: [],
+    })),
+  }
+})
+
 const groupedSessions = computed(() => {
-  return sessionOrganizer.getGroupedSessions(filteredSessions.value)
+  const groups = sessionOrganizer.getProjectGroupedSessions(filteredSessions.value)
+  const music = musicGroup.value
+  // Music rides on top: the station is a live thing, not an archive.
+  return music ? [music, ...groups] : groups
 })
 
 const activeSidebarIndex = computed(() => {
@@ -202,12 +250,6 @@ const activeSidebarIndex = computed(() => {
 
 function sessionMenuIndex(sessionId: string): string {
   return `session:${sessionId}`
-}
-
-function workspaceActionStyle(categorySlot: number): Record<string, string> {
-  return {
-    '--workspace-action-icon-color': `var(--ui-category-${categorySlot}-icon)`,
-  }
 }
 
 function handleSidebarMenuSelect(index: string) {
@@ -322,6 +364,14 @@ onUnmounted(() => {
     --ui-sidebar-surface-bg,
     var(--ui-surface-app-bg, var(--bg-app, var(--bg)))
   );
+  /* 行层级从墨色按比例派生，保证任何主题下 分组头(全墨) > 行文(72% 墨) >
+     active(14%) > hover(8%) 的对比关系都成立——直接引各主题 token 时
+     对比度不可控（用户实测过分组头/行文一个色、hover 看不见）。
+     整棵 sidebar（新会话/列表/SessionItem）共用这条派生链。 */
+  --sidebar-row-ink: var(--ui-text-primary-fg, var(--text-primary, var(--text)));
+  --sidebar-row-fg: color-mix(in srgb, var(--sidebar-row-ink) 72%, transparent);
+  --sidebar-row-hover-fill: color-mix(in srgb, var(--sidebar-row-ink) 8%, transparent);
+  --sidebar-row-active-fill: color-mix(in srgb, var(--sidebar-row-ink) 14%, transparent);
   position: relative;
   flex: 1 1 auto;
   flex-shrink: 0;
@@ -433,6 +483,32 @@ onUnmounted(() => {
   pointer-events: none;
 }
 
+/* 方案六 · 顶部「＋ 新会话」：文本行不进滚动区，hover 只由灰转墨（无填充），
+   ＋ 号与分组行 chevron 同起笔线（x=24 = 列表容器 12 + 抽屉头起点 12）。
+   上内边距 12px 让文字躲开 SidebarHeader 底部同高的淡出渐变。 */
+.sidebar-newchat {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 12px 16px 10px 24px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  /* v7：与行文同 13px */
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color 0.15s ease;
+}
+
+.sidebar-newchat:hover,
+.sidebar-newchat:focus-visible {
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+}
+
 .sidebar.collapsed {
   padding: 0;
   overflow: hidden;
@@ -440,77 +516,73 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-.sidebar-bottom-actions {
+/* 方案二 · 底部悬浮胶囊 dock —— v7 原样：白胶囊、9/15 内边距、裸 16px
+   线性图标、图标间距 15、细分隔线、无边框，阴影同设计稿。 */
+.sidebar-dock {
   display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-/* Library entries stay neutral at rest; category color appears only on
-   hover/active (accent containment). Ledger 风格：状态用线不用填充。 */
-.workspace-action-btn:hover,
-.workspace-action-btn:focus-visible {
-  color: var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent)));
-}
-
-.workspace-action-btn.is-active {
-  background: transparent;
-  color: var(--workspace-action-icon-color, var(--ui-accent-primary-fg, var(--accent)));
-}
-
-/* Active 面板：图标下一道短横线，而非底色填充 */
-.workspace-action-btn.is-active::after {
-  content: '';
-  position: absolute;
-  left: 9px;
-  right: 9px;
-  bottom: 3px;
-  height: 1px;
-  background: currentColor;
-}
-
-.sidebar-bottom {
-  display: flex;
-  align-items: center;
-  margin: 0 16px;
-  padding: 8px 0 10px;
-  border-top: 1px solid var(--ui-sidebar-border-border, var(--ui-border-divider-border, var(--border)));
+  justify-content: center;
   flex-shrink: 0;
+  min-width: 0;
+  padding: 10px 8px 14px;
 }
 
-.sidebar-bottom-btn {
-  --app-button-height: 32px;
-  --app-button-min-width: 32px;
-  --app-button-padding-x: 0;
-  --app-button-hover-fill: transparent;
-  --app-button-hover-fg: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
-
-  position: relative;
-  width: 32px;
-  height: 32px;
+/* 自然宽 = 图标 6×16 + 分隔线 1 + 内边距 30 + 间距 6×15 = 217px。
+   space-between 让间距在足宽时恰为 15px（=设计稿 gap），sidebar 收窄时
+   间距均匀压缩、图标不缩，200px 也不溢出。 */
+.sidebar-dock-pill {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(217px, 100%);
+  min-width: 0;
+  padding: 9px 15px;
+  border-radius: 999px;
+  /* 主题色：用主题自己的最亮面（主界面纸色），与 sidebar 同色相、亮一档，
+     浮起感靠阴影——与设计稿 #fff/#f0efea 的微差关系一致。
+     fx-base-50 是 flexoki 静态阶，色相与自定义主题会打架，不能用。 */
+  background: var(--ui-surface-app-bg, var(--bg-app, #fff));
+  box-shadow: var(--shadow-md, 0 3px 12px rgba(30, 26, 16, 0.13));
+}
+
+/* 暗色（html[data-theme='dark']）：flexoki 色阶翻转后 fx-base-50 变最深，
+   胶囊改用主题的浮起面（比 sidebar 底亮一档，与弹层一致） */
+:global(html[data-theme='dark']) .sidebar-dock-pill {
+  background: var(--ui-surface-floating-bg, var(--bg-floating, var(--fx-base-300)));
+}
+
+.sidebar-dock-divider {
+  width: 1px;
+  height: 15px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 12%, transparent);
+}
+
+/* 裸图标即入口（v7）：无按钮盒、无填充。padding+负 margin 只扩点击热区，
+   不改变 16px 的排版占位。 */
+.sidebar-dock-icon {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  padding: 4px;
+  margin: -4px;
   border: none;
   background: transparent;
-  color: var(
-    --ui-sidebar-action-fg,
-    color-mix(in srgb, var(--ui-sidebar-item-fg, var(--ui-text-secondary-fg, var(--text-sidebar-item))) 88%, transparent)
-  );
-  border-radius: 0;
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 56%, transparent);
   cursor: pointer;
   transition: color 0.15s ease;
 }
 
-.sidebar-bottom-btn:hover {
-  background: transparent;
-  color: var(--ui-sidebar-action-hover-fg, var(--ui-text-primary-fg, var(--text)));
+.sidebar-dock-icon:hover,
+.sidebar-dock-icon:focus-visible,
+.sidebar-dock-icon.is-active {
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
-.sidebar-bottom-spacer {
-  flex: 1;
+.sidebar-dock-icon:focus-visible {
+  outline: none;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
 }
 
 @media (max-width: 768px) {

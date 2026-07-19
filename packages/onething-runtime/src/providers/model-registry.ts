@@ -860,6 +860,20 @@ export function getOnethingModelById(
 	return options.getFallbackModel?.(modelId, providerId);
 }
 
+/**
+ * Raw capability entry with numeric USD-per-1M-token pricing (input/output/
+ * cacheRead/cacheWrite), for cost math. `getOnethingModelById` converts this
+ * into the legacy OpenRouter string-pricing shape instead — use this
+ * accessor when you need to multiply, not just display.
+ */
+export function getOnethingModelCapabilityEntry(
+	providers: OnethingProviderModelConfigs | undefined,
+	modelId: string,
+	providerId?: string,
+): OnethingModelCapabilityEntry | undefined {
+	return getModelEntry(providers, modelId, providerId);
+}
+
 export function getOnethingModelContextLength(
 	providers: OnethingProviderModelConfigs | undefined,
 	modelId: string,
@@ -935,59 +949,9 @@ export function onethingModelSupportsTemperature(
 	return true;
 }
 
-export function onethingModelSupportsReasoning(
-	providers: OnethingProviderModelConfigs | undefined,
-	modelId: string,
-	providerId?: string,
-): boolean {
-	const override = getCapabilityOverride(
-		providers,
-		modelId,
-		providerId,
-		"reasoning",
-	);
-	if (override !== undefined) return override;
-
-	const entry = getModelEntry(providers, modelId, providerId);
-	if (entry) return entry.supportsReasoning;
-
-	const lower = modelId.toLowerCase();
-	// Grok mini models support reasoning
-	if (lower.includes("grok") && lower.includes("mini")) return true;
-	return ["reasoner", "o1", "o3", "thinking"].some((pattern) =>
-		lower.includes(pattern),
-	);
-}
-
-export function onethingModelSupportsReasoningSync(
-	providers: OnethingProviderModelConfigs | undefined,
-	modelId: string,
-	providerId?: string,
-): boolean {
-	const override = getCapabilityOverride(
-		providers,
-		modelId,
-		providerId,
-		"reasoning",
-	);
-	if (override !== undefined) return override;
-
-	const entry = getModelEntry(providers, modelId, providerId);
-	if (entry) return entry.supportsReasoning;
-
-	const lower = modelId.toLowerCase();
-	if (lower.includes("gpt-5.2-chat") || lower.includes("gpt-5.2-instant"))
-		return false;
-	// Grok mini models support reasoning
-	if (lower.includes("grok") && lower.includes("mini")) return true;
-	if (
-		["reasoner", "o1-", "o3-", "-o1", "-o3", "thinking"].some((pattern) =>
-			lower.includes(pattern),
-		)
-	)
-		return true;
-	return false;
-}
+// Reasoning support moved to model-capability.ts (resolveOnethingModelCapabilities).
+// The two former lookups here (async + sync) had drifted apart and had no
+// callers outside this registry — deleted 2026-07-18.
 
 export function onethingModelSupportsImageGeneration(
 	providers: OnethingProviderModelConfigs | undefined,

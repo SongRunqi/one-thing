@@ -37,6 +37,27 @@ export interface OpenAICompatibleAgentProviderOptions {
 	supportsTools?: boolean;
 	maxTokensField?: "max_tokens" | "max_completion_tokens";
 	includeAssistantReasoning?: boolean;
+	/**
+	 * Wire format for the request's thinking/reasoningEffort intent:
+	 * - 'thinking-type': `thinking: {type}` + `reasoning_effort` passthrough
+	 *   (Kimi and other DeepSeek-style endpoints)
+	 * - 'openai-effort': `reasoning_effort` minimal|low|medium|high (OpenAI
+	 *   o-series / gpt-5; xhigh and max clamp to high; reasoning cannot be
+	 *   disabled, so 'disabled' emits nothing)
+	 * - 'zhipu-thinking': `thinking: {type}` only (GLM-4.5+; no effort knob)
+	 * - 'grok-effort': `reasoning_effort` low|medium|high(+xhigh on 4.20);
+	 *   reasoning cannot be disabled, so 'disabled' emits nothing
+	 * - 'openrouter-reasoning': unified `reasoning: {effort}` object,
+	 *   `reasoning: {enabled: false}` on disable
+	 * - 'none' (default): never emit thinking parameters
+	 */
+	reasoningStyle?:
+		| "thinking-type"
+		| "openai-effort"
+		| "zhipu-thinking"
+		| "grok-effort"
+		| "openrouter-reasoning"
+		| "none";
 }
 
 type OpenAICompatibleMessage =
@@ -90,6 +111,9 @@ interface OpenAICompatibleRequestBody {
 	max_tokens?: number;
 	max_completion_tokens?: number;
 	temperature?: number;
+	thinking?: { type: "enabled" | "disabled" };
+	reasoning_effort?: string;
+	reasoning?: { effort?: string; enabled?: boolean };
 }
 
 interface OpenAICompatibleStreamChunk {
@@ -115,6 +139,8 @@ interface OpenAICompatibleStreamChunk {
 		prompt_tokens?: number;
 		completion_tokens?: number;
 		total_tokens?: number;
+		prompt_tokens_details?: { cached_tokens?: number };
+		completion_tokens_details?: { reasoning_tokens?: number };
 	};
 	error?: {
 		message?: string;
@@ -281,7 +307,15 @@ function usageFromChunk(
 	const inputTokens = chunk.usage.prompt_tokens ?? 0;
 	const outputTokens = chunk.usage.completion_tokens ?? 0;
 	const totalTokens = chunk.usage.total_tokens ?? inputTokens + outputTokens;
-	return { inputTokens, outputTokens, totalTokens };
+	const cacheReadTokens = chunk.usage.prompt_tokens_details?.cached_tokens;
+	const reasoningTokens = chunk.usage.completion_tokens_details?.reasoning_tokens;
+	return {
+		inputTokens,
+		outputTokens,
+		totalTokens,
+		...(cacheReadTokens ? { cacheReadTokens } : {}),
+		...(reasoningTokens ? { reasoningTokens } : {}),
+	};
 }
 
 function createOpenAICompatibleApiError(
@@ -453,6 +487,65 @@ function buildCapabilities(
 	};
 }
 
+function clampOpenAIReasoningEffort(
+	effort: string | undefined,
+): "minimal" | "low" | "medium" | "high" {
+	if (effort === "minimal" || effort === "low" || effort === "medium") return effort;
+	return "high";
+}
+
+function clampGrokReasoningEffort(
+	effort: string | undefined,
+	model: string,
+): "low" | "medium" | "high" | "xhigh" {
+	if (effort === "minimal" || effort === "low") return "low";
+	if (effort === "medium") return "medium";
+	// xhigh is only accepted by the grok-4.20 multi-agent family; everything
+	// else tops out at high.
+	if ((effort === "xhigh" || effort === "max") && model.toLowerCase().includes("4.20")) {
+		return "xhigh";
+	}
+	return "high";
+}
+
+function applyReasoningParams(
+	body: OpenAICompatibleRequestBody,
+	style: NonNullable<OpenAICompatibleAgentProviderOptions["reasoningStyle"]>,
+	request: AgentTurnRequest,
+): void {
+	switch (style) {
+		case "thinking-type":
+			if (request.thinking) body.thinking = { type: request.thinking };
+			if (request.reasoningEffort) body.reasoning_effort = request.reasoningEffort;
+			break;
+		case "openai-effort":
+			if (request.thinking === "enabled") {
+				body.reasoning_effort = clampOpenAIReasoningEffort(request.reasoningEffort);
+			}
+			break;
+		case "zhipu-thinking":
+			if (request.thinking) body.thinking = { type: request.thinking };
+			break;
+		case "grok-effort":
+			if (request.thinking === "enabled") {
+				body.reasoning_effort = clampGrokReasoningEffort(
+					request.reasoningEffort,
+					body.model,
+				);
+			}
+			break;
+		case "openrouter-reasoning":
+			if (request.thinking === "enabled") {
+				body.reasoning = { effort: request.reasoningEffort ?? "high" };
+			} else if (request.thinking === "disabled") {
+				body.reasoning = { enabled: false };
+			}
+			break;
+		case "none":
+			break;
+	}
+}
+
 export function createOpenAICompatibleAgentProvider(
 	options: OpenAICompatibleAgentProviderOptions,
 ): AgentProvider {
@@ -484,7 +577,10 @@ export function createOpenAICompatibleAgentProvider(
 		if (request.maxTokens !== undefined) {
 			body[options.maxTokensField ?? "max_tokens"] = request.maxTokens;
 		}
-		if (request.temperature !== undefined) {
+		applyReasoningParams(body, options.reasoningStyle ?? "none", request);
+		// Thinking-enabled requests omit temperature (same rule as the
+		// DeepSeek provider; Kimi thinking models reject custom temperature).
+		if (request.temperature !== undefined && request.thinking !== "enabled") {
 			body.temperature = request.temperature;
 		}
 

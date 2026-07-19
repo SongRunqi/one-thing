@@ -12,6 +12,12 @@ export type ToolEffectKind =
   | 'mcp'
   | 'external_directory'
   | 'sensitive_file_read'
+  /**
+   * Repointing something the system itself acts on — the directory a capability
+   * resolves to, for example. The assistant may propose one, but it changes what
+   * the assistant can reach, so it is never silent and never grantable.
+   */
+  | 'capability_change'
 
 export interface ToolEffect {
   kind: ToolEffectKind
@@ -37,5 +43,6 @@ export function isBarrierEffect(effect: ToolEffect): boolean {
     effect.kind === 'file_write' ||
     effect.kind === 'file_destructive_edit' ||
     effect.kind === 'bash' ||
-    effect.kind === 'mcp'
+    effect.kind === 'mcp' ||
+    effect.kind === 'capability_change'
 }

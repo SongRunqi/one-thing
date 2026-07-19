@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, toRaw, computed } from 'vue'
 import type { AppSettings, ProviderInfo, CustomProviderConfig, OpenRouterModel } from '@/types'
 import { AIProvider as AIProviderEnum } from '../../shared/ipc'
-import type { AIProviderId, TypographyDensity } from '../../shared/ipc'
+import type { AIProviderId, ThinkingEffort, TypographyDensity } from '../../shared/ipc'
 import { createDefaultSettings } from '../../shared/defaults/settings'
 import { platformApi } from '@/platform'
 
@@ -357,6 +357,93 @@ export const useSettingsStore = defineStore('settings', () => {
     settings.value.ai.temperature = Math.max(0, Math.min(2, temperature))
   }
 
+  /**
+   * The single persisting entry point for changing the user's global
+   * default provider/model. Unlike updateAIProvider/updateModel (which stay
+   * synchronous, side-effect-free mutations of the in-memory copy — other
+   * callers rely on that), this immediately saves to disk via the existing
+   * saveSettings → SETTINGS_CHANGED pipeline, so the renderer's displayed
+   * global default can never silently drift from what the engine reads at
+   * send time. See src/renderer/stores/themes.ts for the same
+   * clone-then-saveSettings pattern.
+   */
+  async function saveAIProviderDefault(provider: AIProviderId, model: string) {
+    const nextProviderConfig = {
+      apiKey: '',
+      baseUrl: '',
+      ...settings.value.ai.providers[provider],
+    }
+    nextProviderConfig.selectedModels = nextProviderConfig.selectedModels ?? []
+    nextProviderConfig.model = model
+
+    const next: AppSettings = {
+      ...settings.value,
+      ai: {
+        ...settings.value.ai,
+        provider,
+        providers: {
+          ...settings.value.ai.providers,
+          [provider]: nextProviderConfig,
+        },
+      },
+    }
+    await saveSettings(next)
+  }
+
+  /**
+   * Single persisting entry point for per-model thinking configuration
+   * (thinking on/off, effort level, codex service tier). Reads the latest
+   * in-memory settings at call time and writes only the three maps — callers
+   * must not hold their own settings snapshot and write the whole object back
+   * (that pattern clobbers concurrent field updates).
+   */
+  async function updateProviderThinking(
+    provider: AIProviderId,
+    model: string,
+    patch: {
+      enabled?: boolean
+      effort?: ThinkingEffort
+      serviceTier?: string | null
+    },
+  ) {
+    const current = settings.value.ai.providers[provider] ?? {
+      apiKey: '',
+      model: '',
+      selectedModels: [],
+    }
+    const nextConfig = { ...current }
+
+    if (patch.enabled !== undefined) {
+      nextConfig.thinkingByModel = {
+        ...(current.thinkingByModel ?? {}),
+        [model]: patch.enabled,
+      }
+    }
+    if (patch.effort !== undefined) {
+      nextConfig.thinkingEffortByModel = {
+        ...(current.thinkingEffortByModel ?? {}),
+        [model]: patch.effort,
+      }
+    }
+    if (patch.serviceTier !== undefined) {
+      const serviceTierMap = { ...(current.serviceTierByModel ?? {}) }
+      if (patch.serviceTier) serviceTierMap[model] = patch.serviceTier
+      else delete serviceTierMap[model]
+      nextConfig.serviceTierByModel = serviceTierMap
+    }
+
+    await saveSettings({
+      ...settings.value,
+      ai: {
+        ...settings.value.ai,
+        providers: {
+          ...settings.value.ai.providers,
+          [provider]: nextConfig,
+        },
+      },
+    })
+  }
+
   async function updateTheme(theme: 'light' | 'dark' | 'system') {
     settings.value.theme = theme
 
@@ -697,6 +784,8 @@ export const useSettingsStore = defineStore('settings', () => {
     updateAPIKey,
     updateModel,
     updateTemperature,
+    saveAIProviderDefault,
+    updateProviderThinking,
     updateTheme,
     updateSendShortcut,
     getCurrentProviderConfig,

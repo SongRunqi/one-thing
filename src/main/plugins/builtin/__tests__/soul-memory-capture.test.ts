@@ -6,7 +6,6 @@ import {
 	createDefaultSettings,
 	normalizeSoulMemorySettings,
 } from "../../../../shared/defaults/settings.js";
-import { HERMES_MEMORY_DELIMITER } from "@onething/runtime/memory/hermes-file-memory";
 import type {
 	MemoryWorkspace,
 	ResolvedSoulMemorySettings,
@@ -43,7 +42,6 @@ function makeWorkspace(
 }
 
 afterEach(async () => {
-	__testing.closeIndexWatcherForTesting();
 	await Promise.all(
 		tempDirs
 			.splice(0)
@@ -52,7 +50,7 @@ afterEach(async () => {
 });
 
 describe("soul memory capture routing", () => {
-	it("uses action JSON for capture and markdown bullets for flush extraction", () => {
+	it("uses action JSON for capture and markdown bullets for daily-note extraction", () => {
 		expect(__testing.memoryCaptureSystemPrompt).not.toBe(
 			__testing.dailyNoteExtractionSystemPrompt,
 		);
@@ -64,9 +62,6 @@ describe("soul memory capture routing", () => {
 		);
 		expect(__testing.memoryCaptureSystemPrompt).toContain(
 			"oldText must copy the exact existing bullet line",
-		);
-		expect(__testing.memoryFlushSystemPrompt).toBe(
-			__testing.dailyNoteExtractionSystemPrompt,
 		);
 		expect(__testing.dailyNoteExtractionSystemPrompt).toContain(
 			"what did the user do",
@@ -98,34 +93,6 @@ describe("soul memory capture routing", () => {
 		expect(__testing.dailyNoteExtractionSystemPrompt).not.toContain(
 			"memoryKey",
 		);
-	});
-
-	it("uses daily notes only for dreaming memory action prompts", () => {
-		expect(__testing.memoryDreamingSystemPrompt).toContain(
-			"Use only daily notes from daily/YYYY-MM-DD.md",
-		);
-		expect(__testing.memoryDreamingSystemPrompt).toContain(
-			"Never use short-term signal files",
-		);
-		expect(__testing.memoryDreamingSystemPrompt).toContain(
-			"Return compact JSON only",
-		);
-		expect(__testing.memoryDreamingSystemPrompt).toContain(
-			'"action":"add|replace|remove"',
-		);
-		expect(__testing.memoryDreamingSystemPrompt).toContain(
-			"oldText must copy exact existing MEMORY.md text",
-		);
-		expect(__testing.memoryDreamingSystemPrompt).not.toContain(
-			"short-term capture signals",
-		);
-		expect(__testing.memoryDreamingSystemPrompt).not.toContain(
-			"capped recent sessions",
-		);
-		expect(__testing.memoryDreamingSystemPrompt).not.toContain(
-			"<durable_memory>",
-		);
-		expect(__testing.memoryDreamingSystemPrompt).not.toContain("dream_report");
 	});
 
 	it("allows 10-turn review prompts to update SOUL.md and DREAMS.md", () => {
@@ -275,7 +242,7 @@ describe("soul memory capture routing", () => {
 				memories: [
 					{
 						action: "add",
-						confidence: 0.9,
+								confidence: 0.9,
 						content: "用户今天在 start-electron 清理了 capture 的旧配置。",
 					},
 					{
@@ -582,162 +549,4 @@ describe("soul memory capture routing", () => {
 		expect(dreams).not.toContain("Remove this dream.");
 	});
 
-	it("collects dreaming sources only from daily notes", async () => {
-		const root = await fsp.mkdtemp(
-			path.join(os.tmpdir(), "soul-memory-dreaming-source-test-"),
-		);
-		tempDirs.push(root);
-		const workspace = makeWorkspace(
-			{
-				dreaming: {
-					sources: ["daily"],
-					lookbackDays: 365,
-					maxSourceFiles: 5,
-				},
-			} as any,
-			root,
-		);
-		const today = localDateString();
-		await fsp.mkdir(path.join(root, "daily", ".dreams"), { recursive: true });
-		await fsp.writeFile(
-			path.join(root, "daily", `${today}.md`),
-			`# ${today}\n\n- 用户明确偏好精确、不要模棱两可的解释。\n`,
-			"utf-8",
-		);
-		await fsp.writeFile(
-			path.join(root, "daily", ".dreams", "short-term.jsonl"),
-			'{"content":"short-term source should not be used"}\n',
-			"utf-8",
-		);
-
-		const result = await __testing.collectDreamingSources(workspace);
-
-		expect(result.sources).toHaveLength(1);
-		expect(result.sources[0]).toMatchObject({
-			sourceType: "daily",
-			relativePath: `daily/${today}.md`,
-		});
-		expect(result.sources[0].content).toContain("用户明确偏好精确");
-		expect(result.sources.map((source) => source.relativePath)).not.toContain(
-			"daily/.dreams/short-term.jsonl",
-		);
-	});
-
-	it("parses add, replace, and remove dreaming actions from compact JSON", () => {
-		const parsed = __testing.parseDreamingOutput(
-			JSON.stringify({
-				action: "dream",
-				confidence: 0.9,
-				memories: [
-					{
-						action: "add",
-						confidence: 0.92,
-						content: "Project Alpha uses Bun for scripts.",
-					},
-					{
-						action: "replace",
-						oldText: "Project Alpha uses npm for scripts.",
-						newText: "Project Alpha uses Bun for scripts.",
-					},
-					{
-						action: "remove",
-						text: "Temporary troubleshooting note.",
-					},
-				],
-			}),
-		);
-
-		expect(parsed.confidence).toBe(0.9);
-		expect(parsed.candidates).toEqual([
-			{
-				action: "add",
-				confidence: 0.92,
-				content: "Project Alpha uses Bun for scripts.",
-			},
-			{
-				action: "replace",
-				confidence: 0.9,
-				oldText: "Project Alpha uses npm for scripts.",
-				newText: "Project Alpha uses Bun for scripts.",
-			},
-			{
-				action: "remove",
-				confidence: 0.9,
-				text: "Temporary troubleshooting note.",
-			},
-		]);
-	});
-
-	it("applies dreaming add, replace, and remove actions to MEMORY.md without writing DREAMS.md", async () => {
-		const root = await fsp.mkdtemp(
-			path.join(os.tmpdir(), "soul-memory-dreaming-test-"),
-		);
-		tempDirs.push(root);
-		const workspace = makeWorkspace({}, root);
-		await fsp.mkdir(root, { recursive: true });
-		await fsp.writeFile(
-			workspace.memoryPath,
-			[
-				"Existing durable fact.",
-				HERMES_MEMORY_DELIMITER.trim(),
-				"Project Alpha uses npm for scripts.",
-				HERMES_MEMORY_DELIMITER.trim(),
-				"Temporary troubleshooting note.",
-				HERMES_MEMORY_DELIMITER.trim(),
-				"",
-			].join("\n"),
-			"utf-8",
-		);
-
-		const memoryActions = await __testing.applyDreamingMemoryActions(
-			workspace,
-			{
-				confidence: 0.9,
-				memory: "",
-				candidates: [
-					{
-						action: "add",
-						confidence: 0.95,
-						content: "User prefers precise, non-ambiguous explanations.",
-					},
-					{
-						action: "add",
-						confidence: 0.95,
-						content: "Existing durable fact.",
-					},
-					{
-						action: "replace",
-						confidence: 0.95,
-						oldText: "Project Alpha uses npm for scripts.",
-						newText: "Project Alpha uses Bun for scripts.",
-					},
-					{
-						action: "remove",
-						confidence: 0.95,
-						text: "Temporary troubleshooting note.",
-					},
-				],
-			},
-			new Date("2026-06-16T03:00:00Z"),
-		);
-
-		expect(memoryActions).toMatchObject({
-			applied: 3,
-			added: 1,
-			replaced: 1,
-			removed: 1,
-			skipped: 1,
-		});
-		const memory = await fsp.readFile(workspace.memoryPath, "utf-8");
-		expect(memory).toContain(
-			"User prefers precise, non-ambiguous explanations.",
-		);
-		expect(memory).toContain("Project Alpha uses Bun for scripts.");
-		expect(memory).not.toContain("Project Alpha uses npm for scripts.");
-		expect(memory).not.toContain("Temporary troubleshooting note.");
-		expect(memory).toContain(HERMES_MEMORY_DELIMITER);
-		await expect(fsp.stat(workspace.dreamsPath)).rejects.toMatchObject({
-			code: "ENOENT",
-		});
-	});
 });

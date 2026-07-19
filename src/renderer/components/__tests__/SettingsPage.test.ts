@@ -74,8 +74,8 @@ function mountSettingsPage() {
         PromptsSettingsPanel: { template: '<div class="stub-prompts">prompts tab</div>' },
         PluginsSettingsTab: { template: '<div class="stub-plugins">plugins tab</div>' },
         MemorySettingsTab: { template: '<div class="stub-memory">memory tab</div>' },
+        UsageSettingsPanel: { template: '<div class="stub-usage">usage tab</div>' },
         CustomProviderDialog: { template: '<div />' },
-        UnsavedChangesDialog: { template: '<div />' },
       },
     },
   })
@@ -113,7 +113,7 @@ describe('SettingsPage shell', () => {
 
     expect(wrapper.find('.sidebar-nav').classes()).toContain('app-menu')
     const firstSubMenuTitle = wrapper.find('.sidebar-entry .app-sub-menu-title')
-    expect(firstSubMenuTitle.element.children[0]?.classList.contains('app-sub-menu-chevron')).toBe(true)
+    expect(firstSubMenuTitle.element.children[0]?.classList.contains('app-sub-menu-chevron-hit')).toBe(true)
     expect(firstSubMenuTitle.element.children[1]?.classList.contains('app-sub-menu-icon')).toBe(true)
 
     await wrapper.find('[data-index="prompts"]').trigger('click')
@@ -127,6 +127,12 @@ describe('SettingsPage shell', () => {
 
     expect(wrapper.find('.content-header h1').text()).toBe('Memory')
     expect(wrapper.find('.stub-memory').exists()).toBe(true)
+
+    await wrapper.find('[data-index="usage"]').trigger('click')
+    await settle()
+
+    expect(wrapper.find('.content-header h1').text()).toBe('Usage')
+    expect(wrapper.find('.stub-usage').exists()).toBe(true)
   })
 
   it('filters navigation from the sidebar search', async () => {
@@ -142,7 +148,7 @@ describe('SettingsPage shell', () => {
     expect(labels).toEqual(['Prompts', 'Evals'])
   })
 
-  it('expands and collapses sidebar sections independently', async () => {
+  it('expands and collapses sidebar sections only via the chevron', async () => {
     const wrapper = mountSettingsPage()
     await settle()
 
@@ -153,24 +159,54 @@ describe('SettingsPage shell', () => {
     expect(subnavText()).not.toContain('Theme')
     expect(subnavText()).not.toContain('Text Editor')
 
-    await entryByLabel('General').find('.app-sub-menu-title').trigger('click')
+    await entryByLabel('General').find('.app-sub-menu-chevron-hit').trigger('click')
     await settle()
 
     expect(subnavText()).toContain('Theme')
     expect(subnavText()).not.toContain('Text Editor')
 
-    await entryByLabel('Editor').find('.app-sub-menu-title').trigger('click')
+    await entryByLabel('Editor').find('.app-sub-menu-chevron-hit').trigger('click')
     await settle()
 
-    expect(wrapper.find('.content-header h1').text()).toBe('Editor')
     expect(subnavText()).toContain('Theme')
     expect(subnavText()).toContain('Text Editor')
+    // Expanding via the chevron is sidebar-only: it must not navigate.
+    expect(wrapper.find('.content-header h1').text()).toBe('General')
 
-    await entryByLabel('General').find('.app-sub-menu-title').trigger('click')
+    await entryByLabel('General').find('.app-sub-menu-chevron-hit').trigger('click')
     await settle()
 
     expect(subnavText()).not.toContain('Theme')
     expect(subnavText()).toContain('Text Editor')
+    expect(wrapper.find('.content-header h1').text()).toBe('General')
+  })
+
+  it('switches tabs on group title click without toggling expansion', async () => {
+    const wrapper = mountSettingsPage()
+    await settle()
+
+    const subnavText = () => wrapper.findAll('.app-sub-menu-panel').map(nav => nav.text()).join(' ')
+    const entryByLabel = (label: string) =>
+      wrapper.findAll('.sidebar-entry').find(entry => entry.find('.sidebar-label').text() === label)!
+
+    await entryByLabel('Editor').find('.app-sub-menu-title').trigger('click')
+    await settle()
+
+    expect(wrapper.find('.content-header h1').text()).toBe('Editor')
+    expect(subnavText()).not.toContain('Text Editor')
+  })
+
+  it('renders single-section tabs as flat entries without a submenu', async () => {
+    const wrapper = mountSettingsPage()
+    await settle()
+
+    const promptsEntry = wrapper.find('[data-index="prompts"]')
+    expect(promptsEntry.exists()).toBe(true)
+    expect(promptsEntry.classes()).not.toContain('app-sub-menu-title')
+
+    const flatEntries = wrapper.findAll('.sidebar-entry-flat')
+    expect(flatEntries.length).toBeGreaterThan(0)
+    expect(flatEntries.some(entry => entry.find('.app-sub-menu-panel').exists())).toBe(false)
   })
 
   it('targets Container-owned layout regions through scoped deep selectors', () => {

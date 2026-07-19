@@ -6,7 +6,6 @@ import {
 import type { MemoryWorkspace } from './types.js'
 import type { MemoryDiagnosticsLogInput } from './diagnostics-logger.js'
 import {
-  isIndexableMarkdownPath,
   previewLine,
   replaceFileAtomic,
   sha,
@@ -57,7 +56,6 @@ export async function runMemoryCapture<TProvider>(options: {
   applyStatusMutation: (plan: CoreSoulMemoryStatusMutationPlan) => void | Promise<void>
   notify?: (message: string, level?: 'info' | 'warn' | 'error') => void | Promise<void>
   logDiagnostic?: (event: MemoryDiagnosticsLogInput) => void
-  onIndexableWrite?: (target: CoreSoulMemoryResolvedPath) => void | Promise<void>
   now?: () => number
 }): Promise<CoreSoulMemoryCaptureRunResult> {
   return coreRunSoulMemoryCapture<TProvider>({
@@ -76,7 +74,6 @@ export async function runMemoryCapture<TProvider>(options: {
       candidates,
       heading: coreDailyNoteTimeHeading(),
       logDiagnostic: options.logDiagnostic,
-      onIndexableWrite: options.onIndexableWrite,
     }),
     applyStatusMutation: options.applyStatusMutation,
     notify: options.notify,
@@ -93,7 +90,6 @@ export async function appendDailyNoteCaptureBullets(options: {
   bullets: string[]
   heading?: string
   logDiagnostic?: (input: MemoryDiagnosticsLogInput) => void
-  onIndexableWrite?: (target: CoreSoulMemoryResolvedPath) => void | Promise<void>
 }): Promise<CoreSoulMemoryResolvedPath | null> {
   const plan = corePlanSoulMemoryDailyNoteAppend({
     bullets: options.bullets,
@@ -107,7 +103,6 @@ export async function appendDailyNoteCaptureBullets(options: {
     heading: plan.heading,
     content: plan.content,
     logDiagnostic: options.logDiagnostic,
-    onIndexableWrite: options.onIndexableWrite,
   })
 }
 
@@ -127,7 +122,6 @@ export async function applyDailyNoteCaptureActions(options: {
   candidates: CoreDailyNoteCaptureCandidate[]
   heading?: string
   logDiagnostic?: (input: MemoryDiagnosticsLogInput) => void
-  onIndexableWrite?: (target: CoreSoulMemoryResolvedPath) => void | Promise<void>
 }): Promise<DailyNoteCaptureApplyResult | null> {
   const dailyRelativePath = relativePath(options.workspace.root, options.workspace.todayPath)
   let wroteDailyContent = false
@@ -145,7 +139,6 @@ export async function applyDailyNoteCaptureActions(options: {
       bullets,
       heading: options.heading || coreDailyNoteTimeHeading(),
       logDiagnostic: options.logDiagnostic,
-      onIndexableWrite: options.onIndexableWrite,
     })),
   })
   if (!applyResult) return null
@@ -171,12 +164,6 @@ export async function applyDailyNoteCaptureActions(options: {
     },
   })
 
-  if (wroteDailyContent && isIndexableMarkdownPath(dailyRelativePath)) {
-    await options.onIndexableWrite?.({
-      absolutePath: options.workspace.todayPath,
-      relativePath: dailyRelativePath,
-    })
-  }
 
   return {
     absolutePath: options.workspace.todayPath,

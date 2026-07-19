@@ -81,6 +81,7 @@ import type {
 	ChannelIdentityUpdateProfileResponse,
 	ChannelIdentityResolveResponse,
 	ChannelReplyDeliveryRecord,
+	VoiceAudioChunkPayload,
 	VoiceEndpointingMode,
 	VoiceEvent,
 	VoiceLatencyMilestone,
@@ -100,6 +101,36 @@ import type {
 	VoiceSynthesizeResponse,
 	VoiceTTSModel,
 	VoiceTTSModelsResponse,
+	MusicEvent,
+	MusicGetStateResponse,
+	MusicSetupRequest,
+	MusicSetupResponse,
+	MusicNowPlaying,
+	MusicCommand,
+	MusicCommandRequest,
+	MusicCommandResponse,
+	MusicRadioState,
+	MusicListProvidersResponse,
+	MusicGetProgrammeResponse,
+	MusicOpenRadioRequest,
+	MusicSearchRequest,
+	MusicSearchResponse,
+	MusicSearchRecordDTO,
+	MusicRequestSongRequest,
+	MusicRequestSongResponse,
+	MusicProgrammeActionRequest,
+	MusicProgrammeEntryDTO,
+	MusicProviderDescriptorDTO,
+	MusicSetProviderRequest,
+	MusicBaseResponse,
+	MusicLyricLine,
+	MusicLyrics,
+	MusicDjSpeak,
+	MusicRuntimeState,
+	MusicPlayerBackend,
+	MusicRadioSource,
+	MusicEnvStatus,
+	MusicSettings,
 	MessageAttachment,
 	AttachmentMediaType,
 	MediaKind,
@@ -200,6 +231,14 @@ import type {
 	ReadSkillFileResponse,
 	OpenSkillDirectoryResponse,
 	CreateSkillResponse,
+	SkillDirectoryConfig,
+	ListSkillDirectoriesResponse,
+	AddSkillDirectoryRequest,
+	AddSkillDirectoryResponse,
+	UpdateSkillDirectoryRequest,
+	UpdateSkillDirectoryResponse,
+	RemoveSkillDirectoryResponse,
+	SetSkillAgentResponse,
 	PluginCommandInfo,
 	GetPluginCommandsResponse,
 	ExecutePluginCommandResponse,
@@ -207,44 +246,15 @@ import type {
 	MemoryAppendResponse,
 	MemoryCaptureDecisionRequest,
 	MemoryCaptureDecisionResponse,
-	MemoryIndexResponse,
 	MemoryOverviewResponse,
-	MemoryProfileAuditRequest,
-	MemoryProfileAuditResponse,
-	MemoryProfileDeleteRequest,
-	MemoryProfileDeleteResponse,
-	MemoryProfileExportResponse,
-	MemoryProfileListRequest,
-	MemoryProfileListResponse,
-	MemoryProfileUpsertRequest,
-	MemoryProfileUpsertResponse,
-	MemoryGraphAuditRequest,
-	MemoryGraphAuditResponse,
-	MemoryGraphDeleteRequest,
-	MemoryGraphDuplicateDecisionRequest,
-	MemoryGraphDuplicatesResponse,
-	MemoryGraphEntitiesResponse,
-	MemoryGraphEntityResponse,
-	MemoryGraphEntityUpsertRequest,
-	MemoryGraphObservationResponse,
-	MemoryGraphObservationUpsertRequest,
-	MemoryGraphObservationsResponse,
-	MemoryGraphOverviewResponse,
-	MemoryGraphRelationResponse,
-	MemoryGraphRelationUpsertRequest,
-	MemoryGraphRelationsResponse,
-	MemoryGraphListRequest,
 	MemoryLogsCleanupResponse,
 	MemoryLogsListRequest,
 	MemoryLogsListResponse,
 	MemoryLogsStatsResponse,
-	MemoryRunDreamingResponse,
 	MemoryReadRequest,
 	MemoryReadResponse,
 	MemorySaveFileRequest,
 	MemorySaveFileResponse,
-	MemorySearchRequest,
-	MemorySearchResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -284,6 +294,22 @@ import type {
 	VariablesListResponse,
 	VariablesSetResponse,
 	VariablesDeleteResponse,
+	// Session goal types
+	SessionGoal,
+	SessionGoalStatus,
+	GoalDiffsResponse,
+	GoalFileDiff,
+	GoalGetResponse,
+	GoalSetRequest,
+	GoalSetResponse,
+	// Token usage / billing types
+	GetUsageSummaryRequest,
+	GetUsageSummaryResponse,
+	GetSessionUsageRequest,
+	GetSessionUsageResponse,
+	OnethingUsageBreakdownEntry,
+	OnethingUsageBucket,
+	OnethingUsageSummaryGranularity,
 	// Project directories types (independent module)
 	ProjectDirsListResponse,
 	ProjectDirsGetResponse,
@@ -304,12 +330,60 @@ import type {
 	TodoPlanUpdateResponse,
 	TodoPlanUpdateRequest,
 	TodoPlanWindowActionRequest,
+	PracticeConfig,
+	PracticeConfigResponse,
+	PracticeEventPayload,
+	PracticeLedgerRecord,
+	PracticePhaseEdge,
+	PracticeSnapshot,
+	PracticeSummaryGranularity,
+	PracticeLogRequest,
+	PracticeLogResponse,
+	PracticeRecentRequest,
+	PracticeRecentResponse,
+	PracticeSetConfigRequest,
+	PracticeStartRequest,
+	PracticeStateResponse,
+	PracticeStopRequest,
+	PracticeSummaryRequest,
+	PracticeSummaryResult,
 } from "../../shared/ipc";
 
 export type {
 	ChatMessage,
 	ChatSession,
 	ContextVariable,
+	SessionGoal,
+	SessionGoalStatus,
+	GoalDiffsResponse,
+	GoalFileDiff,
+	GoalGetResponse,
+	GoalSetRequest,
+	GoalSetResponse,
+	GetUsageSummaryRequest,
+	GetUsageSummaryResponse,
+	GetSessionUsageRequest,
+	GetSessionUsageResponse,
+	PracticeConfig,
+	PracticeConfigResponse,
+	PracticeEventPayload,
+	PracticeLedgerRecord,
+	PracticePhaseEdge,
+	PracticeSnapshot,
+	PracticeSummaryGranularity,
+	PracticeLogRequest,
+	PracticeLogResponse,
+	PracticeRecentRequest,
+	PracticeRecentResponse,
+	PracticeSetConfigRequest,
+	PracticeStartRequest,
+	PracticeStateResponse,
+	PracticeStopRequest,
+	PracticeSummaryRequest,
+	PracticeSummaryResult,
+	OnethingUsageBreakdownEntry,
+	OnethingUsageBucket,
+	OnethingUsageSummaryGranularity,
 	AgentDefinition,
 	AgentsListResponse,
 	AgentCreateResponse,
@@ -372,6 +446,7 @@ export type {
 	MessageOrigin,
 	ChannelUserLink,
 	ChannelUserProfile,
+	VoiceAudioChunkPayload,
 	VoiceEndpointingMode,
 	VoiceEvent,
 	VoiceLatencyMilestone,
@@ -390,6 +465,36 @@ export type {
 	VoiceSynthesizeResponse,
 	VoiceTTSModel,
 	VoiceTTSModelsResponse,
+	MusicEvent,
+	MusicGetStateResponse,
+	MusicSetupRequest,
+	MusicSetupResponse,
+	MusicNowPlaying,
+	MusicCommand,
+	MusicCommandRequest,
+	MusicCommandResponse,
+	MusicRadioState,
+	MusicListProvidersResponse,
+	MusicGetProgrammeResponse,
+	MusicOpenRadioRequest,
+	MusicSearchRequest,
+	MusicSearchResponse,
+	MusicSearchRecordDTO,
+	MusicRequestSongRequest,
+	MusicRequestSongResponse,
+	MusicProgrammeActionRequest,
+	MusicProgrammeEntryDTO,
+	MusicProviderDescriptorDTO,
+	MusicSetProviderRequest,
+	MusicBaseResponse,
+	MusicLyricLine,
+	MusicLyrics,
+	MusicDjSpeak,
+	MusicRuntimeState,
+	MusicPlayerBackend,
+	MusicRadioSource,
+	MusicEnvStatus,
+	MusicSettings,
 	MessageAttachment,
 	AttachmentMediaType,
 	MediaKind,
@@ -452,6 +557,7 @@ export type {
 	SkillFile,
 	SkillSource,
 	SkillSettings,
+	SkillDirectoryConfig,
 	PluginCommandInfo,
 	GetPluginCommandsResponse,
 	ExecutePluginCommandResponse,
@@ -459,19 +565,15 @@ export type {
 	MemoryAppendResponse,
 	MemoryCaptureDecisionRequest,
 	MemoryCaptureDecisionResponse,
-	MemoryIndexResponse,
 	MemoryOverviewResponse,
 	MemoryLogsCleanupResponse,
 	MemoryLogsListRequest,
 	MemoryLogsListResponse,
 	MemoryLogsStatsResponse,
-	MemoryRunDreamingResponse,
 	MemoryReadRequest,
 	MemoryReadResponse,
 	MemorySaveFileRequest,
 	MemorySaveFileResponse,
-	MemorySearchRequest,
-	MemorySearchResponse,
 	SchedulerSchedule,
 	SchedulerRunDetailDTO,
 	SchedulerTaskSnapshotDTO,
@@ -567,7 +669,10 @@ export interface ElectronAPI {
 		sessionId: string,
 	) => Promise<GetSystemPromptSnapshotResponse>;
 	getSessions: () => Promise<GetSessionsResponse>;
-	createSession: (name: string) => Promise<CreateSessionResponse>;
+	createSession: (
+		name: string,
+		options?: { sessionId?: string },
+	) => Promise<CreateSessionResponse>;
 	switchSession: (sessionId: string) => Promise<SwitchSessionResponse>;
 	getSession: (sessionId: string) => Promise<SwitchSessionResponse>;
 	deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>;
@@ -832,6 +937,25 @@ export interface ElectronAPI {
 		sessionId: string,
 		name: string,
 	) => Promise<VariablesDeleteResponse>;
+	// Session goals
+	goalGet: (sessionId: string) => Promise<GoalGetResponse>;
+	goalSet: (request: GoalSetRequest) => Promise<GoalSetResponse>;
+	goalDiffs: (sessionId: string) => Promise<GoalDiffsResponse>;
+	// Token usage / billing
+	getUsageSummary: (request: GetUsageSummaryRequest) => Promise<GetUsageSummaryResponse>;
+	getSessionUsage: (request: GetSessionUsageRequest) => Promise<GetSessionUsageResponse>;
+	// Practice (kegel / pomodoro / exercise log)
+	practiceStart: (request: PracticeStartRequest) => Promise<PracticeStateResponse>;
+	practicePause: () => Promise<PracticeStateResponse>;
+	practiceResume: () => Promise<PracticeStateResponse>;
+	practiceStop: (request?: PracticeStopRequest) => Promise<PracticeStateResponse>;
+	practiceGetState: () => Promise<PracticeStateResponse>;
+	practiceLog: (request: PracticeLogRequest) => Promise<PracticeLogResponse>;
+	practiceSummary: (request: PracticeSummaryRequest) => Promise<PracticeSummaryResult>;
+	practiceRecent: (request: PracticeRecentRequest) => Promise<PracticeRecentResponse>;
+	practiceGetConfig: () => Promise<PracticeConfigResponse>;
+	practiceSetConfig: (request: PracticeSetConfigRequest) => Promise<PracticeConfigResponse>;
+	onPracticeEvent: (callback: (payload: PracticeEventPayload) => void) => () => void;
 	// Project directories — independent module
 	projectDirsList: () => Promise<ProjectDirsListResponse>;
 	projectDirsGet: (path: string) => Promise<ProjectDirsGetResponse>;
@@ -875,6 +999,12 @@ export interface ElectronAPI {
 			messageId?: string;
 		}) => void,
 	) => () => void;
+	getSessionCacheStats: () => Promise<{
+		size: number;
+		maxSize: number;
+		cachedSessionIds: string[];
+	}>;
+	evictSessionCache: (sessionId: string) => Promise<{ success: boolean }>;
 	// System message methods (for /files command persistence)
 	addSystemMessage: (
 		sessionId: string,
@@ -984,9 +1114,32 @@ export interface ElectronAPI {
 	onVoiceEvent: (callback: (event: VoiceEvent) => void) => () => void;
 	voiceRuntimeReady: () => Promise<{ success: boolean }>;
 	voiceRuntimeEvent: (event: VoiceEvent) => Promise<{ success: boolean }>;
+	voiceAudioChunk: (payload: VoiceAudioChunkPayload) => void;
 	onVoiceRuntimeCommand: (
 		callback: (command: VoiceRuntimeCommand) => void,
 	) => () => void;
+	musicGetState: () => Promise<MusicGetStateResponse>;
+	musicSetup: (request: MusicSetupRequest) => Promise<MusicSetupResponse>;
+	onMusicEvent: (callback: (event: MusicEvent) => void) => () => void;
+	musicCommand: (request: MusicCommandRequest) => Promise<MusicCommandResponse>;
+	musicGetNowPlaying: () => Promise<MusicNowPlaying | null>;
+	musicGetRadio: () => Promise<MusicRadioState>;
+	musicOpenRadio: (request: MusicOpenRadioRequest) => Promise<MusicBaseResponse>;
+	musicSearch: (request: MusicSearchRequest) => Promise<MusicSearchResponse>;
+	musicRequestSong: (request: MusicRequestSongRequest) => Promise<MusicRequestSongResponse>;
+	musicGetProgramme: () => Promise<MusicGetProgrammeResponse>;
+	musicProgrammeAction: (request: MusicProgrammeActionRequest) => Promise<MusicBaseResponse>;
+	musicListProviders: () => Promise<MusicListProvidersResponse>;
+	musicSetProvider: (request: MusicSetProviderRequest) => Promise<MusicBaseResponse>;
+	musicGetLyrics: () => Promise<MusicLyrics | null>;
+	onMusicLyrics: (
+		callback: (lyrics: MusicLyrics) => void,
+	) => () => void;
+	onMusicNowPlaying: (
+		callback: (nowPlaying: MusicNowPlaying | null) => void,
+	) => () => void;
+	onMusicDjSpeak: (callback: (speak: MusicDjSpeak) => void) => () => void;
+	musicDjSpeakDone: (id: string) => Promise<void>;
 	getSystemTheme: () => Promise<{ success: boolean; theme?: "light" | "dark" }>;
 	testProxy: (
 		proxy: ProxySettings,
@@ -1161,6 +1314,16 @@ export interface ElectronAPI {
 		skillId: string,
 		enabled: boolean,
 	) => Promise<{ success: boolean; error?: string }>;
+	listSkillDirectories: () => Promise<ListSkillDirectoriesResponse>;
+	addSkillDirectory: (request: AddSkillDirectoryRequest) =>
+		Promise<AddSkillDirectoryResponse>;
+	updateSkillDirectory: (request: UpdateSkillDirectoryRequest) =>
+		Promise<UpdateSkillDirectoryResponse>;
+	removeSkillDirectory: (id: string) => Promise<RemoveSkillDirectoryResponse>;
+	setSkillAgent: (
+		skillId: string,
+		agentId: string | null,
+	) => Promise<SetSkillAgentResponse>;
 
 	// Message update methods
 	updateMessageThinkingTime: (
@@ -1496,73 +1659,10 @@ export interface ElectronAPI {
 	// Soul / Memory panel
 	getMemoryOverview: (agentId?: string) => Promise<MemoryOverviewResponse>;
 	readMemoryFile: (request: MemoryReadRequest) => Promise<MemoryReadResponse>;
-	searchMemory: (request: MemorySearchRequest) => Promise<MemorySearchResponse>;
 	appendMemory: (request: MemoryAppendRequest) => Promise<MemoryAppendResponse>;
 	saveMemoryFile: (
 		request: MemorySaveFileRequest,
 	) => Promise<MemorySaveFileResponse>;
-	rebuildMemoryIndex: (agentId?: string) => Promise<MemoryIndexResponse>;
-	runMemoryDreaming: (agentId?: string) => Promise<MemoryRunDreamingResponse>;
-	listMemoryProfile: (
-		request?: MemoryProfileListRequest,
-	) => Promise<MemoryProfileListResponse>;
-	searchMemoryProfile: (
-		request: MemoryProfileListRequest,
-	) => Promise<MemoryProfileListResponse>;
-	upsertMemoryProfile: (
-		request: MemoryProfileUpsertRequest,
-	) => Promise<MemoryProfileUpsertResponse>;
-	deleteMemoryProfile: (
-		request: MemoryProfileDeleteRequest,
-	) => Promise<MemoryProfileDeleteResponse>;
-	getMemoryProfileAudit: (
-		request: MemoryProfileAuditRequest,
-	) => Promise<MemoryProfileAuditResponse>;
-	exportMemoryProfile: (
-		agentId?: string,
-	) => Promise<MemoryProfileExportResponse>;
-	getMemoryGraphOverview: (
-		agentId?: string,
-	) => Promise<MemoryGraphOverviewResponse>;
-	listMemoryGraphEntities: (
-		request?: MemoryGraphListRequest,
-	) => Promise<MemoryGraphEntitiesResponse>;
-	upsertMemoryGraphEntity: (
-		request: MemoryGraphEntityUpsertRequest,
-	) => Promise<MemoryGraphEntityResponse>;
-	deleteMemoryGraphEntity: (
-		request: MemoryGraphDeleteRequest,
-	) => Promise<{ success: boolean; error?: string }>;
-	listMemoryGraphObservations: (
-		request?: MemoryGraphListRequest & { entityId?: string },
-	) => Promise<MemoryGraphObservationsResponse>;
-	upsertMemoryGraphObservation: (
-		request: MemoryGraphObservationUpsertRequest,
-	) => Promise<MemoryGraphObservationResponse>;
-	deleteMemoryGraphObservation: (
-		request: MemoryGraphDeleteRequest,
-	) => Promise<{ success: boolean; error?: string }>;
-	listMemoryGraphRelations: (
-		request?: MemoryGraphListRequest & { entityId?: string },
-	) => Promise<MemoryGraphRelationsResponse>;
-	upsertMemoryGraphRelation: (
-		request: MemoryGraphRelationUpsertRequest,
-	) => Promise<MemoryGraphRelationResponse>;
-	deleteMemoryGraphRelation: (
-		request: MemoryGraphDeleteRequest,
-	) => Promise<{ success: boolean; error?: string }>;
-	listMemoryGraphDuplicates: (
-		request?: MemoryGraphListRequest,
-	) => Promise<MemoryGraphDuplicatesResponse>;
-	mergeMemoryGraphDuplicate: (
-		request: MemoryGraphDuplicateDecisionRequest,
-	) => Promise<{ success: boolean; error?: string }>;
-	ignoreMemoryGraphDuplicate: (
-		request: MemoryGraphDuplicateDecisionRequest,
-	) => Promise<{ success: boolean; error?: string }>;
-	getMemoryGraphAudit: (
-		request: MemoryGraphAuditRequest,
-	) => Promise<MemoryGraphAuditResponse>;
 	listMemoryLogs: (
 		request?: MemoryLogsListRequest,
 	) => Promise<MemoryLogsListResponse>;
@@ -1602,6 +1702,9 @@ export interface ElectronAPI {
 	) => Promise<SchedulerGetRunResponse>;
 
 	// App State
+	// `openTabs`/`activeTabIndex` are the legacy (v1) flat tab list, read-only
+	// for migration; `workspace` is the v2 whole-tree format written by the
+	// workspace store.
 	getAppState: () => Promise<{
 		currentSessionId: string;
 		currentWorkspaceId: string | null;
@@ -1615,19 +1718,11 @@ export interface ElectronAPI {
 			title?: string;
 		}>;
 		activeTabIndex?: number;
+		workspace?: import("@/stores/workspace-persistence").PersistedWorkspace;
 		sidebarCollapsed?: boolean;
 	}>;
 	saveUIState: (uiState: {
-		openTabs?: Array<{
-			type: string;
-			sessionId?: string;
-			filePath?: string;
-			initialFilePath?: string;
-			activeFilePath?: string;
-			workspaceRoot?: string;
-			title?: string;
-		}>;
-		activeTabIndex?: number;
+		workspace?: import("@/stores/workspace-persistence").PersistedWorkspace;
 		sidebarCollapsed?: boolean;
 	}) => Promise<{ success: boolean }>;
 

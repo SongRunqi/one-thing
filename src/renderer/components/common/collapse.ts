@@ -5,7 +5,7 @@ export type CollapsePanelVariant = 'outlined' | 'plain'
 export type CollapsePanelContentVariant = 'panel' | 'plain'
 export type ExpandIconPosition = 'start' | 'inline-end' | 'end'
 export type ExpandIconDisplay = 'always' | 'hover'
-export type CollapsePanelContentKind = 'text' | 'code' | 'diff'
+export type CollapsePanelContentKind = 'text' | 'code'
 export type CollapsePanelStatus =
   | 'idle'
   | 'pending'

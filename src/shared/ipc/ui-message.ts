@@ -206,6 +206,9 @@ export interface TokenUsage {
   outputTokens: number
   totalTokens: number
   durationMs?: number  // Duration in milliseconds for speed calculation
+  cacheReadTokens?: number
+  cacheWriteTokens?: number
+  reasoningTokens?: number
 }
 
 /**

@@ -28,6 +28,7 @@ import {
 	planAgentLoopRuntimePreparation,
 	planAgentLoopTools,
 	resolveAgentLoopContextBudgetWithRegistry,
+	injectPendingAgentLoopMessagesWithAdapters,
 	runAgentLoopAfterTurnWithAdapters,
 	runAgentLoopBeforeTurnWithAdapters,
 	type CoreAgentLoopCompactResultLike,
@@ -63,10 +64,20 @@ import { createTurnTraceRecorder } from "../evals/trace-store.js";
 
 export interface OnethingAgentLoopChatSettings {
 	maxTokens?: number;
+	/**
+	 * Model round-trips allowed per run before the loop stops with
+	 * finishReason 'max_turns'. The core runner's own default (8) is far too
+	 * small for real tool-heavy work — every chat run, not just goal-driven
+	 * ones, was silently truncated mid-task with no user-facing signal.
+	 */
+	maxTurns?: number;
 	contextCompactThreshold?: number;
 	contextCompactEnabled?: boolean;
 	contextCompactKeepRecentTurns?: number;
 }
+
+/** Applied when settings.chat.maxTurns is unset. */
+export const DEFAULT_CHAT_MAX_TURNS = 100;
 
 export interface OnethingAgentLoopRuntimeSettings<
 	TToolSettings extends CoreAgentLoopRuntimeToolSettingsLike | undefined =
@@ -108,6 +119,7 @@ export interface OnethingAgentLoopRuntimeContext<
 
 export interface OnethingAgentLoopPendingMessageQueue {
 	drain(): CorePendingAgentLoopInputMessage[];
+	enqueue?(message: CorePendingAgentLoopInputMessage): void;
 }
 
 export interface OnethingAgentLoopProjectPromptVars {
@@ -128,6 +140,23 @@ export interface OnethingAgentLoopPromptResult<
 	messages: TPromptMessage[];
 }
 
+/**
+ * Session-goal hooks (see docs/design/goal-system.md). Hosts without a goal
+ * subsystem omit this. All state lives behind the host's GoalManager; the
+ * loop only asks "which prompt should I inject" at two points:
+ * - recordUsage: per model round; returns the budget wrap-up steering prompt
+ *   exactly once when the goal flips to budget_limited
+ * - beginContinuation: when the run would end normally; registers one
+ *   continuation and returns its prompt, or undefined to let the run end
+ */
+export interface OnethingAgentLoopGoalHooks {
+	recordUsage(
+		sessionId: string,
+		usage: { totalTokens?: number },
+	): string | undefined;
+	beginContinuation(sessionId: string): string | undefined;
+}
+
 export interface OnethingAgentLoopRuntimeAdapters<
 	TSettings extends OnethingAgentLoopRuntimeSettings<TToolSettings>,
 	TProviderConfig extends CoreAgentLoopProviderRuntimeConfigLike,
@@ -145,7 +174,7 @@ export interface OnethingAgentLoopRuntimeAdapters<
 	TPartialToolResult,
 > {
 	getSession(sessionId: string): TSession | null | undefined;
-	getSkillsForSession(workingDirectory?: string): TSkill[];
+	getSkillsForSession(workingDirectory?: string, agentId?: string): TSkill[];
 	initializeTools?(skills: TSkill[]): Promise<void> | void;
 	isProviderSupported?(providerId: string): boolean;
 	createProvider?(
@@ -228,6 +257,7 @@ export interface OnethingAgentLoopRuntimeAdapters<
 	sendActiveMemoryPart?(
 		part: { type: "loading-memory" } | { type: "waiting" },
 	): void;
+	goal?: OnethingAgentLoopGoalHooks;
 	logger?: OnethingAgentLoopLogger;
 	createId?(): string;
 }
@@ -249,7 +279,7 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 	TPartialToolResult,
 > {
 	getSession(sessionId: string): TSession | null | undefined;
-	getSkillsForSession(workingDirectory?: string): TSkill[];
+	getSkillsForSession(workingDirectory?: string, agentId?: string): TSkill[];
 	initializeTools?(
 		skills: CoreAgentLoopInitSkillSnapshot[],
 	): Promise<void> | void;
@@ -331,6 +361,7 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 	sendActiveMemoryPart?(
 		part: { type: "loading-memory" } | { type: "waiting" },
 	): void;
+	goal?: OnethingAgentLoopGoalHooks;
 	logger?: OnethingAgentLoopLogger;
 	createId?(): string;
 }
@@ -403,7 +434,10 @@ export function createOnethingAgentLoopRuntimeAdapters<
 			};
 			const skillsEnabled = settingsWithSkills.skills?.enableSkills !== false;
 			const skills = skillsEnabled
-				? host.getSkillsForSession(input.session?.workingDirectory)
+				? host.getSkillsForSession(
+					input.session?.workingDirectory,
+					input.session?.agentId,
+				)
 				: [];
 			return host.resolvePromptReferences(content, {
 				session: input.session,
@@ -430,6 +464,7 @@ export function createOnethingAgentLoopRuntimeAdapters<
 		emitEvent: host.emitEvent,
 		shouldSkipProviderUsageMismatch: host.shouldSkipProviderUsageMismatch,
 		sendActiveMemoryPart: host.sendActiveMemoryPart,
+		goal: host.goal,
 		logger: host.logger,
 		createId: host.createId,
 	};
@@ -573,7 +608,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	const sessionWorkingDir = preparation.sessionWorkingDir;
 	const sessionWorkingDirRoots = preparation.sessionWorkingDirRoots;
 	const enabledSkills = preparation.skillsEnabled
-		? adapters.getSkillsForSession(sessionWorkingDir)
+		? adapters.getSkillsForSession(sessionWorkingDir, preparation.agentId)
 		: [];
 	const effectiveToolSettings = preparation.effectiveToolSettings;
 
@@ -767,6 +802,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		messageId: ctx.assistantMessageId,
 		workingDirectory: sessionWorkingDir,
 		abortSignal: ctx.abortSignal,
+		maxTurns: ctx.settings.chat?.maxTurns ?? DEFAULT_CHAT_MAX_TURNS,
 		maxTokens: budget.reservedOutputTokens,
 		thinking: thinkingOptions.thinking,
 		reasoningEffort: thinkingOptions.reasoningEffort,
@@ -814,7 +850,28 @@ export async function buildOnethingAgentLoopStreamRuntime<
 					...turnQueueAdapters,
 				},
 			});
-			return replacementMessages as AgentMessage[] | undefined;
+			if (replacementMessages) {
+				return replacementMessages as AgentMessage[] | undefined;
+			}
+			// Goal continuation: only when nothing else (steering / queued user
+			// messages) wants the turn — user input always wins over the goal.
+			const continuationPrompt = adapters.goal?.beginContinuation(
+				ctx.sessionId,
+			);
+			if (!continuationPrompt) return undefined;
+			const withContinuation = await injectPendingAgentLoopMessagesWithAdapters({
+				messages,
+				pendingMessages: [
+					{
+						content: continuationPrompt,
+						source: "goal",
+						timestamp: Date.now(),
+						origin: goalInjectionOrigin(),
+					},
+				],
+				adapters: pendingMessageAdapters,
+			});
+			return withContinuation as AgentMessage[] | undefined;
 		},
 		// L1 tracing: record every round's exact (request, response) pair —
 		// ground truth for "why did the model do this". Serialization is
@@ -831,6 +888,20 @@ export async function buildOnethingAgentLoopStreamRuntime<
 				},
 				toolResultMessages: event.toolResultMessages,
 			});
+			// Goal accounting rides the same per-round observation point. When
+			// the budget flips, the wrap-up notice goes through the steering
+			// queue so the next round sees it (injected exactly once).
+			const budgetLimitPrompt = adapters.goal?.recordUsage(ctx.sessionId, {
+				totalTokens: event.response.usage?.totalTokens,
+			});
+			if (budgetLimitPrompt) {
+				ctx.steeringQueue?.enqueue?.({
+					content: budgetLimitPrompt,
+					source: "goal",
+					timestamp: Date.now(),
+					origin: goalInjectionOrigin(),
+				});
+			}
 		},
 	});
 
@@ -954,6 +1025,20 @@ async function resolveOnethingAgentLoopContextBudget<
 		);
 	}
 	return result.budget;
+}
+
+/**
+ * Origin stamped on goal-injected messages. They persist as regular user
+ * messages (history rebuilds must replay them byte-identically), and the
+ * renderer folds them into a compact "goal continuation" line by matching
+ * origin.source === 'goal'.
+ */
+function goalInjectionOrigin(): {
+	transport: "api";
+	source: "goal";
+	receivedAt: number;
+} {
+	return { transport: "api", source: "goal", receivedAt: Date.now() };
 }
 
 function createPendingAgentLoopMessageAdapters<

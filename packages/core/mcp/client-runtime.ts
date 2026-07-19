@@ -39,6 +39,8 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
   private readonly adapters: CoreMCPClientRuntimeAdapters<TClient, TTransport>
   private readonly getBaseEnv: () => Record<string, string | undefined>
   private readonly toolCallTimeoutMs: number
+  /** Serializes tool calls against this server; see callTool. */
+  private toolCallQueue: Promise<void> = Promise.resolve()
 
   constructor(options: CoreMCPClientRuntimeOptions<TClient, TTransport>) {
     this._state = createMCPServerState(options.config)
@@ -107,6 +109,22 @@ export class CoreMCPClientRuntime<TClient extends CoreMCPClientOperations, TTran
   }
 
   async callTool(
+    toolName: string,
+    args: JsonObject,
+    options: { timeoutMs?: number } = {},
+  ): Promise<MCPToolCallResult> {
+    // Tool calls against the same server run one at a time: the agent loop
+    // executes tools concurrently, and stdio transports / stateful servers may
+    // not tolerate interleaved requests. Different servers (separate runtime
+    // instances) still run in parallel. Read paths (readResource/getPrompt)
+    // stay unqueued. The per-call timeout starts when the call actually runs,
+    // not while it waits in the queue.
+    const result = this.toolCallQueue.then(() => this.callToolNow(toolName, args, options))
+    this.toolCallQueue = result.then(() => undefined, () => undefined)
+    return result
+  }
+
+  private async callToolNow(
     toolName: string,
     args: JsonObject,
     options: { timeoutMs?: number } = {},

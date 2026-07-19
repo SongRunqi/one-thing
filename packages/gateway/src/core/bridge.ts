@@ -87,8 +87,9 @@ export class GatewayBridge {
       return
     }
 
-    if (!this.options.allowlist.check(msg.userId)) {
+    if (!this.options.allowlist.check(msg.userId) && !this.options.allowlist.check(msg.conversationId)) {
       await this.send(channel, {
+        conversationId: msg.conversationId,
         userId: msg.userId,
         text: '你没有权限使用此服务。',
         raw: msg.raw,
@@ -105,7 +106,7 @@ export class GatewayBridge {
   }
 
   private enqueueConversationMessage(channel: Channel, msg: InboundMessage): Promise<void> {
-    const key = conversationQueueKey(msg.channelId, msg.userId)
+    const key = conversationQueueKey(msg.channelId, sessionPeerId(msg))
     const previous = this.conversationQueues.get(key) ?? Promise.resolve()
     const task = previous
       .catch(() => {})
@@ -124,6 +125,7 @@ export class GatewayBridge {
   private async handleQueuedMessage(channel: Channel, msg: InboundMessage): Promise<void> {
     if (!this.options.rateLimiter.check(msg.userId)) {
       await this.send(channel, {
+        conversationId: msg.conversationId,
         userId: msg.userId,
         text: '请求太频繁，请稍后再试。',
         raw: msg.raw,
@@ -134,6 +136,7 @@ export class GatewayBridge {
     const commandResult = await this.handleGatewayCommand(msg)
     if (commandResult) {
       await this.send(channel, {
+        conversationId: msg.conversationId,
         userId: msg.userId,
         text: commandResult.text,
         raw: msg.raw,
@@ -141,13 +144,14 @@ export class GatewayBridge {
       return
     }
 
-    const session = this.options.registry.getOrCreate(msg.channelId, msg.userId)
+    const session = this.options.registry.getOrCreate(msg.channelId, sessionPeerId(msg))
     const permissionMode = this.options.permissionConfig?.mode
     if (isGatewayAutoPermissionMode(permissionMode)) {
       this.options.runtime.permissions?.setSessionPermissionMode(session.coreSessionId, permissionMode)
     }
 
     await this.typing(channel, {
+      conversationId: msg.conversationId,
       userId: msg.userId,
       raw: msg.raw,
     }).catch(error => {
@@ -179,6 +183,7 @@ export class GatewayBridge {
             }
             try {
               await this.send(channel, {
+                conversationId: msg.conversationId,
                 userId: msg.userId,
                 text,
                 raw: msg.raw,
@@ -221,6 +226,7 @@ export class GatewayBridge {
       channelId: msg.channelId,
       userId: msg.userId,
       sendText: text => this.send(channel, {
+        conversationId: msg.conversationId,
         userId: msg.userId,
         text,
         raw: msg.raw,
@@ -243,6 +249,7 @@ export class GatewayBridge {
       await sendChain
       logAbortSummary()
       await this.send(channel, {
+        conversationId: msg.conversationId,
         userId: msg.userId,
         text: '处理时遇到错误，请稍后重试。',
         raw: msg.raw,
@@ -252,6 +259,7 @@ export class GatewayBridge {
       unsubscribe()
       unwatchPermission()
       await this.typing(channel, {
+        conversationId: msg.conversationId,
         userId: msg.userId,
         raw: msg.raw,
         status: 'cancel',
@@ -288,7 +296,7 @@ export class GatewayBridge {
   private executeGatewayCommand(msg: InboundMessage, commandId: string): { text: string } | null {
     switch (commandId) {
       case NEW_SESSION_SLASH_COMMAND.id: {
-        const session = this.options.registry.startNewSession(msg.channelId, msg.userId)
+        const session = this.options.registry.startNewSession(msg.channelId, sessionPeerId(msg))
         return { text: `已创建新的会话：${session.coreSessionId}。接下来的消息会在这个新会话中继续。` }
       }
       case CHANGE_DIRECTORY_SLASH_COMMAND.id:
@@ -320,7 +328,7 @@ export class GatewayBridge {
     const command = commands.find(candidate => commandMatches(candidate, invocation.id))
     if (!command) return null
 
-    const session = this.options.registry.getOrCreate(msg.channelId, msg.userId)
+    const session = this.options.registry.getOrCreate(msg.channelId, sessionPeerId(msg))
     try {
       const result = await provider.executeCommand({
         command,
@@ -366,8 +374,17 @@ function commandMatches(command: GatewayCommandInfo, id: string): boolean {
   return candidates.some(candidate => candidate.toLowerCase() === id)
 }
 
-function conversationQueueKey(channelId: string, userId: string): string {
-  return `${channelId}:${userId}`
+function conversationQueueKey(channelId: string, peerId: string): string {
+  return `${channelId}:${peerId}`
+}
+
+/**
+ * Session/queue identity for a message. In DMs (conversationId === userId) this
+ * stays the plain userId so existing session ids keep working; in group chats it
+ * scopes the person to the conversation so members no longer share one session.
+ */
+function sessionPeerId(msg: InboundMessage): string {
+  return msg.conversationId === msg.userId ? msg.userId : `${msg.conversationId}:${msg.userId}`
 }
 
 function buildGatewayMessageOrigin(msg: InboundMessage): unknown {
@@ -379,13 +396,13 @@ function buildGatewayMessageOrigin(msg: InboundMessage): unknown {
     conversation: {
       connector: channel.connector,
       ...(channel.workspaceId ? { workspaceId: channel.workspaceId } : {}),
-      externalConversationId: msg.userId,
-      type: 'dm',
+      externalConversationId: msg.conversationId,
+      type: msg.conversationId === msg.userId ? 'dm' : 'group',
     },
     replyTarget: {
       connector: channel.connector,
       ...(channel.workspaceId ? { workspaceId: channel.workspaceId } : {}),
-      externalConversationId: msg.userId,
+      externalConversationId: msg.conversationId,
       externalMessageId: externalMessageIdFromRaw(msg.raw),
     },
     externalMessageId: externalMessageIdFromRaw(msg.raw),

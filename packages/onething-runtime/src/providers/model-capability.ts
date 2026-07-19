@@ -1,0 +1,638 @@
+/**
+ * Model capability ledger — the single source of truth for "what can model X
+ * do" and "how is its thinking configured".
+ *
+ * Resolution order, uniform for every capability and every consumer (UI and
+ * engine must call this module instead of keeping their own pattern lists):
+ *
+ *   1. user override        (providerConfig.modelCapabilitiesByModel)
+ *   2. registry entry       (models.dev fetch stored in providerConfig.models,
+ *                            or the wire-shaped model metadata the renderer holds)
+ *   3. built-in rules table (PROVIDER_MODEL_RULES below)
+ *   4. provider default
+ *
+ * Every answer carries its source so tests and debugging can tell where a
+ * verdict came from.
+ *
+ * This module must stay pure (no Node/Electron imports) — the renderer and the
+ * web build import it directly.
+ */
+
+export type OnethingReasoningEffortLevel =
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+
+/** How the thinking intent is expressed on the wire by the owning provider. */
+export type OnethingReasoningWire =
+  | 'anthropic-adaptive'
+  | 'anthropic-budget'
+  | 'openai-effort'
+  | 'gemini-level'
+  | 'gemini-budget'
+  | 'thinking-type'
+  | 'zhipu-thinking'
+  | 'grok-effort'
+  | 'openrouter-reasoning'
+  | 'codex'
+  | 'none'
+
+export interface OnethingReasoningProfile {
+  /** Whether the user can turn thinking off (o-series/grok always reason). */
+  toggleable: boolean
+  /** Server-side behavior when no parameter is sent. */
+  defaultOn: boolean
+  /** Levels the UI offers — identical to what the wire accepts after clamping. */
+  efforts: readonly OnethingReasoningEffortLevel[]
+  defaultEffort: OnethingReasoningEffortLevel
+  wire: OnethingReasoningWire
+}
+
+export type OnethingCapabilitySource = 'override' | 'registry' | 'pattern' | 'default'
+
+export interface OnethingResolvedModelCapabilities {
+  reasoning: boolean
+  vision: boolean
+  tools: boolean
+  imageOutput: boolean
+  temperature: boolean
+  source: {
+    reasoning: OnethingCapabilitySource
+    vision: OnethingCapabilitySource
+    tools: OnethingCapabilitySource
+    imageOutput: OnethingCapabilitySource
+    temperature: OnethingCapabilitySource
+  }
+  /** Present when reasoning is true. */
+  reasoningProfile?: OnethingReasoningProfile
+}
+
+/** Per-model override stored in settings (modelCapabilitiesByModel). */
+export interface OnethingCapabilityOverrideLike {
+  tools?: boolean
+  vision?: boolean
+  reasoning?: boolean
+  imageOutput?: boolean
+}
+
+/** Storage-shaped registry entry (models.dev fetch persisted in settings). */
+export interface OnethingCapabilityEntryLike {
+  supportsTools?: boolean
+  supportsVision?: boolean
+  supportsReasoning?: boolean
+  supportsImageOutput?: boolean
+  supportsTemperature?: boolean
+}
+
+/** Wire-shaped model metadata (what the renderer's model cache holds). */
+export interface OnethingModelMetadataLike {
+  supported_parameters?: string[]
+  architecture?: {
+    input_modalities?: string[]
+    output_modalities?: string[]
+  }
+  providerMetadata?: Record<string, unknown>
+}
+
+export interface ResolveOnethingModelCapabilitiesInput {
+  providerId: string
+  modelId: string
+  /** apiType of a custom provider ('custom-*'), when known. */
+  customApiType?: 'openai' | 'anthropic'
+  override?: OnethingCapabilityOverrideLike
+  registryEntry?: OnethingCapabilityEntryLike
+  modelMetadata?: OnethingModelMetadataLike
+}
+
+// ---------------------------------------------------------------------------
+// Provider kinds
+// ---------------------------------------------------------------------------
+
+export type OnethingProviderKind =
+  | 'claude'
+  | 'openai'
+  | 'gemini'
+  | 'zhipu'
+  | 'grok'
+  | 'openrouter'
+  | 'deepseek'
+  | 'kimi'
+  | 'codex'
+  | 'copilot'
+  | 'acp'
+  | 'unknown'
+
+export function resolveOnethingProviderKind(
+  providerId: string,
+  customApiType?: 'openai' | 'anthropic',
+): OnethingProviderKind {
+  if (providerId === 'claude' || providerId === 'claude-code' || providerId === 'claude-code-agent') return 'claude'
+  if (providerId === 'openai') return 'openai'
+  if (providerId === 'gemini') return 'gemini'
+  if (providerId === 'zhipu') return 'zhipu'
+  if (providerId === 'grok' || providerId === 'grok-oauth') return 'grok'
+  if (providerId === 'openrouter') return 'openrouter'
+  if (providerId === 'deepseek') return 'deepseek'
+  if (providerId === 'kimi') return 'kimi'
+  if (providerId === 'codex') return 'codex'
+  if (providerId === 'github-copilot') return 'copilot'
+  if (providerId === 'acp') return 'acp'
+  if (providerId.startsWith('custom-')) {
+    return customApiType === 'anthropic' ? 'claude' : 'openai'
+  }
+  return 'unknown'
+}
+
+// ---------------------------------------------------------------------------
+// Claude model families (generation → parameter dialect)
+// ---------------------------------------------------------------------------
+
+export interface OnethingClaudeModelFamily {
+  /** Fable/Mythos: thinking is always on; the `thinking` param must be omitted. */
+  alwaysThinking: boolean
+  /** 4.6+ family: `thinking: {type: 'adaptive'}` + `output_config.effort`. */
+  adaptive: boolean
+  /** xhigh effort exists on 4.7+, Sonnet 5, and Fable/Mythos. */
+  supportsXhigh: boolean
+  /** 4.7+/Sonnet 5/Fable reject temperature/top_p/top_k outright. */
+  samplingRemoved: boolean
+}
+
+export function onethingClaudeModelFamily(model: string): OnethingClaudeModelFamily {
+  const lower = model.toLowerCase()
+  if (/fable|mythos/.test(lower)) {
+    return { alwaysThinking: true, adaptive: true, supportsXhigh: true, samplingRemoved: true }
+  }
+  // "claude-opus-4-6", "claude-sonnet-5" put the version after the name;
+  // legacy ids like "claude-3-7-sonnet-20250219" put it before.
+  const match = lower.match(/(?:opus|sonnet|haiku)-(\d+)(?:[-.](\d+))?/)
+    ?? lower.match(/claude-(\d+)(?:[-.](\d+))?/)
+  const major = match ? Number(match[1]) : 0
+  const minor = match?.[2] ? Number(match[2]) : 0
+  const adaptive = major > 4 || (major === 4 && minor >= 6)
+  const modern = major > 4 || (major === 4 && minor >= 7)
+  return {
+    alwaysThinking: false,
+    adaptive,
+    supportsXhigh: modern,
+    samplingRemoved: modern,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shared effort tables and budgets (single copy — UI options, provider clamps,
+// and thinking budgets all read from here)
+// ---------------------------------------------------------------------------
+
+export const ONETHING_CLAUDE_EFFORTS = ['low', 'medium', 'high', 'max'] as const
+export const ONETHING_OPENAI_EFFORTS = ['minimal', 'low', 'medium', 'high'] as const
+export const ONETHING_GEMINI_EFFORTS = ['low', 'medium', 'high'] as const
+export const ONETHING_GROK_EFFORTS = ['low', 'medium', 'high'] as const
+export const ONETHING_OPENROUTER_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+export const ONETHING_DEEPSEEK_EFFORTS = ['high', 'max'] as const
+export const ONETHING_CODEX_FALLBACK_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
+
+/** Pre-4.6 Claude extended thinking: fixed budget_tokens, min 1024, < max_tokens. */
+export const ONETHING_CLAUDE_THINKING_BUDGETS: Record<OnethingReasoningEffortLevel, number> = {
+  minimal: 1024,
+  low: 4096,
+  medium: 8192,
+  high: 16384,
+  xhigh: 24576,
+  max: 32000,
+}
+
+/** Gemini 2.5 has no named levels — approximate the abstract scale with budgets. */
+export const ONETHING_GEMINI_THINKING_BUDGETS: Record<'minimal' | 'low' | 'medium' | 'high', number> = {
+  minimal: 512,
+  low: 2048,
+  medium: 8192,
+  high: 24576,
+}
+
+// ---------------------------------------------------------------------------
+// Built-in rules table — the ONE place model-name patterns live.
+// Row order matters: first match wins. A missing `caps` field falls through to
+// the kind's default row (test: /(?:)/ matches everything).
+// ---------------------------------------------------------------------------
+
+type OnethingModelRuleCaps = Partial<
+  Pick<OnethingResolvedModelCapabilities, 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature'>
+>
+
+interface OnethingModelRule {
+  test: RegExp
+  caps?: OnethingModelRuleCaps | ((model: string) => OnethingModelRuleCaps)
+  profile?: OnethingReasoningProfile | ((model: string) => OnethingReasoningProfile)
+}
+
+function claudeProfile(model: string): OnethingReasoningProfile {
+  const family = onethingClaudeModelFamily(model)
+  return {
+    toggleable: !family.alwaysThinking,
+    // Only Sonnet 5 / Fable run adaptive thinking when the param is omitted.
+    defaultOn: family.alwaysThinking || /sonnet-5/.test(model.toLowerCase()),
+    efforts: ONETHING_CLAUDE_EFFORTS,
+    defaultEffort: 'high',
+    wire: family.adaptive ? 'anthropic-adaptive' : 'anthropic-budget',
+  }
+}
+
+/**
+ * Thinking levels each Gemini generation actually accepts (per the thinking
+ * docs): 3-pro takes only low/high, 3.1-pro adds medium, flash tiers add
+ * minimal, flash-lite-image is minimal/high only. 2.5 uses numeric budgets, so
+ * the standard three tiers apply.
+ */
+export function onethingGeminiThinkingLevels(
+  model: string,
+): readonly ('minimal' | 'low' | 'medium' | 'high')[] {
+  const lower = model.toLowerCase()
+  if (lower.includes('flash-lite-image')) return ['minimal', 'high']
+  if (lower.includes('3.1-pro')) return ['low', 'medium', 'high']
+  if (/gemini-3-pro/.test(lower)) return ['low', 'high']
+  if (lower.includes('2.5')) return ONETHING_GEMINI_EFFORTS
+  if (/gemini-(?:3|[4-9])/.test(lower)) return ['minimal', 'low', 'medium', 'high']
+  return ONETHING_GEMINI_EFFORTS
+}
+
+function geminiProfile(model: string): OnethingReasoningProfile {
+  return {
+    toggleable: true,
+    defaultOn: true,
+    efforts: onethingGeminiThinkingLevels(model),
+    defaultEffort: 'high',
+    wire: model.toLowerCase().includes('2.5') ? 'gemini-budget' : 'gemini-level',
+  }
+}
+
+const OPENAI_PROFILE: OnethingReasoningProfile = {
+  // o-series / gpt-5 reasoning cannot be turned off — only the effort is
+  // configurable, so the UI must not offer a (fake) Off.
+  toggleable: false,
+  defaultOn: true,
+  efforts: ONETHING_OPENAI_EFFORTS,
+  defaultEffort: 'medium',
+  wire: 'openai-effort',
+}
+
+const COPILOT_REASONING_PATTERN = /o1|o3|o4|deepseek-r1|reasoner/
+const COPILOT_VISION_PATTERN = /gpt-4o|gpt-4-turbo|gpt-4-vision|gpt-4\.1|claude-3|claude-sonnet-4|claude-opus|gemini-1\.5|gemini-2|gemini-pro-vision/
+const COPILOT_IMAGE_GEN_PATTERN = /dall-e|dalle|gpt-image|imagen/
+const COPILOT_NO_TOOLS_PATTERN = /o1-preview|o1-mini/
+
+/** Generic fallbacks used when the provider kind is unknown (matches the old renderer heuristics). */
+const GENERIC_REASONING_PATTERN = /o1|o3|o4|deepseek-r1|reasoner|grok-3-mini|grok-mini|thinking/
+const GENERIC_IMAGE_GEN_PATTERN = /dall-e|dalle|gpt-image|imagen|stable-diffusion|midjourney/
+
+const PROVIDER_MODEL_RULES: Record<OnethingProviderKind, OnethingModelRule[]> = {
+  claude: [
+    // Every currently served Claude chat model supports thinking. 4.7+ /
+    // Sonnet 5 / Fable reject sampling params (temperature) outright.
+    {
+      test: /(?:)/,
+      caps: model => ({
+        reasoning: true,
+        vision: true,
+        tools: true,
+        temperature: !onethingClaudeModelFamily(model).samplingRemoved,
+      }),
+      profile: claudeProfile,
+    },
+  ],
+  openai: [
+    // Anchored to the id start, tolerating "vendor/" path prefixes.
+    { test: /(?:^|\/)(o[134]|gpt-5)/, caps: { reasoning: true }, profile: OPENAI_PROFILE },
+    // Kind-level vision default mirrors the engine's historical provider-level flag.
+    { test: /(?:)/, caps: { reasoning: false, vision: true } },
+  ],
+  gemini: [
+    { test: /gemini-(?:2\.5|[3-9])/, caps: { reasoning: true }, profile: geminiProfile },
+    { test: /(?:)/, caps: { reasoning: false, vision: true } },
+  ],
+  zhipu: [
+    {
+      test: /glm-(?:4\.[5-9]|[5-9])/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: true,
+        defaultOn: true,
+        efforts: [],
+        defaultEffort: 'high',
+        wire: 'zhipu-thinking',
+      },
+    },
+    { test: /(?:)/, caps: { reasoning: false } },
+  ],
+  grok: [
+    {
+      test: /grok-(?:4\.5|4\.20|3-mini)/,
+      caps: { reasoning: true },
+      profile: {
+        // Grok reasoning cannot be disabled — effort is the only knob.
+        toggleable: false,
+        defaultOn: true,
+        efforts: ONETHING_GROK_EFFORTS,
+        defaultEffort: 'high',
+        wire: 'grok-effort',
+      },
+    },
+    { test: /(?:)/, caps: { reasoning: false, vision: true } },
+  ],
+  openrouter: [
+    // Capability comes from the registry; the profile applies once reasoning is known.
+    {
+      test: /(?:)/,
+      caps: { vision: true },
+      profile: {
+        toggleable: true,
+        defaultOn: true,
+        efforts: ONETHING_OPENROUTER_EFFORTS,
+        defaultEffort: 'high',
+        wire: 'openrouter-reasoning',
+      },
+    },
+  ],
+  deepseek: [
+    {
+      test: /(^|[^a-z])v4/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: true,
+        // The API does not think unless thinking.type=enabled is sent.
+        defaultOn: false,
+        efforts: ONETHING_DEEPSEEK_EFFORTS,
+        defaultEffort: 'high',
+        wire: 'thinking-type',
+      },
+    },
+    {
+      // deepseek-reasoner always thinks and exposes no knob — the chat UI
+      // keeps its legacy model-pair toggle (chat ⇄ reasoner) instead.
+      test: /reasoner/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: false,
+        defaultOn: true,
+        efforts: [],
+        defaultEffort: 'high',
+        wire: 'none',
+      },
+    },
+    { test: /(?:)/, caps: { reasoning: false } },
+  ],
+  kimi: [
+    {
+      test: /^kimi-k3/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: true,
+        defaultOn: true,
+        // K3 only accepts reasoning_effort "max".
+        efforts: ['max'],
+        defaultEffort: 'max',
+        wire: 'thinking-type',
+      },
+    },
+    {
+      // k2.7-code (+ -highspeed) and k2-thinking always think; nothing to configure.
+      test: /^kimi-k2.*(code|thinking)/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: false,
+        defaultOn: true,
+        efforts: [],
+        defaultEffort: 'high',
+        wire: 'none',
+      },
+    },
+    {
+      // k2.5 / k2.6: thinking on by default, toggleable via thinking.type.
+      test: /^kimi-k2\.\d/,
+      caps: { reasoning: true },
+      profile: {
+        toggleable: true,
+        defaultOn: true,
+        efforts: [],
+        defaultEffort: 'high',
+        wire: 'thinking-type',
+      },
+    },
+    { test: /(?:)/, caps: { reasoning: false } },
+  ],
+  codex: [
+    {
+      test: /(?:)/,
+      caps: { reasoning: true, vision: true, tools: true },
+      profile: {
+        toggleable: true,
+        defaultOn: true,
+        efforts: ONETHING_CODEX_FALLBACK_EFFORTS,
+        defaultEffort: 'medium',
+        wire: 'codex',
+      },
+    },
+  ],
+  // Copilot verdicts are answered entirely by copilotPatternVerdict in the
+  // resolver (it needs cross-capability logic: image-gen models lose tools);
+  // rule rows here would be unreachable.
+  copilot: [],
+  acp: [
+    { test: /(?:)/, caps: { reasoning: false, tools: false } },
+  ],
+  unknown: [
+    { test: GENERIC_IMAGE_GEN_PATTERN, caps: { imageOutput: true } },
+    // Reasoning falls through to GENERIC_REASONING_PATTERN in the resolver.
+  ],
+}
+
+// ---------------------------------------------------------------------------
+// Resolver
+// ---------------------------------------------------------------------------
+
+interface CapabilityVerdict {
+  value: boolean
+  source: OnethingCapabilitySource
+}
+
+function verdict(value: boolean, source: OnethingCapabilitySource): CapabilityVerdict {
+  return { value, source }
+}
+
+function fromRegistry(
+  capability: 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature',
+  entry: OnethingCapabilityEntryLike | undefined,
+  metadata: OnethingModelMetadataLike | undefined,
+): boolean | undefined {
+  if (entry) {
+    switch (capability) {
+      case 'reasoning': if (typeof entry.supportsReasoning === 'boolean') return entry.supportsReasoning; break
+      case 'vision': if (typeof entry.supportsVision === 'boolean') return entry.supportsVision; break
+      case 'tools': if (typeof entry.supportsTools === 'boolean') return entry.supportsTools; break
+      case 'imageOutput': if (typeof entry.supportsImageOutput === 'boolean') return entry.supportsImageOutput; break
+      case 'temperature': if (typeof entry.supportsTemperature === 'boolean') return entry.supportsTemperature; break
+    }
+  }
+  if (!metadata) return undefined
+  const params = metadata.supported_parameters
+  const hasParams = Array.isArray(params) && params.length > 0
+  switch (capability) {
+    case 'reasoning':
+      // Wire-shaped parameter lists are positive evidence only: absence of
+      // 'reasoning' often means "not enumerated", not "unsupported" — fall
+      // through to the rules table. (Storage entries above carry explicit
+      // booleans and stay authoritative both ways.)
+      return hasParams && params.includes('reasoning') ? true : undefined
+    case 'tools':
+      return hasParams ? params.includes('tools') : undefined
+    case 'temperature':
+      return hasParams ? params.includes('temperature') : undefined
+    case 'vision':
+      return metadata.architecture?.input_modalities
+        ? metadata.architecture.input_modalities.includes('image')
+        : undefined
+    case 'imageOutput': {
+      const codexNativeTools = (metadata.providerMetadata?.codex as { nativeTools?: unknown } | undefined)
+        ?.nativeTools
+      if (Array.isArray(codexNativeTools) && codexNativeTools.includes('image_generation')) {
+        return true
+      }
+      return metadata.architecture?.output_modalities
+        ? metadata.architecture.output_modalities.includes('image')
+        : undefined
+    }
+  }
+}
+
+function fromRules(
+  capability: 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature',
+  rules: OnethingModelRule[],
+  modelLower: string,
+): boolean | undefined {
+  for (const rule of rules) {
+    if (!rule.test.test(modelLower)) continue
+    const caps = typeof rule.caps === 'function' ? rule.caps(modelLower) : rule.caps
+    const value = caps?.[capability]
+    if (typeof value === 'boolean') return value
+  }
+  return undefined
+}
+
+function copilotPatternVerdict(
+  capability: 'reasoning' | 'vision' | 'tools' | 'imageOutput',
+  modelLower: string,
+): boolean {
+  switch (capability) {
+    case 'reasoning': return COPILOT_REASONING_PATTERN.test(modelLower)
+    case 'vision': return COPILOT_VISION_PATTERN.test(modelLower)
+    case 'imageOutput': return COPILOT_IMAGE_GEN_PATTERN.test(modelLower)
+    case 'tools':
+      return !COPILOT_NO_TOOLS_PATTERN.test(modelLower) && !COPILOT_IMAGE_GEN_PATTERN.test(modelLower)
+  }
+}
+
+const CAPABILITY_DEFAULTS: Record<'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature', boolean> = {
+  reasoning: false,
+  vision: false,
+  tools: true,
+  imageOutput: false,
+  temperature: true,
+}
+
+function resolveCapability(
+  capability: 'reasoning' | 'vision' | 'tools' | 'imageOutput' | 'temperature',
+  input: ResolveOnethingModelCapabilitiesInput,
+  kind: OnethingProviderKind,
+  modelLower: string,
+): CapabilityVerdict {
+  if (capability !== 'temperature') {
+    const override = input.override?.[capability]
+    if (typeof override === 'boolean') return verdict(override, 'override')
+  }
+
+  // Temperature is special-cased: generation rules encode hard API rejections
+  // (Claude 4.7+/Fable 400 on sampling params), which outrank whatever the
+  // fetched registry believes.
+  if (capability === 'temperature') {
+    const ruled = fromRules(capability, PROVIDER_MODEL_RULES[kind], modelLower)
+    if (typeof ruled === 'boolean') return verdict(ruled, 'pattern')
+    const registry = fromRegistry(capability, input.registryEntry, input.modelMetadata)
+    if (typeof registry === 'boolean') return verdict(registry, 'registry')
+    return verdict(CAPABILITY_DEFAULTS.temperature, 'default')
+  }
+
+  const registry = fromRegistry(capability, input.registryEntry, input.modelMetadata)
+  if (typeof registry === 'boolean') return verdict(registry, 'registry')
+
+  if (kind === 'copilot') {
+    return verdict(copilotPatternVerdict(capability, modelLower), 'pattern')
+  }
+
+  const ruled = fromRules(capability, PROVIDER_MODEL_RULES[kind], modelLower)
+  if (typeof ruled === 'boolean') return verdict(ruled, 'pattern')
+
+  if (capability === 'reasoning' && kind === 'unknown' && GENERIC_REASONING_PATTERN.test(modelLower)) {
+    return verdict(true, 'pattern')
+  }
+
+  return verdict(CAPABILITY_DEFAULTS[capability], 'default')
+}
+
+function resolveProfile(
+  kind: OnethingProviderKind,
+  model: string,
+  modelLower: string,
+): OnethingReasoningProfile | undefined {
+  for (const rule of PROVIDER_MODEL_RULES[kind]) {
+    if (!rule.test.test(modelLower)) continue
+    if (!rule.profile) continue
+    return typeof rule.profile === 'function' ? rule.profile(model) : rule.profile
+  }
+  return undefined
+}
+
+/** Profile used when reasoning is known-true but no rule row carries a profile. */
+const GENERIC_REASONING_PROFILE: OnethingReasoningProfile = {
+  toggleable: true,
+  defaultOn: true,
+  efforts: [],
+  defaultEffort: 'high',
+  wire: 'none',
+}
+
+export function resolveOnethingModelCapabilities(
+  input: ResolveOnethingModelCapabilitiesInput,
+): OnethingResolvedModelCapabilities {
+  const kind = resolveOnethingProviderKind(input.providerId, input.customApiType)
+  const modelLower = input.modelId.toLowerCase()
+
+  const reasoning = resolveCapability('reasoning', input, kind, modelLower)
+  const vision = resolveCapability('vision', input, kind, modelLower)
+  const tools = resolveCapability('tools', input, kind, modelLower)
+  const imageOutput = resolveCapability('imageOutput', input, kind, modelLower)
+  const temperature = resolveCapability('temperature', input, kind, modelLower)
+
+  return {
+    reasoning: reasoning.value,
+    vision: vision.value,
+    tools: tools.value,
+    imageOutput: imageOutput.value,
+    temperature: temperature.value,
+    source: {
+      reasoning: reasoning.source,
+      vision: vision.source,
+      tools: tools.source,
+      imageOutput: imageOutput.source,
+      temperature: temperature.source,
+    },
+    ...(reasoning.value
+      ? {
+          reasoningProfile:
+            resolveProfile(kind, input.modelId, modelLower) ?? GENERIC_REASONING_PROFILE,
+        }
+      : {}),
+  }
+}

@@ -1,4 +1,5 @@
 import { toJsonObject, type JsonValue } from '@onething/core'
+import { resolveOnethingModelCapabilities } from './model-capability.js'
 
 export interface OnethingModelInfo {
   id: string
@@ -53,22 +54,16 @@ export function getCopilotModelDescription(modelId: string): string {
 export function detectCopilotModelCapabilities(modelId: string): OnethingCopilotModelCapabilities {
   const id = modelId.toLowerCase()
 
-  const visionModels = [
-    'gpt-4o', 'gpt-4-turbo', 'gpt-4-vision', 'gpt-4.1',
-    'claude-3', 'claude-3.5', 'claude-3.7', 'claude-sonnet-4', 'claude-opus',
-    'gemini-1.5', 'gemini-2', 'gemini-pro-vision',
-  ]
-  const hasVision = visionModels.some(value => id.includes(value.toLowerCase()))
-
-  const imageGenModels = ['dall-e', 'dalle', 'gpt-image', 'imagen']
-  const hasImageGeneration = imageGenModels.some(value => id.includes(value.toLowerCase()))
-
-  const noToolsModels = ['o1-preview', 'o1-mini']
-  const hasTools = !noToolsModels.some(value => id.includes(value.toLowerCase())) &&
-    !hasImageGeneration
-
-  const reasoningIndicators = ['o1', 'o3', 'o4', 'deepseek-r1', 'reasoner']
-  const hasReasoning = reasoningIndicators.some(value => id.includes(value.toLowerCase()))
+  // Capability verdicts come from the model-capability ledger (single home for
+  // model-name patterns); only the context-length table remains local.
+  const resolved = resolveOnethingModelCapabilities({
+    providerId: 'github-copilot',
+    modelId,
+  })
+  const hasVision = resolved.vision
+  const hasImageGeneration = resolved.imageOutput
+  const hasTools = resolved.tools
+  const hasReasoning = resolved.reasoning
 
   let contextLength = 128000
   if (id.includes('gpt-4o')) contextLength = 128000

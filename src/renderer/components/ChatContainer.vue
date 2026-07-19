@@ -8,257 +8,288 @@
       @mouseleave="$emit('hide-floating-sidebar')"
     />
 
-    <div class="chat-panels">
-      <!-- Empty state when no sessions -->
-      <div
-        v-if="!sessionsStore.currentSessionId"
-        class="empty-state"
+    <div
+      ref="chatPanelsRootRef"
+      class="chat-panels"
+    >
+      <Container
+        sidebar-position="right"
+        :sidebar-width="chatSidePanelWidth"
+        main-class="chat-panels-main"
+        full-height
+        overflow="hidden"
+        main-overflow="hidden"
+        sidebar-overflow="hidden"
       >
-        <div class="empty-state-content">
-          <svg
-            width="48"
-            height="48"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-          >
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-          </svg>
-          <h3>No Active Chat</h3>
-          <p>Start a new conversation to begin</p>
-          <Button
-            unstyled
-            class="new-chat-btn"
-            @click="createNewSession"
-          >
+        <!-- Empty state when nothing is open -->
+        <div
+          v-if="!workspaceStore.hasAnyChatTab"
+          class="empty-state"
+        >
+          <div class="empty-state-content">
             <svg
-              width="16"
-              height="16"
+              width="48"
+              height="48"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              stroke-width="2"
+              stroke-width="1.5"
             >
-              <path d="M12 5v14M5 12h14" />
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
             </svg>
-            New Chat
-          </Button>
+            <h3>No Active Chat</h3>
+            <p>Start a new conversation to begin</p>
+            <Button
+              unstyled
+              class="new-chat-btn"
+              @click="createNewSession"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              New Chat
+            </Button>
+          </div>
         </div>
-      </div>
-      <!-- Chat panels when session exists -->
-      <Splitter
-        v-if="sessionsStore.currentSessionId"
-        class="chat-panels-splitter"
-        :gap="8"
-      >
-        <SplitterPanel
-          v-for="(panel, index) in panels"
-          :key="panel.id"
-          v-model:size="panel.size"
-          :min="12"
-        >
-          <ChatWindow
-            :ref="el => setPanelRef(panel.id, el)"
-            :session-id="panel.sessionId"
-            :can-close="panels.length > 1"
-            :show-settings="index === 0 && showSettings"
-            :show-sidebar-toggle="index === 0 && sidebarCollapsed && !sidebarFloating"
-            :media-panel-open="mediaPanelOpen"
-            :is-inspector-open="isInspectorOpen"
-            :reserve-sidebar-actions="index === 0 && reserveSidebarActions"
-            :layout-transitioning="layoutTransitioning"
-            :panel-focused="panels.length === 1 || panel.id === activePanelId"
-            @pointerdown.capture="activePanelId = panel.id"
-            @close="closePanel(panel.id)"
-            @split="openSplitSearch(panel.id)"
-            @equalize="equalizeAllPanels"
-            @split-with-branch="(sessionId) => splitPanel(panel.id, sessionId)"
-            @close-settings="$emit('close-settings')"
-            @open-settings="$emit('open-settings')"
-            @toggle-sidebar="$emit('toggle-sidebar')"
-            @open-search="$emit('open-search')"
-            @create-new-chat="$emit('create-new-chat')"
-            @toggle-inspector="$emit('toggle-inspector')"
-            @open-file="$emit('open-file', $event)"
-            @switch-session="switchPanelSession(panel.id, $event)"
-          />
-        </SplitterPanel>
-      </Splitter>
+        <!-- Chat panels whenever anything is open. Keyed off the workspace
+             store (not currentSessionId): tab/panel state lives in the store,
+             so this v-if flipping only toggles the view, never the state. -->
+        <PanelTree
+          v-if="workspaceStore.hasAnyChatTab"
+          class="chat-panels-tree"
+          :node="workspaceStore.root"
+          :active-leaf-id="workspaceStore.activeLeafId"
+          :total-leaf-count="workspaceStore.leaves.length"
+          :first-leaf-id="workspaceStore.leaves[0]?.id ?? ''"
+          :reveal-sidebar-toggle="revealSidebarToggle"
+          :media-panel-open="mediaPanelOpen"
+          :is-inspector-open="isInspectorOpen"
+          :reserve-sidebar-actions="reserveSidebarActions"
+          :layout-transitioning="layoutTransitioning"
+          :register-panel-ref="setPanelRef"
+          :side-panel-available="sidePanelAvailable"
+          :side-panel-collapsed="sidePanelCollapsed"
+          :outline-rail-target="chatSideOutlineTarget"
+          @panel-event="handlePanelEvent"
+        />
 
-      <!-- Diff Overlay -->
-      <DiffOverlay
-        :visible="showDiffOverlay || false"
-        :file-path="diffOverlayData?.filePath || ''"
-        :working-directory="diffOverlayData?.workingDirectory || ''"
-        :session-id="diffOverlayData?.sessionId || ''"
-        :is-staged="diffOverlayData?.isStaged || false"
-        @close="$emit('close-diff-overlay')"
-      />
+        <template
+          v-if="sidePanelVisible"
+          #sidebar
+        >
+          <ChatSidePanel
+            :session-id="activeLeafSession?.id"
+            :working-directory="activeLeafSession?.workingDirectory || ''"
+            :agent-id="activeLeafSession?.agentId"
+            :last-provider="activeLeafSession?.lastProvider"
+            :last-model="activeLeafSession?.lastModel"
+            :collapsed="sidePanelCollapsed"
+            @outline-target-change="handleSideOutlineTargetChange"
+            @toggle-collapsed="toggleSidePanelCollapsed"
+          />
+        </template>
+      </Container>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { ref, watch, nextTick } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
 import { platformApi } from '@/platform'
 import ChatWindow from '@/components/chat/ChatWindow.vue'
-import DiffOverlay from '@/components/chat/DiffOverlay.vue'
-import Splitter from '@/components/common/Splitter.vue'
-import SplitterPanel from '@/components/common/SplitterPanel.vue'
+import ChatSidePanel from '@/components/chat/ChatSidePanel.vue'
+import PanelTree from '@/components/chat/PanelTree.vue'
+import Container from '@/components/common/Container.vue'
+import { useWorkspaceStore } from '@/stores/workspace'
+import type { SplitDirection } from '@/stores/workspace-tree'
+import type { PanelEvent } from '@/components/chat/panel-event'
 
-// Type for diff overlay data
-interface DiffOverlayData {
-  filePath: string
-  workingDirectory: string
-  sessionId: string
-  isStaged: boolean
-}
-
-interface Panel {
-  id: string
-  sessionId: string
-  size: number
-}
-
-defineProps<{
-  showSettings?: boolean
+const props = defineProps<{
   sidebarCollapsed?: boolean
   sidebarFloating?: boolean
   showHoverTrigger?: boolean
   mediaPanelOpen?: boolean
-  showDiffOverlay?: boolean
-  diffOverlayData?: DiffOverlayData | null
   isInspectorOpen?: boolean
   reserveSidebarActions?: boolean
   layoutTransitioning?: boolean
 }>()
 
 const emit = defineEmits<{
-  'close-settings': []
-  'open-settings': []
   'toggle-sidebar': []
   'open-search': []
   'create-new-chat': []
   'show-floating-sidebar': []
   'hide-floating-sidebar': []
-  'close-diff-overlay': []
   'toggle-inspector': []
   'open-file': [filePath: string]
+  'review-goal': [sessionId: string]
 }>()
 
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
 
-// Panel refs for focusing input
+// Panel refs for focusing input, keyed by leaf id
 const panelRefs = ref<Record<string, InstanceType<typeof ChatWindow> | null>>({})
 
-function setPanelRef(id: string, el: any) {
-  panelRefs.value[id] = el
+function setPanelRef(id: string, el: unknown) {
+  panelRefs.value[id] = el as InstanceType<typeof ChatWindow> | null
 }
 
-// Initialize with single panel
-const panels = ref<Panel[]>([
-  {
-    id: 'main',
-    sessionId: '',
-    size: 100
+// Only the first (leftmost/topmost) leaf reserves titlebar space for the
+// collapsed-sidebar toggle button.
+const revealSidebarToggle = computed(() => !!props.sidebarCollapsed && !props.sidebarFloating)
+
+// Split tree + tabs live in the workspace store (single owner, persisted as
+// one tree); this component is a view over it.
+const workspaceStore = useWorkspaceStore()
+
+const activeLeafSession = computed(() => {
+  const sessionId = workspaceStore.activeSessionId
+  return sessionId ? sessionsStore.getSessionItem(sessionId) : null
+})
+
+// Single shared side panel (Outline/System prompt/Todo/Variables) for the
+// whole split-panel workspace, reflecting whichever leaf is focused — moved
+// up from ChatWindow.vue, which used to render one of these per split panel.
+const CHAT_SIDE_PANEL_WIDTH = 268
+const CHAT_SIDE_PANEL_COLLAPSED_WIDTH = 0
+const CHAT_SIDE_PANEL_MIN_WINDOW_WIDTH = 1100
+const CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY = 'chatSidePanelCollapsed'
+
+const chatPanelsRootRef = ref<HTMLElement | null>(null)
+const chatSideOutlineTarget = ref<HTMLElement | null>(null)
+const sidePanelAvailable = ref(false)
+const sidePanelCollapsed = ref(localStorage.getItem(CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY) === 'true')
+let chatResizeObserver: ResizeObserver | null = null
+const chatSidePanelWidth = computed(() => sidePanelCollapsed.value ? CHAT_SIDE_PANEL_COLLAPSED_WIDTH : CHAT_SIDE_PANEL_WIDTH)
+const sidePanelVisible = computed(() => sidePanelAvailable.value || !sidePanelCollapsed.value)
+
+function updateSidePanelAvailability() {
+  const width = chatPanelsRootRef.value?.getBoundingClientRect().width ?? 0
+  sidePanelAvailable.value = width >= CHAT_SIDE_PANEL_MIN_WINDOW_WIDTH
+}
+
+function observeChatWidth() {
+  chatResizeObserver?.disconnect()
+  chatResizeObserver = null
+  const root = chatPanelsRootRef.value
+  if (!root || typeof ResizeObserver === 'undefined') {
+    updateSidePanelAvailability()
+    return
   }
-])
+  chatResizeObserver = new ResizeObserver(updateSidePanelAvailability)
+  chatResizeObserver.observe(root)
+  updateSidePanelAvailability()
+}
 
-// Focused split panel: it shows the full header action group, the others
-// collapse to just the close button. Any pointerdown inside a panel claims it.
-const activePanelId = ref('main')
+function handleSideOutlineTargetChange(target: HTMLElement | null) {
+  chatSideOutlineTarget.value = !sidePanelCollapsed.value ? target : null
+}
 
-// Sync main panel with current session
-watch(
-  () => sessionsStore.currentSessionId,
-  (sessionId) => {
-    if (sessionId && panels.value.length > 0) {
-      panels.value[0].sessionId = sessionId
-    }
-  },
-  { immediate: true }
-)
+function toggleSidePanelCollapsed() {
+  sidePanelCollapsed.value = !sidePanelCollapsed.value
+  localStorage.setItem(CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY, String(sidePanelCollapsed.value))
+  if (sidePanelCollapsed.value) {
+    chatSideOutlineTarget.value = null
+  }
+}
+
+watch(sidePanelCollapsed, (collapsed) => {
+  if (collapsed) {
+    chatSideOutlineTarget.value = null
+  }
+})
+
+onMounted(() => {
+  nextTick(observeChatWidth)
+})
+
+onBeforeUnmount(() => {
+  chatResizeObserver?.disconnect()
+  chatResizeObserver = null
+})
 
 // Split goes through the Search Everywhere window: it opens locked to Chats
 // with a split intent, and the chosen session comes back via search:action.
-function openSplitSearch(panelId: string) {
-  void platformApi.toggleSearchWindow({ intent: { type: 'split-panel', panelId } })
+function openSplitSearch(leafId: string) {
+  void platformApi.toggleSearchWindow({ intent: { type: 'split-panel', panelId: leafId } })
 }
 
-// Only the main panel goes through sessionsStore.switchSession, which owns
-// message loading. Secondary panels get their session assigned directly, so
-// their initial message page must be fetched here or they stay empty.
-function ensurePanelSessionLoaded(sessionId: string) {
-  if (!sessionId) return
-  if (!sessionsStore.sessions.some(s => s.id === sessionId)) return
-  const existing = chatStore.sessionMessages.get(sessionId)
-  if (existing && existing.length > 0) return
-  void chatStore.loadInitialMessagePage(sessionId)
+// Split a leaf - create a new leaf with the selected session. Public method:
+// called by App.vue's Search Everywhere split flow with the legacy
+// (leafId, sessionId) signature, so it keeps defaulting to a right split.
+// The new leaf becomes active, so the workspace effect switches to (and
+// loads) the session.
+function splitPanel(leafId: string, sessionId: string) {
+  workspaceStore.splitLeaf(leafId, sessionId, 'right')
 }
 
-// Split panel - create new panel with selected session
-function splitPanel(panelId: string, sessionId: string) {
-  const index = panels.value.findIndex(p => p.id === panelId)
-  if (index === -1) return
+async function switchLeafSession(leafId: string, sessionId: string) {
+  workspaceStore.openSession(sessionId, { leafId })
+}
 
-  // Halve the size of current panel
-  const currentSize = panels.value[index].size || 100 / Math.max(1, panels.value.length)
-  panels.value[index].size = currentSize / 2
+function handleSplitDrop(leafId: string, sessionId: string, sourcePanelId: string, direction: SplitDirection) {
+  const newLeafId = workspaceStore.splitLeaf(leafId, sessionId, direction)
+  if (!newLeafId) return
+  // The session moved panels: drop its tab in the source leaf only. It is
+  // still open (in the new leaf), so no cache eviction is involved.
+  workspaceStore.closeSessionTabs(sessionId, { onlyLeafId: sourcePanelId })
+}
 
-  // Insert new panel after current
-  const newPanel: Panel = {
-    id: `panel-${Date.now()}`,
-    sessionId: sessionId,
-    size: panels.value[index].size
+// Every ChatWindow (at any depth in the tree) funnels its events through a
+// single `panel-event` bubbled up by PanelTree, tagged with its own leaf id.
+function handlePanelEvent(event: PanelEvent) {
+  switch (event.type) {
+    case 'focus':
+      workspaceStore.setActiveLeaf(event.leafId)
+      break
+    case 'openSplitSearch':
+      openSplitSearch(event.leafId)
+      break
+    case 'equalize':
+      workspaceStore.equalizeSiblings(event.leafId)
+      break
+    case 'splitWithBranch':
+      splitPanel(event.leafId, event.sessionId)
+      break
+    case 'switchSession':
+      void switchLeafSession(event.leafId, event.sessionId)
+      break
+    case 'splitDrop':
+      handleSplitDrop(event.leafId, event.sessionId, event.sourcePanelId, event.direction)
+      break
+    case 'toggleSidePanel':
+      toggleSidePanelCollapsed()
+      break
+    case 'toggleSidebar':
+      emit('toggle-sidebar')
+      break
+    case 'openSearch':
+      emit('open-search')
+      break
+    case 'createNewChat':
+      emit('create-new-chat')
+      break
+    case 'toggleInspector':
+      emit('toggle-inspector')
+      break
+    case 'openFile':
+      emit('open-file', event.filePath)
+      break
+    case 'reviewGoal':
+      emit('review-goal', event.sessionId)
+      break
   }
-  panels.value.splice(index + 1, 0, newPanel)
-  activePanelId.value = newPanel.id
-  ensurePanelSessionLoaded(sessionId)
-}
-
-async function switchPanelSession(panelId: string, sessionId: string) {
-  const panel = panels.value.find(p => p.id === panelId)
-  if (!panel) return
-
-  panel.sessionId = sessionId
-  if (panel.id === panels.value[0]?.id) {
-    await sessionsStore.switchSession(sessionId)
-  } else {
-    ensurePanelSessionLoaded(sessionId)
-  }
-}
-
-// Close panel
-function closePanel(panelId: string) {
-  if (panels.value.length <= 1) return
-
-  const index = panels.value.findIndex(p => p.id === panelId)
-  if (index === -1) return
-
-  // Give size to adjacent panel
-  const removedSize = panels.value[index].size
-  const targetIndex = index === 0 ? 1 : index - 1
-  panels.value[targetIndex].size += removedSize
-
-  if (activePanelId.value === panelId) {
-    activePanelId.value = panels.value[targetIndex].id
-  }
-  panels.value.splice(index, 1)
-}
-
-// Equalize all panels - set equal size values
-function equalizeAllPanels() {
-  if (panels.value.length <= 1) return
-
-  const equalSize = 100 / panels.value.length
-  panels.value.forEach(panel => {
-    panel.size = equalSize
-  })
 }
 
 // Create new session from empty state
@@ -268,15 +299,15 @@ async function createNewSession() {
   focusInput()
 }
 
-// Focus input of first panel
+// Focus input of the currently focused panel.
 function focusInput() {
   let attempts = 0
   const maxAttempts = 4
   const focus = () => {
     attempts += 1
-    const firstPanel = panels.value[0]
-    if (firstPanel && panelRefs.value[firstPanel.id]) {
-      panelRefs.value[firstPanel.id]?.focusInput()
+    const activeLeafId = workspaceStore.activeLeafId
+    if (panelRefs.value[activeLeafId]) {
+      panelRefs.value[activeLeafId]?.focusInput()
     }
     if (attempts >= maxAttempts) return
     nextTick(() => {
@@ -288,10 +319,8 @@ function focusInput() {
 }
 
 function insertPromptReference(promptId: string) {
-  const firstPanel = panels.value[0]
-  if (firstPanel && panelRefs.value[firstPanel.id]) {
-    panelRefs.value[firstPanel.id]?.insertPromptReference(promptId)
-  }
+  const activeLeafId = workspaceStore.activeLeafId
+  panelRefs.value[activeLeafId]?.insertPromptReference(promptId)
 }
 
 // Open a file in the app-level right workbench.
@@ -300,16 +329,19 @@ function openFileTab(filePath: string) {
 }
 
 async function jumpToMessage(sessionId: string, messageId: string) {
+  // Prefer a leaf that already shows the session; otherwise open it in the
+  // focused one. Focusing + activating first means the explicit switch below
+  // reuses that exact tab.
+  const leaf = workspaceStore.leaves.find(l => l.tabs.some(tab => tab.sessionId === sessionId))
+    ?? workspaceStore.activeLeaf
+  if (!leaf) return false
+  workspaceStore.openSession(sessionId, { leafId: leaf.id })
+
   if (sessionsStore.currentSessionId !== sessionId) {
     await sessionsStore.switchSession(sessionId)
     await nextTick()
   }
   if (sessionsStore.currentSessionId !== sessionId) return false
-
-  const panel = panels.value.find(item => item.sessionId === sessionId) || panels.value[0]
-  if (!panel) return false
-
-  panel.sessionId = sessionId
   await nextTick()
 
   const hasLoadedMessage = () => {
@@ -322,7 +354,12 @@ async function jumpToMessage(sessionId: string, messageId: string) {
     await nextTick()
   }
 
-  return panelRefs.value[panel.id]?.scrollToMessage?.(messageId) ?? false
+  return panelRefs.value[leaf.id]?.scrollToMessage?.(messageId) ?? false
+}
+
+// Cmd+1..9: applies to the currently focused panel's tabs only.
+function selectFocusedPanelTabByIndex(digit: number) {
+  panelRefs.value[workspaceStore.activeLeafId]?.selectTabByIndex?.(digit)
 }
 
 // Expose methods
@@ -332,6 +369,7 @@ defineExpose({
   openFileTab,
   jumpToMessage,
   splitPanel,
+  selectFocusedPanelTabByIndex,
 })
 </script>
 
@@ -368,9 +406,18 @@ defineExpose({
   overflow: hidden;
 }
 
-.chat-panels-splitter {
+.chat-panels :deep(.chat-panels-main) {
   display: flex;
+  flex: 1 1 0;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-panels-tree {
   flex: 1;
+  display: flex;
   height: 100%;
   min-width: 0;
   min-height: 0;

@@ -60,36 +60,39 @@ onMounted(() => {
   gap: 20px;
 }
 
+/* Ledger segmented switcher: state lives in the 2px accent baseline. */
 .evals-view-tabs {
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--settings-rule);
-  border-radius: 7px;
-  background: var(--settings-paper-3);
-  width: fit-content;
+  align-items: baseline;
+  gap: 18px;
+  border-bottom: 1px solid var(--settings-rule-soft);
 }
 
 .evals-view-btn {
-  padding: 6px 16px;
+  appearance: none;
+  padding: 6px 2px 8px;
   border: none;
-  border-radius: 5px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  margin-bottom: -1px;
   background: transparent;
   color: var(--settings-ink-3);
   font-size: 13px;
   font-weight: 540;
   cursor: pointer;
-  transition: all 0.12s ease;
+  transition: color 0.12s ease, border-color 0.12s ease;
 }
 
 .evals-view-btn:hover {
-  color: var(--settings-ink-2);
-  background: color-mix(in srgb, var(--settings-paper) 60%, transparent);
+  color: var(--settings-ink);
 }
 
 .evals-view-btn.active {
-  background: var(--settings-paper);
   color: var(--settings-ink);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  border-bottom-color: var(--settings-accent);
+}
+
+.evals-workbench-entry {
+  margin-left: auto;
 }
 </style>

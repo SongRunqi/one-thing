@@ -13,14 +13,10 @@
       main-as="section"
       body-class="chat-body"
       main-class="chat-main-region"
-      sidebar-position="right"
-      :sidebar-class="['chat-side-region', { collapsed: sidePanelCollapsed }]"
       full-height
       :main-flex="'1 1 0'"
-      :sidebar-width="chatSidePanelWidth"
       overflow="hidden"
       main-overflow="hidden"
-      sidebar-overflow="hidden"
     >
       <!-- Tab Bar (replaces ChatHeader) -->
       <template #header>
@@ -28,7 +24,9 @@
           :tabs="tabs"
           :active-tab-id="activeTabId"
           :session-id="effectiveSessionId"
-          :session-name="currentSession?.name || 'New Chat'"
+          :chat-session-names="chatSessionNames"
+          :cached-session-ids="cachedSessionIds"
+          :panel-id="panelId"
           :is-branch-session="isBranchSession"
           :show-sidebar-toggle="showSidebarToggle"
           :show-split-button="canClose !== undefined"
@@ -41,81 +39,74 @@
           :panel-focused="panelFocused"
           @select-tab="activateTab"
           @close-tab="handleCloseTab"
-          @move-tab="tabState.moveTab"
+          @rename-session="(sid, name) => sessionsStore.renameSession(sid, name)"
+          @move-tab="(fromId, toId) => workspaceStore.moveTab(leafId, fromId, toId)"
           @toggle-sidebar="emit('toggleSidebar')"
           @open-search="emit('openSearch')"
           @create-new-chat="emit('createNewChat')"
           @go-to-parent="goToParentSession"
           @split="emit('split')"
           @equalize="emit('equalize')"
-          @close="emit('close')"
           @toggle-inspector="emit('toggleInspector')"
-          @toggle-side-panel="toggleSidePanelCollapsed"
+          @toggle-side-panel="emit('toggleSidePanel')"
         />
+        <PracticeStrip v-if="showPracticeStrip" />
       </template>
 
-      <!-- Tab Content -->
-      <div class="tab-content">
-        <ChatPanel
-          ref="chatPanelRef"
-          :session-id="effectiveSessionId"
-          :active="true"
-          :footer-target="chatFooterRef"
-          :layout-transitioning="layoutTransitioning"
-          :outline-rail-target="!sidePanelCollapsed ? chatSideOutlineTarget : null"
-          @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
-          @open-file="handleOpenFile"
-          @switch-session="(sessionId) => emit('switchSession', sessionId)"
-        />
-      </div>
-
+      <!-- Panel body: tab content + composer footer, wrapped together so the
+           split drop-zone overlay covers the whole panel (composer included),
+           not just the message list. -->
       <div
-        ref="chatFooterRef"
-        class="chat-footer"
-      />
-
-      <!-- Settings Panel overlay -->
-      <Transition name="settings-fade">
-        <SettingsPanel
-          v-if="showSettings"
-          @close="emit('closeSettings')"
-        />
-      </Transition>
-
-      <template
-        v-if="sidePanelVisible"
-        #sidebar
+        class="panel-body"
+        @dragover="handleContentDragOver"
+        @dragleave="handleContentDragLeave"
+        @drop="handleContentDrop"
       >
-        <ChatSidePanel
-          :session-id="effectiveSessionId"
-          :working-directory="currentSession?.workingDirectory || ''"
-          :agent-id="currentSession?.agentId"
-          :last-provider="currentSession?.lastProvider"
-          :last-model="currentSession?.lastModel"
-          :collapsed="sidePanelCollapsed"
-          @outline-target-change="handleSideOutlineTargetChange"
-          @toggle-collapsed="toggleSidePanelCollapsed"
+        <div class="tab-content">
+          <ChatPanel
+            ref="chatPanelRef"
+            :session-id="effectiveSessionId"
+            :active="true"
+            :footer-target="chatFooterRef"
+            :layout-transitioning="layoutTransitioning"
+            :outline-rail-target="outlineRailTarget"
+            @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
+            @open-file="handleOpenFile"
+            @review-goal="(goalSessionId) => emit('reviewGoal', goalSessionId)"
+            @switch-session="(sessionId) => emit('switchSession', sessionId)"
+          />
+        </div>
+
+        <div
+          ref="chatFooterRef"
+          class="chat-footer"
         />
-      </template>
+
+        <Transition name="split-zone">
+          <div
+            v-if="dragHoverZone"
+            :class="['split-drop-overlay', `zone-${dragHoverZone}`]"
+          />
+        </Transition>
+      </div>
     </Container>
   </BorderBox>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
-import { useTabs } from '@/composables/useTabs'
+import { useWorkspaceStore } from '@/stores/workspace'
+import { MAIN_LEAF_ID, type SplitDirection } from '@/stores/workspace-tree'
 import TabBar from './TabBar.vue'
 import ChatPanel from './ChatPanel.vue'
-import ChatSidePanel from './ChatSidePanel.vue'
 import Container from '@/components/common/Container.vue'
 import BorderBox from '@/components/common/BorderBox.vue'
-import SettingsPanel from '../SettingsPanel.vue'
+import PracticeStrip from './PracticeStrip.vue'
 import { platformApi } from '@/platform'
 
 interface Props {
-  showSettings?: boolean
-  sessionId?: string
+  panelId?: string
   canClose?: boolean
   showSidebarToggle?: boolean
   mediaPanelOpen?: boolean
@@ -123,10 +114,16 @@ interface Props {
   reserveSidebarActions?: boolean
   layoutTransitioning?: boolean
   panelFocused?: boolean
+  /** Shared side panel state, owned by ChatContainer (see stores/workspace) — this window only reflects it in its tab bar toggle. */
+  sidePanelAvailable?: boolean
+  sidePanelCollapsed?: boolean
+  /** Non-null only for the currently focused panel; ChatPanel teleports its outline rail here. */
+  outlineRailTarget?: HTMLElement | null
+  /** Practice strip renders once globally, under the primary panel's tab bar. */
+  showPracticeStrip?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  showSettings: false,
   showSidebarToggle: false,
   mediaPanelOpen: false,
   panelFocused: true,
@@ -139,15 +136,8 @@ const chatPanelShadowFallback = [
   'inset 0 1px 0 color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 2.8%, transparent)',
 ].join(', ')
 const chatPanelShadowValue = `var(--ui-surface-chat-panel-shadow, ${chatPanelShadowFallback})`
-const CHAT_SIDE_PANEL_WIDTH = 268
-const CHAT_SIDE_PANEL_COLLAPSED_WIDTH = 0
-const CHAT_SIDE_PANEL_MIN_WINDOW_WIDTH = 1100
-const CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY = 'chatSidePanelCollapsed'
 
 const emit = defineEmits<{
-  closeSettings: []
-  openSettings: []
-  close: []
   split: []
   equalize: []
   splitWithBranch: [sessionId: string]
@@ -156,34 +146,24 @@ const emit = defineEmits<{
   createNewChat: []
   toggleInspector: []
   openFile: [filePath: string]
+  reviewGoal: [sessionId: string]
   switchSession: [sessionId: string]
+  splitDrop: [payload: { direction: SplitDirection; sessionId: string; sourcePanelId: string }]
+  toggleSidePanel: []
 }>()
 
 const sessionsStore = useSessionsStore()
+const workspaceStore = useWorkspaceStore()
 
-const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
+// This window renders one workspace leaf; all tab state lives in the store.
+const leafId = computed(() => props.panelId ?? MAIN_LEAF_ID)
+const tabs = computed(() => workspaceStore.tabsOf(leafId.value))
+const activeTabId = computed(() => workspaceStore.activeTabIdOf(leafId.value))
+const effectiveSessionId = computed(() => workspaceStore.activeSessionIdOf(leafId.value))
 
-// Tab state
-const tabState = useTabs(effectiveSessionId.value || '')
-const { tabs, activeTabId } = tabState
-
-// Restore saved tabs on mount
-onMounted(async () => {
-  try {
-    const appState = await platformApi.getAppState()
-    const chatTabs = appState.openTabs?.filter((tab: any) => tab.type === 'chat') || []
-    if (chatTabs.length > 0) {
-      tabState.restore(chatTabs as any, 0)
-    }
-  } catch (err) {
-    console.warn('[ChatWindow] Failed to restore tabs:', err)
-  }
+onMounted(() => {
+  void refreshCacheStats()
 })
-
-// Sync session changes to the chat tab
-watch(effectiveSessionId, (newId) => {
-  if (newId) tabState.updateChatSession(newId)
-}, { immediate: true })
 
 // Session info for TabBar
 const currentSession = computed(() => {
@@ -191,6 +171,31 @@ const currentSession = computed(() => {
   if (!sid) return null
   return sessionsStore.getSessionItem(sid) || null
 })
+
+// Tab titles. "New Chat" is reserved for drafts; a real session id that no
+// longer resolves (should not survive hydration/lifecycle pruning) must not
+// masquerade as a new chat.
+const chatSessionNames = computed(() => Object.fromEntries(
+  tabs.value.map(tab => [
+    tab.sessionId,
+    sessionsStore.getSessionItem(tab.sessionId)?.name
+      || (sessionsStore.isNewChatDraftId(tab.sessionId) ? 'New Chat' : 'Untitled'),
+  ]),
+))
+
+// Sessions currently held in the main process's in-memory session LRU cache,
+// used to mark evicted ("cold") chat tabs. Refreshed opportunistically after
+// the actions that actually change cache membership (see syncSessionFromTab /
+// handleCloseTab) rather than polled, since a brief staleness after a
+// capacity-triggered server-side eviction is only a cosmetic delay.
+// null = unknown (before the first refresh, or on hosts without a session
+// cache, e.g. web): tabs are then treated as warm so nothing gets marked.
+const cachedSessionIds = ref<Set<string> | null>(null)
+
+async function refreshCacheStats() {
+  const stats = await platformApi.getSessionCacheStats()
+  cachedSessionIds.value = stats.maxSize > 0 ? new Set(stats.cachedSessionIds) : null
+}
 
 const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
 
@@ -203,12 +208,6 @@ async function goToParentSession() {
 // ChatPanel ref for focusInput
 const chatPanelRef = ref<InstanceType<typeof ChatPanel> | null>(null)
 const chatFooterRef = ref<HTMLElement | null>(null)
-const chatSideOutlineTarget = ref<HTMLElement | null>(null)
-const sidePanelAvailable = ref(false)
-const sidePanelCollapsed = ref(localStorage.getItem(CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY) === 'true')
-let chatResizeObserver: ResizeObserver | null = null
-const chatSidePanelWidth = computed(() => sidePanelCollapsed.value ? CHAT_SIDE_PANEL_COLLAPSED_WIDTH : CHAT_SIDE_PANEL_WIDTH)
-const sidePanelVisible = computed(() => sidePanelAvailable.value || !sidePanelCollapsed.value)
 
 function focusInput() {
   chatPanelRef.value?.focusInput()
@@ -219,66 +218,94 @@ function insertPromptReference(promptId: string) {
 }
 
 function activateTab(id: string) {
-  if (!tabs.value.some(tab => tab.id === id) || activeTabId.value === id) return
-  tabState.setActiveTab(id)
+  if (activeTabId.value === id && workspaceStore.activeLeafId === leafId.value) return
+  workspaceStore.activateTab(leafId.value, id)
+  // Session switching follows via the workspace effect; refresh the cache
+  // markers once that has had a chance to run.
+  void nextTick().then(refreshCacheStats)
+}
+
+// Cmd+1..9: digit is 1-9, browser convention where 9 always means "last tab".
+function selectTabByIndex(digit: number) {
+  const list = tabs.value
+  const index = digit === 9 ? list.length - 1 : digit - 1
+  const target = list[index]
+  if (target) activateTab(target.id)
 }
 
 function handleOpenFile(filePath: string) {
   emit('openFile', filePath)
 }
 
-function handleCloseTab(id: string) {
-  tabState.removeTab(id)
-}
+async function handleCloseTab(id: string) {
+  // The store owns the close semantics: closing a leaf's last tab closes the
+  // leaf itself (mirrors VS Code editor groups), refused only for the sole
+  // remaining leaf. `released` means no other leaf still shows the session.
+  const result = workspaceStore.closeTab(leafId.value, id)
+  if (!result) return
 
-function getChatRootElement() {
-  return chatFooterRef.value?.closest('.chat') as HTMLElement | null
-}
-
-function updateSidePanelAvailability() {
-  const width = getChatRootElement()?.getBoundingClientRect().width ?? 0
-  sidePanelAvailable.value = width >= CHAT_SIDE_PANEL_MIN_WINDOW_WIDTH
-}
-
-function observeChatWidth() {
-  chatResizeObserver?.disconnect()
-  chatResizeObserver = null
-  const chatRoot = getChatRootElement()
-  if (!chatRoot || typeof ResizeObserver === 'undefined') {
-    updateSidePanelAvailability()
-    return
+  if (result.released) {
+    if (sessionsStore.isNewChatDraftId(result.closedSessionId)) {
+      sessionsStore.discardNewChatDraft(result.closedSessionId)
+    } else {
+      await platformApi.evictSessionCache(result.closedSessionId).catch(() => {})
+    }
   }
-  chatResizeObserver = new ResizeObserver(updateSidePanelAvailability)
-  chatResizeObserver.observe(chatRoot)
-  updateSidePanelAvailability()
+  await refreshCacheStats()
 }
 
-function handleSideOutlineTargetChange(target: HTMLElement | null) {
-  chatSideOutlineTarget.value = !sidePanelCollapsed.value ? target : null
+const SPLIT_DROP_MIME = 'application/x-onething-split-tab'
+const dragHoverZone = ref<SplitDirection | null>(null)
+// dragover fires on every pointer-move tick (~60/s); getBoundingClientRect()
+// forces a synchronous layout flush, so calling it per-tick visibly janks the
+// drag. The panel doesn't resize mid-drag, so measure once per hover streak
+// and reuse it until the cursor actually leaves (cleared in dragleave/drop).
+let cachedContentRect: DOMRect | null = null
+
+function resolveDropZone(e: DragEvent, rect: DOMRect): SplitDirection | null {
+  const x = (e.clientX - rect.left) / rect.width
+  const y = (e.clientY - rect.top) / rect.height
+  if (x < 0.25) return 'left'
+  if (x > 0.75) return 'right'
+  if (y < 0.25) return 'top'
+  if (y > 0.75) return 'bottom'
+  return null
 }
 
-function toggleSidePanelCollapsed() {
-  sidePanelCollapsed.value = !sidePanelCollapsed.value
-  localStorage.setItem(CHAT_SIDE_PANEL_COLLAPSED_STORAGE_KEY, String(sidePanelCollapsed.value))
-  if (sidePanelCollapsed.value) {
-    chatSideOutlineTarget.value = null
+function handleContentDragOver(e: DragEvent) {
+  if (!e.dataTransfer?.types.includes(SPLIT_DROP_MIME)) return
+  e.preventDefault()
+  if (!cachedContentRect) {
+    cachedContentRect = (e.currentTarget as HTMLElement).getBoundingClientRect()
   }
+  const zone = resolveDropZone(e, cachedContentRect)
+  if (zone !== dragHoverZone.value) dragHoverZone.value = zone
 }
 
-watch(sidePanelCollapsed, (collapsed) => {
-  if (collapsed) {
-    chatSideOutlineTarget.value = null
-  }
-})
+// dragover stops firing the moment the cursor leaves this panel (e.g. it
+// moved onto a different split panel), so without this the highlight from
+// the panel the drag started over would otherwise never clear. Ignore leaves
+// into a child element (dragleave/dragenter fire at every element boundary
+// while bubbling) — only clear once the cursor is truly outside panel-body.
+function handleContentDragLeave(e: DragEvent) {
+  const target = e.currentTarget as HTMLElement
+  const related = e.relatedTarget as Node | null
+  if (related && target.contains(related)) return
+  cachedContentRect = null
+  dragHoverZone.value = null
+}
 
-onMounted(() => {
-  nextTick(observeChatWidth)
-})
-
-onBeforeUnmount(() => {
-  chatResizeObserver?.disconnect()
-  chatResizeObserver = null
-})
+function handleContentDrop(e: DragEvent) {
+  const zone = dragHoverZone.value
+  dragHoverZone.value = null
+  cachedContentRect = null
+  const raw = e.dataTransfer?.getData(SPLIT_DROP_MIME)
+  if (!raw) return
+  e.preventDefault()
+  if (!zone) return
+  const { sessionId, sourcePanelId } = JSON.parse(raw) as { sessionId: string; sourcePanelId: string }
+  emit('splitDrop', { direction: zone, sessionId, sourcePanelId })
+}
 
 async function scrollToMessage(messageId: string) {
   return chatPanelRef.value?.scrollToMessage?.(messageId) ?? false
@@ -288,13 +315,13 @@ defineExpose({
   focusInput,
   insertPromptReference,
   scrollToMessage,
+  selectTabByIndex,
 })
 </script>
 
 <style scoped>
 .chat {
   --chat-surface: var(--ui-surface-chat-bg, var(--bg-chat, var(--ui-surface-panel-bg, var(--bg-panel, var(--bg-elevated)))));
-  --chat-side-panel-width: 268px;
 
   flex: 1;
   height: 100%;
@@ -320,10 +347,14 @@ defineExpose({
   overflow: hidden;
 }
 
-.chat :deep(.chat-side-region) {
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 .chat-footer {
@@ -339,28 +370,56 @@ defineExpose({
   display: flex;
   flex-direction: column;
   flex: 1;
-  height: 100%;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
 
-/* Settings Fade Transition */
-.settings-fade-enter-active,
-.settings-fade-leave-active {
-  transition: all 0.3s ease;
+.split-drop-overlay {
+  position: absolute;
+  z-index: var(--z-sticky, 10);
+  pointer-events: none;
+  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 16%, transparent);
+  border: 2px solid var(--ui-accent-primary-fg, var(--accent));
+  box-sizing: border-box;
 }
 
-.settings-fade-enter-from,
-.settings-fade-leave-to {
+.split-drop-overlay.zone-left {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+}
+
+.split-drop-overlay.zone-right {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+}
+
+.split-drop-overlay.zone-top {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 50%;
+}
+
+.split-drop-overlay.zone-bottom {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 50%;
+}
+
+.split-zone-enter-active,
+.split-zone-leave-active {
+  transition: opacity var(--duration-fast, 0.12s) var(--ease-default, ease);
+}
+
+.split-zone-enter-from,
+.split-zone-leave-to {
   opacity: 0;
 }
 
-.settings-fade-enter-active :deep(.floating-hub) {
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-.settings-fade-enter-from :deep(.floating-hub) {
-  transform: scale(0.9) translateY(20px);
-}
 </style>

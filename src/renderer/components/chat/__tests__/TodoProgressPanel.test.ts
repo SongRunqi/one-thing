@@ -10,8 +10,8 @@ const cleanupChanged = vi.fn()
 
 function createDocument(content: string): TodoPlanDocument {
   return {
-    id: 'workspace-ai-todo',
-    scope: 'workspace-ai-todo',
+    id: 'session-ai-todo',
+    scope: 'session-ai-todo',
     title: 'AI Todo',
     role: 'assistant',
     filePath: '/repo/.onething/AI_TODO.md',
@@ -25,7 +25,7 @@ function createSnapshot(document?: TodoPlanDocument): TodoPlanSnapshot {
   return {
     directory: '/todo',
     userNotes: [],
-    workspaceAiTodo: document,
+    sessionAiTodo: document,
   }
 }
 
@@ -60,7 +60,6 @@ describe('TodoProgressPanel', () => {
     const wrapper = mount(TodoProgressPanel, {
       props: {
         sessionId: 'session-1',
-        workingDirectory: '/repo',
       },
     })
     await settle()
@@ -82,7 +81,6 @@ describe('TodoProgressPanel', () => {
     const wrapper = mount(TodoProgressPanel, {
       props: {
         sessionId: 'session-1',
-        workingDirectory: '/repo',
       },
     })
     await settle()
@@ -104,7 +102,6 @@ describe('TodoProgressPanel', () => {
     const wrapper = mount(TodoProgressPanel, {
       props: {
         sessionId: 'session-1',
-        workingDirectory: '/repo',
       },
     })
     await settle()
@@ -113,7 +110,7 @@ describe('TodoProgressPanel', () => {
     expect(wrapper.find('.todo-progress-current').text()).toContain('All tasks complete')
   })
 
-  it('refreshes from onTodoPlanChanged for the active workspace AI todo', async () => {
+  it('refreshes from onTodoPlanChanged for its own session', async () => {
     installElectronAPI(createSnapshot(createDocument(`# Project plan
 ## Setup
 - [ ] Wire side panel
@@ -122,15 +119,13 @@ describe('TodoProgressPanel', () => {
     const wrapper = mount(TodoProgressPanel, {
       props: {
         sessionId: 'session-1',
-        workingDirectory: '/repo',
       },
     })
     await settle()
 
     changedCallback?.({
-      scope: 'workspace-ai-todo',
+      scope: 'session-ai-todo',
       sessionId: 'session-1',
-      workingDirectory: '/repo',
       document: createDocument(`# Project plan
 ## Setup
 - [x] Wire side panel
@@ -141,5 +136,33 @@ describe('TodoProgressPanel', () => {
 
     expect(wrapper.find('.todo-progress-count').text()).toBe('1/2')
     expect(wrapper.find('.todo-progress-current-text').text()).toBe('Add tests')
+  })
+
+  // The panel used to accept any AI todo broadcast for its working directory,
+  // so another session's todo would appear here.
+  it('ignores an AI todo broadcast from another session', async () => {
+    installElectronAPI(createSnapshot(createDocument(`# Project plan
+## Setup
+- [ ] Wire side panel
+`)))
+
+    const wrapper = mount(TodoProgressPanel, {
+      props: {
+        sessionId: 'session-1',
+      },
+    })
+    await settle()
+
+    changedCallback?.({
+      scope: 'session-ai-todo',
+      sessionId: 'session-2',
+      document: createDocument(`# Someone else's plan
+- [ ] Not mine
+`),
+    })
+    await settle()
+
+    expect(wrapper.text()).not.toContain('Not mine')
+    expect(wrapper.find('.todo-progress-current-text').text()).toBe('Wire side panel')
   })
 })

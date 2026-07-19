@@ -129,18 +129,6 @@ const STATUS_LABELS: Record<ToolRenderStatus, string> = {
   cancelled: 'Cancelled',
 }
 
-export type InspectorTab = 'context' | 'request' | 'browser' | 'diff' | 'console'
-
-const CATEGORY_INSPECTOR_TABS: Record<ToolUiCategory, InspectorTab> = {
-  search: 'browser',
-  edit: 'diff',
-  write: 'diff',
-  read: 'diff',
-  console: 'console',
-  fart: 'console',
-  tool: 'console',
-}
-
 function normalizeToolName(toolName: string | undefined): string {
   return String(toolName || '').trim().toLowerCase()
 }
@@ -175,10 +163,6 @@ export function getToolIcon(toolName: string | undefined): Component {
 
 export function getStatusLabel(status: ToolRenderStatus): string {
   return STATUS_LABELS[status] ?? 'Pending'
-}
-
-export function getInspectorTab(toolName: string | undefined): InspectorTab {
-  return CATEGORY_INSPECTOR_TABS[getToolUiCategory(toolName)]
 }
 
 /** Category for read/write/edit file tools, null otherwise (legacy helper shape). */

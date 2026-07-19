@@ -21,14 +21,19 @@
       @click="handleTitleClick"
       @keydown="handleTitleKeydown"
     >
-      <ChevronRight
+      <span
         v-if="expandIconPosition === 'start'"
-        class="app-sub-menu-chevron"
-        :class="{ 'is-opened': isOpened }"
-        :size="15"
-        :stroke-width="2"
+        class="app-sub-menu-chevron-hit"
         aria-hidden="true"
-      />
+        @click="handleChevronClick"
+      >
+        <ChevronRight
+          class="app-sub-menu-chevron"
+          :class="{ 'is-opened': isOpened }"
+          :size="15"
+          :stroke-width="2"
+        />
+      </span>
 
       <span
         v-if="$slots.icon"
@@ -42,17 +47,30 @@
         <slot name="title">{{ title }}</slot>
       </span>
 
-      <ChevronRight
+      <span
         v-if="expandIconPosition === 'end'"
-        class="app-sub-menu-chevron"
-        :class="{ 'is-opened': isOpened }"
-        :size="15"
-        :stroke-width="2"
+        class="app-sub-menu-chevron-hit"
         aria-hidden="true"
-      />
+        @click="handleChevronClick"
+      >
+        <ChevronRight
+          class="app-sub-menu-chevron"
+          :class="{ 'is-opened': isOpened }"
+          :size="15"
+          :stroke-width="2"
+        />
+      </span>
     </button>
 
-    <Transition :name="isPopper ? 'app-menu-popper' : 'app-menu-collapse'">
+    <Transition
+      :name="isPopper ? 'app-menu-popper' : 'app-menu-collapse'"
+      @enter="handleCollapseEnter"
+      @after-enter="clearCollapseHeight"
+      @enter-cancelled="clearCollapseHeight"
+      @leave="handleCollapseLeave"
+      @after-leave="clearCollapseHeight"
+      @leave-cancelled="clearCollapseHeight"
+    >
       <div
         v-if="isOpened"
         class="app-sub-menu-panel"
@@ -86,6 +104,12 @@ const props = withDefaults(defineProps<{
   title?: string
   disabled?: boolean
   expandIconPosition?: SubMenuExpandIconPosition
+  /**
+   * What clicking the title row does. 'toggle' (default) expands/collapses the
+   * panel; 'select' emits the submenu's own index as a menu selection and
+   * leaves expansion to the chevron, which becomes a separate click target.
+   */
+  titleAction?: 'toggle' | 'select'
   popperOffset?: number
   showTimeout?: number
   hideTimeout?: number
@@ -93,6 +117,7 @@ const props = withDefaults(defineProps<{
   title: '',
   disabled: false,
   expandIconPosition: 'end',
+  titleAction: 'toggle',
   popperOffset: undefined,
   showTimeout: undefined,
   hideTimeout: undefined,
@@ -222,7 +247,43 @@ function handleMouseLeave() {
 }
 
 function handleTitleClick() {
+  if (disabled.value) return
+  if (props.titleAction === 'select') {
+    menu?.selectItem({ index: props.index, indexPath: indexPath.value })
+    return
+  }
   toggleOpen()
+}
+
+function handleChevronClick(event: MouseEvent) {
+  if (props.titleAction !== 'select') return
+  event.stopPropagation()
+  toggleOpen()
+}
+
+/* Inline collapse needs a pixel height on both ends to interpolate — height
+   auto→0 doesn't animate. The hooks pin it for the transition's duration;
+   popper panels keep their pure-CSS fade/scale and are left untouched. */
+function handleCollapseEnter(el: Element) {
+  if (isPopper.value) return
+  const panel = el as HTMLElement
+  // Interrupted mid-leave the element already carries a pinned height — start
+  // from there instead of snapping back to 0.
+  if (!panel.style.height) panel.style.height = '0'
+  void panel.offsetHeight
+  panel.style.height = `${panel.scrollHeight}px`
+}
+
+function handleCollapseLeave(el: Element) {
+  if (isPopper.value) return
+  const panel = el as HTMLElement
+  panel.style.height = `${panel.offsetHeight}px`
+  void panel.offsetHeight
+  panel.style.height = '0'
+}
+
+function clearCollapseHeight(el: Element) {
+  (el as HTMLElement).style.height = ''
 }
 
 function handleTitleKeydown(event: KeyboardEvent) {
@@ -230,7 +291,7 @@ function handleTitleKeydown(event: KeyboardEvent) {
 
   if (event.key === 'Enter' || event.key === ' ') {
     event.preventDefault()
-    toggleOpen()
+    handleTitleClick()
     return
   }
 
@@ -320,6 +381,13 @@ function handleTitleKeydown(event: KeyboardEvent) {
   white-space: nowrap;
 }
 
+.app-sub-menu-chevron-hit {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+
 .app-sub-menu-chevron {
   flex: 0 0 auto;
   color: currentColor;
@@ -374,7 +442,7 @@ function handleTitleKeydown(event: KeyboardEvent) {
 }
 
 .app-sub-menu.is-collapsed .app-sub-menu-label,
-.app-sub-menu.is-collapsed > .app-sub-menu-title > .app-sub-menu-chevron {
+.app-sub-menu.is-collapsed > .app-sub-menu-title > .app-sub-menu-chevron-hit {
   width: 0;
   opacity: 0;
 }
@@ -382,13 +450,29 @@ function handleTitleKeydown(event: KeyboardEvent) {
 .app-menu-collapse-enter-active,
 .app-menu-collapse-leave-active {
   overflow: hidden;
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transition:
+    height 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    margin 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    padding 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s ease;
 }
 
-.app-menu-collapse-enter-from,
-.app-menu-collapse-leave-to {
+/* Margin/padding collapse alongside height, otherwise they survive the height
+   animation and the tail of the motion still jumps. The panel class is
+   repeated so this outranks consumers' :deep(.app-sub-menu-panel) overrides
+   (equal specificity would let their later-injected styles win). */
+.app-sub-menu-panel.app-menu-collapse-enter-from,
+.app-sub-menu-panel.app-menu-collapse-leave-to {
+  margin-block: 0;
+  padding-block: 0;
   opacity: 0;
-  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-menu-collapse-enter-active,
+  .app-menu-collapse-leave-active {
+    transition-duration: 0s;
+  }
 }
 
 .app-menu-popper-enter-active,

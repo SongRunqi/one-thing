@@ -1,3 +1,4 @@
+export * from './bootstrap.js'
 export * from './format.js'
 export * from './ipc-operations.js'
 export * from './registry.js'

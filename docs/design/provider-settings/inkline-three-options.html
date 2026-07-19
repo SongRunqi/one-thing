@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Provider 设置页 · 画线风三案</title>
+<style>
+/* ————————————————————————————————————————————
+   共享:纸与墨
+   ———————————————————————————————————————————— */
+:root {
+  --paper: #faf8f1;
+  --paper-deep: #f3efe5;
+  --ink: #29241c;
+  --ink-60: rgba(41, 36, 28, 0.62);
+  --ink-40: rgba(41, 36, 28, 0.42);
+  --ink-25: rgba(41, 36, 28, 0.25);
+  --ink-12: rgba(41, 36, 28, 0.12);
+  --ink-06: rgba(41, 36, 28, 0.06);
+  --a-blue: #33647e;     /* 案一 · 工作台青 */
+  --b-red: #b8452c;      /* 案二 · 登记卡红 */
+  --c-green: #3f6b4f;    /* 案三 · 总账绿 */
+  --ok: #3f6b4f;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #191611;
+    --paper-deep: #14110d;
+    --ink: #e8e1d2;
+    --ink-60: rgba(232, 225, 210, 0.66);
+    --ink-40: rgba(232, 225, 210, 0.45);
+    --ink-25: rgba(232, 225, 210, 0.28);
+    --ink-12: rgba(232, 225, 210, 0.14);
+    --ink-06: rgba(232, 225, 210, 0.07);
+    --a-blue: #7fb0c9;
+    --b-red: #d8765c;
+    --c-green: #86b795;
+    --ok: #86b795;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+input, select { font: inherit; color: inherit; }
+
+body {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 48px 40px 96px;
+}
+
+.page-head { max-width: 1280px; margin: 0 auto 44px; }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: ""; display: block; width: 88px;
+  border-bottom: 2px solid var(--ink); margin-top: 10px;
+}
+.page-head p { margin-top: 12px; color: var(--ink-60); max-width: 62em; }
+
+.option { max-width: 1280px; margin: 0 auto 72px; }
+.option-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+.option-head .no {
+  font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em;
+  color: var(--accent); border: 1px solid var(--accent); padding: 2px 10px 3px;
+}
+.option-head h2 { font-size: 18px; font-weight: 600; letter-spacing: 0.03em; }
+.option-sub { color: var(--ink-60); margin-bottom: 18px; max-width: 68em; }
+
+.frame {
+  background: var(--paper);
+  border: 1px solid var(--ink-25);
+  box-shadow: 4px 4px 0 var(--ink-06);
+  overflow: hidden;
+}
+
+.notes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 40px; margin-top: 18px; }
+.notes li {
+  list-style: none; padding-left: 18px; position: relative;
+  color: var(--ink-60); font-size: 13px;
+}
+.notes li::before { content: "—"; position: absolute; left: 0; color: var(--accent); }
+.notes b { color: var(--ink); font-weight: 600; }
+
+/* 共享小件 */
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--ink-40); background: transparent; flex: none; }
+.dot.on { border-color: var(--ok); background: var(--ok); }
+.pill {
+  display: inline-flex; align-items: center; border: 1px solid var(--ink-25); border-radius: 999px;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.5; padding: 0 8px 1px;
+  color: var(--ink-40); white-space: nowrap;
+}
+.pill.acc { border-color: var(--accent); color: var(--accent); }
+.pill.ok { border-color: var(--ok); color: var(--ok); }
+.micro { font-family: var(--mono); font-size: 11px; color: var(--ink-40); }
+.star { color: var(--ink-25); font-size: 14px; line-height: 1; }
+.star.set { color: var(--accent); }
+.hair-top { border-top: 1px solid var(--ink-12); }
+.linkish { font-family: var(--mono); font-size: 11px; color: var(--ink-60); }
+.linkish:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--accent); }
+.field {
+  width: 100%; min-height: 30px; padding: 3px 10px;
+  border: 1px solid var(--ink-25); background: transparent; outline: none; font-size: 13px;
+}
+.field:focus { border-color: var(--accent); }
+.field::placeholder { color: var(--ink-40); }
+.cap { font-family: var(--mono); font-size: 10px; color: var(--ink-40); border-bottom: 1px dotted var(--ink-25); }
+
+/* ============================================================
+   案一 · 工作台(左右主从)
+   ============================================================ */
+.opt-a { --accent: var(--a-blue); }
+
+.a-frame { display: grid; grid-template-columns: 236px 1fr; min-height: 560px; }
+
+.a-rail { border-right: 1px solid var(--ink-25); display: flex; flex-direction: column; }
+.a-rail-group { padding: 14px 0 4px; }
+.a-rail-cap {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-40); padding: 0 16px 6px;
+}
+.a-rail-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 8px 16px; text-align: left; position: relative;
+}
+.a-rail-item .glyph {
+  width: 22px; height: 22px; border: 1px solid var(--ink-25); flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 10px; color: var(--ink-60);
+}
+.a-rail-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.a-rail-item:hover { background: var(--ink-06); }
+.a-rail-item.sel::before {
+  content: ""; position: absolute; left: 0; top: 6px; bottom: 6px;
+  border-left: 2px solid var(--accent);
+}
+.a-rail-item.sel .nm { font-weight: 600; }
+.a-rail-item.dim .nm, .a-rail-item.dim .glyph { color: var(--ink-40); }
+.a-rail-foot { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--ink-12); }
+
+.a-main { display: flex; flex-direction: column; min-width: 0; }
+.a-head { display: flex; align-items: center; gap: 14px; padding: 18px 24px 0; }
+.a-head h3 { font-size: 17px; font-weight: 600; }
+.a-head .sub { font-family: var(--mono); font-size: 11px; color: var(--ink-40); }
+.a-head .spacer { flex: 1; }
+
+/* 画线开关 */
+.tg { position: relative; width: 30px; height: 14px; flex: none; }
+.tg::before { content: ""; position: absolute; inset: 6px 0 auto; border-top: 1px dashed var(--ink-25); }
+.tg .knob {
+  position: absolute; top: 1px; left: 0; width: 11px; height: 11px; border-radius: 50%;
+  border: 1px solid var(--ink-40); background: var(--paper);
+}
+.tg.on::before { border-top-style: solid; border-top-color: var(--accent); }
+.tg.on .knob { left: auto; right: 0; border-color: var(--accent); background: var(--accent); }
+
+.a-tabs { display: flex; gap: 26px; padding: 14px 24px 0; border-bottom: 1px solid var(--ink-25); }
+.a-tab {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.1em;
+  padding: 4px 0 9px; color: var(--ink-40); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.a-tab.sel { color: var(--ink); border-bottom-color: var(--accent); }
+.a-body { padding: 20px 24px 24px; overflow: auto; flex: 1; }
+
+.a-kv { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 14px 20px; max-width: 560px; }
+.a-kv label { font-size: 13px; color: var(--ink-60); }
+.a-hint { grid-column: 2; font-size: 11.5px; color: var(--ink-40); margin-top: -8px; }
+
+.a-models-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+.a-models-bar .field { max-width: 240px; }
+.a-mrow {
+  display: grid; grid-template-columns: 20px 16px 1fr auto auto; align-items: center; gap: 12px;
+  padding: 8px 2px; border-top: 1px solid var(--ink-12);
+}
+.a-mrow:first-of-type { border-top: 0; }
+.a-mrow .chk {
+  width: 13px; height: 13px; border: 1px solid var(--ink-40); position: relative; flex: none;
+}
+.a-mrow .chk.on { border-color: var(--accent); background: var(--accent); }
+.a-mrow .chk.on::after {
+  content: ""; position: absolute; inset: 2px 3px 4px; border: solid var(--paper);
+  border-width: 0 0 2px 2px; transform: rotate(-45deg);
+}
+.a-mrow .mid { font-family: var(--mono); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.a-mrow.off .mid { color: var(--ink-40); }
+.a-mrow .meta { display: flex; gap: 8px; align-items: center; }
+.a-connect { max-width: 480px; margin: 40px auto; text-align: center; }
+.a-connect .glyph-lg {
+  width: 44px; height: 44px; margin: 0 auto 14px; border: 1px solid var(--ink-25);
+  display: flex; align-items: center; justify-content: center; font-family: var(--mono); color: var(--ink-60);
+}
+.a-connect p { color: var(--ink-60); font-size: 13px; margin-bottom: 16px; }
+.a-connect .field { text-align: center; }
+.a-connect .go {
+  margin-top: 12px; border: 1px solid var(--accent); color: var(--accent);
+  padding: 6px 22px; font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em;
+}
+.a-connect .go:hover { background: var(--accent); color: var(--paper); }
+
+.seg { display: inline-flex; border: 1px solid var(--ink-25); }
+.seg button { padding: 3px 14px 4px; font-size: 12px; color: var(--ink-40); border-left: 1px solid var(--ink-25); }
+.seg button:first-child { border-left: 0; }
+.seg button.sel { color: var(--paper); background: var(--accent); }
+
+/* ============================================================
+   案二 · 登记卡(总览网格 + 专注页)
+   ============================================================ */
+.opt-b { --accent: var(--b-red); }
+.b-frame { min-height: 560px; position: relative; }
+.b-view { padding: 20px 24px 26px; }
+.b-now {
+  display: flex; align-items: center; gap: 12px; padding-bottom: 16px;
+  border-bottom: 2px solid var(--ink); margin-bottom: 20px;
+}
+.b-now .cap-lg { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-40); }
+.b-now .cur { font-size: 15px; font-weight: 600; }
+.b-now .cur .mono { font-family: var(--mono); font-weight: 400; font-size: 12.5px; color: var(--ink-60); }
+.b-now .swap { margin-left: auto; }
+
+.b-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.b-card {
+  border: 1px solid var(--ink-25); padding: 14px 16px 12px; position: relative;
+  display: flex; flex-direction: column; gap: 8px; min-height: 128px;
+  text-align: left; transition: box-shadow 0.12s ease;
+}
+.b-card:hover { box-shadow: 3px 3px 0 var(--ink-12); }
+.b-card .row1 { display: flex; align-items: center; gap: 10px; }
+.b-card .glyph {
+  width: 26px; height: 26px; border: 1px solid var(--ink-25); flex: none;
+  display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 11px; color: var(--ink-60);
+}
+.b-card .nm { font-weight: 600; font-size: 14px; }
+.b-card .corner {
+  position: absolute; top: -1px; right: -1px; border: 1px solid var(--accent);
+  color: var(--accent); font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em;
+  padding: 1px 8px 2px; background: var(--paper);
+}
+.b-card .line { font-family: var(--mono); font-size: 11px; color: var(--ink-40); display: flex; gap: 8px; align-items: center; }
+.b-card .foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 1px dashed var(--ink-12); }
+.b-card.ghost { border-style: dashed; color: var(--ink-40); align-items: center; justify-content: center; }
+.b-card.ghost .plus { font-size: 20px; line-height: 1; }
+.b-card.dim .nm { color: var(--ink-60); }
+
+.b-focus { padding: 20px 24px 26px; }
+.b-crumb { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.b-crumb .back { font-family: var(--mono); font-size: 12px; color: var(--ink-60); }
+.b-crumb .back:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--accent); }
+.b-crumb h3 { font-size: 17px; font-weight: 600; }
+.b-cols { display: grid; grid-template-columns: minmax(300px, 5fr) minmax(340px, 7fr); gap: 0 32px; }
+.b-col-l > section + section { margin-top: 22px; }
+.b-sec-cap {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-40); border-bottom: 1px solid var(--ink-25); padding-bottom: 5px; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.b-sec-cap .r { margin-left: auto; }
+.b-kv { display: grid; grid-template-columns: 92px 1fr; gap: 10px 14px; align-items: center; }
+.b-kv label { font-size: 12.5px; color: var(--ink-60); }
+.b-gears { display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; align-items: center; font-size: 12.5px; }
+.b-mlist { max-height: 380px; overflow: auto; }
+.b-mrow {
+  display: grid; grid-template-columns: 16px 1fr auto auto; gap: 10px; align-items: center;
+  padding: 7px 2px; border-top: 1px solid var(--ink-12); font-family: var(--mono); font-size: 12.5px;
+}
+.b-mrow:first-child { border-top: 0; }
+
+/* ============================================================
+   案三 · 模型总账(模型为中心)
+   ============================================================ */
+.opt-c { --accent: var(--c-green); }
+.c-frame { min-height: 560px; padding: 20px 24px 26px; }
+.c-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.c-toolbar .field { max-width: 260px; }
+.chip {
+  border: 1px solid var(--ink-25); border-radius: 999px; padding: 1px 11px 2px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-60);
+}
+.chip.sel { border-color: var(--accent); color: var(--accent); }
+.c-table { border-top: 2px solid var(--ink); }
+.c-thead {
+  display: grid; grid-template-columns: 26px 1fr 110px 90px 130px 60px; gap: 10px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-40); padding: 7px 2px; border-bottom: 1px solid var(--ink-25);
+}
+.c-row-w { border-bottom: 1px solid var(--ink-12); }
+.c-row {
+  display: grid; grid-template-columns: 26px 1fr 110px 90px 130px 60px; gap: 10px; align-items: center;
+  width: 100%; padding: 8px 2px; text-align: left;
+}
+.c-row:hover { background: var(--ink-06); }
+.c-row .mid { font-family: var(--mono); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c-row .prov { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-60); }
+.c-row .caps { display: flex; gap: 7px; }
+.c-tune {
+  display: flex; gap: 28px; align-items: center; padding: 10px 2px 12px 36px;
+  border-top: 1px dashed var(--ink-12); font-size: 12.5px; color: var(--ink-60);
+}
+.c-tune .lab { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-40); margin-right: 8px; }
+.c-conn-cap {
+  display: flex; align-items: center; gap: 10px; margin: 26px 0 0; padding-bottom: 5px;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-40);
+  border-bottom: 2px solid var(--ink);
+}
+.c-conn-cap .r { margin-left: auto; }
+.c-prow {
+  display: grid; grid-template-columns: 24px 130px 1fr auto auto; gap: 12px; align-items: center;
+  padding: 9px 2px; border-bottom: 1px solid var(--ink-12);
+}
+.c-prow .glyph {
+  width: 22px; height: 22px; border: 1px solid var(--ink-25);
+  display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10px; color: var(--ink-60);
+}
+.c-prow .nm { font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.c-prow .keyline { font-family: var(--mono); font-size: 11.5px; color: var(--ink-40); }
+.c-prow .keyline .edit { border-bottom: 1px dashed var(--ink-25); cursor: text; }
+.c-prow .keyline .edit:hover { color: var(--ink); border-bottom-color: var(--accent); }
+.c-flyout { padding: 10px 2px 14px 36px; border-bottom: 1px solid var(--ink-12); background: var(--ink-06); }
+.c-flyout .fly-head { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
+.c-flyout .fly-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; }
+.c-flyout .fly-item { display: flex; gap: 8px; align-items: center; font-family: var(--mono); font-size: 12px; padding: 3px 0; }
+.c-flyout .chk { width: 12px; height: 12px; border: 1px solid var(--ink-40); position: relative; flex: none; }
+.c-flyout .chk.on { background: var(--accent); border-color: var(--accent); }
+
+.footnote { max-width: 1280px; margin: 0 auto; color: var(--ink-40); font-size: 12.5px; border-top: 1px solid var(--ink-12); padding-top: 16px; }
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1>Provider 设置页 · 三个重构方案</h1>
+  <p>三案共同解决的旧问题:模型名/状态重复出现三处;单列手风琴展开把页面无限拉长;Configure/Edit/整行点击三种入口混在一行;Temperature 和 Max Output 与模型脱节。三案的信息架构截然不同:案一按「provider 工作台」组织,案二按「总览 → 专注」两级组织,案三直接翻转为「模型优先」。</p>
+</header>
+
+<!-- ============================================================ 案一 -->
+<section class="option opt-a">
+  <div class="option-head"><span class="no">案一</span><h2>工作台 · 左右主从</h2></div>
+  <p class="option-sub">左侧细栏是唯一的 provider 索引(已连接/未连接分组,★ 标默认);右侧整个工作区属于当前选中的 provider,「连接 / 模型 / 参数」三个薄页签把长内容切成三屏,不再有任何行内展开。点左栏切换试试。</p>
+
+  <div class="frame a-frame">
+    <nav class="a-rail">
+      <div class="a-rail-group">
+        <div class="a-rail-cap">已连接</div>
+        <button class="a-rail-item sel" data-a="claude"><span class="glyph">CL</span><span class="nm">Claude</span><span class="star set">★</span><span class="dot on"></span></button>
+        <button class="a-rail-item" data-a="openai"><span class="glyph">OA</span><span class="nm">OpenAI</span><span class="dot on"></span></button>
+        <button class="a-rail-item" data-a="deepseek"><span class="glyph">DS</span><span class="nm">DeepSeek</span><span class="dot on"></span></button>
+        <button class="a-rail-item" data-a="locallm"><span class="glyph">LM</span><span class="nm">LocalLM <span class="micro">custom</span></span><span class="dot on"></span></button>
+      </div>
+      <div class="a-rail-group hair-top">
+        <div class="a-rail-cap">未连接</div>
+        <button class="a-rail-item dim" data-a="kimi"><span class="glyph">KM</span><span class="nm">Kimi</span><span class="dot"></span></button>
+        <button class="a-rail-item dim" data-a="zhipu"><span class="glyph">ZP</span><span class="nm">Zhipu</span><span class="dot"></span></button>
+      </div>
+      <div class="a-rail-foot"><button class="linkish">+ 添加自定义 provider</button></div>
+    </nav>
+
+    <div class="a-main">
+      <!-- Claude 详情 -->
+      <div class="a-detail" data-detail="claude">
+        <div class="a-head">
+          <h3>Claude</h3>
+          <span class="pill acc">默认 · claude-fable-5</span>
+          <span class="sub">订阅 · OAuth 已登录</span>
+          <span class="spacer"></span>
+          <span class="micro">启用</span><span class="tg on js-tg"><span class="knob"></span></span>
+        </div>
+        <div class="a-tabs">
+          <button class="a-tab sel" data-tab="conn">连接</button>
+          <button class="a-tab" data-tab="models">模型 <span class="micro">4</span></button>
+          <button class="a-tab" data-tab="tune">参数</button>
+        </div>
+        <div class="a-body" data-pane="conn">
+          <div class="a-kv">
+            <label>账号</label>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="pill ok">已登录</span>
+              <span class="micro">yitiansong4@gmail.com</span>
+              <button class="linkish" style="margin-left:auto">退出登录</button>
+            </div>
+            <label>额度</label>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span class="micro">5h 窗口 62% · 本周 31%</span>
+              <button class="linkish" style="margin-left:auto">刷新</button>
+            </div>
+          </div>
+        </div>
+        <div class="a-body" data-pane="models" hidden>
+          <div class="a-models-bar">
+            <input class="field" placeholder="搜索 / 输入 ID 添加模型">
+            <button class="linkish">↻ 刷新列表</button>
+            <span class="micro" style="margin-left:auto">勾选 = 出现在会话模型菜单 · ★ = 全局默认</span>
+          </div>
+          <div class="a-mrow">
+            <button class="star set" title="全局默认模型">★</button><span class="chk on"></span>
+            <span class="mid">claude-fable-5</span>
+            <span class="meta"><span class="cap">vis</span><span class="cap">tool</span><span class="cap">think</span><span class="micro">200k</span></span>
+            <button class="linkish">调参</button>
+          </div>
+          <div class="a-mrow">
+            <button class="star">★</button><span class="chk on"></span>
+            <span class="mid">claude-opus-4-8</span>
+            <span class="meta"><span class="cap">vis</span><span class="cap">tool</span><span class="micro">200k</span></span>
+            <button class="linkish">调参</button>
+          </div>
+          <div class="a-mrow">
+            <button class="star">★</button><span class="chk on"></span>
+            <span class="mid">claude-sonnet-5</span>
+            <span class="meta"><span class="cap">vis</span><span class="cap">tool</span><span class="micro">200k</span></span>
+            <button class="linkish">调参</button>
+          </div>
+          <div class="a-mrow off">
+            <button class="star">★</button><span class="chk"></span>
+            <span class="mid">claude-haiku-4-5</span>
+            <span class="meta"><span class="micro">200k</span></span>
+            <button class="linkish">调参</button>
+          </div>
+        </div>
+        <div class="a-body" data-pane="tune" hidden>
+          <div class="a-kv">
+            <label>生成风格</label>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="seg"><button>精确</button><button class="sel">平衡</button><button>发散</button><button>自定义…</button></span>
+              <span class="micro">temperature 0.7</span>
+            </div>
+            <span class="a-hint">档位作用于本 provider;逐模型覆盖在「模型 → 调参」里。</span>
+            <label>输出上限</label>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span class="seg"><button>省</button><button class="sel">标准</button><button>最大</button></span>
+              <span class="micro">16,384 tokens · 上限的一半</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- OpenAI 详情(API key 型) -->
+      <div class="a-detail" data-detail="openai" hidden>
+        <div class="a-head">
+          <h3>OpenAI</h3>
+          <span class="sub">API Key · sk-pro••••k2Jd</span>
+          <span class="spacer"></span>
+          <span class="micro">启用</span><span class="tg on js-tg"><span class="knob"></span></span>
+        </div>
+        <div class="a-tabs">
+          <button class="a-tab sel" data-tab="conn">连接</button>
+          <button class="a-tab" data-tab="models">模型 <span class="micro">2</span></button>
+          <button class="a-tab" data-tab="tune">参数</button>
+        </div>
+        <div class="a-body" data-pane="conn">
+          <div class="a-kv">
+            <label>API Key</label><input class="field" type="password" value="sk-proj-abcdefg">
+            <span class="a-hint">检测到环境变量 OPENAI_API_KEY · sk-pr••••x9Ff,留空则使用它。</span>
+            <label>Base URL</label><input class="field" placeholder="https://api.openai.com/v1">
+          </div>
+        </div>
+        <div class="a-body" data-pane="models" hidden>
+          <div class="a-models-bar">
+            <input class="field" placeholder="搜索 / 输入 ID 添加模型">
+            <button class="linkish">↻ 刷新列表</button>
+          </div>
+          <div class="a-mrow">
+            <button class="star">★</button><span class="chk on"></span>
+            <span class="mid">gpt-5.2</span>
+            <span class="meta"><span class="cap">vis</span><span class="cap">tool</span><span class="micro">400k</span></span>
+            <button class="linkish">调参</button>
+          </div>
+          <div class="a-mrow">
+            <button class="star">★</button><span class="chk on"></span>
+            <span class="mid">o4-mini</span>
+            <span class="meta"><span class="cap">think</span><span class="micro">200k</span></span>
+            <button class="linkish">调参</button>
+          </div>
+        </div>
+        <div class="a-body" data-pane="tune" hidden>
+          <div class="a-kv">
+            <label>生成风格</label>
+            <span class="seg"><button class="sel">精确</button><button>平衡</button><button>发散</button><button>自定义…</button></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 未连接 provider:详情即接入页 -->
+      <div class="a-detail" data-detail="connect" hidden>
+        <div class="a-connect">
+          <div class="glyph-lg">KM</div>
+          <h3 style="margin-bottom:6px">连接 Kimi</h3>
+          <p>粘贴 API Key 即可启用,模型列表会自动拉取。</p>
+          <input class="field" placeholder="sk-...">
+          <div><button class="go">连 接</button></div>
+          <p class="micro" style="margin-top:14px">高级:自定义 Base URL</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <ul class="notes">
+    <li><b>去重</b>:模型名只出现在「模型」页签一处;启用状态只有头部一个开关;全局默认收敛为模型行上的 ★,顶部整块 Global Default 选择器删除。</li>
+    <li><b>空间</b>:左栏 236px 常驻索引,右侧全高工作区,配置多少个 provider 页面高度都不变。</li>
+    <li><b>入口唯一</b>:点左栏 = 选中,没有 Configure/Edit/整行点击三义;自定义 provider 的编辑放进它自己的「连接」页签。</li>
+    <li><b>未连接即引导</b>:未连接 provider 的详情就是一张接入卡,贴 key 一步完成,不再展开一堆空表单。</li>
+    <li><b>参数收档位</b>:Temperature/Max Output 收成「精确/平衡/发散」「省/标准/最大」档位,自定义数值藏在「自定义…」;逐模型覆盖挂在模型行「调参」。</li>
+    <li><b>适配现状</b>:OAuth/ACP/API-key 三种连接形态只是「连接」页签内容不同,组件可直接复用 AuthCard/UsageCard。</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 案二 -->
+<section class="option opt-b">
+  <div class="option-head"><span class="no">案二</span><h2>登记卡 · 总览 + 专注页</h2></div>
+  <p class="option-sub">第一层是可扫读的卡片索引:每张卡只回答「连上没有、用的什么模型、是不是默认」,常用操作(启停、设默认)直接在卡上。点「配置」进入第二层专注页——左列连接与参数、右列全高模型列表,一屏放下全部内容。点卡片可切换两层。</p>
+
+  <div class="frame b-frame">
+    <!-- 第一层:总览 -->
+    <div class="b-view" data-b="overview">
+      <div class="b-now">
+        <span class="cap-lg">正在使用</span>
+        <span class="cur">Claude <span class="mono">· claude-fable-5</span></span>
+        <button class="linkish swap">换 ▾</button>
+      </div>
+      <div class="b-grid">
+        <button class="b-card js-open">
+          <span class="corner">默认</span>
+          <span class="row1"><span class="glyph">CL</span><span class="nm">Claude</span><span class="dot on" style="margin-left:auto"></span></span>
+          <span class="line">订阅 · OAuth 已登录</span>
+          <span class="line">claude-fable-5 · 4 个模型启用</span>
+          <span class="foot"><span class="micro">配置 →</span><span class="tg on js-tg" onclick="event.stopPropagation()"><span class="knob"></span></span></span>
+        </button>
+        <button class="b-card js-open">
+          <span class="row1"><span class="glyph">OA</span><span class="nm">OpenAI</span><span class="dot on" style="margin-left:auto"></span></span>
+          <span class="line">Key sk-pro••••k2Jd</span>
+          <span class="line">gpt-5.2 · 2 个模型启用</span>
+          <span class="foot"><span class="micro">配置 →</span><span class="tg on js-tg" onclick="event.stopPropagation()"><span class="knob"></span></span></span>
+        </button>
+        <button class="b-card js-open">
+          <span class="row1"><span class="glyph">DS</span><span class="nm">DeepSeek</span><span class="dot on" style="margin-left:auto"></span></span>
+          <span class="line">Env DEEPSEEK_API_KEY</span>
+          <span class="line">deepseek-r1 · 1 个模型启用</span>
+          <span class="foot"><span class="micro">配置 →</span><span class="tg on js-tg" onclick="event.stopPropagation()"><span class="knob"></span></span></span>
+        </button>
+        <button class="b-card dim js-open">
+          <span class="row1"><span class="glyph">KM</span><span class="nm">Kimi</span><span class="dot" style="margin-left:auto"></span></span>
+          <span class="line">未连接</span>
+          <span class="foot"><span class="micro" style="color:var(--accent)">连接 →</span></span>
+        </button>
+        <button class="b-card dim js-open">
+          <span class="row1"><span class="glyph">ZP</span><span class="nm">Zhipu</span><span class="dot" style="margin-left:auto"></span></span>
+          <span class="line">未连接</span>
+          <span class="foot"><span class="micro" style="color:var(--accent)">连接 →</span></span>
+        </button>
+        <button class="b-card ghost"><span class="plus">+</span><span class="micro">自定义 provider</span></button>
+      </div>
+    </div>
+
+    <!-- 第二层:专注页 -->
+    <div class="b-view b-focus" data-b="focus" hidden>
+      <div class="b-crumb">
+        <button class="back js-back">‹ Providers</button>
+        <h3>OpenAI</h3>
+        <span class="pill ok">已连接</span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:8px"><span class="micro">启用</span><span class="tg on js-tg"><span class="knob"></span></span></span>
+      </div>
+      <div class="b-cols">
+        <div class="b-col-l">
+          <section>
+            <div class="b-sec-cap">连接</div>
+            <div class="b-kv">
+              <label>API Key</label><input class="field" type="password" value="sk-proj-abcdefg">
+              <label>Base URL</label><input class="field" placeholder="https://api.openai.com/v1">
+            </div>
+          </section>
+          <section>
+            <div class="b-sec-cap">参数 <button class="linkish r">重置</button></div>
+            <div class="b-gears">
+              <span style="color:var(--ink-60)">生成风格</span>
+              <span class="seg" style="--accent:var(--b-red)"><button>精确</button><button class="sel">平衡</button><button>发散</button></span>
+              <span style="color:var(--ink-60)">输出上限</span>
+              <span class="seg"><button>省</button><button class="sel">标准</button><button>最大</button></span>
+            </div>
+          </section>
+          <section>
+            <div class="b-sec-cap">危险区</div>
+            <button class="linkish">停用此 provider</button>
+          </section>
+        </div>
+        <div>
+          <div class="b-sec-cap">模型 <span class="micro">2 / 28 启用</span>
+            <span class="r" style="display:flex;gap:12px"><input class="field" style="width:150px;min-height:24px;font-size:12px" placeholder="搜索"><button class="linkish">↻</button></span>
+          </div>
+          <div class="b-mlist">
+            <div class="b-mrow"><span class="chk on" style="width:12px;height:12px;border:1px solid var(--accent);background:var(--accent)"></span><span>gpt-5.2 <span class="star set" style="margin-left:4px">★</span></span><span class="micro">vis·tool·400k</span><button class="linkish">调参</button></div>
+            <div class="b-mrow"><span class="chk on" style="width:12px;height:12px;border:1px solid var(--accent);background:var(--accent)"></span><span>o4-mini</span><span class="micro">think·200k</span><button class="linkish">调参</button></div>
+            <div class="b-mrow" style="color:var(--ink-40)"><span style="width:12px;height:12px;border:1px solid var(--ink-40)"></span><span>gpt-5.2-mini</span><span class="micro">400k</span><button class="linkish">调参</button></div>
+            <div class="b-mrow" style="color:var(--ink-40)"><span style="width:12px;height:12px;border:1px solid var(--ink-40)"></span><span>gpt-4.1</span><span class="micro">1m</span><button class="linkish">调参</button></div>
+            <div class="b-mrow" style="color:var(--ink-40)"><span style="width:12px;height:12px;border:1px solid var(--ink-40)"></span><span>gpt-4o</span><span class="micro">vis·128k</span><button class="linkish">调参</button></div>
+          </div>
+          <input class="field" style="margin-top:10px" placeholder="+ 添加模型 ID,如 gpt-4o-audio">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <ul class="notes">
+    <li><b>扫读优先</b>:第一层每卡三行文案,谁没连、谁在用一眼见底;「正在使用」置顶一行,换默认就地下拉,不占一整块。</li>
+    <li><b>专注页两栏</b>:连接/参数(左)与模型(右)并排,展开后不再是 2400px 的长卷;模型列表自己滚动。</li>
+    <li><b>层级换来的干净</b>:卡上没有 key 预览截断、没有 Configure/Edit 双按钮 —— 深内容全部住进第二层。</li>
+    <li><b>未连接卡即入口</b>:灰卡点开直接是接入表单,与已连接共用同一专注页骨架。</li>
+    <li><b>取舍</b>:多一次页面切换;跨 provider 对比模型要来回退出(案三反向解决这一点)。</li>
+    <li><b>适配现状</b>:专注页左列按 OAuth/ACP/API-key 换连接组件;卡片网格 @container 三列/两列自适应,与 workspace panels 的画线卡一致。</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 案三 -->
+<section class="option opt-c">
+  <div class="option-head"><span class="no">案三</span><h2>模型总账 · 以模型为中心</h2></div>
+  <p class="option-sub">翻转视角:用户日常在意的是「我能用哪些模型」,provider 只是接线。页面主体是一张跨 provider 的模型总表(★ 默认、能力过滤、点行展开单行调参);「接线」降为下方的登记条,key 就地点击编辑,「管理模型」原地抽出勾选清单。点第一行和 DeepSeek 的「管理模型」试试。</p>
+
+  <div class="frame c-frame">
+    <div class="c-toolbar">
+      <input class="field" placeholder="搜索模型…">
+      <button class="chip sel">全部</button>
+      <button class="chip">视觉</button>
+      <button class="chip">工具</button>
+      <button class="chip">推理</button>
+      <span class="micro" style="margin-left:auto">7 个模型可用 · ★ 全局默认</span>
+    </div>
+
+    <div class="c-table">
+      <div class="c-thead"><span></span><span>模型</span><span>Provider</span><span>上下文</span><span>能力</span><span></span></div>
+
+      <div class="c-row-w">
+        <button class="c-row js-crow">
+          <span class="star set">★</span>
+          <span class="mid">claude-fable-5</span>
+          <span class="prov"><span class="dot on"></span>Claude</span>
+          <span class="micro">200k</span>
+          <span class="caps"><span class="cap">vis</span><span class="cap">tool</span><span class="cap">think</span></span>
+          <span class="micro">调参 ▾</span>
+        </button>
+        <div class="c-tune" hidden>
+          <span><span class="lab">风格</span><span class="seg"><button>精确</button><button class="sel">平衡</button><button>发散</button></span></span>
+          <span><span class="lab">输出</span><span class="seg"><button>省</button><button class="sel">标准</button><button>最大</button></span></span>
+          <button class="linkish">能力覆盖…</button>
+          <button class="linkish">重命名</button>
+          <button class="linkish" style="margin-left:auto">从列表移除</button>
+        </div>
+      </div>
+
+      <div class="c-row-w"><button class="c-row js-crow"><span class="star">★</span><span class="mid">claude-opus-4-8</span><span class="prov"><span class="dot on"></span>Claude</span><span class="micro">200k</span><span class="caps"><span class="cap">vis</span><span class="cap">tool</span></span><span class="micro">调参 ▾</span></button><div class="c-tune" hidden><span><span class="lab">风格</span><span class="seg"><button class="sel">精确</button><button>平衡</button><button>发散</button></span></span><button class="linkish" style="margin-left:auto">从列表移除</button></div></div>
+      <div class="c-row-w"><button class="c-row js-crow"><span class="star">★</span><span class="mid">gpt-5.2</span><span class="prov"><span class="dot on"></span>OpenAI</span><span class="micro">400k</span><span class="caps"><span class="cap">vis</span><span class="cap">tool</span></span><span class="micro">调参 ▾</span></button><div class="c-tune" hidden><span class="micro">同上</span></div></div>
+      <div class="c-row-w"><button class="c-row js-crow"><span class="star">★</span><span class="mid">o4-mini</span><span class="prov"><span class="dot on"></span>OpenAI</span><span class="micro">200k</span><span class="caps"><span class="cap">think</span></span><span class="micro">调参 ▾</span></button><div class="c-tune" hidden><span class="micro">同上</span></div></div>
+      <div class="c-row-w"><button class="c-row js-crow"><span class="star">★</span><span class="mid">deepseek-r1</span><span class="prov"><span class="dot on"></span>DeepSeek</span><span class="micro">128k</span><span class="caps"><span class="cap">think</span></span><span class="micro">调参 ▾</span></button><div class="c-tune" hidden><span class="micro">同上</span></div></div>
+      <div class="c-row-w"><button class="c-row js-crow"><span class="star">★</span><span class="mid">qwen3-coder <span class="micro">LocalLM</span></span><span class="prov"><span class="dot on"></span>LocalLM</span><span class="micro">32k</span><span class="caps"><span class="cap">tool</span></span><span class="micro">调参 ▾</span></button><div class="c-tune" hidden><span class="micro">同上</span></div></div>
+    </div>
+
+    <div class="c-conn-cap">接线 · Connections <button class="linkish r">+ 自定义 provider</button></div>
+
+    <div class="c-prow">
+      <span class="glyph">CL</span>
+      <span class="nm">Claude <span class="pill ok">订阅</span></span>
+      <span class="keyline">yitiansong4@gmail.com · 额度 62%</span>
+      <button class="linkish">管理模型</button>
+      <span class="tg on js-tg"><span class="knob"></span></span>
+    </div>
+    <div class="c-prow">
+      <span class="glyph">OA</span>
+      <span class="nm">OpenAI</span>
+      <span class="keyline">key <span class="edit">sk-pro••••k2Jd</span> · base <span class="edit">默认</span></span>
+      <button class="linkish">管理模型</button>
+      <span class="tg on js-tg"><span class="knob"></span></span>
+    </div>
+    <div class="c-prow" id="c-ds-row">
+      <span class="glyph">DS</span>
+      <span class="nm">DeepSeek</span>
+      <span class="keyline">env DEEPSEEK_API_KEY · <span class="edit">覆盖…</span></span>
+      <button class="linkish js-fly">管理模型</button>
+      <span class="tg on js-tg"><span class="knob"></span></span>
+    </div>
+    <div class="c-flyout" id="c-ds-fly" hidden>
+      <div class="fly-head">
+        <input class="field" style="max-width:200px;min-height:26px;font-size:12px" placeholder="搜索 DeepSeek 目录">
+        <button class="linkish">↻ 刷新</button>
+        <span class="micro" style="margin-left:auto">勾选加入上方总账</span>
+      </div>
+      <div class="fly-grid">
+        <span class="fly-item"><span class="chk on"></span>deepseek-r1</span>
+        <span class="fly-item"><span class="chk"></span>deepseek-v3.2</span>
+        <span class="fly-item"><span class="chk"></span>deepseek-coder-v3</span>
+        <span class="fly-item"><span class="chk"></span>deepseek-vl2</span>
+      </div>
+      <input class="field" style="margin-top:8px;max-width:280px;min-height:26px;font-size:12px" placeholder="+ 手动添加模型 ID">
+    </div>
+    <div class="c-prow" style="color:var(--ink-40)">
+      <span class="glyph">KM</span>
+      <span class="nm" style="color:var(--ink-60)">Kimi</span>
+      <span class="keyline">未连接 · <span class="edit" style="color:var(--accent);border-bottom-color:var(--accent)">粘贴 API Key 接入</span></span>
+      <span></span><span class="tg"><span class="knob"></span></span>
+    </div>
+  </div>
+
+  <ul class="notes">
+    <li><b>一步到位</b>:换默认模型 = 点一个 ★;调风格 = 点行展开单行档位;全程不进任何 provider 详情。</li>
+    <li><b>回答真问题</b>:会话里模型菜单显示什么,这张总表就是什么 —— 配置页与使用面第一次同构。</li>
+    <li><b>接线极薄</b>:每个 provider 一行,key/base 就地虚线编辑;OAuth 显示账号+额度;未连接行本身是接入入口。</li>
+    <li><b>能力过滤</b>:「视觉/工具/推理」chips 直接筛模型,选生图/识图模型不用挨个 provider 翻。</li>
+    <li><b>取舍</b>:provider 级 Temperature 概念被取消(只剩逐模型档位,更符合直觉);模型目录浏览退到「管理模型」抽层,接入新 provider 后多一步勾选。</li>
+    <li><b>适配现状</b>:总表数据 = 各 provider selectedModels 的并集,现有 useProviderSettings 已能供数;能力覆盖弹层复用 model-caps-popover。</li>
+  </ul>
+</section>
+
+<p class="footnote">三案均维持画线风约束:细线分隔、无填充卡面、mono 小字标注、999px 环形 pill 为唯一圆角例外;深浅色随系统。交互均为演示级(案一左栏与页签、案二卡片进出、案三行展开与抽层可点)。</p>
+
+<script>
+/* 案一:左栏切换 + 页签 */
+(() => {
+  const rail = document.querySelectorAll('.a-rail-item');
+  const details = document.querySelectorAll('.a-detail');
+  const show = (id) => details.forEach(d => d.hidden = d.dataset.detail !== id);
+  rail.forEach(btn => btn.addEventListener('click', () => {
+    rail.forEach(b => b.classList.toggle('sel', b === btn));
+    const id = btn.dataset.a;
+    show(['claude', 'openai'].includes(id) ? id : (id === 'deepseek' || id === 'locallm') ? 'openai' : 'connect');
+  }));
+  document.querySelectorAll('.a-detail').forEach(detail => {
+    const tabs = detail.querySelectorAll('.a-tab');
+    const panes = detail.querySelectorAll('.a-body');
+    tabs.forEach(t => t.addEventListener('click', () => {
+      tabs.forEach(x => x.classList.toggle('sel', x === t));
+      panes.forEach(p => p.hidden = p.dataset.pane !== t.dataset.tab);
+    }));
+  });
+})();
+
+/* 案二:总览 ↔ 专注页 */
+(() => {
+  const views = document.querySelectorAll('[data-b]');
+  const go = (id) => views.forEach(v => v.hidden = v.dataset.b !== id);
+  document.querySelectorAll('.js-open').forEach(c => c.addEventListener('click', () => go('focus')));
+  document.querySelectorAll('.js-back').forEach(b => b.addEventListener('click', () => go('overview')));
+})();
+
+/* 案三:行展开调参 + 管理模型抽层 */
+(() => {
+  document.querySelectorAll('.js-crow').forEach(row => row.addEventListener('click', (e) => {
+    if (e.target.closest('.star') || e.target.closest('.seg')) return;
+    const tune = row.parentElement.querySelector('.c-tune');
+    if (tune) tune.hidden = !tune.hidden;
+  }));
+  const fly = document.getElementById('c-ds-fly');
+  document.querySelector('#c-ds-row .js-fly')?.addEventListener('click', () => { fly.hidden = !fly.hidden; });
+})();
+
+/* 通用:开关演示 */
+document.querySelectorAll('.js-tg').forEach(t => t.addEventListener('click', (e) => {
+  e.stopPropagation(); t.classList.toggle('on');
+}));
+</script>
+</body>
+</html>

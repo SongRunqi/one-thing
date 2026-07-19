@@ -187,7 +187,7 @@ describe('MediaPanel', () => {
     expect(thumbnails[1].attributes('height')).toBe('900')
   })
 
-  it('uses themed loading spinner while media is loading', () => {
+  it('shows a plain ledger note while media is loading', () => {
     storeState.mediaStore.isLoading = true
 
     const wrapper = mount(MediaPanel, {
@@ -195,9 +195,8 @@ describe('MediaPanel', () => {
       global: { stubs: { ArchivedChatsContent: true } },
     })
 
-    expect(wrapper.find('.loading-spinner-root').exists()).toBe(true)
-    expect(wrapper.find('.loading-spinner-ring').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Loading media...')
+    expect(wrapper.find('.ledger-note').exists()).toBe(true)
+    expect(wrapper.text()).toContain('loading media…')
     expect(wrapper.findAll('.media-item')).toHaveLength(0)
 
     storeState.mediaStore.isLoading = false
@@ -207,8 +206,8 @@ describe('MediaPanel', () => {
       global: { stubs: { ArchivedChatsContent: true } },
     })
 
-    expect(rebuildingWrapper.find('.loading-spinner-root').exists()).toBe(true)
-    expect(rebuildingWrapper.text()).toContain('Indexing media...')
+    expect(rebuildingWrapper.find('.ledger-note').exists()).toBe(true)
+    expect(rebuildingWrapper.text()).toContain('indexing media…')
   })
 
   it('keeps visited workspace panel views mounted when switching the active tab', async () => {

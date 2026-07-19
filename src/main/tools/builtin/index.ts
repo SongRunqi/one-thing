@@ -20,7 +20,9 @@ import { FindTool } from './find.js'
 import { LsTool } from './ls.js'
 import { SkillManageTool, SkillsListTool, SkillViewTool } from './skill.js'
 import { VariableTool } from './variable.js'
-import { TodoPlanTool } from './todo-plan.js'
+import { GoalTool } from './goal.js'
+import { RadioTool } from './radio.js'
+import { PracticeTool } from './practice.js'
 import { CalculatorTool } from './calculator.js'
 import { ProjectDirsTool } from '../../project-dirs/index.js'
 import { BashOutputTool, FartTool, KillBashTool, TimeTool } from '@onething/runtime/tools'
@@ -44,7 +46,9 @@ const builtinTools = [
   FindTool,
   LsTool,
   VariableTool,
-  TodoPlanTool,
+  GoalTool,
+  RadioTool,
+  PracticeTool,
   TimeTool,
   CalculatorTool,
   ProjectDirsTool,

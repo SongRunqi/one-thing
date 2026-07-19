@@ -57,7 +57,12 @@ export interface RuntimeSessionsAdapter<
   TSessionPatch = JsonObject,
 > {
   list(context?: RuntimeRequestContext): Promise<TSessionList>
-  create(input: TCreateSessionInput, context?: RuntimeRequestContext): Promise<TSession>
+  /**
+   * `requestedSessionId` lets the client supply the session's id (renderer
+   * drafts materialize under the id they were born with). Implementations
+   * must validate the format and refuse ids that already exist.
+   */
+  create(input: TCreateSessionInput, context?: RuntimeRequestContext, requestedSessionId?: string): Promise<TSession>
   get?(sessionId: string, context?: RuntimeRequestContext): Promise<TSession>
   activate?(sessionId: string, context?: RuntimeRequestContext): Promise<TSession>
   delete?(sessionId: string, context?: RuntimeRequestContext): Promise<RuntimeMutationResult>
@@ -232,35 +237,12 @@ export interface RuntimeMediaAdapter {
 export interface RuntimeMemoryAdapter {
   overview?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
   read?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  search?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
   append?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
   saveFile?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  rebuildIndex?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  profileList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  profileSearch?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  profileUpsert?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  profileDelete?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  profileAudit?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  profileExport?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  graphOverview?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  graphEntitiesList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  graphEntitiesUpsert?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  graphEntitiesDelete?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  graphObservationsList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  graphObservationsUpsert?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  graphObservationsDelete?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  graphRelationsList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  graphRelationsUpsert?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  graphRelationsDelete?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  graphDuplicatesList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
-  graphDuplicatesMerge?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  graphDuplicatesIgnore?(request: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  graphAudit?(request: unknown, context?: RuntimeRequestContext): Promise<unknown>
   logsList?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
   logsStats?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
   logsOpenFolder?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
   logsCleanup?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
-  runDreaming?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
   captureSave?(request?: unknown, context?: RuntimeRequestContext): Promise<unknown>
   captureDiscard?(request?: unknown, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
 }
@@ -407,6 +389,11 @@ export interface RuntimeProvidersAdapter {
   getModelDisplayName(modelId: string, context?: RuntimeRequestContext): Promise<unknown>
 }
 
+export interface RuntimeUsageAdapter {
+  getSummary(request: { granularity: 'day' | 'week' | 'month'; count?: number }, context?: RuntimeRequestContext): Promise<unknown>
+  getSessionUsage(sessionId: string, context?: RuntimeRequestContext): Promise<unknown>
+}
+
 export interface RuntimeToolsAdapter<
   TTool = unknown,
   TExecuteArgs = JsonObject,
@@ -532,6 +519,7 @@ export interface OnethingRuntimeFacadeOptions<
   voice?: RuntimeVoiceAdapter
   acp?: RuntimeACPAdapter
   providers?: RuntimeProvidersAdapter
+  usage?: RuntimeUsageAdapter
   tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
   mcp?: RuntimeMCPAdapter<
     TMCPServerConfig,
@@ -614,6 +602,7 @@ export interface OnethingRuntimeFacade<
   readonly voice?: RuntimeVoiceAdapter
   readonly acp?: RuntimeACPAdapter
   readonly providers?: RuntimeProvidersAdapter
+  readonly usage?: RuntimeUsageAdapter
   readonly tools?: RuntimeToolsAdapter<TTool, TToolExecuteArgs, TToolExecuteResult, TBackgroundJob, TToolCallUpdate>
   readonly mcp?: RuntimeMCPAdapter<
     TMCPServerConfig,
@@ -767,6 +756,7 @@ export function createOnethingRuntimeFacade<
     voice: options.voice ? Object.freeze({ ...options.voice }) : undefined,
     acp: options.acp ? Object.freeze({ ...options.acp }) : undefined,
     providers: options.providers ? Object.freeze({ ...options.providers }) : undefined,
+    usage: options.usage ? Object.freeze({ ...options.usage }) : undefined,
     tools: options.tools ? Object.freeze({ ...options.tools }) : undefined,
     mcp: options.mcp ? Object.freeze({ ...options.mcp }) : undefined,
     async shutdown() {

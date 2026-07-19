@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sidebar v4 · 六方案 · 入口几何各异 · 设置沉底</title>
+<style>
+  :root { --ink:#1c1b18; --ink-2:#6f6c64; --ink-3:#a5a29a; --paper:#f0efea; --hair:#dcdad3; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--paper); color:var(--ink);
+    font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif; padding:46px 40px 90px; }
+  .page-head { max-width:1300px; margin:0 auto 8px; }
+  .page-head h1 { font-size:22px; font-weight:600; letter-spacing:.02em; }
+  .page-head p { margin-top:8px; font-size:13px; color:var(--ink-2); line-height:1.75; max-width:72em; }
+  .page-head code { font-family:"SF Mono",Menlo,monospace; font-size:12px; background:#e5e3dc; padding:1px 5px; border-radius:4px; }
+  .page-head b { color:var(--ink); }
+  .gallery { max-width:1300px; margin:32px auto 0; display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:52px 40px; justify-items:center; }
+  .scheme { width:300px; }
+  .scheme > header { margin-bottom:13px; }
+  .scheme .num { font-size:11px; letter-spacing:.22em; color:var(--ink-3); }
+  .scheme h2 { font-size:15.5px; font-weight:600; margin-top:4px; }
+  .scheme .trait { margin-top:6px; font-size:12px; color:var(--ink-2); line-height:1.65; }
+  .scheme .trait b { color:var(--ink); font-weight:600; }
+  .scheme .home { margin-top:7px; font-size:11px; color:var(--ink-3); line-height:1.6; }
+  .scheme .home b { color:var(--ink-2); font-weight:600; }
+
+  .win { width:300px; height:648px; border-radius:11px; overflow:hidden; position:relative;
+    box-shadow:0 1px 2px rgba(20,18,12,.08),0 14px 34px rgba(20,18,12,.11);
+    display:flex; flex-direction:column; font-size:13px; }
+  .lights { display:flex; gap:7px; padding:14px 0 0 14px; flex-shrink:0; position:relative; z-index:5; }
+  .lights i { width:11px; height:11px; border-radius:50%; background:rgba(0,0,0,.12); }
+  .ic { stroke:currentColor; stroke-width:1.7; fill:none; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+  .scroll { flex:1; overflow:hidden; min-height:0; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+  @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+
+  /* 通用底部设置条:所有方案设置都沉左下角 */
+  .footbar { display:flex; align-items:center; padding:9px 16px 11px; flex-shrink:0; }
+  .footbar .set { display:flex; align-items:center; gap:8px; color:#98958c; cursor:pointer; font-size:12px; }
+  .footbar .set:hover { color:currentColor; }
+  .footbar .sp { flex:1; }
+
+  /* ══════ 1 · 呼吸 · 竖排导航区 ══════ */
+  .typo { background:#fcfcfa; color:#1a1a18; }
+  .typo .body { display:flex; flex-direction:column; height:100%; padding-top:12px; }
+  .typo .newchat { padding:4px 26px 6px; color:#8e8b82; letter-spacing:.04em; cursor:pointer; }
+  .typo .newchat:hover { color:#1a1a18; }
+  .typo .scroll { padding:8px 0 10px; }
+  /* 入口 = 列表顶部一个竖排"工作区"导航段,读作内容不是工具条 */
+  .typo .nav { padding:0 26px; margin-bottom:6px; }
+  .typo .navrow { display:flex; align-items:center; gap:10px; padding:5px 0; color:#87847b; cursor:pointer; }
+  .typo .navrow:hover, .typo .navrow.on { color:#1a1a18; }
+  .typo .navrow .ic { opacity:.7; }
+  .typo .divide { height:1px; background:#eeece7; margin:10px 26px 4px; }
+  .typo .group { padding:0 26px; margin-top:20px; }
+  .typo .gname { font-size:11px; letter-spacing:.14em; color:#9c9990; text-transform:uppercase; margin-bottom:9px; }
+  .typo .gname.live { color:#1a1a18; }
+  .typo .item { position:relative; padding:6px 0; color:#7d7a71; cursor:pointer;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .typo .item:hover { color:#1a1a18; }
+  .typo .item.active { color:#1a1a18; font-weight:550; }
+  .typo .item.active::before { content:''; position:absolute; left:-13px; top:50%; width:5px; height:5px;
+    margin-top:-2.5px; border-radius:50%; background:#1a1a18; }
+  .typo .item .gen { display:inline-block; width:5px; height:5px; border-radius:50%; background:#1a1a18;
+    margin-left:8px; vertical-align:1px; animation:pulse 1.4s ease infinite; }
+  .typo .footbar { border-top:1px solid #efeee9; }
+
+  /* ══════ 3 · 终端 · 底部状态栏 ══════ */
+  .term { background:#16181d; color:#b9c0b4; font-family:"SF Mono","JetBrains Mono",Menlo,monospace; font-size:12px; }
+  .term .lights i { background:rgba(255,255,255,.14); }
+  .term .body { display:flex; flex-direction:column; height:100%; }
+  .term .cmd { color:#6e7a72; padding:12px 16px 8px; cursor:pointer; }
+  .term .cmd:hover { color:#d6ddd0; }
+  .term .cmd b { color:#a6d189; font-weight:500; }
+  .term .scroll { padding:6px 16px 10px; }
+  .term .ghead { color:#5c6461; padding:14px 0 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .term .ghead:first-child { padding-top:0; }
+  .term .ghead .p { color:#7f95bb; }
+  .term .ghead.live .p { color:#a6d189; }
+  .term .item { padding:3.5px 0 3.5px 16px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    cursor:pointer; color:#9aa398; position:relative; }
+  .term .item:hover { color:#d6ddd0; }
+  .term .item.active { color:#e8ecdf; }
+  .term .item.active::before { content:'❯'; position:absolute; left:0; color:#a6d189; }
+  .term .caret { display:inline-block; width:7px; height:13px; background:#a6d189; vertical-align:-2px; margin-left:6px; animation:blink 1.1s step-end infinite; }
+  .term .item .gen { color:#e5c890; }
+  /* 入口 = 真·tmux 底部状态栏,窗口编号;设置在最左 */
+  .term .statusbar { display:flex; align-items:center; gap:0; background:#1e2126; padding:7px 12px;
+    font-size:11px; color:#7d8781; flex-shrink:0; }
+  .term .statusbar .set { color:#c98a3a; margin-right:14px; cursor:pointer; }
+  .term .statusbar .w { margin-right:11px; cursor:pointer; }
+  .term .statusbar .w:hover { color:#d6ddd0; }
+  .term .statusbar .k { color:#4f5651; }
+  .term .statusbar .on { color:#a6d189; }
+  .term .statusbar .sp { flex:1; }
+
+  /* ══════ 5 · 彩色脊 · 顶角图钉 ══════ */
+  .spine { background:#ffffff; color:#26251f; }
+  .spine .body { display:flex; flex-direction:column; height:100%; }
+  /* 入口 = 顶部右上角一簇彩色图钉,和列表/新会话完全分开 */
+  .spine .chrome { position:absolute; top:12px; right:14px; display:flex; gap:9px; z-index:6; }
+  .spine .chrome i { width:11px; height:11px; border-radius:50%; cursor:pointer; box-shadow:0 0 0 3px transparent; transition:box-shadow .15s; }
+  .spine .chrome i:hover { box-shadow:0 0 0 3px rgba(0,0,0,.05); }
+  .spine .newbtn { margin:12px 18px 10px; display:inline-flex; align-items:center; gap:8px; color:#8b887f; cursor:pointer; }
+  .spine .newbtn:hover { color:#26251f; }
+  .spine .scroll { padding:4px 0 10px; }
+  .spine .group { margin-top:16px; }
+  .spine .group:first-child { margin-top:2px; }
+  .spine .ghead { display:flex; align-items:center; gap:8px; padding:0 18px; margin-bottom:6px; }
+  .spine .ghead i { width:8px; height:8px; border-radius:2px; }
+  .spine .ghead span { font-size:11.5px; font-weight:600; color:#5c5952; }
+  .spine .item { position:relative; padding:6px 18px; margin-left:3px; color:#57544d; cursor:pointer;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-left:2px solid transparent; }
+  .spine .item:hover { background:#faf9f6; }
+  .spine .item.active { background:#f6f4ef; color:#26251f; font-weight:550; }
+  .spine .item .gen { display:inline-block; width:5px; height:5px; border-radius:50%; background:currentColor;
+    margin-left:7px; vertical-align:1px; animation:pulse 1.4s ease infinite; }
+  .spine .footbar { border-top:1px solid #f0eee8; }
+
+  /* ══════ 4 · 密集 · 弹出启动器 ══════ */
+  .dense { background:#fbfbfa; color:#2a2a27; }
+  .dense .body { display:flex; flex-direction:column; height:100%; padding-top:10px; }
+  .dense .top { display:flex; align-items:center; gap:6px; padding:2px 12px 8px; border-bottom:1px solid #ececE6; }
+  .dense .newmini { display:flex; align-items:center; gap:6px; color:#48463f; cursor:pointer; font-size:12.5px; }
+  .dense .top .sp { flex:1; }
+  /* 入口 = 单个启动器按钮,点开弹出九宫格面板(此处展示为打开态) */
+  .dense .launcher { width:28px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center;
+    color:#8d8a82; cursor:pointer; position:relative; }
+  .dense .launcher.open { background:#eceae3; color:#2a2a27; }
+  .dense .pop { position:absolute; top:32px; right:0; width:172px; background:#fff; border:1px solid #e6e4dd;
+    border-radius:10px; box-shadow:0 8px 24px rgba(20,18,12,.14); padding:8px; z-index:8;
+    display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+  .dense .pop .p { display:flex; flex-direction:column; align-items:center; gap:5px; padding:9px 4px; border-radius:8px;
+    color:#57544d; cursor:pointer; font-size:11px; }
+  .dense .pop .p:hover { background:#f2f1eb; color:#2a2a27; }
+  .dense .pop .p.on { color:#b5453a; }
+  .dense .scroll { padding:4px 0 8px; }
+  .dense .ghead { display:flex; align-items:center; gap:7px; padding:9px 12px 3px; }
+  .dense .ghead b { font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#6f6c64; }
+  .dense .ghead .ln { flex:1; height:1px; background:#eeece6; }
+  .dense .ghead .live { color:#b5453a; }
+  .dense .item { display:flex; align-items:center; gap:8px; padding:3.5px 12px; color:#48463f; cursor:pointer; }
+  .dense .item:hover { background:#f2f1eb; }
+  .dense .item.active { background:#eceae3; color:#1c1b18; }
+  .dense .item .t { flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dense .item .ts { font-size:10.5px; color:#b0ada4; font-family:"SF Mono",Menlo,monospace; font-variant-numeric:tabular-nums; flex-shrink:0; }
+  .dense .item .gen { width:5px; height:5px; border-radius:50%; background:#b5453a; flex-shrink:0; animation:pulse 1.4s ease infinite; }
+  .dense .footbar { border-top:1px solid #ececE6; }
+
+  /* ══════ 6 · 折叠抽屉 · 工作区抽屉 ══════ */
+  .drawer { background:#f7f6f2; color:#25241f; }
+  .drawer .body { display:flex; flex-direction:column; height:100%; padding-top:12px; }
+  .drawer .newchat { margin:4px 16px 8px; color:#8b887f; cursor:pointer; }
+  .drawer .newchat:hover { color:#25241f; }
+  .drawer .scroll { padding:2px 10px 10px; }
+  /* 入口 = 列表最上方一个"工作区"折叠抽屉,和项目抽屉同一套交互 */
+  .drawer .dhead { display:flex; align-items:center; gap:8px; padding:8px; cursor:pointer; border-radius:8px; }
+  .drawer .dhead:hover { background:#efedE6; }
+  .drawer .dhead .chev { width:12px; height:12px; color:#a5a29a; transition:transform .15s; }
+  .drawer .dhead.closed .chev { transform:rotate(-90deg); }
+  .drawer .dhead b { font-size:12px; font-weight:600; color:#3f3d37; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .drawer .dhead.ws b { color:#8b887f; font-weight:600; letter-spacing:.04em; }
+  .drawer .dhead .live { color:#25241f; }
+  .drawer .ditems { padding:2px 0 6px; }
+  .drawer .wsrow { display:flex; align-items:center; gap:10px; padding:5.5px 8px 5.5px 28px; color:#5f5c54; cursor:pointer; border-radius:7px; }
+  .drawer .wsrow:hover { background:#efedE6; color:#25241f; }
+  .drawer .wsrow.on { color:#25241f; }
+  .drawer .item { padding:5.5px 8px 5.5px 28px; color:#5f5c54; cursor:pointer; border-radius:7px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .drawer .item:hover { background:#efedE6; }
+  .drawer .item.active { background:#e7e4dc; color:#25241f; font-weight:550; }
+  .drawer .item .gen { display:inline-block; width:5px; height:5px; border-radius:50%; background:#25241f;
+    margin-left:7px; vertical-align:1px; animation:pulse 1.4s ease infinite; }
+  .drawer .footbar { border-top:1px solid #eceae3; }
+
+  /* ══════ 2 · 软卡片 · 悬浮 dock ══════ */
+  .soft { background:#f2f1ec; color:#26251f; }
+  .soft .body { display:flex; flex-direction:column; height:100%; padding-top:12px; position:relative; }
+  .soft .newcard { margin:4px 14px 8px; border:1.5px dashed #cfccc2; border-radius:12px; padding:9px 0;
+    text-align:center; color:#94918a; cursor:pointer; font-size:12.5px; }
+  .soft .newcard:hover { color:#26251f; border-color:#26251f; }
+  .soft .scroll { padding:6px 12px 70px; }
+  .soft .sect { background:#fbfbf9; border-radius:14px; padding:8px; margin-bottom:12px; box-shadow:0 1px 2px rgba(30,26,16,.05); }
+  .soft .sect.live { background:#fff; }
+  .soft .shead { display:flex; align-items:center; gap:8px; padding:4px 8px 6px; }
+  .soft .shead i { width:8px; height:8px; border-radius:50%; }
+  .soft .shead b { font-size:11.5px; font-weight:600; color:#57544d; }
+  .soft .item { display:flex; align-items:center; padding:6px 8px; border-radius:9px; color:#4c4a44; cursor:pointer; white-space:nowrap; overflow:hidden; }
+  .soft .item .t { overflow:hidden; text-overflow:ellipsis; }
+  .soft .item:hover { background:#f3f1ec; }
+  .soft .item.active { background:#efece5; color:#26251f; font-weight:550; }
+  .soft .item .gen { margin-left:auto; width:5px; height:5px; border-radius:50%; background:#26251f; flex-shrink:0; animation:pulse 1.4s ease infinite; }
+  /* 入口 = 底部居中悬浮胶囊 dock;设置在 dock 内竖线分隔后单列 */
+  .soft .dockwrap { position:absolute; left:0; right:0; bottom:14px; display:flex; justify-content:center; }
+  .soft .dock { background:#fff; border-radius:999px; padding:9px 15px; display:flex; align-items:center; gap:15px;
+    box-shadow:0 4px 16px rgba(30,26,16,.15); color:#8b887f; }
+  .soft .dock .ic { cursor:pointer; }
+  .soft .dock .ic:hover { color:#26251f; }
+  .soft .dock .on { color:#26251f; }
+  .soft .dock .div { width:1px; height:15px; background:#e6e4de; }
+</style>
+</head>
+<body>
+
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M12 4.5a3.2 3.2 0 0 0-3.2 3.2c-2 .3-3.1 1.8-3.1 3.4 0 1.2.5 2.2 1.4 2.9-.3 2 1.2 4 3.5 4 .9 0 1.8-.4 2.4-1 .6.6 1.5 1 2.4 1 2.3 0 3.8-2 3.5-4 .9-.7 1.4-1.7 1.4-2.9 0-1.6-1.1-3.1-3.1-3.4A3.2 3.2 0 0 0 12 4.5z"/><path d="M12 4.5V18"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><circle cx="8.7" cy="10" r="1.4"/><path d="M20.5 15.5 16 11l-7 7.5"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="5" y="8.5" width="14" height="10.5" rx="2.5"/><path d="M12 8.5V5.5"/><circle cx="12" cy="4" r="1.3"/><path d="M9.3 13.2v.8M14.7 13.2v.8M9.5 16.5h5"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 9.8h16M8.5 3.5v4M15.5 3.5v4M10.5 14.5l1.5 1.5 3-3"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M8.6 8.6a4.8 4.8 0 0 0 0 6.8M15.4 8.6a4.8 4.8 0 0 1 0 6.8M6 6a8.3 8.3 0 0 0 0 12M18 6a8.3 8.3 0 0 1 0 12"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.9 1.9M16.6 16.6l1.9 1.9M18.5 5.5l-1.9 1.9M7.4 16.6l-1.9 1.9"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M8 10l4 4 4-4"/></symbol>
+</svg>
+
+<div class="page-head">
+  <h1>Sidebar v4 — 入口几何各异 · 设置沉底</h1>
+  <p>两处按你说的改:<b>①设置统一沉到左下角</b>(六版一致、符合应用直觉、永远找得到);<b>②workspace 入口每版几何形态都不同</b>——
+     竖排导航段 / 底部状态栏 / 顶角图钉 / 弹出启动器 / 悬浮 dock / 折叠抽屉,没有一个再是"贴在新会话后面的一排"。
+     分组仍按 <code>workingDirectory</code> 项目、未归类退回时间、无计数数字。</p>
+</div>
+
+<div class="gallery">
+
+  <!-- 1 · 呼吸 · 竖排导航区 -->
+  <section class="scheme">
+    <header>
+      <div class="num">方案一</div><h2>呼吸 · 排版</h2>
+      <div class="trait">零线条零底色,层级全靠字重与留白。</div>
+      <div class="home"><b>入口:</b>列表顶部竖排导航段(读作内容) · <b>设置:</b>左下角</div>
+    </header>
+    <div class="win typo">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="body">
+        <div class="newchat">＋ 新会话</div>
+        <div class="scroll">
+          <div class="nav">
+            <div class="navrow"><svg class="ic" width="15" height="15"><use href="#i-brain"/></svg>记忆</div>
+            <div class="navrow"><svg class="ic" width="15" height="15"><use href="#i-image"/></svg>媒体</div>
+            <div class="navrow"><svg class="ic" width="15" height="15"><use href="#i-bot"/></svg>代理</div>
+            <div class="navrow"><svg class="ic" width="15" height="15"><use href="#i-task"/></svg>任务</div>
+            <div class="navrow on"><svg class="ic" width="15" height="15"><use href="#i-radio"/></svg>电台</div>
+          </div>
+          <div class="divide"></div>
+          <div class="group"><div class="gname live">电台 · LIVE</div>
+            <div class="item">深夜爵士 · DJ 手记<span class="gen"></span></div></div>
+          <div class="group"><div class="gname">start-electron</div>
+            <div class="item active">窗口透明度丢帧排查</div>
+            <div class="item">Prompt Assembly 重构</div>
+            <div class="item">设置页画线风改版</div></div>
+          <div class="group"><div class="gname">未归类</div>
+            <div class="item">纳瓦尔宝典 读书笔记</div></div>
+        </div>
+        <div class="footbar">
+          <div class="set"><svg class="ic" width="16" height="16"><use href="#i-gear"/></svg>设置</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · 终端 · 底部状态栏 -->
+  <section class="scheme">
+    <header>
+      <div class="num">方案三</div><h2>终端 · 目录即分组</h2>
+      <div class="trait">深色等宽,项目组头写成目录路径。</div>
+      <div class="home"><b>入口:</b>底部 tmux 状态栏 · 窗口编号 · <b>设置:</b>状态栏最左</div>
+    </header>
+    <div class="win term">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="body">
+        <div class="cmd"><b>+</b> new session</div>
+        <div class="scroll">
+          <div class="ghead live"># <span class="p">radio://</span> live</div>
+          <div class="item">深夜爵士 · DJ 手记 <span class="gen">▚</span></div>
+          <div class="ghead"><span class="p">~/code/start-electron</span></div>
+          <div class="item active">窗口透明度丢帧排查<span class="caret"></span></div>
+          <div class="item">Prompt Assembly 重构</div>
+          <div class="item">设置页画线风改版</div>
+          <div class="ghead"><span class="p">~/code/transreader-swift</span></div>
+          <div class="item">菜单栏翻译窗抖动</div>
+          <div class="item">Flask 端口占用排查</div>
+          <div class="ghead"># untracked <span style="color:#4f5651">(no cwd)</span></div>
+          <div class="item">纳瓦尔宝典 读书笔记</div>
+        </div>
+        <div class="statusbar">
+          <span class="set">⚙ cfg</span>
+          <span class="w"><span class="k">1</span> mem</span><span class="w"><span class="k">2</span> med</span>
+          <span class="w"><span class="k">3</span> agt</span><span class="w"><span class="k">4</span> tsk</span>
+          <span class="w on"><span class="k">5</span> mus</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · 彩色脊 · 顶角图钉 -->
+  <section class="scheme">
+    <header>
+      <div class="num">方案五 · 新</div><h2>彩色脊 · 颜色即身份</h2>
+      <div class="trait">每个项目一个身份色,会话左侧一道彩色竖脊。</div>
+      <div class="home"><b>入口:</b>右上角彩色图钉(独立于列表) · <b>设置:</b>左下角</div>
+    </header>
+    <div class="win spine">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="chrome">
+        <i style="background:#8f7fd6" title="记忆"></i><i style="background:#4c9a8f" title="媒体"></i>
+        <i style="background:#c98a3a" title="代理"></i><i style="background:#5b8fc9" title="任务"></i>
+        <i style="background:#c96a8a" title="电台"></i>
+      </div>
+      <div class="body">
+        <div class="newbtn"><svg class="ic" width="16" height="16"><use href="#i-plus"/></svg>新会话</div>
+        <div class="scroll">
+          <div class="group"><div class="ghead"><i style="background:#c96a8a"></i><span>电台 · LIVE</span></div>
+            <div class="item" style="border-left-color:#c96a8a">深夜爵士 · DJ 手记<span class="gen"></span></div></div>
+          <div class="group"><div class="ghead"><i style="background:#5b8fc9"></i><span>start-electron</span></div>
+            <div class="item active" style="border-left-color:#5b8fc9">窗口透明度丢帧排查</div>
+            <div class="item" style="border-left-color:#5b8fc9">Prompt Assembly 重构</div>
+            <div class="item" style="border-left-color:#5b8fc9">设置页画线风改版</div></div>
+          <div class="group"><div class="ghead"><i style="background:#4c9a8f"></i><span>transreader-swift</span></div>
+            <div class="item" style="border-left-color:#4c9a8f">菜单栏翻译窗抖动</div></div>
+          <div class="group"><div class="ghead"><i style="background:#b8b5ab"></i><span>未归类</span></div>
+            <div class="item" style="border-left-color:#dcdad3">纳瓦尔宝典 读书笔记</div></div>
+        </div>
+        <div class="footbar">
+          <div class="set"><svg class="ic" width="16" height="16"><use href="#i-gear"/></svg>设置</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · 密集 · 弹出启动器 -->
+  <section class="scheme">
+    <header>
+      <div class="num">方案四 · 新</div><h2>密集索引 · 工程</h2>
+      <div class="trait">高信息密度,单行紧凑、右对齐等宽时间戳。</div>
+      <div class="home"><b>入口:</b>单个启动器 → 弹出九宫格(图为打开态) · <b>设置:</b>左下角</div>
+    </header>
+    <div class="win dense">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="body">
+        <div class="top">
+          <div class="newmini"><svg class="ic" width="14" height="14"><use href="#i-plus"/></svg>新会话</div>
+          <div class="sp"></div>
+          <div class="launcher open">
+            <svg class="ic" width="15" height="15" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+            <div class="pop">
+              <div class="p"><svg class="ic" width="17" height="17"><use href="#i-brain"/></svg>记忆</div>
+              <div class="p"><svg class="ic" width="17" height="17"><use href="#i-image"/></svg>媒体</div>
+              <div class="p"><svg class="ic" width="17" height="17"><use href="#i-bot"/></svg>代理</div>
+              <div class="p"><svg class="ic" width="17" height="17"><use href="#i-task"/></svg>任务</div>
+              <div class="p on"><svg class="ic" width="17" height="17"><use href="#i-radio"/></svg>电台</div>
+            </div>
+          </div>
+        </div>
+        <div class="scroll">
+          <div class="ghead"><b class="live">● 电台</b><span class="ln"></span></div>
+          <div class="item"><span class="t">深夜爵士 · DJ 手记</span><span class="gen"></span></div>
+          <div class="ghead"><b>start-electron</b><span class="ln"></span></div>
+          <div class="item active"><span class="t">窗口透明度丢帧排查</span><span class="ts">14:32</span></div>
+          <div class="item"><span class="t">Prompt Assembly 重构</span><span class="ts">11:07</span></div>
+          <div class="item"><span class="t">设置页画线风改版</span><span class="ts">09:40</span></div>
+          <div class="item"><span class="t">Token 计费面板</span><span class="ts">昨天</span></div>
+          <div class="ghead"><b>transreader-swift</b><span class="ln"></span></div>
+          <div class="item"><span class="t">菜单栏翻译窗抖动</span><span class="ts">昨天</span></div>
+          <div class="item"><span class="t">Flask 端口占用排查</span><span class="ts">07/16</span></div>
+          <div class="ghead"><b>未归类</b><span class="ln"></span></div>
+          <div class="item"><span class="t">纳瓦尔宝典 读书笔记</span><span class="ts">今天</span></div>
+        </div>
+        <div class="footbar">
+          <div class="set"><svg class="ic" width="15" height="15"><use href="#i-gear"/></svg>设置</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6 · 折叠抽屉 · 工作区抽屉 -->
+  <section class="scheme">
+    <header>
+      <div class="num">方案六 · 新</div><h2>折叠抽屉 · 收纳</h2>
+      <div class="trait">项目是可折叠抽屉,当前展开、其余收起,项目多也不刷屏。</div>
+      <div class="home"><b>入口:</b>顶部"工作区"折叠抽屉(和项目同套交互) · <b>设置:</b>左下角</div>
+    </header>
+    <div class="win drawer">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="body">
+        <div class="newchat">＋ 新会话</div>
+        <div class="scroll">
+          <div class="dhead ws"><svg class="ic chev"><use href="#i-chev"/></svg><b>工作区</b></div>
+          <div class="ditems">
+            <div class="wsrow"><svg class="ic" width="15" height="15"><use href="#i-brain"/></svg>记忆</div>
+            <div class="wsrow"><svg class="ic" width="15" height="15"><use href="#i-image"/></svg>媒体</div>
+            <div class="wsrow"><svg class="ic" width="15" height="15"><use href="#i-bot"/></svg>代理</div>
+            <div class="wsrow"><svg class="ic" width="15" height="15"><use href="#i-task"/></svg>任务</div>
+            <div class="wsrow on"><svg class="ic" width="15" height="15"><use href="#i-radio"/></svg>电台</div>
+          </div>
+          <div class="dhead"><svg class="ic chev"><use href="#i-chev"/></svg><b>start-electron</b></div>
+          <div class="ditems">
+            <div class="item active">窗口透明度丢帧排查</div>
+            <div class="item">Prompt Assembly 重构</div>
+            <div class="item">设置页画线风改版</div>
+          </div>
+          <div class="dhead closed"><svg class="ic chev"><use href="#i-chev"/></svg><b>transreader-swift</b></div>
+          <div class="dhead closed"><svg class="ic chev"><use href="#i-chev"/></svg><b>rainny-asr</b></div>
+          <div class="dhead closed"><svg class="ic chev"><use href="#i-chev"/></svg><b>未归类</b></div>
+        </div>
+        <div class="footbar">
+          <div class="set"><svg class="ic" width="16" height="16"><use href="#i-gear"/></svg>设置</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 · 软卡片 · 悬浮 dock -->
+  <section class="scheme">
+    <header>
+      <div class="num">方案二 · 新</div><h2>软卡片 · 分区盒</h2>
+      <div class="trait">项目是柔和圆角分区盒,触感温润。</div>
+      <div class="home"><b>入口:</b>底部悬浮胶囊 dock · <b>设置:</b>dock 内竖线分隔后单列</div>
+    </header>
+    <div class="win soft">
+      <div class="lights"><i></i><i></i><i></i></div>
+      <div class="body">
+        <div class="newcard">＋ 新会话</div>
+        <div class="scroll">
+          <div class="sect live"><div class="shead"><i style="background:#c96a8a"></i><b>电台 · LIVE</b></div>
+            <div class="item"><span class="t">深夜爵士 · DJ 手记</span><span class="gen"></span></div></div>
+          <div class="sect"><div class="shead"><i style="background:#5b8fc9"></i><b>start-electron</b></div>
+            <div class="item active"><span class="t">窗口透明度丢帧排查</span></div>
+            <div class="item"><span class="t">Prompt Assembly 重构</span></div>
+            <div class="item"><span class="t">设置页画线风改版</span></div></div>
+          <div class="sect"><div class="shead"><i style="background:#4c9a8f"></i><b>transreader-swift</b></div>
+            <div class="item"><span class="t">菜单栏翻译窗抖动</span></div></div>
+          <div class="sect"><div class="shead"><i style="background:#b8b5ab"></i><b>未归类</b></div>
+            <div class="item"><span class="t">纳瓦尔宝典 读书笔记</span></div></div>
+        </div>
+        <div class="dockwrap">
+          <div class="dock">
+            <svg class="ic" width="16" height="16"><use href="#i-brain"/></svg>
+            <svg class="ic" width="16" height="16"><use href="#i-image"/></svg>
+            <svg class="ic" width="16" height="16"><use href="#i-bot"/></svg>
+            <svg class="ic" width="16" height="16"><use href="#i-task"/></svg>
+            <svg class="ic on" width="16" height="16"><use href="#i-radio"/></svg>
+            <span class="div"></span>
+            <svg class="ic" width="16" height="16"><use href="#i-gear"/></svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

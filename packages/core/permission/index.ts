@@ -16,25 +16,40 @@ export interface PermissionCommandEnvelope<TCommand = unknown> {
   event: TCommand
 }
 
+export type PermissionBusEvent =
+  | {
+      type: 'permission:request'
+      requestId: string
+      targetChannel: string
+      toolCallId: string
+      messageId: string
+      permissionType: string
+      title: string
+      pattern?: string | string[]
+      metadata: JsonObject
+      userId?: string
+      workspaceId?: string
+    }
+  | {
+      type: 'permission:queued'
+      requestId: string
+      toolCallId: string
+      messageId: string
+    }
+  | {
+      type: 'permission:settled'
+      requestId: string
+      toolCallIds: string[]
+      decision: 'allowed' | 'rejected'
+    }
+
 export interface PermissionEventBusLike {
   onAnySession(
     eventType: string,
     handler: (envelope: PermissionCommandEnvelope) => void,
     label?: string
   ): () => void
-  emit(sessionId: string, event: {
-    type: 'permission:request'
-    requestId: string
-    targetChannel: string
-    toolCallId: string
-    messageId: string
-    permissionType: string
-    title: string
-    pattern?: string | string[]
-    metadata: JsonObject
-    userId?: string
-    workspaceId?: string
-  }): Promise<unknown>
+  emit(sessionId: string, event: PermissionBusEvent): Promise<unknown>
 }
 
 export interface PermissionRespondCommandLike {
@@ -64,12 +79,32 @@ export namespace Permission {
   export type Response = 'once' | 'session' | 'workdir' | 'reject'
   export type Mode = 'normal' | 'auto-accept-edits' | 'dangerously-allow-all'
 
+  interface PendingSettler {
+    resolve: () => void
+    reject: (error: Error) => void
+  }
+
+  interface PendingEntry extends PendingSettler {
+    info: Info
+    /**
+     * Equivalent asks issued while this one is pending share its outcome
+     * instead of prompting again.
+     */
+    followers: PendingSettler[]
+    /** Tool call ids of coalesced followers, for the settled event. */
+    followerCallIds: string[]
+    /** Whether the permission:request event has been sent to the channel. */
+    emitted: boolean
+  }
+
   interface SessionState {
-    pending: Map<string, {
-      info: Info
-      resolve: () => void
-      reject: (error: Error) => void
-    }>
+    pending: Map<string, PendingEntry>
+    /**
+     * Ask order. Only the head request is emitted to the UI/gateway; the rest
+     * wait so concurrent tools never stack prompts, and a grant landing in the
+     * meantime can settle them before they are ever shown.
+     */
+    promptOrder: string[]
   }
 
   const sessions = new Map<string, SessionState>()
@@ -81,10 +116,98 @@ export namespace Permission {
   function getSession(sessionId: string): SessionState {
     let session = sessions.get(sessionId)
     if (!session) {
-      session = { pending: new Map() }
+      session = { pending: new Map(), promptOrder: [] }
       sessions.set(sessionId, session)
     }
     return session
+  }
+
+  function equivalenceKey(info: Pick<Info, 'type' | 'pattern' | 'workingDirectory' | 'userId' | 'workspaceId' | 'metadata'>): string {
+    // metadata carries the concrete request (bash command text, MCP args,
+    // file diff…). Including it restricts coalescing to literally identical
+    // requests: a bash pattern like `rm *` must NOT merge two different rm
+    // commands, or approving the shown one would silently approve the other.
+    // Identical construction sites produce identical key order, so plain
+    // JSON.stringify is a stable discriminator here.
+    return JSON.stringify([
+      info.type,
+      info.pattern ?? null,
+      info.workingDirectory ?? null,
+      info.userId ?? null,
+      info.workspaceId ?? null,
+      info.metadata ?? null,
+    ])
+  }
+
+  function findEquivalentPending(session: SessionState, info: Info): PendingEntry | undefined {
+    const key = equivalenceKey(info)
+    for (const entry of session.pending.values()) {
+      if (equivalenceKey(entry.info) === key) return entry
+    }
+    return undefined
+  }
+
+  function removePending(session: SessionState, id: string): void {
+    session.pending.delete(id)
+    const index = session.promptOrder.indexOf(id)
+    if (index !== -1) session.promptOrder.splice(index, 1)
+  }
+
+  function emitPermissionEvent(sessionId: string, event: PermissionBusEvent): void {
+    eventBus?.emit(sessionId, event)
+      .catch(err => console.error('[Permission] EventBus emit error:', err))
+  }
+
+  function emitSettled(entry: PendingEntry, decision: 'allowed' | 'rejected'): void {
+    const toolCallIds = [entry.info.callId, ...entry.followerCallIds]
+      .filter((id): id is string => Boolean(id))
+    emitPermissionEvent(entry.info.sessionId, {
+      type: 'permission:settled',
+      requestId: entry.info.id,
+      toolCallIds,
+      decision,
+    })
+  }
+
+  function settlePendingResolve(session: SessionState, entry: PendingEntry): void {
+    removePending(session, entry.info.id)
+    entry.resolve()
+    for (const follower of entry.followers) follower.resolve()
+    emitSettled(entry, 'allowed')
+  }
+
+  function settlePendingReject(session: SessionState, entry: PendingEntry, error: Error): void {
+    removePending(session, entry.info.id)
+    entry.reject(error)
+    for (const follower of entry.followers) follower.reject(error)
+    emitSettled(entry, 'rejected')
+  }
+
+  function emitNextPrompt(sessionId: string, session: SessionState): void {
+    const headId = session.promptOrder[0]
+    if (!headId) return
+    const entry = session.pending.get(headId)
+    if (!entry || entry.emitted) return
+    entry.emitted = true
+
+    if (!eventBus) {
+      console.warn('[Permission] EventBus not initialized, permission request will hang')
+      return
+    }
+    const info = entry.info
+    eventBus.emit(sessionId, {
+      type: 'permission:request',
+      requestId: info.id,
+      targetChannel: info.targetChannel ?? 'ipc',
+      toolCallId: info.callId || '',
+      messageId: info.messageId,
+      permissionType: info.type,
+      title: info.title,
+      pattern: info.pattern,
+      metadata: info.metadata,
+      userId: info.userId,
+      workspaceId: info.workspaceId,
+    }).catch(err => console.error('[Permission] EventBus emit error:', err))
   }
 
   export function initialize(
@@ -92,6 +215,8 @@ export namespace Permission {
     resolver: (sessionId: string) => string,
     permissionModeResolver?: (sessionId: string) => Mode,
   ): void {
+    // Re-initialization must not leak the previous respond subscription.
+    unsubPermissionRespond?.()
     eventBus = bus
     channelResolver = resolver
     modeResolver = permissionModeResolver ?? null
@@ -144,7 +269,11 @@ export namespace Permission {
 
   export function getPending(sessionId: string): Info[] {
     const session = getSession(sessionId)
-    return Array.from(session.pending.values()).map(p => p.info)
+    // Only emitted requests are visible prompts; queued ones surface when they
+    // reach the head of the prompt queue.
+    return Array.from(session.pending.values())
+      .filter(p => p.emitted)
+      .map(p => p.info)
   }
 
   export function getMode(sessionId: string): Mode {
@@ -181,27 +310,37 @@ export namespace Permission {
       workspaceId: input.workspaceId,
     }
 
+    const equivalent = findEquivalentPending(session, info)
+    if (equivalent) {
+      console.log('[Permission] Coalescing permission ask into pending:', equivalent.info.id, info.type, info.pattern)
+      return new Promise<void>((resolve, reject) => {
+        equivalent.followers.push({ resolve, reject })
+        if (info.callId) {
+          equivalent.followerCallIds.push(info.callId)
+          emitPermissionEvent(input.sessionId, {
+            type: 'permission:queued',
+            requestId: equivalent.info.id,
+            toolCallId: info.callId,
+            messageId: info.messageId,
+          })
+        }
+      })
+    }
+
     console.log('[Permission] Asking permission:', info.id, info.type, info.pattern, 'targetChannel:', targetChannel)
 
     return new Promise<void>((resolve, reject) => {
-      session.pending.set(info.id, { info, resolve, reject })
-
-      if (eventBus) {
-        eventBus.emit(input.sessionId, {
-          type: 'permission:request',
+      const entry: PendingEntry = { info, resolve, reject, followers: [], followerCallIds: [], emitted: false }
+      session.pending.set(info.id, entry)
+      session.promptOrder.push(info.id)
+      emitNextPrompt(input.sessionId, session)
+      if (!entry.emitted && info.callId) {
+        emitPermissionEvent(input.sessionId, {
+          type: 'permission:queued',
           requestId: info.id,
-          targetChannel,
-          toolCallId: info.callId || '',
+          toolCallId: info.callId,
           messageId: info.messageId,
-          permissionType: info.type,
-          title: info.title,
-          pattern: info.pattern,
-          metadata: info.metadata,
-          userId: info.userId,
-          workspaceId: info.workspaceId,
-        }).catch(err => console.error('[Permission] EventBus emit error:', err))
-      } else {
-        console.warn('[Permission] EventBus not initialized, permission request will hang')
+        })
       }
     })
   }
@@ -223,22 +362,26 @@ export namespace Permission {
     const response = input.response
 
     console.log('[Permission] Response:', input.permissionId, response)
-    session.pending.delete(input.permissionId)
 
     if (response === 'reject') {
-      pending.reject(new RejectedError(
+      settlePendingReject(session, pending, new RejectedError(
         input.sessionId,
         input.permissionId,
         pending.info.callId,
         pending.info.metadata,
         input.rejectReason,
       ))
+      emitNextPrompt(input.sessionId, session)
       return true
     }
 
-    pending.resolve()
+    settlePendingResolve(session, pending)
 
-    if (response === 'workdir' && pending.info.workingDirectory) {
+    if (
+      response === 'workdir' &&
+      pending.info.workingDirectory &&
+      PermissionGrants.isGrantableType(pending.info.type)
+    ) {
       PermissionGrants.addGrant({
         scope: 'workspace',
         type: pending.info.type,
@@ -253,7 +396,7 @@ export namespace Permission {
         },
         metadata: pending.info.metadata,
       })
-      for (const [id, other] of session.pending) {
+      for (const other of Array.from(session.pending.values())) {
         if (other.info.workingDirectory === pending.info.workingDirectory) {
           const otherGrant = PermissionGrants.matchGrant({
             type: other.info.type,
@@ -264,8 +407,7 @@ export namespace Permission {
             workspaceId: other.info.workspaceId,
           })
           if (otherGrant) {
-            session.pending.delete(id)
-            other.resolve()
+            settlePendingResolve(session, other)
           }
         }
       }
@@ -286,7 +428,7 @@ export namespace Permission {
         },
         metadata: pending.info.metadata,
       })
-      for (const [id, other] of session.pending) {
+      for (const other of Array.from(session.pending.values())) {
         const otherGrant = PermissionGrants.matchGrant({
           type: other.info.type,
           pattern: other.info.pattern,
@@ -296,12 +438,12 @@ export namespace Permission {
           workspaceId: other.info.workspaceId,
         })
         if (otherGrant) {
-          session.pending.delete(id)
-          other.resolve()
+          settlePendingResolve(session, other)
         }
       }
     }
 
+    emitNextPrompt(input.sessionId, session)
     return true
   }
 
@@ -309,8 +451,8 @@ export namespace Permission {
     const session = sessions.get(sessionId)
     if (!session) return
 
-    for (const [, pending] of session.pending) {
-      pending.reject(new RejectedError(
+    for (const pending of Array.from(session.pending.values())) {
+      settlePendingReject(session, pending, new RejectedError(
         sessionId,
         pending.info.id,
         pending.info.callId,
@@ -336,5 +478,6 @@ export namespace Permission {
   }
 }
 
+export * from './capability-registry.js'
 export * from './permission-grants.js'
 export * from './permission-policy.js'

@@ -42,14 +42,12 @@ export class ChannelIdentityService {
       const identity = origin.resolvedIdentity ?? createLocalClientIdentity(profile.name)
       identity.userId = profile.id
       identity.profileId = profile.id
-      identity.memoryScopeId = profile.memoryScopeId
       identity.displayName = profile.name
       identity.linkedClientUserId = profile.id
       writeAppLog('info', 'channel.identity', 'Resolved local client identity', {
         transport: origin.transport,
         userId: identity.userId,
         profileId: identity.profileId,
-        memoryScopeId: identity.memoryScopeId,
       })
       return identity
     }
@@ -70,7 +68,6 @@ export class ChannelIdentityService {
         ...origin.resolvedIdentity,
         userId: profile.id,
         profileId: profile.id,
-        memoryScopeId: profile.memoryScopeId,
         displayName: origin.resolvedIdentity.displayName || profile.name,
         linkedClientUserId: profile.id,
       }
@@ -78,7 +75,6 @@ export class ChannelIdentityService {
         transport: origin.transport,
         userId: identity.userId,
         profileId: identity.profileId,
-        memoryScopeId: identity.memoryScopeId,
       })
       return identity
     }
@@ -104,7 +100,6 @@ export class ChannelIdentityService {
       const identity: ResolvedIdentity = {
         kind: 'client-user',
         userId: profile.id,
-        memoryScopeId: profile.memoryScopeId,
         profileId: profile.id,
         displayName: origin.actor?.displayName || origin.actor?.handle || profile.name,
         linkedClientUserId: profile.id,
@@ -116,7 +111,6 @@ export class ChannelIdentityService {
         externalUserId,
         userId: identity.userId,
         profileId: identity.profileId,
-        memoryScopeId: identity.memoryScopeId,
       })
       return identity
     }
@@ -137,7 +131,6 @@ export class ChannelIdentityService {
     const identity: ResolvedIdentity = {
       kind: 'channel-user',
       userId: profile.id || `channel:${sanitizeKeyPart(externalUserKey, 'external-user')}`,
-      memoryScopeId: profile.memoryScopeId,
       profileId: profile.id,
       displayName: origin.actor?.displayName || origin.actor?.handle || profile.name || externalUserId,
       externalUserKey,
@@ -148,7 +141,6 @@ export class ChannelIdentityService {
       externalUserId,
       userId: identity.userId,
       profileId: identity.profileId,
-      memoryScopeId: identity.memoryScopeId,
     })
     return identity
   }

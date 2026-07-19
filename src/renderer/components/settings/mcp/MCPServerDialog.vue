@@ -296,10 +296,15 @@ defineExpose({
 </script>
 
 <style scoped>
+/*
+ * Paper dialog in the ledger language: hairline borders, hard ink shadow,
+ * underline inputs, text-button footer. Teleported to body, so colors use
+ * the --ui-* fallback chains directly.
+ */
 .dialog-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -317,67 +322,51 @@ defineExpose({
   width: 100%;
   max-width: 480px;
   background: var(--ui-surface-app-bg, var(--bg));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 16px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-  animation: slideUp 0.2s ease;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  border: 1px solid var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 24%, transparent);
 }
 
 .dialog-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 55%, transparent);
 }
 
 .dialog-header h3 {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-family: var(--font-display, var(--font-serif, serif));
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold, 600);
   color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .close-btn {
-  width: 32px;
-  height: 32px;
   border: none;
   background: transparent;
-  border-radius: 8px;
+  padding: 2px;
   color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: color 0.12s ease;
 }
 
 .close-btn:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
   color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .dialog-content {
-  padding: 24px;
+  padding: 16px 18px 4px;
 }
 
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--ui-border-default-border, var(--border));
+  gap: 18px;
+  padding: 14px 18px 16px;
 }
 
 .form-group {
@@ -386,123 +375,131 @@ defineExpose({
 
 .form-label {
   display: block;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  margin-bottom: 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  margin-bottom: 5px;
 }
 
 .form-hint {
-  font-size: 12px;
-  color: var(--ui-text-muted-fg, var(--text-muted));
-  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--muted));
+  margin-top: 5px;
 }
 
+/* Underline inputs: the line is the control. */
 .form-input {
   width: 100%;
-  padding: 12px 14px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 10px;
-  font-size: 14px;
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
+  min-width: 0;
+  appearance: none;
+  padding: 4px 0 5px;
+  border: none;
+  border-bottom: 1px solid var(--ui-border-default-border, var(--border));
+  border-radius: 0;
+  font-size: 13px;
+  background: transparent;
   color: var(--ui-text-primary-fg, var(--text-primary));
-  transition: all 0.15s ease;
+  transition: border-color 0.12s ease;
 }
 
 .form-input:focus {
   outline: none;
-  border-color: var(--ui-accent-primary-fg, var(--accent));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
+  border-bottom-color: var(--ui-accent-primary-fg, var(--accent));
+  box-shadow: none;
 }
 
 .form-input::placeholder {
-  color: var(--ui-text-muted-fg, var(--text-muted));
+  color: var(--ui-text-faint-fg, var(--muted));
 }
 
 .transport-selector {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
+/* Transport choice: square outline, accent line marks the selection */
 .transport-option {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 16px;
+  gap: 5px;
+  padding: 12px;
+  min-width: 0;
   border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
-  border-radius: 12px;
+  background: transparent;
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: border-color 0.12s ease, color 0.12s ease;
 }
 
 .transport-option:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
 .transport-option.active {
-  background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
   border-color: var(--ui-accent-primary-fg, var(--accent));
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .transport-option span {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: var(--font-weight-medium, 500);
   color: var(--ui-text-primary-fg, var(--text-primary));
+}
+
+.transport-option.active span {
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .transport-desc {
-  font-size: 12px !important;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px !important;
   font-weight: 400 !important;
-  color: var(--ui-text-muted-fg, var(--text-muted)) !important;
+  color: var(--ui-text-faint-fg, var(--muted)) !important;
 }
 
 .error-message {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px;
-  background: rgba(239, 68, 68, 0.1);
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--ui-status-danger-fg, #ef4444);
+  font-size: 12px;
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
+  padding: 2px 0 2px 8px;
   margin-top: 16px;
+  word-break: break-word;
 }
 
+/* Footer actions as text buttons */
 .btn {
-  padding: 10px 20px;
+  appearance: none;
+  background: transparent;
   border: none;
-  border-radius: 10px;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: color 0.12s ease;
+}
+
+.btn:hover:not(:disabled) {
+  color: var(--ui-text-primary-fg, var(--text-primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .btn.primary {
-  background: var(--ui-accent-primary-fg, var(--accent));
-  color: white;
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: var(--ui-action-primary-hover-bg, var(--ui-accent-primary-fg, var(--accent)));
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
-.btn.primary:disabled {
-  opacity: 0.6;
+.btn:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
-}
-
-.btn.secondary {
-  background: var(--ui-surface-sidebar-bg, var(--panel-2));
-  color: var(--ui-text-primary-fg, var(--text-primary));
-  border: 1px solid var(--ui-border-default-border, var(--border));
-}
-
-.btn.secondary:hover {
-  background: var(--ui-state-hover-bg, var(--hover));
 }
 </style>

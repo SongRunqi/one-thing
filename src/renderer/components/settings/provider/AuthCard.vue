@@ -150,14 +150,15 @@ const subtitle = computed(() => {
 </script>
 
 <style scoped>
+/* Auth ledger: no card chrome — hairlines carry the structure. */
 .auth-card {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  padding: 0;
+  border: 0;
+  background: transparent;
+  min-width: 0;
 }
 
 .auth-main {
@@ -174,8 +175,7 @@ const subtitle = computed(() => {
   align-items: center;
   justify-content: center;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 8px;
-  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
+  background: transparent;
   color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
 }
 
@@ -196,23 +196,31 @@ const subtitle = computed(() => {
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
+/* Status badge: outlined ring, transparent fill, state lives in the line + ink color. */
 .auth-state {
-  padding: 2px 7px;
+  padding: 1px 7px 2px;
   border-radius: 999px;
+  background: transparent;
+  font-family: var(--font-mono, monospace);
   font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
   color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
 }
 
 .auth-state.connected {
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, var(--text-success, var(--color-success))));
   color: var(--ui-status-success-fg, var(--text-success, var(--color-success)));
 }
 
 .auth-state.error {
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, var(--text-error, var(--color-error))));
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
 }
 
 .auth-state.pending {
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 65%, transparent);
   color: var(--ui-accent-primary-fg, var(--accent));
 }
 
@@ -225,21 +233,34 @@ const subtitle = computed(() => {
   overflow-wrap: anywhere;
 }
 
+/* Primary action: accent line + accent ink, never a filled block. */
 .auth-button {
   min-height: 32px;
   padding: 0 12px;
-  border: 1px solid var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  border-radius: 7px;
-  background: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  color: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  border: 1px solid var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
   font: inherit;
   font-size: 13px;
   font-weight: 560;
   cursor: pointer;
+  transition: box-shadow 0.12s ease;
+}
+
+.auth-button:hover:not(:disabled) {
+  box-shadow: inset 0 -2px 0 var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
 }
 
 .auth-button.secondary {
+  border-color: var(--settings-rule, var(--ui-border-default-border, var(--border)));
   background: transparent;
+  color: var(--settings-ink-2, var(--ui-text-secondary-fg, var(--text-secondary)));
+}
+
+.auth-button.secondary:hover:not(:disabled) {
+  border-color: var(--settings-ink-3, var(--ui-text-muted-fg, var(--text-muted)));
+  box-shadow: none;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
@@ -248,14 +269,16 @@ const subtitle = computed(() => {
   cursor: not-allowed;
 }
 
+/* Sub-panel held by a left rule, no filled block. */
 .auth-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--settings-rule-soft, var(--ui-border-subtle-border, var(--border-subtle)));
-  border-radius: 8px;
-  background: var(--settings-paper-2, var(--ui-surface-sidebar-bg, var(--panel-2)));
+  padding: 4px 0 4px 10px;
+  border: 0;
+  border-left: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
+  background: transparent;
+  min-width: 0;
 }
 
 .panel-link {
@@ -266,14 +289,16 @@ const subtitle = computed(() => {
 
 .device-code {
   align-self: flex-start;
+  max-width: 100%;
   padding: 7px 10px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
   font-size: 18px;
   letter-spacing: 0;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  background: transparent;
+  overflow-wrap: anywhere;
 }
 
 .code-entry-form {
@@ -286,14 +311,28 @@ const subtitle = computed(() => {
   min-width: 0;
   padding: 8px 10px;
   border: 1px solid var(--settings-rule, var(--ui-border-default-border, var(--border)));
-  border-radius: 7px;
-  background: var(--settings-paper, var(--ui-surface-app-bg, var(--bg)));
+  border-radius: 0;
+  background: transparent;
   color: var(--settings-ink, var(--ui-text-primary-fg, var(--text)));
   font: inherit;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: border-color 0.12s ease;
+}
+
+.code-input:focus {
+  outline: none;
+  border-color: var(--settings-accent, var(--ui-accent-primary-fg, var(--accent)));
+}
+
+.code-input::placeholder {
+  color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .auth-error {
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
   font-size: 12px;
   color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
   overflow-wrap: anywhere;

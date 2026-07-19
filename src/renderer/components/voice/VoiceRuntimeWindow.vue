@@ -73,7 +73,14 @@ const streamPlaybackItems = new Map<string, Extract<PlaybackItem, { type: 'audio
 let latestSettings: VoiceSettings | null = null
 let latestSessionId: string | undefined
 let streamingAsrSocket: WebSocket | null = null
+let streamingAsrTransport: 'funasr' | 'doubao' | null = null
+let streamingAsrReason: string | undefined
 let streamingAsrProcessor: ScriptProcessorNode | null = null
+let wakeStream: MediaStream | null = null
+let wakeAudioContext: AudioContext | null = null
+let wakeSource: MediaStreamAudioSourceNode | null = null
+let wakeProcessor: ScriptProcessorNode | null = null
+let wakePendingPcm: Int16Array<ArrayBufferLike> = new Int16Array(0)
 let streamingAsrSource: MediaStreamAudioSourceNode | null = null
 let streamingAsrPendingPcm: Int16Array<ArrayBufferLike> = new Int16Array(0)
 let streamingAsrStartedAt = 0
@@ -90,6 +97,9 @@ let streamingAsrFirstAudioSent = false
 let streamingAsrFirstPartialReceived = false
 let streamingAsrTimeout: number | null = null
 let streamingAsrNoSpeechTimer: number | null = null
+
+// 200ms per uplink packet at 16 kHz, the packet size Doubao recommends.
+const DOUBAO_CHUNK_SAMPLES = 3200
 
 const ENERGY_SAMPLE_INTERVAL_MS = 80
 const ENERGY_MIN_SPEECH_FRAMES = 2
@@ -141,6 +151,9 @@ function handleCommand(command: VoiceRuntimeCommand) {
       stopRecording(Boolean(command.submit))
       stopPlayback()
       break
+    case 'stop-recording':
+      stopRecording(false)
+      break
     case 'stop-playback':
       stopPlayback()
       break
@@ -184,6 +197,11 @@ function startWake(settings: VoiceSettings, sessionId?: string) {
   if (!settings.wake.enabled) return
   const runId = ++wakeRunId
 
+  if (settings.wake.provider === 'sherpa-kws') {
+    void startSherpaWakeStreaming(sessionId, runId)
+    return
+  }
+
   if (settings.wake.provider === 'porcupine-web') {
     void startPorcupineWake(settings, sessionId, runId)
     return
@@ -194,6 +212,67 @@ function startWake(settings: VoiceSettings, sessionId?: string) {
     error: 'Browser speech wake is not supported in the desktop app. Switched back to the mic button.',
     recoverable: true,
   })
+}
+
+// sherpa-kws wake detection runs in the main process; this window only
+// streams wake-phase 16 kHz PCM over the audio-chunk uplink.
+async function startSherpaWakeStreaming(sessionId: string | undefined, runId: number) {
+  try {
+    wakeStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        autoGainControl: true,
+        noiseSuppression: true,
+      },
+    })
+    if (wakeRunId !== runId) {
+      stopSherpaWakeStreaming()
+      return
+    }
+    wakeAudioContext = new AudioContext()
+    wakeSource = wakeAudioContext.createMediaStreamSource(wakeStream)
+    wakeProcessor = wakeAudioContext.createScriptProcessor(4096, 1, 1)
+    wakePendingPcm = new Int16Array(0)
+    wakeProcessor.onaudioprocess = event => {
+      const input = event.inputBuffer.getChannelData(0)
+      const downsampled = downsampleFloat32(input, wakeAudioContext?.sampleRate || FUNASR_SAMPLE_RATE, FUNASR_SAMPLE_RATE)
+      const result = drainPcmChunks(wakePendingPcm, float32ToInt16(downsampled), DOUBAO_CHUNK_SAMPLES)
+      wakePendingPcm = result.pending
+      for (const buffer of result.ready) {
+        platformApi.voiceAudioChunk({
+          sessionId,
+          chunkBase64: arrayBufferToBase64(buffer),
+          sampleRate: FUNASR_SAMPLE_RATE,
+          phase: 'wake',
+        })
+      }
+    }
+    wakeSource.connect(wakeProcessor)
+    wakeProcessor.connect(wakeAudioContext.destination)
+  } catch (error: any) {
+    stopSherpaWakeStreaming()
+    await platformApi.voiceRuntimeEvent({
+      type: 'error',
+      error: `Wake listening could not access the microphone: ${error?.message || String(error)}. Use the mic button to talk.`,
+      recoverable: true,
+    })
+  }
+}
+
+function stopSherpaWakeStreaming() {
+  if (wakeProcessor) {
+    wakeProcessor.onaudioprocess = null
+    wakeProcessor.disconnect()
+    wakeProcessor = null
+  }
+  wakeSource?.disconnect()
+  wakeSource = null
+  wakeStream?.getTracks().forEach(track => track.stop())
+  wakeStream = null
+  void wakeAudioContext?.close()
+  wakeAudioContext = null
+  wakePendingPcm = new Int16Array(0)
 }
 
 async function startPorcupineWake(settings: VoiceSettings, sessionId: string | undefined, runId: number) {
@@ -372,6 +451,7 @@ function formatWebSpeechError(error: string) {
 
 function stopWake() {
   wakeRunId++
+  stopSherpaWakeStreaming()
   if (recognition) {
     suppressWebSpeechRestart = true
   }
@@ -400,10 +480,40 @@ async function releasePorcupineWorker(worker: any, WebVoiceProcessor: any) {
   }
 }
 
+// Audible cue that the wake phrase was heard — the only feedback available
+// when the main window is hidden or in the background.
+function playWakeEarcon() {
+  try {
+    const context = new AudioContext()
+    const gain = context.createGain()
+    gain.gain.setValueAtTime(0.0001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.28)
+    gain.connect(context.destination)
+    const oscillator = context.createOscillator()
+    oscillator.type = 'sine'
+    oscillator.frequency.setValueAtTime(880, context.currentTime)
+    oscillator.frequency.setValueAtTime(1320, context.currentTime + 0.12)
+    oscillator.connect(gain)
+    oscillator.start()
+    oscillator.stop(context.currentTime + 0.3)
+    oscillator.onended = () => {
+      void context.close()
+    }
+  } catch {
+    // A missing output device shouldn't break the recording flow.
+  }
+}
+
 async function startRecording(settings: VoiceSettings, sessionId?: string, reason?: string) {
   stopRecording(false)
+  if (reason === 'wake' || reason === 'call') playWakeEarcon()
   if (settings.asr.provider === 'funasr-stream') {
     await startFunASRStreamingRecording(settings, sessionId, reason)
+    return
+  }
+  if (settings.asr.provider === 'doubao') {
+    await startDoubaoStreamingRecording(settings, sessionId, reason)
     return
   }
   if (settings.vad.provider === 'silero-web') {
@@ -544,6 +654,94 @@ async function stopSileroRecording(submit: boolean) {
   }
 }
 
+async function startDoubaoStreamingRecording(settings: VoiceSettings, sessionId?: string, reason?: string) {
+  streamingAsrStartedAt = Date.now()
+  streamingAsrTransport = 'doubao'
+  streamingAsrReason = reason
+  streamingAsrFinalizing = false
+  streamingAsrPendingPcm = new Int16Array(0)
+  streamingAsrVoiceStarted = false
+  streamingAsrSilenceStartedAt = 0
+  streamingAsrSpeechFrames = 0
+  streamingAsrNoiseFloor = 0
+  streamingAsrFirstAudioSent = false
+
+  try {
+    await startStreamingMicrophone(settings, sessionId)
+  } catch (error) {
+    streamingAsrTransport = null
+    resetStreamingASRState()
+    throw error
+  }
+  await platformApi.voiceRuntimeEvent({ type: 'recording-started', sessionId, reason })
+
+  streamingAsrTimeout = window.setTimeout(() => {
+    stopDoubaoStreamingRecording(true)
+  }, settings.vad.maxRecordingMs)
+  streamingAsrNoSpeechTimer = window.setTimeout(() => {
+    if (!streamingAsrVoiceStarted) {
+      const silentResume = streamingAsrReason === 'resume' || streamingAsrReason === 'wake' || streamingAsrReason === 'call'
+      stopDoubaoStreamingRecording(false)
+      if (!silentResume) {
+        void platformApi.voiceRuntimeEvent({
+          type: 'error',
+          error: 'No speech was detected. Try the mic button again.',
+          recoverable: true,
+        })
+      }
+    }
+  }, Math.min(ENERGY_NO_SPEECH_TIMEOUT_MS, settings.vad.maxRecordingMs))
+}
+
+function sendDoubaoAudioChunk(chunk: Int16Array, sessionId?: string) {
+  const result = drainPcmChunks(streamingAsrPendingPcm, chunk, DOUBAO_CHUNK_SAMPLES)
+  streamingAsrPendingPcm = result.pending
+  for (const buffer of result.ready) {
+    platformApi.voiceAudioChunk({
+      sessionId,
+      chunkBase64: arrayBufferToBase64(buffer),
+      sampleRate: FUNASR_SAMPLE_RATE,
+      phase: 'recording',
+    })
+    if (!streamingAsrFirstAudioSent) {
+      streamingAsrFirstAudioSent = true
+      void emitStreamingASRMilestone('asr-first-audio-chunk', sessionId ?? latestSessionId)
+    }
+  }
+}
+
+function stopDoubaoStreamingRecording(submit: boolean) {
+  if (streamingAsrTransport !== 'doubao' || streamingAsrFinalizing) return
+  streamingAsrFinalizing = true
+  clearFunASRTimers()
+
+  const sessionId = latestSessionId
+  if (submit && streamingAsrPendingPcm.length > 0) {
+    platformApi.voiceAudioChunk({
+      sessionId,
+      chunkBase64: arrayBufferToBase64(int16ToExactArrayBuffer(streamingAsrPendingPcm)),
+      sampleRate: FUNASR_SAMPLE_RATE,
+      phase: 'recording',
+    })
+  }
+  platformApi.voiceAudioChunk({
+    sessionId,
+    phase: 'recording',
+    last: true,
+    abort: !submit,
+  })
+
+  stopStreamingMicrophone()
+  const durationMs = Date.now() - streamingAsrStartedAt
+  streamingAsrTransport = null
+  resetStreamingASRState()
+  void platformApi.voiceRuntimeEvent({ type: 'recording-stopped', sessionId, durationMs })
+
+  if (latestSettings?.enabled && latestSettings.alwaysOn) {
+    startWake(latestSettings, latestSessionId)
+  }
+}
+
 async function startFunASRStreamingRecording(settings: VoiceSettings, sessionId?: string, reason?: string) {
   const url = settings.asr.funasr.url.trim()
   if (!/^wss?:\/\//i.test(url)) {
@@ -551,6 +749,8 @@ async function startFunASRStreamingRecording(settings: VoiceSettings, sessionId?
   }
 
   streamingAsrStartedAt = Date.now()
+  streamingAsrTransport = 'funasr'
+  streamingAsrReason = reason
   streamingAsrFinalizing = false
   streamingAsrSubmitted = false
   streamingAsrTranscriptId = createRuntimeId()
@@ -579,17 +779,20 @@ async function startFunASRStreamingRecording(settings: VoiceSettings, sessionId?
   }, settings.vad.maxRecordingMs)
   streamingAsrNoSpeechTimer = window.setTimeout(() => {
     if (!streamingAsrVoiceStarted) {
+      const silentResume = streamingAsrReason === 'resume' || streamingAsrReason === 'wake' || streamingAsrReason === 'call'
       stopFunASRStreamingRecording(false)
       void platformApi.voiceRuntimeEvent({
         type: 'recording-stopped',
         sessionId,
         durationMs: Date.now() - streamingAsrStartedAt,
       })
-      void platformApi.voiceRuntimeEvent({
-        type: 'error',
-        error: 'No speech was detected. Try the mic button again.',
-        recoverable: true,
-      })
+      if (!silentResume) {
+        void platformApi.voiceRuntimeEvent({
+          type: 'error',
+          error: 'No speech was detected. Try the mic button again.',
+          recoverable: true,
+        })
+      }
     }
   }, Math.min(ENERGY_NO_SPEECH_TIMEOUT_MS, settings.vad.maxRecordingMs))
 }
@@ -628,7 +831,13 @@ async function startStreamingMicrophone(settings: VoiceSettings, sessionId?: str
     const rms = calculateRms(input)
     monitorStreamingASRSilence(settings, rms, sessionId)
 
-    if (streamingAsrSocket?.readyState !== WebSocket.OPEN || streamingAsrFinalizing) return
+    if (streamingAsrFinalizing) return
+    if (streamingAsrTransport === 'doubao') {
+      const downsampled = downsampleFloat32(input, audioContext?.sampleRate || FUNASR_SAMPLE_RATE, FUNASR_SAMPLE_RATE)
+      sendDoubaoAudioChunk(float32ToInt16(downsampled), sessionId)
+      return
+    }
+    if (streamingAsrSocket?.readyState !== WebSocket.OPEN) return
     const downsampled = downsampleFloat32(input, audioContext?.sampleRate || FUNASR_SAMPLE_RATE, FUNASR_SAMPLE_RATE)
     appendStreamingASRChunk(float32ToInt16(downsampled))
   }
@@ -779,6 +988,11 @@ function monitorStreamingASRSilence(settings: VoiceSettings, rms: number, sessio
     streamingAsrSilenceStartedAt = 0
   }
 
+  // Doubao end-of-speech is decided server-side (end_window_size); the
+  // renderer only keeps the max-duration and no-speech timers armed in
+  // startDoubaoStreamingRecording.
+  if (streamingAsrTransport === 'doubao') return
+
   if (
     streamingAsrVoiceStarted
     && now - streamingAsrStartedAt > ENERGY_MIN_RECORDING_MS
@@ -789,13 +1003,16 @@ function monitorStreamingASRSilence(settings: VoiceSettings, rms: number, sessio
   } else if (now - streamingAsrStartedAt > settings.vad.maxRecordingMs) {
     stopFunASRStreamingRecording(true)
   } else if (!streamingAsrVoiceStarted && now - streamingAsrStartedAt > Math.min(ENERGY_NO_SPEECH_TIMEOUT_MS, settings.vad.maxRecordingMs)) {
+    const silentResume = streamingAsrReason === 'resume' || streamingAsrReason === 'wake' || streamingAsrReason === 'call'
     stopFunASRStreamingRecording(false)
     void platformApi.voiceRuntimeEvent({ type: 'recording-stopped', sessionId, durationMs: now - streamingAsrStartedAt })
-    void platformApi.voiceRuntimeEvent({
-      type: 'error',
-      error: 'No speech was detected. Try the mic button again.',
-      recoverable: true,
-    })
+    if (!silentResume) {
+      void platformApi.voiceRuntimeEvent({
+        type: 'error',
+        error: 'No speech was detected. Try the mic button again.',
+        recoverable: true,
+      })
+    }
   }
 }
 
@@ -833,6 +1050,8 @@ function clearFunASRTimers() {
 }
 
 function resetStreamingASRState() {
+  streamingAsrTransport = null
+  streamingAsrReason = undefined
   streamingAsrFinalizing = false
   streamingAsrPendingPcm = new Int16Array(0)
   streamingAsrLatestText = ''
@@ -1001,6 +1220,10 @@ function monitorSilence(settings: VoiceSettings, startedAt: number) {
 }
 
 function stopRecording(submit: boolean) {
+  if (streamingAsrTransport === 'doubao') {
+    stopDoubaoStreamingRecording(submit)
+    return
+  }
   if (streamingAsrSocket || streamingAsrProcessor) {
     stopFunASRStreamingRecording(submit)
     return
@@ -1183,6 +1406,10 @@ function finishPlayback(requestId?: string, error?: string) {
     currentStreamItem = null
   }
   isPlaying = false
+  if (playbackQueue.length === 0) {
+    void platformApi.voiceRuntimeEvent({ type: 'playback-idle' })
+    return
+  }
   void playNext()
 }
 
@@ -1203,6 +1430,16 @@ function stopPlayback() {
   currentStreamItem = null
   streamPlaybackItems.clear()
   isPlaying = false
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const step = 0x8000
+  for (let index = 0; index < bytes.length; index += step) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + step))
+  }
+  return btoa(binary)
 }
 
 function base64ToUint8Array(base64: string) {

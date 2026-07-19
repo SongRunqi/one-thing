@@ -18,6 +18,7 @@ import {
   getAgentLoopTransientTail,
 } from '@onething/core/engine'
 import * as store from '../../store.js'
+import { goalRuntimeHooks } from '../../goals/runtime-hooks.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
 import { getMCPRouterToolDefinition } from '../../mcp/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
@@ -184,6 +185,7 @@ function createAgentLoopRuntimeAdapters(
     }) => shouldSkipAutoCompactForProviderUsageMismatchSafe(input),
     sendActiveMemoryPart: (part: { type: 'loading-memory' } | { type: 'waiting' }) =>
       options.emitter?.sendContentPart(part),
+    goal: goalRuntimeHooks,
     logger: console,
     createId: undefined,
   })

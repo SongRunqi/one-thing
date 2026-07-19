@@ -67,7 +67,10 @@ export function buildHistoryMessages(
   messages: ChatMessage[],
   session?: { id?: string; summary?: string; summaryUpToMessageId?: string }
 ): HistoryMessage[] {
-  return buildOnethingHistoryMessages(messages.map(prepareUserMessageForModel), session, {
+  return buildOnethingHistoryMessages(
+    collapseSupersededGoalDrives(messages).map(prepareUserMessageForModel),
+    session,
+    {
     onImageAttachment: ({ mimeType, base64Length, dataUrlPrefix }) => {
       console.log('[Chat] Adding image attachment:', {
         mimeType,
@@ -99,6 +102,41 @@ export function buildHistoryMessages(
       })
     },
   }) as HistoryMessage[]
+}
+
+const SUPERSEDED_GOAL_DRIVE_MARKER =
+  '(automatic goal continuation — superseded by a later one)'
+
+/**
+ * Goal drives are persisted as user messages whose content is largely the
+ * same template each time. Replaying them all verbatim makes the model read
+ * the transcript as "the user keeps repeating the same message", so the
+ * model view keeps only the newest drive in full and shrinks the superseded
+ * ones to a one-line marker. Roles are kept (providers require user/assistant
+ * alternation) and the renderer view is untouched — it folds these visually
+ * via origin.source already.
+ */
+export function collapseSupersededGoalDrives(messages: ChatMessage[]): ChatMessage[] {
+  let latestGoalDriveIndex = -1
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message?.role === 'user' && message.origin?.source === 'goal') {
+      latestGoalDriveIndex = index
+      break
+    }
+  }
+  if (latestGoalDriveIndex === -1) return messages
+
+  return messages.map((message, index) => {
+    if (index >= latestGoalDriveIndex) return message
+    if (message.role !== 'user' || message.origin?.source !== 'goal') return message
+    return {
+      ...message,
+      content: SUPERSEDED_GOAL_DRIVE_MARKER,
+      // The stale turn-context block adds nothing to a superseded ping.
+      contextUpdate: undefined,
+    }
+  })
 }
 
 function prepareUserMessageForModel(message: ChatMessage): ChatMessage {

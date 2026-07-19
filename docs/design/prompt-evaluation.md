@@ -316,3 +316,62 @@ notes: 真实翻车 2026-07-03,原始表现为直接在 start-electron 内 edit
   换模型时按需单跑。
 - **gateway 场景**(WeChat/Telegram)的信号语义不同(无 retry 按钮),Phase 1 先只
   覆盖 Electron/desktop turn,gateway 接入待定。
+
+## 附录:2026-07-12 体系加固批次(对照 Anthropic develop-tests 文档)
+
+对照 [Define success and build evaluations](https://platform.claude.com/docs/en/test-and-evaluate/develop-tests)
+的差距分析后落地的一批改造,全部在 `packages/onething-runtime/src/evals/`:
+
+### Judge 质量(judge.ts)
+- 两个 judge(全局分类 / rubric)改为**先推理后判定**:先输出几句纯文本分析,
+  最后一行输出 JSON verdict;解析器(`extractJsonCandidates`)优先取**最后一个**
+  平衡花括号对象,兼容旧式纯 JSON 输出。分析文本解析后即丢弃。
+- rubric 支持 `string | string[]`:数组即条款清单(checklist),编号呈现,
+  judge 被指示"任一条款明确违反即 fail"。`normalizeRubricClauses` 归一。
+
+### Runner 统计语义(runner.ts + compare.ts)
+- **infra error ≠ 行为 fail**:模型调用抛错/fixture 缺失的 attempt 标 `error: true`,
+  不进 pass-rate 分母;run 级 `errorRate` 超过 0.25 标 `invalid`(照常落盘留痕,
+  但基线比较跳过)。此前 3 条全 fetch-failed、mean=0 的坏基线即此问题。
+- **sentinel pass^k**:`sentinelStrict` = 全部 attempt 通过且零 error 才 true;
+  部分学分(0.6 分)对"绝不能犯"的行为无意义,gate 用 strict 不用 score。
+- **经济性指标**:entry.metrics = avgOutputChars / avgToolCalls / avgTotalTokens,
+  正确性不变但 token 翻倍的改动从此可见(不做 gate,只做趋势)。
+- **compare.ts**:`compareRunEntries` 只认稳定翻转(≥0.8 → ≤0.2)为回归/改进,
+  微小均分差不作数(§8 方差淹没);`findBaselineEntry` 跳过 invalid/aborted/消融
+  entry,优先同 provider+model;`persistResults: false` 供仪表运行不污染 results.jsonl。
+
+### 量尺自检(fidelity.ts + sensitivity.ts)
+- **重放保真度**:`measureReplayFidelity` 用被捕获的原提示词零改动重放 N 次,
+  按 tool-call 决策序列与录制带比对,产出 fidelity(对原始行为)与
+  selfConsistency(重放自身一致性,区分"harness 漂移"与"模型非确定性")。
+  低保真 scene 的消融归因不可信——promote/diagnose 前先量尺。
+- **段落敏感度审计**:`runSensitivityAudit` 逐段 disable 跑全量(复用消融通道),
+  输出 unguarded sections——删了也没有任何 case 察觉的段落,即无人看守的
+  prompt 面积,补用例优先级依据。审计运行不落 results.jsonl。
+
+### Judge 校准设施(calibration.ts,Phase 3 代码部分)
+- 标注集 JSONL(`{turnId, label: good|bad, category?}`)+ `runJudgeCalibration`
+  (注入式 callJudge)+ 一致率计算;gate:≥20 个可判样本且一致率 ≥85% 才
+  `pass`,否则给出 blocker(样本不足 / 改 judge prompt 重测)。
+  **代码就绪,标注集仍需人工建立**——judge 上线前置不变。
+
+### 采样面(turn-evaluator.ts)
+- 正常轮(无负信号)按 `settings.evals.sampleRate`(默认 0 = 关)随机导出
+  fixture,record 标 `sampled: true`。负信号漏斗只能看见"用户注意到的失败",
+  随机采样是沉默失败与真实任务分布进入评估集的唯一通道。
+  生产接线:`src/main/engine/triggers/turn-evaluation.ts`。
+
+### Provider 路由修复(evals-provider-adapter.ts + replay.ts)
+- 修复:adapter 此前忽略 `opts.model`,一律用 UI 绑定的模型,scene 重放
+  实际跑的是评估模型但 transcript 标注原模型(标签谎报)。现在
+  `EvalModelCallOptions.provider` 承载 scene 的 origin provider,adapter 凭据
+  可解析时路由到原 endpoint + 原模型,否则回退评估绑定(含其模型名)并 warn。
+- `ReplayOptions.preferOriginProvider`(默认 true):diagnose/workbench 复现
+  走原 provider;批量 eval run 的 scene case 显式传 false,保持单模型 mean
+  与成本可预期。
+
+### 仍未做(有意留待)
+- 用例扩增到 100+(LLM 生成变体)与 held-out 集——依赖以上量尺先立起来。
+- 校准标注集的人工标注(≥20 轮)。
+- 序数刻度(1-5)judge——等分母够大再说,现在是过度设计。

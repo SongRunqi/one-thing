@@ -34,6 +34,7 @@ import {
 	AgentEngine,
 	EventBus,
 	type JsonObject,
+	Permission,
 	StreamChannel,
 	createOnethingRuntimeFacade,
 	generateTitleFromMessage,
@@ -129,66 +130,27 @@ import {
 	appendMemoryNote,
 	CAPTURE_MAX_PENDING,
 	CAPTURE_PENDING_STORE_KEY,
-	clearMemoryIndex,
 	createOnethingMemoryIpcHandlers,
-	deleteCanonicalMemory,
-	deleteGraphEntity,
-	deleteGraphObservation,
-	deleteGraphRelation,
-	getCanonicalMemoryAudit,
-	getCanonicalMemoryByIdOrKey,
-	getCanonicalMemoryCount,
-	getGraphAudit,
-	getGraphEntityById,
-	getGraphOverview,
-	getDb,
-	getFtsTokenizer,
-	ignoreGraphDuplicate,
-	indexMemoryFile,
-	listCanonicalMemories,
-	listGraphDuplicates,
-	listGraphEntities,
-	listGraphObservations,
-	listGraphRelations,
-	listMemoryIndexFiles,
 	listManagedMemoryFiles,
-	mergeGraphDuplicate,
-	mergeGraphMemory,
 	readManagedMemoryFile,
-	readMemoryIndexCounts,
-	runMemoryDreamingSweep,
 	saveManagedMemoryFile,
-	searchGraphMemory,
-	searchMarkdownMemoryChunks,
-	SCOPED_DREAMING_SCHEDULER_TASK_ID,
 	SOUL_MEMORY_PLUGIN_ID,
-	upsertCanonicalMemory,
-	upsertGraphEntity,
-	upsertGraphObservation,
-	upsertGraphRelation,
 	type MemoryWorkspace,
 	type ResolvedSoulMemorySettings,
 } from "@onething/runtime/memory";
 import {
 	CORE_SOUL_MEMORY_MANIFEST,
-	CORE_SOUL_MEMORY_DEFAULT_INDEX_STATUS,
 	ONETHING_LOG_MONITOR_MANIFEST,
 	ONETHING_NOTE_SKILLS_MANIFEST,
 	applySoulMemoryStatusMutationPlan,
-	buildSoulMemoryDreamingStatus,
-	buildSoulMemorySearchResult,
 	discardSoulMemoryPendingCaptureWithAdapters,
 	executeOnethingPluginCommandForIpc,
-	formatSoulMemoryCanonicalProfileExport,
 	disableOnethingPluginForIpc,
 	enableOnethingPluginForIpc,
-	getSoulMemoryDreamingNextRunStatus,
 	getSoulMemoryPublicPendingCaptures,
 	listOnethingPluginCommandsForIpc,
 	listOnethingPluginsForIpc,
-	normalizeSoulMemorySearchLimit,
 	planSoulMemoryWorkspacePaths,
-	planSoulMemoryProfileUpsert,
 	refreshOnethingPluginsForIpc,
 	saveSoulMemoryPendingCaptureWithAdapters,
 } from "@onething/runtime/plugins";
@@ -220,6 +182,11 @@ import {
 	type OnethingOpenRouterModel,
 	type OnethingProviderModelConfigs,
 } from "@onething/runtime/providers";
+import {
+	OnethingUsageLedger,
+	getOnethingSessionUsageTotal,
+	getOnethingUsageSummary,
+} from "@onething/runtime/usage";
 import {
 	OnethingPromptStore,
 	createOnethingPromptForIpc,
@@ -344,12 +311,9 @@ import {
 	type SchedulerTaskHandle,
 } from "@onething/runtime/scheduler";
 import {
-	CoreProvider,
-	GlobalStoreProvider,
-	NotesProvider,
-	SessionStoreProvider,
 	VariableRegistry,
 	VariablesStore,
+	registerStandardVariableProviders,
 	createDefaultVariablesFile,
 	deleteOnethingVariableForIpc,
 	listOnethingVariablesForIpc,
@@ -390,7 +354,6 @@ import {
 	writeJsonFileAsync as writeCoreJsonFileAsync,
 } from "@onething/core/storage";
 import {
-	DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS,
 	mergeWithDefaults,
 	normalizeSoulMemorySettings,
 } from "../../../src/shared/defaults/settings.js";
@@ -476,21 +439,9 @@ import type {
 } from "../../../src/shared/ipc/settings.js";
 import type {
 	MemoryAppendRequest,
-	MemoryGraphAuditRequest,
-	MemoryGraphDeleteRequest,
-	MemoryGraphDuplicateDecisionRequest,
-	MemoryGraphEntityUpsertRequest,
-	MemoryGraphListRequest,
-	MemoryGraphObservationUpsertRequest,
-	MemoryGraphRelationUpsertRequest,
 	MemoryLogsListRequest,
-	MemoryProfileAuditRequest,
-	MemoryProfileDeleteRequest,
-	MemoryProfileListRequest,
-	MemoryProfileUpsertRequest,
 	MemoryReadRequest,
 	MemorySaveFileRequest,
-	MemorySearchRequest,
 } from "../../../src/shared/ipc/memory.js";
 import type {
 	ChannelReplyDeliveryRecord,
@@ -584,7 +535,6 @@ export interface OnethingServerRuntimeOptions {
 	enableMCPConnections?: boolean;
 	allowMCPStdio?: boolean;
 	mcpClientFactory?: ServerMCPClientFactory;
-	memoryDreamingGenerateText?: ServerMemoryDreamingGenerateText;
 	pluginCommands?: ServerPluginCommandDefinition[];
 	oauthFetch?: typeof fetch;
 }
@@ -631,22 +581,7 @@ export interface ServerSessionStore {
 	getUserMessageMarkers(sessionId: string): UserMessageMarker[] | undefined;
 }
 
-export interface ServerMemoryDreamingProvider {
-	providerId: string;
-	model: string;
-	modelRef: string;
-	source: "server-local" | "settings";
-	config: Record<string, unknown>;
-}
 
-export type ServerMemoryDreamingGenerateText = (input: {
-	provider: ServerMemoryDreamingProvider;
-	system: string;
-	prompt: string;
-	temperature: number;
-	maxTokens: number;
-	context: RuntimeRequestContext;
-}) => string | Promise<string>;
 
 export type ServerPluginCommandDefinition = CorePluginCommandDefinition;
 
@@ -1181,6 +1116,13 @@ export function createDevelopmentOnethingServerRuntime(
 	const activeControllers = new Map<string, AbortController>();
 	const currentSessionIds = new Map<string, string>();
 	const pendingPermissions = new Map<string, PendingPermissionRecord>();
+	// Rejects core-side pending asks as well as the local mirror. Leaving core
+	// pendings behind would leave a dead head in the session's serialized
+	// prompt queue and block every later permission ask in that session.
+	const clearSessionPermissions = (sessionId: string): void => {
+		Permission.clearSession(sessionId);
+		clearPendingPermissionsForSession(pendingPermissions, sessionId);
+	};
 	const settingsByOwner = new Map<string, AppSettings>();
 	const authServicesByOwner = new Map<
 		string,
@@ -1203,7 +1145,6 @@ export function createDevelopmentOnethingServerRuntime(
 		ServerPluginCatalogManager
 	>();
 	const memoryPluginStoresByOwner = new Map<string, CorePluginStore>();
-	const memoryDreamingRunsByOwner = new Map<string, Promise<unknown>>();
 	const mediaServicesByOwner = new Map<string, MediaLibraryService>();
 	const mediaImageGeneratedHandlersByOwner = new Map<
 		string,
@@ -1231,6 +1172,9 @@ export function createDevelopmentOnethingServerRuntime(
 	const dataRoot = resolve(
 		options.dataRoot ?? process.env.ONETHING_SERVER_DATA_ROOT ?? storePath,
 	);
+	const usageLedger = new OnethingUsageLedger({
+		ledgerDir: () => join(dataRoot, "usage"),
+	});
 	const explicitSettingsRoot =
 		options.settingsRoot ?? process.env.ONETHING_SERVER_SETTINGS_ROOT;
 	const settingsStore =
@@ -1407,7 +1351,10 @@ export function createDevelopmentOnethingServerRuntime(
 					sessionId: envelope.sessionId,
 					info,
 				});
-		} else if (permissionEvent?.type === "permission:timeout") {
+		} else if (
+			permissionEvent?.type === "permission:timeout" ||
+			permissionEvent?.type === "permission:settled"
+		) {
 			pendingPermissions.delete(permissionEvent.requestId);
 		}
 		applySessionEvent(session, envelope.event);
@@ -1419,6 +1366,7 @@ export function createDevelopmentOnethingServerRuntime(
 		content: string,
 	): { success: boolean; error?: string } => {
 		activeControllers.get(session.id)?.abort();
+		clearSessionPermissions(session.id);
 		const controller = new AbortController();
 		activeControllers.set(session.id, controller);
 		void engine
@@ -1678,19 +1626,6 @@ export function createDevelopmentOnethingServerRuntime(
 		return store;
 	};
 
-	const memoryDreamingRunKey = (
-		context = defaultRequestContext(),
-		agentId = DEFAULT_ONETHING_AGENT_ID,
-	): string => `${ownerKey(context)}:${agentId || DEFAULT_ONETHING_AGENT_ID}`;
-
-	const getMemoryDreamingStoredStatus = (store: CorePluginStore) => ({
-		lastDreamingAt: store.get<number>("lastDreamingAt"),
-		lastDreamingError: store.get<string>("lastDreamingError"),
-		lastDreamingApplied: store.get<number>("lastDreamingApplied"),
-		lastDreamingStatus: store.get<string>("lastDreamingStatus"),
-		lastDreamingSourceFiles: store.get<string[]>("lastDreamingSourceFiles"),
-		lastDreamingNextRunAt: store.get<number>("lastDreamingNextRunAt"),
-	});
 
 	const applyMemoryStatusMutationForContext = (
 		context: RuntimeRequestContext,
@@ -1700,95 +1635,6 @@ export function createDevelopmentOnethingServerRuntime(
 			store: getMemoryPluginStoreForContext(context),
 			plan,
 		});
-	};
-
-	const resolveMemoryDreamingProviderForContext = async (
-		context = defaultRequestContext(),
-	): Promise<ServerMemoryDreamingProvider> => {
-		const settings = await getOwnerSettings(
-			settingsByOwner,
-			settingsStore,
-			context,
-		);
-		const configuredProviderId = settings.ai?.provider || "local";
-		const providerConfigs = settings.ai?.providers as unknown as
-			| Record<string, Record<string, unknown>>
-			| undefined;
-		const configuredConfig = providerConfigs?.[configuredProviderId] ?? {};
-		const configuredProviderInfo =
-			configuredProviderId === "local"
-				? localProviderInfo
-				: onethingBaseBuiltinProviders.find(
-						(candidate) => candidate.id === configuredProviderId,
-					)?.info;
-		const configuredProviderEnabled = configuredConfig.enabled !== false;
-		const configuredApiKey =
-			typeof configuredConfig.apiKey === "string" &&
-			configuredConfig.apiKey.trim()
-				? configuredConfig.apiKey.trim()
-				: undefined;
-		const configuredEnvKey = Boolean(
-			getOnethingProviderEnvStatus(configuredProviderId).detectedEnvVar,
-		);
-		const configuredRequiresApiKey =
-			configuredProviderInfo?.requiresApiKey !== false &&
-			configuredProviderId !== "local";
-		const configuredProviderReady =
-			configuredProviderId === "local" ||
-			(configuredProviderEnabled &&
-				(!configuredRequiresApiKey ||
-					Boolean(configuredApiKey) ||
-					configuredEnvKey));
-		const providerId = configuredProviderReady ? configuredProviderId : "local";
-		const rawConfig = providerConfigs?.[providerId] ?? {};
-		const configuredModel =
-			typeof rawConfig.model === "string" && rawConfig.model.trim()
-				? rawConfig.model.trim()
-				: undefined;
-		const fallbackModel = getFallbackModelsForProvider(providerId)[0]?.id;
-		const model =
-			configuredModel ||
-			fallbackModel ||
-			(providerId === "local" ? localEchoModel.id : "default");
-		return {
-			providerId,
-			model,
-			modelRef: `${providerId}/${model}`,
-			source: providerId === "local" ? "server-local" : "settings",
-			config: {
-				...rawConfig,
-				model,
-			},
-		};
-	};
-
-	const generateMemoryDreamingTextForContext = async (
-		input: {
-			provider: ServerMemoryDreamingProvider;
-			system: string;
-			prompt: string;
-			temperature: number;
-			maxTokens: number;
-		},
-		context = defaultRequestContext(),
-	): Promise<string> => {
-		if (options.memoryDreamingGenerateText) {
-			return options.memoryDreamingGenerateText({
-				...input,
-				context,
-			});
-		}
-		if (input.provider.providerId === "local") {
-			return JSON.stringify({
-				action: "dream",
-				confidence: 0,
-				memories: [],
-				memory: "NONE",
-			});
-		}
-		throw new Error(
-			`Memory Dreaming provider "${input.provider.providerId}" is not available in the web server runtime.`,
-		);
 	};
 
 	const ensureMemoryWorkspaceForContext = async (
@@ -1839,7 +1685,6 @@ export function createDevelopmentOnethingServerRuntime(
 				})();
 
 		await mkdir(workspace.memoryDir, { recursive: true });
-		await mkdir(dirname(workspace.dbPath), { recursive: true });
 		if (!existsSync(workspace.soulPath)) {
 			await writeFile(workspace.soulPath, "# SOUL.md\n\n", "utf-8");
 		}
@@ -1854,18 +1699,8 @@ export function createDevelopmentOnethingServerRuntime(
 		agentId = DEFAULT_ONETHING_AGENT_ID,
 	): Promise<unknown> => {
 		const workspace = await ensureMemoryWorkspaceForContext(context, agentId);
-		const database = getDb(workspace);
-		const counts = readMemoryIndexCounts(database);
-		const graph = workspace.settings.canonicalMemory.enabled
-			? getGraphOverview(workspace)
-			: { entities: 0, observations: 0, relations: 0, pendingDuplicates: 0 };
 		const files = await listManagedMemoryFiles(workspace);
 		const pluginStore = getMemoryPluginStoreForContext(context);
-		const storedStatus = getMemoryDreamingStoredStatus(pluginStore);
-		const nextDreamingRun = getSoulMemoryDreamingNextRunStatus(
-			workspace.settings.dreaming,
-			nextCronRunAt,
-		);
 		return {
 			enabled: workspace.settings.enabled,
 			agentId: workspace.agentId,
@@ -1876,29 +1711,11 @@ export function createDevelopmentOnethingServerRuntime(
 			memoryPath: workspace.memoryPath,
 			dreamsPath: workspace.dreamsPath,
 			todayPath: workspace.todayPath,
-			dbPath: workspace.dbPath,
 			settings: workspace.settings,
 			status: {
-				...CORE_SOUL_MEMORY_DEFAULT_INDEX_STATUS,
-				...counts,
-				...storedStatus,
-				ftsTokenizer: getFtsTokenizer(),
-			},
-			dreaming: {
-				...buildSoulMemoryDreamingStatus({
-					settings: workspace.settings.dreaming,
-					model: workspace.settings.dreaming.model,
-					sources: workspace.settings.dreaming.sources,
-					next: nextDreamingRun,
-					store: pluginStore,
-					runtimeStatus: storedStatus,
-					inFlight: memoryDreamingRunsByOwner.has(
-						memoryDreamingRunKey(context, workspace.agentId),
-					),
-				}),
-				maxSessions: workspace.settings.dreaming.maxSessions,
-				maxMessagesPerSession:
-					workspace.settings.dreaming.maxMessagesPerSession,
+				lastCaptureAt: pluginStore.get("lastCaptureAt"),
+				lastCaptureError: pluginStore.get("lastCaptureError"),
+				lastCaptureStatus: pluginStore.get("lastCaptureStatus"),
 			},
 			pendingCaptures: getSoulMemoryPublicPendingCaptures(pluginStore, {
 				key: CAPTURE_PENDING_STORE_KEY,
@@ -1906,95 +1723,9 @@ export function createDevelopmentOnethingServerRuntime(
 				agentId: workspace.agentId,
 				defaultAgentId: DEFAULT_ONETHING_AGENT_ID,
 			}),
-			canonicalCount: getCanonicalMemoryCount(workspace),
-			graph,
 			files,
 		};
 	};
-
-	const rebuildMemoryIndexForWorkspace = async (
-		workspace: MemoryWorkspace,
-		context = defaultRequestContext(),
-	) => {
-		const logger = getMemoryDiagnosticsLoggerForContext(context);
-		const startedAt = Date.now();
-		const database = getDb(workspace);
-		const files = await listMemoryIndexFiles(workspace);
-		clearMemoryIndex(database);
-
-		let lastError: string | undefined;
-		let embeddingProvider: string | undefined;
-		let embeddingModel: string | undefined;
-		let indexedFiles = 0;
-		let indexedChunks = 0;
-		let embeddedChunks = 0;
-
-		logger.log({
-			subsystem: "index",
-			operation: "rebuild-index",
-			stage: "start",
-			status: "started",
-			request: {
-				agentId: workspace.agentId,
-				files: files.length,
-			},
-		});
-
-		for (const file of files) {
-			const result = await indexMemoryFile({
-				workspace,
-				database,
-				file,
-				setLastError: (message) => {
-					lastError = message;
-				},
-				logDiagnostic: (event) => logger.log(event),
-			});
-			if (result.indexed) {
-				indexedFiles += 1;
-				indexedChunks += result.chunkCount;
-				embeddedChunks += result.embeddedChunks;
-				embeddingProvider = result.embeddingProvider ?? embeddingProvider;
-				embeddingModel = result.embeddingModel ?? embeddingModel;
-			}
-		}
-
-		const counts = readMemoryIndexCounts(database);
-		const status = {
-			...CORE_SOUL_MEMORY_DEFAULT_INDEX_STATUS,
-			...counts,
-			ftsTokenizer: getFtsTokenizer(),
-			...(embeddingProvider ? { embeddingProvider } : {}),
-			...(embeddingModel ? { embeddingModel } : {}),
-			lastIndexedAt: Date.now(),
-			...(lastError ? { lastError } : {}),
-		};
-		logger.log({
-			subsystem: "index",
-			operation: "rebuild-index",
-			stage: "finish",
-			status: "ok",
-			durationMs: Date.now() - startedAt,
-			response: {
-				files: files.length,
-				indexedFiles,
-				indexedChunks,
-				embeddedChunks,
-				totalIndexedFiles: status.indexedFiles,
-				totalIndexedChunks: status.indexedChunks,
-			},
-		});
-		return status;
-	};
-
-	const rebuildMemoryIndexForContext = async (
-		context = defaultRequestContext(),
-		agentId = DEFAULT_ONETHING_AGENT_ID,
-	) =>
-		rebuildMemoryIndexForWorkspace(
-			await ensureMemoryWorkspaceForContext(context, agentId),
-			context,
-		);
 
 	const createMemoryHandlersForContext = (context = defaultRequestContext()) =>
 		createOnethingMemoryIpcHandlers({
@@ -2026,67 +1757,6 @@ export function createDevelopmentOnethingServerRuntime(
 					full: typedRequest.full,
 				});
 			},
-			searchPanel: async (request) => {
-				const typedRequest = request as MemorySearchRequest;
-				const query = typedRequest.query?.trim();
-				if (!query) return [];
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				if (!workspace.settings.enabled || !workspace.settings.search.enabled)
-					return [];
-				const logger = getMemoryDiagnosticsLoggerForContext(context);
-				const startedAt = Date.now();
-				await rebuildMemoryIndexForWorkspace(workspace, context);
-				const database = getDb(workspace);
-				const limit = normalizeSoulMemorySearchLimit(
-					typedRequest.limit,
-					workspace.settings.search.maxResults,
-				);
-				logger.log({
-					subsystem: "search",
-					operation: "memory-search",
-					stage: "start",
-					status: "started",
-					request: {
-						queryPreview: query.slice(0, 160),
-						limit,
-						embeddingsEnabled: false,
-					},
-				});
-				const graphHits = await searchGraphMemory({
-					workspace,
-					database,
-					query,
-					limit,
-					logDiagnostic: (event) => logger.log(event),
-				});
-				const markdownHits = await searchMarkdownMemoryChunks({
-					workspace,
-					database,
-					query,
-					limit,
-					logDiagnostic: (event) => logger.log(event),
-					startedAt,
-				});
-				const result = buildSoulMemorySearchResult({
-					graphHits,
-					markdownHits,
-					limit,
-					mmrEnabled: workspace.settings.search.mmrEnabled,
-					embeddingsEnabled: false,
-				});
-				logger.log({
-					subsystem: "search",
-					operation: "memory-search",
-					stage: "finish",
-					status: "ok",
-					durationMs: Date.now() - startedAt,
-					response: { ...result.summary },
-				});
-				return result.selected;
-			},
 			appendPanel: async (request) => {
 				const typedRequest = request as MemoryAppendRequest & {
 					filePath?: string;
@@ -2103,9 +1773,6 @@ export function createDevelopmentOnethingServerRuntime(
 					heading: typedRequest.heading,
 					logDiagnostic: (event) =>
 						getMemoryDiagnosticsLoggerForContext(context).log(event),
-					onIndexableWrite: async () => {
-						await rebuildMemoryIndexForWorkspace(workspace, context);
-					},
 				});
 			},
 			saveManagedFile: async (request) => {
@@ -2118,342 +1785,10 @@ export function createDevelopmentOnethingServerRuntime(
 					workspace,
 					path: typedRequest.path,
 					content: typedRequest.content,
-					onIndexableWrite: async () => {
-						await rebuildMemoryIndexForWorkspace(workspace, context);
-					},
 				});
-			},
-			rebuildIndex: async (agentId) => {
-				return rebuildMemoryIndexForContext(
-					context,
-					agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-			},
-			runDreamingNow: async (agentId) => {
-				const resolvedAgentId = agentId || DEFAULT_ONETHING_AGENT_ID;
-				const key = memoryDreamingRunKey(context, resolvedAgentId);
-				const inFlight = memoryDreamingRunsByOwner.get(key);
-				if (inFlight) return inFlight;
-
-				const run = (async () => {
-					const workspace = await ensureMemoryWorkspaceForContext(
-						context,
-						resolvedAgentId,
-					);
-					return runMemoryDreamingSweep<ServerMemoryDreamingProvider>({
-						workspace,
-						reason: "manual",
-						force: true,
-						getNextRunAt: (dreaming, from) =>
-							getSoulMemoryDreamingNextRunStatus(dreaming, nextCronRunAt, from),
-						resolveProvider: async () => {
-							const provider =
-								await resolveMemoryDreamingProviderForContext(context);
-							return {
-								provider,
-								modelRef: provider.modelRef,
-								source: provider.source,
-							};
-						},
-						generateDreaming: (input) =>
-							generateMemoryDreamingTextForContext(input, context),
-						applyStatusMutation: (plan) =>
-							applyMemoryStatusMutationForContext(context, plan),
-						logDiagnostic: (event) =>
-							getMemoryDiagnosticsLoggerForContext(context).log(event),
-						onIndexableWrite: (target) => {
-							getMemoryDiagnosticsLoggerForContext(context).log({
-								subsystem: "index",
-								operation: "dreaming-memory-actions",
-								stage: "dirty",
-								status: "ok",
-								response: { relativePath: target.relativePath },
-							});
-						},
-					});
-				})();
-
-				memoryDreamingRunsByOwner.set(key, run);
-				try {
-					return await run;
-				} finally {
-					memoryDreamingRunsByOwner.delete(key);
-				}
 			},
 
-			listProfile: async (request) => {
-				const typedRequest = (request || {}) as MemoryProfileListRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				const memories = listCanonicalMemories({
-					workspace,
-					query: typedRequest.query,
-					includeDeleted: typedRequest.includeDeleted,
-					limit: typedRequest.limit,
-				});
-				return typedRequest.limit
-					? memories.slice(0, typedRequest.limit)
-					: memories;
-			},
-			searchProfile: async (request) => {
-				const typedRequest = (request || {}) as MemoryProfileListRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				const memories = listCanonicalMemories({
-					workspace,
-					query: typedRequest.query,
-					includeDeleted: typedRequest.includeDeleted,
-					limit: typedRequest.limit,
-				});
-				return typedRequest.limit
-					? memories.slice(0, typedRequest.limit)
-					: memories;
-			},
-			upsertProfile: async (request) => {
-				const typedRequest = request as MemoryProfileUpsertRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				const existing = typedRequest.id
-					? getCanonicalMemoryByIdOrKey(workspace, typedRequest.id, true)
-					: null;
-				const plan = planSoulMemoryProfileUpsert(typedRequest, existing);
-				const result = await upsertCanonicalMemory(workspace, plan.input, {
-					action: plan.action,
-				});
-				return result.memory;
-			},
-			deleteProfile: async (request) => {
-				const typedRequest = request as MemoryProfileDeleteRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				deleteCanonicalMemory(workspace, typedRequest.id);
-			},
-			getProfileAudit: async (request) => {
-				const typedRequest = request as MemoryProfileAuditRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return getCanonicalMemoryAudit(workspace, typedRequest.id);
-			},
-			exportProfile: async (agentId) => {
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				const memories = listCanonicalMemories({ workspace, limit: 500 });
-				return formatSoulMemoryCanonicalProfileExport({ memories });
-			},
 
-			getGraphOverview: async (agentId) => {
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return workspace.settings.canonicalMemory.enabled
-					? getGraphOverview(workspace)
-					: {
-							entities: 0,
-							observations: 0,
-							relations: 0,
-							pendingDuplicates: 0,
-						};
-			},
-			listGraphEntities: async (request) => {
-				const typedRequest = (request || {}) as MemoryGraphListRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return listGraphEntities({
-					workspace,
-					query: typedRequest.query,
-					includeDeleted: typedRequest.includeDeleted,
-					limit: typedRequest.limit,
-				});
-			},
-			upsertGraphEntity: async (request) => {
-				const typedRequest = request as MemoryGraphEntityUpsertRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return upsertGraphEntity(
-					workspace,
-					{
-						id: typedRequest.id,
-						entityType: typedRequest.entityType,
-						name: typedRequest.name,
-						displayName: typedRequest.displayName,
-						aliases: typedRequest.aliases,
-						confidence: typedRequest.confidence ?? 1,
-						sensitivity: typedRequest.sensitivity || "normal",
-						source: "web-panel",
-						evidence: typedRequest.evidence || "Edited in Memory Graph panel.",
-					},
-					{ action: typedRequest.id ? "update" : "create" },
-				).entity;
-			},
-			deleteGraphEntity: async (request) => {
-				const typedRequest = request as MemoryGraphDeleteRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				deleteGraphEntity(workspace, typedRequest.id);
-			},
-			listGraphObservations: async (request) => {
-				const typedRequest = (request || {}) as MemoryGraphListRequest & {
-					entityId?: string;
-				};
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return listGraphObservations({
-					workspace,
-					query: typedRequest.query,
-					includeDeleted: typedRequest.includeDeleted,
-					limit: typedRequest.limit,
-					entityId: typedRequest.entityId,
-				});
-			},
-			upsertGraphObservation: async (request) => {
-				const typedRequest = request as MemoryGraphObservationUpsertRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				if (!getGraphEntityById(workspace, typedRequest.entityId, true)) {
-					throw new Error(`Graph entity not found: ${typedRequest.entityId}`);
-				}
-				const result = await upsertGraphObservation(
-					workspace,
-					{
-						id: typedRequest.id,
-						entityId: typedRequest.entityId,
-						kind: typedRequest.kind,
-						slot: typedRequest.slot,
-						value: typedRequest.value,
-						text: typedRequest.text || typedRequest.value,
-						confidence: typedRequest.confidence ?? 1,
-						sensitivity: typedRequest.sensitivity || "normal",
-						status: typedRequest.status || "active",
-						source: "web-panel",
-						evidence: typedRequest.evidence || "Edited in Memory Graph panel.",
-					},
-					{ action: typedRequest.id ? "update" : "create" },
-				);
-				return result.observation;
-			},
-			deleteGraphObservation: async (request) => {
-				const typedRequest = request as MemoryGraphDeleteRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				deleteGraphObservation(workspace, typedRequest.id);
-			},
-			listGraphRelations: async (request) => {
-				const typedRequest = (request || {}) as MemoryGraphListRequest & {
-					entityId?: string;
-				};
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return listGraphRelations({
-					workspace,
-					query: typedRequest.query,
-					includeDeleted: typedRequest.includeDeleted,
-					limit: typedRequest.limit,
-					entityId: typedRequest.entityId,
-				});
-			},
-			upsertGraphRelation: async (request) => {
-				const typedRequest = request as MemoryGraphRelationUpsertRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				if (!getGraphEntityById(workspace, typedRequest.fromEntityId, true)) {
-					throw new Error(
-						`Graph entity not found: ${typedRequest.fromEntityId}`,
-					);
-				}
-				if (!getGraphEntityById(workspace, typedRequest.toEntityId, true)) {
-					throw new Error(`Graph entity not found: ${typedRequest.toEntityId}`);
-				}
-				const result = await upsertGraphRelation(
-					workspace,
-					{
-						id: typedRequest.id,
-						fromEntityId: typedRequest.fromEntityId,
-						relationType: typedRequest.relationType,
-						toEntityId: typedRequest.toEntityId,
-						text: typedRequest.text,
-						confidence: typedRequest.confidence ?? 1,
-						sensitivity: typedRequest.sensitivity || "normal",
-						status: typedRequest.status || "active",
-						source: "web-panel",
-						evidence: typedRequest.evidence || "Edited in Memory Graph panel.",
-					},
-					{ action: typedRequest.id ? "update" : "create" },
-				);
-				return result.relation;
-			},
-			deleteGraphRelation: async (request) => {
-				const typedRequest = request as MemoryGraphDeleteRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				deleteGraphRelation(workspace, typedRequest.id);
-			},
-			listGraphDuplicates: async (request) => {
-				const typedRequest = (request || {}) as MemoryGraphListRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return listGraphDuplicates({
-					workspace,
-					query: typedRequest.query,
-					limit: typedRequest.limit,
-				});
-			},
-			mergeGraphDuplicate: async (request) => {
-				const typedRequest = request as MemoryGraphDuplicateDecisionRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				mergeGraphDuplicate(workspace, typedRequest.id);
-			},
-			ignoreGraphDuplicate: async (request) => {
-				const typedRequest = request as MemoryGraphDuplicateDecisionRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				ignoreGraphDuplicate(workspace, typedRequest.id);
-			},
-			getGraphAudit: async (request) => {
-				const typedRequest = request as MemoryGraphAuditRequest;
-				const workspace = await ensureMemoryWorkspaceForContext(
-					context,
-					typedRequest.agentId || DEFAULT_ONETHING_AGENT_ID,
-				);
-				return getGraphAudit(workspace, typedRequest.id);
-			},
 
 			savePendingCapture: async (id) => {
 				const pluginStore = getMemoryPluginStoreForContext(context);
@@ -2468,23 +1803,6 @@ export function createDevelopmentOnethingServerRuntime(
 							context,
 							agentId,
 						);
-						if (capture.target === "memory") {
-							return mergeGraphMemory({
-								workspace,
-								agentId,
-								candidates: capture.content.split(/\r?\n/).map((line) => ({
-									kind: "fact",
-									text: line,
-									confidence: capture.confidence,
-									source: "user",
-									explicit: capture.explicit,
-								})),
-								source: "pending-capture",
-								evidence: capture.userPreview,
-								sessionId: capture.sessionId,
-							});
-						}
-
 						return appendMemoryNote({
 							workspace,
 							content: capture.content,
@@ -2492,15 +1810,6 @@ export function createDevelopmentOnethingServerRuntime(
 							heading: capture.heading,
 							logDiagnostic: (event) =>
 								getMemoryDiagnosticsLoggerForContext(context).log(event),
-							onIndexableWrite: (target) => {
-								getMemoryDiagnosticsLoggerForContext(context).log({
-									subsystem: "index",
-									operation: "pending-capture-write",
-									stage: "dirty",
-									status: "ok",
-									response: { relativePath: target.relativePath },
-								});
-							},
 						});
 					},
 				});
@@ -2685,72 +1994,6 @@ export function createDevelopmentOnethingServerRuntime(
 				logger: console,
 			});
 
-		const getMemoryDreamingTaskSettings = () => {
-			const settings = normalizeSoulMemorySettings(
-				settingsByOwner.get(ownerKey(context))?.general?.soulMemory,
-			);
-			return {
-				enabled: settings.enabled === true,
-				dreaming: {
-					...DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS,
-					...settings.dreaming,
-					enabled:
-						settings.dreaming?.enabled ??
-						DEFAULT_SOUL_MEMORY_DREAMING_SETTINGS.enabled,
-				},
-			};
-		};
-
-		const registerMemoryDreamingTask = (): void => {
-			schedulerRuntime!.taskHandles
-				.get(SCOPED_DREAMING_SCHEDULER_TASK_ID)
-				?.unregister();
-			const handle = scheduler.register({
-				id: SCOPED_DREAMING_SCHEDULER_TASK_ID,
-				name: "Memory Dreaming Promotion",
-				pluginId: SOUL_MEMORY_PLUGIN_ID,
-				kind: "plugin",
-				source: "plugin",
-				readonly: true,
-				tags: ["soul-memory", "memory", "dreaming"],
-				enabled: () => {
-					const settings = getMemoryDreamingTaskSettings();
-					return settings.enabled && settings.dreaming.enabled;
-				},
-				schedule: () => {
-					const settings = getMemoryDreamingTaskSettings();
-					if (!settings.enabled || !settings.dreaming.enabled) return null;
-					return {
-						kind: "cron",
-						expr: settings.dreaming.frequency,
-						...(settings.dreaming.timezone
-							? { timezone: settings.dreaming.timezone }
-							: {}),
-					};
-				},
-				timeoutMs: () => {
-					const settings = getMemoryDreamingTaskSettings();
-					return settings.dreaming.timeoutMs + 5000;
-				},
-				run: async () => {
-					const response = await createMemoryHandlersForContext(
-						context,
-					).runDreaming({
-						agentId: DEFAULT_ONETHING_AGENT_ID,
-					});
-					return response && typeof response === "object"
-						? (response as Record<string, unknown>)
-						: { result: response };
-				},
-			});
-			schedulerRuntime!.taskHandles.set(
-				SCOPED_DREAMING_SCHEDULER_TASK_ID,
-				handle,
-			);
-		};
-
-		registerMemoryDreamingTask();
-
 		for (const task of userTasks.list()) {
 			registerUserTask(task);
 		}
@@ -2808,8 +2051,8 @@ export function createDevelopmentOnethingServerRuntime(
 			resolveServerWorkspaceFilePath(workspaceRoot, context, input) ??
 			invalidPath();
 
-		registry.register(
-			new CoreProvider({
+		registerStandardVariableProviders(registry, {
+			workdir: {
 				read: (sessionId) => {
 					const session = getSessionForContext(sessionId, context);
 					return session
@@ -2855,25 +2098,19 @@ export function createDevelopmentOnethingServerRuntime(
 					persistSession(session);
 				},
 				expandPath: expandWorkspaceVariablePath,
-			}),
-		);
-		registry.register(
-			new NotesProvider({
+			},
+			notes: {
 				read: (which) => readServerNoteVariable(store, which),
 				write: (which, value) => writeServerNoteVariable(store, which, value),
 				expandPath: expandWorkspaceVariablePath,
 				onChange: (callback) => store.subscribe(callback),
-			}),
-		);
-		registry.register(
-			new GlobalStoreProvider({
+			},
+			globalStore: {
 				read: () => store.getGlobalVariables(),
 				write: (variables) => store.setGlobalVariables(variables),
 				onChange: (callback) => store.subscribe(callback),
-			}),
-		);
-		registry.register(
-			new SessionStoreProvider({
+			},
+			sessionStore: {
 				read: (sessionId) => {
 					const session = getSessionForContext(sessionId, context);
 					return session ? (session.variables ?? []) : [];
@@ -2884,8 +2121,8 @@ export function createDevelopmentOnethingServerRuntime(
 					session.variables = variables;
 					persistSession(session);
 				},
-			}),
-		);
+			},
+		});
 
 		const unsubscribe = registry.subscribe((variableContext, snapshot) => {
 			if (!variableContext.sessionId) return;
@@ -3182,11 +2419,11 @@ export function createDevelopmentOnethingServerRuntime(
 		| { success: true; snapshot: SystemPromptSnapshot }
 		| { success: false; error: string }
 	> => {
+		// Draft ids are ordinary session ids the server has never seen (the
+		// renderer materializes them lazily), so an unknown id is treated as a
+		// draft and gets the default-settings snapshot — this is a read-only
+		// preview, strictness buys nothing here.
 		const session = getSessionForContext(sessionId, context);
-		const isDraftSession = sessionId.startsWith("draft:");
-		if (!session && !isDraftSession) {
-			return { success: false, error: "Session not found" };
-		}
 
 		const settings = await getOwnerSettings(
 			settingsByOwner,
@@ -3359,8 +2596,30 @@ export function createDevelopmentOnethingServerRuntime(
 					sessions: listSessionsForContext(context),
 				};
 			},
-			async create(name: string, context = defaultRequestContext()) {
-				const session = ensureSession(context, createSessionId());
+			async create(
+				name: string,
+				context = defaultRequestContext(),
+				requestedSessionId?: string,
+			) {
+				// Client-supplied ids keep the renderer's draft identity stable
+				// (the draft id becomes the session id). Only plain v4 UUIDs are
+				// accepted — the id is a storage path segment — and an id that
+				// already exists is refused rather than silently adopted.
+				if (requestedSessionId !== undefined) {
+					if (!SESSION_ID_V4_RE.test(requestedSessionId)) {
+						return { success: false as const, error: "Invalid session id" };
+					}
+					if (getSessionForContext(requestedSessionId, context)) {
+						return {
+							success: false as const,
+							error: "Session id already exists",
+						};
+					}
+				}
+				const session = ensureSession(
+					context,
+					requestedSessionId ?? createSessionId(),
+				);
 				session.name = name || "New Chat";
 				session.updatedAt = Date.now();
 				persistSession(session);
@@ -3390,12 +2649,12 @@ export function createDevelopmentOnethingServerRuntime(
 					? deleteResult.deletedIds
 					: [sessionId]) {
 					sessions.delete(deletedId);
-					clearPendingPermissionsForSession(pendingPermissions, deletedId);
+					clearSessionPermissions(deletedId);
 					engine.contextManager.clearSession(deletedId);
 					eventBus.destroySession(deletedId);
 					streamChannel.destroySession(deletedId);
 				}
-				clearPendingPermissionsForSession(pendingPermissions, sessionId);
+				clearSessionPermissions(sessionId);
 				if (getServerCurrentSessionId(context) === sessionId) {
 					setServerCurrentSessionId(
 						context,
@@ -3656,6 +2915,7 @@ export function createDevelopmentOnethingServerRuntime(
 				if (command.type === "command:abort") {
 					activeControllers.get(sessionId)?.abort();
 					activeControllers.delete(sessionId);
+					clearSessionPermissions(sessionId);
 					return { success: true };
 				}
 
@@ -3739,12 +2999,17 @@ export function createDevelopmentOnethingServerRuntime(
 					if (!session) return { success: false, error: "Session not found" };
 					activeControllers.get(sessionId)?.abort();
 					activeControllers.delete(sessionId);
+					clearSessionPermissions(sessionId);
 					return { success: true };
 				}
+				const abortedSessionIds = Array.from(activeControllers.keys());
 				for (const controller of activeControllers.values()) {
 					controller.abort();
 				}
 				activeControllers.clear();
+				for (const abortedSessionId of abortedSessionIds) {
+					clearSessionPermissions(abortedSessionId);
+				}
 				return { success: true };
 			},
 			async active(context = defaultRequestContext()) {
@@ -3779,10 +3044,7 @@ export function createDevelopmentOnethingServerRuntime(
 				return clearOnethingPermissionSessionForIpc({
 					sessionId,
 					clearSession: (targetSessionId) =>
-						clearPendingPermissionsForSession(
-							pendingPermissions,
-							targetSessionId,
-						),
+						clearSessionPermissions(targetSessionId),
 					logger: console,
 				});
 			},
@@ -4391,64 +3653,10 @@ export function createDevelopmentOnethingServerRuntime(
 				),
 			read: (request, context = defaultRequestContext()) =>
 				createMemoryHandlersForContext(context).read(request),
-			search: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).search(request),
 			append: (request, context = defaultRequestContext()) =>
 				createMemoryHandlersForContext(context).append(request),
 			saveFile: (request, context = defaultRequestContext()) =>
 				createMemoryHandlersForContext(context).saveFile(request),
-			rebuildIndex: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).index(
-					request as { agentId?: string } | undefined,
-				),
-			profileList: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).profileList(request),
-			profileSearch: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).profileSearch(request),
-			profileUpsert: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).profileUpsert(request),
-			profileDelete: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).profileDelete(request),
-			profileAudit: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).profileAudit(request),
-			profileExport: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).profileExport(
-					request as { agentId?: string } | undefined,
-				),
-			graphOverview: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphOverview(
-					request as { agentId?: string } | undefined,
-				),
-			graphEntitiesList: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphEntitiesList(request),
-			graphEntitiesUpsert: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphEntitiesUpsert(request),
-			graphEntitiesDelete: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphEntitiesDelete(request),
-			graphObservationsList: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphObservationsList(request),
-			graphObservationsUpsert: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphObservationsUpsert(
-					request,
-				),
-			graphObservationsDelete: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphObservationsDelete(
-					request,
-				),
-			graphRelationsList: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphRelationsList(request),
-			graphRelationsUpsert: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphRelationsUpsert(request),
-			graphRelationsDelete: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphRelationsDelete(request),
-			graphDuplicatesList: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphDuplicatesList(request),
-			graphDuplicatesMerge: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphDuplicatesMerge(request),
-			graphDuplicatesIgnore: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphDuplicatesIgnore(request),
-			graphAudit: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).graphAudit(request),
 			logsList: (request, context = defaultRequestContext()) =>
 				createMemoryHandlersForContext(context).logsList(
 					request as MemoryLogsListRequest | undefined,
@@ -4459,10 +3667,6 @@ export function createDevelopmentOnethingServerRuntime(
 				createMemoryHandlersForContext(context).logsOpenFolder(),
 			logsCleanup: (_request, context = defaultRequestContext()) =>
 				createMemoryHandlersForContext(context).logsCleanup(),
-			runDreaming: (request, context = defaultRequestContext()) =>
-				createMemoryHandlersForContext(context).runDreaming(
-					request as { agentId?: string } | undefined,
-				),
 			captureSave: (request, context = defaultRequestContext()) =>
 				createMemoryHandlersForContext(context).captureSave(
 					request as { id?: string } | undefined,
@@ -5839,6 +5043,14 @@ export function createDevelopmentOnethingServerRuntime(
 				});
 			},
 		},
+		usage: {
+			async getSummary(request: { granularity: "day" | "week" | "month"; count?: number }) {
+				return getOnethingUsageSummary(usageLedger, request);
+			},
+			async getSessionUsage(sessionId: string) {
+				return getOnethingSessionUsageTotal(usageLedger, sessionId);
+			},
+		},
 		tools: {
 			async getTools(): Promise<GetToolsResponse> {
 				return {
@@ -6144,7 +5356,6 @@ export function createDevelopmentOnethingServerRuntime(
 			agentStoresByOwner.clear();
 			promptStoresByOwner.clear();
 			memoryPluginStoresByOwner.clear();
-			memoryDreamingRunsByOwner.clear();
 			pluginCatalogManagersByOwner.clear();
 		},
 	});
@@ -7285,18 +6496,11 @@ function createServerChannelIdentityApi(
 	const localProfile = (now = Date.now()): ChannelUserProfile => ({
 		id: "local-owner",
 		name: "Local user",
-		memoryScopeId: "client:local-owner",
 		isMain: true,
 		source: "local",
 		createdAt: now,
 		updatedAt: now,
 	});
-	const channelMemoryScope = (input: {
-		connector: string;
-		workspaceId?: string;
-		externalUserId: string;
-	}) =>
-		`channel:${sanitizeServerIdentityPart(input.connector)}:${sanitizeServerIdentityPart(input.workspaceId || "default")}:${sanitizeServerIdentityPart(input.externalUserId)}`;
 	const channelProfileId = (input: {
 		connector: string;
 		workspaceId?: string;
@@ -7328,7 +6532,11 @@ function createServerChannelIdentityApi(
 		name: string;
 		isMain?: boolean;
 		source?: ChannelUserProfile["source"];
-		memoryScopeId?: string;
+		channel?: {
+			connector: string;
+			workspaceId?: string;
+			externalUserId: string;
+		};
 	}): ChannelUserProfile => {
 		const now = Date.now();
 		const data = readData();
@@ -7343,7 +6551,11 @@ function createServerChannelIdentityApi(
 		}
 		if (existing) {
 			existing.name = input.name.trim() || existing.name;
-			existing.memoryScopeId = input.memoryScopeId || existing.memoryScopeId;
+			if (input.channel) {
+				existing.connector = input.channel.connector;
+				existing.workspaceId = input.channel.workspaceId?.trim() || "default";
+				existing.externalUserId = input.channel.externalUserId;
+			}
 			existing.source = input.source || existing.source;
 			existing.isMain =
 				input.isMain === undefined ? existing.isMain : input.isMain;
@@ -7354,11 +6566,15 @@ function createServerChannelIdentityApi(
 		const profile: ChannelUserProfile = {
 			id,
 			name: input.name.trim() || id,
-			memoryScopeId:
-				input.memoryScopeId ||
-				(id === "local-owner" ? "client:local-owner" : `client:${id}`),
 			isMain: input.isMain === true,
 			source: input.source || "manual",
+			...(input.channel
+				? {
+						connector: input.channel.connector,
+						workspaceId: input.channel.workspaceId?.trim() || "default",
+						externalUserId: input.channel.externalUserId,
+					}
+				: {}),
 			createdAt: now,
 			updatedAt: now,
 		};
@@ -7380,10 +6596,6 @@ function createServerChannelIdentityApi(
 			id: clientUserId,
 			name: displayName || clientUserId,
 			source: clientUserId === "local-owner" ? "local" : "manual",
-			memoryScopeId:
-				clientUserId === "local-owner"
-					? "client:local-owner"
-					: `client:${clientUserId}`,
 			isMain: clientUserId === "local-owner",
 		});
 	const ensureChannelProfile = (input: {
@@ -7397,7 +6609,7 @@ function createServerChannelIdentityApi(
 			id: channelProfileId(input),
 			name: input.displayName || input.externalUserId,
 			source: "channel",
-			memoryScopeId: channelMemoryScope(input),
+			channel: input,
 		});
 	const touchProfile = (
 		id: string,
@@ -7448,7 +6660,6 @@ function createServerChannelIdentityApi(
 				...(origin.resolvedIdentity ?? { kind: "client-user" as const }),
 				kind: "client-user",
 				userId: profile.id,
-				memoryScopeId: profile.memoryScopeId,
 				profileId: profile.id,
 				displayName: profile.name,
 				linkedClientUserId: profile.id,
@@ -7473,7 +6684,6 @@ function createServerChannelIdentityApi(
 				...origin.resolvedIdentity,
 				userId: profile.id,
 				profileId: profile.id,
-				memoryScopeId: profile.memoryScopeId,
 				displayName: origin.resolvedIdentity.displayName || profile.name,
 				linkedClientUserId: profile.id,
 			};
@@ -7496,7 +6706,6 @@ function createServerChannelIdentityApi(
 			return {
 				kind: "client-user",
 				userId: profile.id,
-				memoryScopeId: profile.memoryScopeId,
 				profileId: profile.id,
 				displayName:
 					origin.actor?.displayName || origin.actor?.handle || profile.name,
@@ -7522,7 +6731,6 @@ function createServerChannelIdentityApi(
 			kind: "channel-user",
 			userId:
 				profile.id || `channel:${sanitizeServerIdentityPart(externalUserKey)}`,
-			memoryScopeId: profile.memoryScopeId,
 			profileId: profile.id,
 			displayName:
 				origin.actor?.displayName ||
@@ -9064,13 +8272,17 @@ function canRevokePermissionGrant(
 }
 
 function readPermissionTrackingEvent(event: unknown): {
-	type: "permission:request" | "permission:timeout";
+	type: "permission:request" | "permission:timeout" | "permission:settled";
 	requestId: string;
 } | null {
 	if (!event || typeof event !== "object") return null;
 	const candidate = event as Record<string, unknown>;
 	const type = candidate.type;
-	if (type !== "permission:request" && type !== "permission:timeout")
+	if (
+		type !== "permission:request" &&
+		type !== "permission:timeout" &&
+		type !== "permission:settled"
+	)
 		return null;
 	return typeof candidate.requestId === "string"
 		? { type, requestId: candidate.requestId }
@@ -9383,3 +8595,8 @@ function setCurrentSessionId(
 function createSessionId(): string {
 	return `web-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 }
+
+// Renderer-supplied session ids (draft ids that materialize in place) must be
+// plain v4 UUIDs — they end up in storage paths.
+const SESSION_ID_V4_RE =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

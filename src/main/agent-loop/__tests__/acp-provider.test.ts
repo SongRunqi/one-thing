@@ -100,6 +100,156 @@ describe('ACP agent provider', () => {
     ])
   })
 
+  it('maps tool_call notifications to structured externally-executed tool events', async () => {
+    acpMocks.streamPrompt.mockImplementation(() => acpEvents([
+      {
+        type: 'update',
+        notification: {
+          sessionId: 'acp-session',
+          update: {
+            sessionUpdate: 'tool_call',
+            toolCallId: 'tc-1',
+            title: 'Run ls',
+            kind: 'execute',
+            status: 'pending',
+            rawInput: { command: 'ls' },
+          },
+        },
+      } as unknown as ACPPromptStreamEvent,
+      {
+        type: 'update',
+        notification: {
+          sessionId: 'acp-session',
+          update: {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'tc-1',
+            content: [{ type: 'content', content: { type: 'text', text: 'file-a' } }],
+          },
+        },
+      } as unknown as ACPPromptStreamEvent,
+      {
+        type: 'update',
+        notification: {
+          sessionId: 'acp-session',
+          update: {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'tc-1',
+            status: 'completed',
+          },
+        },
+      } as unknown as ACPPromptStreamEvent,
+      // A second call that never reports completion: must settle on finish.
+      {
+        type: 'update',
+        notification: {
+          sessionId: 'acp-session',
+          update: {
+            sessionUpdate: 'tool_call',
+            toolCallId: 'tc-2',
+            title: 'Edit file',
+            kind: 'edit',
+            status: 'in_progress',
+          },
+        },
+      } as unknown as ACPPromptStreamEvent,
+      { type: 'finish', stopReason: 'end_turn' },
+    ]))
+
+    const provider = createACPAgentProvider({ workingDirectory: '/tmp/project' })
+    if (!provider.streamTurn) throw new Error('ACP provider did not expose streamTurn')
+
+    const events: AgentTurnStreamEvent[] = []
+    for await (const event of provider.streamTurn({
+      model: 'claude-code',
+      messages: [{ role: 'user', content: 'list files' }],
+      turn: 1,
+    })) {
+      events.push(event)
+    }
+
+    expect(events).toEqual([
+      { type: 'tool-call-start', turn: 1, toolCallId: 'tc-1', toolName: 'execute' },
+      {
+        type: 'tool-call-done',
+        turn: 1,
+        toolCall: { id: 'tc-1', name: 'execute', arguments: '{"command":"ls"}', externallyExecuted: true },
+      },
+      {
+        type: 'tool-metadata',
+        turn: 1,
+        toolCall: { id: 'tc-1', name: 'execute', arguments: '{"command":"ls"}', externallyExecuted: true },
+        update: { title: 'Run ls' },
+      },
+      {
+        type: 'tool-partial-result',
+        turn: 1,
+        toolCall: { id: 'tc-1', name: 'execute', arguments: '{"command":"ls"}', externallyExecuted: true },
+        update: { content: [{ type: 'text', text: 'file-a' }] },
+      },
+      {
+        type: 'tool-result',
+        turn: 1,
+        toolCall: { id: 'tc-1', name: 'execute', arguments: '{"command":"ls"}', externallyExecuted: true },
+        result: { content: 'file-a' },
+      },
+      { type: 'tool-call-start', turn: 1, toolCallId: 'tc-2', toolName: 'edit' },
+      {
+        type: 'tool-call-done',
+        turn: 1,
+        toolCall: { id: 'tc-2', name: 'edit', arguments: '{}', externallyExecuted: true },
+      },
+      {
+        type: 'tool-metadata',
+        turn: 1,
+        toolCall: { id: 'tc-2', name: 'edit', arguments: '{}', externallyExecuted: true },
+        update: { title: 'Edit file' },
+      },
+      // Unreported completion settles before finish so steps reach a terminal state.
+      {
+        type: 'tool-result',
+        turn: 1,
+        toolCall: { id: 'tc-2', name: 'edit', arguments: '{}', externallyExecuted: true },
+        result: { content: '' },
+      },
+      { type: 'finish', turn: 1, finishReason: 'stop', usage: undefined },
+    ])
+  })
+
+  it('settles unfinished tool calls as aborted when the ACP turn is cancelled', async () => {
+    acpMocks.streamPrompt.mockImplementation(() => acpEvents([
+      {
+        type: 'update',
+        notification: {
+          sessionId: 'acp-session',
+          update: {
+            sessionUpdate: 'tool_call',
+            toolCallId: 'tc-1',
+            title: 'Slow command',
+            kind: 'execute',
+            status: 'in_progress',
+          },
+        },
+      } as unknown as ACPPromptStreamEvent,
+      { type: 'finish', stopReason: 'cancelled' },
+    ]))
+
+    const provider = createACPAgentProvider({ workingDirectory: '/tmp/project' })
+    const events: AgentTurnStreamEvent[] = []
+    for await (const event of provider.streamTurn!({
+      model: 'claude-code',
+      messages: [{ role: 'user', content: 'run slow thing' }],
+      turn: 1,
+    })) {
+      events.push(event)
+    }
+
+    const result = events.find(event => event.type === 'tool-result')
+    expect(result).toMatchObject({
+      type: 'tool-result',
+      result: { aborted: true, error: 'Tool call cancelled' },
+    })
+  })
+
   it('uses a deterministic default local session id and rejects empty prompts', async () => {
     acpMocks.streamPrompt.mockImplementation((agentId: string, options: ACPPromptStreamOptions) =>
       acpEvents([{

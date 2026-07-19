@@ -1,6 +1,7 @@
 import type {
   ACPAgentConfig,
   ACPAgentState,
+  ACPPermissionBridge,
   ACPPromptStreamEvent,
   ACPPromptStreamOptions,
   ACPSettings,
@@ -11,6 +12,16 @@ class ACPManagerClass {
   private clients = new Map<string, ACPClient>()
   private settings: ACPSettings = { enabled: true, agents: [] }
   private cleanupTimer: NodeJS.Timeout | null = null
+  private permissionBridge: ACPPermissionBridge | undefined
+
+  /**
+   * Host registers its interactive permission surface here (Electron →
+   * Permission.ask). Applies to existing and future clients; unset it to
+   * fall back to config-driven auto resolution.
+   */
+  setPermissionBridge(bridge: ACPPermissionBridge | undefined): void {
+    this.permissionBridge = bridge
+  }
 
   initialize(settings: ACPSettings): void {
     this.settings = settings
@@ -137,7 +148,9 @@ class ACPManagerClass {
     const config = this.settings.agents.find(agent => agent.id === agentId)
     if (!config) throw new Error(`ACP agent "${agentId}" not found`)
 
-    const client = new ACPClient(config)
+    const client = new ACPClient(config, {
+      getPermissionBridge: () => this.permissionBridge,
+    })
     this.clients.set(agentId, client)
     return client
   }

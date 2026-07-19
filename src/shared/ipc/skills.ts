@@ -4,7 +4,7 @@
  */
 
 // Skill source location
-export type SkillSource = 'user' | 'project' | 'plugin' | 'builtin'
+export type SkillSource = 'user' | 'project' | 'plugin' | 'builtin' | 'custom'
 
 // Skill definition based on Hermes Agent / SKILL.md skills
 export interface SkillDefinition {
@@ -27,6 +27,7 @@ export interface SkillDefinition {
   rootPath?: string               // Skills root that contained this skill
   relativePath?: string           // Relative path from root to SKILL.md
   enabled: boolean                // Whether skill is enabled
+  agentId?: string | null         // Agent this skill is scoped to; null/undefined = all agents
 
   // Content
   instructions: string            // Main body of SKILL.md (after frontmatter)
@@ -59,6 +60,16 @@ export interface SkillFile {
   type: 'markdown' | 'script' | 'template' | 'other'
 }
 
+// A user-managed skills root scanned in addition to the app-owned roots
+export interface SkillDirectoryConfig {
+  id: string
+  path: string
+  label?: string
+  // Bind every skill loaded from this root to one agent; null/undefined = all agents
+  agentId?: string | null
+  enabled: boolean
+}
+
 // Skill settings
 export interface SkillSettings {
   enableSkills: boolean
@@ -68,8 +79,10 @@ export interface SkillSettings {
    * to disable automatic background skill review.
    */
   creationNudgeInterval?: number
-  // Per-skill enabled state (keyed by skill id)
-  skills: Record<string, { enabled: boolean }>
+  // Per-skill enabled state and optional agent binding override (keyed by skill id)
+  skills: Record<string, { enabled: boolean; agentId?: string | null }>
+  // Manually added skill directories
+  customDirectories?: SkillDirectoryConfig[]
 }
 
 // Skills IPC Request/Response types
@@ -119,5 +132,59 @@ export interface CreateSkillRequest {
 export interface CreateSkillResponse {
   success: boolean
   skill?: SkillDefinition
+  error?: string
+}
+
+// Custom skill directory management
+export interface ListSkillDirectoriesResponse {
+  success: boolean
+  directories?: SkillDirectoryConfig[]
+  error?: string
+}
+
+export interface AddSkillDirectoryRequest {
+  path: string
+  label?: string
+  agentId?: string | null
+}
+
+export interface AddSkillDirectoryResponse {
+  success: boolean
+  directory?: SkillDirectoryConfig
+  error?: string
+}
+
+export interface UpdateSkillDirectoryRequest {
+  id: string
+  enabled?: boolean
+  label?: string
+  // Pass null to clear the binding; omit to leave unchanged
+  agentId?: string | null
+}
+
+export interface UpdateSkillDirectoryResponse {
+  success: boolean
+  directory?: SkillDirectoryConfig
+  error?: string
+}
+
+export interface RemoveSkillDirectoryRequest {
+  id: string
+}
+
+export interface RemoveSkillDirectoryResponse {
+  success: boolean
+  error?: string
+}
+
+// Per-skill agent assignment override
+export interface SetSkillAgentRequest {
+  skillId: string
+  // null clears the binding (skill becomes available to all agents)
+  agentId: string | null
+}
+
+export interface SetSkillAgentResponse {
+  success: boolean
   error?: string
 }

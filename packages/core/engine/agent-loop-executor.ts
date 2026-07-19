@@ -772,6 +772,23 @@ export interface CoreAgentLoopUsage {
 	outputTokens: number;
 	totalTokens: number;
 	durationMs?: number;
+	cacheReadTokens?: number;
+	cacheWriteTokens?: number;
+	reasoningTokens?: number;
+}
+
+/**
+ * lastTurnUsage historically omits totalTokens (some callers only track
+ * input/output deltas per turn); keep it optional here rather than widening
+ * every existing narrow lastTurnUsage call site to require it.
+ */
+export interface CoreAgentLoopLastTurnUsage {
+	inputTokens: number;
+	outputTokens: number;
+	totalTokens?: number;
+	cacheReadTokens?: number;
+	cacheWriteTokens?: number;
+	reasoningTokens?: number;
 }
 
 export interface CoreAgentLoopFinishPlan {
@@ -787,7 +804,7 @@ export interface CoreAgentLoopFinishPlan {
 export interface CoreAgentLoopFinishState<TTurn> {
 	turnIndex: number;
 	accumulatedUsage?: CoreAgentLoopUsage;
-	lastTurnUsage?: { inputTokens: number; outputTokens: number };
+	lastTurnUsage?: CoreAgentLoopLastTurnUsage;
 	createNewAssistantOnNextTurnStart?: boolean;
 	turn: TTurn;
 }
@@ -898,7 +915,7 @@ export interface CompleteAgentLoopStreamWithAdaptersOptions<
 	assistantMessageId: string;
 	sessionName?: string;
 	accumulatedUsage?: CoreAgentLoopUsage;
-	lastTurnUsage?: { inputTokens: number; outputTokens: number };
+	lastTurnUsage?: CoreAgentLoopLastTurnUsage;
 	finalize: () => CoreMaybePromise<void>;
 	getSession: (sessionId: string) => TSession | undefined;
 	emitMessageUpdated: (event: {
@@ -909,7 +926,7 @@ export interface CompleteAgentLoopStreamWithAdaptersOptions<
 	sendStreamComplete: (data: {
 		sessionName?: string;
 		usage?: CoreAgentLoopUsage;
-		lastTurnUsage?: { inputTokens: number; outputTokens: number };
+		lastTurnUsage?: CoreAgentLoopLastTurnUsage;
 	}) => CoreMaybePromise<void>;
 }
 
@@ -1197,10 +1214,18 @@ export function planAgentLoopTurnContentPersistence<
 	turnIndex: number,
 ): CoreAgentLoopTurnContentPersistencePlan<TPart> {
 	const hasToolCalls = turn.toolCalls.length > 0;
+	// The live dispatch may have recorded the steps anchor inline (external
+	// agents interleave text → tools → text within one turn); persisting a
+	// second anchor at the end would yank the step cards below the trailing
+	// text once the stream settles.
+	const hasInlineStepsAnchor = turn.orderedParts.some(
+		(part) => part.type === "data-steps",
+	);
 	return {
-		persistParts: hasToolCalls
-			? [...turn.orderedParts, { type: "data-steps", turnIndex }]
-			: [...turn.orderedParts],
+		persistParts:
+			hasToolCalls && !hasInlineStepsAnchor
+				? [...turn.orderedParts, { type: "data-steps", turnIndex }]
+				: [...turn.orderedParts],
 		immediateParts: hasToolCalls
 			? []
 			: turn.orderedParts.filter((part) => part.type !== "provider-data"),
@@ -1224,6 +1249,13 @@ export function dispatchAgentLoopToolContentPartsWithAdapters<
 	}
 	if (plan.dataStepsPart) {
 		options.emitter.sendContentPart(plan.dataStepsPart);
+		// Record the anchor position so persistence keeps the step cards where
+		// the viewer saw them during streaming (text after the tool call stays
+		// after the cards).
+		appendOrderedPart(
+			options.turn.orderedParts,
+			plan.dataStepsPart as unknown as TPart,
+		);
 	}
 	return plan;
 }
@@ -2299,21 +2331,31 @@ export function planAgentLoopFinishChunk(input: {
 	let contextSizeInputTokens: number | undefined;
 
 	if (input.usage) {
+		const usage = input.usage;
+		const sumOptional = (
+			a: number | undefined,
+			b: number | undefined,
+		): number | undefined => (a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0));
 		accumulatedUsage = accumulatedUsage
 			? {
-					inputTokens: accumulatedUsage.inputTokens + input.usage.inputTokens,
-					outputTokens:
-						accumulatedUsage.outputTokens + input.usage.outputTokens,
-					totalTokens: accumulatedUsage.totalTokens + input.usage.totalTokens,
+					inputTokens: accumulatedUsage.inputTokens + usage.inputTokens,
+					outputTokens: accumulatedUsage.outputTokens + usage.outputTokens,
+					totalTokens: accumulatedUsage.totalTokens + usage.totalTokens,
 					durationMs: accumulatedUsage.durationMs,
+					cacheReadTokens: sumOptional(accumulatedUsage.cacheReadTokens, usage.cacheReadTokens),
+					cacheWriteTokens: sumOptional(accumulatedUsage.cacheWriteTokens, usage.cacheWriteTokens),
+					reasoningTokens: sumOptional(accumulatedUsage.reasoningTokens, usage.reasoningTokens),
 				}
 			: {
-					inputTokens: input.usage.inputTokens,
-					outputTokens: input.usage.outputTokens,
-					totalTokens: input.usage.totalTokens,
+					inputTokens: usage.inputTokens,
+					outputTokens: usage.outputTokens,
+					totalTokens: usage.totalTokens,
+					cacheReadTokens: usage.cacheReadTokens,
+					cacheWriteTokens: usage.cacheWriteTokens,
+					reasoningTokens: usage.reasoningTokens,
 				};
-		lastTurnUsage = input.usage;
-		contextSizeInputTokens = input.usage.inputTokens;
+		lastTurnUsage = usage;
+		contextSizeInputTokens = usage.inputTokens;
 	}
 
 	if (isAgentLoopToolCallsFinishReason(input.finishReason)) {

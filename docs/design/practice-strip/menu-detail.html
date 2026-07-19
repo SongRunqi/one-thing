@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>练习菜单 · 案二详设</title>
+<style>
+:root {
+  --paper: #faf8f1;
+  --paper-deep: #f3efe5;
+  --ink: #29241c;
+  --ink-60: rgba(41, 36, 28, 0.62);
+  --ink-40: rgba(41, 36, 28, 0.42);
+  --ink-25: rgba(41, 36, 28, 0.25);
+  --ink-12: rgba(41, 36, 28, 0.12);
+  --a-red: #b8452c;
+  --note: #33647e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #191611;
+    --paper-deep: #14110d;
+    --ink: #e8e1d2;
+    --ink-60: rgba(232, 225, 210, 0.66);
+    --ink-40: rgba(232, 225, 210, 0.45);
+    --ink-25: rgba(232, 225, 210, 0.28);
+    --ink-12: rgba(232, 225, 210, 0.14);
+    --a-red: #d8765c;
+    --note: #7fb0c9;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 48px 40px 96px;
+}
+
+.page-head { max-width: 900px; margin: 0 auto 40px; }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after { content: ""; display: block; width: 88px; border-bottom: 2px solid var(--ink); margin-top: 10px; }
+.page-head p { margin-top: 12px; color: var(--ink-60); max-width: 62em; }
+
+.sections { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 56px; }
+.section h2 { font-size: 15px; font-weight: 600; letter-spacing: 0.06em; margin-bottom: 4px; }
+.section h2 em { font-style: normal; font-size: 12px; font-weight: 400; color: var(--ink-60); margin-left: 10px; }
+.section > p { font-size: 12px; color: var(--ink-60); margin-bottom: 14px; max-width: 62em; }
+
+.frame { margin: 0 0 18px; }
+.frame > figcaption { font-size: 11px; color: var(--ink-40); letter-spacing: 0.08em; margin-bottom: 6px; }
+.mock { border: 1px solid var(--ink-25); background: var(--paper); border-radius: 8px; overflow: hidden; position: relative; }
+
+.tabbar { display: flex; align-items: center; height: 40px; padding: 0 12px 0 14px; position: relative; }
+.tabbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--ink-12); }
+.tl { display: flex; gap: 6px; margin-right: 16px; }
+.tl i { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-12); }
+.tb-tab { font-size: 12.5px; color: var(--ink-60); padding: 0 10px; height: 100%; display: flex; align-items: center; position: relative; }
+.tb-tab.active { color: var(--ink); }
+.tb-tab.active::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; background: var(--ink); z-index: 1; }
+.tb-tick { width: 1px; height: 14px; background: var(--ink-25); margin: 0 4px; }
+.tb-sp { flex: 1; }
+.tb-more { color: var(--ink-40); font-size: 14px; padding: 0 6px; }
+.seam { position: absolute; top: 39px; left: 50%; transform: translateX(-50%); width: 38px; height: 3px; background: var(--ink); border-radius: 1px; z-index: 2; }
+.seam.running { width: 180px; }
+
+.ghost { padding: 12px 18px 16px; color: var(--ink-25); font-size: 12px; line-height: 1.9; user-select: none; }
+.ghost b { color: var(--ink-40); font-weight: 400; }
+
+.menu {
+  position: absolute; left: 50%; top: 46px; transform: translateX(-50%);
+  min-width: 248px; background: var(--paper);
+  border: 1px solid var(--ink-25); border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+  padding: 6px; z-index: 5;
+}
+.mi { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; font-size: 12.5px; color: var(--ink); cursor: pointer; position: relative; }
+.mi.hover { background: rgba(41,36,28,0.06); }
+@media (prefers-color-scheme: dark) { .mi.hover { background: rgba(232,225,210,0.07); } }
+.mi .glyph { width: 14px; text-align: center; color: var(--ink-40); flex: 0 0 14px; }
+.mi .hint { margin-left: auto; font-size: 11px; color: var(--ink-40); padding-left: 18px; white-space: nowrap; }
+.mi .kbd { font-size: 10px; color: var(--ink-25); border: 1px solid var(--ink-12); border-radius: 3px; padding: 0 4px; margin-left: 8px; }
+.mdiv { height: 1px; background: var(--ink-12); margin: 5px 8px; }
+.mi.quiet { color: var(--ink-60); }
+.submenu {
+  position: absolute; left: calc(50% + 132px); top: 84px;
+  min-width: 128px; background: var(--paper); border: 1px solid var(--ink-25);
+  border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); padding: 6px; z-index: 6;
+}
+.verb { color: var(--ink); cursor: pointer; border-bottom: 1.5px dotted var(--ink-40); padding-bottom: 1px; }
+.cat { color: var(--ink-60); margin: 0 3px; cursor: pointer; }
+.cat.on { color: var(--ink); border-bottom: 1.5px solid var(--ink); }
+.num { color: var(--ink); border-bottom: 1px dashed var(--ink-25); padding: 0 2px; }
+
+/* 标注 */
+.callouts { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-top: 8px; font-size: 11.5px; color: var(--ink-60); }
+.callouts span b { color: var(--note); font-weight: 600; margin-right: 5px; font-size: 11px; }
+.tag { position: absolute; font-size: 10px; color: var(--note); letter-spacing: 0.05em; z-index: 8; }
+
+/* 补录输入态 */
+.log-input-row { display: flex; align-items: center; gap: 8px; padding: 9px 12px; font-size: 12.5px; }
+.log-input-row .field { flex: 1; color: var(--ink-25); border-bottom: 1px dashed var(--ink-25); padding: 1px 2px; }
+.log-hint { padding: 2px 12px 6px; font-size: 10.5px; color: var(--ink-40); }
+
+/* 运行中控制菜单 */
+.run-head { padding: 9px 12px 7px; font-size: 12px; color: var(--ink); border-bottom: 1px solid var(--ink-12); margin-bottom: 4px; }
+.run-head .phase { font-weight: 600; font-size: 14px; margin-right: 8px; }
+.run-head .sub { color: var(--ink-40); font-size: 11px; display: block; margin-top: 2px; }
+
+/* 练习 tab 参数区 */
+.panel-mock { border: 1px solid var(--ink-25); background: var(--paper); border-radius: 8px; padding: 16px 20px; max-width: 560px; }
+.panel-mock h4 { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; margin-bottom: 2px; }
+.pm-section { border-bottom: 1px solid var(--ink-12); padding: 12px 0; }
+.pm-section:last-child { border-bottom: 0; }
+.pm-row { display: flex; align-items: baseline; gap: 12px; font-size: 12.5px; padding: 3px 0; }
+.pm-name { width: 52px; flex: 0 0 52px; font-weight: 600; }
+.pm-body { flex: 1; color: var(--ink-60); }
+.pm-note { font-size: 10.5px; color: var(--ink-40); margin-top: 2px; }
+.chip-add { color: var(--ink-40); border: 1px dashed var(--ink-25); border-radius: 4px; padding: 0 6px; font-size: 11px; cursor: pointer; margin-left: 6px; }
+.sw { display: inline-block; width: 26px; height: 14px; border-radius: 7px; background: var(--ink); position: relative; vertical-align: -2px; }
+.sw::after { content: ""; position: absolute; right: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--paper); }
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1>练习菜单 · 案二详设</h1>
+  <p>
+    总原则:<b>菜单只放动词,设置全部住在练习 tab</b>。菜单是"今天开始练"的一秒入口;
+    参数、分类管理、音效这些低频决定去 workspace 的练习 tab 里慢慢调——菜单末项「参数与账页 ›」一步直达。
+    菜单浮层复用 SessionContextMenu 族(圆角 10 / 纸面 / tooltip 影),点外或 Esc 收起,支持 ↑↓ + 回车。
+  </p>
+</header>
+
+<div class="sections">
+
+<!-- ① 默认态 -->
+<section class="section">
+  <h2>① 菜单 · 默认态 <em>四个动词 + 一个去处</em></h2>
+  <p>每项 = 动词开头 + 右侧灰字参数回显。灰字只是"回显"当前设置,不可点——想改就去末项。</p>
+  <figure class="frame">
+    <div class="mock" style="min-height: 300px">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <span class="seam"></span>
+      <div class="menu">
+        <div class="mi hover"><span class="glyph">▶</span>开始凯格尔<span class="hint">收10″/放5″ · 20×3</span></div>
+        <div class="mi"><span class="glyph">◔</span>开始番茄<span class="hint">学习 · 25′ ›</span></div>
+        <div class="mi"><span class="glyph">✎</span>补录一笔</div>
+        <div class="mdiv"></div>
+        <div class="mi quiet"><span class="glyph">♪</span>音效<span class="hint">开</span></div>
+        <div class="mi quiet"><span class="glyph">☰</span>参数与账页<span class="hint">›</span></div>
+      </div>
+      <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB……</div>
+    </div>
+  </figure>
+  <div class="callouts">
+    <span><b>回显</b>灰字来自 config,始终反映当前参数,点了不生效</span>
+    <span><b>音效</b>唯一留在菜单里的开关——练之前顺手切静音是高频动作</span>
+    <span><b>直达</b>「参数与账页」打开 workspace 练习 tab,菜单收起</span>
+  </div>
+</section>
+
+<!-- ② 番茄二级 -->
+<section class="section">
+  <h2>② 番茄 · 二级分类 <em>选中即开始,不再确认</em></h2>
+  <p>hover「开始番茄」滑出分类子菜单;点分类立刻起番茄并关菜单。回显里的默认分类(上次用的)排第一,直接点主项 = 用默认分类开始,熟练后一次点击。</p>
+  <figure class="frame">
+    <div class="mock" style="min-height: 300px">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <span class="seam"></span>
+      <div class="menu">
+        <div class="mi"><span class="glyph">▶</span>开始凯格尔<span class="hint">收10″/放5″ · 20×3</span></div>
+        <div class="mi hover"><span class="glyph">◔</span>开始番茄<span class="hint">学习 · 25′ ›</span></div>
+        <div class="mi"><span class="glyph">✎</span>补录一笔</div>
+        <div class="mdiv"></div>
+        <div class="mi quiet"><span class="glyph">♪</span>音效<span class="hint">开</span></div>
+        <div class="mi quiet"><span class="glyph">☰</span>参数与账页<span class="hint">›</span></div>
+      </div>
+      <div class="submenu">
+        <div class="mi hover">学习<span class="hint">上次</span></div>
+        <div class="mi">看视频</div>
+        <div class="mi">写作</div>
+        <div class="mi">其他</div>
+      </div>
+      <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB……</div>
+    </div>
+  </figure>
+</section>
+
+<!-- ③ 补录输入态 -->
+<section class="section">
+  <h2>③ 补录 · 菜单原地变身 <em>不跳走,一行输入回车即记</em></h2>
+  <p>点「补录一笔」,菜单体原地换成一行输入(宽度不变、位置不动),回车落账、显示「已记上」后自动收起;Esc 退回菜单。语法照旧:名称 + 组×次 或 分钟。</p>
+  <figure class="frame">
+    <div class="mock" style="min-height: 220px">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <span class="seam"></span>
+      <div class="menu">
+        <div class="log-input-row"><span style="color: var(--ink-40)">✎</span><span class="field">俯卧撑 3×20&nbsp;&nbsp;或&nbsp;&nbsp;跑步 30分</span><span class="verb">记上</span></div>
+        <div class="log-hint">回车记上 · Esc 返回</div>
+      </div>
+      <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB……</div>
+    </div>
+  </figure>
+</section>
+
+<!-- ④ 运行中 -->
+<section class="section">
+  <h2>④ 运行中点隐线 · 控制菜单 <em>头部报进度,动词只剩两个</em></h2>
+  <p>运行中隐线本身是进度指示(墨段收放/着墨);点它弹的菜单换成控制形态:头部一块进度区(相位大字 + 次数/组数),下面只有 暂停/结束 和「查看进度 ›」。结束会如实落账(中途也记)。</p>
+  <figure class="frame">
+    <div class="mock" style="min-height: 260px">
+      <div class="tabbar"><span class="tl"><i></i><i></i><i></i></span><span class="tb-tab active">电台 · 选歌策略</span><span class="tb-tick"></span><span class="tb-tab">俯卧撑计划</span><span class="tb-sp"></span><span class="tb-more">⋯</span></div>
+      <span class="seam running"></span>
+      <div class="menu">
+        <div class="run-head">
+          <span class="phase">收</span>7″ · 第 12/20 次 · 组 2/3
+          <span class="sub">凯格尔 · 已进行 4′38″</span>
+        </div>
+        <div class="mi"><span class="glyph">‖</span>暂停</div>
+        <div class="mi"><span class="glyph">■</span>结束<span class="hint">中途结束也记账</span></div>
+        <div class="mdiv"></div>
+        <div class="mi quiet"><span class="glyph">☰</span>查看进度<span class="hint">›</span></div>
+      </div>
+      <div class="ghost"><b>我:</b>把刚才那段串词的音量再压一点<br><b>AI:</b>好,已经把语音轨的增益降了 3dB……</div>
+    </div>
+  </figure>
+</section>
+
+<!-- ⑤ 设置的家 -->
+<section class="section">
+  <h2>⑤ 设置的家 · 练习 tab 参数区 <em>低频决定,给足空间慢慢调</em></h2>
+  <p>
+    workspace 练习 tab 顶部加一块「参数」区(账页保持在下方):凯格尔四个数字就地点改、
+    番茄时长 + 分类管理(点 × 删、虚框加)、音效开关。菜单「参数与账页 ›」和账页里任何入口都到这里。
+    不进设置页——这是练习数据的一部分,不是应用配置。
+  </p>
+  <figure class="frame">
+    <figcaption>workspace · 练习 tab 顶部(账页表格在其下方,略)</figcaption>
+    <div class="panel-mock">
+      <h4>参数</h4>
+      <div class="pm-section">
+        <div class="pm-row">
+          <span class="pm-name">凯格尔</span>
+          <span class="pm-body">收 <span class="num">10</span>″ · 放 <span class="num">5</span>″ · 每组 <span class="num">20</span> 次 · <span class="num">3</span> 组 · 组间息 <span class="num">60</span>″</span>
+        </div>
+        <div class="pm-row">
+          <span class="pm-name"></span>
+          <span class="pm-note">数字点击就地修改,立即生效;下次从菜单开始即按新参数</span>
+        </div>
+      </div>
+      <div class="pm-section">
+        <div class="pm-row">
+          <span class="pm-name">番茄</span>
+          <span class="pm-body">时长 <span class="num">25</span>′ · 分类
+            <span class="cat on">学习 ×</span><span class="cat">看视频 ×</span><span class="cat">写作 ×</span><span class="cat">其他 ×</span>
+            <span class="chip-add">+ 新分类</span>
+          </span>
+        </div>
+      </div>
+      <div class="pm-section">
+        <div class="pm-row">
+          <span class="pm-name">音效</span>
+          <span class="pm-body"><span class="sw"></span>&nbsp; 相位提示音(与菜单里的开关同一个)</span>
+        </div>
+      </div>
+    </div>
+  </figure>
+</section>
+
+<!-- 交互细则 -->
+<section class="section">
+  <h2>⑥ 细则一页 <em>实现口径</em></h2>
+  <p style="max-width: 66em">
+    <b>锚定</b>:菜单从隐线正下方垂下(top: 基线 + 6px,水平居中于墨段),纯浮层(absolute,z 同 tab-more-menu),聊天布局零变化。<br>
+    <b>键盘</b>:↑↓ 移动、回车执行、→ 进二级、Esc 逐级退出;打开时焦点落第一项。<br>
+    <b>收起</b>:点外(pointerdown capture)、Esc、任一动词执行后。<br>
+    <b>回显数据</b>:hint 全部来自 practice config,菜单打开时即时读取,不缓存。<br>
+    <b>状态机</b>:idle → 默认菜单;running → 控制菜单;paused → 控制菜单(「暂停」变「继续」,隐线墨段静止半透明)。<br>
+    <b>迁移</b>:现有抽屉整体删除;PracticeStrip 保留 seam 与运行态,新增 PracticeMenu 子组件;
+    调参 UI 从抽屉移到练习 tab 参数区(PracticePanelContent 顶部新 section,写 practiceSetConfig)。
+  </p>
+</section>
+
+</div>
+</body>
+</html>
