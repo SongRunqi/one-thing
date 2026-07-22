@@ -10,6 +10,13 @@
       />
     </span>
     <span class="file-chip-name">{{ fileName }}</span>
+    <!-- Marks a file the model can't take natively; the hover text says how it
+         will travel instead. A badge informs without interrupting — a toast
+         for something that still works would read as an error. -->
+    <span
+      v-if="badge"
+      class="file-chip-badge"
+    >{{ badge }}</span>
     <Button
       v-if="removable"
       text
@@ -36,10 +43,16 @@ const props = withDefaults(defineProps<{
   sizeBytes?: number
   size?: 'sm' | 'md'
   removable?: boolean
+  /** Overrides the default "name (size)" hover text. */
+  tooltipText?: string
+  /** Short marker for a degraded delivery route (see describeDelivery). */
+  badge?: string
 }>(), {
   sizeBytes: undefined,
   size: 'md',
   removable: false,
+  tooltipText: undefined,
+  badge: undefined,
 })
 
 const emit = defineEmits<{
@@ -47,6 +60,7 @@ const emit = defineEmits<{
 }>()
 
 const tooltip = computed(() => {
+  if (props.tooltipText) return props.tooltipText
   return props.sizeBytes !== undefined
     ? `${props.fileName} (${formatFileSize(props.sizeBytes)})`
     : props.fileName
@@ -88,6 +102,19 @@ const tooltip = computed(() => {
   font-family: var(--font-mono, monospace);
   font-size: 11px;
   line-height: 1.25;
+}
+
+.file-chip-badge {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border: 1px solid color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 45%, transparent);
+  border-radius: 2px;
+  font-family: var(--font-mono, monospace);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  line-height: 14px;
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .file-chip-remove {

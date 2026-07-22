@@ -1,7 +1,6 @@
 import {
   createSkillManageTool,
   SkillViewTool,
-  SkillsListTool,
   type SkillManageArgs as RuntimeSkillManageArgs,
   type SkillManageOptions as RuntimeSkillManageOptions,
   type SkillManageResult as RuntimeSkillManageResult,
@@ -21,7 +20,6 @@ import {
 
 export {
   SkillViewTool,
-  SkillsListTool,
 }
 export type {
   SkillManageMetadata,

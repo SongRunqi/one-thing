@@ -237,12 +237,24 @@ function handleOpenFile(filePath: string) {
   emit('openFile', filePath)
 }
 
+// Cmd+W: close the tab the user is looking at, not the window.
+function closeActiveTab() {
+  const id = activeTabId.value
+  if (id) void handleCloseTab(id)
+}
+
 async function handleCloseTab(id: string) {
   // The store owns the close semantics: closing a leaf's last tab closes the
   // leaf itself (mirrors VS Code editor groups), refused only for the sole
   // remaining leaf. `released` means no other leaf still shows the session.
+  const lastRemaining = workspaceStore.isLastRemainingTab(leafId.value, id)
   const result = workspaceStore.closeTab(leafId.value, id)
-  if (!result) return
+  if (!result) {
+    // The workspace must keep something on screen, so the last tab has nowhere
+    // to go — closing it means closing the window (macOS Cmd+W convention).
+    if (lastRemaining) await platformApi.closeWindow().catch(() => {})
+    return
+  }
 
   if (result.released) {
     if (sessionsStore.isNewChatDraftId(result.closedSessionId)) {
@@ -300,7 +312,15 @@ function handleContentDrop(e: DragEvent) {
   dragHoverZone.value = null
   cachedContentRect = null
   const raw = e.dataTransfer?.getData(SPLIT_DROP_MIME)
-  if (!raw) return
+  if (!raw) {
+    // Anything that isn't a split-tab drag must still be swallowed here.
+    // Letting it bubble reaches the window default, which navigates to
+    // file:/// and hands the file to the OS via will-navigate →
+    // shell.openExternal — dropping a PDF beside the composer would open it
+    // in Preview. The composer's own drop zone stops propagation before this.
+    e.preventDefault()
+    return
+  }
   e.preventDefault()
   if (!zone) return
   const { sessionId, sourcePanelId } = JSON.parse(raw) as { sessionId: string; sourcePanelId: string }
@@ -316,6 +336,7 @@ defineExpose({
   insertPromptReference,
   scrollToMessage,
   selectTabByIndex,
+  closeActiveTab,
 })
 </script>
 

@@ -756,7 +756,7 @@ onBeforeUnmount(() => {
 
 .system-prompt-state.error,
 .system-prompt-warning {
-  color: var(--ui-danger-fg, var(--danger, #ef4444));
+  color: var(--ui-status-danger-fg, var(--danger, #ef4444));
 }
 
 .system-prompt-warning {

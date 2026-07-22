@@ -4,6 +4,7 @@ import {
 } from './headless-stream-engine.js'
 import type { PendingMessage } from './message-queue.js'
 import { isCoreExternalAgentProvider } from './external-agent-providers.js'
+import { expandFileMentions, isFileMentionTrustedChannel } from './file-mentions.js'
 import type {
   StreamEngineCompactionAdapter,
   StreamEngineClockAdapter,
@@ -398,6 +399,37 @@ export class CoreStreamEngine<
    * recently injected block in this session, nothing is attached — history
    * stays append-only and the prompt-cache prefix is never rewritten.
    */
+  /**
+   * Resolve every reference a user message can carry: prompt/skill tokens via
+   * the runtime resolver, then `@path` file mentions inlined as <file> blocks.
+   *
+   * The inlining lands on the model-facing copy only. contentParts is what the
+   * UI renders and what edit-and-resend reconstructs the draft from, so it must
+   * keep the literal `@path` — otherwise the user's own bubble fills with the
+   * file body and editing the message hands back the dump instead of what they
+   * typed. When the resolver returns no parts (the common case: no prompt or
+   * skill tokens) the renderer falls back to `content`, which now holds the
+   * inlined bodies — so a text part has to be synthesized to pin the display.
+   */
+  private resolveUserReferences(
+    rawContent: string,
+    skills: TSkill[],
+    channel: string | undefined,
+  ): ReturnType<StreamEnginePromptAdapter<TSkill, TContentPart>['resolveReferences']> {
+    const resolved = this.runtime.prompts.resolveReferences(rawContent, { skills })
+    if (!isFileMentionTrustedChannel(channel)) return resolved
+
+    const { content, inlinedPaths } = expandFileMentions(resolved.modelContent)
+    if (inlinedPaths.length === 0) return resolved
+
+    return {
+      ...resolved,
+      modelContent: content,
+      contentParts: resolved.contentParts
+        ?? ([{ type: 'text', content: resolved.displayContent }] as unknown as TContentPart[]),
+    }
+  }
+
   private async resolveTurnContextUpdate(
     sessionId: string,
     session:
@@ -438,7 +470,7 @@ export class CoreStreamEngine<
       const skillsForRefs = settingsForRefs.skills?.enableSkills === false
         ? []
         : this.runtime.skills.getForSession(sessionForRefs?.workingDirectory, sessionForRefs?.agentId)
-      const resolvedPromptRefs = this.runtime.prompts.resolveReferences(messageContent, { skills: skillsForRefs })
+      const resolvedPromptRefs = this.resolveUserReferences(messageContent, skillsForRefs, cmd.channel)
       const session = sessionForRefs
       const isFirstUserMessage = session && session.messages.filter(m => m.role === 'user').length === 0
       const isBranchFirstMessage = session?.parentSessionId && session.messages.length > 0 &&
@@ -607,7 +639,7 @@ export class CoreStreamEngine<
       const skillsForRefs = settingsForRefs.skills?.enableSkills === false
         ? []
         : this.runtime.skills.getForSession(sessionForRefs?.workingDirectory, sessionForRefs?.agentId)
-      const resolvedPromptRefs = this.runtime.prompts.resolveReferences(newContent, { skills: skillsForRefs })
+      const resolvedPromptRefs = this.resolveUserReferences(newContent, skillsForRefs, cmd.channel)
 
       const updated = this.store.updateMessageAndTruncate(sessionId, messageId, resolvedPromptRefs.modelContent, {
         contentParts: resolvedPromptRefs.contentParts ?? null,
@@ -763,7 +795,9 @@ export class CoreStreamEngine<
     const skills = settings.skills?.enableSkills === false
       ? []
       : this.runtime.skills.getForSession(session?.workingDirectory, session?.agentId)
-    const resolvedPromptRefs = this.runtime.prompts.resolveReferences(content, { skills })
+    // Steering text arrives without its own channel field; the session's last
+    // known channel is the sender it came from.
+    const resolvedPromptRefs = this.resolveUserReferences(content, skills, this.getChannel(sessionId))
     const userMessage = {
       id: this.createMessageId(),
       role: 'user',

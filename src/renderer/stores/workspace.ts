@@ -210,6 +210,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
   }
 
+  /**
+   * True when `tabId` is the only tab of the only leaf, i.e. `closeTab` will
+   * refuse it because the workspace must keep something on screen. Callers that
+   * own a window can use this to close the window instead.
+   */
+  function isLastRemainingTab(leafId: string, tabId: string): boolean {
+    if (leaves.value.length > 1) return false
+    const leaf = leafById(leafId)
+    return leaf?.tabs.length === 1 && leaf.tabs[0].id === tabId
+  }
+
   function closeTab(leafId: string, tabId: string): CloseTabResult | undefined {
     const leaf = leafById(leafId)
     if (!leaf) return undefined
@@ -333,6 +344,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     setActiveLeaf,
     activateTab,
     openSession,
+    isLastRemainingTab,
     closeTab,
     moveTab,
     closeSessionTabs,

@@ -17,6 +17,33 @@ export interface OnethingUsageUnitPrice {
 
 export type OnethingUsageBillingMode = 'api' | 'subscription'
 
+/**
+ * Call categories that land in the ledger. Kept as named constants rather than
+ * bare string literals at each call site so the usage panel's breakdown and the
+ * producers cannot drift apart.
+ *
+ * Deliberately not a closed union on the record type: the ledger is
+ * append-only and already holds historical values, so a narrowed type would
+ * make old records unreadable.
+ */
+export const ONETHING_USAGE_SOURCES = {
+  /** The main chat turn. */
+  chat: 'chat',
+  /** Session title generation. */
+  title: 'title',
+  /** soul-memory capture + idle review. */
+  memory: 'memory',
+  /** Skill review trigger. */
+  skill: 'skill',
+  /** Session table-of-contents segmentation. */
+  toc: 'toc',
+  /** Evals workbench / replay / judge. */
+  evals: 'evals',
+} as const
+
+export type OnethingUsageSource =
+  (typeof ONETHING_USAGE_SOURCES)[keyof typeof ONETHING_USAGE_SOURCES]
+
 export interface OnethingUsageLedgerRecord {
   ts: number
   sessionId?: string

@@ -2,7 +2,16 @@ export {
   DEFAULT_GOAL_CONTINUATION_LIMIT,
   DEFAULT_GOAL_ERROR_RETRY_LIMIT,
   GOAL_MODEL_SETTABLE_STATUSES,
+  TERMINAL_GOAL_STATUSES,
 } from './types.js'
+export {
+  GOAL_HISTORY_FILE_CHANGE_LIMIT,
+  currentGoalOf,
+  isGoalTerminal,
+  mergeGoalRecord,
+  normalizeGoalRecords,
+  pruneGoalHistory,
+} from './records.js'
 export type {
   GoalModelSettableStatus,
   SessionGoal,
@@ -11,6 +20,8 @@ export type {
 } from './types.js'
 export {
   GoalStateError,
+  abandonGoal,
+  applyGoalSettlement,
   applyGoalUsage,
   applyModelGoalStatus,
   applyUserGoalUpdate,

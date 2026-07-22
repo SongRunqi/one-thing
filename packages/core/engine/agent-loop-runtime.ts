@@ -643,14 +643,24 @@ export function planAgentLoopTools<TTool extends AgentSourceToolDefinition>(inpu
   allEnabledTools: TTool[]
   mcpRouterTool?: AgentSourceToolDefinition | null
   toolSettings?: CoreAgentLoopToolSettings
+  /**
+   * Per-agent tool allowlist (tool ids). null/undefined = no restriction.
+   * When present, only listed tools survive — including the MCP router.
+   */
+  allowedToolIds?: readonly string[] | null
 }): CoreAgentLoopToolPlan<TTool> {
+  const allowed = input.allowedToolIds && input.allowedToolIds.length > 0
+    ? new Set(input.allowedToolIds)
+    : null
   const enabledTools = input.toolLoadingEnabled
-    ? input.allEnabledTools.filter(tool => !tool.id.startsWith('mcp:'))
+    ? input.allEnabledTools.filter(tool =>
+        !tool.id.startsWith('mcp:') && (!allowed || allowed.has(tool.id)))
     : []
   const mcpRouterToolEnabled = Boolean(
     input.toolLoadingEnabled &&
     input.mcpRouterTool &&
-    input.toolSettings?.tools?.[input.mcpRouterTool.id]?.enabled !== false,
+    input.toolSettings?.tools?.[input.mcpRouterTool.id]?.enabled !== false &&
+    (!allowed || allowed.has(input.mcpRouterTool.id)),
   )
   const mcpToolDefinitions = mcpRouterToolEnabled && input.mcpRouterTool
     ? agentToolDefinitionsFromSourceTools([input.mcpRouterTool])

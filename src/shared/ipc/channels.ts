@@ -49,6 +49,7 @@ export const IPC_CHANNELS = {
 	GET_SESSION_MESSAGES: "sessions:get-messages", // Returns ChatMessage[] for a session
 	GET_SESSION_MESSAGES_PAGE: "sessions:get-messages-page", // Returns a cursor-addressed ChatMessage page
 	GET_SESSION_USER_MARKERS: "sessions:get-user-markers", // Returns lightweight user-message nav markers
+	GET_SESSION_SEGMENTS: "sessions:get-segments", // Returns the session's TOC segments
 	SESSION_MESSAGES_CHANGED: "sessions:messages-changed", // Event: messages added/updated
 	GET_SESSION_CACHE_STATS: "sessions:get-cache-stats", // Returns in-memory LRU cache stats
 	EVICT_SESSION_CACHE: "sessions:evict-cache", // Evicts a session from the in-memory LRU cache
@@ -340,6 +341,9 @@ export const IPC_CHANNELS = {
 	SCHEDULER_DELETE_TASK: "scheduler:delete-task",
 	SCHEDULER_LIST_RUNS: "scheduler:list-runs",
 	SCHEDULER_GET_RUN: "scheduler:get-run",
+
+	// Window
+	WINDOW_CLOSE: "window:close",
 
 	// App State (restore on startup)
 	GET_APP_STATE: "app-state:get",

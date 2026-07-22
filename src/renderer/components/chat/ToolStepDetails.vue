@@ -14,9 +14,7 @@
     <span
       v-if="figGain"
       class="fig-tag fig-tag-right"
-      :class="{ 'is-predicted': isFigGainPredicted }"
-      :title="isFigGainPredicted ? 'Predicted from the pending arguments' : undefined"
-    >{{ isFigGainPredicted ? '~' : '' }}{{ figGain }}</span>
+    >{{ figGain }}</span>
 
     <div
       v-if="bashCommand"
@@ -45,12 +43,20 @@
       </template>
     </dl>
 
-    <!-- Two states, never blurred together: before the tool runs the only
-         thing known is what the model streamed as arguments (a prediction),
-         and only after it runs does a real diff of the file exist. -->
+    <!-- Three states, never blurred together: while arguments stream the
+         draft view shows exactly what has been received (cursor on the open
+         field, measured counters, no predictions); once received, the settled
+         args preview takes over; and only after the tool runs does a real
+         diff of the file exist. -->
+    <ToolArgsDraft
+      v-if="streamingDraft"
+      :draft="streamingDraft"
+      :start-time="props.view.toolCall.timestamp"
+    />
     <DiffView
-      v-if="settledDiff"
+      v-else-if="settledDiff"
       :diff="settledDiff.diff"
+      :hunks="settledDiff.hunks"
       diff-style="unified"
       :show-file-header="false"
       :show-toolbar="false"
@@ -157,6 +163,7 @@ import type { ToolPartialResult } from '@/types'
 import type { ToolStepView } from '@/stores/helpers/tool-step-view'
 import { getToolUiCategory } from '@/stores/helpers/tool-ui-registry'
 import { chainWheelToScrollableAncestor, findScrollableWheelSource } from '@/utils/scroll-chain'
+import ToolArgsDraft from './ToolArgsDraft.vue'
 import ToolContentPreview from './ToolContentPreview.vue'
 import DiffView from './message/DiffView.vue'
 import ToolResultRenderer from './ToolResultRenderer.vue'
@@ -178,27 +185,32 @@ const figStatus = computed(() => {
     case 'rejected': return { text: 'REJECTED', tone: 'bad' }
     case 'cancelled': return { text: 'CANCELLED', tone: 'dim' }
     case 'awaiting-confirmation': return { text: 'NEEDS APPROVAL', tone: 'warn' }
-    case 'executing':
-    case 'streaming-input': return { text: 'RUNNING', tone: 'live' }
+    // RECEIVING is the argument stream, RUNNING the tool itself — the two
+    // phases the old single RUNNING badge used to blur together.
+    case 'streaming-input': return { text: 'RECEIVING', tone: 'live' }
+    case 'received':
+    case 'executing': return { text: 'RUNNING', tone: 'live' }
     case 'completed': return { text: 'OK', tone: 'ok' }
     default: return null
   }
 })
 
 /**
- * Takeoff counts. Measured from the real patch once the tool has run;
- * before that they are only predicted from the streamed arguments, so the
- * preview marks them as such rather than passing them off as fact.
+ * Takeoff counts. Measured from the real patch once the tool has run —
+ * there is deliberately no predicted fallback: +N/−N only exists as fact.
  */
 const figGain = computed(() => {
-  const source = props.view.diff ?? props.view.streamingContent
+  const source = props.view.diff
   if (!source) return ''
   const parts: string[] = []
   if (source.additions) parts.push(`+${source.additions}`)
   if (source.deletions) parts.push(`−${source.deletions}`)
   return parts.join(' / ')
 })
-const isFigGainPredicted = computed(() => !props.view.diff && !!props.view.streamingContent)
+
+const streamingDraft = computed(() =>
+  props.view.status === 'streaming-input' ? props.view.streamingDraft : null,
+)
 
 /** Bash gets a shell-style `$ command` line instead of a key/value row. */
 const bashCommand = computed(() => {
@@ -212,7 +224,7 @@ const isFailedEdit = computed(() => props.view.toolName === 'edit' && (props.vie
 const settledDiff = computed(() => (props.view.diff && !isFailedEdit.value) ? props.view.diff : null)
 /** The streamed arguments, shown until the real patch lands. */
 const showPreview = computed(() => !props.view.diff && !isFailedEdit.value && props.view.streamingPreviewLines.length > 0)
-const hasFigure = computed(() => !!settledDiff.value || showPreview.value)
+const hasFigure = computed(() => !!streamingDraft.value || !!settledDiff.value || showPreview.value)
 const resultRenderKind = computed(() => props.view.toolName === 'bash' ? 'bash' : 'text')
 const resultForRenderer = computed<ToolPartialResult | null>(() => {
   if (!props.view.resultText) return null

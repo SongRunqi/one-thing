@@ -292,3 +292,102 @@ describe('filterHistoryForNonToolAPI', () => {
     ])
   })
 })
+
+describe('faithful multi-completion rebuild', () => {
+  function multiTurnAssistant(overrides: Partial<ChatMessage> = {}): ChatMessage {
+    return {
+      id: 'assistant-multi',
+      role: 'assistant',
+      content: 'restoring the map\n\nall clean now',
+      timestamp: 10,
+      contentParts: [
+        { type: 'text', content: 'restoring the map', turnIndex: 1 },
+        { type: 'reasoning', content: 'checking results', turnIndex: 2 },
+        { type: 'text', content: 'all clean now', turnIndex: 2 },
+      ],
+      steps: [
+        { id: 's1', type: 'tool-call', title: 'grep', status: 'completed', timestamp: 1, toolCallId: 'call_1', turnIndex: 1 },
+        { id: 's2', type: 'tool-call', title: 'edit', status: 'completed', timestamp: 2, toolCallId: 'call_2', turnIndex: 1 },
+        { id: 's3', type: 'tool-call', title: 'bash', status: 'completed', timestamp: 3, toolCallId: 'call_3', turnIndex: 2 },
+      ],
+      toolCalls: [
+        { id: 'call_1', toolName: 'bash', arguments: { command: 'grep x' }, status: 'completed', result: { output: 'line 7' } },
+        { id: 'call_2', toolName: 'edit', arguments: { filePath: 'a.lua' }, status: 'failed', error: 'Could not find' },
+        { id: 'call_3', toolName: 'bash', arguments: { command: 'luac -p' }, status: 'completed', result: { output: 'PASS' } },
+      ],
+      ...overrides,
+    } as unknown as ChatMessage
+  }
+
+  it('replays each completion as its own assistant/tool element pair', () => {
+    const history = buildHistoryMessages([message(1, 'user'), multiTurnAssistant()])
+
+    expect(history.map(m => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant', 'tool'])
+
+    const first = history[1] as Extract<typeof history[number], { role: 'assistant' }>
+    expect(first.content).toBe('restoring the map')
+    expect(first.toolCalls?.map(c => c.toolCallId)).toEqual(['call_1', 'call_2'])
+    expect(first.reasoningContent).toBeUndefined()
+
+    const firstResults = history[2] as Extract<typeof history[number], { role: 'tool' }>
+    expect(firstResults.content.map(r => r.toolCallId)).toEqual(['call_1', 'call_2'])
+
+    const second = history[3] as Extract<typeof history[number], { role: 'assistant' }>
+    expect(second.content).toBe('all clean now')
+    expect(second.reasoningContent).toBe('checking results')
+    expect(second.toolCalls?.map(c => c.toolCallId)).toEqual(['call_3'])
+
+    const secondResults = history[4] as Extract<typeof history[number], { role: 'tool' }>
+    expect(secondResults.content.map(r => r.toolCallId)).toEqual(['call_3'])
+  })
+
+  it('keeps failed tool calls paired with their failure results in the right turn', () => {
+    const history = buildHistoryMessages([message(1, 'user'), multiTurnAssistant()])
+    const firstResults = history[2] as Extract<typeof history[number], { role: 'tool' }>
+    const failed = firstResults.content.find(r => r.toolCallId === 'call_2')
+    expect(JSON.stringify(failed?.result)).toContain('Could not find')
+  })
+
+  it('falls back to the collapsed shape when parts lack turnIndex (legacy messages)', () => {
+    const legacy = multiTurnAssistant({
+      contentParts: [
+        { type: 'text', content: 'restoring the map' },
+        { type: 'text', content: 'all clean now' },
+      ],
+    } as Partial<ChatMessage>)
+    const history = buildHistoryMessages([message(1, 'user'), legacy])
+
+    expect(history.map(m => m.role)).toEqual(['user', 'assistant', 'tool'])
+    const assistant = history[1] as Extract<typeof history[number], { role: 'assistant' }>
+    expect(assistant.toolCalls?.length).toBe(3)
+  })
+
+  it('falls back to the collapsed shape when a tool call has no step mapping', () => {
+    const orphan = multiTurnAssistant({
+      steps: [
+        { id: 's1', type: 'tool-call', title: 'grep', status: 'completed', timestamp: 1, toolCallId: 'call_1', turnIndex: 1 },
+        { id: 's3', type: 'tool-call', title: 'bash', status: 'completed', timestamp: 3, toolCallId: 'call_3', turnIndex: 2 },
+      ],
+    } as Partial<ChatMessage>)
+    const history = buildHistoryMessages([message(1, 'user'), orphan])
+
+    expect(history.map(m => m.role)).toEqual(['user', 'assistant', 'tool'])
+  })
+
+  it('keeps single-completion messages on the collapsed path unchanged', () => {
+    const single = multiTurnAssistant({
+      contentParts: [{ type: 'text', content: 'restoring the map', turnIndex: 1 }],
+      steps: [
+        { id: 's1', type: 'tool-call', title: 'grep', status: 'completed', timestamp: 1, toolCallId: 'call_1', turnIndex: 1 },
+        { id: 's2', type: 'tool-call', title: 'edit', status: 'completed', timestamp: 2, toolCallId: 'call_2', turnIndex: 1 },
+        { id: 's3', type: 'tool-call', title: 'bash', status: 'completed', timestamp: 3, toolCallId: 'call_3', turnIndex: 1 },
+      ],
+      content: 'restoring the map',
+    } as Partial<ChatMessage>)
+    const history = buildHistoryMessages([message(1, 'user'), single])
+
+    expect(history.map(m => m.role)).toEqual(['user', 'assistant', 'tool'])
+    const results = history[2] as Extract<typeof history[number], { role: 'tool' }>
+    expect(results.content.map(r => r.toolCallId)).toEqual(['call_1', 'call_2', 'call_3'])
+  })
+})

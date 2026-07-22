@@ -11,6 +11,7 @@ import {
 import { createDeepSeekAgentProvider } from "./deepseek.js";
 import { createGeminiAgentProvider } from "./gemini.js";
 import { createOpenAICompatibleAgentProvider } from "./openai-compatible.js";
+import type { AgentProviderRequestDumper } from "./request-dump.js";
 import {
 	createACPAgentProvider,
 	type CoreACPAgentProviderOptions,
@@ -70,6 +71,13 @@ export interface CreateAgentProviderFromRuntimeOptions {
 	acpStreamPrompt?: CoreACPAgentProviderOptions["streamPrompt"];
 	acpCwd?: CoreACPAgentProviderOptions["cwd"];
 	codexRefreshOAuthToken?: CodexAgentProviderOptions["refreshOAuthToken"];
+	/**
+	 * Writes each outgoing request body to disk for diagnostics. Applied to
+	 * every HTTP-speaking provider; ACP/external-agent providers have no request
+	 * body of their own and are not covered.
+	 */
+	requestDumper?: AgentProviderRequestDumper;
+	/** @deprecated Use `requestDumper` — kept so existing hosts keep working. */
 	codexRequestDumper?: CodexAgentProviderOptions["requestDumper"];
 	/** Host-provided external agent connectors keyed by provider id. */
 	externalAgentConnectors?: Record<string, ExternalAgentConnector | undefined>;
@@ -84,6 +92,12 @@ export type AgentProviderRuntimeFactory = (
 	config: AgentProviderRuntimeConfig,
 	options: CreateAgentProviderFromRuntimeOptions,
 ) => AgentProvider | undefined;
+
+function resolveRequestDumper(
+	options: CreateAgentProviderFromRuntimeOptions,
+): AgentProviderRequestDumper | undefined {
+	return options.requestDumper ?? options.codexRequestDumper;
+}
 
 export interface RegisterAgentProviderRuntimeOptions {
 	replace?: boolean;
@@ -384,6 +398,7 @@ function createCustomAgentProviderFromRuntime(
 			apiKey: config.apiKey,
 			baseUrl: config.baseUrl,
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			capabilities: capabilitiesFromFlags(capabilities),
 		});
 	}
@@ -400,6 +415,7 @@ function createCustomAgentProviderFromRuntime(
 		baseUrl: config.baseUrl,
 		defaultBaseUrl: "https://api.openai.com/v1",
 		fetchImpl: options.fetchImpl,
+		requestDumper: resolveRequestDumper(options),
 		supportsVision: capabilities.vision,
 		supportsReasoning: capabilities.reasoning,
 		supportsTools: capabilities.tools,
@@ -415,6 +431,7 @@ registerAgentProviderRuntime(
 			apiKey: config.apiKey ?? "",
 			baseUrl: config.baseUrl,
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			capabilities: {
 				...capabilitiesFromFlags(
 					runtimeCapabilityFlags(config, {
@@ -475,8 +492,8 @@ registerAgentProviderRuntime(
 			oauthToken: config.oauthToken,
 			authContext: config.authContext,
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			refreshOAuthToken: options.codexRefreshOAuthToken,
-			requestDumper: options.codexRequestDumper,
 		}),
 	{ replace: true },
 );
@@ -490,6 +507,7 @@ registerAgentProviderRuntime(
 			baseUrl: config.baseUrl,
 			defaultBaseUrl: "https://api.openai.com/v1",
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			supportsVision: true,
 			supportsReasoning: true,
 			maxTokensField: "max_completion_tokens",
@@ -507,6 +525,7 @@ registerAgentProviderRuntime(
 			baseUrl: config.baseUrl,
 			defaultBaseUrl: "https://openrouter.ai/api/v1",
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			supportsVision: true,
 			supportsReasoning: true,
 			reasoningStyle: "openrouter-reasoning",
@@ -523,6 +542,7 @@ registerAgentProviderRuntime(
 			baseUrl: config.baseUrl,
 			defaultBaseUrl: "https://api.moonshot.cn/v1",
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
 			reasoningStyle: "thinking-type",
@@ -539,6 +559,7 @@ registerAgentProviderRuntime(
 			baseUrl: resolveOnethingProviderBaseUrl("zhipu", config),
 			defaultBaseUrl: "https://open.bigmodel.cn/api/paas/v4",
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
 			reasoningStyle: "zhipu-thinking",
@@ -555,6 +576,7 @@ registerAgentProviderRuntime(
 			baseUrl: config.baseUrl,
 			defaultBaseUrl: "https://api.x.ai/v1",
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			supportsVision: true,
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
@@ -575,6 +597,7 @@ registerAgentProviderRuntime(
 			baseUrl: config.baseUrl,
 			defaultBaseUrl: "https://api.x.ai/v1",
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			supportsVision: true,
 			supportsReasoning: true,
 			includeAssistantReasoning: true,
@@ -598,6 +621,7 @@ registerAgentProviderRuntime(
 			baseUrl: config.baseUrl,
 			defaultBaseUrl: "https://api.individual.githubcopilot.com",
 			fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			headers: {
 				"Editor-Version": "vscode/1.85.1",
 				"Editor-Plugin-Version": "copilot-chat/0.29.1",
@@ -623,6 +647,7 @@ registerAgentProviderRuntime(
 			apiKey: config.apiKey,
 			baseUrl: config.baseUrl,
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			promptCaching: true,
 		}),
 	{ replace: true },
@@ -639,6 +664,7 @@ registerAgentProviderRuntime(
 			providerId: "claude-code",
 			baseUrl: config.baseUrl,
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 			omitApiKeyHeader: true,
 			systemHeader: CLAUDE_CODE_HEADER,
 			promptCaching: true,
@@ -658,6 +684,7 @@ registerAgentProviderRuntime(
 			apiKey: config.apiKey,
 			baseUrl: config.baseUrl,
 			fetchImpl: options.fetchImpl,
+			requestDumper: resolveRequestDumper(options),
 		}),
 	{ replace: true },
 );

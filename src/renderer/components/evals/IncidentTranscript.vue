@@ -70,12 +70,11 @@
       </div>
 
       <!-- Error -->
-      <div
+      <ErrorNote
         v-else-if="item.kind === 'error'"
         class="transcript-error"
-      >
-        {{ item.text }}
-      </div>
+        :message="item.text"
+      />
     </template>
 
     <div
@@ -90,6 +89,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import StaticMarkdown from '@/components/chat/message/StaticMarkdown.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 
 /**
  * Chat-style renderer shared by the scene view (turn-trace) and the
@@ -268,12 +268,9 @@ function sourceTitle(source?: string): string {
   border: 1px solid var(--ui-status-danger-border);
 }
 
+/* Ledger ink rule comes from ErrorNote; nothing to add but flow spacing. */
 .transcript-error {
-  padding: 8px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  background: var(--ui-status-danger-bg);
-  color: var(--ui-status-danger-fg, #e74c3c);
+  min-width: 0;
 }
 
 .transcript-empty {

@@ -53,7 +53,13 @@ export interface PermissionEventBusLike {
 }
 
 export interface PermissionRespondCommandLike {
-  requestId: string
+  requestId?: string
+  /**
+   * Durable correlation key: the tool call this response targets. Unlike
+   * requestId (which only ever lives in memory on both ends), the tool call
+   * id is persisted with the message, so responders can always supply it.
+   */
+  toolCallId?: string
   decision: Permission.Response
   channel?: string
   rejectReason?: string
@@ -147,6 +153,13 @@ export namespace Permission {
     return undefined
   }
 
+  function findPendingByCallId(session: SessionState, callId: string): PendingEntry | undefined {
+    for (const entry of session.pending.values()) {
+      if (entry.info.callId === callId || entry.followerCallIds.includes(callId)) return entry
+    }
+    return undefined
+  }
+
   function removePending(session: SessionState, id: string): void {
     session.pending.delete(id)
     const index = session.promptOrder.indexOf(id)
@@ -229,9 +242,21 @@ export namespace Permission {
         const responseChannel = cmd.channel || 'ipc'
 
         const session = getSession(sessionId)
-        const pending = session.pending.get(cmd.requestId)
+        const byRequestId = cmd.requestId ? session.pending.get(cmd.requestId) : undefined
+        const byCallId = !byRequestId && cmd.toolCallId
+          ? findPendingByCallId(session, cmd.toolCallId)
+          : undefined
+        // A queued (never-emitted) prompt was never shown to anyone; a response
+        // addressed to it by tool call id would be a blind approval. Responses
+        // for coalesced followers are fine — their request is literally the
+        // emitted head's.
+        if (byCallId && !byCallId.emitted) {
+          console.warn('[Permission] Response targets a queued prompt, ignoring:', cmd.toolCallId)
+          return
+        }
+        const pending = byRequestId ?? byCallId
         if (!pending) {
-          console.warn('[Permission] No pending request for respond:', cmd.requestId)
+          console.warn('[Permission] No pending request for respond:', cmd.requestId ?? cmd.toolCallId)
           return
         }
 
@@ -245,7 +270,7 @@ export namespace Permission {
 
         respond({
           sessionId,
-          permissionId: cmd.requestId,
+          permissionId: pending.info.id,
           response: cmd.decision,
           rejectReason: cmd.rejectReason,
         })
@@ -274,6 +299,37 @@ export namespace Permission {
     return Array.from(session.pending.values())
       .filter(p => p.emitted)
       .map(p => p.info)
+  }
+
+  export type PromptState = 'actionable' | 'queued'
+
+  export interface PendingPromptInfo extends Info {
+    /**
+     * 'actionable' — the prompt has been emitted and a response is expected.
+     * 'queued' — waiting behind the head of the session's prompt queue (or a
+     * coalesced follower of an emitted head); show a waiting state, no card.
+     */
+    promptState: PromptState
+  }
+
+  /**
+   * Full per-tool-call picture for rebuilding UI state after a reload —
+   * unlike getPending, this includes queued prompts and coalesced followers,
+   * each labeled with its promptState.
+   */
+  export function getPendingPrompts(sessionId: string): PendingPromptInfo[] {
+    const session = getSession(sessionId)
+    const result: PendingPromptInfo[] = []
+    for (const entry of session.pending.values()) {
+      result.push({ ...entry.info, promptState: entry.emitted ? 'actionable' : 'queued' })
+      // Coalesced followers are separate tool calls awaiting the head's
+      // outcome — surface each under its own callId so per-call UI state can
+      // be rebuilt after a reload.
+      for (const followerCallId of entry.followerCallIds) {
+        result.push({ ...entry.info, callId: followerCallId, promptState: 'queued' })
+      }
+    }
+    return result
   }
 
   export function getMode(sessionId: string): Mode {

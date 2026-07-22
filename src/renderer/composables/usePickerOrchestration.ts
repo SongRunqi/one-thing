@@ -7,7 +7,7 @@ import { useSettingsStore } from '@/stores/settings'
 import type { EditorHandle, EditorSelection, EditorTransaction } from '@/editor'
 import { applyTriggerReplacement, parseEditorTrigger, type EditorTrigger } from '@/editor'
 import { usePromptsStore } from '@/stores/prompts'
-import { createPromptToken, createSkillToken } from '@shared/prompt-references'
+import { createFileToken, createPromptToken, createSkillToken, FILE_REF_PATTERN } from '@shared/prompt-references'
 import { platformApi } from '@/platform'
 
 export type ComposerExtensionType = 'none' | 'palette' | 'files' | 'paths'
@@ -28,6 +28,18 @@ export interface ComposerExtensionItem {
   meta?: string
   value?: string
   paletteItem?: PaletteItem
+}
+
+/**
+ * A file picked via `@`. The draft keeps a hidden `{{file:…}}` token where the
+ * user typed it — this is just the chip projection of that token.
+ */
+export interface ComposerFileReference {
+  id: string
+  path: string
+  label: string
+  from: number
+  to: number
 }
 
 export interface ComposerExtensionState {
@@ -623,7 +635,9 @@ export function usePickerOrchestration(
   }
 
   async function handleFilePickerSelect(filePath: string) {
-    replaceActiveTrigger(`@${filePath} `, 'file')
+    // The token replaces the `@query` in place — the editor hides it and the
+    // composer shows a chip, but the position survives for send time.
+    replaceActiveTrigger(createFileToken(filePath), 'file')
     await nextTick()
     adjustHeight()
     editorRef.value?.focus()
@@ -631,6 +645,35 @@ export function usePickerOrchestration(
 
   function handleFilePickerClose() {
     closeAllPickers()
+  }
+
+  /** The docked chips, derived from the hidden tokens in the draft. */
+  const fileReferences = computed<ComposerFileReference[]>(() => {
+    const references: ComposerFileReference[] = []
+    FILE_REF_PATTERN.lastIndex = 0
+    for (const match of messageInput.value.matchAll(FILE_REF_PATTERN)) {
+      const from = match.index ?? 0
+      const filePath = match[1]
+      references.push({
+        id: `fileref-${from}-${filePath}`,
+        path: filePath,
+        label: getRelativeFileLabel(filePath),
+        from,
+        to: from + match[0].length,
+      })
+    }
+    return references
+  })
+
+  function removeFileReference(id: string) {
+    const reference = fileReferences.value.find(entry => entry.id === id)
+    if (!reference) return
+    const next = `${messageInput.value.slice(0, reference.from)}${messageInput.value.slice(reference.to)}`
+    if (editorRef.value) {
+      editorRef.value.replaceRange(reference.from, reference.to, '')
+    } else {
+      messageInput.value = next
+    }
   }
 
   async function handlePathPickerSelect(selectedPath: string) {
@@ -705,6 +748,8 @@ export function usePickerOrchestration(
     handleCommandPickerClose,
     showFilePicker,
     fileQuery,
+    fileReferences,
+    removeFileReference,
     handleFilePickerSelect,
     handleFilePickerClose,
     showPathPicker,

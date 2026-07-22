@@ -402,6 +402,25 @@ describe('trimDiff()', () => {
     const diff = '+hello\n-world'
     expect(trimDiff(diff)).toBe(diff)
   })
+
+  it('dedents deleted lines whose content starts with dashes (counted by hunk header)', () => {
+    // A deleted Lua `-- AR` comment serializes as `--- AR`; the old prefix
+    // rules skipped it as a file header and left it un-dedented.
+    const diff = [
+      '--- f.lua',
+      '+++ f.lua',
+      '@@ -1,3 +1,2 @@',
+      '   keep',
+      '-  -- AR',
+      '   also',
+    ].join('\n')
+    const result = trimDiff(diff)
+    expect(result).toContain('\n--- AR')
+    expect(result).toContain('\n keep')
+    // Real headers stay untouched.
+    expect(result).toContain('--- f.lua')
+    expect(result).toContain('+++ f.lua')
+  })
 })
 
 // ─── Integration: replace() with fuzzy matching ────────────────────────────

@@ -367,18 +367,18 @@
       </SettingsGroup>
     </SettingsSection>
 
-    <p
+    <ErrorNote
       v-if="store.lastError"
       class="error"
-    >
-      {{ store.lastError }}
-    </p>
+      :message="store.lastError"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { toDataURL } from 'qrcode'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import SettingsSection from './SettingsSection.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import { SettingRow } from './settings-primitives'
@@ -914,7 +914,5 @@ onBeforeUnmount(() => {
 
 .error {
   margin: 0;
-  font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--color-danger, var(--text-secondary)));
 }
 </style>

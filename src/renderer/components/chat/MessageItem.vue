@@ -136,39 +136,11 @@
         </div>
 
         <!-- Inline error for assistant messages that failed mid-stream -->
-        <div
+        <ErrorNote
           v-if="message.role === 'assistant' && message.errorDetails"
           class="inline-error"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="10"
-            />
-            <line
-              x1="12"
-              y1="8"
-              x2="12"
-              y2="12"
-            />
-            <line
-              x1="12"
-              y1="16"
-              x2="12.01"
-              y2="16"
-            />
-          </svg>
-          <span class="inline-error-text">{{ inlineErrorText }}</span>
-        </div>
+          :message="inlineErrorText"
+        />
 
         <!-- Steps panel fallback - only for legacy messages without contentParts -->
         <StepsPanel
@@ -215,6 +187,7 @@ import { ref, computed } from 'vue'
 import type { ChatMessage, MessageAttachment, ToolCall } from '@/types'
 import StepsPanel from './StepsPanel.vue'
 import AttachmentThumb from '@/components/common/AttachmentThumb.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import FileChip from '@/components/common/FileChip.vue'
 import { formatFileSize } from '@/utils/format'
 import MessageError from './message/MessageError.vue'
@@ -621,30 +594,9 @@ function handleUpdateThinkingTime(time: number) {
   }
 }
 
-/* Inline error for failed assistant messages */
+/* Inline error for failed assistant messages — positioning only; the ledger
+   ink rule itself lives in ErrorNote. */
 .inline-error {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 14px;
   margin-top: 8px;
-  background: var(--ui-status-danger-bg, transparent);
-  border: 1px solid var(--ui-status-danger-border, var(--color-danger));
-  border-radius: 8px;
-  color: var(--ui-status-danger-fg, var(--text-error));
-  font-size: 13px;
-  line-height: 1.5;
-}
-
-.inline-error svg {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.inline-error-text {
-  flex: 1;
-  word-break: break-word;
 }
 </style>

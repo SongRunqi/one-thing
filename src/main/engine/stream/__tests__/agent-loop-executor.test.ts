@@ -108,6 +108,7 @@ function createState(): AgentLoopExecutorState {
     sendContentPart: vi.fn(),
     sendContinuation: vi.fn(),
     sendToolCall: vi.fn(),
+    sendToolInputEnd: vi.fn(),
     sendToolResult: vi.fn(),
     sendToolInputStart: vi.fn(),
     sendToolInputDelta: vi.fn(),
@@ -266,7 +267,7 @@ describe('agent loop executor', () => {
     })
     await applyAgentLoopStreamChunk(state, {
       type: 'tool-input-end',
-      toolInputEnd: { toolCallId: 'call_1' },
+      toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' },
     })
     await applyAgentLoopStreamChunk(state, {
       type: 'tool-result',
@@ -337,7 +338,7 @@ describe('agent loop executor', () => {
     })
     await applyAgentLoopStreamChunk(state, {
       type: 'tool-input-end',
-      toolInputEnd: { toolCallId: 'call_1' },
+      toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' },
     })
     await applyAgentLoopStreamChunk(state, {
       type: 'tool-metadata',
@@ -409,7 +410,7 @@ describe('agent loop executor', () => {
     })
     await applyAgentLoopStreamChunk(state, {
       type: 'tool-input-end',
-      toolInputEnd: { toolCallId: 'call_1' },
+      toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' },
     })
     await applyAgentLoopStreamChunk(state, {
       type: 'tool-result',

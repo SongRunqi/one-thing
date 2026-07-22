@@ -102,12 +102,25 @@ export type {
 	CoreStreamStepType,
 	CoreStreamToolCallLike,
 	CoreStreamToolCallStatus,
+	CoreToolArgsFinalizedBy,
 	CoreToolIdentityResolver,
 	CoreToolInputBufferEntry,
 	CoreToolInputFinishResult,
 	CoreToolInputStartOptions,
 	CreateCoreStreamProcessorOptions,
 } from "./stream-processor.js";
+
+export {
+	createStreamingArgsParser,
+	parseStreamingArgs,
+} from "./streaming-args.js";
+export type {
+	StreamingArgsField,
+	StreamingArgsFieldState,
+	StreamingArgsParser,
+	StreamingArgsValueKind,
+	StreamingArgsView,
+} from "./streaming-args.js";
 
 export {
 	CoreStreamEngine,

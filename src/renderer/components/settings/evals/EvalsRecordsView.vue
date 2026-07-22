@@ -106,12 +106,11 @@
     </div>
 
     <!-- Error -->
-    <div
+    <ErrorNote
       v-else-if="store.recordsError"
       class="evals-error"
-    >
-      {{ store.recordsError }}
-    </div>
+      :message="store.recordsError"
+    />
 
     <!-- Empty -->
     <div
@@ -226,6 +225,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import ErrorNote from "@/components/common/ErrorNote.vue";
 import { useEvalsStore } from "@/stores/evals";
 import type { EvalRecordView } from "@/stores/evals";
 
@@ -552,7 +552,6 @@ async function handleGenerateTriage() {
 }
 
 .evals-loading,
-.evals-error,
 .evals-empty {
   text-align: center;
   padding: 30px;
@@ -561,6 +560,6 @@ async function handleGenerateTriage() {
 }
 
 .evals-error {
-  color: var(--ui-status-danger-fg, #e74c3c);
+  margin: 24px 0;
 }
 </style>

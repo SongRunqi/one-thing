@@ -91,6 +91,7 @@ const statusLabel = computed(() => props.goal.status.replace('_', ' ').toUpperCa
 const reasonTag = computed(() => {
   switch (props.goal.status) {
     case 'complete': return 'DELIVERED'
+    case 'abandoned': return 'DROPPED'
     case 'paused': return 'NEEDS'
     case 'blocked': return 'BLOCKED'
     case 'budget_limited': return 'BUDGET'
@@ -144,6 +145,11 @@ const totals = computed(() => fileChanges.value.reduce(
 
 .goal-summary[data-status='blocked'] {
   --goal-ink: var(--ui-status-danger-fg, var(--danger-color, #dc2626));
+}
+
+/* 主动放弃不是故障:走淡墨,与 blocked 的朱砂告警区分开 */
+.goal-summary[data-status='abandoned'] {
+  --goal-ink: var(--ui-text-muted-fg, var(--muted));
 }
 
 .frame-label {

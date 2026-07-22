@@ -99,6 +99,7 @@ describe('runAgentLoop concurrent tool execution', () => {
     const tool: AgentTool = {
       name: 'read',
       parameters: { type: 'object' },
+      executionMode: 'parallel',
       async execute(args) {
         const path = String(args.path)
         events.push(`execute:${path}:start`)
@@ -128,6 +129,63 @@ describe('runAgentLoop concurrent tool execution', () => {
     expect(result.toolResults.map(item => item.toolCall.id)).toEqual(['call_1', 'call_2'])
   })
 
+  it('orders a later read behind an in-flight mutation (barrier semantics)', async () => {
+    const events: string[] = []
+    const releaseEdit = deferred()
+    let fileContent = 'old'
+    const provider = baseProvider(async function* (request) {
+      if (request.turn === 1) {
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_edit', name: 'edit', arguments: '{"path":"a"}' } }
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_read', name: 'read', arguments: '{"path":"a"}' } }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'text-delta', turn: request.turn, delta: 'done' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    // No executionMode declaration → barrier.
+    const editTool: AgentTool = {
+      name: 'edit',
+      parameters: { type: 'object' },
+      async execute() {
+        events.push('execute:edit:start')
+        await releaseEdit.promise
+        fileContent = 'new'
+        events.push('execute:edit:end')
+        return { content: 'edited' }
+      },
+    }
+    const readTool: AgentTool = {
+      name: 'read',
+      parameters: { type: 'object' },
+      executionMode: 'parallel',
+      async execute() {
+        events.push(`execute:read:${fileContent}`)
+        return { content: fileContent }
+      },
+    }
+
+    const run = runAgentLoop({
+      ...baseOptions(provider, editTool, events),
+      tools: [editTool, readTool],
+    })
+
+    // The read streamed in while the edit is still running; it must stay queued.
+    await waitFor(() => events.includes('done:call_read'))
+    expect(events).toContain('execute:edit:start')
+    expect(events.some(event => event.startsWith('execute:read:'))).toBe(false)
+
+    releaseEdit.resolve()
+    const result = await run
+
+    // The read only ran after the edit completed, observing post-edit state.
+    expect(events).toContain('execute:read:new')
+    expect(events).not.toContain('execute:read:old')
+    expect(events.indexOf('execute:read:new')).toBeGreaterThan(events.indexOf('execute:edit:end'))
+    const toolMessages = result.messages.filter(message => message.role === 'tool')
+    expect(toolMessages.map(message => message.toolCallId)).toEqual(['call_edit', 'call_read'])
+  })
+
   it('lets sibling tools settle before pausing for confirmation, and pauses on the first declared', async () => {
     const events: string[] = []
     const provider = baseProvider(async function* (request) {
@@ -136,6 +194,7 @@ describe('runAgentLoop concurrent tool execution', () => {
     const tool: AgentTool = {
       name: 'read',
       parameters: { type: 'object' },
+      executionMode: 'parallel',
       async execute(args) {
         const path = String(args.path)
         // call_1 settles after call_2 so the declaration-order tie-break is exercised.
@@ -180,6 +239,7 @@ describe('runAgentLoop concurrent tool execution', () => {
     const tool: AgentTool = {
       name: 'read',
       parameters: { type: 'object' },
+      executionMode: 'parallel',
       async execute(args) {
         const path = String(args.path)
         events.push(`execute:${path}:start`)

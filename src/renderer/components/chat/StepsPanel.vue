@@ -119,7 +119,7 @@
             >
               <span class="node-meta">{{ getActivityMetaText(getTimelineItemActivity(item)) }}<LiveToolDuration
                 v-if="hasLiveDuration(getTimelineItemActivity(item))"
-                :start-time="getTimelineItemActivity(item).toolCall.startTime"
+                :start-time="getActivityLiveStart(getTimelineItemActivity(item))"
                 :separator="getActivityMetaText(getTimelineItemActivity(item)) ? ' · ' : ''"
               /></span>
             </div>
@@ -352,6 +352,7 @@ function mergeStatuses(current: ToolRenderStatus, next: ToolRenderStatus): ToolR
     'awaiting-confirmation',
     'executing',
     'streaming-input',
+    'received',
     'pending',
     'queued',
     'cancelled',
@@ -394,7 +395,7 @@ function flashFileOpen(activityId: string) {
 }
 
 function isFlowingStatus(status: ToolRenderStatus): boolean {
-  return status === 'executing' || status === 'streaming-input'
+  return status === 'executing' || status === 'streaming-input' || status === 'received'
 }
 
 function getStatusBadgeText(activity: ToolActivityView): string {
@@ -412,6 +413,7 @@ function getStatusBadgeText(activity: ToolActivityView): string {
 function getCollapsePanelStatus(status: ToolRenderStatus): CollapsePanelStatus {
   switch (status) {
     case 'executing':
+    case 'received':
       return 'executing'
     case 'streaming-input':
       return 'streaming'
@@ -476,9 +478,22 @@ function getActivityMetaText(activity: ToolActivityView): string {
   return parts.join(' · ')
 }
 
+/**
+ * Live tick anchor per phase: receiving ticks from the toolCall's creation
+ * (input-start), execution from the authoritative startTime.
+ */
+function getActivityLiveStart(activity: ToolActivityView): number | undefined {
+  if (activity.status === 'streaming-input' || activity.status === 'received') {
+    return activity.toolCall.timestamp
+  }
+  if (activity.status === 'executing' && typeof activity.toolCall.startTime === 'number') {
+    return activity.toolCall.startTime
+  }
+  return undefined
+}
+
 function hasLiveDuration(activity: ToolActivityView): boolean {
-  return (activity.status === 'executing' || activity.status === 'streaming-input') &&
-    typeof activity.toolCall.startTime === 'number'
+  return getActivityLiveStart(activity) !== undefined
 }
 
 function getSingleActivityText(activity: ToolActivityView): string {
@@ -928,7 +943,7 @@ function getTimelineItemActivity(item: NestedCollapseItem): ToolActivityView {
   min-width: 0;
   max-width: min(56ch, 100%);
   overflow: hidden;
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1.35;

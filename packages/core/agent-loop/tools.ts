@@ -15,6 +15,8 @@ export interface AgentSourceToolDefinition {
     enum?: string[]
   }>
   parameterSchema?: JsonObject
+  /** See AgentTool.executionMode. Undeclared tools execute as barriers. */
+  executionMode?: string
 }
 
 export interface AgentModelToolDefinition {
@@ -27,6 +29,8 @@ export interface AgentModelToolDefinition {
     enum?: string[]
   }>
   parameterSchema?: JsonObject
+  /** See AgentTool.executionMode. Undeclared tools execute as barriers. */
+  executionMode?: string
 }
 
 export interface AgentToolExecutionAdapterResult {
@@ -80,6 +84,14 @@ function agentToolParametersFromDefinition(definition: AgentModelToolDefinition)
   return definition.parameterSchema ?? parametersToJsonSchema(definition.parameters)
 }
 
+function agentToolExecutionModeFromDefinition(
+  definition: AgentModelToolDefinition,
+): 'parallel' | 'sequential' | undefined {
+  if (definition.executionMode === undefined) return undefined
+  // Any unknown declaration degrades to the safe (barrier) mode.
+  return definition.executionMode === 'parallel' ? 'parallel' : 'sequential'
+}
+
 export function agentToolDefinitionsFromSourceTools(
   toolDefinitions: AgentSourceToolDefinition[],
 ): Record<string, AgentModelToolDefinition> {
@@ -92,6 +104,7 @@ export function agentToolDefinitionsFromSourceTools(
       description: tool.description,
       parameters: tool.parameters,
       parameterSchema: tool.parameterSchema,
+      executionMode: tool.executionMode,
     }
   }
 
@@ -106,6 +119,7 @@ export function agentToolsFromToolDefinitions(
     name,
     description: definition.description,
     parameters: agentToolParametersFromDefinition(definition),
+    executionMode: agentToolExecutionModeFromDefinition(definition),
     async execute(args, ctx) {
       const result = await execute(name, args, ctx)
 
@@ -142,6 +156,7 @@ export function agentModelToolsFromDefinitions(
     name,
     description: definition.description,
     parameters: agentToolParametersFromDefinition(definition),
+    executionMode: agentToolExecutionModeFromDefinition(definition),
     async execute() {
       return { content: '' }
     },

@@ -97,4 +97,24 @@ describe('computeOnethingUsageSummary', () => {
     const summary = computeOnethingUsageSummary(records, { granularity: 'day', count: 1, now: inRange })
     expect(summary.buckets[0].records).toBe(1)
   })
+  it('breaks spend down by call category so side-line calls are visible', () => {
+    // Chat bills itself; title / memory / skill review are calls the app makes
+    // on its own and were historically invisible in the ledger summary.
+    const day = new Date(2026, 6, 13, 10, 0, 0).getTime()
+    const records = [
+      record({ ts: day, source: 'chat', costUSD: 0.05 }),
+      record({ ts: day, source: 'chat', costUSD: 0.03 }),
+      record({ ts: day, source: 'memory', costUSD: 0.004 }),
+      record({ ts: day, source: 'title', costUSD: 0.001 }),
+    ]
+
+    const summary = computeOnethingUsageSummary(records, { granularity: 'day', count: 1, now: day })
+    const bySource = summary.buckets[0]!.bySource
+
+    expect(bySource.map(entry => entry.key).sort()).toEqual(['chat', 'memory', 'title'])
+    const chat = bySource.find(entry => entry.key === 'chat')!
+    expect(chat.apiCostUSD).toBeCloseTo(0.08)
+    expect(chat.records).toBe(2)
+    expect(bySource.find(entry => entry.key === 'memory')!.apiCostUSD).toBeCloseTo(0.004)
+  })
 })

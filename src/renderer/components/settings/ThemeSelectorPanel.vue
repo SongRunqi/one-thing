@@ -119,17 +119,16 @@
       </Button>
     </div>
 
-    <div
+    <ErrorNote
       v-if="themeStore.error"
-      class="error-message"
-    >
-      {{ themeStore.error }}
-    </div>
+      :message="themeStore.error"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Check, ChevronDown, FolderOpen, RefreshCw } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/themes'
@@ -442,17 +441,6 @@ async function refreshThemes() {
 
 .spinning {
   animation: spin 0.9s linear infinite;
-}
-
-/* Error: a left danger rule, no filled box. */
-.error-message {
-  padding: 2px 0 2px 8px;
-  border: 0;
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
-  border-radius: 0;
-  background: transparent;
-  color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
-  font-size: 12px;
 }
 
 .theme-menu-enter-active,

@@ -841,10 +841,7 @@ html[data-theme='light'] .image-generation-skeleton::after {
   --md-code-copy-padding: 0;
   --md-code-copy-justify-content: center;
   --md-code-copy-transition: all 0.15s ease;
-  --md-code-copy-check-display: none;
-  --md-code-copy-copied-icon-display: none;
-  --md-code-copy-copied-check-display: block;
-  --md-code-copy-copied-check-color: var(--ui-accent-primary-fg, var(--accent));
+  /* copy/copied icon visibility now comes from the shared defaults in markdown.css */
   --md-code-line-height: var(--type-code-line-height-px);
   --md-code-plain-fg: var(--hg-syntax-plain-fg, var(--text-code-block));
 
@@ -993,6 +990,11 @@ html[data-theme='light'] .image-generation-skeleton::after {
 
 .inline-reasoning-content :deep(p:last-child) {
   margin-bottom: 0;
+}
+
+/* 同 MessageThinking:小字号下 1.5em 装不下两位数 marker,会被自身 overflow: hidden 裁掉 */
+.inline-reasoning-content :deep(ol) {
+  padding-left: 2.4em;
 }
 
 @keyframes waitingDotPulse {

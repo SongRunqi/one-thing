@@ -79,17 +79,37 @@ export type ToolExecutionMode = 'parallel' | 'sequential'
 export type ToolRenderShell = 'default' | 'self'
 export type ToolRenderKind = 'text' | 'bash' | 'diff' | 'file' | 'search' | 'image' | 'custom'
 
+/**
+ * One line of a structured diff hunk. Unified-diff text is ambiguous (a
+ * deleted line starting with `--` reads as a `---` file header), so display
+ * consumers use these explicit ops instead of re-parsing patch text.
+ */
+export interface DiffHunkLine {
+  op: 'ctx' | 'add' | 'del' | 'noeof'
+  text: string
+}
+
+export interface DiffHunk {
+  oldStart: number
+  oldLines: number
+  newStart: number
+  newLines: number
+  lines: DiffHunkLine[]
+}
+
 export interface ToolCall {
   id: string                 // Unique ID for this tool call
   toolId: string             // ID of the tool being called
   toolName: string           // Name of the tool
   arguments: JsonObject      // Arguments passed to the tool
-  status: 'pending' | 'queued' | 'executing' | 'completed' | 'failed' | 'cancelled' | 'input-streaming'
+  status: 'pending' | 'queued' | 'received' | 'executing' | 'completed' | 'failed' | 'cancelled' | 'input-streaming'
   result?: JsonValue         // Result of the tool execution
   error?: string             // Error message if failed
   rejected?: boolean         // True when the user rejected permission for this call
   rejectionReason?: string   // Optional user-provided rejection reason
   timestamp: number
+  receivedAt?: number        // When the argument stream finished (tool:input-end), before execution
+  argsFinalizedBy?: 'parse' | 'provider-done'  // How streamed args were finalized ('parse' = mid-stream JSON completion)
   startTime?: number         // Execution start timestamp (Date.now, integer ms)
   endTime?: number           // Execution end timestamp (Date.now, integer ms)
   durationMs?: number        // Authoritative execution duration measured in the main process
@@ -99,6 +119,8 @@ export interface ToolCall {
   // For edit tool: diff preview (displayed instead of arguments)
   changes?: {
     diff: string
+    /** Structured hunks; render from these, never by re-parsing `diff` text. */
+    hunks?: DiffHunk[]
     filePath: string
     additions: number
     deletions: number

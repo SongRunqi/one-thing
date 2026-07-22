@@ -10,11 +10,20 @@ export interface CoreResolvedTool {
 export type CoreStreamToolCallStatus =
   | 'pending'
   | 'queued'
+  | 'received'
   | 'executing'
   | 'completed'
   | 'failed'
   | 'cancelled'
   | 'input-streaming'
+
+/**
+ * How the tool call's streamed arguments were finalized. 'parse' is the honest
+ * path (accumulated JSON became parseable mid-stream); 'provider-done' means
+ * the provider's done event settled them without a mid-stream parse — the
+ * whole-blob and stream-end fallback paths land here.
+ */
+export type CoreToolArgsFinalizedBy = 'parse' | 'provider-done'
 
 export interface CoreStreamToolCallLike {
   id: string
@@ -24,6 +33,9 @@ export interface CoreStreamToolCallLike {
   status: CoreStreamToolCallStatus
   timestamp: number
   streamingArgs?: string
+  /** When the argument stream finished (tool:input-end), before execution. */
+  receivedAt?: number
+  argsFinalizedBy?: CoreToolArgsFinalizedBy
 }
 
 export type CoreStreamStepType = 'command' | 'tool-call'
@@ -113,8 +125,10 @@ export function applyCoreToolCallChunk<TToolCall extends CoreStreamToolCallLike>
     args: JsonObject
     publish?: boolean
     timestamp?: number
+    status?: CoreStreamToolCallStatus
   },
 ): TToolCall {
+  const status = input.status ?? 'pending'
   const existingIndex = toolCalls.findIndex(toolCall => toolCall.id === input.toolCallId)
 
   if (existingIndex >= 0) {
@@ -122,7 +136,7 @@ export function applyCoreToolCallChunk<TToolCall extends CoreStreamToolCallLike>
     toolCall.toolId = input.resolved.toolId
     toolCall.toolName = input.resolved.displayName
     toolCall.arguments = input.args
-    toolCall.status = 'pending'
+    toolCall.status = status
     delete toolCall.streamingArgs
     return toolCall
   }
@@ -131,7 +145,7 @@ export function applyCoreToolCallChunk<TToolCall extends CoreStreamToolCallLike>
     toolCallId: input.toolCallId,
     resolved: input.resolved,
     args: input.args,
-    status: 'pending',
+    status,
     timestamp: input.timestamp,
   }) as TToolCall
 
@@ -291,6 +305,13 @@ export interface CoreStreamProcessorEmitter<
   sendStepAdded(step: TStep): void
   sendToolInputStart(toolCallId: string, displayName: string, toolCall: TToolCall): void
   sendToolInputDelta(toolCallId: string, argsTextDelta: string): void
+  sendToolInputEnd?(
+    toolCallId: string,
+    stepId: string | undefined,
+    toolCall: TToolCall,
+    receivedAt: number,
+    finalizedBy: CoreToolArgsFinalizedBy,
+  ): void
 }
 
 export interface CoreStreamProcessorLogger {
@@ -338,10 +359,20 @@ export interface CoreStreamProcessor<
     toolCallId: string
     toolName: string
     args: JsonObject
-  }, options?: { publish?: boolean }): TToolCall
+  }, options?: { publish?: boolean; status?: CoreStreamToolCallStatus }): TToolCall
+  /**
+   * Settle a tool call whose arguments are complete: applies the chunk with
+   * status 'received', stamps receivedAt/argsFinalizedBy, and emits
+   * tool:input-end so every host learns the real receive-complete moment.
+   */
+  handleToolCallComplete(toolCallData: {
+    toolCallId: string
+    toolName: string
+    args: JsonObject
+  }, options?: { publish?: boolean; finalizedBy?: CoreToolArgsFinalizedBy }): TToolCall
   handleToolInputStart(toolCallId: string, toolName: string, turnIndex?: number, options?: { publish?: boolean }): void
   handleToolInputDelta(toolCallId: string, argsTextDelta: string): void
-  handleToolInputEnd(toolCallId: string): TToolCall | null
+  handleToolInputEnd(toolCallId: string, options?: { finalizedBy?: CoreToolArgsFinalizedBy }): TToolCall | null
   getStepIdForToolCall(toolCallId: string): string | undefined
   finalize(): Promise<void>
 }
@@ -399,7 +430,7 @@ export function createCoreStreamProcessor<
       toolCallId: string
       toolName: string
       args: JsonObject
-    }, handleOptions: { publish?: boolean } = {}): TToolCall {
+    }, handleOptions: { publish?: boolean; status?: CoreStreamToolCallStatus } = {}): TToolCall {
       const publish = handleOptions.publish !== false
       const resolved = options.resolveToolIdentity(toolCallData.toolName, toolCallData.args)
       const toolCall = applyCoreToolCallChunk(toolCalls, {
@@ -407,11 +438,41 @@ export function createCoreStreamProcessor<
         resolved,
         args: toolCallData.args,
         publish,
+        status: handleOptions.status,
       })
 
       if (publish) {
         store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
         emitter.sendToolCall(toolCall)
+      }
+
+      return toolCall
+    },
+
+    handleToolCallComplete(toolCallData: {
+      toolCallId: string
+      toolName: string
+      args: JsonObject
+    }, completeOptions: { publish?: boolean; finalizedBy?: CoreToolArgsFinalizedBy } = {}): TToolCall {
+      const finalizedBy = completeOptions.finalizedBy ?? 'parse'
+      const receivedAt = Date.now()
+      const toolCall = this.handleToolCallChunk(toolCallData, {
+        publish: completeOptions.publish,
+        status: 'received',
+      })
+      toolCall.receivedAt = receivedAt
+      toolCall.argsFinalizedBy = finalizedBy
+
+      const publish = completeOptions.publish !== false
+      if (publish) {
+        store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+        emitter.sendToolInputEnd?.(
+          toolCallData.toolCallId,
+          toolInputBuffers.getStepId(toolCallData.toolCallId),
+          toolCall,
+          receivedAt,
+          finalizedBy,
+        )
       }
 
       return toolCall
@@ -451,7 +512,7 @@ export function createCoreStreamProcessor<
       }
     },
 
-    handleToolInputEnd(toolCallId: string): TToolCall | null {
+    handleToolInputEnd(toolCallId: string, endOptions: { finalizedBy?: CoreToolArgsFinalizedBy } = {}): TToolCall | null {
       const result = toolInputBuffers.finish(toolCallId)
       if (!result) {
         logger.warn(`[StreamProcessor] No buffer found for tool input end: ${toolCallId}`)
@@ -460,14 +521,22 @@ export function createCoreStreamProcessor<
 
       if (!result.ok) {
         logger.error('[StreamProcessor] Failed to parse tool args JSON:', result.error, result.rawArgsText)
+        // Surface the failure instead of leaving the placeholder card in
+        // input-streaming forever — the receive state must never lie.
+        const placeholder = toolCalls.find(toolCall => toolCall.id === toolCallId)
+        if (placeholder && placeholder.status === 'input-streaming') {
+          placeholder.status = 'failed'
+          store.updateMessageToolCalls(ctx.sessionId, ctx.assistantMessageId, toolCalls)
+          emitter.sendToolCall(placeholder)
+        }
         return null
       }
 
-      return this.handleToolCallChunk({
+      return this.handleToolCallComplete({
         toolCallId,
         toolName: result.toolName,
         args: result.args,
-      }, { publish: result.visible })
+      }, { publish: result.visible, finalizedBy: endOptions.finalizedBy })
     },
 
     getStepIdForToolCall(toolCallId: string): string | undefined {

@@ -21,6 +21,7 @@ import type {
   AgentTurnStreamEvent,
   AgentUsage,
 } from '@onething/core/agent-loop'
+import type { AgentProviderRequestDumper } from './request-dump.js'
 
 type FetchFn = typeof globalThis.fetch
 
@@ -28,6 +29,7 @@ export interface GeminiAgentProviderOptions {
   apiKey?: string
   baseUrl?: string
   fetchImpl?: FetchFn
+  requestDumper?: AgentProviderRequestDumper
 }
 
 type GeminiPart =
@@ -510,6 +512,21 @@ export function createGeminiAgentProvider(options: GeminiAgentProviderOptions): 
     const url = new URL(`${baseUrl}/models/${encodeURIComponent(request.model)}:streamGenerateContent`)
     url.searchParams.set('alt', 'sse')
     if (options.apiKey) url.searchParams.set('key', options.apiKey)
+
+    // The live URL carries `key=<apiKey>`; the dump gets a redacted copy.
+    const dumpUrl = new URL(url.toString())
+    if (dumpUrl.searchParams.has('key')) dumpUrl.searchParams.set('key', '[redacted]')
+    await options.requestDumper?.({
+      providerId: 'gemini',
+      model: request.model,
+      mode: 'stream',
+      metadata: {
+        url: dumpUrl.toString(),
+        method: 'POST',
+        turn: request.turn,
+      },
+      requestBody: body,
+    })
 
     const response = await fetchImpl(url.toString(), {
       method: 'POST',

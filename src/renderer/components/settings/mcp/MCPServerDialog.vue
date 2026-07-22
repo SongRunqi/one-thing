@@ -174,12 +174,11 @@
             </div>
           </template>
 
-          <div
+          <ErrorNote
             v-if="error"
             class="error-message"
-          >
-            {{ error }}
-          </div>
+            :message="error"
+          />
         </div>
 
         <div class="dialog-footer">
@@ -206,6 +205,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { ref, watch } from 'vue'
 import type { MCPServerConfig } from '@/types'
 import type { ServerForm } from './useMCPServers'
@@ -461,13 +461,9 @@ defineExpose({
   color: var(--ui-text-faint-fg, var(--muted)) !important;
 }
 
+/* positioning only — visuals come from ErrorNote */
 .error-message {
-  font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  padding: 2px 0 2px 8px;
   margin-top: 16px;
-  word-break: break-word;
 }
 
 /* Footer actions as text buttons */

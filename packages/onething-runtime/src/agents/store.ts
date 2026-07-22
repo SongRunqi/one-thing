@@ -10,6 +10,11 @@ export interface OnethingAgentDefinition {
   id: string
   name: string
   systemPrompt: string
+  /**
+   * Tool allowlist (tool ids). Absent = all enabled tools; an agent with a
+   * list only ever sees those tools in its requests.
+   */
+  tools?: string[]
   isDefault?: boolean
   createdAt: number
   updatedAt: number
@@ -29,12 +34,15 @@ export interface CreateOnethingAgentInput {
   id: string
   name: string
   systemPrompt?: string
+  tools?: string[]
 }
 
 export interface UpdateOnethingAgentInput {
   agentId: string
   name?: string
   systemPrompt?: string
+  /** Array replaces the allowlist; null clears it (agent sees all tools). */
+  tools?: string[] | null
 }
 
 export interface OnethingAgentStore {
@@ -57,6 +65,16 @@ function createDefaultAgent(timestamp: number): OnethingAgentDefinition {
   }
 }
 
+function normalizeToolAllowlist(tools: unknown): string[] | undefined {
+  if (!Array.isArray(tools)) return undefined
+  const normalized = Array.from(new Set(
+    tools.filter((tool): tool is string => typeof tool === 'string')
+      .map(tool => tool.trim())
+      .filter(Boolean),
+  ))
+  return normalized.length > 0 ? normalized : undefined
+}
+
 function normalizeAgent(
   agent: Partial<OnethingAgentDefinition>,
   fallbackTimestamp: number,
@@ -71,6 +89,7 @@ function normalizeAgent(
       ? agent.name.trim()
       : isDefault ? DEFAULT_ONETHING_AGENT_NAME : 'Untitled Agent',
     systemPrompt: typeof agent.systemPrompt === 'string' ? agent.systemPrompt : '',
+    tools: normalizeToolAllowlist(agent.tools),
     isDefault: isDefault || undefined,
     createdAt: typeof agent.createdAt === 'number' ? agent.createdAt : fallbackTimestamp,
     updatedAt: typeof agent.updatedAt === 'number' ? agent.updatedAt : fallbackTimestamp,
@@ -156,6 +175,7 @@ export function createOnethingAgentStore(options: CreateOnethingAgentStoreOption
         id,
         name: input.name.trim() || 'Untitled Agent',
         systemPrompt: input.systemPrompt ?? '',
+        tools: normalizeToolAllowlist(input.tools),
         createdAt: timestamp,
         updatedAt: timestamp,
       }
@@ -174,6 +194,11 @@ export function createOnethingAgentStore(options: CreateOnethingAgentStoreOption
         ...current,
         name: input.name !== undefined ? (input.name.trim() || current.name) : current.name,
         systemPrompt: input.systemPrompt !== undefined ? input.systemPrompt : current.systemPrompt,
+        tools: input.tools === undefined
+          ? current.tools
+          : input.tools === null
+            ? undefined
+            : normalizeToolAllowlist(input.tools),
         updatedAt: now(),
       }
       file.agents[index] = next

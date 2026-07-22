@@ -9,6 +9,10 @@ import type { AgentProviderStreamChunk } from "../agent-loop/provider-stream.js"
 import type { AgentProviderData } from "../agent-loop/types.js";
 import { isAgentLoopPauseForConfirmationError } from "../agent-loop/errors.js";
 import {
+	coreDiffHunksFromJson,
+	type CoreDiffHunk,
+} from "../tools/diff-hunks.js";
+import {
 	getTextFromContent,
 	type CoreAIMessageContent,
 } from "./message-content.js";
@@ -323,6 +327,8 @@ export interface CoreToolPartialResultUpdate {
 
 export interface CoreToolCallChanges {
 	diff: string;
+	/** Structured hunks; render from these, never by re-parsing `diff` text. */
+	hunks?: CoreDiffHunk[];
 	filePath: string;
 	additions: number;
 	deletions: number;
@@ -447,12 +453,23 @@ export interface CoreAgentLoopToolInputProcessor<
 		turnIndex: number,
 	): void;
 	handleToolInputDelta(toolCallId: string, argsTextDelta: string): void;
-	handleToolInputEnd(toolCallId: string): TToolCall | null | undefined;
+	handleToolInputEnd(
+		toolCallId: string,
+		options?: { finalizedBy?: "parse" | "provider-done" },
+	): TToolCall | null | undefined;
 	handleToolCallChunk(chunk: {
 		toolCallId: string;
 		toolName: string;
 		args: JsonObject;
 	}): TToolCall;
+	handleToolCallComplete?(
+		chunk: {
+			toolCallId: string;
+			toolName: string;
+			args: JsonObject;
+		},
+		options?: { finalizedBy?: "parse" | "provider-done" },
+	): TToolCall;
 }
 
 export interface ApplyAgentLoopToolInputStartWithAdaptersOptions<
@@ -485,6 +502,7 @@ export interface ApplyAgentLoopToolInputEndWithAdaptersOptions<
 		"toolCall" | "toolCalls" | "stepId"
 	> {
 	toolCallId: string;
+	finalizedBy?: "parse" | "provider-done";
 	turn: Pick<
 		CoreAgentLoopExecutorTurnState<TToolCall, TContentPart>,
 		"toolCalls"
@@ -510,6 +528,7 @@ export interface ApplyAgentLoopToolCallFallbackWithAdaptersOptions<
 	>;
 	turnIndex: number;
 	toolCall: CoreAgentLoopFallbackToolCallLike;
+	finalizedBy?: "parse" | "provider-done";
 	processor: CoreAgentLoopToolInputProcessor<TToolCall>;
 	stepIdsByToolCallId: Map<string, string>;
 	emitter: CoreAgentLoopContentPartEmitter<TContentPart> &
@@ -1360,6 +1379,7 @@ export function changesFromMetadata(
 	if (!metadata?.diff || !metadata.path) return undefined;
 	return {
 		diff: String(metadata.diff),
+		hunks: coreDiffHunksFromJson(metadata.diffHunks),
 		filePath: String(metadata.path),
 		additions: Number(metadata.additions) || 0,
 		deletions: Number(metadata.deletions) || 0,
@@ -1684,7 +1704,9 @@ export function applyAgentLoopToolInputEndWithAdapters<
 		options.toolCallId,
 		options.processor.getStepIdForToolCall(options.toolCallId),
 	);
-	const toolCall = options.processor.handleToolInputEnd(options.toolCallId);
+	const toolCall = options.processor.handleToolInputEnd(options.toolCallId, {
+		finalizedBy: options.finalizedBy ?? "parse",
+	});
 	if (!toolCall) return { found: false };
 
 	appendAgentLoopTurnToolCallOnce(options.turn.toolCalls, toolCall);
@@ -1735,11 +1757,20 @@ export function applyAgentLoopToolCallFallbackWithAdapters<
 		);
 	}
 
-	const created = options.processor.handleToolCallChunk({
-		toolCallId: plan.toolCallId,
-		toolName: plan.toolName,
-		args: plan.args,
-	});
+	const created = options.processor.handleToolCallComplete
+		? options.processor.handleToolCallComplete(
+				{
+					toolCallId: plan.toolCallId,
+					toolName: plan.toolName,
+					args: plan.args,
+				},
+				{ finalizedBy: options.finalizedBy ?? "provider-done" },
+			)
+		: options.processor.handleToolCallChunk({
+				toolCallId: plan.toolCallId,
+				toolName: plan.toolName,
+				args: plan.args,
+			});
 	appendAgentLoopTurnToolCallOnce(options.turn.toolCalls, created);
 	startAgentLoopToolExecution<TToolCall, TStepUpdate>({
 		sessionId: options.sessionId,
@@ -1979,6 +2010,7 @@ export async function applyAgentLoopStreamChunkWithAdapters<
 			sessionId: options.sessionId,
 			assistantMessageId: options.assistantMessageId,
 			toolCallId: chunk.toolInputEnd.toolCallId,
+			finalizedBy: chunk.toolInputEnd.finalizedBy,
 			turn: state.turn,
 			processor: options.processor,
 			stepIdsByToolCallId: state.stepIdsByToolCallId,
@@ -1999,6 +2031,7 @@ export async function applyAgentLoopStreamChunkWithAdapters<
 			turn: state.turn,
 			turnIndex: state.turnIndex,
 			toolCall: chunk.toolCall,
+			finalizedBy: chunk.toolCall.finalizedBy ?? "provider-done",
 			processor: options.processor,
 			stepIdsByToolCallId: state.stepIdsByToolCallId,
 			store: options.store,

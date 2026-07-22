@@ -126,6 +126,15 @@ export interface OnethingSkillReviewAdapters<
   invalidateSkillsCache?(): void | Promise<void>
   createAgentProvider(ctx: TContext): Promise<OnethingSkillReviewAgentProviderRef | undefined> | OnethingSkillReviewAgentProviderRef | undefined
   requestDumper?(request: OnethingSkillReviewProviderRequestDump): Promise<string | undefined>
+  /**
+   * Bill an agent loop this trigger ran. Skill review runs on the tool-call
+   * model in the background, so without this its tokens are invisible.
+   * Optional — hosts that do not track usage omit it.
+   */
+  onUsage?(
+    usage: { inputTokens: number; outputTokens: number; totalTokens: number },
+    context: { providerId: string; model: string; sessionId?: string },
+  ): void
   fileTools: OnethingSkillReviewFileToolAdapters<TContext>
   logger?: Pick<Console, 'log' | 'warn' | 'error'>
 }
@@ -353,6 +362,13 @@ async function planSkillReviewTarget<TContext extends OnethingSkillReviewContext
     messageId: `skill-review-target:${ctx.sessionId}`,
     workingDirectory: ctx.session.workingDirectory,
   })
+  if (result.usage) {
+    adapters.onUsage?.(result.usage, {
+      providerId: agentProvider.providerId,
+      model: agentProvider.model,
+      sessionId: ctx.sessionId,
+    })
+  }
 
   return resolveSkillReviewTarget(adapters, ctx, result.text)
 }
@@ -399,6 +415,13 @@ async function runAgentSkillReview<TContext extends OnethingSkillReviewContext>(
       }
     },
   })
+  if (result.usage) {
+    adapters.onUsage?.(result.usage, {
+      providerId: agentProvider.providerId,
+      model: agentProvider.model,
+      sessionId: runPlan.sessionId,
+    })
+  }
 
   const agentMutated = result.toolResults.some(toolResult => {
     return isMutatedToolResult(toolResult.result.data)

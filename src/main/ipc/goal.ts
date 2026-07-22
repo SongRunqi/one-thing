@@ -22,6 +22,7 @@ import {
 	clearGoal,
 	createGoal,
 	getGoal,
+	getGoals,
 	updateGoalFromUser,
 } from "../goals/index.js";
 import { kickGoalRunIfIdle } from "../goals/kick.js";
@@ -35,7 +36,11 @@ export function registerGoalHandlers(): void {
 		IPC_CHANNELS.GOAL_GET,
 		async (_event, request: GoalGetRequest): Promise<GoalGetResponse> => {
 			try {
-				return { success: true, goal: (getGoal(request.sessionId) as SessionGoal | undefined) ?? null };
+				return {
+					success: true,
+					goal: (getGoal(request.sessionId) as SessionGoal | undefined) ?? null,
+					goals: getGoals(request.sessionId) as SessionGoal[],
+				};
 			} catch (error) {
 				return { success: false, error: errorMessage(error) };
 			}
@@ -71,7 +76,9 @@ export function registerGoalHandlers(): void {
 						return { success: true, goal: goal as SessionGoal };
 					}
 					case "clear": {
-						clearGoal(request.sessionId);
+						// Archives as 'abandoned' rather than deleting — the
+						// record is the only trace this stretch happened.
+						clearGoal(request.sessionId, request.reason);
 						return { success: true, goal: null };
 					}
 					default:
@@ -87,7 +94,13 @@ export function registerGoalHandlers(): void {
 		IPC_CHANNELS.GOAL_DIFFS,
 		async (_event, request: GoalDiffsRequest): Promise<GoalDiffsResponse> => {
 			try {
-				const goal = getGoal(request.sessionId) as SessionGoal | undefined;
+				// Review a specific goal when asked (history holds several now),
+				// else the current one.
+				const goals = getGoals(request.sessionId) as SessionGoal[];
+				const goal = request.goalId
+					? goals.find(entry => entry.id === request.goalId)
+					: ((getGoal(request.sessionId) as SessionGoal | undefined) ??
+						goals[goals.length - 1]);
 				if (!goal) {
 					return { success: false, error: "No goal is set for this session" };
 				}

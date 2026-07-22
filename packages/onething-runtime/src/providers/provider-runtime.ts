@@ -83,6 +83,7 @@ export interface OnethingChatTitleGenerationAdapters<
     options: {
       thinking?: boolean
       thinkingEffort?: unknown
+      onUsage?: (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void
     },
   ): Promise<string>
   logger?: CoreProviderAuthLogger

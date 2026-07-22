@@ -17,27 +17,15 @@ import {
 import { agentToolMessageContentToText } from "@onething/core/agent-loop";
 import { isCompleteAgentToolArguments } from "@onething/core/agent-loop";
 import { readJsonSseData } from "./sse.js";
+import type { AgentProviderRequestDumper } from "./request-dump.js";
 
 type FetchFn = typeof globalThis.fetch;
 
-export type AgentProviderRequestDumpValue =
-	| string
-	| number
-	| boolean
-	| null
-	| undefined
-	| bigint
-	| object
-	| AgentProviderRequestDumpValue[]
-	| { [key: string]: AgentProviderRequestDumpValue };
-
-export interface AgentProviderRequestDump {
-	providerId: string;
-	model: string;
-	mode: "stream";
-	metadata?: Record<string, AgentProviderRequestDumpValue>;
-	requestBody: AgentProviderRequestDumpValue;
-}
+export type {
+	AgentProviderRequestDump,
+	AgentProviderRequestDumper,
+	AgentProviderRequestDumpValue,
+} from "./request-dump.js";
 
 function shouldDebugDeepSeekStream(): boolean {
 	return (
@@ -69,9 +57,7 @@ export interface DeepSeekAgentProviderOptions {
 	baseUrl?: string;
 	fetchImpl?: FetchFn;
 	capabilities?: AgentProvider["capabilities"];
-	requestDumper?: (
-		request: AgentProviderRequestDump,
-	) => Promise<string | undefined>;
+	requestDumper?: AgentProviderRequestDumper;
 }
 
 interface DeepSeekToolCall {

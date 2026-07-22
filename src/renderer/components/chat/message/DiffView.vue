@@ -123,13 +123,15 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
-import { FileDiff, parsePatchFiles } from '@pierre/diffs'
+import { FileDiff } from '@pierre/diffs'
 import { DIFF_THEME_NAME, registerDiffTheme } from './diff-theme'
+import { fileDiffMetadataFromHunks } from './diff-hunks-metadata'
+import { parseUnifiedDiffToHunks, diffHunksHaveChanges } from '@/utils/diff-hunks'
 import { createDomButton, type MountedDomButton } from '@/components/common/dom-button'
 import { copyTextToClipboard } from '@/utils/clipboard'
+import type { DiffHunk } from '@/types'
 import type {
   FileDiffOptions,
-  ParsedPatch,
   FileDiffMetadata,
   RenderHeaderMetadataProps,
   ChangeTypes,
@@ -143,6 +145,13 @@ registerDiffTheme()
 interface Props {
   /** Raw unified diff content string */
   diff?: string
+  /**
+   * Structured hunks. Preferred over `diff`: they carry each line with an
+   * explicit op, so display never re-parses ambiguous patch text (a deleted
+   * `-- foo` line serializes as `--- foo` and breaks header-pattern parsers).
+   * `diff` remains the legacy/copy source.
+   */
+  hunks?: DiffHunk[]
   /** Loading state */
   loading?: boolean
   /** Error message */
@@ -175,6 +184,7 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   diff: '',
+  hunks: undefined,
   loading: false,
   error: '',
   maxHeight: '300px',
@@ -198,35 +208,39 @@ let fileDiffInstance: FileDiff | null = null
 const currentDiffStyle = ref<'unified' | 'split'>(props.diffStyle)
 const copied = ref(false)
 
-/** Check if there's actual diff content to display */
-const hasContent = computed(() => {
-  if (!props.diff) return false
-  const lines = props.diff.split('\n')
-  return lines.some(line => line.startsWith('+') || line.startsWith('-'))
-})
-
-/** Parsed patch data (cached) */
-const parsedPatchData = computed<ParsedPatch | null>(() => {
+/**
+ * Structured hunks + display name. Preferred source is the hunks prop; legacy
+ * text diffs go through the count-based parser (never a header-pattern parse).
+ */
+const parsedDiffData = computed<{ hunks: DiffHunk[]; fileName?: string } | null>(() => {
+  if (props.hunks && props.hunks.length > 0) {
+    return { hunks: props.hunks, fileName: undefined }
+  }
   if (!props.diff) return null
   try {
-    const patches = parsePatchFiles(props.diff)
-    return patches[0] || null
+    const parsed = parseUnifiedDiffToHunks(props.diff)
+    return parsed.hunks.length > 0 ? parsed : null
   } catch (err) {
     console.error('[DiffView] Failed to parse patch:', err)
     return null
   }
 })
 
-/** File metadata from parsed diff */
-const fileDiffMetadata = computed<FileDiffMetadata | null>(() => {
-  return parsedPatchData.value?.files?.[0] || null
-})
+/** Check if there's actual diff content to display */
+const hasContent = computed(() => diffHunksHaveChanges(parsedDiffData.value?.hunks))
 
 /** Display file name (priority: prop > parsed > fallback) */
 const displayFileName = computed<string>(() => {
   return props.fileName
-    || fileDiffMetadata.value?.name
+    || parsedDiffData.value?.fileName
     || 'Unknown file'
+})
+
+/** File metadata built from structured hunks */
+const fileDiffMetadata = computed<FileDiffMetadata | null>(() => {
+  const parsed = parsedDiffData.value
+  if (!parsed || parsed.hunks.length === 0) return null
+  return fileDiffMetadataFromHunks(parsed.hunks, props.fileName || parsed.fileName || 'file')
 })
 
 /** Diff statistics (additions and deletions) */
@@ -323,17 +337,11 @@ function createOptions(): FileDiffOptions<undefined> {
 /** Render the diff using @pierre/diffs */
 async function renderDiff() {
   if (!containerWrapperRef.value) return
-  if (!props.diff || !hasContent.value) return
+  if (!hasContent.value) return
 
   try {
-    // Parse the unified diff string
-    const patches: ParsedPatch[] = parsePatchFiles(props.diff)
-    if (!patches || patches.length === 0) return
-
-    const firstPatch = patches[0]
-    if (!firstPatch.files || firstPatch.files.length === 0) return
-
-    const fileDiff = firstPatch.files[0]
+    const fileDiff = fileDiffMetadata.value
+    if (!fileDiff) return
 
     // Clean up previous instance
     if (fileDiffInstance) {
@@ -579,11 +587,12 @@ watch(() => props.diffStyle, (newStyle) => {
 watch(
   () => ({
     diff: props.diff,
+    hunks: props.hunks,
     loading: props.loading,
     diffStyle: props.diffStyle
   }),
   async (newVal) => {
-    if (!newVal.loading && newVal.diff && hasContent.value && containerWrapperRef.value) {
+    if (!newVal.loading && hasContent.value && containerWrapperRef.value) {
       await nextTick()
       renderDiff()
     }

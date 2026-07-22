@@ -328,12 +328,11 @@ npx -y @modelcontextprotocol/server-filesystem /path"
             </div>
           </div>
 
-          <div
+          <ErrorNote
             v-if="error"
             class="error-message"
-          >
-            {{ error }}
-          </div>
+            :message="error"
+          />
         </div>
 
         <div class="dialog-footer">
@@ -360,6 +359,7 @@ npx -y @modelcontextprotocol/server-filesystem /path"
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { ref, computed, watch, h } from 'vue'
 import type { MCPServerConfig } from '@/types'
 import { MCP_PRESETS, PRESET_CATEGORIES, type MCPPreset, type PresetCategory } from '@/data/mcpPresets'
@@ -1159,13 +1159,9 @@ defineExpose({
   text-overflow: ellipsis;
 }
 
+/* positioning only — visuals come from ErrorNote */
 .error-message {
-  font-size: 12px;
-  color: var(--ui-status-danger-fg, #ef4444);
-  border-left: 2px solid var(--ui-status-danger-fg, #ef4444);
-  padding: 2px 0 2px 8px;
   margin: 12px 18px;
-  word-break: break-word;
   flex-shrink: 0;
 }
 

@@ -60,7 +60,10 @@ vi.mock('../service.js', async () => {
     // ncm here: these tests exercise the founding provider's behavior.
     getActiveMusicProvider: () => ncmMusicProvider,
     getMusicNowPlaying: () => null,
-    getMusicService: () => ({ getState: () => ({ playerBackend: mocks.playerBackend }) }),
+    getMusicService: () => ({
+      getState: () => ({ playerBackend: mocks.playerBackend }),
+      checkLogin: vi.fn().mockResolvedValue(false),
+    }),
     nudgeMusicClients: vi.fn(),
     refreshMusicNowPlaying: vi.fn().mockResolvedValue(undefined),
     setMusicSampleListener: vi.fn(),
@@ -126,8 +129,10 @@ describe('main radio playback (legacy starter)', () => {
     const store = radio.getRadioStore()
     store.writeBrief({ active: true, intent: 'x', played: [], skipped: [], loved: [] })
     store.writeProgramme({ entries: [entry(1), entry(2)] })
-    // Slow night: two silent polls before the song audibly starts.
-    mocks.stateReplies = ['stopped', 'stopped', 'playing']
+    // Slow night: silent polls before the song audibly starts. The verify
+    // loop checks immediately and then every 300ms — four stopped replies keep
+    // the start in flight past the 1s 换歌中 assertion below.
+    mocks.stateReplies = ['stopped', 'stopped', 'stopped', 'stopped', 'playing']
 
     const resume = radio.resumeRadioPlayback()
     // Mid-start the bar's 换歌中 signal names the song; it clears when done.

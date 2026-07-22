@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { SkillManageTool, SkillsListTool, SkillViewTool } from '../skill.js'
+import { SkillManageTool, SkillViewTool } from '../skill.js'
 import type { SkillDefinition } from '../../../../shared/ipc.js'
 
 vi.mock('electron', () => ({
@@ -43,7 +43,7 @@ function makeSkill(name: string, description: string, instructions: string): Ski
 }
 
 describe('Skill read tools', () => {
-  it('provides Hermes-style skills_list and skill_view tools', async () => {
+  it('provides a Hermes-style skill_view tool', async () => {
     const skill = makeSkill('docs', 'Write docs', '# Docs instructions')
     skill.category = 'writing'
     skill.rootPath = tmpDir
@@ -55,24 +55,7 @@ describe('Skill read tools', () => {
     fs.writeFileSync(referencePath, '# Style guide', 'utf-8')
     skill.files = [{ name: 'references/style.md', path: referencePath, type: 'markdown' }]
 
-    const listTool = await SkillsListTool.init({ skills: [skill] })
     const viewTool = await SkillViewTool.init({ skills: [skill] })
-
-    const listed = await listTool.execute(
-      { category: 'writing' },
-      {
-        sessionId: 's1',
-        messageId: 'm1',
-        metadata: vi.fn(),
-        updateResult: vi.fn(),
-      },
-    )
-    const listPayload = JSON.parse(listed.output)
-    expect(listPayload).toMatchObject({
-      success: true,
-      count: 1,
-      skills: [{ name: 'docs', category: 'writing', skill_dir: skill.directoryPath }],
-    })
 
     const viewed = await viewTool.execute(
       { name: 'docs' },

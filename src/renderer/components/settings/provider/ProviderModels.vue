@@ -22,12 +22,11 @@
       </Button>
     </div>
 
-    <div
+    <ErrorNote
       v-if="error"
       class="error-message"
-    >
-      {{ error }}
-    </div>
+      :message="error"
+    />
 
     <!-- Models group container -->
     <div class="settings-group">
@@ -351,6 +350,7 @@ import Tooltip from '@/components/common/Tooltip.vue'
 import InputNumber from '@/components/common/InputNumber.vue'
 import Input from '@/components/common/Input.vue'
 import VirtualTable from '@/components/common/VirtualTable.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import type {
   VirtualTableColumn,
   VirtualTableRef,
@@ -1233,15 +1233,9 @@ function resetModelTableScroll() {
   font-size: 13px;
 }
 
-/* Error held by a left rule, no filled block. */
+/* positioning only — visuals come from ErrorNote */
 .error-message {
-  padding: 2px 0 2px 8px;
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
-  background: transparent;
-  color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
-  font-size: 12px;
   margin-bottom: 8px;
-  word-break: break-word;
 }
 
 @media (max-width: 720px) {
@@ -1439,7 +1433,7 @@ function resetModelTableScroll() {
 .model-caps-id-error {
   margin: 4px 4px 0;
   font-size: 11px;
-  color: var(--ui-status-danger-fg, var(--text-error, var(--color-danger)));
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
   line-height: 1.3;
 }
 

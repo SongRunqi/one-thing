@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rootRef"
     :class="[
       'session-item',
       {
@@ -14,6 +15,7 @@
     ]"
     @click="handleClick"
     @contextmenu.prevent="$emit('context-menu', $event)"
+    @mouseenter="loadPreview"
   >
     <!-- 树线缩进区域：参与 flex 布局，宽度 = depth * 16px -->
     <div
@@ -45,16 +47,29 @@
       @keydown.stop="handleRenameKeydown"
       @blur="confirmRename"
     >
-    <Tooltip
+    <span
       v-else
-      :text="session.name || 'New chat'"
+      class="session-name"
+      @dblclick.stop="startRename"
+    >{{ session.name || 'New chat' }}</span>
+
+    <!-- Anchored to the whole row rather than wrapping it: .session-item pulls
+         itself flush with a negative margin and must stay a direct child. -->
+    <Tooltip
+      :trigger-el="rootRef"
+      :disabled="isEditing"
       position="right"
       :delay="600"
+      interactive
     >
-      <span
-        class="session-name"
-        @dblclick.stop="startRename"
-      >{{ session.name || 'New chat' }}</span>
+      <template #content>
+        <SessionPreviewCard
+          :session-name="session.name"
+          :segments="previewSegments"
+          :loading="previewLoading"
+          :fallback-text="session.previewText"
+        />
+      </template>
     </Tooltip>
 
     <!-- Branch Badge：圆形数字，点击展开/收起 -->
@@ -69,15 +84,10 @@
       {{ session.branchCount }}
     </Button>
 
-    <!-- 右侧状态区域：相对时间 + generating dot，hover 时隐藏让位给 ⋯ -->
+    <!-- 右侧状态区域：generating dot，hover 时隐藏让位给 ⋯ -->
     <div class="status-area">
       <!-- Generating dot - 始终存在，用 class 控制显隐 -->
       <div :class="['generating-dot', { active: isGenerating }]" />
-      <!-- Relative timestamp (supporting text) -->
-      <span
-        v-if="!isEditing"
-        class="session-time"
-      >{{ relativeTime }}</span>
     </div>
 
     <!-- Hover action: progressive disclosure menu -->
@@ -95,10 +105,13 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { MoreHorizontal } from 'lucide-vue-next'
 import Tooltip from '@/components/common/Tooltip.vue'
-import { formatRelativeTime, type SessionWithBranches } from './useSessionOrganizer'
+import SessionPreviewCard from './SessionPreviewCard.vue'
+import { platformApi } from '@/platform'
+import type { SessionSegment } from '@/types'
+import type { SessionWithBranches } from './useSessionOrganizer'
 
 interface Props {
   session: SessionWithBranches
@@ -120,6 +133,7 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
+const rootRef = ref<HTMLElement | null>(null)
 const inputRef = ref<HTMLInputElement | null>(null)
 const localEditingName = ref('')
 
@@ -138,7 +152,42 @@ watch(() => props.isEditing, (isEditing) => {
   }
 })
 
-const relativeTime = computed(() => formatRelativeTime(props.session.updatedAt))
+// Fetched on first hover rather than with the list: a sidebar of 200 sessions
+// would otherwise read 200 segment files to render rows nobody looked at.
+const previewSegments = ref<SessionSegment[]>([])
+const previewLoading = ref(false)
+let previewLoadedFor: string | null = null
+let previewLoadedAt = 0
+
+/**
+ * Segments are written well after the turn ends (the outline waits for the
+ * session to go quiet), so an early hover legitimately sees nothing. Caching
+ * that answer forever meant the preview stayed empty no matter how long you
+ * waited — short-lived caching keeps repeat hovers cheap without pinning a
+ * result that was simply too early.
+ */
+const PREVIEW_TTL_MS = 5000
+
+async function loadPreview() {
+  const sessionId = props.session.id
+  if (previewLoading.value) return
+  const cachedFresh =
+    previewLoadedFor === sessionId && Date.now() - previewLoadedAt < PREVIEW_TTL_MS
+  if (cachedFresh) return
+  previewLoading.value = true
+  try {
+    const response = await platformApi.getSessionSegments(sessionId)
+    // Guard against the pointer having moved on during the await.
+    if (props.session.id !== sessionId) return
+    previewSegments.value = response.success ? response.segments : []
+    previewLoadedFor = sessionId
+    previewLoadedAt = Date.now()
+  } catch {
+    previewSegments.value = []
+  } finally {
+    previewLoading.value = false
+  }
+}
 
 function handleClick(event: MouseEvent) {
   if (props.isEditing) return
@@ -189,6 +238,7 @@ function cancelRename() {
   -webkit-user-select: none;
   max-height: 44px;
   transition:
+    min-height 0.25s ease,
     max-height 0.25s ease,
     padding 0.25s ease,
     margin 0.25s ease,
@@ -205,6 +255,9 @@ function cancelRename() {
 }
 
 .session-item.hidden {
+  /* min-height 在 CSS 盒模型里排在 max-height 之后生效，不归零的话
+     基础规则的 min-height: 30px 会把折叠行撑回 30px 空白条 */
+  min-height: 0;
   max-height: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -275,13 +328,10 @@ function cancelRename() {
   opacity: 0.55;
 }
 
-/* 右侧状态区域 - 固定宽度 */
+/* 右侧状态区域 - 只剩 generating dot，按内容收宽把余量还给标题 */
 .status-area {
   display: flex;
   align-items: center;
-  gap: 4px;
-  width: 42px;
-  min-width: 42px;
   flex-shrink: 0;
   justify-content: flex-end;
   transition: opacity 0.12s ease;
@@ -364,43 +414,13 @@ function cancelRename() {
 }
 
 
-/* Relative timestamp (supporting text) - subordinate metadata, hidden on hover */
-.session-time {
-  display: block;
-  width: 100%;
-  font-size: var(--type-caption-muted-size);
-  font-weight: var(--type-caption-muted-weight);
-  line-height: var(--type-caption-muted-line-height);
-  color: var(
-    --sidebar-list-meta-fg,
-    color-mix(in srgb, var(--type-caption-muted-color, var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)))) 88%, transparent)
-  );
-  opacity: 1;
-  text-align: right;
-  white-space: nowrap;
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
-  transition: opacity 0.12s ease;
-}
-
-.session-item.active .session-time {
-  color: var(
-    --sidebar-list-meta-fg-strong,
-    color-mix(in srgb, var(--type-meta-color, var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)))) 96%, transparent)
-  );
-  opacity: 1;
-}
-
 .session-item:hover .status-area {
   opacity: 0;
 }
 
-/* Session name tooltip wrapper - override default tooltip-wrapper styles */
-.session-item :deep(.tooltip-wrapper) {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-}
+/* The Tooltip is driven by :trigger-el and hides its own wrapper. Do not give
+   that wrapper a flex slot here — it is empty, and a `flex: 1` on it would
+   split the row with .session-name and halve the visible title. */
 
 /* Session name */
 .session-name {

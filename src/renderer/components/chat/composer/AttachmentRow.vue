@@ -3,12 +3,23 @@
     <span
       class="dock-frame-label"
       aria-hidden="true"
-    >FILES · {{ files.length }}</span>
+    >FILES · {{ files.length + references.length }}</span>
     <div
       ref="trayRef"
       class="attachment-tray"
       @wheel="handleWheel"
     >
+      <!-- `@` picks: path-only references, no bytes read into the draft. -->
+      <FileChip
+        v-for="reference in references"
+        :key="reference.id"
+        size="sm"
+        class="reference-chip"
+        :file-name="reference.label"
+        :tooltip-text="reference.path"
+        removable
+        @remove="emit('removeReference', reference.id)"
+      />
       <template
         v-for="file in files"
         :key="file.id"
@@ -18,7 +29,7 @@
           size="sm"
           :src="file.preview"
           :alt="file.fileName"
-          :title="`${file.fileName} (${formatFileSize(file.size)})`"
+          :title="chipTooltip(file)"
           removable
           @remove="emit('remove', file.id)"
         />
@@ -27,6 +38,8 @@
           size="sm"
           :file-name="file.fileName"
           :size-bytes="file.size"
+          :tooltip-text="chipTooltip(file)"
+          :badge="describeDelivery(file.delivery)?.badge"
           removable
           @remove="emit('remove', file.id)"
         />
@@ -51,18 +64,30 @@ import { Loader2 } from 'lucide-vue-next'
 import AttachmentThumb from '@/components/common/AttachmentThumb.vue'
 import FileChip from '@/components/common/FileChip.vue'
 import { formatFileSize } from '@/utils/format'
+import { describeDelivery } from '@/composables/useAttachments'
 import type { AttachedFile } from '@/composables/useAttachments'
+import type { ComposerFileReference } from '@/composables/usePickerOrchestration'
 
-defineProps<{
+withDefaults(defineProps<{
   files: AttachedFile[]
   processing: boolean
-}>()
+  references?: ComposerFileReference[]
+}>(), {
+  references: () => [],
+})
 
 const emit = defineEmits<{
   (e: 'remove', id: string): void
+  (e: 'removeReference', id: string): void
 }>()
 
 const trayRef = ref<HTMLElement | null>(null)
+
+function chipTooltip(file: AttachedFile) {
+  const base = `${file.fileName} (${formatFileSize(file.size)})`
+  const note = describeDelivery(file.delivery)
+  return note ? `${base}\n${note.hint}` : base
+}
 
 /**
  * The tray is a fixed-height single row that scrolls horizontally; translate
@@ -131,6 +156,12 @@ function handleWheel(event: WheelEvent) {
 .attachment-tray::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border-radius: 2px;
+}
+
+/* References carry a path, not bytes — a dashed edge keeps them readable as a
+   pointer rather than an upload. */
+.reference-chip {
+  border-style: dashed;
 }
 
 .attachment-loading {

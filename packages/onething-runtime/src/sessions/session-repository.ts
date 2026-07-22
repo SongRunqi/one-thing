@@ -360,6 +360,34 @@ export class OnethingSessionRepository<
     })
   }
 
+  /**
+   * Writes the goal history plus the derived current goal in one mutation.
+   *
+   * `goal` (the v2 scalar) is written alongside `goals` for the transition
+   * window: an older build reads only the scalar and keeps working, and the
+   * read-time reconciliation in the goals module repairs whatever it wrote on
+   * the way back. Both fields must move together — writing them in two passes
+   * would leave a window where a crash strands them out of sync.
+   */
+  updateSessionGoals<TGoal>(sessionId: string, goals: TGoal[], current: TGoal | null): boolean {
+    return this.applySideEffectMutation(sessionId, {
+      mutateSession: session => {
+        const target = session as TSession & { goal?: TGoal; goals?: TGoal[] }
+        if (goals.length === 0) {
+          delete target.goals
+        } else {
+          target.goals = goals
+        }
+        if (current === null) {
+          delete target.goal
+        } else {
+          target.goal = current
+        }
+      },
+      syncSession: () => {},
+    })
+  }
+
   updateSessionTokenUsage(
     sessionId: string,
     usage: CoreSessionTokenUsage,

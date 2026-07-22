@@ -122,6 +122,7 @@ function testEmitter(overrides: Partial<IPCEmitter> = {}): IPCEmitter {
     sendContentPart: vi.fn(),
     sendContinuation: vi.fn(),
     sendToolCall: vi.fn(),
+    sendToolInputEnd: vi.fn(),
     sendToolResult: vi.fn(),
     sendToolInputStart: vi.fn(),
     sendToolInputDelta: vi.fn(),

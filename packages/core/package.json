@@ -9,6 +9,8 @@
     "./agent-loop": "./agent-loop/index.ts",
     "./context": "./context/index.ts",
     "./engine": "./engine/index.ts",
+    "./engine/attachment-mime": "./engine/attachment-mime.ts",
+    "./engine/streaming-args": "./engine/streaming-args.ts",
     "./events": "./events/index.ts",
     "./gateway-runtime": "./gateway-runtime.ts",
     "./http": "./http/index.ts",

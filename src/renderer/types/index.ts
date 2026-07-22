@@ -164,6 +164,8 @@ import type {
 	ToolDefinition,
 	ToolParameter,
 	ToolCall,
+	DiffHunk,
+	DiffHunkLine,
 	ToolResult,
 	ToolPartialResult,
 	ToolRenderKind,
@@ -297,6 +299,10 @@ import type {
 	// Session goal types
 	SessionGoal,
 	SessionGoalStatus,
+	// Session TOC types
+	SessionSegment,
+	SessionSegmentFile,
+	SessionSegmentOutcome,
 	GoalDiffsResponse,
 	GoalFileDiff,
 	GoalGetResponse,
@@ -355,6 +361,9 @@ export type {
 	ContextVariable,
 	SessionGoal,
 	SessionGoalStatus,
+	SessionSegment,
+	SessionSegmentFile,
+	SessionSegmentOutcome,
 	GoalDiffsResponse,
 	GoalFileDiff,
 	GoalGetResponse,
@@ -512,6 +521,8 @@ export type {
 	ToolDefinition,
 	ToolParameter,
 	ToolCall,
+	DiffHunk,
+	DiffHunkLine,
 	ToolResult,
 	ToolPartialResult,
 	ToolRenderKind,
@@ -992,6 +1003,9 @@ export interface ElectronAPI {
 	getSessionUserMarkers: (
 		sessionId: string,
 	) => Promise<GetSessionUserMarkersResponse>;
+	getSessionSegments: (
+		sessionId: string,
+	) => Promise<{ success: boolean; segments: SessionSegment[] }>;
 	onSessionMessagesChanged: (
 		callback: (data: {
 			sessionId: string;
@@ -1479,6 +1493,9 @@ export interface ElectronAPI {
 	onOAuthTokenExpired: (
 		callback: (data: { providerId: string; error?: string }) => void,
 	) => () => void;
+
+	// Window
+	closeWindow: () => Promise<{ success: boolean }>;
 
 	// Menu event listeners
 	onMenuNewChat: (callback: () => void) => () => void;

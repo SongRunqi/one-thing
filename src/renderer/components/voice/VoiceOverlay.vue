@@ -149,7 +149,7 @@ function handleOverlayAction() {
 }
 
 .voice-error {
-  color: var(--ui-status-danger-fg, var(--danger, #ef4444));
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
 .voice-stop {

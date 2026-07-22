@@ -37,16 +37,22 @@ export const workdirGateway: WorkdirGateway = {
   readRoots(sessionId) {
     return store.getSession(sessionId)?.workingDirectoryRoots ?? []
   },
-  write(sessionId, workdir) {
+  write(sessionId, workdir, options) {
     store.updateSessionWorkingDirectory(sessionId, workdir)
     // Auto-link into the global project directories list. Both AI
     // (CoreProvider.set) and UI (UPDATE_SESSION_WORKING_DIRECTORY IPC)
     // workdir mutations land here, so this single funnel keeps
-    // project_dirs in sync regardless of who initiated the change.
+    // project dirs in sync regardless of who initiated the change.
     if (workdir) {
       try {
+        const projects = getProjectsStore()
         const sessionName = store.getSession(sessionId)?.name ?? ''
-        getProjectsStore().touch(workdir, sessionName)
+        projects.touch(workdir, sessionName)
+        // An explicit description names/renames the project entry;
+        // the session name above is only a first-touch fallback.
+        if (options?.description) {
+          projects.update(workdir, { description: options.description })
+        }
       } catch (err) {
         console.error('[variables.gateway] project-dirs touch failed:', err)
       }

@@ -198,7 +198,7 @@
                 class="settings-row"
               >
                 <span class="row-label">Error</span>
-                <span class="row-note error-note">{{ providerSettings.currentACPAgentState.value.error }}</span>
+                <span class="row-note is-error">{{ providerSettings.currentACPAgentState.value.error }}</span>
               </div>
               <template v-if="providerSettings.currentACPAgent.value">
                 <div class="settings-row">
@@ -718,8 +718,8 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
 }
 
 .conn-pill.red {
-  border-color: var(--ui-status-danger-border, var(--ui-status-error-fg, var(--color-danger, #d84c4c)));
-  color: var(--ui-status-error-fg, var(--color-danger, #d84c4c));
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, var(--color-danger, #d84c4c)));
+  color: var(--ui-status-danger-fg, var(--color-danger, #d84c4c));
 }
 
 .conn-summary {
@@ -920,8 +920,8 @@ function providerApiKeyPlaceholder(providerId: string, providerName: string): st
   white-space: nowrap;
 }
 
-.error-note {
-  color: var(--ui-status-error-fg, var(--color-danger, #d84c4c));
+.row-note.is-error {
+  color: var(--ui-status-danger-fg, var(--color-danger, #d84c4c));
 }
 
 .settings-row.compact-toggle-row {

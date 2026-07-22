@@ -1,6 +1,6 @@
 <template>
   <div
-    v-if="goal && goal.status !== 'complete'"
+    v-if="goal && goal.status !== 'complete' && goal.status !== 'abandoned'"
     class="goal-bar"
     :data-status="goal.status"
     :data-retrying="isRetrying || undefined"

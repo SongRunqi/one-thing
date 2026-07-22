@@ -93,6 +93,7 @@
             :collapsed="sidePanelCollapsed"
             @outline-target-change="handleSideOutlineTargetChange"
             @toggle-collapsed="toggleSidePanelCollapsed"
+            @jump-to-message="(sessionId, messageId) => { void jumpToMessage(sessionId, messageId) }"
           />
         </template>
       </Container>
@@ -362,6 +363,11 @@ function selectFocusedPanelTabByIndex(digit: number) {
   panelRefs.value[workspaceStore.activeLeafId]?.selectTabByIndex?.(digit)
 }
 
+// Cmd+W: applies to the currently focused panel's active tab only.
+function closeFocusedPanelActiveTab() {
+  panelRefs.value[workspaceStore.activeLeafId]?.closeActiveTab?.()
+}
+
 // Expose methods
 defineExpose({
   focusInput,
@@ -370,6 +376,7 @@ defineExpose({
   jumpToMessage,
   splitPanel,
   selectFocusedPanelTabByIndex,
+  closeFocusedPanelActiveTab,
 })
 </script>
 

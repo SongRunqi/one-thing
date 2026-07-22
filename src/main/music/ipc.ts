@@ -38,6 +38,7 @@ import {
   likeCurrentSong,
   openRadioStation,
   radioToolClose,
+  markRadioGesture,
   recordRadioSkip,
   replayCurrentRadioSong,
   requestSong,
@@ -111,6 +112,7 @@ async function runMusicCommand(request: MusicCommandRequest): Promise<MusicComma
   if (request.command === 'radio-resume') {
     // Not an ncm-cli transport command: the daemon is down (that is why the
     // button exists), so this goes through the keepalive restart flow instead.
+    markRadioGesture('▶ 续播')
     const resumed = await resumeRadioPlayback()
     await refreshMusicNowPlaying()
     return resumed
@@ -154,6 +156,7 @@ async function runMusicCommand(request: MusicCommandRequest): Promise<MusicComma
   if (request.command === 'next') {
     recordRadioSkip()
     if (isRadioActive()) {
+      markRadioGesture('⏭ 下一首')
       const skipped = await skipToNextRadioSong()
       await refreshMusicNowPlaying()
       return skipped
@@ -165,6 +168,7 @@ async function runMusicCommand(request: MusicCommandRequest): Promise<MusicComma
   // ⏮ with the radio on: no player queue to step back through — replay the
   // current song from the top, like a physical player's back button.
   if (request.command === 'prev' && isRadioActive()) {
+    markRadioGesture('⏮ 重播')
     const replayed = await replayCurrentRadioSong()
     await refreshMusicNowPlaying()
     return replayed

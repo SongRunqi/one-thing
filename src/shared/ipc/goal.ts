@@ -22,6 +22,7 @@ export type SessionGoalStatus =
   | 'blocked'
   | 'budget_limited'
   | 'complete'
+  | 'abandoned'
 
 export interface SessionGoal {
   id: string
@@ -39,6 +40,11 @@ export interface SessionGoal {
   fileChanges?: Array<{ path: string; added: number; removed: number }>
   createdAt: number
   updatedAt: number
+  /** When the goal last left 'active'; cleared on resume. Anchor for the
+   *  timeline — use this, never updatedAt, which keeps moving. */
+  endedAt?: number
+  startMessageId?: string
+  endMessageId?: string
 }
 
 export interface GoalGetRequest {
@@ -47,7 +53,10 @@ export interface GoalGetRequest {
 
 export interface GoalGetResponse {
   success: boolean
+  /** The current goal: the newest record that has not finished. */
   goal?: SessionGoal | null
+  /** Full history, oldest first (see docs/design/goal-system-v3.md). */
+  goals?: SessionGoal[]
   error?: string
 }
 
@@ -62,6 +71,8 @@ export interface GoalSetRequest {
   status?: 'active' | 'paused'
   /** null clears the per-goal budget back to the global default cap. */
   tokenBudget?: number | null
+  /** clear only — why the goal was given up, kept on the archived record. */
+  reason?: string
 }
 
 export interface GoalSetResponse {
@@ -91,6 +102,8 @@ export interface GoalFileDiff {
 
 export interface GoalDiffsRequest {
   sessionId: string
+  /** Which goal to review; defaults to the current (or newest) one. */
+  goalId?: string
 }
 
 export interface GoalDiffsResponse {

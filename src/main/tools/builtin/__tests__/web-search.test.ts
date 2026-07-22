@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSearchTool } from '../web-search/index.js'
 import { WebOpenTool } from '../web-search/open.js'
-import { WebFindTool } from '../web-search/find.js'
 import { extractReadablePage } from '../web-search/page-fetch.js'
 import { __resetBraveRateLimiterForTests } from '../web-search/providers/brave.js'
 
@@ -328,7 +327,7 @@ describe('WebSearchTool', () => {
   })
 })
 
-describe('WebOpenTool and WebFindTool', () => {
+describe('WebOpenTool', () => {
   beforeEach(() => {
     mocks.fetch.mockReset()
     __resetBraveRateLimiterForTests()
@@ -366,37 +365,5 @@ describe('WebOpenTool and WebFindTool', () => {
       url: 'https://example.com/opened',
       pageId: 'p1',
     })
-  })
-
-  it('finds literal text within a URL and returns match excerpts', async () => {
-    mocks.fetch.mockResolvedValue(new Response(`
-      <html>
-        <head><title>Find Page</title></head>
-        <body>
-          <article>
-            <p>Alpha content appears near the beginning.</p>
-            <p>Later content mentions Alpha again with more context.</p>
-          </article>
-        </body>
-      </html>
-    `, {
-      status: 200,
-      headers: { 'content-type': 'text/html' },
-    }))
-
-    const result = await WebFindTool.execute(
-      { url: 'https://example.com/find', pattern: 'Alpha', contextChars: 30 },
-      createContext(),
-    )
-
-    expect(result.output).toContain('Found 2 matches')
-    expect(result.metadata).toMatchObject({
-      mode: 'find',
-      resultCount: 1,
-      pageCount: 1,
-      fetchedPageCount: 1,
-    })
-    expect(result.metadata.matches).toHaveLength(2)
-    expect(result.metadata.matches?.[0].excerpt).toContain('Alpha content')
   })
 })

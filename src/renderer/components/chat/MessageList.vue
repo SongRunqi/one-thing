@@ -68,8 +68,9 @@
           <!-- Goal outcome: belongs to the run, so it sits after the reply
                that ended it rather than on the declaration that opened it. -->
           <GoalSummaryCard
-            v-if="goalSummary && index === goalSummaryIndex"
-            :goal="goalSummary"
+            v-for="settledGoal in goalSummariesByIndex.get(index)"
+            :key="settledGoal.id"
+            :goal="settledGoal"
             @review="emit('reviewGoal', props.sessionId || '')"
           />
         </template>
@@ -209,7 +210,7 @@
 import Button from '@/components/common/Button.vue'
 import Scrollbar from '@/components/common/Scrollbar.vue'
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdated } from 'vue'
-import type { ChatMessage, ToolCall } from '@/types'
+import type { ChatMessage, SessionGoal, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import GoalSummaryCard from './message/GoalSummaryCard.vue'
 import SelectionToolbar from './message/SelectionToolbar.vue'
@@ -250,7 +251,7 @@ const EMPTY_BRANCHES: BranchInfo[] = []
 type NavMarker = UserMessageNavMarker
 type MessageScrollBehavior = 'auto' | 'instant' | 'smooth'
 type ExecutableToolCall = Pick<ToolCall, 'id' | 'toolId' | 'arguments'>
-type PermissionToolCall = Pick<ToolCall, 'id' | 'permissionId'>
+type PermissionToolCall = Pick<ToolCall, 'id' | 'permissionId' | 'canRespond'>
 
 interface Props {
   messages: ChatMessage[]
@@ -706,24 +707,60 @@ const highlightedMessageId = computed(() => {
 // A goal that has stopped running gets an outcome card in the timeline. Only
 // terminal states qualify — an active goal has nothing to summarize yet, and
 // resuming a paused one retracts the card.
-const GOAL_OUTCOME_STATUSES = new Set(['complete', 'paused', 'blocked', 'budget_limited'])
+const GOAL_OUTCOME_STATUSES = new Set([
+  'complete',
+  'abandoned',
+  'paused',
+  'blocked',
+  'budget_limited',
+])
 
 const goalSummary = computed(() => {
   const goal = props.sessionId ? sessionsStore.sessionGoals.get(props.sessionId) : null
   return goal && GOAL_OUTCOME_STATUSES.has(goal.status) ? goal : null
 })
 
-// Anchor the card by completion time rather than pinning it to the end of the
-// list: the last message that predates the terminal transition is the reply
-// that produced it, so the card stays put once the conversation moves on.
-const goalSummaryIndex = computed(() => {
-  const goal = goalSummary.value
-  if (!goal) return -1
+/**
+ * Every settled goal in the session, each anchored to the message it finished
+ * on. A session can hold a run of goals now (docs/design/goal-system-v3.md),
+ * so the timeline shows one card per goal rather than only the latest.
+ *
+ * Falls back to the single live goal for sessions whose history has not been
+ * pushed down yet, which keeps the pre-v3 behaviour intact.
+ */
+const goalSummariesByIndex = computed<Map<number, SessionGoal[]>>(() => {
+  const byIndex = new Map<number, SessionGoal[]>()
+  if (!props.sessionId) return byIndex
+
+  const history = sessionsStore.sessionGoalHistory.get(props.sessionId)
+  const settled = history?.length
+    ? history.filter(goal => GOAL_OUTCOME_STATUSES.has(goal.status))
+    : goalSummary.value
+      ? [goalSummary.value]
+      : []
+
+  for (const goal of settled) {
+    const index = anchorIndexFor(goal)
+    if (index === -1) continue
+    const bucket = byIndex.get(index)
+    if (bucket) bucket.push(goal)
+    else byIndex.set(index, [goal])
+  }
+  return byIndex
+})
+
+// endedAt is the immutable moment the goal left 'active'. updatedAt keeps
+// moving after that — completing a goal kicks off an async fileChanges
+// backfill that rewrites it — which used to make the card jump a slot a
+// moment after it appeared. Older records predate endedAt, hence the fallback.
+function anchorIndexFor(goal: SessionGoal): number {
+  const settledAt = goal.endedAt ?? goal.updatedAt
   for (let i = props.messages.length - 1; i >= 0; i--) {
-    if ((props.messages[i]?.timestamp ?? 0) <= goal.updatedAt) return i
+    if ((props.messages[i]?.timestamp ?? 0) <= settledAt) return i
   }
   return -1
-})
+}
+
 
 // Initialize navigation index when messages change
 // Note: Session switching is handled by ChatWindow's snapshot save/restore.
@@ -1474,10 +1511,15 @@ function handlePointerDown() {
 
 // Track permission request cleanup function
 
-// Get the first pending permission request (tool call requiring confirmation)
+// Get the first actionable permission request. `requiresConfirmation` alone is
+// not enough: it is persisted engine history, while an approval is only
+// answerable when the live permission manager has an emitted prompt for it —
+// which is what `canRespond` (set from permission events / pending seed)
+// tracks. Gating on both keeps dead approval cards from rendering after a
+// restart or for queued followers.
 const currentPendingPermission = computed<{ message: ChatMessage; toolCall: ToolCall } | null>(() => {
   for (const message of props.messages) {
-    const pendingToolCall = message.toolCalls?.find(tc => tc.requiresConfirmation)
+    const pendingToolCall = message.toolCalls?.find(tc => tc.requiresConfirmation && tc.canRespond)
     if (pendingToolCall) {
       return { message, toolCall: pendingToolCall }
     }
@@ -1695,8 +1737,21 @@ watch(
       const response = await platformApi.getPendingPermissions(newSessionId)
       if (response.success && response.pending && response.pending.length > 0) {
         console.log('[Frontend] Loading pending permissions for session:', newSessionId, response.pending.length)
-        // Apply each pending permission to the UI via the store
+        // Apply each pending permission to the UI via the store. Queued
+        // prompts (waiting behind the session's serialized prompt queue, or
+        // coalesced followers) get a waiting state, not a respond card.
         for (const info of response.pending) {
+          if (info.promptState === 'queued') {
+            if (info.callId) {
+              chatStore.handlePermissionQueued({
+                sessionId: info.sessionId,
+                requestId: info.id,
+                messageId: info.messageId,
+                toolCallId: info.callId,
+              })
+            }
+            continue
+          }
           chatStore.handlePermissionRequest({
             sessionId: info.sessionId,
             requestId: info.id,
@@ -1979,35 +2034,36 @@ async function handleConfirmTool(toolCall: PermissionToolCall, response: Permiss
   // Find and update the corresponding step
   const step = message?.steps?.find(s => s.toolCallId === toolCall.id)
 
-  // Check if there's a pending permission request for this tool call
-  const permissionId = toolCall.permissionId
-  if (permissionId) {
-    // Use unified command channel to respond (EventBus → Permission validates channel)
-    console.log(`[Frontend] Responding to permission ${permissionId} with ${response}`)
-    try {
-      await platformApi.emitCommand(currentSession.id, {
-        type: 'command:permission-respond',
-        requestId: permissionId,
-        decision: response,
-      })
-      // The backend will handle execution and resume - just update UI state
-      if (tc) {
-        tc.status = 'executing'
-        tc.requiresConfirmation = false
-      }
-      if (step) {
-        step.status = 'running'
-        if (message?.steps) {
-          message.steps = [...message.steps]
-        }
-      }
-      return
-    } catch (error) {
-      console.error('Failed to respond to permission:', error)
-    }
+  if (!toolCall.canRespond) {
+    console.warn('[Frontend] Permission response ignored: no live prompt for tool call', toolCall.id)
+    return
   }
 
-  console.warn('[Frontend] Permission response ignored: missing permissionId', toolCall.id)
+  // Use unified command channel to respond (EventBus → Permission validates
+  // channel). The tool call id is the durable correlation key — the manager
+  // resolves it to the pending prompt; requestId is a hint when we caught it.
+  console.log(`[Frontend] Responding to permission for tool call ${toolCall.id} with ${response}`)
+  try {
+    await platformApi.emitCommand(currentSession.id, {
+      type: 'command:permission-respond',
+      requestId: toolCall.permissionId,
+      toolCallId: toolCall.id,
+      decision: response,
+    })
+    // The backend will handle execution and resume - just update UI state
+    if (tc) {
+      tc.status = 'executing'
+      tc.requiresConfirmation = false
+    }
+    if (step) {
+      step.status = 'running'
+      if (message?.steps) {
+        message.steps = [...message.steps]
+      }
+    }
+  } catch (error) {
+    console.error('Failed to respond to permission:', error)
+  }
 }
 
 // Open the reject reason dialog
@@ -2047,15 +2103,16 @@ async function handleRejectTool(toolCall: PermissionToolCall, rejectReasonArg?: 
     m.toolCalls?.some(tc => tc.id === toolCall.id)
   )
 
-  // Check if there's a pending permission request for this tool call
-  const permissionId = toolCall.permissionId
-  if (permissionId) {
+  // Only send when the live permission manager has an emitted prompt; the
+  // local UI cleanup below still runs either way.
+  if (toolCall.canRespond) {
     // Use unified command channel to reject (EventBus → Permission validates channel)
-    console.log(`[Frontend] Rejecting permission ${permissionId}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
+    console.log(`[Frontend] Rejecting permission for tool call ${toolCall.id}`, rejectReasonArg ? `Reason: ${rejectReasonArg}` : '')
     try {
       await platformApi.emitCommand(currentSession.id, {
         type: 'command:permission-respond',
-        requestId: permissionId,
+        requestId: toolCall.permissionId,
+        toolCallId: toolCall.id,
         decision: 'reject',
         rejectReason: rejectReasonArg,
       })

@@ -71,7 +71,7 @@ describe('agent loop bridge', () => {
       { type: 'turn-start', turnStart: { turn: 1 } },
       { type: 'tool-input-start', toolInputStart: { toolCallId: 'call_1', toolName: 'lookup' } },
       { type: 'tool-input-delta', toolInputDelta: { toolCallId: 'call_1', argsTextDelta: '{"query":"moon"}' } },
-      { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1' } },
+      { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' } },
       {
         type: 'tool-result',
         toolResult: {
@@ -155,7 +155,7 @@ describe('agent loop bridge', () => {
       { type: 'reasoning', reasoning: 'need a lookup' },
       { type: 'tool-input-start', toolInputStart: { toolCallId: 'call_1', toolName: 'lookup' } },
       { type: 'tool-input-delta', toolInputDelta: { toolCallId: 'call_1', argsTextDelta: '{"query":"sun"}' } },
-      { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1' } },
+      { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' } },
       {
         type: 'tool-result',
         toolResult: {
@@ -226,6 +226,7 @@ describe('agent loop bridge', () => {
           toolCallId: 'call_1',
           toolName: 'bash',
           args: { cmd: 'rm -rf tmp' },
+          finalizedBy: 'provider-done',
         },
       },
       {

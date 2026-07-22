@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>权限同意框 · 对齐 composer 四案</title>
+<style>
+/* ————————————————————————————————————————————
+   共享:纸与墨(对应 --ui-* 令牌的 mockup 近似)
+   ———————————————————————————————————————————— */
+:root {
+  --paper: #faf8f1;          /* --ui-surface-app-bg */
+  --paper-deep: #f3efe5;
+  --ink: #29241c;            /* --ui-text-primary-fg */
+  --ink-60: rgba(41, 36, 28, 0.62);   /* --ui-text-muted-fg */
+  --ink-40: rgba(41, 36, 28, 0.42);   /* --ui-text-faint-fg */
+  --ink-25: rgba(41, 36, 28, 0.25);
+  --ink-12: rgba(41, 36, 28, 0.12);
+  --hover: rgba(41, 36, 28, 0.06);    /* --ui-state-hover-bg */
+  --warn: #a8722a;           /* --ui-status-warning-fg */
+  --ok: #3f6b4f;             /* --ui-status-success-fg */
+  --danger: #b8452c;         /* --ui-status-danger-fg */
+  --accent: #33647e;         /* --ui-accent-primary-fg */
+
+  /* composer 骨架:透明底 + 一条 52% 描边 + 4px 直角 */
+  --composer-border: rgba(41, 36, 28, 0.34);
+  --cell-divider: rgba(41, 36, 28, 0.20);
+  --radius-xs: 4px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #191611;
+    --paper-deep: #14110d;
+    --ink: #e8e1d2;
+    --ink-60: rgba(232, 225, 210, 0.66);
+    --ink-40: rgba(232, 225, 210, 0.45);
+    --ink-25: rgba(232, 225, 210, 0.28);
+    --ink-12: rgba(232, 225, 210, 0.14);
+    --hover: rgba(232, 225, 210, 0.08);
+    --warn: #d9a441;
+    --ok: #86b795;
+    --danger: #d8765c;
+    --accent: #7fb0c9;
+    --composer-border: rgba(232, 225, 210, 0.32);
+    --cell-divider: rgba(232, 225, 210, 0.18);
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 48px 40px 96px;
+}
+
+.page-head { max-width: 1120px; margin: 0 auto 44px; }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: ""; display: block; width: 88px;
+  border-bottom: 2px solid var(--ink); margin-top: 10px;
+}
+.page-head p { color: var(--ink-60); font-size: 13px; margin-top: 14px; max-width: 62ch; }
+
+.wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 64px; }
+
+.case > header { margin-bottom: 18px; }
+.case h2 {
+  font-size: 15px; font-weight: 600; letter-spacing: 0.02em;
+  display: flex; align-items: baseline; gap: 10px;
+}
+.case h2 .no {
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  color: var(--ink-40); letter-spacing: 0.08em;
+}
+.case h2 .meta {
+  margin-left: auto; font-family: var(--mono); font-size: 11px;
+  color: var(--ink-40); font-weight: 500;
+}
+.case > header > p { color: var(--ink-60); font-size: 12.5px; margin-top: 6px; max-width: 68ch; }
+
+/* 舞台:模拟聊天底部的 composer 列 */
+.stage {
+  background: var(--paper);
+  border: 1px solid var(--ink-12);
+  border-radius: var(--radius-xs);
+  padding: 30px 30px 26px;
+}
+.stage-note {
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-40);
+  letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 14px;
+}
+.column { max-width: 720px; margin: 0 auto; }
+
+/* ————————————————————————————————————————————
+   composer 骨架(四案共用,照搬 InputBox.vue 的规则)
+   ———————————————————————————————————————————— */
+.composer {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  overflow: hidden;
+}
+.composer .draft {
+  padding: 12px 12px 14px;
+  font-size: 15px; min-height: 42px;
+  color: var(--ink-40);
+}
+.toolbar {
+  display: flex; justify-content: space-between; align-items: stretch;
+  min-height: 34px; margin-top: 2px;
+  border-top: 1px solid var(--composer-border);
+}
+.tb-left, .tb-right { display: flex; align-items: stretch; }
+.tb-left > * { border-right: 1px solid var(--cell-divider); }
+.tb-right > * { border-left: 1px solid var(--cell-divider); }
+.cell {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 11px;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  color: var(--ink-60); white-space: nowrap; cursor: default;
+}
+.cell:hover { background: var(--hover); color: var(--ink); }
+.cell .bar i { font-style: normal; color: var(--accent); }
+.cell .bar em { font-style: normal; color: var(--ink-40); }
+.cell .bar { font-size: 9px; letter-spacing: 0; }
+
+/* ———— 案一:续行 ———— */
+.a-perm {
+  border: 1px solid var(--composer-border);
+  border-bottom: 0;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: transparent;
+  display: flex; align-items: stretch; min-height: 34px;
+}
+.a-perm + .composer {
+  border-radius: 0 0 var(--radius-xs) var(--radius-xs);
+  border-top-color: var(--cell-divider);
+}
+.a-body {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 11px;
+  font-family: var(--mono); font-size: 11.5px;
+}
+.a-body .tag { font-weight: 600; color: var(--warn); }
+.a-body .target {
+  color: var(--ink); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.a-body .queue { color: var(--ink-40); flex-shrink: 0; }
+.a-acts { display: flex; align-items: stretch; flex-shrink: 0; }
+.a-acts > button {
+  border: 0; border-left: 1px solid var(--cell-divider);
+  background: transparent; cursor: pointer;
+  padding: 0 12px;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  color: var(--ink-60); letter-spacing: 0.03em;
+}
+.a-acts > button:hover { background: var(--hover); }
+.a-acts .allow { color: var(--ok); }
+.a-acts .allow:hover { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.a-acts .rej { color: var(--warn); }
+.a-acts .rej:hover { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+
+/* ———— 案二:账页栏位 ———— */
+.b-perm {
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  margin-bottom: 8px;
+}
+.b-row {
+  display: grid; grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  border-bottom: 1px solid var(--cell-divider);
+  min-height: 30px;
+}
+.b-row:last-child { border-bottom: 0; }
+.b-key {
+  font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  color: var(--ink-40); letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 0 11px; border-right: 1px solid var(--cell-divider);
+  align-self: stretch; display: flex; align-items: center;
+}
+.b-val {
+  padding: 0 11px; min-width: 0;
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.b-val.dim { color: var(--ink-60); font-weight: 500; }
+.b-row.scope .b-val { padding: 0; display: flex; }
+.b-row.scope button {
+  border: 0; border-right: 1px solid var(--cell-divider);
+  background: transparent; cursor: pointer; padding: 0 12px; min-height: 30px;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600; color: var(--ink-60);
+}
+.b-row.scope button:hover { background: var(--hover); color: var(--ink); }
+.b-row.scope button[aria-pressed="true"] {
+  color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+.b-foot { display: flex; align-items: stretch; border-top: 1px solid var(--cell-divider); }
+.b-foot .hint {
+  flex: 1; padding: 0 11px; display: flex; align-items: center;
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-40);
+}
+.b-foot button {
+  border: 0; border-left: 1px solid var(--cell-divider); background: transparent;
+  cursor: pointer; padding: 0 14px; min-height: 32px;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600; letter-spacing: 0.03em;
+}
+.b-foot .go { color: var(--ok); }
+.b-foot .no { color: var(--warn); }
+.b-foot button:hover { background: var(--hover); }
+
+/* ———— 案三:命令行 ———— */
+.c-perm {
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 0; min-height: 34px;
+  font-family: var(--mono); font-size: 11.5px;
+}
+.c-caret { padding: 0 8px 0 11px; color: var(--warn); font-weight: 700; }
+.c-cmd { color: var(--ink); font-weight: 600; }
+.c-cmd .arg { color: var(--ink-60); font-weight: 500; }
+.c-disc {
+  margin-left: 8px; border: 0; background: transparent; cursor: pointer;
+  color: var(--ink-40); font-family: var(--mono); font-size: 11.5px; padding: 0 6px;
+}
+.c-disc:hover { color: var(--ink); }
+.c-keys { margin-left: auto; display: flex; align-items: stretch; align-self: stretch; }
+.c-keys button {
+  border: 0; border-left: 1px solid var(--cell-divider); background: transparent;
+  cursor: pointer; padding: 0 11px;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 500; color: var(--ink-60);
+}
+.c-keys button:hover { background: var(--hover); color: var(--ink); }
+.c-keys kbd {
+  font: inherit; font-weight: 700; color: var(--ink);
+  border-bottom: 1.5px solid currentColor; padding-bottom: 1px; margin-right: 1px;
+}
+.c-keys .k-allow kbd, .c-keys .k-allow:hover { color: var(--ok); }
+.c-keys .k-rej kbd, .c-keys .k-rej:hover { color: var(--warn); }
+.c-detail {
+  border: 1px solid var(--composer-border); border-top: 0;
+  border-radius: 0 0 var(--radius-xs) var(--radius-xs);
+  margin: -9px 0 8px; padding: 8px 11px 9px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-60);
+  white-space: pre-wrap;
+}
+
+/* ———— 案四:闸门 ———— */
+.d-composer { border-color: color-mix(in srgb, var(--warn) 62%, var(--composer-border)); }
+.d-gate {
+  position: relative;
+  padding: 11px 12px 12px;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 7px,
+    color-mix(in srgb, var(--warn) 10%, transparent) 7px 8px
+  );
+}
+.d-gate .lock {
+  display: flex; align-items: baseline; gap: 9px;
+  font-family: var(--mono); font-size: 11.5px;
+}
+.d-gate .lock .tag { color: var(--warn); font-weight: 700; letter-spacing: 0.04em; }
+.d-gate .lock .target {
+  color: var(--ink); font-weight: 600; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.d-gate .sub {
+  margin-top: 5px; font-family: var(--mono); font-size: 11px; color: var(--ink-60);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.d-composer .toolbar { border-top-color: color-mix(in srgb, var(--warn) 40%, var(--composer-border)); }
+.tb-right .send-locked {
+  display: inline-flex; align-items: center; padding: 0 13px;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  color: var(--ink-25); cursor: not-allowed;
+}
+.tb-right .gate-allow, .tb-right .gate-rej {
+  display: inline-flex; align-items: center; padding: 0 13px;
+  border: 0; border-left: 1px solid var(--cell-divider); background: transparent;
+  font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+  letter-spacing: 0.03em; cursor: pointer;
+}
+.tb-right .gate-allow { color: var(--ok); }
+.tb-right .gate-rej { color: var(--warn); }
+.tb-right .gate-allow:hover { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.tb-right .gate-rej:hover { background: color-mix(in srgb, var(--warn) 12%, transparent); }
+.d-scope { color: var(--ink-40) !important; font-weight: 500 !important; }
+
+/* 评注 */
+.crit {
+  margin-top: 16px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 28px;
+}
+.crit div { font-size: 12.5px; color: var(--ink-60); }
+.crit b {
+  display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-40); margin-bottom: 3px;
+}
+@media (max-width: 720px) { .crit { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>权限同意框 · 对齐 composer 的四案</h1>
+  <p>
+    现行权限框是 12px 圆角、warning 实底、带 <code>shadow-md</code> 的浮起卡片,右侧五颗彩色药丸按钮 ——
+    与 InputBox 的蓝图语言(4px 直角、零填充、hairline 分格、mono 11.5/600 裸文字、hover 才整格上色)完全是两套。
+    四案统一改用 composer 的骨架,差别在<b>结构隐喻</b>而非配色。
+  </p>
+</div>
+
+<div class="wrap">
+
+  <!-- ————————— 案一 ————————— -->
+  <section class="case">
+    <header>
+      <h2><span class="no">案一</span>续行 · Continuation Row<span class="meta">高度 34px · 与 composer 同框</span></h2>
+      <p>权限不是弹出物,是 composer 顶上长出来的一格。共用一个外框(上格去底边、composer 去上圆角),读起来是同一张纸的上半截。动作沿用工具栏的 hairline 分格,和右下角 <code>SEND</code> 完全同构。</p>
+    </header>
+    <div class="stage">
+      <div class="stage-note">案一 · 续行</div>
+      <div class="column">
+        <div class="a-perm">
+          <div class="a-body">
+            <span class="tag">perm:write</span>
+            <span class="target">packages/core/engine/history.ts</span>
+            <span class="queue">+2 queued</span>
+          </div>
+          <div class="a-acts">
+            <button class="allow">ALLOW</button>
+            <button>SESSION</button>
+            <button>WORKSPACE</button>
+            <button class="rej">REJECT</button>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="draft">继续说点什么…</div>
+          <div class="toolbar">
+            <div class="tb-left">
+              <span class="cell">opus-4.8</span>
+              <span class="cell">think:high</span>
+              <span class="cell">guard:normal</span>
+              <span class="cell">ctx <span class="bar"><i>▮▮▮▮</i><em>▯▯▯▯▯▯</em></span> 37%</span>
+            </div>
+            <div class="tb-right"><span class="cell">SEND</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="crit">
+      <div><b>强</b>视觉上零新增物件,权限只是 composer 多了一行;四个动作平铺,一次点击到底。</div>
+      <div><b>弱</b>横向吃宽,窄栏时 WORKSPACE/REJECT 会被挤;"拒绝并给指令"要另开一行。</div>
+    </div>
+  </section>
+
+  <!-- ————————— 案二 ————————— -->
+  <section class="case">
+    <header>
+      <h2><span class="no">案二</span>账页栏位 · Ledger Rows<span class="meta">键值表 · 范围是一栏而非按钮</span></h2>
+      <p>把请求拆成带标签的栏位(TOOL / TARGET / DIFF / SCOPE),mono 键在左列、值在右列,格线分隔。授权范围不再是三颗按钮,而是 SCOPE 这一栏里的分段选择;最后一行只剩"批准/驳回"两个出口。像签一张表,而不是点一个弹窗。</p>
+    </header>
+    <div class="stage">
+      <div class="stage-note">案二 · 账页栏位</div>
+      <div class="column">
+        <div class="b-perm">
+          <div class="b-row"><span class="b-key">tool</span><span class="b-val">write</span></div>
+          <div class="b-row"><span class="b-key">target</span><span class="b-val">packages/core/engine/history.ts</span></div>
+          <div class="b-row"><span class="b-key">diff</span><span class="b-val dim">+18 −4 · 重建历史按 turnIndex 拆分</span></div>
+          <div class="b-row scope">
+            <span class="b-key">scope</span>
+            <span class="b-val">
+              <button aria-pressed="true">once</button>
+              <button>session</button>
+              <button>workspace</button>
+            </span>
+          </div>
+          <div class="b-foot">
+            <span class="hint">2 queued behind · ⏎ 批准 · esc 驳回</span>
+            <button class="no">驳回…</button>
+            <button class="go">批准</button>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="draft">继续说点什么…</div>
+          <div class="toolbar">
+            <div class="tb-left">
+              <span class="cell">opus-4.8</span>
+              <span class="cell">think:high</span>
+              <span class="cell">guard:normal</span>
+              <span class="cell">ctx <span class="bar"><i>▮▮▮▮</i><em>▯▯▯▯▯▯</em></span> 37%</span>
+            </div>
+            <div class="tb-right"><span class="cell">SEND</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="crit">
+      <div><b>强</b>信息密度最高,能塞下 diff 摘要/命令全文;范围与批准解耦,不会误点成"永久放行"。</div>
+      <div><b>弱</b>纵向最高(约 5 行),遮挡对话;两步操作(选范围 → 批准)比一键慢。</div>
+    </div>
+  </section>
+
+  <!-- ————————— 案三 ————————— -->
+  <section class="case">
+    <header>
+      <h2><span class="no">案三</span>命令行 · Prompt Line<span class="meta">单行 34px · 靠字母键不靠按钮</span></h2>
+      <p>整个请求压成一行终端提示符,动作是带下划线的助记字母而非按钮 —— 与 composer 里 <code>guard:</code> <code>think:</code> 那些 mono 标注是同一种字。细节收在 <code>▸</code> 里,默认不展开。四案里最不打扰的一个。</p>
+    </header>
+    <div class="stage">
+      <div class="stage-note">案三 · 命令行(展开态)</div>
+      <div class="column">
+        <div class="c-perm">
+          <span class="c-caret">⏵</span>
+          <span class="c-cmd">write<span class="arg">(packages/core/engine/history.ts)</span></span>
+          <button class="c-disc">▾ 2 queued</button>
+          <span class="c-keys">
+            <button class="k-allow"><kbd>a</kbd>llow</button>
+            <button><kbd>s</kbd>ession</button>
+            <button><kbd>w</kbd>orkspace</button>
+            <button class="k-rej"><kbd>r</kbd>eject</button>
+          </span>
+        </div>
+        <div class="c-detail">+18 −4 · 重建历史按 turnIndex 忠实拆分
+queued: bash(bun run test) · read(runner.ts)</div>
+        <div class="composer">
+          <div class="draft">继续说点什么…</div>
+          <div class="toolbar">
+            <div class="tb-left">
+              <span class="cell">opus-4.8</span>
+              <span class="cell">think:high</span>
+              <span class="cell">guard:normal</span>
+              <span class="cell">ctx <span class="bar"><i>▮▮▮▮</i><em>▯▯▯▯▯▯</em></span> 37%</span>
+            </div>
+            <div class="tb-right"><span class="cell">SEND</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="crit">
+      <div><b>强</b>占位最小,和工具栏一样高;键盘助记直接暴露在界面上,重复审批极快。</div>
+      <div><b>弱</b>最不显眼 —— 危险操作(rm、迁移)容易被顺手 <kbd>a</kbd> 掉;长路径必被截断。</div>
+    </div>
+  </section>
+
+  <!-- ————————— 案四 ————————— -->
+  <section class="case">
+    <header>
+      <h2><span class="no">案四</span>闸门 · Gate Bar<span class="meta">征用输入区 · SEND 位变 ALLOW</span></h2>
+      <p>不新增容器,而是把 composer 本身切到"待批"态:外框转 warning,输入区被斜纹封住,请求内容就写在被封的输入区里,动作接管右下角原本 SEND 的那一格。语义直白 —— 你决定之前不能打字。</p>
+    </header>
+    <div class="stage">
+      <div class="stage-note">案四 · 闸门</div>
+      <div class="column">
+        <div class="composer d-composer">
+          <div class="d-gate">
+            <div class="lock">
+              <span class="tag">⊘ HELD</span>
+              <span class="target">write · packages/core/engine/history.ts</span>
+            </div>
+            <div class="sub">+18 −4 · 2 queued behind this permission</div>
+          </div>
+          <div class="toolbar">
+            <div class="tb-left">
+              <span class="cell">opus-4.8</span>
+              <span class="cell">think:high</span>
+              <span class="cell d-scope">scope:once ▾</span>
+            </div>
+            <div class="tb-right">
+              <span class="send-locked">SEND</span>
+              <button class="gate-rej">REJECT</button>
+              <button class="gate-allow">ALLOW</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="crit">
+      <div><b>强</b>零新增容器,布局不跳动;"输入被锁"这件事本身就是最强的提示,最难被忽略。</div>
+      <div><b>弱</b>真的挡住了输入 —— 想边审批边打草稿就不行;scope 藏进下拉,多一次点击。</div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

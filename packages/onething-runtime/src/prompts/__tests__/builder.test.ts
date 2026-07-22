@@ -3,6 +3,7 @@ import {
   buildOnethingPrompt,
   buildOnethingSystemPrompt,
 } from '../builder.js'
+import { ONETHING_DEFAULT_SYSTEM_PROMPT } from '../system-prompt.js'
 
 const host = {
   getAgent: () => ({
@@ -22,7 +23,7 @@ describe('onething prompt builder', () => {
       host,
     })
 
-    expect(prompt.system).toContain('You are onething')
+    expect(prompt.system).toContain(ONETHING_DEFAULT_SYSTEM_PROMPT)
     expect(prompt.developer.join('\n')).toContain('Keep answers concise.')
     expect(prompt.developer.join('\n')).toContain('/Applications/onething/docs/macos-automation.md')
   })

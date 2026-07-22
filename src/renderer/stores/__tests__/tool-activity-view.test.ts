@@ -68,8 +68,10 @@ describe('tool activity view', () => {
     expect(activity.toolLabel).toBe('Write')
     expect(activity.target).toBe('large.ts')
     expect(activity.filePath).toBe('/Users/me/project/src/large.ts')
-    expect(activity.additions).toBe(220)
-    expect(activity.stats).toBe('+220 -0')
+    // No predicted counts while receiving: +N/-N only exists once a real
+    // diff has been measured.
+    expect(activity.additions).toBe(0)
+    expect(activity.stats).toBe('')
     expect(activity.hasDetails).toBe(true)
     expect(activity.defaultExpanded).toBe(false)
   })
@@ -348,6 +350,9 @@ describe('tool activity view', () => {
 
     expect(activities.map(activity => activity.id)).toEqual(['a', 'b'])
     expect(activities[1].target).toBe('b.ts')
-    expect(detailed.streamingContent?.content).toBe('hello')
+    // While receiving, the settled preview is absent; the honest draft view
+    // carries the received bytes instead.
+    expect(detailed.streamingContent).toBeNull()
+    expect(detailed.streamingDraft?.content).toEqual({ text: 'hello', open: false })
   })
 })

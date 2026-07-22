@@ -42,7 +42,8 @@
       />
     </button>
     <div
-      v-if="expanded || solo"
+      v-if="hasBeenOpen"
+      v-show="expanded || solo"
       class="process-rail-body"
       role="list"
     >
@@ -62,8 +63,9 @@ import { computed, ref, watch } from 'vue'
  * by the :deep overrides below.
  *
  * Auto-open while streaming, auto-collapse when the stream ends; a manual
- * toggle wins until the next stream boundary. `solo` (single-step process)
- * skips the summary header entirely and always shows the row.
+ * toggle wins permanently from then on — the stream boundary must never undo
+ * what the user asked for. `solo` (single-step process) skips the summary
+ * header entirely and always shows the row.
  */
 interface Props {
   summary: string
@@ -86,11 +88,15 @@ function toggle() {
   userToggled.value = !expanded.value
 }
 
-watch(() => Boolean(props.streaming), () => {
-  // Stream boundary (start or end): return control to the automatic
-  // behavior — open while live, collapsed once settled.
-  userToggled.value = null
-})
+// The body mounts lazily (a collapsed historical rail costs nothing) but is
+// never unmounted once opened: everything inside — tool panels, thought
+// blocks — owns its own expansion state, and v-if would throw that away.
+// A user who expanded a tool call mid-stream must find it still expanded
+// after the rail auto-collapses and they reopen it.
+const hasBeenOpen = ref(false)
+watch(() => expanded.value || props.solo, (open) => {
+  if (open) hasBeenOpen.value = true
+}, { immediate: true })
 </script>
 
 <style scoped>
@@ -175,14 +181,14 @@ watch(() => Boolean(props.streaming), () => {
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--text-error));
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
 .process-rail-failed-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ui-status-danger-fg, var(--text-error));
+  background: var(--ui-status-danger-fg, var(--text-error, #b3403a));
 }
 
 .process-rail-live {

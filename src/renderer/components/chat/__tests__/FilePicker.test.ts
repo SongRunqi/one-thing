@@ -50,7 +50,7 @@ const pathItem: ComposerExtensionItem = {
 }
 
 describe('composer extension pickers', () => {
-  it('renders slash commands as a lightweight command popover variant', async () => {
+  it('renders slash commands through the shared picker shell', async () => {
     const secondPaletteItem: PaletteItem = {
       ...paletteItem,
       id: 'command:memory',
@@ -82,10 +82,14 @@ describe('composer extension pickers', () => {
       },
     })
 
-    expect(wrapper.find('.composer-extension-panel.command-palette-panel').exists()).toBe(true)
-    // Ledger layout: the command variant shows the ruled header line too.
+    // One shell for every composer flyout: the palette no longer forks it
+    // through a `variant`, so it must be the plain panel, and the kind must
+    // ride in the shared meta slot rather than a margin column of its own.
+    expect(wrapper.find('.composer-extension-panel').exists()).toBe(true)
+    expect(wrapper.find('.command-palette-panel').exists()).toBe(false)
     expect(wrapper.find('.composer-extension-header').exists()).toBe(true)
     expect(wrapper.findAll('.command-kind').map(kind => kind.text())).toEqual(['cmd', 'cmd'])
+    expect(wrapper.findAll('.command-kind.composer-extension-row-meta')).toHaveLength(2)
     expect(wrapper.find('.command-palette-list').attributes('role')).toBe('listbox')
     expect(wrapper.find('.command-palette-list').attributes('aria-activedescendant')).toContain('command-palette-option-1')
     expect(wrapper.find('.composer-extension-row').attributes('role')).toBe('option')

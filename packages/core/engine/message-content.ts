@@ -1,3 +1,8 @@
+import {
+	isTextLikeMimeType,
+	normalizeMimeType,
+	shouldAttemptTextDecode,
+} from "./attachment-mime.js";
 import type { JsonObject, JsonValue } from "../json.js";
 
 export type CoreAIMessageContent =
@@ -75,44 +80,6 @@ export function formatMessagesForLog(messages: JsonObject[]): JsonObject[] {
 export const INLINE_TEXT_ATTACHMENT_MAX_CHARS = 64_000;
 export const INLINE_TEXT_ATTACHMENT_TOTAL_CHARS = 192_000;
 
-const TEXT_LIKE_EXACT_MIME_TYPES = new Set([
-	"application/json",
-	"application/xml",
-	"application/yaml",
-	"application/x-yaml",
-	"application/toml",
-	"application/sql",
-	"application/javascript",
-	"application/x-javascript",
-	"application/typescript",
-	"application/x-typescript",
-	"application/x-sh",
-	"application/xhtml+xml",
-	"application/x-ipynb+json",
-	"image/svg+xml",
-]);
-
-function normalizeMimeType(mimeType: string): string {
-	return (mimeType.split(";")[0] ?? "").trim().toLowerCase();
-}
-
-function isTextLikeMimeType(mimeType: string): boolean {
-	if (!mimeType) return false;
-	if (mimeType.startsWith("text/")) return true;
-	if (TEXT_LIKE_EXACT_MIME_TYPES.has(mimeType)) return true;
-	return /\+(json|xml|yaml)$/.test(mimeType);
-}
-
-function shouldAttemptTextDecode(mimeType: string): boolean {
-	// Browsers report an empty type for extensions they don't know (.vue, .ts,
-	// …) and the renderer normalizes that to octet-stream — sniff those too.
-	return (
-		isTextLikeMimeType(mimeType) ||
-		mimeType === "application/octet-stream" ||
-		mimeType === ""
-	);
-}
-
 function base64ToBytes(base64: string): Uint8Array | null {
 	try {
 		const binary = atob(base64.replace(/\s+/g, ""));
@@ -124,7 +91,8 @@ function base64ToBytes(base64: string): Uint8Array | null {
 	}
 }
 
-function decodeTextAttachment(bytes: Uint8Array): string | null {
+/** Shared with the `@path` mention inliner in ./file-mentions.ts. */
+export function decodeTextBytes(bytes: Uint8Array): string | null {
 	const probeLength = Math.min(bytes.length, 8192);
 	for (let i = 0; i < probeLength; i++) {
 		if (bytes[i] === 0) return null;
@@ -141,7 +109,8 @@ function decodeTextAttachment(bytes: Uint8Array): string | null {
 	}
 }
 
-function escapeAttachmentAttribute(value: string): string {
+/** Shared with the `@path` mention inliner in ./file-mentions.ts. */
+export function escapeXmlAttribute(value: string): string {
 	return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
@@ -167,7 +136,7 @@ function tryInlineTextAttachment(
 
 	const bytes = base64ToBytes(attachment.base64Data);
 	if (!bytes) return null;
-	const decoded = decodeTextAttachment(bytes);
+	const decoded = decodeTextBytes(bytes);
 	if (decoded == null) return null;
 
 	const text = decoded.startsWith("\uFEFF") ? decoded.slice(1) : decoded;
@@ -185,10 +154,10 @@ function tryInlineTextAttachment(
 	// The path lets the model operate on the original file with its tools
 	// (read/edit/bash) instead of only seeing this snapshot.
 	const pathAttribute = attachment.filePath
-		? ` path="${escapeAttachmentAttribute(attachment.filePath)}"`
+		? ` path="${escapeXmlAttribute(attachment.filePath)}"`
 		: "";
 	const rendered =
-		`<attachment filename="${escapeAttachmentAttribute(filename)}"${pathAttribute} media_type="${escapeAttachmentAttribute(attachment.mimeType)}">\n` +
+		`<attachment filename="${escapeXmlAttribute(filename)}"${pathAttribute} media_type="${escapeXmlAttribute(attachment.mimeType)}">\n` +
 		`${escapeAttachmentBody(body)}${truncationNote}\n` +
 		`</attachment>`;
 

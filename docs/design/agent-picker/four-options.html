@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent 选择器 · 合于命令面板 四案</title>
+<style>
+/* ————————————————————————————————————————————
+   共享语汇:取自 ComposerExtensionPanel.vue（命令面板的壳）
+   框     = border-strong 52%,零填充,--radius-xs 4px
+   框标签 = top -7px / left 12px / mono 9px / ls 2px / uppercase
+   行     = [mark?] [mono 名 @tab-stop 152px] [描述] [meta] [⏎]
+   行强调 = 只有底色 + 墨重,不引入第二个颜色
+   全篇不画分隔线:面板一共只画两根线(框 + hints 上边线)
+   ———————————————————————————————————————————— */
+:root {
+  --bg-chat: #faf8f1;
+  --bg-deep: #f3efe5;
+  --text: #29241c;
+  --strong: #16130e;
+  --muted: rgba(41, 36, 28, 0.62);
+  --faint: rgba(41, 36, 28, 0.42);
+  --border-strong: rgba(41, 36, 28, 0.55);
+  --hover: rgba(41, 36, 28, 0.055);
+  --accent: #b8452c;
+
+  --composer-border: color-mix(in srgb, var(--border-strong) 52%, transparent);
+  --hairline: color-mix(in srgb, var(--border-strong) 16%, transparent);
+  --radius-xs: 4px;
+  --tab-stop: 152px;
+
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-chat: #191611;
+    --bg-deep: #14110d;
+    --text: #e8e1d2;
+    --strong: #fdf8ec;
+    --muted: rgba(232, 225, 210, 0.66);
+    --faint: rgba(232, 225, 210, 0.42);
+    --border-strong: rgba(232, 225, 210, 0.5);
+    --hover: rgba(232, 225, 210, 0.07);
+    --accent: #d8765c;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg-deep);
+  color: var(--text);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.6;
+  padding: 48px 40px 120px;
+}
+
+.page-head { max-width: 1180px; margin: 0 auto 44px; }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: ""; display: block; width: 88px;
+  border-bottom: 2px solid var(--text); margin-top: 10px;
+}
+.page-head p { margin-top: 12px; color: var(--muted); max-width: 62em; }
+.page-head code {
+  font-family: var(--font-mono); font-size: 12px;
+  padding: 1px 5px; border: 1px solid var(--hairline); border-radius: 3px;
+}
+
+.options { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 76px; }
+.option-tag { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--faint); }
+.option-head { margin-bottom: 24px; }
+.option-head h2 { margin-top: 6px; font-size: 18px; font-weight: 600; letter-spacing: 0.02em; }
+.option-head p { margin-top: 8px; color: var(--muted); max-width: 60em; font-size: 13px; }
+.option-note { margin-top: 10px; font-size: 12px; color: var(--faint); max-width: 60em; }
+.option-note b { color: var(--muted); font-weight: 600; }
+
+/* ——— 舞台:模拟 tab header 一条 40px 栏 ——— */
+.stage {
+  position: relative;
+  background: var(--bg-chat);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  padding: 0 0 300px;
+  overflow: hidden;
+}
+.tabbar {
+  height: 40px; display: flex; align-items: center; gap: 2px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+.tab {
+  height: 28px; display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 12px; font-size: 12.5px; color: var(--muted);
+  border-radius: 3px 3px 0 0;
+}
+.tab.on { color: var(--strong); box-shadow: inset 0 -1.5px 0 var(--text); }
+.tab .x { color: var(--faint); font-size: 11px; }
+.spacer { flex: 1; }
+
+/* chip:各案自己定义,默认沿用现状(裸文字 + 悬停点线) */
+.chip {
+  position: relative; height: 28px; display: inline-flex; align-items: center; gap: 6px;
+  padding: 0 8px; font-size: 12px; color: var(--strong);
+  background: none; border: 0; cursor: pointer; font-family: inherit;
+}
+.chip .bot { width: 13px; height: 13px; flex: none; }
+.chip .chev { width: 11px; height: 11px; opacity: .8; transform: rotate(180deg); }
+.chip::after {
+  content: ""; position: absolute; right: 6px; bottom: -6px; left: 6px;
+  border-bottom: 1.5px solid color-mix(in srgb, var(--muted) 90%, transparent);
+}
+
+/* ——— 命令面板的壳(所有案共用) ——— */
+.panel {
+  position: absolute; z-index: 10;
+  padding: 9px 0 4px;
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-chat);
+  background-clip: padding-box;
+  box-shadow: 0 18px 44px rgba(0,0,0,.16);
+}
+@media (prefers-color-scheme: dark) { .panel { box-shadow: 0 18px 44px rgba(0,0,0,.5); } }
+
+.panel-label {
+  position: absolute; top: -7px; left: 12px; z-index: 1;
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 6px; background: var(--bg-chat);
+  color: var(--faint);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; line-height: 1.5; text-transform: uppercase; white-space: nowrap;
+}
+
+.rows { display: flex; flex-direction: column; }
+.row {
+  display: flex; align-items: baseline;
+  margin: 0 4px; padding: 5px 12px;
+  border-radius: 3px; cursor: pointer;
+}
+.row.on { background: var(--hover); }
+.row-name {
+  flex: none; min-width: var(--tab-stop); padding-right: 14px;
+  font-family: var(--font-mono); font-size: 12.5px; font-weight: 500;
+  color: var(--muted); line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row.on .row-name { color: var(--strong); font-weight: 700; }
+.row-desc {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 11.5px; line-height: 1.2; color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row.on .row-desc { color: var(--muted); }
+.row-meta {
+  flex: none; margin-left: 14px;
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .5px;
+  color: var(--faint); text-transform: uppercase; line-height: 1.2;
+}
+.row-kbd {
+  flex: none; width: 1.2em; margin-left: 10px; text-align: right;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); visibility: hidden;
+}
+.row.on .row-kbd { visibility: visible; }
+
+/* 当前生效的 agent:一个不占宽的实心小方,顶在 mono 名前 */
+.row-mark {
+  flex: none; width: 9px; margin-right: 7px; align-self: center;
+  font-family: var(--font-mono); font-size: 10px; color: var(--accent); line-height: 0;
+}
+
+.hints {
+  display: flex; gap: 16px; margin-top: 6px; padding: 6px 12px 2px;
+  border-top: 1px solid var(--hairline);
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 1px; color: var(--faint);
+}
+
+/* ————— 案 A ————— */
+#a .panel { top: 46px; right: 12px; width: 372px; }
+
+/* ————— 案 B:副头搜索 ————— */
+#b .panel { top: 46px; right: 12px; width: 372px; }
+.subhead {
+  display: flex; align-items: center; gap: 8px;
+  margin: 2px 4px 6px; padding: 4px 12px;
+}
+.subhead input {
+  flex: 1; border: 0; background: none; outline: none; color: var(--text);
+  font-family: var(--font-mono); font-size: 12.5px; padding: 0;
+}
+.subhead input::placeholder { color: var(--faint); }
+.subhead .caret { font-family: var(--font-mono); font-size: 12.5px; color: var(--accent); }
+.subhead-rule { margin: 0 16px 4px; border-bottom: 1px solid var(--hairline); }
+.hit { color: var(--strong); font-weight: 700; }
+
+/* ————— 案 C:双栏 目录 / 提示词 ————— */
+#c .panel { top: 46px; right: 12px; width: 560px; display: flex; }
+.col-list { flex: none; width: 196px; padding-bottom: 4px; }
+.col-list .row { padding: 5px 10px; }
+.col-list .row-name { min-width: 0; flex: 1 1 auto; padding-right: 8px; }
+.col-view {
+  flex: 1 1 auto; min-width: 0;
+  margin: 2px 8px 4px 4px; padding: 4px 12px 8px;
+  border-left: 1px solid var(--hairline);
+}
+.view-title { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; color: var(--strong); }
+.view-meta {
+  margin-top: 2px; font-family: var(--font-mono); font-size: 9.5px;
+  letter-spacing: .5px; text-transform: uppercase; color: var(--faint);
+}
+.view-body {
+  margin-top: 10px; font-size: 11.5px; line-height: 1.55; color: var(--muted);
+  max-height: 148px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 74%, transparent);
+          mask-image: linear-gradient(180deg, #000 74%, transparent);
+}
+
+/* ————— 案 D:贴条(非浮层) ————— */
+#d .stage { padding-bottom: 220px; }
+.rail {
+  display: flex; align-items: center; gap: 0;
+  height: 34px; padding: 0 12px;
+  border-bottom: 1px solid var(--hairline);
+  background: color-mix(in srgb, var(--text) 2.5%, var(--bg-chat));
+}
+.rail-label {
+  flex: none; margin-right: 14px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; text-transform: uppercase; color: var(--faint);
+}
+.rail-item {
+  position: relative; height: 34px; display: inline-flex; align-items: center;
+  padding: 0 12px; font-family: var(--font-mono); font-size: 12px;
+  color: var(--muted); cursor: pointer; white-space: nowrap;
+}
+.rail-item + .rail-item::before {
+  content: "·"; position: absolute; left: -2px; color: var(--faint); opacity: .55;
+}
+.rail-item:hover { color: var(--text); }
+.rail-item.on { color: var(--strong); font-weight: 700; box-shadow: inset 0 -1.5px 0 var(--accent); }
+.rail-hint {
+  margin-left: auto; font-family: var(--font-mono); font-size: 9.5px;
+  letter-spacing: 1px; color: var(--faint);
+}
+#d .chip::after { border-bottom-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>Agent 选择器 · 合于命令面板</h1>
+  <p>
+    现有下拉是另一套语汇:实心卡片、点线行分隔、圈点记号、双行文本。命令面板
+    (<code>ComposerExtensionPanel.vue</code>) 的语汇是:缺口框标签 + 零填充细线框 +
+    单行行式 <code>[mono 名 @152px] [描述] [meta] [⏎]</code>,全篇只画两根线,强调只靠底色与墨重。
+    下面四案都说这套语汇,但结构截然不同。深浅色请切系统主题看。
+  </p>
+</div>
+
+<div class="options">
+
+  <!-- ═══════════ 案 A ═══════════ -->
+  <section id="a">
+    <div class="option-head">
+      <div class="option-tag">案 A</div>
+      <h2>直译 — 命令面板原样搬到 header 下</h2>
+      <p>
+        一模一样的壳:框标签写 <code>AGENT</code>,行是单行,agent 名走 mono 落在 152px tab stop,
+        system prompt 首句当描述跟在同一行,右侧 meta 放 <code>DEFAULT</code>,选中行才出 ⏎。
+        当前生效的 agent 用一个朱砂小方顶在名字前——占位不占宽。
+      </p>
+      <p class="option-note">
+        <b>代价:</b>system prompt 被压成一行截断,读不到全貌。<b>好处:</b>与命令面板/文件/技能选择器
+        像素级同构,零新概念,改动最小(直接复用 ComposerExtensionPanel + row 类)。
+      </p>
+    </div>
+    <div class="stage">
+      <div class="tabbar">
+        <div class="tab on">重构提示词组装 <span class="x">×</span></div>
+        <div class="tab">电台 conductor <span class="x">×</span></div>
+        <div class="spacer"></div>
+        <button class="chip">
+          <svg class="bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg>
+          <span>写作 Agent</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label"><span>Agent</span><span>5</span></div>
+        <div class="rows">
+          <div class="row">
+            <span class="row-mark"></span>
+            <span class="row-name">default</span>
+            <span class="row-desc">内置助手,无额外系统提示</span>
+            <span class="row-meta">default</span>
+            <span class="row-kbd">⏎</span>
+          </div>
+          <div class="row on">
+            <span class="row-mark">■</span>
+            <span class="row-name">writer</span>
+            <span class="row-desc">中文写作伙伴,克制、不用套话,先给判断再给理由</span>
+            <span class="row-meta"></span>
+            <span class="row-kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="row-mark"></span>
+            <span class="row-name">code-reviewer</span>
+            <span class="row-desc">只挑真缺陷,给复现路径,不做风格评论</span>
+            <span class="row-meta"></span>
+            <span class="row-kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="row-mark"></span>
+            <span class="row-name">radio-dj</span>
+            <span class="row-desc">电台串词,口语化,一首歌一段,不超过两句</span>
+            <span class="row-meta"></span>
+            <span class="row-kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="row-mark"></span>
+            <span class="row-name">研究员</span>
+            <span class="row-desc">先列检索面再下结论,每条结论挂来源</span>
+            <span class="row-meta"></span>
+            <span class="row-kbd">⏎</span>
+          </div>
+        </div>
+        <div class="hints"><span>↑↓ move</span><span>⏎ switch</span><span>esc dismiss</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 案 B ═══════════ -->
+  <section id="b">
+    <div class="option-head">
+      <div class="option-tag">案 B</div>
+      <h2>可检索 — 借 subheader 槽,开即可打字</h2>
+      <p>
+        同一个壳,但用上命令面板留的 <code>subheader</code> 槽(模型选择器已经在用):顶部一行
+        <code>›</code> 提示符 + 裸输入框,打字即过滤,命中字符加墨加重(与命令面板的
+        <code>.command-hit</code> 同一条规则)。行式与案 A 相同。
+      </p>
+      <p class="option-note">
+        <b>代价:</b>多一次交互层级——开了要么打字要么按方向键;agent 只有三五个时是浪费。
+        <b>好处:</b>agent 一多(十个以上)就是唯一还能用的方案,且键盘流与命令面板完全一致(<code>⌘K</code> 肌肉记忆直接迁移)。
+      </p>
+    </div>
+    <div class="stage">
+      <div class="tabbar">
+        <div class="tab on">重构提示词组装 <span class="x">×</span></div>
+        <div class="tab">电台 conductor <span class="x">×</span></div>
+        <div class="spacer"></div>
+        <button class="chip">
+          <svg class="bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg>
+          <span>写作 Agent</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label"><span>Agent</span><span>3 / 12</span></div>
+        <div class="subhead">
+          <span class="caret">›</span>
+          <input value="re" placeholder="筛选 agent" spellcheck="false">
+        </div>
+        <div class="subhead-rule"></div>
+        <div class="rows">
+          <div class="row on">
+            <span class="row-mark"></span>
+            <span class="row-name">code-<span class="hit">re</span>viewer</span>
+            <span class="row-desc">只挑真缺陷,给复现路径,不做风格评论</span>
+            <span class="row-meta"></span>
+            <span class="row-kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="row-mark"></span>
+            <span class="row-name"><span class="hit">re</span>searcher</span>
+            <span class="row-desc">先列检索面再下结论,每条结论挂来源</span>
+            <span class="row-meta"></span>
+            <span class="row-kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="row-mark"></span>
+            <span class="row-name">memory-<span class="hit">re</span>view</span>
+            <span class="row-desc">空闲时回看当日笔记,只保留反常的那一条</span>
+            <span class="row-meta"></span>
+            <span class="row-kbd">⏎</span>
+          </div>
+        </div>
+        <div class="hints"><span>↑↓ move</span><span>⏎ switch</span><span>tab complete</span><span>esc dismiss</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 案 C ═══════════ -->
+  <section id="c">
+    <div class="option-head">
+      <div class="option-tag">案 C</div>
+      <h2>双栏 — 左目录,右提示词全文</h2>
+      <p>
+        壳不变,内部分两栏:左侧窄列只放 mono 名(单行、无描述),右侧一根 hairline 隔开,
+        随高亮实时显示这个 agent 的 system prompt 全文,底部渐隐。选 agent 这件事的真实决策依据
+        是提示词,而不是名字——这案把决策依据摆上台面。
+      </p>
+      <p class="option-note">
+        <b>代价:</b>面板宽 560px,是四案里最重的一块浮层;窄窗口要降级回单栏。
+        <b>好处:</b>唯一能在切换前读到提示词的方案,不用跳去 Agents 设置页确认「这个 agent 到底干嘛的」。
+      </p>
+    </div>
+    <div class="stage">
+      <div class="tabbar">
+        <div class="tab on">重构提示词组装 <span class="x">×</span></div>
+        <div class="tab">电台 conductor <span class="x">×</span></div>
+        <div class="spacer"></div>
+        <button class="chip">
+          <svg class="bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg>
+          <span>写作 Agent</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-label"><span>Agent</span><span>5</span></div>
+        <div class="col-list">
+          <div class="rows">
+            <div class="row"><span class="row-mark"></span><span class="row-name">default</span></div>
+            <div class="row on"><span class="row-mark">■</span><span class="row-name">writer</span><span class="row-kbd">⏎</span></div>
+            <div class="row"><span class="row-mark"></span><span class="row-name">code-reviewer</span></div>
+            <div class="row"><span class="row-mark"></span><span class="row-name">radio-dj</span></div>
+            <div class="row"><span class="row-mark"></span><span class="row-name">研究员</span></div>
+          </div>
+        </div>
+        <div class="col-view">
+          <div class="view-title">writer</div>
+          <div class="view-meta">当前会话 · system prompt 412 字</div>
+          <div class="view-body">
+            你是一个中文写作伙伴。先给判断,再给理由,不要先铺陈背景。<br><br>
+            句子短。能删的词一律删掉。不用「其实」「某种程度上」「值得注意的是」这类填充语,
+            不用排比句凑气势,不在结尾总结全文。<br><br>
+            拿不准的地方直说拿不准,不要用模糊措辞把不确定藏起来。用户给的材料里没有的事实不要补,
+            宁可留白。<br><br>
+            修改用户文字时,保留他原本的语气和用词习惯,只动真正有问题的部分,并在改完后一句话说明改了什么。
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ 案 D ═══════════ -->
+  <section id="d">
+    <div class="option-head">
+      <div class="option-tag">案 D</div>
+      <h2>贴条 — 不做浮层,在 tab 栏下方展开一行</h2>
+      <p>
+        取命令面板的字体与墨色,但拒绝它的盒子:点 chip 后不弹浮层,而是在 tab 栏正下方推开一条
+        34px 的横贴条,所有 agent 以 mono 排成一行、<code>·</code> 分隔,当前项加朱砂底线——
+        和 tab 页签「选中加底线」是同一句话。再点一次收起。
+      </p>
+      <p class="option-note">
+        <b>代价:</b>放不下描述,agent 多了会横向溢出(要滚动或折叠);且会把聊天内容整体下推。
+        <b>好处:</b>四案里最轻,没有遮挡、没有阴影、没有第二个平面;agent 切换从「打开一个菜单」
+        降级成「拨一下开关」,它本来就该是这个分量。
+      </p>
+    </div>
+    <div class="stage">
+      <div class="tabbar">
+        <div class="tab on">重构提示词组装 <span class="x">×</span></div>
+        <div class="tab">电台 conductor <span class="x">×</span></div>
+        <div class="spacer"></div>
+        <button class="chip">
+          <svg class="bot" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4M8 16h.01M16 16h.01"/></svg>
+          <span>写作 Agent</span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      </div>
+      <div class="rail">
+        <span class="rail-label">Agent</span>
+        <span class="rail-item">default</span>
+        <span class="rail-item on">writer</span>
+        <span class="rail-item">code-reviewer</span>
+        <span class="rail-item">radio-dj</span>
+        <span class="rail-item">研究员</span>
+        <span class="rail-hint">←→ move · esc 收起</span>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

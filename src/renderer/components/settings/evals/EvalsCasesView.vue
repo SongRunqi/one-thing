@@ -9,12 +9,11 @@
     </div>
 
     <!-- Error -->
-    <div
+    <ErrorNote
       v-else-if="store.casesError"
       class="evals-error"
-    >
-      {{ store.casesError }}
-    </div>
+      :message="store.casesError"
+    />
 
     <!-- Empty -->
     <div
@@ -110,6 +109,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import ErrorNote from "@/components/common/ErrorNote.vue";
 import { useEvalsStore } from "@/stores/evals";
 
 const store = useEvalsStore();
@@ -280,7 +280,6 @@ async function handleRetire(caseId: string) {
 }
 
 .evals-loading,
-.evals-error,
 .evals-empty {
   text-align: center;
   padding: 30px;
@@ -289,6 +288,6 @@ async function handleRetire(caseId: string) {
 }
 
 .evals-error {
-  color: var(--ui-status-danger-fg, #e74c3c);
+  margin: 24px 0;
 }
 </style>

@@ -189,6 +189,7 @@ export interface SessionDetails extends SessionMeta {
   workingDirectoryRoots?: string[]
   variables?: ContextVariable[]
   goal?: SessionGoal
+  goals?: SessionGoal[]
   summary?: string
   summaryUpToMessageId?: string
   summaryCreatedAt?: number
@@ -228,7 +229,8 @@ export interface ChatSession {
   workingDirectory?: string  // Active project directory for this session
   workingDirectoryRoots?: string[] // Additional sandbox roots for this session
   variables?: ContextVariable[] // Session-scoped context variables
-  goal?: SessionGoal // Persistent session goal (see docs/design/goal-system.md)
+  goal?: SessionGoal // Current goal; mirrors goals' newest unfinished record
+  goals?: SessionGoal[] // Goal history, oldest first (docs/design/goal-system-v3.md)
   // Context compacting fields
   summary?: string              // Conversation summary for context window management
   summaryUpToMessageId?: string // ID of the last message included in the summary

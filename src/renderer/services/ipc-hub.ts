@@ -100,6 +100,13 @@ export function initializeIPCHub() {
         })
         break
 
+      case 'tool:input-end':
+        store.handleStreamChunk({
+          type: 'tool_input_end', sessionId, messageId: '', content: '',
+          toolCallId: event.toolCallId, toolCall: event.toolCall,
+        })
+        break
+
       case 'tool:execution-start':
         store.handleToolExecutionStart({ sessionId, messageId: '', ...event })
         break
@@ -226,7 +233,11 @@ export function initializeIPCHub() {
 
       case 'session:goal-updated':
         import('@/stores/sessions').then(({ useSessionsStore }) => {
-          useSessionsStore().updateSessionGoal(sessionId, (event as any).goal ?? null)
+          useSessionsStore().updateSessionGoal(
+            sessionId,
+            (event as any).goal ?? null,
+            (event as any).goals,
+          )
         })
         break
     }

@@ -19,10 +19,14 @@ export type AgentProviderStreamFinishReason =
   | 'other'
   | 'unknown'
 
+export type AgentProviderToolArgsFinalizedBy = 'parse' | 'provider-done'
+
 export interface AgentProviderToolCallChunk {
   toolCallId: string
   toolName: string
   args: AgentJsonObject
+  /** Set on the fallback path: args settled by the provider's done event, not a mid-stream parse. */
+  finalizedBy?: AgentProviderToolArgsFinalizedBy
 }
 
 export type AgentProviderStreamChunk =
@@ -33,7 +37,7 @@ export type AgentProviderStreamChunk =
   | { type: 'tool-result'; toolResult: { toolCallId: string; result: AgentToolResult } }
   | { type: 'tool-input-start'; toolInputStart: { toolCallId: string; toolName: string } }
   | { type: 'tool-input-delta'; toolInputDelta: { toolCallId: string; argsTextDelta: string } }
-  | { type: 'tool-input-end'; toolInputEnd: { toolCallId: string } }
+  | { type: 'tool-input-end'; toolInputEnd: { toolCallId: string; finalizedBy: AgentProviderToolArgsFinalizedBy } }
   | { type: 'tool-metadata'; toolMetadata: { toolCallId: string; update: AgentToolMetadataUpdate } }
   | { type: 'tool-partial-result'; toolPartialResult: { toolCallId: string; update: AgentToolPartialResultUpdate } }
   | { type: 'provider-data'; providerData: AgentProviderData }
@@ -197,7 +201,7 @@ export async function* agentEventsToProviderStreamChunks(
           entry.ended = true
           yield {
             type: 'tool-input-end',
-            toolInputEnd: { toolCallId: event.toolCallId },
+            toolInputEnd: { toolCallId: event.toolCallId, finalizedBy: 'parse' },
           }
         }
         break
@@ -209,7 +213,10 @@ export async function* agentEventsToProviderStreamChunks(
 
         yield {
           type: 'tool-call',
-          toolCall: providerToolCallFromAgent(event.toolCall),
+          toolCall: {
+            ...providerToolCallFromAgent(event.toolCall),
+            finalizedBy: 'provider-done',
+          },
         }
         break
       }

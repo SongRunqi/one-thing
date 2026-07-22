@@ -14,23 +14,17 @@ import { BashTool } from './bash.js'
 import { EditTool } from './edit.js'
 import { ReadTool } from './read.js'
 import { WriteTool } from './write.js'
-import { GlobTool } from './glob.js'
-import { GrepTool } from './grep.js'
 import { FindTool } from './find.js'
-import { LsTool } from './ls.js'
-import { SkillManageTool, SkillsListTool, SkillViewTool } from './skill.js'
+import { SkillManageTool, SkillViewTool } from './skill.js'
 import { VariableTool } from './variable.js'
 import { GoalTool } from './goal.js'
 import { RadioTool } from './radio.js'
 import { PracticeTool } from './practice.js'
-import { CalculatorTool } from './calculator.js'
-import { ProjectDirsTool } from '../../project-dirs/index.js'
 import { BashOutputTool, FartTool, KillBashTool, TimeTool } from '@onething/runtime/tools'
 
 // Web search
 import { WebSearchTool } from './web-search/index.js'
 import { WebOpenTool } from './web-search/open.js'
-import { WebFindTool } from './web-search/find.js'
 
 // All built-in tools (Tool.define() format)
 // Note: some tools are async and need separate initialization
@@ -41,27 +35,20 @@ const builtinTools = [
   EditTool,
   ReadTool,
   WriteTool,
-  GlobTool,
-  GrepTool,
   FindTool,
-  LsTool,
   VariableTool,
   GoalTool,
   RadioTool,
   PracticeTool,
   TimeTool,
-  CalculatorTool,
-  ProjectDirsTool,
   FartTool,
   // Web tools
   WebSearchTool,
   WebOpenTool,
-  WebFindTool,
 ]
 
 // Async tools that need initialization with context
 export const asyncBuiltinTools = [
-  SkillsListTool,
   SkillViewTool,
   SkillManageTool,
 ]

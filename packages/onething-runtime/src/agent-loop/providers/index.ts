@@ -21,11 +21,12 @@ export type {
   ProviderAuthContext as CodexProviderAuthContext,
 } from './codex.js'
 export { createDeepSeekAgentProvider } from './deepseek.js'
+export type { DeepSeekAgentProviderOptions } from './deepseek.js'
 export type {
   AgentProviderRequestDump,
+  AgentProviderRequestDumper,
   AgentProviderRequestDumpValue,
-  DeepSeekAgentProviderOptions,
-} from './deepseek.js'
+} from './request-dump.js'
 export {
   getOnethingAgentLoopThinkingOptions,
   normalizeDeepSeekReasoningEffort,

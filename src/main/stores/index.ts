@@ -41,6 +41,7 @@ export {
   updateSessionWorkingDirectoryRoots,
   updateSessionVariables,
   updateSessionGoal,
+  updateSessionGoals,
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
   updateSessionContextSize,

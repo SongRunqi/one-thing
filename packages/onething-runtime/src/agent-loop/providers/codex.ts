@@ -18,6 +18,10 @@ import type {
 	AgentTurnStreamEvent,
 	AgentUsage,
 } from "@onething/core/agent-loop";
+import type {
+	AgentProviderRequestDump,
+	AgentProviderRequestDumper,
+} from "./request-dump.js";
 
 type FetchFn = typeof globalThis.fetch;
 type CodexRawRecord = Record<string, AgentJsonValue | undefined>;
@@ -41,13 +45,10 @@ export interface ProviderAuthContext {
 	token?: OAuthToken;
 }
 
-export interface CodexAgentProviderRequestDump {
-	providerId: string;
-	model: string;
+/** @deprecated Use `AgentProviderRequestDump` from ./request-dump.js. */
+export type CodexAgentProviderRequestDump = AgentProviderRequestDump & {
 	mode: "codex-http";
-	metadata?: Record<string, string>;
-	requestBody: object;
-}
+};
 
 function shouldDebugCodexStream(): boolean {
 	return (
@@ -73,9 +74,7 @@ export interface CodexAgentProviderOptions {
 	refreshOAuthToken?: (
 		forceRefresh: boolean,
 	) => Promise<OAuthToken | undefined>;
-	requestDumper?: (
-		request: CodexAgentProviderRequestDump,
-	) => Promise<string | undefined>;
+	requestDumper?: AgentProviderRequestDumper;
 }
 
 interface CodexPromptPayload {

@@ -33,82 +33,51 @@
         <BackgroundJobsStatusBar />
         <GoalStatusBar :session-id="effectiveSessionId" />
 
+        <!-- Permission ledger: the request read as a key/value form in the
+             composer's blueprint language — hairline rows, mono cells, zero
+             fill. Scope is a column of the form, not a row of pill buttons,
+             so a standing grant can never be a mis-click on "Allow". -->
         <div
           v-if="currentPendingPermission"
           class="session-permission-panel"
         >
-          <div class="permission-main">
-            <div class="permission-label">
-              Permission required
-            </div>
-            <div class="permission-title">
-              {{ permissionTitle(currentPendingPermission.toolCall) }}
-            </div>
-            <div
-              v-if="permissionPreview(currentPendingPermission.toolCall)"
-              class="permission-preview"
-            >
-              {{ permissionPreview(currentPendingPermission.toolCall) }}
-            </div>
-            <div
-              v-if="queuedBehindPermission.length > 0"
-              class="permission-queue"
-            >
-              {{ queuedBehindPermission.length }} queued behind this permission
-            </div>
+          <div class="permission-row">
+            <span class="permission-key">tool</span>
+            <span class="permission-value">{{ permissionTool(currentPendingPermission.toolCall) }}</span>
           </div>
-          <div class="permission-actions">
-            <div class="permission-allow-group">
+          <div class="permission-row">
+            <span class="permission-key">target</span>
+            <span class="permission-value">{{ permissionTarget(currentPendingPermission.toolCall) }}</span>
+          </div>
+          <div
+            v-if="permissionPreview(currentPendingPermission.toolCall)"
+            class="permission-row"
+          >
+            <span class="permission-key">{{ permissionDetailKey(currentPendingPermission.toolCall) }}</span>
+            <span class="permission-value is-dim">{{ permissionPreview(currentPendingPermission.toolCall) }}</span>
+          </div>
+          <div class="permission-row is-scope">
+            <span class="permission-key">scope</span>
+            <span class="permission-value">
               <Button
+                v-for="option in scopeOptions"
+                :key="option.value"
                 unstyled
-                class="permission-btn allow"
+                class="permission-scope-btn"
                 native-type="button"
-                title="Allow once"
-                @click="approveCurrentPermission('once')"
+                :aria-pressed="permissionScope === option.value"
+                :title="option.hint"
+                @click="permissionScope = option.value"
               >
-                Allow
+                {{ option.label }}
               </Button>
-              <Button
-                unstyled
-                class="permission-btn allow-scope"
-                native-type="button"
-                title="Allow for this session"
-                @click="approveCurrentPermission('session')"
-              >
-                Session
-              </Button>
-              <Button
-                v-if="canAllowWorkspace(currentPendingPermission.toolCall)"
-                unstyled
-                class="permission-btn allow-scope"
-                native-type="button"
-                title="Allow in this workspace"
-                @click="approveCurrentPermission('workdir')"
-              >
-                Workspace
-              </Button>
-            </div>
-            <Button
-              unstyled
-              class="permission-btn reject"
-              native-type="button"
-              @click="rejectCurrentPermission"
-            >
-              Reject
-            </Button>
-            <Button
-              unstyled
-              class="permission-btn instruct"
-              native-type="button"
-              @click="showRejectInstruction = !showRejectInstruction"
-            >
-              Reject with instruction
-            </Button>
+            </span>
           </div>
           <div
             v-if="showRejectInstruction"
-            class="permission-instruction"
+            class="permission-row is-instruction"
           >
+            <span class="permission-key">reason</span>
             <textarea
               v-model="rejectInstruction"
               class="permission-instruction-input"
@@ -116,13 +85,50 @@
               rows="2"
               @keydown.stop
             />
+          </div>
+          <div class="permission-foot">
+            <span class="permission-hint">
+              {{ queuedBehindPermission.length > 0
+                ? `${queuedBehindPermission.length} queued behind this permission`
+                : 'awaiting your decision' }}
+            </span>
             <Button
+              v-if="showRejectInstruction"
               unstyled
               class="permission-btn reject"
               native-type="button"
               @click="rejectCurrentPermissionWithInstruction"
             >
-              Send rejection
+              SEND REJECTION
+            </Button>
+            <template v-else>
+              <Button
+                unstyled
+                class="permission-btn reject"
+                native-type="button"
+                title="Reject this call"
+                @click="rejectCurrentPermission"
+              >
+                REJECT
+              </Button>
+              <Button
+                unstyled
+                class="permission-btn instruct"
+                native-type="button"
+                title="Reject and tell the assistant what to do instead"
+                @click="showRejectInstruction = true"
+              >
+                REJECT…
+              </Button>
+            </template>
+            <Button
+              unstyled
+              class="permission-btn allow"
+              native-type="button"
+              :title="`Allow (${permissionScopeLabel})`"
+              @click="approveCurrentPermission(permissionScope)"
+            >
+              ALLOW
             </Button>
           </div>
         </div>
@@ -152,7 +158,7 @@ import InputBox from './InputBox.vue'
 import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
 import GoalStatusBar from './GoalStatusBar.vue'
 import type { MessageAttachment, ToolCall } from '@/types'
-import { buildToolPermissionTitle } from '@/stores/helpers/tool-display'
+import { buildToolActivityTarget, buildToolPermissionTitle } from '@/stores/helpers/tool-display'
 
 const props = withDefaults(defineProps<{
   sessionId?: string
@@ -184,8 +190,11 @@ const effectiveSessionId = computed(() => props.sessionId || sessionsStore.curre
 // edge, right where the goal bar sits. When it is showing, lift the goal bar
 // clear by its height (plus the bar's own 9px top gap) so the goal reads above
 // the music bar instead of being covered by it.
+// Pinned, the bar is no longer out of flow: the composer reserves its height
+// (InputBox's --music-bar-reserve), so the goal bar already clears it and
+// lifting again would just open a second empty gap.
 const goalMusicOffset = computed(() =>
-  musicStore.barHeight > 0 ? musicStore.barHeight + 9 : 0,
+  musicStore.barHeight > 0 && !musicStore.barPinned ? musicStore.barHeight + 9 : 0,
 )
 
 const {
@@ -208,9 +217,13 @@ const currentSession = computed(() => {
 
 const panelMessages = computed(() => messages.value)
 
+// Actionability needs both truths: `requiresConfirmation` is persisted engine
+// history, `canRespond` marks a live emitted prompt in the permission manager
+// (set from permission events / the pending seed). Either alone renders a
+// card that can't be answered — stale after restart, or a queued follower.
 const currentPendingPermission = computed<{ toolCall: ToolCall } | null>(() => {
   for (const message of panelMessages.value) {
-    const toolCall = message.toolCalls?.find(tc => tc.requiresConfirmation)
+    const toolCall = message.toolCalls?.find(tc => tc.requiresConfirmation && tc.canRespond)
     if (toolCall) return { toolCall }
   }
   return null
@@ -237,10 +250,37 @@ const queuedBehindPermission = computed(() => {
 
 const showRejectInstruction = ref(false)
 const rejectInstruction = ref('')
+const permissionScope = ref<PermissionResponse>('once')
 
 watch(currentPendingPermission, () => {
   showRejectInstruction.value = false
   rejectInstruction.value = ''
+  // Never carry a standing scope across requests — each grant is chosen fresh.
+  permissionScope.value = 'once'
+})
+
+const scopeOptions = computed(() => {
+  const options: Array<{ value: PermissionResponse; label: string; hint: string }> = [
+    { value: 'once', label: 'once', hint: 'Allow this call only' },
+    { value: 'session', label: 'session', hint: 'Allow for this session' },
+  ]
+  const toolCall = currentPendingPermission.value?.toolCall
+  if (toolCall && canAllowWorkspace(toolCall)) {
+    options.push({ value: 'workdir', label: 'workspace', hint: 'Allow in this workspace' })
+  }
+  return options
+})
+
+const permissionScopeLabel = computed(() => {
+  return scopeOptions.value.find(option => option.value === permissionScope.value)?.label || 'once'
+})
+
+// A scope can disappear between requests (workspace is withheld for sensitive
+// reads); fall back rather than approve with a scope the UI no longer offers.
+watch(scopeOptions, options => {
+  if (!options.some(option => option.value === permissionScope.value)) {
+    permissionScope.value = 'once'
+  }
 })
 
 const inputBoxRef = ref<InstanceType<typeof InputBox> | null>(null)
@@ -400,9 +440,30 @@ function permissionTitle(toolCall: ToolCall): string {
   return buildToolPermissionTitle(toolCall)
 }
 
+function permissionTool(toolCall: ToolCall): string {
+  return String(toolCall.toolName || toolCall.toolId || 'tool').trim().toLowerCase()
+}
+
+// The ledger splits what the title fuses: `target` is the thing being acted
+// on, so drop the leading verb the permission title prepends ("Write <path>").
+function permissionTarget(toolCall: ToolCall): string {
+  const args = (toolCall.arguments || {}) as Record<string, unknown>
+  const direct = args.path ?? args.file_path ?? args.command ?? toolCall.changes?.filePath
+  if (direct) return String(direct).replace(/\s*\n\s*/g, ' ')
+  const activityTarget = buildToolActivityTarget(toolCall.toolName || toolCall.toolId, toolCall)
+  if (activityTarget) return activityTarget
+  const title = buildToolPermissionTitle(toolCall)
+  const [, remainder] = title.match(/^\S+\s+(.+)$/) || []
+  return remainder || title
+}
+
+function permissionDetailKey(toolCall: ToolCall): string {
+  return toolCall.changes ? 'diff' : 'detail'
+}
+
 function permissionPreview(toolCall: ToolCall): string {
   if (toolCall.changes) return `+${toolCall.changes.additions || 0} -${toolCall.changes.deletions || 0}`
-  if (toolCall.arguments?.command) return String(toolCall.arguments.command)
+  // The command already fills the `target` row for bash — don't print it twice.
   return ''
 }
 
@@ -829,127 +890,171 @@ defineExpose({
     margin var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1));
 }
 
+/* Permission ledger — the composer's blueprint frame, one row per field:
+   zero fill, one outline, hairline cell dividers, mono annotations. The
+   only colour is carried by the two decisions themselves. */
 .session-permission-panel {
-  --permission-panel-fg: var(--ui-status-warning-fg, var(--text-warning));
-  --permission-panel-border: var(--ui-status-warning-border, var(--border-warning));
-  --permission-panel-bg: var(--ui-status-warning-bg, var(--ui-surface-app-bg, var(--bg)));
-  --permission-panel-shadow: var(--shadow-md, 0 8px 24px color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 10%, transparent));
+  --permission-frame: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 52%, transparent);
+  --permission-divider: color-mix(in srgb, var(--ui-border-strong-border, var(--border-strong, var(--border))) 30%, transparent);
   --permission-allow-fg: var(--ui-status-success-fg, var(--text-success));
-  --permission-allow-border: var(--ui-status-success-border, var(--border-success));
-  --permission-allow-bg: var(--ui-status-success-bg, transparent);
   --permission-reject-fg: var(--ui-status-warning-fg, var(--text-warning));
-  --permission-reject-border: var(--ui-status-warning-border, var(--border-warning));
-  --permission-reject-bg: var(--ui-status-warning-bg, transparent);
 
   width: var(--chat-composer-width);
   margin: 0 var(--chat-content-column-right, auto) 8px var(--chat-content-column-left, auto);
-  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--permission-frame);
+  border-radius: var(--radius-xs, 4px);
+  background: transparent;
+  overflow: hidden;
+}
+
+.permission-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 30px;
+  border-bottom: 1px solid var(--permission-divider);
+}
+
+.permission-key {
+  display: flex;
   align-items: center;
-  gap: 10px 12px;
-  border: 1px solid var(--permission-panel-border);
-  border-radius: 12px;
-  background: var(--permission-panel-bg);
-  box-shadow: var(--permission-panel-shadow);
-}
-
-.permission-main {
-  min-width: 0;
-  flex: 1;
-}
-
-.permission-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--permission-panel-fg);
+  padding: 0 11px;
+  border-right: 1px solid var(--permission-divider);
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
 }
 
-.permission-title {
-  margin-top: 2px;
-  font-size: 13px;
-  font-weight: 650;
+.permission-value {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 11px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
   color: var(--ui-text-primary-fg, var(--text));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.permission-preview,
-.permission-queue {
-  margin-top: 3px;
-  font-size: 12px;
+.permission-value.is-dim {
   color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.permission-row.is-scope .permission-value {
+  padding: 0;
+}
+
+.permission-scope-btn {
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-right: 1px solid var(--permission-divider);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ui-text-muted-fg, var(--muted));
+  transition: color 0.16s ease, background 0.16s ease;
+}
+
+.permission-scope-btn:hover {
+  background: var(--ui-state-hover-bg, var(--hover));
+  color: var(--ui-text-primary-fg, var(--text));
+}
+
+.permission-scope-btn[aria-pressed='true'] {
+  color: var(--permission-allow-fg);
+  background: color-mix(in srgb, var(--permission-allow-fg) 10%, transparent);
+}
+
+.permission-row.is-instruction {
+  align-items: start;
+}
+
+.permission-row.is-instruction .permission-key {
+  align-items: flex-start;
+  padding-top: 9px;
+}
+
+.permission-instruction-input {
+  min-width: 0;
+  min-height: 48px;
+  resize: vertical;
+  padding: 8px 11px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-primary-fg, var(--text));
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.permission-instruction-input:focus {
+  outline: none;
+  background: var(--ui-state-hover-bg, var(--hover));
+}
+
+.permission-foot {
+  display: flex;
+  align-items: stretch;
+  min-height: 32px;
+}
+
+.permission-hint {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.permission-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.permission-allow-group {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
 }
 
 .permission-btn {
-  height: 28px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 650;
+  flex-shrink: 0;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-left: 1px solid var(--permission-divider);
+  border-radius: 0;
+  background: transparent;
   cursor: pointer;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  background: var(--ui-surface-panel-bg, var(--panel));
-  color: var(--ui-text-primary-fg, var(--text));
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--ui-text-muted-fg, var(--muted));
+  transition: background 0.16s ease;
 }
 
-.permission-btn.allow,
-.permission-btn.allow-scope {
+.permission-btn.allow {
   color: var(--permission-allow-fg);
-  border-color: var(--permission-allow-border);
-  background: var(--permission-allow-bg);
-}
-
-.permission-btn.allow-scope {
-  font-size: 11px;
-  opacity: 0.86;
 }
 
 .permission-btn.reject,
 .permission-btn.instruct {
   color: var(--permission-reject-fg);
-  border-color: var(--permission-reject-border);
-  background: var(--permission-reject-bg);
 }
 
-.permission-instruction {
-  grid-column: 1 / -1;
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
+.permission-btn.allow:hover {
+  background: color-mix(in srgb, var(--permission-allow-fg) 12%, transparent);
 }
 
-.permission-instruction-input {
-  flex: 1;
-  min-height: 48px;
-  resize: vertical;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 8px;
-  background: var(--ui-surface-panel-bg, var(--panel));
-  color: var(--ui-text-primary-fg, var(--text));
-  padding: 8px 10px;
-  font: inherit;
-  font-size: 12px;
+.permission-btn.reject:hover,
+.permission-btn.instruct:hover {
+  background: color-mix(in srgb, var(--permission-reject-fg) 12%, transparent);
 }
 
 @media (max-width: 768px) {

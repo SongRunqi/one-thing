@@ -7,7 +7,7 @@
     :error="error"
     :empty-text="emptyText"
     :empty-hint="emptyHint"
-    variant="command"
+    :hints="HINTS"
   >
     <div
       ref="listRef"
@@ -33,10 +33,6 @@
         @click="selectItem(item)"
         @mouseenter="highlightItem(index)"
       >
-        <span
-          class="command-kind"
-          aria-hidden="true"
-        >{{ kindLabel(item.kind) }}</span>
         <div class="composer-extension-row-main">
           <div class="composer-extension-row-title">
             <template
@@ -51,19 +47,19 @@
               </template>
             </template>
           </div>
-          <span
-            class="command-leader"
-            aria-hidden="true"
-          />
           <div class="composer-extension-row-description">
             {{ item.description }}
           </div>
         </div>
+        <span
+          class="composer-extension-row-meta command-kind"
+          aria-hidden="true"
+        >{{ kindLabel(item.kind) }}</span>
         <div
           class="composer-extension-row-kbd"
           aria-hidden="true"
         >
-          {{ index === selectedIndex ? '⏎' : '' }}
+          ⏎
         </div>
       </div>
     </div>
@@ -97,6 +93,10 @@ const emit = defineEmits<{
 
 const listRef = ref<HTMLElement | null>(null)
 
+/** Keyboard legend under the list — the palette is the one picker with
+ * enough bindings to be worth spelling out. */
+const HINTS = ['↑↓ move', '⏎ run', 'tab complete', 'esc dismiss']
+
 /* Wheel-scrolling sweeps rows under the cursor, firing mouseenter →
  * highlight for each; following those with scroll-into-view would yank the
  * list back and fight the user's scroll. Only keyboard/content changes
@@ -120,8 +120,10 @@ const emptyHint = computed(() => {
     : 'Type to narrow commands, prompts, and skills'
 })
 
-/** Margin-column label for the ledger layout: what kind of entry this row
- * books (command / skill / action / prompt). */
+/** What kind of entry this row is (command / skill / action / prompt). It
+ * rides in the shared meta slot and only surfaces on the selected row — the
+ * moment you need to know a command's kind is the moment you've landed on
+ * it, so every other row spends its width on the description instead. */
 const KIND_LABELS: Partial<Record<ComposerExtensionItem['kind'], string>> = {
   command: 'cmd',
   skill: 'skill',
@@ -150,8 +152,8 @@ interface TitleSegment {
 }
 
 /** Splits the command title around the first query match so the matched
- * characters render in accent, per the ledger mockup
- * (docs/design/command-palette/inkline-four-options.html, 案一). */
+ * characters can carry ink (see docs/design/command-palette/quiet-rows.html) —
+ * emphasis is weight and darkness, never a second colour. */
 function titleSegments(title: string): TitleSegment[] {
   const query = props.query.trim().toLowerCase()
   if (!query) return [{ text: title, hit: false }]
@@ -213,3 +215,23 @@ watch(
   { flush: 'post', immediate: true },
 )
 </script>
+
+<style scoped>
+/* The kind is the palette's meta slot, but unlike a file size or a skill's
+   source it is not worth reading on every row — it appears only where the
+   cursor is. The slot still reserves no width, so nothing shifts. */
+.command-kind {
+  visibility: hidden;
+}
+
+.composer-extension-row.selected .command-kind {
+  visibility: visible;
+}
+
+/* Matched characters gain weight and ink — the same emphasis axis the
+   selected row uses, not a separate accent colour. */
+.command-hit {
+  color: var(--ui-text-strong-fg, var(--text));
+  font-weight: 700;
+}
+</style>

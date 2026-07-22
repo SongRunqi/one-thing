@@ -16,6 +16,8 @@ export default defineConfig({
       { find: '@shared', replacement: resolve(projectRoot, 'src/shared') },
       { find: '@onething/core/ipc', replacement: resolve(projectRoot, 'packages/core/ipc/index.ts') },
       { find: '@onething/core/slash-commands', replacement: resolve(projectRoot, 'packages/core/slash-commands.ts') },
+      { find: '@onething/core/engine/attachment-mime', replacement: resolve(projectRoot, 'packages/core/engine/attachment-mime.ts') },
+      { find: '@onething/core/engine/streaming-args', replacement: resolve(projectRoot, 'packages/core/engine/streaming-args.ts') },
       { find: '@onething/core', replacement: resolve(projectRoot, 'packages/core/index.ts') },
       { find: '@onething/runtime/providers/model-capability', replacement: resolve(projectRoot, 'packages/onething-runtime/src/providers/model-capability.ts') },
       { find: '@onething/runtime/embeddings/defaults', replacement: resolve(projectRoot, 'packages/onething-runtime/src/embeddings/defaults.ts') },

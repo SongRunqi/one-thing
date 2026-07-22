@@ -10,6 +10,7 @@ import {
   type AgentProviderStreamChunk,
   type AgentTool,
   type AgentTurnRequest,
+  type AgentUsage,
 } from '@onething/core/agent-loop'
 import { createDeepSeekAgentProvider } from '../agent-loop/providers/deepseek.js'
 import {
@@ -94,6 +95,12 @@ export interface OnethingChatResponseResult {
     toolName: string
     args: AgentJsonObject
   }>
+  /**
+   * Token usage for this turn, when the provider reported it. Side-line
+   * callers (title generation, memory capture/review) need this to bill their
+   * calls — without it their tokens are invisible in the usage ledger.
+   */
+  usage?: AgentUsage
 }
 
 export type OnethingReasoningStreamChunk =
@@ -317,6 +324,7 @@ export async function runOnethingUtilityAgentTurn(
       toolName: toolCall.name,
       args: parseToolArgs(toolCall.arguments),
     })),
+    usage: turn.usage,
   }
 }
 

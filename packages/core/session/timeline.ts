@@ -6,6 +6,9 @@ export interface CoreTokenUsage {
 
 export interface CoreToolCallState {
   status?: string
+  /** Set while a tool call is paused awaiting a permission response. */
+  requiresConfirmation?: boolean
+  error?: string
 }
 
 export interface CoreTimelineStep {
@@ -210,8 +213,21 @@ export function sanitizeInterruptedStepRecursive(step: CoreTimelineStep): boolea
     modified = true
   }
   if (step.toolCall) {
-    if (step.toolCall.status === 'executing' || step.toolCall.status === 'pending') {
+    if (
+      step.toolCall.status === 'executing'
+      || step.toolCall.status === 'pending'
+      || step.toolCall.status === 'received'
+      || step.toolCall.status === 'queued'
+      || step.toolCall.status === 'input-streaming'
+    ) {
       step.toolCall.status = 'cancelled'
+      modified = true
+    }
+    // The permission ask lives only in the dead process's memory — a stale
+    // flag here would render an approval card no click can ever satisfy.
+    if (step.toolCall.requiresConfirmation) {
+      step.toolCall.requiresConfirmation = false
+      step.toolCall.error = step.toolCall.error || 'Interrupted: permission request was not answered'
       modified = true
     }
   }
@@ -264,8 +280,21 @@ export function sanitizeSessionOnStartup(session: CoreTimelineSession): boolean 
 
     if (message.toolCalls) {
       for (const toolCall of message.toolCalls) {
-        if (toolCall.status === 'executing' || toolCall.status === 'pending') {
+        if (
+          toolCall.status === 'executing'
+          || toolCall.status === 'pending'
+          || toolCall.status === 'received'
+          || toolCall.status === 'queued'
+          || toolCall.status === 'input-streaming'
+        ) {
           toolCall.status = 'cancelled'
+          modified = true
+        }
+        // Permission asks never survive a restart; a persisted flag is stale
+        // by definition and would gate a dead approval card in the UI.
+        if (toolCall.requiresConfirmation) {
+          toolCall.requiresConfirmation = false
+          toolCall.error = toolCall.error || 'Interrupted: permission request was not answered'
           modified = true
         }
       }

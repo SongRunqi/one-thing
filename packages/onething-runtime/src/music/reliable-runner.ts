@@ -118,12 +118,18 @@ export function createOnethingMusicReliableRunner(
     args: string[],
     env?: Record<string, string | undefined>,
   ): Promise<string> => {
+    const spawnedAt = Date.now()
     const result = await options.runner.run({
       command: cli.binary,
       args,
       env,
       timeoutMs: TIMEOUTS[commandClass],
     })
+    // Timing probe (slow ⏭ investigation): every call is a fresh CLI process,
+    // so this line is the per-command fixed cost, spawn included.
+    console.info(
+      `[music:timing] ${cli.binary} ${args.join(' ')} (${commandClass}): ${Date.now() - spawnedAt}ms`,
+    )
     const envelope = cli.parse.envelope(result.stdout)
     if (!envelope.ok) {
       throw new OnethingMusicCommandError(

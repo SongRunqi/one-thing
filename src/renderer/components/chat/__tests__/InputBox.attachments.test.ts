@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import InputBox from "../InputBox.vue";
 import { createDefaultSettings } from "../../../../shared/defaults/settings";
 import { executeCommand, findCommand } from "@/services/commands";
+import { createFileToken } from "@shared/prompt-references";
 
 const mocks = vi.hoisted(() => ({
 	settingsStore: null as any,
@@ -422,6 +423,34 @@ describe("InputBox paste attachments", () => {
 				mediaType: "document",
 			},
 		]);
+		expect(wrapper.find(".attachment-tray").exists()).toBe(false);
+	});
+
+	it("docks an @ pick as a reference chip instead of inlining its path", async () => {
+		const wrapper = mountInputBox();
+
+		await setComposerValue(
+			wrapper,
+			`explain ${createFileToken("/repo/src/a.ts")} please`,
+		);
+
+		expect(wrapper.find(".attachment-tray").exists()).toBe(true);
+		expect(wrapper.text()).toContain("src/a.ts");
+	});
+
+	it("expands docked references back to @path in place when sending", async () => {
+		const wrapper = mountInputBox();
+
+		await setComposerValue(
+			wrapper,
+			`explain ${createFileToken("/repo/src/a.ts")} please`,
+		);
+		await wrapper.find(".send-btn").trigger("click");
+		await settle();
+
+		expect(wrapper.emitted("sendMessage")?.[0]?.[0]).toBe(
+			"explain @/repo/src/a.ts please",
+		);
 		expect(wrapper.find(".attachment-tray").exists()).toBe(false);
 	});
 

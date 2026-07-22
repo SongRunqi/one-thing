@@ -2,33 +2,29 @@
   <Transition name="composer-extension">
     <section
       v-if="visible"
-      :class="['composer-extension-panel', { 'command-palette-panel': variant === 'command' }]"
+      class="composer-extension-panel"
+      :class="{ 'is-floating': floating, 'is-down': placement === 'down' }"
       :aria-label="title"
       @mousedown.stop
       @click.stop
     >
       <header class="composer-extension-header">
-        <div class="composer-extension-title">
-          <slot name="icon" />
-          <span>{{ title }}</span>
-        </div>
-        <div class="composer-extension-status">
-          <Loader2
-            v-if="loading"
-            class="composer-extension-spinner"
-            :size="14"
-          />
-          <span
-            v-else-if="count !== undefined"
-            class="composer-extension-count"
-          >
-            {{ countLabel ?? count }}
-          </span>
-        </div>
+        <span class="composer-extension-title">{{ title }}</span>
+        <Loader2
+          v-if="loading"
+          class="composer-extension-spinner"
+          :size="10"
+        />
+        <span
+          v-else-if="count !== undefined"
+          class="composer-extension-count"
+        >
+          {{ countLabel ?? count }}
+        </span>
       </header>
 
-      <!-- Fixed chrome between header and the scrolling body (e.g. the model
-           picker's search + provider filter rows). -->
+      <!-- Fixed chrome between the frame label and the scrolling body (e.g. the
+           model picker's search + provider filter rows). -->
       <slot name="subheader" />
 
       <div
@@ -67,14 +63,14 @@
       </div>
 
       <footer
-        v-if="variant === 'command'"
+        v-if="hints.length"
         class="composer-extension-hints"
         aria-hidden="true"
       >
-        <span>↑↓ move</span>
-        <span>⏎ run</span>
-        <span>tab complete</span>
-        <span>esc dismiss</span>
+        <span
+          v-for="hint in hints"
+          :key="hint"
+        >{{ hint }}</span>
       </footer>
     </section>
   </Transition>
@@ -93,7 +89,14 @@ withDefaults(defineProps<{
   emptyHint?: string
   loadingText?: string
   countLabel?: string
-  variant?: 'default' | 'command'
+  /** Keyboard legend drawn under the list; omit for no footer. */
+  hints?: string[]
+  /** The panel normally glues itself to the composer's top edge. Set this when
+   *  the trigger lives elsewhere (the tab header's agent chip) and the consumer
+   *  supplies fixed coordinates itself — only the drawn look stays shared. */
+  floating?: boolean
+  /** Which way the panel opens, so the entry transition grows from the trigger. */
+  placement?: 'up' | 'down'
 }>(), {
   count: undefined,
   countLabel: undefined,
@@ -102,20 +105,32 @@ withDefaults(defineProps<{
   emptyText: 'No matches',
   emptyHint: '',
   loadingText: 'Loading...',
-  variant: 'default',
+  hints: () => [],
+  floating: false,
+  placement: 'up',
 })
 </script>
 
 <style scoped>
+/**
+ * One shell and one row grammar for every composer flyout — files, skills,
+ * paths, commands. They were forked by a `variant` prop that restyled the
+ * command palette end to end; the fork is gone, so a row reads the same
+ * wherever it appears and only its content differs.
+ *
+ * The look is the composer's own (InputBox.vue): a single drawn hairline
+ * frame at --radius-xs with zero fill, its label notched into the top edge.
+ * Inside, nothing is ruled: no leader lines, no row dividers. Separation is
+ * carried by whitespace, a soft tab stop, and ink weight — the whole panel
+ * draws exactly two lines, its frame and the hints rule.
+ */
 .composer-extension-panel {
-  /* Floating overlay shell, shared by every picker variant. Speaks the same
-     popover language as the toolbar dropdowns (.inputbox-select-dropdown):
-     same surface, border mix, radius and shadow. */
-  --composer-extension-surface: var(--ui-surface-menu-bg, var(--ui-surface-overlay-bg, var(--ui-composer-overlay-bg)));
-  --composer-extension-divider: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 24%, transparent);
+  --composer-extension-frame: var(--ui-border-strong-border, var(--border-strong, var(--border)));
+  --composer-extension-surface: var(--ui-surface-chat-bg, var(--bg-chat, var(--bg)));
   --composer-extension-row-hover: var(--ui-state-hover-bg, var(--hover));
-  --composer-extension-row-selected: var(--ui-state-selected-bg, var(--bg-selected, var(--ui-state-hover-bg, var(--hover))));
-  --composer-extension-row-selected-hover: var(--ui-state-selected-hover-bg, var(--ui-state-active-bg, var(--composer-extension-row-selected)));
+  /* The soft tab stop: descriptions start on one invisible vertical edge, so
+     the eye scans a column without a drawn rule to do it. */
+  --composer-extension-tab-stop: 152px;
 
   position: absolute;
   left: 0;
@@ -124,74 +139,62 @@ withDefaults(defineProps<{
   z-index: calc(var(--z-dropdown) + 1);
   width: 100%;
   margin: 0;
-  border: 1px solid color-mix(in srgb, var(--ui-border-default-border, var(--border)) 76%, var(--ui-text-primary-fg, var(--text)) 8%);
-  border-radius: 12px;
+  padding: 9px 0 4px;
+  border: 1px solid color-mix(in srgb, var(--composer-extension-frame) 52%, transparent);
+  border-radius: var(--radius-xs, 4px);
   background: var(--composer-extension-surface);
   background-clip: padding-box;
-  box-shadow:
-    0 18px 46px rgba(0, 0, 0, 0.34),
-    0 0 0 1px rgba(255, 255, 255, 0.03),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   transform-origin: bottom center;
-  overflow: hidden;
+  /* The frame label hangs above the top border; the body scrolls on its own
+     overflow, so nothing here needs clipping. */
+  overflow: visible;
 }
 
+/* Floating mode: the consumer owns the coordinates (it has a trigger to track),
+   so every self-positioning declaration above is released. The frame, the
+   notched label, the row grammar and the hints rule stay exactly as they are —
+   that is the whole point of sharing the shell. */
+.composer-extension-panel.is-floating {
+  position: fixed;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: auto;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
+
+/* The header is not a row — it is the frame's notched tag, sitting on the top
+   border and costing the panel no height (same as .composer-frame-label). */
 .composer-extension-header {
+  position: absolute;
+  top: -7px;
+  left: 12px;
+  z-index: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  min-height: 29px;
-  padding: 4px 10px;
-  border-bottom: 0.5px solid var(--composer-extension-divider);
-}
-
-.composer-extension-title,
-.composer-extension-status {
-  display: inline-flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.composer-extension-title {
-  gap: 7px;
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-text-muted-fg, var(--muted)) 18%);
+  padding: 0 6px;
+  background: var(--composer-extension-surface);
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
   font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
-  font-weight: 650;
+  font-size: 9px;
+  font-weight: 600;
   letter-spacing: 2px;
+  line-height: 1.5;
   text-transform: uppercase;
-}
-
-.composer-extension-title :deep(svg) {
-  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 72%, var(--ui-text-muted-fg, var(--muted)) 28%);
-  flex-shrink: 0;
-}
-
-.composer-extension-status {
-  color: var(--ui-text-muted-fg, var(--muted));
-  flex-shrink: 0;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
 }
 
 .composer-extension-count {
-  min-width: 20px;
-  height: 19px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 58%, transparent);
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 86%, transparent);
-  font-size: 11px;
-  font-weight: 600;
+  letter-spacing: 1px;
 }
 
 .composer-extension-body {
-  max-height: min(232px, 32vh);
+  max-height: min(268px, 32vh);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 6px;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
@@ -230,7 +233,7 @@ withDefaults(defineProps<{
   align-items: center;
   justify-content: center;
   gap: 2px;
-  padding: 7px 14px;
+  padding: 6px 14px 8px;
   color: color-mix(in srgb, var(--ui-text-muted-fg, var(--text-muted, var(--muted))) 84%, transparent);
   font-size: 12px;
   text-align: center;
@@ -253,72 +256,69 @@ withDefaults(defineProps<{
   animation: composer-extension-spin 0.9s linear infinite;
 }
 
+/* The panel's only other line. */
 .composer-extension-hints {
   display: flex;
-  gap: 18px;
-  margin: 0 18px;
-  padding: 7px 0 8px;
-  border-top: 1px solid var(--composer-extension-divider);
+  gap: 16px;
+  margin-top: 6px;
+  padding: 6px 12px 2px;
+  border-top: 1px solid color-mix(in srgb, var(--composer-extension-frame) 16%, transparent);
   color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
   font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  letter-spacing: 0.5px;
+  font-size: 9.5px;
+  letter-spacing: 1px;
 }
 
 :deep(.composer-extension-list) {
   display: flex;
   flex-direction: column;
-  gap: 0;
 }
 
+/* ——— The shared row: [mark?] [name] [description] [meta] [⏎] ———
+   Slot one may be empty (the command palette leaves it out), in which case
+   the name simply starts at the left margin instead of holding a column
+   open for information that isn't there. */
 :deep(.composer-extension-row) {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) minmax(42px, 156px);
-  align-items: center;
-  gap: 7px;
-  min-height: 32px;
-  padding: 4px 8px;
-  border-radius: 8px;
+  display: flex;
+  align-items: baseline;
+  margin: 0 4px;
+  padding: 5px 12px;
+  border-radius: 3px;
   color: var(--ui-text-primary-fg, var(--text));
   cursor: pointer;
-  transition:
-    background 0.12s var(--ease-default),
-    color 0.12s var(--ease-default);
 }
 
-:deep(.composer-extension-row:hover) {
+:deep(.composer-extension-row:hover),
+:deep(.composer-extension-row.selected) {
   background: var(--composer-extension-row-hover);
 }
 
-:deep(.composer-extension-row.selected) {
-  background: var(--composer-extension-row-selected);
-}
-
-:deep(.composer-extension-row.selected:hover) {
-  background: var(--composer-extension-row-selected-hover);
-}
-
+/* Slot one — a mark, not a chip: no plate, no fill, just the glyph. */
 :deep(.composer-extension-row-icon) {
-  width: 22px;
-  height: 22px;
+  flex: none;
+  width: 17px;
+  margin-right: 8px;
+  align-self: center;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 38%, transparent);
-  color: color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 76%, transparent);
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  line-height: 0;
 }
 
+:deep(.composer-extension-row:hover .composer-extension-row-icon),
 :deep(.composer-extension-row.selected .composer-extension-row-icon) {
-  color: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, var(--ui-accent-primary-fg, var(--accent)) 18%);
-  background: color-mix(in srgb, var(--ui-surface-panel-bg, var(--panel)) 48%, transparent);
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
+/* Slots two and three share a line — the tab stop keeps their boundary
+   straight without drawing it. */
 :deep(.composer-extension-row-main) {
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 1px;
+  flex-direction: row;
+  align-items: baseline;
 }
 
 :deep(.composer-extension-row-title),
@@ -331,208 +331,64 @@ withDefaults(defineProps<{
 }
 
 :deep(.composer-extension-row-title) {
-  color: var(--ui-text-primary-fg, var(--text));
-  font-size: 12.25px;
-  font-weight: 600;
-  line-height: 1.18;
-}
-
-:deep(.composer-extension-row-description) {
-  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
-  font-size: 11px;
-  line-height: 1.18;
-  opacity: 0.64;
-}
-
-:deep(.composer-extension-row-meta) {
-  justify-self: end;
-  max-width: 100%;
-  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
-  font-size: 11px;
-  line-height: 1.18;
-  text-align: right;
-  opacity: 0.52;
-}
-
-:deep(.composer-extension-row.selected .composer-extension-row-meta) {
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
-  opacity: 0.68;
-}
-
-/* Command palette follows the ledger mockup
-   (docs/design/command-palette/inkline-four-options.html, 案一 · 账页):
-   every entry sits on a ruled accent line, a vertical binding rule
-   separates the kind margin from the entry, and a dotted leader bridges
-   command → description. Selecting an entry "books" it — kind and title
-   gain ink, ⏎ lands at the line's end — no background fill anywhere. */
-.command-palette-panel {
-  --command-palette-row-height: 34px;
-  --command-palette-accent: var(--ui-accent-primary-fg, var(--accent));
-  --command-palette-rule: color-mix(in srgb, var(--command-palette-accent) 22%, transparent);
-  --command-palette-margin-col: 52px;
-
-  border-color: color-mix(in srgb, var(--ui-border-subtle-border, var(--border-subtle, var(--border))) 42%, transparent);
-  border-radius: 6px;
-  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.5);
-}
-
-/* Binding rule: one vertical accent hairline spanning header, list and
-   hints, fixed in place while the list scrolls beneath it. Suppressed in
-   message states (empty / loading / error) where it would cross the text. */
-.command-palette-panel:has(.composer-extension-body)::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--command-palette-margin-col);
-  border-left: 1px solid color-mix(in srgb, var(--command-palette-accent) 45%, transparent);
-  pointer-events: none;
-}
-
-.command-palette-panel .composer-extension-header {
-  min-height: var(--command-palette-row-height);
-  padding: 4px 16px 4px calc(var(--command-palette-margin-col) + 12px);
-  border-bottom: 1px solid var(--command-palette-rule);
-}
-
-.command-palette-panel .composer-extension-count {
-  height: auto;
-  min-width: 0;
-  padding: 0;
-  border-radius: 0;
-  background: none;
-  font-family: var(--font-mono, monospace);
-  font-size: 10.5px;
-}
-
-.command-palette-panel .composer-extension-body {
-  max-height: min(calc(var(--command-palette-row-height) * 6), 30vh, 286px);
-  padding: 0;
-  scrollbar-gutter: stable;
-}
-
-.command-palette-panel :deep(.command-palette-list) {
-  position: relative;
-  gap: 0;
-}
-
-/* No scroll-margin/scroll-padding: keyboard navigation aligns the selected
-   row flush with the scrollport edge, so at the boundary the highlight stays
-   pinned in the first/last visible slot and the content pages by one row.
-   No transition either: paging scrolls instantly, and a fading highlight
-   would ride along with the old row for ~120ms before settling. */
-.command-palette-panel :deep(.composer-extension-row) {
-  grid-template-columns: var(--command-palette-margin-col) minmax(0, 1fr) auto;
-  align-items: baseline;
-  gap: 12px;
-  min-height: var(--command-palette-row-height);
-  padding: 8px 16px 8px 0;
-  border-bottom: 1px solid var(--command-palette-rule);
-  border-radius: 0;
-  transition: none;
-}
-
-/* The hints footer's top rule takes over under the last entry. */
-.command-palette-panel :deep(.composer-extension-row:last-child) {
-  border-bottom: none;
-}
-
-.command-palette-panel :deep(.composer-extension-row:hover),
-.command-palette-panel :deep(.composer-extension-row.selected),
-.command-palette-panel :deep(.composer-extension-row.selected:hover) {
-  background: none;
-}
-
-.command-palette-panel :deep(.command-kind) {
-  align-self: center;
-  overflow: hidden;
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
-  font-family: var(--font-mono, monospace);
-  font-size: 9.5px;
-  letter-spacing: 0.4px;
-  line-height: 1;
-  text-align: center;
-  text-transform: uppercase;
-}
-
-.command-palette-panel :deep(.composer-extension-row:hover .command-kind) {
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.command-palette-panel :deep(.composer-extension-row.selected .command-kind) {
-  color: var(--command-palette-accent);
-  font-weight: 650;
-}
-
-.command-palette-panel :deep(.composer-extension-row-icon) {
-  display: none;
-}
-
-.command-palette-panel :deep(.composer-extension-row-main) {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  gap: 0;
-  overflow: hidden;
-}
-
-.command-palette-panel :deep(.composer-extension-row-title) {
   flex: none;
+  min-width: var(--composer-extension-tab-stop);
+  padding-right: 14px;
+  color: var(--ui-text-muted-fg, var(--muted));
   font-family: var(--font-mono, monospace);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
-.command-palette-panel :deep(.composer-extension-row.selected .composer-extension-row-title) {
+:deep(.composer-extension-row:hover .composer-extension-row-title),
+:deep(.composer-extension-row.selected .composer-extension-row-title) {
+  color: var(--ui-text-strong-fg, var(--text));
+}
+
+:deep(.composer-extension-row.selected .composer-extension-row-title) {
   font-weight: 700;
 }
 
-.command-palette-panel :deep(.command-hit) {
-  color: var(--command-palette-accent);
+:deep(.composer-extension-row-description) {
+  flex: 1 1 auto;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
+  font-size: 11.5px;
+  line-height: 1.2;
 }
 
-/* Dotted leader bridging entry name → description, ledger style. */
-.command-palette-panel :deep(.command-leader) {
-  flex: 1 1 28px;
-  min-width: 28px;
-  align-self: center;
-  margin: 0 10px;
-  border-bottom: 1px dotted color-mix(in srgb, var(--ui-text-muted-fg, var(--muted)) 42%, transparent);
-  transform: translateY(2px);
+:deep(.composer-extension-row.selected .composer-extension-row-description) {
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
-.command-palette-panel :deep(.composer-extension-row-description) {
-  flex: 0 1 auto;
-  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
-  font-size: 12px;
-  line-height: 1.15;
-  opacity: 0.72;
-}
-
-.command-palette-panel :deep(.composer-extension-row:hover .composer-extension-row-description) {
-  opacity: 0.9;
-}
-
-.command-palette-panel :deep(.composer-extension-row.selected .composer-extension-row-description) {
-  color: var(--ui-text-secondary-fg, var(--text-secondary, var(--text)));
-  opacity: 1;
-}
-
-.command-palette-panel :deep(.composer-extension-row-kbd) {
-  justify-self: end;
-  min-width: 1.5em;
-  color: var(--command-palette-accent);
+/* Slot four — the shortest true thing about the row (size, source, kind). */
+:deep(.composer-extension-row-meta) {
+  flex: none;
+  margin-left: 14px;
+  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
   font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  line-height: 1.15;
+  font-size: 9.5px;
+  letter-spacing: 0.5px;
+  line-height: 1.2;
   text-align: right;
+  text-transform: uppercase;
 }
 
-.command-palette-panel .composer-extension-hints {
-  margin: 0;
-  padding: 7px 16px 8px calc(var(--command-palette-margin-col) + 12px);
-  border-top: 1px solid var(--command-palette-rule);
+/* The ⏎ only belongs to the row you are actually on. */
+:deep(.composer-extension-row-kbd) {
+  flex: none;
+  width: 1.2em;
+  margin-left: 10px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-align: right;
+  visibility: hidden;
+}
+
+:deep(.composer-extension-row.selected .composer-extension-row-kbd) {
+  visibility: visible;
 }
 
 .composer-extension-enter-active {
@@ -549,6 +405,17 @@ withDefaults(defineProps<{
   transform: translateY(6px) scale(0.992);
 }
 
+/* Opening downward reverses the growth direction so the panel still appears to
+   come out of its trigger rather than fall toward it. */
+.composer-extension-panel.is-down {
+  transform-origin: top center;
+}
+
+.composer-extension-enter-from.is-down,
+.composer-extension-leave-to.is-down {
+  transform: translateY(-6px) scale(0.992);
+}
+
 @keyframes composer-extension-spin {
   to {
     transform: rotate(360deg);
@@ -557,31 +424,16 @@ withDefaults(defineProps<{
 
 @media (max-width: 480px) {
   .composer-extension-panel {
-    border-radius: 6px;
+    /* A narrow composer cannot afford the full tab stop; descriptions still
+       align, just closer in. */
+    --composer-extension-tab-stop: 104px;
   }
 
   .composer-extension-body {
     max-height: min(220px, 38vh);
   }
 
-  .command-palette-panel {
-    --command-palette-margin-col: 44px;
-  }
-
-  .command-palette-panel .composer-extension-body {
-    max-height: min(calc(var(--command-palette-row-height) * 4), 34vh);
-  }
-
-  :deep(.composer-extension-row) {
-    grid-template-columns: 22px minmax(0, 1fr);
-  }
-
-  .command-palette-panel :deep(.composer-extension-row) {
-    grid-template-columns: var(--command-palette-margin-col) minmax(0, 1fr);
-  }
-
-  :deep(.composer-extension-row-meta),
-  .command-palette-panel :deep(.composer-extension-row-kbd) {
+  :deep(.composer-extension-row-meta) {
     display: none;
   }
 }

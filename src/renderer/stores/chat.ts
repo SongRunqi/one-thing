@@ -98,6 +98,7 @@ interface StreamChunk {
 		| "replace"
 		| "tool_input_start"
 		| "tool_input_delta"
+		| "tool_input_end"
 		| "content_part";
 	content: string;
 	messageId: string;
@@ -1136,6 +1137,7 @@ export const useChatStore = defineStore("chat", () => {
 		return (
 			status === "executing" ||
 			status === "input-streaming" ||
+			status === "received" ||
 			status === "pending" ||
 			status === "queued"
 		);
@@ -1286,11 +1288,20 @@ export const useChatStore = defineStore("chat", () => {
 				appendOrMergeReasoning(parts, reasoning, chunk.turnIndex);
 				message.contentParts = [...parts];
 			}
-		} else if (chunk.type === "tool_call" || chunk.type === "tool_result") {
+		} else if (
+			chunk.type === "tool_call" ||
+			chunk.type === "tool_result" ||
+			chunk.type === "tool_input_end"
+		) {
 			if (chunk.toolCall) {
 				// Merge into the canonical entry in place so any step.toolCall
 				// referencing the same id sees the update without manual mirror writes.
 				const canonical = upsertMessageToolCall(message, chunk.toolCall);
+				if (chunk.type === "tool_input_end") {
+					// The argument stream is settled; a lingering partial-args buffer
+					// would let the draft view outlive the real receive-complete moment.
+					delete canonical.streamingArgs;
+				}
 				upsertToolCall(parts, canonical);
 				message.contentParts = [...parts];
 				applyPendingPermissionRequests(sessionId, message.id);

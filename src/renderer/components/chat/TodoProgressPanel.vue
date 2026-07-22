@@ -282,7 +282,7 @@ onUnmounted(() => {
 }
 
 .todo-progress-state.is-error {
-  color: color-mix(in srgb, var(--ui-danger-fg, #c2410c) 84%, var(--ui-text-primary-fg, var(--text)));
+  color: var(--ui-status-danger-fg, #c2410c);
 }
 
 /* 描红:点线基线,做完的一段描成朱砂实线 */

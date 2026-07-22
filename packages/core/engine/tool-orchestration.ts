@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from '../json.js'
 import { ToolExecutionScheduler } from '../agent-loop/tool-execution-scheduler.js'
+import { coreDiffHunksFromJson, type CoreDiffHunk } from '../tools/diff-hunks.js'
 import { detectSkillUsage, generateStepTitle } from './tool-step.js'
 
 export interface CoreToolCallLike {
@@ -133,6 +134,8 @@ export interface CoreToolExecutionPartialStepUpdate<TPartialResult> {
 
 export interface CoreToolCallChangesLike {
   diff: string
+  /** Structured hunks; render from these, never by re-parsing `diff` text. */
+  hunks?: CoreDiffHunk[]
   filePath: string
   additions: number
   deletions: number
@@ -739,6 +742,7 @@ export function changesFromToolMetadata(metadata: JsonObject | undefined): CoreT
   if (!metadata?.diff || !metadata.path) return undefined
   return {
     diff: String(metadata.diff),
+    hunks: coreDiffHunksFromJson(metadata.diffHunks),
     filePath: String(metadata.path),
     additions: Number(metadata.additions) || 0,
     deletions: Number(metadata.deletions) || 0,

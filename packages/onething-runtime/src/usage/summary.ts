@@ -28,6 +28,12 @@ export interface OnethingUsageBucket {
   byProvider: OnethingUsageBreakdownEntry[]
   byModel: OnethingUsageBreakdownEntry[]
   byPlatform: OnethingUsageBreakdownEntry[]
+  /**
+   * Per call category (chat / title / memory / toc / evals / ...). This is what
+   * answers "how much did feature X cost me" — the side-line calls are
+   * invisible without it.
+   */
+  bySource: OnethingUsageBreakdownEntry[]
 }
 
 export interface OnethingUsageSummaryRequest {
@@ -180,11 +186,13 @@ export function computeOnethingUsageSummary(
     byProvider: [],
     byModel: [],
     byPlatform: [],
+    bySource: [],
   }))
 
   const providerMaps = buckets.map(() => emptyBreakdownMap())
   const modelMaps = buckets.map(() => emptyBreakdownMap())
   const platformMaps = buckets.map(() => emptyBreakdownMap())
+  const sourceMaps = buckets.map(() => emptyBreakdownMap())
 
   const overallStart = ranges[0]?.start ?? now
   const overallEnd = ranges[ranges.length - 1]?.end ?? now
@@ -208,12 +216,14 @@ export function computeOnethingUsageSummary(
     accumulateBreakdown(providerMaps[index], record.providerId, record)
     accumulateBreakdown(modelMaps[index], record.modelId, record)
     accumulateBreakdown(platformMaps[index], record.platform, record)
+    accumulateBreakdown(sourceMaps[index], record.source, record)
   }
 
   buckets.forEach((bucket, index) => {
     bucket.byProvider = Array.from(providerMaps[index].values())
     bucket.byModel = Array.from(modelMaps[index].values())
     bucket.byPlatform = Array.from(platformMaps[index].values())
+    bucket.bySource = Array.from(sourceMaps[index].values())
   })
 
   return {

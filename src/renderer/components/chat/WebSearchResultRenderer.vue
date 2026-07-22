@@ -827,9 +827,14 @@ function onFaviconError(e: Event) {
   color: var(--ui-status-warning-fg);
 }
 
+/* Truncation is a warning, not a failure. Kept unfilled with a hairline so it
+   stays distinct from the filled .matches-tag sitting beside it in the row —
+   status surfaces must come from the complete bg/border/fg token set, never
+   color-mixed off -fg (see styles/__tests__/ui-token-vars.test.ts). */
 .warning-tag {
-  background: var(--ui-status-danger-bg, transparent);
-  color: var(--ui-status-danger-fg);
+  background: transparent;
+  border: 1px solid var(--ui-status-warning-border, var(--ui-status-warning-fg));
+  color: var(--ui-status-warning-fg);
 }
 
 /* Matches Panel */

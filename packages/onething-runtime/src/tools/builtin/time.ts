@@ -8,46 +8,34 @@ import { Tool } from '../tool.js'
 
 const TimeParameters = z.object({
   action: z.enum(['now', 'convert', 'diff', 'add'])
-    .describe('Operation to perform: now gets current time, convert changes display timezone, diff compares two instants, add adds an exact duration.'),
+    .describe('now = current time, convert = change timezone, diff = compare two instants, add = add a duration.'),
   timezone: z.string().optional()
-    .describe('Default timezone for parsing and formatting. Supports IANA names like Asia/Shanghai or fixed offsets like UTC+08:00. Defaults to the system timezone.'),
+    .describe('Default timezone for parsing and output. IANA name (Asia/Shanghai) or offset (UTC+08:00). Defaults to system timezone.'),
   format: z.enum(['full', 'date', 'time', 'iso', 'compact']).optional()
-    .describe('Output format. full is human-readable with timezone, iso is ISO-8601 with zone offset, compact is YYYY-MM-DD HH:mm:ss offset.'),
+    .describe('Output format.'),
   time: z.string().optional()
-    .describe('Time for convert/add. Use ISO with offset (2026-05-16T09:00:00+08:00), local datetime (2026-05-16 09:00:00) plus timezone, epoch milliseconds, or "now". Defaults to now for add.'),
+    .describe('Input time for convert/add: ISO with offset, local datetime, epoch ms, or "now".'),
   from_timezone: z.string().optional()
-    .describe('Source timezone for time when it has no explicit offset. Defaults to timezone.'),
+    .describe('Source timezone when time has no offset.'),
   to_timezone: z.string().optional()
-    .describe('Target timezone for convert, or output timezone for add/now. Defaults to timezone.'),
+    .describe('Output timezone for convert/add/now.'),
   start_time: z.string().optional()
-    .describe('Start time for diff. Use ISO with offset, local datetime plus start_timezone/timezone, epoch milliseconds, or "now".'),
+    .describe('Start time for diff.'),
   start_timezone: z.string().optional()
-    .describe('Timezone used to parse start_time when it has no explicit offset. Defaults to timezone.'),
+    .describe('Timezone for start_time when it has no offset.'),
   end_time: z.string().optional()
-    .describe('End time for diff. Defaults to now. Use ISO with offset, local datetime plus end_timezone/timezone, epoch milliseconds, or "now".'),
+    .describe('End time for diff. Defaults to now.'),
   end_timezone: z.string().optional()
-    .describe('Timezone used to parse end_time when it has no explicit offset. Defaults to timezone.'),
+    .describe('Timezone for end_time when it has no offset.'),
   amount: z.number().optional()
     .describe('Duration amount for add. Can be negative.'),
   unit: z.enum(['millisecond', 'second', 'minute', 'hour', 'day', 'week']).optional()
-    .describe('Duration unit for add, and optional preferred unit for diff. Days are exact 24-hour days; weeks are exact 7-day weeks.'),
+    .describe('Duration unit for add/diff. Days/weeks are exact 24h/7d.'),
 })
 
 export const TimeTool = Tool.define<typeof TimeParameters, CoreTimeMetadata>('time', {
   name: 'Time',
-  description: `Timezone-aware time utility.
-
-Use this tool to:
-- Get the current time in a specific timezone with action="now".
-- Convert a time from one timezone or offset to another with action="convert".
-- Calculate the signed difference between two times with action="diff"; end_time defaults to now.
-- Add an exact duration to a time with action="add".
-
-Timezone rules:
-- Prefer IANA timezone names such as "Asia/Shanghai", "America/New_York", or "UTC".
-- Fixed UTC offsets such as "UTC+08:00", "GMT-05:00", "+0800", and "Z" are also accepted.
-- If a datetime has no explicit offset, provide timezone/from_timezone/start_timezone/end_timezone so it can be interpreted correctly.
-- Date-only inputs are interpreted as midnight in the selected timezone.`,
+  description: 'Timezone-aware time utility: current time (now), timezone conversion (convert), difference between two instants (diff), exact duration arithmetic (add). Prefer IANA timezone names; fixed offsets like UTC+08:00 also work. Provide a *_timezone when a datetime has no explicit offset.',
   category: 'builtin',
   enabled: true,
   autoExecute: true,

@@ -31,6 +31,7 @@ import * as store from '../store.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
 import type { PermissionMode } from '../../shared/ipc.js'
 import { workdirGateway } from '../variables/gateways.js'
+import { readSessionSegments } from '../toc/index.js'
 import {
   clearSessionUsage,
   getSessionUsage,
@@ -124,6 +125,18 @@ export function registerSessionHandlers() {
             getSessionUserMessageMarkers: id => store.getSessionUserMessageMarkers(id),
             logger: console,
           })
+        },
+      },
+      {
+        channel: IPC_CHANNELS.GET_SESSION_SEGMENTS,
+        handle: async (request) => {
+          const { sessionId } = request as { sessionId: string }
+          try {
+            return { success: true, segments: await readSessionSegments(sessionId) }
+          } catch (error) {
+            console.error('[SessionsIPC] Failed to read segments:', error)
+            return { success: false, segments: [] }
+          }
         },
       },
       {

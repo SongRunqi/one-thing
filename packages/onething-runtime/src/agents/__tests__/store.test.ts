@@ -87,6 +87,31 @@ describe('createOnethingAgentStore', () => {
     expect(store.listAgents().map(agent => agent.id)).toEqual([DEFAULT_ONETHING_AGENT_ID])
   })
 
+  it('persists, updates, and clears the tool allowlist', () => {
+    const store = createStore()
+
+    const created = store.createAgent({
+      id: 'agent-dj',
+      name: 'DJ',
+      tools: ['bash', 'bash', ' time ', ''],
+    })
+    expect(created.tools).toEqual(['bash', 'time'])
+
+    // Survives a JSON round-trip (normalizeFile must carry the field).
+    expect(createStore().getAgent('agent-dj').tools).toEqual(['bash', 'time'])
+
+    // Untouched by unrelated updates.
+    const renamed = store.updateAgent({ agentId: 'agent-dj', name: 'DJ 2' })
+    expect(renamed.tools).toEqual(['bash', 'time'])
+
+    const restricted = store.updateAgent({ agentId: 'agent-dj', tools: ['bash'] })
+    expect(restricted.tools).toEqual(['bash'])
+
+    const cleared = store.updateAgent({ agentId: 'agent-dj', tools: null })
+    expect(cleared.tools).toBeUndefined()
+    expect(createStore().getAgent('agent-dj').tools).toBeUndefined()
+  })
+
   it('does not rewrite the agents file on repeated list reads', () => {
     const store = createStore()
     store.listAgents()

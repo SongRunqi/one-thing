@@ -9,12 +9,11 @@
     </div>
 
     <!-- Error -->
-    <div
+    <ErrorNote
       v-else-if="store.fixturesError"
       class="evals-error"
-    >
-      {{ store.fixturesError }}
-    </div>
+      :message="store.fixturesError"
+    />
 
     <!-- Empty -->
     <div
@@ -294,6 +293,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import ErrorNote from "@/components/common/ErrorNote.vue";
 import { useEvalsStore } from "@/stores/evals";
 import type { EvalFixtureMeta } from "@/stores/evals";
 
@@ -766,7 +766,6 @@ async function handlePromote() {
 }
 
 .evals-loading,
-.evals-error,
 .evals-empty {
   text-align: center;
   padding: 30px;
@@ -775,7 +774,7 @@ async function handlePromote() {
 }
 
 .evals-error {
-  color: var(--ui-status-danger-fg, #e74c3c);
+  margin: 24px 0;
 }
 
 /* ── Promote dialog: enhanced styles ── */

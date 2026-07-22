@@ -120,6 +120,9 @@ describe('onething provider agent turn runners', () => {
       text: 'hello',
       reasoning: 'think',
       toolCalls: undefined,
+      // Carried out so side-line callers (title, memory) can bill the call —
+      // the generate path used to drop it while the stream twin kept it.
+      usage: { inputTokens: 3, outputTokens: 2, totalTokens: 5 },
     })
   })
 

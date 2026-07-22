@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>命令面板 · 合于 InputBox 四案</title>
+<style>
+/* ————————————————————————————————————————————
+   共享:取自 InputBox.vue 的真实语汇
+   composer 边框 = border-strong 52%,零填充
+   圆角 = --radius-xs 4px
+   框标签 = top -7px / left 12px / mono 9px / ls 2px
+   toolbar = 全出血单元格 + hairline 30% 分隔 + 整格 hover
+   ———————————————————————————————————————————— */
+:root {
+  --bg-chat: #faf8f1;
+  --bg-deep: #f3efe5;
+  --text: #29241c;
+  --muted: rgba(41, 36, 28, 0.62);
+  --faint: rgba(41, 36, 28, 0.42);
+  --border-strong: rgba(41, 36, 28, 0.55);
+  --hover: rgba(41, 36, 28, 0.055);
+  --accent: #b8452c;
+
+  /* composer 的两个真值 */
+  --composer-border: color-mix(in srgb, var(--border-strong) 52%, transparent);
+  --cell-divider: color-mix(in srgb, var(--border-strong) 30%, transparent);
+  --radius-xs: 4px;
+
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-display: "Iowan Old Style", "Songti SC", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-chat: #191611;
+    --bg-deep: #14110d;
+    --text: #e8e1d2;
+    --muted: rgba(232, 225, 210, 0.66);
+    --faint: rgba(232, 225, 210, 0.42);
+    --border-strong: rgba(232, 225, 210, 0.5);
+    --hover: rgba(232, 225, 210, 0.07);
+    --accent: #d8765c;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg-deep);
+  color: var(--text);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 48px 40px 96px;
+}
+
+.page-head { max-width: 1180px; margin: 0 auto 44px; }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: ""; display: block; width: 88px;
+  border-bottom: 2px solid var(--text); margin-top: 10px;
+}
+.page-head p { margin-top: 12px; color: var(--muted); max-width: 60em; }
+.page-head code {
+  font-family: var(--font-mono); font-size: 12px;
+  padding: 1px 5px; border: 1px solid var(--cell-divider); border-radius: 3px;
+}
+
+.options {
+  max-width: 1180px; margin: 0 auto;
+  display: flex; flex-direction: column; gap: 64px;
+}
+
+.option-head { margin-bottom: 22px; }
+.option-tag {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 2px; color: var(--faint);
+}
+.option-head h2 {
+  margin-top: 6px; font-size: 18px; font-weight: 600; letter-spacing: 0.02em;
+}
+.option-head p { margin-top: 8px; color: var(--muted); max-width: 58em; font-size: 13.5px; }
+.option-head .why {
+  margin-top: 10px; padding-left: 12px;
+  border-left: 2px solid var(--cell-divider);
+  color: var(--faint); font-size: 12.5px;
+}
+
+/* 舞台:聊天底 + 居中的 composer 栏宽 */
+.stage {
+  background: var(--bg-chat);
+  border: 1px dashed var(--cell-divider);
+  border-radius: 6px;
+  padding: 40px 32px 26px;
+  display: flex; justify-content: center;
+}
+.composer-wrapper { width: 100%; max-width: 620px; position: relative; }
+.composer-anchor { position: relative; width: 100%; }
+
+/* ——— 真 composer:零填充蓝图边框 ——— */
+.composer {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column;
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  overflow: hidden;
+}
+.composer-frame-label {
+  position: absolute; top: -7px; left: 12px; z-index: 2;
+  padding: 0 6px; background: var(--bg-chat);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; color: var(--faint);
+  user-select: none;
+}
+.composer-input {
+  padding: 11px 12px 12px;
+  font-family: var(--font-display); font-size: 15px; line-height: 1.5;
+  color: var(--text); min-height: 42px;
+}
+.composer-input .caret {
+  display: inline-block; width: 1px; height: 1.05em;
+  background: var(--accent); vertical-align: -2px; margin-left: 1px;
+}
+.composer-input .dim { color: var(--faint); }
+
+/* toolbar:分段状态线 */
+.composer-toolbar {
+  display: flex; justify-content: space-between; align-items: stretch;
+  min-height: 34px; margin-top: 2px;
+  border-top: 1px solid var(--composer-border);
+  user-select: none;
+}
+.toolbar-left, .toolbar-right { display: flex; align-items: stretch; }
+.toolbar-left > *, .toolbar-right > * {
+  display: flex; align-items: center; padding: 0 11px;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted);
+  white-space: nowrap;
+}
+.toolbar-left > * { border-right: 1px solid var(--cell-divider); }
+.toolbar-right > * { border-left: 1px solid var(--cell-divider); }
+.toolbar-left > *:hover, .toolbar-right > *:hover { background: var(--hover); }
+.send { color: var(--text); }
+
+/* 面板通用:框标签 */
+.pal-label {
+  position: absolute; top: -7px; left: 12px; z-index: 3;
+  padding: 0 6px; background: var(--bg-chat);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; color: var(--faint);
+  user-select: none;
+}
+.pal-label .count { margin-left: 10px; letter-spacing: 1px; }
+
+/* 面板通用:底部提示条 = toolbar 的分段语法 */
+.pal-hints {
+  display: flex; align-items: stretch; min-height: 26px;
+  border-top: 1px solid var(--cell-divider);
+}
+.pal-hints > span {
+  display: flex; align-items: center; padding: 0 11px;
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 1px;
+  color: var(--faint); white-space: nowrap;
+}
+.pal-hints > span + span { border-left: 1px solid var(--cell-divider); }
+
+/* ════════════════════════════════════════════
+   案一 · 连体 —— 面板是 composer 长出来的一节
+   ════════════════════════════════════════════ */
+.o1 .composer-anchor { display: flex; flex-direction: column; }
+.o1 .pal {
+  position: relative;
+  border: 1px solid var(--composer-border);
+  border-bottom: none;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: transparent;
+  /* 与 composer 严丝合缝:共用那条线 */
+  margin-bottom: -1px;
+}
+.o1 .composer { border-radius: 0 0 var(--radius-xs) var(--radius-xs); }
+.o1 .composer .composer-frame-label { display: none; }
+.o1 .pal-list { padding: 5px 0 0; }
+.o1 .row {
+  position: relative;
+  display: grid; grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: center; gap: 10px;
+  min-height: 30px; padding: 0 12px;
+  cursor: pointer;
+}
+.o1 .row:hover { background: var(--hover); }
+.o1 .row + .row { border-top: 1px solid color-mix(in srgb, var(--border-strong) 14%, transparent); }
+/* 选中 = 左缘一道 2px 实心墨条,整行上墨 */
+.o1 .row.sel::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+  border-left: 2px solid var(--text);
+}
+.o1 .row.sel { background: var(--hover); }
+.o1 .kind {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.4px;
+  color: var(--faint); text-transform: uppercase;
+}
+.o1 .row.sel .kind { color: var(--text); }
+.o1 .name {
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.o1 .row:hover .name, .o1 .row.sel .name { color: var(--text); }
+.o1 .row.sel .name { font-weight: 700; }
+.o1 .name .hit { color: var(--text); font-weight: 700; }
+.o1 .desc { color: var(--faint); font-size: 11px; margin-left: 10px; font-family: -apple-system, system-ui, sans-serif; }
+.o1 .kbd {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted);
+  visibility: hidden;
+}
+.o1 .row.sel .kbd { visibility: visible; }
+
+/* ════════════════════════════════════════════
+   案二 · 分段 —— toolbar 的单元格语法横过来
+   ════════════════════════════════════════════ */
+.o2 .pal {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 9px); z-index: 3;
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-chat);
+  padding-top: 5px;
+}
+.o2 .row {
+  display: flex; align-items: stretch; min-height: 32px;
+  cursor: pointer;
+}
+.o2 .row + .row { border-top: 1px solid color-mix(in srgb, var(--border-strong) 16%, transparent); }
+.o2 .row:hover { background: var(--hover); }
+.o2 .row > * {
+  display: flex; align-items: center; padding: 0 11px; min-width: 0;
+}
+.o2 .row > * + * { border-left: 1px solid var(--cell-divider); }
+.o2 .c-kind {
+  flex: 0 0 62px; justify-content: center;
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.4px;
+  color: var(--faint); text-transform: uppercase;
+}
+.o2 .c-name {
+  flex: 0 0 168px;
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.o2 .c-desc {
+  flex: 1 1 auto; color: var(--faint); font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.o2 .c-kbd {
+  flex: 0 0 42px; justify-content: center;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--faint);
+}
+/* 选中 = kind 格反白,整行上墨 —— 与 toolbar 的整格 hover 同源 */
+.o2 .row.sel { background: var(--hover); }
+.o2 .row.sel .c-kind { background: var(--text); color: var(--bg-chat); font-weight: 700; }
+.o2 .row.sel .c-name { color: var(--text); font-weight: 700; }
+.o2 .row.sel .c-desc { color: var(--muted); }
+.o2 .row.sel .c-kbd { color: var(--text); }
+.o2 .c-name .hit { color: var(--text); font-weight: 700; }
+
+/* ════════════════════════════════════════════
+   案三 · 抽屉 —— 顶部分类标签 + 紧凑双列网格
+   ════════════════════════════════════════════ */
+.o3 .pal {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 9px); z-index: 3;
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-chat);
+  padding-top: 5px;
+}
+.o3 .tabs {
+  display: flex; align-items: stretch; min-height: 28px;
+  border-bottom: 1px solid var(--cell-divider);
+}
+.o3 .tabs > * {
+  display: flex; align-items: center; gap: 7px; padding: 0 12px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.4px;
+  color: var(--faint); text-transform: uppercase; cursor: pointer;
+}
+.o3 .tabs > * + * { border-left: 1px solid var(--cell-divider); }
+.o3 .tabs > *:hover { background: var(--hover); }
+.o3 .tabs .n { font-size: 9px; color: var(--faint); letter-spacing: 0; }
+.o3 .tabs .on {
+  color: var(--text); background: var(--hover);
+  box-shadow: inset 0 -2px 0 var(--text);
+}
+.o3 .tabs .on .n { color: var(--muted); }
+.o3 .grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  /* 网格线用 hairline,不留缝 */
+  gap: 0;
+}
+.o3 .cellitem {
+  padding: 7px 12px; cursor: pointer; min-width: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 14%, transparent);
+}
+.o3 .cellitem:nth-child(odd) { border-right: 1px solid var(--cell-divider); }
+.o3 .cellitem:hover { background: var(--hover); }
+.o3 .cellitem .n {
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.o3 .cellitem .d {
+  font-size: 10.5px; color: var(--faint); margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.o3 .cellitem.sel { background: var(--hover); box-shadow: inset 2px 0 0 var(--text); }
+.o3 .cellitem.sel .n { color: var(--text); font-weight: 700; }
+.o3 .cellitem.sel .d { color: var(--muted); }
+.o3 .cellitem .hit { color: var(--text); font-weight: 700; }
+
+/* ════════════════════════════════════════════
+   案四 · 取景器 —— 一次只看一条 + 刻度尺
+   ════════════════════════════════════════════ */
+.o4 .pal {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 9px); z-index: 3;
+  border: 1px solid var(--composer-border);
+  border-radius: var(--radius-xs);
+  background: var(--bg-chat);
+  padding-top: 5px;
+}
+.o4 .view {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: 14px;
+  padding: 10px 12px 11px;
+}
+.o4 .idx {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--faint);
+  font-variant-numeric: tabular-nums; letter-spacing: 0.5px;
+}
+.o4 .idx b { color: var(--text); font-weight: 700; }
+.o4 .subject { min-width: 0; }
+.o4 .subject .n {
+  /* 与草稿同一支笔:display serif 15px */
+  font-family: var(--font-display); font-size: 16px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.o4 .subject .n .slash { font-family: var(--font-mono); font-size: 14px; color: var(--muted); }
+.o4 .subject .d {
+  font-size: 11.5px; color: var(--faint); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.o4 .nav { display: flex; align-items: stretch; }
+.o4 .nav > * {
+  display: flex; align-items: center; padding: 0 9px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+  cursor: pointer;
+}
+.o4 .nav > * + * { border-left: 1px solid var(--cell-divider); }
+.o4 .nav > *:hover { background: var(--hover); }
+.o4 .nav .go { color: var(--text); }
+/* 刻度尺:整个结果集的位置感,当前那格拉高上墨 */
+.o4 .ruler {
+  display: flex; align-items: flex-end; gap: 3px;
+  height: 12px; padding: 0 12px 5px;
+}
+.o4 .ruler i {
+  flex: 1 1 auto; height: 3px; background: color-mix(in srgb, var(--border-strong) 30%, transparent);
+  cursor: pointer;
+}
+.o4 .ruler i:hover { background: var(--muted); }
+.o4 .ruler i.on { height: 8px; background: var(--text); }
+.o4 .ruler i.kindbreak { flex: 0 0 1px; background: transparent; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>命令面板 · 合于 InputBox 四案</h1>
+  <p>
+    四案共用 InputBox 的真实语汇,不再引入第五套视觉:边框 <code>border-strong 52%</code>、
+    圆角 <code>--radius-xs 4px</code>、零填充、框标签挂在 <code>top:-7px / left:12px</code> 的 mono 9px/ls 2px、
+    以及 toolbar 那套「全出血单元格 + hairline 30% 分隔 + 整格 hover」。
+    差别在<strong>结构主张</strong>,不在配色。每案都连着真 composer 一起看。
+  </p>
+</div>
+
+<div class="options">
+
+  <!-- ════════ 案一 ════════ -->
+  <section class="option o1">
+    <div class="option-head">
+      <span class="option-tag">案一</span>
+      <h2>连体 —— 面板是 composer 长出来的一节</h2>
+      <p>
+        不是浮在上面的另一个物件:面板与输入框共用同一条边框、贴合无缝,只有最外圈四角是圆的。
+        框标签从 composer 顶边迁到面板顶边——打开面板时,整个器物换了个名字叫 COMMAND。
+      </p>
+      <div class="why">
+        主张:命令面板不是弹窗,是输入框的另一种形态。代价是面板与 composer 强绑定,
+        文件/技能选择器若共用这套壳,它们也都得连体。
+      </div>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND<span class="count">17</span></span>
+          <div class="pal-list">
+            <div class="row sel">
+              <span class="kind">cmd</span>
+              <span class="name">/<span class="hit">mo</span>del<span class="desc">切换当前会话的模型</span></span>
+              <span class="kbd">⏎</span>
+            </div>
+            <div class="row">
+              <span class="kind">cmd</span>
+              <span class="name">/<span class="hit">mo</span>de<span class="desc">切换权限档位</span></span>
+              <span class="kbd">⏎</span>
+            </div>
+            <div class="row">
+              <span class="kind">skill</span>
+              <span class="name">/<span class="hit">mo</span>nitor<span class="desc">盯住一条命令直到条件满足</span></span>
+              <span class="kbd">⏎</span>
+            </div>
+            <div class="row">
+              <span class="kind">action</span>
+              <span class="name">/<span class="hit">mo</span>ve-session<span class="desc">把会话移到别的工作区</span></span>
+              <span class="kbd">⏎</span>
+            </div>
+            <div class="row">
+              <span class="kind">prompt</span>
+              <span class="name">/<span class="hit">mo</span>ck-data<span class="desc">按 schema 造一份假数据</span></span>
+              <span class="kbd">⏎</span>
+            </div>
+          </div>
+          <div class="pal-hints">
+            <span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span>
+          </div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span><span>@ 附件</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ════════ 案二 ════════ -->
+  <section class="option o2">
+    <div class="option-head">
+      <span class="option-tag">案二</span>
+      <h2>分段 —— 把 toolbar 的单元格语法横过来</h2>
+      <p>
+        每一行就是一条 toolbar:<code>类型│命令│说明│⏎</code> 四格全出血,竖直 hairline 分隔,
+        列对齐到像素。选中时 kind 格反白(墨底纸字)——这是全app唯一一处实心块,
+        正因为稀有所以一眼能找到光标在哪。
+      </p>
+      <div class="why">
+        主张:命令是<strong>表格数据</strong>,扫列比读行快。代价是描述被压在固定列宽里,
+        长说明会截断;窄窗口要砍掉描述列。
+      </div>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND PALETTE<span class="count">17</span></span>
+          <div class="row sel">
+            <span class="c-kind">cmd</span>
+            <span class="c-name">/<span class="hit">mo</span>del</span>
+            <span class="c-desc">切换当前会话的模型</span>
+            <span class="c-kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="c-kind">cmd</span>
+            <span class="c-name">/<span class="hit">mo</span>de</span>
+            <span class="c-desc">切换权限档位:只读 / 询问 / 放手</span>
+            <span class="c-kbd"></span>
+          </div>
+          <div class="row">
+            <span class="c-kind">skill</span>
+            <span class="c-name">/<span class="hit">mo</span>nitor</span>
+            <span class="c-desc">盯住一条命令直到条件满足</span>
+            <span class="c-kbd"></span>
+          </div>
+          <div class="row">
+            <span class="c-kind">action</span>
+            <span class="c-name">/<span class="hit">mo</span>ve-session</span>
+            <span class="c-desc">把会话移到别的工作区</span>
+            <span class="c-kbd"></span>
+          </div>
+          <div class="row">
+            <span class="c-kind">prompt</span>
+            <span class="c-name">/<span class="hit">mo</span>ck-data</span>
+            <span class="c-desc">按 schema 造一份假数据</span>
+            <span class="c-kbd"></span>
+          </div>
+          <div class="pal-hints">
+            <span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span>
+          </div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span><span>@ 附件</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ════════ 案三 ════════ -->
+  <section class="option o3">
+    <div class="option-head">
+      <span class="option-tag">案三</span>
+      <h2>抽屉 —— 分类标签页 + 紧凑双列网格</h2>
+      <p>
+        顶上一排标签就是 toolbar 的单元格(同样的 hairline、同样的整格 hover),激活那格用 2px 下划墨条。
+        下面不是长列表而是双列网格:同样的高度能塞下两倍条目,不用滚就看全。
+      </p>
+      <div class="why">
+        主张:命令多到需要<strong>先分类再挑</strong>。代价是双列打断了纯键盘上下移动的直觉
+        (↑↓ 要按列走还是按行走得定规矩),描述只剩一行小字。
+      </div>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND<span class="count">17</span></span>
+          <div class="tabs">
+            <span class="on">全部 <i class="n">17</i></span>
+            <span>命令 <i class="n">8</i></span>
+            <span>技能 <i class="n">5</i></span>
+            <span>提示 <i class="n">4</i></span>
+          </div>
+          <div class="grid">
+            <div class="cellitem sel">
+              <div class="n">/<span class="hit">mo</span>del</div>
+              <div class="d">切换当前会话的模型</div>
+            </div>
+            <div class="cellitem">
+              <div class="n">/<span class="hit">mo</span>de</div>
+              <div class="d">切换权限档位</div>
+            </div>
+            <div class="cellitem">
+              <div class="n">/<span class="hit">mo</span>nitor</div>
+              <div class="d">盯住命令直到条件满足</div>
+            </div>
+            <div class="cellitem">
+              <div class="n">/<span class="hit">mo</span>ve-session</div>
+              <div class="d">移到别的工作区</div>
+            </div>
+            <div class="cellitem">
+              <div class="n">/<span class="hit">mo</span>ck-data</div>
+              <div class="d">按 schema 造假数据</div>
+            </div>
+            <div class="cellitem">
+              <div class="n">/<span class="hit">mo</span>rning</div>
+              <div class="d">每日开工简报</div>
+            </div>
+          </div>
+          <div class="pal-hints">
+            <span>↑↓←→ 移动</span><span>⏎ 执行</span><span>⇥ 换分类</span><span>esc 收起</span>
+          </div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span><span>@ 附件</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- ════════ 案四 ════════ -->
+  <section class="option o4">
+    <div class="option-head">
+      <span class="option-tag">案四</span>
+      <h2>取景器 —— 一次只看一条,底下一把刻度尺</h2>
+      <p>
+        面板只有两行高。当前候选用草稿的同一支笔(display serif 16px)大字呈现,说明在下,
+        左边 mono 计数 <code>03/17</code>。底下的刻度尺是整个结果集:一格一条,当前那格拉高上墨,
+        刻度间的空档标出类型分界——不展开列表也知道自己在哪、还剩多少。
+      </p>
+      <div class="why">
+        主张:输入 <code>/mo</code> 后你要的通常就是第一条,面板不该抢走半屏。
+        代价是无法一眼比较候选,选第 9 条要按 8 次 ↓(或点刻度)。
+      </div>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND</span>
+          <div class="view">
+            <span class="idx"><b>03</b>/17</span>
+            <span class="subject">
+              <div class="n"><span class="slash">/</span>monitor</div>
+              <div class="d">skill · 盯住一条命令直到条件满足</div>
+            </span>
+            <span class="nav">
+              <i>‹</i><i>›</i><i class="go">⏎</i>
+            </span>
+          </div>
+          <div class="ruler">
+            <i></i><i></i><i class="on"></i><i></i><i></i><i></i><i></i><i></i>
+            <i class="kindbreak"></i>
+            <i></i><i></i><i></i><i></i><i></i>
+            <i class="kindbreak"></i>
+            <i></i><i></i><i></i><i></i>
+          </div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span><span>@ 附件</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

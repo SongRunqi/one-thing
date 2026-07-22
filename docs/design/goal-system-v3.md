@@ -95,14 +95,48 @@ endMessageId?: string     // 进终结态时取
 
 ## 7. 分期
 
-| 期 | 内容 | 可独立上线 |
+| 期 | 内容 | 状态 |
 | --- | --- | --- |
-| P0 | 数据模型 + 状态机 + 归档语义 + 读时 normalize/双写；UI 仍只显示 current | 是（**止损**：历史从此不再丢） |
-| P1 | `endedAt`/`startMessageId`/`endMessageId` 锚点 + `goal-set` 带 goalId + 摘要卡片锚点改用 `endedAt` | 是 |
-| P2 | IPC 返回体改造 + `GOAL_DIFFS` 带 goalId + renderer store 数组化 + 多卡片渲染 | 是 |
-| P3 | 文档收敛（见 §8） | 是 |
+| P0 | 数据模型 + 状态机 + 归档语义 + 读时 normalize/双写；UI 仍只显示 current | ✅ 已实施 |
+| P1 | `endedAt`/`startMessageId`/`endMessageId` 锚点 + 摘要卡片锚点改用 `endedAt` | ✅ 已实施 |
+| P1' | `goal-set` 消息带 goalId | ⬜ 未做，见下 |
+| P2 | IPC 返回体改造 + `GOAL_DIFFS` 带 goalId + renderer store 携历史 + 多卡片渲染 | ✅ 已实施 |
+| P3 | 文档收敛（见 §8） | ✅ 已实施 |
 
 P0 单独上线即可止血，且不改任何用户可见行为 —— 这是本方案最重要的性质。
+
+### 实施记录（2026-07-19）
+
+落地文件：
+
+- `packages/onething-runtime/src/goals/records.ts`（新）—— 列表纯函数：
+  `currentGoalOf` / `isGoalTerminal` / `normalizeGoalRecords` / `mergeGoalRecord` /
+  `pruneGoalHistory`。配套 `__tests__/records.test.ts`（24 测试）。
+- `goals/types.ts` —— 新增 `abandoned` 状态、`TERMINAL_GOAL_STATUSES`、
+  `endedAt`/`startMessageId`/`endMessageId`；修正与代码矛盾的文件头注释。
+- `goals/state.ts` —— `isGoalUnfinished` 改判据、新增 `abandonGoal` 与
+  `applyGoalSettlement`。
+- `src/main/goals/index.ts` —— `storedGoals`/`persistGoal`/`persistGoalRecord`
+  三个收口点；`clearGoal` 改归档；`createGoal` 记 `startMessageId`。
+  配套 `__tests__/history.test.ts`（16 测试）。
+- 仓储层 `updateSessionGoals`（双写单次 mutation）+ store/barrel 透传。
+- IPC：`GOAL_GET` 带 `goals`、`GOAL_SET.clear` 带 `reason`、`GOAL_DIFFS` 带 `goalId`。
+- 事件 `session:goal-updated` 带 `goals`；renderer store 加 `sessionGoalHistory`。
+- UI：`GoalStatusBar` 排除 abandoned、`GoalSummaryCard` 加 DROPPED 淡墨态、
+  `MessageList` 改多卡片 + 锚点改用 `endedAt`。
+
+与设计的偏差：
+
+1. **`persistGoalRecord` 是设计时未预见的第二条写入路径。** 完成后的 fileChanges
+   回填要修改一条**已终结**的记录，而 `persistGoal` 会拿它跟当前 goal 比较并可能
+   盖上错误的 `endedAt`。原实现用 `storedGoal()` 找回自己，在 v3 下必然返回
+   undefined（终结的 goal 不再是 current）——**回填会永久失效**，已加回归测试锁定。
+2. **`endedAt` 语义从「终结时刻」放宽为「最后一次离开 active」。** 摘要卡片在
+   paused/blocked 时也显示，只覆盖终结态不足以锚定；resume 时清除。paused → abandoned
+   不覆盖它 —— 工作停止的时刻是 pause，不是用户事后写销的时刻。
+3. **`goal-set` 消息带 goalId 未做。** 它要改 `sendMessage` 签名与命令链路，而在
+   renderer 仍以 current 匹配 objective 的前提下，行为与 v2 完全一致 —— 这个错乱只
+   在「同一会话里设了两个同名 objective 的 goal」时才浮现。留作独立小改。
 
 ## 8. 顺手要修的文档/注释不一致
 

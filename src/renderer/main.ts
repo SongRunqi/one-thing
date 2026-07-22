@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import { initializeIPCHub } from './services/ipc-hub'
+import { installGlobalFileDropGuard } from './composables/useFileDrop'
 import { buildFontLoadSpecs, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '../shared/fonts'
 import './styles/main.css'
 
@@ -89,5 +90,9 @@ app.use(pinia)
 // Initialize IPC Hub after Pinia is set up, before component mounts
 // This ensures all IPC listeners are registered before any IPC calls
 initializeIPCHub()
+
+// Must be installed before anything can be dragged in: an unhandled file drop
+// escapes to the OS via will-navigate → shell.openExternal.
+installGlobalFileDropGuard()
 
 app.mount('#app')

@@ -19,6 +19,12 @@ export interface SkillReferenceSnapshotLike {
 
 export const PROMPT_REF_PATTERN = /\{\{prompt:([^}]+)\}\}/g
 export const SKILL_REF_PATTERN = /\{\{skill:([^}]+)\}\}/g
+/**
+ * A file picked with `@`. The token holds the position in the draft while the
+ * composer shows the file as a docked chip; it expands back to `@<path>` — in
+ * place — when the message is sent, so it never reaches a provider.
+ */
+export const FILE_REF_PATTERN = /\{\{file:([^}]+)\}\}/g
 export const COMPOSER_REF_PATTERN = /\{\{(prompt|skill):([^}]+)\}\}/g
 
 export function createPromptToken(promptId: string): string {
@@ -27,6 +33,15 @@ export function createPromptToken(promptId: string): string {
 
 export function createSkillToken(skillId: string): string {
   return `{{skill:${skillId}}}`
+}
+
+export function createFileToken(filePath: string): string {
+  return `{{file:${filePath}}}`
+}
+
+/** Expands docked file chips back into the `@<path>` text the model reads. */
+export function expandFileTokens(text: string): string {
+  return text.replace(FILE_REF_PATTERN, (_match, filePath: string) => `@${filePath}`)
 }
 
 export function getPromptIdFromToken(token: string): string | null {

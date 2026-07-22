@@ -46,6 +46,7 @@ import {
   type OnethingACPStreamPromptRequest,
   type OnethingChatReasoningStreamChunk,
   type OnethingProviderRuntimeChatRoute,
+  type OnethingProviderTokenUsage,
   type OnethingThinkingEffort,
   type OnethingProviderToolStreamMode,
 } from './provider-routing.js'
@@ -137,6 +138,13 @@ export interface OnethingChatGenerationOptions {
   serviceTier?: string
   debugPurpose?: string
   debugSessionId?: string
+  /**
+   * Side channel for token usage. generateChatResponse returns the text (a
+   * contract with callers across the repo), so side-line callers that need to
+   * bill their tokens — title generation, memory capture/review — read them
+   * here instead. Stripped before the options reach the provider.
+   */
+  onUsage?: (usage: OnethingProviderTokenUsage) => void
 }
 
 export interface OnethingProviderFacadeAdapters<
@@ -212,7 +220,7 @@ export interface OnethingProviderFacade<
     userMessage: string,
     options?: Pick<
       OnethingChatGenerationOptions,
-      'thinking' | 'thinkingEffort' | 'serviceTier' | 'debugSessionId'
+      'thinking' | 'thinkingEffort' | 'serviceTier' | 'debugSessionId' | 'onUsage'
     >,
   ): Promise<string>
   streamChatResponseWithTools(
@@ -407,11 +415,14 @@ export function createOnethingProviderFacade<
     },
 
     generateChatResponse(providerId, config, messages, options = {}) {
+      // onUsage is ours, not the provider's — keep it out of the request.
+      const { onUsage, ...providerOptions } = options
       return generateOnethingTextChatResponse({
         providerId,
         config,
         messages,
-        options,
+        options: providerOptions,
+        onUsage,
         generateWithReasoning: facade.generateChatResponseWithReasoning,
       })
     },

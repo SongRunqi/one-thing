@@ -7,6 +7,7 @@
 import { z } from "zod";
 import { createTwoFilesPatch } from "diff";
 import type { JsonObjectProperty } from "@onething/core";
+import { coreDiffHunksToJson, type CoreDiffHunk } from "@onething/core/tools";
 import {
 	basenamePath,
 	dirnamePath,
@@ -15,6 +16,11 @@ import {
 } from "@onething/core/storage";
 import { Tool } from "../tool.js";
 import { withFileMutationQueue } from "../file-mutation-queue.js";
+import {
+	computeDiffHunks,
+	trimDiffHunks,
+	truncateDiffHunksForDisplay,
+} from "../diff-hunks.js";
 import {
 	findCoreSandboxRootForPath,
 	getCoreSandboxBoundary,
@@ -54,6 +60,7 @@ interface EditPlan {
 	snapshot: TextFileSnapshot;
 	contentNew: string;
 	diff: string;
+	hunks: CoreDiffHunk[];
 	additions: number;
 	deletions: number;
 	originalContentHash: string;
@@ -69,9 +76,15 @@ const ReplaceEditParameters = z.object({
 	oldText: z
 		.string()
 		.describe(
-			"Exact text for one targeted replacement. It must be unique in the original file and must not overlap with any other edits[].oldText in the same call.",
+			"Exact text for one targeted replacement. It must be unique in the original file unless replaceAll is set, and must not overlap with any other edits[].oldText in the same call.",
 		),
 	newText: z.string().describe("Replacement text for this targeted edit."),
+	replaceAll: z
+		.boolean()
+		.optional()
+		.describe(
+			"Replace every occurrence of oldText instead of requiring it to be unique. Use this for repeated identical blocks; prefer a longer unique oldText when you mean to change only one site.",
+		),
 });
 
 export const EditParameters = z.object({
@@ -131,6 +144,9 @@ function buildEditPlan(
 		snapshot,
 		contentNew: preview.finalContent,
 		diff: trimDiff(diff),
+		hunks: trimDiffHunks(
+			computeDiffHunks(resolvedPath, preview.baseContent, preview.newContent),
+		),
 		additions,
 		deletions,
 		originalContentHash: snapshot.hash,
@@ -158,7 +174,7 @@ export function createEditTool(
 	return Tool.define<typeof EditParameters, EditMetadata>("edit", {
 		name: "Edit",
 		description:
-			"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.\n\nRead the file first with the read tool. The edit will be blocked if the file has not been read in the current session, or if it changed on disk since you last saw it. A file you created or edited earlier in the session counts as seen — no re-read needed.",
+			"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file, unless that edit sets replaceAll: true to replace all of its occurrences. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.\n\nRead the file first with the read tool. The edit will be blocked if the file has not been read in the current session, or if it changed on disk since you last saw it. A file you created or edited earlier in the session counts as seen — no re-read needed.",
 		category: "builtin",
 		enabled: true,
 		autoExecute: false,
@@ -283,6 +299,9 @@ export function createEditTool(
 							metadata: {
 								path: resolvedPath,
 								diff: displayDiff,
+								diffHunks: coreDiffHunksToJson(
+									truncateDiffHunksForDisplay(plan.hunks),
+								),
 								additions: plan.additions,
 								deletions: plan.deletions,
 								originalContentHash: plan.originalContentHash,
@@ -401,10 +420,14 @@ export function createEditTool(
 						},
 					});
 					const displayDiff = truncateDiffForDisplay(approvedPlan.diff);
+					const displayDiffHunks = coreDiffHunksToJson(
+						truncateDiffHunksForDisplay(approvedPlan.hunks),
+					);
 					ctx.metadata({
 						metadata: {
 							path: resolvedPath,
 							diff: displayDiff,
+							diffHunks: displayDiffHunks,
 							additions: approvedPlan.additions,
 							deletions: approvedPlan.deletions,
 							originalContentHash: approvedPlan.originalContentHash,
@@ -438,6 +461,7 @@ export function createEditTool(
 						metadata: {
 							path: resolvedPath,
 							diff: displayDiff,
+							diffHunks: displayDiffHunks,
 							additions: approvedPlan.additions,
 							deletions: approvedPlan.deletions,
 							originalContentHash: approvedPlan.originalContentHash,

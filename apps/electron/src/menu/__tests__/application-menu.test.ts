@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({
   app: { name: 'onething' },
+  BrowserWindow: { getFocusedWindow: vi.fn(() => null) },
   Menu: {
     buildFromTemplate: vi.fn(template => ({ template })),
     setApplicationMenu: vi.fn(),
@@ -72,6 +73,53 @@ describe('electron application menu', () => {
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('menu:new-chat')
     expect(template[0].label).toBe('File')
     expect(fileMenu.submenu.at(-1)).toEqual({ role: 'quit' })
+  })
+
+  it('routes Cmd+W on the main window to the renderer instead of closing the window', async () => {
+    const { setupElectronApplicationMenu } = await import('../application-menu.js')
+    const mainWindow = createWindow()
+    mainWindow.close = vi.fn()
+    const { menu } = createMenu()
+
+    setupElectronApplicationMenu({
+      mainWindow,
+      openSettingsWindow: vi.fn(),
+      menu,
+      windows: { getFocusedWindow: () => mainWindow },
+      platform: 'darwin',
+    })
+
+    const template = (menu.buildFromTemplate as any).mock.calls[0][0] as any[]
+    const fileMenu = template.find(item => item.label === 'File')
+    const closeItem = fileMenu.submenu.find((item: any) => item.label === 'Close Tab')
+
+    expect(closeItem.accelerator).toBe('CmdOrCtrl+W')
+    closeItem.click()
+
+    expect(mainWindow.webContents.send).toHaveBeenCalledWith('menu:close-chat')
+    expect(mainWindow.close).not.toHaveBeenCalled()
+  })
+
+  it('closes auxiliary windows directly on Cmd+W', async () => {
+    const { setupElectronApplicationMenu } = await import('../application-menu.js')
+    const mainWindow = createWindow()
+    const settingsWindow = { ...createWindow(), close: vi.fn() }
+    const { menu } = createMenu()
+
+    setupElectronApplicationMenu({
+      mainWindow,
+      openSettingsWindow: vi.fn(),
+      menu,
+      windows: { getFocusedWindow: () => settingsWindow as any },
+      platform: 'darwin',
+    })
+
+    const template = (menu.buildFromTemplate as any).mock.calls[0][0] as any[]
+    const fileMenu = template.find(item => item.label === 'File')
+    fileMenu.submenu.find((item: any) => item.label === 'Close Tab').click()
+
+    expect(settingsWindow.close).toHaveBeenCalledOnce()
+    expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('menu:close-chat')
   })
 
   it('omits the Develop menu when web preview is unavailable', async () => {

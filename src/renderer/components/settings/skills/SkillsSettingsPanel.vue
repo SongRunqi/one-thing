@@ -44,12 +44,11 @@
       <span class="master-hint">{{ skillsEnabled ? 'Skills are offered to the model per session.' : 'No skills are loaded into any session.' }}</span>
     </div>
 
-    <p
+    <ErrorNote
       v-if="store.lastError.value"
       class="ledger-error"
-    >
-      {{ store.lastError.value }}
-    </p>
+      :message="store.lastError.value"
+    />
 
     <div
       class="ledger-body"
@@ -251,6 +250,7 @@
 import { computed, onMounted, ref } from 'vue'
 import type { SkillDefinition, SkillDirectoryConfig, SkillSettings, SkillSource } from '@/types'
 import { platformApi } from '@/platform'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import SkillLedgerRow from './SkillLedgerRow.vue'
 import AddSkillDirectoryDialog from './AddSkillDirectoryDialog.vue'
 import { useSkills } from './useSkills'
@@ -432,12 +432,9 @@ onMounted(() => {
   color: var(--ui-text-faint-fg, var(--muted));
 }
 
+/* positioning only — visuals come from ErrorNote */
 .ledger-error {
   margin: 0 0 12px;
-  font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  padding-left: 8px;
 }
 
 /* ---- the ledger rule ---- */

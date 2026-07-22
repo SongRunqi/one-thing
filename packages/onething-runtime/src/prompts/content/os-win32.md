@@ -1,3 +1,1 @@
-You are running on Windows.
-When executing shell commands, use Windows-compatible syntax (e.g., PowerShell or CMD).
-Use backslashes (\) for file paths when needed, though forward slashes (/) often work too.
+You are running on Windows. Use PowerShell or CMD syntax in shell commands.

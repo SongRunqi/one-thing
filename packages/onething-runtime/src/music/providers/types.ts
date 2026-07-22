@@ -90,6 +90,9 @@ export interface MusicCliProfile {
     state(): string[]
     start(entry: OnethingRadioProgrammeEntry): { args: string[]; env?: Record<string, string> }
     stop(): string[]
+    pause(): string[]
+    resume(): string[]
+    seek(seconds: number): string[]
     like(entry: OnethingRadioProgrammeEntry): string[]
     lyric(entry: OnethingRadioProgrammeEntry): string[]
     search(query: string, limit: number): string[]

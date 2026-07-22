@@ -332,7 +332,7 @@ describe('TextEditor', () => {
     expect(wrapper.element.contains(popover)).toBe(false)
   })
 
-  it('renders command and skill references as composer widgets', async () => {
+  it('hides the leading command token and renders skill references as widgets', async () => {
     const { wrapper } = await mountEditor({
       modelValue: `/compact then ${createSkillToken('user:skill-development')}`,
       commandRefs: [{
@@ -358,7 +358,10 @@ describe('TextEditor', () => {
     const command = wrapper.element.querySelector('.prompt-ref-widget.is-command')
     const skill = wrapper.element.querySelector('.prompt-ref-widget.is-skill')
 
-    expect(command?.textContent).toContain('/compact')
+    // The command token is lifted into the composer dock (CommandRow), so the
+    // editor renders neither a widget nor the raw text for it.
+    expect(command).toBeNull()
+    expect(wrapper.element.textContent).not.toContain('/compact')
     expect(skill?.textContent).toContain('Skill Development')
   })
 })

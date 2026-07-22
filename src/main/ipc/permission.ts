@@ -47,7 +47,9 @@ export function registerPermissionHandlers(): void {
     getPending: (sessionId: ElectronPermissionSessionId) => {
       return getOnethingPendingPermissionsForIpc({
         sessionId,
-        getPending: Permission.getPending,
+        // Full picture including queued prompts/followers (promptState-labeled)
+        // so the renderer can rebuild per-tool-call waiting states on reload.
+        getPending: Permission.getPendingPrompts,
         logger: console,
       })
     },

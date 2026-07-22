@@ -1,11 +1,21 @@
-import type { Step, ToolCall } from '@/types'
-import { diffLines } from 'diff'
+import type { DiffHunk, Step, ToolCall } from '@/types'
+import { diffHunksFromUnknown } from '@/utils/diff-hunks'
+// Deliberately the leaf module, NOT the engine barrel: the barrel pulls
+// node-only modules (node:crypto ids, permission) that must never enter the
+// renderer bundle.
+import {
+  createStreamingArgsParser,
+  type StreamingArgsField,
+  type StreamingArgsParser,
+} from '@onething/core/engine/streaming-args'
 import { basename, formatToolCallPreview } from './tool-preview'
 import { getToolRenderStatus, type ToolRenderStatus } from './tool-status'
 import { getFileToolCategory } from './tool-ui-registry'
 
 export interface ToolDiffData {
   diff: string
+  /** Structured hunks; DiffView renders these instead of re-parsing `diff`. */
+  hunks?: DiffHunk[]
   additions: number
   deletions: number
   filePath: string
@@ -37,13 +47,46 @@ export interface ToolPreviewLine {
 export interface StreamingToolContent {
   filePath: string
   content: string
-  additions: number
-  deletions?: number
   isTruncated?: boolean
   totalLines?: number
   omittedLines?: number
   kind?: 'write' | 'edit'
   replacements?: StreamingEditReplacement[]
+}
+
+/** A settled or still-streaming piece of draft text. */
+export interface ToolDraftText {
+  text: string
+  /** True while this value is still receiving — the cursor mounts here. */
+  open: boolean
+}
+
+export interface ToolDraftReplacement {
+  index: number
+  find: ToolDraftText | null
+  replace: ToolDraftText | null
+  replaceAll?: boolean
+}
+
+/**
+ * Honest view of the argument stream while it is being received. Every entry
+ * is derived from the incremental parser: 'closed' fields render as settled,
+ * the single open field carries the cursor, and nothing is predicted.
+ */
+export interface ToolStreamingDraft {
+  kind: 'edit' | 'write' | 'generic'
+  fields: StreamingArgsField[]
+  openPath: string | null
+  /** True once the top-level JSON closed (the stream may still lag the done event). */
+  complete: boolean
+  charsReceived: number
+  parseError?: string
+  /** Closed path value; empty until the path field's closing quote arrived. */
+  filePath: string
+  /** File tools only: the path field has not closed yet. */
+  pathPending: boolean
+  replacements: ToolDraftReplacement[]
+  content: ToolDraftText | null
 }
 
 export interface ToolStepView {
@@ -60,6 +103,8 @@ export interface ToolStepView {
   errorPreview: string | null
   streamingContent: StreamingToolContent | null
   streamingPreviewLines: ToolPreviewLine[]
+  /** Present only while the argument stream is receiving (status streaming-input). */
+  streamingDraft: ToolStreamingDraft | null
   diff: ToolDiffData | null
   argsJson: string | null
   resultText: string | null
@@ -88,10 +133,136 @@ interface ToolContentSource {
 interface StreamingEditReplacement {
   oldText: string
   newText: string
+  replaceAll?: boolean
 }
 
 export function clearStreamingContentCache(): void {
   streamingContentCache.clear()
+  draftParserCache.clear()
+}
+
+// ── Streaming draft (incremental, honest) ──────────────────────────────────
+
+const DRAFT_PARSER_CACHE_LIMIT = 40
+
+interface DraftParserEntry {
+  parser: StreamingArgsParser
+  consumed: number
+}
+
+const draftParserCache = new Map<string, DraftParserEntry>()
+
+const PATH_FIELD_KEYS = [
+  'path', 'filePath', 'filepath', 'file_path',
+  'AbsolutePath', 'TargetFile', 'SearchPath', 'FilePath',
+]
+
+const EDIT_MEMBER_RE = /^edits\[(\d+)\]\.(oldText|newText|old_string|new_string|replaceAll|replace_all)$/
+
+/** The parser reports booleans as the literal text it saw. */
+function draftFlag(field: StreamingArgsField): boolean {
+  return field.state === 'closed' && field.value === 'true'
+}
+
+/**
+ * Feed the incremental parser with whatever bytes arrived since the last
+ * render. streamingArgs is append-only, so the suffix is all that's new; a
+ * shrunken buffer means a new life for the id and restarts the parser.
+ */
+function getDraftParserView(toolCallId: string, streamingArgs: string) {
+  let entry = draftParserCache.get(toolCallId)
+  if (!entry || entry.consumed > streamingArgs.length) {
+    entry = { parser: createStreamingArgsParser(), consumed: 0 }
+    draftParserCache.set(toolCallId, entry)
+    if (draftParserCache.size > DRAFT_PARSER_CACHE_LIMIT) {
+      const firstKey = draftParserCache.keys().next().value
+      if (firstKey) draftParserCache.delete(firstKey)
+    }
+  }
+  if (streamingArgs.length > entry.consumed) {
+    entry.parser.push(streamingArgs.slice(entry.consumed))
+    entry.consumed = streamingArgs.length
+  }
+  return entry.parser.view()
+}
+
+function draftText(field: StreamingArgsField): ToolDraftText {
+  return { text: field.value, open: field.state === 'open' }
+}
+
+export function buildStreamingDraft(toolCall: ToolCall | undefined): ToolStreamingDraft | null {
+  if (!toolCall || toolCall.status !== 'input-streaming') {
+    if (toolCall) draftParserCache.delete(toolCall.id)
+    return null
+  }
+  const streamingArgs = toolCall.streamingArgs ?? ''
+  const view = getDraftParserView(toolCall.id, streamingArgs)
+
+  const toolName = toolCall.toolName?.toLowerCase() || ''
+  const category = getFileToolCategory(toolName)
+  const kind: ToolStreamingDraft['kind'] =
+    category === 'edit' ? 'edit' : category === 'write' ? 'write' : 'generic'
+
+  let filePath = ''
+  const replacementsByIndex = new Map<number, ToolDraftReplacement>()
+  let content: ToolDraftText | null = null
+
+  for (const field of view.fields) {
+    if (PATH_FIELD_KEYS.includes(field.path)) {
+      if (field.state === 'closed') filePath = field.value
+      continue
+    }
+    if (kind === 'edit') {
+      const memberMatch = field.path.match(EDIT_MEMBER_RE)
+      if (memberMatch) {
+        const index = Number(memberMatch[1])
+        const slot = replacementsByIndex.get(index) ?? { index, find: null, replace: null }
+        const member = memberMatch[2]
+        if (member === 'oldText' || member === 'old_string') slot.find = draftText(field)
+        else if (member === 'replaceAll' || member === 'replace_all') slot.replaceAll = draftFlag(field)
+        else slot.replace = draftText(field)
+        replacementsByIndex.set(index, slot)
+        continue
+      }
+      if (field.path === 'oldText' || field.path === 'old_string') {
+        const slot = replacementsByIndex.get(0) ?? { index: 0, find: null, replace: null }
+        slot.find = draftText(field)
+        replacementsByIndex.set(0, slot)
+        continue
+      }
+      if (field.path === 'newText' || field.path === 'new_string') {
+        const slot = replacementsByIndex.get(0) ?? { index: 0, find: null, replace: null }
+        slot.replace = draftText(field)
+        replacementsByIndex.set(0, slot)
+        continue
+      }
+      if (field.path === 'replaceAll' || field.path === 'replace_all') {
+        const slot = replacementsByIndex.get(0) ?? { index: 0, find: null, replace: null }
+        slot.replaceAll = draftFlag(field)
+        replacementsByIndex.set(0, slot)
+        continue
+      }
+    }
+    if (kind === 'write' && field.path === 'content') {
+      content = draftText(field)
+    }
+  }
+
+  return {
+    kind,
+    fields: view.fields,
+    openPath: view.openPath,
+    complete: view.complete,
+    charsReceived: view.charsReceived,
+    ...(view.error ? { parseError: view.error } : {}),
+    filePath,
+    // A file tool's path is required by contract; until its closing quote
+    // arrives the title must not show a half-received name — an open value
+    // still counts as pending.
+    pathPending: kind !== 'generic' && !filePath,
+    replacements: [...replacementsByIndex.values()].sort((a, b) => a.index - b.index),
+    content,
+  }
 }
 
 /** Wrap a bare ToolCall as a Step so the unified timeline can render it. */
@@ -183,6 +354,7 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
   const status = getToolRenderStatus(toolCall, step)
   const isRejected = status === 'rejected'
   const diff = getDiffFromStep(step)
+  const streamingDraft = includeDetails ? buildStreamingDraft(toolCall) : null
   const streamingContent = includeDetails ? getCachedStreamingContent(step, diff, status) : null
   const filePath = getToolFilePath(toolCall, diff, streamingContent, step)
   const argsJson = includeDetails ? getArgsJson(step) : null
@@ -225,6 +397,7 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
     errorPreview,
     streamingContent,
     streamingPreviewLines: includeDetails ? parseStreamingPreviewLines(streamingContent) : [],
+    streamingDraft,
     diff,
     argsJson,
     resultText,
@@ -253,12 +426,6 @@ function shouldDefaultExpand(toolName: string, status: ToolRenderStatus): boolea
 function hasPotentialStreamingDetails(step: Step, toolName: string): boolean {
   const cat = getFileToolCategory(toolName)
   if (cat !== 'write' && cat !== 'edit') return false
-  if (step.toolCall?.streamingArgs) {
-    const source = getStreamingContentSource(toolName, step.toolCall.streamingArgs)
-    if (!source) return false
-    if (source.kind === 'edit') return Boolean(source.replacements?.length)
-    return Boolean(source.content)
-  }
   return Boolean(
     step.toolCall?.changes ||
     getFinalizedContentSource(step.toolCall, toolName),
@@ -266,6 +433,9 @@ function hasPotentialStreamingDetails(step: Step, toolName: string): boolean {
 }
 
 function hasPotentialDetails(step: Step, toolName: string, diff: ToolDiffData | null): boolean {
+  // While arguments stream, the draft view (counter + received fields) is
+  // always available — the card must be expandable to show it.
+  if (step.toolCall?.status === 'input-streaming') return true
   if (hasPotentialStreamingDetails(step, toolName)) return true
   if (diff || step.thinking || step.summary || step.error) return true
   return Boolean(step.result || step.partialResult)
@@ -302,36 +472,11 @@ export function getToolFilePath(
   }
 
   if (toolCall?.status === 'input-streaming' && toolCall.streamingArgs) {
-    return (
-      extractStreamingStringValue(toolCall.streamingArgs, 'path') ||
-      extractStreamingStringValue(toolCall.streamingArgs, 'filePath') ||
-      extractStreamingStringValue(toolCall.streamingArgs, 'filepath') ||
-      extractStreamingStringValue(toolCall.streamingArgs, 'file_path') ||
-      extractStreamingStringValue(toolCall.streamingArgs, 'AbsolutePath') ||
-      extractStreamingStringValue(toolCall.streamingArgs, 'TargetFile') ||
-      extractStreamingStringValue(toolCall.streamingArgs, 'SearchPath') ||
-      extractStreamingStringValue(toolCall.streamingArgs, 'FilePath') ||
-      ''
-    )
+    // Only a CLOSED path field may name the file — a half-received path must
+    // never surface in the title (honesty rule; no predicted values).
+    return buildStreamingDraft(toolCall)?.filePath || ''
   }
   return ''
-}
-
-/**
- * Line counts predicted from the streamed arguments. A prediction, not a
- * measurement — the edit may still fail to apply.
- */
-export function getStreamingChangeStats(toolCall: ToolCall | undefined): { additions: number; deletions: number } | null {
-  if (!toolCall?.streamingArgs) return null
-  const toolName = toolCall.toolName?.toLowerCase() || ''
-  const cat = getFileToolCategory(toolName)
-  if (cat !== 'write' && cat !== 'edit') return null
-  const source = getStreamingContentSource(toolName, toolCall.streamingArgs)
-  if (!source) return null
-  return {
-    additions: countStreamingSourceAdditions(source),
-    deletions: countStreamingSourceDeletions(source),
-  }
 }
 
 function getPathArgument(args: Record<string, any>): string {
@@ -373,7 +518,8 @@ function parseStreamingEditPreviewLines(replacements: StreamingEditReplacement[]
 
   replacements.forEach((replacement, index) => {
     const suffix = numbered ? ` ${index + 1}` : ''
-    result.push({ kind: 'label', text: `Find${suffix}` })
+    const scope = replacement.replaceAll ? ' (all occurrences)' : ''
+    result.push({ kind: 'label', text: `Find${suffix}${scope}` })
     for (const text of splitDisplayLines(replacement.oldText)) {
       result.push({ kind: 'old', text })
     }
@@ -533,8 +679,6 @@ function getCachedStreamingContent(
   const result = normalizeStreamingContent({
     filePath: source.filePath,
     content: source.content,
-    additions: countStreamingSourceAdditions(source),
-    deletions: countStreamingSourceDeletions(source),
     kind: source.kind,
     replacements: source.replacements,
   })
@@ -552,88 +696,12 @@ function getToolContentSource(step: Step): ToolContentSource | null {
   const cat = getFileToolCategory(toolName)
   if (!toolCall || (cat !== 'write' && cat !== 'edit')) return null
 
-  if (toolCall.streamingArgs) {
-    return getStreamingContentSource(toolName, toolCall.streamingArgs)
-  }
+  // While arguments stream, the honest draft view (streamingDraft) owns the
+  // presentation; the settled preview only exists from finalized arguments.
+  if (toolCall.status === 'input-streaming') return null
 
   return getFinalizedContentSource(toolCall, toolName)
 }
-
-function getStreamingContentSource(toolName: string, args: string): ToolContentSource | null {
-  const result = { filePath: '', content: '' }
-  const cat = getFileToolCategory(toolName)
-
-  try {
-    const parsed = JSON.parse(args)
-    const filePath = typeof parsed.path === 'string' ? parsed.path : ''
-    if (cat === 'edit') {
-      const replacements = extractEditReplacements(parsed)
-      const content = replacements.map(edit => edit.newText).join('\n')
-      return (content || replacements.length)
-        ? {
-          filePath,
-          content,
-          kind: 'edit',
-          replacements,
-          cacheKey: `stream:${args.length}:${hashString(replacements.map(edit => `${edit.oldText}\u0000${edit.newText}`).join('\u0001'))}`,
-        }
-        : null
-    }
-
-    const content = typeof parsed.content === 'string' ? parsed.content : ''
-    return content
-      ? {
-        filePath,
-        content,
-        kind: 'write',
-        cacheKey: `stream:${args.length}:${hashString(content)}`,
-      }
-      : null
-  } catch {
-    // Incomplete JSON while the model is still streaming; fall through to
-    // tolerant extraction below.
-  }
-
-  result.filePath = extractStreamingStringValue(args, 'path') || ''
-
-  if (cat === 'edit') {
-    const oldText = extractStreamingStringValue(args, 'oldText') || ''
-    const newText = extractStreamingStringValue(args, 'newText') || ''
-    const replacements = oldText || newText ? [{ oldText, newText }] : []
-    return replacements.length
-      ? {
-        ...result,
-        content: replacements.map(edit => edit.newText).join('\n'),
-        kind: 'edit',
-        replacements,
-        cacheKey: `stream:${args.length}:${hashString(replacements.map(edit => `${edit.oldText}\u0000${edit.newText}`).join('\u0001'))}`,
-      }
-      : null
-  }
-
-  const contentKey = 'content'
-  const contentMatch = args.match(new RegExp(`"${contentKey}"\\s*:\\s*"`))
-  if (contentMatch) {
-    const startIdx = contentMatch.index! + contentMatch[0].length
-    let content = args.slice(startIdx)
-    content = content
-      .replace(/\\n/g, '\n')
-      .replace(/\\t/g, '\t')
-      .replace(/\\"/g, '"')
-      .replace(/\\\\/g, '\\')
-    if (content.endsWith('"')) content = content.slice(0, -1)
-    result.content = content
-  }
-
-  return result.content
-    ? {
-      ...result,
-      kind: 'write',
-      cacheKey: `stream:${args.length}:${hashString(result.content)}`,
-    }
-    : null
-}
-
 function extractEditReplacementContent(args: Record<string, any>): string {
   return extractEditReplacements(args)
     .map(edit => edit.newText)
@@ -647,6 +715,7 @@ function extractEditReplacements(args: Record<string, any>): StreamingEditReplac
     .map((edit: any) => ({
       oldText: typeof edit?.oldText === 'string' ? edit.oldText : '',
       newText: typeof edit?.newText === 'string' ? edit.newText : '',
+      replaceAll: edit?.replaceAll === true,
     }))
     .filter(edit => edit.oldText || edit.newText)
 }
@@ -702,56 +771,11 @@ function splitDisplayLines(value: string): string[] {
   return lines
 }
 
-function countStreamingSourceAdditions(source: ToolContentSource): number {
-  if (source.kind !== 'edit') return countAddedLines(source.content)
-  return countStreamingEditChanges(source.replacements || []).additions
-}
-
-function countStreamingSourceDeletions(source: ToolContentSource): number {
-  if (source.kind !== 'edit') return 0
-  return countStreamingEditChanges(source.replacements || []).deletions
-}
-
-function countStreamingEditChanges(replacements: StreamingEditReplacement[]): { additions: number; deletions: number } {
-  let additions = 0
-  let deletions = 0
-  for (const replacement of replacements) {
-    for (const change of diffLines(replacement.oldText, replacement.newText)) {
-      const count = splitDisplayLines(change.value).length
-      if (change.added) additions += count
-      if (change.removed) deletions += count
-    }
-  }
-  return { additions, deletions }
-}
-
-function extractStreamingStringValue(source: string, key: string): string | null {
-  const match = source.match(new RegExp(`"${key}"\\s*:\\s*"`))
-  if (!match || match.index === undefined) return null
-
-  let value = ''
-  let escaped = false
-  for (const char of source.slice(match.index + match[0].length)) {
-    if (escaped) {
-      value += char === 'n' ? '\n' : char === 't' ? '\t' : char
-      escaped = false
-      continue
-    }
-    if (char === '\\') {
-      escaped = true
-      continue
-    }
-    if (char === '"') break
-    value += char
-  }
-
-  return value || null
-}
-
 export function getDiffFromStep(step: Step): ToolDiffData | null {
   if (step.toolCall?.changes?.diff) {
     return {
       diff: step.toolCall.changes.diff,
+      hunks: step.toolCall.changes.hunks,
       additions: step.toolCall.changes.additions || 0,
       deletions: step.toolCall.changes.deletions || 0,
       filePath: step.toolCall.changes.filePath || '',
@@ -768,6 +792,7 @@ export function getDiffFromStep(step: Step): ToolDiffData | null {
     if (parsed.diff) {
       return {
         diff: parsed.diff,
+        hunks: diffHunksFromUnknown(parsed.diffHunks),
         additions: parsed.additions || 0,
         deletions: parsed.deletions || 0,
         filePath: parsed.path || '',
@@ -780,6 +805,7 @@ export function getDiffFromStep(step: Step): ToolDiffData | null {
     if (parsed.metadata?.diff) {
       return {
         diff: parsed.metadata.diff,
+        hunks: diffHunksFromUnknown(parsed.metadata.diffHunks),
         additions: parsed.metadata.additions || 0,
         deletions: parsed.metadata.deletions || 0,
         filePath: parsed.metadata.path || '',

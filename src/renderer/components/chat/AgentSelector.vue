@@ -10,6 +10,8 @@
       :class="{ open }"
       native-type="button"
       :disabled="isDisabled"
+      aria-haspopup="listbox"
+      :aria-expanded="open"
       :title="isDisabled ? 'Agent can be changed after the current response finishes' : 'Change agent for this chat'"
       @click.stop="toggleOpen"
     >
@@ -26,59 +28,87 @@
     </Button>
 
     <Teleport to="body">
-      <div
-        v-if="open"
-        ref="menuRef"
-        class="agent-menu"
+      <ComposerExtensionPanel
+        floating
+        class="agent-flyout"
         :style="menuStyle"
+        :visible="open"
+        :placement="placement"
+        title="Agent"
+        :count="agentsStore.agents.length"
+        empty-text="No agents"
+        empty-hint="Create one in Agents"
+        :hints="HINTS"
+        @mousedown.stop
         @click.stop
       >
-        <div class="agent-list">
-          <Button
-            v-for="agent in agentsStore.agents"
+        <div
+          ref="listRef"
+          class="composer-extension-list agent-list"
+          role="listbox"
+          aria-label="Agent"
+          :aria-activedescendant="activeOptionId"
+        >
+          <div
+            v-for="(agent, index) in agentsStore.agents"
+            :id="getOptionId(index)"
             :key="agent.id"
-            unstyled
-            :class="['agent-row', { active: agent.id === currentAgentId }]"
-            native-type="button"
-            :title="agent.name"
+            :class="['composer-extension-row', 'agent-row', { selected: index === highlightedIndex }]"
+            :data-agent-index="index"
+            role="option"
+            :aria-selected="agent.id === currentAgentId"
+            :title="getAgentTooltip(agent)"
+            @mousedown.prevent
             @click="selectAgent(agent.id)"
+            @mouseenter="highlightedIndex = index"
           >
+            <!-- The mark says which agent is live, not which row the cursor is
+                 on — selection is carried by the row fill, as everywhere else. -->
             <span
-              class="agent-row-dot"
+              class="composer-extension-row-icon agent-row-mark"
               aria-hidden="true"
-            />
-            <span class="agent-row-main">
-              <span class="agent-row-name">{{ agent.name }}</span>
+            >
               <span
-                v-if="agent.systemPrompt"
-                class="agent-row-prompt"
-              >
-                {{ agent.systemPrompt }}
-              </span>
+                v-if="agent.id === currentAgentId"
+                class="agent-row-mark-dot"
+              />
             </span>
-            <span class="agent-row-side">
-              <span
-                v-if="agent.isDefault"
-                class="agent-row-meta"
-              >Default</span>
-            </span>
-          </Button>
+            <div class="composer-extension-row-main">
+              <div class="composer-extension-row-title">
+                {{ agent.name }}
+              </div>
+              <div class="composer-extension-row-description">
+                {{ describeAgent(agent) }}
+              </div>
+            </div>
+            <span
+              class="composer-extension-row-meta"
+              aria-hidden="true"
+            >{{ agent.isDefault ? 'default' : '' }}</span>
+            <div
+              class="composer-extension-row-kbd"
+              aria-hidden="true"
+            >
+              ⏎
+            </div>
+          </div>
         </div>
 
-        <p
+        <ErrorNote
           v-if="selectionError"
           class="agent-error"
-        >
-          {{ selectionError }}
-        </p>
-      </div>
+          :message="selectionError"
+        />
+      </ComposerExtensionPanel>
     </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Bot, ChevronDown } from 'lucide-vue-next'
 import { useAgentsStore, DEFAULT_AGENT_ID } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
@@ -94,14 +124,20 @@ const sessionsStore = useSessionsStore()
 
 const rootRef = ref<HTMLElement | null>(null)
 const chipRef = ref<HTMLElement | null>(null)
-const menuRef = ref<HTMLElement | null>(null)
+const listRef = ref<HTMLElement | null>(null)
 const open = ref(false)
 const selectionError = ref('')
 const menuStyle = ref<Record<string, string>>({})
+const placement = ref<'up' | 'down'>('down')
+const highlightedIndex = ref(0)
 
-const MENU_WIDTH = 340
+const HINTS = ['↑↓ move', '⏎ switch', 'esc dismiss']
+
+const MENU_WIDTH = 372
 const MENU_MARGIN = 8
 const MENU_GAP = 8
+/** Below this much room the panel flips above the chip instead. */
+const MENU_MIN_ROOM = 280
 
 const session = computed(() =>
   sessionsStore.getSessionItem(props.sessionId) || null
@@ -109,6 +145,27 @@ const session = computed(() =>
 const currentAgentId = computed(() => session.value?.agentId || DEFAULT_AGENT_ID)
 const currentAgent = computed(() => agentsStore.getAgent(currentAgentId.value))
 const isDisabled = computed(() => !!props.sessionId && chatStore.isSessionGenerating(props.sessionId))
+
+const activeOptionId = computed(() =>
+  agentsStore.agents[highlightedIndex.value] ? getOptionId(highlightedIndex.value) : undefined
+)
+
+function getOptionId(index: number) {
+  return `agent-option-${index}`
+}
+
+/** The row's description slot: the system prompt's opening line, which is the
+ *  shortest true thing about an agent. The default agent has none. */
+function describeAgent(agent: { systemPrompt?: string, isDefault?: boolean }) {
+  const prompt = agent.systemPrompt?.trim()
+  if (!prompt) return agent.isDefault ? 'No extra system prompt' : ''
+  return prompt.split('\n').find(line => line.trim())?.trim() || ''
+}
+
+function getAgentTooltip(agent: { name: string, systemPrompt?: string }) {
+  const prompt = agent.systemPrompt?.trim()
+  return prompt ? `${agent.name}\n${prompt}` : agent.name
+}
 
 function close() {
   open.value = false
@@ -130,13 +187,12 @@ function updateMenuPosition() {
 
   const below = window.innerHeight - rect.bottom - MENU_GAP - MENU_MARGIN
   const above = rect.top - MENU_GAP - MENU_MARGIN
-  const openAbove = below < 280 && above > below
-  const maxHeight = Math.max(180, Math.min(520, openAbove ? above : below))
+  const openAbove = below < MENU_MIN_ROOM && above > below
+  placement.value = openAbove ? 'up' : 'down'
 
   menuStyle.value = {
     left: `${Math.round(left)}px`,
     width: `${Math.round(width)}px`,
-    maxHeight: `${Math.round(maxHeight)}px`,
     ...(openAbove
       ? { bottom: `${Math.round(window.innerHeight - rect.top + MENU_GAP)}px`, top: 'auto' }
       : { top: `${Math.round(rect.bottom + MENU_GAP)}px`, bottom: 'auto' }),
@@ -144,17 +200,58 @@ function updateMenuPosition() {
 }
 
 function handleDocumentClick(event: MouseEvent) {
-  const target = event.target as Node
-  if (!rootRef.value?.contains(target) && !menuRef.value?.contains(target)) {
+  const target = event.target as Element | null
+  if (rootRef.value?.contains(target as Node)) return
+  if (target?.closest?.('.agent-flyout')) return
+  close()
+}
+
+function moveHighlight(delta: number) {
+  const total = agentsStore.agents.length
+  if (!total) return
+  highlightedIndex.value = (highlightedIndex.value + delta + total) % total
+  void nextTick(scrollHighlightIntoView)
+}
+
+function scrollHighlightIntoView() {
+  listRef.value
+    ?.querySelector<HTMLElement>(`[data-agent-index="${highlightedIndex.value}"]`)
+    ?.scrollIntoView({ block: 'nearest' })
+}
+
+function handleKeydown(event: KeyboardEvent) {
+  if (!open.value) return
+  if (event.key === 'Escape') {
+    event.preventDefault()
     close()
+    return
+  }
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    moveHighlight(1)
+    return
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    moveHighlight(-1)
+    return
+  }
+  if (event.key === 'Enter') {
+    const agent = agentsStore.agents[highlightedIndex.value]
+    if (!agent) return
+    event.preventDefault()
+    void selectAgent(agent.id)
   }
 }
 
 async function openMenu() {
   open.value = true
   selectionError.value = ''
+  const current = agentsStore.agents.findIndex(agent => agent.id === currentAgentId.value)
+  highlightedIndex.value = current >= 0 ? current : 0
   await nextTick()
   updateMenuPosition()
+  scrollHighlightIntoView()
 }
 
 function toggleOpen() {
@@ -179,15 +276,23 @@ async function selectAgent(agentId: string) {
   open.value = false
 }
 
+/* A stream starting mid-selection locks the agent — the menu should not linger
+   over a choice that can no longer be made. */
+watch(isDisabled, disabled => {
+  if (disabled) close()
+})
+
 onMounted(() => {
   void agentsStore.loadAgents()
   document.addEventListener('click', handleDocumentClick)
+  window.addEventListener('keydown', handleKeydown)
   window.addEventListener('resize', updateMenuPosition)
   window.addEventListener('scroll', updateMenuPosition, true)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleDocumentClick)
+  window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('resize', updateMenuPosition)
   window.removeEventListener('scroll', updateMenuPosition, true)
 })
@@ -196,10 +301,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .agent-selector {
   --agent-selector-accent: var(--ui-category-3-icon, var(--ui-status-success-fg, var(--color-success, var(--ui-accent-primary-fg, var(--accent)))));
-  --agent-selector-hover-bg: color-mix(in srgb, var(--agent-selector-accent) 10%, transparent);
-  --agent-selector-selected-bg: color-mix(in srgb, var(--agent-selector-accent) 13%, transparent);
-  --agent-selector-hover-border: color-mix(in srgb, var(--agent-selector-accent) 24%, transparent);
-  --agent-selector-selected-border: color-mix(in srgb, var(--agent-selector-accent) 32%, transparent);
   position: relative;
   flex: 0 0 auto;
   align-self: center;
@@ -304,151 +405,24 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-.agent-menu {
-  --agent-selector-accent: var(--ui-category-3-icon, var(--ui-status-success-fg, var(--color-success, var(--ui-accent-primary-fg, var(--accent)))));
-  --agent-selector-hover-bg: color-mix(in srgb, var(--agent-selector-accent) 10%, transparent);
-  --agent-selector-selected-bg: color-mix(in srgb, var(--agent-selector-accent) 13%, transparent);
-  --agent-selector-hover-border: color-mix(in srgb, var(--agent-selector-accent) 24%, transparent);
-  --agent-selector-selected-border: color-mix(in srgb, var(--agent-selector-accent) 32%, transparent);
-  position: fixed;
-  box-sizing: border-box;
-  overflow: auto;
-  padding: 6px 12px;
-  border: 1px solid var(--ui-border-default-border, var(--border));
-  border-radius: 0;
-  background: var(--ui-surface-floating-bg, var(--bg-floating, var(--bg-panel)));
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+/* The menu is the composer's picker shell, teleported to the header. Nothing
+   here restyles a row — the frame, the tab stop and the ⏎ all come from
+   ComposerExtensionPanel, so an agent row reads exactly like a command row. */
+.agent-flyout {
   z-index: 1200;
   -webkit-app-region: no-drag;
 }
 
-/* 书目目录页:行与行之间一道极淡点线,无底色无圆角。
-   行首圈点:hover 空心浮现,当前填实朱砂 —— 与 side panel 节头同记号。 */
-.agent-list {
-  display: grid;
-}
-
-.agent-row,
-.agent-row-side {
-  display: flex;
-  align-items: center;
-}
-
-.agent-menu .agent-row {
-  --app-button-fill: transparent;
-  --app-button-hover-fill: transparent;
-  --app-button-border: transparent;
-  --app-button-hover-border: transparent;
-  --app-button-hover-fg: var(--ui-text-primary-fg, var(--text));
-  --app-button-shadow: none;
-  --app-button-hover-shadow: none;
-  border: 0;
-  background: transparent;
-  color: var(--ui-text-secondary-fg, var(--ui-sidebar-item-fg, var(--text-sidebar-item)));
-  cursor: pointer;
-}
-
-.agent-row {
-  width: 100%;
-  min-height: 38px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 9px;
-  padding: 8px 2px;
-  border-radius: 0;
-  text-align: left;
-}
-
-.agent-row + .agent-row {
-  border-top: 1px dotted color-mix(in srgb, var(--ui-border-default-border, var(--border)) 62%, transparent);
-}
-
-.agent-row-dot {
-  flex: 0 0 auto;
-  box-sizing: border-box;
-  width: 7px;
-  height: 7px;
-  margin-top: 5px;
-  border: 1.5px solid var(--ui-accent-primary-fg, var(--accent));
-  border-radius: 50%;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.agent-menu .agent-row:hover,
-.agent-menu .agent-row.app-button.is-unstyled:hover {
-  background: transparent;
-  border-color: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.agent-row:hover .agent-row-dot {
-  opacity: 0.45;
-}
-
-.agent-menu .agent-row.active,
-.agent-menu .agent-row.app-button.is-unstyled.active {
-  background: transparent;
-  border-color: transparent;
-  color: var(--ui-text-primary-fg, var(--text));
-  font-weight: 600;
-}
-
-.agent-row.active .agent-row-dot {
+/* Slot one carries the live agent, not the cursor: a filled square in the
+   accent, the only ink in the list that isn't text. */
+.agent-row-mark-dot {
+  width: 6px;
+  height: 6px;
   background: var(--ui-accent-primary-fg, var(--accent));
-  opacity: 1;
 }
 
-.agent-row-main {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.agent-row-name {
-  overflow-wrap: anywhere;
-  font-size: 13px;
-  line-height: 1.25;
-}
-
-.agent-row.active .agent-row-name {
-  color: var(--ui-accent-primary-fg, var(--accent));
-}
-
-.agent-row-prompt {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--ui-text-muted-fg, var(--muted));
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-}
-
-.agent-row-side {
-  flex: 0 0 auto;
-  gap: 7px;
-  padding-top: 1px;
-  color: var(--ui-text-muted-fg, var(--muted));
-}
-
-.agent-row-meta {
-  color: var(--ui-text-faint-fg, var(--ui-text-muted-fg, var(--muted)));
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
+/* positioning only — visuals come from ErrorNote */
 .agent-error {
-  margin: 8px 2px 2px;
-  padding-left: 9px;
-  border-left: 2px solid var(--ui-status-danger-fg, var(--error, #ef4444));
-  color: var(--ui-status-danger-fg, var(--error, #ef4444));
-  font-size: 12px;
+  margin: 8px 12px 2px;
 }
 </style>

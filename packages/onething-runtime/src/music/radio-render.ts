@@ -13,6 +13,13 @@ export const RADIO_DJ_AGENT_ID = 'radio-dj'
 export const RADIO_DJ_AGENT_NAME = '电台 DJ'
 
 /**
+ * The DJ's discipline is "bash runs bare ncm-cli commands, nothing else" —
+ * so its sessions only ever need the bash tool. Everything else is dead
+ * weight on every per-song turn (26 tools ≈ 8.6k tokens before this list).
+ */
+export const RADIO_DJ_TOOL_ALLOWLIST = ['bash']
+
+/**
  * The factory persona carries a version fingerprint so installed agents can
  * follow factory upgrades. The old policy was "created once, never touched" —
  * which quietly froze every user's DJ on day-one discipline: the mandatory
@@ -21,7 +28,8 @@ export const RADIO_DJ_AGENT_NAME = '电台 DJ'
  * rights-restricted songs into the programme (2026-07-17). Mandatory rules
  * now live HERE; deleting the fingerprint line opts an agent out of upgrades.
  */
-export const RADIO_DJ_FACTORY_VERSION = 4
+// v5: 口播每首必写(留白被听众否决 2026-07-19) — 普通歌也要短报一句。
+export const RADIO_DJ_FACTORY_VERSION = 5
 
 const RADIO_DJ_FACTORY_MARK = /<!--\s*radio-dj-factory\s+v(\d+)/
 

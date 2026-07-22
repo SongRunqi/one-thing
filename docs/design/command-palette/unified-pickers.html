@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Composer 浮层 · 统一行语法</title>
+<style>
+:root {
+  --bg-chat: #faf8f1;
+  --bg-deep: #f3efe5;
+  --text: #29241c;
+  --muted: rgba(41, 36, 28, 0.62);
+  --faint: rgba(41, 36, 28, 0.42);
+  --border-strong: rgba(41, 36, 28, 0.55);
+  --hover: rgba(41, 36, 28, 0.06);
+  --accent: #b8452c;
+  --composer-border: color-mix(in srgb, var(--border-strong) 52%, transparent);
+  --cell-divider: color-mix(in srgb, var(--border-strong) 30%, transparent);
+  --radius-xs: 4px;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-display: "Iowan Old Style", "Songti SC", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-chat: #191611;
+    --bg-deep: #14110d;
+    --text: #e8e1d2;
+    --muted: rgba(232, 225, 210, 0.66);
+    --faint: rgba(232, 225, 210, 0.42);
+    --border-strong: rgba(232, 225, 210, 0.5);
+    --hover: rgba(232, 225, 210, 0.075);
+    --accent: #d8765c;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg-deep); color: var(--text);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.6; padding: 44px 40px 90px;
+}
+.page-head { max-width: 1160px; margin: 0 auto 20px; }
+.page-head h1 { font-size: 21px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: ""; display: block; width: 84px;
+  border-bottom: 2px solid var(--text); margin-top: 10px;
+}
+.page-head p { margin-top: 12px; color: var(--muted); max-width: 62em; }
+code {
+  font-family: var(--font-mono); font-size: 12px;
+  padding: 1px 5px; border: 1px solid var(--cell-divider); border-radius: 3px;
+}
+
+/* 语法图 */
+.grammar {
+  max-width: 1160px; margin: 0 auto 44px;
+  border: 1px solid var(--cell-divider); border-radius: 5px;
+  background: var(--bg-chat); padding: 18px 20px 20px;
+}
+.grammar h3 {
+  font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+  letter-spacing: 2px; color: var(--faint); margin-bottom: 14px;
+}
+.grammar-row {
+  display: flex; align-items: baseline;
+  padding: 7px 0; font-family: var(--font-mono); font-size: 12px;
+}
+.slot {
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 3px; padding: 3px 8px; color: var(--accent);
+  font-size: 10.5px;
+}
+.slot.s1 { flex: none; width: 92px; text-align: center; margin-right: 10px; }
+.slot.s2 { flex: none; width: 152px; margin-right: 0; }
+.slot.s3 { flex: 1 1 auto; margin-right: 10px; }
+.slot.s4 { flex: none; width: 120px; text-align: right; }
+.grammar-note { margin-top: 12px; color: var(--faint); font-size: 12px; }
+
+.panels { max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 46px; }
+.pgroup-head { margin-bottom: 16px; }
+.pgroup-tag { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--faint); }
+.pgroup-head h2 { margin-top: 6px; font-size: 17px; font-weight: 600; }
+.pgroup-head p { margin-top: 7px; color: var(--muted); font-size: 13.5px; max-width: 58em; }
+
+.stage {
+  background: var(--bg-chat); border: 1px solid var(--cell-divider);
+  border-radius: 6px; padding: 38px 32px 24px;
+  display: flex; justify-content: center;
+}
+.composer-wrapper { width: 100%; max-width: 620px; position: relative; }
+.composer-anchor { position: relative; width: 100%; }
+.composer {
+  position: relative; z-index: 1; display: flex; flex-direction: column;
+  border: 1px solid var(--composer-border); border-radius: var(--radius-xs);
+  background: transparent; overflow: hidden;
+}
+.composer-frame-label {
+  position: absolute; top: -7px; left: 12px; z-index: 2;
+  padding: 0 6px; background: var(--bg-chat);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; color: var(--faint); user-select: none;
+}
+.composer-input {
+  padding: 11px 12px 12px; font-family: var(--font-display);
+  font-size: 15px; line-height: 1.5; min-height: 42px;
+}
+.composer-input .caret {
+  display: inline-block; width: 1px; height: 1.05em;
+  background: var(--accent); vertical-align: -2px; margin-left: 1px;
+}
+.composer-toolbar {
+  display: flex; justify-content: space-between; align-items: stretch;
+  min-height: 34px; margin-top: 2px; border-top: 1px solid var(--composer-border);
+}
+.toolbar-left, .toolbar-right { display: flex; align-items: stretch; }
+.toolbar-left > *, .toolbar-right > * {
+  display: flex; align-items: center; padding: 0 11px;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); white-space: nowrap;
+}
+.toolbar-left > * { border-right: 1px solid var(--cell-divider); }
+.toolbar-right > * { border-left: 1px solid var(--cell-divider); }
+.send { color: var(--text); }
+
+/* ——— 共享浮层壳:三个 picker 一字不差 ——— */
+.pal {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 9px); z-index: 3;
+  border: 1px solid var(--composer-border); border-radius: var(--radius-xs);
+  background: var(--bg-chat); padding: 9px 0 4px;
+}
+.pal-label {
+  position: absolute; top: -7px; left: 12px; z-index: 4;
+  padding: 0 6px; background: var(--bg-chat);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; color: var(--faint); user-select: none;
+}
+.pal-label .count { margin-left: 10px; letter-spacing: 1px; }
+.pal-hints {
+  display: flex; gap: 16px; margin-top: 6px; padding: 6px 12px 2px;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 16%, transparent);
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 1px; color: var(--faint);
+}
+
+/* ——— 共享行语法:无引导线、无行分隔线、软制表位 ——— */
+.row {
+  display: flex; align-items: baseline;
+  padding: 5px 12px; margin: 0 4px;
+  border-radius: 3px; cursor: pointer;
+}
+.row:hover, .row.sel { background: var(--hover); }
+
+/* 槽一:前置记号(可空,空则名字直接从 12px 起排) */
+.mark {
+  flex: none; width: 17px; margin-right: 8px; align-self: center;
+  color: var(--faint); line-height: 0;
+}
+.row:hover .mark, .row.sel .mark { color: var(--muted); }
+.mark svg { display: block; }
+
+/* 槽二:名字 —— 软制表位,说明在同一 x 起排 */
+.name {
+  flex: none; min-width: 152px; padding-right: 14px;
+  font-family: var(--font-mono); font-size: 12.5px; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row:hover .name, .row.sel .name { color: var(--text); }
+.row.sel .name { font-weight: 700; }
+.name .hit { color: var(--text); font-weight: 700; }
+
+/* 槽三:说明 */
+.desc {
+  flex: 1 1 auto; min-width: 0; color: var(--faint); font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row.sel .desc { color: var(--muted); }
+
+/* 槽四:附注 —— 右对齐;选中时 ⏎ 接在后面 */
+.meta {
+  flex: none; margin-left: 14px; text-align: right;
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.5px;
+  color: var(--faint); text-transform: uppercase; white-space: nowrap;
+}
+.kbd {
+  flex: none; margin-left: 10px; width: 1.2em; text-align: right;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted);
+  visibility: hidden;
+}
+.row.sel .kbd { visibility: visible; }
+/* Command 的类型只在选中行露面;File/Skill 的附注常驻 */
+.cmd .meta { visibility: hidden; }
+.cmd .row.sel .meta { visibility: visible; }
+/* Command 无前置记号:名字直接贴左边距 */
+.cmd .mark { display: none; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>Composer 浮层 · 统一行语法</h1>
+  <p>
+    File / Skill / Command 三个 picker 本来就渲染同一个 <code>ComposerExtensionPanel</code>,
+    行结构也一直是同一套三段式。分裂只来自 CommandPicker 多传的那个 <code>variant="command"</code>。
+    下面是删掉 variant、把去线设计放进<strong>共享层</strong>之后的样子——一套语法,三种内容。
+  </p>
+</div>
+
+<div class="grammar">
+  <h3>共享行语法</h3>
+  <div class="grammar-row">
+    <span class="slot s1">槽一 · 记号(可空)</span>
+    <span class="slot s2">槽二 · 名字</span>
+    <span class="slot s3">槽三 · 说明</span>
+    <span class="slot s4">槽四 · 附注 + ⏎</span>
+  </div>
+  <div class="grammar-note">
+    槽二定宽 152px = 软制表位:说明一律从同一条看不见的竖边起排。槽一留空时,名字直接贴 12px 左边距,不占位。
+    整块面板只有两条线:外框 + 提示条上沿。
+  </div>
+</div>
+
+<div class="panels">
+
+  <!-- File -->
+  <section class="pgroup">
+    <div class="pgroup-head">
+      <span class="pgroup-tag">@ 触发</span>
+      <h2>File —— 记号=文件/目录,附注=大小</h2>
+      <p>前置记号在这里是有信息量的:目录和文件靠图标一眼分开,不必读到路径末尾的斜杠。</p>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">FILES<span class="count">6</span></span>
+          <div class="row sel">
+            <span class="mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>
+            <span class="name">compo<span class="hit">ser</span>/</span>
+            <span class="desc">src/renderer/components/chat/composer</span>
+            <span class="meta">7 项</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+            <span class="name">Compo<span class="hit">ser</span>Dock.vue</span>
+            <span class="desc">src/renderer/components/chat/composer</span>
+            <span class="meta">4.2 KB</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+            <span class="name">Compo<span class="hit">ser</span>Flyout.vue</span>
+            <span class="desc">src/renderer/components/chat/composer</span>
+            <span class="meta">9.8 KB</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></span>
+            <span class="name">MusicStatusBar.vue</span>
+            <span class="desc">src/renderer/components/chat/composer</span>
+            <span class="meta">24 KB</span><span class="kbd">⏎</span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 插入</span><span>⇥ 进目录</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">看一下 @compo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- Skill -->
+  <section class="pgroup">
+    <div class="pgroup-head">
+      <span class="pgroup-tag">技能</span>
+      <h2>Skill —— 记号=来源,附注=用户/项目</h2>
+      <p>同一套槽位,换一种内容。名字仍是 mono,说明仍从 152px 起排,右缘仍是常驻附注。</p>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">SKILLS<span class="count">5</span></span>
+          <div class="row sel">
+            <span class="mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+            <span class="name">deep-<span class="hit">re</span>search</span>
+            <span class="desc">多源检索 + 对抗校验,产出带引用的报告</span>
+            <span class="meta">用户</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>
+            <span class="name">code-<span class="hit">re</span>view</span>
+            <span class="desc">审当前分支的改动,分维度找问题再逐条证伪</span>
+            <span class="meta">项目</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="mark"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg></span>
+            <span class="name">security-<span class="hit">re</span>view</span>
+            <span class="desc">对待提交改动做一次安全审查</span>
+            <span class="meta">项目</span><span class="kbd">⏎</span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 使用</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/re<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- Command -->
+  <section class="pgroup cmd">
+    <div class="pgroup-head">
+      <span class="pgroup-tag">/ 触发</span>
+      <h2>Command —— 记号槽留空,附注=类型(仅选中行)</h2>
+      <p>
+        命令的类型不值得每行都占位,所以槽一空着、名字贴左边距,类型退到槽四且只在选中时露面。
+        对齐规则、字号、留白、选中样式与上面两个<strong>逐像素相同</strong>。
+      </p>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND<span class="count">17</span></span>
+          <div class="row sel">
+            <span class="name">/<span class="hit">mo</span>del</span>
+            <span class="desc">切换当前会话的模型</span>
+            <span class="meta">cmd</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>de</span>
+            <span class="desc">切换权限档位:只读 / 询问 / 放手</span>
+            <span class="meta">cmd</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>nitor</span>
+            <span class="desc">盯住一条命令直到条件满足再叫我</span>
+            <span class="meta">skill</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>ve-session</span>
+            <span class="desc">把当前会话移到别的工作区</span>
+            <span class="meta">action</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>ck-data</span>
+            <span class="desc">按 schema 造一份假数据喂给测试</span>
+            <span class="meta">prompt</span><span class="kbd">⏎</span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

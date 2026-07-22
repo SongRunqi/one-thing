@@ -8,7 +8,7 @@ import {
   WidgetType,
 } from '@codemirror/view'
 import type { SkillDefinition, UserPrompt } from '@shared/ipc'
-import { PROMPT_REF_PATTERN, SKILL_REF_PATTERN } from '@shared/prompt-references'
+import { FILE_REF_PATTERN, PROMPT_REF_PATTERN, SKILL_REF_PATTERN } from '@shared/prompt-references'
 import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
 import type { CommandDefinition } from '@/types/commands'
 
@@ -19,7 +19,7 @@ export interface PromptCardData {
   description?: string
 }
 
-type ReferenceCardKind = 'prompt' | 'skill' | 'command'
+type ReferenceCardKind = 'prompt' | 'skill' | 'command' | 'file'
 
 interface ReferenceCardData {
   kind: ReferenceCardKind
@@ -34,6 +34,13 @@ interface ReferenceRange {
   from: number
   to: number
   card: ReferenceCardData
+  /**
+   * Hidden ranges are removed from the editor's visual flow entirely (no
+   * widget). The leading slash command uses this: the token stays in the doc
+   * as the source of truth, but the composer lifts it into a chip docked
+   * above the input instead of rendering it inline.
+   */
+  hidden?: boolean
 }
 
 export interface PromptCardExtensionOptions {
@@ -268,6 +275,16 @@ function commandToCard(command: CommandDefinition | undefined, commandId: string
   }
 }
 
+function fileToCard(filePath: string): ReferenceCardData {
+  return {
+    kind: 'file',
+    id: filePath,
+    title: filePath,
+    body: filePath,
+    kindLabel: 'file',
+  }
+}
+
 function collectKnownSkillRanges(
   doc: string,
   skillsByName: Map<string, SkillDefinition>,
@@ -339,6 +356,14 @@ function collectReferenceRanges(
     ranges.push({ from, to, card: promptToCard(prompts.get(promptId), promptId) })
   }
 
+  // File tokens are hidden, never widgets: the composer already shows each
+  // pick as a chip in the dock, so the doc only needs to remember where it sat.
+  FILE_REF_PATTERN.lastIndex = 0
+  for (const match of doc.matchAll(FILE_REF_PATTERN)) {
+    const from = match.index ?? 0
+    ranges.push({ from, to: from + match[0].length, card: fileToCard(match[1]), hidden: true })
+  }
+
   ranges.push(...collectSkillTokenRanges(doc, skillsById))
 
   LEGACY_SKILL_REF_PATTERN.lastIndex = 0
@@ -357,11 +382,21 @@ function collectReferenceRanges(
     const commandId = slashMatch[1]
     const command = commandsById.get(commandId.toLowerCase())
     const skill = skillsByName.get(commandId.toLowerCase())
-    if (command || skill) {
+    if (command) {
+      // Swallow the single separating space too, so the remaining text does
+      // not start with an orphaned indent once the token is hidden.
+      const tokenEnd = slashMatch[0].length
+      ranges.push({
+        from: 0,
+        to: doc[tokenEnd] === ' ' ? tokenEnd + 1 : tokenEnd,
+        card: commandToCard(command, commandId),
+        hidden: true,
+      })
+    } else if (skill) {
       ranges.push({
         from: 0,
         to: slashMatch[0].length,
-        card: command ? commandToCard(command, commandId) : skillToCard(skill, commandId),
+        card: skillToCard(skill, commandId),
       })
     }
   }
@@ -380,10 +415,12 @@ function buildDecorations(
   let lastTo = 0
   for (const range of collectReferenceRanges(view, prompts, skillsById, skillsByName, commandsById)) {
     if (range.from < lastTo) continue
-    builder.add(range.from, range.to, Decoration.replace({
-      widget: new PromptRefWidget(range.card, range.from, range.to),
-      inclusive: false,
-    }))
+    builder.add(range.from, range.to, Decoration.replace(range.hidden
+      ? { inclusive: false }
+      : {
+          widget: new PromptRefWidget(range.card, range.from, range.to),
+          inclusive: false,
+        }))
     lastTo = range.to
   }
 

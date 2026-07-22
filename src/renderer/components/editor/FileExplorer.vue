@@ -113,12 +113,11 @@
           autocomplete="off"
           @keydown.esc.prevent="closeNameDialog"
         >
-        <div
+        <ErrorNote
           v-if="dialogError"
           class="dialog-error"
-        >
-          {{ dialogError }}
-        </div>
+          :message="dialogError"
+        />
         <div class="dialog-actions">
           <Button
             unstyled
@@ -145,12 +144,11 @@
       <div class="explorer-dialog">
         <label>Delete {{ basename(deleteDialog.path) }}?</label>
         <p>This cannot be undone.</p>
-        <div
+        <ErrorNote
           v-if="dialogError"
           class="dialog-error"
-        >
-          {{ dialogError }}
-        </div>
+          :message="dialogError"
+        />
         <div class="dialog-actions">
           <Button
             unstyled
@@ -175,6 +173,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { computed, nextTick, onBeforeUnmount, reactive, ref } from 'vue'
 import { ExternalLink, FilePlus, FolderPlus, Pencil, RefreshCw, Trash2 } from 'lucide-vue-next'
 import TreeDirectory, { type TreeContextMenuPayload } from './TreeDirectory.vue'
@@ -463,8 +462,7 @@ onBeforeUnmount(() => {
 }
 
 .dialog-error {
-  color: var(--ui-status-danger-fg, #ef4444);
-  font-size: 12px;
+  align-self: stretch;
 }
 
 .dialog-actions {

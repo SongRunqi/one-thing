@@ -2,7 +2,21 @@
   <div
     ref="composerWrapperRef"
     class="composer-wrapper"
+    :class="{ 'is-drop-target': isFileDragActive }"
+    v-on="fileDropHandlers"
   >
+    <DropOverlay :active="isFileDragActive" />
+    <!-- Kept out of the toolbar markup so the picker and the drop zone share
+         one intake path (handleIncomingFiles) instead of two. -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      multiple
+      class="attachment-file-input"
+      tabindex="-1"
+      aria-hidden="true"
+      @change="handleFilePicked"
+    >
     <div class="composer-stack">
       <!-- Dock: persistent context that travels with the draft (queue,
            quote, attachments), stacked above the composer in normal flow. -->
@@ -27,28 +41,34 @@
           @clear="clearQuotedText"
         />
         <AttachmentRow
-          v-if="attachedFiles.length > 0 || isProcessingAttachments"
+          v-if="attachedFiles.length > 0 || fileReferences.length > 0 || isProcessingAttachments"
           key="attachments"
           :files="attachedFiles"
+          :references="fileReferences"
           :processing="isProcessingAttachments"
           @remove="removeAttachment"
+          @remove-reference="removeFileReference"
         />
       </TransitionGroup>
       <!-- Anchor keeps flyouts glued to the composer's top edge, floating
            above whatever is docked higher in the stack. -->
-      <div class="composer-anchor">
+      <div
+        class="composer-anchor"
+        :style="{ '--music-bar-reserve': musicBarReserve }"
+      >
         <MusicStatusBar :expanded="musicBarExpanded" />
         <span
           class="composer-frame-label"
           :class="{
             listening: isVoiceRecordingActive,
             transcribing: isVoiceTranscribingActive,
-            music: showsMusicLabel,
+            command: commandModeActive,
+            music: showsMusicTag,
           }"
-          :aria-hidden="showsMusicLabel ? undefined : 'true'"
-          :tabindex="showsMusicLabel ? 0 : undefined"
-          :role="showsMusicLabel ? 'button' : undefined"
-          :title="showsMusicLabel ? musicNowPlayingTitle : undefined"
+          :aria-hidden="showsMusicTag ? undefined : 'true'"
+          :tabindex="showsMusicTag ? 0 : undefined"
+          :role="showsMusicTag ? 'button' : undefined"
+          :title="showsMusicTag ? musicNowPlayingTitle : undefined"
           @mouseenter="onMusicLabelEnter"
           @mouseleave="onMusicLabelLeave"
           @focus="onMusicLabelEnter"
@@ -57,7 +77,10 @@
           v-if="isVoiceRecordingActive"
           class="composer-frame-elapsed"
         >{{ formattedVoiceElapsed }}</span><span
-          v-else-if="showsMusicLabel"
+          v-else-if="commandModeActive && commandModeHint"
+          class="composer-frame-hint"
+        >{{ commandModeHint }}</span><span
+          v-else-if="showsMusicTag"
           class="composer-frame-note"
           aria-hidden="true"
         >♪</span></span>
@@ -70,6 +93,16 @@
           @click.stop="cancelVoiceRecording"
         >
           esc cancel
+        </button>
+        <button
+          v-else-if="commandModeActive"
+          class="composer-voice-cancel composer-command-exit"
+          type="button"
+          :title="`Leave /${activeCommand?.id} and keep the text`"
+          @mousedown.prevent
+          @click.stop="clearActiveCommand"
+        >
+          esc exit
         </button>
         <Transition name="fade">
           <div
@@ -129,7 +162,12 @@
 
         <div
           class="composer"
-          :class="{ focused: isFocused, listening: isVoiceRecordingActive, transcribing: isVoiceTranscribingActive }"
+          :class="{
+            focused: isFocused,
+            listening: isVoiceRecordingActive,
+            transcribing: isVoiceTranscribingActive,
+            'command-mode': commandModeActive,
+          }"
           @click="focusEditor"
         >
           <!-- Input area -->
@@ -215,6 +253,22 @@
               class="toolbar-right"
               @click.stop
             >
+              <Button
+                size="small"
+                class="voice-aux-btn attach-btn"
+                native-type="button"
+                title="Attach files — or drop them on the composer"
+                aria-label="Attach files"
+                @mousedown.prevent
+                @click.stop="openFilePicker"
+              >
+                <template #icon>
+                  <Paperclip
+                    :size="15"
+                    :stroke-width="2"
+                  />
+                </template>
+              </Button>
               <Button
                 size="small"
                 class="voice-aux-btn tts-toggle-btn"
@@ -317,7 +371,7 @@
                   <span
                     class="send-label"
                     aria-hidden="true"
-                  >SEND ⏎</span>
+                  >{{ commandModeActive ? 'RUN ⏎' : 'SEND ⏎' }}</span>
                 </template>
               </Button>
             </div>
@@ -349,6 +403,7 @@ import ModelSelector from './ModelSelector.vue'
 import ThinkToggle from './ThinkToggle.vue'
 import QueuePanel from './composer/QueuePanel.vue'
 import AttachmentRow from './composer/AttachmentRow.vue'
+import DropOverlay from './composer/DropOverlay.vue'
 import MusicStatusBar from './composer/MusicStatusBar.vue'
 import {
   decodeAttachmentText,
@@ -358,7 +413,7 @@ import {
   type QueuedFileChangeSummary,
   type QueuedMessage,
 } from './composer/queued-message-utils'
-import { X, Square, Check, Loader2, Mic, Phone, PhoneOff, Volume2, VolumeX } from 'lucide-vue-next'
+import { X, Square, Check, Loader2, Mic, Paperclip, Phone, PhoneOff, Volume2, VolumeX } from 'lucide-vue-next'
 import { executeCommand, findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
@@ -372,8 +427,9 @@ import { useInputHistory } from '@/composables/useInputHistory'
 import { usePickerOrchestration } from '@/composables/usePickerOrchestration'
 import { useCommandFeedback } from '@/composables/useCommandFeedback'
 import { useAttachments } from '@/composables/useAttachments'
+import { useFileDrop } from '@/composables/useFileDrop'
 import type { AttachedFile } from '@/composables/useAttachments'
-import { createPromptToken } from '@shared/prompt-references'
+import { createPromptToken, expandFileTokens } from '@shared/prompt-references'
 
 interface Props {
   isLoading?: boolean
@@ -647,6 +703,8 @@ const {
   handleCommandPickerClose,
   handleFilePickerSelect,
   handleFilePickerClose,
+  fileReferences,
+  removeFileReference,
   handlePathPickerSelect,
   handlePathPickerClose,
   anyPickerVisible,
@@ -654,18 +712,31 @@ const {
   handleEditorTransaction,
   closeAllPickers,
   enabledSkills,
-} = usePickerOrchestration(messageInput, workingDirectory, editorRef, updateComposerHeight, checkHistoryEdit, effectiveSessionId)
+} = usePickerOrchestration(
+  messageInput,
+  workingDirectory,
+  editorRef,
+  updateComposerHeight,
+  checkHistoryEdit,
+  effectiveSessionId,
+)
 
 const { commandFeedback, showCommandFeedback } = useCommandFeedback()
 const {
   attachedFiles,
   isProcessing: isProcessingAttachments,
   handlePaste: handleAttachmentPaste,
+  processFiles: processAttachmentFiles,
   removeAttachment,
   clearAttachments,
   restoreAttachments,
   toMessageAttachments,
 } = useAttachments()
+
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const { isDragActive: isFileDragActive, dropHandlers: fileDropHandlers } = useFileDrop({
+  onFiles: handleIncomingFiles,
+})
 
 let activeComposerSessionId = effectiveSessionId.value || ''
 let restoringComposerDraft = false
@@ -712,11 +783,67 @@ const shouldShowStopAction = computed(() => {
   return hasActiveGeneration.value && !hasMessageContent.value && !hasAttachments.value
 })
 
+/**
+ * The leading `/command` token stays in the draft text (it is what sendMessage
+ * parses), but the editor hides it — see the hidden range in prompt-cards.ts.
+ * This lifts it into a chip docked above the composer, like an attachment.
+ */
+const activeCommandMatch = computed(() => {
+  const match = messageInput.value.match(/^\/([a-zA-Z0-9_-]+)(?=\s|$)/)
+  if (!match) return null
+  const command = commandRefs.value.find(entry => entry.id.toLowerCase() === match[1].toLowerCase())
+  return command ? { command, length: match[0].length } : null
+})
+
+const activeCommand = computed(() => activeCommandMatch.value?.command ?? null)
+
+/**
+ * Command mode: the composer itself carries the state — dashed frame, the
+ * command name in the frame tag, its usage where the placeholder would sit,
+ * RUN instead of SEND. A voice turn owns the same frame, so it wins.
+ */
+const commandModeActive = computed(() =>
+  !!activeCommand.value &&
+  !isVoiceRecordingActive.value &&
+  !isVoiceTranscribingActive.value,
+)
+
+/** The music tag yields the frame to a pending command. */
+const showsMusicTag = computed(() => showsMusicLabel.value && !commandModeActive.value)
+
+const commandModeHint = computed(() => {
+  const command = activeCommand.value
+  if (!command) return ''
+  // The tag already carries the name, so the hint keeps only what it does not
+  // repeat: the argument shape from `usage`, then the description.
+  const args = (command.usage || '').replace(/^\/\S*\s*/, '').trim()
+  return [args, command.description].filter(Boolean).join(' · ')
+})
+
+/** Leaves command mode without touching whatever args were already typed. */
+function clearActiveCommand() {
+  const match = activeCommandMatch.value
+  if (!match) return
+  // Drop the separating space with the token so the args do not shift right.
+  const end = messageInput.value[match.length] === ' ' ? match.length + 1 : match.length
+  const rest = messageInput.value.slice(end)
+  if (editorRef.value) {
+    editorRef.value.replaceRange(0, end, '')
+  } else {
+    messageInput.value = rest
+  }
+  nextTick(() => {
+    updateComposerHeight()
+    editorRef.value?.focus()
+  })
+}
+
 const dockVisible = computed(() => {
   return (
     queuedMessages.value.length > 0 ||
     !!quotedText.value ||
     attachedFiles.value.length > 0 ||
+    fileReferences.value.length > 0 ||
     isProcessingAttachments.value
   )
 })
@@ -733,6 +860,7 @@ const isPrimaryActionDisabled = computed(() => {
 
 const primaryActionTitle = computed(() => {
   if (shouldShowStopAction.value) return 'Stop generation'
+  if (commandModeActive.value) return `Run /${activeCommand.value?.id}`
   if (hasActiveGeneration.value) return 'Queue message after current response'
   return 'Send message'
 })
@@ -829,6 +957,17 @@ async function handleCallButton() {
 // live transcript ghosts into the entry as its placeholder.
 const musicBarExpanded = ref(false)
 let musicCollapseTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Height the composer reserves above itself for a PINNED music bar (the bar's
+ * own 9px gap included). Hover-summoned it stays a zero-cost flyout; pinned it
+ * is a fixture, and the reserved margin lifts the chat area clear of it.
+ */
+const musicBarReserve = computed(() =>
+  musicStore.barPinned && musicStore.barHeight > 0
+    ? `${musicStore.barHeight + 9}px`
+    : '0px',
+)
 
 function onMusicLabelEnter() {
   if (!showsMusicLabel.value) return
@@ -940,6 +1079,9 @@ const musicNowPlayingTitle = computed(() => {
 const composerFrameLabel = computed(() => {
   if (isVoiceRecordingActive.value) return 'LISTENING'
   if (isVoiceTranscribingActive.value) return 'TRANSCRIBING'
+  // A pending command outranks the ambient music tag: it is something the
+  // user is about to run, not something playing in the background.
+  if (commandModeActive.value) return `/${activeCommand.value?.id.toUpperCase()}`
   if (showsMusicLabel.value) return musicIsPlaying.value ? 'NOW PLAYING' : 'RADIO'
   return 'COMPOSER'
 })
@@ -1108,6 +1250,30 @@ async function handlePasteAttachments(event: ClipboardEvent) {
   })
 }
 
+/** Single intake for every source of files: drop, picker, and paste's result. */
+async function handleIncomingFiles(files: File[]) {
+  const result = await processAttachmentFiles(files)
+  if (!result.handled) return
+  showAttachmentResult(result.accepted, result.rejected)
+  nextTick(() => {
+    updateComposerHeight()
+    editorRef.value?.focus()
+  })
+}
+
+function openFilePicker() {
+  fileInputRef.value?.click()
+}
+
+async function handleFilePicked(event: Event) {
+  const input = event.target as HTMLInputElement
+  const files = Array.from(input.files ?? [])
+  // Reset before awaiting so picking the same file twice in a row still fires
+  // a change event the second time.
+  input.value = ''
+  if (files.length > 0) await handleIncomingFiles(files)
+}
+
 async function cyclePermissionMode() {
   const sessionId = effectiveSessionId.value
   if (!sessionId) return
@@ -1207,11 +1373,16 @@ function handleKeyDown(e: KeyboardEvent) {
   }
 
   // Escape order: flyout pickers close first (handled above); with no
-  // picker open, Escape cancels an in-progress voice recording, then
-  // clears the quoted context.
+  // picker open, Escape cancels an in-progress voice recording, then leaves
+  // command mode, then clears the quoted context.
   if (e.key === 'Escape' && isVoiceRecordingActive.value) {
     e.preventDefault()
     cancelVoiceRecording()
+    return
+  }
+  if (e.key === 'Escape' && commandModeActive.value) {
+    e.preventDefault()
+    clearActiveCommand()
     return
   }
   if (e.key === 'Escape' && quotedText.value) {
@@ -1327,13 +1498,15 @@ async function sendMessage() {
     }
   }
 
-  // Regular message sending
-  let fullMessage = messageInput.value
+  // Regular message sending. Docked file chips expand back to `@<path>` at the
+  // exact spot the user picked them — the chip is presentation, not placement.
+  const draftText = expandFileTokens(messageInput.value)
+  let fullMessage = draftText
   const attachments = toMessageAttachments()
 
   if (quotedText.value) {
     const quotedLines = quotedText.value.split('\n').map(line => `> ${line}`).join('\n')
-    fullMessage = `${quotedLines}\n\n${messageInput.value}`
+    fullMessage = `${quotedLines}\n\n${draftText}`
   }
 
   if (hasActiveGeneration.value) {
@@ -1561,6 +1734,17 @@ defineExpose({
   position: relative;
 }
 
+/* The native input is only a mechanism for the attach button; it never shows.
+   `display: none` would make it unclickable in some engines, so hide it
+   without removing it from the box tree. */
+.attachment-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .composer-stack {
   position: relative;
   width: 100%;
@@ -1571,6 +1755,11 @@ defineExpose({
 .composer-anchor {
   position: relative;
   width: 100%;
+  /* A pinned music bar stops being a transient flyout: the margin reserves its
+     measured height (it floats up into exactly this gap), so growing the
+     composer pushes the chat area up instead of letting the bar cover it. */
+  margin-top: var(--music-bar-reserve, 0px);
+  transition: margin-top 0.18s ease;
 }
 
 /* Blueprint frame tag: floats on the composer's top border like a drawing
@@ -1675,6 +1864,44 @@ defineExpose({
 .composer.transcribing {
   border-style: dashed;
   border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, var(--ui-border-default-border, var(--border)));
+}
+
+/* --- command turn: the frame itself is the state, same as the voice turn.
+   The leading /token is hidden inside the editor (see prompt-cards.ts), so
+   the composer has to say which command the draft is arming. --- */
+/* The usage hint rides the frame tag rather than a row of its own: the tag is
+   absolutely positioned, so command mode costs the composer zero height. */
+.composer-frame-label.command {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: calc(100% - 108px); /* leaves the esc-exit tag its corner */
+  color: var(--ui-accent-primary-fg, var(--accent));
+  letter-spacing: 1.4px;
+}
+
+.composer-frame-hint {
+  min-width: 0;
+  margin-left: 1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 0.4px;
+  font-weight: 400;
+  color: var(--ui-text-muted-fg, var(--muted));
+}
+
+.composer.command-mode {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 55%, var(--composer-border));
+}
+
+/* Focus keeps its solid ring; the dash is what carries "command", so it stays. */
+.composer.command-mode.focused {
+  border-style: dashed;
+}
+
+.composer-command-exit:hover {
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 .composer-anchor:has(.composer.focused) .composer-frame-label {

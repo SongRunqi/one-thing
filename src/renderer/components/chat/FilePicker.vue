@@ -9,10 +9,6 @@
     :empty-hint="emptyHint"
     loading-text="Searching files..."
   >
-    <template #icon>
-      <FileText :size="14" />
-    </template>
-
     <div
       ref="listRef"
       class="composer-extension-list"

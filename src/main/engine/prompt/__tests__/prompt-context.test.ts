@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ONETHING_DEFAULT_SYSTEM_PROMPT } from '@onething/runtime/prompts'
 import type { BuildPromptContextOptions } from '../system-prompt.js'
 import {
   buildPrompt,
@@ -69,7 +70,7 @@ describe('Pi-style prompt builder', () => {
       historyMessages: [{ role: 'user', content: 'hello' }],
     })
 
-    expect(result.systemPrompt).toContain('You are onething')
+    expect(result.systemPrompt).toContain(ONETHING_DEFAULT_SYSTEM_PROMPT)
     expect(result.systemPrompt).not.toContain('Available tools:')
     expect(result.systemPrompt).not.toContain('- read:')
     expect(result.systemPrompt).toContain('Current work directory: /repo')

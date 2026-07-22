@@ -538,7 +538,7 @@ describe('DeepSeek provider agent routing', () => {
     })
     expect(chunks).toContainEqual({
       type: 'tool-input-end',
-      toolInputEnd: { toolCallId: 'call_1' },
+      toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' },
     })
     expect(chunks.at(-1)).toEqual({
       type: 'finish',
@@ -625,7 +625,7 @@ describe('DeepSeek provider agent routing', () => {
     })
     expect(chunks).toContainEqual({
       type: 'tool-input-end',
-      toolInputEnd: { toolCallId: 'call_1' },
+      toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' },
     })
     expect(chunks.at(-1)).toEqual({
       type: 'finish',
@@ -800,7 +800,7 @@ describe('DeepSeek provider agent routing', () => {
         { type: 'reasoning', reasoning: 'need file' },
         { type: 'tool-input-start', toolInputStart: { toolCallId: 'call_run_1', toolName: 'read' } },
         { type: 'tool-input-delta', toolInputDelta: { toolCallId: 'call_run_1', argsTextDelta: '{"path":"/tmp/run.txt"}' } },
-        { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_run_1' } },
+        { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_run_1', finalizedBy: 'parse' } },
         {
           type: 'finish',
           finishReason: 'tool-calls',

@@ -14,6 +14,7 @@ export type ToolRenderStatus =
   | 'pending'
   | 'queued'
   | 'streaming-input'
+  | 'received'
   | 'awaiting-confirmation'
   | 'executing'
   | 'completed'
@@ -33,6 +34,7 @@ export function getToolRenderStatus(toolCall?: ToolCall, step?: Step): ToolRende
     return 'awaiting-confirmation'
   }
   if (toolCall?.status === 'input-streaming') return 'streaming-input'
+  if (toolCall?.status === 'received') return 'received'
   if (toolCall?.status === 'queued') return 'queued'
   if (step?.status === 'cancelled' || toolCall?.status === 'cancelled') return 'cancelled'
   if (step?.status === 'failed' || toolCall?.status === 'failed') return 'failed'

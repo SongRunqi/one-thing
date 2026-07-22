@@ -79,7 +79,14 @@ export interface PermissionRespondCommand {
   type: 'command:permission-respond'
   /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
   channel?: string
-  requestId: string
+  /** Live request id, when the responder caught the permission:request event. */
+  requestId?: string
+  /**
+   * Durable correlation key: the tool call this response targets. The
+   * permission manager resolves it to the pending prompt, so responders
+   * don't depend on having seen the ephemeral requestId.
+   */
+  toolCallId?: string
   decision: 'once' | 'session' | 'workdir' | 'reject'
   /** Optional reason for rejection */
   rejectReason?: string

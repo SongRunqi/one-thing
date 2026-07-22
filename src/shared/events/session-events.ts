@@ -85,6 +85,22 @@ export interface ToolInputStartEvent {
   toolCall: ToolCall
 }
 
+/**
+ * The argument stream for a tool call is complete. This is the authoritative
+ * receive-complete moment: the card's RECEIVING state must flip on this event,
+ * never on a frontend guess about argument completeness.
+ */
+export interface ToolInputEndEvent {
+  type: 'tool:input-end'
+  toolCallId: string
+  stepId?: string
+  toolCall: ToolCall
+  /** Authoritative main-process Date.now() captured when args finished streaming. */
+  receivedAt: number
+  /** 'parse' = mid-stream JSON completion; 'provider-done' = settled by the provider's done event. */
+  finalizedBy: 'parse' | 'provider-done'
+}
+
 export interface ToolExecutionStartEvent {
   type: 'tool:execution-start'
   toolCallId: string
@@ -163,8 +179,15 @@ export interface SessionVariablesUpdatedEvent {
 
 export interface SessionGoalUpdatedEvent {
   type: 'session:goal-updated'
-  /** null after the goal is cleared */
+  /** The goal that just changed; null after the goal is cleared. */
   goal: SessionGoal | null
+  /**
+   * The session's full goal history, oldest first. Sent with every update so
+   * the renderer never has to derive "which one is current" itself — that rule
+   * lives in exactly one place (packages/onething-runtime/src/goals/records.ts)
+   * and a second copy on this side would be one more thing to keep in sync.
+   */
+  goals?: SessionGoal[]
 }
 
 
@@ -343,6 +366,7 @@ export type SessionEvent =
   | ToolCallEvent
   | ToolResultEvent
   | ToolInputStartEvent
+  | ToolInputEndEvent
   | ToolExecutionStartEvent
   | ToolExecutionUpdateEvent
   | ToolExecutionEndEvent

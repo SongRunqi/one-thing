@@ -321,9 +321,30 @@ async function waitForProcess(predicate, label, timeoutMs = 90000) {
   throw new Error(`${label} did not start`)
 }
 
+// 子进程的 stdin 是 inherit(见 spawnManaged),vite 拿到真实 TTY 后会切到
+// raw mode + application cursor keys(DECCKM)来接管快捷键。Ctrl+C 时它被直接
+// 杀掉,来不及还原,终端就卡在 DECCKM 里——方向键变成 ^[OA 而不是 ^[[A。
+// 这里在所有退出路径上主动还原一次。
+function restoreTty() {
+  try {
+    if (process.stdin.isTTY) process.stdin.setRawMode?.(false)
+  } catch {
+    // stdin 已关闭/不是 TTY,忽略。
+  }
+  if (!process.stdout.isTTY) return
+  // \u001b[?1l 退出 application cursor keys;\u001b> 退出 keypad 应用模式;
+  // \u001b[?25h 把可能被子进程藏起来的光标显示回来。
+  try {
+    process.stdout.write('\u001b[?1l\u001b>\u001b[?25h')
+  } catch {
+    // 管道已断,忽略。
+  }
+}
+
 function shutdown(code = 0, signal = 'SIGTERM') {
   if (shuttingDown) return
   shuttingDown = true
+  restoreTty()
   log('dev', 'stopping managed dev processes; child logs muted')
   forwardChildOutput = false
   // 只清扫 shutdown 进场时已存在的泳道进程:之后新出现的属于接管方 runner,
@@ -425,6 +446,8 @@ async function startElectronLane() {
 async function main() {
   process.on('SIGINT', () => shutdown(0, 'SIGINT'))
   process.on('SIGTERM', () => shutdown(0, 'SIGTERM'))
+  // 兜底:shutdown 之外的退出路径(未捕获异常等)也要还原终端。
+  process.on('exit', restoreTty)
 
   await stopExistingDevProcesses()
 

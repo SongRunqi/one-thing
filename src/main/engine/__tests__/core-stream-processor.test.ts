@@ -210,14 +210,17 @@ describe('core stream processor helpers', () => {
       toolId: 'read',
       toolName: 'read',
       arguments: { path: '/tmp/a.txt' },
-      status: 'pending',
+      status: 'received',
+      argsFinalizedBy: 'parse',
     })
+    expect(toolCall?.receivedAt).toBeTypeOf('number')
     expect(processor.toolCalls).toHaveLength(1)
     expect(storeWrites).toEqual([
       'content:s1:a1:hello',
       'reasoning:s1:a1:thinking',
       'tools:s1:a1:1:input-streaming',
-      'tools:s1:a1:1:pending',
+      'tools:s1:a1:1:received',
+      'tools:s1:a1:1:received',
       'streaming:s1:a1:false',
       'flush:s1',
     ])

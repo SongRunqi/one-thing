@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, ref, type Ref } from 'vue'
 import { usePickerOrchestration } from '../usePickerOrchestration'
+import { createFileToken, expandFileTokens } from '@shared/prompt-references'
 import type { EditorCursorLineInfo, EditorHandle, EditorSelection } from '@/editor'
 import type { PaletteItem } from '@/types/palette'
 import { createPromptToken, createSkillToken } from '@shared/prompt-references'
@@ -350,6 +351,48 @@ describe('usePickerOrchestration', () => {
     }
   })
 
+  it('turns an @ pick into a hidden token that keeps the spot it was typed in', async () => {
+    const harness = createHarness('read @first please')
+    const triggerEnd = 'read @first'.length
+    harness.cursor.value = triggerEnd
+    harness.api.handleEditorSelectionChange({ from: triggerEnd, to: triggerEnd })
+    await settleWatchers()
+
+    expect(harness.api.activeExtension.value.type).toBe('files')
+
+    await harness.api.handleFilePickerSelect('/repo/src/first.ts')
+
+    expect(harness.input.value).toBe(
+      `read ${createFileToken('/repo/src/first.ts')} please`,
+    )
+    // What the model eventually reads keeps the path exactly where it was.
+    expect(expandFileTokens(harness.input.value)).toBe('read @/repo/src/first.ts please')
+    expect(harness.api.showFilePicker.value).toBe(false)
+    harness.scope.stop()
+  })
+
+  it('projects docked chips from the tokens and removes only the picked one', async () => {
+    const harness = createHarness(
+      `a ${createFileToken('/repo/src/a.ts')} b ${createFileToken('/repo/src/b.ts')}`,
+    )
+    await settleWatchers()
+
+    expect(harness.api.fileReferences.value.map(entry => entry.path)).toEqual([
+      '/repo/src/a.ts',
+      '/repo/src/b.ts',
+    ])
+    expect(harness.api.fileReferences.value[0].label).toBe('src/a.ts')
+
+    harness.api.removeFileReference(harness.api.fileReferences.value[0].id)
+    await settleWatchers()
+
+    expect(harness.input.value).toBe(`a  b ${createFileToken('/repo/src/b.ts')}`)
+    expect(harness.api.fileReferences.value.map(entry => entry.path)).toEqual([
+      '/repo/src/b.ts',
+    ])
+    harness.scope.stop()
+  })
+
   it('tracks /cd path triggers and replaces the exact path range', async () => {
     const harness = createHarness('/cd ~/wo')
     await settleWatchers()
@@ -390,7 +433,9 @@ describe('usePickerOrchestration', () => {
 
     await harness.api.handleFilePickerSelect('/repo/first.md')
 
-    expect(harness.input.value).toBe('read @/repo/first.md  then @second')
+    expect(harness.input.value).toBe(
+      `read ${createFileToken('/repo/first.md')} then @second`,
+    )
     harness.scope.stop()
   })
 

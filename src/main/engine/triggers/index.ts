@@ -12,6 +12,7 @@ import {
 import { createGoalContinuationTrigger } from "./goal-continuation.js";
 import { createSkillReviewTrigger } from "./skill-review.js";
 import { createTurnEvaluationTrigger } from "./turn-evaluation.js";
+import { createSessionTocTrigger } from "./session-toc.js";
 
 export interface TriggerContext
 	extends CoreTriggerContext<
@@ -35,4 +36,5 @@ export function registerBuiltinTriggers(): void {
 	triggerManager.register(createSkillReviewTrigger());
 	triggerManager.register(createGoalContinuationTrigger());
 	triggerManager.register(createTurnEvaluationTrigger());
+	triggerManager.register(createSessionTocTrigger());
 }

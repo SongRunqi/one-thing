@@ -1,3 +1,3 @@
-You are running on macOS. Use Unix/Bash-compatible syntax with forward slashes (/) for paths.
+You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use `osascript`.

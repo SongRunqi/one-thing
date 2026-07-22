@@ -15,6 +15,8 @@ import type {
 import { DEFAULT_AGENT_ID } from "../../../shared/ipc.js";
 import { getSettings, saveSettings } from "../../stores/settings.js";
 import { generateChatResponse } from "../../providers/index.js";
+import { recordUsage } from "../../usage/index.js";
+import { ONETHING_USAGE_SOURCES } from "@onething/runtime/usage";
 import { resolveProviderAuth } from "../../engine/stream/provider-helpers.js";
 import * as store from "../../store.js";
 import { PluginStore } from "../store.js";
@@ -530,6 +532,33 @@ function publicPendingCaptures(agentId?: string): MemoryCapturePending[] {
 	) as MemoryCapturePending[];
 }
 
+/**
+ * Bills a memory-side model call to the usage ledger.
+ *
+ * These calls run on the tool-call model behind the user's back (capture on
+ * every turn, review on idle), so without this they are pure invisible spend —
+ * `source: 'memory'` is what makes them show up in the usage panel breakdown.
+ */
+function billMemoryUsage(
+	sessionId: string | undefined,
+	provider: { providerId: string; config: { model?: unknown } },
+): (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void {
+	return (usage) => {
+		// Billing must never break memory work.
+		try {
+			recordUsage({
+				sessionId,
+				providerId: provider.providerId,
+				modelId: String(provider.config.model || ""),
+				source: ONETHING_USAGE_SOURCES.memory,
+				usage,
+			});
+		} catch (error) {
+			console.error("[soul-memory] recordUsage failed:", error);
+		}
+	};
+}
+
 async function runMemoryCapture(
 	api: PluginAPI,
 	context: AfterAssistantResponseContext,
@@ -563,7 +592,11 @@ async function runMemoryCapture(
 					{ role: "system", content: system },
 					{ role: "user", content: prompt },
 				],
-				{ temperature, maxTokens },
+				{
+					temperature,
+					maxTokens,
+					onUsage: billMemoryUsage(context.sessionId, provider),
+				},
 			),
 		applyStatusMutation: (plan) => {
 			applySoulMemoryStatusMutation(api.store, plan);
@@ -674,7 +707,11 @@ async function runMemoryReview(
 					{ role: "system", content: finalSystem },
 					{ role: "user", content: prompt },
 				],
-				{ temperature, maxTokens },
+				{
+					temperature,
+					maxTokens,
+					onUsage: billMemoryUsage(context.sessionId, provider),
+				},
 			);
 		},
 		applyStatusMutation: (plan) => {

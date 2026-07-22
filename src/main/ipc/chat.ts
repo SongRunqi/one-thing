@@ -42,6 +42,7 @@ import {
 import { buildOnethingSystemPromptSnapshotForIpc } from '@onething/runtime/prompts'
 import { buildSystemPromptSnapshot } from '../engine/prompt/system-prompt-snapshot.js'
 import { getEventBus } from '../events/index.js'
+import { billTitleUsage } from '../usage/bill-side-line.js'
 
 // ============================================
 // IPC Handlers
@@ -204,7 +205,10 @@ async function handleGenerateTitle(userMessage: string) {
             apiType: providerConfig.apiType,
           },
           message,
-          options as Parameters<typeof generateChatTitle>[3],
+          {
+            ...(options as Parameters<typeof generateChatTitle>[3]),
+            onUsage: billTitleUsage(providerId, providerConfig.model || ''),
+          },
         ),
       logger: console,
     },

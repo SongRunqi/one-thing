@@ -5,6 +5,46 @@
     aria-label="Chat side panel"
   >
     <template v-if="!props.collapsed">
+      <!-- A draft has no session on disk and therefore no segments; an empty
+           section here would be pure noise before the chat even starts. -->
+      <section
+        v-if="!isDraftSession"
+        class="chat-side-esec chat-side-toc-section"
+        :class="{ focus: focusedSection === 'toc' }"
+        @mouseenter="scheduleFocus('toc')"
+        @mouseleave="cancelScheduledFocus"
+      >
+        <div class="chat-side-esum">
+          <button
+            type="button"
+            class="chat-side-esum-main"
+            :aria-expanded="focusedSection === 'toc'"
+            @click="setFocus('toc')"
+          >
+            <span class="chat-side-esum-title">Contents</span>
+            <span
+              class="chat-side-leader"
+              aria-hidden="true"
+            />
+            <span class="chat-side-esum-live">{{ tocSummary }}</span>
+          </button>
+        </div>
+        <div class="chat-side-ebody">
+          <div
+            v-if="tocSegments.length === 0"
+            class="chat-side-toc-empty"
+          >
+            {{ tocLoading ? '…' : 'Nothing recorded yet' }}
+          </div>
+          <SessionSegmentList
+            v-else
+            :segments="tocSegments"
+            clickable
+            @jump="handleSegmentJump"
+          />
+        </div>
+      </section>
+
       <section
         class="chat-side-esec chat-side-outline-section"
         :class="{ focus: focusedSection === 'outline' }"
@@ -162,8 +202,18 @@ import { useSessionsStore } from '@/stores/sessions'
 import SystemPromptPanel from './SystemPromptPanel.vue'
 import TodoProgressPanel from './TodoProgressPanel.vue'
 import VariablesPanel from './VariablesPanel.vue'
+import SessionSegmentList from '@/components/common/SessionSegmentList.vue'
+import { platformApi } from '@/platform'
+import type { SessionSegment } from '@/types'
 
-type SectionId = 'outline' | 'system' | 'todo' | 'variables'
+type SectionId = 'toc' | 'outline' | 'system' | 'todo' | 'variables'
+
+/**
+ * Sections that may be restored from storage; 'outline' is the fallback.
+ * Declared here rather than beside readStoredFocus because that runs during
+ * setup, before a const further down the file has initialised.
+ */
+const RESTORABLE_SECTIONS: readonly SectionId[] = ['toc', 'system', 'todo', 'variables']
 
 interface TodoProgressSummary {
   done: number
@@ -190,6 +240,7 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   outlineTargetChange: [target: HTMLElement | null]
   toggleCollapsed: []
+  jumpToMessage: [sessionId: string, messageId: string]
 }>()
 
 const FOCUS_STORAGE_KEY = 'chatSideFocusedSection'
@@ -203,6 +254,44 @@ const systemPromptPanelRef = ref<InstanceType<typeof SystemPromptPanel> | null>(
 const systemPromptRefreshing = ref(false)
 const focusedSection = ref<SectionId>(readStoredFocus())
 const outlineSummary = ref('')
+
+// —— 会话目录 ——
+const tocSegments = ref<SessionSegment[]>([])
+const tocLoading = ref(false)
+
+const tocSummary = computed(() => {
+  if (tocLoading.value) return ''
+  const count = tocSegments.value.length
+  return count ? `${count}` : ''
+})
+
+/**
+ * Segments are written after the session goes quiet, so the list is stale by
+ * construction. Reloading when this section takes focus is the cheapest way to
+ * stay current without polling a file on a timer.
+ */
+async function loadToc(): Promise<void> {
+  const sessionId = props.sessionId
+  if (!sessionId) {
+    tocSegments.value = []
+    return
+  }
+  tocLoading.value = true
+  try {
+    const response = await platformApi.getSessionSegments(sessionId)
+    if (props.sessionId !== sessionId) return
+    tocSegments.value = response.success ? response.segments : []
+  } catch {
+    tocSegments.value = []
+  } finally {
+    tocLoading.value = false
+  }
+}
+
+function handleSegmentJump(segment: SessionSegment): void {
+  if (!props.sessionId || !segment.startMessageId) return
+  emit('jumpToMessage', props.sessionId, segment.startMessageId)
+}
 const systemSummary = ref('')
 const todoProgress = ref<TodoProgressSummary | null>(null)
 const variablesSummary = ref('')
@@ -222,7 +311,10 @@ const todoSummary = computed(() => {
 
 function readStoredFocus(): SectionId {
   const stored = localStorage.getItem(FOCUS_STORAGE_KEY)
-  return stored === 'system' || stored === 'todo' || stored === 'variables' ? stored : 'outline'
+  // Derived from SectionId rather than listed inline: the previous hand-written
+  // chain silently dropped any section added later, sending focus back to
+  // 'outline' on every reload.
+  return RESTORABLE_SECTIONS.includes(stored as SectionId) ? (stored as SectionId) : 'outline'
 }
 
 function setFocus(section: SectionId) {
@@ -286,6 +378,10 @@ watch(showTodoProgressPanel, (visible) => {
 
 watch(isDraftSession, (draft) => {
   if (draft && focusedSection.value === 'variables') setFocus('outline')
+}, { immediate: true })
+
+watch([() => props.sessionId, focusedSection], ([, section]) => {
+  if (section === 'toc') void loadToc()
 }, { immediate: true })
 
 watch(() => props.sessionId, () => {
@@ -528,5 +624,12 @@ onUnmounted(() => {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* 目录空态:与 leader 线同一淡墨,不喧宾夺主 */
+.chat-side-toc-empty {
+  font-size: 11.5px;
+  color: var(--ui-text-muted-fg, var(--muted));
+  font-style: italic;
 }
 </style>

@@ -546,18 +546,64 @@ export function normalizeLineEndings(text: string): string {
   return text.replace(/\r\n/g, '\n')
 }
 
+const TRIM_DIFF_HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/
+
+/**
+ * Flags which lines are hunk-body content by counting them off against the
+ * `@@` headers, the way git parses patches. Prefix-pattern classification is
+ * ambiguous: a deleted `-- foo` line (Lua/SQL comments) serializes as
+ * `--- foo` and would be skipped as a file header. Returns null when the diff
+ * has no hunk headers (bare fragments), where counting is impossible.
+ */
+function flagHunkContentLines(lines: string[]): boolean[] | null {
+  const flags = new Array<boolean>(lines.length).fill(false)
+  let sawHeader = false
+  let i = 0
+  while (i < lines.length) {
+    const header = lines[i].match(TRIM_DIFF_HUNK_HEADER)
+    if (!header) {
+      i += 1
+      continue
+    }
+    sawHeader = true
+    let remainingOld = header[2] !== undefined ? parseInt(header[2], 10) : 1
+    let remainingNew = header[4] !== undefined ? parseInt(header[4], 10) : 1
+    i += 1
+    while (i < lines.length && (remainingOld > 0 || remainingNew > 0)) {
+      const prefix = lines[i][0]
+      if (prefix === '\\') {
+        i += 1
+        continue
+      }
+      if (prefix === '+') remainingNew -= 1
+      else if (prefix === '-') remainingOld -= 1
+      else {
+        remainingOld -= 1
+        remainingNew -= 1
+      }
+      flags[i] = true
+      i += 1
+    }
+  }
+  return sawHeader ? flags : null
+}
+
 /**
  * Trim diff output for cleaner display
  */
 export function trimDiff(diff: string): string {
   const lines = diff.split('\n')
-  const contentLines = lines.filter(
-    (line) =>
-      (line.startsWith('+') || line.startsWith('-') || line.startsWith(' ')) &&
-      !line.startsWith('---') &&
-      !line.startsWith('+++')
-  )
+  // Header-less fragments fall back to prefix classification; real patches
+  // are walked by hunk-header counts so `---`-looking deletions participate.
+  const countedFlags = flagHunkContentLines(lines)
+  const isContentLine = countedFlags
+    ? (line: string, index: number) => countedFlags[index]
+    : (line: string) =>
+        (line.startsWith('+') || line.startsWith('-') || line.startsWith(' ')) &&
+        !line.startsWith('---') &&
+        !line.startsWith('+++')
 
+  const contentLines = lines.filter((line, index) => isContentLine(line, index))
   if (contentLines.length === 0) return diff
 
   let min = Infinity
@@ -571,12 +617,8 @@ export function trimDiff(diff: string): string {
 
   if (min === Infinity || min === 0) return diff
 
-  const trimmedLines = lines.map((line) => {
-    if (
-      (line.startsWith('+') || line.startsWith('-') || line.startsWith(' ')) &&
-      !line.startsWith('---') &&
-      !line.startsWith('+++')
-    ) {
+  const trimmedLines = lines.map((line, index) => {
+    if (isContentLine(line, index)) {
       const prefix = line[0]
       const content = line.slice(1)
       return prefix + content.slice(min)

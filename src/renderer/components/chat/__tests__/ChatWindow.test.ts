@@ -120,6 +120,7 @@ function installElectronAPI() {
       saveUIState: vi.fn().mockResolvedValue({ success: true }),
       getSessionCacheStats: vi.fn().mockResolvedValue({ size: 0, maxSize: 10, cachedSessionIds: [] }),
       evictSessionCache: vi.fn().mockResolvedValue({ success: true }),
+      closeWindow: vi.fn().mockResolvedValue({ success: true }),
     },
   })
 }
@@ -227,7 +228,7 @@ describe('ChatWindow tab switching', () => {
     expect(vi.mocked((window as any).electronAPI.evictSessionCache)).toHaveBeenCalledWith('session-2')
   })
 
-  it('closing the only chat tab of the only panel is refused', async () => {
+  it('closing the only chat tab of the only panel closes the window instead', async () => {
     const workspace = useWorkspaceStore()
     const wrapper = mount(ChatWindow)
     await settle()
@@ -235,9 +236,24 @@ describe('ChatWindow tab switching', () => {
     await wrapper.find('.close-tab-btn').trigger('click')
     await settle()
 
+    // The store still refuses to empty the workspace — the window goes away instead.
     expect(workspace.tabsOf('main')).toHaveLength(1)
     expect(wrapper.findAll('.tab-button').map(button => button.attributes('data-type'))).toEqual(['chat'])
     expect(vi.mocked((window as any).electronAPI.evictSessionCache)).not.toHaveBeenCalled()
+    expect(vi.mocked((window as any).electronAPI.closeWindow)).toHaveBeenCalledOnce()
+  })
+
+  it('closing a tab with siblings does not close the window', async () => {
+    const workspace = useWorkspaceStore()
+    workspace.openSession('session-2')
+    const wrapper = mount(ChatWindow)
+    await settle()
+
+    await wrapper.findAll('.close-tab-btn')[1].trigger('click')
+    await settle()
+
+    expect(workspace.tabsOf('main')).toHaveLength(1)
+    expect(vi.mocked((window as any).electronAPI.closeWindow)).not.toHaveBeenCalled()
   })
 
   it('closing a draft tab discards the draft instead of evicting cache', async () => {

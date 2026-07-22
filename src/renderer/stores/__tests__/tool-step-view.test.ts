@@ -49,10 +49,51 @@ describe('buildToolStepView', () => {
     expect(view.preview).toBe('a.ts')
     expect(view.filePath).toBe('/Users/me/project/src/a.ts')
     expect(view.fileName).toBe('a.ts')
-    expect(view.streamingContent?.content).toBe('hello\nworld')
+    // While receiving, the settled preview must not exist — the draft view
+    // owns the presentation and marks everything it knows as measured.
+    expect(view.streamingContent).toBeNull()
+    expect(view.streamingDraft?.kind).toBe('write')
+    expect(view.streamingDraft?.content).toEqual({ text: 'hello\nworld', open: false })
+    expect(view.streamingDraft?.complete).toBe(true)
     expect(view.hasDetails).toBe(true)
     // Nothing is being asked of the reader yet, so the row stays quiet.
     expect(view.defaultExpanded).toBe(false)
+  })
+
+  it('mounts the cursor on the open field and withholds a half-received path', () => {
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        toolId: 'edit',
+        toolName: 'edit',
+        status: 'input-streaming',
+        streamingArgs: '{"edits": [{"oldText": "const a = 1',
+      }),
+    }))
+
+    const draft = view.streamingDraft
+    expect(draft?.kind).toBe('edit')
+    expect(draft?.complete).toBe(false)
+    expect(draft?.openPath).toBe('edits[0].oldText')
+    expect(draft?.replacements).toEqual([
+      { index: 0, find: { text: 'const a = 1', open: true }, replace: null },
+    ])
+    // The path has not even started — the title must not invent a file name.
+    expect(draft?.pathPending).toBe(true)
+    expect(view.filePath).toBe('')
+    expect(view.fileName).toBe('')
+  })
+
+  it('never surfaces a path whose closing quote has not arrived', () => {
+    const view = buildToolStepView(step({
+      toolCall: tc({
+        status: 'input-streaming',
+        streamingArgs: '{"path":"/Users/me/proj',
+      }),
+    }))
+
+    expect(view.streamingDraft?.filePath).toBe('')
+    expect(view.streamingDraft?.pathPending).toBe(true)
+    expect(view.filePath).toBe('')
   })
 
   it('can build a lightweight row without parsing heavy details', () => {
@@ -176,21 +217,25 @@ describe('buildToolStepView', () => {
     expect(view.defaultExpanded).toBe(false)
   })
 
-  it('caches streaming write parsing for the same tool input length and status', () => {
-    const streamingStep = step({
-      toolCall: tc({
-        status: 'input-streaming',
-        streamingArgs: '{"path":"src/a.ts","content":"cached"}',
-      }),
+  it('feeds the draft parser incrementally as streamingArgs grows', () => {
+    const toolCall = tc({
+      status: 'input-streaming',
+      streamingArgs: '{"path":"src/a.ts","content":"par',
     })
+    const streamingStep = step({ toolCall })
 
     const first = buildToolStepView(streamingStep)
-    const second = buildToolStepView(streamingStep)
+    expect(first.streamingDraft?.content).toEqual({ text: 'par', open: true })
+    expect(first.streamingDraft?.charsReceived).toBe(toolCall.streamingArgs!.length)
 
-    expect(second.streamingContent).toBe(first.streamingContent)
+    toolCall.streamingArgs += 'tial"}'
+    const second = buildToolStepView(streamingStep)
+    expect(second.streamingDraft?.content).toEqual({ text: 'partial', open: false })
+    expect(second.streamingDraft?.complete).toBe(true)
+    expect(second.streamingDraft?.charsReceived).toBe(toolCall.streamingArgs!.length)
   })
 
-  it('renders all rows for large streaming write previews without the 160 row cap', () => {
+  it('carries large streaming write content without a cap or invented counts', () => {
     const content = Array.from({ length: 220 }, (_, index) => `line ${index + 1}`).join('\n')
     const view = buildToolStepView(step({
       toolCall: tc({
@@ -199,43 +244,14 @@ describe('buildToolStepView', () => {
       }),
     }))
 
-    expect(view.streamingContent?.additions).toBe(220)
-    expect(view.streamingContent?.isTruncated).toBe(false)
-    expect(view.streamingContent?.omittedLines).toBe(0)
-    expect(view.streamingPreviewLines.some(line => line.text.includes('lines omitted'))).toBe(false)
-    expect(view.streamingPreviewLines).toHaveLength(220)
+    expect(view.streamingDraft?.content?.text).toBe(content)
+    // No predicted +N/−N anywhere: counts are a measurement of the applied
+    // change and do not exist before execution.
+    expect(view.streamingContent).toBeNull()
+    expect(view.streamingPreviewLines).toEqual([])
   })
 
-  it('keeps streaming write rendered rows aligned with additions for trailing newlines', () => {
-    const view = buildToolStepView(step({
-      toolCall: tc({
-        status: 'input-streaming',
-        streamingArgs: JSON.stringify({ path: 'src/newline.ts', content: 'line 1\nline 2\n' }),
-      }),
-    }))
-
-    expect(view.streamingContent?.additions).toBe(2)
-    expect(view.streamingPreviewLines).toEqual([
-      { kind: 'content', text: 'line 1' },
-      { kind: 'content', text: 'line 2' },
-    ])
-  })
-
-  it('previews a streaming write as plain content, never as diff additions', () => {
-    const view = buildToolStepView(step({
-      toolCall: tc({
-        status: 'input-streaming',
-        streamingArgs: JSON.stringify({ path: 'src/new.ts', content: 'alpha\nbeta\n' }),
-      }),
-    }))
-
-    // A write has never read the old file, so nothing here may claim to be an
-    // addition relative to it.
-    expect(view.streamingPreviewLines.every(line => line.kind === 'content')).toBe(true)
-    expect(view.streamingPreviewLines.every(line => !line.text.startsWith('+'))).toBe(true)
-  })
-
-  it('previews a streaming edit as its find/replace pair, without file line numbers', () => {
+  it('previews a streaming edit as its find/replace pair with settled state', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         toolId: 'edit',
@@ -251,20 +267,18 @@ describe('buildToolStepView', () => {
       }),
     }))
 
-    expect(view.streamingPreviewLines).toEqual([
-      { kind: 'label', text: 'Find' },
-      { kind: 'old', text: 'const a = 1' },
-      { kind: 'old', text: 'const b = 2' },
-      { kind: 'label', text: 'Replace with' },
-      { kind: 'new', text: 'const a = 1' },
-      { kind: 'new', text: 'const b = 3' },
+    expect(view.streamingDraft?.replacements).toEqual([
+      {
+        index: 0,
+        find: { text: 'const a = 1\nconst b = 2\n', open: false },
+        replace: { text: 'const a = 1\nconst b = 3\n', open: false },
+      },
     ])
-    // Line numbers would be fabricated: the offsets are within the replacement,
-    // not positions in the file, which nothing has read yet.
-    expect(view.streamingPreviewLines.every(line => !('oldNum' in line))).toBe(true)
+    expect(view.streamingDraft?.filePath).toBe('src/app.ts')
+    expect(view.streamingDraft?.pathPending).toBe(false)
   })
 
-  it('keeps deletion-only streaming edits visible', () => {
+  it('keeps deletion-only streaming edits visible in the draft', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         toolId: 'edit',
@@ -277,16 +291,16 @@ describe('buildToolStepView', () => {
       }),
     }))
 
-    expect(view.streamingContent?.content).toBe('')
-    expect(view.streamingContent?.deletions).toBe(1)
-    expect(view.streamingPreviewLines).toEqual([
-      { kind: 'label', text: 'Find' },
-      { kind: 'old', text: 'remove me' },
-      { kind: 'label', text: 'Replace with' },
+    expect(view.streamingDraft?.replacements).toEqual([
+      {
+        index: 0,
+        find: { text: 'remove me\n', open: false },
+        replace: { text: '', open: false },
+      },
     ])
   })
 
-  it('numbers the labels when a streaming edit has several replacements', () => {
+  it('keeps every replacement of a multi-edit draft, in index order', () => {
     const view = buildToolStepView(step({
       toolCall: tc({
         toolId: 'edit',
@@ -302,33 +316,8 @@ describe('buildToolStepView', () => {
       }),
     }))
 
-    expect(view.streamingPreviewLines.filter(line => line.kind === 'label').map(line => line.text)).toEqual([
-      'Find 1',
-      'Replace with 1',
-      'Find 2',
-      'Replace with 2',
-    ])
-  })
-
-  it('renders every row of a large streaming edit without a cap', () => {
-    const oldText = Array.from({ length: 180 }, (_, index) => `old ${index + 1}`).join('\n')
-    const newText = Array.from({ length: 180 }, (_, index) => `new ${index + 1}`).join('\n')
-    const view = buildToolStepView(step({
-      toolCall: tc({
-        toolId: 'edit',
-        toolName: 'edit',
-        status: 'input-streaming',
-        streamingArgs: JSON.stringify({
-          path: 'src/app.ts',
-          edits: [{ oldText, newText }],
-        }),
-      }),
-    }))
-
-    expect(view.streamingContent?.additions).toBe(180)
-    expect(view.streamingContent?.deletions).toBe(180)
-    // 180 old + 180 new + the two labels.
-    expect(view.streamingPreviewLines).toHaveLength(362)
+    expect(view.streamingDraft?.replacements.map(replacement => replacement.index)).toEqual([0, 1])
+    expect(view.streamingDraft?.replacements[1].replace).toEqual({ text: 'new two\n', open: false })
   })
 
   it('extracts filePath from step.result payload if args.path is missing', () => {
@@ -414,6 +403,53 @@ describe('buildSyntheticToolCall', () => {
     }))
     expect(call.toolName).toBe('read')
     expect(call.arguments.path).toBe('IVARouter.lua')
+  })
+})
+
+describe('edit replaceAll', () => {
+  const editStep = (overrides: Partial<ToolCall>) => step({
+    title: 'edit',
+    toolCall: tc({ toolId: 'edit', toolName: 'edit', ...overrides }),
+  })
+
+  it('carries the flag through the streaming draft', () => {
+    const view = buildToolStepView(editStep({
+      status: 'input-streaming',
+      streamingArgs: '{"path":"/p/a.sql","edits":[{"oldText":"x","newText":"y","replaceAll":true}]}',
+    }))
+
+    expect(view.streamingDraft?.replacements[0]?.replaceAll).toBe(true)
+  })
+
+  it('leaves the flag off when it is absent or false', () => {
+    for (const tail of ['', ',"replaceAll":false']) {
+      const view = buildToolStepView(editStep({
+        status: 'input-streaming',
+        streamingArgs: `{"path":"/p/a.sql","edits":[{"oldText":"x","newText":"y"${tail}}]}`,
+      }))
+
+      expect(view.streamingDraft?.replacements[0]?.replaceAll).toBeFalsy()
+    }
+  })
+
+  it('labels all-occurrence edits in the settled preview', () => {
+    const view = buildToolStepView(editStep({
+      status: 'executing',
+      arguments: {
+        path: '/p/a.sql',
+        edits: [
+          { oldText: 'x', newText: 'y', replaceAll: true },
+          { oldText: 'k', newText: 'v' },
+        ],
+      },
+    }))
+
+    const labels = view.streamingPreviewLines
+      .filter(line => line.kind === 'label')
+      .map(line => line.text)
+
+    expect(labels).toContain('Find 1 (all occurrences)')
+    expect(labels).toContain('Find 2')
   })
 })
 

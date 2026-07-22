@@ -27,6 +27,8 @@ export interface OnethingChatTitleOptions {
   thinkingEffort?: OnethingThinkingEffort
   serviceTier?: string
   debugSessionId?: string
+  /** Side channel for token usage, so title generation can be billed. */
+  onUsage?: (usage: OnethingProviderTokenUsage) => void
 }
 
 export interface OnethingChatTitleGenerationRequest {
@@ -39,6 +41,7 @@ export interface OnethingChatTitleGenerationRequest {
     serviceTier?: string
     debugPurpose: 'chat-title'
     debugSessionId?: string
+    onUsage?: (usage: OnethingProviderTokenUsage) => void
   }
 }
 
@@ -58,6 +61,8 @@ export interface GenerateOnethingProviderChatTitleOptions<TConfig = unknown> {
 
 export interface OnethingTextChatResponseResult {
   text: string
+  /** Present when the provider reported it; used to bill side-line calls. */
+  usage?: OnethingProviderTokenUsage
 }
 
 export interface OnethingChatResponseWithReasoningResult extends OnethingTextChatResponseResult {
@@ -157,6 +162,12 @@ export interface GenerateOnethingTextChatResponseOptions<
   config: TConfig
   messages: TMessage[]
   options: TOptions
+  /**
+   * Side channel for token usage. This function returns the response text
+   * (a contract with callers all over the repo), so usage rides out here
+   * rather than widening the return type.
+   */
+  onUsage?: (usage: OnethingProviderTokenUsage) => void
   generateWithReasoning(
     providerId: string,
     config: TConfig,
@@ -456,7 +467,7 @@ export async function generateOnethingProviderChatTitle<TConfig = unknown>(
     options.providerId,
     options.config,
     request.messages,
-    request.options,
+    { ...request.options, onUsage: options.options?.onUsage },
   )
   return cleanOnethingGeneratedChatTitle(response)
 }
@@ -475,6 +486,7 @@ export async function generateOnethingTextChatResponse<
     options.messages,
     options.options,
   )
+  if (result.usage) options.onUsage?.(result.usage)
   return result.text
 }
 

@@ -61,6 +61,13 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 */
 	const sessionGoals = ref<Map<string, SessionGoal | null>>(new Map());
 
+	/**
+	 * Full goal history per session, oldest first. Pushed down by the main
+	 * process with every goal update — the "which one is current" rule stays
+	 * on that side, so this is a plain mirror rather than a second opinion.
+	 */
+	const sessionGoalHistory = ref<Map<string, SessionGoal[]>>(new Map());
+
 	const currentSession = computed<VisibleSessionListItem | undefined>(() => {
 		return (
 			newChatDrafts.value.find(
@@ -985,9 +992,17 @@ export const useSessionsStore = defineStore("sessions", () => {
 	 * Apply an incoming `session:goal-updated` event (null = goal cleared).
 	 * The map is the single source of truth for the goal status bar.
 	 */
-	function updateSessionGoal(sessionId: string, goal: SessionGoal | null): void {
+	function updateSessionGoal(
+		sessionId: string,
+		goal: SessionGoal | null,
+		goals?: SessionGoal[],
+	): void {
 		sessionGoals.value.set(sessionId, goal);
 		triggerRef(sessionGoals);
+		if (goals) {
+			sessionGoalHistory.value.set(sessionId, goals);
+			triggerRef(sessionGoalHistory);
+		}
 	}
 
 	/** Initial fetch for the goal status bar (live updates ride the event). */
@@ -997,6 +1012,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 			const goal = response.success ? (response.goal ?? null) : null;
 			sessionGoals.value.set(sessionId, goal);
 			triggerRef(sessionGoals);
+			if (response.success && response.goals) {
+				sessionGoalHistory.value.set(sessionId, response.goals);
+				triggerRef(sessionGoalHistory);
+			}
 			return goal;
 		} catch (error) {
 			console.error("[Sessions] Failed to fetch goal:", error);
@@ -1069,6 +1088,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		isActive,
 		sessionVariables,
 		sessionGoals,
+		sessionGoalHistory,
 		currentSession,
 		sessionCount,
 		filteredSessions,

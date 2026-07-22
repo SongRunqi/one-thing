@@ -194,6 +194,13 @@ export interface OnethingAgentLoopRuntimeAdapters<
 		toolSettings?: CoreAgentLoopToolSettings["tools"],
 	): Promise<TTool[]>;
 	getMCPRouterToolDefinition?(): TTool | null;
+	/**
+	 * Per-agent tool allowlist (tool ids). Return null/undefined for no
+	 * restriction. Hosts without agent-scoped tools can omit this.
+	 */
+	getAgentToolAllowlist?(
+		agentId: string | undefined,
+	): Promise<string[] | null | undefined> | string[] | null | undefined;
 	buildContextVariablesPromptText(
 		sessionId: string,
 	): Promise<string | undefined> | string | undefined;
@@ -301,6 +308,13 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 		toolSettings?: CoreAgentLoopToolSettings["tools"],
 	): Promise<TTool[]>;
 	getMCPRouterToolDefinition?(): TTool | null;
+	/**
+	 * Per-agent tool allowlist (tool ids). Return null/undefined for no
+	 * restriction. Hosts without agent-scoped tools can omit this.
+	 */
+	getAgentToolAllowlist?(
+		agentId: string | undefined,
+	): Promise<string[] | null | undefined> | string[] | null | undefined;
 	buildContextVariablesPromptText(
 		sessionId: string,
 	): Promise<string | undefined> | string | undefined;
@@ -424,6 +438,7 @@ export function createOnethingAgentLoopRuntimeAdapters<
 		resolveModelMaxOutputTokens: host.resolveModelMaxOutputTokens,
 		getEnabledTools: host.getEnabledTools,
 		getMCPRouterToolDefinition: host.getMCPRouterToolDefinition,
+		getAgentToolAllowlist: host.getAgentToolAllowlist,
 		buildContextVariablesPromptText: host.buildContextVariablesPromptText,
 		buildProjectPromptVars: host.buildProjectPromptVars,
 		buildPrompt: host.buildPrompt,
@@ -657,11 +672,15 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	const mcpRouterTool = toolLoadingEnabled
 		? (adapters.getMCPRouterToolDefinition?.() ?? null)
 		: null;
+	const agentToolAllowlist = toolLoadingEnabled
+		? await adapters.getAgentToolAllowlist?.(preparation.agentId)
+		: null;
 	const toolPlan = planAgentLoopTools({
 		toolLoadingEnabled,
 		allEnabledTools,
 		mcpRouterTool,
 		toolSettings: effectiveToolSettings,
+		allowedToolIds: agentToolAllowlist,
 	});
 	const projectVars = adapters.buildProjectPromptVars(sessionWorkingDir);
 	const budget = await resolveOnethingAgentLoopContextBudget(

@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>输入框命令位 · 四案</title>
+<style>
+/* ————————————————————————————————————————————
+   纸与墨 —— 与 composer 的图纸风格对齐:
+   零填充、一条肯定的轮廓线、mono 图签浮在边框上
+   ———————————————————————————————————————————— */
+:root {
+  --paper: #faf8f1;
+  --paper-deep: #f3efe5;
+  --ink: #29241c;
+  --ink-60: rgba(41, 36, 28, 0.62);
+  --ink-45: rgba(41, 36, 28, 0.46);
+  --ink-30: rgba(41, 36, 28, 0.30);
+  --ink-16: rgba(41, 36, 28, 0.16);
+  --ink-08: rgba(41, 36, 28, 0.08);
+  --accent: #33647e;
+  --danger: #b8452c;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #191611;
+    --paper-deep: #14110d;
+    --ink: #e8e1d2;
+    --ink-60: rgba(232, 225, 210, 0.66);
+    --ink-45: rgba(232, 225, 210, 0.48);
+    --ink-30: rgba(232, 225, 210, 0.32);
+    --ink-16: rgba(232, 225, 210, 0.18);
+    --ink-08: rgba(232, 225, 210, 0.09);
+    --accent: #7fb0c9;
+    --danger: #d8765c;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 44px 40px 96px;
+}
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.page-head { max-width: 1280px; margin: 0 auto 40px; }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: "";
+  display: block;
+  width: 88px;
+  border-bottom: 2px solid var(--ink);
+  margin-top: 10px;
+}
+.page-head p { margin-top: 12px; color: var(--ink-60); max-width: 64em; }
+.page-head .rule {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ink-16);
+  font-size: 12px;
+  color: var(--ink-45);
+}
+
+.options {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 56px 60px;
+}
+@media (max-width: 1080px) { .options { grid-template-columns: 1fr; } }
+
+.opt-head { margin-bottom: 22px; }
+.opt-head h2 { font-size: 15px; font-weight: 600; letter-spacing: 0.06em; }
+.opt-head h2 em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-45);
+  margin-left: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.opt-head p { font-size: 12.5px; color: var(--ink-60); margin-top: 5px; }
+
+/* 舞台:模拟聊天画布,composer 居中 */
+.stage {
+  background: var(--paper-deep);
+  padding: 26px 22px 22px;
+  border: 1px dashed var(--ink-16);
+  border-radius: 4px;
+}
+
+/* ———————————— composer 本体(四案共用底座) ———————————— */
+.composer-stack { position: relative; width: 100%; }
+.composer-anchor { position: relative; width: 100%; }
+
+.composer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ink-30);
+  border-radius: 4px;
+  background: transparent;
+  overflow: hidden;
+}
+
+/* 图签:浮在顶边上,用画布底色"切断"轮廓线 */
+.frame-label {
+  position: absolute;
+  top: -7px;
+  left: 12px;
+  z-index: 2;
+  padding: 0 6px;
+  background: var(--paper-deep);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--ink-45);
+  user-select: none;
+}
+
+.input-area { padding: 12px 12px 10px 14px; min-height: 44px; }
+.draft {
+  font-size: 15px;
+  font-family: Georgia, "Songti SC", serif;
+  color: var(--ink);
+}
+.draft.placeholder { color: var(--ink-30); }
+.caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 17px;
+  vertical-align: -3px;
+  background: var(--ink);
+  animation: blink 1.1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+
+/* 底部工具条:分格状态行 */
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  min-height: 32px;
+  margin-top: 2px;
+  border-top: 1px solid var(--ink-30);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--ink-60);
+  user-select: none;
+}
+.toolbar .left, .toolbar .right { display: flex; align-items: stretch; }
+.toolbar .cell {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 11px;
+  border-right: 1px solid var(--ink-16);
+}
+.toolbar .right .cell { border-right: 0; border-left: 1px solid var(--ink-16); }
+.toolbar .send {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 13px;
+  border-left: 1px solid var(--ink-30);
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+
+/* ———————————— 案一:挂签行 ———————————— */
+.dock { position: relative; padding-top: 7px; margin-bottom: 14px; }
+.dock-frame {
+  position: relative;
+  width: 100%;
+  border: 1px solid var(--ink-30);
+  border-radius: 4px;
+}
+.dock-frame > .frame-label { top: -7px; left: 10px; }
+.dock-tray { display: flex; align-items: center; gap: 8px; padding: 10px 12px 7px; }
+.cmd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 4px 0 9px;
+  border: 1px solid var(--ink-30);
+  border-radius: 3px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.cmd-chip b { font-weight: 600; }
+.cmd-chip span { color: var(--ink-45); }
+.cmd-chip .x,
+.tag-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ink-45);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.cmd-chip .x:hover, .tag-x:hover { background: var(--ink-08); color: var(--ink); }
+
+/* ———————————— 案二:标题块(命令进图签) ———————————— */
+.frame-label.is-cmd {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  top: -8px;
+  padding: 0 6px 0 6px;
+  color: var(--accent);
+  pointer-events: auto;
+}
+.frame-label.is-cmd .kind { color: var(--ink-45); }
+.frame-label.is-cmd .name { letter-spacing: 1.2px; font-size: 10px; }
+.frame-label.is-cmd .tag-x { width: 13px; height: 13px; font-size: 12px; }
+.composer.has-cmd-tag { border-color: color-mix(in srgb, var(--accent) 42%, var(--ink-30)); }
+
+/* ———————————— 案三:抬头线 ———————————— */
+.letterhead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 2px 6px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--ink-30);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.letterhead .name { font-weight: 600; letter-spacing: 0.04em; }
+.letterhead .desc {
+  color: var(--ink-45);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.letterhead .leader {
+  flex: 1;
+  border-bottom: 1px dotted var(--ink-16);
+  transform: translateY(-3px);
+}
+.letterhead .tag-x { align-self: center; }
+
+/* ———————————— 案四:接管态 ———————————— */
+.composer.mode {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--ink-30));
+}
+.frame-label.mode { color: var(--accent); }
+.mode-escape {
+  position: absolute;
+  top: -8px;
+  right: 12px;
+  z-index: 2;
+  padding: 0 6px;
+  border: 0;
+  background: var(--paper-deep);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--ink-45);
+  text-decoration: underline;
+  text-decoration-color: var(--ink-16);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.mode-escape:hover { color: var(--danger); text-decoration-color: currentColor; }
+.mode-hint {
+  padding: 0 14px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--ink-45);
+}
+
+/* ———————————— 每案的取舍表 ———————————— */
+.trade { margin-top: 18px; font-size: 12px; }
+.trade dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+.trade dt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  letter-spacing: 1.6px;
+  color: var(--ink-45);
+  padding-top: 3px;
+}
+.trade dd { color: var(--ink-60); }
+.trade dd b { color: var(--ink); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>输入框命令位 · 四案</h1>
+  <p>
+    命令不再画在输入框内部。四个方案都把 <span class="mono">/command</span> 抬到输入框之上或边界上,
+    正文只留参数;四者共用同一底座(图纸边框、mono 图签、分格工具条),差别在于命令"占多大地方、占什么地方"。
+  </p>
+  <p class="rule">
+    共同前提:<span class="mono">/cmd</span> 文本仍留在草稿里当唯一事实来源,编辑器把它隐藏,呈现层负责抬起来。
+    示意场景:已选中 <span class="mono">/compact</span>,用户正在补参数。
+  </p>
+</div>
+
+<div class="options">
+
+  <!-- ———————————— 案一 ———————————— -->
+  <section class="option">
+    <div class="opt-head">
+      <h2>案一 · 挂签行<em>dock row</em></h2>
+      <p>与附件行(FILES)完全同构的独立框行,命令是 dock 里的又一条"随草稿走的上下文"。</p>
+    </div>
+    <div class="stage">
+      <div class="composer-stack">
+        <div class="dock">
+          <div class="dock-frame">
+            <span class="frame-label">CMD</span>
+            <div class="dock-tray">
+              <span class="cmd-chip">
+                <b>/compact</b>
+                <span>压缩较早的对话历史</span>
+                <button class="x" aria-label="移除">×</button>
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="composer-anchor">
+          <span class="frame-label">DRAFT</span>
+          <div class="composer">
+            <div class="input-area">
+              <div class="draft">保留最近三轮<span class="caret"></span></div>
+            </div>
+            <div class="toolbar">
+              <div class="left">
+                <span class="cell">opus-4.8</span>
+                <span class="cell">ctx ▮▮▯▯ 34%</span>
+                <span class="cell">think:off</span>
+                <span class="cell">guard:ask</span>
+              </div>
+              <div class="right">
+                <span class="cell">♪</span>
+                <span class="cell">✆</span>
+                <span class="send">SEND ⏎</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="trade">
+      <dl>
+        <dt>强</dt><dd>与附件、引用、队列<b>同一套语法</b>,不需要新学;描述文案有地方放;移除目标大。</dd>
+        <dt>弱</dt><dd>为一个 token 起一整行,<b>纵向代价最大</b>;同时挂附件时 dock 叠三层显得吵。</dd>
+        <dt>适合</dt><dd>命令常带长参数、需要看清它到底是什么的场景。</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ———————————— 案二 ———————————— -->
+  <section class="option">
+    <div class="opt-head">
+      <h2>案二 · 标题块<em>title block</em></h2>
+      <p>命令直接顶替输入框自己的图签,长在边框线上。不新增任何元素,布局零位移。</p>
+    </div>
+    <div class="stage">
+      <div class="composer-stack">
+        <div class="composer-anchor">
+          <span class="frame-label is-cmd mono">
+            <span class="kind">CMD</span>
+            <span class="name">/COMPACT</span>
+            <button class="tag-x" aria-label="移除">×</button>
+          </span>
+          <div class="composer has-cmd-tag">
+            <div class="input-area">
+              <div class="draft">保留最近三轮<span class="caret"></span></div>
+            </div>
+            <div class="toolbar">
+              <div class="left">
+                <span class="cell">opus-4.8</span>
+                <span class="cell">ctx ▮▮▯▯ 34%</span>
+                <span class="cell">think:off</span>
+                <span class="cell">guard:ask</span>
+              </div>
+              <div class="right">
+                <span class="cell">♪</span>
+                <span class="cell">✆</span>
+                <span class="send">SEND ⏎</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="trade">
+      <dl>
+        <dt>强</dt><dd>最省地方,<b>零布局跳动</b>;图签本来就是"这张图是什么"的位置,语义天然吻合。</dd>
+        <dt>弱</dt><dd>9px 图签放不下描述;× 只有 13px,<b>点击目标偏小</b>;与语音/音乐争同一个图签位。</dd>
+        <dt>适合</dt><dd>命令短、用得熟、不想让草稿区跳动的日常路径。</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ———————————— 案三 ———————————— -->
+  <section class="option">
+    <div class="opt-head">
+      <h2>案三 · 抬头线<em>letterhead</em></h2>
+      <p>输入框上方一条公文抬头:命令居左、描述跟随、点线牵引到右端的移除。不是"框",只是一条线。</p>
+    </div>
+    <div class="stage">
+      <div class="composer-stack">
+        <div class="letterhead">
+          <span class="name">/compact</span>
+          <span class="desc">压缩较早的对话历史</span>
+          <span class="leader"></span>
+          <button class="tag-x" aria-label="移除">×</button>
+        </div>
+        <div class="composer-anchor">
+          <span class="frame-label">DRAFT</span>
+          <div class="composer">
+            <div class="input-area">
+              <div class="draft">保留最近三轮<span class="caret"></span></div>
+            </div>
+            <div class="toolbar">
+              <div class="left">
+                <span class="cell">opus-4.8</span>
+                <span class="cell">ctx ▮▮▯▯ 34%</span>
+                <span class="cell">think:off</span>
+                <span class="cell">guard:ask</span>
+              </div>
+              <div class="right">
+                <span class="cell">♪</span>
+                <span class="cell">✆</span>
+                <span class="send">SEND ⏎</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="trade">
+      <dl>
+        <dt>强</dt><dd>只花<b>一行的高度</b>却放得下全部描述;点线牵引让"命令—移除"读成一条完整的账目。</dd>
+        <dt>弱</dt><dd>多了一种新的"线"语汇,与 dock 的"框"语汇并存;夹在附件行之间时层级需要额外定夺。</dd>
+        <dt>适合</dt><dd>想要信息量但不肯付一整个框的中间路线。</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ———————————— 案四 ———————————— -->
+  <section class="option">
+    <div class="opt-head">
+      <h2>案四 · 接管态<em>mode</em></h2>
+      <p>不新增元素,而是让整个输入框<b>进入命令态</b>:边框转虚线、图签换成命令名、占位符变成该命令的用法。</p>
+    </div>
+    <div class="stage">
+      <div class="composer-stack">
+        <div class="composer-anchor">
+          <span class="frame-label mode">/COMPACT</span>
+          <button class="mode-escape">esc 退出</button>
+          <div class="composer mode">
+            <div class="input-area">
+              <div class="draft">保留最近三轮<span class="caret"></span></div>
+            </div>
+            <div class="mode-hint">用法 /compact [保留范围] · 压缩较早的对话历史</div>
+            <div class="toolbar">
+              <div class="left">
+                <span class="cell">opus-4.8</span>
+                <span class="cell">ctx ▮▮▯▯ 34%</span>
+                <span class="cell">think:off</span>
+                <span class="cell">guard:ask</span>
+              </div>
+              <div class="right">
+                <span class="cell">♪</span>
+                <span class="cell">✆</span>
+                <span class="send">RUN ⏎</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="trade">
+      <dl>
+        <dt>强</dt><dd>沿用现成的"<b>框本身即状态</b>"语言(录音态已经这么做);用法提示解决了参数不会写的真问题。</dd>
+        <dt>弱</dt><dd>状态最重,<b>与录音/转写态抢同一套表达</b>;送出键改字面需要额外的可访问性照顾。</dd>
+        <dt>适合</dt><dd>把"发消息"和"执行命令"当成两件事看待的产品取向。</dd>
+      </dl>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

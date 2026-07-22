@@ -10,6 +10,8 @@ export default defineConfig({
     alias: [
       { find: '@shared', replacement: resolve(projectRoot, 'src/shared') },
       { find: '@onething/core/agent-loop', replacement: resolve(projectRoot, 'packages/core/agent-loop/index.ts') },
+      { find: '@onething/core/engine/attachment-mime', replacement: resolve(projectRoot, 'packages/core/engine/attachment-mime.ts') },
+      { find: '@onething/core/engine/streaming-args', replacement: resolve(projectRoot, 'packages/core/engine/streaming-args.ts') },
       { find: '@onething/core/engine', replacement: resolve(projectRoot, 'packages/core/engine/index.ts') },
       { find: '@onething/core/http', replacement: resolve(projectRoot, 'packages/core/http/index.ts') },
       { find: '@onething/core/mcp', replacement: resolve(projectRoot, 'packages/core/mcp/index.ts') },

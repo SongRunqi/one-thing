@@ -65,6 +65,13 @@ export interface CoreHistoryContentPart {
 	encryptedReasoning?: string;
 	providerData?: AgentProviderData;
 	content?: string;
+	/** Which completion of the tool loop produced this part (1-based). */
+	turnIndex?: number;
+}
+
+export interface CoreHistoryStep {
+	toolCallId?: string;
+	turnIndex?: number;
 }
 
 export interface CoreHistoryToolCall {
@@ -87,6 +94,7 @@ export interface CoreHistoryChatMessage {
 	isStreaming?: boolean;
 	contentParts?: CoreHistoryContentPart[];
 	toolCalls?: CoreHistoryToolCall[];
+	steps?: CoreHistoryStep[];
 	usage?: { inputTokens?: number };
 }
 
@@ -538,6 +546,65 @@ function hasHistoryMessageContent(
 	);
 }
 
+interface HistoryTurnGroup {
+	turnIndex: number;
+	texts: string[];
+	reasonings: string[];
+	toolCalls: CoreHistoryToolCall[];
+}
+
+/**
+ * Reconstruct the per-completion structure of an assistant message from the
+ * persisted turnIndex data (contentParts for text/reasoning, steps for tool
+ * calls). Returns undefined — meaning "use the legacy collapsed rebuild" —
+ * unless the data is complete enough to split faithfully:
+ * every text/reasoning part and every replayed tool call must map to a
+ * completion. Old messages persisted before turnIndex existed fall back
+ * automatically, so this never guesses.
+ */
+function splitAssistantMessageIntoTurnGroups(
+	message: CoreHistoryChatMessage,
+	toolCalls: CoreHistoryToolCall[],
+): HistoryTurnGroup[] | undefined {
+	const parts = message.contentParts ?? [];
+	const groups = new Map<number, HistoryTurnGroup>();
+	const group = (turnIndex: number): HistoryTurnGroup => {
+		let entry = groups.get(turnIndex);
+		if (!entry) {
+			entry = { turnIndex, texts: [], reasonings: [], toolCalls: [] };
+			groups.set(turnIndex, entry);
+		}
+		return entry;
+	};
+
+	for (const part of parts) {
+		if (part.type !== "text" && part.type !== "reasoning") continue;
+		if (!part.content) continue;
+		if (typeof part.turnIndex !== "number") return undefined;
+		if (part.type === "text") group(part.turnIndex).texts.push(part.content);
+		else group(part.turnIndex).reasonings.push(part.content);
+	}
+
+	const turnByCallId = new Map<string, number>();
+	for (const step of message.steps ?? []) {
+		if (step.toolCallId && typeof step.turnIndex === "number") {
+			turnByCallId.set(step.toolCallId, step.turnIndex);
+		}
+	}
+	for (const toolCall of toolCalls) {
+		const turnIndex = turnByCallId.get(toolCall.id);
+		if (turnIndex === undefined) return undefined;
+		group(turnIndex).toolCalls.push(toolCall);
+	}
+
+	// The message-level content string is the merged rendering; if the parts
+	// carry no text while the message does, the parts are not authoritative.
+	const hasPartText = [...groups.values()].some((g) => g.texts.length > 0);
+	if (message.content && !hasPartText) return undefined;
+
+	return [...groups.values()].sort((a, b) => a.turnIndex - b.turnIndex);
+}
+
 function appendHistoryMessage<
 	TContent,
 	TMessage extends CoreHistoryChatMessage,
@@ -556,6 +623,63 @@ function appendHistoryMessage<
 			content: options.buildMessageContent(message),
 		});
 		return;
+	}
+
+	// Faithful rebuild: replay a multi-completion assistant message as the
+	// same sequence of assistant/tool elements the API produced live, instead
+	// of one merged monologue with every tool call batched at the end.
+	// providerData (encrypted reasoning etc.) is message-scoped, so messages
+	// carrying it keep the legacy collapsed shape untouched.
+	if (providerData.length === 0) {
+		const replayedToolCalls = completedHistoryToolCalls(message);
+		const turnGroups = splitAssistantMessageIntoTurnGroups(
+			message,
+			replayedToolCalls,
+		);
+		if (turnGroups && turnGroups.length > 1) {
+			// Budget the results in one pass over the whole message (identical
+			// byte semantics to the collapsed path), then distribute per turn.
+			const budgetedResults = new Map(
+				(useCompactedToolResults
+					? buildCompactedToolResultContent(replayedToolCalls, {
+							getAIToolName: toolNameForAI,
+							failureResultForAI: options.failureResultForAI,
+						})
+					: buildHistoryToolResultContent(replayedToolCalls, {
+							getAIToolName: toolNameForAI,
+							failureResultForAI: options.failureResultForAI,
+						})
+				).map((entry) => [entry.toolCallId, entry]),
+			);
+
+			for (const turn of turnGroups) {
+				if (turn.texts.length === 0 && turn.toolCalls.length === 0) continue;
+				const assistantMessage: CoreHistoryMessage & { role: "assistant" } = {
+					role: "assistant",
+					content: turn.texts.join("\n\n"),
+				};
+				const reasoning = turn.reasonings.join("\n\n").trim();
+				if (reasoning) assistantMessage.reasoningContent = reasoning;
+				if (turn.toolCalls.length > 0) {
+					assistantMessage.toolCalls = turn.toolCalls.map((toolCall) => ({
+						toolCallId: toolCall.id,
+						toolName: toolNameForAI(toolCall.toolId || toolCall.toolName),
+						args: toolCall.arguments,
+					}));
+				}
+				result.push(assistantMessage);
+
+				if (turn.toolCalls.length > 0) {
+					const turnResults = turn.toolCalls
+						.map((toolCall) => budgetedResults.get(toolCall.id))
+						.filter((entry) => entry !== undefined);
+					if (turnResults.length > 0) {
+						result.push({ role: "tool", content: turnResults });
+					}
+				}
+			}
+			return;
+		}
 	}
 
 	const assistantMessage: CoreHistoryMessage & { role: "assistant" } = {

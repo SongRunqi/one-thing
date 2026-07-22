@@ -1,6 +1,7 @@
 import type { EventBase, StreamChunkBase } from '../events/index.js'
 import type { JsonObject } from '../json.js'
 import type { CoreIPCEmitter, CoreReasoningPlacement } from './ipc-emitter.js'
+import type { CoreToolArgsFinalizedBy } from './stream-processor.js'
 
 export type CoreEventOnlyStreamChunk =
   | {
@@ -33,6 +34,7 @@ export type CoreEventOnlySessionEvent<
   | { type: 'tool:call'; toolCall: TToolCall }
   | { type: 'tool:result'; toolCall: TToolCall }
   | { type: 'tool:input-start'; toolCallId: string; toolName: string; toolCall: TToolCall }
+  | { type: 'tool:input-end'; toolCallId: string; stepId?: string; toolCall: TToolCall; receivedAt: number; finalizedBy: CoreToolArgsFinalizedBy }
   | { type: 'tool:execution-start'; toolCallId: string; stepId: string; toolName: string; args: JsonObject; startTime?: number }
   | { type: 'tool:execution-update'; toolCallId: string; stepId: string; partialResult: TToolPartialResult }
   | { type: 'tool:execution-end'; toolCallId: string; stepId: string; result?: TToolResult; isError?: boolean; error?: string; durationMs?: number }
@@ -275,6 +277,10 @@ export function createCoreEventOnlyEmitter<
 
     sendToolInputStart(toolCallId, toolName, toolCall) {
       emitSafe({ type: 'tool:input-start', toolCallId, toolName, toolCall })
+    },
+
+    sendToolInputEnd(toolCallId, stepId, toolCall, receivedAt, finalizedBy) {
+      emitSafe({ type: 'tool:input-end', toolCallId, stepId, toolCall, receivedAt, finalizedBy })
     },
 
     sendToolExecutionStart(toolCallId, stepId, toolName, args, startTime) {

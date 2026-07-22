@@ -151,6 +151,17 @@ export function createOnethingRadioConductor(
   /** A diagnosed world-is-broken condition; holds the programme (see option doc). */
   let systemicFault = false
   let lastSystemicCheckAt = Number.NEGATIVE_INFINITY
+  /**
+   * A fresh open/retune owes a cut-over: the moment songs for the NEW
+   * direction are on the shelf, the old direction's song yields mid-play —
+   * without this a retune stays inaudible until the current song ends
+   * (minutes), which reads as "换台没反应" (field complaint 2026-07-19).
+   * Cleared by any advance actually starting a song, or by the station
+   * closing.
+   */
+  let cutOverOwed = false
+  /** The intentAppliedAt stamp already converted into an owed cut. */
+  let consumedCutIntentAppliedAt: string | undefined
 
   const advance = async (): Promise<void> => {
     if (now() - lastAdvanceAt < advanceCooldownMs) return
@@ -190,6 +201,7 @@ export function createOnethingRadioConductor(
     }
     if (!entry) return
     lastAdvanceAt = now()
+    cutOverOwed = false
     try {
       await options.playSong(entry)
       options.store.recordError(undefined)
@@ -299,7 +311,26 @@ export function createOnethingRadioConductor(
     // the user re-engaging — it resets the wake breaker and owes one wake.
     options.store.mergeIntent()
     const brief = options.store.readBrief()
-    if (!brief.active) return
+    if (!brief.active) {
+      cutOverOwed = false
+      return
+    }
+    // Arm from the brief's stamp, not mergeIntent's return value: the host
+    // applies an open/retune synchronously at the button (its own mergeIntent
+    // empties the intent file), so by this tick the file is already consumed —
+    // the stamp in the brief is what survives. Same freshness gate as the
+    // wake-owing path: unseen stamp, from after this process was born.
+    const cutStampRaw = brief.intentAppliedAt
+    const cutStamp = cutStampRaw ? Date.parse(cutStampRaw) : Number.NaN
+    if (
+      cutStampRaw &&
+      cutStampRaw !== consumedCutIntentAppliedAt &&
+      Number.isFinite(cutStamp) &&
+      cutStamp >= bornWallClock
+    ) {
+      cutOverOwed = true
+      consumedCutIntentAppliedAt = cutStampRaw
+    }
 
     // Bring in whatever the DJ curated since the last tick. The DJ only ever
     // writes its inbox; this merge (with played-history dedupe) is the single
@@ -348,6 +379,13 @@ export function createOnethingRadioConductor(
       if (brief.lastError?.startsWith('起播失败')) {
         options.store.recordError(undefined)
         options.onLateStart?.()
+      }
+      // The owed cut-over: the retune's songs are on the shelf — the old
+      // direction's song yields NOW instead of playing out. advance() keeps
+      // its own guards (cooldown, start-in-flight); if one blocks, the owed
+      // flag survives to the next tick.
+      if (cutOverOwed && entriesLeft > 0) {
+        await advance()
       }
     }
 

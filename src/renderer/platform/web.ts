@@ -431,6 +431,7 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	"setSearchWindowAnchor",
 	"openPath",
 	"getDataPath",
+	"closeWindow",
 	"onMenuNewChat",
 	"onMenuCloseChat",
 	"onSearchWindowShown",
@@ -1180,6 +1181,9 @@ const webApi = {
 		postJson("/api/session-messages/page", request),
 	getSessionUserMarkers: (sessionId: string) =>
 		requestJson(`/api/sessions/${encodeURIComponent(sessionId)}/user-markers`),
+	// The web build has no TOC pipeline (it runs in the Electron main process);
+	// returning empty hides the preview rather than erroring on hover.
+	getSessionSegments: async () => ({ success: true, segments: [] }),
 	onSessionMessagesChanged: createSessionMessagesChangedSubscription,
 	// Web build has no in-process session LRU cache to report on; stub keeps
 	// the "cached" tab badge silently off instead of wiring a server endpoint.
@@ -1307,6 +1311,9 @@ const webApi = {
 
 	// Browsers never expose local file paths.
 	getPathForFile: () => "",
+
+	// A browser tab has no window of ours to close.
+	closeWindow: async () => ({ success: false }),
 
 	onMenuNewChat: () => () => {},
 	onMenuCloseChat: () => () => {},

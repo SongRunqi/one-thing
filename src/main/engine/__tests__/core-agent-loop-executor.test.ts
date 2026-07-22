@@ -437,7 +437,7 @@ describe('core agent-loop executor helpers', () => {
     })
     await applyAgentLoopStreamChunkWithAdapters<TestPart, TestToolCall, { status?: string }>({
       ...baseOptions,
-      chunk: { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1' } },
+      chunk: { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' } },
     })
     await applyAgentLoopStreamChunkWithAdapters<TestPart, TestToolCall, { status?: string }>({
       ...baseOptions,

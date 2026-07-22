@@ -28,7 +28,7 @@ export function canMergeStepActivityRun(kind: StepActivityRunKind): boolean {
 }
 
 export function shouldFlowStepActivityTitle(view: ToolStepView): boolean {
-  return view.toolName === 'bash' && ['pending', 'streaming-input', 'executing'].includes(view.status)
+  return view.toolName === 'bash' && ['pending', 'streaming-input', 'received', 'executing'].includes(view.status)
 }
 
 export function buildStepActivityRuns(views: ToolStepView[]): StepActivityRun[] {

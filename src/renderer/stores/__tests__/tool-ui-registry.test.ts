@@ -38,7 +38,8 @@ describe('tool-ui-registry', () => {
 
   it('labels every render status', () => {
     expect(getStatusLabel('awaiting-confirmation')).toBe('Needs approval')
-    expect(getStatusLabel('streaming-input')).toBe('Preparing')
+    expect(getStatusLabel('streaming-input')).toBe('Receiving')
+    expect(getStatusLabel('received')).toBe('Running')
   })
 
 })

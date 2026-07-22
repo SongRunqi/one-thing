@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>命令面板 · 去线</title>
+<style>
+:root {
+  --bg-chat: #faf8f1;
+  --bg-deep: #f3efe5;
+  --text: #29241c;
+  --muted: rgba(41, 36, 28, 0.62);
+  --faint: rgba(41, 36, 28, 0.42);
+  --border-strong: rgba(41, 36, 28, 0.55);
+  --hover: rgba(41, 36, 28, 0.06);
+  --accent: #b8452c;
+  --composer-border: color-mix(in srgb, var(--border-strong) 52%, transparent);
+  --cell-divider: color-mix(in srgb, var(--border-strong) 30%, transparent);
+  --radius-xs: 4px;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-display: "Iowan Old Style", "Songti SC", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-chat: #191611;
+    --bg-deep: #14110d;
+    --text: #e8e1d2;
+    --muted: rgba(232, 225, 210, 0.66);
+    --faint: rgba(232, 225, 210, 0.42);
+    --border-strong: rgba(232, 225, 210, 0.5);
+    --hover: rgba(232, 225, 210, 0.075);
+    --accent: #d8765c;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg-deep); color: var(--text);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.6; padding: 44px 40px 90px;
+}
+.page-head { max-width: 1080px; margin: 0 auto 40px; }
+.page-head h1 { font-size: 21px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: ""; display: block; width: 84px;
+  border-bottom: 2px solid var(--text); margin-top: 10px;
+}
+.page-head p { margin-top: 12px; color: var(--muted); max-width: 60em; }
+code {
+  font-family: var(--font-mono); font-size: 12px;
+  padding: 1px 5px; border: 1px solid var(--cell-divider); border-radius: 3px;
+}
+.options { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 52px; }
+.option-head { margin-bottom: 18px; }
+.option-tag { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--faint); }
+.option-head h2 { margin-top: 6px; font-size: 17px; font-weight: 600; }
+.option-head p { margin-top: 8px; color: var(--muted); max-width: 58em; font-size: 13.5px; }
+.note {
+  display: inline-block; margin-top: 10px; padding: 2px 9px;
+  border: 1px solid var(--cell-divider); border-radius: 3px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+}
+.note b { color: var(--text); }
+
+/* 舞台自己也别用虚线框 */
+.stage {
+  background: var(--bg-chat); border: 1px solid var(--cell-divider);
+  border-radius: 6px; padding: 38px 32px 24px;
+  display: flex; justify-content: center;
+}
+.composer-wrapper { width: 100%; max-width: 620px; position: relative; }
+.composer-anchor { position: relative; width: 100%; }
+.composer {
+  position: relative; z-index: 1; display: flex; flex-direction: column;
+  border: 1px solid var(--composer-border); border-radius: var(--radius-xs);
+  background: transparent; overflow: hidden;
+}
+.composer-frame-label {
+  position: absolute; top: -7px; left: 12px; z-index: 2;
+  padding: 0 6px; background: var(--bg-chat);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; color: var(--faint); user-select: none;
+}
+.composer-input {
+  padding: 11px 12px 12px; font-family: var(--font-display);
+  font-size: 15px; line-height: 1.5; min-height: 42px;
+}
+.composer-input .caret {
+  display: inline-block; width: 1px; height: 1.05em;
+  background: var(--accent); vertical-align: -2px; margin-left: 1px;
+}
+.composer-toolbar {
+  display: flex; justify-content: space-between; align-items: stretch;
+  min-height: 34px; margin-top: 2px; border-top: 1px solid var(--composer-border);
+}
+.toolbar-left, .toolbar-right { display: flex; align-items: stretch; }
+.toolbar-left > *, .toolbar-right > * {
+  display: flex; align-items: center; padding: 0 11px;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); white-space: nowrap;
+}
+.toolbar-left > * { border-right: 1px solid var(--cell-divider); }
+.toolbar-right > * { border-left: 1px solid var(--cell-divider); }
+.send { color: var(--text); }
+
+.pal {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 9px); z-index: 3;
+  border: 1px solid var(--composer-border); border-radius: var(--radius-xs);
+  background: var(--bg-chat);
+  /* 列表自己带上下留白,不再靠分隔线定边界 */
+  padding: 9px 0 4px;
+}
+.pal-label {
+  position: absolute; top: -7px; left: 12px; z-index: 4;
+  padding: 0 6px; background: var(--bg-chat);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; color: var(--faint); user-select: none;
+}
+.pal-label .count { margin-left: 10px; letter-spacing: 1px; }
+/* 提示条:整条面板剩下的唯一一条线 */
+.pal-hints {
+  display: flex; gap: 16px; margin-top: 6px; padding: 6px 12px 2px;
+  border-top: 1px solid color-mix(in srgb, var(--border-strong) 16%, transparent);
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 1px; color: var(--faint);
+}
+
+/* 行骨架:无引导线、无行分隔线 */
+.row {
+  display: flex; align-items: baseline;
+  padding: 5px 12px; cursor: pointer;
+  border-radius: 3px; margin: 0 4px;
+}
+.row:hover { background: var(--hover); }
+.row.sel { background: var(--hover); }
+.name {
+  flex: none; font-family: var(--font-mono); font-size: 12.5px;
+  color: var(--muted); white-space: nowrap;
+}
+.row:hover .name, .row.sel .name { color: var(--text); }
+.row.sel .name { font-weight: 700; }
+.name .hit { color: var(--text); font-weight: 700; }
+.desc {
+  flex: 0 1 auto; color: var(--faint); font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row.sel .desc { color: var(--muted); }
+.type {
+  flex: none; margin-left: auto; padding-left: 14px;
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.6px;
+  color: var(--faint); text-transform: uppercase; visibility: hidden;
+}
+.kbd {
+  flex: none; margin-left: 12px; font-family: var(--font-mono);
+  font-size: 10.5px; color: var(--muted); visibility: hidden;
+}
+.row.sel .type, .row.sel .kbd { visibility: visible; }
+
+/* ——— 静一:纯留白 ——— */
+.q1 .desc { margin-left: 22px; }
+
+/* ——— 静二:软制表位,说明在同一 x 起排(无墨) ——— */
+.q2 .name { min-width: 152px; }
+.q2 .desc { margin-left: 0; }
+
+/* ——— 静三:叠排,横向零张力 ——— */
+.q3 .row { flex-direction: column; align-items: stretch; padding: 6px 12px 7px; }
+.q3 .rowtop { display: flex; align-items: baseline; }
+.q3 .desc {
+  margin: 1px 0 0; font-size: 11px;
+  color: color-mix(in srgb, var(--faint) 85%, transparent);
+}
+.q3 .type { margin-left: auto; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>命令面板 · 去线</h1>
+  <p>
+    上一版每行都画一道虚线引导线,五行就是五道虚线在响,而它只干了「隔开名字和说明」这一件事——
+    留白就能干。这一版把引导线和行分隔线<strong>全部删掉</strong>,整块面板只剩两条线:外框,和提示条上沿。
+    分隔改由留白、对齐、墨色轻重承担。类型仍旧只在选中那行露面。
+  </p>
+</div>
+
+<div class="options">
+
+  <!-- 静一 -->
+  <section class="option q1">
+    <div class="option-head">
+      <span class="option-tag">静一</span>
+      <h2>纯留白 —— 名字与说明之间只有 22px 空气</h2>
+      <p>
+        最直接的答案:该隔开就空出来。说明紧跟在名字后面,行长随命令名长短参差,
+        像一段自然排布的文字而不是表格。行与行之间靠 padding 呼吸,选中/悬停用一块淡填充圈出。
+      </p>
+      <span class="note">线的数量 <b>2 条</b>(外框 + 提示条)· 参差右缘</span>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND PALETTE<span class="count">17</span></span>
+          <div class="row sel">
+            <span class="name">/<span class="hit">mo</span>del</span>
+            <span class="desc">切换当前会话的模型</span>
+            <span class="type">cmd</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>de</span>
+            <span class="desc">切换权限档位:只读 / 询问 / 放手</span>
+            <span class="type">cmd</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>nitor</span>
+            <span class="desc">盯住一条命令直到条件满足再叫我</span>
+            <span class="type">skill</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>ve-session</span>
+            <span class="desc">把当前会话移到别的工作区</span>
+            <span class="type">action</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>ck-data</span>
+            <span class="desc">按 schema 造一份假数据喂给测试</span>
+            <span class="type">prompt</span><span class="kbd">⏎</span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 静二 -->
+  <section class="option q2">
+    <div class="option-head">
+      <span class="option-tag">静二</span>
+      <h2>软制表位 —— 说明统一从同一竖线起排,但那条线不画出来</h2>
+      <p>
+        引导线原本想做的是「把眼睛送到说明那一列」。既然要的是<strong>对齐</strong>,那就直接对齐:
+        说明全部从 152px 处起排,眼睛沿着一条看不见的竖边往下扫。该有的秩序一条不少,墨一滴不用。
+      </p>
+      <span class="note">线的数量 <b>2 条</b>· 说明左缘 <b>齐平</b></span>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND PALETTE<span class="count">17</span></span>
+          <div class="row sel">
+            <span class="name">/<span class="hit">mo</span>del</span>
+            <span class="desc">切换当前会话的模型</span>
+            <span class="type">cmd</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>de</span>
+            <span class="desc">切换权限档位:只读 / 询问 / 放手</span>
+            <span class="type">cmd</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>nitor</span>
+            <span class="desc">盯住一条命令直到条件满足再叫我</span>
+            <span class="type">skill</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>ve-session</span>
+            <span class="desc">把当前会话移到别的工作区</span>
+            <span class="type">action</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>ck-data</span>
+            <span class="desc">按 schema 造一份假数据喂给测试</span>
+            <span class="type">prompt</span><span class="kbd">⏎</span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 静三 -->
+  <section class="option q3">
+    <div class="option-head">
+      <span class="option-tag">静三</span>
+      <h2>叠排 —— 说明换到第二行,横向张力归零</h2>
+      <p>
+        既然名字和说明的分隔一直是个麻烦,那就别让它们抢同一行。名字一行、说明一行,
+        天然分开,不需要任何线也不需要任何对齐规则,长说明还能完整读完。
+        代价是行高翻倍,同样的面板高度只装得下一半条目。
+      </p>
+      <span class="note">线的数量 <b>2 条</b>· 说明 <b>完整可读</b>· 条目密度 <b>减半</b></span>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND PALETTE<span class="count">17</span></span>
+          <div class="row sel">
+            <span class="rowtop">
+              <span class="name">/<span class="hit">mo</span>del</span>
+              <span class="type">cmd</span><span class="kbd">⏎</span>
+            </span>
+            <span class="desc">切换当前会话的模型</span>
+          </div>
+          <div class="row">
+            <span class="rowtop">
+              <span class="name">/<span class="hit">mo</span>de</span>
+              <span class="type">cmd</span><span class="kbd">⏎</span>
+            </span>
+            <span class="desc">切换权限档位:只读 / 询问 / 放手</span>
+          </div>
+          <div class="row">
+            <span class="rowtop">
+              <span class="name">/<span class="hit">mo</span>nitor</span>
+              <span class="type">skill</span><span class="kbd">⏎</span>
+            </span>
+            <span class="desc">盯住一条命令直到条件满足再叫我</span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

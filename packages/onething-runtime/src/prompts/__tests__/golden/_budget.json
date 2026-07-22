@@ -1,29 +1,29 @@
 {
   "minimal": {
-    "totalChars": 1629,
-    "totalTokens": 466,
+    "totalChars": 735,
+    "totalTokens": 210,
     "segments": {
       "core": {
-        "chars": 1079,
-        "estimatedTokens": 309
+        "chars": 253,
+        "estimatedTokens": 73
       },
       "agent": {
-        "chars": 548,
-        "estimatedTokens": 157
+        "chars": 480,
+        "estimatedTokens": 138
       },
       "os": {
-        "chars": 252,
-        "estimatedTokens": 72
+        "chars": 184,
+        "estimatedTokens": 53
       }
     }
   },
   "desktop-full": {
-    "totalChars": 3295,
-    "totalTokens": 942,
+    "totalChars": 2274,
+    "totalTokens": 650,
     "segments": {
       "core": {
-        "chars": 1079,
-        "estimatedTokens": 309
+        "chars": 253,
+        "estimatedTokens": 73
       },
       "agent": {
         "chars": 295,
@@ -38,16 +38,16 @@
         "estimatedTokens": 22
       },
       "known-projects": {
-        "chars": 344,
-        "estimatedTokens": 99
+        "chars": 217,
+        "estimatedTokens": 62
       },
       "skills": {
-        "chars": 1094,
-        "estimatedTokens": 313
+        "chars": 1026,
+        "estimatedTokens": 294
       },
       "os": {
-        "chars": 253,
-        "estimatedTokens": 73
+        "chars": 185,
+        "estimatedTokens": 53
       },
       "context-variables": {
         "chars": 110,
@@ -56,12 +56,12 @@
     }
   },
   "codex-split": {
-    "totalChars": 3022,
-    "totalTokens": 864,
+    "totalChars": 2128,
+    "totalTokens": 608,
     "segments": {
       "core": {
-        "chars": 1079,
-        "estimatedTokens": 309
+        "chars": 253,
+        "estimatedTokens": 73
       },
       "agent": {
         "chars": 52,
@@ -76,22 +76,22 @@
         "estimatedTokens": 140
       },
       "skills": {
-        "chars": 1093,
-        "estimatedTokens": 313
+        "chars": 1025,
+        "estimatedTokens": 293
       },
       "os": {
-        "chars": 252,
-        "estimatedTokens": 72
+        "chars": 184,
+        "estimatedTokens": 53
       }
     }
   },
   "voice": {
-    "totalChars": 2268,
-    "totalTokens": 648,
+    "totalChars": 1374,
+    "totalTokens": 393,
     "segments": {
       "core": {
-        "chars": 1079,
-        "estimatedTokens": 309
+        "chars": 253,
+        "estimatedTokens": 73
       },
       "agent": {
         "chars": 52,
@@ -102,78 +102,78 @@
         "estimatedTokens": 227
       },
       "workdir": {
-        "chars": 340,
-        "estimatedTokens": 98
+        "chars": 272,
+        "estimatedTokens": 78
       },
       "os": {
-        "chars": 252,
-        "estimatedTokens": 72
+        "chars": 184,
+        "estimatedTokens": 53
       }
     }
   },
   "agents-md": {
-    "totalChars": 2117,
-    "totalTokens": 605,
+    "totalChars": 1223,
+    "totalTokens": 350,
     "segments": {
       "core": {
-        "chars": 1079,
-        "estimatedTokens": 309
+        "chars": 253,
+        "estimatedTokens": 73
       },
       "agent": {
         "chars": 295,
         "estimatedTokens": 85
       },
       "workdir": {
-        "chars": 740,
-        "estimatedTokens": 212
+        "chars": 672,
+        "estimatedTokens": 192
       },
       "os": {
-        "chars": 252,
-        "estimatedTokens": 72
+        "chars": 184,
+        "estimatedTokens": 53
       }
     }
   },
   "windows": {
-    "totalChars": 1661,
-    "totalTokens": 475,
+    "totalChars": 704,
+    "totalTokens": 202,
     "segments": {
       "core": {
-        "chars": 1079,
-        "estimatedTokens": 309
+        "chars": 253,
+        "estimatedTokens": 73
       },
       "agent": {
         "chars": 279,
         "estimatedTokens": 80
       },
       "workdir": {
-        "chars": 300,
-        "estimatedTokens": 86
+        "chars": 169,
+        "estimatedTokens": 49
       },
       "os": {
-        "chars": 206,
-        "estimatedTokens": 59
+        "chars": 75,
+        "estimatedTokens": 22
       }
     }
   },
   "linux": {
-    "totalChars": 1581,
-    "totalTokens": 452,
+    "totalChars": 651,
+    "totalTokens": 186,
     "segments": {
       "core": {
-        "chars": 1079,
-        "estimatedTokens": 309
+        "chars": 253,
+        "estimatedTokens": 73
       },
       "agent": {
         "chars": 275,
         "estimatedTokens": 79
       },
       "workdir": {
-        "chars": 224,
-        "estimatedTokens": 64
+        "chars": 120,
+        "estimatedTokens": 35
       },
       "os": {
-        "chars": 129,
-        "estimatedTokens": 37
+        "chars": 25,
+        "estimatedTokens": 8
       }
     }
   }

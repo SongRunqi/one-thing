@@ -9,6 +9,7 @@
 import { z } from "zod";
 import { createTwoFilesPatch } from "diff";
 import type { JsonObjectProperty } from "@onething/core";
+import { coreDiffHunksToJson, type CoreDiffHunk } from "@onething/core/tools";
 import {
 	basenamePath,
 	dirnamePath,
@@ -18,6 +19,11 @@ import {
 } from "@onething/core/storage";
 import { Tool } from "../tool.js";
 import { withFileMutationQueue } from "../file-mutation-queue.js";
+import {
+	computeDiffHunks,
+	trimDiffHunks,
+	truncateDiffHunksForDisplay,
+} from "../diff-hunks.js";
 import {
 	findCoreSandboxRootForPath,
 	getCoreSandboxBoundary,
@@ -75,6 +81,7 @@ interface WritePlan {
 	lineCount: number;
 	created: boolean;
 	diff: string;
+	hunks: CoreDiffHunk[];
 	additions: number;
 	deletions: number;
 	originalContentHash: string;
@@ -119,6 +126,9 @@ function buildWritePlan(
 		lineCount,
 		created: !snapshot.exists,
 		diff,
+		hunks: trimDiffHunks(
+			computeDiffHunks(resolvedPath, snapshot.content, content),
+		),
 		additions,
 		deletions,
 		originalContentHash: snapshot.hash,
@@ -264,6 +274,9 @@ export function createWriteTool(
 								lineCount,
 								created: plan.created,
 								diff: displayDiff,
+								diffHunks: coreDiffHunksToJson(
+									truncateDiffHunksForDisplay(plan.hunks),
+								),
 								additions: plan.additions,
 								deletions: plan.deletions,
 								originalContentHash: plan.originalContentHash,
@@ -379,6 +392,9 @@ export function createWriteTool(
 					});
 
 					const displayDiff = truncateDiffForDisplay(approvedPlan.diff);
+					const displayDiffHunks = coreDiffHunksToJson(
+						truncateDiffHunksForDisplay(approvedPlan.hunks),
+					);
 					ctx.metadata({
 						metadata: {
 							path: resolvedPath,
@@ -386,6 +402,7 @@ export function createWriteTool(
 							lineCount,
 							created: approvedPlan.created,
 							diff: displayDiff,
+							diffHunks: displayDiffHunks,
 							additions: approvedPlan.additions,
 							deletions: approvedPlan.deletions,
 							originalContentHash: approvedPlan.originalContentHash,
@@ -401,6 +418,7 @@ export function createWriteTool(
 						lineCount,
 						created: approvedPlan.created,
 						diff: displayDiff,
+						diffHunks: displayDiffHunks,
 						additions: approvedPlan.additions,
 						deletions: approvedPlan.deletions,
 						originalContentHash: approvedPlan.originalContentHash,

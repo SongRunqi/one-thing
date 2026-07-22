@@ -158,6 +158,15 @@ export interface AgentTool {
   name: string
   description?: string
   parameters: AgentJsonObject
+  /**
+   * 'parallel' declares this tool safe to overlap with its siblings (read-only
+   * or otherwise side-effect-free for ordering purposes). Anything else —
+   * including undeclared — makes the tool an execution barrier: it waits for
+   * all earlier tool calls in the turn to settle and blocks later ones, so
+   * e.g. a read dispatched after an edit of the same file always observes the
+   * post-edit content.
+   */
+  executionMode?: 'parallel' | 'sequential'
   execute(args: AgentJsonObject, ctx: AgentToolExecutionContext): Promise<AgentToolResult>
 }
 

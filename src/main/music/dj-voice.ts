@@ -49,6 +49,76 @@ export function resolveDjSpeakDone(id: string): void {
   pending.get(id)?.()
 }
 
+interface DjSpeech {
+  audioBase64: string
+  mimeType: string
+}
+
+/**
+ * Synthesized patter, keyed by text: a prefetch (fired while the previous song
+ * plays, or in parallel with the start flow's lyric wait) makes the speak call
+ * hit this instead of paying the ~2.4s network synthesis on the critical path.
+ * Small and bounded — a patter is per-entry one-shot; the cache mostly serves
+ * prefetch→speak handoffs and the ⏮ replay of the same entry.
+ */
+const patterCache = new Map<string, DjSpeech>()
+const patterInflight = new Map<string, Promise<DjSpeech | null>>()
+const PATTER_CACHE_MAX = 10
+
+/**
+ * Cache-aware synthesis: joins an in-flight request for the same text instead
+ * of duplicating it. Resolves null (never rejects) on failure/timeout — the
+ * speak path treats that as "skip the patter", and a failed attempt is not
+ * cached, so the next caller retries.
+ */
+function synthesizeDjPatterCached(text: string, title: string): Promise<DjSpeech | null> {
+  const cached = patterCache.get(text)
+  if (cached) return Promise.resolve(cached)
+  let inflight = patterInflight.get(text)
+  if (!inflight) {
+    inflight = (async () => {
+      const settings = getSettings().voice
+      if (!settings) return null
+      const synthStart = Date.now()
+      try {
+        const speech = await withTimeout(
+          synthesizeSpeech(text, settings),
+          DJ_SYNTH_MAX_MS,
+          'DJ patter synthesis',
+        )
+        if (!speech.audioBase64) return null
+        console.info(
+          `[radio:timing] 「${title}」 TTS 合成: ${Date.now() - synthStart}ms (${text.length} 字, 音频 ${Math.round(speech.audioBase64.length / 1024)}KB base64)`,
+        )
+        if (patterCache.size >= PATTER_CACHE_MAX) {
+          const oldest = patterCache.keys().next().value
+          if (oldest !== undefined) patterCache.delete(oldest)
+        }
+        patterCache.set(text, speech)
+        return speech
+      } catch (error) {
+        console.warn('[radio] DJ patter synthesis failed; skipping', error)
+        return null
+      } finally {
+        patterInflight.delete(text)
+      }
+    })()
+    patterInflight.set(text, inflight)
+  }
+  return inflight
+}
+
+/** Fire-and-forget synthesis warm-up; speakDjPatter later joins the result. */
+export function prefetchDjPatter(text: string, title: string): void {
+  void synthesizeDjPatterCached(text, title)
+}
+
+/** Test/dispose seam: forget cached and in-flight synthesis. */
+export function resetDjPatterCache(): void {
+  patterCache.clear()
+  patterInflight.clear()
+}
+
 /**
  * Synthesize `text` and play it in the renderer, resolving when playback ends.
  * Resolves (never rejects) on synth failure or timeout too — the caller's job
@@ -56,17 +126,8 @@ export function resolveDjSpeakDone(id: string): void {
  * radio stuck on pause.
  */
 export async function speakDjPatter(text: string, title: string): Promise<void> {
-  const settings = getSettings().voice
-  if (!settings) return
-
-  let speech: { audioBase64: string; mimeType: string }
-  try {
-    speech = await withTimeout(synthesizeSpeech(text, settings), DJ_SYNTH_MAX_MS, 'DJ patter synthesis')
-  } catch (error) {
-    console.warn('[radio] DJ patter synthesis failed; skipping', error)
-    return
-  }
-  if (!speech.audioBase64) return
+  const speech = await synthesizeDjPatterCached(text, title)
+  if (!speech) return
 
   const id = randomUUID()
   const payload: MusicDjSpeak = {
@@ -77,6 +138,7 @@ export async function speakDjPatter(text: string, title: string): Promise<void> 
     title,
   }
 
+  const playStart = Date.now()
   await new Promise<void>(resolve => {
     let settled = false
     const finish = () => {
@@ -90,4 +152,7 @@ export async function speakDjPatter(text: string, title: string): Promise<void> 
     pending.set(id, finish)
     broadcastElectronVoiceMessage({ channel: IPC_CHANNELS.MUSIC_DJ_SPEAK, payload })
   })
+  console.info(
+    `[radio:timing] 「${title}」 口播渲染端播放(广播→ack): ${Date.now() - playStart}ms`,
+  )
 }

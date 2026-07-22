@@ -15,6 +15,7 @@ import {
   RADIO_DJ_AGENT_ID,
   RADIO_DJ_AGENT_NAME,
   RADIO_DJ_FACTORY_VERSION,
+  RADIO_DJ_TOOL_ALLOWLIST,
   createOnethingMusicReliableRunner,
   createOnethingRadioConductor,
   createOnethingRadioStore,
@@ -51,7 +52,7 @@ import {
   refreshMusicNowPlaying,
   setMusicSampleListener,
 } from './service.js'
-import { speakDjPatter } from './dj-voice.js'
+import { prefetchDjPatter, resetDjPatterCache, speakDjPatter } from './dj-voice.js'
 
 let radioStore: OnethingRadioStore | null = null
 let conductor: OnethingRadioConductor | null = null
@@ -100,6 +101,7 @@ function ensureRadioSession(store: OnethingRadioStore): string {
       id: RADIO_DJ_AGENT_ID,
       name: RADIO_DJ_AGENT_NAME,
       systemPrompt: factoryPrompt,
+      tools: RADIO_DJ_TOOL_ALLOWLIST,
     })
     console.warn('[radio] radio-dj agent was missing; recreated from the factory persona')
   } else {
@@ -110,13 +112,20 @@ function ensureRadioSession(store: OnethingRadioStore): string {
     // prompt is the opt-out: users who delete it own their persona; a prompt
     // without a fingerprint is a pre-fingerprint factory install and gets a
     // one-time migration.
-    const installed = getAgent(RADIO_DJ_AGENT_ID)?.systemPrompt ?? ''
+    const installedAgent = getAgent(RADIO_DJ_AGENT_ID)
+    const installed = installedAgent?.systemPrompt ?? ''
     const installedVersion = radioDjFactoryPromptVersion(installed)
     if ((installedVersion ?? 0) < RADIO_DJ_FACTORY_VERSION && installed !== factoryPrompt) {
       updateAgent({ agentId: RADIO_DJ_AGENT_ID, systemPrompt: factoryPrompt })
       console.warn(
         `[radio] radio-dj persona upgraded to factory v${RADIO_DJ_FACTORY_VERSION} (was ${installedVersion ?? 'pre-fingerprint'})`,
       )
+    }
+    // One-time backfill: pre-allowlist installs carried every tool into each
+    // DJ turn. An explicit (user-edited) allowlist is left alone.
+    if (installedAgent && installedAgent.tools === undefined) {
+      updateAgent({ agentId: RADIO_DJ_AGENT_ID, tools: RADIO_DJ_TOOL_ALLOWLIST })
+      console.warn('[radio] radio-dj tool allowlist backfilled (bash only)')
     }
   }
 
@@ -344,15 +353,47 @@ function onSongStarted(entry: OnethingRadioProgrammeEntry, playerTitle: string):
   const store = getRadioStore()
   store.recordPlayed(playerTitle, entry.encryptedId)
   void pushLyricsFor(entry, playerTitle)
+  // The song is on: minutes of idle ahead — warm the next entry's caches now
+  // so its start pays neither the lyric fetch nor the TTS synthesis.
+  prefetchUpcomingEntry()
+}
+
+/**
+ * Background warm-up for the entry that will play next (first playable in the
+ * programme): lyric timeline into lyricCache, patter audio into the TTS cache.
+ * Best-effort and idempotent — both layers dedupe in-flight requests, so
+ * calling this on every queue-head change costs at most one fetch per song.
+ */
+function prefetchUpcomingEntry(): void {
+  try {
+    const next = getRadioStore()
+      .readProgramme()
+      .entries.find(entry => entry.playFlag !== false)
+    if (!next) return
+    void getLyricLines(next).catch(() => {})
+    if (next.say) prefetchDjPatter(next.say, next.title)
+  } catch (error) {
+    console.warn('[radio] prefetch for the upcoming entry failed', error)
+  }
 }
 
 /**
  * Read-back verify budget. A single fixed-delay check misjudged a slow night
  * (song came up at ~6s, we checked at 5s, wrote a false 起播失败 and dropped
  * the entry) — so poll instead, and let a late start still count as a start.
+ * Tight interval: the poll is also what triggers pause-under-patter, and every
+ * extra beat there is audible song under the host's voice (each state read is
+ * itself a ~250ms CLI call, so the effective cycle is ~550ms).
  */
-const PLAY_VERIFY_INTERVAL_MS = 1_000
+const PLAY_VERIFY_INTERVAL_MS = 300
 const PLAY_VERIFY_DEADLINE_MS = 12_000
+
+/**
+ * How long the start flow waits for the lyric timeline before deciding the
+ * patter timing without it. The lyric API was field-measured at 11s on a bad
+ * day — a nicety (talk over the intro vs before the song) must not cost that.
+ */
+const LYRIC_DECISION_TIMEOUT_MS = 3_000
 
 const NCM_LOGIN_EXPIRED_MESSAGE =
   '网易云登录已过期,请到 设置 → 音乐 重新登录;登录恢复后电台会自动续播'
@@ -371,7 +412,14 @@ export async function diagnoseRadioStartFailure(): Promise<string | null> {
     return null
   } catch (error) {
     const message = error instanceof Error ? error.message : ''
-    return message.includes('未登录') ? NCM_LOGIN_EXPIRED_MESSAGE : null
+    if (!message.includes('未登录')) return null
+    // Push the discovery into the service state so the bar flips to its
+    // 未登录 warning NOW — the boot-time probe is the only other writer, and
+    // a mid-session expiry would otherwise leave the UI looking healthy.
+    void getMusicService()
+      .checkLogin()
+      .catch(() => {})
+    return NCM_LOGIN_EXPIRED_MESSAGE
   }
 }
 
@@ -417,6 +465,43 @@ function isEntryReusableFailure(error: unknown): boolean {
   return error instanceof Error && (error as { entryReusable?: boolean }).entryReusable === true
 }
 
+/**
+ * Timing probe for the start flow (investigating slow ⏭ → patter → song).
+ * One line per phase: delta since the previous mark plus total since the
+ * user's gesture (or, without one, since the start flow began). Remove once
+ * the latency source is confirmed.
+ */
+/** Set at the IPC entry when a bar gesture initiates a start; consumed by the
+ * next timer so `total` measures from the actual click. */
+let gestureStart: { at: number; label: string } | null = null
+
+export function markRadioGesture(label: string): void {
+  gestureStart = { at: Date.now(), label }
+}
+
+function createRadioStartTimer(title: string) {
+  // A stale mark (gesture that never reached a start) must not warp a later
+  // conductor-initiated start's numbers — only adopt a fresh one.
+  const gesture = gestureStart && Date.now() - gestureStart.at < 10_000 ? gestureStart : null
+  gestureStart = null
+  const t0 = gesture?.at ?? Date.now()
+  let last = Date.now()
+  console.info(
+    gesture
+      ? `[radio:timing] 「${title}」 start requested (${gesture.label} 点击后 +${Date.now() - gesture.at}ms)`
+      : `[radio:timing] 「${title}」 start requested`,
+  )
+  return {
+    mark(phase: string) {
+      const now = Date.now()
+      console.info(
+        `[radio:timing] 「${title}」 ${phase}: +${now - last}ms (total ${now - t0}ms)`,
+      )
+      last = now
+    },
+  }
+}
+
 /** Serializes song starts; see playProgrammeEntry. */
 let playStarting: Promise<void> | null = null
 /** The entry the in-flight start is for; meaningful only while playStarting is set. */
@@ -452,6 +537,7 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     throw new RadioStartNotSongsFaultError(`另一次起播正在进行,放弃「${entry.title}」`)
   }
 
+  const timer = createRadioStartTimer(entry.title)
   const start = (async () => {
     // Known-unplayable at curation time: refuse before ANY ceremony — a
     // spoken intro for a song that cannot come is the worst version of this
@@ -476,32 +562,70 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     // failed may still sound seconds later (the late-start case), and whoever
     // compensates then needs to know which song this was.
     getRadioStore().setOnDeck(entry)
+    // Snapshot of the pre-start world, for the verify loop. "playing" alone is
+    // NOT proof our song started: a missed stop once left the OLD song audible
+    // and the loop confirmed THAT as ours, then paused it while the real start
+    // was still loading — total wreckage (2026-07-19). Fresh playback means
+    // playing AND (nothing was on before | the title changed | the position
+    // rewound — the same-title ⏮ replay case; the cached position only grows,
+    // so a smaller reading proves a restart).
+    const prevSample = getMusicNowPlaying()
+    const isFreshPlayback = (
+      state: OnethingMusicNowPlaying | null,
+    ): state is OnethingMusicNowPlaying =>
+      state !== null &&
+      state.status === 'playing' &&
+      (prevSample?.status !== 'playing' ||
+        state.title !== prevSample.title ||
+        state.position < prevSample.position)
     // The host's timing, like a real radio: if the song's instrumental intro
     // is long enough (first sung lyric line vs estimated speech length), start
     // the music and talk OVER the intro, shutting up before the vocal — no
     // pause, no interruption. Too-short intro / no lyric timeline → speak
     // into silence BEFORE the song instead.
     let talkOverIntro = false
+    // The speak-before patter runs CONCURRENTLY with the play command: the
+    // song's load (URL fetch + mpv spawn + buffering, field-measured 5-6s)
+    // hides under the voice instead of following it as dead air. The verify
+    // loop below coordinates the two tracks.
+    let patterInFlight: Promise<void> | null = null
+    let patterFinished = false
     if (entry.say) {
-      const lines = await getLyricLines(entry).catch(() => [] as MusicLyricLine[])
+      // TTS synthesis and the lyric fetch are independent — kick the synthesis
+      // NOW so it runs during the lyric wait (serial was measured at 11s lyric
+      // + 2.4s synth stacked); speakDjPatter below joins the in-flight result.
+      prefetchDjPatter(entry.say, entry.title)
+      // The lyric timeline only decides WHEN to talk. Past the deadline, decide
+      // without it (speak into silence — the safe default) instead of letting a
+      // slow lyric API hold the whole start hostage; the fetch itself keeps
+      // running in the background for the lyrics push after the song starts.
+      const lines = await Promise.race([
+        getLyricLines(entry).catch(() => [] as MusicLyricLine[]),
+        new Promise<MusicLyricLine[]>(resolve =>
+          setTimeout(() => resolve([]), LYRIC_DECISION_TIMEOUT_MS),
+        ),
+      ])
+      timer.mark('歌词获取(判定口播时机)')
       const vocalAt = firstVocalStartAt(lines)
       talkOverIntro =
         vocalAt !== undefined && vocalAt >= estimateSpeechSeconds(entry.say) + 1.5
       if (!talkOverIntro) {
-        const pre = await reliable.readState().catch(() => null)
-        if (pre?.status === 'playing' || pre?.status === 'paused') {
-          await reliable.run('transport', getActiveMusicProvider().cli.build.stop()).catch(error => {
-            console.warn('[radio] could not stop before patter', error)
-          })
-        }
-        await speakDjPatter(entry.say, entry.title).catch(error => {
-          console.warn('[radio] patter before play failed; starting the song anyway', error)
+        // Unconditional stop — no state read first. The pre-read once hung for
+        // its full 8s timeout and came back null (2026-07-19), which skipped
+        // this stop and left the old song playing under the patter. A stop
+        // refusal on an already-silent player is harmless noise by comparison.
+        await reliable.run('transport', getActiveMusicProvider().cli.build.stop()).catch(error => {
+          console.warn('[radio] could not stop before patter', error)
         })
-        // 停止电台 pressed while the host was talking: the patter was cut and
-        // acked, the station closed — do NOT start the song it introduced.
-        if (!getRadioStore().readBrief().active) {
-          throw new RadioStartNotSongsFaultError('电台已停止')
-        }
+        timer.mark('停当前播放')
+        patterInFlight = speakDjPatter(entry.say, entry.title)
+          .catch(error => {
+            console.warn('[radio] patter before play failed; the song continues', error)
+          })
+          .finally(() => {
+            patterFinished = true
+          })
+        timer.mark('口播已开始(与 play 并行)')
       }
     }
     // 'start' class: zero retries — play is NOT idempotent, and an automatic
@@ -509,37 +633,109 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     // Argv + env (ncm: NCM_LEGACY_PLAY=1) are the provider's measured law.
     const startCommand = getActiveMusicProvider().cli.build.start(entry)
     await reliable.run('start', startCommand.args, startCommand.env)
+    timer.mark('play 命令返回')
     if (entry.say && talkOverIntro) {
-      // Fire alongside the starting song: TTS synthesis latency (~1-2s)
-      // naturally drops the voice a beat into the intro.
+      // Fire alongside the starting song: with the prefetched synthesis the
+      // voice lands right at the top of the intro, before the first vocal.
       void speakDjPatter(entry.say, entry.title).catch(error => {
         console.warn('[radio] patter over intro failed', error)
       })
     }
-    const deadline = Date.now() + PLAY_VERIFY_DEADLINE_MS
-    for (;;) {
-      await new Promise(resolve => setTimeout(resolve, PLAY_VERIFY_INTERVAL_MS))
-      const state = await reliable.readState().catch(() => null)
-      if (state?.status === 'playing') {
-        // Everything that used to hang off title-matching fires right here
-        // instead: we KNOW which song this is — we just started it. The
-        // player's own title (stable machine format) rides the pushes so the
-        // renderer's display always agrees with the bar.
-        onSongStarted(entry, state.title ?? entry.title)
-        break
-      }
-      if (Date.now() >= deadline) {
-        // Every caller (conductor advance, bar resume/skip/replay) surfaces
-        // this message as the brief's lastError — say the true cause when we
-        // know it instead of the generic shrug.
-        const systemic = await diagnoseRadioStartFailure().catch(() => null)
-        if (systemic) throw new RadioStartNotSongsFaultError(systemic)
-        if (await isSongRightsRestricted(entry)) {
-          throw new Error('版权受限,网易云不提供这首的播放权——已跳过')
-        }
-        throw new Error(`play 返回成功但播放器没有在放「${entry.title}」`)
+    const waitForFreshPlayback = async (
+      budgetMs: number,
+    ): Promise<OnethingMusicNowPlaying | null> => {
+      const deadline = Date.now() + budgetMs
+      for (;;) {
+        // First check immediately — the old lead-in sleep added a flat second
+        // of detection lag to every start.
+        const state = await reliable.readState().catch(() => null)
+        if (isFreshPlayback(state)) return state
+        if (Date.now() >= deadline) return null
+        await new Promise(resolve => setTimeout(resolve, PLAY_VERIFY_INTERVAL_MS))
       }
     }
+    let confirmedState = await waitForFreshPlayback(PLAY_VERIFY_DEADLINE_MS)
+    if (!confirmedState) {
+      // Every caller (conductor advance, bar resume/skip/replay) surfaces
+      // this message as the brief's lastError — say the true cause when we
+      // know it instead of the generic shrug.
+      const systemic = await diagnoseRadioStartFailure().catch(() => null)
+      if (systemic) throw new RadioStartNotSongsFaultError(systemic)
+      if (await isSongRightsRestricted(entry)) {
+        throw new Error('版权受限,网易云不提供这首的播放权——已跳过')
+      }
+      throw new Error(`play 返回成功但播放器没有在放「${entry.title}」`)
+    }
+    timer.mark('确认播放器已在放')
+    // 停止电台 may have landed during the load: the just-started song would
+    // outlive the close — kill it instead of letting it play into a dead
+    // station.
+    if (!getRadioStore().readBrief().active) {
+      await reliable.run('transport', getActiveMusicProvider().cli.build.stop()).catch(() => {})
+      throw new RadioStartNotSongsFaultError('电台已停止')
+    }
+    if (patterInFlight) {
+      if (!patterFinished) {
+        // The song came up while the host is still talking: hold it at the
+        // start line (pause, rewind the sub-second blip that escaped under the
+        // voice) and release the moment the patter acks.
+        const build = getActiveMusicProvider().cli.build
+        const held = await reliable
+          .run('transport', build.pause())
+          .then(() => true)
+          .catch(error => {
+            console.warn('[radio] could not hold the song under the patter', error)
+            return false
+          })
+        if (held) {
+          await reliable.run('transport', build.seek(0)).catch(() => {})
+          timer.mark('歌已就位,压住等口播')
+        }
+        await patterInFlight
+        // 停止电台 pressed while the host was talking: the station closed —
+        // do NOT release the song it introduced.
+        if (!getRadioStore().readBrief().active) {
+          await reliable.run('transport', build.stop()).catch(() => {})
+          throw new RadioStartNotSongsFaultError('电台已停止')
+        }
+        if (held) {
+          // Verified, not fire-and-forget: a resume whose envelope says ok but
+          // whose player stays paused strands the radio in a silence the
+          // conductor reads as 待命 (field-hit 2026-07-19: 与光 came back for
+          // 40s then died — every link in this chain is now evidence-logged).
+          await reliable
+            .runVerified(build.resume(), state => state?.status === 'playing')
+            .catch(error => {
+              console.warn('[radio] resume after patter failed', error)
+            })
+          timer.mark('口播结束,续播出声')
+        }
+        // The release must end in sound. pause/seek/resume on a fresh legacy
+        // stream has died twice in the field (resume refused with 播放列表为空;
+        // a resumed stream expiring 40s in) — if OUR song is not audibly on
+        // right now, run play again: the state read just said nothing is
+        // playing, so the non-idempotency worry does not apply.
+        const post = await reliable.readState().catch(() => null)
+        if (!isFreshPlayback(post)) {
+          console.warn(`[radio] 「${entry.title}」口播释放后无声——重新起播救场`)
+          timer.mark('释放后无声,重新起播')
+          await reliable.run('start', startCommand.args, startCommand.env)
+          const revived = await waitForFreshPlayback(PLAY_VERIFY_DEADLINE_MS)
+          if (!revived) throw new Error(`口播后重新起播仍失败(${entry.title})`)
+          confirmedState = revived
+          timer.mark('救场起播成功')
+        }
+      } else {
+        // Patter ended before the song came up — the load was the longer leg;
+        // the song starts the moment the player has it. Nothing to release.
+        await patterInFlight
+      }
+    }
+    // Everything that used to hang off title-matching fires right here
+    // instead: we KNOW which song this is — we just started it. The player's
+    // own title (stable machine format) rides the pushes so the renderer's
+    // display always agrees with the bar.
+    onSongStarted(entry, confirmedState?.title ?? entry.title)
     await refreshMusicNowPlaying()
   })()
 
@@ -568,9 +764,14 @@ export function recordRadioSkip(): void {
   const store = getRadioStore()
   const brief = store.readBrief()
   if (!brief.active) return
-  // onDeck is the song we started (with its id); the sample title is a
-  // display-only fallback for songs the radio did not start.
-  const title = getMusicNowPlaying()?.title ?? brief.onDeck?.title
+  // Only a song that is audibly ON can be skipped away from. ⏭ pressed into
+  // silence (a start that failed, a dead player) is the user un-sticking the
+  // radio, not a taste verdict — the old onDeck fallback recorded the very
+  // song that FAILED as "user skipped it", and the DJ then apologized on air
+  // for skips that never happened (field-hit 2026-07-19).
+  const sample = getMusicNowPlaying()
+  if (sample?.status !== 'playing' && sample?.status !== 'paused') return
+  const title = sample.title ?? brief.onDeck?.title
   if (title) store.recordSkipped(title, brief.onDeck?.encryptedId)
 }
 
@@ -820,6 +1021,8 @@ export async function requestSong(
   }
   store.writeProgramme(programme)
   nudgeMusicClients()
+  // The request cut in at the queue head — warm ITS caches, not the old head's.
+  prefetchUpcomingEntry()
   return { success: true, title: entry.title }
 }
 
@@ -884,6 +1087,8 @@ export function applyProgrammeAction(
   }
   store.writeProgramme(programme)
   nudgeMusicClients()
+  // Remove/promote/move can all change which entry plays next.
+  prefetchUpcomingEntry()
   return { success: true }
 }
 
@@ -926,6 +1131,8 @@ export async function likeCurrentSong(): Promise<{ success: boolean; error?: str
 // ----------------------------------------------------------------------------
 
 const lyricCache = new Map<string, MusicLyricLine[]>()
+/** In-flight lyric fetches, so a prefetch and the start flow share one call. */
+const lyricInflight = new Map<string, Promise<MusicLyricLine[]>>()
 let currentLyrics: MusicLyrics | null = null
 
 export function getMusicLyrics(): MusicLyrics | null {
@@ -940,21 +1147,32 @@ export function getMusicLyrics(): MusicLyrics | null {
 /** Fetch (cached) the timed lyric lines for a song — shared by the lyric push
  * and the talk-over-the-intro timing decision. */
 async function getLyricLines(entry: OnethingRadioProgrammeEntry): Promise<MusicLyricLine[]> {
-  let lines = lyricCache.get(entry.encryptedId)
-  if (!lines) {
-    const provider = getActiveMusicProvider()
-    const stdout = await getReliableRunner().run('server', provider.cli.build.lyric(entry))
-    // The provider's parser degrades garbage to "no lyrics", never a throw.
-    lines = provider.cli.parse.lyric(stdout)
-    // Evict the oldest entry, not the whole cache — clear-all used to wipe the
-    // CURRENT song's lines too, forcing a refetch mid-play.
-    if (lyricCache.size > 20) {
-      const oldest = lyricCache.keys().next().value
-      if (oldest !== undefined) lyricCache.delete(oldest)
-    }
-    lyricCache.set(entry.encryptedId, lines)
+  const cached = lyricCache.get(entry.encryptedId)
+  if (cached) return cached
+  let inflight = lyricInflight.get(entry.encryptedId)
+  if (!inflight) {
+    inflight = (async () => {
+      try {
+        const provider = getActiveMusicProvider()
+        const stdout = await getReliableRunner().run('server', provider.cli.build.lyric(entry))
+        // The provider's parser degrades garbage to "no lyrics", never a throw.
+        const lines = provider.cli.parse.lyric(stdout)
+        // Evict the oldest entry, not the whole cache — clear-all used to wipe
+        // the CURRENT song's lines too, forcing a refetch mid-play.
+        if (lyricCache.size > 20) {
+          const oldest = lyricCache.keys().next().value
+          if (oldest !== undefined) lyricCache.delete(oldest)
+        }
+        lyricCache.set(entry.encryptedId, lines)
+        return lines
+      } finally {
+        // Failures are not cached: the next caller retries the fetch.
+        lyricInflight.delete(entry.encryptedId)
+      }
+    })()
+    lyricInflight.set(entry.encryptedId, inflight)
   }
-  return lines
+  return inflight
 }
 
 async function pushLyricsFor(entry: OnethingRadioProgrammeEntry, playerTitle: string): Promise<void> {
@@ -1028,6 +1246,34 @@ function isMusicEnabled(): boolean {
   return getSettings().music?.enabled === true
 }
 
+/**
+ * Evidence log for the premature-stop investigation (2026-07-19: 「与光」
+ * audibly died ~40s into a 3m40s song after a pause→seek 0→resume hold; the
+ * conductor then honestly advanced). One line per player state transition,
+ * stamped with WHERE in the song it happened — a stop at 40s/220s is a stream
+ * death, a stop at 218s/220s is a song ending. Remove with the other probes.
+ */
+let lastWatchedSample: OnethingMusicNowPlaying | null = null
+
+function describeSample(sample: OnethingMusicNowPlaying | null): string {
+  if (!sample) return 'null'
+  const pos = Math.round(sample.position)
+  const dur = sample.duration !== undefined ? `/${Math.round(sample.duration)}s` : ''
+  return `${sample.status}「${sample.title ?? '?'}」${pos}s${dur}`
+}
+
+function logSampleTransition(sample: OnethingMusicNowPlaying | null): void {
+  const prev = lastWatchedSample
+  const changed =
+    (prev?.status ?? 'null') !== (sample?.status ?? 'null') ||
+    (prev?.title ?? '') !== (sample?.title ?? '')
+  // Keep the freshest position even between logged transitions, so the
+  // "playing → stopped" line carries where playback actually was.
+  lastWatchedSample = sample
+  if (!changed) return
+  console.info(`[music:watch] ${describeSample(prev)} → ${describeSample(sample)}`)
+}
+
 export function startRadioConductor(): void {
   if (conductor) return
   // Cold-start correctness for the backend gate in playProgrammeEntry: the
@@ -1061,6 +1307,7 @@ export function startRadioConductor(): void {
     // disabled the conductor never ticks (no advance, no DJ wakes, no merges)
     // and the radio stays genuinely dormant — the switch used to be cosmetic.
     if (!isMusicEnabled()) return
+    logSampleTransition(sample)
     conductor?.onSample(sample)
     void observeUnknownSong(sample)
   })
@@ -1074,10 +1321,14 @@ export function disposeRadioConductor(): void {
   // reconfiguration) must not inherit stale grants, caches, or a held mutex.
   grantedSessions.clear()
   lyricCache.clear()
+  lyricInflight.clear()
+  resetDjPatterCache()
   currentLyrics = null
   identifyMisses.clear()
   lastObservedTitle = undefined
   identifiedCurrent = null
   playStarting = null
   playStartingEntry = null
+  gestureStart = null
+  lastWatchedSample = null
 }

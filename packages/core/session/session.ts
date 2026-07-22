@@ -115,6 +115,7 @@ export class Session {
       case 'tool:call':
       case 'tool:result':
       case 'tool:input-start':
+      case 'tool:input-end':
       case 'tool:execution-start':
       case 'tool:execution-update':
       case 'tool:execution-end':

@@ -21,6 +21,12 @@ export interface PermissionInfo {
   workingDirectory?: string
   userId?: string
   workspaceId?: string
+  /**
+   * 'actionable' — emitted prompt awaiting a response; 'queued' — waiting
+   * behind the session's prompt queue (show a waiting state, no respond card).
+   * Absent from older backends; treat as 'actionable'.
+   */
+  promptState?: 'actionable' | 'queued'
 }
 
 /**

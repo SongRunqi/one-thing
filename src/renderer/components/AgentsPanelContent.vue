@@ -32,12 +32,11 @@
         >
           loading…
         </p>
-        <p
+        <ErrorNote
           v-else-if="agentsStore.error"
           class="ledger-error"
-        >
-          {{ agentsStore.error }}
-        </p>
+          :message="agentsStore.error"
+        />
         <p
           v-else-if="agentsStore.agents.length === 0"
           class="ledger-note"
@@ -150,12 +149,11 @@
               />
             </div>
 
-            <p
+            <ErrorNote
               v-if="formError"
               class="ledger-error form-note"
-            >
-              {{ formError }}
-            </p>
+              :message="formError"
+            />
             <p
               v-else-if="formFeedback"
               class="ledger-note form-note"
@@ -191,6 +189,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 
 const agentsStore = useAgentsStore()
 
@@ -447,13 +446,9 @@ onMounted(async () => {
   word-break: break-word;
 }
 
+/* positioning only — visuals come from ErrorNote */
 .ledger-error {
   margin: 10px 0 0;
-  font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  padding-left: 8px;
-  word-break: break-word;
 }
 
 .form-note {

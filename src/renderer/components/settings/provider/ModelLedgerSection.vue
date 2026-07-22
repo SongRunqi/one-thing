@@ -284,10 +284,12 @@
               >
                 Cancel
               </Button>
-              <span
+              <ErrorNote
                 v-if="renameError"
                 class="tune-error"
-              >{{ renameError }}</span>
+                size="sm"
+                :message="renameError"
+              />
             </template>
             <template v-else>
               <Button
@@ -308,10 +310,13 @@
               >
                 Remove from list
               </Button>
-              <span
+              <ErrorNote
                 v-if="removeError === row.key"
                 class="tune-error"
-              >Each provider keeps at least one model — manage it under Connections.</span>
+                size="sm"
+              >
+                Each provider keeps at least one model — manage it under Connections.
+              </ErrorNote>
             </template>
           </div>
         </div>
@@ -336,6 +341,7 @@
 import { nextTick, onMounted, ref } from 'vue'
 import { Brain, ChevronDown, Eye, Image, Search, Star, Wrench, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import ProviderIcon from '../ProviderIcon.vue'
 import type { AppSettings, ModelCapabilityOverride, ProviderInfo } from '@/types'
 import type { CapabilityFilter, LedgerRow, OutputPreset, StylePreset } from './useModelLedger'
@@ -760,14 +766,13 @@ function removeTitle(row: LedgerRow): string {
   font-size: 11px;
 }
 
-.tune-hint,
-.tune-error {
+.tune-hint {
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
   font-size: 11.5px;
 }
 
 .tune-error {
-  color: var(--ui-status-error-fg, var(--color-danger, #d84c4c));
+  flex-shrink: 1;
 }
 
 .tune-caps-line {
@@ -852,7 +857,7 @@ function removeTitle(row: LedgerRow): string {
 }
 
 .tune-action.danger:hover {
-  text-decoration-color: var(--ui-status-error-fg, var(--color-danger, #d84c4c));
+  text-decoration-color: var(--ui-status-danger-fg, var(--color-danger, #d84c4c));
 }
 
 .rename-input {

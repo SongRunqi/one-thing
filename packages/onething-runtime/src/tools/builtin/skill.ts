@@ -146,92 +146,6 @@ type LinkedFiles = {
   other: string[]
 }
 
-interface FuzzyMatchTarget<T> {
-  item: T
-  text: string
-}
-
-interface FuzzyMatchResult<T> {
-  item: T
-  score: number
-}
-
-function normalize(value: string): string {
-  return value.toLowerCase().replace(/[_\-/.:]+/g, ' ').replace(/\s+/g, ' ').trim()
-}
-
-function acronym(value: string): string {
-  return normalize(value)
-    .split(' ')
-    .filter(Boolean)
-    .map(part => part[0])
-    .join('')
-}
-
-function sequentialScore(query: string, text: string): number {
-  let score = 0
-  let cursor = 0
-  let lastIndex = -1
-
-  for (const char of query) {
-    const index = text.indexOf(char, cursor)
-    if (index === -1) return 0
-    score += lastIndex === index - 1 ? 2 : 1
-    cursor = index + 1
-    lastIndex = index
-  }
-
-  return score / Math.max(text.length, 1)
-}
-
-function fuzzyScore(query: string | undefined, text: string): number {
-  const q = normalize(query || '')
-  if (!q) return 1
-
-  const t = normalize(text)
-  if (!t) return 0
-  if (t === q) return 100
-  if (t.startsWith(q)) return 80 - Math.min(t.length - q.length, 40)
-  if (t.includes(q)) return 60 - Math.min(t.indexOf(q), 30)
-
-  const initials = acronym(t)
-  if (initials && initials.startsWith(q)) return 45
-
-  const compactQuery = q.replace(/\s+/g, '')
-  const compactText = t.replace(/\s+/g, '')
-  const seq = sequentialScore(compactQuery, compactText)
-  return seq > 0 ? 20 + seq * 20 : 0
-}
-
-function fuzzyFilter<T>(
-  items: Array<FuzzyMatchTarget<T>>,
-  query?: string,
-  limit = 50,
-): Array<FuzzyMatchResult<T>> {
-  const q = query?.trim()
-  return items
-    .map(target => ({
-      item: target.item,
-      score: fuzzyScore(q, target.text),
-    }))
-    .filter(result => !q || result.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-}
-
-function filterSkills(skills: RuntimeSkillDefinition[], query?: string): RuntimeSkillDefinition[] {
-  const normalizedQuery = query?.trim()
-  return normalizedQuery
-    ? fuzzyFilter(
-        skills.map(skill => ({
-          item: skill,
-          text: `${skill.name} ${skill.description}`,
-        })),
-        normalizedQuery,
-      ).map(result => result.item)
-    : skills
-}
-
 function resolveSkillByName(
   skills: RuntimeSkillDefinition[],
   name: string,
@@ -268,33 +182,6 @@ function linkedFiles(skill: RuntimeSkillDefinition): LinkedFiles {
   return result
 }
 
-function skillListPayload(
-  skills: RuntimeSkillDefinition[],
-  category?: string,
-  query?: string,
-): string {
-  const categoryFilter = category?.trim()
-  const filtered = filterSkills(skills, query)
-    .filter(skill => !categoryFilter || skill.category === categoryFilter)
-    .slice()
-    .sort((a, b) => `${a.category ?? ''}/${a.name}`.localeCompare(`${b.category ?? ''}/${b.name}`))
-
-  const categories = Array.from(new Set(skills.map(skill => skill.category).filter((item): item is string => Boolean(item)))).sort()
-  return JSON.stringify({
-    success: true,
-    skills: filtered.map(skill => ({
-      name: skill.name,
-      description: skill.description,
-      category: skill.category ?? null,
-      path: skill.relativePath ?? skill.path,
-      skill_dir: skill.directoryPath,
-    })),
-    categories,
-    count: filtered.length,
-    hint: 'Use skill_view(name) to see full content, tags, linked files, and absolute paths.',
-  })
-}
-
 function errorPayload(error: string, hint: string): string {
   return JSON.stringify({ success: false, error, hint })
 }
@@ -305,12 +192,12 @@ function skillViewPayload(
   rawFilePath?: string,
 ): string {
   if (!name?.trim()) {
-    return errorPayload('Missing skill name.', 'Call skills_list() to discover available skills, then call skill_view(name).')
+    return errorPayload('Missing skill name.', 'Skill names are listed in the system prompt Skills section; pass one as skill_view(name).')
   }
 
   const skill = resolveSkillByName(skills, name)
   if (!skill) {
-    return errorPayload(`Skill "${name}" not found.`, 'Call skills_list() to discover available skills.')
+    return errorPayload(`Skill "${name}" not found.`, 'Check the Skills section of the system prompt for available skill names.')
   }
 
   const filePath = rawFilePath?.trim()
@@ -361,52 +248,6 @@ function skillViewPayload(
     return errorPayload(`Error reading skill file: ${message}`, 'Check the skill path and file permissions.')
   }
 }
-
-export const SkillsListTool = Tool.define(
-  'skills_list',
-  {
-    name: 'Skills List',
-    category: 'builtin',
-    autoExecute: true,
-    permissionGuard: 'safe',
-    executionMode: 'parallel',
-    renderKind: 'text',
-  },
-  async (ctx?: InitContext) => {
-    const skills = (ctx?.skills ?? []) as RuntimeSkillDefinition[]
-    const parameters = z.object({
-      category: z.string().optional().describe('Optional category to filter skills by.'),
-      query: z.string().optional().describe('Optional fuzzy search text.'),
-      task_id: z.string().optional().describe('Optional task id for compatibility.'),
-    })
-
-    return {
-      description: 'List installed onething skills as JSON. Use this to discover skill names and categories before calling skill_view.',
-      parameters,
-      executionMode: 'parallel',
-      renderKind: 'text',
-
-      async execute(
-        args: { category?: string; query?: string; task_id?: string },
-        toolCtx: ToolContext<SkillMetadata>,
-      ): Promise<ToolResult<SkillMetadata>> {
-        const output = skillListPayload(skills, args.category, args.query)
-        toolCtx.updateResult?.({
-          content: [{ type: 'text', text: output }],
-          details: { phase: 'ready', skillName: args.category || args.query || 'all' },
-        })
-        return {
-          title: args.category ? `Skills in category: ${args.category}` : 'Available skills',
-          output,
-          metadata: {
-            skillName: args.category || args.query || 'all',
-            skillSource: 'list',
-          },
-        }
-      },
-    }
-  },
-)
 
 export const SkillViewTool = Tool.define(
   'skill_view',

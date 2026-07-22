@@ -29,6 +29,7 @@ function bucketFixture(overrides: Record<string, unknown> = {}) {
     byProvider: [{ key: 'anthropic', usage: {} as never, apiCostUSD: 0.012, subscriptionCostUSD: 0, records: 1 }],
     byModel: [{ key: 'claude-fable-5', usage: {} as never, apiCostUSD: 0.012, subscriptionCostUSD: 0, records: 1 }],
     byPlatform: [{ key: 'electron', usage: {} as never, apiCostUSD: 0.012, subscriptionCostUSD: 0.003, records: 2 }],
+    bySource: [{ key: 'chat', usage: {} as never, apiCostUSD: 0.012, subscriptionCostUSD: 0.003, records: 2 }],
     ...overrides,
   }
 }
@@ -122,5 +123,34 @@ describe('UsageSettingsPanel', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('network down')
+  })
+  it('breaks the day down by activity so background calls are visible', async () => {
+    getUsageSummary.mockResolvedValue(summaryFixture({
+      buckets: [bucketFixture({
+        bySource: [
+          { key: 'chat', usage: {} as never, apiCostUSD: 0.012, subscriptionCostUSD: 0, records: 2 },
+          { key: 'memory', usage: {} as never, apiCostUSD: 0.004, subscriptionCostUSD: 0, records: 3 },
+          { key: 'title', usage: {} as never, apiCostUSD: 0.001, subscriptionCostUSD: 0, records: 1 },
+        ],
+      })],
+    }))
+
+    const wrapper = mount(UsageSettingsPanel)
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('By activity')
+    // Raw ledger keys are internal; the panel shows what the user recognises.
+    expect(text).toContain('Memory')
+    expect(text).toContain('Chat naming')
+  })
+
+  it('hides the activity breakdown when everything came from one source', async () => {
+    getUsageSummary.mockResolvedValue(summaryFixture())
+
+    const wrapper = mount(UsageSettingsPanel)
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('By activity')
   })
 })

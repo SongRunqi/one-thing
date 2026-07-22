@@ -35,6 +35,7 @@ import {
   resolveAgentModelCapabilities,
 } from './capabilities.js'
 import { toolCallSignature } from './tool-signature.js'
+import { ToolExecutionScheduler } from './tool-execution-scheduler.js'
 
 const DEFAULT_MAX_TURNS = 8
 const DEFAULT_MAX_CONCURRENT_TOOLS = 8
@@ -73,10 +74,13 @@ interface ExecuteProviderTurnOptions {
   request: AgentTurnRequest
   provider: AgentLoopOptions['provider']
   /**
-   * Invoked as soon as a tool call's arguments are complete. Executions run
-   * concurrently and are not awaited inside the stream loop; rejections
-   * (abort / pause-for-confirmation) are collected and rethrown after every
-   * execution has settled. Never invoked for externally-executed tool calls.
+   * Invoked when a tool call's arguments are complete, subject to execution
+   * ordering: tools declared executionMode 'parallel' run concurrently within
+   * their segment, while every other tool is a barrier — it waits for all
+   * earlier calls to settle and blocks later ones. Executions are not awaited
+   * inside the stream loop; rejections (abort / pause-for-confirmation) are
+   * collected and rethrown after every execution has settled. Never invoked
+   * for externally-executed tool calls.
    */
   onToolCallDone: (toolCall: AgentToolCall) => Promise<void>
   /**
@@ -235,6 +239,12 @@ async function executeProviderTurn(options: ExecuteProviderTurnOptions): Promise
     const providerData: AgentProviderData[] = []
     const toolExecutions: Promise<void>[] = []
     const toolFailures: ToolExecutionFailure[] = []
+    // Execution-order guard for this turn: only tools declared
+    // executionMode 'parallel' may overlap; everything else (including
+    // undeclared) is a barrier. Prevents e.g. a read racing an edit of the
+    // same file and observing pre-edit bytes.
+    const scheduler = new ToolExecutionScheduler()
+    const toolsByName = new Map((request.tools ?? []).map(tool => [tool.name, tool]))
 
     const collectEvent = (event: AgentTurnStreamEvent): void => {
       // Tool observation events are only valid from the provider when it
@@ -267,13 +277,16 @@ async function executeProviderTurn(options: ExecuteProviderTurnOptions): Promise
           // loop only records them and awaits the provider's tool-result.
           if (event.toolCall.externallyExecuted) break
           const index = toolExecutions.length
+          const barrier = toolsByName.get(event.toolCall.name)?.executionMode !== 'parallel'
           toolExecutions.push(
-            onToolCallDone(event.toolCall).catch((error: unknown) => {
-              toolFailures.push({
-                index,
-                error: error instanceof Error ? error : new Error(String(error)),
-              })
-            }),
+            scheduler
+              .enqueue(() => onToolCallDone(event.toolCall), { barrier })
+              .catch((error: unknown) => {
+                toolFailures.push({
+                  index,
+                  error: error instanceof Error ? error : new Error(String(error)),
+                })
+              }),
           )
           break
         }

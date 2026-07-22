@@ -811,11 +811,10 @@ onMounted(async () => {
     createNewChat()
   })
 
-  unsubscribeMenuCloseChat = platformApi.onMenuCloseChat(async () => {
-    const currentId = sessionsStore.currentSessionId
-    if (currentId) {
-      await sessionsStore.deleteSession(currentId)
-    }
+  // Cmd+W closes the focused tab; the panel asks the host to close the window
+  // only once nothing is left to fall back to.
+  unsubscribeMenuCloseChat = platformApi.onMenuCloseChat(() => {
+    chatContainerRef.value?.closeFocusedPanelActiveTab?.()
   })
 
   // Listen for search action execution from Search Everywhere window
@@ -1044,15 +1043,36 @@ onUnmounted(() => {
   min-height: 0;
 }
 
+/* top 对齐 tab 行的中线:PanelTree 根的 1px 上边框 + 40px 高的 .tab-bar
+   → 中心 21px;按钮自身 24px 高,故 21 - 12 = 9。TabBar 右侧那组 28px 的
+   .header-btn 也落在 21px 上,三者共线。 */
 .app-sidebar-actions {
   position: fixed;
-  top: 12px;
+  top: 9px;
   height: 24px;
   display: flex;
   align-items: center;
   z-index: 700;
   pointer-events: auto;
   -webkit-app-region: no-drag;
+}
+
+/* 顶栏左半段的拖拽带。侧栏收起时 SidebarHeader 整个不存在,交通灯到 tab
+   之间没有任何 drag 区,窗口在这一栏拖不动;这里补一条铺到窗口左缘的带子。
+   两个坑:
+   1. Chromium 只把元素的 content box 计进 draggable region,padding 不算
+      ——所以必须是独立的盒子,不能给本体加 padding 撑出来。
+   2. no-drag 只有作为 drag 元素的子孙才盖得住,跨分支的 fixed 兄弟无效,
+      所以这条带子右缘停在按钮左侧,不去盖 tab 栏。 */
+.app-sidebar-actions::before {
+  content: '';
+  position: absolute;
+  top: -12px;
+  right: 100%;
+  width: 100vw;
+  height: 40px;
+  pointer-events: none;
+  -webkit-app-region: drag;
 }
 
 .app-sidebar-actions.transitioning {

@@ -395,6 +395,15 @@ export function updateSessionGoal(sessionId: string, goal: SessionGoal | null): 
 	sessionRepository.updateSessionGoal(sessionId, goal);
 }
 
+// Write the goal history plus its derived current goal (see goal-system-v3)
+export function updateSessionGoals(
+	sessionId: string,
+	goals: SessionGoal[],
+	current: SessionGoal | null,
+): void {
+	sessionRepository.updateSessionGoals(sessionId, goals, current);
+}
+
 // Inherit working directory from workspace (does not update updatedAt)
 export function inheritSessionWorkingDirectory(
 	sessionId: string,

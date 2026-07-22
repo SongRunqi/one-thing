@@ -1,11 +1,11 @@
 <template>
   <div class="round-timeline">
-    <div
+    <ErrorNote
       v-if="store.roundsError"
-      class="rt-hint rt-error"
-    >
-      {{ store.roundsError }}
-    </div>
+      class="rt-error"
+      size="sm"
+      :message="store.roundsError"
+    />
     <div
       v-else-if="store.roundsLoading"
       class="rt-hint"
@@ -153,10 +153,12 @@
           >
             放弃编辑
           </button>
-          <span
+          <ErrorNote
             v-if="store.roundReplayErrors[round.round]"
-            class="rt-error"
-          >{{ store.roundReplayErrors[round.round] }}</span>
+            class="rt-error-inline"
+            size="sm"
+            :message="store.roundReplayErrors[round.round]"
+          />
         </div>
 
         <!-- Resend results vs original -->
@@ -196,6 +198,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { useEvalsWorkbenchStore, type RoundView, type RoundReplayAttempt } from '@/stores/evalsWorkbench'
 
 interface RequestMessage {
@@ -511,8 +514,12 @@ function shorten(text: string, max: number): string {
 }
 
 .rt-error {
-  color: var(--ui-status-danger-fg, #e74c3c);
-  font-size: 11.5px;
+  margin: 10px;
+}
+
+/* Sits in the replay action row — no margin, just the rule. */
+.rt-error-inline {
+  flex-shrink: 1;
 }
 
 .rt-hint {

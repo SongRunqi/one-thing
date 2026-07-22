@@ -68,6 +68,8 @@ export type {
 	ToolParameter,
 	ToolDefinition,
 	ToolCall,
+	DiffHunk,
+	DiffHunkLine,
 	ToolResultContentPart,
 	ToolResult,
 	ToolPartialResult,
@@ -551,6 +553,16 @@ export type {
 	GoalDiffsRequest,
 	GoalDiffsResponse,
 } from "./goal.js";
+
+// Session TOC (table of contents) types
+export type {
+	SessionSegment,
+	SessionSegmentFile,
+	SessionSegmentKind,
+	SessionSegmentOrigin,
+	SessionSegmentOutcome,
+	GetSessionSegmentsResponse,
+} from "./toc.js";
 
 // Project directories types
 export type {

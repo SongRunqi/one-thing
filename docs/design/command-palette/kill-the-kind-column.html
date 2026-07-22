@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>命令面板 · 去掉类型列</title>
+<style>
+:root {
+  --bg-chat: #faf8f1;
+  --bg-deep: #f3efe5;
+  --text: #29241c;
+  --muted: rgba(41, 36, 28, 0.62);
+  --faint: rgba(41, 36, 28, 0.42);
+  --border-strong: rgba(41, 36, 28, 0.55);
+  --hover: rgba(41, 36, 28, 0.055);
+  --accent: #b8452c;
+  --composer-border: color-mix(in srgb, var(--border-strong) 52%, transparent);
+  --cell-divider: color-mix(in srgb, var(--border-strong) 30%, transparent);
+  --radius-xs: 4px;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-display: "Iowan Old Style", "Songti SC", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-chat: #191611;
+    --bg-deep: #14110d;
+    --text: #e8e1d2;
+    --muted: rgba(232, 225, 210, 0.66);
+    --faint: rgba(232, 225, 210, 0.42);
+    --border-strong: rgba(232, 225, 210, 0.5);
+    --hover: rgba(232, 225, 210, 0.07);
+    --accent: #d8765c;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg-deep); color: var(--text);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px; line-height: 1.6; padding: 44px 40px 90px;
+}
+.page-head { max-width: 1080px; margin: 0 auto 40px; }
+.page-head h1 { font-size: 21px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: ""; display: block; width: 84px;
+  border-bottom: 2px solid var(--text); margin-top: 10px;
+}
+.page-head p { margin-top: 12px; color: var(--muted); max-width: 60em; }
+code {
+  font-family: var(--font-mono); font-size: 12px;
+  padding: 1px 5px; border: 1px solid var(--cell-divider); border-radius: 3px;
+}
+.options { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 52px; }
+.option-head { margin-bottom: 18px; }
+.option-tag { font-family: var(--font-mono); font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--faint); }
+.option-head h2 { margin-top: 6px; font-size: 17px; font-weight: 600; }
+.option-head p { margin-top: 8px; color: var(--muted); max-width: 58em; font-size: 13.5px; }
+.gain {
+  display: inline-block; margin-top: 10px; padding: 2px 9px;
+  border: 1px solid var(--cell-divider); border-radius: 3px;
+  font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+}
+.gain b { color: var(--text); }
+
+.stage {
+  background: var(--bg-chat); border: 1px dashed var(--cell-divider);
+  border-radius: 6px; padding: 38px 32px 24px;
+  display: flex; justify-content: center;
+}
+.composer-wrapper { width: 100%; max-width: 620px; position: relative; }
+.composer-anchor { position: relative; width: 100%; }
+.composer {
+  position: relative; z-index: 1; display: flex; flex-direction: column;
+  border: 1px solid var(--composer-border); border-radius: var(--radius-xs);
+  background: transparent; overflow: hidden;
+}
+.composer-frame-label {
+  position: absolute; top: -7px; left: 12px; z-index: 2;
+  padding: 0 6px; background: var(--bg-chat);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; color: var(--faint); user-select: none;
+}
+.composer-input {
+  padding: 11px 12px 12px; font-family: var(--font-display);
+  font-size: 15px; line-height: 1.5; min-height: 42px;
+}
+.composer-input .caret {
+  display: inline-block; width: 1px; height: 1.05em;
+  background: var(--accent); vertical-align: -2px; margin-left: 1px;
+}
+.composer-toolbar {
+  display: flex; justify-content: space-between; align-items: stretch;
+  min-height: 34px; margin-top: 2px; border-top: 1px solid var(--composer-border);
+}
+.toolbar-left, .toolbar-right { display: flex; align-items: stretch; }
+.toolbar-left > *, .toolbar-right > * {
+  display: flex; align-items: center; padding: 0 11px;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--muted); white-space: nowrap;
+}
+.toolbar-left > * { border-right: 1px solid var(--cell-divider); }
+.toolbar-right > * { border-left: 1px solid var(--cell-divider); }
+.send { color: var(--text); }
+
+.pal {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 9px); z-index: 3;
+  border: 1px solid var(--composer-border); border-radius: var(--radius-xs);
+  background: var(--bg-chat); padding-top: 5px;
+}
+.pal-label {
+  position: absolute; top: -7px; left: 12px; z-index: 4;
+  padding: 0 6px; background: var(--bg-chat);
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; color: var(--faint); user-select: none;
+}
+.pal-label .count { margin-left: 10px; letter-spacing: 1px; }
+.pal-hints {
+  display: flex; align-items: stretch; min-height: 25px;
+  border-top: 1px solid var(--cell-divider);
+}
+.pal-hints > span {
+  display: flex; align-items: center; padding: 0 11px;
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 1px;
+  color: var(--faint); white-space: nowrap;
+}
+.pal-hints > span + span { border-left: 1px solid var(--cell-divider); }
+
+/* 行的共同骨架:名字从 12px 就开始,没有任何前置列 */
+.row {
+  display: flex; align-items: baseline; gap: 0;
+  min-height: 29px; padding: 0 12px; cursor: pointer;
+}
+.row + .row { border-top: 1px solid color-mix(in srgb, var(--border-strong) 13%, transparent); }
+.row:hover { background: var(--hover); }
+.row.sel { background: var(--hover); }
+.name {
+  flex: none; font-family: var(--font-mono); font-size: 12.5px; color: var(--muted);
+  white-space: nowrap;
+}
+.row:hover .name, .row.sel .name { color: var(--text); }
+.row.sel .name { font-weight: 700; }
+.name .hit { color: var(--text); font-weight: 700; }
+.lead {
+  flex: 1 1 20px; min-width: 16px; align-self: center; margin: 0 10px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--border-strong) 30%, transparent);
+  transform: translateY(2px);
+}
+.desc {
+  flex: 0 1 auto; color: var(--faint); font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.row.sel .desc { color: var(--muted); }
+.kbd {
+  flex: none; margin-left: 12px; font-family: var(--font-mono);
+  font-size: 10.5px; color: var(--muted); visibility: hidden;
+}
+.row.sel .kbd { visibility: visible; }
+
+/* ——— 甲:类型只在选中那一行露面 ——— */
+.a .type {
+  flex: none; margin-left: 12px;
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.6px;
+  color: var(--faint); text-transform: uppercase;
+  visibility: hidden;
+}
+.a .row.sel .type { visibility: visible; }
+
+/* ——— 乙:类型压成一个字符的记号 ——— */
+.b .mark {
+  flex: none; width: 11px; margin-right: 9px; align-self: center;
+  font-family: var(--font-mono); font-size: 10px; line-height: 1;
+  color: var(--faint); text-align: center;
+}
+.b .row.sel .mark, .b .row:hover .mark { color: var(--text); }
+
+/* ——— 丙:类型退成分组小标题 ——— */
+.c .group {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px 3px;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; color: var(--faint); text-transform: uppercase;
+}
+.c .group::after {
+  content: ""; flex: 1 1 auto;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-strong) 16%, transparent);
+}
+.c .row { min-height: 27px; }
+
+/* 对照:旧的类型列 */
+.old .row { padding: 0; }
+.old .oldkind {
+  flex: none; width: 52px; align-self: center; text-align: center;
+  font-family: var(--font-mono); font-size: 9.5px; color: var(--faint);
+  text-transform: uppercase;
+}
+.old .oldbody {
+  flex: 1 1 auto; display: flex; align-items: baseline; min-width: 0;
+  padding: 0 12px 0 12px;
+  border-left: 1px solid color-mix(in srgb, var(--border-strong) 32%, transparent);
+  min-height: 29px;
+}
+.old .oldbody > .name { align-self: center; }
+.old .oldbody > .desc { align-self: center; }
+.shade {
+  position: absolute; left: 0; top: 5px; bottom: 25px; width: 52px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  pointer-events: none;
+}
+.shade::after {
+  content: "52px 全行浪费";
+  position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+  font-family: var(--font-mono); font-size: 8px; color: var(--accent);
+  text-align: center; line-height: 1.3;
+}
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>命令面板 · 去掉类型列</h1>
+  <p>
+    问题:<code>cmd / skill / action / prompt</code> 这条固定列在 620px 的 composer 里吃掉 52–62px
+    加一条竖装订线,<strong>每一行都付这个钱</strong>,换来的却是你扫一眼就知道的信息。
+    下面先看它有多贵,再看三种不花这笔钱的办法。名字一律从左边距 12px 起排,描述吃掉全部剩余宽度。
+  </p>
+</div>
+
+<div class="options">
+
+  <!-- 对照 -->
+  <section class="option old">
+    <div class="option-head">
+      <span class="option-tag">对照</span>
+      <h2>现状 —— 类型列 + 装订线</h2>
+      <p>红色那条就是每行被预先扣掉的宽度。描述被挤到只能显示半句,长一点的就打点。</p>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND PALETTE<span class="count">17</span></span>
+          <div class="shade"></div>
+          <div class="row sel">
+            <span class="oldkind">cmd</span>
+            <span class="oldbody"><span class="name">/<span class="hit">mo</span>del</span><span class="lead"></span><span class="desc">切换当前会话的模型</span><span class="kbd">⏎</span></span>
+          </div>
+          <div class="row">
+            <span class="oldkind">cmd</span>
+            <span class="oldbody"><span class="name">/<span class="hit">mo</span>de</span><span class="lead"></span><span class="desc">切换权限档位:只读 / 询问 / 放手</span><span class="kbd">⏎</span></span>
+          </div>
+          <div class="row">
+            <span class="oldkind">skill</span>
+            <span class="oldbody"><span class="name">/<span class="hit">mo</span>nitor</span><span class="lead"></span><span class="desc">盯住一条命令直到条件满足再叫我</span><span class="kbd">⏎</span></span>
+          </div>
+          <div class="row">
+            <span class="oldkind">action</span>
+            <span class="oldbody"><span class="name">/<span class="hit">mo</span>ve-session</span><span class="lead"></span><span class="desc">把当前会话移到别的工作区</span><span class="kbd">⏎</span></span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 执行</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 甲 -->
+  <section class="option a">
+    <div class="option-head">
+      <span class="option-tag">甲</span>
+      <h2>类型只在选中那一行露面</h2>
+      <p>
+        未选中的行只有<strong>名字 —— 说明</strong>,一个字都不多。类型退到行尾,只有你真正停在某条上时才浮出来,
+        跟 ⏎ 一起出现。要判断类型的时刻,恰好就是你已经选中它的时刻。
+      </p>
+      <span class="gain">每行回收 <b>64px</b> · 描述可见长度 <b>+38%</b></span>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND PALETTE<span class="count">17</span></span>
+          <div class="row sel">
+            <span class="name">/<span class="hit">mo</span>del</span><span class="lead"></span>
+            <span class="desc">切换当前会话的模型</span>
+            <span class="type">cmd</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>de</span><span class="lead"></span>
+            <span class="desc">切换权限档位:只读 / 询问 / 放手</span>
+            <span class="type">cmd</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>nitor</span><span class="lead"></span>
+            <span class="desc">盯住一条命令直到条件满足再叫我</span>
+            <span class="type">skill</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>ve-session</span><span class="lead"></span>
+            <span class="desc">把当前会话移到别的工作区</span>
+            <span class="type">action</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>ck-data</span><span class="lead"></span>
+            <span class="desc">按 schema 造一份假数据喂给测试</span>
+            <span class="type">prompt</span><span class="kbd">⏎</span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 乙 -->
+  <section class="option b">
+    <div class="option-head">
+      <span class="option-tag">乙</span>
+      <h2>类型压成一个字符的记号</h2>
+      <p>
+        类型不写字,只留一个 11px 宽的记号:<code>/</code> 命令、<code>◇</code> 技能、
+        <code>▸</code> 动作、<code>¶</code> 提示。类型信息一直在场(扫一列记号就能分辨),
+        但成本从 64px 降到 20px。代价是记号要认,新用户头几次得猜。
+      </p>
+      <span class="gain">每行回收 <b>44px</b> · 类型信息 <b>全程可见</b></span>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND PALETTE<span class="count">17</span></span>
+          <div class="row sel">
+            <span class="mark">/</span><span class="name">/<span class="hit">mo</span>del</span>
+            <span class="lead"></span><span class="desc">切换当前会话的模型</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="mark">/</span><span class="name">/<span class="hit">mo</span>de</span>
+            <span class="lead"></span><span class="desc">切换权限档位:只读 / 询问 / 放手</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="mark">◇</span><span class="name">/<span class="hit">mo</span>nitor</span>
+            <span class="lead"></span><span class="desc">盯住一条命令直到条件满足再叫我</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="mark">▸</span><span class="name">/<span class="hit">mo</span>ve-session</span>
+            <span class="lead"></span><span class="desc">把当前会话移到别的工作区</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="mark">¶</span><span class="name">/<span class="hit">mo</span>ck-data</span>
+            <span class="lead"></span><span class="desc">按 schema 造一份假数据喂给测试</span><span class="kbd">⏎</span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- 丙 -->
+  <section class="option c">
+    <div class="option-head">
+      <span class="option-tag">丙</span>
+      <h2>类型退成分组小标题</h2>
+      <p>
+        类型说一次就够,不必每行重复一遍。同类的条目排在一起,顶上一行 mono 小标题带一条延伸线——
+        跟框标签是同一支笔。横向 100% 还给内容,只在纵向为每个出现过的类型付一行。
+      </p>
+      <span class="gain">每行回收 <b>64px</b> · 但纵向多付 <b>每类 1 行</b></span>
+    </div>
+    <div class="stage">
+      <div class="composer-wrapper"><div class="composer-anchor">
+        <div class="pal">
+          <span class="pal-label">COMMAND PALETTE<span class="count">17</span></span>
+          <div class="group">命令</div>
+          <div class="row sel">
+            <span class="name">/<span class="hit">mo</span>del</span><span class="lead"></span>
+            <span class="desc">切换当前会话的模型</span><span class="kbd">⏎</span>
+          </div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>de</span><span class="lead"></span>
+            <span class="desc">切换权限档位:只读 / 询问 / 放手</span><span class="kbd">⏎</span>
+          </div>
+          <div class="group">技能</div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>nitor</span><span class="lead"></span>
+            <span class="desc">盯住一条命令直到条件满足再叫我</span><span class="kbd">⏎</span>
+          </div>
+          <div class="group">动作</div>
+          <div class="row">
+            <span class="name">/<span class="hit">mo</span>ve-session</span><span class="lead"></span>
+            <span class="desc">把当前会话移到别的工作区</span><span class="kbd">⏎</span>
+          </div>
+          <div class="pal-hints"><span>↑↓ 移动</span><span>⏎ 执行</span><span>tab 补全</span><span>esc 收起</span></div>
+        </div>
+        <div class="composer">
+          <span class="composer-frame-label">DRAFT</span>
+          <div class="composer-input">/mo<span class="caret"></span></div>
+          <div class="composer-toolbar">
+            <div class="toolbar-left"><span>opus 4.8</span><span>ctx 12%</span></div>
+            <div class="toolbar-right"><span>🎙</span><span class="send">发送 ⏎</span></div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>

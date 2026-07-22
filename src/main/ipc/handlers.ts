@@ -28,6 +28,7 @@ import { registerFilesHandlers } from "./files.js";
 import { registerMarkdownHandlers } from "./markdown.js";
 import { registerSearchHandlers } from "@onething/electron-host/search/ipc";
 import { registerAppStateHandlers } from "./app-state.js";
+import { registerWindowHandlers } from "@onething/electron-host/ipc/window";
 import { registerTodoPlanHandlers } from "../todo-plan/ipc.js";
 import { registerVoiceHandlers } from "../voice/ipc.js";
 import { registerMusicHandlers } from "../music/ipc.js";
@@ -68,6 +69,7 @@ export function initializeIPC() {
 	registerMarkdownHandlers();
 	registerSearchHandlers();
 	registerAppStateHandlers();
+	registerWindowHandlers();
 	registerTodoPlanHandlers();
 	registerVoiceHandlers();
 	registerMusicHandlers();

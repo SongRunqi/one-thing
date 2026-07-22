@@ -3,6 +3,7 @@
  * goes through these functions so the ownership rules (model vs user vs
  * system) and the budget flip live in one testable place.
  */
+import { isGoalTerminal } from './records.js'
 import {
   DEFAULT_GOAL_CONTINUATION_LIMIT,
   DEFAULT_GOAL_ERROR_RETRY_LIMIT,
@@ -62,9 +63,67 @@ export function createSessionGoal(input: {
   }
 }
 
-/** A goal blocks creating a new one until it is complete (mirrors codex). */
+/**
+ * A goal blocks creating a new one until it reaches a terminal status.
+ * paused / blocked / budget_limited deliberately count as unfinished: all
+ * three are resumable and must not be silently displaced. Terminal goals step
+ * aside but are kept as history (see ./records.ts).
+ */
 export function isGoalUnfinished(goal: SessionGoal | undefined): boolean {
-  return goal !== undefined && goal.status !== 'complete'
+  return goal !== undefined && !isGoalTerminal(goal)
+}
+
+/**
+ * The user giving up on a goal. This is the second exit besides 'complete' —
+ * the pressure valve for a goal stalled at blocked / budget_limited that the
+ * user neither wants to resume nor can honestly call done. Unlike the v2
+ * `clearGoal`, it preserves the record: an abandoned goal is exactly the
+ * "unfinished business" signal worth keeping.
+ */
+export function abandonGoal(
+  goal: SessionGoal,
+  now: number,
+  reason?: string,
+): SessionGoal {
+  if (isGoalTerminal(goal)) return goal
+  return {
+    ...goal,
+    status: 'abandoned',
+    statusReason: reason ?? goal.statusReason,
+    updatedAt: now,
+  }
+}
+
+/**
+ * Stamps the settlement anchor (`endedAt` / `endMessageId`) on a transition.
+ *
+ * Called once from the single writer rather than from each transition, so
+ * every path — model, user, budget flip, error breaker, abort — is covered
+ * without seven separate edits that could drift apart.
+ *
+ * Only the active⇄non-active edge moves the anchor. A goal that goes
+ * paused → abandoned keeps the pause timestamp: that is when the work
+ * stopped, not when the user got around to writing it off.
+ */
+export function applyGoalSettlement(
+  previous: SessionGoal | undefined,
+  next: SessionGoal,
+  now: number,
+  anchor?: { messageId?: string },
+): SessionGoal {
+  const wasActive = previous?.status === 'active'
+  const isActive = next.status === 'active'
+
+  if (wasActive && !isActive) {
+    return { ...next, endedAt: now, endMessageId: anchor?.messageId ?? next.endMessageId }
+  }
+  if (!wasActive && isActive) {
+    const resumed = { ...next }
+    delete resumed.endedAt
+    delete resumed.endMessageId
+    return resumed
+  }
+  return next
 }
 
 /**
@@ -134,8 +193,12 @@ export function applyModelGoalStatus(
       'The goal tool can only mark the goal complete or paused; resume and budgets are controlled by the user',
     )
   }
-  if (goal.status === 'complete') {
-    throw new GoalStateError('Goal is already complete')
+  if (isGoalTerminal(goal)) {
+    throw new GoalStateError(
+      goal.status === 'complete'
+        ? 'Goal is already complete'
+        : 'Goal was abandoned; set a new goal instead',
+    )
   }
   return {
     ...goal,
@@ -169,8 +232,12 @@ export function applyUserGoalUpdate(
     // A raised budget un-flips a budget-limited goal only through resume below.
   }
   if (update.status !== undefined) {
-    if (goal.status === 'complete') {
-      throw new GoalStateError('Goal is already complete; set a new goal instead')
+    if (isGoalTerminal(goal)) {
+      throw new GoalStateError(
+        goal.status === 'complete'
+          ? 'Goal is already complete; set a new goal instead'
+          : 'Goal was abandoned; set a new goal instead',
+      )
     }
     next.status = update.status
     if (update.status === 'active') {

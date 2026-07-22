@@ -2920,12 +2920,22 @@ export function createDevelopmentOnethingServerRuntime(
 				}
 
 				if (command.type === "command:permission-respond") {
-					return respondToPermission(
-						command.requestId,
-						command,
-						context,
-						sessionId,
-					);
+					let requestId = command.requestId;
+					if (!requestId && command.toolCallId) {
+						for (const [id, pending] of pendingPermissions) {
+							if (
+								pending.sessionId === sessionId &&
+								pending.info.callId === command.toolCallId
+							) {
+								requestId = id;
+								break;
+							}
+						}
+					}
+					if (!requestId) {
+						return { success: false, error: "Permission request not found" };
+					}
+					return respondToPermission(requestId, command, context, sessionId);
 				}
 
 				if (command.type === "command:resume-after-confirm") {

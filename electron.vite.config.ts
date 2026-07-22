@@ -4,6 +4,10 @@ import vue from '@vitejs/plugin-vue'
 
 const onethingPackageAliases = [
   { find: '@onething/core/agent-loop', replacement: resolve(__dirname, 'packages/core/agent-loop/index.ts') },
+  // Browser-safe leaf module (no node deps) — must be registered BEFORE the
+  // engine barrel so the renderer never drags node:crypto into the bundle.
+  { find: '@onething/core/engine/attachment-mime', replacement: resolve(__dirname, 'packages/core/engine/attachment-mime.ts') },
+  { find: '@onething/core/engine/streaming-args', replacement: resolve(__dirname, 'packages/core/engine/streaming-args.ts') },
   { find: '@onething/core/engine', replacement: resolve(__dirname, 'packages/core/engine/index.ts') },
   { find: '@onething/core/events', replacement: resolve(__dirname, 'packages/core/events/index.ts') },
   { find: '@onething/core/gateway-runtime', replacement: resolve(__dirname, 'packages/core/gateway-runtime.ts') },
@@ -62,6 +66,7 @@ const onethingPackageAliases = [
   { find: '@onething/electron-host/ipc/themes', replacement: resolve(__dirname, 'apps/electron/src/ipc/themes.ts') },
   { find: '@onething/electron-host/ipc/todo-plan', replacement: resolve(__dirname, 'apps/electron/src/ipc/todo-plan.ts') },
   { find: '@onething/electron-host/ipc/tools', replacement: resolve(__dirname, 'apps/electron/src/ipc/tools.ts') },
+  { find: '@onething/electron-host/ipc/window', replacement: resolve(__dirname, 'apps/electron/src/ipc/window.ts') },
   { find: '@onething/electron-host/ipc/variables', replacement: resolve(__dirname, 'apps/electron/src/ipc/variables.ts') },
   { find: '@onething/electron-host/logging/console-capture', replacement: resolve(__dirname, 'apps/electron/src/logging/console-capture.ts') },
   { find: '@onething/electron-host/menu/application-menu', replacement: resolve(__dirname, 'apps/electron/src/menu/application-menu.ts') },
@@ -143,6 +148,7 @@ const onethingPackageAliases = [
   { find: '@onething/runtime/skills', replacement: resolve(__dirname, 'packages/onething-runtime/src/skills/index.ts') },
   { find: '@onething/runtime/goals', replacement: resolve(__dirname, 'packages/onething-runtime/src/goals/index.ts') },
   { find: '@onething/runtime/usage', replacement: resolve(__dirname, 'packages/onething-runtime/src/usage/index.ts') },
+  { find: '@onething/runtime/toc', replacement: resolve(__dirname, 'packages/onething-runtime/src/toc/index.ts') },
   { find: '@onething/runtime/practice', replacement: resolve(__dirname, 'packages/onething-runtime/src/practice/index.ts') },
   { find: '@onething/runtime/media', replacement: resolve(__dirname, 'packages/onething-runtime/src/media/index.ts') },
   { find: '@onething/runtime/memory/active-memory', replacement: resolve(__dirname, 'packages/onething-runtime/src/memory/active-memory.ts') },

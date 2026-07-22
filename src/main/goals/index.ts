@@ -12,16 +12,22 @@
  */
 import { randomUUID } from "node:crypto";
 import {
+	abandonGoal,
+	applyGoalSettlement,
 	applyGoalUsage,
 	applyModelGoalStatus,
 	applyUserGoalUpdate,
 	canAutoContinueGoal,
 	clearGoalErrorStreak,
 	createSessionGoal,
+	currentGoalOf,
 	GoalStateError,
 	isGoalUnfinished,
+	mergeGoalRecord,
+	normalizeGoalRecords,
 	pauseGoalAfterAbort,
 	pauseGoalAtContinuationLimit,
+	pruneGoalHistory,
 	recordGoalContinuation,
 	recordGoalRunError,
 } from "@onething/runtime/goals";
@@ -46,17 +52,76 @@ export function goalLimits(): SessionGoalLimits {
 	};
 }
 
+/** Last message in the session — the timeline anchor for goal transitions. */
+function lastMessageId(sessionId: string): string | undefined {
+	const messages = store.getSession(sessionId)?.messages;
+	if (!Array.isArray(messages) || messages.length === 0) return undefined;
+	return messages[messages.length - 1]?.id;
+}
+
+/**
+ * The session's goal history, reconciled across the v2 scalar and the v3
+ * array. Read through this rather than touching the session fields directly.
+ */
+function storedGoals(sessionId: string): SessionGoal[] {
+	const session = store.getSession(sessionId) as
+		| { goal?: SessionGoal; goals?: SessionGoal[] }
+		| undefined;
+	if (!session) return [];
+	return normalizeGoalRecords(session.goals, session.goal);
+}
+
+/**
+ * Folds a mutated goal back into the history and writes the whole list.
+ *
+ * Keeping the `SessionGoal | null` signature is what lets every caller above
+ * stay untouched: they still think in terms of "the current goal", and the
+ * array lives entirely below this line. The settlement anchor is stamped here
+ * too, so every transition path gets it without seven separate edits.
+ */
 function persistGoal(sessionId: string, goal: SessionGoal | null): void {
-	store.updateSessionGoal(sessionId, goal);
+	const previous = currentGoalOf(storedGoals(sessionId));
+	const settled =
+		goal === null
+			? null
+			: applyGoalSettlement(previous, goal, Date.now(), {
+					messageId: lastMessageId(sessionId),
+				});
+
+	const goals = pruneGoalHistory(mergeGoalRecord(storedGoals(sessionId), settled));
+	const current = currentGoalOf(goals) ?? null;
+	store.updateSessionGoals(sessionId, goals, current);
 	try {
-		getEventBus().emit(sessionId, { type: "session:goal-updated", goal });
+		getEventBus().emit(sessionId, { type: "session:goal-updated", goal: settled, goals });
+	} catch (error) {
+		console.error("[goals] Failed to emit goal-updated:", error);
+	}
+}
+
+/**
+ * Amends a record in place without touching the settlement anchor.
+ *
+ * Used for after-the-fact enrichment of an already-finished goal (the
+ * fileChanges backfill). Going through persistGoal would compare it against
+ * whatever goal is *current* now and could stamp a bogus endedAt on it.
+ */
+function persistGoalRecord(sessionId: string, goal: SessionGoal): void {
+	const goals = pruneGoalHistory(mergeGoalRecord(storedGoals(sessionId), goal));
+	store.updateSessionGoals(sessionId, goals, currentGoalOf(goals) ?? null);
+	try {
+		getEventBus().emit(sessionId, { type: "session:goal-updated", goal, goals });
 	} catch (error) {
 		console.error("[goals] Failed to emit goal-updated:", error);
 	}
 }
 
 function storedGoal(sessionId: string): SessionGoal | undefined {
-	return store.getSession(sessionId)?.goal as SessionGoal | undefined;
+	return currentGoalOf(storedGoals(sessionId));
+}
+
+/** The session's full goal history, oldest first. */
+export function getGoals(sessionId: string): SessionGoal[] {
+	return storedGoals(sessionId);
 }
 
 /** Stored goal plus any unflushed accounting — what prompts should render. */
@@ -89,8 +154,9 @@ export function createGoal(
 		tokenBudget: input.tokenBudget,
 		now: Date.now(),
 	});
-	persistGoal(sessionId, goal);
-	return goal;
+	const anchored: SessionGoal = { ...goal, startMessageId: lastMessageId(sessionId) };
+	persistGoal(sessionId, anchored);
+	return anchored;
 }
 
 export function updateGoalFromUser(
@@ -105,10 +171,18 @@ export function updateGoalFromUser(
 	return next;
 }
 
-export function clearGoal(sessionId: string): void {
+/**
+ * The user giving up on the current goal. Archives rather than deletes: the
+ * record — objective, reason it stalled, files it touched — is exactly the
+ * "unfinished business" worth keeping, and it is the only trace that this
+ * stretch of the session happened at all.
+ */
+export function clearGoal(sessionId: string, reason?: string): void {
 	pendingUsage.delete(sessionId);
 	roundsSinceContinuation.delete(sessionId);
-	if (storedGoal(sessionId)) persistGoal(sessionId, null);
+	const goal = storedGoal(sessionId);
+	if (!goal) return;
+	persistGoal(sessionId, abandonGoal(goal, Date.now(), reason));
 }
 
 /** The goal tool's path: only 'complete' | 'paused' pass validation. */
@@ -145,11 +219,12 @@ async function enrichCompletedGoalWithFileChanges(
 			completed.createdAt,
 		);
 		if (fileChanges.length === 0) return;
-		const current = storedGoal(sessionId);
-		if (!current || current.id !== completed.id || current.status !== "complete") {
-			return;
-		}
-		persistGoal(sessionId, { ...current, fileChanges });
+		// Look the goal up by id, not through storedGoal(): a completed goal is
+		// terminal, so it is no longer the *current* one — and by now the user
+		// may already have started the next goal.
+		const record = storedGoals(sessionId).find(goal => goal.id === completed.id);
+		if (!record || record.status !== "complete") return;
+		persistGoalRecord(sessionId, { ...record, fileChanges });
 	} catch (error) {
 		console.error("[goals] file-change summary failed:", error);
 	}

@@ -1,4 +1,3 @@
-<!-- eslint-disable vue/no-v-html -->
 <template>
   <div class="thinking-container">
     <CollapsePanel
@@ -94,10 +93,14 @@
           :class="{ expanded }"
         >
           <div class="thinking-reasoning-inner">
-            <div
-              class="thinking-content md-body"
-              v-html="renderedReasoning"
-            />
+            <div class="thinking-content md-body">
+              <MessageMarkdown
+                :content="cleanedReasoning"
+                :is-user="false"
+                :live="useLiveMarkdown"
+                :is-streaming="isStreaming"
+              />
+            </div>
           </div>
         </div>
       </template>
@@ -108,7 +111,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import CollapsePanel from '@/components/common/CollapsePanel.vue'
-import { cleanReasoningContent, renderMarkdown } from '@/composables/useMarkdownRenderer'
+import MessageMarkdown from './MessageMarkdown.vue'
+import { cleanReasoningContent } from '@/composables/useMarkdownRenderer'
 
 interface Props {
   isStreaming: boolean
@@ -139,11 +143,24 @@ const displayTime = computed(() => {
   return thinkingElapsed.value
 })
 
-const renderedReasoning = computed(() => {
-  if (!props.reasoning) return ''
-  const cleanedContent = cleanReasoningContent(props.reasoning)
-  return renderMarkdown(cleanedContent, false)
-})
+const cleanedReasoning = computed(() =>
+  props.reasoning ? cleanReasoningContent(props.reasoning) : '',
+)
+
+// Reasoning goes through the incremental StreamingMarkdown pipeline (same as
+// MessageBubble's inline reasoning) instead of a v-html blob: v-html replaces
+// the whole subtree on every chunk, which destroys each <pre> and resets its
+// scrollLeft, making code blocks impossible to scroll while streaming.
+// Sticky: once live, stay live so the DOM isn't swapped out at stream end.
+const hasBeenStreaming = ref(false)
+watch(
+  () => props.isStreaming,
+  (streaming) => {
+    if (streaming) hasBeenStreaming.value = true
+  },
+  { immediate: true },
+)
+const useLiveMarkdown = computed(() => props.isStreaming || hasBeenStreaming.value)
 
 const shouldShowStatus = computed(() => {
   const showLoadingMemory = props.loadingMemory && props.isStreaming && !props.hasContent && !props.reasoning
@@ -397,9 +414,13 @@ onUnmounted(() => {
   margin-bottom: 0;
 }
 
-.thinking-content :deep(ol),
 .thinking-content :deep(ul) {
   padding-left: 1.5em;
+}
+
+/* 小字号下 1.5em 装不下两位数 marker，溢出会被 CollapsePanel 的 overflow: hidden 裁掉 */
+.thinking-content :deep(ol) {
+  padding-left: 2.4em;
 }
 
 @media (prefers-reduced-motion: reduce) {

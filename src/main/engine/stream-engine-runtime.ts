@@ -28,6 +28,7 @@ import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";
 import { executeMessageStream } from "./stream/stream-executor.js";
 import { executeAgentLoopStreamGeneration } from "./stream/agent-loop-executor.js";
+import { billTitleUsage } from "../usage/bill-side-line.js";
 import {
 	compactSessionContext,
 	getContextCompactReason,
@@ -101,13 +102,25 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 			resolveOAuthAuth: (providerId, apiKey) =>
 				authService.resolveProviderAuth(providerId, apiKey),
 			createApiKeyAuth: (apiKey) => ({ kind: "api-key", apiKey }),
-			generateTitle: (providerId, providerConfig, content, options) =>
-				generateChatTitle(
+			generateTitle: (providerId, providerConfig, content, options) => {
+				const titleOptions = options as Parameters<typeof generateChatTitle>[3];
+				return generateChatTitle(
 					providerId,
 					providerConfig as unknown as Parameters<typeof generateChatTitle>[1],
 					content,
-					options as Parameters<typeof generateChatTitle>[3],
-				),
+					{
+						...titleOptions,
+						// debugSessionId carries the session here (see
+						// core-stream-engine's generateSessionTitle), which is the
+						// only handle this adapter has on which session to bill.
+						onUsage: billTitleUsage(
+							providerId,
+							String(providerConfig?.model || ""),
+							titleOptions?.debugSessionId,
+						),
+					},
+				);
+			},
 		},
 		models: {
 			getModelContextLength: (model, providerId) =>

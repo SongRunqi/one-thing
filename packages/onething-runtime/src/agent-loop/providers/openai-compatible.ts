@@ -18,6 +18,7 @@ import type {
 	AgentTurnStreamEvent,
 	AgentUsage,
 } from "@onething/core/agent-loop";
+import type { AgentProviderRequestDumper } from "./request-dump.js";
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -58,6 +59,7 @@ export interface OpenAICompatibleAgentProviderOptions {
 		| "grok-effort"
 		| "openrouter-reasoning"
 		| "none";
+	requestDumper?: AgentProviderRequestDumper;
 }
 
 type OpenAICompatibleMessage =
@@ -594,6 +596,18 @@ export function createOpenAICompatibleAgentProvider(
 			...options.headers,
 			...resolvedAuth?.headers,
 		};
+
+		await options.requestDumper?.({
+			providerId: options.providerId,
+			model: request.model,
+			mode: "stream",
+			metadata: {
+				url: `${baseUrl}/chat/completions`,
+				method: "POST",
+				turn: request.turn,
+			},
+			requestBody: body,
+		});
 
 		const response = await fetchImpl(`${baseUrl}/chat/completions`, {
 			method: "POST",

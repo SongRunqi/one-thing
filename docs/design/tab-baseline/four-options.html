@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tab 基线 · 线条治理四案</title>
+<style>
+/* ————————————————————————————————————————————
+   共享:纸与墨(沿用命令面板四案的调色)
+   ———————————————————————————————————————————— */
+:root {
+  --paper: #faf8f1;
+  --paper-deep: #f3efe5;
+  --ink: #29241c;
+  --ink-60: rgba(41, 36, 28, 0.62);
+  --ink-45: rgba(41, 36, 28, 0.45);
+  --ink-25: rgba(41, 36, 28, 0.25);
+  --ink-12: rgba(41, 36, 28, 0.12);
+  --accent: #b8452c;      /* 朱砂:激活墨段 */
+  --a: #b8452c;
+  --b: #33647e;
+  --c: #3f6b4f;
+  --d: #7a5230;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #191611;
+    --paper-deep: #14110d;
+    --ink: #e8e1d2;
+    --ink-60: rgba(232, 225, 210, 0.66);
+    --ink-45: rgba(232, 225, 210, 0.48);
+    --ink-25: rgba(232, 225, 210, 0.28);
+    --ink-12: rgba(232, 225, 210, 0.14);
+    --accent: #d8765c;
+    --a: #d8765c;
+    --b: #7fb0c9;
+    --c: #86b795;
+    --d: #c29a6b;
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 48px 40px 80px;
+}
+
+.page-head { max-width: 1280px; margin: 0 auto 36px; }
+.page-head h1 { font-size: 22px; font-weight: 600; letter-spacing: 0.04em; }
+.page-head h1::after {
+  content: ""; display: block; width: 88px;
+  border-bottom: 2px solid var(--ink); margin-top: 10px;
+}
+.page-head p { margin-top: 12px; color: var(--ink-60); max-width: 64em; }
+
+/* 病灶示意 */
+.diagnosis {
+  max-width: 1280px; margin: 0 auto 44px;
+  border: 1px solid var(--ink-12); background: var(--paper);
+  padding: 20px 24px;
+}
+.diagnosis h2 { font-size: 13px; letter-spacing: 0.12em; color: var(--ink-60); font-weight: 600; margin-bottom: 14px; }
+.diagnosis table { border-collapse: collapse; font-size: 12.5px; width: 100%; }
+.diagnosis td, .diagnosis th { text-align: left; padding: 5px 14px 5px 0; border-bottom: 1px dashed var(--ink-12); }
+.diagnosis th { color: var(--ink-45); font-weight: 500; }
+.diagnosis code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; color: var(--ink-60); }
+
+.options { max-width: 1280px; margin: 0 auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 52px 56px; }
+@media (max-width: 1000px) { .options { grid-template-columns: 1fr; } }
+
+.option .opt-head { margin-bottom: 8px; }
+.option .opt-head h2 { font-size: 15px; font-weight: 600; letter-spacing: 0.06em; }
+.option .opt-head h2 em { font-style: normal; color: var(--ink-45); font-weight: 400; margin-left: 8px; font-size: 12.5px; letter-spacing: 0.04em; }
+.option .rule { font-size: 12.5px; color: var(--ink-60); margin-bottom: 18px; padding-left: 11px; border-left: 2px solid currentColor; }
+.opt-a .rule { border-color: var(--a); } .opt-b .rule { border-color: var(--b); }
+.opt-c .rule { border-color: var(--c); } .opt-d .rule { border-color: var(--d); }
+
+.state-label { font-size: 11px; letter-spacing: 0.14em; color: var(--ink-45); margin: 18px 0 7px; }
+
+/* ————————————————————————————————————————————
+   共享:tab bar 骨架
+   ———————————————————————————————————————————— */
+.bar-frame { background: var(--paper); border: 1px solid var(--ink-12); }
+.bar {
+  position: relative; height: 40px; display: flex; align-items: stretch;
+  overflow: hidden;
+}
+.bar::after { /* 基线 hairline */
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 1px; background: var(--ink-12);
+}
+.bar.no-baseline::after { display: none; }
+
+.tabs { display: flex; align-items: stretch; gap: 5px; padding: 0 10px; flex: 1; min-width: 0; }
+.tabs.fade-r {
+  mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent 100%);
+}
+
+.tab {
+  position: relative; display: flex; align-items: center; gap: 7px;
+  padding: 0 9px; white-space: nowrap; font-size: 12.5px;
+  color: var(--ink-45); flex: 0 0 auto;
+}
+.tab .ic { width: 13px; height: 13px; border: 1.4px solid currentColor; border-radius: 2px; opacity: .75; flex: 0 0 13px; }
+.tab.active { color: var(--ink); }
+.tab.active .ic { opacity: 1; }
+/* 激活墨段:落在基线上 */
+.tab.active::after {
+  content: ""; position: absolute; left: 9px; right: 9px; bottom: 0;
+  border-bottom: 1.5px solid var(--accent);
+}
+
+/* ————————————————————————————————————————————
+   练习条
+   ———————————————————————————————————————————— */
+.practice { position: relative; height: 10px; }
+.practice.running { height: 18px; }
+.practice .handle {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  width: 38px; height: 3px; border-radius: 1px; background: var(--ink-45);
+}
+.practice .fill { position: absolute; left: 0; height: 3px; background: var(--ink); border-radius: 0 1px 1px 0; }
+.practice .meta { position: absolute; right: 14px; top: 3px; font-size: 10px; letter-spacing: .06em; color: var(--ink-45); }
+
+/* 病灶版:把手上顶 -2px 侵入基线 */
+.practice.intrude .handle, .practice.intrude .fill { top: -2px; }
+/* 治理版:下移让出基线带 */
+.practice.clear .handle, .practice.clear .fill { top: 4px; }
+
+/* ————————————————————————————————————————————
+   案一 独木:删滚动条
+   ———————————————————————————————————————————— */
+/* (无额外线条,复用骨架) */
+
+/* ————————————————————————————————————————————
+   案二 分道:滚动条移到顶边
+   ———————————————————————————————————————————— */
+.railtop { position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+.railtop i { position: absolute; top: 0; height: 3px; border-radius: 2px; background: var(--b); opacity: .85; }
+
+/* ————————————————————————————————————————————
+   案三 同轨:基线换角色
+   ———————————————————————————————————————————— */
+.rail { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; }
+.rail i { position: absolute; bottom: 0; height: 3px; background: var(--c); border-radius: 2px; }
+.rail.progress i { border-radius: 0 2px 2px 0; }
+
+/* ————————————————————————————————————————————
+   案四 换语汇:非线编码
+   ———————————————————————————————————————————— */
+.dots { display: flex; align-items: center; gap: 4px; padding-right: 12px; }
+.dots u { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-25); display: block; }
+.dots u.on { background: var(--d); }
+.dots span { font-size: 10px; letter-spacing: .08em; color: var(--ink-45); margin-left: 6px; }
+.caret { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 4px solid var(--ink-45); margin: 3px auto 0; }
+
+/* 计数 */
+.tally { display: flex; align-items: center; padding-right: 12px; font-size: 11px; color: var(--ink-45); letter-spacing: .06em; }
+
+.note { font-size: 12px; color: var(--ink-60); margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--ink-12); }
+.note b { font-weight: 600; color: var(--ink); }
+.count { font-size: 11.5px; letter-spacing: .1em; color: var(--ink-45); margin-top: 10px; }
+.count s { text-decoration: none; color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <h1>Tab 基线 · 线条治理四案</h1>
+  <p>
+    问题:tab bar 底缘 5px 内挤了四条横线——激活下划线、bar 基线 hairline、浮层滚动条、练习条把手/进度。
+    四案的分歧点只有一个:<b>哪些信号有资格用「线」这个语汇</b>。
+  </p>
+</div>
+
+<div class="diagnosis">
+  <h2>病灶 · 现状四线叠压</h2>
+  <table>
+    <tr><th>线</th><th>来源</th><th>位置</th></tr>
+    <tr><td>激活下划线</td><td><code>.tab-item.active::after</code> 1.5px 朱砂</td><td><code>bottom: 0</code></td></tr>
+    <tr><td>bar 基线</td><td><code>.tab-bar::after</code> 1px hairline</td><td><code>bottom: 0</code></td></tr>
+    <tr><td>浮层滚动条</td><td><code>.tab-scroll-thumb</code> 3px</td><td><code>bottom: 1px</code></td></tr>
+    <tr><td>练习把手 / 进度</td><td><code>.seg</code> 38px · <code>.fill</code> 各 3px</td><td><code>top: -2px</code> 反向侵入</td></tr>
+  </table>
+  <div class="state-label">叠压实况</div>
+  <div class="bar-frame">
+    <div class="bar">
+      <div class="tabs fade-r">
+        <div class="tab active"><i class="ic"></i>重构提示词装配</div>
+        <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+        <div class="tab"><i class="ic"></i>Tab 滚动条</div>
+        <div class="tab"><i class="ic"></i>练习系统账本</div>
+      </div>
+      <div class="rail" style="height:3px;bottom:1px"><i style="background:var(--ink-45);width:38%;left:0;bottom:0"></i></div>
+    </div>
+    <div class="practice running intrude">
+      <div class="fill" style="width:46%"></div>
+      <div class="meta">12:04</div>
+    </div>
+  </div>
+  <div class="count">基线带内线条数 · <s>4</s></div>
+</div>
+
+<div class="options">
+
+  <!-- ———————————————— 案一 ———————————————— -->
+  <section class="option opt-a">
+    <div class="opt-head"><h2>案一 · 独木<em>减法 / one line</em></h2></div>
+    <div class="rule">
+      基线上只许一条线说话。删掉浮层滚动条——边缘渐隐已经承担了「后面还有」;
+      练习条下移,不再反向侵入基线带。基线 = hairline,激活段在其上着墨。
+    </div>
+
+    <div class="state-label">静止 · 无溢出</div>
+    <div class="bar-frame">
+      <div class="bar">
+        <div class="tabs">
+          <div class="tab active"><i class="ic"></i>重构提示词装配</div>
+          <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+        </div>
+      </div>
+      <div class="practice clear"><div class="handle"></div></div>
+    </div>
+
+    <div class="state-label">溢出 + 练习运行中</div>
+    <div class="bar-frame">
+      <div class="bar">
+        <div class="tabs fade-r">
+          <div class="tab active"><i class="ic"></i>重构提示词装配</div>
+          <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+          <div class="tab"><i class="ic"></i>Tab 滚动条</div>
+          <div class="tab"><i class="ic"></i>练习系统账本</div>
+        </div>
+      </div>
+      <div class="practice running clear">
+        <div class="fill" style="width:46%"></div>
+        <div class="meta">12:04</div>
+      </div>
+    </div>
+
+    <div class="count">基线带内线条数 · <s>1</s></div>
+    <div class="note">
+      <b>取舍:</b>最克制,一眼干净。代价是失去滚动位置感——只知道「还有」,不知道「在哪」。
+      改动最小(删已有滚动条 + 练习 <code>top</code> 下移)。
+    </div>
+  </section>
+
+  <!-- ———————————————— 案二 ———————————————— -->
+  <section class="option opt-b">
+    <div class="opt-head"><h2>案二 · 分道<em>lane separation</em></h2></div>
+    <div class="rule">
+      信息全保留,靠垂直错位分开。滚动条移到 tab bar <b>顶边</b>,与基线彻底不相干;
+      基线归激活下划线;练习独占下方一带。三条线各占一道。
+    </div>
+
+    <div class="state-label">静止 · 无溢出(顶边无线)</div>
+    <div class="bar-frame">
+      <div class="bar">
+        <div class="tabs">
+          <div class="tab active"><i class="ic"></i>重构提示词装配</div>
+          <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+        </div>
+      </div>
+      <div class="practice clear"><div class="handle"></div></div>
+    </div>
+
+    <div class="state-label">滚动中 + 练习运行中</div>
+    <div class="bar-frame">
+      <div class="bar">
+        <div class="railtop"><i style="left:6%;width:34%"></i></div>
+        <div class="tabs fade-r">
+          <div class="tab active"><i class="ic"></i>重构提示词装配</div>
+          <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+          <div class="tab"><i class="ic"></i>Tab 滚动条</div>
+          <div class="tab"><i class="ic"></i>练习系统账本</div>
+        </div>
+      </div>
+      <div class="practice running clear">
+        <div class="fill" style="width:46%"></div>
+        <div class="meta">12:04</div>
+      </div>
+    </div>
+
+    <div class="count">基线带内线条数 · <s>1</s>(另两条各自独立成道)</div>
+    <div class="note">
+      <b>取舍:</b>信息量不减,位置感保留。代价是 tab bar 顶边多出一条视觉噪声,
+      且与上方 titlebar / 分屏边界可能再次争线。
+    </div>
+  </section>
+
+  <!-- ———————————————— 案三 ———————————————— -->
+  <section class="option opt-c">
+    <div class="opt-head"><h2>案三 · 同轨<em>时分复用 / one rail, many roles</em></h2></div>
+    <div class="rule">
+      基线是唯一的一条「轨」,不同状态在同一条轨上<b>换角色</b>,绝不叠加:
+      静止 = hairline + 激活墨段;滚动中 = 轨道局部变滚动条;练习运行 = 轨道左端填充进度。
+    </div>
+
+    <div class="state-label">静止 · hairline + 激活墨段</div>
+    <div class="bar-frame">
+      <div class="bar">
+        <div class="tabs fade-r">
+          <div class="tab active"><i class="ic"></i>重构提示词装配</div>
+          <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+          <div class="tab"><i class="ic"></i>Tab 滚动条</div>
+        </div>
+      </div>
+      <div class="practice clear"><div class="handle"></div></div>
+    </div>
+
+    <div class="state-label">滚动中 · 同一条轨变成滚动条</div>
+    <div class="bar-frame">
+      <div class="bar no-baseline">
+        <div class="tabs fade-r">
+          <div class="tab active" style="--x:0"><i class="ic"></i>重构提示词装配</div>
+          <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+          <div class="tab"><i class="ic"></i>Tab 滚动条</div>
+        </div>
+        <div class="rail"><i style="left:8%;width:36%"></i></div>
+      </div>
+      <div class="practice clear"><div class="handle"></div></div>
+    </div>
+
+    <div class="state-label">练习运行中 · 同一条轨变成进度</div>
+    <div class="bar-frame">
+      <div class="bar no-baseline">
+        <div class="tabs fade-r">
+          <div class="tab active"><i class="ic"></i>重构提示词装配</div>
+          <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+          <div class="tab"><i class="ic"></i>Tab 滚动条</div>
+        </div>
+        <div class="rail progress"><i style="left:0;width:46%"></i></div>
+      </div>
+      <div class="practice running clear"><div class="meta">12:04</div></div>
+    </div>
+
+    <div class="count">基线带内线条数 · <s>恒为 1</s></div>
+    <div class="note">
+      <b>取舍:</b>最合画线风,一条线承载三种语义,信息零损失且永不叠压。
+      代价是滚动/练习时激活下划线被临时顶替,需要另找方式标记选中(如加深字色);状态机也最复杂。
+    </div>
+  </section>
+
+  <!-- ———————————————— 案四 ———————————————— -->
+  <section class="option opt-d">
+    <div class="opt-head"><h2>案四 · 换语汇<em>non-line encoding</em></h2></div>
+    <div class="rule">
+      从根上断绝竞争:<b>只有「选中」配用线</b>。其余信号一律改用非线语汇——
+      滚动用边缘渐隐 + 尾部计数,练习进度改成右侧点阵刻度 + 时间,把手改成一粒小三角。
+    </div>
+
+    <div class="state-label">静止 · 无溢出</div>
+    <div class="bar-frame">
+      <div class="bar">
+        <div class="tabs">
+          <div class="tab active"><i class="ic"></i>重构提示词装配</div>
+          <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+        </div>
+      </div>
+      <div class="practice"><div class="caret"></div></div>
+    </div>
+
+    <div class="state-label">溢出(渐隐 + 计数) + 练习运行(点阵)</div>
+    <div class="bar-frame">
+      <div class="bar">
+        <div class="tabs fade-r">
+          <div class="tab active"><i class="ic"></i>重构提示词装配</div>
+          <div class="tab"><i class="ic"></i>电台切歌延迟</div>
+          <div class="tab"><i class="ic"></i>Tab 滚动条</div>
+          <div class="tab"><i class="ic"></i>练习系统账本</div>
+        </div>
+        <div class="tally">+3</div>
+      </div>
+      <div class="practice running" style="height:16px">
+        <div class="dots" style="position:absolute;right:0;top:2px">
+          <u class="on"></u><u class="on"></u><u class="on"></u><u class="on"></u><u></u><u></u><u></u><u></u>
+          <span>12:04</span>
+        </div>
+        <div class="caret" style="margin-top:2px"></div>
+      </div>
+    </div>
+
+    <div class="count">基线带内线条数 · <s>1</s>(其余信号无线)</div>
+    <div class="note">
+      <b>取舍:</b>语汇分层最彻底,线的稀缺性被保住,「线 = 选中」成为强规则。
+      代价是练习进度的连续感变弱(点阵是离散的),且新增了计数/点阵两种新元素要养。
+    </div>
+  </section>
+
+</div>
+
+</body>
+</html>

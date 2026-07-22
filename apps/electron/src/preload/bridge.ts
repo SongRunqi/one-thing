@@ -405,6 +405,10 @@ const electronAPI = {
 	getSessionUserMarkers: (sessionId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_USER_MARKERS, { sessionId }),
 
+	// Get the session's table-of-contents segments
+	getSessionSegments: (sessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.GET_SESSION_SEGMENTS, { sessionId }),
+
 	// Listen for messages changed event (for real-time sync)
 	onSessionMessagesChanged: (
 		callback: (data: {
@@ -1039,6 +1043,9 @@ const electronAPI = {
 		return () =>
 			ipcRenderer.removeListener(IPC_CHANNELS.OAUTH_TOKEN_EXPIRED, listener);
 	},
+
+	// Window
+	closeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE),
 
 	// Menu event listeners
 	onMenuNewChat: (callback: () => void) => {

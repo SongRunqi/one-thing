@@ -65,7 +65,7 @@
           v-if="loadError"
           class="error-state"
         >
-          <span>Failed to load image</span>
+          <ErrorNote message="Failed to load image" />
         </div>
       </div>
 
@@ -303,6 +303,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { matchShortcut } from '@/composables/useShortcuts'
@@ -791,13 +792,20 @@ onUnmounted(() => {
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
 }
 
-.loading-state,
-.error-state {
+.loading-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
   color: var(--ui-text-secondary-fg, var(--text-secondary));
+}
+
+/* Full-panel state: keep the centering, let ErrorNote carry the ink. */
+.error-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .loading-spinner {

@@ -7,9 +7,13 @@
  * - rendered each turn through the <context-update> tail channel
  * - continuation rides the follow-up queue after the agent would stop
  *
- * Status ownership mirrors codex: the model may only mark 'complete' or
- * 'blocked' (via the goal tool); 'paused' and budget handling belong to the
- * user and the system. See docs/design/goal-system.md.
+ * Status ownership: the model may only mark 'complete' or 'paused' (via the
+ * goal tool, see GOAL_MODEL_SETTABLE_STATUSES); 'blocked' and 'budget_limited'
+ * are system-only breakers; 'abandoned' belongs to the user. See
+ * docs/design/goal-system-v2.md (protocol) and -v3.md (storage shape).
+ *
+ * A session keeps a *list* of goals — at most one non-terminal at a time, plus
+ * the finished ones as history. See ./records.ts.
  */
 export type SessionGoalStatus =
   | 'active'
@@ -17,6 +21,14 @@ export type SessionGoalStatus =
   | 'blocked'
   | 'budget_limited'
   | 'complete'
+  | 'abandoned'
+
+/**
+ * Statuses that let a goal step aside for a new one. Everything else
+ * (paused / blocked / budget_limited) is stalled-but-resumable and still
+ * occupies the session's single "current goal" slot.
+ */
+export const TERMINAL_GOAL_STATUSES = ['complete', 'abandoned'] as const
 
 export interface SessionGoal {
   id: string
@@ -46,6 +58,20 @@ export interface SessionGoal {
   fileChanges?: Array<{ path: string; added: number; removed: number }>
   createdAt: number
   updatedAt: number
+  /**
+   * When the goal last left 'active' — the moment work actually stopped,
+   * whether it completed, paused, blocked or ran out of budget. Cleared on
+   * resume. Deliberately separate from `updatedAt`, which keeps moving after
+   * the fact (the fileChanges backfill rewrites it), so timeline anchoring
+   * must use this or the anchor drifts. Later terminal transitions (a paused
+   * goal the user abandons weeks on) do not overwrite it: the pause is when
+   * the work stopped.
+   */
+  endedAt?: number
+  /** Last message in the session when the goal was created. */
+  startMessageId?: string
+  /** Last message in the session when the goal left 'active'. */
+  endMessageId?: string
 }
 
 /**

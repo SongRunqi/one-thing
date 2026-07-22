@@ -23,11 +23,11 @@ export function agentExists(agentId: string | undefined | null): boolean {
   return getStore().agentExists(agentId)
 }
 
-export function createAgent(input: { id: string; name: string; systemPrompt?: string }): AgentDefinition {
+export function createAgent(input: { id: string; name: string; systemPrompt?: string; tools?: string[] }): AgentDefinition {
   return getStore().createAgent(input) as AgentDefinition
 }
 
-export function updateAgent(input: { agentId: string; name?: string; systemPrompt?: string }): AgentDefinition {
+export function updateAgent(input: { agentId: string; name?: string; systemPrompt?: string; tools?: string[] | null }): AgentDefinition {
   return getStore().updateAgent(input) as AgentDefinition
 }
 

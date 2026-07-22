@@ -25,6 +25,7 @@ import type {
   AgentTurnStreamEvent,
   AgentUsage,
 } from '@onething/core/agent-loop'
+import type { AgentProviderRequestDumper } from './request-dump.js'
 
 type FetchFn = typeof globalThis.fetch
 
@@ -44,6 +45,7 @@ export interface ClaudeAgentProviderOptions {
    * endpoints that may reject the field.
    */
   promptCaching?: boolean
+  requestDumper?: AgentProviderRequestDumper
 }
 
 type ClaudeCacheControl = { type: 'ephemeral' }
@@ -748,6 +750,18 @@ export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): 
       'anthropic-version': CLAUDE_VERSION,
       ...options.headers,
     }
+
+    await options.requestDumper?.({
+      providerId: options.providerId ?? 'claude',
+      model: request.model,
+      mode: 'stream',
+      metadata: {
+        url: `${baseUrl}/messages`,
+        method: 'POST',
+        turn: request.turn,
+      },
+      requestBody: body,
+    })
 
     const response = await fetchImpl(`${baseUrl}/messages`, {
       method: 'POST',

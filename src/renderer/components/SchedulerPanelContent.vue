@@ -23,12 +23,11 @@
       </div>
     </header>
 
-    <p
+    <ErrorNote
       v-if="error"
       class="ledger-error"
-    >
-      {{ error }}
-    </p>
+      :message="error"
+    />
 
     <div
       class="tasks-layout"
@@ -317,12 +316,11 @@
                 open session
               </button>
             </div>
-            <p
+            <ErrorNote
               v-if="selectedRun.error"
               class="ledger-error"
-            >
-              {{ selectedRun.error }}
-            </p>
+              :message="selectedRun.error"
+            />
             <p
               v-if="selectedRun.resultPreview"
               class="result-preview"
@@ -554,6 +552,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import type {
   SchedulerRunDetailDTO,
   SchedulerSchedule,
@@ -1138,15 +1137,10 @@ watch(
 }
 
 /* ---- errors and notes ---- */
+/* positioning only — visuals come from ErrorNote */
 .ledger-error {
   margin: 0;
   flex-shrink: 0;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  padding-left: 8px;
-  overflow-wrap: anywhere;
 }
 
 .ledger-note {

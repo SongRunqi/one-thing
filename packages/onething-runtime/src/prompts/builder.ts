@@ -206,20 +206,13 @@ function core(ctx: CoreBuildPromptContextOptions): string {
 	const baseSystemPrompt =
 		ctx.baseSystemPrompt?.trim() ||
 		"You are an AI assistant. Help users by reading context, using available tools, and producing clear, useful answers.";
-	const guidelines = ctx.toolGuidelines?.length
-		? ctx.toolGuidelines
-		: [
-				"Follow the Tool Workspace Rules when choosing file paths or command directories.",
-				"Prefer the most specific available tool for the task.",
-				"When changing code, run an appropriate check when practical, then summarize changed paths clearly.",
-				"Show file paths clearly when working with files.",
-			];
+	const guidelines = ctx.toolGuidelines ?? [];
 
 	return [
 		baseSystemPrompt,
-		"",
-		"Tool Guidelines:",
-		...guidelines.map((item) => `- ${item}`),
+		...(guidelines.length
+			? ["", "Tool Guidelines:", ...guidelines.map((item) => `- ${item}`)]
+			: []),
 		"",
 		`Current date: ${formatDate(ctx.now)}`,
 	].join("\n");
@@ -243,14 +236,9 @@ function workdir(ctx: CoreBuildPromptContextOptions): string {
 		for (const root of roots)
 			lines.push(`- ${root.displayPath} (${root.path})`);
 	}
-	if (ctx.hasTools) {
+	const rules = ctx.toolWorkspaceRules ?? [];
+	if (ctx.hasTools && rules.length) {
 		lines.push("", "## Tool Workspace Rules");
-		const rules = ctx.toolWorkspaceRules?.length
-			? ctx.toolWorkspaceRules
-			: [
-					"Tools use the current work directory by default when the host provides one.",
-					"If the host exposes a work-directory switching tool, use it before file operations that belong elsewhere.",
-				];
 		lines.push(
 			...rules.map((rule) => (rule.startsWith("- ") ? rule : `- ${rule}`)),
 		);
@@ -297,11 +285,9 @@ function knownProjects(ctx: CoreBuildPromptContextOptions): string {
 			`- ${item.displayPath}${item.description ? ` \u2014 ${item.description}` : ""}`,
 		);
 	}
-	lines.push(
-		"",
-		ctx.knownProjectsInstructions ||
-			"If a request clearly belongs to one of these directories and it is not already the current work directory, switch to that directory using a host-provided mechanism before reading or editing files.",
-	);
+	if (ctx.knownProjectsInstructions) {
+		lines.push("", ctx.knownProjectsInstructions);
+	}
 	return lines.join("\n");
 }
 

@@ -4,6 +4,8 @@ export interface AgentDefinition {
   id: string
   name: string
   systemPrompt: string
+  /** Tool allowlist (tool ids). Absent = agent sees all enabled tools. */
+  tools?: string[]
   isDefault?: boolean
   createdAt: number
   updatedAt: number

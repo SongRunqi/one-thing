@@ -191,7 +191,7 @@ This is NOT memory. Durable knowledge about the user (preferences, identity, rep
 
 Custom variables use any non-reserved snake_case name matching /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/. scope="session" (default) for state of this session; scope="global" only for state genuinely shared across sessions. Read-only variables are maintained by the system and cannot be written.
 
-Project directories (the "project_dirs" list) are managed by a separate tool - call \`project_dirs\` for list/get/add/update/remove operations.`,
+Known Projects are listed in the system prompt. Setting workdir auto-registers the directory there; pass description alongside set to name or rename the project entry.`,
 		category: "builtin",
 		enabled: true,
 		autoExecute: true,

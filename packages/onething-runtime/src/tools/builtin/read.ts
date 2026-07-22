@@ -19,6 +19,7 @@ import {
 	statPath,
 } from "@onething/core/storage";
 import { Tool } from "../tool.js";
+import { withFileReadAccess } from "../file-mutation-queue.js";
 import { classifySensitiveFile } from "../sensitive-files.js";
 import { hashTextFileSnapshot } from "../file-snapshot.js";
 import type { FileReadTracker } from "../file-read-tracker.js";
@@ -337,7 +338,12 @@ export function createReadTool(
 				},
 			});
 
-			const stats = await statPath(resolvedPath);
+			// Shared lock: wait out any in-flight edit/write on this path so the
+			// read observes post-mutation bytes (and never re-registers a stale
+			// hash with the read-before-edit tracker below).
+			const stats = await withFileReadAccess(resolvedPath, () =>
+				statPath(resolvedPath),
+			);
 			if (!stats) {
 				throw new Error(`File not found: ${resolvedPath}`);
 			}
@@ -381,7 +387,9 @@ export function createReadTool(
 				};
 			}
 
-			const buffer = await readBinaryFile(resolvedPath);
+			const buffer = await withFileReadAccess(resolvedPath, () =>
+				readBinaryFile(resolvedPath),
+			);
 			throwIfAborted();
 
 			const imageMimeType = supportedImageMimeType(resolvedPath, buffer);

@@ -277,23 +277,33 @@
    ERROR / STATUS MESSAGES
    ============================================================================= */
 
+/* House ledger rule — matches components/common/ErrorNote.vue. Prefer that
+   component for new code; this class stays for plain-markup callers. A filled,
+   rounded card here is what drove ~16 panels to hand-roll their own left-bar
+   override, so keep this flat. */
 .error-message {
-  padding: 12px;
-  background: var(--ui-status-danger-bg, transparent);
-  border: 1px solid var(--ui-status-danger-border, var(--danger));
-  border-radius: var(--radius-sm);
+  padding: 2px 0 2px 8px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--ui-status-danger-fg, var(--danger));
+  border-radius: 0;
   color: var(--ui-status-danger-fg, var(--danger));
   font-size: var(--type-label-size);
   line-height: var(--type-label-line-height);
+  overflow-wrap: anywhere;
   animation: messageSlideIn var(--duration-normal, 0.2s) var(--ease-out, cubic-bezier(0, 0, 0.2, 1));
 }
 
+/* Sibling of .error-message — same ledger rule so the two never disagree
+   structurally when a form shows them in the same slot. */
 .success-message {
-  padding: 12px;
-  background: var(--ui-status-success-bg, transparent);
-  border: 1px solid var(--ui-status-success-border, var(--color-success, var(--accent)));
-  border-radius: var(--radius-sm);
+  padding: 2px 0 2px 8px;
+  background: transparent;
+  border: none;
+  border-left: 2px solid var(--ui-status-success-fg, var(--color-success, var(--accent)));
+  border-radius: 0;
   color: var(--ui-status-success-fg, var(--color-success, var(--accent)));
+  overflow-wrap: anywhere;
   font-size: var(--type-label-size);
   line-height: var(--type-label-line-height);
   animation: messageSlideIn var(--duration-normal, 0.2s) var(--ease-out, cubic-bezier(0, 0, 0.2, 1));

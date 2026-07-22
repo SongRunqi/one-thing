@@ -131,6 +131,35 @@ describe('radio conductor', () => {
     expect(h.played).toEqual(['song 0'])
   })
 
+  it('a retune cuts over mid-song once new songs are on the shelf', async () => {
+    const h = harness({ dir })
+
+    // Baseline: a playing sample alone never advances.
+    h.conductor.onSample(playing())
+    await h.conductor.idle()
+    expect(h.played).toEqual([])
+
+    // The user retunes at the bar: the HOST applies the intent synchronously
+    // (openRadioStation writes the file, merges it, and the merge empties the
+    // file) — by the next tick only the brief's intentAppliedAt stamp is left,
+    // and the cut must arm from that stamp.
+    writeFileSync(
+      h.store.intentPath,
+      JSON.stringify({ active: true, intent: '换个方向', startedAt: new Date().toISOString() }),
+    )
+    h.store.mergeIntent()
+    h.conductor.onSample(playing())
+    await h.conductor.idle()
+
+    // The owed cut-over starts the next entry even though a song is playing.
+    expect(h.played).toEqual(['song 0'])
+
+    // One cut per retune: later playing ticks go back to doing nothing.
+    h.conductor.onSample(playing())
+    await h.conductor.idle()
+    expect(h.played).toEqual(['song 0'])
+  })
+
   it('leaves a breath between two starts (advance cooldown)', async () => {
     let clock = 0
     const h = harness({ dir, now: () => clock })

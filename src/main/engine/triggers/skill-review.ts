@@ -6,22 +6,19 @@ import {
   createOnethingSkillReviewFileToolAdapters,
   createOnethingSkillReviewTrigger,
 } from '@onething/runtime/triggers'
-import { createAgentProviderFromRuntime } from '../../agent-loop/index.js'
 import { getUserSkillsPath } from '../../skills/index.js'
 import { executeSkillManage, type SkillManageArgs } from '../../skills/manage.js'
 import {
   getSkillsForSession,
   invalidateSessionSkillsCache as invalidateSkillsCache,
 } from '../../skills/session-skills.js'
-import {
-  getProviderApiType,
-  resolveProviderAuth,
-} from '../stream/provider-helpers.js'
 import { ReadTool } from '../../tools/builtin/read.js'
 import { WriteTool } from '../../tools/builtin/write.js'
 import { EditTool } from '../../tools/builtin/edit.js'
 import type { ToolContext } from '../../tools/core/tool.js'
 import type { Trigger, TriggerContext } from './index.js'
+import { billSkillUsage } from '../../usage/bill-side-line.js'
+import { createUtilityProvider } from '../../providers/utility-provider.js'
 
 function isSkillReviewDisabledByEnv(): boolean {
   return process.env.ONETHING_DISABLE_SKILL_REVIEW === '1' ||
@@ -69,40 +66,14 @@ function createMainSkillReviewFileToolAdapters(
   })
 }
 
+// No fallback to the chat provider on purpose: skill review is background
+// work, and running it silently on an expensive chat model is worse than not
+// running it at all. Leaving the tool-call model unset disables the feature.
 async function createSkillReviewAgentProvider(ctx: TriggerContext) {
-  const toolCallModel = ctx.settings.tools?.toolCallModel
-  const providerId = toolCallModel?.providerId?.trim()
-  const model = toolCallModel?.model?.trim()
-  if (!providerId || !model) return undefined
-
-  const providerConfig = ctx.settings.ai.providers[providerId]
-  if (!providerConfig) return undefined
-
-  const authContext = await resolveProviderAuth(providerId, providerConfig)
-  if (!authContext) return undefined
-
-  const provider = createAgentProviderFromRuntime(providerId, {
-    ...providerConfig,
-    model,
-    apiKey: authContext.kind === 'api-key' ? authContext.apiKey : '',
-    authContext,
-    oauthToken: authContext.kind === 'oauth' ? authContext.token : providerConfig.oauthToken,
-    apiType: getProviderApiType(ctx.settings, providerId),
-  }, {
+  return createUtilityProvider(ctx.settings, {
     workingDirectory: ctx.session.workingDirectory,
-    localSessionId: ctx.sessionId,
+    sessionId: ctx.sessionId,
   })
-  if (!provider) return undefined
-
-  return {
-    provider,
-    providerId,
-    model,
-    thinking: typeof toolCallModel?.thinking === 'boolean' ? toolCallModel.thinking : undefined,
-    thinkingEffort: toolCallModel?.thinkingEffort,
-    thinkingByModel: providerConfig.thinkingByModel,
-    thinkingEffortByModel: providerConfig.thinkingEffortByModel,
-  }
 }
 
 export function createSkillReviewTrigger(): Trigger {
@@ -115,6 +86,8 @@ export function createSkillReviewTrigger(): Trigger {
       executeSkillManage(asSkillManageArgs(args), { workingDirectory: options.workingDirectory }),
     invalidateSkillsCache,
     createAgentProvider: createSkillReviewAgentProvider,
+    onUsage: (usage, context) =>
+      billSkillUsage(context.providerId, context.model, context.sessionId)(usage),
     fileTools: (ctx, options) => createMainSkillReviewFileToolAdapters(ctx, options.mutableRoots),
     logger: console,
   }) as Trigger

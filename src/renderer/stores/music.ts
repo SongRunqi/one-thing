@@ -52,6 +52,13 @@ export const useMusicStore = defineStore('music', () => {
    * a constant) because the bar wraps to a second row for the 接下来 line.
    */
   const barHeight = ref(0)
+  /**
+   * The bar has been click-pinned: it stays on screen regardless of hover, so
+   * it stops being a transient flyout and becomes a fixture. A fixture must not
+   * cover the conversation — the composer reserves `barHeight` of real layout
+   * space above itself while this is true, pushing the chat area up.
+   */
+  const barPinned = ref(false)
   /** The DJ patter currently being spoken, '' when silent — for an optional caption. */
   const djPatter = ref('')
   /**
@@ -247,6 +254,7 @@ export const useMusicStore = defineStore('music', () => {
   }
 
   function playDjPatter(speak: { id: string; audioBase64: string; mimeType: string; text: string }) {
+    const receivedAt = Date.now()
     djPatter.value = speak.text
     // A newer line supersedes one still playing (should be rare — main serializes).
     if (djAudio) {
@@ -271,6 +279,13 @@ export const useMusicStore = defineStore('music', () => {
         audio.volume = Math.max(0.2, Math.min(1, (musicVolume / 100) * 1.4))
       }
       djAudio = audio
+      audio.addEventListener(
+        'playing',
+        () => {
+          console.info(`[radio:timing] 口播收到→出声: ${Date.now() - receivedAt}ms`)
+        },
+        { once: true },
+      )
       audio.onended = ackOnce
       // A play failure (autoplay policy, decode error) must still ack, or main
       // holds the music paused until its timeout.
@@ -397,6 +412,7 @@ export const useMusicStore = defineStore('music', () => {
     playerBackend,
     nowPlaying,
     barHeight,
+    barPinned,
     djPatter,
     stopDjPatter,
     radio,

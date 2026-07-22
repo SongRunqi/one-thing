@@ -190,8 +190,8 @@ async function initializeElectronReadyServices(): Promise<void> {
 	bootstrapGoalStreamBreakers();
 
 	// Bootstrap project-dirs subsystem (independent storage). Order doesn't
-	// matter relative to variables, but must precede tool registry so the
-	// project_dirs tool finds a warm store.
+	// matter relative to variables; the store feeds the Known Projects prompt
+	// section and the workdir gateway's auto-touch.
 	bootstrapProjectDirs();
 
 	// Initialize tool registry

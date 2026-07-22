@@ -80,25 +80,22 @@
           {{ isSubmittingCode ? 'Verifying...' : 'Submit' }}
         </Button>
       </div>
-      <span
+      <ErrorNote
         v-if="codeEntryError"
-        class="auth-error"
-      >
-        {{ codeEntryError }}
-      </span>
+        :message="codeEntryError"
+      />
     </div>
 
-    <div
+    <ErrorNote
       v-if="oauthStatus.lastError && !codeEntryError"
-      class="auth-error"
-    >
-      {{ oauthStatus.lastError }}
-    </div>
+      :message="oauthStatus.lastError"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { computed } from 'vue'
 import ProviderIcon from '../ProviderIcon.vue'
 import type { OAuthStatus, DeviceFlowInfo, CodeEntryInfo } from './useProviderAuth'
@@ -328,14 +325,6 @@ const subtitle = computed(() => {
 
 .code-input::placeholder {
   color: var(--settings-ink-4, var(--ui-text-muted-fg, var(--muted)));
-}
-
-.auth-error {
-  padding: 2px 0 2px 8px;
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
-  font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
-  overflow-wrap: anywhere;
 }
 </style>
 

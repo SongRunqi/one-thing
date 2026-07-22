@@ -52,12 +52,10 @@
           </div>
         </div>
 
-        <div
+        <ErrorNote
           v-if="store.runProgress?.type === 'error'"
-          class="evals-run-error"
-        >
-          {{ store.runProgress.error }}
-        </div>
+          :message="store.runProgress.error"
+        />
       </div>
 
       <!-- Run form -->
@@ -110,12 +108,10 @@
           </button>
 
           <!-- Show error from a failed run start -->
-          <div
+          <ErrorNote
             v-if="runError"
-            class="evals-run-error"
-          >
-            {{ runError }}
-          </div>
+            :message="runError"
+          />
         </div>
 
         <!-- Ablation sections -->
@@ -191,12 +187,11 @@
         >
           Loading...
         </div>
-        <div
+        <ErrorNote
           v-else-if="store.resultsError"
           class="evals-error"
-        >
-          {{ store.resultsError }}
-        </div>
+          :message="store.resultsError"
+        />
         <div
           v-else-if="store.results.length === 0"
           class="evals-empty"
@@ -343,6 +338,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
+import ErrorNote from "@/components/common/ErrorNote.vue";
 import { useEvalsStore } from "@/stores/evals";
 import { platformApi } from "@/platform";
 
@@ -631,14 +627,6 @@ function handleCancelRun() {
 
 .evals-run-case-pct {
   color: var(--settings-accent);
-}
-
-/* Error: danger ink held by a left rule, no filled block */
-.evals-run-error {
-  color: var(--ui-status-danger-fg, #e74c3c);
-  font-size: 12px;
-  padding: 2px 0 2px 8px;
-  border-left: 2px solid var(--ui-status-danger-fg, #e74c3c);
 }
 
 .evals-run-result-header {
@@ -966,7 +954,6 @@ function handleCancelRun() {
 }
 
 .evals-loading,
-.evals-error,
 .evals-empty {
   text-align: center;
   padding: 30px;
@@ -975,6 +962,6 @@ function handleCancelRun() {
 }
 
 .evals-error {
-  color: var(--ui-status-danger-fg, #e74c3c);
+  margin: 24px 0;
 }
 </style>

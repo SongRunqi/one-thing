@@ -1,7 +1,7 @@
 import {
   app,
+  BrowserWindow,
   Menu,
-  type BrowserWindow,
   type MenuItemConstructorOptions,
 } from 'electron'
 
@@ -23,11 +23,17 @@ export interface ElectronApplicationMenuWebPreview {
   open(): void
 }
 
+/** Injectable window lookup so the Close item can tell the main window apart in tests. */
+export interface ElectronApplicationMenuWindowsLike {
+  getFocusedWindow(): BrowserWindow | null
+}
+
 export interface ElectronApplicationMenuOptions {
   mainWindow: BrowserWindow
   openSettingsWindow(parentWindow: BrowserWindow): void
   app?: ElectronApplicationMenuAppLike
   menu?: ElectronApplicationMenuLike
+  windows?: ElectronApplicationMenuWindowsLike
   platform?: NodeJS.Platform
   webPreview?: ElectronApplicationMenuWebPreview
 }
@@ -35,7 +41,25 @@ export interface ElectronApplicationMenuOptions {
 export function setupElectronApplicationMenu(options: ElectronApplicationMenuOptions): void {
   const electronApp = options.app ?? app
   const electronMenu = options.menu ?? Menu
+  const electronWindows = options.windows ?? BrowserWindow
   const isMac = (options.platform ?? process.platform) === 'darwin'
+
+  // Cmd+W closes the focused *tab*, not the window — the window only goes away
+  // once its last tab is gone, which the renderer decides (it owns the tab
+  // tree) and requests back over IPC. Auxiliary windows (settings, search,
+  // image preview) have no tabs, so they keep the plain close behavior.
+  const closeTabItem: MenuItemConstructorOptions = {
+    label: 'Close Tab',
+    accelerator: 'CmdOrCtrl+W',
+    click: () => {
+      const focused = electronWindows.getFocusedWindow()
+      if (focused && focused !== options.mainWindow) {
+        focused.close()
+        return
+      }
+      options.mainWindow.webContents.send('menu:close-chat')
+    },
+  }
 
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{
@@ -70,7 +94,7 @@ export function setupElectronApplicationMenu(options: ElectronApplicationMenuOpt
           },
         },
         { type: 'separator' },
-        isMac ? { role: 'close' as const } : { role: 'quit' as const },
+        isMac ? closeTabItem : { role: 'quit' as const },
       ],
     },
     {
@@ -116,7 +140,7 @@ export function setupElectronApplicationMenu(options: ElectronApplicationMenuOpt
           { type: 'separator' as const },
           { role: 'front' as const },
         ] : [
-          { role: 'close' as const },
+          closeTabItem,
         ]),
       ],
     },

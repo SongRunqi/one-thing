@@ -323,8 +323,14 @@ function openSession(sessionId: string) {
   white-space: nowrap;
 }
 
+/* A failure has to read as a failure — this line was grey, indistinguishable
+   from the ordinary key/value rows above it. */
+.station-error .station-key,
 .station-error .station-value {
-  color: var(--ui-text-muted-fg, var(--muted));
+  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
+}
+
+.station-error .station-value {
   white-space: normal;
 }
 

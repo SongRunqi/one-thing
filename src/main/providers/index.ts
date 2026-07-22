@@ -138,6 +138,8 @@ export async function generateChatResponse(
     serviceTier?: string
     debugPurpose?: string
     debugSessionId?: string
+    /** Side channel for token usage, so side-line callers can bill their calls. */
+    onUsage?: (usage: { inputTokens: number; outputTokens: number; totalTokens: number }) => void
   } = {},
 ): Promise<string> {
   return providerFacade.generateChatResponse(providerId, config, messages, options)
@@ -204,7 +206,7 @@ export async function generateChatTitle(
   userMessage: string,
   options: Pick<
     NonNullable<Parameters<typeof generateChatResponse>[3]>,
-    'thinking' | 'thinkingEffort' | 'serviceTier' | 'debugSessionId'
+    'thinking' | 'thinkingEffort' | 'serviceTier' | 'debugSessionId' | 'onUsage'
   > = {},
 ): Promise<string> {
   return providerFacade.generateChatTitle(providerId, config, userMessage, options)

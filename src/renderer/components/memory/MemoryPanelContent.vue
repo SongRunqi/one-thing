@@ -29,12 +29,11 @@
       </div>
     </template>
 
-    <p
+    <ErrorNote
       v-if="error"
       class="ledger-error"
-    >
-      {{ error }}
-    </p>
+      :message="error"
+    />
 
     <p
       v-if="loading && !hasLoadedMemory"
@@ -235,6 +234,7 @@
 import PageShell from '../common/PageShell.vue'
 import Badge from '../common/Badge.vue'
 import LayoutGrid from '../common/LayoutGrid.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import {
   BookOpen,
@@ -590,14 +590,9 @@ function formatShortDate(ms?: number): string {
 }
 
 /* ---- errors / plain notes ---- */
+/* positioning only — visuals come from ErrorNote */
 .ledger-error {
   margin: 12px 20px 0;
-  padding-left: 8px;
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  font-size: 12px;
-  line-height: 1.5;
-  word-break: break-word;
 }
 
 .ledger-note {

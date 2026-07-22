@@ -1,23 +1,61 @@
 import { ref, computed } from "vue";
+import { shouldAttemptTextDecode } from "@onething/core/engine/attachment-mime";
 import { useSettingsStore } from "@/stores/settings";
 import { platformApi } from "@/platform";
 import type { MessageAttachment, AttachmentMediaType } from "@/types";
 
 const MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024;
+/**
+ * Ceiling across the whole draft. Attachment bytes ride along inside the
+ * send-message command as base64, so an unbounded draft is an unbounded IPC
+ * payload — ten 9 MB files each pass the per-file check on their own.
+ */
+const MAX_DRAFT_ATTACHMENT_SIZE = 32 * 1024 * 1024;
+
+/**
+ * How the attachment will actually reach the model. When the selected model
+ * can't take the bytes natively we don't refuse the file — the engine has two
+ * fallbacks, and this records which one applies so the composer can say so.
+ *
+ * - `native`         — sent as an image/file part (engine: buildMessageContent)
+ * - `inline-text`    — decoded and inlined as an <attachment> text block
+ * - `path-reference` — only the on-disk path travels; the model is told to
+ *                      read it with its file tools (undeliverableAttachmentText)
+ */
+export type AttachmentDelivery = "native" | "inline-text" | "path-reference";
 
 // Local interface for file preview (extends MessageAttachment with preview)
 export interface AttachedFile extends Omit<MessageAttachment, "base64Data"> {
 	preview?: string; // Data URL for preview display
 	base64Data: string; // Base64 encoded file data
+	delivery: AttachmentDelivery;
+}
+
+/**
+ * Short badge + hover text for a degraded attachment. Returns null for the
+ * native route: the common case earns no ornament.
+ */
+export function describeDelivery(
+	delivery: AttachmentDelivery,
+): { badge: string; hint: string } | null {
+	if (delivery === "inline-text") {
+		return {
+			badge: "TXT",
+			hint: "This model can't take the file directly — its text will be inlined into the message.",
+		};
+	}
+	if (delivery === "path-reference") {
+		return {
+			badge: "PATH",
+			hint: "This model can't take the file directly — it will receive the file path and can open it with its file tools.",
+		};
+	}
+	return null;
 }
 
 export interface AttachmentRejection {
 	fileName: string;
-	reason:
-		| "too-large"
-		| "unsupported-image-model"
-		| "unsupported-file-model"
-		| "read-error";
+	reason: "too-large" | "draft-too-large" | "undeliverable" | "read-error";
 	message: string;
 }
 
@@ -31,7 +69,6 @@ export function useAttachments() {
 	const settingsStore = useSettingsStore();
 
 	const attachedFiles = ref<AttachedFile[]>([]);
-	const fileInputRef = ref<HTMLInputElement | null>(null);
 	const isProcessing = ref(false);
 
 	// Check if current model supports image input (vision capability)
@@ -69,6 +106,18 @@ export function useAttachments() {
 		)
 			return "document";
 		return "file";
+	}
+
+	// Files accepted earlier in the current batch aren't in `attachedFiles` yet
+	// (they're appended once the batch settles), so the draft ceiling has to
+	// count them explicitly or a single multi-file drop could blow past it.
+	let inFlightBytes = 0;
+
+	function draftBytes(): number {
+		return (
+			attachedFiles.value.reduce((total, f) => total + (f.size || 0), 0) +
+			inFlightBytes
+		);
 	}
 
 	function formatBytes(bytes: number): string {
@@ -110,12 +159,15 @@ export function useAttachments() {
 		});
 	}
 
-	async function buildAttachedFile(file: File): Promise<AttachedFile> {
+	async function buildAttachedFile(
+		file: File,
+		filePath: string,
+		delivery: AttachmentDelivery,
+	): Promise<AttachedFile> {
 		const id = `attachment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 		const mimeType = file.type || "application/octet-stream";
 		const mediaType = getMediaType(mimeType);
 		const base64Data = await readFileAsBase64(file);
-		const filePath = resolveFilePath(file);
 
 		const attachedFile: AttachedFile = {
 			id,
@@ -125,6 +177,7 @@ export function useAttachments() {
 			size: file.size,
 			mediaType,
 			base64Data,
+			delivery,
 		};
 
 		if (mediaType === "image") {
@@ -146,35 +199,59 @@ export function useAttachments() {
 		}
 	}
 
+	/**
+	 * Pick the delivery route for a file the current model can't take natively.
+	 * Refusing outright would be wrong — the engine can still get most files to
+	 * the model, just not as bytes. Only a binary with no path on disk is
+	 * genuinely undeliverable, and that combination means a pasted blob.
+	 */
+	function resolveDelivery(
+		mimeType: string,
+		mediaType: AttachmentMediaType,
+		filePath: string,
+	): AttachmentDelivery | null {
+		const nativelySupported =
+			mediaType === "image"
+				? currentModelSupportsVision.value
+				: currentModelSupportsFiles.value;
+		if (nativelySupported) return "native";
+		if (shouldAttemptTextDecode(mimeType)) return "inline-text";
+		if (filePath) return "path-reference";
+		return null;
+	}
+
 	async function processFile(file: File): Promise<AttachedFile> {
-		const mediaType = getMediaType(file.type || "application/octet-stream");
+		const fileName = file.name || "clipboard-file";
+		const mimeType = file.type || "application/octet-stream";
+		const mediaType = getMediaType(mimeType);
+
 		if (file.size > MAX_ATTACHMENT_SIZE) {
 			throw {
-				fileName: file.name || "clipboard-file",
+				fileName,
 				reason: "too-large",
-				message: `${file.name || "File"} is too large. Maximum size is ${formatBytes(MAX_ATTACHMENT_SIZE)}.`,
+				message: `${fileName} is too large. Maximum size is ${formatBytes(MAX_ATTACHMENT_SIZE)}.`,
 			} satisfies AttachmentRejection;
 		}
 
-		if (mediaType === "image") {
-			if (!currentModelSupportsVision.value) {
-				throw {
-					fileName: file.name || "clipboard-image",
-					reason: "unsupported-image-model",
-					message: "Current model does not support image input.",
-				} satisfies AttachmentRejection;
-			}
-		}
-
-		if (mediaType !== "image" && !currentModelSupportsFiles.value) {
+		if (draftBytes() + file.size > MAX_DRAFT_ATTACHMENT_SIZE) {
 			throw {
-				fileName: file.name || "clipboard-file",
-				reason: "unsupported-file-model",
-				message: "Current model does not support file input.",
+				fileName,
+				reason: "draft-too-large",
+				message: `Attachments exceed ${formatBytes(MAX_DRAFT_ATTACHMENT_SIZE)} for one message. Send some first, or remove a file.`,
 			} satisfies AttachmentRejection;
 		}
 
-		return buildAttachedFile(file);
+		const filePath = resolveFilePath(file);
+		const delivery = resolveDelivery(mimeType, mediaType, filePath);
+		if (!delivery) {
+			throw {
+				fileName,
+				reason: "undeliverable",
+				message: `The current model can't read ${mediaType === "image" ? "images" : "this file type"}, and there's no file on disk to point it at.`,
+			} satisfies AttachmentRejection;
+		}
+
+		return buildAttachedFile(file, filePath, delivery);
 	}
 
 	async function processFiles(
@@ -188,10 +265,12 @@ export function useAttachments() {
 		}
 
 		isProcessing.value = true;
+		inFlightBytes = 0;
 		try {
 			for (const file of files) {
 				try {
 					accepted.push(await processFile(file));
+					inFlightBytes += file.size;
 				} catch (error) {
 					if (error && typeof error === "object" && "reason" in error) {
 						rejected.push(error as AttachmentRejection);
@@ -206,6 +285,7 @@ export function useAttachments() {
 			}
 		} finally {
 			isProcessing.value = false;
+			inFlightBytes = 0;
 		}
 
 		if (accepted.length > 0) {
@@ -242,9 +322,11 @@ export function useAttachments() {
 	function attachmentFromMessageAttachment(
 		attachment: MessageAttachment,
 	): AttachedFile {
+		const filePath = attachment.filePath || "";
 		const attachedFile: AttachedFile = {
 			id: attachment.id,
 			fileName: attachment.fileName,
+			...(filePath ? { filePath } : {}),
 			mimeType: attachment.mimeType,
 			size: attachment.size,
 			mediaType: attachment.mediaType,
@@ -252,6 +334,11 @@ export function useAttachments() {
 			width: attachment.width,
 			height: attachment.height,
 			url: attachment.url,
+			// Recomputed rather than stored: the user may have switched models
+			// since the draft was saved, which changes the honest answer.
+			delivery:
+				resolveDelivery(attachment.mimeType, attachment.mediaType, filePath) ??
+				"path-reference",
 		};
 
 		if (attachment.mediaType === "image" && attachment.base64Data) {
@@ -260,22 +347,6 @@ export function useAttachments() {
 
 		attachedFiles.value = [...attachedFiles.value, attachedFile];
 		return attachedFile;
-	}
-
-	function handleAttach() {
-		fileInputRef.value?.click();
-	}
-
-	async function handleFileSelect(event: Event) {
-		const input = event.target as HTMLInputElement;
-		const files = input.files;
-		if (!files || files.length === 0)
-			return { handled: false, accepted: [], rejected: [] };
-
-		const result = await processFiles(Array.from(files));
-		// Reset input for re-selection
-		input.value = "";
-		return result;
 	}
 
 	async function handlePaste(
@@ -311,6 +382,11 @@ export function useAttachments() {
 		return attachedFiles.value.map((f) => ({
 			id: f.id,
 			fileName: f.fileName,
+			// Carries the engine's last-resort fallback: when a provider can't
+			// deliver the bytes it tells the model to read this path with its
+			// file tools (undeliverableAttachmentText). Dropping it here is what
+			// made that fallback dead code.
+			...(f.filePath ? { filePath: f.filePath } : {}),
 			mimeType: f.mimeType,
 			size: f.size,
 			mediaType: f.mediaType,
@@ -322,10 +398,7 @@ export function useAttachments() {
 
 	return {
 		attachedFiles,
-		fileInputRef,
 		isProcessing,
-		handleAttach,
-		handleFileSelect,
 		handlePaste,
 		processFiles,
 		restoreAttachments,

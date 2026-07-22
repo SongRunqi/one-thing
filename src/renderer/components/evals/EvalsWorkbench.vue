@@ -25,12 +25,12 @@
       <div class="wb-body">
         <!-- Incident list -->
         <aside class="wb-list">
-          <div
+          <ErrorNote
             v-if="store.error"
-            class="wb-error wb-hint"
-          >
-            {{ store.error }}
-          </div>
+            class="wb-error"
+            size="sm"
+            :message="store.error"
+          />
           <div
             v-if="store.loading"
             class="wb-hint"
@@ -107,10 +107,12 @@
             >
               {{ store.detail.incident.caseId ? `已转用例 ${store.detail.incident.caseId}` : '转回归用例' }}
             </button>
-            <span
+            <ErrorNote
               v-if="store.error"
-              class="wb-error"
-            >{{ store.error }}</span>
+              class="wb-error-inline"
+              size="sm"
+              :message="store.error"
+            />
           </div>
 
           <!-- Tabs -->
@@ -367,6 +369,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import StaticMarkdown from '@/components/chat/message/StaticMarkdown.vue'
 import IncidentTranscript, { type TranscriptItem } from './IncidentTranscript.vue'
 import RoundTimeline from './RoundTimeline.vue'
@@ -802,8 +805,12 @@ function shorten(text: string, max: number): string {
 }
 
 .wb-error {
-  color: var(--ui-status-danger-fg, #e74c3c);
-  font-size: 12px;
+  margin: 10px;
+}
+
+/* Sits in the action-button row — no margin, just the rule. */
+.wb-error-inline {
+  flex-shrink: 1;
 }
 
 .wb-tabs {

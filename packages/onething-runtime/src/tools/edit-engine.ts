@@ -3,6 +3,7 @@ import { createTwoFilesPatch } from 'diff'
 export interface ExactEdit {
   oldText: string
   newText: string
+  replaceAll?: boolean
 }
 
 export interface ExactEditApplyResult {
@@ -148,16 +149,94 @@ function getEmptyOldTextError(filePath: string, editIndex: number, totalEdits: n
     : new Error(`edits[${editIndex}].oldText must not be empty in ${filePath}.`)
 }
 
-function getNotFoundError(filePath: string, editIndex: number, totalEdits: number): Error {
-  return totalEdits === 1
-    ? new Error(`Could not find the target text in ${filePath}. Tried exact matching and a single unique indentation-insensitive whole-line match. Re-read the current file and include a larger unique block.`)
-    : new Error(`Could not find edits[${editIndex}] in ${filePath}. Tried exact matching and a single unique indentation-insensitive whole-line match. Re-read the current file and include a larger unique block.`)
+function characterBigrams(text: string): Set<string> {
+  const grams = new Set<string>()
+  for (let i = 0; i < text.length - 1; i++) grams.add(text.slice(i, i + 2))
+  return grams
+}
+
+function diceSimilarity(a: string, b: string): number {
+  if (a === b) return 1
+  if (a.length < 2 || b.length < 2) return 0
+  const gramsA = characterBigrams(a)
+  const gramsB = characterBigrams(b)
+  let shared = 0
+  for (const gram of gramsA) if (gramsB.has(gram)) shared++
+  return (2 * shared) / (gramsA.size + gramsB.size)
+}
+
+const CLOSEST_MATCH_MIN_SCORE = 0.4
+const CLOSEST_MATCH_MAX_SNIPPET_CHARS = 2400
+
+/**
+ * When oldText matches nothing, locate the region of the file that most
+ * resembles it and return a line-numbered snippet. The failure message then
+ * carries the *current* text of the likely target, so the model can retry
+ * with real content instead of guessing again from stale memory (the
+ * observed failure spiral: stale oldText → edit fails → bash/python fallback
+ * → file drifts further).
+ */
+export function findClosestRegionSnippet(content: string, oldText: string): string | null {
+  const contentLines = content.split('\n')
+  const anchorLines = normalizeToLF(oldText)
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length >= 4)
+    .slice(0, 5)
+  if (anchorLines.length === 0) return null
+
+  let bestScore = 0
+  let bestLine = -1
+  for (let i = 0; i < contentLines.length; i++) {
+    const line = contentLines[i].trim()
+    if (!line) continue
+    for (const anchor of anchorLines) {
+      let score: number
+      if (line === anchor) score = 1
+      else if (line.includes(anchor) || anchor.includes(line)) score = 0.9
+      else score = diceSimilarity(line, anchor)
+      if (score > bestScore) {
+        bestScore = score
+        bestLine = i
+      }
+    }
+    if (bestScore === 1) break
+  }
+  if (bestLine === -1 || bestScore < CLOSEST_MATCH_MIN_SCORE) return null
+
+  const halfWindow = Math.min(12, Math.max(4, Math.ceil(oldText.split('\n').length / 2) + 2))
+  const start = Math.max(0, bestLine - halfWindow)
+  const end = Math.min(contentLines.length, bestLine + halfWindow + 1)
+  const numbered: string[] = []
+  for (let i = start; i < end; i++) numbered.push(`${i + 1}→${contentLines[i]}`)
+  let snippet = numbered.join('\n')
+  if (snippet.length > CLOSEST_MATCH_MAX_SNIPPET_CHARS) {
+    snippet = `${snippet.slice(0, CLOSEST_MATCH_MAX_SNIPPET_CHARS)}\n…`
+  }
+  return `Closest match in the current file (lines ${start + 1}-${end}):\n${snippet}`
+}
+
+function getNotFoundError(
+  filePath: string,
+  editIndex: number,
+  totalEdits: number,
+  content?: string,
+  oldText?: string,
+): Error {
+  const base = totalEdits === 1
+    ? `Could not find the target text in ${filePath}. Tried exact matching and a single unique indentation-insensitive whole-line match. Re-read the current file and include a larger unique block.`
+    : `Could not find edits[${editIndex}] in ${filePath}. Tried exact matching and a single unique indentation-insensitive whole-line match. Re-read the current file and include a larger unique block.`
+  const snippet = content !== undefined && oldText !== undefined
+    ? findClosestRegionSnippet(content, oldText)
+    : null
+  return new Error(snippet ? `${base}\n${snippet}` : base)
 }
 
 function getDuplicateError(filePath: string, editIndex: number, totalEdits: number, occurrences: number): Error {
+  const hint = 'Provide more context to make it unique, or set replaceAll: true on this edit to replace every occurrence.'
   return totalEdits === 1
-    ? new Error(`Found ${occurrences} occurrences of the text in ${filePath}. The text must be unique. Provide more context to make it unique.`)
-    : new Error(`Found ${occurrences} occurrences of edits[${editIndex}] in ${filePath}. Each oldText must be unique. Provide more context to make it unique.`)
+    ? new Error(`Found ${occurrences} occurrences of the text in ${filePath}. The text must be unique. ${hint}`)
+    : new Error(`Found ${occurrences} occurrences of edits[${editIndex}] in ${filePath}. Each oldText must be unique. ${hint}`)
 }
 
 function getNoChangeError(filePath: string, totalEdits: number): Error {
@@ -170,7 +249,9 @@ function getNoChangeError(filePath: string, totalEdits: number): Error {
  * Apply one or more exact replacements to LF-normalized content.
  *
  * Each edit is matched against the original content, not incrementally. All
- * oldText values must be non-empty, present exactly once, and non-overlapping.
+ * oldText values must be non-empty and non-overlapping. An oldText must occur
+ * exactly once unless the edit sets replaceAll, in which case every occurrence
+ * is replaced.
  */
 export function applyExactEditsToNormalizedContent(
   normalizedContent: string,
@@ -184,6 +265,7 @@ export function applyExactEditsToNormalizedContent(
   const normalizedEdits = edits.map(edit => ({
     oldText: normalizeToLF(edit.oldText),
     newText: normalizeToLF(edit.newText),
+    replaceAll: edit.replaceAll === true,
   }))
 
   for (let i = 0; i < normalizedEdits.length; i++) {
@@ -197,21 +279,22 @@ export function applyExactEditsToNormalizedContent(
     const edit = normalizedEdits[i]
     const matches = findReplacementMatches(normalizedContent, edit.oldText)
     if (matches.length === 0) {
-      throw getNotFoundError(filePath, i, normalizedEdits.length)
+      throw getNotFoundError(filePath, i, normalizedEdits.length, normalizedContent, edit.oldText)
     }
-    if (matches.length > 1) {
+    if (matches.length > 1 && !edit.replaceAll) {
       throw getDuplicateError(filePath, i, normalizedEdits.length, matches.length)
     }
 
-    const match = matches[0]
-    matchedEdits.push({
-      editIndex: i,
-      matchIndex: match.matchIndex,
-      matchLength: match.matchLength,
-      newText: match.strategy === 'line-trim'
-        ? applyMatchedIndent(edit.newText, edit.oldText, match.matchedText)
-        : edit.newText,
-    })
+    for (const match of matches) {
+      matchedEdits.push({
+        editIndex: i,
+        matchIndex: match.matchIndex,
+        matchLength: match.matchLength,
+        newText: match.strategy === 'line-trim'
+          ? applyMatchedIndent(edit.newText, edit.oldText, match.matchedText)
+          : edit.newText,
+      })
+    }
   }
 
   matchedEdits.sort((a, b) => a.matchIndex - b.matchIndex)

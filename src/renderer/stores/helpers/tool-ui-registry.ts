@@ -120,7 +120,8 @@ const CATEGORY_ICONS: Record<ToolUiCategory, Component> = {
 const STATUS_LABELS: Record<ToolRenderStatus, string> = {
   queued: 'Queued',
   pending: 'Pending',
-  'streaming-input': 'Preparing',
+  'streaming-input': 'Receiving',
+  received: 'Running',
   executing: 'Running',
   'awaiting-confirmation': 'Needs approval',
   completed: 'Done',

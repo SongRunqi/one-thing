@@ -5,10 +5,6 @@
     :count="filteredSkills.length"
     :empty-text="emptyText"
   >
-    <template #icon>
-      <Sparkles :size="14" />
-    </template>
-
     <div class="composer-extension-list">
       <div
         v-for="(skill, index) in filteredSkills"
@@ -47,7 +43,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Folder, Sparkles, User } from 'lucide-vue-next'
+import { Folder, User } from 'lucide-vue-next'
 import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
 import type { SkillDefinition } from '@/types'
 

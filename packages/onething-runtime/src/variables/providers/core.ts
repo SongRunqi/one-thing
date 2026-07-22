@@ -13,7 +13,7 @@ import {
 export interface WorkdirGateway {
   read(sessionId: string): string
   readRoots(sessionId: string): string[]
-  write(sessionId: string, workdir: string): void | Promise<void>
+  write(sessionId: string, workdir: string, options?: { description?: string }): void | Promise<void>
   writeRoots(sessionId: string, roots: string[]): void | Promise<void>
   expandPath(input: string): string
   onChange?(callback: (sessionId: string) => void): () => void
@@ -31,7 +31,7 @@ export interface CoreProviderAdapters {
 }
 
 const NAME_WORKDIR = 'workdir'
-const DESC_WORKDIR = 'Ordered workdir list. values[0] is the active cwd for relative paths, bash defaults, AGENTS.md, project skills, and project todo state; later values are additional sandbox roots for file/bash tools. set replaces the active cwd, append adds a root, remove drops one; cannot be deleted. Values must be existing directories.'
+const DESC_WORKDIR = 'Ordered workdir list. values[0] is the active cwd for relative paths, bash defaults, AGENTS.md, project skills, and project todo state; later values are additional sandbox roots for file/bash tools. set replaces the active cwd, append adds a root, remove drops one; cannot be deleted. Values must be existing directories. set also auto-registers the directory in Known Projects; pass description to name/rename that entry.'
 
 function normalizePath(input: string): string {
   return path.resolve(input)
@@ -103,7 +103,7 @@ export class CoreProvider implements VariableProvider {
     await this.enforceSetPermission(ctx, resolved, active, existingRoots)
 
     const roots = uniqueRoots(existingRoots, resolved)
-    await this.gateway.write(ctx.sessionId, resolved)
+    await this.gateway.write(ctx.sessionId, resolved, { description: input.description })
     await this.gateway.writeRoots(ctx.sessionId, roots)
     return workdirVariable(resolved, roots)
   }

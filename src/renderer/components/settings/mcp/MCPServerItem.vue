@@ -145,38 +145,11 @@
       class="server-expanded"
     >
       <!-- Error Message -->
-      <div
+      <ErrorNote
         v-if="server.error"
         class="server-error"
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <circle
-            cx="12"
-            cy="12"
-            r="10"
-          />
-          <line
-            x1="12"
-            y1="8"
-            x2="12"
-            y2="12"
-          />
-          <line
-            x1="12"
-            y1="16"
-            x2="12.01"
-            y2="16"
-          />
-        </svg>
-        <span>{{ server.error }}</span>
-      </div>
+        :message="server.error"
+      />
 
       <!-- Connection Info -->
       <div class="connection-info">
@@ -251,6 +224,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { computed } from 'vue'
 import type { MCPServerState } from '@/types'
 import { Play, Pause, Loader2 } from 'lucide-vue-next'
@@ -538,27 +512,9 @@ function formatTime(timestamp: number): string {
   }
 }
 
-/* Error: danger ink held by a left rule, no filled block */
+/* positioning only — visuals come from ErrorNote */
 .server-error {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 2px 0 2px 8px;
   margin-top: 10px;
-  border-left: 2px solid var(--ui-status-danger-fg, #ef4444);
-  font-size: 12px;
-  color: var(--ui-status-danger-fg, #ef4444);
-  min-width: 0;
-}
-
-.server-error svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.server-error span {
-  min-width: 0;
-  word-break: break-word;
 }
 
 .connection-info {

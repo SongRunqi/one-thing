@@ -8,10 +8,6 @@
     :empty-text="emptyText"
     loading-text="Searching directories..."
   >
-    <template #icon>
-      <Folder :size="14" />
-    </template>
-
     <div
       ref="listRef"
       class="composer-extension-list"

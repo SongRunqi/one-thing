@@ -48,12 +48,11 @@
         Loading usage...
       </div>
 
-      <div
+      <ErrorNote
         v-else-if="error"
         class="usage-error"
-      >
-        {{ error }}
-      </div>
+        :message="error"
+      />
 
       <template v-else>
         <div class="weekday-row">
@@ -154,6 +153,27 @@
                 </span>
               </div>
             </div>
+
+            <template v-if="selectedSources.length > 1">
+              <div class="breakdown-label">
+                By activity
+              </div>
+              <div class="model-list">
+                <div
+                  v-for="entry in selectedSources"
+                  :key="entry.key"
+                  class="model-row"
+                >
+                  <span class="model-name">{{ sourceLabel(entry.key) }}</span>
+                  <span class="model-track">
+                    <i :style="{ width: sourceBarWidth(entry) }" />
+                  </span>
+                  <span class="model-amt">
+                    {{ formatUSD(entry.apiCostUSD + entry.subscriptionCostUSD) }}<template v-if="entry.subscriptionCostUSD > 0"> est.</template>
+                  </span>
+                </div>
+              </div>
+            </template>
           </template>
         </div>
       </template>
@@ -163,6 +183,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import {
   SettingsEmptyState,
   SettingsGroup,
@@ -317,18 +338,54 @@ const selectedBucket = computed<OnethingUsageBucket | null>(
   () => monthBuckets.value.get(selectedKey.value) ?? null,
 )
 
-const selectedModels = computed<OnethingUsageBreakdownEntry[]>(() => {
-  if (!selectedBucket.value) return []
-  return [...selectedBucket.value.byModel].sort(
+function byCostDesc(entries: OnethingUsageBreakdownEntry[]): OnethingUsageBreakdownEntry[] {
+  return [...entries].sort(
     (a, b) => (b.apiCostUSD + b.subscriptionCostUSD) - (a.apiCostUSD + a.subscriptionCostUSD),
   )
-})
+}
 
-function modelBarWidth(entry: OnethingUsageBreakdownEntry): string {
-  const top = selectedModels.value[0]
+const selectedModels = computed<OnethingUsageBreakdownEntry[]>(() =>
+  selectedBucket.value ? byCostDesc(selectedBucket.value.byModel) : [],
+)
+
+/**
+ * Spend per call category. Chat is the obvious one; the rest are calls the app
+ * makes on its own (title naming, memory upkeep, skill review) that are
+ * otherwise invisible — this row is the only place they surface.
+ */
+// bySource arrives across the IPC boundary; tolerate its absence so an older
+// main process (or a host that predates the breakdown) degrades to hiding the
+// row rather than breaking the whole panel.
+const selectedSources = computed<OnethingUsageBreakdownEntry[]>(() =>
+  selectedBucket.value ? byCostDesc(selectedBucket.value.bySource ?? []) : [],
+)
+
+function barWidth(entry: OnethingUsageBreakdownEntry, scale: OnethingUsageBreakdownEntry[]): string {
+  const top = scale[0]
   const max = top ? top.apiCostUSD + top.subscriptionCostUSD : 0
   if (max <= 0) return '0%'
   return `${Math.min(100, ((entry.apiCostUSD + entry.subscriptionCostUSD) / max) * 100)}%`
+}
+
+function modelBarWidth(entry: OnethingUsageBreakdownEntry): string {
+  return barWidth(entry, selectedModels.value)
+}
+
+function sourceBarWidth(entry: OnethingUsageBreakdownEntry): string {
+  return barWidth(entry, selectedSources.value)
+}
+
+const SOURCE_LABELS: Record<string, string> = {
+  chat: 'Chat',
+  title: 'Chat naming',
+  memory: 'Memory',
+  skill: 'Skill review',
+  toc: 'Session outline',
+  evals: 'Evals',
+}
+
+function sourceLabel(key: string): string {
+  return SOURCE_LABELS[key] ?? key
 }
 
 function formatUSD(value: number | null | undefined): string {
@@ -430,15 +487,14 @@ onMounted(() => {
   line-height: 1.5;
 }
 
-.usage-empty,
-.usage-error {
+.usage-empty {
   padding: 8px 0;
   font-size: 12px;
   color: var(--settings-ink-3, var(--ui-text-secondary-fg, var(--text-secondary)));
 }
 
 .usage-error {
-  color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
+  margin: 8px 0;
 }
 
 /* ── heat calendar ── */
@@ -609,6 +665,17 @@ onMounted(() => {
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* 分组小标:与账页画线风一致,mono 大写字距、淡墨 */
+.breakdown-label {
+  margin-top: 12px;
+  margin-bottom: 5px;
+  font-family: var(--type-mono-font, monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-text-muted-fg, var(--muted));
 }
 
 .model-list {

@@ -126,12 +126,11 @@
             rows="7"
           />
         </label>
-        <div
+        <ErrorNote
           v-if="promptFormError"
           class="prompt-dialog-error"
-        >
-          {{ promptFormError }}
-        </div>
+          :message="promptFormError"
+        />
         <footer>
           <Button
             unstyled
@@ -177,6 +176,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { Search } from 'lucide-vue-next'
 import { useThemeStore } from '@/stores/themes'
@@ -787,9 +787,7 @@ onUnmounted(() => {
 }
 
 .prompt-dialog-error {
-  color: var(--ui-status-danger-fg, var(--danger, #d14));
-  font-size: var(--type-meta-size);
-  line-height: var(--type-meta-line-height);
+  align-self: stretch;
 }
 
 @media (max-width: 620px) {

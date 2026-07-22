@@ -68,8 +68,35 @@ describe('agent provider stream adapter', () => {
       { type: 'tool-input-start', toolInputStart: { toolCallId: 'call_1', toolName: 'read' } },
       { type: 'tool-input-delta', toolInputDelta: { toolCallId: 'call_1', argsTextDelta: '{"path"' } },
       { type: 'tool-input-delta', toolInputDelta: { toolCallId: 'call_1', argsTextDelta: ':"a.txt"}' } },
-      { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1' } },
+      { type: 'tool-input-end', toolInputEnd: { toolCallId: 'call_1', finalizedBy: 'parse' } },
     ])
+  })
+
+  it('emits tool-input-end IMMEDIATELY when the completing delta arrives, before any later event', async () => {
+    // Honesty contract: the receive-complete signal must ride the same
+    // consumption step as the byte that completed the JSON — batching done
+    // events to the end of the stream is the exact failure this guards.
+    const chunks = await collect([
+      { type: 'tool-call-start', turn: 1, toolCallId: 'call_1', toolName: 'read' },
+      {
+        type: 'tool-call-delta',
+        turn: 1,
+        toolCallId: 'call_1',
+        toolName: 'read',
+        argumentsDelta: '{"path":"a.txt"}',
+      },
+      { type: 'text-delta', turn: 1, delta: 'later text' },
+      {
+        type: 'tool-call-done',
+        turn: 1,
+        toolCall: { id: 'call_1', name: 'read', arguments: '{"path":"a.txt"}' },
+      },
+    ])
+    const endIndex = chunks.findIndex(chunk => chunk.type === 'tool-input-end')
+    const textIndex = chunks.findIndex(chunk => chunk.type === 'text')
+    expect(endIndex).toBeGreaterThan(-1)
+    expect(textIndex).toBeGreaterThan(-1)
+    expect(endIndex).toBeLessThan(textIndex)
   })
 
   it('falls back to a tool-call chunk when streamed arguments never complete', async () => {
@@ -96,6 +123,7 @@ describe('agent provider stream adapter', () => {
           toolCallId: 'call_1',
           toolName: 'read',
           args: { path: 'fallback.txt' },
+          finalizedBy: 'provider-done',
         },
       },
     ])

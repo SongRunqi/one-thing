@@ -4,7 +4,6 @@
  *   - bootstrapProjectDirs() : warms the store cache. Idempotent.
  *   - getProjectsStore()     : read/write access (re-exported)
  *   - buildProjectDirsPromptVars : prompt rendering helpers
- *   - ProjectDirsTool        : AI tool registration target
  *   - IPC wiring lives in ./ipc.js to keep this public module headless-safe
  *
  * The module owns its own storage (`~/.onething/project-dirs/`) and
@@ -31,5 +30,4 @@ export type {
   ActiveProjectVars,
   KnownProjectsVars,
 } from '@onething/runtime/project-dirs/prompt'
-export { ProjectDirsTool } from './tool.js'
 export type { Project, ProjectIndexEntry, ProjectId } from '@onething/runtime/project-dirs'

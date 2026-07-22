@@ -19,19 +19,21 @@
       </div>
 
       <!-- Error -->
-      <div
+      <ErrorNote
         v-else-if="error"
-        class="error-state"
+        variant="block"
+        :message="error"
       >
-        <span>{{ error }}</span>
-        <Button
-          unstyled
-          class="btn-sm"
-          @click="loadPlugins"
-        >
-          Retry
-        </Button>
-      </div>
+        <template #actions>
+          <Button
+            unstyled
+            class="btn-sm"
+            @click="loadPlugins"
+          >
+            Retry
+          </Button>
+        </template>
+      </ErrorNote>
 
       <!-- Empty -->
       <div
@@ -93,12 +95,11 @@
               >
                 {{ plugin.description }}
               </p>
-              <p
+              <ErrorNote
                 v-if="plugin.error"
-                class="plugin-error"
-              >
-                {{ plugin.error }}
-              </p>
+                size="sm"
+                :message="plugin.error"
+              />
               <div class="plugin-meta">
                 <span
                   v-if="plugin.author"
@@ -164,6 +165,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { ref, onMounted } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
@@ -420,15 +422,6 @@ onMounted(() => {
   line-height: 1.45;
 }
 
-.plugin-error {
-  font-size: 11px;
-  color: var(--ui-status-danger-fg, #f87171);
-  border-left: 2px solid var(--ui-status-danger-fg, #f87171);
-  padding-left: 8px;
-  margin: 0;
-  line-height: 1.4;
-}
-
 .plugin-meta {
   min-width: 0;
   display: flex;
@@ -486,17 +479,6 @@ onMounted(() => {
 
 .empty-state p {
   margin: 0;
-}
-
-.error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 4px 0 4px 10px;
-  border-left: 2px solid var(--ui-status-danger-fg, #f87171);
-  color: var(--ui-status-danger-fg, #f87171);
-  font-size: 12px;
 }
 
 .empty-state .hint {

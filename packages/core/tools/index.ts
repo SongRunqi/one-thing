@@ -1,6 +1,14 @@
 export { ToolExecutor } from './executor.js'
 export type { ToolExecutorOptions } from './executor.js'
 export {
+  coreDiffHunksFromJson,
+  coreDiffHunksToJson,
+} from './diff-hunks.js'
+export type {
+  CoreDiffHunk,
+  CoreDiffHunkLine,
+} from './diff-hunks.js'
+export {
   isBarrierEffect,
 } from './tool-effect.js'
 export type {

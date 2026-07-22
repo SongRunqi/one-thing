@@ -67,12 +67,10 @@
             <span class="field-hint">Skills from this directory only load for the chosen agent.</span>
           </label>
 
-          <p
+          <ErrorNote
             v-if="error"
-            class="dialog-error"
-          >
-            {{ error }}
-          </p>
+            :message="error"
+          />
         </div>
 
         <div class="dialog-footer">
@@ -100,6 +98,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { AgentDefinition } from '@/types'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 
 interface Props {
   visible: boolean
@@ -268,14 +267,6 @@ select.field-input {
 .field-hint {
   font-size: 11px;
   color: var(--ui-text-faint-fg, var(--muted));
-}
-
-.dialog-error {
-  margin: 0;
-  font-size: 12px;
-  color: var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, #b3403a));
-  padding-left: 8px;
 }
 
 .dialog-footer {

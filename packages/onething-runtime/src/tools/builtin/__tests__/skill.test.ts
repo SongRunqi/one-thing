@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createSkillManageTool,
   SkillViewTool,
-  SkillsListTool,
   type RuntimeSkillDefinition,
   type SkillManageArgs,
   type SkillManageOptions,
@@ -38,7 +37,7 @@ function makeSkill(name: string, description: string, instructions: string): Run
 }
 
 describe('runtime skill read tools', () => {
-  it('lists skills and views skill files without main-process dependencies', async () => {
+  it('views skill files without main-process dependencies', async () => {
     const skill = makeSkill('docs', 'Write docs', '# Docs instructions')
     skill.category = 'writing'
     skill.rootPath = tmpDir
@@ -50,24 +49,7 @@ describe('runtime skill read tools', () => {
     fs.writeFileSync(referencePath, '# Style guide', 'utf-8')
     skill.files = [{ name: 'references/style.md', path: referencePath, type: 'markdown' }]
 
-    const listTool = await SkillsListTool.init({ skills: [skill] })
     const viewTool = await SkillViewTool.init({ skills: [skill] })
-
-    const listed = await listTool.execute(
-      { category: 'writing' },
-      {
-        sessionId: 's1',
-        messageId: 'm1',
-        metadata: vi.fn(),
-        updateResult: vi.fn(),
-      },
-    )
-    const listPayload = JSON.parse(listed.output)
-    expect(listPayload).toMatchObject({
-      success: true,
-      count: 1,
-      skills: [{ name: 'docs', category: 'writing', skill_dir: skill.directoryPath }],
-    })
 
     const viewed = await viewTool.execute(
       { name: 'docs' },

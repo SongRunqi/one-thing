@@ -110,9 +110,9 @@ Use this tool when you need:
 
 The tool can run several related queries in one call and returns candidate
 sources with titles, URLs, and snippets. For ChatGPT-style research, use this
-tool to discover sources, then call web_open for selected pages and web_find
-when you need to locate text inside a page. Set fetchPages to true only when a
-single-call search with automatic top-page extraction is preferred.`,
+tool to discover sources, then call web_open for selected pages. Set fetchPages
+to true only when a single-call search with automatic top-page extraction is
+preferred.`,
 
     category: 'builtin',
     enabled: true,

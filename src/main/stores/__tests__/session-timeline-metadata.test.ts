@@ -151,6 +151,42 @@ describe('session timeline metadata repair', () => {
     expect(testSession.lastInputTokens).toBe(0)
   })
 
+  it('clears stale requiresConfirmation on startup so no dead approval card renders', () => {
+    const paused: ChatMessage = {
+      id: 'assistant-paused',
+      role: 'assistant',
+      content: '',
+      timestamp: 1,
+      toolCalls: [
+        {
+          id: 'call-1',
+          toolId: 'bash',
+          toolName: 'bash',
+          arguments: { command: 'rm -rf build' },
+          status: 'pending',
+          requiresConfirmation: true,
+          timestamp: 1,
+        },
+      ],
+      steps: [
+        {
+          id: 'step-1',
+          status: 'awaiting-confirmation',
+          title: 'Run bash command',
+          toolCallId: 'call-1',
+        } as never,
+      ],
+    }
+    const testSession = session([user(1), paused])
+
+    expect(sanitizeSessionOnStartup(testSession)).toBe(true)
+    const toolCall = paused.toolCalls![0]
+    expect(toolCall.status).toBe('cancelled')
+    expect(toolCall.requiresConfirmation).toBe(false)
+    expect(toolCall.error).toContain('permission request was not answered')
+    expect(paused.steps![0].status).toBe('failed')
+  })
+
   it('marks stale context compact markers as failed on startup', () => {
     const compactingMessage: ChatMessage = {
       id: 'compact-1',

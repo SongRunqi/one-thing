@@ -82,6 +82,6 @@ export function createAgentProviderFromRuntime(
     onExternalAgentSessionLink:
       options.onExternalAgentSessionLink ?? persistExternalAgentSessionLink,
     codexRefreshOAuthToken: options.codexRefreshOAuthToken ?? createCodexRefreshOAuthToken(config),
-    codexRequestDumper: options.codexRequestDumper ?? dumpProviderRequest,
+    requestDumper: options.requestDumper ?? options.codexRequestDumper ?? dumpProviderRequest,
   })
 }

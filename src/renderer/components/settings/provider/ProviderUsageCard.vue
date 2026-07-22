@@ -32,12 +32,10 @@
       Loading usage...
     </div>
 
-    <div
+    <ErrorNote
       v-else-if="error"
-      class="usage-error"
-    >
-      {{ error }}
-    </div>
+      :message="error"
+    />
 
     <template v-else-if="usage">
       <div class="usage-metrics">
@@ -117,6 +115,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { computed } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
 import type { CodexProviderUsage, CodexUsageLimit, CodexUsageWindow, ProviderUsageResponse } from '@/types'
@@ -405,14 +404,6 @@ function compactLimitLabel(limit: CodexUsageLimit): string {
 
 .usage-panel {
   padding: 8px 0;
-}
-
-.usage-error {
-  padding: 2px 0 2px 8px;
-  border-left: 2px solid var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
-  color: var(--ui-status-danger-fg, var(--text-error, var(--color-error)));
-  font-size: 12px;
-  overflow-wrap: anywhere;
 }
 
 .additional-limits {

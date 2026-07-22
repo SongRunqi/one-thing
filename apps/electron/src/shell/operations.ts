@@ -1,4 +1,5 @@
 import { BrowserWindow, shell, type WebContents } from 'electron'
+import { MAIN_TRAFFIC_LIGHT_POSITION } from '../window/main-window.js'
 
 export interface ElectronWindowButtonControls {
   setWindowButtonVisibility(visible: boolean): void
@@ -63,6 +64,8 @@ export function setElectronWindowButtonVisibility(
 
   win.setWindowButtonVisibility(visible)
   if (visible) {
-    win.setWindowButtonPosition({ x: 16, y: 17 })
+    // 这里会盖掉建窗时的 trafficLightPosition,两处必须同值 —— 只改 main-window.ts
+    // 是没用的(实测:构造给 y:40 仍被这里钉回 17)。
+    win.setWindowButtonPosition({ ...MAIN_TRAFFIC_LIGHT_POSITION })
   }
 }

@@ -122,12 +122,11 @@
           >
         </div>
 
-        <div
+        <ErrorNote
           v-if="error"
           class="error-message"
-        >
-          {{ error }}
-        </div>
+          :message="error"
+        />
       </div>
 
       <div class="dialog-actions">
@@ -165,6 +164,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import ErrorNote from '@/components/common/ErrorNote.vue'
 import { ref, watch, computed } from 'vue'
 
 export interface CustomProviderForm {
@@ -394,16 +394,9 @@ function handleSave() {
   color: var(--ui-text-primary-fg, var(--text-primary));
 }
 
-/* Error held by a left rule, no filled block. */
+/* positioning only — visuals come from ErrorNote */
 .error-message {
-  padding: 2px 0 2px 8px;
-  background: transparent;
-  border: none;
-  border-left: 2px solid var(--ui-status-danger-fg, var(--danger));
-  color: var(--ui-status-danger-fg, var(--danger));
-  font-size: 12px;
   margin-top: 16px;
-  overflow-wrap: anywhere;
 }
 
 /* Footer text actions: mono ink, hover pulls an accent underline. */

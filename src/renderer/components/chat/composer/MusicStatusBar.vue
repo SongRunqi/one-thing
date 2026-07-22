@@ -8,20 +8,34 @@
       :data-status="nowPlaying?.status"
       role="group"
       aria-label="music player"
-      @mouseenter="hold"
-      @mouseleave="release"
+      @click="onBarClick"
     >
       <span
         class="music-frame-label"
         aria-hidden="true"
-      >{{ playing ? 'NOW PLAYING' : 'RADIO' }}</span>
+      >{{ (playing ? 'NOW PLAYING' : 'RADIO') + (pinned ? ' · 已固定' : '') }}</span>
+
+      <!-- Login gone: nothing below can work (every play silently fails), so
+           the bar says so instead of presenting healthy-looking controls. -->
+      <template v-if="loginMissing">
+        <span class="music-title"><span class="music-mark">⚠</span>{{ flash || '网易云未登录 · 电台无法播放' }}</span>
+        <span class="music-actions">
+          <button
+            type="button"
+            class="music-btn"
+            title="打开设置 → 音乐,重新登录"
+            @mousedown.prevent
+            @click="openMusicSettings"
+          >去登录</button>
+        </span>
+      </template>
 
       <!-- The host's spoken patter IS the station broadcasting: while the TTS
            line plays into the gap before a song, the bar shows the line as a
            caption instead of claiming the radio stopped. Long lines scroll
            like a radio ticker, paced to the voice (same chars/sec model the
            talk-over timing uses), so the whole sentence is readable. -->
-      <template v-if="speaking">
+      <template v-else-if="speaking">
         <span
           class="music-title music-patter"
           :title="musicStore.djPatter"
@@ -194,6 +208,15 @@
             v-if="musicStore.radio.active"
             type="button"
             class="music-btn"
+            title="换台:说个新方向,DJ 重新编排;新歌备好后自动切过去"
+            :disabled="busy"
+            @mousedown.prevent
+            @click="startComposingIntent(true)"
+          >⟳</button>
+          <button
+            v-if="musicStore.radio.active"
+            type="button"
+            class="music-btn"
             title="停止电台:停下音乐,DJ 不再续排(节目单保留)"
             :disabled="busy"
             @mousedown.prevent
@@ -258,6 +281,7 @@
  * `queue add` simply wins.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { platformApi } from '@/platform'
 import { useMusicStore } from '@/stores/music'
 import { useSettingsStore } from '@/stores/settings'
 import type { MusicCommand } from '@/types'
@@ -292,6 +316,18 @@ const playing = computed(() => {
   const current = nowPlaying.value
   return !!current && current.status !== 'stopped'
 })
+
+/**
+ * The NetEase login is gone: every play exits 0 with no sound, so the bar
+ * leads with the one actionable fact instead of healthy-looking controls.
+ * `loggedIn` is probed at boot and re-probed when a start-failure diagnosis
+ * finds the login expired.
+ */
+const loginMissing = computed(() => !musicStore.state.loggedIn)
+
+function openMusicSettings() {
+  void platformApi.openSettingsWindow()
+}
 
 /**
  * The radio is on and curated, but nothing is coming out of the speakers —
@@ -400,12 +436,12 @@ const radioIntent = computed(() => musicStore.radio.intent || '电台')
 
 /**
  * Hover-to-summon (field-requested revert): the bar stays hidden — even while
- * a song plays — until the composer's music tag or the bar itself is hovered,
- * then lingers a few seconds so it cannot vanish mid-click. It only exists at
- * all once the feature is set up. The idle/standby launcher is content shown
- * once summoned, not a permanent fixture.
+ * a song plays — until the composer's music tag or the bar itself is hovered.
+ * Leaving retracts it immediately (the 4s linger was field-rejected); the
+ * only grace left is a beat long enough for the pointer to TRAVEL from the
+ * summon tag into the bar — at zero the bar dies before it can be reached.
  */
-const LINGER_MS = 4_000
+const LINGER_MS = 250
 const lingering = ref(false)
 let lingerTimer: ReturnType<typeof setTimeout> | null = null
 watch(
@@ -433,12 +469,73 @@ const configured = computed(
     musicStore.state.configured === true,
 )
 
+/**
+ * Click-to-pin: a click on the bar's inert body (not its buttons/track/input)
+ * pins it on screen regardless of hover; a second click unpins, returning it
+ * to hover rules — with the pointer still inside it simply stays.
+ */
+const pinned = ref(false)
+// Pinning turns the flyout into a fixture, and a fixture must not sit on top of
+// the conversation: the composer reads this to reserve real height for the bar
+// (see .composer-anchor's margin-top) so the chat area is pushed up instead.
+watch(pinned, value => (musicStore.barPinned = value), { immediate: true })
+onBeforeUnmount(() => {
+  musicStore.barPinned = false
+})
+function onBarClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null
+  if (target?.closest('button, input, .music-track, .music-vol')) return
+  pinned.value = !pinned.value
+}
+
 const visible = computed(
-  () => configured.value && (props.expanded || held.value || lingering.value),
+  () =>
+    configured.value &&
+    (pinned.value ||
+      props.expanded ||
+      held.value ||
+      lingering.value ||
+      // Mid-interaction the bar must never vanish: an open intent input (the
+      // hands are on the keyboard, not the pointer), a command in flight, or
+      // an error line that still owes the user its readable seconds.
+      composingIntent.value ||
+      busy.value ||
+      flash.value !== ''),
 )
 
-const hold = () => (held.value = true)
-const release = () => (held.value = false)
+/**
+ * Geometric hold: "the pointer is inside the bar" is judged by coordinates
+ * against the bar's rect, NOT by DOM hover. Floating overlays (the chat's
+ * scroll-to-bottom button lands right on top of the bar) swallow
+ * mouseenter/mouseleave, and the bar used to vanish while the pointer was
+ * visibly inside it (field complaint). A stationary pointer keeps the last
+ * verdict — no event fires, so `held` simply stays true.
+ */
+const HOLD_PADDING_PX = 12
+function onWindowPointerMove(event: PointerEvent) {
+  const el = barEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  held.value =
+    event.clientX >= rect.left - HOLD_PADDING_PX &&
+    event.clientX <= rect.right + HOLD_PADDING_PX &&
+    event.clientY >= rect.top - HOLD_PADDING_PX &&
+    event.clientY <= rect.bottom + HOLD_PADDING_PX
+}
+/** The pointer left the window entirely (app switch, screen edge). */
+function onWindowBlurOrLeave() {
+  held.value = false
+}
+onMounted(() => {
+  window.addEventListener('pointermove', onWindowPointerMove, { passive: true })
+  window.addEventListener('blur', onWindowBlurOrLeave)
+  document.documentElement.addEventListener('pointerleave', onWindowBlurOrLeave)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('pointermove', onWindowPointerMove)
+  window.removeEventListener('blur', onWindowBlurOrLeave)
+  document.documentElement.removeEventListener('pointerleave', onWindowBlurOrLeave)
+})
 
 // Report the bar's live height to the store while it is on screen, so the goal
 // bar (a sibling in the composer column that this out-of-flow flyout floats over)
@@ -459,6 +556,9 @@ watch(barEl, el => {
     musicStore.barHeight = el.offsetHeight
   } else {
     musicStore.barHeight = 0
+    // No rect to test against: a stale "inside" verdict from the bar's last
+    // on-screen moment must not resurrect it out of nowhere.
+    held.value = false
   }
 })
 onBeforeUnmount(() => {
@@ -647,15 +747,8 @@ onBeforeUnmount(() => {
 }
 
 /* Idle/standby: present but quiet — less ink until the pointer arrives. */
-.music-bar.is-quiet {
-  opacity: 0.62;
-  transition: opacity 0.15s ease;
-}
-
-.music-bar.is-quiet:hover,
-.music-bar.is-quiet:focus-within {
-  opacity: 1;
-}
+/* No translucent states: the bar is a solid surface whenever it shows —
+   the 62% quiet-dimming read as "transparent and broken" (field-rejected). */
 
 .music-intent-input {
   flex: 1 1 auto;

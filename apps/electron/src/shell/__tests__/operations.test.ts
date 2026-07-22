@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { MAIN_TRAFFIC_LIGHT_POSITION } from '../../window/main-window.js'
 
 const mocks = vi.hoisted(() => ({
   openExternal: vi.fn().mockResolvedValue(undefined),
@@ -80,7 +81,8 @@ describe('electron shell operations', () => {
 
     expect(browserWindow.fromWebContents).toHaveBeenCalledWith(sender)
     expect(win.setWindowButtonVisibility).toHaveBeenCalledWith(true)
-    expect(win.setWindowButtonPosition).toHaveBeenCalledWith({ x: 16, y: 17 })
+    // 引用常量而非字面量:这里和建窗时的 trafficLightPosition 必须同值
+    expect(win.setWindowButtonPosition).toHaveBeenCalledWith({ ...MAIN_TRAFFIC_LIGHT_POSITION })
   })
 
   it('does not restore traffic light position when hiding buttons', () => {
