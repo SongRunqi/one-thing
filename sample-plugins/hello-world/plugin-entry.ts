@@ -12,7 +12,7 @@
 
 import { z } from 'zod'
 
-/** @param {import('../../src/main/plugins/types').PluginAPI} api */
+/** @param {import('../../apps/electron/src/main/plugins/types').PluginAPI} api */
 export default function helloWorldPlugin(api) {
   console.log(`[HelloWorld] Plugin loading... (id=${api.id})`)
 

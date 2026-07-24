@@ -530,17 +530,17 @@ const SEARCH_IPC_WINDOW_SOURCE_FORBIDDEN_PATTERNS: RegExp[] = [
 ]
 
 const MAIN_CORE_SYSTEM_DIRS = [
-  'src/main/agent-loop',
-  'src/main/engine',
-  'src/main/events',
-  'src/main/bridges',
-  'src/main/session',
-  'src/main/storage',
-  'src/main/stores',
-  'src/main/permission',
-  'src/main/mcp',
-  'src/main/plugins',
-  'src/main/tools',
+  'apps/electron/src/main/agent-loop',
+  'apps/electron/src/main/engine',
+  'apps/electron/src/main/events',
+  'apps/electron/src/main/bridges',
+  'apps/electron/src/main/session',
+  'apps/electron/src/main/storage',
+  'apps/electron/src/main/stores',
+  'apps/electron/src/main/permission',
+  'apps/electron/src/main/mcp',
+  'apps/electron/src/main/plugins',
+  'apps/electron/src/main/tools',
 ]
 
 const MAIN_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
@@ -558,7 +558,7 @@ const MAIN_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
 ]
 
 const MAIN_ADAPTER_ALLOWLIST = new Map<string, RegExp[]>([
-  ['src/main/mcp/client.ts', [/@modelcontextprotocol\/sdk/]],
+  ['apps/electron/src/main/mcp/client.ts', [/@modelcontextprotocol\/sdk/]],
 ])
 
 const CORE_PROMPT_ASSEMBLY_FORBIDDEN_PATTERNS: RegExp[] = [
@@ -2867,7 +2867,7 @@ function checkCoreOwnsGatewayConversationRuntimeProtocol(): void {
   const gatewayAndHostFiles = [
     ...walkFiles(path.join(root, 'packages/gateway')),
     path.join(root, 'apps/electron/src/gateway/lifecycle-controller.ts'),
-    path.join(root, 'src/main/engine/index.ts'),
+    path.join(root, 'apps/electron/src/main/engine/index.ts'),
   ].filter(file => fs.existsSync(file))
   const requiredCoreSymbols = [
     'CoreConversationRuntime',
@@ -3056,7 +3056,7 @@ function checkGatewayOwnsEnablementConfig(): void {
   const gatewayConfigFile = path.join(root, 'packages/gateway/src/config.ts')
   const gatewayPackageFile = path.join(root, 'packages/gateway/package.json')
   const electronGatewayFile = path.join(root, 'apps/electron/src/gateway/lifecycle-controller.ts')
-  const mainFile = path.join(root, 'src/main/gateway/lifecycle.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/gateway/lifecycle.ts')
   const gatewayContent = fs.existsSync(gatewayFile) ? fs.readFileSync(gatewayFile, 'utf-8') : ''
   const gatewayConfigContent = fs.existsSync(gatewayConfigFile) ? fs.readFileSync(gatewayConfigFile, 'utf-8') : ''
   const gatewayPackageContent = fs.existsSync(gatewayPackageFile) ? fs.readFileSync(gatewayPackageFile, 'utf-8') : ''
@@ -3108,9 +3108,9 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronGatewayControllerFile = path.join(root, 'apps/electron/src/gateway/lifecycle-controller.ts')
   const electronGatewayFile = path.join(root, 'apps/electron/src/gateway/lifecycle.ts')
-  const mainFile = path.join(root, 'src/main/gateway/lifecycle.ts')
-  const mainGatewayIpcFile = path.join(root, 'src/main/gateway/ipc.ts')
-  const mainSettingsIpcFile = path.join(root, 'src/main/ipc/settings.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/gateway/lifecycle.ts')
+  const mainGatewayIpcFile = path.join(root, 'apps/electron/src/main/gateway/ipc.ts')
+  const mainSettingsIpcFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
   const tsconfigNode = path.join(root, 'tsconfig.node.json')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
@@ -3192,8 +3192,8 @@ function checkElectronHostOwnsVoiceRuntimeWindow(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronRuntimeControllerFile = path.join(root, 'apps/electron/src/voice/runtime-window-controller.ts')
   const electronRuntimeFile = path.join(root, 'apps/electron/src/voice/runtime-window.ts')
-  const mainRuntimeFile = path.join(root, 'src/main/voice/runtime-window.ts')
-  const mainVoiceServiceFile = path.join(root, 'src/main/voice/service.ts')
+  const mainRuntimeFile = path.join(root, 'apps/electron/src/main/voice/runtime-window.ts')
+  const mainVoiceServiceFile = path.join(root, 'apps/electron/src/main/voice/service.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -3254,7 +3254,7 @@ function checkElectronHostOwnsVoiceRuntimeWindow(): void {
 function checkElectronHostOwnsVoiceEventBroadcasting(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronEventsFile = path.join(root, 'apps/electron/src/voice/events.ts')
-  const mainVoiceServiceFile = path.join(root, 'src/main/voice/service.ts')
+  const mainVoiceServiceFile = path.join(root, 'apps/electron/src/main/voice/service.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -3293,7 +3293,7 @@ function checkElectronHostOwnsVoiceEventBroadcasting(): void {
       : []),
     ...(fs.existsSync(mainVoiceServiceFile)
       ? matchingLines(mainVoiceServiceFile, VOICE_EVENT_BROADCAST_FORBIDDEN_PATTERNS)
-      : ['src/main/voice/service.ts: missing voice service']),
+      : ['apps/electron/src/main/voice/service.ts: missing voice service']),
   ]
 
   assertNoMatches('apps/electron owns Electron voice event broadcasting', lines)
@@ -3304,8 +3304,8 @@ function checkElectronHostOwnsVoiceTray(): void {
   const electronTrayControllerFile = path.join(root, 'apps/electron/src/voice/tray-controller.ts')
   const electronTrayFile = path.join(root, 'apps/electron/src/voice/tray.ts')
   const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const mainTrayFile = path.join(root, 'src/main/voice/tray.ts')
-  const mainVoiceServiceFile = path.join(root, 'src/main/voice/service.ts')
+  const mainTrayFile = path.join(root, 'apps/electron/src/main/voice/tray.ts')
+  const mainVoiceServiceFile = path.join(root, 'apps/electron/src/main/voice/service.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -3376,7 +3376,7 @@ function checkElectronHostOwnsVoiceTray(): void {
 function checkElectronHostOwnsVoiceIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronVoiceIpcFile = path.join(root, 'apps/electron/src/voice/ipc.ts')
-  const mainVoiceIpcFile = path.join(root, 'src/main/voice/ipc.ts')
+  const mainVoiceIpcFile = path.join(root, 'apps/electron/src/main/voice/ipc.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -3427,7 +3427,7 @@ function checkElectronHostOwnsVoiceIpcHost(): void {
       : []),
     ...(fs.existsSync(mainVoiceIpcFile)
       ? matchingLines(mainVoiceIpcFile, MAIN_VOICE_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/voice/ipc.ts: missing voice IPC adapter']),
+      : ['apps/electron/src/main/voice/ipc.ts: missing voice IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron voice IPC host operations', lines)
@@ -3439,7 +3439,7 @@ function checkElectronHostOwnsReadyHandler(): void {
   const electronLoginShellEnvFile = path.join(root, 'apps/electron/src/app/login-shell-env.ts')
   const electronLoginShellEnvTestFile = path.join(root, 'apps/electron/src/app/__tests__/login-shell-env.test.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const legacyLoginShellEnvFile = path.join(root, 'src/main/utils/login-shell-env.ts')
+  const legacyLoginShellEnvFile = path.join(root, 'apps/electron/src/main/utils/login-shell-env.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -3510,7 +3510,7 @@ function checkElectronHostOwnsReadyHandler(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_READY_FORBIDDEN_PATTERNS)
-      : ['src/main/index.ts: missing Electron main entry']),
+      : ['apps/electron/src/main/index.ts: missing Electron main entry']),
   ]
 
   assertNoMatches('apps/electron owns Electron ready handler', lines)
@@ -3564,7 +3564,7 @@ function checkElectronHostOwnsActivateHandler(): void {
       ? matchingTextLines(rel(mainFile), mainContent.slice(legacyActivateStart), MAIN_ACTIVATE_FORBIDDEN_PATTERNS, legacyActivateLineOffset)
       : []),
     ...(!fs.existsSync(mainFile)
-      ? ['src/main/index.ts: missing Electron main entry']
+      ? ['apps/electron/src/main/index.ts: missing Electron main entry']
       : []),
   ]
 
@@ -3585,7 +3585,7 @@ function checkElectronHostOwnsMainWindowBinding(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_WINDOW_BINDING_FORBIDDEN_PATTERNS)
-      : ['src/main/index.ts: missing Electron main entry']),
+      : ['apps/electron/src/main/index.ts: missing Electron main entry']),
   ]
 
   assertNoMatches('apps/electron owns Electron main-window binding', lines)
@@ -3981,9 +3981,9 @@ function checkElectronHostOwnsTodoPlanWindowCreation(): void {
 function checkElectronHostOwnsMacOSPanelBridge(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPanelFile = path.join(root, 'apps/electron/src/window/macos-panel.ts')
-  const legacyPanelFile = path.join(root, 'src/main/native/macos-panel.ts')
+  const legacyPanelFile = path.join(root, 'apps/electron/src/main/native/macos-panel.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const todoWindowTestFile = path.join(root, 'src/main/__tests__/todo-plan-window.test.ts')
+  const todoWindowTestFile = path.join(root, 'apps/electron/src/main/__tests__/todo-plan-window.test.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4029,7 +4029,7 @@ function checkElectronHostOwnsMacOSPanelBridge(): void {
       : ['apps/electron/src/window/index.ts: missing Electron window module']),
     ...(fs.existsSync(todoWindowTestFile)
       ? matchingLines(todoWindowTestFile, WINDOW_MACOS_PANEL_FORBIDDEN_PATTERNS)
-      : ['src/main/__tests__/todo-plan-window.test.ts: missing todo plan window test']),
+      : ['apps/electron/src/main/__tests__/todo-plan-window.test.ts: missing todo plan window test']),
   ]
 
   assertNoMatches('apps/electron owns Electron macOS native panel bridge', lines)
@@ -4039,7 +4039,7 @@ function checkElectronHostOwnsRendererTargets(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronTargetsFile = path.join(root, 'apps/electron/src/window/renderer-targets.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const searchTargetFile = path.join(root, 'src/main/search/window-target.ts')
+  const searchTargetFile = path.join(root, 'apps/electron/src/main/search/window-target.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4069,7 +4069,7 @@ function checkElectronHostOwnsRendererTargets(): void {
       ? [`${rel(windowFile)}: app webContents checks must delegate to apps/electron`]
       : []),
     ...(windowContent.includes('@main/search/window-target')
-      ? [`${rel(windowFile)}: main window must not route renderer-target checks through src/main/search/window-target.ts`]
+      ? [`${rel(windowFile)}: main window must not route renderer-target checks through apps/electron/src/main/search/window-target.ts`]
       : []),
     ...(!viteContent.includes('@onething/electron-host/window/renderer-targets')
       ? [`${rel(viteConfig)}: missing electron renderer-targets package alias`]
@@ -4092,7 +4092,7 @@ function checkElectronHostOwnsSearchWindowLifecycle(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSearchWindowControllerFile = path.join(root, 'apps/electron/src/window/search-window.ts')
   const electronSearchWindowFile = path.join(root, 'apps/electron/src/search/window.ts')
-  const searchWindowFile = path.join(root, 'src/main/search/window.ts')
+  const searchWindowFile = path.join(root, 'apps/electron/src/main/search/window.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4156,9 +4156,9 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
   const electronSearchActionsFile = path.join(root, 'apps/electron/src/search/window-actions.ts')
   const electronSearchControllerFile = path.join(root, 'apps/electron/src/search/window-controller.ts')
   const electronSearchIpcFile = path.join(root, 'apps/electron/src/search/ipc.ts')
-  const legacySelectionFile = path.join(root, 'src/main/search/window-selection.ts')
-  const searchControllerFile = path.join(root, 'src/main/search/window-controller.ts')
-  const searchIpcFile = path.join(root, 'src/main/search/ipc.ts')
+  const legacySelectionFile = path.join(root, 'apps/electron/src/main/search/window-selection.ts')
+  const searchControllerFile = path.join(root, 'apps/electron/src/main/search/window-controller.ts')
+  const searchIpcFile = path.join(root, 'apps/electron/src/main/search/ipc.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4265,8 +4265,8 @@ function checkElectronHostOwnsSearchWindowLayout(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronLayoutFile = path.join(root, 'apps/electron/src/window/search-window-layout.ts')
   const electronSearchWindowFile = path.join(root, 'apps/electron/src/search/window.ts')
-  const legacyLayoutFile = path.join(root, 'src/main/search/window-layout.ts')
-  const searchWindowFile = path.join(root, 'src/main/search/window.ts')
+  const legacyLayoutFile = path.join(root, 'apps/electron/src/main/search/window-layout.ts')
+  const searchWindowFile = path.join(root, 'apps/electron/src/main/search/window.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4462,7 +4462,7 @@ function checkElectronHostOwnsWindowVisibilitySnapshots(): void {
 function checkElectronHostOwnsTodoPlanNotifications(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronNotificationsFile = path.join(root, 'apps/electron/src/todo-plan/notifications.ts')
-  const storeFile = path.join(root, 'src/main/todo-plan/store.ts')
+  const storeFile = path.join(root, 'apps/electron/src/main/todo-plan/store.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4503,7 +4503,7 @@ function checkElectronHostOwnsTodoPlanNotifications(): void {
       : []),
     ...(fs.existsSync(storeFile)
       ? matchingLines(storeFile, MAIN_TODO_PLAN_STORE_FORBIDDEN_PATTERNS)
-      : ['src/main/todo-plan/store.ts: missing todo-plan store facade']),
+      : ['apps/electron/src/main/todo-plan/store.ts: missing todo-plan store facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron todo-plan notifications', lines)
@@ -4565,7 +4565,7 @@ function checkElectronHostOwnsTodoPlanPresentation(): void {
 function checkElectronHostOwnsWindowFacade(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const windowHostFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const windowFacadeFile = path.join(root, 'src/main/window.ts')
+  const windowFacadeFile = path.join(root, 'apps/electron/src/main/window.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4641,7 +4641,7 @@ function checkElectronHostOwnsWindowAllClosedHandler(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_WINDOW_ALL_CLOSED_FORBIDDEN_PATTERNS)
-      : ['src/main/index.ts: missing Electron main entry']),
+      : ['apps/electron/src/main/index.ts: missing Electron main entry']),
   ]
 
   assertNoMatches('apps/electron owns Electron window-all-closed handler', lines)
@@ -4684,7 +4684,7 @@ function checkElectronHostOwnsDidBecomeActiveHandler(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_DID_BECOME_ACTIVE_FORBIDDEN_PATTERNS)
-      : ['src/main/index.ts: missing Electron main entry']),
+      : ['apps/electron/src/main/index.ts: missing Electron main entry']),
   ]
 
   assertNoMatches('apps/electron owns Electron did-become-active handler', lines)
@@ -4729,7 +4729,7 @@ function checkElectronHostOwnsBeforeQuitCleanup(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_BEFORE_QUIT_FORBIDDEN_PATTERNS)
-      : ['src/main/index.ts: missing Electron main entry']),
+      : ['apps/electron/src/main/index.ts: missing Electron main entry']),
   ]
 
   assertNoMatches('apps/electron owns Electron before-quit cleanup', lines)
@@ -4772,7 +4772,7 @@ function checkElectronHostOwnsMediaProtocol(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MEDIA_PROTOCOL_FORBIDDEN_PATTERNS)
-      : ['src/main/index.ts: missing Electron main entry']),
+      : ['apps/electron/src/main/index.ts: missing Electron main entry']),
   ]
 
   assertNoMatches('apps/electron owns Electron media protocol registration', lines)
@@ -4781,7 +4781,7 @@ function checkElectronHostOwnsMediaProtocol(): void {
 function checkElectronHostOwnsLoggingCapture(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronLoggingFile = path.join(root, 'apps/electron/src/logging/console-capture.ts')
-  const mainLoggingFile = path.join(root, 'src/main/logging/index.ts')
+  const mainLoggingFile = path.join(root, 'apps/electron/src/main/logging/index.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4822,7 +4822,7 @@ function checkElectronHostOwnsLoggingCapture(): void {
       : []),
     ...(fs.existsSync(mainLoggingFile)
       ? matchingLines(mainLoggingFile, MAIN_LOGGING_ELECTRON_CAPTURE_FORBIDDEN_PATTERNS)
-      : ['src/main/logging/index.ts: missing logging facade']),
+      : ['apps/electron/src/main/logging/index.ts: missing logging facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron logging capture', lines)
@@ -4831,7 +4831,7 @@ function checkElectronHostOwnsLoggingCapture(): void {
 function checkElectronHostOwnsAccessibilityPermissions(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronAccessibilityFile = path.join(root, 'apps/electron/src/accessibility/permissions.ts')
-  const mainAccessibilityFile = path.join(root, 'src/main/utils/accessibility.ts')
+  const mainAccessibilityFile = path.join(root, 'apps/electron/src/main/utils/accessibility.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4876,7 +4876,7 @@ function checkElectronHostOwnsAccessibilityPermissions(): void {
       : []),
     ...(fs.existsSync(mainAccessibilityFile)
       ? matchingLines(mainAccessibilityFile, MAIN_ACCESSIBILITY_FORBIDDEN_PATTERNS)
-      : ['src/main/utils/accessibility.ts: missing accessibility facade']),
+      : ['apps/electron/src/main/utils/accessibility.ts: missing accessibility facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron accessibility permissions', lines)
@@ -4887,7 +4887,7 @@ function checkElectronHostOwnsShellOperations(): void {
   const electronShellFile = path.join(root, 'apps/electron/src/shell/operations.ts')
   const electronShellIpcControllerFile = path.join(root, 'apps/electron/src/ipc/shell-controller.ts')
   const electronShellIpcFile = path.join(root, 'apps/electron/src/ipc/shell.ts')
-  const mainShellFile = path.join(root, 'src/main/ipc/shell.ts')
+  const mainShellFile = path.join(root, 'apps/electron/src/main/ipc/shell.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -4971,7 +4971,7 @@ function checkElectronHostOwnsShellOperations(): void {
       : []),
     ...(fs.existsSync(mainShellFile)
       ? matchingLines(mainShellFile, MAIN_SHELL_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/shell.ts: missing shell IPC facade']),
+      : ['apps/electron/src/main/ipc/shell.ts: missing shell IPC facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron shell operations', lines)
@@ -4980,7 +4980,7 @@ function checkElectronHostOwnsShellOperations(): void {
 function checkElectronHostOwnsOAuthEvents(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronOAuthFile = path.join(root, 'apps/electron/src/oauth/events.ts')
-  const mainOAuthFile = path.join(root, 'src/main/ipc/oauth.ts')
+  const mainOAuthFile = path.join(root, 'apps/electron/src/main/ipc/oauth.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5020,7 +5020,7 @@ function checkElectronHostOwnsOAuthEvents(): void {
       : []),
     ...(fs.existsSync(mainOAuthFile)
       ? matchingLines(mainOAuthFile, MAIN_OAUTH_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/oauth.ts: missing OAuth IPC facade']),
+      : ['apps/electron/src/main/ipc/oauth.ts: missing OAuth IPC facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron OAuth event broadcasting', lines)
@@ -5029,7 +5029,7 @@ function checkElectronHostOwnsOAuthEvents(): void {
 function checkElectronHostOwnsOAuthIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronOAuthIpcFile = path.join(root, 'apps/electron/src/ipc/oauth.ts')
-  const mainOAuthFile = path.join(root, 'src/main/ipc/oauth.ts')
+  const mainOAuthFile = path.join(root, 'apps/electron/src/main/ipc/oauth.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5082,7 +5082,7 @@ function checkElectronHostOwnsOAuthIpcHost(): void {
       : []),
     ...(fs.existsSync(mainOAuthFile)
       ? matchingLines(mainOAuthFile, MAIN_OAUTH_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/oauth.ts: missing OAuth IPC adapter']),
+      : ['apps/electron/src/main/ipc/oauth.ts: missing OAuth IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron OAuth IPC host operations', lines)
@@ -5091,7 +5091,7 @@ function checkElectronHostOwnsOAuthIpcHost(): void {
 function checkElectronHostOwnsSettingsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSettingsFile = path.join(root, 'apps/electron/src/settings/ipc-host.ts')
-  const mainSettingsFile = path.join(root, 'src/main/ipc/settings.ts')
+  const mainSettingsFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5155,7 +5155,7 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
           ...matchingLines(mainSettingsFile, MAIN_SETTINGS_IPC_SAVE_ORCHESTRATION_FORBIDDEN_PATTERNS),
           ...matchingLines(mainSettingsFile, MAIN_SETTINGS_IPC_HOST_FORBIDDEN_PATTERNS),
         ]
-      : ['src/main/ipc/settings.ts: missing settings IPC adapter']),
+      : ['apps/electron/src/main/ipc/settings.ts: missing settings IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron settings IPC host operations', lines)
@@ -5165,7 +5165,7 @@ function checkElectronHostOwnsAppStateIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronAppStateControllerFile = path.join(root, 'apps/electron/src/ipc/app-state-controller.ts')
   const electronAppStateFile = path.join(root, 'apps/electron/src/ipc/app-state.ts')
-  const mainAppStateFile = path.join(root, 'src/main/ipc/app-state.ts')
+  const mainAppStateFile = path.join(root, 'apps/electron/src/main/ipc/app-state.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5220,7 +5220,7 @@ function checkElectronHostOwnsAppStateIpcHost(): void {
       : []),
     ...(fs.existsSync(mainAppStateFile)
       ? matchingLines(mainAppStateFile, MAIN_APP_STATE_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/app-state.ts: missing app-state IPC adapter']),
+      : ['apps/electron/src/main/ipc/app-state.ts: missing app-state IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron app-state IPC host operations', lines)
@@ -5230,7 +5230,7 @@ function checkElectronHostOwnsVariablesIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronVariablesControllerFile = path.join(root, 'apps/electron/src/ipc/variables-controller.ts')
   const electronVariablesFile = path.join(root, 'apps/electron/src/ipc/variables.ts')
-  const mainVariablesFile = path.join(root, 'src/main/variables/ipc.ts')
+  const mainVariablesFile = path.join(root, 'apps/electron/src/main/variables/ipc.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5288,7 +5288,7 @@ function checkElectronHostOwnsVariablesIpcHost(): void {
       : []),
     ...(fs.existsSync(mainVariablesFile)
       ? matchingLines(mainVariablesFile, MAIN_VARIABLES_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/variables/ipc.ts: missing variables IPC adapter']),
+      : ['apps/electron/src/main/variables/ipc.ts: missing variables IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron variables IPC host operations', lines)
@@ -5298,7 +5298,7 @@ function checkElectronHostOwnsProjectDirsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronProjectDirsControllerFile = path.join(root, 'apps/electron/src/ipc/project-dirs-controller.ts')
   const electronProjectDirsFile = path.join(root, 'apps/electron/src/ipc/project-dirs.ts')
-  const mainProjectDirsFile = path.join(root, 'src/main/project-dirs/ipc.ts')
+  const mainProjectDirsFile = path.join(root, 'apps/electron/src/main/project-dirs/ipc.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5361,7 +5361,7 @@ function checkElectronHostOwnsProjectDirsIpcHost(): void {
       : []),
     ...(fs.existsSync(mainProjectDirsFile)
       ? matchingLines(mainProjectDirsFile, MAIN_PROJECT_DIRS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/project-dirs/ipc.ts: missing project-dirs IPC adapter']),
+      : ['apps/electron/src/main/project-dirs/ipc.ts: missing project-dirs IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron project-dirs IPC host operations', lines)
@@ -5370,7 +5370,7 @@ function checkElectronHostOwnsProjectDirsIpcHost(): void {
 function checkElectronHostOwnsAgentsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronAgentsFile = path.join(root, 'apps/electron/src/ipc/agents.ts')
-  const mainAgentsFile = path.join(root, 'src/main/ipc/agents.ts')
+  const mainAgentsFile = path.join(root, 'apps/electron/src/main/ipc/agents.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5416,7 +5416,7 @@ function checkElectronHostOwnsAgentsIpcHost(): void {
       : []),
     ...(fs.existsSync(mainAgentsFile)
       ? matchingLines(mainAgentsFile, MAIN_AGENTS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/agents.ts: missing agents IPC adapter']),
+      : ['apps/electron/src/main/ipc/agents.ts: missing agents IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron agents IPC host operations', lines)
@@ -5425,7 +5425,7 @@ function checkElectronHostOwnsAgentsIpcHost(): void {
 function checkElectronHostOwnsPromptsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPromptsFile = path.join(root, 'apps/electron/src/ipc/prompts.ts')
-  const mainPromptsFile = path.join(root, 'src/main/prompts/ipc.ts')
+  const mainPromptsFile = path.join(root, 'apps/electron/src/main/prompts/ipc.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5474,7 +5474,7 @@ function checkElectronHostOwnsPromptsIpcHost(): void {
       : []),
     ...(fs.existsSync(mainPromptsFile)
       ? matchingLines(mainPromptsFile, MAIN_PROMPTS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/prompts/ipc.ts: missing prompts IPC adapter']),
+      : ['apps/electron/src/main/prompts/ipc.ts: missing prompts IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron prompts IPC host operations', lines)
@@ -5483,7 +5483,7 @@ function checkElectronHostOwnsPromptsIpcHost(): void {
 function checkElectronHostOwnsSchedulerIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSchedulerFile = path.join(root, 'apps/electron/src/ipc/scheduler.ts')
-  const mainSchedulerFile = path.join(root, 'src/main/ipc/scheduler.ts')
+  const mainSchedulerFile = path.join(root, 'apps/electron/src/main/ipc/scheduler.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5544,7 +5544,7 @@ function checkElectronHostOwnsSchedulerIpcHost(): void {
       : []),
     ...(fs.existsSync(mainSchedulerFile)
       ? matchingLines(mainSchedulerFile, MAIN_SCHEDULER_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/scheduler.ts: missing scheduler IPC adapter']),
+      : ['apps/electron/src/main/ipc/scheduler.ts: missing scheduler IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron scheduler IPC host operations', lines)
@@ -5553,7 +5553,7 @@ function checkElectronHostOwnsSchedulerIpcHost(): void {
 function checkElectronHostOwnsMarkdownIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMarkdownFile = path.join(root, 'apps/electron/src/ipc/markdown.ts')
-  const mainMarkdownFile = path.join(root, 'src/main/ipc/markdown.ts')
+  const mainMarkdownFile = path.join(root, 'apps/electron/src/main/ipc/markdown.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5596,7 +5596,7 @@ function checkElectronHostOwnsMarkdownIpcHost(): void {
       : []),
     ...(fs.existsSync(mainMarkdownFile)
       ? matchingLines(mainMarkdownFile, MAIN_MARKDOWN_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/markdown.ts: missing markdown IPC adapter']),
+      : ['apps/electron/src/main/ipc/markdown.ts: missing markdown IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron markdown IPC host operations', lines)
@@ -5605,7 +5605,7 @@ function checkElectronHostOwnsMarkdownIpcHost(): void {
 function checkElectronHostOwnsPermissionIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPermissionFile = path.join(root, 'apps/electron/src/ipc/permission.ts')
-  const mainPermissionFile = path.join(root, 'src/main/ipc/permission.ts')
+  const mainPermissionFile = path.join(root, 'apps/electron/src/main/ipc/permission.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5657,7 +5657,7 @@ function checkElectronHostOwnsPermissionIpcHost(): void {
       : []),
     ...(fs.existsSync(mainPermissionFile)
       ? matchingLines(mainPermissionFile, MAIN_PERMISSION_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/permission.ts: missing permission IPC adapter']),
+      : ['apps/electron/src/main/ipc/permission.ts: missing permission IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron permission IPC host operations', lines)
@@ -5666,7 +5666,7 @@ function checkElectronHostOwnsPermissionIpcHost(): void {
 function checkElectronHostOwnsPluginsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPluginsFile = path.join(root, 'apps/electron/src/ipc/plugins.ts')
-  const mainPluginsFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const mainPluginsFile = path.join(root, 'apps/electron/src/main/ipc/plugins.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5715,7 +5715,7 @@ function checkElectronHostOwnsPluginsIpcHost(): void {
       : []),
     ...(fs.existsSync(mainPluginsFile)
       ? matchingLines(mainPluginsFile, MAIN_PLUGINS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+      : ['apps/electron/src/main/ipc/plugins.ts: missing plugins IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron plugins IPC host operations', lines)
@@ -5724,7 +5724,7 @@ function checkElectronHostOwnsPluginsIpcHost(): void {
 function checkElectronHostOwnsThemesIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronThemesFile = path.join(root, 'apps/electron/src/ipc/themes.ts')
-  const mainThemesFile = path.join(root, 'src/main/ipc/themes.ts')
+  const mainThemesFile = path.join(root, 'apps/electron/src/main/ipc/themes.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5773,7 +5773,7 @@ function checkElectronHostOwnsThemesIpcHost(): void {
       : []),
     ...(fs.existsSync(mainThemesFile)
       ? matchingLines(mainThemesFile, MAIN_THEMES_IPC_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/themes.ts: missing themes IPC adapter']),
+      : ['apps/electron/src/main/ipc/themes.ts: missing themes IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron themes IPC host operations', lines)
@@ -5782,7 +5782,7 @@ function checkElectronHostOwnsThemesIpcHost(): void {
 function checkElectronHostOwnsProvidersIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronProvidersFile = path.join(root, 'apps/electron/src/ipc/providers.ts')
-  const mainProvidersFile = path.join(root, 'src/main/ipc/providers.ts')
+  const mainProvidersFile = path.join(root, 'apps/electron/src/main/ipc/providers.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5827,7 +5827,7 @@ function checkElectronHostOwnsProvidersIpcHost(): void {
       : []),
     ...(fs.existsSync(mainProvidersFile)
       ? matchingLines(mainProvidersFile, MAIN_PROVIDERS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/providers.ts: missing providers IPC adapter']),
+      : ['apps/electron/src/main/ipc/providers.ts: missing providers IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron providers IPC host operations', lines)
@@ -5836,7 +5836,7 @@ function checkElectronHostOwnsProvidersIpcHost(): void {
 function checkElectronHostOwnsModelsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronModelsFile = path.join(root, 'apps/electron/src/ipc/models.ts')
-  const mainModelsFile = path.join(root, 'src/main/ipc/models.ts')
+  const mainModelsFile = path.join(root, 'apps/electron/src/main/ipc/models.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5886,7 +5886,7 @@ function checkElectronHostOwnsModelsIpcHost(): void {
       : []),
     ...(fs.existsSync(mainModelsFile)
       ? matchingLines(mainModelsFile, MAIN_MODELS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/models.ts: missing models IPC adapter']),
+      : ['apps/electron/src/main/ipc/models.ts: missing models IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron models IPC host operations', lines)
@@ -5895,7 +5895,7 @@ function checkElectronHostOwnsModelsIpcHost(): void {
 function checkElectronHostOwnsMcpIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMcpFile = path.join(root, 'apps/electron/src/ipc/mcp.ts')
-  const mainMcpFile = path.join(root, 'src/main/ipc/mcp.ts')
+  const mainMcpFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -5959,7 +5959,7 @@ function checkElectronHostOwnsMcpIpcHost(): void {
       : []),
     ...(fs.existsSync(mainMcpFile)
       ? matchingLines(mainMcpFile, MAIN_MCP_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+      : ['apps/electron/src/main/ipc/mcp.ts: missing MCP IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron MCP IPC host operations', lines)
@@ -5968,7 +5968,7 @@ function checkElectronHostOwnsMcpIpcHost(): void {
 function checkElectronHostOwnsAcpIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronAcpFile = path.join(root, 'apps/electron/src/ipc/acp.ts')
-  const mainAcpFile = path.join(root, 'src/main/ipc/acp.ts')
+  const mainAcpFile = path.join(root, 'apps/electron/src/main/ipc/acp.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -6023,7 +6023,7 @@ function checkElectronHostOwnsAcpIpcHost(): void {
       : []),
     ...(fs.existsSync(mainAcpFile)
       ? matchingLines(mainAcpFile, MAIN_ACP_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/acp.ts: missing ACP IPC adapter']),
+      : ['apps/electron/src/main/ipc/acp.ts: missing ACP IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron ACP IPC host operations', lines)
@@ -6032,7 +6032,7 @@ function checkElectronHostOwnsAcpIpcHost(): void {
 function checkElectronHostOwnsMediaIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMediaFile = path.join(root, 'apps/electron/src/ipc/media.ts')
-  const mainMediaFile = path.join(root, 'src/main/ipc/media.ts')
+  const mainMediaFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -6094,7 +6094,7 @@ function checkElectronHostOwnsMediaIpcHost(): void {
       : []),
     ...(fs.existsSync(mainMediaFile)
       ? matchingLines(mainMediaFile, MAIN_MEDIA_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+      : ['apps/electron/src/main/ipc/media.ts: missing media IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron media IPC host operations', lines)
@@ -6103,7 +6103,7 @@ function checkElectronHostOwnsMediaIpcHost(): void {
 function checkElectronHostOwnsTodoPlanIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronTodoPlanFile = path.join(root, 'apps/electron/src/ipc/todo-plan.ts')
-  const mainTodoPlanFile = path.join(root, 'src/main/todo-plan/ipc.ts')
+  const mainTodoPlanFile = path.join(root, 'apps/electron/src/main/todo-plan/ipc.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -6158,7 +6158,7 @@ function checkElectronHostOwnsTodoPlanIpcHost(): void {
       : []),
     ...(fs.existsSync(mainTodoPlanFile)
       ? matchingLines(mainTodoPlanFile, MAIN_TODO_PLAN_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/todo-plan/ipc.ts: missing todo-plan IPC adapter']),
+      : ['apps/electron/src/main/todo-plan/ipc.ts: missing todo-plan IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron todo-plan IPC host operations', lines)
@@ -6167,7 +6167,7 @@ function checkElectronHostOwnsTodoPlanIpcHost(): void {
 function checkElectronHostOwnsToolsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronToolsFile = path.join(root, 'apps/electron/src/ipc/tools.ts')
-  const mainToolsFile = path.join(root, 'src/main/ipc/tools.ts')
+  const mainToolsFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -6221,7 +6221,7 @@ function checkElectronHostOwnsToolsIpcHost(): void {
       : []),
     ...(fs.existsSync(mainToolsFile)
       ? matchingLines(mainToolsFile, MAIN_TOOLS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron tools IPC host operations', lines)
@@ -6230,7 +6230,7 @@ function checkElectronHostOwnsToolsIpcHost(): void {
 function checkElectronHostOwnsSkillsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSkillsFile = path.join(root, 'apps/electron/src/ipc/skills.ts')
-  const mainSkillsFile = path.join(root, 'src/main/ipc/skills.ts')
+  const mainSkillsFile = path.join(root, 'apps/electron/src/main/ipc/skills.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -6285,7 +6285,7 @@ function checkElectronHostOwnsSkillsIpcHost(): void {
       : []),
     ...(fs.existsSync(mainSkillsFile)
       ? matchingLines(mainSkillsFile, MAIN_SKILLS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/skills.ts: missing skills IPC adapter']),
+      : ['apps/electron/src/main/ipc/skills.ts: missing skills IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron skills IPC host operations', lines)
@@ -6296,8 +6296,8 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
   const electronAuthFetchFile = path.join(root, 'apps/electron/src/auth/auth-fetch.ts')
   const electronAuthFile = path.join(root, 'apps/electron/src/auth/electron-auth.ts')
   const electronTokenStoreFile = path.join(root, 'apps/electron/src/auth/token-store.ts')
-  const mainAuthFile = path.join(root, 'src/main/auth/auth-service.ts')
-  const mainTokenStoreFile = path.join(root, 'src/main/auth/token-store.ts')
+  const mainAuthFile = path.join(root, 'apps/electron/src/main/auth/auth-service.ts')
+  const mainTokenStoreFile = path.join(root, 'apps/electron/src/main/auth/token-store.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -6395,10 +6395,10 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
       : []),
     ...(fs.existsSync(mainAuthFile)
       ? matchingLines(mainAuthFile, MAIN_AUTH_SERVICE_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['src/main/auth/auth-service.ts: missing auth service facade']),
+      : ['apps/electron/src/main/auth/auth-service.ts: missing auth service facade']),
     ...(fs.existsSync(mainTokenStoreFile)
       ? matchingLines(mainTokenStoreFile, MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS)
-      : ['src/main/auth/token-store.ts: missing token store facade']),
+      : ['apps/electron/src/main/auth/token-store.ts: missing token store facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron auth adapters', lines)
@@ -6407,7 +6407,7 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
 function checkElectronHostOwnsSkillsEnvironment(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSkillsFile = path.join(root, 'apps/electron/src/skills/environment.ts')
-  const mainSkillsFile = path.join(root, 'src/main/skills/loader.ts')
+  const mainSkillsFile = path.join(root, 'apps/electron/src/main/skills/loader.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -6448,7 +6448,7 @@ function checkElectronHostOwnsSkillsEnvironment(): void {
       : []),
     ...(fs.existsSync(mainSkillsFile)
       ? matchingLines(mainSkillsFile, MAIN_SKILLS_LOADER_FORBIDDEN_PATTERNS)
-      : ['src/main/skills/loader.ts: missing skills loader facade']),
+      : ['apps/electron/src/main/skills/loader.ts: missing skills loader facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron skills environment', lines)
@@ -6457,7 +6457,7 @@ function checkElectronHostOwnsSkillsEnvironment(): void {
 function checkElectronHostOwnsNetworkProxy(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronProxyFile = path.join(root, 'apps/electron/src/network/proxy.ts')
-  const mainProxyFile = path.join(root, 'src/main/network/proxy.ts')
+  const mainProxyFile = path.join(root, 'apps/electron/src/main/network/proxy.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -6497,7 +6497,7 @@ function checkElectronHostOwnsNetworkProxy(): void {
       : []),
     ...(fs.existsSync(mainProxyFile)
       ? matchingLines(mainProxyFile, MAIN_NETWORK_PROXY_FORBIDDEN_PATTERNS)
-      : ['src/main/network/proxy.ts: missing network proxy facade']),
+      : ['apps/electron/src/main/network/proxy.ts: missing network proxy facade']),
   ]
 
   assertNoMatches('apps/electron owns Electron network proxy application', lines)
@@ -6507,8 +6507,8 @@ function checkElectronHostOwnsGlobalShortcuts(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronShortcutsFile = path.join(root, 'apps/electron/src/shortcuts/global-shortcuts.ts')
   const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const mainShortcutsFile = path.join(root, 'src/main/shortcuts/global-shortcuts.ts')
-  const mainSettingsIpcFile = path.join(root, 'src/main/ipc/settings.ts')
+  const mainShortcutsFile = path.join(root, 'apps/electron/src/main/shortcuts/global-shortcuts.ts')
+  const mainSettingsIpcFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -6618,7 +6618,7 @@ function checkElectronHostOwnsPowerResumeHandlers(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_POWER_RESUME_FORBIDDEN_PATTERNS)
-      : ['src/main/index.ts: missing Electron main entry']),
+      : ['apps/electron/src/main/index.ts: missing Electron main entry']),
   ]
 
   assertNoMatches('apps/electron owns Electron power resume handlers', lines)
@@ -6682,9 +6682,9 @@ function checkElectronHostOwnsAppBootstrap(): void {
 }
 
 function checkElectronHostOwnsMainEntry(): void {
-  const electronMainFile = path.join(root, 'apps/electron/src/main.ts')
+  const electronMainFile = path.join(root, 'apps/electron/apps/electron/src/main.ts')
   const electronMainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const mainFile = path.join(root, 'src/main/index.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/index.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
@@ -6709,8 +6709,8 @@ function checkElectronHostOwnsMainEntry(): void {
     ...(mainLines.length > 5
       ? [`${rel(mainFile)}: legacy Electron main facade must stay thin`]
       : []),
-    ...(!viteContent.includes("index: resolve(__dirname, 'apps/electron/src/main.ts')")
-      ? [`${rel(viteConfig)}: Electron main input must point at apps/electron/src/main.ts`]
+    ...(!viteContent.includes("index: resolve(__dirname, 'apps/electron/apps/electron/src/main.ts')")
+      ? [`${rel(viteConfig)}: Electron main input must point at apps/electron/apps/electron/src/main.ts`]
       : []),
     ...(!viteContent.includes('@onething/electron-host/app/main-process')
       ? [`${rel(viteConfig)}: missing electron app main-process package alias`]
@@ -6762,15 +6762,15 @@ function checkElectronHostOwnsPreloadEntry(): void {
 }
 
 function checkMainUsesRuntimePackageImports(): void {
-  const lines = walkFiles(path.join(root, 'src/main'), [], { includeTests: true })
+  const lines = walkFiles(path.join(root, 'apps/electron/src/main'), [], { includeTests: true })
     .flatMap(file => matchingLines(file, MAIN_RUNTIME_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
   assertNoMatches('Electron main and tests import onething-runtime via package public entrypoints', lines)
 }
 
 function checkRuntimeSubpathAliasesCoverSourceImports(): void {
   const sourceRoots = [
-    path.join(root, 'src/main'),
-    path.join(root, 'src/renderer'),
+    path.join(root, 'apps/electron/src/main'),
+    path.join(root, 'packages/renderer'),
     path.join(root, 'apps/electron/src'),
     path.join(root, 'packages/gateway/src'),
   ]
@@ -6804,19 +6804,19 @@ function checkRuntimeSubpathAliasesCoverSourceImports(): void {
 }
 
 function checkMainFacadesUseElectronHostImports(): void {
-  const lines = walkFiles(path.join(root, 'src/main'))
+  const lines = walkFiles(path.join(root, 'apps/electron/src/main'))
     .flatMap(file => matchingLines(file, MAIN_DIRECT_ELECTRON_IMPORT_FORBIDDEN_PATTERNS))
   assertNoMatches('Electron main facades use apps/electron host imports instead of direct electron imports', lines)
 }
 
 function checkMainUsesCorePackageImports(): void {
-  const lines = walkFiles(path.join(root, 'src/main'), [], { includeTests: true })
+  const lines = walkFiles(path.join(root, 'apps/electron/src/main'), [], { includeTests: true })
     .flatMap(file => matchingLines(file, MAIN_CORE_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
   assertNoMatches('Electron main and tests import headless core via package public entrypoints', lines)
 }
 
 function checkMainUsesGatewayPackageImports(): void {
-  const lines = walkFiles(path.join(root, 'src/main'), [], { includeTests: true })
+  const lines = walkFiles(path.join(root, 'apps/electron/src/main'), [], { includeTests: true })
     .flatMap(file => matchingLines(file, MAIN_GATEWAY_SOURCE_IMPORT_FORBIDDEN_PATTERNS))
   assertNoMatches('Electron main and tests import gateway via package public entrypoints', lines)
 }
@@ -6869,9 +6869,9 @@ function checkCoreToolHelperTestsLiveInCorePackage(): void {
     'packages/core/tools/__tests__/tool-result.test.ts',
   ]
   const forbiddenMainTests = [
-    'src/main/tools/__tests__/core-registry.test.ts',
-    'src/main/tools/__tests__/core-permission-guards.test.ts',
-    'src/main/tools/__tests__/core-tool-result.test.ts',
+    'apps/electron/src/main/tools/__tests__/core-registry.test.ts',
+    'apps/electron/src/main/tools/__tests__/core-permission-guards.test.ts',
+    'apps/electron/src/main/tools/__tests__/core-tool-result.test.ts',
   ]
   const lines = [
     ...requiredCoreTests
@@ -6889,7 +6889,7 @@ function checkCoreOwnsToolSchemaProjection(): void {
   const coreRegistryFile = path.join(root, 'packages/core/tools/registry.ts')
   const coreIndexFile = path.join(root, 'packages/core/tools/index.ts')
   const coreTestFile = path.join(root, 'packages/core/tools/__tests__/registry.test.ts')
-  const mainTypesFile = path.join(root, 'src/main/tools/types.ts')
+  const mainTypesFile = path.join(root, 'apps/electron/src/main/tools/types.ts')
   const coreRegistryContent = fs.existsSync(coreRegistryFile) ? fs.readFileSync(coreRegistryFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
@@ -6924,7 +6924,7 @@ function checkCoreOwnsToolFailureParameterSummary(): void {
   const coreIndexFile = path.join(root, 'packages/core/tools/index.ts')
   const coreRootIndexFile = path.join(root, 'packages/core/index.ts')
   const coreTestFile = path.join(root, 'packages/core/tools/__tests__/tool-result.test.ts')
-  const sharedFile = path.join(root, 'src/shared/tool-failure-params.ts')
+  const sharedFile = path.join(root, 'packages/shared/tool-failure-params.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const coreRootIndexContent = fs.existsSync(coreRootIndexFile) ? fs.readFileSync(coreRootIndexFile, 'utf-8') : ''
@@ -6966,7 +6966,7 @@ function checkCoreOwnsToolPermissionErrorText(): void {
   const coreRootIndexFile = path.join(root, 'packages/core/index.ts')
   const coreTestFile = path.join(root, 'packages/core/permission/__tests__/permission-errors.test.ts')
   const coreToolResultFile = path.join(root, 'packages/core/tools/tool-result.ts')
-  const sharedFile = path.join(root, 'src/shared/tool-errors.ts')
+  const sharedFile = path.join(root, 'packages/shared/tool-errors.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const coreRootIndexContent = fs.existsSync(coreRootIndexFile) ? fs.readFileSync(coreRootIndexFile, 'utf-8') : ''
   const coreTestContent = fs.existsSync(coreTestFile) ? fs.readFileSync(coreTestFile, 'utf-8') : ''
@@ -7011,10 +7011,10 @@ function checkRuntimeToolHelperTestsLiveInRuntimePackage(): void {
     'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts',
   ]
   const forbiddenMainTests = [
-    'src/main/tools/__tests__/core-bash-runtime.test.ts',
-    'src/main/tools/__tests__/core-file-snapshot.test.ts',
-    'src/main/tools/__tests__/core-sandbox.test.ts',
-    'src/main/tools/__tests__/core-time.test.ts',
+    'apps/electron/src/main/tools/__tests__/core-bash-runtime.test.ts',
+    'apps/electron/src/main/tools/__tests__/core-file-snapshot.test.ts',
+    'apps/electron/src/main/tools/__tests__/core-sandbox.test.ts',
+    'apps/electron/src/main/tools/__tests__/core-time.test.ts',
   ]
   const timeTest = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts')
   const timeContent = fs.existsSync(timeTest) ? fs.readFileSync(timeTest, 'utf-8') : ''
@@ -7038,8 +7038,8 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
     path.join(root, 'packages/core/events/ipc-operations.ts'),
     path.join(root, 'packages/core/events/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/ipc/handlers.ts')
-  const chatFile = path.join(root, 'src/main/ipc/chat.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/handlers.ts')
+  const chatFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -7059,10 +7059,10 @@ function checkCoreOwnsSessionCommandIpcOperation(): void {
       .map(symbol => `packages/core/events/ipc-operations.ts: missing core-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSION_COMMAND_HANDLER_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/handlers.ts: missing IPC handler adapter']),
+      : ['apps/electron/src/main/ipc/handlers.ts: missing IPC handler adapter']),
     ...(fs.existsSync(chatFile)
       ? matchingLines(chatFile, MAIN_SAFE_SESSION_EVENT_EMIT_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
   ]
 
   assertNoMatches('packages/core owns session command/event IPC projections', lines)
@@ -7072,7 +7072,7 @@ function checkCoreOwnsStreamChunkProtocol(): void {
   const coreFile = path.join(root, 'packages/core/events/stream-chunks.ts')
   const coreIndexFile = path.join(root, 'packages/core/events/index.ts')
   const coreTestFile = path.join(root, 'packages/core/events/__tests__/stream-chunks.test.ts')
-  const sharedFile = path.join(root, 'src/shared/events/stream-chunks.ts')
+  const sharedFile = path.join(root, 'packages/shared/events/stream-chunks.ts')
   const webTsconfigFile = path.join(root, 'tsconfig.web.json')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
@@ -7121,7 +7121,7 @@ function checkCoreOwnsJsonProtocol(): void {
   const coreIndexFile = path.join(root, 'packages/core/index.ts')
   const corePackageFile = path.join(root, 'packages/core/package.json')
   const coreTestFile = path.join(root, 'packages/core/__tests__/json.test.ts')
-  const sharedFile = path.join(root, 'src/shared/json.ts')
+  const sharedFile = path.join(root, 'packages/shared/json.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
@@ -7188,8 +7188,8 @@ function checkCoreOwnsIpcRouterProtocol(): void {
   const coreIndexFile = path.join(root, 'packages/core/index.ts')
   const corePackageFile = path.join(root, 'packages/core/package.json')
   const coreTestFile = path.join(root, 'packages/core/ipc/__tests__/router.test.ts')
-  const sharedFile = path.join(root, 'src/shared/ipc/router.ts')
-  const legacySharedTestFile = path.join(root, 'src/shared/ipc/__tests__/router.test.ts')
+  const sharedFile = path.join(root, 'packages/shared/ipc/router.ts')
+  const legacySharedTestFile = path.join(root, 'packages/shared/ipc/__tests__/router.test.ts')
   const preloadCreateApiFile = path.join(root, 'apps/electron/src/preload/create-api.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
@@ -7247,7 +7247,7 @@ function checkCoreOwnsIpcRouterProtocol(): void {
     ...(!preloadCreateApiContent.includes('@onething/core/ipc')
       ? [`${rel(preloadCreateApiFile)}: Electron preload API factory must import IPC router protocol from @onething/core/ipc`]
       : []),
-    ...(preloadCreateApiContent.includes('src/shared/ipc/router') || preloadCreateApiContent.includes('../../shared/ipc/router')
+    ...(preloadCreateApiContent.includes('packages/shared/ipc/router') || preloadCreateApiContent.includes('../../shared/ipc/router')
       ? [`${rel(preloadCreateApiFile)}: Electron preload API factory must not import legacy shared IPC router protocol`]
       : []),
     ...(!viteContent.includes("'@onething/core/ipc'") && !viteContent.includes('"@onething/core/ipc"')
@@ -7264,7 +7264,7 @@ function checkCoreOwnsIpcRouterProtocol(): void {
 function checkElectronHostOwnsSessionCommandIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSessionCommandFile = path.join(root, 'apps/electron/src/ipc/session-command.ts')
-  const mainFile = path.join(root, 'src/main/ipc/handlers.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/handlers.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -7306,7 +7306,7 @@ function checkElectronHostOwnsSessionCommandIpcHost(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSION_COMMAND_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/handlers.ts: missing IPC handler adapter']),
+      : ['apps/electron/src/main/ipc/handlers.ts: missing IPC handler adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron session-command IPC host operations', lines)
@@ -7315,7 +7315,7 @@ function checkElectronHostOwnsSessionCommandIpcHost(): void {
 function checkElectronHostOwnsChatIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronChatFile = path.join(root, 'apps/electron/src/ipc/chat.ts')
-  const mainChatFile = path.join(root, 'src/main/ipc/chat.ts')
+  const mainChatFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -7367,7 +7367,7 @@ function checkElectronHostOwnsChatIpcHost(): void {
       : []),
     ...(fs.existsSync(mainChatFile)
       ? matchingLines(mainChatFile, MAIN_CHAT_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron chat IPC host operations', lines)
@@ -7376,7 +7376,7 @@ function checkElectronHostOwnsChatIpcHost(): void {
 function checkElectronHostOwnsFilesIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronFilesFile = path.join(root, 'apps/electron/src/ipc/files.ts')
-  const mainFilesFile = path.join(root, 'src/main/ipc/files.ts')
+  const mainFilesFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -7426,7 +7426,7 @@ function checkElectronHostOwnsFilesIpcHost(): void {
       : []),
     ...(fs.existsSync(mainFilesFile)
       ? matchingLines(mainFilesFile, MAIN_FILES_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron files IPC host operations', lines)
@@ -7435,7 +7435,7 @@ function checkElectronHostOwnsFilesIpcHost(): void {
 function checkElectronHostOwnsSessionsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSessionsFile = path.join(root, 'apps/electron/src/ipc/sessions.ts')
-  const mainSessionsFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const mainSessionsFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -7496,7 +7496,7 @@ function checkElectronHostOwnsSessionsIpcHost(): void {
       : []),
     ...(fs.existsSync(mainSessionsFile)
       ? matchingLines(mainSessionsFile, MAIN_SESSIONS_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron sessions IPC host operations', lines)
@@ -7505,7 +7505,7 @@ function checkElectronHostOwnsSessionsIpcHost(): void {
 function checkElectronHostOwnsMemoryIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMemoryFile = path.join(root, 'apps/electron/src/ipc/memory.ts')
-  const mainMemoryFile = path.join(root, 'src/main/ipc/memory.ts')
+  const mainMemoryFile = path.join(root, 'apps/electron/src/main/ipc/memory.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
@@ -7576,7 +7576,7 @@ function checkElectronHostOwnsMemoryIpcHost(): void {
       : []),
     ...(fs.existsSync(mainMemoryFile)
       ? matchingLines(mainMemoryFile, MAIN_MEMORY_IPC_HOST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/memory.ts: missing memory IPC adapter']),
+      : ['apps/electron/src/main/ipc/memory.ts: missing memory IPC adapter']),
   ]
 
   assertNoMatches('apps/electron owns Electron memory IPC host operations', lines)
@@ -7624,8 +7624,8 @@ function checkRuntimeOwnsStoreLock(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/storage/store-lock.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/storage/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/storage/__tests__/store-lock.test.ts')
-  const sharedFile = path.join(root, 'src/shared/backend/store-lock.ts')
-  const sharedTestFile = path.join(root, 'src/shared/backend/__tests__/store-lock.test.ts')
+  const sharedFile = path.join(root, 'packages/shared/backend/store-lock.ts')
+  const sharedTestFile = path.join(root, 'packages/shared/backend/__tests__/store-lock.test.ts')
   const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
@@ -7684,7 +7684,7 @@ function checkRuntimeOwnsPermissionGrantFileStorage(): void {
 
 function checkRuntimeOwnsPermissionGrantsIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/permissions/permission-grants-presentation.ts')
-  const mainFile = path.join(root, 'src/main/ipc/permission.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/permission.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingPermissionGrants',
@@ -7702,7 +7702,7 @@ function checkRuntimeOwnsPermissionGrantsIpcPresentation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PERMISSION_IPC_GRANTS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/permission.ts: missing permission IPC adapter']),
+      : ['apps/electron/src/main/ipc/permission.ts: missing permission IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns permission grants IPC presentation', lines)
@@ -7710,7 +7710,7 @@ function checkRuntimeOwnsPermissionGrantsIpcPresentation(): void {
 
 function checkRuntimeOwnsPermissionSessionIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/permissions/permission-session-presentation.ts')
-  const mainFile = path.join(root, 'src/main/ipc/permission.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/permission.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingPendingPermissions',
@@ -7724,7 +7724,7 @@ function checkRuntimeOwnsPermissionSessionIpcPresentation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PERMISSION_IPC_SESSION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/permission.ts: missing permission IPC adapter']),
+      : ['apps/electron/src/main/ipc/permission.ts: missing permission IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns permission session IPC presentation', lines)
@@ -7732,7 +7732,7 @@ function checkRuntimeOwnsPermissionSessionIpcPresentation(): void {
 
 function checkRuntimeOwnsAuthTokenStorage(): void {
   const runtimeFile = 'packages/onething-runtime/src/auth/token-store.ts'
-  const mainFile = path.join(root, 'src/main/auth/token-store.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/auth/token-store.ts')
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const mainFacadeLines = mainContent.split('\n').filter(line => line.trim().length > 0)
   const lines = [
@@ -7747,7 +7747,7 @@ function checkRuntimeOwnsAuthTokenStorage(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS)
-      : ['src/main/auth/token-store.ts: missing Electron safeStorage adapter facade']),
+      : ['apps/electron/src/main/auth/token-store.ts: missing Electron safeStorage adapter facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns OAuth token storage layout', lines)
@@ -7757,7 +7757,7 @@ function checkRuntimeOwnsAuthServiceFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/auth/auth-service.ts')
   const runtimeFactoryFile = path.join(root, 'packages/onething-runtime/src/auth/service-factory.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/auth/index.ts')
-  const mainFile = path.join(root, 'src/main/auth/auth-service.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/auth/auth-service.ts')
   const runtimeFactoryContent = fs.existsSync(runtimeFactoryFile) ? fs.readFileSync(runtimeFactoryFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const requiredRuntimeFactorySymbols = [
@@ -7782,7 +7782,7 @@ function checkRuntimeOwnsAuthServiceFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_AUTH_SERVICE_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['src/main/auth/auth-service.ts: missing Electron auth adapter facade']),
+      : ['apps/electron/src/main/auth/auth-service.ts: missing Electron auth adapter facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns OAuth service flow orchestration', lines)
@@ -7791,7 +7791,7 @@ function checkRuntimeOwnsAuthServiceFlow(): void {
 function checkRuntimeOwnsAuthCallbackServer(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/auth/callback-server.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/auth/index.ts')
-  const mainFile = path.join(root, 'src/main/auth/callback-server.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/auth/callback-server.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -7829,7 +7829,7 @@ function checkRuntimeOwnsAuthCallbackServer(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_AUTH_CALLBACK_SERVER_FORBIDDEN_PATTERNS)
-      : ['src/main/auth/callback-server.ts: missing callback server legacy facade']),
+      : ['apps/electron/src/main/auth/callback-server.ts: missing callback server legacy facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns OAuth callback server', lines)
@@ -7837,7 +7837,7 @@ function checkRuntimeOwnsAuthCallbackServer(): void {
 
 function checkRuntimeOwnsOAuthIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/auth/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/oauth.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/oauth.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'startOnethingOAuthForIpc',
@@ -7856,7 +7856,7 @@ function checkRuntimeOwnsOAuthIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned OAuth IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_OAUTH_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/oauth.ts: missing OAuth IPC adapter']),
+      : ['apps/electron/src/main/ipc/oauth.ts: missing OAuth IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns OAuth IPC operations', lines)
@@ -7865,7 +7865,7 @@ function checkRuntimeOwnsOAuthIpcOperations(): void {
 function checkRuntimeOwnsStreamRuntimeWiring(): void {
   const runtimeFile = 'packages/onething-runtime/src/product-stream-runtime.ts'
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/index.ts')
-  const mainFile = path.join(root, 'src/main/engine/stream-engine-runtime.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/engine/stream-engine-runtime.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -7890,7 +7890,7 @@ function checkRuntimeOwnsStreamRuntimeWiring(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_STREAM_RUNTIME_WIRING_FORBIDDEN_PATTERNS)
-      : ['src/main/engine/stream-engine-runtime.ts: missing Electron stream runtime adapter facade']),
+      : ['apps/electron/src/main/engine/stream-engine-runtime.ts: missing Electron stream runtime adapter facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns stream runtime wiring', lines)
@@ -7898,8 +7898,8 @@ function checkRuntimeOwnsStreamRuntimeWiring(): void {
 
 function checkRuntimeOwnsHistoryHelperWiring(): void {
   const mainFiles = [
-    path.join(root, 'src/main/engine/stream/message-helpers.ts'),
-    path.join(root, 'src/main/engine/stream/resume-history.ts'),
+    path.join(root, 'apps/electron/src/main/engine/stream/message-helpers.ts'),
+    path.join(root, 'apps/electron/src/main/engine/stream/resume-history.ts'),
   ]
   const lines = mainFiles.flatMap(file => fs.existsSync(file)
     ? matchingLines(file, MAIN_HISTORY_HELPER_CORE_WIRING_FORBIDDEN_PATTERNS)
@@ -7910,7 +7910,7 @@ function checkRuntimeOwnsHistoryHelperWiring(): void {
 }
 
 function checkRuntimeOwnsAgentLoopRuntimeWiring(): void {
-  const file = path.join(root, 'src/main/engine/stream/agent-loop-runtime.ts')
+  const file = path.join(root, 'apps/electron/src/main/engine/stream/agent-loop-runtime.ts')
   const lines = fs.existsSync(file)
     ? matchingLines(file, MAIN_AGENT_LOOP_RUNTIME_WIRING_FORBIDDEN_PATTERNS)
     : []
@@ -7920,36 +7920,36 @@ function checkRuntimeOwnsAgentLoopRuntimeWiring(): void {
 
 function checkRuntimeOwnsAgentLoopSelection(): void {
   const runtimeFile = 'packages/onething-runtime/src/agent-loop/selection.ts'
-  const mainFile = path.join(root, 'src/main/engine/stream/agent-loop-selection.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/engine/stream/agent-loop-selection.ts')
   const lines = [
     ...(!fs.existsSync(path.join(root, runtimeFile))
       ? [`${runtimeFile}: missing runtime-owned onething agent-loop stream selection`]
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_AGENT_LOOP_SELECTION_FORBIDDEN_PATTERNS)
-      : ['src/main/engine/stream/agent-loop-selection.ts: missing Electron selection facade']),
+      : ['apps/electron/src/main/engine/stream/agent-loop-selection.ts: missing Electron selection facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns onething agent-loop stream selection', lines)
 }
 
 function checkCoreOwnsAgentLoopPureFacades(): void {
-  const mainIndexFile = path.join(root, 'src/main/agent-loop/index.ts')
+  const mainIndexFile = path.join(root, 'apps/electron/src/main/agent-loop/index.ts')
   const mainIndexContent = fs.existsSync(mainIndexFile) ? fs.readFileSync(mainIndexFile, 'utf-8') : ''
   const removedMainFacades = [
-    'src/main/agent-loop/bridge.ts',
-    'src/main/agent-loop/capabilities.ts',
-    'src/main/agent-loop/chunks.ts',
-    'src/main/agent-loop/errors.ts',
-    'src/main/agent-loop/messages.ts',
-    'src/main/agent-loop/prompts.ts',
-    'src/main/agent-loop/provider-stream.ts',
-    'src/main/agent-loop/runner.ts',
-    'src/main/agent-loop/stream.ts',
-    'src/main/agent-loop/tool-names.ts',
-    'src/main/agent-loop/tool-results.ts',
-    'src/main/agent-loop/types.ts',
-    'src/main/agent-loop/providers/sse.ts',
+    'apps/electron/src/main/agent-loop/bridge.ts',
+    'apps/electron/src/main/agent-loop/capabilities.ts',
+    'apps/electron/src/main/agent-loop/chunks.ts',
+    'apps/electron/src/main/agent-loop/errors.ts',
+    'apps/electron/src/main/agent-loop/messages.ts',
+    'apps/electron/src/main/agent-loop/prompts.ts',
+    'apps/electron/src/main/agent-loop/provider-stream.ts',
+    'apps/electron/src/main/agent-loop/runner.ts',
+    'apps/electron/src/main/agent-loop/stream.ts',
+    'apps/electron/src/main/agent-loop/tool-names.ts',
+    'apps/electron/src/main/agent-loop/tool-results.ts',
+    'apps/electron/src/main/agent-loop/types.ts',
+    'apps/electron/src/main/agent-loop/providers/sse.ts',
   ]
   const lines = removedMainFacades
     .filter(file => fs.existsSync(path.join(root, file)))
@@ -7963,14 +7963,14 @@ function checkCoreOwnsAgentLoopPureFacades(): void {
 
 function checkRuntimeOwnsProviderRequestDump(): void {
   const runtimeFile = 'packages/onething-runtime/src/providers/request-dump.ts'
-  const mainFile = path.join(root, 'src/main/providers/request-dump.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/request-dump.ts')
   const lines = [
     ...(!fs.existsSync(path.join(root, runtimeFile))
       ? [`${runtimeFile}: missing runtime-owned provider request dump implementation`]
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_REQUEST_DUMP_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/request-dump.ts: missing main provider request dump facade']),
+      : ['apps/electron/src/main/providers/request-dump.ts: missing main provider request dump facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider request dump implementation', lines)
@@ -7978,7 +7978,7 @@ function checkRuntimeOwnsProviderRequestDump(): void {
 
 function checkRuntimeOwnsProviderRegistry(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/registry.ts')
-  const mainFile = path.join(root, 'src/main/providers/registry.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/registry.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
@@ -8006,7 +8006,7 @@ function checkRuntimeOwnsProviderRegistry(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_REGISTRY_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/registry.ts: missing provider registry facade']),
+      : ['apps/electron/src/main/providers/registry.ts: missing provider registry facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider registry', lines)
@@ -8015,7 +8015,7 @@ function checkRuntimeOwnsProviderRegistry(): void {
 function checkRuntimeOwnsProviderDefinitionTypes(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-definition.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/providers/index.ts')
-  const mainFile = path.join(root, 'src/main/providers/types.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/types.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -8041,7 +8041,7 @@ function checkRuntimeOwnsProviderDefinitionTypes(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TYPES_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/types.ts: missing provider type facade']),
+      : ['apps/electron/src/main/providers/types.ts: missing provider type facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider definition types', lines)
@@ -8049,7 +8049,7 @@ function checkRuntimeOwnsProviderDefinitionTypes(): void {
 
 function checkRuntimeOwnsProviderOauthConfigResolution(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/oauth-config.ts')
-  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'resolveOnethingOAuthProviderConfig',
@@ -8062,7 +8062,7 @@ function checkRuntimeOwnsProviderOauthConfigResolution(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider OAuth config resolution ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_OAUTH_CONFIG_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/index.ts: missing provider facade']),
+      : ['apps/electron/src/main/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider OAuth config resolution', lines)
@@ -8072,7 +8072,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-facade.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/providers/__tests__/provider-facade.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/providers/index.ts')
-  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -8101,7 +8101,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_FACADE_LOW_LEVEL_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/index.ts: missing provider facade']),
+      : ['apps/electron/src/main/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider facade orchestration', lines)
@@ -8109,7 +8109,7 @@ function checkRuntimeOwnsProviderFacadeOrchestration(): void {
 
 function checkRuntimeOwnsProviderTitleOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'generateOnethingProviderChatTitle',
@@ -8122,7 +8122,7 @@ function checkRuntimeOwnsProviderTitleOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider title orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TITLE_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/index.ts: missing provider facade']),
+      : ['apps/electron/src/main/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider title orchestration', lines)
@@ -8130,7 +8130,7 @@ function checkRuntimeOwnsProviderTitleOrchestration(): void {
 
 function checkRuntimeOwnsProviderTextResponseProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'generateOnethingTextChatResponse',
@@ -8142,7 +8142,7 @@ function checkRuntimeOwnsProviderTextResponseProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider text response projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TEXT_RESPONSE_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/index.ts: missing provider facade']),
+      : ['apps/electron/src/main/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider text response projection', lines)
@@ -8150,7 +8150,7 @@ function checkRuntimeOwnsProviderTextResponseProjection(): void {
 
 function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'generateOnethingChatResponseWithReasoning',
@@ -8164,7 +8164,7 @@ function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider generate-with-reasoning orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_GENERATE_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/index.ts: missing provider facade']),
+      : ['apps/electron/src/main/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider generate-with-reasoning orchestration', lines)
@@ -8172,7 +8172,7 @@ function checkRuntimeOwnsProviderGenerateReasoningOrchestration(): void {
 
 function checkRuntimeOwnsProviderStreamReasoningOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'streamOnethingChatResponseWithReasoning',
@@ -8186,7 +8186,7 @@ function checkRuntimeOwnsProviderStreamReasoningOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider stream-with-reasoning orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_STREAM_REASONING_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/index.ts: missing provider facade']),
+      : ['apps/electron/src/main/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider stream-with-reasoning orchestration', lines)
@@ -8194,7 +8194,7 @@ function checkRuntimeOwnsProviderStreamReasoningOrchestration(): void {
 
 function checkRuntimeOwnsProviderToolStreamOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'streamOnethingChatResponseWithTools',
@@ -8208,7 +8208,7 @@ function checkRuntimeOwnsProviderToolStreamOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned provider tool-stream orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_TOOL_STREAM_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/index.ts: missing provider facade']),
+      : ['apps/electron/src/main/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider tool-stream orchestration', lines)
@@ -8216,7 +8216,7 @@ function checkRuntimeOwnsProviderToolStreamOrchestration(): void {
 
 function checkRuntimeOwnsProviderAcpStreamProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-routing.ts')
-  const mainFile = path.join(root, 'src/main/providers/index.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'streamOnethingACPChatResponseWithTools',
@@ -8230,7 +8230,7 @@ function checkRuntimeOwnsProviderAcpStreamProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ACP stream projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDER_ACP_STREAM_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/index.ts: missing provider facade']),
+      : ['apps/electron/src/main/providers/index.ts: missing provider facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider ACP stream projection', lines)
@@ -8241,8 +8241,8 @@ function checkRuntimeOwnsEmbeddingProviderRuntime(): void {
   const runtimeDefaultsFile = path.join(root, 'packages/onething-runtime/src/embeddings/defaults.ts')
   const runtimePackage = path.join(root, 'packages/onething-runtime/package.json')
   const rootRuntimeIndexFile = path.join(root, 'packages/onething-runtime/src/index.ts')
-  const sharedDefaultsFile = path.join(root, 'src/shared/embeddings/defaults.ts')
-  const mainFile = path.join(root, 'src/main/embeddings/index.ts')
+  const sharedDefaultsFile = path.join(root, 'packages/shared/embeddings/defaults.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/embeddings/index.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeDefaultsContent = fs.existsSync(runtimeDefaultsFile) ? fs.readFileSync(runtimeDefaultsFile, 'utf-8') : ''
   const runtimePackageContent = fs.existsSync(runtimePackage) ? fs.readFileSync(runtimePackage, 'utf-8') : ''
@@ -8292,7 +8292,7 @@ function checkRuntimeOwnsEmbeddingProviderRuntime(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_EMBEDDINGS_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['src/main/embeddings/index.ts: missing embeddings facade']),
+      : ['apps/electron/src/main/embeddings/index.ts: missing embeddings facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns embedding provider runtime', lines)
@@ -8300,7 +8300,7 @@ function checkRuntimeOwnsEmbeddingProviderRuntime(): void {
 
 function checkRuntimeOwnsAcpIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/acp/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/acp.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/acp.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'normalizeOnethingACPAgentConfig',
@@ -8322,7 +8322,7 @@ function checkRuntimeOwnsAcpIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ACP IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_ACP_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/acp.ts: missing ACP IPC adapter']),
+      : ['apps/electron/src/main/ipc/acp.ts: missing ACP IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns ACP IPC operations', lines)
@@ -8334,10 +8334,10 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
   const runtimeTypesFile = path.join(root, 'packages/onething-runtime/src/acp/types.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/acp/index.ts')
   const mainFiles = [
-    path.join(root, 'src/main/acp/client.ts'),
-    path.join(root, 'src/main/acp/manager.ts'),
-    path.join(root, 'src/main/acp/types.ts'),
-    path.join(root, 'src/main/acp/index.ts'),
+    path.join(root, 'apps/electron/src/main/acp/client.ts'),
+    path.join(root, 'apps/electron/src/main/acp/manager.ts'),
+    path.join(root, 'apps/electron/src/main/acp/types.ts'),
+    path.join(root, 'apps/electron/src/main/acp/index.ts'),
   ]
   const runtimeClientContent = fs.existsSync(runtimeClientFile) ? fs.readFileSync(runtimeClientFile, 'utf-8') : ''
   const runtimeManagerContent = fs.existsSync(runtimeManagerFile) ? fs.readFileSync(runtimeManagerFile, 'utf-8') : ''
@@ -8408,7 +8408,7 @@ function checkRuntimeOwnsAcpClientRuntime(): void {
 
 function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/direct-tool-execution.ts')
-  const mainFile = path.join(root, 'src/main/engine/stream/tool-execution.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/engine/stream/tool-execution.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'executeOnethingDirectTool',
@@ -8421,7 +8421,7 @@ function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned direct tool execution adapter ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_DIRECT_TOOL_EXECUTION_FORBIDDEN_PATTERNS)
-      : ['src/main/engine/stream/tool-execution.ts: missing tool execution facade']),
+      : ['apps/electron/src/main/engine/stream/tool-execution.ts: missing tool execution facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns direct tool execution adapter', lines)
@@ -8429,7 +8429,7 @@ function checkRuntimeOwnsDirectToolExecutionAdapter(): void {
 
 function checkRuntimeOwnsToolUpdateOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-execution.ts')
-  const mainFile = path.join(root, 'src/main/engine/stream/tool-execution.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/engine/stream/tool-execution.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'executeOnethingToolAndUpdate',
@@ -8443,7 +8443,7 @@ function checkRuntimeOwnsToolUpdateOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tool update orchestration ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOL_UPDATE_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['src/main/engine/stream/tool-execution.ts: missing tool execution facade']),
+      : ['apps/electron/src/main/engine/stream/tool-execution.ts: missing tool execution facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns tool update orchestration', lines)
@@ -8451,7 +8451,7 @@ function checkRuntimeOwnsToolUpdateOrchestration(): void {
 
 function checkRuntimeOwnsStreamProcessorAdapter(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/stream-processor.ts')
-  const mainFile = path.join(root, 'src/main/engine/stream/stream-processor.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/engine/stream/stream-processor.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'createOnethingStreamProcessor',
@@ -8464,7 +8464,7 @@ function checkRuntimeOwnsStreamProcessorAdapter(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned stream processor adapter ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_STREAM_PROCESSOR_ADAPTER_FORBIDDEN_PATTERNS)
-      : ['src/main/engine/stream/stream-processor.ts: missing stream processor facade']),
+      : ['apps/electron/src/main/engine/stream/stream-processor.ts: missing stream processor facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns stream processor adapter', lines)
@@ -8472,7 +8472,7 @@ function checkRuntimeOwnsStreamProcessorAdapter(): void {
 
 function checkRuntimeOwnsImageStreamEntryPoint(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/image-generation.ts')
-  const mainFile = path.join(root, 'src/main/engine/stream/image-stream.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/engine/stream/image-stream.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'executeOnethingImageGenerationStream',
@@ -8484,7 +8484,7 @@ function checkRuntimeOwnsImageStreamEntryPoint(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned image stream entry point ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_IMAGE_STREAM_ENTRY_FORBIDDEN_PATTERNS)
-      : ['src/main/engine/stream/image-stream.ts: missing image stream facade']),
+      : ['apps/electron/src/main/engine/stream/image-stream.ts: missing image stream facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns image stream entry point', lines)
@@ -8492,7 +8492,7 @@ function checkRuntimeOwnsImageStreamEntryPoint(): void {
 
 function checkRuntimeOwnsProvidersIpcUsageFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-usage.ts')
-  const mainFile = path.join(root, 'src/main/ipc/providers.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/providers.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('getOnethingProviderUsage')
@@ -8500,7 +8500,7 @@ function checkRuntimeOwnsProvidersIpcUsageFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDERS_IPC_USAGE_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/providers.ts: missing providers IPC adapter']),
+      : ['apps/electron/src/main/ipc/providers.ts: missing providers IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider usage flow', lines)
@@ -8508,7 +8508,7 @@ function checkRuntimeOwnsProvidersIpcUsageFlow(): void {
 
 function checkRuntimeOwnsProvidersIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-presentation.ts')
-  const mainFile = path.join(root, 'src/main/ipc/providers.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/providers.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingProviders',
@@ -8522,7 +8522,7 @@ function checkRuntimeOwnsProvidersIpcPresentation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROVIDERS_IPC_PRESENTATION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/providers.ts: missing providers IPC adapter']),
+      : ['apps/electron/src/main/ipc/providers.ts: missing providers IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider IPC presentation', lines)
@@ -8533,7 +8533,7 @@ function checkRuntimeOwnsNetworkPolicy(): void {
   const runtimeBoundFetchFile = 'packages/onething-runtime/src/providers/bound-fetch.ts'
   const runtimeBoundFetchTestFile = 'packages/onething-runtime/src/providers/__tests__/bound-fetch.test.ts'
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/providers/index.ts')
-  const mainFile = path.join(root, 'src/main/providers/bound-fetch.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/bound-fetch.ts')
   const runtimeBoundFetchContent = fs.existsSync(path.join(root, runtimeBoundFetchFile))
     ? fs.readFileSync(path.join(root, runtimeBoundFetchFile), 'utf-8')
     : ''
@@ -8565,7 +8565,7 @@ function checkRuntimeOwnsNetworkPolicy(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_BOUND_FETCH_POLICY_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/bound-fetch.ts: missing main network fetch adapter']),
+      : ['apps/electron/src/main/providers/bound-fetch.ts: missing main network fetch adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns provider network policy and bound fetch runtime', lines)
@@ -8573,7 +8573,7 @@ function checkRuntimeOwnsNetworkPolicy(): void {
 
 function checkRuntimeOwnsModelRegistryRefresh(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/model-registry.ts')
-  const mainFile = path.join(root, 'src/main/providers/model-registry.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/providers/model-registry.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'saveOnethingProviderModels',
@@ -8586,7 +8586,7 @@ function checkRuntimeOwnsModelRegistryRefresh(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MODEL_REGISTRY_REFRESH_FORBIDDEN_PATTERNS)
-      : ['src/main/providers/model-registry.ts: missing main model registry facade']),
+      : ['apps/electron/src/main/providers/model-registry.ts: missing main model registry facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns model registry refresh orchestration', lines)
@@ -8594,7 +8594,7 @@ function checkRuntimeOwnsModelRegistryRefresh(): void {
 
 function checkRuntimeOwnsModelsIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/model-registry.ts')
-  const mainFile = path.join(root, 'src/main/ipc/models.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/models.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'mergeOnethingModelsById',
@@ -8609,7 +8609,7 @@ function checkRuntimeOwnsModelsIpcPresentation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MODELS_IPC_PRESENTATION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/models.ts: missing models IPC adapter']),
+      : ['apps/electron/src/main/ipc/models.ts: missing models IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns models IPC presentation helpers', lines)
@@ -8617,7 +8617,7 @@ function checkRuntimeOwnsModelsIpcPresentation(): void {
 
 function checkRuntimeOwnsModelQueryIpcPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/model-query-presentation.ts')
-  const mainFile = path.join(root, 'src/main/ipc/models.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/models.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getAllOnethingModelRegistryModels',
@@ -8637,7 +8637,7 @@ function checkRuntimeOwnsModelQueryIpcPresentation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MODELS_IPC_QUERY_PRESENTATION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/models.ts: missing models IPC adapter']),
+      : ['apps/electron/src/main/ipc/models.ts: missing models IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns model query IPC presentation', lines)
@@ -8645,7 +8645,7 @@ function checkRuntimeOwnsModelQueryIpcPresentation(): void {
 
 function checkRuntimeOwnsMcpServerOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/mcp/server-orchestration.ts')
-  const mainFile = path.join(root, 'src/main/ipc/mcp.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'addOnethingMCPServer',
@@ -8661,7 +8661,7 @@ function checkRuntimeOwnsMcpServerOrchestration(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MCP_IPC_SERVER_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+      : ['apps/electron/src/main/ipc/mcp.ts: missing MCP IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns MCP server orchestration', lines)
@@ -8669,7 +8669,7 @@ function checkRuntimeOwnsMcpServerOrchestration(): void {
 
 function checkRuntimeOwnsMcpCapabilityOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/mcp/capability-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/mcp.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingMCPTools',
@@ -8685,7 +8685,7 @@ function checkRuntimeOwnsMcpCapabilityOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MCP_IPC_CAPABILITY_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+      : ['apps/electron/src/main/ipc/mcp.ts: missing MCP IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns MCP capability operation projection', lines)
@@ -8693,7 +8693,7 @@ function checkRuntimeOwnsMcpCapabilityOperations(): void {
 
 function checkRuntimeOwnsMcpIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/mcp/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/mcp.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingMCPServersForIpc',
@@ -8720,7 +8720,7 @@ function checkRuntimeOwnsMcpIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned MCP IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MCP_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/mcp.ts: missing MCP IPC adapter']),
+      : ['apps/electron/src/main/ipc/mcp.ts: missing MCP IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns MCP IPC operations', lines)
@@ -8729,7 +8729,7 @@ function checkRuntimeOwnsMcpIpcOperations(): void {
 function checkRuntimeOwnsSessionBranchCreation(): void {
   const runtimeFile = 'packages/onething-runtime/src/sessions/branching.ts'
   const runtimeIpcFile = 'packages/onething-runtime/src/sessions/ipc-operations.ts'
-  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -8748,7 +8748,7 @@ function checkRuntimeOwnsSessionBranchCreation(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_BRANCH_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session branch creation orchestration', lines)
@@ -8756,7 +8756,7 @@ function checkRuntimeOwnsSessionBranchCreation(): void {
 
 function checkRuntimeOwnsSessionUpdateFlows(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/session-updates.ts')
-  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'updateOnethingSessionModel',
@@ -8769,7 +8769,7 @@ function checkRuntimeOwnsSessionUpdateFlows(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_UPDATE_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session update flows', lines)
@@ -8779,7 +8779,7 @@ function checkRuntimeOwnsSessionMessageRuntime(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/session-message-runtime.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/sessions/__tests__/session-message-runtime.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/sessions/index.ts')
-  const mainStoreFile = path.join(root, 'src/main/stores/sessions.ts')
+  const mainStoreFile = path.join(root, 'apps/electron/src/main/stores/sessions.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainStoreContent = fs.existsSync(mainStoreFile) ? fs.readFileSync(mainStoreFile, 'utf-8') : ''
@@ -8808,7 +8808,7 @@ function checkRuntimeOwnsSessionMessageRuntime(): void {
       : []),
     ...(fs.existsSync(mainStoreFile)
       ? matchingLines(mainStoreFile, MAIN_SESSION_MESSAGE_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['src/main/stores/sessions.ts: missing sessions store facade']),
+      : ['apps/electron/src/main/stores/sessions.ts: missing sessions store facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session message mutation runtime', lines)
@@ -8816,7 +8816,7 @@ function checkRuntimeOwnsSessionMessageRuntime(): void {
 
 function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/working-directory.ts')
-  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('updateOnethingSessionWorkingDirectory')
@@ -8824,7 +8824,7 @@ function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_WORKDIR_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session working directory flow', lines)
@@ -8832,7 +8832,7 @@ function checkRuntimeOwnsSessionWorkingDirectoryFlow(): void {
 
 function checkRuntimeOwnsSessionSystemMarkerFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/system-messages.ts')
-  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('removeOnethingSystemMarkerMessage')
@@ -8840,7 +8840,7 @@ function checkRuntimeOwnsSessionSystemMarkerFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_SYSTEM_MARKER_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session system marker flow', lines)
@@ -8849,8 +8849,8 @@ function checkRuntimeOwnsSessionSystemMarkerFlow(): void {
 function checkRuntimeOwnsSessionIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/ipc-operations.ts')
   const runtimeUsageFile = path.join(root, 'packages/onething-runtime/src/sessions/session-usage.ts')
-  const mainFile = path.join(root, 'src/main/ipc/sessions.ts')
-  const usageFile = path.join(root, 'src/main/session/usage.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
+  const usageFile = path.join(root, 'apps/electron/src/main/session/usage.ts')
   const runtimeContent = [
     runtimeFile,
     runtimeUsageFile,
@@ -8889,10 +8889,10 @@ function checkRuntimeOwnsSessionIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned session IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/sessions.ts: missing sessions IPC adapter']),
+      : ['apps/electron/src/main/ipc/sessions.ts: missing sessions IPC adapter']),
     ...(fs.existsSync(usageFile)
       ? matchingLines(usageFile, MAIN_SESSION_USAGE_FACADE_FORBIDDEN_PATTERNS)
-      : ['src/main/session/usage.ts: missing session usage adapter']),
+      : ['apps/electron/src/main/session/usage.ts: missing session usage adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session IPC operations', lines)
@@ -8901,9 +8901,9 @@ function checkRuntimeOwnsSessionIpcOperations(): void {
 function checkRuntimeOwnsRendererMessageSanitizer(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/renderer-sanitizer.ts')
   const mainFiles = [
-    path.join(root, 'src/main/ipc/message-sanitizer.ts'),
-    path.join(root, 'src/main/ipc/chat.ts'),
-    path.join(root, 'src/main/ipc/sessions.ts'),
+    path.join(root, 'apps/electron/src/main/ipc/message-sanitizer.ts'),
+    path.join(root, 'apps/electron/src/main/ipc/chat.ts'),
+    path.join(root, 'apps/electron/src/main/ipc/sessions.ts'),
   ]
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
@@ -8920,17 +8920,17 @@ function checkRuntimeOwnsRendererMessageSanitizer(): void {
 }
 
 function checkChatIpcDoesNotOwnLegacyStreamFlow(): void {
-  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const lines = fs.existsSync(mainFile)
     ? matchingLines(mainFile, MAIN_CHAT_IPC_LEGACY_STREAM_FORBIDDEN_PATTERNS)
-    : ['src/main/ipc/chat.ts: missing chat IPC adapter']
+    : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']
 
   assertNoMatches('chat IPC delegates stream orchestration to EventBus/StreamEngine runtime', lines)
 }
 
 function checkRuntimeOwnsChatTitleGenerationFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/providers/provider-runtime.ts')
-  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('generateOnethingChatTitle')
@@ -8950,7 +8950,7 @@ function checkRuntimeOwnsChatTitleGenerationFlow(): void {
           ...matchingLines(mainFile, MAIN_CHAT_IPC_TITLE_FORBIDDEN_PATTERNS),
           ...matchingLines(mainFile, MAIN_CHAT_IPC_PROVIDER_ERROR_FORBIDDEN_PATTERNS),
         ]
-      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns chat title generation flow', lines)
@@ -8958,7 +8958,7 @@ function checkRuntimeOwnsChatTitleGenerationFlow(): void {
 
 function checkRuntimeOwnsChatSessionIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingChatHistoryForIpc',
@@ -8973,7 +8973,7 @@ function checkRuntimeOwnsChatSessionIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned chat session IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_SESSION_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns chat session IPC operations', lines)
@@ -8981,7 +8981,7 @@ function checkRuntimeOwnsChatSessionIpcOperations(): void {
 
 function checkRuntimeOwnsChatActiveStreamListing(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/stream-abort.ts')
-  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('listOnethingActiveStreamsForIpc')
@@ -8989,7 +8989,7 @@ function checkRuntimeOwnsChatActiveStreamListing(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_ACTIVE_STREAMS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns active stream listing projection', lines)
@@ -8997,7 +8997,7 @@ function checkRuntimeOwnsChatActiveStreamListing(): void {
 
 function checkRuntimeOwnsChatAbortCleanupFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/stream-abort.ts')
-  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('cancelOnethingStreamingStepsForAbort')
@@ -9008,7 +9008,7 @@ function checkRuntimeOwnsChatAbortCleanupFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_ABORT_CLEANUP_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns chat abort cleanup flow', lines)
@@ -9016,7 +9016,7 @@ function checkRuntimeOwnsChatAbortCleanupFlow(): void {
 
 function checkRuntimeOwnsResumeAfterToolConfirmationFlow(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/tool-confirmation.ts')
-  const mainFile = path.join(root, 'src/main/ipc/chat.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('resumeOnethingAfterToolConfirmation')
@@ -9027,7 +9027,7 @@ function checkRuntimeOwnsResumeAfterToolConfirmationFlow(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_CHAT_IPC_RESUME_CONFIRM_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns resume-after-tool-confirmation flow', lines)
@@ -9035,7 +9035,7 @@ function checkRuntimeOwnsResumeAfterToolConfirmationFlow(): void {
 
 function checkRuntimeOwnsToolCallStateProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-call-state.ts')
-  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'applyOnethingToolCallUpdate',
@@ -9047,7 +9047,7 @@ function checkRuntimeOwnsToolCallStateProjection(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tool call state projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOLS_IPC_TOOL_CALL_UPDATE_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns tool call state projection', lines)
@@ -9057,8 +9057,8 @@ function checkRuntimeOwnsToolRegistryRuntime(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/registry.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/registry.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
-  const mainFile = path.join(root, 'src/main/tools/registry.ts')
-  const mainTestFile = path.join(root, 'src/main/tools/__tests__/registry.test.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/tools/registry.ts')
+  const mainTestFile = path.join(root, 'apps/electron/src/main/tools/__tests__/registry.test.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
@@ -9117,7 +9117,7 @@ function checkRuntimeOwnsToolRegistryRuntime(): void {
 
 function checkRuntimeOwnsToolsIpcListPresentation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-list-presentation.ts')
-  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingSettingsTools',
@@ -9129,7 +9129,7 @@ function checkRuntimeOwnsToolsIpcListPresentation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned settings-visible tool list projection ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOLS_IPC_LIST_PRESENTATION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns settings-visible tool list projection', lines)
@@ -9137,7 +9137,7 @@ function checkRuntimeOwnsToolsIpcListPresentation(): void {
 
 function checkRuntimeOwnsToolsIpcExecutionContext(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-execution-context.ts')
-  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'executeOnethingToolWithSessionContext',
@@ -9149,7 +9149,7 @@ function checkRuntimeOwnsToolsIpcExecutionContext(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tool execution context assembly ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOLS_IPC_EXECUTION_CONTEXT_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns tool execution context assembly', lines)
@@ -9157,7 +9157,7 @@ function checkRuntimeOwnsToolsIpcExecutionContext(): void {
 
 function checkRuntimeOwnsToolsIpcAsyncRefresh(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/tool-refresh.ts')
-  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'refreshOnethingAsyncTools',
@@ -9169,7 +9169,7 @@ function checkRuntimeOwnsToolsIpcAsyncRefresh(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned async tool refresh flow ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOLS_IPC_REFRESH_ASYNC_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns async tool refresh flow', lines)
@@ -9177,7 +9177,7 @@ function checkRuntimeOwnsToolsIpcAsyncRefresh(): void {
 
 function checkRuntimeOwnsToolsIpcBackgroundJobs(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/tools.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'cancelOnethingToolForIpc',
@@ -9192,7 +9192,7 @@ function checkRuntimeOwnsToolsIpcBackgroundJobs(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned tools IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TOOLS_IPC_BACKGROUND_JOBS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/tools.ts: missing tools IPC adapter']),
+      : ['apps/electron/src/main/ipc/tools.ts: missing tools IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns tools background-job IPC operations', lines)
@@ -9201,7 +9201,7 @@ function checkRuntimeOwnsToolsIpcBackgroundJobs(): void {
 function checkRuntimeOwnsSettingsSaveOrchestration(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/settings/settings-save.ts')
   const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/settings/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/settings.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
   const requiredRuntimeIpcSymbols = [
@@ -9219,7 +9219,7 @@ function checkRuntimeOwnsSettingsSaveOrchestration(): void {
       .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned settings IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SETTINGS_IPC_SAVE_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/settings.ts: missing settings IPC adapter']),
+      : ['apps/electron/src/main/ipc/settings.ts: missing settings IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns settings save orchestration', lines)
@@ -9227,7 +9227,7 @@ function checkRuntimeOwnsSettingsSaveOrchestration(): void {
 
 function checkRuntimeOwnsPluginsIpcListProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/plugin-list.ts')
-  const mainFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/plugins.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('projectOnethingPluginsForRenderer')
@@ -9235,7 +9235,7 @@ function checkRuntimeOwnsPluginsIpcListProjection(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PLUGINS_IPC_LIST_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+      : ['apps/electron/src/main/ipc/plugins.ts: missing plugins IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns plugin list projection', lines)
@@ -9243,7 +9243,7 @@ function checkRuntimeOwnsPluginsIpcListProjection(): void {
 
 function checkRuntimeOwnsPluginsIpcCommandProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/plugin-list.ts')
-  const mainFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/plugins.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('projectOnethingPluginCommandsForRenderer')
@@ -9251,7 +9251,7 @@ function checkRuntimeOwnsPluginsIpcCommandProjection(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PLUGINS_IPC_COMMAND_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+      : ['apps/electron/src/main/ipc/plugins.ts: missing plugins IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns plugin command projection', lines)
@@ -9259,7 +9259,7 @@ function checkRuntimeOwnsPluginsIpcCommandProjection(): void {
 
 function checkRuntimeOwnsPluginCommandExecution(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/plugin-command-execution.ts')
-  const mainFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/plugins.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'normalizeOnethingPluginCommandName',
@@ -9271,7 +9271,7 @@ function checkRuntimeOwnsPluginCommandExecution(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PLUGINS_IPC_COMMAND_EXECUTION_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+      : ['apps/electron/src/main/ipc/plugins.ts: missing plugins IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns plugin command execution orchestration', lines)
@@ -9279,7 +9279,7 @@ function checkRuntimeOwnsPluginCommandExecution(): void {
 
 function checkRuntimeOwnsPluginsIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/plugins.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/plugins.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'ONETHING_PLUGIN_SYSTEM_NOT_INITIALIZED',
@@ -9296,7 +9296,7 @@ function checkRuntimeOwnsPluginsIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned plugin IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PLUGINS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/plugins.ts: missing plugins IPC adapter']),
+      : ['apps/electron/src/main/ipc/plugins.ts: missing plugins IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns plugin IPC operations', lines)
@@ -9306,7 +9306,7 @@ function checkRuntimeOwnsLogMonitorPlugin(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/log-monitor.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/plugins/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/plugins/__tests__/log-monitor.test.ts')
-  const mainFile = path.join(root, 'src/main/plugins/builtin/log-monitor.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/log-monitor.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -9347,8 +9347,8 @@ function checkRuntimeOwnsNoteSkillsPlugin(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/plugins/note-skills.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/plugins/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/plugins/__tests__/note-skills.test.ts')
-  const removedMainRuntimeTest = path.join(root, 'src/main/plugins/__tests__/core-note-skills.test.ts')
-  const mainFile = path.join(root, 'src/main/plugins/builtin/note-skills.ts')
+  const removedMainRuntimeTest = path.join(root, 'apps/electron/src/main/plugins/__tests__/core-note-skills.test.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/note-skills.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -9392,7 +9392,7 @@ function checkRuntimeOwnsNoteSkillsPlugin(): void {
 
 function checkRuntimeOwnsSkillsRuntimeCache(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/session-skills.ts')
-  const mainFile = path.join(root, 'src/main/ipc/skills.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/skills.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('OnethingSessionSkillsRuntime')
@@ -9400,7 +9400,7 @@ function checkRuntimeOwnsSkillsRuntimeCache(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SKILLS_IPC_RUNTIME_CACHE_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/skills.ts: missing skills IPC adapter']),
+      : ['apps/electron/src/main/ipc/skills.ts: missing skills IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns skills runtime cache and settings projection', lines)
@@ -9408,7 +9408,7 @@ function checkRuntimeOwnsSkillsRuntimeCache(): void {
 
 function checkRuntimeOwnsSkillsIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/skills.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/skills.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingSkillsForIpc',
@@ -9428,7 +9428,7 @@ function checkRuntimeOwnsSkillsIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned skills IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SKILLS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/skills.ts: missing skills IPC adapter']),
+      : ['apps/electron/src/main/ipc/skills.ts: missing skills IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns skills IPC operations', lines)
@@ -9436,7 +9436,7 @@ function checkRuntimeOwnsSkillsIpcOperations(): void {
 
 function checkRuntimeOwnsSkillManageOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/manage.ts')
-  const mainFile = path.join(root, 'src/main/skills/manage.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/skills/manage.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'configureOnethingSkillManageRuntime',
@@ -9450,7 +9450,7 @@ function checkRuntimeOwnsSkillManageOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SKILL_MANAGE_FORBIDDEN_PATTERNS)
-      : ['src/main/skills/manage.ts: missing skill_manage runtime adapter']),
+      : ['apps/electron/src/main/skills/manage.ts: missing skill_manage runtime adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns skill_manage operations', lines)
@@ -9458,7 +9458,7 @@ function checkRuntimeOwnsSkillManageOperations(): void {
 
 function checkRuntimeOwnsSkillsLoader(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/skills/loader.ts')
-  const mainFile = path.join(root, 'src/main/skills/loader.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/skills/loader.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'configureOnethingSkillsLoaderRuntime',
@@ -9472,7 +9472,7 @@ function checkRuntimeOwnsSkillsLoader(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SKILLS_LOADER_FORBIDDEN_PATTERNS)
-      : ['src/main/skills/loader.ts: missing skills loader runtime adapter']),
+      : ['apps/electron/src/main/skills/loader.ts: missing skills loader runtime adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns skills loader operations', lines)
@@ -9480,7 +9480,7 @@ function checkRuntimeOwnsSkillsLoader(): void {
 
 function checkRuntimeOwnsSqliteSessionRepository(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/sqlite-repository.ts')
-  const mainFile = path.join(root, 'src/main/stores/session-repository/sqlite-repository.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/stores/session-repository/sqlite-repository.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
@@ -9494,14 +9494,14 @@ function checkRuntimeOwnsSqliteSessionRepository(): void {
       .filter(symbol => !runtimeContent.includes(symbol))
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(!mainContent.includes('@onething/runtime/sessions')
-      ? ['src/main/stores/session-repository/sqlite-repository.ts: missing runtime sqlite repository adapter import']
+      ? ['apps/electron/src/main/stores/session-repository/sqlite-repository.ts: missing runtime sqlite repository adapter import']
       : []),
-    ...(fs.existsSync(path.join(root, 'src/main/stores/session-repository/sqlite-driver.ts'))
-      ? ['src/main/stores/session-repository/sqlite-driver.ts: SQLite driver implementation belongs in packages/onething-runtime']
+    ...(fs.existsSync(path.join(root, 'apps/electron/src/main/stores/session-repository/sqlite-driver.ts'))
+      ? ['apps/electron/src/main/stores/session-repository/sqlite-driver.ts: SQLite driver implementation belongs in packages/onething-runtime']
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SQLITE_REPOSITORY_FORBIDDEN_PATTERNS)
-      : ['src/main/stores/session-repository/sqlite-repository.ts: missing sqlite repository runtime adapter']),
+      : ['apps/electron/src/main/stores/session-repository/sqlite-repository.ts: missing sqlite repository runtime adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns SQLite session repository operations', lines)
@@ -9509,7 +9509,7 @@ function checkRuntimeOwnsSqliteSessionRepository(): void {
 
 function checkRuntimeOwnsSessionSqliteFailoverPolicy(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/sessions/resilient-sqlite-adapters.ts')
-  const mainFile = path.join(root, 'src/main/stores/sessions.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/stores/sessions.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'createOnethingResilientSessionSqliteAdapters',
@@ -9522,7 +9522,7 @@ function checkRuntimeOwnsSessionSqliteFailoverPolicy(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned SQLite failover policy ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SESSIONS_SQLITE_FAILOVER_FORBIDDEN_PATTERNS)
-      : ['src/main/stores/sessions.ts: missing session store adapter']),
+      : ['apps/electron/src/main/stores/sessions.ts: missing session store adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns session SQLite failover policy', lines)
@@ -9530,7 +9530,7 @@ function checkRuntimeOwnsSessionSqliteFailoverPolicy(): void {
 
 function checkRuntimeOwnsMediaPreviewRegistry(): void {
   const runtimeFile = 'packages/onething-runtime/src/media/image-preview-registry.ts'
-  const mainFile = path.join(root, 'src/main/ipc/media.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -9546,7 +9546,7 @@ function checkRuntimeOwnsMediaPreviewRegistry(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MEDIA_PREVIEW_REGISTRY_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+      : ['apps/electron/src/main/ipc/media.ts: missing media IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns image preview registry', lines)
@@ -9554,7 +9554,7 @@ function checkRuntimeOwnsMediaPreviewRegistry(): void {
 
 function checkRuntimeOwnsMediaImageDataUrl(): void {
   const runtimeFile = 'packages/onething-runtime/src/media/image-file-data-url.ts'
-  const mainFile = path.join(root, 'src/main/ipc/media.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
   const runtimeContent = fs.existsSync(path.join(root, runtimeFile))
     ? fs.readFileSync(path.join(root, runtimeFile), 'utf-8')
     : ''
@@ -9567,7 +9567,7 @@ function checkRuntimeOwnsMediaImageDataUrl(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MEDIA_IMAGE_DATA_URL_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+      : ['apps/electron/src/main/ipc/media.ts: missing media IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns image file data URL helper', lines)
@@ -9575,7 +9575,7 @@ function checkRuntimeOwnsMediaImageDataUrl(): void {
 
 function checkRuntimeOwnsMediaLegacyList(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/media-library-service.ts')
-  const mainFile = path.join(root, 'src/main/ipc/media.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('listLegacyImages')
@@ -9583,7 +9583,7 @@ function checkRuntimeOwnsMediaLegacyList(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MEDIA_LEGACY_LIST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+      : ['apps/electron/src/main/ipc/media.ts: missing media IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns legacy media image list projection', lines)
@@ -9591,7 +9591,7 @@ function checkRuntimeOwnsMediaLegacyList(): void {
 
 function checkRuntimeOwnsMediaGeneratedImageLegacySave(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/media-library-service.ts')
-  const mainFile = path.join(root, 'src/main/media/save-image.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/media/save-image.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const lines = [
     ...(!runtimeContent.includes('saveGeneratedImageAsLegacyItem')
@@ -9599,7 +9599,7 @@ function checkRuntimeOwnsMediaGeneratedImageLegacySave(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MEDIA_SAVE_IMAGE_FORBIDDEN_PATTERNS)
-      : ['src/main/media/save-image.ts: missing media save adapter']),
+      : ['apps/electron/src/main/media/save-image.ts: missing media save adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns generated image legacy save projection', lines)
@@ -9607,7 +9607,7 @@ function checkRuntimeOwnsMediaGeneratedImageLegacySave(): void {
 
 function checkRuntimeOwnsMediaLibraryIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/media/media-library-presentation.ts')
-  const mainFile = path.join(root, 'src/main/ipc/media.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingMediaAssets',
@@ -9625,7 +9625,7 @@ function checkRuntimeOwnsMediaLibraryIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MEDIA_LIBRARY_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/media.ts: missing media IPC adapter']),
+      : ['apps/electron/src/main/ipc/media.ts: missing media IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns media library IPC operations', lines)
@@ -9633,7 +9633,7 @@ function checkRuntimeOwnsMediaLibraryIpcOperations(): void {
 
 function checkRuntimeOwnsMarkdownAssetService(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/markdown/asset-service.ts')
-  const mainFile = path.join(root, 'src/main/markdown/asset-service.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/markdown/asset-service.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'resolveOnethingMarkdownAsset',
@@ -9646,7 +9646,7 @@ function checkRuntimeOwnsMarkdownAssetService(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MARKDOWN_ASSET_SERVICE_FORBIDDEN_PATTERNS)
-      : ['src/main/markdown/asset-service.ts: missing markdown asset adapter']),
+      : ['apps/electron/src/main/markdown/asset-service.ts: missing markdown asset adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns Markdown asset service', lines)
@@ -9654,7 +9654,7 @@ function checkRuntimeOwnsMarkdownAssetService(): void {
 
 function checkRuntimeOwnsMarkdownIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/markdown/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/markdown.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/markdown.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'resolveOnethingMarkdownAssetForIpc',
@@ -9668,7 +9668,7 @@ function checkRuntimeOwnsMarkdownIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned Markdown IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_MARKDOWN_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/markdown.ts: missing Markdown IPC adapter']),
+      : ['apps/electron/src/main/ipc/markdown.ts: missing Markdown IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns Markdown IPC operations', lines)
@@ -9682,15 +9682,15 @@ function checkRuntimeOwnsThemeRuntime(): void {
     'packages/onething-runtime/src/themes/window-theme.ts',
   ]
   const mainFiles = [
-    path.join(root, 'src/main/ipc/themes.ts'),
-    path.join(root, 'src/main/themes/index.ts'),
+    path.join(root, 'apps/electron/src/main/ipc/themes.ts'),
+    path.join(root, 'apps/electron/src/main/themes/index.ts'),
     path.join(root, 'apps/electron/src/window/index.ts'),
   ]
   const mainHelperFiles = [
-    path.join(root, 'src/main/themes/base46-parser.ts'),
-    path.join(root, 'src/main/themes/css-mapper.ts'),
-    path.join(root, 'src/main/themes/resolver.ts'),
-    path.join(root, 'src/main/themes/role-mapping.ts'),
+    path.join(root, 'apps/electron/src/main/themes/base46-parser.ts'),
+    path.join(root, 'apps/electron/src/main/themes/css-mapper.ts'),
+    path.join(root, 'apps/electron/src/main/themes/resolver.ts'),
+    path.join(root, 'apps/electron/src/main/themes/role-mapping.ts'),
   ]
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(path.join(root, file)) ? fs.readFileSync(path.join(root, file), 'utf-8') : '')
@@ -9715,7 +9715,7 @@ function checkRuntimeOwnsThemeRuntime(): void {
       .map(symbol => `packages/onething-runtime/src/themes/theme-runtime.ts: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFiles[0])
       ? matchingLines(mainFiles[0], MAIN_THEMES_IPC_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/themes.ts: missing themes IPC adapter']),
+      : ['apps/electron/src/main/ipc/themes.ts: missing themes IPC adapter']),
     ...(fs.existsSync(mainFiles[1])
       ? [`${rel(mainFiles[1])}: themes facade should be removed; import @onething/runtime/themes directly`]
       : []),
@@ -9740,8 +9740,8 @@ function checkRuntimeOwnsThemeRuntime(): void {
 function checkRuntimeOwnsTodoPlanStore(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/todo-plan/store.ts')
   const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/todo-plan/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/todo-plan/store.ts')
-  const mainIpcFile = path.join(root, 'src/main/todo-plan/ipc.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/todo-plan/store.ts')
+  const mainIpcFile = path.join(root, 'apps/electron/src/main/todo-plan/ipc.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
@@ -9777,10 +9777,10 @@ function checkRuntimeOwnsTodoPlanStore(): void {
       .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned todo-plan IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_TODO_PLAN_STORE_FORBIDDEN_PATTERNS)
-      : ['src/main/todo-plan/store.ts: missing todo-plan store facade']),
+      : ['apps/electron/src/main/todo-plan/store.ts: missing todo-plan store facade']),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_TODO_PLAN_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/todo-plan/ipc.ts: missing todo-plan IPC adapter']),
+      : ['apps/electron/src/main/todo-plan/ipc.ts: missing todo-plan IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns todo-plan store', lines)
@@ -9788,7 +9788,7 @@ function checkRuntimeOwnsTodoPlanStore(): void {
 
 function checkRuntimeOwnsVoiceIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/voice/ipc.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/voice/ipc.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'getOnethingVoiceStateForIpc',
@@ -9807,7 +9807,7 @@ function checkRuntimeOwnsVoiceIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned voice IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_VOICE_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/voice/ipc.ts: missing voice IPC adapter']),
+      : ['apps/electron/src/main/voice/ipc.ts: missing voice IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns voice IPC operations', lines)
@@ -9817,7 +9817,7 @@ function checkRuntimeOwnsVoiceProviderRuntime(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/providers.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
   const runtimePackage = path.join(root, 'packages/onething-runtime/package.json')
-  const mainFile = path.join(root, 'src/main/voice/providers.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/voice/providers.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
@@ -9862,7 +9862,7 @@ function checkRuntimeOwnsVoiceProviderRuntime(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_VOICE_PROVIDER_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['src/main/voice/providers.ts: missing voice providers facade']),
+      : ['apps/electron/src/main/voice/providers.ts: missing voice providers facade']),
   ]
 
   assertNoMatches('packages/onething-runtime owns voice provider runtime', lines)
@@ -9872,7 +9872,7 @@ function checkRuntimeOwnsVoiceServicePolicy(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/service-runtime.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/voice/__tests__/service-runtime.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
-  const mainFile = path.join(root, 'src/main/voice/service.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/voice/service.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
@@ -9920,7 +9920,7 @@ function checkRuntimeOwnsVoiceServicePolicy(): void {
       .map(symbol => `${rel(mainFile)}: main voice service must delegate ${symbol} to runtime voice service policy`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_VOICE_SERVICE_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['src/main/voice/service.ts: missing voice service adapter']),
+      : ['apps/electron/src/main/voice/service.ts: missing voice service adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns voice service policy', lines)
@@ -9930,13 +9930,13 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/voice/text.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/voice/__tests__/text.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
-  const mainFile = path.join(root, 'src/main/voice/service.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/voice/service.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const sharedFiles = [
-    path.join(root, 'src/shared/voice/segmenter.ts'),
-    path.join(root, 'src/shared/voice/tts-stream.ts'),
-    path.join(root, 'src/shared/voice/speak-markup.ts'),
+    path.join(root, 'packages/shared/voice/segmenter.ts'),
+    path.join(root, 'packages/shared/voice/tts-stream.ts'),
+    path.join(root, 'packages/shared/voice/speak-markup.ts'),
   ]
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
@@ -9977,10 +9977,10 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
       .filter(symbol => !mainContent.includes(symbol))
       .map(symbol => `${rel(mainFile)}: main voice service must delegate voice text processing ${symbol} to runtime`),
     ...(!sharedContent.includes('@onething/runtime/voice/text')
-      ? ['src/shared/voice: legacy shared voice files must re-export browser-safe runtime voice text helpers']
+      ? ['packages/shared/voice: legacy shared voice files must re-export browser-safe runtime voice text helpers']
       : []),
     ...(/from\s+['"]@onething\/runtime\/voice['"]/.test(sharedContent)
-      ? ['src/shared/voice: renderer-facing voice text facades must not import Node-capable runtime voice entrypoint']
+      ? ['packages/shared/voice: renderer-facing voice text facades must not import Node-capable runtime voice entrypoint']
       : []),
     ...(!viteContent.includes('@onething/runtime/voice/text')
       ? [`${rel(viteConfig)}: missing browser-safe @onething/runtime/voice/text build alias`]
@@ -10003,10 +10003,10 @@ function checkRuntimeOwnsSearchIpcOperations(): void {
     path.join(root, 'packages/onething-runtime/src/search/providers.ts'),
     path.join(root, 'packages/onething-runtime/src/search/search-runtime.ts'),
   ]
-  const mainIpcFile = path.join(root, 'src/main/search/ipc.ts')
-  const mainProviderFile = path.join(root, 'src/main/search/providers.ts')
-  const sharedSearchFile = path.join(root, 'src/shared/ipc/search.ts')
-  const sharedSearchTestFile = path.join(root, 'src/shared/ipc/__tests__/search.test.ts')
+  const mainIpcFile = path.join(root, 'apps/electron/src/main/search/ipc.ts')
+  const mainProviderFile = path.join(root, 'apps/electron/src/main/search/providers.ts')
+  const sharedSearchFile = path.join(root, 'packages/shared/ipc/search.ts')
+  const sharedSearchTestFile = path.join(root, 'packages/shared/ipc/__tests__/search.test.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const mainProviderContent = fs.existsSync(mainProviderFile) ? fs.readFileSync(mainProviderFile, 'utf-8') : ''
@@ -10046,7 +10046,7 @@ function checkRuntimeOwnsSearchIpcOperations(): void {
       : []),
     ...(fs.existsSync(mainProviderFile)
       ? matchingLines(mainProviderFile, MAIN_SEARCH_PROVIDER_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['src/main/search/providers.ts: missing search provider adapter']),
+      : ['apps/electron/src/main/search/providers.ts: missing search provider adapter']),
     ...(!mainProviderContent.includes('@onething/runtime/search')
       ? [`${rel(mainProviderFile)}: search provider facade must delegate to @onething/runtime/search`]
       : []),
@@ -10081,7 +10081,7 @@ function checkRuntimeOwnsSearchIpcOperations(): void {
 
 function checkRuntimeOwnsHeadlessCliProjections(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/headless/cli-projections.ts')
-  const mainFile = path.join(root, 'src/main/headless/backend.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/headless/backend.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
@@ -10112,7 +10112,7 @@ function checkRuntimeOwnsHeadlessCliProjections(): void {
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_HEADLESS_CLI_PROJECTION_FORBIDDEN_PATTERNS)
-      : ['src/main/headless/backend.ts: missing headless backend adapter']),
+      : ['apps/electron/src/main/headless/backend.ts: missing headless backend adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns headless CLI projections', lines)
@@ -10121,8 +10121,8 @@ function checkRuntimeOwnsHeadlessCliProjections(): void {
 function checkRuntimeOwnsPromptsStore(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/prompts/store.ts')
   const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/prompts/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/prompts/store.ts')
-  const mainIpcFile = path.join(root, 'src/main/prompts/ipc.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/prompts/store.ts')
+  const mainIpcFile = path.join(root, 'apps/electron/src/main/prompts/ipc.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIpcContent = fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
@@ -10155,10 +10155,10 @@ function checkRuntimeOwnsPromptsStore(): void {
       .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned prompts IPC operation ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_PROMPTS_STORE_FORBIDDEN_PATTERNS)
-      : ['src/main/prompts/store.ts: missing prompts store facade']),
+      : ['apps/electron/src/main/prompts/store.ts: missing prompts store facade']),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_PROMPTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/prompts/ipc.ts: missing prompts IPC adapter']),
+      : ['apps/electron/src/main/prompts/ipc.ts: missing prompts IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns prompts store', lines)
@@ -10169,8 +10169,8 @@ function checkRuntimeOwnsSystemPromptSnapshot(): void {
     path.join(root, 'packages/onething-runtime/src/prompts/system-prompt-snapshot.ts'),
     path.join(root, 'packages/onething-runtime/src/prompts/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/engine/prompt/system-prompt-snapshot.ts')
-  const chatIpcFile = path.join(root, 'src/main/ipc/chat.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/engine/prompt/system-prompt-snapshot.ts')
+  const chatIpcFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10196,7 +10196,7 @@ function checkRuntimeOwnsSystemPromptSnapshot(): void {
       : []),
     ...(fs.existsSync(chatIpcFile)
       ? matchingLines(chatIpcFile, MAIN_CHAT_IPC_SYSTEM_PROMPT_SNAPSHOT_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/chat.ts: missing chat IPC adapter']),
+      : ['apps/electron/src/main/ipc/chat.ts: missing chat IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns system prompt snapshot assembly', lines)
@@ -10212,13 +10212,13 @@ function checkRuntimeOwnsProjectDirsStore(): void {
     path.join(root, 'packages/onething-runtime/src/project-dirs/ipc-operations.ts'),
   ]
   const mainFiles = [
-    path.join(root, 'src/main/project-dirs/store/index.ts'),
-    path.join(root, 'src/main/project-dirs/store/persistence.ts'),
-    path.join(root, 'src/main/project-dirs/store/id.ts'),
-    path.join(root, 'src/main/project-dirs/prompt.ts'),
-    path.join(root, 'src/main/project-dirs/types.ts'),
+    path.join(root, 'apps/electron/src/main/project-dirs/store/index.ts'),
+    path.join(root, 'apps/electron/src/main/project-dirs/store/persistence.ts'),
+    path.join(root, 'apps/electron/src/main/project-dirs/store/id.ts'),
+    path.join(root, 'apps/electron/src/main/project-dirs/prompt.ts'),
+    path.join(root, 'apps/electron/src/main/project-dirs/types.ts'),
   ]
-  const mainIpcFile = path.join(root, 'src/main/project-dirs/ipc.ts')
+  const mainIpcFile = path.join(root, 'apps/electron/src/main/project-dirs/ipc.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10248,7 +10248,7 @@ function checkRuntimeOwnsProjectDirsStore(): void {
     ),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_PROJECT_DIRS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/project-dirs/ipc.ts: missing project-dirs IPC adapter']),
+      : ['apps/electron/src/main/project-dirs/ipc.ts: missing project-dirs IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns project-dirs store and prompt helpers', lines)
@@ -10269,19 +10269,19 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
     path.join(root, 'packages/onething-runtime/src/variables/providers/global-store.ts'),
     path.join(root, 'packages/onething-runtime/src/variables/providers/index.ts'),
   ]
-  const mainStoreFile = path.join(root, 'src/main/variables/store/index.ts')
+  const mainStoreFile = path.join(root, 'apps/electron/src/main/variables/store/index.ts')
   const removedMainFacadeFiles = [
-    path.join(root, 'src/main/variables/store/schema.ts'),
-    path.join(root, 'src/main/variables/format.ts'),
-    path.join(root, 'src/main/variables/validation.ts'),
-    path.join(root, 'src/main/variables/types.ts'),
-    path.join(root, 'src/main/variables/registry.ts'),
-    path.join(root, 'src/main/variables/providers/core.ts'),
-    path.join(root, 'src/main/variables/providers/notes.ts'),
-    path.join(root, 'src/main/variables/providers/session-store.ts'),
-    path.join(root, 'src/main/variables/providers/global-store.ts'),
+    path.join(root, 'apps/electron/src/main/variables/store/schema.ts'),
+    path.join(root, 'apps/electron/src/main/variables/format.ts'),
+    path.join(root, 'apps/electron/src/main/variables/validation.ts'),
+    path.join(root, 'apps/electron/src/main/variables/types.ts'),
+    path.join(root, 'apps/electron/src/main/variables/registry.ts'),
+    path.join(root, 'apps/electron/src/main/variables/providers/core.ts'),
+    path.join(root, 'apps/electron/src/main/variables/providers/notes.ts'),
+    path.join(root, 'apps/electron/src/main/variables/providers/session-store.ts'),
+    path.join(root, 'apps/electron/src/main/variables/providers/global-store.ts'),
   ]
-  const mainIpcFile = path.join(root, 'src/main/variables/ipc.ts')
+  const mainIpcFile = path.join(root, 'apps/electron/src/main/variables/ipc.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10312,14 +10312,14 @@ function checkRuntimeOwnsVariablesStoreAndHelpers(): void {
       .map(symbol => `packages/onething-runtime/src/variables: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainStoreFile)
       ? matchingLines(mainStoreFile, MAIN_VARIABLES_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['src/main/variables/store/index.ts: missing variables store host adapter']),
+      : ['apps/electron/src/main/variables/store/index.ts: missing variables store host adapter']),
     ...removedMainFacadeFiles.flatMap(file => fs.existsSync(file)
       ? [`${rel(file)}: variables facade should be removed; import @onething/runtime/variables directly`]
       : []
     ),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_VARIABLES_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/variables/ipc.ts: missing variables IPC adapter']),
+      : ['apps/electron/src/main/variables/ipc.ts: missing variables IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns variables store and pure helpers', lines)
@@ -10330,8 +10330,8 @@ function checkRuntimeOwnsMemoryReviewHelpers(): void {
     path.join(root, 'packages/onething-runtime/src/memory/review.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/memory/review.ts')
-  const pluginFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/memory/review.ts')
+  const pluginFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10373,7 +10373,7 @@ function checkRuntimeOwnsHermesFileMemory(): void {
     path.join(root, 'packages/onething-runtime/src/memory/hermes-file-memory.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/memory/hermes-file-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/memory/hermes-file-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10408,7 +10408,7 @@ function checkRuntimeOwnsMemoryDiagnosticsLogger(): void {
     path.join(root, 'packages/onething-runtime/src/memory/diagnostics-logger.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/memory/diagnostics-logger.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/memory/diagnostics-logger.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10441,7 +10441,7 @@ function checkRuntimeOwnsMemoryTypes(): void {
     path.join(root, 'packages/onething-runtime/src/memory/types.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/memory/types.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/memory/types.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10480,9 +10480,9 @@ function checkRuntimeOwnsMemoryDatabaseCanonicalGraph(): void {
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
   const mainFiles = [
-    path.join(root, 'src/main/memory/database.ts'),
-    path.join(root, 'src/main/memory/canonical.ts'),
-    path.join(root, 'src/main/memory/graph.ts'),
+    path.join(root, 'apps/electron/src/main/memory/database.ts'),
+    path.join(root, 'apps/electron/src/main/memory/canonical.ts'),
+    path.join(root, 'apps/electron/src/main/memory/graph.ts'),
   ]
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
@@ -10522,7 +10522,7 @@ function checkRuntimeOwnsMemoryDatabaseCanonicalGraph(): void {
 
 function checkRuntimeOwnsSoulMemoryGraphDecisionOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/memory/graph.ts')
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'applyGraphDecisionPlan',
@@ -10553,7 +10553,7 @@ function checkRuntimeOwnsSoulMemoryGraphCanonicalSearch(): void {
     path.join(root, 'packages/onething-runtime/src/memory/graph.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/canonical.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10583,7 +10583,7 @@ function checkRuntimeOwnsSoulMemoryMarkdownSearch(): void {
     path.join(root, 'packages/onething-runtime/src/memory/search.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10612,7 +10612,7 @@ function checkRuntimeOwnsSoulMemoryMarkdownIndexPersistence(): void {
     path.join(root, 'packages/onething-runtime/src/memory/indexer.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10645,7 +10645,7 @@ function checkRuntimeOwnsSoulMemoryManagedFiles(): void {
     path.join(root, 'packages/onething-runtime/src/memory/managed-files.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10677,7 +10677,7 @@ function checkRuntimeOwnsSoulMemoryDailyContext(): void {
     path.join(root, 'packages/onething-runtime/src/memory/daily-context.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10707,7 +10707,7 @@ function checkRuntimeOwnsSoulMemoryPromptContext(): void {
     path.join(root, 'packages/onething-runtime/src/memory/prompt-context.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10740,7 +10740,7 @@ function checkRuntimeOwnsSoulMemoryActiveMemoryRecall(): void {
     path.join(root, 'packages/onething-runtime/src/memory/active-memory.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10773,7 +10773,7 @@ function checkRuntimeOwnsSoulMemoryAppendNote(): void {
     path.join(root, 'packages/onething-runtime/src/memory/append.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10804,7 +10804,7 @@ function checkRuntimeOwnsSoulMemoryCaptureInput(): void {
     path.join(root, 'packages/onething-runtime/src/memory/capture-actions.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10835,7 +10835,7 @@ function checkRuntimeOwnsSoulMemoryCaptureRun(): void {
     path.join(root, 'packages/onething-runtime/src/memory/capture-actions.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10867,7 +10867,7 @@ function checkRuntimeOwnsSoulMemoryDailyCaptureActions(): void {
     path.join(root, 'packages/onething-runtime/src/memory/capture-actions.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10902,7 +10902,7 @@ function checkRuntimeOwnsSoulMemoryDreamingOperations(): void {
     path.join(root, 'packages/onething-runtime/src/memory/dreaming.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10937,7 +10937,7 @@ function checkRuntimeOwnsSoulMemoryFlushOperations(): void {
     path.join(root, 'packages/onething-runtime/src/memory/flush.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/plugins/builtin/soul-memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/plugins/builtin/soul-memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -10970,7 +10970,7 @@ function checkRuntimeOwnsMemoryIpcPresentation(): void {
     path.join(root, 'packages/onething-runtime/src/memory/ipc.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/ipc/memory.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/memory.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -11003,7 +11003,7 @@ function checkRuntimeOwnsMemoryWorkspaceHelpers(): void {
     path.join(root, 'packages/onething-runtime/src/memory/workspace.ts'),
     path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
   ]
-  const mainFile = path.join(root, 'src/main/memory/workspace.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/memory/workspace.ts')
   const runtimeContent = runtimeFiles
     .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
     .join('\n')
@@ -11040,8 +11040,8 @@ function checkRuntimeOwnsMemoryWorkspaceHelpers(): void {
 function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
   const runtimeStoreFile = path.join(root, 'packages/onething-runtime/src/agents/store.ts')
   const runtimeIpcFile = path.join(root, 'packages/onething-runtime/src/agents/ipc-operations.ts')
-  const mainStoreFile = path.join(root, 'src/main/agents/store.ts')
-  const mainIpcFile = path.join(root, 'src/main/ipc/agents.ts')
+  const mainStoreFile = path.join(root, 'apps/electron/src/main/agents/store.ts')
+  const mainIpcFile = path.join(root, 'apps/electron/src/main/ipc/agents.ts')
   const runtimeContent = [
     fs.existsSync(runtimeStoreFile) ? fs.readFileSync(runtimeStoreFile, 'utf-8') : '',
     fs.existsSync(runtimeIpcFile) ? fs.readFileSync(runtimeIpcFile, 'utf-8') : '',
@@ -11063,10 +11063,10 @@ function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
       .map(symbol => `${rel(runtimeIpcFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainStoreFile)
       ? matchingLines(mainStoreFile, MAIN_AGENTS_STORE_FORBIDDEN_PATTERNS)
-      : ['src/main/agents/store.ts: missing agent store adapter']),
+      : ['apps/electron/src/main/agents/store.ts: missing agent store adapter']),
     ...(fs.existsSync(mainIpcFile)
       ? matchingLines(mainIpcFile, MAIN_AGENTS_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/agents.ts: missing agents IPC adapter']),
+      : ['apps/electron/src/main/ipc/agents.ts: missing agents IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns agents store and IPC operations', lines)
@@ -11074,7 +11074,7 @@ function checkRuntimeOwnsAgentsStoreAndIpcOperations(): void {
 
 function checkRuntimeOwnsAppStateUiSave(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/storage/app-state.ts')
-  const mainFile = path.join(root, 'src/main/ipc/app-state.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/app-state.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'mergeOnethingUiState',
@@ -11087,7 +11087,7 @@ function checkRuntimeOwnsAppStateUiSave(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_APP_STATE_IPC_UI_SAVE_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/app-state.ts: missing app-state IPC adapter']),
+      : ['apps/electron/src/main/ipc/app-state.ts: missing app-state IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns app-state UI save flow', lines)
@@ -11095,7 +11095,7 @@ function checkRuntimeOwnsAppStateUiSave(): void {
 
 function checkRuntimeOwnsSchedulerIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/ipc-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/scheduler.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/scheduler.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'listOnethingSchedulerTasks',
@@ -11123,7 +11123,7 @@ function checkRuntimeOwnsSchedulerIpcOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SCHEDULER_IPC_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/scheduler.ts: missing scheduler IPC adapter']),
+      : ['apps/electron/src/main/ipc/scheduler.ts: missing scheduler IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns scheduler IPC operations', lines)
@@ -11134,9 +11134,9 @@ function checkRuntimeOwnsSchedulerCore(): void {
   const runtimeCronFile = path.join(root, 'packages/onething-runtime/src/scheduler/cron.ts')
   const runtimeTypesFile = path.join(root, 'packages/onething-runtime/src/scheduler/types.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
-  const mainSchedulerFile = path.join(root, 'src/main/scheduler/index.ts')
-  const mainCronFile = path.join(root, 'src/main/scheduler/cron.ts')
-  const mainTypesFile = path.join(root, 'src/main/scheduler/types.ts')
+  const mainSchedulerFile = path.join(root, 'apps/electron/src/main/scheduler/index.ts')
+  const mainCronFile = path.join(root, 'apps/electron/src/main/scheduler/cron.ts')
+  const mainTypesFile = path.join(root, 'apps/electron/src/main/scheduler/types.ts')
   const runtimeSchedulerContent = fs.existsSync(runtimeSchedulerFile) ? fs.readFileSync(runtimeSchedulerFile, 'utf-8') : ''
   const runtimeCronContent = fs.existsSync(runtimeCronFile) ? fs.readFileSync(runtimeCronFile, 'utf-8') : ''
   const runtimeTypesContent = fs.existsSync(runtimeTypesFile) ? fs.readFileSync(runtimeTypesFile, 'utf-8') : ''
@@ -11181,7 +11181,7 @@ function checkRuntimeOwnsSchedulerCore(): void {
       .filter(symbol => !runtimeIndexContent.includes(symbol))
       .map(symbol => `${rel(runtimeIndexFile)}: missing scheduler public export ${symbol}`),
     ...(
-      runtimeSchedulerContent.includes('../stores/paths.js') || runtimeSchedulerContent.includes('src/main') || runtimeSchedulerContent.includes('@main/')
+      runtimeSchedulerContent.includes('../stores/paths.js') || runtimeSchedulerContent.includes('apps/electron/src/main') || runtimeSchedulerContent.includes('@main/')
         ? [`${rel(runtimeSchedulerFile)}: runtime scheduler must not import main/store path globals`]
         : []
     ),
@@ -11202,7 +11202,7 @@ function checkRuntimeOwnsSchedulerCore(): void {
     ),
     ...(fs.existsSync(mainSchedulerFile)
       ? matchingLines(mainSchedulerFile, MAIN_SCHEDULER_CORE_FORBIDDEN_PATTERNS)
-      : ['src/main/scheduler/index.ts: missing scheduler core adapter']),
+      : ['apps/electron/src/main/scheduler/index.ts: missing scheduler core adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns scheduler core runtime', lines)
@@ -11211,7 +11211,7 @@ function checkRuntimeOwnsSchedulerCore(): void {
 function checkRuntimeOwnsSchedulerRunHistory(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/run-history.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
-  const mainFile = path.join(root, 'src/main/scheduler/run-history.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/scheduler/run-history.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -11236,7 +11236,7 @@ function checkRuntimeOwnsSchedulerRunHistory(): void {
     ),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SCHEDULER_RUN_HISTORY_FORBIDDEN_PATTERNS)
-      : ['src/main/scheduler/run-history.ts: missing scheduler run-history adapter']),
+      : ['apps/electron/src/main/scheduler/run-history.ts: missing scheduler run-history adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns scheduler run-history storage', lines)
@@ -11245,7 +11245,7 @@ function checkRuntimeOwnsSchedulerRunHistory(): void {
 function checkRuntimeOwnsSchedulerUserTaskStore(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/user-tasks.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
-  const mainFile = path.join(root, 'src/main/scheduler/user-tasks.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/scheduler/user-tasks.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -11273,7 +11273,7 @@ function checkRuntimeOwnsSchedulerUserTaskStore(): void {
     ),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SCHEDULER_USER_TASK_STORE_FORBIDDEN_PATTERNS)
-      : ['src/main/scheduler/user-tasks.ts: missing scheduler user-tasks adapter']),
+      : ['apps/electron/src/main/scheduler/user-tasks.ts: missing scheduler user-tasks adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns scheduler user-task store', lines)
@@ -11283,8 +11283,8 @@ function checkRuntimeOwnsSchedulerRunDetailProjection(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/run-detail.ts')
   const runtimeRunnerFile = path.join(root, 'packages/onething-runtime/src/scheduler/agent-task-runner.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
-  const mainUserTasksFile = path.join(root, 'src/main/scheduler/user-tasks.ts')
-  const mainIpcFile = path.join(root, 'src/main/ipc/scheduler.ts')
+  const mainUserTasksFile = path.join(root, 'apps/electron/src/main/scheduler/user-tasks.ts')
+  const mainIpcFile = path.join(root, 'apps/electron/src/main/ipc/scheduler.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeRunnerContent = fs.existsSync(runtimeRunnerFile) ? fs.readFileSync(runtimeRunnerFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
@@ -11326,7 +11326,7 @@ function checkRuntimeOwnsSchedulerRunDetailProjection(): void {
     ),
     ...(fs.existsSync(mainUserTasksFile)
       ? matchingLines(mainUserTasksFile, MAIN_SCHEDULER_RUN_DETAIL_FORBIDDEN_PATTERNS)
-      : ['src/main/scheduler/user-tasks.ts: missing scheduler user-tasks adapter']),
+      : ['apps/electron/src/main/scheduler/user-tasks.ts: missing scheduler user-tasks adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns scheduler run-detail projection', lines)
@@ -11335,7 +11335,7 @@ function checkRuntimeOwnsSchedulerRunDetailProjection(): void {
 function checkRuntimeOwnsSchedulerAgentTaskRunner(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/scheduler/agent-task-runner.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/scheduler/index.ts')
-  const mainFile = path.join(root, 'src/main/scheduler/user-tasks.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/scheduler/user-tasks.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -11360,7 +11360,7 @@ function checkRuntimeOwnsSchedulerAgentTaskRunner(): void {
     ),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_SCHEDULER_AGENT_TASK_RUNNER_FORBIDDEN_PATTERNS)
-      : ['src/main/scheduler/user-tasks.ts: missing scheduler user-tasks adapter']),
+      : ['apps/electron/src/main/scheduler/user-tasks.ts: missing scheduler user-tasks adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns scheduler agent task runner', lines)
@@ -11368,7 +11368,7 @@ function checkRuntimeOwnsSchedulerAgentTaskRunner(): void {
 
 function checkRuntimeOwnsFilesListIpcOperation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-search.ts')
-  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'resolveOnethingFileSearchRoots',
@@ -11381,7 +11381,7 @@ function checkRuntimeOwnsFilesListIpcOperation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_LIST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns files list IPC operation', lines)
@@ -11389,7 +11389,7 @@ function checkRuntimeOwnsFilesListIpcOperation(): void {
 
 function checkRuntimeOwnsDirsListIpcOperation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/directory-listing.ts')
-  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'expandOnethingDirectoryBasePath',
@@ -11402,7 +11402,7 @@ function checkRuntimeOwnsDirsListIpcOperation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_DIRS_LIST_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns dirs list IPC operation', lines)
@@ -11410,7 +11410,7 @@ function checkRuntimeOwnsDirsListIpcOperation(): void {
 
 function checkRuntimeOwnsFileContentAndDirectoryOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'readOnethingFileContent',
@@ -11424,7 +11424,7 @@ function checkRuntimeOwnsFileContentAndDirectoryOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_FILE_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns file content and directory operations', lines)
@@ -11432,7 +11432,7 @@ function checkRuntimeOwnsFileContentAndDirectoryOperations(): void {
 
 function checkRuntimeOwnsFileMutationOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-operations.ts')
-  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'createOnethingFile',
@@ -11447,7 +11447,7 @@ function checkRuntimeOwnsFileMutationOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_MUTATION_OPERATIONS_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns file mutation operations', lines)
@@ -11455,7 +11455,7 @@ function checkRuntimeOwnsFileMutationOperations(): void {
 
 function checkRuntimeOwnsFileRollbackOperation(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-rollback.ts')
-  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'rollbackOnethingFile',
@@ -11466,7 +11466,7 @@ function checkRuntimeOwnsFileRollbackOperation(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_ROLLBACK_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns file rollback operation', lines)
@@ -11474,7 +11474,7 @@ function checkRuntimeOwnsFileRollbackOperation(): void {
 
 function checkRuntimeOwnsFileWatchOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/file-watch.ts')
-  const mainFile = path.join(root, 'src/main/ipc/files.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const requiredRuntimeSymbols = [
     'startOnethingFileWatchForIpc',
@@ -11486,7 +11486,7 @@ function checkRuntimeOwnsFileWatchOperations(): void {
       .map(symbol => `${rel(runtimeFile)}: missing runtime-owned ${symbol}`),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_FILES_IPC_WATCH_FORBIDDEN_PATTERNS)
-      : ['src/main/ipc/files.ts: missing files IPC adapter']),
+      : ['apps/electron/src/main/ipc/files.ts: missing files IPC adapter']),
   ]
 
   assertNoMatches('packages/onething-runtime owns file watch IPC operations', lines)
@@ -11496,7 +11496,7 @@ function checkRuntimeOwnsRipgrepFileSearchRuntime(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/files/ripgrep.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/files/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/files/__tests__/ripgrep.test.ts')
-  const mainFile = path.join(root, 'src/main/utils/ripgrep.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/utils/ripgrep.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
@@ -11551,7 +11551,7 @@ function checkRuntimeOwnsToolSandboxRuntime(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/sandbox-runtime.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/sandbox-runtime.test.ts')
-  const mainFile = path.join(root, 'src/main/tools/core/sandbox.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/tools/core/sandbox.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
@@ -11605,7 +11605,7 @@ function checkRuntimeOwnsToolEditEngine(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/tools/edit-engine.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/edit-engine.test.ts')
-  const mainFile = path.join(root, 'src/main/tools/core/edit-engine.ts')
+  const mainFile = path.join(root, 'apps/electron/src/main/tools/core/edit-engine.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
@@ -11651,18 +11651,18 @@ function checkRuntimeOwnsToolEditEngine(): void {
 function checkRuntimeOwnsConcreteBuiltinTools(): void {
   const removedFiles = [
     'packages/core/tools/time.ts',
-    'src/main/tools/builtin/get-current-time.ts',
-    'src/main/tools/builtin/fart.ts',
-    'src/main/tools/builtin/time.ts',
-    'src/main/tools/core/bash-classifier.ts',
-    'src/main/tools/core/edit-engine.ts',
-    'src/main/tools/core/file-mutation-audit.ts',
-    'src/main/tools/core/file-mutation-queue.ts',
-    'src/main/tools/core/output-accumulator.ts',
-    'src/main/tools/core/sensitive-files.ts',
-    'src/main/tools/core/text-truncation.ts',
-    'src/main/tools/core/tool-effect.ts',
-    'src/main/tools/core/tool-result.ts',
+    'apps/electron/src/main/tools/builtin/get-current-time.ts',
+    'apps/electron/src/main/tools/builtin/fart.ts',
+    'apps/electron/src/main/tools/builtin/time.ts',
+    'apps/electron/src/main/tools/core/bash-classifier.ts',
+    'apps/electron/src/main/tools/core/edit-engine.ts',
+    'apps/electron/src/main/tools/core/file-mutation-audit.ts',
+    'apps/electron/src/main/tools/core/file-mutation-queue.ts',
+    'apps/electron/src/main/tools/core/output-accumulator.ts',
+    'apps/electron/src/main/tools/core/sensitive-files.ts',
+    'apps/electron/src/main/tools/core/text-truncation.ts',
+    'apps/electron/src/main/tools/core/tool-effect.ts',
+    'apps/electron/src/main/tools/core/tool-result.ts',
     'packages/core/tools/sensitive-files.ts',
     'packages/core/tools/background-jobs.ts',
     'packages/core/tools/bash-executor.ts',
@@ -11686,9 +11686,9 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
   const runtimeTimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts')
   const runtimeCalculatorFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/calculator.ts')
   const runtimeCalculatorTestFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/calculator.test.ts')
-  const mainCalculatorFile = path.join(root, 'src/main/tools/builtin/calculator.ts')
-  const mainBuiltinIndexFile = path.join(root, 'src/main/tools/builtin/index.ts')
-  const mainHeadlessFile = path.join(root, 'src/main/tools/builtin/headless.ts')
+  const mainCalculatorFile = path.join(root, 'apps/electron/src/main/tools/builtin/calculator.ts')
+  const mainBuiltinIndexFile = path.join(root, 'apps/electron/src/main/tools/builtin/index.ts')
+  const mainHeadlessFile = path.join(root, 'apps/electron/src/main/tools/builtin/headless.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
   const vitestConfig = path.join(root, 'vitest.config.ts')
   const runtimeToolsIndexContent = fs.existsSync(runtimeToolsIndexFile) ? fs.readFileSync(runtimeToolsIndexFile, 'utf-8') : ''

@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createOnethingRuntimeFacade } from '@onething/core'
 import type { CorePluginCommandContext } from '@onething/core/plugins'
 import { resetPermissionGrantsForTests } from '@onething/core/permission'
-import { createDefaultSettings } from '../../../src/shared/defaults/settings.js'
-import type { MCPServerConfig, MCPServerState } from '../../../src/shared/ipc/mcp.js'
-import type { AppSettings } from '../../../src/shared/ipc/settings.js'
+import { createDefaultSettings } from '@shared/defaults/settings.js'
+import type { MCPServerConfig, MCPServerState } from '@shared/ipc/mcp.js'
+import type { AppSettings } from '@shared/ipc/settings.js'
 import { createOnethingHttpServer } from './http.js'
 import {
   SERVER_REDACTED_SECRET,

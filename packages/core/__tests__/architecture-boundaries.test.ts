@@ -55,7 +55,7 @@ describe('architecture boundaries', () => {
   })
 
   it('keeps renderer product code behind platformApi instead of direct IPC', () => {
-    expect(findForbiddenReferences('src/renderer', [
+    expect(findForbiddenReferences('packages/renderer', [
       /window\.electronAPI/,
       /\bipcMain\b/,
       /\bipcRenderer\b/,
@@ -64,8 +64,8 @@ describe('architecture boundaries', () => {
       /require\s*\(\s*['"]electron['"]\s*\)/,
     ], {
       allowFile: filePath => (
-        filePath.startsWith('src/renderer/platform/')
-        || filePath === 'src/renderer/types/index.ts'
+        filePath.startsWith('packages/renderer/platform/')
+        || filePath === 'packages/renderer/types/index.ts'
       ),
     })).toEqual([])
   })
@@ -75,8 +75,8 @@ describe('architecture boundaries', () => {
     expect(findForbiddenReferences('apps/server', hostOnlyPatterns)).toEqual([])
   })
 
-  it('keeps apps/server off Electron app source (src/shared stays allowed)', () => {
-    // apps/web intentionally builds src/renderer via vite aliases, so this
+  it('keeps apps/server off Electron app source (packages/shared stays allowed)', () => {
+    // apps/web intentionally builds packages/renderer via vite aliases, so this
     // rule applies to the server host only.
     expect(findForbiddenReferences('apps/server', [
       appSourceImportPattern,

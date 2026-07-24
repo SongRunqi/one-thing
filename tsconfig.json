@@ -24,13 +24,13 @@
       "@onething/electron-host/*": ["apps/electron/src/*"],
       "@onething/runtime": ["packages/onething-runtime/src/index.ts"],
       "@onething/runtime/*": ["packages/onething-runtime/src/*"],
-      "@/*": ["src/renderer/*"],
-      "@main/*": ["src/main/*"],
-      "@shared/*": ["src/shared/*"],
+      "@/*": ["packages/renderer/*"],
+      "@main/*": ["apps/electron/src/main/*"],
+      "@shared/*": ["packages/shared/*"],
       "@preload/*": ["apps/electron/src/preload/*"]
     },
     "types": ["node"]
   },
-  "include": ["src"],
+  "include": ["packages", "apps"],
   "exclude": ["node_modules", "dist"]
 }

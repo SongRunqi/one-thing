@@ -26,6 +26,11 @@ export interface InjectMessageCommand {
   origin?: unknown
 }
 
+export interface RetractSteeringLikeCommand {
+  type?: string
+  messageId: string
+}
+
 /**
  * HeadlessStreamEngine owns the Electron-free part of the production stream
  * engine: command subscription, command target binding, active stream
@@ -78,6 +83,18 @@ export abstract class HeadlessStreamEngine<
       ...(origin !== undefined ? { origin } : {}),
     })
     this.log(`Steering queued for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
+  }
+
+  /**
+   * Retract a steering message that is still waiting in the queue. Returns
+   * false when the message was already consumed by a turn (or never queued).
+   */
+  retractSteerMessage(sessionId: string, messageId: string): boolean {
+    const removed = this.steeringQueues.get(sessionId)?.removeById(messageId)
+    if (removed) {
+      this.log(`Steering retracted for ${sessionId.slice(0, 8)}: ${messageId}`)
+    }
+    return Boolean(removed)
   }
 
   followUpMessage(sessionId: string, content: string, source = 'api', origin?: unknown): void {
@@ -211,6 +228,10 @@ export abstract class HeadlessStreamEngine<
       eventBus.onAnySession('command:inject-steering', (envelope) => {
         const command = envelope.event as InjectMessageCommand
         this.steerMessage(envelope.sessionId, command.content, command.source || 'eventbus', command.origin)
+      }, 'StreamEngine'),
+      eventBus.onAnySession('command:retract-steering', (envelope) => {
+        const command = envelope.event as RetractSteeringLikeCommand
+        this.retractSteerMessage(envelope.sessionId, command.messageId)
       }, 'StreamEngine'),
       eventBus.onAnySession('command:inject-followup', (envelope) => {
         const command = envelope.event as InjectMessageCommand

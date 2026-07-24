@@ -452,3 +452,285 @@ describe('runAgentLoop externally-executed tool calls', () => {
     expect(result.text).toBe('ok')
   })
 })
+
+describe('runAgentLoop no-valid-tool-call nudge', () => {
+  it('nudges the model once when a turn claims tool_calls with zero calls, then continues', async () => {
+    const turnsSeen: number[] = []
+    const provider = baseProvider(async function* (request) {
+      turnsSeen.push(request.turn)
+      if (request.turn === 1) {
+        // Provider-side loss: finish claims tool_calls but no call was emitted.
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'text-delta', turn: request.turn, delta: 'recovered' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+
+    const result = await runAgentLoop({
+      provider,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'do the thing' }],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      maxTurns: 5,
+    })
+
+    expect(turnsSeen).toEqual([1, 2])
+    expect(result.text).toBe('recovered')
+    expect(result.finishReason).toBe('stop')
+    const nudges = result.messages.filter(
+      message => message.role === 'user'
+        && typeof message.content === 'string'
+        && message.content.includes('no valid tool call was received'),
+    )
+    expect(nudges).toHaveLength(1)
+  })
+
+  it('stops nudging after two attempts and lets the run end', async () => {
+    let calls = 0
+    const provider = baseProvider(async function* (request) {
+      calls++
+      yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+    })
+
+    const result = await runAgentLoop({
+      provider,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'do the thing' }],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      maxTurns: 10,
+    })
+
+    // 1 original turn + 2 nudged retries, then the run ends normally.
+    expect(calls).toBe(3)
+    expect(result.turns).toBe(3)
+  })
+})
+
+describe('runAgentLoop turn-level auto-retry', () => {
+  it('retries transient provider errors in the same turn and emits auto-retry events', async () => {
+    let calls = 0
+    const provider = baseProvider(async function* (request) {
+      calls++
+      if (calls <= 2) {
+        throw Object.assign(new Error('fetch failed'), {})
+      }
+      yield { type: 'text-delta', turn: request.turn, delta: 'recovered' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+
+    const seen: AgentStreamEvent[] = []
+    const result = await runAgentLoop({
+      provider,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      turnRetryDelaysMs: [0, 0, 0],
+      onEvent(event) {
+        seen.push(event)
+      },
+    })
+
+    expect(calls).toBe(3)
+    expect(result.text).toBe('recovered')
+    expect(result.turns).toBe(1)
+    const retries = seen.filter(event => event.type === 'auto-retry')
+    expect(retries).toHaveLength(2)
+    expect(retries.map(event => event.type === 'auto-retry' && event.attempt)).toEqual([1, 2])
+  })
+
+  it('gives up after exhausting the backoff schedule', async () => {
+    let calls = 0
+    const provider = baseProvider(async function* () {
+      calls++
+      throw Object.assign(new Error('request failed'), { statusCode: 503 })
+    })
+
+    await expect(runAgentLoop({
+      provider,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      turnRetryDelaysMs: [0, 0, 0],
+    })).rejects.toThrow('request failed')
+    expect(calls).toBe(4)
+  })
+
+  it('does not retry fatal errors (quota/billing)', async () => {
+    let calls = 0
+    const provider = baseProvider(async function* () {
+      calls++
+      throw Object.assign(new Error('insufficient_quota: billing hard limit reached'), { statusCode: 429 })
+    })
+
+    await expect(runAgentLoop({
+      provider,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      turnRetryDelaysMs: [0, 0, 0],
+    })).rejects.toThrow('insufficient_quota')
+    expect(calls).toBe(1)
+  })
+
+  it('does not retry once a tool has executed in the failed attempt', async () => {
+    let calls = 0
+    const provider = baseProvider(async function* (request) {
+      calls++
+      yield { type: 'tool-call-start', turn: request.turn, toolCallId: 'call_1', toolName: 'read' }
+      yield { type: 'tool-call-delta', turn: request.turn, toolCallId: 'call_1', toolName: 'read', argumentsDelta: '{"path":"a"}' }
+      yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_1', name: 'read', arguments: '{"path":"a"}' } }
+      throw new Error('socket hang up mid-stream')
+    })
+    const tool: AgentTool = {
+      name: 'read',
+      parameters: { type: 'object' },
+      async execute() {
+        return { content: 'file contents' }
+      },
+    }
+
+    await expect(runAgentLoop({
+      provider,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [tool],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      turnRetryDelaysMs: [0, 0, 0],
+    })).rejects.toThrow('socket hang up')
+    expect(calls).toBe(1)
+  })
+})
+
+describe('runAgentLoop final-turn notice', () => {
+  it('injects a wrap-up notice before the last turn when the limit will cut the run', async () => {
+    const noticesSeenAtTurn: Array<{ turn: number; hasNotice: boolean }> = []
+    const provider = baseProvider(async function* (request) {
+      noticesSeenAtTurn.push({
+        turn: request.turn,
+        hasNotice: request.messages.some(
+          message => message.role === 'user'
+            && typeof message.content === 'string'
+            && message.content.includes('final turn of this run'),
+        ),
+      })
+      yield { type: 'tool-call-start', turn: request.turn, toolCallId: `call_${request.turn}`, toolName: 'read' }
+      yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: `call_${request.turn}`, name: 'read', arguments: '{}' } }
+      yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+    })
+    const tool: AgentTool = {
+      name: 'read',
+      parameters: { type: 'object' },
+      async execute() {
+        return { content: 'ok' }
+      },
+    }
+
+    const result = await runAgentLoop({
+      provider,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'go' }],
+      tools: [tool],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      maxTurns: 3,
+    })
+
+    expect(result.finishReason).toBe('max_turns')
+    expect(noticesSeenAtTurn).toEqual([
+      { turn: 1, hasNotice: false },
+      { turn: 2, hasNotice: false },
+      { turn: 3, hasNotice: true },
+    ])
+  })
+})
+
+describe('runAgentLoop steering interrupt (response boundary)', () => {
+  function toolCallTurnProvider(requests: { turn: number; messages: unknown[] }[]): AgentProvider {
+    return baseProvider(async function* (request) {
+      requests.push({ turn: request.turn, messages: request.messages.map(message => ({ ...message })) })
+      if (request.turn === 1) {
+        yield { type: 'tool-call-start', turn: request.turn, toolCallId: 'call_1', toolName: 'read' }
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_1', name: 'read', arguments: '{}' } }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'text-delta', turn: request.turn, delta: 'answered steer' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+  }
+
+  const readTool: AgentTool = {
+    name: 'read',
+    parameters: { type: 'object' },
+    async execute() {
+      return { content: 'ok' }
+    },
+  }
+
+  it('emits response-boundary before turn-start when beforeTurn injects a steering message', async () => {
+    const requests: { turn: number; messages: unknown[] }[] = []
+    const orderedEvents: string[] = []
+
+    const result = await runAgentLoop({
+      provider: toolCallTurnProvider(requests),
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'original ask' }],
+      tools: [readTool],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      maxTurns: 3,
+      beforeTurn({ turn, messages }) {
+        if (turn !== 2) return undefined
+        return {
+          messages: [...messages, { role: 'user', content: 'STEER: do this instead' }],
+          startNewResponse: true,
+        }
+      },
+      onEvent(event) {
+        if (event.type === 'turn-start' || event.type === 'response-boundary') {
+          orderedEvents.push(`${event.type}:${event.turn}`)
+        }
+      },
+    })
+
+    expect(result.text).toBe('answered steer')
+    // Boundary lands between turn 1 completing and turn 2 starting.
+    expect(orderedEvents).toEqual(['turn-start:1', 'response-boundary:2', 'turn-start:2'])
+    // The steer message reaches the model as the request tail of turn 2.
+    const lastTurnMessages = requests[1].messages as { role: string; content: string }[]
+    expect(lastTurnMessages[lastTurnMessages.length - 1]).toEqual({
+      role: 'user',
+      content: 'STEER: do this instead',
+    })
+  })
+
+  it('keeps plain-array hook returns silent (no response boundary)', async () => {
+    const requests: { turn: number; messages: unknown[] }[] = []
+    const boundaryEvents: unknown[] = []
+
+    await runAgentLoop({
+      provider: toolCallTurnProvider(requests),
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'original ask' }],
+      tools: [readTool],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      maxTurns: 3,
+      beforeTurn({ messages }) {
+        return [...messages]
+      },
+      onEvent(event) {
+        if (event.type === 'response-boundary') boundaryEvents.push(event)
+      },
+    })
+
+    expect(boundaryEvents).toEqual([])
+  })
+})

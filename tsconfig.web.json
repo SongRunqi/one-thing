@@ -1,9 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "include": [
-    "src/renderer/**/*",
-    "src/renderer/**/*.vue",
-    "src/shared/**/*"
+    "packages/renderer/**/*",
+    "packages/renderer/**/*.vue",
+    "packages/shared/**/*"
   ],
   "compilerOptions": {
     "composite": true,
@@ -15,9 +15,9 @@
       "@onething/core/*": ["packages/core/*/index.ts", "packages/core/*"],
       "@onething/runtime": ["packages/onething-runtime/src/index.ts"],
       "@onething/runtime/*": ["packages/onething-runtime/src/*"],
-      "@/*": ["src/renderer/*"],
-      "@renderer/*": ["src/renderer/*"],
-      "@shared/*": ["src/shared/*"]
+      "@/*": ["packages/renderer/*"],
+      "@renderer/*": ["packages/renderer/*"],
+      "@shared/*": ["packages/shared/*"]
     }
   }
 }

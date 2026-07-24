@@ -34,6 +34,12 @@ export const GoalParameters = z.object({
 		.describe(
 			"Required for complete and pause. complete: what was delivered and what evidence verifies it. pause: exactly what you need from the user (a decision, missing input, an external blocker).",
 		),
+	evidence: z
+		.string()
+		.optional()
+		.describe(
+			"Required for complete: itemized verification evidence, one entry per requirement of the objective, each backed by a tool observation (test run, file read, command output).",
+		),
 });
 
 function describeGoal(goal: SessionGoal, remaining: number | undefined): string {
@@ -51,13 +57,16 @@ function describeGoal(goal: SessionGoal, remaining: number | undefined): string 
 export function createGoalTool(
 	adapters: GoalToolAdapters,
 ): Tool.Info<typeof GoalParameters, GoalMetadata> {
+	// One mandatory self-check per goal before `complete` is accepted. Process
+	// memory is enough: after a restart the model simply re-runs the self-check.
+	const completeSelfCheckPassed = new Set<string>();
 	return Tool.define<typeof GoalParameters, GoalMetadata>("goal", {
 		name: "Goal",
 		description: `Declare how your work toward the session's persistent goal proceeds.
 
 While a goal is active, end every reply by calling this tool with your disposition:
 - continue: keep working. Put your next concrete step in "note"; the loop resumes with your plan in hand.
-- complete: the objective is fully satisfied. "reason" is required and must summarize what was delivered and what evidence verifies it — it is shown to the user as the delivery summary.
+- complete: the objective is fully satisfied. "reason" (delivery summary shown to the user) and "evidence" (itemized verification per requirement) are both required. The first complete call per goal triggers a mandatory self-check instead of completing; verify each requirement with tools, then call complete again to confirm.
 - pause: you need the user. "reason" is required and must state exactly what you need (a decision, missing input, an external blocker). Never pause merely because the work is hard, slow, or long.
 - get: read the objective, status and remaining budget at any time.
 
@@ -103,6 +112,26 @@ Creating, resuming and re-budgeting goals belong to the user (/goal command).`,
 							? 'complete requires "reason": what was delivered and what evidence verifies it'
 							: 'pause requires "reason": exactly what you need from the user',
 					);
+				}
+				if (args.action === "complete") {
+					if (!args.evidence?.trim()) {
+						throw new Error(
+							'complete requires "evidence": itemized verification evidence, one entry per requirement of the objective',
+						);
+					}
+					const goal = adapters.getGoal(ctx.sessionId);
+					if (goal) {
+						const selfCheckKey = `${ctx.sessionId}:${goal.id}`;
+						if (!completeSelfCheckPassed.has(selfCheckKey)) {
+							completeSelfCheckPassed.add(selfCheckKey);
+							return {
+								title: "Goal — self-check required",
+								output:
+									"Not completed yet. Before completion is accepted: re-check the objective requirement by requirement against your evidence, and verify with tools where possible (run it, read it, query it). If everything genuinely holds, call complete again to confirm; if anything is unverified, keep working instead.",
+								metadata: { action: args.action, status: goal.status },
+							};
+						}
+					}
 				}
 				const updated = adapters.updateGoalFromModel(
 					ctx.sessionId,

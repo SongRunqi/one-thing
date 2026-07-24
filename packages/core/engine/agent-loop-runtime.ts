@@ -239,6 +239,18 @@ export interface CorePendingAgentLoopInjectionResult<
 export type CoreAgentLoopTurnMessages<TMessage extends CoreAgentLoopMessage = CoreAgentLoopMessage> =
   Array<TMessage | CorePendingAgentLoopRuntimeMessage>
 
+export interface CoreAgentLoopBeforeTurnResult<
+  TMessage extends CoreAgentLoopMessage = CoreAgentLoopMessage,
+> {
+  messages: CoreAgentLoopTurnMessages<TMessage>
+  /**
+   * A steering user message was injected before this turn: the caller must
+   * surface it to the loop as a response boundary so the answer starts a
+   * new assistant response instead of continuing the interrupted one.
+   */
+  startNewResponse: boolean
+}
+
 export interface CoreAgentLoopPendingMessageAdapters<TContentParts = unknown> {
   createPendingMessageId(): string
   resolvePromptReferences(content: string): CorePendingAgentLoopPromptResolution<TContentParts>
@@ -374,7 +386,7 @@ export interface BuildAgentLoopDirectToolsWithAdaptersOptions<
   ) => Promise<TResult>
 }
 
-export type CoreAgentLoopCompactReason = 'threshold' | 'hard-limit'
+export type CoreAgentLoopCompactReason = 'threshold' | 'hard-limit' | 'compacted-tail-overflow'
 
 export interface CoreAgentLoopCompactState {
   configuredKeepTurns: number
@@ -1317,7 +1329,7 @@ export async function runAgentLoopBeforeTurnWithAdapters<
     TContentParts,
     TCompactResult
   >,
-): Promise<CoreAgentLoopTurnMessages<TMessage> | undefined> {
+): Promise<CoreAgentLoopBeforeTurnResult<TMessage> | undefined> {
   let nextMessages: CoreAgentLoopTurnMessages<TMessage> = options.messages
   const pendingSteeringMessages = options.adapters.drainSteeringMessages?.() ?? []
   const injectedMessages = await injectPendingAgentLoopMessagesWithAdapters({
@@ -1325,6 +1337,7 @@ export async function runAgentLoopBeforeTurnWithAdapters<
     pendingMessages: pendingSteeringMessages,
     adapters: options.adapters,
   })
+  const startNewResponse = Boolean(injectedMessages)
   if (injectedMessages) {
     nextMessages = injectedMessages
   }
@@ -1352,7 +1365,7 @@ export async function runAgentLoopBeforeTurnWithAdapters<
     keepRecentTurns: options.keepRecentTurns,
     adapters: compactAdapters,
   })
-  if (compactedMessages) return compactedMessages
+  if (compactedMessages) return { messages: compactedMessages, startNewResponse }
 
   const blockSession = options.adapters.getSession(options.ctx.sessionId) ?? undefined
   const blockUsage = blockSession
@@ -1375,7 +1388,9 @@ export async function runAgentLoopBeforeTurnWithAdapters<
     inputTokens: blockUsage?.visibleInputTokens,
   })
   if (blockReason) throw new Error(blockReason)
-  return nextMessages === options.messages ? undefined : nextMessages
+  return nextMessages === options.messages
+    ? undefined
+    : { messages: nextMessages, startNewResponse }
 }
 
 export async function runAgentLoopAfterTurnWithAdapters<

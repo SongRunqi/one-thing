@@ -764,8 +764,21 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		adapters,
 	);
 	const turnQueueAdapters = {
-		drainSteeringMessages: (): CorePendingAgentLoopInputMessage[] =>
-			ctx.steeringQueue?.drain() ?? [],
+		drainSteeringMessages: (): CorePendingAgentLoopInputMessage[] => {
+			const drained = ctx.steeringQueue?.drain() ?? [];
+			// Consumed messages are no longer retractable — tell the UI so it
+			// drops the withdraw affordance on those persisted user messages.
+			const messageIds = drained
+				.map((message) => message.id)
+				.filter((id): id is string => Boolean(id));
+			if (messageIds.length > 0) {
+				void adapters.emitEvent(ctx.sessionId, {
+					type: "steering:consumed",
+					messageIds,
+				});
+			}
+			return drained;
+		},
 		drainFollowUpMessages: (): CorePendingAgentLoopInputMessage[] =>
 			ctx.followUpQueue?.drain() ?? [],
 	};
@@ -844,7 +857,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 			injectSkills: false,
 		},
 		beforeTurn: async ({ turn, messages }) => {
-			const replacementMessages = await runAgentLoopBeforeTurnWithAdapters({
+			const replacement = await runAgentLoopBeforeTurnWithAdapters({
 				ctx: compactContext(ctx),
 				turn,
 				messages,
@@ -859,7 +872,11 @@ export async function buildOnethingAgentLoopStreamRuntime<
 					...turnCompactionAdapters,
 				},
 			});
-			return replacementMessages as AgentMessage[] | undefined;
+			if (!replacement) return undefined;
+			return {
+				messages: replacement.messages as AgentMessage[],
+				startNewResponse: replacement.startNewResponse,
+			};
 		},
 		afterTurn: async ({ messages }) => {
 			const replacementMessages = await runAgentLoopAfterTurnWithAdapters({

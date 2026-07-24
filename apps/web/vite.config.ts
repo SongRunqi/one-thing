@@ -11,9 +11,9 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: [
-      { find: '@', replacement: resolve(projectRoot, 'src/renderer') },
-      { find: '@renderer', replacement: resolve(projectRoot, 'src/renderer') },
-      { find: '@shared', replacement: resolve(projectRoot, 'src/shared') },
+      { find: '@', replacement: resolve(projectRoot, 'packages/renderer') },
+      { find: '@renderer', replacement: resolve(projectRoot, 'packages/renderer') },
+      { find: '@shared', replacement: resolve(projectRoot, 'packages/shared') },
       { find: '@onething/core/ipc', replacement: resolve(projectRoot, 'packages/core/ipc/index.ts') },
       { find: '@onething/core/slash-commands', replacement: resolve(projectRoot, 'packages/core/slash-commands.ts') },
       { find: '@onething/core/engine/attachment-mime', replacement: resolve(projectRoot, 'packages/core/engine/attachment-mime.ts') },

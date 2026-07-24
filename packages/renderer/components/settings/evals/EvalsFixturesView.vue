@@ -1,0 +1,922 @@
+<template>
+  <div class="evals-fixtures-view">
+    <!-- Loading -->
+    <div
+      v-if="store.fixturesLoading"
+      class="evals-loading"
+    >
+      Loading fixtures...
+    </div>
+
+    <!-- Error -->
+    <ErrorNote
+      v-else-if="store.fixturesError"
+      class="evals-error"
+      :message="store.fixturesError"
+    />
+
+    <!-- Empty -->
+    <div
+      v-else-if="store.fixtures.length === 0"
+      class="evals-empty"
+    >
+      No fixtures yet. Fixtures are auto-exported when turns have negative signals (retries, tool errors, aborts).
+    </div>
+
+    <!-- Fixtures list -->
+    <div
+      v-else
+      class="evals-fixtures-list"
+    >
+      <div class="evals-fixtures-header">
+        <span class="evals-fixtures-count">{{ store.fixtures.length }} fixtures</span>
+      </div>
+
+      <div
+        v-for="fixture in store.fixtures"
+        :key="fixture.path"
+        class="evals-fixture-row"
+        :class="{ expanded: expandedFixture === fixture.path }"
+      >
+        <div
+          class="evals-fixture-summary"
+          @click="toggleFixture(fixture.path)"
+        >
+          <div class="evals-fixture-meta">
+            <span class="evals-fixture-date">{{ formatDate(fixture.capturedAt) }}</span>
+            <span class="evals-fixture-provider">{{ fixture.provider }}/{{ fixture.model }}</span>
+          </div>
+          <div class="evals-fixture-preview">
+            {{ fixture.userMessagePreview }}
+          </div>
+          <div class="evals-fixture-actions">
+            <button
+              class="evals-small-btn"
+              title="Promote to test case"
+              @click.stop="promoteFixture(fixture)"
+            >
+              ⬆️ Promote
+            </button>
+          </div>
+        </div>
+
+        <!-- Expanded: fixture JSON -->
+        <div
+          v-if="expandedFixture === fixture.path"
+          class="evals-fixture-details"
+        >
+          <div
+            v-if="fixtureLoading"
+            class="evals-loading"
+          >
+            Loading fixture...
+          </div>
+          <pre
+            v-else-if="store.selectedFixture"
+            class="evals-fixture-json"
+          >{{ JSON.stringify(store.selectedFixture, null, 2) }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- Promote dialog -->
+    <div
+      v-if="showPromoteDialog"
+      class="evals-promote-overlay"
+      @click.self="showPromoteDialog = false"
+    >
+      <div class="evals-promote-dialog">
+        <h3>Promote Fixture to Test Case</h3>
+
+        <!-- Basic info -->
+        <label class="evals-form-label">
+          Case ID
+          <input
+            v-model="promoteForm.caseId"
+            type="text"
+            class="evals-form-input"
+            placeholder="e.g. linux-unix-syntax"
+          >
+        </label>
+        <label class="evals-form-label">
+          Description
+          <textarea
+            v-model="promoteForm.description"
+            class="evals-form-textarea"
+            rows="2"
+            placeholder="What does this case verify?"
+          />
+        </label>
+
+        <!-- Assistant response preview -->
+        <div
+          v-if="promotedFixtureData"
+          class="evals-response-preview"
+        >
+          <div class="evals-section-label">
+            📤 Assistant Response
+          </div>
+          <div class="evals-response-content">
+            {{ responsePreview }}
+          </div>
+          <div class="evals-response-meta">
+            <span
+              class="evals-meta-badge"
+              :class="hasToolCalls ? 'has-tools' : 'no-tools'"
+            >
+              🔧 {{ promotedFixtureData.toolCallCount ?? 0 }} tool calls
+            </span>
+            <span class="evals-meta-badge">{{ promotedFixtureData.finishReason ?? 'unknown' }}</span>
+          </div>
+        </div>
+
+        <!-- Structured expect builder -->
+        <div class="evals-expect-builder">
+          <div class="evals-section-label">
+            🔍 Expectations (AND logic)
+          </div>
+
+          <!-- Tool Call -->
+          <div class="evals-expect-group">
+            <div class="evals-expect-group-title">
+              🔧 Tool Call
+            </div>
+            <label class="evals-checkbox">
+              <input
+                v-model="promoteForm.hasToolCalls"
+                type="checkbox"
+              >
+              Must make tool calls
+              <span
+                v-if="autoSuggest.hasToolCalls"
+                class="evals-auto-badge"
+              >🎯 auto</span>
+            </label>
+            <label
+              v-if="promotedToolNames.length > 0"
+              class="evals-checkbox"
+            >
+              <input
+                v-model="promoteForm.useFirstToolCall"
+                type="checkbox"
+              >
+              First tool call: {{ promotedToolNames[0] }}
+            </label>
+          </div>
+
+          <!-- Skill -->
+          <div
+            v-if="promotedSkills.length > 0"
+            class="evals-expect-group"
+          >
+            <div class="evals-expect-group-title">
+              🧩 Skill
+            </div>
+            <label class="evals-checkbox">
+              <input
+                v-model="promoteForm.anySkillUsed"
+                type="checkbox"
+              >
+              Must use any skill
+              <span
+                v-if="autoSuggest.anySkillUsed"
+                class="evals-auto-badge"
+              >🎯 auto</span>
+            </label>
+          </div>
+
+          <!-- MCP -->
+          <div
+            v-if="promotedMCPTools.length > 0"
+            class="evals-expect-group"
+          >
+            <div class="evals-expect-group-title">
+              🔌 MCP
+            </div>
+            <label class="evals-checkbox">
+              <input
+                v-model="promoteForm.mcpToolUsed"
+                type="checkbox"
+              >
+              Must use MCP tools
+              <span
+                v-if="autoSuggest.mcpToolUsed"
+                class="evals-auto-badge"
+              >🎯 auto</span>
+            </label>
+          </div>
+
+          <!-- Output -->
+          <div class="evals-expect-group">
+            <div class="evals-expect-group-title">
+              📝 Output
+            </div>
+            <label class="evals-form-label-sm">Must contain:
+              <input
+                v-model="promoteForm.contains"
+                type="text"
+                class="evals-form-input"
+                placeholder="e.g. comparison complete"
+              >
+            </label>
+            <label class="evals-form-label-sm">Must NOT contain:
+              <input
+                v-model="promoteForm.notContains"
+                type="text"
+                class="evals-form-input"
+                placeholder="e.g. sorry, I cannot"
+              >
+            </label>
+            <label class="evals-checkbox">
+              <input
+                v-model="promoteForm.useMinLength"
+                type="checkbox"
+              >
+              Min output length: <input
+                v-model.number="promoteForm.minOutputLength"
+                type="number"
+                class="evals-num-input"
+              > chars
+              <span
+                v-if="autoSuggest.useMinLength"
+                class="evals-auto-badge"
+              >🎯 auto</span>
+            </label>
+          </div>
+
+          <!-- Notes -->
+          <label class="evals-form-label-sm">Notes:
+            <textarea
+              v-model="promoteForm.notes"
+              class="evals-form-textarea"
+              rows="2"
+              placeholder="Why this case exists, what to watch for..."
+            />
+          </label>
+        </div>
+
+        <!-- Snapshot links -->
+        <div
+          v-if="promotedFixtureData"
+          class="evals-snapshot-links"
+        >
+          <span
+            v-if="hasPromptSnapshot"
+            class="evals-link"
+            @click="viewSnapshot('prompt')"
+          >📄 Prompt</span>
+          <span
+            v-if="hasContextSnapshot"
+            class="evals-link"
+            @click="viewSnapshot('context')"
+          >💬 Context</span>
+        </div>
+
+        <div class="evals-promote-actions">
+          <button
+            class="evals-action-btn"
+            @click="showPromoteDialog = false"
+          >
+            Cancel
+          </button>
+          <button
+            class="evals-action-btn primary"
+            @click="handlePromote"
+          >
+            Promote
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from "vue";
+import ErrorNote from "@/components/common/ErrorNote.vue";
+import { useEvalsStore } from "@/stores/evals";
+import type { EvalFixtureMeta } from "@/stores/evals";
+
+const store = useEvalsStore();
+const expandedFixture = ref<string | null>(null);
+const fixtureLoading = ref(false);
+const showPromoteDialog = ref(false);
+const promoteTarget = ref<EvalFixtureMeta | null>(null);
+
+// Structured promote form
+const promoteForm = ref({
+  caseId: "",
+  description: "",
+  // Tool Call
+  hasToolCalls: false,
+  useFirstToolCall: false,
+  // Skill
+  anySkillUsed: false,
+  // MCP
+  mcpToolUsed: false,
+  // Output
+  contains: "",
+  notContains: "",
+  useMinLength: false,
+  minOutputLength: 100,
+  // Meta
+  notes: "",
+});
+
+// Parsed fixture data for preview
+const promotedFixtureData = ref<{
+  content?: string;
+  toolCalls?: Array<{ name: string; args?: Record<string, unknown> }>;
+  toolCallCount?: number;
+  finishReason?: string;
+  promptSnapshotRef?: string;
+  contextSnapshotRef?: string;
+  skills?: Array<{ name: string }>;
+  toolNames?: string[];
+} | null>(null);
+
+const responsePreview = computed(() => {
+  const c = promotedFixtureData.value?.content ?? "";
+  return c.length > 300 ? c.slice(0, 300) + "..." : c || "(no content)";
+});
+
+const hasToolCalls = computed(() =>
+  (promotedFixtureData.value?.toolCallCount ?? 0) > 0,
+);
+
+const promotedToolNames = computed(() =>
+  promotedFixtureData.value?.toolCalls?.map((tc) => tc.name) ?? [],
+);
+
+const promotedSkills = computed(() =>
+  promotedFixtureData.value?.skills ?? [],
+);
+
+const promotedMCPTools = computed(() =>
+  (promotedFixtureData.value?.toolNames ?? []).filter((n) =>
+    n.startsWith("mcp__"),
+  ),
+);
+
+const hasPromptSnapshot = computed(() =>
+  !!promotedFixtureData.value?.promptSnapshotRef,
+);
+const hasContextSnapshot = computed(() =>
+  !!promotedFixtureData.value?.contextSnapshotRef,
+);
+
+// Auto-suggestions
+const autoSuggest = computed(() => {
+  const data = promotedFixtureData.value;
+  if (!data)
+    return {
+      hasToolCalls: false,
+      anySkillUsed: false,
+      mcpToolUsed: false,
+      useMinLength: false,
+    };
+
+  const noTools = (data.toolCallCount ?? 0) === 0;
+  const shortReply = (data.content?.length ?? 0) < 50;
+
+  return {
+    hasToolCalls: noTools,
+    anySkillUsed:
+      (data.skills?.length ?? 0) > 0 &&
+      !data.toolCalls?.some(
+        (tc) =>
+          tc.name === "read" ||
+          (tc.name === "bash" &&
+            String(tc.args?.command ?? "").includes("SKILL.md")),
+      ),
+    mcpToolUsed:
+      (data.toolNames?.some((n) => n.startsWith("mcp__")) ?? false) &&
+      !data.toolCalls?.some((tc) => tc.name.startsWith("mcp__")),
+    useMinLength: shortReply && noTools,
+  };
+});
+
+function formatDate(ts: string) {
+  if (!ts) return "Unknown";
+  const d = new Date(ts);
+  return d.toLocaleString();
+}
+
+async function toggleFixture(path: string) {
+  if (expandedFixture.value === path) {
+    expandedFixture.value = null;
+    return;
+  }
+  expandedFixture.value = path;
+  fixtureLoading.value = true;
+  await store.loadFixture(path);
+  fixtureLoading.value = false;
+}
+
+function promoteFixture(fixture: EvalFixtureMeta) {
+  promoteTarget.value = fixture;
+
+  // Reset form
+  promoteForm.value = {
+    caseId: "",
+    description: "",
+    hasToolCalls: false,
+    useFirstToolCall: false,
+    anySkillUsed: false,
+    mcpToolUsed: false,
+    contains: "",
+    notContains: "",
+    useMinLength: false,
+    minOutputLength: 100,
+    notes: "",
+  };
+
+  // Parse fixture data for preview and auto-suggest
+  // The fixture needs to be loaded first
+  promotedFixtureData.value = null;
+  loadAndParseFixture(fixture.path);
+
+  showPromoteDialog.value = true;
+}
+
+async function loadAndParseFixture(path: string) {
+  try {
+    const res = await store.loadFixture(path);
+    // Wait briefly for the store to update
+    await new Promise((r) => setTimeout(r, 50));
+    const fixture = store.selectedFixture as Record<string, unknown> | null;
+    if (!fixture) return;
+
+    const ar = fixture.assistantResponse as
+      | Record<string, unknown>
+      | undefined;
+    const ctx = fixture.context as Record<string, unknown> | undefined;
+
+    promotedFixtureData.value = {
+      content: ar?.content != null ? String(ar.content) : undefined,
+      toolCalls: (ar?.toolCalls as Array<Record<string, unknown>>)?.map(
+        (tc) => ({
+          name: String(tc.name ?? ""),
+          args: tc.args as Record<string, unknown> | undefined,
+        }),
+      ),
+      toolCallCount:
+        (ar?.toolCalls as Array<unknown>)?.length ?? 0,
+      finishReason: ar?.finishReason != null ? String(ar.finishReason) : undefined,
+      promptSnapshotRef:
+        fixture.promptSnapshotRef != null
+          ? String(fixture.promptSnapshotRef)
+          : undefined,
+      contextSnapshotRef:
+        fixture.contextSnapshotRef != null
+          ? String(fixture.contextSnapshotRef)
+          : undefined,
+      skills: (ctx?.skills as Array<{ name: string }>),
+      toolNames: (ctx?.toolNames as string[]),
+    };
+  } catch {
+    // Ignore parse errors
+  }
+}
+
+function viewSnapshot(type: "prompt" | "context") {
+  // Open snapshot in a new view or inline expansion
+  const ref =
+    type === "prompt"
+      ? promotedFixtureData.value?.promptSnapshotRef
+      : promotedFixtureData.value?.contextSnapshotRef;
+  if (ref) {
+    // For now, just log — full snapshot viewer is a future enhancement
+    console.log(`[Evals] View snapshot: ${ref}`);
+  }
+}
+
+async function handlePromote() {
+  if (!promoteTarget.value) return;
+
+  const expect: Record<string, unknown> = {};
+  const f = promoteForm.value;
+
+  if (f.hasToolCalls) expect.hasToolCalls = true;
+  if (f.useFirstToolCall && promotedToolNames.value[0]) {
+    expect.firstToolCall = promotedToolNames.value[0];
+  }
+  if (f.anySkillUsed) expect.anySkillUsed = true;
+  if (f.mcpToolUsed) expect.mcpToolUsed = true;
+  if (f.contains) expect.contains = f.contains;
+  if (f.notContains) expect.notContains = f.notContains;
+  if (f.useMinLength && f.minOutputLength) {
+    expect.minOutputLength = f.minOutputLength;
+  }
+  if (f.notes) expect.notes = f.notes;
+
+  // Maintain backward compat: cast to the old { firstToolCall?, contains?, notContains? }
+  const compat = expect as {
+    firstToolCall?: string;
+    contains?: string;
+    notContains?: string;
+  };
+
+  const res = await store.promoteFixture({
+    fixturePath: promoteTarget.value.path,
+    caseId: promoteForm.value.caseId,
+    description: promoteForm.value.description,
+    expect: compat,
+  });
+
+  if (res.success) {
+    showPromoteDialog.value = false;
+    if (
+      confirm(
+        `Case created at ${res.casePath}.\n\nRun it once to verify it fails under the current prompt?`,
+      )
+    ) {
+      store.activeView = "runs";
+    }
+  } else {
+    alert(`Failed: ${res.error}`);
+  }
+}
+</script>
+
+<style scoped>
+.evals-fixtures-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.evals-fixtures-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+}
+
+.evals-fixtures-count {
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--settings-ink-4);
+}
+
+/* Fixture rows: hairline ledger rows; expansion is a left ink rule */
+.evals-fixture-row {
+  border-bottom: 1px solid var(--settings-rule-soft);
+}
+
+.evals-fixture-row:first-of-type {
+  border-top: 1px solid var(--settings-rule-soft);
+}
+
+.evals-fixture-row.expanded {
+  box-shadow: inset 2px 0 0 var(--settings-accent);
+}
+
+.evals-fixture-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 4px 10px 8px;
+  cursor: pointer;
+}
+
+.evals-fixture-summary:hover .evals-fixture-preview {
+  color: var(--settings-ink);
+}
+
+.evals-fixture-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 200px;
+}
+
+.evals-fixture-date {
+  font-size: 12px;
+  color: var(--settings-ink-2);
+  font-weight: 520;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evals-fixture-provider {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--settings-ink-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evals-fixture-preview {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--settings-ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evals-fixture-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Text action: mono small, accent underline on hover */
+.evals-small-btn {
+  appearance: none;
+  padding: 2px 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--font-mono, monospace);
+  color: var(--settings-ink-3);
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.evals-small-btn:hover {
+  color: var(--settings-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--settings-accent);
+}
+
+.evals-fixture-details {
+  padding: 4px 4px 14px 8px;
+  border-top: 1px solid color-mix(in srgb, var(--settings-rule-soft) 32%, transparent);
+}
+
+.evals-fixture-json {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--settings-ink-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 500px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+/* Promote dialog: paper sheet, hard-offset ink shadow */
+.evals-promote-overlay {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--ui-surface-app-bg, var(--bg)) 55%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-toast, 100);
+  padding: 20px;
+}
+
+.evals-promote-dialog {
+  background: var(--settings-paper);
+  border: 1px solid var(--settings-rule);
+  border-radius: 0;
+  padding: 24px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 85vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: var(--shadow-paper);
+}
+
+.evals-promote-dialog h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 620;
+  color: var(--settings-ink);
+}
+
+.evals-promote-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.evals-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--settings-ink-3);
+  font-weight: 520;
+}
+
+.evals-form-input,
+.evals-form-select,
+.evals-form-textarea {
+  padding: 6px 8px;
+  border: 1px solid var(--settings-rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-ink);
+  font-size: 13px;
+  font-family: inherit;
+  min-width: 0;
+}
+
+.evals-form-input:focus,
+.evals-form-select:focus,
+.evals-form-textarea:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+.evals-form-textarea {
+  resize: vertical;
+}
+
+/* Outlined buttons: state lives in the edge line, never a fill */
+.evals-action-btn {
+  padding: 6px 16px;
+  border: 1px solid var(--settings-rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-ink-2);
+  font-size: 13px;
+  font-weight: 520;
+  cursor: pointer;
+  transition: color 0.12s ease, border-color 0.12s ease;
+}
+
+.evals-action-btn:hover {
+  color: var(--settings-ink);
+  border-color: var(--settings-accent);
+}
+
+.evals-action-btn.primary {
+  border-color: var(--settings-accent);
+  color: var(--settings-accent);
+}
+
+.evals-loading,
+.evals-empty {
+  text-align: center;
+  padding: 30px;
+  color: var(--settings-ink-4);
+  font-size: 13px;
+}
+
+.evals-error {
+  margin: 24px 0;
+}
+
+/* ── Promote dialog: enhanced styles ── */
+/* Response excerpt held by a left rule, no filled block */
+.evals-response-preview {
+  border-left: 1px solid color-mix(in srgb, var(--settings-rule) 55%, transparent);
+  padding: 2px 0 2px 10px;
+}
+
+.evals-section-label {
+  font-size: 13px;
+  font-weight: 620;
+  color: var(--settings-ink);
+  margin-bottom: 8px;
+}
+
+.evals-response-content {
+  font-size: 12px;
+  color: var(--settings-ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.4;
+  margin-bottom: 8px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.evals-response-meta {
+  display: flex;
+  gap: 6px;
+}
+
+/* Badges: outlined rings, zero fill — colour lives in ink and edge */
+.evals-meta-badge {
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  font-variant-numeric: tabular-nums;
+  padding: 1px 8px 2px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--settings-rule) 80%, transparent);
+  background: transparent;
+  color: var(--settings-ink-3);
+  font-weight: 520;
+}
+
+.evals-meta-badge.has-tools {
+  border-color: var(--ui-status-success-border, var(--ui-status-success-fg, #27ae60));
+  color: var(--ui-status-success-fg, #27ae60);
+}
+
+.evals-meta-badge.no-tools {
+  border-color: var(--ui-status-danger-border, var(--ui-status-danger-fg, #b3403a));
+  color: var(--ui-status-danger-fg, #b3403a);
+}
+
+.evals-expect-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.evals-expect-group {
+  border-left: 1px solid color-mix(in srgb, var(--settings-rule) 55%, transparent);
+  padding: 2px 0 2px 10px;
+}
+
+.evals-expect-group-title {
+  font-size: 11px;
+  font-weight: 620;
+  color: var(--settings-ink-3);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.evals-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--settings-ink-2);
+  padding: 3px 0;
+}
+
+.evals-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.evals-auto-badge {
+  font-size: 9px;
+  padding: 1px 6px 2px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-status-info-border, var(--ui-status-info-fg, #3498db));
+  background: transparent;
+  color: var(--ui-status-info-fg, #3498db);
+  font-weight: 600;
+}
+
+.evals-form-label-sm {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--settings-ink-3);
+}
+
+.evals-num-input {
+  max-width: 64px;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--settings-rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--settings-ink);
+  font-size: 12px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.evals-num-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+.evals-snapshot-links {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.evals-link {
+  font-size: 12px;
+  color: var(--settings-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.evals-link:hover {
+  color: var(--settings-ink);
+  text-decoration-color: var(--settings-accent);
+}
+</style>

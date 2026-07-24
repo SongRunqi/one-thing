@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts', 'packages/**/*.test.ts', 'apps/**/*.test.ts'],
+    include: ['packages/**/*.test.ts', 'apps/**/*.test.ts'],
     alias: {
       '@onething/core/agent-loop': path.resolve(__dirname, 'packages/core/agent-loop/index.ts'),
       '@onething/core/engine/attachment-mime': path.resolve(__dirname, 'packages/core/engine/attachment-mime.ts'),
@@ -224,10 +224,10 @@ export default defineConfig({
       '@onething/runtime/tools': path.resolve(__dirname, 'packages/onething-runtime/src/tools/index.ts'),
       '@onething/runtime/perf': path.resolve(__dirname, 'packages/onething-runtime/src/perf/index.ts'),
       '@onething/runtime': path.resolve(__dirname, 'packages/onething-runtime/src/index.ts'),
-      '@main': path.resolve(__dirname, 'src/main'),
-      '@shared': path.resolve(__dirname, 'src/shared'),
+      '@main': path.resolve(__dirname, 'apps/electron/src/main'),
+      '@shared': path.resolve(__dirname, 'packages/shared'),
       '@preload': path.resolve(__dirname, 'apps/electron/src/preload'),
-      '@': path.resolve(__dirname, 'src/renderer'),
+      '@': path.resolve(__dirname, 'packages/renderer'),
     },
   },
 })

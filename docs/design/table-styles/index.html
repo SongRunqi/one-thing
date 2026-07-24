@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Table 四案 · 纸墨</title>
+<style>
+  :root {
+    --paper0: #ece4d0;
+    --paper1: #f4eedd;
+    --paper2: #faf6ea;
+    --card: #fffdf6;
+    --ink: #262218;
+    --ink2: #4c4536;
+    --ink3: #7d7561;
+    --ink4: #a39a83;
+    --line: #ddd3bb;
+    --line-subtle: #e8e0cc;
+    --line-strong: #8a8069;
+    --zhusha: #a63c26;
+    --font-serif: "Source Han Serif SC", "Songti SC", "Noto Serif CJK SC", Georgia, serif;
+    --font-mono: "SF Mono", Menlo, Monaco, "Cascadia Code", monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--paper2);
+    color: var(--ink);
+    font-family: var(--font-serif);
+    font-size: 15px;
+    line-height: 1.7;
+    padding: 48px 0 120px;
+  }
+
+  .page {
+    width: min(760px, calc(100% - 48px));
+    margin: 0 auto;
+  }
+
+  .page-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .page-title::after { content: ''; flex: 1; border-top: 1px dashed var(--line); }
+
+  .page-sub { color: var(--ink3); font-size: 13px; margin: 6px 0 52px; }
+
+  .scheme { margin-bottom: 84px; }
+
+  .scheme-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  .scheme-no {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    color: var(--zhusha);
+  }
+  .scheme-name { font-size: 19px; font-weight: 700; }
+  .scheme-desc { color: var(--ink3); font-size: 13px; margin-bottom: 24px; }
+  .scheme-desc b { color: var(--ink2); font-weight: 600; }
+
+  .sample-caption {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink4);
+    margin: 26px 0 10px;
+  }
+
+  /* 共性:数字列 */
+  td.num, th.num { font-variant-numeric: tabular-nums; white-space: nowrap; font-family: var(--font-mono); font-size: 13.5px; }
+  code {
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    background: color-mix(in srgb, var(--paper1) 70%, transparent);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+
+  /* ============================================================
+     案一 · 三线表 booktabs — 只允许三条横线存在:顶、表头下、底。
+     同一墨色,只用粗细分层。行与行之间零线,靠行高呼吸。
+     ============================================================ */
+  .t1 table { border-collapse: collapse; width: 100%; }
+  .t1 th {
+    font-family: var(--font-serif);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--ink2);
+    text-align: left;
+    padding: 8px 18px 8px 2px;
+    border-top: 2px solid var(--line-strong);
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .t1 td {
+    padding: 8px 18px 8px 2px;
+    text-align: left;
+  }
+  .t1 tbody tr:last-child td { border-bottom: 2px solid var(--line-strong); }
+  .t1 tbody tr:hover td { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+
+  /* ============================================================
+     案二 · 簿记 register — 表头小写大写字距标签,横线系统:
+     表头上下同笔 1px 深线,行间发丝线。当前方向的定稿版。
+     ============================================================ */
+  .t2 table { border-collapse: collapse; width: 100%; }
+  .t2 th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink3);
+    text-align: left;
+    padding: 7px 18px 7px 2px;
+    border-top: 1px solid var(--line-strong);
+    border-bottom: 1px solid var(--line-strong);
+  }
+  .t2 td {
+    padding: 7px 18px 7px 2px;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  }
+  .t2 tbody tr:hover td { background: color-mix(in srgb, var(--ink) 3%, transparent); }
+
+  /* ============================================================
+     案三 · 稿纸 grid — 完整的极淡网格(含竖线)+ 表头纸色底块。
+     像方格稿纸/工程数据表,信息密度大时最稳。外框略深。
+     ============================================================ */
+  .t3 table {
+    border-collapse: collapse;
+    width: 100%;
+    border: 1px solid var(--line);
+  }
+  .t3 th {
+    font-family: var(--font-serif);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink2);
+    text-align: left;
+    padding: 7px 12px;
+    background: var(--paper1);
+    border: 1px solid var(--line-subtle);
+    border-bottom: 1px solid var(--line);
+  }
+  .t3 td {
+    padding: 7px 12px;
+    border: 1px solid var(--line-subtle);
+  }
+  .t3 tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--paper1) 40%, transparent); }
+
+  /* ============================================================
+     案四 · 行卡 rows — 没有任何表格线。每行一张微卡(纸白底、
+     subtle 边、2px 角),行间 6px 空隙;表头是悬在上方的裸标签。
+     Notion/Linear 的 list 语言翻译成纸墨。
+     ============================================================ */
+  .t4 table { border-collapse: separate; border-spacing: 0 6px; width: 100%; }
+  .t4 th {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink4);
+    text-align: left;
+    padding: 0 14px 2px;
+  }
+  .t4 td {
+    background: var(--card);
+    border-top: 1px solid var(--line-subtle);
+    border-bottom: 1px solid var(--line-subtle);
+    padding: 8px 14px;
+  }
+  .t4 td:first-child { border-left: 1px solid var(--line-subtle); border-radius: 2px 0 0 2px; }
+  .t4 td:last-child { border-right: 1px solid var(--line-subtle); border-radius: 0 2px 2px 0; }
+  .t4 tbody tr:hover td { border-color: var(--line); background: #fffef9; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="page-title">table · 四案</div>
+  <p class="page-sub">同一组数据,四种截然不同的结构逻辑。悬停行可看 hover 态。</p>
+
+  <!-- ============ 案一 ============ -->
+  <section class="scheme t1">
+    <div class="scheme-head"><span class="scheme-no">案一</span><span class="scheme-name">三线表 · booktabs</span></div>
+    <p class="scheme-desc">全表只有<b>三条横线</b>:顶 2px、表头下 1px、底 2px,同一墨色只分粗细(学术排印的经典)。行间零线,靠行高呼吸。<b>最安静、最印刷品</b>;行多时扫读稍费眼。</p>
+
+    <div class="sample-caption">sample a · 数字映射</div>
+    <table>
+      <thead><tr><th>calleeId</th><th>→ Genesys DNIS</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0363787300</td><td class="num">1363787300</td></tr>
+        <tr><td class="num">0342182347</td><td class="num">1342182347</td></tr>
+        <tr><td class="num">0367592028</td><td class="num">1367592028</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sample-caption">sample b · 混合内容</div>
+    <table>
+      <thead><tr><th>#</th><th>内容</th><th>文件</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1</td><td><code>selectChatBot</code> 入口 ×10</td><td><code>nlp_test.lua</code></td></tr>
+        <tr><td class="num">2</td><td>iva_router: LA+Other+Premier_IVA→iva</td><td><code>iva_router.lua</code></td></tr>
+        <tr><td class="num">3</td><td>回滚 + topic revert + 验证,附操作日志与部署说明文档</td><td><code>nlp_test.lua</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ 案二 ============ -->
+  <section class="scheme t2">
+    <div class="scheme-head"><span class="scheme-no">案二</span><span class="scheme-name">簿记 · register</span></div>
+    <p class="scheme-desc">表头是<b>小写大写字距标签</b>(与右栏 CONTENTS 同一签名笔画),上下同笔 1px 深线夹住表头,行间淡发丝线。<b>与现有账页语言血缘最近</b>,行多时仍可逐行扫读。(即当前线上方向的定稿形态)</p>
+
+    <div class="sample-caption">sample a · 数字映射</div>
+    <table>
+      <thead><tr><th>calleeId</th><th>→ Genesys DNIS</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0363787300</td><td class="num">1363787300</td></tr>
+        <tr><td class="num">0342182347</td><td class="num">1342182347</td></tr>
+        <tr><td class="num">0367592028</td><td class="num">1367592028</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sample-caption">sample b · 混合内容</div>
+    <table>
+      <thead><tr><th>#</th><th>内容</th><th>文件</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1</td><td><code>selectChatBot</code> 入口 ×10</td><td><code>nlp_test.lua</code></td></tr>
+        <tr><td class="num">2</td><td>iva_router: LA+Other+Premier_IVA→iva</td><td><code>iva_router.lua</code></td></tr>
+        <tr><td class="num">3</td><td>回滚 + topic revert + 验证,附操作日志与部署说明文档</td><td><code>nlp_test.lua</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ 案三 ============ -->
+  <section class="scheme t3">
+    <div class="scheme-head"><span class="scheme-no">案三</span><span class="scheme-name">稿纸 · grid</span></div>
+    <p class="scheme-desc"><b>完整网格</b>但线极淡(竖线回归,用最浅的纸线色),表头压一层纸色底,偶数行极淡斑马纹。像方格稿纸/工程数据表,<b>多列、大数据量时对位最稳</b>;代价是"线最多",安静感最弱。</p>
+
+    <div class="sample-caption">sample a · 数字映射</div>
+    <table>
+      <thead><tr><th>calleeId</th><th>→ Genesys DNIS</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0363787300</td><td class="num">1363787300</td></tr>
+        <tr><td class="num">0342182347</td><td class="num">1342182347</td></tr>
+        <tr><td class="num">0367592028</td><td class="num">1367592028</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sample-caption">sample b · 混合内容</div>
+    <table>
+      <thead><tr><th>#</th><th>内容</th><th>文件</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1</td><td><code>selectChatBot</code> 入口 ×10</td><td><code>nlp_test.lua</code></td></tr>
+        <tr><td class="num">2</td><td>iva_router: LA+Other+Premier_IVA→iva</td><td><code>iva_router.lua</code></td></tr>
+        <tr><td class="num">3</td><td>回滚 + topic revert + 验证,附操作日志与部署说明文档</td><td><code>nlp_test.lua</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============ 案四 ============ -->
+  <section class="scheme t4">
+    <div class="scheme-head"><span class="scheme-no">案四</span><span class="scheme-name">行卡 · rows</span></div>
+    <p class="scheme-desc"><b>没有表格线</b>。每行是一张纸白微卡(subtle 边、2px 角、行间 6px 空隙),表头退成悬在上方的裸标签。Notion/Linear 的 list 语言译成纸墨,<b>行的"对象感"最强</b>、hover 反馈最自然;代价是竖向更占空间,列对位感弱。</p>
+
+    <div class="sample-caption">sample a · 数字映射</div>
+    <table>
+      <thead><tr><th>calleeId</th><th>→ Genesys DNIS</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0363787300</td><td class="num">1363787300</td></tr>
+        <tr><td class="num">0342182347</td><td class="num">1342182347</td></tr>
+        <tr><td class="num">0367592028</td><td class="num">1367592028</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sample-caption">sample b · 混合内容</div>
+    <table>
+      <thead><tr><th>#</th><th>内容</th><th>文件</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1</td><td><code>selectChatBot</code> 入口 ×10</td><td><code>nlp_test.lua</code></td></tr>
+        <tr><td class="num">2</td><td>iva_router: LA+Other+Premier_IVA→iva</td><td><code>iva_router.lua</code></td></tr>
+        <tr><td class="num">3</td><td>回滚 + topic revert + 验证,附操作日志与部署说明文档</td><td><code>nlp_test.lua</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+</body>
+</html>

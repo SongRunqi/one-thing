@@ -8,7 +8,7 @@ import { join, relative } from 'node:path'
 import { homedir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { parseNoteMarkdown, serializeNoteMarkdown } from '../src/renderer/editor/prose/markdown-io'
+import { parseNoteMarkdown, serializeNoteMarkdown } from '../packages/renderer/editor/prose/markdown-io'
 
 const HOME = homedir()
 const corpora: Array<{ name: string, dir: string }> = [

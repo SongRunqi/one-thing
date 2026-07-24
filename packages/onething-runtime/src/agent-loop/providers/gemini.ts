@@ -367,7 +367,10 @@ function mapFinishReason(reason: string | undefined): AgentFinishReason {
     case 'SPII':
       return 'content_filter'
     case 'MALFORMED_FUNCTION_CALL':
-      return 'error'
+      // The model attempted a function call that Gemini could not parse. Report
+      // tool_calls (with zero valid calls) so the runner's no-valid-call nudge
+      // asks the model to re-send, instead of silently ending the run as error.
+      return 'tool_calls'
     default:
       return reason ? 'unknown' : 'unknown'
   }

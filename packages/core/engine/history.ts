@@ -9,6 +9,13 @@ import type {
 export const COMPACTED_HISTORY_RETAINED_PAYLOAD_BUDGET_CHARS = 300_000;
 export const COMPACTED_HISTORY_TOOL_RESULT_BUDGET_CHARS = 24_000;
 export const COMPACTED_HISTORY_TOOL_RESULTS_TOTAL_BUDGET_CHARS = 80_000;
+// Degraded (skeleton) form: tool args beyond this ship as a truncated preview,
+// tool results ship as placeholders. Keeps a fat assistant message at a few KB
+// instead of dropping it wholesale and orphaning the user turns around it.
+export const COMPACTED_HISTORY_DEGRADED_ARGS_BUDGET_CHARS = 2_000;
+export const COMPACTED_HISTORY_DEGRADED_ARG_PREVIEW_CHARS = 500;
+// Estimated sent-form overhead of one placeholder tool result.
+const DEGRADED_TOOL_RESULT_PLACEHOLDER_CHARS = 220;
 
 // Non-compacted history rebuild budgets. Generous compared to the compacted
 // path (legit tool outputs top out around 50KB), but a hard ceiling so a
@@ -101,7 +108,11 @@ export interface CoreHistoryChatMessage {
 export interface CoreCompactedRecentMessagesPlan<
 	TMessage extends CoreHistoryChatMessage = CoreHistoryChatMessage,
 > {
+	/** Everything that ships, in order — full-fidelity and degraded together. */
 	retainedMessages: TMessage[];
+	/** Subset of retainedMessages that ship in degraded (skeleton) form. */
+	degradedMessageIds: Set<string>;
+	/** Contiguous oldest prefix that could not fit even in degraded form. */
 	droppedMessages: TMessage[];
 	retainedPayloadChars: number;
 }
@@ -112,21 +123,21 @@ export interface CoreHistorySessionSummary {
 	summaryUpToMessageId?: string;
 }
 
-export interface CoreCompactedHistoryLogDetails<
-	TMessage extends CoreHistoryChatMessage = CoreHistoryChatMessage,
-> {
+export interface CoreCompactedHistoryLogDetails {
 	sessionId?: string;
 	summaryUpToMessageId: string;
 	summaryIndex: number;
 	totalSessionMessages: number;
 	recentSessionMessages: number;
 	retainedRecentMessages: number;
+	degradedRecentMessages: number;
 	droppedRecentMessages: number;
 	retainedPayloadChars: number;
 	originalRecentPayloadChars: number;
 	retainedPayloadBudgetChars: number;
 	summaryChars: number;
 	retainedMessages: JsonObject[];
+	degradedMessageIds: string[];
 	droppedMessages: JsonObject[];
 	resultMessages: CoreHistoryMessage[];
 }
@@ -147,9 +158,7 @@ export interface CoreBuildHistoryMessagesOptions<
 		part: CoreHistoryContentPart,
 		message: TMessage,
 	) => AgentProviderData | undefined;
-	onCompactedHistory?: (
-		details: CoreCompactedHistoryLogDetails<TMessage>,
-	) => void;
+	onCompactedHistory?: (details: CoreCompactedHistoryLogDetails) => void;
 	onMissingSummaryAnchor?: (details: {
 		sessionId?: string;
 		summaryUpToMessageId: string;
@@ -260,46 +269,147 @@ export function retainedHistoryPayloadLength(
 	);
 }
 
+const SENT_FORM_TOOL_CALL_STATUSES = new Set([
+	"completed",
+	"failed",
+	"cancelled",
+	"input-streaming",
+]);
+
+/**
+ * Estimate what a message costs in the request that actually ships: content +
+ * reasoning + tool args at face value, tool results at their budgeted caps
+ * (24k per result, 80k per message). The raw in-memory JSON overcounts by
+ * several times — tool results are persisted redundantly (toolCalls[].result
+ * and steps[].result) and the sent form caps them — so budgeting on it drops
+ * messages that would have fit.
+ */
+export function estimateSentHistoryMessageChars(
+	message: CoreHistoryChatMessage,
+): number {
+	if (message.role !== "assistant") return historyMessagePayloadLength(message);
+
+	let total =
+		(message.content?.length ?? 0) +
+		(getMessageReasoningContent(message)?.length ?? 0);
+	let resultsTotal = 0;
+	for (const toolCall of message.toolCalls ?? []) {
+		if (
+			toolCall.status !== undefined &&
+			!SENT_FORM_TOOL_CALL_STATUSES.has(toolCall.status)
+		) {
+			continue;
+		}
+		total += jsonLength(toolCall.arguments ?? {});
+		const resultChars =
+			toolCall.status === "completed"
+				? jsonLength(toolCall.result)
+				: jsonLength({ error: toolCall.error ?? null });
+		resultsTotal += Math.min(
+			resultChars,
+			COMPACTED_HISTORY_TOOL_RESULT_BUDGET_CHARS,
+		);
+	}
+	return (
+		total +
+		Math.min(resultsTotal, COMPACTED_HISTORY_TOOL_RESULTS_TOTAL_BUDGET_CHARS)
+	);
+}
+
+export function estimateSentHistoryPayloadChars(
+	messages: CoreHistoryChatMessage[],
+): number {
+	return messages.reduce(
+		(sum, message) => sum + estimateSentHistoryMessageChars(message),
+		0,
+	);
+}
+
+/** Sent-form estimate of a message in degraded (skeleton) form. */
+function estimateDegradedHistoryMessageChars(
+	message: CoreHistoryChatMessage,
+): number {
+	if (message.role !== "assistant") return historyMessagePayloadLength(message);
+
+	let total = message.content?.length ?? 0;
+	for (const toolCall of message.toolCalls ?? []) {
+		if (
+			toolCall.status !== undefined &&
+			!SENT_FORM_TOOL_CALL_STATUSES.has(toolCall.status)
+		) {
+			continue;
+		}
+		total += Math.min(
+			jsonLength(toolCall.arguments ?? {}),
+			COMPACTED_HISTORY_DEGRADED_ARGS_BUDGET_CHARS,
+		);
+		total += DEGRADED_TOOL_RESULT_PLACEHOLDER_CHARS;
+	}
+	return total;
+}
+
+/**
+ * Plan the post-summary tail of a compacted request. Fidelity decreases
+ * monotonically with age and the result never has holes: the newest messages
+ * ship in full, older ones degrade to skeletons (text + tool calls with capped
+ * args + placeholder results) once the budget is reached, and only when even
+ * skeletons no longer fit is a contiguous oldest prefix dropped. The previous
+ * behavior — dropping any message whose raw in-memory size overflowed the
+ * budget while continuing to scan — punched holes that swallowed whole
+ * assistant turns and left runs of unanswered user messages.
+ */
 export function selectCompactedRecentMessagesForPrompt<
 	TMessage extends CoreHistoryChatMessage,
 >(
 	messages: TMessage[],
 	budgetChars = COMPACTED_HISTORY_RETAINED_PAYLOAD_BUDGET_CHARS,
 ): CoreCompactedRecentMessagesPlan<TMessage> {
-	if (messages.length === 0) {
-		return {
-			retainedMessages: [],
-			droppedMessages: [],
-			retainedPayloadChars: 0,
-		};
-	}
-
 	const retained: TMessage[] = [];
+	const degradedMessageIds = new Set<string>();
 	const dropped: TMessage[] = [];
 	let retainedPayloadChars = 0;
+	let mode: "full" | "degraded" | "dropped" = "full";
 
 	for (let index = messages.length - 1; index >= 0; index--) {
 		const message = messages[index];
-		const payloadChars = historyMessagePayloadLength(message);
 		const isLatestMessage = index === messages.length - 1;
 
-		if (
-			!isLatestMessage &&
-			retainedPayloadChars > 0 &&
-			retainedPayloadChars + payloadChars > budgetChars
-		) {
-			dropped.push(message);
-			continue;
+		if (mode === "full") {
+			const payloadChars = estimateSentHistoryMessageChars(message);
+			if (
+				isLatestMessage ||
+				retainedPayloadChars + payloadChars <= budgetChars
+			) {
+				retained.push(message);
+				retainedPayloadChars += payloadChars;
+				continue;
+			}
+			mode = "degraded";
 		}
 
-		retained.push(message);
-		retainedPayloadChars += payloadChars;
+		if (mode === "degraded") {
+			const payloadChars = estimateDegradedHistoryMessageChars(message);
+			if (retainedPayloadChars + payloadChars <= budgetChars) {
+				retained.push(message);
+				// Degradation only changes how assistant messages render; user
+				// messages ship identically in either mode.
+				if (message.role === "assistant") {
+					degradedMessageIds.add(message.id);
+				}
+				retainedPayloadChars += payloadChars;
+				continue;
+			}
+			mode = "dropped";
+		}
+
+		dropped.push(message);
 	}
 
 	retained.reverse();
 	dropped.reverse();
 	return {
 		retainedMessages: retained,
+		degradedMessageIds,
 		droppedMessages: dropped,
 		retainedPayloadChars,
 	};
@@ -434,6 +544,60 @@ export function buildHistoryToolResultContent(
 		perResultChars: HISTORY_TOOL_RESULT_BUDGET_CHARS,
 		totalChars: HISTORY_TOOL_RESULTS_TOTAL_BUDGET_CHARS,
 	});
+}
+
+/** Degraded-form tool args: over-budget args ship as a truncated preview. */
+export function degradeToolArgsForAI(args: JsonObject | undefined): JsonObject {
+	const value = args ?? {};
+	const originalChars = jsonLength(value);
+	if (originalChars <= COMPACTED_HISTORY_DEGRADED_ARGS_BUDGET_CHARS) {
+		return value;
+	}
+	let preview = "";
+	try {
+		preview = JSON.stringify(value).slice(
+			0,
+			COMPACTED_HISTORY_DEGRADED_ARG_PREVIEW_CHARS,
+		);
+	} catch {
+		preview = "";
+	}
+	return {
+		truncated: true,
+		reason:
+			"Tool arguments omitted from compacted history to keep the provider request body within budget.",
+		originalChars,
+		preview,
+	};
+}
+
+/**
+ * Degraded-form tool results: completed results ship as placeholders (title
+ * only), failures keep their real error text — the outcome signal survives at
+ * a few hundred bytes per call.
+ */
+export function buildDegradedToolResultContent(
+	toolCalls: CoreHistoryToolCall[],
+	options: CoreCompactedToolResultOptions = {},
+): Array<{
+	type: "tool-result";
+	toolCallId: string;
+	toolName: string;
+	result: JsonValue;
+}> {
+	const toolNameForAI = options.getAIToolName ?? getAIToolName;
+	return toolCalls.map((toolCall) => ({
+		type: "tool-result" as const,
+		toolCallId: toolCall.id,
+		toolName: toolNameForAI(toolCall.toolId || toolCall.toolName),
+		result:
+			toolCall.status === "completed"
+				? compactedToolResultPlaceholder(
+						sanitizeToolResultForAI(toolCall.result),
+						false,
+					)
+				: compactedFailureToolResultForAI(toolCall, options),
+	}));
 }
 
 export function summarizeRetainedMessagesForLog(
@@ -614,6 +778,7 @@ function appendHistoryMessage<
 	options: CoreBuildHistoryMessagesOptions<TContent, TMessage>,
 	providerData: AgentProviderData[],
 	useCompactedToolResults: boolean,
+	degraded = false,
 ): void {
 	const toolNameForAI = options.getAIToolName ?? getAIToolName;
 
@@ -622,6 +787,38 @@ function appendHistoryMessage<
 			role: "user",
 			content: options.buildMessageContent(message),
 		});
+		return;
+	}
+
+	// Degraded (skeleton) form: full text, tool calls with capped args,
+	// placeholder results, no reasoning. Collapsed shape is fine here — the
+	// per-completion replay only matters for full-fidelity messages.
+	if (degraded) {
+		const toolCalls = completedHistoryToolCalls(message);
+		const assistantMessage: CoreHistoryMessage & { role: "assistant" } = {
+			role: "assistant",
+			content: options.buildMessageContent(message),
+		};
+		if (providerData.length > 0) {
+			assistantMessage.providerData = providerData;
+		}
+		if (toolCalls.length > 0) {
+			assistantMessage.toolCalls = toolCalls.map((toolCall) => ({
+				toolCallId: toolCall.id,
+				toolName: toolNameForAI(toolCall.toolId || toolCall.toolName),
+				args: degradeToolArgsForAI(toolCall.arguments),
+			}));
+		}
+		result.push(assistantMessage);
+		if (toolCalls.length > 0) {
+			result.push({
+				role: "tool",
+				content: buildDegradedToolResultContent(toolCalls, {
+					getAIToolName: toolNameForAI,
+					failureResultForAI: options.failureResultForAI,
+				}),
+			});
+		}
 		return;
 	}
 
@@ -737,8 +934,6 @@ export function buildHistoryMessages<
 		);
 		if (summaryIndex !== -1) {
 			const recentMessages = messages.slice(summaryIndex + 1);
-			const { retainedMessages, droppedMessages, retainedPayloadChars } =
-				selectCompactedRecentMessagesForPrompt(recentMessages);
 			const result: CoreHistoryMessage[] = [
 				{
 					role: "user",
@@ -751,15 +946,22 @@ export function buildHistoryMessages<
 				},
 			];
 
-			for (const message of retainedMessages) {
+			for (const message of recentMessages) {
 				if (message.role !== "user" && message.role !== "assistant") continue;
 				if (message.isStreaming) continue;
 				const providerData =
-					message === retainedMessages[retainedMessages.length - 1]
+					message === recentMessages[recentMessages.length - 1]
 						? getHistoryProviderData(message, options)
 						: [];
 				if (!hasHistoryMessageContent(message, providerData)) continue;
-				appendHistoryMessage(result, message, options, providerData, true);
+				appendHistoryMessage(
+					result,
+					message,
+					options,
+					providerData,
+					true,
+					false,
+				);
 			}
 
 			options.onCompactedHistory?.({
@@ -768,22 +970,21 @@ export function buildHistoryMessages<
 				summaryIndex,
 				totalSessionMessages: messages.length,
 				recentSessionMessages: recentMessages.length,
-				retainedRecentMessages: retainedMessages.length,
-				droppedRecentMessages: droppedMessages.length,
-				retainedPayloadChars,
+				retainedRecentMessages: recentMessages.length,
+				degradedRecentMessages: 0,
+				droppedRecentMessages: 0,
+				retainedPayloadChars: retainedHistoryPayloadLength(recentMessages),
 				originalRecentPayloadChars:
 					retainedHistoryPayloadLength(recentMessages),
 				retainedPayloadBudgetChars:
 					COMPACTED_HISTORY_RETAINED_PAYLOAD_BUDGET_CHARS,
 				summaryChars: session.summary.length,
 				retainedMessages: summarizeRetainedMessagesForLog(
-					retainedMessages,
+					recentMessages,
 					summaryIndex + 1,
 				),
-				droppedMessages: summarizeRetainedMessagesForLog(
-					droppedMessages,
-					summaryIndex + 1,
-				),
+				degradedMessageIds: [],
+				droppedMessages: [],
 				resultMessages: result,
 			});
 

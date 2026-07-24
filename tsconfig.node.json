@@ -9,8 +9,7 @@
     "apps/server/**/*",
     "apps/web/**/*",
     "scripts/gateway-smoke-test.ts",
-    "src/main/**/*",
-    "src/shared/**/*"
+    "packages/shared/**/*"
   ],
   "compilerOptions": {
     "composite": true,

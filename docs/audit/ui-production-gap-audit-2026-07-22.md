@@ -180,6 +180,17 @@
 
 ## 修复路线(按投入产出比排序)
 
+> **实施状态(2026-07-22)**:第一批 1-5、第二批 6-9、第三批 10-13 已实施并真机验证(web :5174),未提交。
+> 第三批明细:表格账页化(chat + .md-body 双份镜像);代码块契约改纸墨(圆角 3px、边线 55%、投影默认无、语言标签小写大写字距、横向滚动条 hover 显形);Paper Ink 主题 code header 转 transparent + 新增 diff 六色(苔绿/朱砂淡染)——**主题 JSON 由 server 启动时解析注入,web 端要重启 :8787 才生效,Electron 端下次启动生效**;消息节奏统一为 --chat-turn-gap(24/34/44 三档密度),footer(时间戳+操作)从常驻 28px 占位改为间距带内 hover 浮层;用户气泡 4% 墨染 + min-width 3.5em 治单字塌缩;--shadow-paper token 落地并替换 11 份手抄;.ledger-rule/.ledger-card/.ledger-row/.ledger-empty 构件类入 components.css。
+> 未做:圆角 18 种收敛、字号 codemod(留给 stylelint 长效批)。
+>
+> **第四批(2026-07-22 同日)已实施部分**:右栏空 section 不再生长(:has 空态标记,焦点态也保持单行);ctx 表改为 ≥60% 才出现(常驻遥测→状态化,阈值常量 CONTEXT_METER_SHOW_AT_PERCENT);guard 术语人话(ask/edits/off,下拉 Ask first / Auto-accept edits / Allow all (no guard)),报警红只留给 guard:off;滚到底按钮纸墨化(去投影/毛玻璃,墨线细框纸底);Workbench 空态三颗灰块改账页编号行(01/02/03+发丝线)+ 标题入 ledger-label;设置页全部原生 select 一条共享规则纸墨化(appearance:none+自绘箭头,后续可逐 tab 换自绘弹层无视觉回归)。
+> **表格断词方案升级**:第三批的 overflow-wrap:normal 引发新回归(长路径列 min-content 挤扁 CJK 列成单字竖排),已改为精准方案——markdown 渲染层给纯数字单元格打 md-cell-numeric 类(core ruler),CSS 只对该类 nowrap,其余单元格恢复 anywhere 均衡布局;CACHE_DB_VERSION 2→3。
+> **勘误二**:C7「无自动标题」不成立——core-stream-engine.generateAndApplySessionTitle 完整存在且首条消息触发,门槛(名为 'New Chat' 才替换)正确;侧栏 0810/0720JP 等是用户手动命名、理应保留。
+> **第四批未做(需用户拍板)**:composer think/guard 收进会话设置 popover(9→4-5 的最后一步)、Memory/Agents 并入 Settings 式路由页、设置导航分组+默认落 Providers、模型弹层锚定芯片+删 tab 行。
+> 勘误:A2「composer 遮住最后一条消息」经真机测量在静止态不成立(web 布局中 composer 与消息列表是文档流相接,滚到底 gap=0),审计截图中的重叠是滚动中途瞬态;实际修掉的是滚到底按钮(z:4)压住 composer 弹层(z:3)的层级反转。
+> 注意事项:凡改 markdown-it 渲染规则必须同步 bump `markdownRenderCache.ts` 的 `CACHE_DB_VERSION`(IndexedDB 持久缓存否则会喂旧 HTML);系统提示词改动需 `vitest -u` 更新 prompt golden 基线。
+
 ### 第一批:止血(功能性底线,约 1-2 天)
 1. web 死按钮门控(A1)+ 错误文案门控(A5)
 2. 消息列表 scroll-padding-bottom 绑 composer 高度(A2)

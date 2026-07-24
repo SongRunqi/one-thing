@@ -210,13 +210,27 @@ export interface AgentTurnLifecycleContext {
   abortSignal?: AbortSignal
 }
 
+/**
+ * Rich replacement result for turn lifecycle hooks. `startNewResponse`
+ * marks that the replacement injected a new user message mid-run (e.g. a
+ * steering message): the loop emits a `response-boundary` event so the host
+ * finalizes the current assistant response and answers the injected message
+ * with a NEW response instead of continuing the interrupted tool-call loop.
+ */
+export interface AgentTurnHookReplacement {
+  messages: AgentMessage[]
+  startNewResponse?: boolean
+}
+
+export type AgentTurnHookResult = AgentMessage[] | AgentTurnHookReplacement | void
+
 export type AgentBeforeTurnHook = (
   context: AgentTurnLifecycleContext,
-) => AgentMessage[] | void | Promise<AgentMessage[] | void>
+) => AgentTurnHookResult | Promise<AgentTurnHookResult>
 
 export type AgentAfterTurnHook = (
   context: AgentTurnLifecycleContext & { turnResult: AgentTurn },
-) => AgentMessage[] | void | Promise<AgentMessage[] | void>
+) => AgentTurnHookResult | Promise<AgentTurnHookResult>
 
 /**
  * Pure observation event fired for EVERY loop round (unlike afterTurn,
@@ -281,6 +295,12 @@ export interface AgentTurn {
 
 export type AgentStreamEvent =
   | { type: 'turn-start'; turn: number }
+  /**
+   * A pending user message (steering) was injected before this turn: the
+   * current assistant response is over and the coming turn answers the
+   * injected message as a fresh response.
+   */
+  | { type: 'response-boundary'; turn: number }
   | { type: 'reasoning-delta'; turn: number; delta: string }
   | { type: 'text-delta'; turn: number; delta: string }
   | { type: 'tool-call-start'; turn: number; toolCallId: string; toolName: string }
@@ -292,6 +312,7 @@ export type AgentStreamEvent =
   | { type: 'provider-data'; turn: number; providerData: AgentProviderData }
   | { type: 'tool-result'; turn: number; toolCall: AgentToolCall; result: AgentToolResult }
   | { type: 'turn-end'; turn: number; finishReason: AgentFinishReason; usage?: AgentUsage }
+  | { type: 'auto-retry'; turn: number; attempt: number; maxAttempts: number; delayMs: number; error: string }
 
 /**
  * Events a provider may yield from streamTurn. The tool observation events
@@ -374,6 +395,11 @@ export interface AgentLoopOptions {
   messageId: string
   workingDirectory?: string
   abortSignal?: AbortSignal
+  /**
+   * Backoff schedule for turn-level auto-retry of transient provider errors.
+   * Defaults to 2s/4s/8s; primarily overridable for tests.
+   */
+  turnRetryDelaysMs?: number[]
   onEvent?: (event: AgentStreamEvent) => void
   /** Per-round request/response observer (tracing). Must be synchronous
    * and non-throwing from the loop's perspective; errors are swallowed. */

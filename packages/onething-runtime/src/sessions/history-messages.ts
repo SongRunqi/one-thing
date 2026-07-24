@@ -45,9 +45,9 @@ export type OnethingHistoryMessage =
       content: Array<{ type: 'tool-result'; toolCallId: string; toolName: string; result: JsonValue }>
     }
 
-export interface BuildOnethingHistoryMessagesOptions<TMessage extends CoreHistoryChatMessage = CoreHistoryChatMessage> {
+export interface BuildOnethingHistoryMessagesOptions {
   onImageAttachment?: BuildMessageContentOptions['onImageAttachment']
-  onCompactedHistory?: (details: CoreCompactedHistoryLogDetails<TMessage>) => void
+  onCompactedHistory?: (details: CoreCompactedHistoryLogDetails) => void
   onMissingSummaryAnchor?: (details: { sessionId?: string; summaryUpToMessageId: string }) => void
 }
 
@@ -63,7 +63,7 @@ export function buildOnethingMessageContent(
 export function buildOnethingHistoryMessages<TMessage extends CoreHistoryChatMessage>(
   messages: TMessage[],
   session?: OnethingHistorySessionSummary,
-  options: BuildOnethingHistoryMessagesOptions<TMessage> = {},
+  options: BuildOnethingHistoryMessagesOptions = {},
 ): OnethingHistoryMessage[] {
   return buildCoreHistoryMessages(messages, session, {
     buildMessageContent: message => buildOnethingMessageContent(message as CoreMessageContentSource, options),

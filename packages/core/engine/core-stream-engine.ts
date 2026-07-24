@@ -331,6 +331,12 @@ export class CoreStreamEngine<
     try {
       const pendingMessage = this.createPersistedSteeringMessage(sessionId, content, source, timestamp, origin)
       queue.enqueue(pendingMessage)
+      if (pendingMessage.id) {
+        this.eventBus?.emit(sessionId, {
+          type: 'steering:queued',
+          messageId: pendingMessage.id,
+        }).catch(err => this.logError('steering:queued emit error:', err))
+      }
     } catch (error) {
       this.logError('Failed to persist steering message immediately:', error)
       queue.enqueue({
@@ -342,6 +348,29 @@ export class CoreStreamEngine<
     }
 
     this.log(`Steering queued for ${sessionId.slice(0, 8)}: "${content.slice(0, 60)}..."`)
+  }
+
+  /**
+   * Retract a still-pending steering message: remove it from the queue and
+   * delete the eagerly-persisted chat message. A message already drained
+   * into a model turn stays — retraction only wins while it is pending.
+   */
+  override retractSteerMessage(sessionId: string, messageId: string): boolean {
+    const removed = super.retractSteerMessage(sessionId, messageId)
+    if (!removed) return false
+
+    if (!this.store.deleteMessage(sessionId, messageId)) {
+      this.logError('Retracted steering message missing from session store:', messageId)
+    }
+    this.eventBus?.emit(sessionId, {
+      type: 'message:deleted',
+      messageId,
+    }).catch(err => this.logError('message:deleted emit error:', err))
+    this.eventBus?.emit(sessionId, {
+      type: 'steering:retracted',
+      messageId,
+    }).catch(err => this.logError('steering:retracted emit error:', err))
+    return true
   }
 
   protected override onSessionCleared(sessionId: string): void {

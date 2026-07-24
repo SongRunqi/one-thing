@@ -9,7 +9,7 @@ import type {
   RuntimeStreamPayload,
   RuntimeUnsubscribe,
 } from '@onething/core'
-import type { ProxySettings } from '../../../src/shared/ipc/settings.js'
+import type { ProxySettings } from '@shared/ipc/settings.js'
 import { getServerChannelIdentityApi } from './runtime.js'
 import type {
   ChannelIdentityCreateLinkRequest,
@@ -23,7 +23,7 @@ import type {
   ChannelUserProfile,
   MessageOrigin,
   ResolvedIdentity,
-} from '../../../src/shared/ipc/channel-identity.js'
+} from '@shared/ipc/channel-identity.js'
 
 export type OnethingServerRequestHandler = (
   request: IncomingMessage,

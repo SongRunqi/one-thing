@@ -1,0 +1,7 @@
+{
+  "name": "@onething/shared",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Shared IPC/event contracts and defaults used by all hosts and the renderer."
+}

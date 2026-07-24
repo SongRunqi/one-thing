@@ -1,5 +1,5 @@
 import { clipboard, contextBridge, ipcRenderer, webUtils } from "electron";
-import { IPC_CHANNELS } from "../../../../src/shared/ipc.js";
+import { IPC_CHANNELS } from "@shared/ipc.js";
 import type {
 	GetSessionMessagesPageRequest,
 	GetSessionUsageRequest,
@@ -38,7 +38,7 @@ import type {
 	PracticeStopRequest,
 	PracticeSummaryRequest,
 	PracticeSummaryResult,
-} from "../../../../src/shared/ipc.js";
+} from "@shared/ipc.js";
 
 const electronAPI = {
 	onSkillActivated: (

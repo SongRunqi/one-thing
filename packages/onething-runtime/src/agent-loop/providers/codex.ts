@@ -832,9 +832,14 @@ function mapCodexFinishReason(reason: string | undefined): AgentFinishReason {
 		case "length":
 		case "error":
 			return reason;
+		case "max_output_tokens":
+		case "max_tokens":
+			return "length";
 		case "tool-calls":
+		case "tool_calls":
 			return "tool_calls";
 		case "content-filter":
+		case "content_filter":
 			return "content_filter";
 		default:
 			return "unknown";
@@ -932,7 +937,7 @@ export function createCodexAgentProvider(
 		const debugStream = shouldDebugCodexStream();
 		let finishReason: AgentFinishReason = "unknown";
 		let usage: AgentUsage | undefined;
-		let toolCallsEmitted = false;
+		let completedToolCallCount = 0;
 		let emittedTextFromDelta = false;
 		let activeReasoningItemId: string | undefined;
 		const reasoningSummaryByItem = new Map<string, string>();
@@ -1078,7 +1083,6 @@ export function createCodexAgentProvider(
 			state: ActiveFunctionCallInput,
 		): Generator<AgentTurnStreamEvent> {
 			if (state.started) return;
-			toolCallsEmitted = true;
 			state.started = true;
 			yield {
 				type: "tool-call-start",
@@ -1193,7 +1197,6 @@ export function createCodexAgentProvider(
 				toolInputByItemId.delete(state.itemId);
 				toolInputByCallId.delete(state.callId);
 			} else {
-				toolCallsEmitted = true;
 				yield {
 					type: "tool-call-start",
 					turn: request.turn,
@@ -1209,6 +1212,7 @@ export function createCodexAgentProvider(
 						argumentsDelta: args,
 					};
 			}
+			completedToolCallCount += 1;
 			yield {
 				type: "tool-call-done",
 				turn: request.turn,
@@ -1400,10 +1404,36 @@ export function createCodexAgentProvider(
 			}
 		}
 
+		// Flush tool calls whose accumulator never saw output_item.done (stream
+		// interrupted / server closed early) so the loop can still execute them
+		// instead of silently ending the turn.
+		const flushedStates = new Set<ActiveFunctionCallInput>();
+		for (const state of [
+			...toolInputByItemId.values(),
+			...toolInputByCallId.values(),
+		]) {
+			if (flushedStates.has(state)) continue;
+			flushedStates.add(state);
+			yield* flushPendingFunctionCallDeltas(state);
+			if (!state.started) continue;
+			completedToolCallCount += 1;
+			yield {
+				type: "tool-call-done",
+				turn: request.turn,
+				toolCall: {
+					id: state.callId,
+					name: state.toolName,
+					arguments: state.streamedArgs,
+				},
+			};
+		}
+		if (completedToolCallCount === 0 && finishReason === "tool_calls") {
+			finishReason = "stop";
+		}
 		yield {
 			type: "finish",
 			turn: request.turn,
-			finishReason: toolCallsEmitted ? "tool_calls" : finishReason,
+			finishReason: completedToolCallCount > 0 ? "tool_calls" : finishReason,
 			usage,
 		};
 	}

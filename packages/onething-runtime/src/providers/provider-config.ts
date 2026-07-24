@@ -341,7 +341,7 @@ export async function resolveProviderAuthWithAdapters<
  * loudly at the provider, not silently reroute.
  *
  * The override is expected to be the renderer's own
- * resolveProviderModelSelection (src/renderer/stores/helpers/provider-model.ts)
+ * resolveProviderModelSelection (packages/renderer/stores/helpers/provider-model.ts)
  * result, passed through unchanged — the send path no longer needs a second,
  * independent computation of "what should this session use" to potentially
  * diverge from what the picker showed.

@@ -22,7 +22,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { homedir } from 'os'
 import { join } from 'path'
 
-// ── Paths (mirror src/main/stores/paths.ts) ──────────
+// ── Paths (mirror apps/electron/src/main/stores/paths.ts) ──────────
 
 const STORE_ROOT = join(homedir(), '.onething')
 const VARIABLES_PATH = join(STORE_ROOT, 'variables.json')

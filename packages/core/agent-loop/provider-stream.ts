@@ -31,6 +31,7 @@ export interface AgentProviderToolCallChunk {
 
 export type AgentProviderStreamChunk =
   | { type: 'turn-start'; turnStart: { turn: number } }
+  | { type: 'response-boundary'; responseBoundary: { turn: number } }
   | { type: 'text'; text: string }
   | { type: 'reasoning'; reasoning: string }
   | { type: 'tool-call'; toolCall: AgentProviderToolCallChunk }
@@ -130,6 +131,13 @@ export async function* agentEventsToProviderStreamChunks(
         yield {
           type: 'turn-start',
           turnStart: { turn: event.turn },
+        }
+        break
+
+      case 'response-boundary':
+        yield {
+          type: 'response-boundary',
+          responseBoundary: { turn: event.turn },
         }
         break
 

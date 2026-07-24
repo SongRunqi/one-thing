@@ -17,7 +17,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { z } from 'zod'
 
-/** @param {import('../../src/main/plugins/types').PluginAPI} api */
+/** @param {import('../../apps/electron/src/main/plugins/types').PluginAPI} api */
 export default function logMonitorPlugin(api) {
   // ── Configuration ──────────────────────────────────
   const MAX_BUFFER = 500

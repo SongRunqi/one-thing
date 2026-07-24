@@ -12,6 +12,8 @@ import type {
   AgentFinishReason,
   AgentTurnRequest,
   AgentTurn,
+  AgentTurnHookResult,
+  AgentTurnHookReplacement,
   AgentToolPolicy,
   AgentStreamEvent,
   AgentTurnStreamEvent,
@@ -35,12 +37,27 @@ import {
   resolveAgentModelCapabilities,
 } from './capabilities.js'
 import { toolCallSignature } from './tool-signature.js'
+import { MAX_TURN_RETRIES, turnRetryDelayMs, isRetryableAgentError, sleepWithAbort } from './retry.js'
 import { ToolExecutionScheduler } from './tool-execution-scheduler.js'
 
 const DEFAULT_MAX_TURNS = 8
 const DEFAULT_MAX_CONCURRENT_TOOLS = 8
 /** Identical call failed this many times consecutively → block the next one. */
 const DOOM_LOOP_FAILURE_THRESHOLD = 3
+
+// Safety net for provider-side tool-call loss: when a turn claims tool_calls
+// but yields zero valid calls, the model is nudged to re-send at most this
+// many times per run before the turn is allowed to end normally.
+const MAX_NO_VALID_TOOL_CALL_NUDGES = 2
+const NO_VALID_TOOL_CALL_NUDGE =
+  'Your response declared tool calls, but no valid tool call was received. ' +
+  'Re-send the complete tool call (tool name and full arguments). ' +
+  'If you no longer need a tool, answer directly instead.'
+
+const FINAL_TURN_NOTICE =
+  'This is the final turn of this run (the turn limit is reached after it). ' +
+  'Wrap up now: summarize what has been done, the current state, and the ' +
+  'concrete next steps so the work can be resumed.'
 
 /**
  * FIFO semaphore: at most `limit` wrapped operations run at once. Scoped to
@@ -111,6 +128,13 @@ function throwPrioritizedTurnError(
 
 function isAbortError(error: Error): boolean {
   return error instanceof Error && error.name === 'AbortError'
+}
+
+function normalizeTurnHookResult(
+  result: Awaited<AgentTurnHookResult>,
+): AgentTurnHookReplacement | undefined {
+  if (!result) return undefined
+  return Array.isArray(result) ? { messages: result } : result
 }
 
 function parseToolArguments(call: AgentToolCall): AgentJsonObject {
@@ -383,6 +407,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   // polling (e.g. BashOutput with the same job id succeeding each time)
   // never accumulates. A success resets its signature.
   const toolFailureSignatureCounts = new Map<string, number>()
+  let noValidToolCallNudges = 0
   let finalText = ''
   let finalReasoning = ''
   let finishReason: AgentFinishReason = 'unknown'
@@ -390,7 +415,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
 
   for (let turn = 1; turn <= maxTurns; turn++) {
     throwIfAgentAborted(options.abortSignal)
-    const replacementMessages = await runWithAgentAbort(options.abortSignal, () => options.beforeTurn?.({
+    const beforeTurnResult = await runWithAgentAbort(options.abortSignal, () => options.beforeTurn?.({
       provider: options.provider,
       model: options.model,
       messages,
@@ -401,15 +426,28 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       abortSignal: options.abortSignal,
     }))
     throwIfAgentAborted(options.abortSignal)
-    if (replacementMessages) {
-      messages = replacementMessages.map(message => ({ ...message }))
+    const beforeTurnReplacement = normalizeTurnHookResult(beforeTurnResult)
+    if (beforeTurnReplacement) {
+      messages = beforeTurnReplacement.messages.map(message => ({ ...message }))
       assertAgentMessagesSupportedByCapabilities(messages, capabilities)
+      // Steering interrupt: an injected user message ends the current
+      // response — the boundary must reach the host before this turn's
+      // turn-start so the answer lands in a fresh assistant message.
+      if (beforeTurnReplacement.startNewResponse) {
+        options.onEvent?.({ type: 'response-boundary', turn })
+      }
+    }
+
+    // Give the model a chance to wrap up instead of being cut off silently
+    // when the run hits the turn limit.
+    if (turn === maxTurns && maxTurns > 1) {
+      messages.push({ role: 'user', content: FINAL_TURN_NOTICE })
     }
 
     options.onEvent?.({ type: 'turn-start', turn })
 
     const resultsByToolCallId = new Map<string, AgentToolResult>()
-    const agentTurn = await runWithAgentAbort(options.abortSignal, () =>
+    const runProviderTurn = () => runWithAgentAbort(options.abortSignal, () =>
       executeProviderTurn({
         request: {
           model: options.model,
@@ -462,6 +500,38 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           }
         },
       }))
+
+    // Turn-level auto-retry for transient provider failures (network cuts,
+    // overload, 5xx). Only retries while no tool has executed in the failed
+    // attempt: re-running the request after a mutation could double-execute.
+    const retryDelays = options.turnRetryDelaysMs
+      ?? Array.from({ length: MAX_TURN_RETRIES }, (_, i) => turnRetryDelayMs(i + 1))
+    let agentTurn: Awaited<ReturnType<typeof runProviderTurn>>
+    for (let attempt = 0; ; attempt++) {
+      try {
+        agentTurn = await runProviderTurn()
+        break
+      } catch (error) {
+        if (
+          attempt >= retryDelays.length
+          || resultsByToolCallId.size > 0
+          || !isRetryableAgentError(error)
+        ) {
+          throw error
+        }
+        const delayMs = retryDelays[attempt]
+        options.onEvent?.({
+          type: 'auto-retry',
+          turn,
+          attempt: attempt + 1,
+          maxAttempts: retryDelays.length,
+          delayMs,
+          error: error instanceof Error ? error.message : String(error),
+        })
+        await sleepWithAbort(delayMs, options.abortSignal)
+        throwIfAgentAborted(options.abortSignal)
+      }
+    }
     throwIfAgentAborted(options.abortSignal)
 
     // Tool messages must mirror the assistant's declaration order, not the
@@ -521,7 +591,20 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     const continuationToolCalls = (agentTurn.message.toolCalls ?? [])
       .filter(call => !call.externallyExecuted)
     if (continuationToolCalls.length === 0) {
-      const replacementMessages = await runWithAgentAbort(options.abortSignal, () => options.afterTurn?.({
+      // Provider claimed tool_calls but produced no valid call (stream
+      // interruption, malformed call, accumulator loss): nudge the model to
+      // re-send instead of silently ending the run.
+      if (
+        finishReason === 'tool_calls'
+        && (agentTurn.message.toolCalls ?? []).length === 0
+        && noValidToolCallNudges < MAX_NO_VALID_TOOL_CALL_NUDGES
+      ) {
+        noValidToolCallNudges += 1
+        messages.push({ role: 'user', content: NO_VALID_TOOL_CALL_NUDGE })
+        continue
+      }
+
+      const afterTurnResult = await runWithAgentAbort(options.abortSignal, () => options.afterTurn?.({
         provider: options.provider,
         model: options.model,
         messages,
@@ -533,9 +616,13 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         abortSignal: options.abortSignal,
       }))
       throwIfAgentAborted(options.abortSignal)
-      if (replacementMessages) {
-        messages = replacementMessages.map(message => ({ ...message }))
+      const afterTurnReplacement = normalizeTurnHookResult(afterTurnResult)
+      if (afterTurnReplacement) {
+        messages = afterTurnReplacement.messages.map(message => ({ ...message }))
         assertAgentMessagesSupportedByCapabilities(messages, capabilities)
+        if (afterTurnReplacement.startNewResponse) {
+          options.onEvent?.({ type: 'response-boundary', turn })
+        }
         continue
       }
 

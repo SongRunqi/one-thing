@@ -229,15 +229,15 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'apps/electron/src/main.ts'),
-          cli: resolve(__dirname, 'src/main/cli/index.ts')
+          cli: resolve(__dirname, 'apps/electron/src/main/cli/index.ts')
         }
       }
     },
     resolve: {
       alias: [
         ...onethingPackageAliases,
-        { find: '@main', replacement: resolve(__dirname, 'src/main') },
-        { find: '@shared', replacement: resolve(__dirname, 'src/shared') }
+        { find: '@main', replacement: resolve(__dirname, 'apps/electron/src/main') },
+        { find: '@shared', replacement: resolve(__dirname, 'packages/shared') }
       ]
     }
   },
@@ -257,7 +257,7 @@ export default defineConfig({
     resolve: {
       alias: [
         ...onethingPackageAliases,
-        { find: '@shared', replacement: resolve(__dirname, 'src/shared') }
+        { find: '@shared', replacement: resolve(__dirname, 'packages/shared') }
       ]
     }
   },
@@ -273,9 +273,9 @@ export default defineConfig({
     resolve: {
       alias: [
         ...onethingPackageAliases,
-        { find: '@', replacement: resolve(__dirname, 'src/renderer') },
-        { find: '@renderer', replacement: resolve(__dirname, 'src/renderer') },
-        { find: '@shared', replacement: resolve(__dirname, 'src/shared') }
+        { find: '@', replacement: resolve(__dirname, 'packages/renderer') },
+        { find: '@renderer', replacement: resolve(__dirname, 'packages/renderer') },
+        { find: '@shared', replacement: resolve(__dirname, 'packages/shared') }
       ]
     },
     plugins: [vue()],

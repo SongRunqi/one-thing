@@ -50,6 +50,17 @@ export class PendingMessageQueue {
     return this.messages.length > 0
   }
 
+  /**
+   * Retract a still-pending message by its chat message id. Returns the
+   * removed entry, or undefined when the id is unknown — including when the
+   * message was already drained into a turn (too late to retract).
+   */
+  removeById(id: string): PendingMessage | undefined {
+    const index = this.messages.findIndex(message => message.id === id)
+    if (index === -1) return undefined
+    return this.messages.splice(index, 1)[0]
+  }
+
   drain(): PendingMessage[] {
     if (this.messages.length === 0) return []
 

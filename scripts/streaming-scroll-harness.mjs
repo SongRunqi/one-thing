@@ -109,8 +109,8 @@ const harnessHtml = `<!doctype html>
   </script>
   <script type="module">
     import { createApp, h, nextTick, onMounted, ref } from 'vue'
-    import StreamingMarkdown from '/src/renderer/components/chat/message/StreamingMarkdown.vue'
-    import StepsPanel from '/src/renderer/components/chat/StepsPanel.vue'
+    import StreamingMarkdown from '/packages/renderer/components/chat/message/StreamingMarkdown.vue'
+    import StepsPanel from '/packages/renderer/components/chat/StepsPanel.vue'
 
     const target = ${JSON.stringify(streamingSource)}
     const toolArgTarget = JSON.stringify({
@@ -612,9 +612,9 @@ try {
     server: { host: '127.0.0.1', port: 0 },
     resolve: {
       alias: {
-        '@': resolve(root, 'src/renderer'),
-        '@renderer': resolve(root, 'src/renderer'),
-        '@shared': resolve(root, 'src/shared'),
+        '@': resolve(root, 'packages/renderer'),
+        '@renderer': resolve(root, 'packages/renderer'),
+        '@shared': resolve(root, 'packages/shared'),
         '@onething/core': resolve(root, 'packages/core'),
         '@onething/runtime': resolve(root, 'packages/onething-runtime/src'),
       },

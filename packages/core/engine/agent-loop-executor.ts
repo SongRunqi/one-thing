@@ -1956,6 +1956,15 @@ export async function applyAgentLoopStreamChunkWithAdapters<
 		});
 	}
 
+	// Steering interrupt: an injected user message ended the current
+	// response mid tool-call-loop. Arrives after the previous turn's finish
+	// chunk (which resets the flag on the tool-calls path) and before the
+	// next turn-start, which consumes it and opens a fresh assistant message.
+	if (chunk.type === "response-boundary" && chunk.responseBoundary) {
+		state.createNewAssistantOnNextTurnStart = true;
+		return true;
+	}
+
 	if (chunk.type === "text" && chunk.text) {
 		return applyAgentLoopTextChunkWithAdapters<TContentPart>({
 			text: chunk.text,
@@ -2238,6 +2247,20 @@ export function lastUserMessageText(
 	return "";
 }
 
+function lastAssistantMessageText(
+	historyMessages: CoreHistoryMessageWithContent[],
+): string {
+	for (let index = historyMessages.length - 1; index >= 0; index--) {
+		const message = historyMessages[index];
+		if (message.role !== "assistant") continue;
+		if (typeof message.content === "string" || Array.isArray(message.content)) {
+			const text = getTextFromContent(message.content as CoreAIMessageContent);
+			if (text) return text;
+		}
+	}
+	return "";
+}
+
 export function buildAgentLoopPostResponseContexts<
 	TSession extends CoreAgentLoopPostResponseSession<TMessage>,
 	TMessage,
@@ -2262,7 +2285,16 @@ export function buildAgentLoopPostResponseContexts<
 	TProviderConfig,
 	TSettings
 > | null {
-	if (!input.session || !input.lastAssistantMessage) return null;
+	if (!input.session) return null;
+
+	// A run cut off (max_turns, stream loss) can end with no trailing assistant
+	// text. Post-response hooks (goal cross-run continuation, triggers) must
+	// still fire, so fall back to the last assistant text in history, then to a
+	// synthetic placeholder.
+	const lastAssistantMessage = input.lastAssistantMessage?.trim()
+		? input.lastAssistantMessage
+		: lastAssistantMessageText(input.historyMessages) ||
+			"(assistant turn ended without trailing text)";
 
 	const triggerContext: CoreAgentLoopPostResponseTriggerContext<
 		TSession,
@@ -2274,7 +2306,7 @@ export function buildAgentLoopPostResponseContexts<
 		session: input.session,
 		messages: input.session.messages,
 		lastUserMessage: lastUserMessageText(input.historyMessages),
-		lastAssistantMessage: input.lastAssistantMessage,
+		lastAssistantMessage,
 		providerId: input.providerId,
 		providerConfig: input.providerConfig,
 		settings: input.settings,

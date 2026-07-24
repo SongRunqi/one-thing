@@ -5,8 +5,8 @@ import { execSync } from 'child_process'
 const appDir = '/Users/yitiansong/data/code/start-electron'
 const brainDir = '/Users/yitiansong/.gemini/antigravity/brain/3582ed95-c32a-4531-81ba-efe26abf75fd'
 
-const appVuePath = path.join(appDir, 'src/renderer/App.vue')
-const mainIndexPath = path.join(appDir, 'src/main/index.ts')
+const appVuePath = path.join(appDir, 'packages/renderer/App.vue')
+const mainIndexPath = path.join(appDir, 'apps/electron/src/main/index.ts')
 
 // Backup original files
 const appVueBackup = fs.readFileSync(appVuePath, 'utf8')
@@ -30,7 +30,7 @@ try {
     )
     fs.writeFileSync(appVuePath, modifiedAppVue, 'utf8')
 
-    // 2. Modify src/main/index.ts to inject the capturePage logic
+    // 2. Modify apps/electron/src/main/index.ts to inject the capturePage logic
     const outputPath = path.join(brainDir, panel.filename)
     const screenshotHook = `
   mainWindow = createWindow()

@@ -43,10 +43,13 @@ packages/onething-runtime/   # App runtime on top of core: prompts, themes, memo
                              # scheduler, agents, agent-loop. Electron-free.
 packages/gateway/            # WeChat/Telegram channel gateway. Depends on core only.
                              # Remote permission approval (reply 1/2/3), markdown-safe streaming.
-apps/electron/               # Electron-host-specific IPC/preload pieces
+packages/shared/             # Shared IPC/event contracts + defaults (aliased as '@shared').
+packages/renderer/           # Shared Vue 3 renderer UI (aliased as '@' / '@renderer'),
+                             # consumed by the Electron host and the web build.
+apps/electron/               # Electron host: preload, windows, and the main-process app
+                             # (apps/electron/src/main, aliased as '@main').
 apps/server/                 # Headless core server (HTTP, ONETHING_SERVER_PORT, default 8787)
-apps/web/                    # Browser build of the renderer (vite aliases '@' → src/renderer)
-src/main, src/renderer, ...  # Electron app itself (gradually thinning into the packages)
+apps/web/                    # Browser build of the renderer (vite aliases '@' → packages/renderer)
 ```
 
 Dependency rules are enforced by `packages/core/__tests__/architecture-boundaries.test.ts`.
@@ -66,7 +69,7 @@ Notes:
   apps/server exposes the same 10 `/api/memory/*` endpoints for headless/web deployments
   via the shared `createOnethingMemoryIpcHandlers` factory in
   `packages/onething-runtime/src/memory/ipc.ts`.
-- Renderer code accesses the host through `platformApi` (`src/renderer/platform/`),
+- Renderer code accesses the host through `platformApi` (`packages/renderer/platform/`),
   never `window.electronAPI` directly.
 - System prompt assembly is a single "directory at top, copy below" builder in
   `packages/onething-runtime/src/prompts/builder.ts`.
@@ -76,21 +79,21 @@ Notes:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  Renderer Process (Vue 3 + Pinia)                               │
-│  src/renderer/                                                   │
+│  packages/renderer/                                                   │
 │  - UI components, stores, composables                           │
 │  - Calls platformApi.* (wraps electronAPI) for IPC             │
 └─────────────────────┬───────────────────────────────────────────┘
                       │ Electron IPC
 ┌─────────────────────┴───────────────────────────────────────────┐
 │  Preload Script                                                  │
-│  src/preload/index.ts + create-api.ts                           │
+│  apps/electron/src/preload.ts + preload/create-api.ts                           │
 │  - contextBridge exposes electronAPI object                     │
 │  - Type-safe bridge between renderer and main                   │
 └─────────────────────┬───────────────────────────────────────────┘
                       │
 ┌─────────────────────┴───────────────────────────────────────────┐
 │  Main Process (Node.js)                                          │
-│  src/main/                                                       │
+│  apps/electron/src/main/                                                       │
 │  - Event-driven architecture with EventBus                      │
 │  - StreamEngine orchestrates chat lifecycle                     │
 │  - IPCBridge: single unified IPC exit point                     │
@@ -122,38 +125,37 @@ AI response with tool_call → ToolRegistry.execute() → Permission check
 
 ### Event-Driven Architecture
 
-The core architecture uses a central **EventBus** (`src/main/events/`) with:
+The core architecture uses a central **EventBus** (`apps/electron/src/main/events/`) with:
 
-- **Commands** (`src/shared/events/session-commands.ts`): Actions initiated by the renderer (send-message, edit-and-resend, retry-message, resume-after-confirm, permission-respond)
-- **Events** (`src/shared/events/session-events.ts`): State changes emitted by the engine (message:created, content:part, step:updated, stream:start/end, permission:request, etc.)
+- **Commands** (`packages/shared/events/session-commands.ts`): Actions initiated by the renderer (send-message, edit-and-resend, retry-message, resume-after-confirm, permission-respond)
+- **Events** (`packages/shared/events/session-events.ts`): State changes emitted by the engine (message:created, content:part, step:updated, stream:start/end, permission:request, etc.)
 - **Per-session ring buffers** for event replay
 - **Stream channels** for per-session event routing
 
 Key subscribers:
 
-- **StreamEngine** (`src/main/engine/stream-engine.ts`): Listens to commands, orchestrates streaming
-- **IPCBridge** (`src/main/bridges/ipc-bridge.ts`): Routes events from EventBus to renderer via WebContents
+- **StreamEngine** (`apps/electron/src/main/engine/stream-engine.ts`): Listens to commands, orchestrates streaming
+- **IPCBridge** (`apps/electron/src/main/bridges/ipc-bridge.ts`): Routes events from EventBus to renderer via WebContents
 
 ### IPC Communication Pattern
 
-1. **Channel definitions**: `src/shared/ipc/channels.ts` - all channel constants
-2. **Type definitions**: `src/shared/ipc/*.ts` - request/response types per domain
-3. **Event/Command types**: `src/shared/events/*.ts` - stream lifecycle types
-4. **Main handlers**: `src/main/ipc/*.ts` - handler implementations
-5. **Preload bridge**: `src/preload/index.ts` + `create-api.ts` - exposes typed `window.electronAPI`
+1. **Channel definitions**: `packages/shared/ipc/channels.ts` - all channel constants
+2. **Type definitions**: `packages/shared/ipc/*.ts` - request/response types per domain
+3. **Event/Command types**: `packages/shared/events/*.ts` - stream lifecycle types
+4. **Main handlers**: `apps/electron/src/main/ipc/*.ts` - handler implementations
+5. **Preload bridge**: `apps/electron/src/preload.ts` + `preload/create-api.ts` - exposes typed `window.electronAPI`
 
 To add a new IPC channel:
 
-1. Add channel name to `src/shared/ipc/channels.ts`
-2. Add types in corresponding `src/shared/ipc/[domain].ts`
-3. Implement handler in `src/main/ipc/[domain].ts`
-4. Expose API in `src/preload/create-api.ts`
+1. Add channel name to `packages/shared/ipc/channels.ts`
+2. Add types in corresponding `packages/shared/ipc/[domain].ts`
+3. Implement handler in `apps/electron/src/main/ipc/[domain].ts`
+4. Expose API in `apps/electron/src/preload/create-api.ts`
 
 ### Directory Structure
 
 ```
-src/
-├── main/                      # Electron main process
+apps/electron/src/main/        # Electron main-process app ('@main')
 │   ├── bridges/               # IPCBridge - unified IPC exit point
 │   ├── engine/                # Core streaming engine
 │   │   ├── stream-engine.ts   # StreamEngine: owns active stream lifecycle
@@ -192,7 +194,7 @@ src/
 │   ├── themes/                # Theme system
 │   └── utils/                 # Utilities (ripgrep, accessibility, etc.)
 │
-├── renderer/                  # Vue 3 frontend
+packages/renderer/             # Vue 3 frontend ('@' / '@renderer')
 │   ├── stores/                # Pinia stores (chat, sessions, settings, themes, media)
 │   ├── components/
 │   │   ├── chat/              # Chat UI (MessageList, InputBox, StepsPanel, etc.)
@@ -208,7 +210,7 @@ src/
 │   │   └── commands/          # Command implementations
 │   └── types/                 # Frontend type definitions
 │
-├── shared/                    # Shared between main/renderer
+packages/shared/               # Shared between main/renderer ('@shared')
 │   ├── ipc/                   # IPC type definitions & channel constants
 │   └── events/                # Event & command type definitions
 │       ├── session-commands.ts  # Command types (send-message, retry, etc.)
@@ -216,33 +218,32 @@ src/
 │       ├── stream-chunks.ts     # Stream chunk types
 │       └── envelope.ts          # Event wrapping
 │
-└── preload/                   # Electron preload
-    ├── index.ts
-    └── create-api.ts          # electronAPI factory
+apps/electron/src/preload.ts   # Electron preload entry
+apps/electron/src/preload/     # create-api.ts (electronAPI factory) + bridge.ts
 ```
 
 ### Key Systems
 
-**StreamEngine** (`src/main/engine/`): Single owner of active stream lifecycle. Commands arrive via EventBus → StreamEngine handlers → persist messages → emit events → IPCBridge sends to renderer. Handles send-message, edit-and-resend, retry-message, resume-after-confirm.
+**StreamEngine** (`apps/electron/src/main/engine/`): Single owner of active stream lifecycle. Commands arrive via EventBus → StreamEngine handlers → persist messages → emit events → IPCBridge sends to renderer. Handles send-message, edit-and-resend, retry-message, resume-after-confirm.
 
-**EventBus** (`src/main/events/`): Central pub/sub with per-session ring buffers, sequence counters, typed and wildcard handlers. Decouples command producers from consumers.
+**EventBus** (`apps/electron/src/main/events/`): Central pub/sub with per-session ring buffers, sequence counters, typed and wildcard handlers. Decouples command producers from consumers.
 
-**Providers** (`src/main/providers/`): Pluggable AI provider system using Vercel AI SDK. Add new providers in `builtin/` implementing `ProviderDefinition`.
+**Providers** (`apps/electron/src/main/providers/`): Pluggable AI provider system with hand-rolled fetch/SSE per provider (Vercel AI SDK was removed; see `packages/onething-runtime/src/agent-loop/providers/`). Add new providers in `builtin/` implementing `ProviderDefinition`.
 
-**Tools** (`src/main/tools/`): Built-in tools (bash, read, write, edit, glob, grep, calculator, web-search, skill) with permission system. Add tools in `builtin/` implementing the `Tool` interface.
+**Tools** (`apps/electron/src/main/tools/`): Built-in tools (bash, read, write, edit, glob, grep, calculator, web-search, skill) with permission system. Add tools in `builtin/` implementing the `Tool` interface.
 
-**Permission** (`src/main/permission/`): Directory-based permission system for tool execution. Permission requests flow through EventBus to renderer for user approval.
+**Permission** (`apps/electron/src/main/permission/`): Directory-based permission system for tool execution. Permission requests flow through EventBus to renderer for user approval.
 
-**MCP** (`src/main/mcp/`): Model Context Protocol support for external tool servers.
+**MCP** (`apps/electron/src/main/mcp/`): Model Context Protocol support for external tool servers.
 
-**Skills** (`src/main/skills/`): Claude Code-style skills system for extensibility.
+**Skills** (`apps/electron/src/main/skills/`): Claude Code-style skills system for extensibility.
 
-**Themes** (`src/main/themes/`): Built-in and custom theme support.
+**Themes** (`apps/electron/src/main/themes/`): Built-in and custom theme support.
 
 ### State Management
 
-- **Main Process**: Stores in `src/main/stores/` (app-state, settings, sessions, paths, caches)
-- **Renderer Process**: Pinia stores in `src/renderer/stores/` (chat, sessions, settings, themes, media)
+- **Main Process**: Stores in `apps/electron/src/main/stores/` (app-state, settings, sessions, paths, caches)
+- **Renderer Process**: Pinia stores in `packages/renderer/stores/` (chat, sessions, settings, themes, media)
 - **Cross-process sync**: Via EventBus → IPCBridge events and explicit IPC fetch calls
 
 ### Build Output
@@ -262,7 +263,7 @@ dist/
 | ------- | ----------- |
 | Desktop | Electron |
 | Frontend | Vue 3 + TypeScript + Pinia |
-| AI SDK | Vercel AI SDK (`ai`) |
+| AI SDK | Hand-rolled fetch/SSE per provider (`packages/onething-runtime/src/agent-loop/providers/`) |
 | Storage | File-based (JSON) |
 | Build | electron-vite (Vite renderer + Vite main + esbuild preload) |
 | Test | Vitest |

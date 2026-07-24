@@ -1,6 +1,5 @@
 import { collectAgentTurnFromStream } from "@onething/core/agent-loop";
 import { agentToolMessageContentToText } from "@onething/core/agent-loop";
-import { isCompleteAgentToolArguments } from "@onething/core/agent-loop";
 import { undeliverableAttachmentText } from "@onething/core/agent-loop";
 import { readJsonSseData } from "./sse.js";
 import type {
@@ -432,14 +431,8 @@ async function* streamOpenAICompatibleResponse(
 					};
 				}
 
-				if (
-					!entry.done &&
-					entry.name &&
-					isCompleteAgentToolArguments(entry.arguments)
-				) {
-					entry.done = true;
-					yield toolCallDoneEvent(turn, entry);
-				}
+				// No early-done on first parseable prefix: gateways may send `{}`
+				// before the real arguments. Done is emitted once at stream end.
 			}
 		}
 

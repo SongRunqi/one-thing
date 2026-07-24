@@ -8,7 +8,7 @@ export default defineConfig({
   cacheDir: resolve(projectRoot, 'node_modules/.vite/server'),
   resolve: {
     alias: [
-      { find: '@shared', replacement: resolve(projectRoot, 'src/shared') },
+      { find: '@shared', replacement: resolve(projectRoot, 'packages/shared') },
       { find: '@onething/core/agent-loop', replacement: resolve(projectRoot, 'packages/core/agent-loop/index.ts') },
       { find: '@onething/core/engine/attachment-mime', replacement: resolve(projectRoot, 'packages/core/engine/attachment-mime.ts') },
       { find: '@onething/core/engine/streaming-args', replacement: resolve(projectRoot, 'packages/core/engine/streaming-args.ts') },

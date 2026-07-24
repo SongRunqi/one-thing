@@ -65,7 +65,7 @@
       "code": {
         "inline": "paper1",
         "block": "paper1",
-        "header": "paper0"
+        "header": "transparent"
       },
       "menu": "card",
       "menuItemHover": "paper1",
@@ -183,6 +183,15 @@
       "overlayActive": "rgba(125, 117, 97, 0.12)",
       "overlayDisabled": "rgba(250, 246, 234, 0.55)",
       "blurBackdrop": "18px"
+    },
+
+    "diff": {
+      "addBg": "rgba(74, 124, 89, 0.10)",
+      "addText": "ink",
+      "delBg": "rgba(166, 60, 38, 0.08)",
+      "delText": "ink",
+      "hunkBg": "paper1",
+      "hunkText": "ink3"
     },
 
     "color": {

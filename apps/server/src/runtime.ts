@@ -356,8 +356,8 @@ import {
 import {
 	mergeWithDefaults,
 	normalizeSoulMemorySettings,
-} from "../../../src/shared/defaults/settings.js";
-import { toJsonValue } from "../../../src/shared/json.js";
+} from "@shared/defaults/settings.js";
+import { toJsonValue } from "@shared/json.js";
 import type {
 	ACPAgentConfig,
 	ACPAgentState,
@@ -370,7 +370,7 @@ import type {
 	ACPRefreshAgentResponse,
 	ACPRemoveAgentResponse,
 	ACPUpdateAgentResponse,
-} from "../../../src/shared/ipc/acp.js";
+} from "@shared/ipc/acp.js";
 import type {
 	GatewayGetStatusResponse,
 	GatewayStartRequest,
@@ -382,7 +382,7 @@ import type {
 	GatewayWechatRemoveAccountResponse,
 	GatewayWechatRenameAccountResponse,
 	GatewayWechatStopAccountResponse,
-} from "../../../src/shared/ipc/gateway.js";
+} from "@shared/ipc/gateway.js";
 import type {
 	VoiceEvent,
 	VoiceGetStateResponse,
@@ -391,7 +391,7 @@ import type {
 	VoiceSynthesizeResponse,
 	VoiceTTSModelsResponse,
 	VoiceSubmitUtteranceResponse,
-} from "../../../src/shared/ipc/voice.js";
+} from "@shared/ipc/voice.js";
 import type {
 	ChatMessage,
 	ChatSession,
@@ -401,7 +401,7 @@ import type {
 	SessionMeta,
 	SystemPromptSnapshot,
 	UserMessageMarker,
-} from "../../../src/shared/ipc/chat.js";
+} from "@shared/ipc/chat.js";
 import type {
 	MCPAddServerResponse,
 	MCPCallToolResponse,
@@ -420,7 +420,7 @@ import type {
 	MCPServerState,
 	MCPSettings,
 	MCPUpdateServerResponse,
-} from "../../../src/shared/ipc/mcp.js";
+} from "@shared/ipc/mcp.js";
 import type {
 	SchedulerCreateTaskRequest,
 	SchedulerGetRequest,
@@ -431,33 +431,33 @@ import type {
 	SchedulerSetEnabledRequest,
 	SchedulerTaskSnapshotDTO,
 	SchedulerUpdateTaskRequest,
-} from "../../../src/shared/ipc/scheduler.js";
+} from "@shared/ipc/scheduler.js";
 import type {
 	AppSettings,
 	ProxySettings,
 	TestProxyResponse,
-} from "../../../src/shared/ipc/settings.js";
+} from "@shared/ipc/settings.js";
 import type {
 	MemoryAppendRequest,
 	MemoryLogsListRequest,
 	MemoryReadRequest,
 	MemorySaveFileRequest,
-} from "../../../src/shared/ipc/memory.js";
+} from "@shared/ipc/memory.js";
 import type {
 	ChannelReplyDeliveryRecord,
 	ChannelUserLink,
 	ChannelUserProfile,
 	MessageOrigin,
 	ResolvedIdentity,
-} from "../../../src/shared/ipc/channel-identity.js";
-import type { SessionCommand } from "../../../src/shared/events/session-commands.js";
-import type { PermissionInfo } from "../../../src/shared/ipc/permissions.js";
+} from "@shared/ipc/channel-identity.js";
+import type { SessionCommand } from "@shared/events/session-commands.js";
+import type { PermissionInfo } from "@shared/ipc/permissions.js";
 import type {
 	ExecuteToolResponse,
 	GetToolsResponse,
 	ToolCall,
 	ToolDefinition,
-} from "../../../src/shared/ipc/tools.js";
+} from "@shared/ipc/tools.js";
 import { ServerMCPClient } from "./mcp-client.js";
 
 type ServerChatSession = ChatSession & {

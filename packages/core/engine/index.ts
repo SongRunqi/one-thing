@@ -514,6 +514,7 @@ export {
 	buildContextCompactFailedContent,
 	buildContextCompactSummaryMessages,
 	chunkText,
+	compactedTailExceedsBudget,
 	createContextCompactMessage,
 	DEFAULT_KEEP_RECENT_TURNS,
 	estimateCurrentInputTokens,
@@ -554,6 +555,7 @@ export type {
 	CompactPlan,
 	CoreContextCompactContent,
 	CoreContextCompactMessage,
+	CoreContextCompactReason,
 	CoreContextCompactStatus,
 	CoreContextCompactSummaryMessage,
 	CoreCompactAttachment,
@@ -589,6 +591,12 @@ export {
 	selectCompactedRecentMessagesForPrompt,
 	retainedHistoryPayloadLength,
 	summarizeRetainedMessagesForLog,
+	COMPACTED_HISTORY_DEGRADED_ARGS_BUDGET_CHARS,
+	COMPACTED_HISTORY_DEGRADED_ARG_PREVIEW_CHARS,
+	buildDegradedToolResultContent,
+	degradeToolArgsForAI,
+	estimateSentHistoryMessageChars,
+	estimateSentHistoryPayloadChars,
 } from "./history.js";
 export type {
 	CoreCompactedRecentMessagesPlan,

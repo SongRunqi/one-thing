@@ -1,5 +1,11 @@
 export { runAgentLoop } from './runner.js'
 export {
+  isRetryableAgentError,
+  sleepWithAbort,
+  turnRetryDelayMs,
+  MAX_TURN_RETRIES,
+} from './retry.js'
+export {
   AgentLoopPauseForConfirmationError,
   isAgentLoopPauseForConfirmationError,
 } from './errors.js'

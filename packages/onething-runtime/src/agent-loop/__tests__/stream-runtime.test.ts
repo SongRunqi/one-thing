@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import type {
-  AgentMessage,
   AgentProvider,
 } from '@onething/core/agent-loop'
 import type {
@@ -255,10 +254,13 @@ describe('onething agent-loop stream runtime', () => {
       turn: 1,
     })
 
-    expect(replacement as AgentMessage[]).toMatchObject([
-      { role: 'user', content: 'hello' },
-      { role: 'user', content: 'resolved:queued /docs' },
-    ])
+    expect(replacement).toMatchObject({
+      startNewResponse: true,
+      messages: [
+        { role: 'user', content: 'hello' },
+        { role: 'user', content: 'resolved:queued /docs' },
+      ],
+    })
     expect(persistedMessages).toMatchObject([
       {
         id: expect.any(String),

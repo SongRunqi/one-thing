@@ -8,10 +8,12 @@ Decide one of:
 
 Choosing between `update` and `new`:
 
-- **`new`** — a different question, a different feature, a different bug, or a new request after the previous one was answered. Asking about a second topic is a new segment even when it is loosely related to the first.
-- **`update`** — digging deeper into the *same* question, changing approach on the *same* problem, or fixing what the previous turn broke.
+A segment is one **requirement** — one piece of work the user asked for — not one message. A requirement usually spans many turns: the first ask, then corrections, follow-ups, "still broken" reports, and refinements. All of those are `update` to the same segment. A new user message is not, by itself, evidence of a new segment.
 
-When genuinely torn, prefer `new`. A list of several honest segments tells the reader what happened; one segment rewritten over and over tells them only where it ended up, and loses everything before it.
+- **`update`** — this turn still serves the requirement the current segment describes: digging deeper into the *same* question, iterating on the *same* feature, reacting to what the previous turn produced (feedback, a correction, a bug in what was just built), or changing approach on the *same* problem.
+- **`new`** — the user brought a different requirement: a different feature, a different bug, a different question, or a fresh request after the previous one was finished. A second bug is a new segment even when it lives near the first one.
+
+When torn, ask whether the user would say "this is still the thing I asked for earlier". A reaction to work just delivered is `update`; an ask that stands on its own is `new`.
 
 ## Writing the title and detail
 
