@@ -2,7 +2,6 @@ import type { JsonObject } from "../json.js";
 import { buildContextCompactPrompt } from "./compact-prompt.js";
 import {
 	COMPACTED_HISTORY_RETAINED_PAYLOAD_BUDGET_CHARS,
-	estimateSentHistoryPayloadChars,
 	sanitizeHistoryToolResultForAI,
 	sanitizeToolResultForAI,
 	type CoreHistoryChatMessage,
@@ -264,10 +263,7 @@ export function selectCompactPlan<TMessage extends CoreCompactMessage>(
 	};
 }
 
-export type CoreContextCompactReason =
-	| "threshold"
-	| "hard-limit"
-	| "compacted-tail-overflow";
+export type CoreContextCompactReason = "threshold" | "hard-limit";
 
 export async function shouldAutoCompactBeforeSend(options: {
 	session: CoreCompactSession;
@@ -295,41 +291,10 @@ export function getContextCompactReason(options: {
 		thresholdPercent: options.thresholdPercent,
 		reservedOutputTokens: options.reservedOutputTokens,
 	});
-	if (reason !== "none") return reason;
-	// A degraded/dropped compacted tail keeps provider-reported input tokens
-	// small, so the percentage trigger alone would let the summary anchor
-	// stall forever while the tail ships as skeletons.
-	if (options.session && compactedTailExceedsBudget(options.session)) {
-		return "compacted-tail-overflow";
-	}
-	return null;
-}
-
-export function compactedTailExceedsBudget(
-	session: Pick<
-		CoreCompactSession,
-		"messages" | "summary" | "summaryUpToMessageId"
-	>,
-): boolean {
-	if (!session.summary || !session.summaryUpToMessageId) return false;
-	const anchorIndex = session.messages.findIndex(
-		(message) => message.id === session.summaryUpToMessageId,
-	);
-	if (anchorIndex === -1) return false;
-	const tail = session.messages
-		.slice(anchorIndex + 1)
-		.filter(
-			(message) =>
-				(message.role === "user" || message.role === "assistant") &&
-				!message.isStreaming,
-		);
-	// CoreCompactMessage is a structural subset of CoreHistoryChatMessage for
-	// the fields the estimator reads (content/reasoning/toolCalls payloads).
-	return (
-		estimateSentHistoryPayloadChars(
-			tail as unknown as CoreHistoryChatMessage[],
-		) > COMPACTED_HISTORY_RETAINED_PAYLOAD_BUDGET_CHARS
-	);
+	// Deliberately token-threshold-only. A tail-size (char count) trigger was
+	// tried and removed: compaction does not shrink the tail's raw chars, so
+	// it re-fired every turn — an infinite compact loop.
+	return reason !== "none" ? reason : null;
 }
 
 export function estimateCurrentInputTokens(

@@ -128,7 +128,11 @@ describe('buildHistoryMessages', () => {
     })
   })
 
-  it('caps retained message payload after a compact summary', () => {
+  it('keeps the full compacted tail without budget trimming', () => {
+    // Budget trimming of the compacted tail was tried and deliberately
+    // removed: degraded mode shrank assistants but not users, so a fat user
+    // message could be dropped while its assistant reply survived — breaking
+    // user/assistant alternation. Every retained message ships whole.
     const history = buildHistoryMessages(
       [
         message(1, 'user'),
@@ -145,7 +149,7 @@ describe('buildHistoryMessages', () => {
     )
 
     const joined = JSON.stringify(history)
-    expect(joined).not.toContain('old retained')
+    expect(joined).toContain('old retained')
     expect(joined).toContain('middle retained')
     expect(joined).toContain('latest retained')
   })

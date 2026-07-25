@@ -191,10 +191,11 @@ describe('shouldAutoCompactBeforeSend', () => {
     })).resolves.toBe(true)
   })
 
-  it('advances a stalled summary anchor when the compacted tail overflows its char budget', async () => {
-    // The tail ships degraded to fit its char budget, so provider-reported
-    // input tokens stay tiny and the percentage threshold never fires — the
-    // tail-overflow trigger must fire instead of letting the anchor stall.
+  it('ignores compacted tail size — compaction triggers on token usage only', async () => {
+    // A tail-size (char count) trigger was tried and deliberately removed:
+    // compaction does not shrink the tail's raw chars, so it re-fired every
+    // turn — an infinite compact loop. A huge tail with low token usage must
+    // NOT trigger; do not re-add a char-based trigger here.
     const anchor = message(1, 'assistant')
     const tail: ChatMessage[] = [anchor]
     for (let index = 2; index <= 11; index++) {
@@ -204,23 +205,6 @@ describe('shouldAutoCompactBeforeSend', () => {
       })
     }
     const testSession = session(tail, anchor.id)
-    testSession.contextSize = 1_000
-
-    await expect(shouldAutoCompactBeforeSend({
-      session: testSession,
-      modelContextLength: 1_000_000,
-      thresholdPercent: 85,
-      inputTokens: 1_000,
-    })).resolves.toBe(true)
-  })
-
-  it('does not fire the tail-overflow trigger when the tail fits at full fidelity', async () => {
-    const anchor = message(1, 'assistant')
-    const testSession = session([
-      anchor,
-      { ...message(2, 'user'), content: 'z'.repeat(10_000) },
-      { ...message(3, 'assistant'), content: 'z'.repeat(10_000) },
-    ], anchor.id)
     testSession.contextSize = 1_000
 
     await expect(shouldAutoCompactBeforeSend({

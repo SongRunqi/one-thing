@@ -31,12 +31,82 @@ InputBox.vue (渲染进程)
 
 ## 2. IPC 通道
 
+### 2.1 渲染进程 → Preload 桥
+
 - `platformApi`（`src/renderer/platform/electron.ts`）→ `window.electronAPI`。
-- 真正的 preload 桥：`apps/electron/src/preload/bridge.ts:118-120`：
+- preload 桥：`apps/electron/src/preload/bridge.ts:118-120`：
   ```ts
   emitCommand: (sessionId, command) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, { sessionId, command })
   ```
-- 命令类型定义在 `src/shared/events/session-commands.ts:16`（`SendMessageCommand`）。
+- 命令类型定义在 `packages/shared/events/session-commands.ts`（`SendMessageCommand`）。
+
+### 2.2 Main 进程 IPC handler 注册
+
+Preload 的 `ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, ...)` 到达 main 进程后，由
+`apps/electron/src/ipc/session-command.ts` 注册的 `ipcMain.handle` 接收：
+
+```ts
+// apps/electron/src/ipc/session-command.ts
+export function registerElectronSessionCommandIpcHandler(options) {
+  const host = options.ipcMain ?? ipcMain
+  host.handle(options.channel, (_event, request) => {
+    return options.handleCommand(request)  // → 转交给回调
+  })
+}
+```
+
+调用方在 `apps/electron/src/main/ipc/handlers.ts:100-112`：
+
+```ts
+registerElectronSessionCommandIpcHandler({
+  channel: IPC_CHANNELS.SESSION_COMMAND,
+  handleCommand: async ({ sessionId, command }) => {
+    return emitCoreSessionCommandForIpc({
+      sessionId,
+      command,
+      eventBus: getEventBus(),    // ← 拿到全局单例 EventBus
+      logger: console,
+    })
+  },
+})
+```
+
+### 2.3 IPC → EventBus（解耦桥）
+
+`emitCoreSessionCommandForIpc`（`packages/core/events/ipc-operations.ts`）是一个带 try/catch
+的安全包装，核心就一行：
+
+```ts
+const result = await options.eventBus.emit(options.sessionId, options.command)
+```
+
+这条命令注入 EventBus 后，经过 **Intercept → Commit → Fan-out** 三阶段管道，被所有
+对该命令感兴趣的订阅者接收。IPC handler 到这里就完成返回——渲染进程只收到 `{ success: true }`，
+不等待命令执行的最终结果。后续的流式事件（`message:created`、`content:part`、
+`tool:execution-*` 等）通过**事件回传**（见第 7 节）走独立通道异步推给渲染进程。
+
+### 2.4 StreamEngine 订阅命令
+
+`HeadlessStreamEngine`（`packages/core/engine/headless-stream-engine.ts:197`）通过
+`onAnySession()` 跨 session 订阅所有命令：
+
+```ts
+protected subscribeToCommands(eventBus: TEventBus): void {
+  eventBus.onAnySession('command:send-message', (envelope) => {
+    const target = this.commandTarget
+    if (!target) return
+    this.handleSendMessageCommand(envelope.sessionId, envelope.event, target)
+  }, 'StreamEngine')
+  // 同时订阅 command:edit-and-resend、command:retry-message、
+  // command:abort、command:resume-after-confirm 等
+}
+```
+
+关键设计意图：
+- `onAnySession` 意味着 StreamEngine 不需要为每个 session 单独注册——任何 session 的命令都会路由过来。
+- 命令是"意图"（如 `command:send-message`），订阅者被动接收，发命令的代码不知道谁在听。
+- 多个系统可以同时关心同一条命令（如 SessionManager 还订阅 `stream:start` 做自动创建 session），
+  Fan-out 阶段依次投递给每个订阅者，互不干扰。
 
 ## 3. Main 进程处理（三层继承）
 

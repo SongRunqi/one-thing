@@ -386,7 +386,7 @@ export interface BuildAgentLoopDirectToolsWithAdaptersOptions<
   ) => Promise<TResult>
 }
 
-export type CoreAgentLoopCompactReason = 'threshold' | 'hard-limit' | 'compacted-tail-overflow'
+export type CoreAgentLoopCompactReason = 'threshold' | 'hard-limit'
 
 export interface CoreAgentLoopCompactState {
   configuredKeepTurns: number
