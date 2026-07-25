@@ -73,6 +73,11 @@ import {
 	createElectronRendererConsoleCapture,
 	setElectronAppLogsPath,
 } from "@onething/electron-host/logging/console-capture";
+import { configureSkillsEnvironmentHost } from "@main/skills/loader.js";
+import {
+	getElectronAppIsPackaged,
+	getElectronResourcesPath,
+} from "@onething/electron-host/skills/environment";
 import { hydrateProcessEnvFromLoginShell } from "@onething/electron-host/app/login-shell-env";
 import {
 	StoreLock,
@@ -319,6 +324,10 @@ export function startOnethingElectronMain(): void {
 	configureAppLoggingHost({
 		setAppLogsPath: setElectronAppLogsPath,
 		createRendererConsoleCapture: createElectronRendererConsoleCapture,
+	});
+	configureSkillsEnvironmentHost({
+		isPackaged: getElectronAppIsPackaged,
+		getResourcesPath: getElectronResourcesPath,
 	});
 	initializeAppLogging();
 

@@ -1,8 +1,4 @@
 import {
-  getElectronAppIsPackaged,
-  getElectronResourcesPath,
-} from '@onething/electron-host/skills/environment'
-import {
   configureOnethingSkillsLoaderRuntime,
 } from '@onething/runtime/skills'
 import {
@@ -24,12 +20,29 @@ const musicSkillDirs = new Set(
   builtinMusicProviders.map(provider => provider.prose.skillDirName),
 )
 
+/**
+ * Host injection points for packaged-app resource resolution. Defaults are
+ * correct for dev and headless runs (not packaged, no resources dir); the
+ * Electron host wires the real getters at startup. Late-bound thunks, so
+ * wiring after this module's import-time configure call still takes effect.
+ */
+export interface SkillsEnvironmentHostPorts {
+  isPackaged?: () => boolean
+  getResourcesPath?: () => string | undefined
+}
+
+let envPorts: SkillsEnvironmentHostPorts = {}
+
+export function configureSkillsEnvironmentHost(ports: SkillsEnvironmentHostPorts): void {
+  envPorts = ports
+}
+
 configureOnethingSkillsLoaderRuntime({
   getStorePath,
   listPluginSkillRoots,
   listCustomSkillRoots: () => getSettings().skills?.customDirectories ?? [],
-  isPackaged: getElectronAppIsPackaged,
-  getResourcesPath: getElectronResourcesPath,
+  isPackaged: () => envPorts.isPackaged?.() ?? false,
+  getResourcesPath: () => envPorts.getResourcesPath?.(),
   getCwd: () => process.cwd(),
   isBuiltinSkillDirEnabled: dirName => {
     if (!musicSkillDirs.has(dirName)) return true

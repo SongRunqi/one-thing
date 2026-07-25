@@ -6443,16 +6443,24 @@ function checkElectronHostOwnsSkillsEnvironment(): void {
     'getElectronResourcesPath',
     'process.resourcesPath',
   ]
+  // main/skills is host-agnostic: packaged-app resource getters are injected
+  // via configureSkillsEnvironmentHost, wired by the Electron host at startup.
   const requiredFacadeSymbols = [
-    '@onething/electron-host/skills/environment',
-    'getElectronAppIsPackaged',
-    'getElectronResourcesPath',
-    'isPackaged: getElectronAppIsPackaged',
-    'getResourcesPath: getElectronResourcesPath',
+    'configureSkillsEnvironmentHost',
+    'envPorts.isPackaged',
+    'envPorts.getResourcesPath',
   ]
+  const mainProcessWiringFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const mainProcessWiringContent = fs.existsSync(mainProcessWiringFile) ? fs.readFileSync(mainProcessWiringFile, 'utf-8') : ''
   const lines = [
     ...(!packageContent.includes('./skills/environment')
       ? [`${rel(electronPackage)}: missing skills environment export`]
+      : []),
+    ...(!mainProcessWiringContent.includes('configureSkillsEnvironmentHost')
+      ? [`${rel(mainProcessWiringFile)}: Electron host must wire configureSkillsEnvironmentHost`]
+      : []),
+    ...(mainSkillsContent.includes('@onething/electron-host/')
+      ? [`${rel(mainSkillsFile)}: main/skills must stay host-agnostic (inject via configureSkillsEnvironmentHost)`]
       : []),
     ...requiredHostSymbols
       .filter(symbol => !electronSkillsContent.includes(symbol))
