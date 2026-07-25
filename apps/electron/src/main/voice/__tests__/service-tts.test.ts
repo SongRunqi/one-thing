@@ -60,18 +60,28 @@ vi.mock('../../stores/sessions.js', () => ({
   updateSessionAgent: vi.fn(),
 }))
 
-vi.mock('@onething/electron-host/voice/runtime-window', () => ({
-  destroyVoiceRuntimeWindow: vi.fn(),
-  ensureVoiceRuntimeWindow: vi.fn(),
-  flushVoiceRuntimeCommands: vi.fn(),
-  isVoiceRuntimeReady: () => true,
-  markVoiceRuntimeReady: vi.fn(),
-  sendVoiceRuntimeCommand: mocks.sendVoiceRuntimeCommand,
-}))
+// The service reaches the runtime window/tray through late-bound host ports —
+// configure the real port module with test doubles instead of module mocks.
+import { configureVoiceHost } from '../host-ports.js'
 
-vi.mock('@onething/electron-host/voice/tray', () => ({
-  updateVoiceTray: vi.fn(),
-}))
+configureVoiceHost({
+  broadcastMessage: ({ channel, payload, exceptWebContentsId }) => {
+    for (const window of mocks.windows) {
+      if (window.isDestroyed()) continue
+      if (window.webContents.id === exceptWebContentsId) continue
+      window.webContents.send(channel, payload)
+    }
+  },
+  runtimeWindow: {
+    ensure: vi.fn(),
+    destroy: vi.fn(),
+    flushCommands: vi.fn(),
+    isReady: () => true,
+    markReady: vi.fn(),
+    sendCommand: mocks.sendVoiceRuntimeCommand,
+  },
+  updateTray: vi.fn(),
+})
 
 vi.mock('../providers.js', () => ({
   getVoiceInputConfigurationError: mocks.getVoiceInputConfigurationError,

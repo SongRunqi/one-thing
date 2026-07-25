@@ -62,7 +62,16 @@ import {
 	attachVoiceTrayMainWindow,
 	configureVoiceTray,
 	markVoiceQuitRequested,
+	updateVoiceTray,
 } from "@onething/electron-host/voice/tray";
+import {
+	destroyVoiceRuntimeWindow,
+	ensureVoiceRuntimeWindow,
+	flushVoiceRuntimeCommands,
+	isVoiceRuntimeReady,
+	markVoiceRuntimeReady,
+	sendVoiceRuntimeCommand,
+} from "@onething/electron-host/voice/runtime-window";
 import { killTrackedDetachedChildren } from "@main/tools/core/bash-executor.js";
 import {
 	configureAppLoggingHost,
@@ -343,6 +352,15 @@ export function startOnethingElectronMain(): void {
 	});
 	configureVoiceHost({
 		broadcastMessage: broadcastElectronVoiceMessage,
+		runtimeWindow: {
+			ensure: () => void ensureVoiceRuntimeWindow(),
+			destroy: destroyVoiceRuntimeWindow,
+			sendCommand: sendVoiceRuntimeCommand,
+			markReady: markVoiceRuntimeReady,
+			isReady: isVoiceRuntimeReady,
+			flushCommands: flushVoiceRuntimeCommands,
+		},
+		updateTray: updateVoiceTray,
 	});
 	initializeAppLogging();
 

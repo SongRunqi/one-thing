@@ -6,6 +6,7 @@ import {
   type VoiceEvent,
   type VoiceLatencyMilestone,
   type VoiceLatencyMilestoneName,
+  type VoiceRuntimeCommand,
   type VoiceRuntimeEvent,
   type VoiceRuntimeState,
   type VoiceRuntimeStatus,
@@ -40,21 +41,25 @@ import {
   splitOnethingSpeakableSentences,
 } from '@onething/runtime/voice'
 import {
-  broadcastElectronVoiceMessage,
-  getElectronWebContentsId,
-  sendElectronVoiceMessageToWindow,
-  type ElectronVoiceMessageWebContents,
-  type ElectronVoiceMessageWindow,
-} from '@onething/electron-host/voice/events'
-import {
-  destroyVoiceRuntimeWindow,
-  ensureVoiceRuntimeWindow,
-  flushVoiceRuntimeCommands,
-  isVoiceRuntimeReady,
-  markVoiceRuntimeReady,
-  sendVoiceRuntimeCommand,
-} from '@onething/electron-host/voice/runtime-window'
-import { updateVoiceTray } from '@onething/electron-host/voice/tray'
+  broadcastVoiceHostMessage,
+  getVoiceHostPorts,
+  sendVoiceHostMessageToWindow,
+  type VoiceHostWebContents,
+  type VoiceHostWindow,
+} from './host-ports.js'
+
+// Host-surface delegates: the audio runtime window and tray are Electron
+// concepts injected via configureVoiceHost; headless hosts no-op them.
+const ensureVoiceRuntimeWindow = (): void => getVoiceHostPorts().runtimeWindow?.ensure?.()
+const destroyVoiceRuntimeWindow = (): void => getVoiceHostPorts().runtimeWindow?.destroy?.()
+const sendVoiceRuntimeCommand = (command: VoiceRuntimeCommand): void =>
+  getVoiceHostPorts().runtimeWindow?.sendCommand?.(command)
+const markVoiceRuntimeReady = (): void => getVoiceHostPorts().runtimeWindow?.markReady?.()
+const isVoiceRuntimeReady = (): boolean => getVoiceHostPorts().runtimeWindow?.isReady?.() ?? false
+const flushVoiceRuntimeCommands = (): void => getVoiceHostPorts().runtimeWindow?.flushCommands?.()
+const updateVoiceTray = (): void => getVoiceHostPorts().updateTray?.()
+const voiceWebContentsId = (webContents: { id: number } | null | undefined): number | undefined =>
+  webContents?.id
 
 interface VoiceReplyPlaybackTurn {
   id: number
@@ -65,8 +70,8 @@ interface VoiceReplyPlaybackTurn {
   unsubscribeEvents?: Unsubscribe
 }
 
-type VoiceWebContents = ElectronVoiceMessageWebContents
-type VoiceWindow = ElectronVoiceMessageWindow
+type VoiceWebContents = VoiceHostWebContents
+type VoiceWindow = VoiceHostWindow
 
 class VoiceService {
   private state: VoiceRuntimeState = {
@@ -755,7 +760,7 @@ class VoiceService {
 
     saveSettings(nextSettings)
     sendVoiceRuntimeCommand({ type: 'stop', reason: 'wake-unavailable' })
-    broadcastElectronVoiceMessage({
+    broadcastVoiceHostMessage({
       channel: IPC_CHANNELS.SETTINGS_CHANGED,
       payload: nextSettings,
     })
@@ -764,9 +769,9 @@ class VoiceService {
   }
 
   private emit(event: VoiceEvent, exceptSender?: VoiceWebContents): void {
-    const exceptWebContentsId = getElectronWebContentsId(exceptSender)
+    const exceptWebContentsId = voiceWebContentsId(exceptSender)
     if (event.type !== 'state') {
-      broadcastElectronVoiceMessage({
+      broadcastVoiceHostMessage({
         channel: IPC_CHANNELS.VOICE_EVENT,
         payload: event,
         exceptWebContentsId,
@@ -774,7 +779,7 @@ class VoiceService {
     }
 
     const stateEvent: VoiceEvent = { type: 'state', state: this.getState() }
-    broadcastElectronVoiceMessage({
+    broadcastVoiceHostMessage({
       channel: IPC_CHANNELS.VOICE_EVENT,
       payload: event.type === 'state' ? event : stateEvent,
       exceptWebContentsId,
@@ -783,10 +788,10 @@ class VoiceService {
 
   private broadcastState(target?: VoiceWindow): void {
     const event: VoiceEvent = { type: 'state', state: this.getState() }
-    if (sendElectronVoiceMessageToWindow(target, IPC_CHANNELS.VOICE_EVENT, event)) {
+    if (sendVoiceHostMessageToWindow(target, IPC_CHANNELS.VOICE_EVENT, event)) {
       return
     }
-    broadcastElectronVoiceMessage({
+    broadcastVoiceHostMessage({
       channel: IPC_CHANNELS.VOICE_EVENT,
       payload: event,
     })

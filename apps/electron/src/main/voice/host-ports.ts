@@ -7,6 +7,8 @@
  * for modules that captured the helpers at import time.
  */
 
+import type { VoiceRuntimeCommand } from '@shared/ipc.js'
+
 export interface VoiceHostMessage {
   channel: string
   payload: unknown
@@ -14,8 +16,30 @@ export interface VoiceHostMessage {
   exceptWebContentsId?: number
 }
 
+export interface VoiceHostWebContents {
+  id: number
+  send(channel: string, payload: unknown): void
+}
+
+export interface VoiceHostWindow {
+  isDestroyed(): boolean
+  webContents: VoiceHostWebContents
+}
+
+/** Hidden audio-runtime surface (Electron: an offscreen BrowserWindow). */
+export interface VoiceRuntimeWindowPorts {
+  ensure?: () => void
+  destroy?: () => void
+  sendCommand?: (command: VoiceRuntimeCommand) => void
+  markReady?: () => void
+  isReady?: () => boolean
+  flushCommands?: () => void
+}
+
 export interface VoiceHostPorts {
   broadcastMessage?: (message: VoiceHostMessage) => void
+  runtimeWindow?: VoiceRuntimeWindowPorts
+  updateTray?: () => void
 }
 
 let hostPorts: VoiceHostPorts = {}
@@ -31,4 +55,15 @@ export function getVoiceHostPorts(): VoiceHostPorts {
 /** Broadcast to every renderer surface; no-op until the host wires a port. */
 export function broadcastVoiceHostMessage(message: VoiceHostMessage): void {
   hostPorts.broadcastMessage?.(message)
+}
+
+/** Pure helper: deliver to one window if it is still alive. */
+export function sendVoiceHostMessageToWindow(
+  window: VoiceHostWindow | null | undefined,
+  channel: string,
+  payload: unknown,
+): boolean {
+  if (!window || window.isDestroyed()) return false
+  window.webContents.send(channel, payload)
+  return true
 }

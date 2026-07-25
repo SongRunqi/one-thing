@@ -3231,8 +3231,11 @@ function checkElectronHostOwnsVoiceRuntimeWindow(): void {
     ...requiredHostFacadeSymbols
       .filter(symbol => !electronRuntimeContent.includes(symbol))
       .map(symbol => `${rel(electronRuntimeFile)}: missing Electron voice runtime-window host facade symbol ${symbol}`),
-    ...(!mainVoiceServiceContent.includes('@onething/electron-host/voice/runtime-window')
-      ? [`${rel(mainVoiceServiceFile)}: voice service must import runtime window operations from electron-host directly`]
+    ...(!mainVoiceServiceContent.includes('runtimeWindow?.')
+      ? [`${rel(mainVoiceServiceFile)}: voice service must reach the runtime window via injected host ports`]
+      : []),
+    ...(mainVoiceServiceContent.includes('@onething/electron-host/')
+      ? [`${rel(mainVoiceServiceFile)}: voice service must stay host-agnostic (inject via configureVoiceHost)`]
       : []),
     ...(mainVoiceServiceContent.includes('./runtime-window.js')
       ? [`${rel(mainVoiceServiceFile)}: voice service must not import legacy runtime-window facade`]
@@ -3269,11 +3272,11 @@ function checkElectronHostOwnsVoiceEventBroadcasting(): void {
     'BrowserWindow.getAllWindows',
     'webContents.send',
   ]
+  // Voice pushes go through main/voice/host-ports (configureVoiceHost);
+  // the Electron impls are wired in app/main-process.ts.
   const requiredFacadeSymbols = [
-    '@onething/electron-host/voice/events',
-    'broadcastElectronVoiceMessage',
-    'sendElectronVoiceMessageToWindow',
-    'getElectronWebContentsId',
+    'broadcastVoiceHostMessage',
+    'sendVoiceHostMessageToWindow',
   ]
   const lines = [
     ...(!packageContent.includes('./voice/events')
@@ -3353,8 +3356,8 @@ function checkElectronHostOwnsVoiceTray(): void {
     ...(!electronMainContent.includes('getVoiceServiceSafe()?.shutdown')
       ? [`${rel(electronMainFile)}: Electron app bootstrap must inject voice shutdown into electron-host tray`]
       : []),
-    ...(!mainVoiceServiceContent.includes('@onething/electron-host/voice/tray')
-      ? [`${rel(mainVoiceServiceFile)}: voice service must import tray updates from electron-host directly`]
+    ...(!mainVoiceServiceContent.includes('updateTray?.')
+      ? [`${rel(mainVoiceServiceFile)}: voice service must reach the tray via injected host ports`]
       : []),
     ...(mainVoiceServiceContent.includes('./tray.js')
       ? [`${rel(mainVoiceServiceFile)}: voice service must not import legacy voice tray facade`]
