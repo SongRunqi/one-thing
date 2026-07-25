@@ -279,6 +279,12 @@ function collectDirectLegacyColorUsage(): string[] {
       const lineEnd = text.indexOf('\n', match.index)
       const line = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd)
       if (line.includes('previewColors')) continue
+      // mask-image gradients only consume the alpha channel — #000 there is
+      // "fully opaque", not a theme color, so tokenizing it would be wrong.
+      // Check the whole enclosing declaration: the gradient often wraps
+      // across lines, so the hex may sit on a continuation line.
+      const declStart = Math.max(text.lastIndexOf(';', match.index), text.lastIndexOf('{', match.index))
+      if (text.slice(declStart + 1, match.index).includes('mask-image')) continue
       reports.push(`${relativeFile}:${lineNumber(text, match.index)} direct ${match[0]}`)
     }
   }
@@ -453,7 +459,9 @@ describe('renderer UI semantic variables', () => {
     expect(settingsSidebarDefs).toHaveLength(2)
     expect(settingsPanelDefs).toHaveLength(2)
     expect(sidebar).toContain('--ui-sidebar-surface-bg')
-    expect(sessionItem).toContain('var(--ui-sidebar-item-active-border')
+    // Sidebar v7: the active state is a full-row fill (SessionItem owns the
+    // row background), not the pre-v7 left border.
+    expect(sessionItem).toContain('var(--ui-state-selected-bg')
     expect(sessionContextMenu).toContain('var(--ui-surface-menu-bg')
     expect(sessionContextMenu).toContain('var(--ui-surface-menu-hover-bg')
     expect(sessionContextMenu).toContain('var(--ui-surface-tooltip-shadow')

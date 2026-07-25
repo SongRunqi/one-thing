@@ -1,11 +1,11 @@
 {
   "minimal": {
-    "totalChars": 735,
-    "totalTokens": 210,
+    "totalChars": 974,
+    "totalTokens": 279,
     "segments": {
       "core": {
-        "chars": 253,
-        "estimatedTokens": 73
+        "chars": 492,
+        "estimatedTokens": 141
       },
       "agent": {
         "chars": 480,
@@ -18,12 +18,12 @@
     }
   },
   "desktop-full": {
-    "totalChars": 2274,
-    "totalTokens": 650,
+    "totalChars": 2513,
+    "totalTokens": 718,
     "segments": {
       "core": {
-        "chars": 253,
-        "estimatedTokens": 73
+        "chars": 492,
+        "estimatedTokens": 141
       },
       "agent": {
         "chars": 295,
@@ -56,12 +56,12 @@
     }
   },
   "codex-split": {
-    "totalChars": 2128,
-    "totalTokens": 608,
+    "totalChars": 2367,
+    "totalTokens": 677,
     "segments": {
       "core": {
-        "chars": 253,
-        "estimatedTokens": 73
+        "chars": 492,
+        "estimatedTokens": 141
       },
       "agent": {
         "chars": 52,
@@ -86,12 +86,12 @@
     }
   },
   "voice": {
-    "totalChars": 1374,
-    "totalTokens": 393,
+    "totalChars": 1613,
+    "totalTokens": 461,
     "segments": {
       "core": {
-        "chars": 253,
-        "estimatedTokens": 73
+        "chars": 492,
+        "estimatedTokens": 141
       },
       "agent": {
         "chars": 52,
@@ -112,12 +112,12 @@
     }
   },
   "agents-md": {
-    "totalChars": 1223,
-    "totalTokens": 350,
+    "totalChars": 1462,
+    "totalTokens": 418,
     "segments": {
       "core": {
-        "chars": 253,
-        "estimatedTokens": 73
+        "chars": 492,
+        "estimatedTokens": 141
       },
       "agent": {
         "chars": 295,
@@ -134,12 +134,12 @@
     }
   },
   "windows": {
-    "totalChars": 704,
-    "totalTokens": 202,
+    "totalChars": 943,
+    "totalTokens": 270,
     "segments": {
       "core": {
-        "chars": 253,
-        "estimatedTokens": 73
+        "chars": 492,
+        "estimatedTokens": 141
       },
       "agent": {
         "chars": 279,
@@ -156,12 +156,12 @@
     }
   },
   "linux": {
-    "totalChars": 651,
-    "totalTokens": 186,
+    "totalChars": 890,
+    "totalTokens": 255,
     "segments": {
       "core": {
-        "chars": 253,
-        "estimatedTokens": 73
+        "chars": 492,
+        "estimatedTokens": 141
       },
       "agent": {
         "chars": 275,

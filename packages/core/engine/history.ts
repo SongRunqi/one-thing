@@ -946,9 +946,13 @@ export function buildHistoryMessages<
 				},
 			];
 
-			for (const message of recentMessages) {
-				if (message.role !== "user" && message.role !== "assistant") continue;
-				if (message.isStreaming) continue;
+			const eligibleMessages = recentMessages.filter(
+				(message) =>
+					(message.role === "user" || message.role === "assistant") &&
+					!message.isStreaming,
+			);
+			const plan = selectCompactedRecentMessagesForPrompt(eligibleMessages);
+			for (const message of plan.retainedMessages) {
 				const providerData =
 					message === recentMessages[recentMessages.length - 1]
 						? getHistoryProviderData(message, options)
@@ -960,7 +964,7 @@ export function buildHistoryMessages<
 					options,
 					providerData,
 					true,
-					false,
+					plan.degradedMessageIds.has(message.id),
 				);
 			}
 
@@ -970,21 +974,24 @@ export function buildHistoryMessages<
 				summaryIndex,
 				totalSessionMessages: messages.length,
 				recentSessionMessages: recentMessages.length,
-				retainedRecentMessages: recentMessages.length,
-				degradedRecentMessages: 0,
-				droppedRecentMessages: 0,
-				retainedPayloadChars: retainedHistoryPayloadLength(recentMessages),
+				retainedRecentMessages: plan.retainedMessages.length,
+				degradedRecentMessages: plan.degradedMessageIds.size,
+				droppedRecentMessages: plan.droppedMessages.length,
+				retainedPayloadChars: plan.retainedPayloadChars,
 				originalRecentPayloadChars:
-					retainedHistoryPayloadLength(recentMessages),
+					estimateSentHistoryPayloadChars(eligibleMessages),
 				retainedPayloadBudgetChars:
 					COMPACTED_HISTORY_RETAINED_PAYLOAD_BUDGET_CHARS,
 				summaryChars: session.summary.length,
 				retainedMessages: summarizeRetainedMessagesForLog(
-					recentMessages,
+					plan.retainedMessages,
+					summaryIndex + 1 + plan.droppedMessages.length,
+				),
+				degradedMessageIds: [...plan.degradedMessageIds],
+				droppedMessages: summarizeRetainedMessagesForLog(
+					plan.droppedMessages,
 					summaryIndex + 1,
 				),
-				degradedMessageIds: [],
-				droppedMessages: [],
 				resultMessages: result,
 			});
 

@@ -538,7 +538,7 @@ onUnmounted(() => {
   padding: 9px 15px;
   border-radius: 999px;
   /* 主题色：用主题自己的最亮面（主界面纸色），与 sidebar 同色相、亮一档，
-     浮起感靠阴影——与设计稿 #fff/#f0efea 的微差关系一致。
+     浮起感靠阴影——与设计稿"纯白对米白"的微差关系一致。
      fx-base-50 是 flexoki 静态阶，色相与自定义主题会打架，不能用。 */
   background: var(--ui-surface-app-bg, var(--bg-app, #fff));
   box-shadow: var(--shadow-md, 0 3px 12px rgba(30, 26, 16, 0.13));

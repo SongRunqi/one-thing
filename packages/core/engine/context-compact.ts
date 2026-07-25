@@ -295,7 +295,14 @@ export function getContextCompactReason(options: {
 		thresholdPercent: options.thresholdPercent,
 		reservedOutputTokens: options.reservedOutputTokens,
 	});
-	return reason !== "none" ? reason : null;
+	if (reason !== "none") return reason;
+	// A degraded/dropped compacted tail keeps provider-reported input tokens
+	// small, so the percentage trigger alone would let the summary anchor
+	// stall forever while the tail ships as skeletons.
+	if (options.session && compactedTailExceedsBudget(options.session)) {
+		return "compacted-tail-overflow";
+	}
+	return null;
 }
 
 export function compactedTailExceedsBudget(

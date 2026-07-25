@@ -550,7 +550,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import type {
@@ -583,10 +583,14 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
   })
 }
 
-const tasks = ref<SchedulerTaskSnapshotDTO[]>([])
-const runs = ref<SchedulerRunDetailDTO[]>([])
+// shallowRef: the run/task DTOs carry recursive JsonValue payloads, and
+// UnwrapRef over that recursion blows vue-tsc's instantiation depth (TS2589).
+// All assignments below replace the whole value, so shallow reactivity is
+// equivalent here.
+const tasks = shallowRef<SchedulerTaskSnapshotDTO[]>([])
+const runs = shallowRef<SchedulerRunDetailDTO[]>([])
 const selectedTaskId = ref('')
-const selectedRun = ref<SchedulerRunDetailDTO | null>(null)
+const selectedRun = shallowRef<SchedulerRunDetailDTO | null>(null)
 const historyOpen = ref(false)
 const loading = ref(false)
 const runsLoading = ref(false)

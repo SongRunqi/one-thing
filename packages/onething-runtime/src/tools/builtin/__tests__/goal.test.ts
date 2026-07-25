@@ -10,6 +10,8 @@ function activeGoal(overrides: Partial<SessionGoal> = {}): SessionGoal {
 		tokensUsed: 0,
 		timeUsedSeconds: 0,
 		continuationCount: 0,
+		createdAt: 0,
+		updatedAt: 0,
 		...overrides,
 	};
 }
