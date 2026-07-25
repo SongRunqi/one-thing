@@ -5,8 +5,8 @@ import {
   invalidateCoreCachedJsonFile,
   isCoreCachedJsonInitialized,
   saveCoreCachedJsonFile,
-  saveCoreCachedJsonFileAsync,
   updateCoreCachedJsonInMemory,
+  withFileLockSync,
   type CoreCachedJsonFileOptions,
   type CoreCachedJsonState,
 } from '@onething/core/storage'
@@ -73,13 +73,19 @@ export class OnethingSettingsRepository<TSettings> {
   }
 
   async saveAsync(settings: TSettings): Promise<TSettings> {
-    const saved = await saveCoreCachedJsonFileAsync(this.state, this.fileOptions(), settings)
-    this.options.logger?.log?.('[Settings] Saved to disk asynchronously')
+    const saved = this.save(settings)
+    this.options.logger?.log?.('[Settings] Saved to disk')
     return saved
   }
 
   save(settings: TSettings): TSettings {
-    return saveCoreCachedJsonFile(this.state, this.fileOptions(), settings)
+    // Cross-process mutex: the desktop app and the headless server write the
+    // same settings.json. The file is small, so a locked sync write (µs when
+    // uncontended) beats interleaved writers.
+    const fileOptions = this.fileOptions()
+    return withFileLockSync(`${fileOptions.filePath}.lock`, () =>
+      saveCoreCachedJsonFile(this.state, fileOptions, settings),
+    )
   }
 
   invalidate(): void {

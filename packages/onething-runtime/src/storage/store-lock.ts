@@ -3,7 +3,7 @@ import path from 'node:path'
 
 import { getOnethingStorePath } from './paths.js'
 
-export type StoreLockOwner = 'desktop' | 'daemon'
+export type StoreLockOwner = 'desktop' | 'daemon' | 'server'
 
 export interface LockMeta {
   pid: number
@@ -107,12 +107,16 @@ export function readLockMeta(lockPath: string): LockMeta | null {
     const raw = fs.readFileSync(lockPath, 'utf8').trim()
     if (!raw) return null
     const value = JSON.parse(raw) as Partial<LockMeta>
-    if (typeof value.pid !== 'number' || (value.owner !== 'desktop' && value.owner !== 'daemon')) {
+    // Forward-compat: treat ANY non-empty owner string as valid meta. An
+    // owner this build doesn't know (a newer host kind) must not be
+    // misclassified as corrupt — that path deletes the lock file and steals
+    // a live lock.
+    if (typeof value.pid !== 'number' || typeof value.owner !== 'string' || value.owner.length === 0) {
       return null
     }
     return {
       pid: value.pid,
-      owner: value.owner,
+      owner: value.owner as StoreLockOwner,
       acquiredAt: typeof value.acquiredAt === 'number' ? value.acquiredAt : 0,
       version: typeof value.version === 'string' ? value.version : 'unknown',
     }
