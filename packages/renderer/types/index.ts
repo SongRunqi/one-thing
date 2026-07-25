@@ -1054,7 +1054,8 @@ export interface ElectronAPI {
 	) => Promise<{ success: boolean; error?: string }>;
 	getSettings: () => Promise<GetSettingsResponse>;
 	saveSettings: (settings: AppSettings) => Promise<SaveSettingsResponse>;
-	openSettingsWindow: () => Promise<{ success: boolean }>;
+	openSettingsWindow: (options?: { tab?: string }) => Promise<{ success: boolean }>;
+	onSettingsNavigate: (callback: (payload: { tab: string }) => void) => () => void;
 	onSettingsChanged: (callback: (settings: AppSettings) => void) => () => void;
 	gatewayGetStatus: () => Promise<GatewayGetStatusResponse>;
 	gatewayStart: (

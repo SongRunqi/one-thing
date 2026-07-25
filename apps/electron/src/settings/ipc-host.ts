@@ -53,7 +53,7 @@ export interface ElectronSettingsIpcChannels {
 
 export interface RegisterElectronSettingsIpcHandlersOptions {
   channels: ElectronSettingsIpcChannels
-  openSettingsWindow(): unknown
+  openSettingsWindow(request?: unknown): unknown
   getSettings(): unknown
   getSystemTheme(): unknown
   saveSettings(settings: unknown, event: ElectronSettingsIpcEvent): unknown
@@ -114,8 +114,8 @@ export function registerElectronSettingsIpcHandlers(
 ): void {
   const host = options.ipcMain ?? ipcMain
 
-  host.handle(options.channels.openWindow, () => {
-    return options.openSettingsWindow()
+  host.handle(options.channels.openWindow, (_event, request: unknown) => {
+    return options.openSettingsWindow(request)
   })
 
   host.handle(options.channels.getSettings, () => {

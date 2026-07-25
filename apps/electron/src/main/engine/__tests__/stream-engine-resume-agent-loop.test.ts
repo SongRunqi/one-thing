@@ -295,6 +295,7 @@ describe('StreamEngine resume-after-confirm agent-loop path', () => {
       role: 'user',
       content: 'steer now',
       source: 'user',
+      steered: true,
     }))
     const addedMessage = mocks.addMessage.mock.calls[0][1] as ChatMessage
     expect(mocks.eventBus.emit).toHaveBeenCalledWith('s1', {

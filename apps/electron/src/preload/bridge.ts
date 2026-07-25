@@ -454,8 +454,15 @@ const electronAPI = {
 	saveSettings: (settings: any) =>
 		ipcRenderer.invoke(IPC_CHANNELS.SAVE_SETTINGS, settings),
 
-	openSettingsWindow: () =>
-		ipcRenderer.invoke(IPC_CHANNELS.OPEN_SETTINGS_WINDOW),
+	openSettingsWindow: (options?: { tab?: string }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.OPEN_SETTINGS_WINDOW, options),
+
+	onSettingsNavigate: (callback: (payload: { tab: string }) => void) => {
+		const listener = (_event: any, payload: { tab: string }) => callback(payload);
+		ipcRenderer.on(IPC_CHANNELS.SETTINGS_NAVIGATE, listener);
+		return () =>
+			ipcRenderer.removeListener(IPC_CHANNELS.SETTINGS_NAVIGATE, listener);
+	},
 
 	onSettingsChanged: (callback: (settings: any) => void) => {
 		const listener = (_event: any, settings: any) => callback(settings);

@@ -228,9 +228,9 @@ export const useMusicStore = defineStore('music', () => {
   }
 
   // The DJ's spoken patter plays here, on its own <audio>, not through mpv —
-  // music and voice are separate tracks. main pauses the music before sending
-  // this and resumes when we ack, so overlap is avoided upstream; we only need
-  // to play the clip and report back when it ends (or fails).
+  // music and voice are separate tracks. The voice may overlap the song's
+  // opening (main starts the load under the patter and lets both play); we
+  // only need to play the clip and report back when it ends (or fails).
   let djAudio: HTMLAudioElement | null = null
   let djCurrentSpeakId: string | null = null
 
@@ -331,9 +331,14 @@ export const useMusicStore = defineStore('music', () => {
     }
   }
 
-  async function runSetup(request: MusicSetupRequest) {
-    busy.value = true
-    lastError.value = ''
+  async function runSetup(request: MusicSetupRequest, options: { silent?: boolean } = {}) {
+    // silent: background polls (login --check every 3s) must not flip `busy` —
+    // the settings tab keys hints and button-disabling off it, and a poll that
+    // strobes it makes the login step flash "正在生成二维码…" forever.
+    if (!options.silent) {
+      busy.value = true
+      lastError.value = ''
+    }
     try {
       const response = await platformApi.musicSetup(request)
       if (response.success && response.state) state.value = response.state
@@ -343,7 +348,7 @@ export const useMusicStore = defineStore('music', () => {
       lastError.value = error?.message || '操作失败'
       return { success: false, error: lastError.value }
     } finally {
-      busy.value = false
+      if (!options.silent) busy.value = false
     }
   }
 
@@ -391,12 +396,20 @@ export const useMusicStore = defineStore('music', () => {
   }
   const setCredentials = (appId: string, privateKey: string) =>
     runSetup({ action: 'set-credentials', appId, privateKey })
-  const startLogin = () => {
+  /** True only while `login-start` is generating a QR — the hint's one signal. */
+  const loginStarting = ref(false)
+  const startLogin = async () => {
     loginOutput.value = ''
-    return runSetup({ action: 'login-start' })
+    loginStarting.value = true
+    try {
+      return await runSetup({ action: 'login-start' })
+    } finally {
+      loginStarting.value = false
+    }
   }
   const cancelLogin = () => runSetup({ action: 'login-cancel' })
-  const checkLogin = () => runSetup({ action: 'login-check' })
+  /** Silent: callers poll this on a timer; it must not strobe `busy`. */
+  const checkLogin = () => runSetup({ action: 'login-check' }, { silent: true })
   const logout = () => runSetup({ action: 'logout' })
   const setPlayer = (player: MusicPlayerBackend) => runSetup({ action: 'set-player', player })
 
@@ -404,6 +417,7 @@ export const useMusicStore = defineStore('music', () => {
     state,
     lastError,
     busy,
+    loginStarting,
     loginOutput,
     installOutput,
     toast,

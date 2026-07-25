@@ -381,9 +381,8 @@ function prefetchUpcomingEntry(): void {
  * Read-back verify budget. A single fixed-delay check misjudged a slow night
  * (song came up at ~6s, we checked at 5s, wrote a false 起播失败 and dropped
  * the entry) — so poll instead, and let a late start still count as a start.
- * Tight interval: the poll is also what triggers pause-under-patter, and every
- * extra beat there is audible song under the host's voice (each state read is
- * itself a ~250ms CLI call, so the effective cycle is ~550ms).
+ * (Each state read is itself a ~250ms CLI call, so the effective cycle is
+ * ~550ms.)
  */
 const PLAY_VERIFY_INTERVAL_MS = 300
 const PLAY_VERIFY_DEADLINE_MS = 12_000
@@ -654,7 +653,7 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
         await new Promise(resolve => setTimeout(resolve, PLAY_VERIFY_INTERVAL_MS))
       }
     }
-    let confirmedState = await waitForFreshPlayback(PLAY_VERIFY_DEADLINE_MS)
+    const confirmedState = await waitForFreshPlayback(PLAY_VERIFY_DEADLINE_MS)
     if (!confirmedState) {
       // Every caller (conductor advance, bar resume/skip/replay) surfaces
       // this message as the brief's lastError — say the true cause when we
@@ -676,58 +675,29 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     }
     if (patterInFlight) {
       if (!patterFinished) {
-        // The song came up while the host is still talking: hold it at the
-        // start line (pause, rewind the sub-second blip that escaped under the
-        // voice) and release the moment the patter acks.
-        const build = getActiveMusicProvider().cli.build
-        const held = await reliable
-          .run('transport', build.pause())
-          .then(() => true)
-          .catch(error => {
-            console.warn('[radio] could not hold the song under the patter', error)
-            return false
-          })
-        if (held) {
-          await reliable.run('transport', build.seek(0)).catch(() => {})
-          timer.mark('歌已就位,压住等口播')
-        }
+        // The song came up while the host is still talking: let it play — the
+        // voice rides over the music, like a real broadcast. This used to hold
+        // the song at the start line (pause + seek 0, verified resume on ack),
+        // but the hold was audibly worse than the overlap it prevented: the
+        // verify poll only sees the song AFTER it is making sound, so every
+        // hold played as music blipping on and getting yanked back down
+        // (field verdict 2026-07-25) — and the release chain it required has
+        // died twice in the field on fresh legacy streams (resume refused
+        // with 播放列表为空; a resumed stream expiring 40s in). No pause:
+        // nothing to release, nothing to rescue.
+        timer.mark('歌先出声,口播盖着说完')
         await patterInFlight
         // 停止电台 pressed while the host was talking: the station closed —
-        // do NOT release the song it introduced.
+        // do NOT let the song it introduced keep playing.
         if (!getRadioStore().readBrief().active) {
-          await reliable.run('transport', build.stop()).catch(() => {})
-          throw new RadioStartNotSongsFaultError('电台已停止')
-        }
-        if (held) {
-          // Verified, not fire-and-forget: a resume whose envelope says ok but
-          // whose player stays paused strands the radio in a silence the
-          // conductor reads as 待命 (field-hit 2026-07-19: 与光 came back for
-          // 40s then died — every link in this chain is now evidence-logged).
           await reliable
-            .runVerified(build.resume(), state => state?.status === 'playing')
-            .catch(error => {
-              console.warn('[radio] resume after patter failed', error)
-            })
-          timer.mark('口播结束,续播出声')
-        }
-        // The release must end in sound. pause/seek/resume on a fresh legacy
-        // stream has died twice in the field (resume refused with 播放列表为空;
-        // a resumed stream expiring 40s in) — if OUR song is not audibly on
-        // right now, run play again: the state read just said nothing is
-        // playing, so the non-idempotency worry does not apply.
-        const post = await reliable.readState().catch(() => null)
-        if (!isFreshPlayback(post)) {
-          console.warn(`[radio] 「${entry.title}」口播释放后无声——重新起播救场`)
-          timer.mark('释放后无声,重新起播')
-          await reliable.run('start', startCommand.args, startCommand.env)
-          const revived = await waitForFreshPlayback(PLAY_VERIFY_DEADLINE_MS)
-          if (!revived) throw new Error(`口播后重新起播仍失败(${entry.title})`)
-          confirmedState = revived
-          timer.mark('救场起播成功')
+            .run('transport', getActiveMusicProvider().cli.build.stop())
+            .catch(() => {})
+          throw new RadioStartNotSongsFaultError('电台已停止')
         }
       } else {
         // Patter ended before the song came up — the load was the longer leg;
-        // the song starts the moment the player has it. Nothing to release.
+        // the song starts the moment the player has it. Nothing else to do.
         await patterInFlight
       }
     }

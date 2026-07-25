@@ -326,7 +326,7 @@ const playing = computed(() => {
 const loginMissing = computed(() => !musicStore.state.loggedIn)
 
 function openMusicSettings() {
-  void platformApi.openSettingsWindow()
+  void platformApi.openSettingsWindow({ tab: 'music' })
 }
 
 /**

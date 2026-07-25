@@ -129,6 +129,8 @@ export interface ChatMessage {
   steps?: Step[]  // Steps showing AI reasoning process
   attachments?: MessageAttachment[]  // File/image attachments
   source?: 'text' | 'voice' | 'api' | string
+  /** True for steering messages injected mid-stream (persisted marker for UI) */
+  steered?: boolean
   voice?: VoiceTranscriptMetadata
   origin?: MessageOrigin
   // Turn-volatile context variables captured at send time (user messages only).

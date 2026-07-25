@@ -8,6 +8,10 @@ export interface ElectronSettingsWindowOptions {
   backgroundColor: string
   effectiveTheme: 'light' | 'dark'
   colorTheme: string
+  /** Deep-link target tab (e.g. 'music'); the settings page reads it from the hash. */
+  initialTab?: string
+  /** Channel for telling an already-open window to switch tabs. */
+  navigateChannel?: string
   rendererDevUrl: string
   rendererIndexPath: string
   preloadPath: string
@@ -19,6 +23,9 @@ export function openElectronSettingsWindow(options: ElectronSettingsWindowOption
   const currentWindow = options.currentWindow
   if (currentWindow && !currentWindow.isDestroyed()) {
     currentWindow.focus()
+    if (options.initialTab && options.navigateChannel) {
+      currentWindow.webContents.send(options.navigateChannel, { tab: options.initialTab })
+    }
     return currentWindow
   }
 
@@ -58,7 +65,8 @@ export function openElectronSettingsWindow(options: ElectronSettingsWindowOption
     options.setCurrentWindow(null)
   })
 
-  const themeParams = `theme=${options.effectiveTheme}&colorTheme=${options.colorTheme}`
+  const tabParam = options.initialTab ? `&tab=${encodeURIComponent(options.initialTab)}` : ''
+  const themeParams = `theme=${options.effectiveTheme}&colorTheme=${options.colorTheme}${tabParam}`
   if (options.isDevelopment) {
     const url = `${options.rendererDevUrl}/#/settings?${themeParams}`
     logger.log('[Settings] Loading URL:', url)

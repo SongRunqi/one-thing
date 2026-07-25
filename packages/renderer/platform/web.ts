@@ -468,10 +468,13 @@ const webApi = {
 
 	getSettings: () => requestJson("/api/settings"),
 	saveSettings: (settings: AppSettings) => postJson("/api/settings", settings),
-	openSettingsWindow: async () => {
-		window.location.hash = "#/settings";
+	openSettingsWindow: async (options?: { tab?: string }) => {
+		window.location.hash = options?.tab
+			? `#/settings?tab=${encodeURIComponent(options.tab)}`
+			: "#/settings";
 		return { success: true };
 	},
+	onSettingsNavigate: () => () => {},
 	testProxy: (proxy: unknown) => postJson("/api/network/test-proxy", { proxy }),
 	onSettingsChanged: () => () => {},
 	searchQuery: (request: unknown) => postJson("/api/search/query", request),

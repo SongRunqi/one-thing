@@ -834,6 +834,9 @@ export class CoreStreamEngine<
       timestamp,
       contentParts: resolvedPromptRefs.contentParts,
       source,
+      // Persisted identity marker: the UI renders steering messages
+      // distinctly (they interject into a running response).
+      steered: true,
       ...(origin !== undefined ? { origin } : {}),
     } as unknown as TMessage
 

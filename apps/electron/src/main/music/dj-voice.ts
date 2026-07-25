@@ -1,9 +1,10 @@
 /**
  * DJ patter voicing: synthesize the host's line and play it in the renderer,
  * on a track separate from mpv, resolving only once the renderer says it
- * finished. The conductor calls into radio.ts's speak hook, which pauses the
- * music, awaits this, and resumes — so the round-trip ack here is what makes
- * "pause → talk → resume" land in the right order.
+ * finished. The start flow speaks into the pre-song silence and, when the
+ * song loads faster than the host talks, simply lets the two overlap — the
+ * round-trip ack here is what tells the start flow the voice is done (and
+ * what unblocks a 停止电台 pressed mid-sentence).
  */
 import { randomUUID } from 'node:crypto'
 import { broadcastElectronVoiceMessage } from '@onething/electron-host/voice/events'
@@ -12,9 +13,9 @@ import { getSettings } from '../stores/settings.js'
 import { IPC_CHANNELS, type MusicDjSpeak } from '@shared/ipc.js'
 
 /**
- * Ceiling on how long we hold the music paused for one line. A lost ack
- * (renderer reload mid-play, no audio device) must not park the radio in
- * silence forever — past this we resume regardless.
+ * Ceiling on how long one line may block the start flow. A lost ack
+ * (renderer reload mid-play, no audio device) must not park the radio's
+ * start pipeline forever — past this we proceed regardless.
  */
 const DJ_SPEAK_MAX_MS = 30_000
 

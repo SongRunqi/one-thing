@@ -765,14 +765,28 @@ async function openSettingsJson() {
   }
 }
 
+/**
+ * Deep link: "去登录"-style entry points open settings pointed at a tab. A new
+ * window carries it in the hash (#/settings?…&tab=music); an already-open
+ * window gets a push on SETTINGS_NAVIGATE instead.
+ */
+function applyDeepLinkTab(tabId: string | null | undefined) {
+  if (tabId && isNavItemId(tabId)) void selectNavItem(tabId)
+}
+
+let unsubscribeNavigate: (() => void) | null = null
+
 onMounted(async () => {
   await loadSettings()
+  applyDeepLinkTab(new URLSearchParams(window.location.hash.split('?')[1] ?? '').get('tab'))
+  unsubscribeNavigate = platformApi.onSettingsNavigate?.(payload => applyDeepLinkTab(payload.tab)) ?? null
   window.addEventListener('focus', refreshToolsWhenVisible)
   document.addEventListener('visibilitychange', refreshToolsWhenVisible)
   document.addEventListener('keydown', handleKeydown)
 })
 
 onUnmounted(() => {
+  unsubscribeNavigate?.()
   window.removeEventListener('focus', refreshToolsWhenVisible)
   document.removeEventListener('visibilitychange', refreshToolsWhenVisible)
   document.removeEventListener('keydown', handleKeydown)

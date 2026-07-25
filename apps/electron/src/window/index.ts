@@ -350,7 +350,7 @@ function createTodoPlanBrowserWindow(
 /**
  * Create or focus the settings window
  */
-export function openSettingsWindow(_parentWindow?: ElectronBrowserWindow) {
+export function openSettingsWindow(_parentWindow?: ElectronBrowserWindow, initialTab?: string) {
   const isDevelopment = process.env.NODE_ENV === 'development'
   const isMac = process.platform === 'darwin'
   const { mode, themeId, colorTheme } = getWindowThemeSelection()
@@ -366,6 +366,8 @@ export function openSettingsWindow(_parentWindow?: ElectronBrowserWindow) {
     backgroundColor,
     effectiveTheme: mode,
     colorTheme,
+    initialTab,
+    navigateChannel: IPC_CHANNELS.SETTINGS_NAVIGATE,
     rendererDevUrl: getElectronRendererDevUrl(),
     rendererIndexPath: getRendererIndexPath(),
     preloadPath: path.join(__dirname, '../preload/index.js'),

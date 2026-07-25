@@ -201,4 +201,30 @@ describe('NcmCliDriver', () => {
     // Background mode is what makes the piped QR URL reach us at all.
     expect(calls.some(call => call.includes('--background') && call.includes('login'))).toBe(true)
   })
+
+  it('emits only the JSON envelope even when ncm-cli prints stray lines around it', async () => {
+    const { driver } = createDriver(() => ({
+      stdout: 'npm warn something\n{"success":true,"qrCodeUrl":"https://163cn.tv/x"}\ntrailing noise\n',
+    }))
+    let emitted = ''
+    await driver.startLogin(chunk => (emitted += chunk))
+    // The renderer JSON.parses this verbatim — noise must never reach it.
+    expect(JSON.parse(emitted)).toEqual({ success: true, qrCodeUrl: 'https://163cn.tv/x' })
+  })
+
+  it('throws instead of emitting when the login start fails', async () => {
+    // A failed start used to hand unusable stdout to the renderer, which
+    // left the login step silently QR-less forever.
+    const exitFail = createDriver(() => ({ code: 1, stderr: 'ncm-cli: command failed' }))
+    await expect(exitFail.driver.startLogin(() => {})).rejects.toThrow('ncm-cli: command failed')
+
+    const refused = createDriver(() => ({ stdout: '{"success":false,"message":"未配置凭证"}' }))
+    await expect(refused.driver.startLogin(() => {})).rejects.toThrow('未配置凭证')
+
+    const quota = createDriver(() => ({ stdout: '{"success":false,"message":"请求总量超限"}' }))
+    await expect(quota.driver.startLogin(() => {})).rejects.toBeInstanceOf(OnethingMusicQuotaError)
+
+    const garbage = createDriver(() => ({ stdout: 'not json at all' }))
+    await expect(garbage.driver.startLogin(() => {})).rejects.toThrow('not json at all')
+  })
 })

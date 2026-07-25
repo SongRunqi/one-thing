@@ -35,7 +35,7 @@
     <!-- Normal user/assistant message -->
     <div
       v-else
-      :class="['message', message.role, { highlighted: isHighlighted }]"
+      :class="['message', message.role, { highlighted: isHighlighted, steered: isSteered }]"
       :data-message-id="message.id"
     >
       <div
@@ -114,20 +114,24 @@
           @open-file="(filePath) => emit('openFile', filePath)"
         />
 
-        <!-- Steering message still queued: not yet delivered to the model,
-             retractable until the next loop turn drains it. -->
+        <!-- Steering identity line: marks the message as an interjection
+             into a running response. While still queued it also carries the
+             delivery state and the retract affordance. -->
         <div
-          v-if="steeringPending"
-          class="steer-pending-line"
+          v-if="isSteered"
+          class="steer-line"
         >
-          <span class="steer-pending-hint">待送达 · 下一轮注入</span>
-          <button
-            type="button"
-            class="steer-retract-btn"
-            @click="handleRetractSteer"
-          >
-            撤回
-          </button>
+          <span class="steer-flag">插话</span>
+          <template v-if="steeringPending">
+            <span class="steer-pending-hint">待送达 · 下一轮注入</span>
+            <button
+              type="button"
+              class="steer-retract-btn"
+              @click="handleRetractSteer"
+            >
+              撤回
+            </button>
+          </template>
         </div>
 
         <!-- Turn-volatile state board captured at send time. Rendered into
@@ -265,9 +269,15 @@ const isEditing = ref(false)
 const editContent = ref('')
 const contextUpdateExpanded = ref(false)
 
-// Steering retraction: a steer message stays retractable until the next
-// loop turn drains it from the queue (chat store tracks the pending set).
+// Steering identity + retraction. `steered` is the persisted marker (also
+// true for historical messages); the pending set only tracks messages still
+// waiting in the queue (retractable until the next loop turn drains them).
 const chatStore = useChatStore()
+const isSteered = computed(() =>
+  props.message.role === 'user' &&
+  (props.message.steered === true ||
+    chatStore.pendingSteeringByMessageId.has(props.message.id)),
+)
 const steeringPending = computed(() =>
   props.message.role === 'user' &&
   chatStore.pendingSteeringByMessageId.has(props.message.id),
@@ -616,8 +626,16 @@ function handleUpdateThinkingTime(time: number) {
   font-variant-numeric: tabular-nums;
 }
 
-/* Pending steering: always visible while the message waits in the queue */
-.steer-pending-line {
+/* Steered message: dashed frame marks an interjection into a running
+   response, distinct from the solid outline of a normal user entry. */
+.message.user.steered :deep(.bubble.user) {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 45%, transparent);
+}
+
+/* Steering identity line: always visible on steered messages; carries the
+   delivery state and retract affordance while the message is still queued. */
+.steer-line {
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -627,6 +645,16 @@ function handleUpdateThinkingTime(time: number) {
   font-size: 11.5px;
   color: var(--ui-text-muted-fg, var(--muted));
   user-select: none;
+}
+
+.steer-flag {
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 5px;
+  letter-spacing: 0.08em;
+  border: 1px dashed color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 40%, transparent);
+  border-radius: 3px;
+  color: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 75%, var(--ui-text-muted-fg, var(--muted)));
 }
 
 .steer-pending-hint {

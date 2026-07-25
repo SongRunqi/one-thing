@@ -74,8 +74,9 @@ export function registerSettingsHandlers() {
       testProxy: IPC_CHANNELS.TEST_PROXY,
       showOpenDialog: IPC_CHANNELS.SHOW_OPEN_DIALOG,
     },
-    openSettingsWindow: () => {
-      openSettingsWindow()
+    openSettingsWindow: (request?: unknown) => {
+      const tab = (request as { tab?: unknown } | undefined)?.tab
+      openSettingsWindow(undefined, typeof tab === 'string' ? tab : undefined)
       return { success: true }
     },
     getSettings: () =>

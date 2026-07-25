@@ -344,7 +344,24 @@ export class NcmCliDriver implements OnethingMusicBackend {
       args: ['login', '--background', '--output', 'json'],
       timeoutMs: 30_000,
     })
-    onOutput(result.stdout)
+
+    const combined = `${result.stdout}\n${result.stderr}`
+    if (combined.includes(QUOTA_MARKER)) throw new OnethingMusicQuotaError(QUOTA_MARKER)
+
+    // The renderer draws its QR from this blob, so a failed start must throw
+    // (and reach the UI as an error) rather than hand over unusable output —
+    // that exact silence left the login step showing nothing forever.
+    const envelope = extractNcmCliJson(result.stdout)
+    if (!envelope || envelope.success === false || result.code !== 0) {
+      const message =
+        (typeof envelope?.message === 'string' && envelope.message.trim()) ||
+        result.stderr.trim() ||
+        result.stdout.trim()
+      throw new Error(message || `ncm-cli login 启动失败（退出码 ${result.code ?? 'null'}）`)
+    }
+    // Re-serialize instead of forwarding raw stdout: ncm-cli prints stray
+    // non-JSON lines around its envelope, and the renderer JSON.parses this.
+    onOutput(JSON.stringify(envelope))
   }
 
   cancelLogin(): void {

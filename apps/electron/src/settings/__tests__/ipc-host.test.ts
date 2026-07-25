@@ -155,7 +155,7 @@ describe('electron settings IPC host', () => {
     const proxyRequest = { proxy: { enabled: true } }
     const dialogOptions = { properties: ['openDirectory'] }
 
-    expect(handle.mock.calls[0][1]({})).toEqual({ success: true })
+    expect(handle.mock.calls[0][1]({}, { tab: 'music' })).toEqual({ success: true })
     await expect(handle.mock.calls[1][1]({})).resolves.toEqual({ success: true, settings: { theme: 'dark' } })
     expect(handle.mock.calls[2][1]({})).toEqual({ success: true, theme: 'light' })
     await expect(handle.mock.calls[3][1](event, settings)).resolves.toEqual({ success: true, settings: { theme: 'light' } })
@@ -165,7 +165,7 @@ describe('electron settings IPC host', () => {
       filePaths: ['/tmp'],
     })
 
-    expect(openSettingsWindow).toHaveBeenCalledWith()
+    expect(openSettingsWindow).toHaveBeenCalledWith({ tab: 'music' })
     expect(getSettings).toHaveBeenCalledWith()
     expect(getSystemTheme).toHaveBeenCalledWith()
     expect(saveSettings).toHaveBeenCalledWith(settings, event)

@@ -58,6 +58,7 @@ export const IPC_CHANNELS = {
 	GET_SETTINGS: "settings:get",
 	SAVE_SETTINGS: "settings:save",
 	OPEN_SETTINGS_WINDOW: "settings:open-window",
+	SETTINGS_NAVIGATE: "settings:navigate", // main → settings window: jump to a tab
 	SETTINGS_CHANGED: "settings:changed",
 	GET_SYSTEM_THEME: "settings:get-system-theme",
 	SYSTEM_THEME_CHANGED: "settings:system-theme-changed",

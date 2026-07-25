@@ -266,6 +266,7 @@
 
     <SettingsSection
       v-else-if="store.setupStage === 'login'"
+      id="music-login-section"
       title="登录"
       :description="loginKind === 'qr-stdout' ? '用对应的音乐 App 扫描二维码。' : '完成音乐服务的登录。'"
     >
@@ -280,7 +281,7 @@
             alt="扫码登录"
           >
           <p
-            v-else-if="store.busy"
+            v-else-if="store.loginStarting"
             class="hint"
           >
             正在生成二维码…
@@ -376,7 +377,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { toDataURL } from 'qrcode'
 import ErrorNote from '@/components/common/ErrorNote.vue'
 import SettingsSection from './SettingsSection.vue'
@@ -617,12 +618,15 @@ function openLoginUrl() {
 /**
  * Background login finishes silently in a detached poller, so poll
  * `login --check` while the wizard sits on the login step; stop once it
- * advances (ready) or the tab unmounts.
+ * advances (ready) or the tab unmounts. Arriving at the step also
+ * generates the QR unprompted (the user came here to log in — making them
+ * find a "开始登录" button first was field-reported as "the QR never came")
+ * and scrolls the login section into view, since it sits below the fold.
  */
 let loginPollTimer: ReturnType<typeof setInterval> | null = null
 watch(
   () => store.setupStage,
-  stage => {
+  async stage => {
     if (loginPollTimer) {
       clearInterval(loginPollTimer)
       loginPollTimer = null
@@ -631,6 +635,11 @@ watch(
       loginPollTimer = setInterval(() => {
         void store.checkLogin()
       }, 3_000)
+      if (loginKind.value === 'qr-stdout' && !qrDataUrl.value && !store.loginStarting) {
+        void store.startLogin()
+      }
+      await nextTick()
+      document.getElementById('music-login-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   },
   { immediate: true },
