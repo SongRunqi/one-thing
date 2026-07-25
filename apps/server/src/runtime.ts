@@ -48,6 +48,19 @@ import {
 	type RuntimeUnsubscribe,
 } from "@onething/core";
 import { createOnethingBackend } from "@onething/app/backend.js";
+import { buildSystemPromptSnapshot as buildAppSystemPromptSnapshot } from "@onething/app/engine/prompt/system-prompt-snapshot.js";
+import { buildOnethingSystemPromptSnapshotForIpc } from "@onething/runtime/prompts";
+import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/app/stores/settings.js";
+import {
+	getAllSkillsForDisplay as getAppSkillsForDisplay,
+	invalidateSessionSkillsCache as invalidateAppSessionSkillsCache,
+} from "@onething/app/skills/session-skills.js";
+import {
+	createSkill as createAppSkill,
+	deleteSkill as deleteAppSkill,
+	readSkillFile as readAppSkillFile,
+} from "@onething/app/skills/index.js";
+import { getProjectsStore as getAppProjectsStore } from "@onething/app/project-dirs/index.js";
 import {
 	createBranchSession as createAppStoreBranchSession,
 	createSession as createAppStoreSession,
@@ -1286,7 +1299,7 @@ export async function createDevelopmentOnethingServerRuntime(
 	});
 	const explicitSettingsRoot =
 		options.settingsRoot ?? process.env.ONETHING_SERVER_SETTINGS_ROOT;
-	const settingsStore =
+	const baseSettingsStore =
 		options.settingsStore ??
 		(explicitSettingsRoot
 			? createFileServerSettingsStore(explicitSettingsRoot)
@@ -1294,6 +1307,21 @@ export async function createDevelopmentOnethingServerRuntime(
 					getOnethingSettingsPath({ storePath }),
 					join(dataRoot, "settings"),
 				));
+	// Real engine: the in-process engine reads settings through the app store's
+	// memory cache. A default-context save from the HTTP API writes the same
+	// settings.json — drop the app cache so the engine's next read reloads,
+	// otherwise e.g. a freshly entered API key needs a server restart.
+	const settingsStore: ServerSettingsStore = backend.persistsMessages
+		? {
+				load: (context) => baseSettingsStore.load(context),
+				async save(context, settings) {
+					await baseSettingsStore.save(context, settings);
+					if (isDefaultServerRequestContext(context)) {
+						invalidateAppSettingsCache();
+					}
+				},
+			}
+		: baseSettingsStore;
 	configureOnethingPermissionGrantStorage({
 		getPermissionsDir: () => join(dataRoot, "permissions"),
 		readJsonFile: readServerRuntimeJsonFile,
@@ -1315,6 +1343,23 @@ export async function createDevelopmentOnethingServerRuntime(
 	const isDefaultContext = (context = defaultRequestContext()) =>
 		context.userId === defaultRequestContext().userId &&
 		context.workspaceId === defaultRequestContext().workspaceId;
+
+	// App-subsystem delegation: with the real engine, default-owner requests
+	// read/write the same app stores the engine uses in-process; echo/test
+	// backends and scoped owners keep the server-local implementations.
+	const useAppSubsystems = (context = defaultRequestContext()) =>
+		backend.persistsMessages && isDefaultContext(context);
+
+	// Project dirs feed the engine's prompt vars — the app store is the one it
+	// reads, so web-side edits must land there to be visible in prompts.
+	const projectDirsStoreForContext = (context = defaultRequestContext()) =>
+		useAppSubsystems(context)
+			? getAppProjectsStore()
+			: getServerProjectDirsStoreForContext(
+					projectDirStoresByOwner,
+					dataRoot,
+					context,
+				);
 
 	const ownerDataRootForContext = (
 		context = defaultRequestContext(),
@@ -2527,6 +2572,16 @@ export async function createDevelopmentOnethingServerRuntime(
 		| { success: true; snapshot: SystemPromptSnapshot }
 		| { success: false; error: string }
 	> => {
+		if (useAppSubsystems(context)) {
+			// Real engine, single-user: the app snapshot builder reads the same
+			// store/settings/tool registry the live stream uses — the snapshot
+			// is the prompt that will actually ship, not a web-host mock.
+			return buildOnethingSystemPromptSnapshotForIpc({
+				sessionId,
+				buildSnapshot: buildAppSystemPromptSnapshot,
+				logger: console,
+			});
+		}
 		// Draft ids are ordinary session ids the server has never seen (the
 		// renderer materializes them lazily), so an unknown id is treated as a
 		// draft and gets the default-settings snapshot — this is a read-only
@@ -3743,11 +3798,7 @@ export async function createDevelopmentOnethingServerRuntime(
 		},
 		projectDirs: {
 			async list(context = defaultRequestContext()) {
-				const store = getServerProjectDirsStoreForContext(
-					projectDirStoresByOwner,
-					dataRoot,
-					context,
-				);
+				const store = projectDirsStoreForContext(context);
 				return listOnethingProjectDirsForIpc({
 					listEntries: () => store.list(),
 					getProject: (path) => store.get(path),
@@ -3760,11 +3811,7 @@ export async function createDevelopmentOnethingServerRuntime(
 					path,
 				);
 				if (!resolvedPath) return serverProjectDirsPathError();
-				const store = getServerProjectDirsStoreForContext(
-					projectDirStoresByOwner,
-					dataRoot,
-					context,
-				);
+				const store = projectDirsStoreForContext(context);
 				return getOnethingProjectDirForIpc({
 					request: { path: resolvedPath },
 					getProject: (targetPath) => store.get(targetPath),
@@ -3781,11 +3828,7 @@ export async function createDevelopmentOnethingServerRuntime(
 					path,
 				);
 				if (!resolvedPath) return serverProjectDirsPathError();
-				const store = getServerProjectDirsStoreForContext(
-					projectDirStoresByOwner,
-					dataRoot,
-					context,
-				);
+				const store = projectDirsStoreForContext(context);
 				return addOnethingProjectDirForIpc({
 					request: { path: resolvedPath, description },
 					addProject: (input) => store.add(input),
@@ -3802,11 +3845,7 @@ export async function createDevelopmentOnethingServerRuntime(
 					path,
 				);
 				if (!resolvedPath) return serverProjectDirsPathError();
-				const store = getServerProjectDirsStoreForContext(
-					projectDirStoresByOwner,
-					dataRoot,
-					context,
-				);
+				const store = projectDirsStoreForContext(context);
 				return updateOnethingProjectDirForIpc({
 					request: { path: resolvedPath, description },
 					updateProject: (targetPath, patch) => store.update(targetPath, patch),
@@ -3819,11 +3858,7 @@ export async function createDevelopmentOnethingServerRuntime(
 					path,
 				);
 				if (!resolvedPath) return serverProjectDirsPathError();
-				const store = getServerProjectDirsStoreForContext(
-					projectDirStoresByOwner,
-					dataRoot,
-					context,
-				);
+				const store = projectDirsStoreForContext(context);
 				return removeOnethingProjectDirForIpc({
 					request: { path: resolvedPath },
 					removeProject: (targetPath) => store.remove(targetPath),
@@ -4354,6 +4389,16 @@ export async function createDevelopmentOnethingServerRuntime(
 		},
 		skills: {
 			list(workingDirectory?: string, context = defaultRequestContext()) {
+				if (useAppSubsystems(context)) {
+					// Factory already ran initializeSessionSkills; this is the
+					// exact skill set the engine injects into prompts.
+					return listOnethingSkillsForIpc({
+						workingDirectory,
+						ensureInitialized: async () => {},
+						listSkills: (options) => getAppSkillsForDisplay(options),
+						logger: console,
+					});
+				}
 				return listOnethingSkillsForIpc({
 					workingDirectory,
 					ensureInitialized: async () =>
@@ -4371,6 +4416,14 @@ export async function createDevelopmentOnethingServerRuntime(
 				});
 			},
 			refresh(context = defaultRequestContext()) {
+				if (useAppSubsystems(context)) {
+					return refreshOnethingSkillsForIpc({
+						invalidateSkillsCache: async () =>
+							invalidateAppSessionSkillsCache(),
+						listSkills: (options) => getAppSkillsForDisplay(options),
+						logger: console,
+					});
+				}
 				return refreshOnethingSkillsForIpc({
 					invalidateSkillsCache: async () => {},
 					listSkills: (options) =>
@@ -4390,6 +4443,14 @@ export async function createDevelopmentOnethingServerRuntime(
 				fileName: string,
 				context = defaultRequestContext(),
 			) {
+				if (useAppSubsystems(context)) {
+					return readOnethingSkillFileForIpc({
+						skillId,
+						fileName,
+						readSkillFile: readAppSkillFile,
+						logger: console,
+					});
+				}
 				return readOnethingSkillFileForIpc({
 					skillId,
 					fileName,
@@ -4420,6 +4481,18 @@ export async function createDevelopmentOnethingServerRuntime(
 					instructions?: string;
 					source?: SkillSource;
 				};
+				if (useAppSubsystems(context)) {
+					return createOnethingSkillForIpc({
+						name: typedRequest.name ?? "",
+						description: typedRequest.description ?? "",
+						instructions: typedRequest.instructions ?? "",
+						source: typedRequest.source ?? "user",
+						createSkill: createAppSkill,
+						invalidateSkillsCache: async () =>
+							invalidateAppSessionSkillsCache(),
+						logger: console,
+					});
+				}
 				return createOnethingSkillForIpc({
 					name: typedRequest.name ?? "",
 					description: typedRequest.description ?? "",
@@ -4440,6 +4513,15 @@ export async function createDevelopmentOnethingServerRuntime(
 				});
 			},
 			delete(skillId: string, context = defaultRequestContext()) {
+				if (useAppSubsystems(context)) {
+					return deleteOnethingSkillForIpc({
+						skillId,
+						deleteSkill: deleteAppSkill,
+						invalidateSkillsCache: async () =>
+							invalidateAppSessionSkillsCache(),
+						logger: console,
+					});
+				}
 				return deleteOnethingSkillForIpc({
 					skillId,
 					deleteSkill: (targetSkillId) =>
