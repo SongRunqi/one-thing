@@ -45,6 +45,17 @@ describe('architecture boundaries', () => {
     ])).toEqual([])
   })
 
+  it('keeps the runtime product layer off the assembly tree', () => {
+    // src/app is the product assembly (the former Electron main glue). The
+    // rest of the runtime package is host-independent product logic and must
+    // never depend on how it gets assembled — the dependency points one way.
+    const violations = findForbiddenReferences('packages/onething-runtime/src', [
+      importOf('@onething/app'),
+      /from\s+['"][^'"]*\/app\/(engine|stores|tools|providers|channel)\//,
+    ]).filter(reference => !reference.includes('packages/onething-runtime/src/app/'))
+    expect(violations).toEqual([])
+  })
+
   it('keeps packages/gateway depending on core only', () => {
     expect(findForbiddenReferences('packages/gateway', [
       ...hostOnlyPatterns,

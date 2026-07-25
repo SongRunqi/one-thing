@@ -39,6 +39,8 @@
     "release": "bash scripts/release.sh",
     "migrate:sessions:sqlite": "node scripts/migrate-sessions-to-sqlite.mjs",
     "lint": "eslint . --fix",
+    "boundary": "bun scripts/headless-boundary-check.ts",
+    "boundary:gate": "node scripts/boundary-gate.mjs",
     "lint:ci": "eslint . --max-warnings 200",
     "test": "npm run rebuild:sqlite:node && vitest run",
     "test:streaming-scroll": "node scripts/streaming-scroll-harness.mjs",
