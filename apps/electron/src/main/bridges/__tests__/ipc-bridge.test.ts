@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '@shared/ipc'
+import { IPCBridge } from '../ipc-bridge'
 import {
-  IPCBridge,
   appendStreamBufferChunk,
   createStreamBuffer,
   drainStreamBuffer,
-} from '../ipc-bridge'
+} from '@onething/app/events/stream-coalescer.js'
 
 describe('IPCBridge stream buffer', () => {
   it('preserves reasoning before text while merging adjacent reasoning chunks', () => {
@@ -104,13 +104,8 @@ describe('IPCBridge stream buffer', () => {
         sent.push({ channel, payload })
       }),
     }
-    bridge.sessions.set('s1', {
-      messageId: 'm1',
-      unsubStream: vi.fn(),
-      buffer: createStreamBuffer(),
-    })
-
-    appendStreamBufferChunk(bridge.sessions.get('s1').buffer, {
+    bridge.coalescer.start('s1', 'm1')
+    bridge.coalescer.handleChunk('s1', {
       type: 'tool-input-delta',
       toolCallId: 'tc1',
       argsTextDelta: '{"path":"a',

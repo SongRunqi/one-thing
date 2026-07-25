@@ -10,6 +10,8 @@ import type {
   RuntimeUnsubscribe,
 } from '@onething/core'
 import type { ProxySettings } from '@shared/ipc/settings.js'
+import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
+import { SessionStreamCoalescer } from '@onething/app/events/stream-coalescer.js'
 import { getServerChannelIdentityApi } from './runtime.js'
 import type {
   ChannelIdentityCreateLinkRequest,
@@ -1975,18 +1977,30 @@ function handleEvents(context: RouteContext): void {
   context.response.flushHeaders()
   context.response.write(': connected\n\n')
 
+  // Per-connection coalescing: real providers emit hundreds of delta chunks
+  // per second; the shared coalescer batches them on a 16ms ordered buffer,
+  // stamps the active stream's messageId, and flushes pending deltas before
+  // any session event goes out (same semantics as the desktop IPCBridge).
+  const coalescer = new SessionStreamCoalescer({
+    sendChunk: (chunkSessionId, chunk) => {
+      writeSse(context.response, 'session:stream', { sessionId: chunkSessionId, chunk })
+    },
+  }, { debugLabel: 'ServerSSE' })
+
   unsubs.push(context.runtime.events.subscribe(sessionId, (envelope: RuntimeEventEnvelope) => {
+    coalescer.handleEvent(envelope as unknown as SessionEventEnvelope)
     writeSse(context.response, 'session:event', envelope)
   }, options, context.requestContext))
 
   if (context.runtime.streams) {
     unsubs.push(context.runtime.streams.subscribe(sessionId, (payload: RuntimeStreamPayload) => {
-      writeSse(context.response, 'session:stream', payload)
+      coalescer.handleChunk(payload.sessionId, payload.chunk as StreamChunk)
     }, options, context.requestContext))
   }
 
   context.request.on('close', () => {
     for (const unsubscribe of unsubs) unsubscribe()
+    coalescer.dispose()
   })
 }
 
