@@ -122,8 +122,8 @@ export function createPluginAPI(
       registerAfterAssistantResponseHook,
       registerSkillRoot: registerPluginSkillRootProvider,
       invalidateSkillsCache() {
-        return import('../ipc/skills.js')
-          .then(({ invalidateSkillsCache }) => invalidateSkillsCache())
+        return import('../skills/session-skills.js')
+          .then(({ invalidateSessionSkillsCache }) => invalidateSessionSkillsCache())
           .catch(() => undefined)
       },
     },

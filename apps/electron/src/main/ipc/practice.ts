@@ -30,8 +30,13 @@ import {
 	stopPractice,
 	writePracticeConfig,
 } from "../practice/index.js";
+import { configurePracticeEventBroadcaster } from "../practice/index.js";
+import { getIPCBridge } from "../bridges/ipc-bridge-lifecycle.js";
 
 export function registerPracticeHandlers(): void {
+	configurePracticeEventBroadcaster(payload => {
+		getIPCBridge()?.sendToRenderer(IPC_CHANNELS.PRACTICE_EVENT, payload);
+	});
 	ipcMain.handle(
 		IPC_CHANNELS.PRACTICE_START,
 		async (_event, request: PracticeStartRequest): Promise<PracticeStateResponse> => {

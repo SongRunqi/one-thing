@@ -3,8 +3,8 @@
  * the practice ledger, and config. The engine itself is a pure state machine
  * in @onething/runtime/practice; this module drives it with a real 1 Hz timer,
  * settles finished/abandoned sessions into the ledger, and pushes
- * PRACTICE_EVENT payloads to the renderer through the IPCBridge.
- * See docs/design/practice-system.md.
+ * PRACTICE_EVENT payloads through an injected broadcaster (the Electron host
+ * wires it to the IPCBridge). See docs/design/practice-system.md.
  */
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -22,15 +22,24 @@ import {
 	type OnethingPracticeSummaryResult,
 } from "@onething/runtime/practice";
 import {
-	IPC_CHANNELS,
 	type PracticeEventPayload,
 	type PracticeLogRequest,
 	type PracticeSetConfigRequest,
 	type PracticeStartRequest,
 	type PracticeSummaryRequest,
 } from "@shared/ipc.js";
-import { getIPCBridge } from "../bridges/ipc-bridge-lifecycle.js";
 import { getStorePath } from "../stores/paths.js";
+
+type PracticeEventBroadcaster = (payload: PracticeEventPayload) => void;
+
+let practiceEventBroadcaster: PracticeEventBroadcaster | null = null;
+
+/** Host injection point: where PRACTICE_EVENT pushes go (no-op until set). */
+export function configurePracticeEventBroadcaster(
+	broadcaster: PracticeEventBroadcaster | null,
+): void {
+	practiceEventBroadcaster = broadcaster;
+}
 
 const TICK_MS = 1000;
 
@@ -86,7 +95,7 @@ function pushEvent(
 	settled?: OnethingPracticeLedgerRecord,
 ): void {
 	const payload: PracticeEventPayload = { snapshot, edges, settled };
-	getIPCBridge()?.sendToRenderer(IPC_CHANNELS.PRACTICE_EVENT, payload);
+	practiceEventBroadcaster?.(payload);
 }
 
 function settle(input: OnethingPracticeRecordInput): OnethingPracticeLedgerRecord {

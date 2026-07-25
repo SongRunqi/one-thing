@@ -26,7 +26,7 @@ import {
   rebuildOnethingMediaLibraryForIpc,
 } from '@onething/runtime/media'
 import { getSessions } from '../stores/index.js'
-import { openImagePreviewWindow } from '../window.js'
+import { openImagePreviewWindow } from '@onething/electron-host/window'
 import { mediaLibraryService } from '../media/media-library-service.js'
 import { saveMediaImage, type MediaItem } from '../media/save-image.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'

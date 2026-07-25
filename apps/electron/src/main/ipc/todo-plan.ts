@@ -11,7 +11,7 @@ import {
   type TodoPlanUpdateRequest,
   type TodoPlanWindowActionRequest,
 } from '@shared/ipc.js'
-import { hideTodoPlanWindow, openTodoPlanWindow, setTodoPlanWindowPinned, toggleTodoPlanWindow } from '../window.js'
+import { hideTodoPlanWindow, openTodoPlanWindow, setTodoPlanWindowPinned, toggleTodoPlanWindow } from '@onething/electron-host/window'
 import {
   createOnethingTodoNoteForIpc,
   deleteOnethingTodoNoteForIpc,
@@ -29,7 +29,7 @@ import {
   renameUserTodoNote,
   revealTodoPlanDirectory,
   updateTodoPlanDocument,
-} from './store.js'
+} from '../todo-plan/store.js'
 
 export function registerTodoPlanHandlers(): void {
   registerElectronTodoPlanIpcHandlers({

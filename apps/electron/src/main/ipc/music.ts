@@ -26,7 +26,7 @@ import {
   refreshMusicNowPlaying,
   resetMusicServiceForProviderSwitch,
   stopMusicPlayerKeepalive,
-} from './service.js'
+} from '../music/service.js'
 import {
   applyProgrammeAction,
   disposeRadioConductor,
@@ -45,8 +45,8 @@ import {
   resumeRadioPlayback,
   skipToNextRadioSong,
   startRadioConductor,
-} from './radio.js'
-import { resolveDjSpeakDone } from './dj-voice.js'
+} from '../music/radio.js'
+import { resolveDjSpeakDone } from '../music/dj-voice.js'
 
 /**
  * Music IPC serves the settings tab and the composer's music bar. Choosing what

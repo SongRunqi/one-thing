@@ -216,7 +216,7 @@ vi.mock('@onething/electron-host/window/macos-panel', () => ({
 
 async function loadWindowModule() {
   vi.resetModules()
-  return import('../window.js')
+  return import('@onething/electron-host/window')
 }
 
 describe('todo plan standalone window controls', () => {

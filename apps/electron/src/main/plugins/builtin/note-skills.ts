@@ -7,7 +7,7 @@
  */
 
 import { getVariablesStore } from '../../variables/index.js'
-import { invalidateSkillsCache } from '../../ipc/skills.js'
+import { invalidateSessionSkillsCache } from '../../skills/session-skills.js'
 import { getSettings } from '../../stores/settings.js'
 import type { PluginAPI } from '../types.js'
 import { isDirectory } from '@onething/core/storage'
@@ -38,7 +38,7 @@ export default function noteSkillsPlugin(api: PluginAPI): void {
     },
     getMarkdownNoteAttachmentDirectory: () => getSettings().general.editor?.markdownNoteAttachmentDirectory,
     onVariableChange: handler => getVariablesStore().subscribe(handler),
-    invalidateSkillsCache,
+    invalidateSkillsCache: invalidateSessionSkillsCache,
     isDirectory,
   })
 }

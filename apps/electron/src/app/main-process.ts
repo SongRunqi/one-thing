@@ -51,7 +51,7 @@ import { disposeRadioConductor } from "@main/music/radio.js";
 import { bootstrapVariableSystem } from "@main/variables/index.js";
 import { bootstrapProjectDirs } from "@main/project-dirs/index.js";
 import { warmSearchWindow } from "@onething/electron-host/search/window";
-import { applyNetworkProxySettings } from "@main/network/proxy.js";
+import { applyNetworkProxySettings } from "@main/ipc/network-proxy.js";
 import {
 	configureGlobalWindowShortcuts,
 	registerGlobalWindowShortcuts,
