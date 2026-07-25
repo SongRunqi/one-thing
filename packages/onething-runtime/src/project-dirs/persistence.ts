@@ -1,14 +1,12 @@
-import { homedir } from 'node:os'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { getOnethingStorePath } from '../storage/paths.js'
 import {
   parseProject,
   parseProjectIndex,
   type Project,
   type ProjectIndex,
 } from './types.js'
-
-const ROOT_DIR = path.join(homedir(), '.onething', 'project-dirs')
 
 let rootDirOverride: string | null = null
 
@@ -17,7 +15,11 @@ export function setRootDirForTests(dir: string | null): void {
 }
 
 function rootDir(): string {
-  return rootDirOverride ?? ROOT_DIR
+  // Lazy + env-aware: headless hosts scope the store via ONETHING_STORE_PATH
+  // (a hardcoded ~/.onething here once let an isolated server write into the
+  // user's real store). Desktop behavior is unchanged — env unset resolves to
+  // ~/.onething.
+  return rootDirOverride ?? path.join(getOnethingStorePath(), 'project-dirs')
 }
 
 function indexPath(): string {

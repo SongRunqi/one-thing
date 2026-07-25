@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import os from 'node:os'
 import path from 'node:path'
+import { getOnethingStorePath } from '../storage/paths.js'
 import type { OnethingOAuthToken } from './types.js'
 
 export interface OnethingTokenCryptoAdapter {
@@ -17,8 +17,13 @@ export interface OnethingTokenStoreOptions {
   logger?: Pick<Console, 'warn'>
 }
 
-export function getDefaultOnethingTokenFilePath(homeDir = os.homedir()): string {
-  return path.join(homeDir, '.onething', 'oauth-tokens.json')
+// Store-path scoped (ONETHING_STORE_PATH aware): an isolated headless store
+// must never read or clobber the user's real oauth-tokens.json. Desktop is
+// unchanged — env unset resolves to ~/.onething. An explicit homeDir keeps the
+// legacy resolution for callers that pin a home directory.
+export function getDefaultOnethingTokenFilePath(homeDir?: string): string {
+  if (homeDir !== undefined) return path.join(homeDir, '.onething', 'oauth-tokens.json')
+  return path.join(getOnethingStorePath(), 'oauth-tokens.json')
 }
 
 export class OnethingTokenStore<TToken extends OnethingOAuthToken = OnethingOAuthToken> {
