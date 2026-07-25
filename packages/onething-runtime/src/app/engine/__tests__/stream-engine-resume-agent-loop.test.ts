@@ -107,10 +107,6 @@ vi.mock('../prompt/index.js', () => ({
   buildPrompt: mocks.buildPrompt,
 }))
 
-vi.mock('../../ipc/skills.js', () => ({
-  getSkillsForSession: mocks.getSkillsForSession,
-}))
-
 vi.mock('../../skills/session-skills.js', () => ({
   getSkillsForSession: mocks.getSkillsForSession,
 }))

@@ -2,8 +2,8 @@ import type { ProxySettings, TestProxyResponse } from '@shared/ipc.js'
 import {
   applyElectronNetworkProxySettings,
 } from '@onething/electron-host/network/proxy'
-import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '../providers/bound-fetch.js'
-import { getSettings } from '../stores/settings.js'
+import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '@onething/app/providers/bound-fetch.js'
+import { getSettings } from '@onething/app/stores/settings.js'
 
 function normalizeBypassRules(rules?: string): string {
   return (rules || '')

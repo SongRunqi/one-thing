@@ -5,7 +5,7 @@ import {
   type ElectronSearchActionWindow,
 } from '@onething/electron-host/search/window-actions'
 import { isElectronMainAppWindowUrl } from '@onething/electron-host/window/renderer-targets'
-import { createDailyNote } from '@main/search/providers.js'
+import { createDailyNote } from '@onething/app/search/providers.js'
 import { closeSearchWindow, toggleSearchWindow } from './window.js'
 
 const CREATE_DAILY_NOTE_PREFIX = 'create-daily-note:'

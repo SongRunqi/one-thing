@@ -1,9 +1,9 @@
 import * as path from 'path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { getDownloadsDirectory } from '../../tools/core/sandbox.js'
+import { getDownloadsDirectory } from '@onething/app/tools/core/sandbox.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
-import { resetVariablesStoreForTests } from '../../variables/store/index.js'
+import { resetVariablesStoreForTests } from '@onething/app/variables/store/index.js'
 import { registerFilesHandlers } from '../files.js'
 
 const mocks = vi.hoisted(() => {
@@ -27,7 +27,7 @@ vi.mock('electron', () => ({
   },
 }))
 
-vi.mock('../../utils/ripgrep.js', () => ({
+vi.mock('@onething/app/utils/ripgrep.js', () => ({
   listFiles: mocks.listFiles,
 }))
 

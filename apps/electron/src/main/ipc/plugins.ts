@@ -20,9 +20,9 @@ import {
 } from '@onething/runtime/plugins'
 import type { GatewayCommandProvider } from '@onething/gateway'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { getPluginManager } from '../plugins/index.js'
-import { getEventBus } from '../events/index.js'
-import * as store from '../store.js'
+import { getPluginManager } from '@onething/app/plugins/index.js'
+import { getEventBus } from '@onething/app/events/index.js'
+import * as store from '@onething/app/store.js'
 
 export function createGatewayPluginCommandProvider(): GatewayCommandProvider {
   return {

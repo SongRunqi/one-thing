@@ -17,8 +17,8 @@
 
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { ReasoningPlacement, SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
-import type { Unsubscribe } from '../events/types.js'
-import { getEventBus, getStreamChannel } from '../events/index.js'
+import type { Unsubscribe } from '@onething/app/events/types.js'
+import { getEventBus, getStreamChannel } from '@onething/app/events/index.js'
 
 export interface IPCBridgeSender {
   isDestroyed(): boolean

@@ -10,7 +10,7 @@ import type {
 import {
   logMemoryDiagnostic,
   memoryDiagnosticsLogger,
-} from '../memory/diagnostics-logger.js'
+} from '@onething/app/memory/diagnostics-logger.js'
 import {
   appendSoulMemoryPanel,
   discardSoulMemoryPendingCapture,
@@ -18,7 +18,7 @@ import {
   readSoulMemoryManagedFile,
   saveSoulMemoryManagedFile,
   saveSoulMemoryPendingCapture,
-} from '../plugins/builtin/soul-memory.js'
+} from '@onething/app/plugins/builtin/soul-memory.js'
 
 export function registerMemoryHandlers(): void {
   // Memory is plain markdown owned by this process; the panel talks to the

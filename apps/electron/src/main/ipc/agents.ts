@@ -12,8 +12,8 @@ import {
   updateOnethingAgentFromRequestForIpc,
 } from '@onething/runtime/agents'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { DEFAULT_AGENT_ID, createAgent, deleteAgent, listAgents, updateAgent } from '../agents/index.js'
-import { getSessionsList } from '../stores/index.js'
+import { DEFAULT_AGENT_ID, createAgent, deleteAgent, listAgents, updateAgent } from '@onething/app/agents/index.js'
+import { getSessionsList } from '@onething/app/stores/index.js'
 
 export function registerAgentHandlers(): void {
   registerElectronAgentsIpcHandlers({

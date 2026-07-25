@@ -38,7 +38,7 @@ import type {
 	EvalsIncidentRunSummary,
 } from "@shared/ipc.js";
 import { IPC_CHANNELS } from "@shared/ipc.js";
-import * as store from "../store.js";
+import * as store from "@onething/app/store.js";
 import {
 	createEvalsModelCaller,
 	resolveEvalsCredentials,

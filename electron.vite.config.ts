@@ -3,6 +3,9 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
 
 const onethingPackageAliases = [
+  // Product assembly tree (the former apps/electron/src/main). One prefix
+  // entry covers every subpath — do NOT add per-file entries for it.
+  { find: '@onething/app', replacement: resolve(__dirname, 'packages/onething-runtime/src/app') },
   { find: '@onething/core/agent-loop', replacement: resolve(__dirname, 'packages/core/agent-loop/index.ts') },
   // Browser-safe leaf module (no node deps) — must be registered BEFORE the
   // engine barrel so the renderer never drags node:crypto into the bundle.

@@ -25,14 +25,14 @@ import {
   readOnethingImageFileDataUrlForIpc,
   rebuildOnethingMediaLibraryForIpc,
 } from '@onething/runtime/media'
-import { getSessions } from '../stores/index.js'
+import { getSessions } from '@onething/app/stores/index.js'
 import { openImagePreviewWindow } from '@onething/electron-host/window'
-import { mediaLibraryService } from '../media/media-library-service.js'
-import { saveMediaImage, type MediaItem } from '../media/save-image.js'
+import { mediaLibraryService } from '@onething/app/media/media-library-service.js'
+import { saveMediaImage, type MediaItem } from '@onething/app/media/save-image.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MediaAsset, MediaQuery } from '@shared/ipc.js'
 
-export { saveMediaImage, type MediaItem } from '../media/save-image.js'
+export { saveMediaImage, type MediaItem } from '@onething/app/media/save-image.js'
 
 const imagePreviewRegistry = new OnethingImagePreviewRegistry({
   createId: uuidv4,

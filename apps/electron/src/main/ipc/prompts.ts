@@ -19,7 +19,7 @@ import {
   getPrompt,
   listPrompts,
   updatePrompt,
-} from '../prompts/store.js'
+} from '@onething/app/prompts/store.js'
 
 export function registerPromptHandlers(): void {
   registerElectronPromptsIpcHandlers({

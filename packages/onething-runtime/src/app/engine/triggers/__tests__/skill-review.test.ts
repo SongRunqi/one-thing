@@ -6,7 +6,7 @@ import { runAgentLoop, type AgentLoopOptions, type AgentLoopResult } from '@onet
 import { createAgentProviderFromRuntime } from '../../../agent-loop/index.js'
 import { getUserSkillsPath } from '../../../skills/index.js'
 import { executeSkillManage } from '../../../skills/manage.js'
-import { invalidateSkillsCache } from '../../../ipc/skills.js'
+import { invalidateSessionSkillsCache as invalidateSkillsCache } from '../../../skills/session-skills.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import type { ChatMessage, ProviderConfig } from '@shared/ipc.js'
 import { createSkillReviewTrigger } from '../skill-review.js'

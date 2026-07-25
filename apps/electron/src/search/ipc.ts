@@ -8,7 +8,7 @@ import {
   closeOnethingSearchWindowForIpc,
   executeOnethingSearchForIpc,
 } from '@onething/runtime/search'
-import { executeSearch } from '@main/search/providers.js'
+import { executeSearch } from '@onething/app/search/providers.js'
 import { closeSearchWindow, setSearchWindowAnchor } from './window.js'
 import { registerElectronSearchIpcHandlers } from './window-actions.js'
 import { executeSearchActionFrom, toggleSearchWindowFrom } from './window-controller.js'

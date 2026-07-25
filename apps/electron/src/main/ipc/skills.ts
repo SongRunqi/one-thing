@@ -41,14 +41,14 @@ import {
   deleteSkill,
   readSkillFile,
   getUserSkillsPath,
-} from '../skills/index.js'
-import { getSettings, saveSettings } from '../stores/settings.js'
+} from '@onething/app/skills/index.js'
+import { getSettings, saveSettings } from '@onething/app/stores/settings.js'
 import {
   getAllSkillsForDisplay,
   getSkillsForSession as getRuntimeSkillsForSession,
   initializeSessionSkills,
   invalidateSessionSkillsCache,
-} from '../skills/session-skills.js'
+} from '@onething/app/skills/session-skills.js'
 
 let skillsIpcInitialized = false
 

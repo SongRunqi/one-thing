@@ -6,10 +6,6 @@ import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { updateSettingsInMemory } from '../../../stores/settings.js'
 import { buildNoteSkillInstructionContext } from '../note-skills.js'
 
-vi.mock('../../../ipc/skills.js', () => ({
-  invalidateSkillsCache: vi.fn(),
-}))
-
 const tempRoots: string[] = []
 
 function makeTempRoot(): string {

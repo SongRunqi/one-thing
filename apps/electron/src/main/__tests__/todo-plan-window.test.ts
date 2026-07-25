@@ -172,8 +172,8 @@ vi.mock('electron', () => ({
   },
 }))
 
-vi.mock('../stores/paths.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../stores/paths.js')>()
+vi.mock('@onething/app/stores/paths.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@onething/app/stores/paths.js')>()
   return {
     ...actual,
     getWindowStatePath: vi.fn(() => '/tmp/window-state.json'),
@@ -191,7 +191,7 @@ vi.mock('../stores/paths.js', async (importOriginal) => {
   }
 })
 
-vi.mock('../stores/settings.js', () => ({
+vi.mock('@onething/app/stores/settings.js', () => ({
   getSettings: mocks.getSettings,
 }))
 

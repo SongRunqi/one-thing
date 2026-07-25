@@ -29,8 +29,8 @@ import {
 	startPractice,
 	stopPractice,
 	writePracticeConfig,
-} from "../practice/index.js";
-import { configurePracticeEventBroadcaster } from "../practice/index.js";
+} from "@onething/app/practice/index.js";
+import { configurePracticeEventBroadcaster } from "@onething/app/practice/index.js";
 import { getIPCBridge } from "../bridges/ipc-bridge-lifecycle.js";
 
 export function registerPracticeHandlers(): void {

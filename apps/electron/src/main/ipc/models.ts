@@ -16,11 +16,11 @@ import {
   type ElectronModelsSearchRequest,
   type ElectronModelsWithCapabilitiesRequest,
 } from '@onething/electron-host/ipc/models'
-import * as modelRegistry from '../providers/model-registry.js'
-import { authService } from '../auth/auth-service.js'
-import { fetchCopilotModels } from '../providers/builtin/github-copilot.js'
-import { fetchCodexModels, getCodexFallbackModels } from '../providers/builtin/codex.js'
-import { getSettings } from '../stores/settings.js'
+import * as modelRegistry from '@onething/app/providers/model-registry.js'
+import { authService } from '@onething/app/auth/auth-service.js'
+import { fetchCopilotModels } from '@onething/app/providers/builtin/github-copilot.js'
+import { fetchCodexModels, getCodexFallbackModels } from '@onething/app/providers/builtin/codex.js'
+import { getSettings } from '@onething/app/stores/settings.js'
 
 // === GitHub Copilot Models Handler (still fetches from Copilot API) ===
 

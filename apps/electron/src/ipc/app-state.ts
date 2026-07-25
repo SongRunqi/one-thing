@@ -3,8 +3,8 @@ import {
   type OnethingUiStatePatch,
 } from '@onething/runtime/storage'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { getAppState } from '@main/stores/app-state.js'
-import { getAppStatePath } from '@main/stores/paths.js'
+import { getAppState } from '@onething/app/stores/app-state.js'
+import { getAppStatePath } from '@onething/app/stores/paths.js'
 import { registerElectronAppStateIpcHandlers } from './app-state-controller.js'
 
 export { registerElectronAppStateIpcHandlers } from './app-state-controller.js'

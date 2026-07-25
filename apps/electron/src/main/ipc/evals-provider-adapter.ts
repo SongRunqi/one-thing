@@ -15,10 +15,10 @@
  * confirmed across all providers (§7 风险).
  */
 
-import * as store from "../store.js";
+import * as store from "@onething/app/store.js";
 import type { EvalModelCaller } from "@onething/runtime";
 import { onethingBaseBuiltinProviders } from "@onething/runtime/providers";
-import { recordUsage } from "../usage/index.js";
+import { recordUsage } from "@onething/app/usage/index.js";
 
 interface ResolvedEvalsCredentials {
 	ok: boolean;

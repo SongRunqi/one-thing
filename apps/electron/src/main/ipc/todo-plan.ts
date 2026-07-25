@@ -34,7 +34,7 @@ import {
   renameUserTodoNote,
   revealTodoPlanDirectory,
   updateTodoPlanDocument,
-} from '../todo-plan/store.js'
+} from '@onething/app/todo-plan/store.js'
 
 export function registerTodoPlanHandlers(): void {
   configureTodoPlanHost({

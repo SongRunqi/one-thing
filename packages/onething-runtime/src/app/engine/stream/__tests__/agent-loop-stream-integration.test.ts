@@ -211,10 +211,6 @@ vi.mock("../../prompt/index.js", () => ({
 	buildPrompt: mocks.buildPrompt,
 }));
 
-vi.mock("../../../ipc/sessions.js", () => ({
-	updateSessionUsage: mocks.updateSessionUsage,
-}));
-
 vi.mock("../../../session/usage.js", () => ({
 	updateSessionUsage: mocks.updateSessionUsage,
 }));
@@ -227,10 +223,6 @@ vi.mock("../../triggers/index.js", () => ({
 
 vi.mock("../../../plugins/lifecycle.js", () => ({
 	runAfterAssistantResponseHooks: mocks.runAfterAssistantResponseHooks,
-}));
-
-vi.mock("../../../ipc/skills.js", () => ({
-	getSkillsForSession: mocks.getSkillsForSession,
 }));
 
 vi.mock("../../../skills/session-skills.js", () => ({

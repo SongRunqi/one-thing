@@ -19,7 +19,7 @@ import {
   getChannelIdentityService,
   getChannelIdentityStore,
   identitySessionKey,
-} from '../channel/index.js'
+} from '@onething/app/channel/index.js'
 
 export function registerChannelIdentityHandlers(): void {
   ipcMain.handle(

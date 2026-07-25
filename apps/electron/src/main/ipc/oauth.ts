@@ -37,7 +37,7 @@ import type {
   OAuthStatusRequest,
   OAuthStatusResponse,
 } from '@shared/ipc.js'
-import { authService } from '../auth/auth-service.js'
+import { authService } from '@onething/app/auth/auth-service.js'
 
 function notifyTokenRefreshed(providerId: string): void {
   broadcastElectronOAuthTokenRefreshed({

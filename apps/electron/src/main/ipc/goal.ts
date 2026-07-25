@@ -17,15 +17,15 @@ import {
 	type GoalSetResponse,
 } from "@shared/ipc.js";
 import type { SessionGoal } from "@shared/ipc.js";
-import { collectGoalFileDiffs } from "../goals/file-changes.js";
+import { collectGoalFileDiffs } from "@onething/app/goals/file-changes.js";
 import {
 	clearGoal,
 	createGoal,
 	getGoal,
 	getGoals,
 	updateGoalFromUser,
-} from "../goals/index.js";
-import { kickGoalRunIfIdle } from "../goals/kick.js";
+} from "@onething/app/goals/index.js";
+import { kickGoalRunIfIdle } from "@onething/app/goals/kick.js";
 
 function errorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);

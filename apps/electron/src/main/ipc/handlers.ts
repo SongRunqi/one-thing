@@ -32,8 +32,8 @@ import { registerWindowHandlers } from "@onething/electron-host/ipc/window";
 import { registerTodoPlanHandlers } from "./todo-plan.js";
 import { registerVoiceHandlers } from "./voice.js";
 import { registerMusicHandlers } from "./music.js";
-import { startMusicNowPlayingWatch } from "../music/service.js";
-import { startRadioConductor } from "../music/radio.js";
+import { startMusicNowPlayingWatch } from "@onething/app/music/service.js";
+import { startRadioConductor } from "@onething/app/music/radio.js";
 import { registerACPHandlers, initializeACP, shutdownACP } from "./acp.js";
 import { registerGatewayHandlers } from "./gateway.js";
 import { registerChannelIdentityHandlers } from "./channel-identity.js";
@@ -41,8 +41,8 @@ import { registerGoalHandlers } from "./goal.js";
 import { registerEvalsHandlers } from "./evals.js";
 import { registerUsageHandlers } from "./usage.js";
 import { registerPracticeHandlers } from "./practice.js";
-import { getEventBus } from "../events/index.js";
-import { sanitizeRendererOrigin } from "../channel/index.js";
+import { getEventBus } from "@onething/app/events/index.js";
+import { sanitizeRendererOrigin } from "@onething/app/channel/index.js";
 
 export function initializeIPC() {
 	registerChatHandlers();

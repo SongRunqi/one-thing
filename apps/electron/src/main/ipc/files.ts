@@ -42,9 +42,9 @@ import {
 } from '@onething/runtime/files'
 import { applyFileMutationUndo } from '@onething/runtime/tools'
 import { IPC_CHANNELS } from '@shared/ipc.js'
-import { listFiles } from '../utils/ripgrep.js'
-import { getVariablesStore } from '../variables/store/index.js'
-import { getDownloadsDirectory } from '../tools/core/sandbox.js'
+import { listFiles } from '@onething/app/utils/ripgrep.js'
+import { getVariablesStore } from '@onething/app/variables/store/index.js'
+import { getDownloadsDirectory } from '@onething/app/tools/core/sandbox.js'
 
 export interface ListFilesRequest extends OnethingListFilesRequest {}
 export type FileSearchEntryType = OnethingFileSearchEntryType

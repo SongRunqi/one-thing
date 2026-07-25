@@ -33,13 +33,13 @@ import {
 	isInitialized,
 	setInitContext,
 	initializeAsyncTools,
-} from "../tools/index.js";
-import { getMCPRouterToolDefinition } from "../mcp/index.js";
+} from "@onething/app/tools/index.js";
+import { getMCPRouterToolDefinition } from "@onething/app/mcp/index.js";
 import {
 	listBackgroundJobs,
 	stopBackgroundJob,
-} from "../tools/core/background-jobs.js";
-import * as store from "../store.js";
+} from "@onething/app/tools/core/background-jobs.js";
+import * as store from "@onething/app/store.js";
 
 /**
  * Register all tool-related IPC handlers

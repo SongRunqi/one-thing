@@ -32,10 +32,10 @@ import {
   type ACPUpdateAgentRequest,
   type ACPUpdateAgentResponse,
 } from '@shared/ipc.js'
-import { ACPManager } from '../acp/index.js'
-import { registerACPPermissionBridge } from '../acp/permission-bridge.js'
-import { disposeExternalAgentConnectors } from '../external-agents/index.js'
-import { getSettings, saveSettings } from '../stores/settings.js'
+import { ACPManager } from '@onething/app/acp/index.js'
+import { registerACPPermissionBridge } from '@onething/app/acp/permission-bridge.js'
+import { disposeExternalAgentConnectors } from '@onething/app/external-agents/index.js'
+import { getSettings, saveSettings } from '@onething/app/stores/settings.js'
 
 function getACPSettings() {
   return getSettings().acp || { enabled: true, agents: [] }

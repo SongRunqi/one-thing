@@ -35,14 +35,14 @@ vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn() },
 }))
 
-vi.mock('../../auth/auth-service.js', () => ({
+vi.mock('@onething/app/auth/auth-service.js', () => ({
   authService: {
     getToken: vi.fn(),
     refreshTokenIfNeeded: mocks.refreshTokenIfNeeded,
   },
 }))
 
-vi.mock('../../providers/model-registry.js', () => ({
+vi.mock('@onething/app/providers/model-registry.js', () => ({
   forceRefresh: vi.fn(),
   getAllModels: vi.fn(),
   getModelDisplayName: vi.fn(),
@@ -52,12 +52,12 @@ vi.mock('../../providers/model-registry.js', () => ({
   searchModels: vi.fn(),
 }))
 
-vi.mock('../../providers/builtin/codex.js', () => ({
+vi.mock('@onething/app/providers/builtin/codex.js', () => ({
   fetchCodexModels: mocks.fetchCodexModels,
   getCodexFallbackModels: mocks.getCodexFallbackModels,
 }))
 
-vi.mock('../../providers/builtin/github-copilot.js', () => ({
+vi.mock('@onething/app/providers/builtin/github-copilot.js', () => ({
   detectModelCapabilities: vi.fn(() => ({
     contextLength: 128000,
     hasImageGeneration: false,
@@ -68,7 +68,7 @@ vi.mock('../../providers/builtin/github-copilot.js', () => ({
   fetchCopilotModels: vi.fn(),
 }))
 
-vi.mock('../../stores/settings.js', () => ({
+vi.mock('@onething/app/stores/settings.js', () => ({
   getSettings: () => mocks.settings,
 }))
 

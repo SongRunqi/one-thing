@@ -24,21 +24,21 @@ import {
   updateOnethingSessionPermissionMode,
   updateOnethingSessionWorkingDirectory,
 } from '@onething/runtime/sessions'
-import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '../todo-plan/store.js'
+import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '@onething/app/todo-plan/store.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest } from '@shared/ipc.js'
-import * as store from '../store.js'
-import { DEFAULT_AGENT_ID, agentExists } from '../agents/index.js'
+import * as store from '@onething/app/store.js'
+import { DEFAULT_AGENT_ID, agentExists } from '@onething/app/agents/index.js'
 import type { PermissionMode } from '@shared/ipc.js'
-import { workdirGateway } from '../variables/gateways.js'
-import { readSessionSegments } from '../toc/index.js'
+import { workdirGateway } from '@onething/app/variables/gateways.js'
+import { readSessionSegments } from '@onething/app/toc/index.js'
 import {
   clearSessionUsage,
   getSessionUsage,
   updateSessionUsage,
-} from '../session/usage.js'
+} from '@onething/app/session/usage.js'
 
-export { clearSessionUsage, getSessionUsage, updateSessionUsage } from '../session/usage.js'
+export { clearSessionUsage, getSessionUsage, updateSessionUsage } from '@onething/app/session/usage.js'
 
 // Renderer-supplied session ids (draft ids that materialize in place) must be
 // plain v4 UUIDs — they end up as session storage directory names.

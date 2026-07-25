@@ -10,7 +10,7 @@ import {
 import {
   IPC_CHANNELS,
 } from '@shared/ipc.js'
-import { resolveMarkdownAsset, saveMarkdownAttachments } from '../markdown/asset-service.js'
+import { resolveMarkdownAsset, saveMarkdownAttachments } from '@onething/app/markdown/asset-service.js'
 
 export function registerMarkdownHandlers(): void {
   registerElectronMarkdownIpcHandlers({

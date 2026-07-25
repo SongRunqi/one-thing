@@ -44,8 +44,8 @@ import type {
 	EvalsReadRunDetailResponse,
 } from "@shared/ipc.js";
 import { IPC_CHANNELS } from "@shared/ipc.js";
-import * as store from "../store.js";
-import { getSkillsForSession } from "../skills/session-skills.js";
+import * as store from "@onething/app/store.js";
+import { getSkillsForSession } from "@onething/app/skills/session-skills.js";
 import { registerEvalsWorkbenchHandlers } from "./evals-workbench.js";
 import {
 	createEvalsModelCaller,
@@ -195,7 +195,7 @@ export async function createIncidentForTurn(options: {
 	if (!capture?.requestMessages?.length && anchorIdx >= 0) {
 		try {
 			const { buildHistoryMessages } = await import(
-				"../engine/stream/message-helpers.js"
+				"@onething/app/engine/stream/message-helpers.js"
 			);
 			// History up to and including the turn's user message — mirrors
 			// what the live request carried.

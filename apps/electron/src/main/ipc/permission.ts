@@ -24,8 +24,8 @@ import {
   listOnethingPermissionGrantsForIpc,
   revokeOnethingPermissionGrantForIpc,
 } from '@onething/runtime/permissions'
-import { Permission } from '../permission/index.js'
-import * as PermissionGrants from '../permission/permission-grants.js'
+import { Permission } from '@onething/app/permission/index.js'
+import * as PermissionGrants from '@onething/app/permission/permission-grants.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 
 /**

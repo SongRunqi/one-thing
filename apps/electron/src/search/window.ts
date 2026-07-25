@@ -7,8 +7,8 @@ import { fileURLToPath } from 'url'
 import { DEFAULT_GENERAL_SETTINGS } from '@shared/defaults/settings.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { SearchWindowAnchor, SearchWindowGuideState } from '@shared/ipc/search.js'
-import { getWindowStatePath, readJsonFile, writeJsonFile } from '@main/stores/paths.js'
-import { getSettings } from '@main/stores/settings.js'
+import { getWindowStatePath, readJsonFile, writeJsonFile } from '@onething/app/stores/paths.js'
+import { getSettings } from '@onething/app/stores/settings.js'
 import {
   getThemeBackgroundColor,
   resolveOnethingWindowThemeSelection,

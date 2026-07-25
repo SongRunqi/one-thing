@@ -10,17 +10,17 @@ vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn() },
 }))
 
-vi.mock('../../auth/auth-service.js', () => ({
+vi.mock('@onething/app/auth/auth-service.js', () => ({
   authService: {
     refreshTokenIfNeeded: mocks.refreshTokenIfNeeded,
   },
 }))
 
-vi.mock('../../providers/builtin/codex.js', () => ({
+vi.mock('@onething/app/providers/builtin/codex.js', () => ({
   fetchCodexUsage: mocks.fetchCodexUsage,
 }))
 
-vi.mock('../../providers/index.js', () => ({
+vi.mock('@onething/app/providers/index.js', () => ({
   getAvailableProviders: vi.fn(() => []),
 }))
 

@@ -108,10 +108,6 @@ vi.mock('../../stream/codex-native-tools.js', () => ({
   getCodexNativeToolsForConfig: mocks.getCodexNativeToolsForConfig,
 }))
 
-vi.mock('../../../ipc/skills.js', () => ({
-  getSkillsForSession: mocks.getSkillsForSession,
-}))
-
 vi.mock('../../../mcp/index.js', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))

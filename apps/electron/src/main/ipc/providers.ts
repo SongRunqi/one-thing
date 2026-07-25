@@ -15,10 +15,10 @@ import type {
   ProviderUsageRequest,
   ProviderUsageResponse,
 } from '@shared/ipc.js'
-import { authService } from '../auth/auth-service.js'
-import { fetchCodexUsage } from '../providers/builtin/codex.js'
-import { getAvailableProviders } from '../providers/index.js'
-import { getProviderEnvStatus } from '../providers/env.js'
+import { authService } from '@onething/app/auth/auth-service.js'
+import { fetchCodexUsage } from '@onething/app/providers/builtin/codex.js'
+import { getAvailableProviders } from '@onething/app/providers/index.js'
+import { getProviderEnvStatus } from '@onething/app/providers/env.js'
 
 function providerUsageRequest(
   requestOrEvent: ProviderUsageRequest | unknown,

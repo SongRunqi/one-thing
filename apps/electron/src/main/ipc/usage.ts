@@ -14,7 +14,7 @@ import {
 	type GetUsageSummaryRequest,
 	type GetUsageSummaryResponse,
 } from "@shared/ipc.js";
-import { getSessionUsageTotal, getUsageLedger } from "../usage/index.js";
+import { getSessionUsageTotal, getUsageLedger } from "@onething/app/usage/index.js";
 
 export function registerUsageHandlers(): void {
 	ipcMain.handle(

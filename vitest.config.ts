@@ -10,6 +10,8 @@ export default defineConfig({
     setupFiles: [path.resolve(__dirname, 'vitest.setup.ts')],
     include: ['packages/**/*.test.ts', 'apps/**/*.test.ts'],
     alias: {
+      // Product assembly tree (prefix entry — covers every subpath).
+      '@onething/app': path.resolve(__dirname, 'packages/onething-runtime/src/app'),
       '@onething/core/agent-loop': path.resolve(__dirname, 'packages/core/agent-loop/index.ts'),
       '@onething/core/engine/attachment-mime': path.resolve(__dirname, 'packages/core/engine/attachment-mime.ts'),
       '@onething/core/engine/streaming-args': path.resolve(__dirname, 'packages/core/engine/streaming-args.ts'),

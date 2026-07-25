@@ -12,21 +12,21 @@ import {
   type ElectronResumeAfterToolConfirmRequest,
   type ElectronUpdateMessageThinkingTimeRequest,
 } from '@onething/electron-host/ipc/chat'
-import * as store from '../store.js'
+import * as store from '@onething/app/store.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import {
   generateChatTitle,
   isProviderSupported,
-} from '../providers/index.js'
-import { Permission } from '../permission/index.js'
+} from '@onething/app/providers/index.js'
+import { Permission } from '@onething/app/permission/index.js'
 import {
   resolveProviderAuth,
   getProviderApiType,
-} from '../engine/stream/provider-helpers.js'
+} from '@onething/app/engine/stream/provider-helpers.js'
 import {
   activeStreams,
-} from '../engine/stream/stream-processor.js'
-import { getStreamEngine } from '../engine/index.js'
+} from '@onething/app/engine/stream/stream-processor.js'
+import { getStreamEngine } from '@onething/app/engine/index.js'
 import {
   abortOnethingStreamsForIpc,
   getOnethingChatHistoryForIpc,
@@ -40,9 +40,9 @@ import {
   getOnethingCaughtErrorMessage,
 } from '@onething/runtime/providers'
 import { buildOnethingSystemPromptSnapshotForIpc } from '@onething/runtime/prompts'
-import { buildSystemPromptSnapshot } from '../engine/prompt/system-prompt-snapshot.js'
-import { getEventBus } from '../events/index.js'
-import { billTitleUsage } from '../usage/bill-side-line.js'
+import { buildSystemPromptSnapshot } from '@onething/app/engine/prompt/system-prompt-snapshot.js'
+import { getEventBus } from '@onething/app/events/index.js'
+import { billTitleUsage } from '@onething/app/usage/bill-side-line.js'
 
 // ============================================
 // IPC Handlers

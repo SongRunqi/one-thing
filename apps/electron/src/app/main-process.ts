@@ -14,29 +14,29 @@ import {
 	initializeACP,
 	shutdownACP,
 } from "@main/ipc/handlers.js";
-import { initializeStores, flushAllPendingSaves } from "@main/store.js";
-import { getSettings, initializeSettings } from "@main/stores/settings.js";
-import { initializeToolRegistry } from "@main/tools/index.js";
-import { startTodoPlanWatcher } from "@main/todo-plan/store.js";
-import { configureSandboxHost } from "@main/tools/core/sandbox.js";
+import { initializeStores, flushAllPendingSaves } from "@onething/app/store.js";
+import { getSettings, initializeSettings } from "@onething/app/stores/settings.js";
+import { initializeToolRegistry } from "@onething/app/tools/index.js";
+import { startTodoPlanWatcher } from "@onething/app/todo-plan/store.js";
+import { configureSandboxHost } from "@onething/app/tools/core/sandbox.js";
 import {
 	getConversationRuntime,
 	getStreamEngine,
 	getStreamEngineSafe,
 	initializeStreamEngine,
 	shutdownStreamEngine,
-} from "@main/engine/index.js";
-import { registerBuiltinTriggers } from "@main/engine/triggers/index.js";
-import { bootstrapGoalStreamBreakers } from "@main/goals/runtime-hooks.js";
+} from "@onething/app/engine/index.js";
+import { registerBuiltinTriggers } from "@onething/app/engine/triggers/index.js";
+import { bootstrapGoalStreamBreakers } from "@onething/app/goals/runtime-hooks.js";
 import {
 	configureStorePathHost,
 	getMediaImagesDir,
-} from "@main/stores/paths.js";
+} from "@onething/app/stores/paths.js";
 import {
 	initializeEventSystem,
 	shutdownEventSystem,
 	getEventBus,
-} from "@main/events/index.js";
+} from "@onething/app/events/index.js";
 import {
 	initializeIPCBridge,
 	shutdownIPCBridge,
@@ -44,12 +44,12 @@ import {
 import {
 	initializeSessionLayer,
 	shutdownSessionLayer,
-} from "@main/session/index.js";
-import { Permission } from "@main/permission/index.js";
-import { disposeMusicService } from "@main/music/service.js";
-import { disposeRadioConductor } from "@main/music/radio.js";
-import { bootstrapVariableSystem } from "@main/variables/index.js";
-import { bootstrapProjectDirs } from "@main/project-dirs/index.js";
+} from "@onething/app/session/index.js";
+import { Permission } from "@onething/app/permission/index.js";
+import { disposeMusicService } from "@onething/app/music/service.js";
+import { disposeRadioConductor } from "@onething/app/music/radio.js";
+import { bootstrapVariableSystem } from "@onething/app/variables/index.js";
+import { bootstrapProjectDirs } from "@onething/app/project-dirs/index.js";
 import { warmSearchWindow } from "@onething/electron-host/search/window";
 import { applyNetworkProxySettings } from "@main/ipc/network-proxy.js";
 import {
@@ -57,7 +57,7 @@ import {
 	registerGlobalWindowShortcuts,
 	unregisterGlobalWindowShortcuts,
 } from "@onething/electron-host/shortcuts/global-shortcuts";
-import { getVoiceService, getVoiceServiceSafe } from "@main/voice/service.js";
+import { getVoiceService, getVoiceServiceSafe } from "@onething/app/voice/service.js";
 import {
 	attachVoiceTrayMainWindow,
 	configureVoiceTray,
@@ -72,27 +72,27 @@ import {
 	markVoiceRuntimeReady,
 	sendVoiceRuntimeCommand,
 } from "@onething/electron-host/voice/runtime-window";
-import { killTrackedDetachedChildren } from "@main/tools/core/bash-executor.js";
+import { killTrackedDetachedChildren } from "@onething/app/tools/core/bash-executor.js";
 import {
 	configureAppLoggingHost,
 	initializeAppLogging,
 	shutdownAppLogging,
-} from "@main/logging/index.js";
+} from "@onething/app/logging/index.js";
 import {
 	createElectronRendererConsoleCapture,
 	setElectronAppLogsPath,
 } from "@onething/electron-host/logging/console-capture";
-import { configureSkillsEnvironmentHost } from "@main/skills/loader.js";
+import { configureSkillsEnvironmentHost } from "@onething/app/skills/loader.js";
 import {
 	getElectronAppIsPackaged,
 	getElectronResourcesPath,
 } from "@onething/electron-host/skills/environment";
-import { configureAuthHost } from "@main/auth/host-ports.js";
-import { configureVoiceHost } from "@main/voice/host-ports.js";
+import { configureAuthHost } from "@onething/app/auth/host-ports.js";
+import { configureVoiceHost } from "@onething/app/voice/host-ports.js";
 import { broadcastElectronVoiceMessage } from "@onething/electron-host/voice/events";
 import { createElectronAuthFetch } from "@onething/electron-host/auth/auth-fetch";
 import { getElectronSafeStorage } from "@onething/electron-host/auth/electron-auth";
-import { createRequiredAppFetch } from "@main/providers/bound-fetch.js";
+import { createRequiredAppFetch } from "@onething/app/providers/bound-fetch.js";
 import { hydrateProcessEnvFromLoginShell } from "@onething/electron-host/app/login-shell-env";
 import {
 	StoreLock,
@@ -120,7 +120,7 @@ import {
  * Only runs if no model data exists yet for any configured provider.
  */
 async function refreshModelsOnFirstStartup(): Promise<void> {
-	const { getSettings } = await import("@main/stores/settings.js");
+	const { getSettings } = await import("@onething/app/stores/settings.js");
 	const settings = getSettings();
 	const providers = settings?.ai?.providers;
 	if (!providers) return;
@@ -144,7 +144,7 @@ async function refreshModelsOnFirstStartup(): Promise<void> {
 
 	console.log("[Models] First startup detected, refreshing model registry...");
 	const { refreshAllProviders } = await import(
-		"@main/providers/model-registry.js"
+		"@onething/app/providers/model-registry.js"
 	);
 	await refreshAllProviders();
 	console.log("[Models] First-startup refresh complete");
@@ -246,13 +246,13 @@ function formatElectronDesktopStoreLockError(error: unknown): string {
 
 function startPostWindowServices(): void {
 	const pluginsReady = (async () => {
-		const { bootstrapPluginSystem } = await import("@main/plugins/index.js");
+		const { bootstrapPluginSystem } = await import("@onething/app/plugins/index.js");
 		await bootstrapPluginSystem(getEventBus(), getStreamEngine());
 	})().catch((err) => {
 		console.error("[Plugins] Bootstrap failed (non-blocking):", err);
 	});
 
-	import("@main/scheduler/user-tasks.js")
+	import("@onething/app/scheduler/user-tasks.js")
 		.then(({ initializeUserSchedulerTasks }) => initializeUserSchedulerTasks())
 		.catch((err) => {
 			console.error(

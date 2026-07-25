@@ -23,20 +23,20 @@ import {
 } from '@onething/runtime/scheduler'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { toJsonValue } from '@shared/json.js'
-import { getScheduler } from '../scheduler/index.js'
-import type { SchedulerRunRecord } from '../scheduler/types.js'
+import { getScheduler } from '@onething/app/scheduler/index.js'
+import type { SchedulerRunRecord } from '@onething/app/scheduler/types.js'
 import {
   createUserSchedulerTask,
   deleteUserSchedulerTask,
   isUserSchedulerTask,
   setUserSchedulerTaskEnabled,
   updateUserSchedulerTask,
-} from '../scheduler/user-tasks.js'
+} from '@onething/app/scheduler/user-tasks.js'
 import {
   getSchedulerRunDetail,
   listSchedulerRunDetails,
   saveSchedulerRunDetail,
-} from '../scheduler/run-history.js'
+} from '@onething/app/scheduler/run-history.js'
 
 export function registerSchedulerHandlers(): void {
   registerElectronSchedulerIpcHandlers({

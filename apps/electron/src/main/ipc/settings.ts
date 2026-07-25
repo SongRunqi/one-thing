@@ -12,16 +12,16 @@ import {
   saveOnethingSettingsWithRuntimeEffectsForIpc,
 } from '@onething/runtime/settings'
 import { IPC_CHANNELS, type SaveSettingsRequest, type TestProxyRequest } from '@shared/ipc.js'
-import * as store from '../store.js'
+import * as store from '@onething/app/store.js'
 import { openSettingsWindow } from '@onething/electron-host/window'
-import { invalidateProviderCache } from '../providers/registry.js'
+import { invalidateProviderCache } from '@onething/app/providers/registry.js'
 import { applyNetworkProxySettings, testProxy } from './network-proxy.js'
 import { registerGlobalWindowShortcuts } from '@onething/electron-host/shortcuts/global-shortcuts'
-import { getVoiceServiceSafe } from '../voice/service.js'
-import { MCPManager, registerMCPTools } from '../mcp/index.js'
-import { ACPManager } from '../acp/index.js'
+import { getVoiceServiceSafe } from '@onething/app/voice/service.js'
+import { MCPManager, registerMCPTools } from '@onething/app/mcp/index.js'
+import { ACPManager } from '@onething/app/acp/index.js'
 import { applyGatewaySettings } from '@onething/electron-host/gateway/lifecycle'
-import { startTodoPlanWatcher } from '../todo-plan/store.js'
+import { startTodoPlanWatcher } from '@onething/app/todo-plan/store.js'
 
 async function saveSettingsFromIpc(settings: SaveSettingsRequest, event: ElectronSettingsIpcEvent) {
   const result = await saveOnethingSettingsWithRuntimeEffectsForIpc({

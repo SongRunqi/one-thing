@@ -186,10 +186,6 @@ vi.mock('../../../store.js', () => ({
   addMessage: mocks.addMessage,
 }))
 
-vi.mock('../../../ipc/skills.js', () => ({
-  getSkillsForSession: mocks.getSkillsForSession,
-}))
-
 vi.mock('../../../mcp/index.js', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,
 }))

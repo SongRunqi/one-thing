@@ -52,8 +52,8 @@ import {
   type MCPUpdateServerRequest,
   type MCPUpdateServerResponse,
 } from '@shared/ipc.js'
-import { MCPManager, registerMCPTools } from '../mcp/index.js'
-import { getSettings, saveSettings } from '../stores/settings.js'
+import { MCPManager, registerMCPTools } from '@onething/app/mcp/index.js'
+import { getSettings, saveSettings } from '@onething/app/stores/settings.js'
 
 function getMCPSettings() {
   const settings = getSettings()
