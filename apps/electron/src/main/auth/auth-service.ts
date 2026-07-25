@@ -1,4 +1,3 @@
-import { createElectronAuthFetch } from '@onething/electron-host/auth/auth-fetch'
 import {
   createOnethingAuthServiceOptions,
   OnethingAuthService,
@@ -8,6 +7,7 @@ import {
 } from '@onething/runtime/auth'
 import type { OAuthToken } from '@shared/ipc.js'
 import { createRequiredAppFetch } from '../providers/bound-fetch.js'
+import { getAuthHostPorts } from './host-ports.js'
 import { tokenStore } from './token-store.js'
 
 export interface MainAuthServiceOptions extends Partial<OnethingAuthServiceOptions<OAuthToken>> {
@@ -15,9 +15,10 @@ export interface MainAuthServiceOptions extends Partial<OnethingAuthServiceOptio
   callbackServer?: OnethingAuthCallbackServerAdapter
 }
 
-const mainAuthFetch = createElectronAuthFetch({
-  fallbackFetch: createRequiredAppFetch({ policy: 'auth' }),
-})
+const fallbackAuthFetch = createRequiredAppFetch({ policy: 'auth' })
+
+const mainAuthFetch: typeof fetch = (input, init) =>
+  (getAuthHostPorts().authFetch ?? fallbackAuthFetch)(input, init)
 
 export class AuthService extends OnethingAuthService<OAuthToken> {
   constructor(options: MainAuthServiceOptions = {}) {

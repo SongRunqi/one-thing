@@ -78,6 +78,10 @@ import {
 	getElectronAppIsPackaged,
 	getElectronResourcesPath,
 } from "@onething/electron-host/skills/environment";
+import { configureAuthHost } from "@main/auth/host-ports.js";
+import { createElectronAuthFetch } from "@onething/electron-host/auth/auth-fetch";
+import { getElectronSafeStorage } from "@onething/electron-host/auth/electron-auth";
+import { createRequiredAppFetch } from "@main/providers/bound-fetch.js";
 import { hydrateProcessEnvFromLoginShell } from "@onething/electron-host/app/login-shell-env";
 import {
 	StoreLock,
@@ -328,6 +332,12 @@ export function startOnethingElectronMain(): void {
 	configureSkillsEnvironmentHost({
 		isPackaged: getElectronAppIsPackaged,
 		getResourcesPath: getElectronResourcesPath,
+	});
+	configureAuthHost({
+		authFetch: createElectronAuthFetch({
+			fallbackFetch: createRequiredAppFetch({ policy: "auth" }),
+		}),
+		tokenCryptoAdapter: getElectronSafeStorage,
 	});
 	initializeAppLogging();
 

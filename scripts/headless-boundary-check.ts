@@ -6349,9 +6349,12 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
     'getElectronFetch',
     'net.fetch failed; falling back to app fetch',
   ]
+  // main/auth is host-agnostic: net.fetch/safeStorage arrive via
+  // configureAuthHost (wired in app/main-process.ts), with app-fetch and
+  // plaintext token fallbacks when unset.
   const requiredAuthFacadeSymbols = [
-    '@onething/electron-host/auth/auth-fetch',
-    'createElectronAuthFetch',
+    'getAuthHostPorts',
+    'authFetch',
     'createRequiredAppFetch',
   ]
   const requiredTokenStoreHostFacadeSymbols = [
@@ -6362,7 +6365,8 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
     'OAuthToken',
   ]
   const requiredTokenStoreLegacyFacadeSymbols = [
-    '@onething/electron-host/auth/token-store',
+    'getAuthHostPorts',
+    'tokenCryptoAdapter',
     'TokenStore',
     'tokenStore',
   ]
@@ -6410,8 +6414,8 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
     ...(!vitestContent.includes('@onething/electron-host/auth/token-store')
       ? [`${rel(vitestConfig)}: missing electron token-store test alias`]
       : []),
-    ...(mainTokenStoreFacadeLines.length > 6
-      ? [`${rel(mainTokenStoreFile)}: legacy token store facade must stay thin`]
+    ...(mainTokenStoreContent.includes('@onething/electron-host/')
+      ? [`${rel(mainTokenStoreFile)}: main/auth token store must stay host-agnostic (inject via configureAuthHost)`]
       : []),
     ...(fs.existsSync(mainAuthFile)
       ? matchingLines(mainAuthFile, MAIN_AUTH_SERVICE_RUNTIME_FORBIDDEN_PATTERNS)
@@ -7767,11 +7771,11 @@ function checkRuntimeOwnsAuthTokenStorage(): void {
     ...(!fs.existsSync(path.join(root, runtimeFile))
       ? [`${runtimeFile}: missing runtime-owned OAuth token store`]
       : []),
-    ...(!mainContent.includes('@onething/electron-host/auth/token-store')
-      ? [`${rel(mainFile)}: token store legacy facade must delegate to electron host token-store`]
+    ...(!mainContent.includes('tokenCryptoAdapter')
+      ? [`${rel(mainFile)}: token store must take encryption via the injected auth host port`]
       : []),
-    ...(mainFacadeLines.length > 6
-      ? [`${rel(mainFile)}: legacy token store facade must stay thin`]
+    ...(mainContent.includes('@onething/electron-host/')
+      ? [`${rel(mainFile)}: main/auth token store must stay host-agnostic (inject via configureAuthHost)`]
       : []),
     ...(fs.existsSync(mainFile)
       ? matchingLines(mainFile, MAIN_AUTH_TOKEN_STORE_FORBIDDEN_PATTERNS)
