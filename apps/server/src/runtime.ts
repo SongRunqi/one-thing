@@ -2701,7 +2701,9 @@ export async function createDevelopmentOnethingServerRuntime(
 		pendingPermissions.delete(requestId);
 		const command: Record<string, unknown> = {
 			type: "command:permission-respond",
-			channel: permissionResponse.channel,
+			// Adopt the ask's target channel (owner already authenticated at
+			// the HTTP boundary); the normalized body channel is the fallback.
+			channel: pending.info.targetChannel || permissionResponse.channel,
 			requestId,
 			decision: permissionResponse.decision,
 		};
@@ -3044,22 +3046,34 @@ export async function createDevelopmentOnethingServerRuntime(
 
 				// Every other command forwards whole — the StreamEngine owns
 				// send/edit/retry/resume/steering/compact/permission handling,
-				// so no field is destructured away on this hop. Permission
-				// responses get the transport's channel stamp (core validates
-				// channel affinity against the ask's target channel).
+				// so no field is destructured away on this hop.
+				//
+				// Channel stamping is deliberately narrow. Do NOT stamp 'api'
+				// onto send/edit/...: channel-identity resolves 'api' commands
+				// to an anonymous external guest and remaps the message into an
+				// identity session — but this HTTP surface is the owner's own
+				// web UI, which must keep desktop semantics. Permission
+				// responses instead ADOPT the pending ask's target channel:
+				// this endpoint already authenticated the session owner, and
+				// core's affinity check guards against cross-channel spoofing
+				// on the bus, not against the owner approving over HTTP.
 				if (command.type === "command:permission-respond") {
+					const pending =
+						(command.requestId
+							? pendingPermissions.get(command.requestId)
+							: undefined) ??
+						(command.toolCallId
+							? Array.from(pendingPermissions.values()).find(
+									(record) => record.info.callId === command.toolCallId,
+								)
+							: undefined);
 					return forwardSessionCommand(sessionId, {
 						...command,
-						channel: command.channel ?? "api",
+						channel:
+							command.channel ?? pending?.info.targetChannel ?? "api",
 					});
 				}
 				return forwardSessionCommand(sessionId, command);
-				// eslint-disable-next-line no-unreachable
-
-				return {
-					success: false,
-					error: `Command ${command.type} is not supported by the development server runtime yet.`,
-				};
 			},
 		},
 		events: {

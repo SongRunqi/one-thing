@@ -61,17 +61,23 @@ export interface EditAndResendCommand {
 
 export interface AbortCommand {
   type: 'command:abort'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   reason?: string
 }
 
 export interface ConfirmToolCommand {
   type: 'command:confirm-tool'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   toolCallId: string
   approved: boolean
 }
 
 export interface ResumeAfterConfirmCommand {
   type: 'command:resume-after-confirm'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   messageId: string
 }
 
@@ -94,11 +100,15 @@ export interface PermissionRespondCommand {
 
 export interface RetryMessageCommand {
   type: 'command:retry-message'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   messageId: string
 }
 
 export interface CompactContextCommand {
   type: 'command:compact-context'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   requestId?: string
   manual?: boolean
 }
@@ -106,6 +116,8 @@ export interface CompactContextCommand {
 /** Inject a steering message mid-stream (after current turn ends) */
 export interface InjectSteeringCommand {
   type: 'command:inject-steering'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   content: string
   source?: string
   origin?: MessageOrigin
@@ -118,12 +130,16 @@ export interface InjectSteeringCommand {
  */
 export interface RetractSteeringCommand {
   type: 'command:retract-steering'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   messageId: string
 }
 
 /** Inject a follow-up message (only after agent would stop) */
 export interface InjectFollowUpCommand {
   type: 'command:inject-followup'
+  /** Originating channel ('ipc' | 'telegram' | 'cli' | 'api' | ...) */
+  channel?: string
   content: string
   source?: string
   origin?: MessageOrigin
