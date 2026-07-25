@@ -23,7 +23,14 @@ interface SandboxHost {
 
 let sandboxHost: SandboxHost = {}
 
-configureOnethingToolSandboxRuntime({
+let sandboxRuntimeConfigured = false
+
+/** Explicit assembly step (no import-time side effects): wire the tool
+ * sandbox runtime to app settings/paths. Called by createOnethingBackend. */
+export function configureAppToolSandbox(): void {
+  if (sandboxRuntimeConfigured) return
+  sandboxRuntimeConfigured = true
+  configureOnethingToolSandboxRuntime({
   getDefaultWorkingDirectory: () => getSettings().tools?.bash?.defaultWorkingDirectory,
   getHostPath: name => sandboxHost.getPath?.(name),
   getNoteDirectories: () => {
@@ -37,7 +44,8 @@ configureOnethingToolSandboxRuntime({
   // The bash tool's overflow logs ("full output saved to …"): re-reading a
   // tool result already adjudicated by the permission system — never prompt.
   getAppArtifactDirectories: () => [getToolOutputsDir()],
-})
+  })
+}
 
 export function configureSandboxHost(host: SandboxHost): void {
   sandboxHost = host

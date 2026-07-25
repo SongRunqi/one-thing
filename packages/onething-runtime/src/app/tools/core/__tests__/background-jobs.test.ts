@@ -13,6 +13,11 @@ vi.mock('../../../stores/paths.js', () => ({
 
 import { createLocalBashOperations } from '../bash-executor.js'
 import { clearBackgroundJobsForTests, listBackgroundJobs, stopBackgroundJob } from '../background-jobs.js'
+import { configureAppBackgroundJobs } from '../background-jobs.js'
+
+// Adapter wiring is an explicit assembly step now (no import-time config).
+configureAppBackgroundJobs()
+
 
 async function makeTempDir(prefix: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), prefix))

@@ -37,18 +37,25 @@ export function configureSkillsEnvironmentHost(ports: SkillsEnvironmentHostPorts
   envPorts = ports
 }
 
-configureOnethingSkillsLoaderRuntime({
-  getStorePath,
-  listPluginSkillRoots,
-  listCustomSkillRoots: () => getSettings().skills?.customDirectories ?? [],
-  isPackaged: () => envPorts.isPackaged?.() ?? false,
-  getResourcesPath: () => envPorts.getResourcesPath?.(),
-  getCwd: () => process.cwd(),
-  isBuiltinSkillDirEnabled: dirName => {
-    if (!musicSkillDirs.has(dirName)) return true
-    return getMusicProvider(getSettings().music?.provider).prose.skillDirName === dirName
-  },
-})
+let skillsLoaderConfigured = false
+
+/** Explicit assembly step: wire the skills loader to app settings/paths. */
+export function configureAppSkillsLoader(): void {
+  if (skillsLoaderConfigured) return
+  skillsLoaderConfigured = true
+  configureOnethingSkillsLoaderRuntime({
+    getStorePath,
+    listPluginSkillRoots,
+    listCustomSkillRoots: () => getSettings().skills?.customDirectories ?? [],
+    isPackaged: () => envPorts.isPackaged?.() ?? false,
+    getResourcesPath: () => envPorts.getResourcesPath?.(),
+    getCwd: () => process.cwd(),
+    isBuiltinSkillDirEnabled: dirName => {
+      if (!musicSkillDirs.has(dirName)) return true
+      return getMusicProvider(getSettings().music?.provider).prose.skillDirName === dirName
+    },
+  })
+}
 
 export {
   configureOnethingSkillsLoaderRuntime,

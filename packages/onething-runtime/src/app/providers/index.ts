@@ -75,9 +75,17 @@ export type ReasoningStreamChunk = OnethingProviderFacadeReasoningStreamChunk
 export type StreamCallbacks = OnethingProviderFacadeStreamCallbacks
 export type ToolChatMessage = OnethingToolChatMessage
 
-initializeRegistry()
+let providerRegistryInitialized = false
+
+/** Explicit assembly step; also self-ensured by this module's accessors. */
+export function configureAppProviderRegistry(): void {
+  if (providerRegistryInitialized) return
+  providerRegistryInitialized = true
+  initializeRegistry()
+}
 
 export function getAvailableProviders(): ProviderInfo[] {
+  configureAppProviderRegistry()
   return getProvidersFromRegistry()
 }
 

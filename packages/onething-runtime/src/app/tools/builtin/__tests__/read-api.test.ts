@@ -4,6 +4,11 @@ import * as os from 'os'
 import * as path from 'path'
 import { ReadTool } from '../read'
 import { Permission } from '../../../permission/index.js'
+import { configureAppToolSandbox } from '../../core/sandbox.js'
+
+// Adapter wiring is an explicit assembly step now (no import-time config).
+configureAppToolSandbox()
+
 import { resetVariablesStoreForTests } from '../../../variables/store/index.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 import type { ToolContext } from '../../core/tool.js'

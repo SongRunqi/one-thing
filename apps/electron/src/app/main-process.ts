@@ -14,26 +14,22 @@ import {
 	initializeACP,
 	shutdownACP,
 } from "@main/ipc/handlers.js";
-import { initializeStores, flushAllPendingSaves } from "@onething/app/store.js";
-import { getSettings, initializeSettings } from "@onething/app/stores/settings.js";
-import { initializeToolRegistry } from "@onething/app/tools/index.js";
+import { flushAllPendingSaves } from "@onething/app/store.js";
+import { getSettings } from "@onething/app/stores/settings.js";
 import { startTodoPlanWatcher } from "@onething/app/todo-plan/store.js";
 import { configureSandboxHost } from "@onething/app/tools/core/sandbox.js";
 import {
 	getConversationRuntime,
 	getStreamEngine,
 	getStreamEngineSafe,
-	initializeStreamEngine,
 	shutdownStreamEngine,
 } from "@onething/app/engine/index.js";
-import { registerBuiltinTriggers } from "@onething/app/engine/triggers/index.js";
-import { bootstrapGoalStreamBreakers } from "@onething/app/goals/runtime-hooks.js";
+import { createOnethingBackend } from "@onething/app/backend.js";
 import {
 	configureStorePathHost,
 	getMediaImagesDir,
 } from "@onething/app/stores/paths.js";
 import {
-	initializeEventSystem,
 	shutdownEventSystem,
 	getEventBus,
 } from "@onething/app/events/index.js";
@@ -41,15 +37,10 @@ import {
 	initializeIPCBridge,
 	shutdownIPCBridge,
 } from "@main/bridges/ipc-bridge-lifecycle.js";
-import {
-	initializeSessionLayer,
-	shutdownSessionLayer,
-} from "@onething/app/session/index.js";
+import { shutdownSessionLayer } from "@onething/app/session/index.js";
 import { Permission } from "@onething/app/permission/index.js";
 import { disposeMusicService } from "@onething/app/music/service.js";
 import { disposeRadioConductor } from "@onething/app/music/radio.js";
-import { bootstrapVariableSystem } from "@onething/app/variables/index.js";
-import { bootstrapProjectDirs } from "@onething/app/project-dirs/index.js";
 import { warmSearchWindow } from "@onething/electron-host/search/window";
 import { applyNetworkProxySettings } from "@main/ipc/network-proxy.js";
 import {
@@ -159,75 +150,28 @@ let electronMainStarted = false;
 async function initializeElectronReadyServices(): Promise<void> {
 	markStartup("ready-begin");
 
-	// Initialize stores and migrate data if needed
-	initializeStores();
-
-	// Initialize settings asynchronously (before any settings access)
-	await initializeSettings();
-	markStartup("settings-ready");
-	configureGlobalWindowShortcuts({
-		getShortcuts: () => getSettings().general?.shortcuts,
+	// The assembly recipe lives in createOnethingBackend; this host only
+	// contributes its Electron-specific steps through the hooks.
+	await createOnethingBackend({
+		toolRegistry: "full",
+		promptVersion: true,
+		hooks: {
+			afterSettings: async () => {
+				markStartup("settings-ready");
+				configureGlobalWindowShortcuts({
+					getShortcuts: () => getSettings().general?.shortcuts,
+				});
+				await applyNetworkProxySettings();
+			},
+			afterTools: async () => {
+				// Initialize IPC handlers, then watch the todo store: the AI
+				// edits its todo with the plain write/edit tools, so nothing
+				// else would tell the UI those edits landed.
+				initializeIPC();
+				await startTodoPlanWatcher();
+			},
+		},
 	});
-	await applyNetworkProxySettings();
-
-	// Initialize event system (EventBus + StreamChannel + SessionManager + StreamEngine)
-	initializeEventSystem();
-	initializeSessionLayer();
-	initializeStreamEngine();
-	registerBuiltinTriggers();
-
-	// Initialize promptVersion from minimal scene output (evals S1/G1).
-	// This ensures the production path uses the actual prompt output,
-	// not just the 4-constant static fallback.
-	try {
-		const { initPromptVersion, buildOnethingSystemPrompt } = await import(
-			"@onething/runtime"
-		);
-		const { system, developer } = await buildOnethingSystemPrompt({
-			hasTools: false,
-			skills: [],
-		});
-		const minimalOutput = [system, ...developer].filter(Boolean).join("\n\n");
-		initPromptVersion(minimalOutput);
-		console.log(
-			"[Startup] Prompt version initialized:",
-			minimalOutput.slice(0, 40),
-		);
-	} catch (err) {
-		console.warn("[Startup] Failed to initialize promptVersion:", err);
-	}
-
-	// Initialize Permission system with EventBus and channel resolver
-	Permission.initialize(
-		getEventBus(),
-		(sessionId) => getStreamEngine().getChannel(sessionId),
-		(sessionId) => getStreamEngine().getPermissionMode(sessionId),
-	);
-
-	// Bootstrap variable subsystem (registers built-in providers, bridges
-	// change events to EventBus). Must run after EventBus init and before
-	// tool registry so the variable tool finds a populated registry.
-	bootstrapVariableSystem();
-
-	// Goal stream breakers: error → retry/blocked, abort → paused, complete →
-	// usage flush. Without this subscription goals never leave 'active' and
-	// their accounting never persists (the headless backend wires it too).
-	bootstrapGoalStreamBreakers();
-
-	// Bootstrap project-dirs subsystem (independent storage). Order doesn't
-	// matter relative to variables; the store feeds the Known Projects prompt
-	// section and the workdir gateway's auto-touch.
-	bootstrapProjectDirs();
-
-	// Initialize tool registry
-	await initializeToolRegistry();
-
-	// Initialize IPC handlers
-	initializeIPC();
-
-	// Watch the todo store: the AI edits its todo with the plain write/edit
-	// tools, so nothing else would tell the UI those edits landed.
-	await startTodoPlanWatcher();
 
 	markStartup("services-ready");
 }

@@ -4,6 +4,13 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SkillManageTool, SkillViewTool } from '../skill.js'
 import type { SkillDefinition } from '@shared/ipc.js'
+import { configureAppSkillsLoader } from '../../../skills/loader.js'
+import { configureAppSkillManage } from '../../../skills/manage.js'
+
+// Adapter wiring is an explicit assembly step now (no import-time config).
+configureAppSkillsLoader()
+configureAppSkillManage()
+
 
 vi.mock('electron', () => ({
   app: { isPackaged: false },

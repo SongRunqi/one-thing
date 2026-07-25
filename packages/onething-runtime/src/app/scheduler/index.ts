@@ -6,10 +6,23 @@ import {
 } from '@onething/runtime/scheduler'
 import { getStorePath } from '../stores/paths.js'
 
-configureOnethingScheduler({
-  stateFilePath: () => path.join(getStorePath(), 'scheduler', 'state.json'),
-  logger: console,
-})
+let schedulerConfigured = false
+
+/** Explicit assembly step. Guarded: reconfiguring disposes a live scheduler. */
+export function configureAppScheduler(): void {
+  if (schedulerConfigured) return
+  schedulerConfigured = true
+  configureOnethingScheduler({
+    stateFilePath: () => path.join(getStorePath(), 'scheduler', 'state.json'),
+    logger: console,
+  })
+}
+
+/** Self-ensuring: a pre-assembly caller must never build a default-path scheduler. */
+export function getAppScheduler(): Scheduler {
+  configureAppScheduler()
+  return getOnethingScheduler()
+}
 
 export {
   configureOnethingScheduler,

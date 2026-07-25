@@ -4,6 +4,11 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getExternalSkillsPaths, getUserSkillsPath, loadAllSkills } from '../loader.js'
 import { registerPluginSkillRootProvider } from '../plugin-roots.js'
+import { configureAppSkillsLoader } from '../loader.js'
+
+// Adapter wiring is an explicit assembly step now (no import-time config).
+configureAppSkillsLoader()
+
 
 vi.mock('electron', () => ({
   app: { isPackaged: false },

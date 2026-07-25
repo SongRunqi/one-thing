@@ -23,7 +23,8 @@ import {
   upsertOnethingHeadlessProviderConfig,
   useOnethingHeadlessProvider,
 } from '@onething/runtime/headless'
-import { initializeStores, flushAllPendingSaves } from '../store.js'
+import { createOnethingBackend } from '../backend.js'
+import { flushAllPendingSaves } from '../store.js'
 import {
   createSession,
   deleteSession,
@@ -38,18 +39,12 @@ import {
   updateSessionPin,
   updateSessionWorkingDirectory,
 } from '../store.js'
-import { getSettings, initializeSettings } from '../stores/settings.js'
-import { configureSandboxHost } from '../tools/core/sandbox.js'
-import { initializeHeadlessToolRegistry, getAllToolsAsync } from '../tools/index.js'
-import { initializeEventSystem, shutdownEventSystem, getEventBus, getStreamChannel } from '../events/index.js'
+import { getSettings } from '../stores/settings.js'
+import { getAllToolsAsync } from '../tools/index.js'
+import { shutdownEventSystem, getEventBus, getStreamChannel } from '../events/index.js'
 import { initializeSessionLayer, shutdownSessionLayer } from '../session/index.js'
-import { initializeStreamEngine, shutdownStreamEngine, getStreamEngine } from '../engine/index.js'
-import { registerBuiltinTriggers } from '../engine/triggers/index.js'
+import { shutdownStreamEngine, getStreamEngine } from '../engine/index.js'
 import { Permission } from '../permission/index.js'
-import { bootstrapVariableSystem } from '../variables/index.js'
-import { bootstrapGoalStreamBreakers } from '../goals/runtime-hooks.js'
-import { bootstrapProjectDirs } from '../project-dirs/index.js'
-import { initializeSessionSkills } from '../skills/session-skills.js'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
 import { ACPManager } from '../acp/index.js'
 import { killTrackedDetachedChildren } from '../tools/core/bash-executor.js'
@@ -84,39 +79,19 @@ export class HeadlessBackend {
   async start(): Promise<void> {
     if (this.started) return
 
-    configureSandboxHost({
-      getPath(name) {
-        if (name === 'downloads') return path.join(os.homedir(), 'Downloads')
-        if (name === 'home') return os.homedir()
-        return os.homedir()
+    await createOnethingBackend({
+      sandboxHost: {
+        getPath(name) {
+          if (name === 'downloads') return path.join(os.homedir(), 'Downloads')
+          if (name === 'home') return os.homedir()
+          return os.homedir()
+        },
       },
+      toolRegistry: 'headless',
+      sessionSkills: true,
+      mcpAcp: true,
+      sender: this.sender,
     })
-
-    initializeStores()
-    await initializeSettings()
-    initializeEventSystem()
-    initializeSessionLayer()
-    initializeStreamEngine()
-    registerBuiltinTriggers()
-
-    Permission.initialize(
-      getEventBus(),
-      sessionId => getStreamEngine().getChannel(sessionId),
-      sessionId => getStreamEngine().getPermissionMode(sessionId),
-    )
-
-    bootstrapVariableSystem()
-    bootstrapGoalStreamBreakers()
-    bootstrapProjectDirs()
-    await initializeHeadlessToolRegistry()
-    await initializeSessionSkills()
-
-    const settings = getSettings()
-    await MCPManager.initialize(settings.mcp || { enabled: true, servers: [] })
-    await registerMCPTools()
-    ACPManager.initialize(settings.acp || { enabled: true, agents: [] })
-
-    getStreamEngine().bind(this.sender)
     this.started = true
   }
 

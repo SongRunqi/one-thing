@@ -2,13 +2,19 @@ import { configureOnethingPermissionGrantStorage } from '@onething/runtime/permi
 import { getPermissionsDir, readJsonFile, writeJsonFile } from '../stores/paths.js'
 import { registerBuiltinCapabilities } from './capabilities.js'
 
-configureOnethingPermissionGrantStorage({
-  getPermissionsDir,
-  readJsonFile,
-  writeJsonFile,
-})
+let permissionGrantsConfigured = false
 
-registerBuiltinCapabilities()
+/** Explicit assembly step: grant storage paths + builtin capability set. */
+export function configureAppPermissionGrants(): void {
+  if (permissionGrantsConfigured) return
+  permissionGrantsConfigured = true
+  configureOnethingPermissionGrantStorage({
+    getPermissionsDir,
+    readJsonFile,
+    writeJsonFile,
+  })
+  registerBuiltinCapabilities()
+}
 
 export {
   addGrant,

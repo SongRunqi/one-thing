@@ -7,6 +7,13 @@ import { createAgentProviderFromRuntime } from '../../../agent-loop/index.js'
 import { getUserSkillsPath } from '../../../skills/index.js'
 import { executeSkillManage } from '../../../skills/manage.js'
 import { invalidateSessionSkillsCache as invalidateSkillsCache } from '../../../skills/session-skills.js'
+import { configureAppSkillsLoader } from '../../../skills/loader.js'
+import { configureAppSkillManage } from '../../../skills/manage.js'
+
+// Adapter wiring is an explicit assembly step now (no import-time config).
+configureAppSkillsLoader()
+configureAppSkillManage()
+
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import type { ChatMessage, ProviderConfig } from '@shared/ipc.js'
 import { createSkillReviewTrigger } from '../skill-review.js'

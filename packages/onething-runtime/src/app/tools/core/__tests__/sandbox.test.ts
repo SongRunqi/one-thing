@@ -20,6 +20,11 @@ import {
   checkFileAccess,
 } from '../sandbox'
 import { getSettings } from '../../../stores/settings.js'
+import { configureAppToolSandbox } from '../sandbox'
+
+// Adapter wiring is an explicit assembly step now (no import-time config).
+configureAppToolSandbox()
+
 import { getToolOutputsDir } from '../../../stores/paths.js'
 import { resetVariablesStoreForTests } from '../../../variables/store/index.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
