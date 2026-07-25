@@ -4479,13 +4479,22 @@ function checkElectronHostOwnsTodoPlanNotifications(): void {
     'webContents.send',
     'shell.openPath',
   ]
+  // main/todo-plan is host-agnostic: it exposes injection ports; the Electron
+  // host wires the real notification impls in main/ipc/todo-plan.ts.
   const requiredFacadeSymbols = [
-    '@onething/electron-host/todo-plan/notifications',
-    'broadcastElectronTodoPlanChanged',
-    'revealElectronTodoPlanDirectory',
-    'IPC_CHANNELS.TODO_PLAN_CHANGED',
+    'configureTodoPlanHost',
+    'broadcastChanged',
+    'revealDirectory',
   ]
+  const ipcWiringFile = path.join(root, 'apps/electron/src/main/ipc/todo-plan.ts')
+  const ipcWiringContent = fs.existsSync(ipcWiringFile) ? fs.readFileSync(ipcWiringFile, 'utf-8') : ''
   const lines = [
+    ...(!ipcWiringContent.includes('configureTodoPlanHost')
+      ? [`${rel(ipcWiringFile)}: Electron host must wire configureTodoPlanHost`]
+      : []),
+    ...(storeContent.includes('@onething/electron-host/')
+      ? [`${rel(storeFile)}: main/todo-plan must stay host-agnostic (inject via configureTodoPlanHost)`]
+      : []),
     ...(!packageContent.includes('./todo-plan/notifications')
       ? [`${rel(electronPackage)}: missing todo-plan notifications export`]
       : []),

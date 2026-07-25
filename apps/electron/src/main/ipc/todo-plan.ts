@@ -13,6 +13,10 @@ import {
 } from '@shared/ipc.js'
 import { hideTodoPlanWindow, openTodoPlanWindow, setTodoPlanWindowPinned, toggleTodoPlanWindow } from '@onething/electron-host/window'
 import {
+  broadcastElectronTodoPlanChanged,
+  revealElectronTodoPlanDirectory,
+} from '@onething/electron-host/todo-plan/notifications'
+import {
   createOnethingTodoNoteForIpc,
   deleteOnethingTodoNoteForIpc,
   getOnethingTodoPlanForIpc,
@@ -23,6 +27,7 @@ import {
   updateOnethingTodoPlanDocumentForIpc,
 } from '@onething/runtime/todo-plan'
 import {
+  configureTodoPlanHost,
   createUserTodoNote,
   deleteUserTodoNote,
   readTodoPlanSnapshot,
@@ -32,6 +37,13 @@ import {
 } from '../todo-plan/store.js'
 
 export function registerTodoPlanHandlers(): void {
+  configureTodoPlanHost({
+    broadcastChanged: payload => broadcastElectronTodoPlanChanged({
+      channel: IPC_CHANNELS.TODO_PLAN_CHANGED,
+      payload,
+    }),
+    revealDirectory: revealElectronTodoPlanDirectory,
+  })
   registerElectronTodoPlanIpcHandlers({
     channels: {
       get: IPC_CHANNELS.TODO_PLAN_GET,

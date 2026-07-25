@@ -7,27 +7,34 @@ import {
   type TodoPlanSnapshot,
   type TodoPlanUpdateRequest,
 } from '@onething/runtime/todo-plan'
-import {
-  broadcastElectronTodoPlanChanged,
-  revealElectronTodoPlanDirectory,
-} from '@onething/electron-host/todo-plan/notifications'
-import { IPC_CHANNELS } from '@shared/ipc.js'
 import { getSettings } from '../stores/settings.js'
 import { getStorePath } from '../stores/paths.js'
 import { getCurrentSessionId } from '../stores/app-state.js'
 
+/**
+ * Host injection points. The Electron host broadcasts changes to its windows
+ * and reveals the directory in Finder; headless hosts leave both unset.
+ */
+export interface TodoPlanHostPorts {
+  broadcastChanged?: (payload: TodoPlanChangedPayload) => void
+  revealDirectory?: (directory: string) => Promise<unknown> | unknown
+}
+
+let hostPorts: TodoPlanHostPorts = {}
+
+export function configureTodoPlanHost(ports: TodoPlanHostPorts): void {
+  hostPorts = ports
+}
+
 function broadcast(payload: TodoPlanChangedPayload): void {
-  broadcastElectronTodoPlanChanged({
-    channel: IPC_CHANNELS.TODO_PLAN_CHANGED,
-    payload,
-  })
+  hostPorts.broadcastChanged?.(payload)
 }
 
 export const todoPlanStore = new OnethingTodoPlanStore({
   getConfiguredDirectory: () => getSettings().general?.todoPlan?.directory,
   getDefaultStorePath: () => getStorePath(),
   notifyChanged: broadcast,
-  revealDirectory: revealElectronTodoPlanDirectory,
+  revealDirectory: directory => hostPorts.revealDirectory?.(directory),
 })
 
 // The AI writes its todo with the ordinary write/edit tools, which do not go
