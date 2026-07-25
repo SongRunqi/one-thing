@@ -17,8 +17,6 @@ import type { JsonObject } from '@shared/json.js'
 import { createOnethingToolRegistry } from '@onething/runtime/tools'
 import type { OnethingToolExecutionContext } from '@onething/runtime/tools'
 import { v4 as uuidv4 } from 'uuid'
-import { registerBuiltinTools } from './builtin/index.js'
-import { registerHeadlessBuiltinTools } from './builtin/headless.js'
 
 const toolRegistry = createOnethingToolRegistry({
   logger: console,
@@ -140,16 +138,15 @@ export function canAutoExecute(
 }
 
 export async function initializeToolRegistry(): Promise<void> {
-  // Static import: this runs inside the factory's top-level await, and a
-  // dynamic import that lands in a chunk cycling back to the entry deadlocks
-  // (or TDZ-crashes) single-file server bundles.
-  await toolRegistry.initializeToolRegistry(() => {
+  await toolRegistry.initializeToolRegistry(async () => {
+    const { registerBuiltinTools } = await import('./builtin/index.js')
     registerBuiltinTools()
   }, 'tools')
 }
 
 export async function initializeHeadlessToolRegistry(): Promise<void> {
-  await toolRegistry.initializeToolRegistry(() => {
+  await toolRegistry.initializeToolRegistry(async () => {
+    const { registerHeadlessBuiltinTools } = await import('./builtin/headless.js')
     registerHeadlessBuiltinTools()
   }, 'headless tools')
 }

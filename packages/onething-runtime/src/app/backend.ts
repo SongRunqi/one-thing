@@ -42,6 +42,12 @@ import {
   initializeToolRegistry,
   initializeHeadlessToolRegistry,
 } from './tools/index.js'
+// Static edges for the builtin tool barrels: the registry loads them via
+// dynamic import (tests re-mock them), but a single-file host bundle needs
+// these modules ordered BEFORE the factory's top-level await — a
+// dynamic-only edge deadlocks (chunked) or TDZ-crashes (inlined) there.
+import './tools/builtin/index.js'
+import './tools/builtin/headless.js'
 import { initializeSessionSkills } from './skills/session-skills.js'
 import { MCPManager, registerMCPTools } from './mcp/index.js'
 import { ACPManager } from './acp/index.js'
