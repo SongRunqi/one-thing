@@ -77,7 +77,6 @@ export default defineConfig({
       '@onething/electron-host/web-preview/web-preview': path.resolve(__dirname, 'apps/electron/src/web-preview/web-preview.ts'),
       '@onething/electron-host/media/protocol': path.resolve(__dirname, 'apps/electron/src/media/protocol.ts'),
       '@onething/electron-host/music/ipc': path.resolve(__dirname, 'apps/electron/src/music/ipc.ts'),
-      '@onething/electron-host/music/process-runner': path.resolve(__dirname, 'apps/electron/src/music/process-runner.ts'),
       '@onething/electron-host/music/pty-host': path.resolve(__dirname, 'apps/electron/src/music/pty-host.ts'),
       '@onething/electron-host/network/proxy': path.resolve(__dirname, 'apps/electron/src/network/proxy.ts'),
       '@onething/electron-host/oauth/events': path.resolve(__dirname, 'apps/electron/src/oauth/events.ts'),

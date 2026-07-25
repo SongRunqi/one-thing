@@ -33,10 +33,10 @@ import {
   type OnethingRadioProgrammeEntry,
   type OnethingRadioStore,
 } from '@onething/runtime/music'
-import { broadcastElectronVoiceMessage } from '@onething/electron-host/voice/events'
+import { broadcastVoiceHostMessage } from '../voice/host-ports.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
-import { createElectronMusicProcessRunner } from '@onething/electron-host/music/process-runner'
+import { createElectronMusicProcessRunner } from './process-runner.js'
 import { addGrant } from '@onething/core'
 import { writeJsonFile } from '@onething/core/storage'
 import { agentExists, createAgent, getAgent, updateAgent } from '../agents/store.js'
@@ -1151,7 +1151,7 @@ async function pushLyricsFor(entry: OnethingRadioProgrammeEntry, playerTitle: st
     // The PLAYER's title, not the DJ's: the renderer guards lyrics against the
     // bar's now-playing title, and only the player agrees with itself.
     currentLyrics = { title: playerTitle, lines }
-    broadcastElectronVoiceMessage({ channel: IPC_CHANNELS.MUSIC_LYRICS, payload: currentLyrics })
+    broadcastVoiceHostMessage({ channel: IPC_CHANNELS.MUSIC_LYRICS, payload: currentLyrics })
   } catch (error) {
     console.warn(`[radio] could not fetch lyrics for 「${entry.title}」`, error)
   }

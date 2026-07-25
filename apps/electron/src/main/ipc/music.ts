@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { registerElectronMusicIpcHandlers } from '@onething/electron-host/music/ipc'
-import { createElectronMusicProcessRunner } from '@onething/electron-host/music/process-runner'
+import { createElectronMusicProcessRunner } from '../music/process-runner.js'
 import {
   getOnethingMusicStateForIpc,
   listMusicProviderDescriptors,

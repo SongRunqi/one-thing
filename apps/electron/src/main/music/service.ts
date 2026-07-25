@@ -15,8 +15,8 @@ import {
 import {
   createElectronMusicProcessRunner,
   writeElectronMusicSecretFile,
-} from '@onething/electron-host/music/process-runner'
-import { broadcastElectronVoiceMessage } from '@onething/electron-host/voice/events'
+} from './process-runner.js'
+import { broadcastVoiceHostMessage } from '../voice/host-ports.js'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
 import { getSettings, saveSettings } from '../stores/settings.js'
@@ -74,7 +74,7 @@ function persistMusicSettings(patch: Partial<typeof DEFAULT_MUSIC_SETTINGS>): vo
 }
 
 function emitMusicEvent(event: OnethingMusicEvent): void {
-  broadcastElectronVoiceMessage({
+  broadcastVoiceHostMessage({
     channel: IPC_CHANNELS.MUSIC_EVENT,
     payload: event,
   })
@@ -143,7 +143,7 @@ function getNowPlayingWatcher(): NowPlayingWatcher {
       return socket ? existsSync(socket) : true
     },
     emit: nowPlaying => {
-      broadcastElectronVoiceMessage({
+      broadcastVoiceHostMessage({
         channel: IPC_CHANNELS.MUSIC_NOW_PLAYING,
         payload: nowPlaying,
       })
@@ -180,7 +180,7 @@ export async function refreshMusicNowPlaying(): Promise<void> {
  * news. Costs one IPC message, no subprocess.
  */
 export function nudgeMusicClients(): void {
-  broadcastElectronVoiceMessage({
+  broadcastVoiceHostMessage({
     channel: IPC_CHANNELS.MUSIC_NOW_PLAYING,
     payload: nowPlayingWatcher?.current() ?? null,
   })

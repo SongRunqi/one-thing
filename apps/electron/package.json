@@ -58,7 +58,6 @@
     "./skills/environment": "./src/skills/environment.ts",
     "./shortcuts/global-shortcuts": "./src/shortcuts/global-shortcuts.ts",
     "./music/ipc": "./src/music/ipc.ts",
-    "./music/process-runner": "./src/music/process-runner.ts",
     "./todo-plan/notifications": "./src/todo-plan/notifications.ts",
     "./voice/events": "./src/voice/events.ts",
     "./voice/ipc": "./src/voice/ipc.ts",

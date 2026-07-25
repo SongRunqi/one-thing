@@ -85,7 +85,6 @@ const onethingPackageAliases = [
   { find: '@onething/electron-host/shortcuts/global-shortcuts', replacement: resolve(__dirname, 'apps/electron/src/shortcuts/global-shortcuts.ts') },
   { find: '@onething/electron-host/todo-plan/notifications', replacement: resolve(__dirname, 'apps/electron/src/todo-plan/notifications.ts') },
   { find: '@onething/electron-host/music/ipc', replacement: resolve(__dirname, 'apps/electron/src/music/ipc.ts') },
-  { find: '@onething/electron-host/music/process-runner', replacement: resolve(__dirname, 'apps/electron/src/music/process-runner.ts') },
   { find: '@onething/electron-host/music/pty-host', replacement: resolve(__dirname, 'apps/electron/src/music/pty-host.ts') },
   { find: '@onething/electron-host/voice/events', replacement: resolve(__dirname, 'apps/electron/src/voice/events.ts') },
   { find: '@onething/electron-host/voice/ipc', replacement: resolve(__dirname, 'apps/electron/src/voice/ipc.ts') },

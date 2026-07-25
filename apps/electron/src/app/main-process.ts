@@ -79,6 +79,8 @@ import {
 	getElectronResourcesPath,
 } from "@onething/electron-host/skills/environment";
 import { configureAuthHost } from "@main/auth/host-ports.js";
+import { configureVoiceHost } from "@main/voice/host-ports.js";
+import { broadcastElectronVoiceMessage } from "@onething/electron-host/voice/events";
 import { createElectronAuthFetch } from "@onething/electron-host/auth/auth-fetch";
 import { getElectronSafeStorage } from "@onething/electron-host/auth/electron-auth";
 import { createRequiredAppFetch } from "@main/providers/bound-fetch.js";
@@ -338,6 +340,9 @@ export function startOnethingElectronMain(): void {
 			fallbackFetch: createRequiredAppFetch({ policy: "auth" }),
 		}),
 		tokenCryptoAdapter: getElectronSafeStorage,
+	});
+	configureVoiceHost({
+		broadcastMessage: broadcastElectronVoiceMessage,
 	});
 	initializeAppLogging();
 

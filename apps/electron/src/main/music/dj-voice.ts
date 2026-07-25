@@ -7,7 +7,7 @@
  * what unblocks a 停止电台 pressed mid-sentence).
  */
 import { randomUUID } from 'node:crypto'
-import { broadcastElectronVoiceMessage } from '@onething/electron-host/voice/events'
+import { broadcastVoiceHostMessage } from '../voice/host-ports.js'
 import { synthesizeSpeech } from '../voice/providers.js'
 import { getSettings } from '../stores/settings.js'
 import { IPC_CHANNELS, type MusicDjSpeak } from '@shared/ipc.js'
@@ -151,7 +151,7 @@ export async function speakDjPatter(text: string, title: string): Promise<void> 
     }
     const timer = setTimeout(finish, DJ_SPEAK_MAX_MS)
     pending.set(id, finish)
-    broadcastElectronVoiceMessage({ channel: IPC_CHANNELS.MUSIC_DJ_SPEAK, payload })
+    broadcastVoiceHostMessage({ channel: IPC_CHANNELS.MUSIC_DJ_SPEAK, payload })
   })
   console.info(
     `[radio:timing] 「${title}」 口播渲染端播放(广播→ack): ${Date.now() - playStart}ms`,
