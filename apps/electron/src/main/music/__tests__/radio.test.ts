@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   settings: { music: {} } as { music: Record<string, unknown> },
 }))
 
-vi.mock('@onething/electron-host/music/process-runner', () => ({
+vi.mock('../process-runner.js', () => ({
   createElectronMusicProcessRunner: () => ({
     run: async (options: { args: string[]; env?: Record<string, string | undefined> }) => {
       mocks.runs.push({ args: options.args, env: options.env })
@@ -49,8 +49,10 @@ vi.mock('@onething/electron-host/music/process-runner', () => ({
   }),
 }))
 
-vi.mock('@onething/electron-host/voice/events', () => ({
-  broadcastElectronVoiceMessage: vi.fn(),
+vi.mock('../../voice/host-ports.js', () => ({
+  broadcastVoiceHostMessage: vi.fn(),
+  configureVoiceHost: vi.fn(),
+  getVoiceHostPorts: () => ({}),
 }))
 
 vi.mock('../service.js', async () => {
