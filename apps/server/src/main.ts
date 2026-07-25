@@ -10,7 +10,7 @@ const dataRoot = process.env.ONETHING_SERVER_DATA_ROOT
 const settingsRoot = process.env.ONETHING_SERVER_SETTINGS_ROOT
 
 const runtimeCreateStart = Date.now()
-const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot, dataRoot, settingsRoot })
+const serverRuntime = await createDevelopmentOnethingServerRuntime({ workspaceRoot, dataRoot, settingsRoot })
 console.log(`[Perf][Startup] runtime-created in ${Date.now() - runtimeCreateStart}ms`)
 const server = createOnethingHttpServer({
   runtime: serverRuntime.runtime,

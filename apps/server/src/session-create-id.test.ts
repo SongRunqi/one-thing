@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  createDevelopmentOnethingServerRuntime,
   createLocalServerSessionStore,
   type OnethingServerRuntime,
 } from './runtime.js'
+import { createTestServerRuntime } from './test-helpers.js'
 
 // 方案 A 防回归:sessions.create 接受客户端指定的 session id(renderer 的
 // draft id 即未来的正式 id),但只认纯 v4 UUID(id 会成为存储路径段),
@@ -36,16 +36,16 @@ afterEach(async () => {
   else process.env.ONETHING_STORE_PATH = originalOnethingStorePath
 })
 
-function createRuntime() {
+async function createRuntime() {
   const sessionStore = createLocalServerSessionStore(process.env.ONETHING_STORE_PATH!)
-  const serverRuntime = createDevelopmentOnethingServerRuntime({ sessionStore })
+  const serverRuntime = await createTestServerRuntime({ sessionStore })
   runtimes.push(serverRuntime)
   return serverRuntime.runtime
 }
 
 describe('sessions.create with a client-supplied id', () => {
   it('persists the session under the requested v4 UUID', async () => {
-    const runtime = createRuntime()
+    const runtime = await createRuntime()
     const requested = '0f1e2d3c-4b5a-4678-89ab-cdef01234567'
 
     const created = await runtime.sessions.create('My Draft', undefined, requested) as CreateResult
@@ -55,7 +55,7 @@ describe('sessions.create with a client-supplied id', () => {
   })
 
   it('refuses ids that are not plain v4 UUIDs', async () => {
-    const runtime = createRuntime()
+    const runtime = await createRuntime()
 
     for (const bad of ['../escape', 'draft:abc', 'web-123', 'not-a-uuid', '0f1e2d3c-4b5a-1678-89ab-cdef01234567']) {
       const created = await runtime.sessions.create('My Draft', undefined, bad) as CreateResult
@@ -64,7 +64,7 @@ describe('sessions.create with a client-supplied id', () => {
   })
 
   it('refuses an id that already exists instead of adopting the session', async () => {
-    const runtime = createRuntime()
+    const runtime = await createRuntime()
     const requested = '0f1e2d3c-4b5a-4678-89ab-cdef01234567'
 
     const first = await runtime.sessions.create('First', undefined, requested) as CreateResult
@@ -75,7 +75,7 @@ describe('sessions.create with a client-supplied id', () => {
   })
 
   it('still generates its own id when none is supplied', async () => {
-    const runtime = createRuntime()
+    const runtime = await createRuntime()
     const created = await runtime.sessions.create('Plain') as CreateResult
     expect(created.success).toBe(true)
     expect(created.session?.id).toBeTruthy()

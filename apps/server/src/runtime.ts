@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import {
 	existsSync,
 	mkdirSync,
@@ -19,7 +20,7 @@ import {
 	stat,
 	writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import {
 	basename,
 	dirname,
@@ -31,7 +32,6 @@ import {
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import {
-	AgentEngine,
 	EventBus,
 	type JsonObject,
 	Permission,
@@ -47,6 +47,13 @@ import {
 	type RuntimeStreamPayload,
 	type RuntimeUnsubscribe,
 } from "@onething/core";
+import { createOnethingBackend } from "@onething/app/backend.js";
+import {
+	createSession as createAppStoreSession,
+	getSession as getAppStoreSession,
+	updateSessionWorkingDirectory as updateAppSessionWorkingDirectory,
+	updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots,
+} from "@onething/app/store.js";
 import {
 	CorePluginStore,
 	createBuiltinPluginDefinitions,
@@ -520,12 +527,42 @@ type ServerMCPManager = HeadlessMCPManager<MCPClientLike>;
 export interface OnethingServerRuntime {
 	runtime: OnethingRuntimeFacade;
 	eventBus: EventBus<AgentEngineSessionEvent>;
-	streamChannel: ServerStreamChannel;
-	engine: AgentEngine;
+	streamChannel: ServerStreamChannelLike;
+	shutdown(): Promise<void>;
+}
+
+/**
+ * The engine-bearing substrate the server runtime is assembled on. Production
+ * uses the real product backend (createOnethingBackend); tests inject a stub
+ * so HTTP-layer coverage never boots providers or touches the user store.
+ */
+export interface ServerStreamChannelLike {
+	push(sessionId: string, chunk: AgentEngineStreamChunk): void;
+	subscribe(
+		sessionId: string,
+		handler: (chunk: AgentEngineStreamChunk) => void,
+	): RuntimeUnsubscribe;
+	subscribeAny(handler: StreamPayloadHandler): RuntimeUnsubscribe;
+	destroySession(sessionId: string): void;
+	shutdown(): void;
+}
+
+export interface OnethingServerBackend {
+	eventBus: EventBus<AgentEngineSessionEvent>;
+	streamChannel: ServerStreamChannelLike;
+	/**
+	 * True when the backend's engine persists messages itself (the real
+	 * StreamEngine writes through the app session store). False keeps the
+	 * server-side event projection alive so store state still materializes
+	 * (test/echo backends).
+	 */
+	persistsMessages: boolean;
+	abortSession(sessionId: string, reason?: string): void;
 	shutdown(): Promise<void>;
 }
 
 export interface OnethingServerRuntimeOptions {
+	createBackend?: () => Promise<OnethingServerBackend>;
 	storePath?: string;
 	workspaceRoot?: string;
 	dataRoot?: string;
@@ -555,6 +592,8 @@ export interface ServerSessionStore {
 	getSessions(): ServerChatSession[];
 	getSessionsList(): SessionMeta[];
 	getSession(sessionId: string): ServerChatSession | undefined;
+	/** Drop any cached body so the next read re-hits disk (engine writes in-process). */
+	invalidateSession?(sessionId: string): void;
 	createSession(
 		sessionId: string,
 		name: string,
@@ -1101,13 +1140,57 @@ function normalizeServerPluginCommandName(commandName: string): string {
 	return commandName.startsWith("/") ? commandName : `/${commandName}`;
 }
 
-export function createDevelopmentOnethingServerRuntime(
+async function createRealServerBackend(storePath: string): Promise<OnethingServerBackend> {
+	// The @onething/app path layer resolves its root from ONETHING_STORE_PATH.
+	// One server process assembles one backend; pin the root before booting so
+	// engine writes land in the same store the server serves.
+	if (resolve(getOnethingStorePath()) !== storePath) {
+		process.env.ONETHING_STORE_PATH = storePath;
+	}
+	// The engine drops commands silently when no sender is bound (the guard
+	// exists for the desktop's window lifecycle); the server observes the
+	// EventBus/StreamChannel directly, so bind a no-op sender like the CLI
+	// daemon does.
+	class ServerNoopSender extends EventEmitter {
+		isDestroyed(): boolean {
+			return false;
+		}
+		send(): void {
+			/* SSE subscribers observe the bus and stream channel directly. */
+		}
+	}
+	const backend = await createOnethingBackend({
+		sandboxHost: {
+			getPath(name) {
+				if (name === "downloads") return join(homedir(), "Downloads");
+				return homedir();
+			},
+		},
+		// User decision (2026-07-25): web/server tools ship with desktop parity.
+		toolRegistry: "full",
+		sessionSkills: true,
+		sender: new ServerNoopSender() as never,
+	});
+	return {
+		eventBus: backend.eventBus as unknown as EventBus<AgentEngineSessionEvent>,
+		streamChannel: backend.streamChannel as unknown as ServerStreamChannelLike,
+		persistsMessages: true,
+		abortSession(sessionId, reason) {
+			backend.engine.abort(sessionId, reason ?? "server abort");
+		},
+		shutdown: () => backend.shutdown(),
+	};
+}
+
+export async function createDevelopmentOnethingServerRuntime(
 	options: OnethingServerRuntimeOptions = {},
-): OnethingServerRuntime {
-	const eventBus = new EventBus<AgentEngineSessionEvent>();
-	const streamChannel = new ServerStreamChannel();
-	const engine = new AgentEngine({ eventBus, streamChannel });
+): Promise<OnethingServerRuntime> {
 	const storePath = resolve(options.storePath ?? getOnethingStorePath());
+	const backend = options.createBackend
+		? await options.createBackend()
+		: await createRealServerBackend(storePath);
+	const eventBus = backend.eventBus;
+	const streamChannel = backend.streamChannel;
 	const sessionStore =
 		options.sessionStore ?? createLocalServerSessionStore(storePath);
 	// 触碰即驻留的工作集,不再启动全量镜像:同一 sessionId 在本进程内保持
@@ -1259,6 +1342,20 @@ export function createDevelopmentOnethingServerRuntime(
 	// 取会话:活跃流会话以内存态为准;冷会话按 index 元数据的 updatedAt 判断
 	// 是否被其他进程(桌面端共用同一存储)改写,过期才重读单个会话文件。
 	const resolveSession = (sessionId: string): ServerChatSession | undefined => {
+		if (backend.persistsMessages) {
+			// The engine runs in-process and persists through the app store,
+			// whose in-memory session is the freshest truth (async writes may
+			// still be queued). Read through it; fall back to the server store
+			// for sessions the app store has never touched.
+			const appSession = getAppStoreSession(sessionId) as
+				| ServerChatSession
+				| undefined;
+			if (appSession) {
+				normalizeStoredServerSession(appSession);
+				return appSession;
+			}
+			return loadSessionIntoWorkingSet(sessionId);
+		}
 		const cached = sessions.get(sessionId);
 		if (cached && activeControllers.has(sessionId)) return cached;
 		if (cached) {
@@ -1329,11 +1426,24 @@ export function createDevelopmentOnethingServerRuntime(
 		} catch (error) {
 			console.error("[ServerRuntime] Failed to create workspace root:", error);
 		}
-		const session = sessionStore.createSession(sessionId, "New Chat", context);
-		if (!session.workingDirectory) session.workingDirectory = root;
-		if (!session.workingDirectoryRoots?.length)
-			session.workingDirectoryRoots = [root];
-		persistSession(session);
+		let session: ServerChatSession;
+		if (backend.persistsMessages) {
+			// Single-writer: the engine reads sessions from the app store's
+			// memory. Creating through the server repository loses the race
+			// between its async flush and an immediately-following
+			// command:send-message (draft-id flows send right after create).
+			createAppStoreSession(sessionId, "New Chat");
+			updateAppSessionWorkingDirectory(sessionId, root);
+			updateAppSessionWorkingDirectoryRoots(sessionId, [root]);
+			session = getAppStoreSession(sessionId) as ServerChatSession;
+			normalizeStoredServerSession(session);
+		} else {
+			session = sessionStore.createSession(sessionId, "New Chat", context);
+			if (!session.workingDirectory) session.workingDirectory = root;
+			if (!session.workingDirectoryRoots?.length)
+				session.workingDirectoryRoots = [root];
+			persistSession(session);
+		}
 		if (!getServerCurrentSessionId(context)) {
 			setServerCurrentSessionId(context, session.id);
 		}
@@ -1361,47 +1471,29 @@ export function createDevelopmentOnethingServerRuntime(
 		) {
 			pendingPermissions.delete(permissionEvent.requestId);
 		}
-		applySessionEvent(session, envelope.event);
-		persistSession(session);
+		if (!backend.persistsMessages) {
+			// Test/echo backends do not persist; project their events into the
+			// server store. The real StreamEngine writes through the app
+			// session store itself — projecting again would double-write.
+			applySessionEvent(session, envelope.event);
+			persistSession(session);
+		} else {
+			// The engine persisted through the app repository; our resident
+			// copy and the store's body cache are stale. Drop both — the next
+			// HTTP read reloads from disk (SSE delivery is unaffected).
+			sessions.delete(envelope.sessionId);
+			sessionStore.invalidateSession?.(envelope.sessionId);
+		}
 	}, "ServerRuntimeStore");
 
-	const startSessionStream = (
-		session: ServerChatSession,
-		content: string,
-	): { success: boolean; error?: string } => {
-		activeControllers.get(session.id)?.abort();
-		clearSessionPermissions(session.id);
-		const controller = new AbortController();
-		activeControllers.set(session.id, controller);
-		void engine
-			.sendMessage({
-				sessionId: session.id,
-				content,
-				signal: controller.signal,
-			})
-			.catch(() => {
-				// AgentEngine already emits stream:error. The command response stays fire-and-forget.
-			})
-			.finally(() => {
-				if (activeControllers.get(session.id) === controller) {
-					activeControllers.delete(session.id);
-				}
-			});
+	// Session commands ride the EventBus; the real StreamEngine subscribes to
+	// them and owns persistence, retries, steering, and permission flow.
+	const forwardSessionCommand = async (
+		sessionId: string,
+		command: SessionCommand,
+	): Promise<{ success: boolean; error?: string }> => {
+		await eventBus.emit(sessionId, command as unknown as AgentEngineSessionEvent);
 		return { success: true };
-	};
-
-	const replaceSessionMessagesFrom = async (
-		session: ServerChatSession,
-		startIndex: number,
-	): Promise<void> => {
-		session.messages.splice(startIndex);
-		rebuildEngineContext(engine, session);
-		refreshSessionMeta(session);
-		persistSession(session);
-		await eventBus.emit(session.id, {
-			type: "messages:replaced",
-			messages: session.messages.map((message) => ({ ...message })),
-		} as unknown as AgentEngineSessionEvent);
 	};
 
 	const getMCPSettingsForContext = async (
@@ -1933,14 +2025,6 @@ export function createDevelopmentOnethingServerRuntime(
 							if (!session) {
 								throw new Error("Session not found");
 							}
-							const content =
-								typeof event.content === "string" ? event.content : "";
-							const result = startSessionStream(session, content);
-							if (!result.success)
-								throw new Error(
-									result.error || "Failed to start scheduled stream",
-								);
-							return result;
 						}
 						return eventBus.emit(
 							sessionId,
@@ -2654,7 +2738,6 @@ export function createDevelopmentOnethingServerRuntime(
 					: [sessionId]) {
 					sessions.delete(deletedId);
 					clearSessionPermissions(deletedId);
-					engine.contextManager.clearSession(deletedId);
 					eventBus.destroySession(deletedId);
 					streamChannel.destroySession(deletedId);
 				}
@@ -2722,7 +2805,6 @@ export function createDevelopmentOnethingServerRuntime(
 				refreshSessionMeta(branchSession);
 				persistSession(branchSession);
 				setServerCurrentSessionId(context, branchSession.id);
-				rebuildEngineContext(engine, branchSession);
 				return { success: true, session: toChatSession(branchSession) };
 			},
 			async update(
@@ -2747,7 +2829,9 @@ export function createDevelopmentOnethingServerRuntime(
 				if (!session) {
 					return { success: false, error: "Session not found" };
 				}
-				return activeControllers.has(request.sessionId)
+				// Real backends: the app-store session in memory is the truth
+				// (async writes may still be queued) — page from it directly.
+				return backend.persistsMessages || activeControllers.has(request.sessionId)
 					? getMessagePage(session.messages, request)
 					: sessionStore.getMessagesPage(request);
 			},
@@ -2758,7 +2842,7 @@ export function createDevelopmentOnethingServerRuntime(
 				}
 				return {
 					success: true,
-					markers: activeControllers.has(sessionId)
+					markers: backend.persistsMessages || activeControllers.has(sessionId)
 						? getUserMarkers(session.messages)
 						: (sessionStore.getUserMessageMarkers(sessionId) ??
 							getUserMarkers(session.messages)),
@@ -2811,7 +2895,6 @@ export function createDevelopmentOnethingServerRuntime(
 				const systemMessage = normalizeServerSystemMessage(sessionId, message);
 				session.messages.push(systemMessage);
 				refreshSessionMeta(session);
-				rebuildEngineContext(engine, session);
 				persistSession(session);
 				return { success: true };
 			},
@@ -2832,7 +2915,6 @@ export function createDevelopmentOnethingServerRuntime(
 				if (index < 0) return { success: true, removedId: null };
 				const [removed] = session.messages.splice(index, 1);
 				refreshSessionMeta(session);
-				rebuildEngineContext(engine, session);
 				persistSession(session);
 				return { success: true, removedId: removed?.id ?? null };
 			},
@@ -2849,7 +2931,6 @@ export function createDevelopmentOnethingServerRuntime(
 				if (index < 0) return { success: false, error: "Message not found" };
 				session.messages.splice(index, 1);
 				refreshSessionMeta(session);
-				rebuildEngineContext(engine, session);
 				persistSession(session);
 				return { success: true };
 			},
@@ -2867,7 +2948,6 @@ export function createDevelopmentOnethingServerRuntime(
 				if (!message) return { success: false, error: "Message not found" };
 				message.thinkingTime = thinkingTime;
 				refreshSessionMeta(session);
-				rebuildEngineContext(engine, session);
 				persistSession(session);
 				return { success: true };
 			},
@@ -2881,74 +2961,25 @@ export function createDevelopmentOnethingServerRuntime(
 				const session = getSessionForContext(sessionId, context);
 				if (!session) return { success: false, error: "Session not found" };
 
-				if (command.type === "command:send-message") {
-					return startSessionStream(session, command.content);
-				}
-
-				if (command.type === "command:edit-and-resend") {
-					const userIndex = session.messages.findIndex(
-						(message) => message.id === command.messageId,
-					);
-					if (userIndex < 0 || session.messages[userIndex]?.role !== "user") {
-						return { success: false, error: "User message not found" };
-					}
-					await replaceSessionMessagesFrom(session, userIndex);
-					return startSessionStream(session, command.newContent);
-				}
-
-				if (command.type === "command:retry-message") {
-					const targetIndex = session.messages.findIndex(
-						(message) => message.id === command.messageId,
-					);
-					if (targetIndex < 0)
-						return { success: false, error: "Message not found" };
-					const userIndex = findRetryUserMessageIndex(
-						session.messages,
-						targetIndex,
-					);
-					if (userIndex < 0)
-						return {
-							success: false,
-							error: "No user message available to retry",
-						};
-					const content = session.messages[userIndex]?.content ?? "";
-					await replaceSessionMessagesFrom(session, userIndex);
-					return startSessionStream(session, content);
-				}
-
 				if (command.type === "command:abort") {
-					activeControllers.get(sessionId)?.abort();
-					activeControllers.delete(sessionId);
+					backend.abortSession(sessionId, "HTTP abort");
 					clearSessionPermissions(sessionId);
 					return { success: true };
 				}
 
+				// Every other command forwards whole — the StreamEngine owns
+				// send/edit/retry/resume/steering/compact/permission handling,
+				// so no field is destructured away on this hop. Permission
+				// responses get the transport's channel stamp (core validates
+				// channel affinity against the ask's target channel).
 				if (command.type === "command:permission-respond") {
-					let requestId = command.requestId;
-					if (!requestId && command.toolCallId) {
-						for (const [id, pending] of pendingPermissions) {
-							if (
-								pending.sessionId === sessionId &&
-								pending.info.callId === command.toolCallId
-							) {
-								requestId = id;
-								break;
-							}
-						}
-					}
-					if (!requestId) {
-						return { success: false, error: "Permission request not found" };
-					}
-					return respondToPermission(requestId, command, context, sessionId);
+					return forwardSessionCommand(sessionId, {
+						...command,
+						channel: command.channel ?? "api",
+					});
 				}
-
-				if (command.type === "command:resume-after-confirm") {
-					await eventBus.emit(
-						sessionId,
-						command as unknown as AgentEngineSessionEvent,
-					);
-					return { success: true };
-				}
+				return forwardSessionCommand(sessionId, command);
+				// eslint-disable-next-line no-unreachable
 
 				return {
 					success: false,
@@ -5341,7 +5372,7 @@ export function createDevelopmentOnethingServerRuntime(
 			} catch (error) {
 				console.error("[ServerRuntime] Failed to flush local sessions:", error);
 			}
-			engine.shutdown();
+			await backend.shutdown();
 			for (const manager of mcpManagersByOwner.values()) {
 				manager.shutdown().catch(() => {});
 			}
@@ -5382,7 +5413,6 @@ export function createDevelopmentOnethingServerRuntime(
 		runtime,
 		eventBus,
 		streamChannel,
-		engine,
 		shutdown() {
 			return runtime.shutdown().catch(() => {});
 		},
@@ -5400,6 +5430,13 @@ function applySessionEvent(
 		if (variablesEvent.workingDirectoryRoots)
 			session.workingDirectoryRoots = variablesEvent.workingDirectoryRoots;
 		session.variables = variablesEvent.variables;
+		refreshSessionMeta(session);
+		return;
+	}
+
+	if ((event as { type?: string }).type === "messages:replaced") {
+		const replaced = event as unknown as { messages: ChatMessage[] };
+		session.messages = replaced.messages.map((message) => ({ ...message }));
 		refreshSessionMeta(session);
 		return;
 	}
@@ -5600,35 +5637,6 @@ function markStreamingComplete(session: ServerChatSession): void {
 		.reverse()
 		.find((message) => message.role === "assistant");
 	if (lastAssistant) lastAssistant.isStreaming = false;
-}
-
-function rebuildEngineContext(
-	engine: AgentEngine,
-	session: ServerChatSession,
-): void {
-	engine.contextManager.replaceMessages(
-		session.id,
-		session.messages
-			.filter(
-				(message) => message.role === "user" || message.role === "assistant",
-			)
-			.map((message) => ({
-				id: message.id,
-				role: message.role as "user" | "assistant",
-				content: message.content,
-			})),
-	);
-}
-
-function findRetryUserMessageIndex(
-	messages: ChatMessage[],
-	targetIndex: number,
-): number {
-	if (messages[targetIndex]?.role === "user") return targetIndex;
-	for (let index = targetIndex - 1; index >= 0; index -= 1) {
-		if (messages[index]?.role === "user") return index;
-	}
-	return -1;
 }
 
 function refreshSessionMeta(
@@ -6366,6 +6374,9 @@ export function createLocalServerSessionStore(
 		getSessions: () =>
 			repository.getSessions().map(normalizeStoredServerSession),
 		getSessionsList: () => repository.getSessionsList(),
+		invalidateSession: (sessionId) => {
+			repository.invalidateSessionCache(sessionId);
+		},
 		getSession: (sessionId) => {
 			const session = repository.getSession(sessionId);
 			return session ? normalizeStoredServerSession(session) : undefined;

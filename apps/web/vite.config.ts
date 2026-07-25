@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { onethingPackageAliases } from '../../onething.aliases'
 
 const projectRoot = resolve(__dirname, '../..')
 const apiTarget = process.env.ONETHING_API_URL || 'http://127.0.0.1:8787'
@@ -14,17 +15,7 @@ export default defineConfig({
       { find: '@', replacement: resolve(projectRoot, 'packages/renderer') },
       { find: '@renderer', replacement: resolve(projectRoot, 'packages/renderer') },
       { find: '@shared', replacement: resolve(projectRoot, 'packages/shared') },
-      { find: '@onething/core/ipc', replacement: resolve(projectRoot, 'packages/core/ipc/index.ts') },
-      { find: '@onething/core/slash-commands', replacement: resolve(projectRoot, 'packages/core/slash-commands.ts') },
-      { find: '@onething/core/engine/attachment-mime', replacement: resolve(projectRoot, 'packages/core/engine/attachment-mime.ts') },
-      { find: '@onething/core/engine/streaming-args', replacement: resolve(projectRoot, 'packages/core/engine/streaming-args.ts') },
-      { find: '@onething/core', replacement: resolve(projectRoot, 'packages/core/index.ts') },
-      { find: '@onething/runtime/providers/model-capability', replacement: resolve(projectRoot, 'packages/onething-runtime/src/providers/model-capability.ts') },
-      { find: '@onething/runtime/search/protocol', replacement: resolve(projectRoot, 'packages/onething-runtime/src/search/protocol.ts') },
-      { find: '@onething/runtime/storage', replacement: resolve(projectRoot, 'packages/onething-runtime/src/storage/index.ts') },
-      { find: '@onething/runtime/practice', replacement: resolve(projectRoot, 'packages/onething-runtime/src/practice/index.ts') },
-      { find: '@onething/runtime/voice/text', replacement: resolve(projectRoot, 'packages/onething-runtime/src/voice/text.ts') },
-      { find: '@onething/runtime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/index.ts') },
+      ...onethingPackageAliases(projectRoot),
     ],
   },
   server: {

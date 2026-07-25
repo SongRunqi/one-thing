@@ -15,8 +15,18 @@
 
 import type { StreamChunkBase, StreamChunkHandler, Unsubscribe } from './types.js'
 
+export interface StreamChannelPayload<TChunk> {
+  sessionId: string
+  chunk: TChunk
+}
+
+export type StreamChannelPayloadHandler<TChunk> = (
+  payload: StreamChannelPayload<TChunk>,
+) => void
+
 export class StreamChannel<TChunk extends StreamChunkBase = StreamChunkBase> {
   private subscribers = new Map<string, Set<StreamChunkHandler<TChunk>>>()
+  private wildcardSubscribers = new Set<StreamChannelPayloadHandler<TChunk>>()
 
   /**
    * Push a chunk to all subscribers of a session.
@@ -24,14 +34,32 @@ export class StreamChannel<TChunk extends StreamChunkBase = StreamChunkBase> {
    */
   push(sessionId: string, chunk: TChunk): void {
     const handlers = this.subscribers.get(sessionId)
-    if (!handlers || handlers.size === 0) return
-
-    for (const handler of handlers) {
-      try {
-        handler(chunk)
-      } catch (err) {
-        console.error(`[StreamChannel] Handler error for session ${sessionId}:`, err)
+    if (handlers) {
+      for (const handler of handlers) {
+        try {
+          handler(chunk)
+        } catch (err) {
+          console.error(`[StreamChannel] Handler error for session ${sessionId}:`, err)
+        }
       }
+    }
+    for (const handler of this.wildcardSubscribers) {
+      try {
+        handler({ sessionId, chunk })
+      } catch (err) {
+        console.error(`[StreamChannel] Wildcard handler error for session ${sessionId}:`, err)
+      }
+    }
+  }
+
+  /**
+   * Subscribe to every session's chunks (SSE-style fan-out to remote
+   * observers that cannot subscribe per session up front).
+   */
+  subscribeAny(handler: StreamChannelPayloadHandler<TChunk>): Unsubscribe {
+    this.wildcardSubscribers.add(handler)
+    return () => {
+      this.wildcardSubscribers.delete(handler)
     }
   }
 
@@ -67,5 +95,6 @@ export class StreamChannel<TChunk extends StreamChunkBase = StreamChunkBase> {
    */
   shutdown(): void {
     this.subscribers.clear()
+    this.wildcardSubscribers.clear()
   }
 }

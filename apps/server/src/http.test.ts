@@ -13,11 +13,11 @@ import type { AppSettings } from '@shared/ipc/settings.js'
 import { createOnethingHttpServer } from './http.js'
 import {
   SERVER_REDACTED_SECRET,
-  createDevelopmentOnethingServerRuntime,
   mergeServerSettingsUpdate,
   sanitizeSettingsForClient,
   type OnethingServerRuntime,
 } from './runtime.js'
+import { createTestServerRuntime } from './test-helpers.js'
 
 const servers: Server[] = []
 const runtimes: OnethingServerRuntime[] = []
@@ -51,7 +51,7 @@ afterEach(async () => {
 
 describe('createOnethingHttpServer', () => {
   it('exposes web-safe runtime capabilities', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       runtime: serverRuntime.runtime,
@@ -222,7 +222,7 @@ describe('createOnethingHttpServer', () => {
       const execResult = await ctx.exec('echo', ['blocked'])
       ctx.notify(`exec:${execResult.exitCode}`, 'warn')
     })
-    const serverRuntime = createDevelopmentOnethingServerRuntime({
+    const serverRuntime = await createTestServerRuntime({
       dataRoot,
       workspaceRoot,
       pluginCommands: [{
@@ -328,7 +328,7 @@ describe('createOnethingHttpServer', () => {
         headers: { 'content-type': 'application/json' },
       })
     })
-    const serverRuntime = createDevelopmentOnethingServerRuntime({
+    const serverRuntime = await createTestServerRuntime({
       dataRoot,
       workspaceRoot,
       oauthFetch,
@@ -425,7 +425,7 @@ describe('createOnethingHttpServer', () => {
   it('serves owner-scoped gateway status while refusing server-side channel starts', async () => {
     const dataRoot = await createTempDir('onething-gateway-data-')
     const workspaceRoot = await createTempDir('onething-gateway-workspace-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({
+    const serverRuntime = await createTestServerRuntime({
       dataRoot,
       workspaceRoot,
     })
@@ -532,7 +532,7 @@ describe('createOnethingHttpServer', () => {
   it('serves web-safe voice endpoints with explicit unavailable responses', async () => {
     const dataRoot = await createTempDir('onething-voice-data-')
     const workspaceRoot = await createTempDir('onething-voice-workspace-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({
+    const serverRuntime = await createTestServerRuntime({
       dataRoot,
       workspaceRoot,
     })
@@ -665,7 +665,7 @@ describe('createOnethingHttpServer', () => {
   it('serves owner-scoped ACP configuration while refusing server-side agent connections', async () => {
     const dataRoot = await createTempDir('onething-acp-data-')
     const workspaceRoot = await createTempDir('onething-acp-workspace-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({
+    const serverRuntime = await createTestServerRuntime({
       dataRoot,
       workspaceRoot,
     })
@@ -793,7 +793,7 @@ describe('createOnethingHttpServer', () => {
   it('serves owner-scoped memory files, captures, and logs through the development runtime', async () => {
     const dataRoot = await createTempDir('onething-memory-data-')
     const workspaceRoot = await createTempDir('onething-memory-workspace-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({
+    const serverRuntime = await createTestServerRuntime({
       dataRoot,
       workspaceRoot,
     })
@@ -971,7 +971,7 @@ describe('createOnethingHttpServer', () => {
   it('serves owner-scoped plugin catalog state through the development runtime', async () => {
     const dataRoot = await createTempDir('onething-plugin-data-')
     const workspaceRoot = await createTempDir('onething-plugin-workspace-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({
+    const serverRuntime = await createTestServerRuntime({
       dataRoot,
       workspaceRoot,
     })
@@ -1377,7 +1377,7 @@ describe('createOnethingHttpServer', () => {
   })
 
   it('exposes development chat operations over HTTP with owner isolation', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -1561,7 +1561,7 @@ describe('createOnethingHttpServer', () => {
 
   it('searches owner-scoped server runtime data and resolves web search actions', async () => {
     const workspaceRoot = await createTempDir('onething-server-search-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -1622,7 +1622,7 @@ describe('createOnethingHttpServer', () => {
 
   it('exposes workspace-scoped file routes for the web runtime', async () => {
     const workspaceRoot = await createTempDir('onething-server-files-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -1799,7 +1799,7 @@ describe('createOnethingHttpServer', () => {
 
   it('exposes sandboxed Markdown asset routes for the web runtime', async () => {
     const workspaceRoot = await createTempDir('onething-server-markdown-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -1887,7 +1887,7 @@ describe('createOnethingHttpServer', () => {
 
   it('exposes owner-scoped variables and emits session variable updates', async () => {
     const workspaceRoot = await createTempDir('onething-server-variables-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -1969,7 +1969,7 @@ describe('createOnethingHttpServer', () => {
   it('manages owner-scoped project directories inside the web workspace sandbox', async () => {
     const workspaceRoot = await createTempDir('onething-server-project-dirs-')
     const dataRoot = await createTempDir('onething-server-project-dirs-data-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot, dataRoot })
+    const serverRuntime = await createTestServerRuntime({ workspaceRoot, dataRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -2059,7 +2059,7 @@ describe('createOnethingHttpServer', () => {
 
   it('manages owner-scoped media assets and serves web-safe media files', async () => {
     const dataRoot = await createTempDir('onething-server-media-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
+    const serverRuntime = await createTestServerRuntime({ dataRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -2614,7 +2614,7 @@ describe('createOnethingHttpServer', () => {
 
   it('exposes sandboxed read-only tool routes for the web runtime', async () => {
     const workspaceRoot = await createTempDir('onething-server-tools-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -2741,7 +2741,7 @@ describe('createOnethingHttpServer', () => {
   })
 
   it('runs the development runtime through REST commands and SSE streams', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       runtime: serverRuntime.runtime,
@@ -2778,7 +2778,7 @@ describe('createOnethingHttpServer', () => {
   })
 
   it('reuses retry and edit-and-resend commands through the development runtime', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       runtime: serverRuntime.runtime,
@@ -2850,7 +2850,7 @@ describe('createOnethingHttpServer', () => {
     })}\n`, 'utf8')
 
     try {
-      const serverRuntime = createDevelopmentOnethingServerRuntime({
+      const serverRuntime = await createTestServerRuntime({
         dataRoot: await createTempDir('onething-server-data-'),
       })
       runtimes.push(serverRuntime)
@@ -2922,7 +2922,7 @@ describe('createOnethingHttpServer', () => {
     await writeFile(join(sessionsDir, `${session.id}.json`), `${JSON.stringify(session)}\n`, 'utf8')
 
     try {
-      const serverRuntime = createDevelopmentOnethingServerRuntime({
+      const serverRuntime = await createTestServerRuntime({
         dataRoot: await createTempDir('onething-server-data-'),
       })
       runtimes.push(serverRuntime)
@@ -2957,7 +2957,7 @@ describe('createOnethingHttpServer', () => {
 
   it('stores web settings per user/workspace owner in the server runtime', async () => {
     const settingsRoot = await createTempDir('onething-server-settings-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
+    const serverRuntime = await createTestServerRuntime({ settingsRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -3039,7 +3039,7 @@ describe('createOnethingHttpServer', () => {
   })
 
   it('tests network proxy settings through the development server runtime', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -3148,7 +3148,7 @@ describe('createOnethingHttpServer', () => {
     const settingsRoot = await createTempDir('onething-server-settings-')
     const aliceContext = { userId: 'alice', workspaceId: 'settings-persist' }
     const baseSettings = createDefaultSettings()
-    const firstRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
+    const firstRuntime = await createTestServerRuntime({ settingsRoot })
     runtimes.push(firstRuntime)
 
     const saved = await firstRuntime.runtime.settings!.update({
@@ -3192,7 +3192,7 @@ describe('createOnethingHttpServer', () => {
     expect(persisted).toContain('mcp-persisted-header')
     expect(persisted).not.toContain(SERVER_REDACTED_SECRET)
 
-    const secondRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
+    const secondRuntime = await createTestServerRuntime({ settingsRoot })
     runtimes.push(secondRuntime)
     const aliceSettings = await secondRuntime.runtime.settings!.get(aliceContext) as SettingsResponse
     const bobSettings = await secondRuntime.runtime.settings!.get({
@@ -3212,7 +3212,7 @@ describe('createOnethingHttpServer', () => {
 
   it('manages MCP servers through owner-scoped server REST routes', async () => {
     const settingsRoot = await createTempDir('onething-server-settings-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ settingsRoot })
+    const serverRuntime = await createTestServerRuntime({ settingsRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -3296,7 +3296,7 @@ describe('createOnethingHttpServer', () => {
 
   it('routes MCP capability operations through an injected server MCP client', async () => {
     const settingsRoot = await createTempDir('onething-server-settings-')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({
+    const serverRuntime = await createTestServerRuntime({
       settingsRoot,
       mcpClientFactory: config => createMockMCPClient(config),
     })
@@ -3393,7 +3393,7 @@ describe('createOnethingHttpServer', () => {
   it('updates web session settings through the runtime facade with ownership checks', async () => {
     const workspaceRoot = join(tmpdir(), 'onething-server-http-test-workspaces')
     const aliceWorkspaceRoot = join(workspaceRoot, 'alice', 'workspace-settings')
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ workspaceRoot })
+    const serverRuntime = await createTestServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -3462,7 +3462,7 @@ describe('createOnethingHttpServer', () => {
   })
 
 	  it('isolates sessions, commands, and SSE streams by user/workspace context', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -3516,7 +3516,7 @@ describe('createOnethingHttpServer', () => {
 
 	  it('manages user prompts through owner-scoped server runtime stores', async () => {
 	    const dataRoot = await createTempDir('onething-prompts-')
-	    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
+	    const serverRuntime = await createTestServerRuntime({ dataRoot })
 	    runtimes.push(serverRuntime)
 	    const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -3609,7 +3609,7 @@ describe('createOnethingHttpServer', () => {
 
 	  it('manages user skills through owner-scoped server runtime stores', async () => {
 	    const dataRoot = await createTempDir('onething-skills-')
-	    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
+	    const serverRuntime = await createTestServerRuntime({ dataRoot })
 	    runtimes.push(serverRuntime)
 	    const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -3708,7 +3708,7 @@ describe('createOnethingHttpServer', () => {
 	  })
 
 	  it('routes permission responses back into the session command stream with ownership checks', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -3831,7 +3831,7 @@ describe('createOnethingHttpServer', () => {
   })
 
   it('exposes pending permissions through the runtime facade with ownership checks', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -3893,7 +3893,7 @@ describe('createOnethingHttpServer', () => {
   it('manages owner-scoped permission grants over HTTP', async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), 'onething-permissions-'))
     tempDirs.push(dataRoot)
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ dataRoot })
+    const serverRuntime = await createTestServerRuntime({ dataRoot })
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
@@ -4020,7 +4020,7 @@ describe('createOnethingHttpServer', () => {
   })
 
   it('rejects identity headers when no auth token is configured', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       runtime: serverRuntime.runtime,
@@ -4036,7 +4036,7 @@ describe('createOnethingHttpServer', () => {
   })
 
   it('requires a matching bearer token for every request when configured', async () => {
-    const serverRuntime = createDevelopmentOnethingServerRuntime()
+    const serverRuntime = await createTestServerRuntime()
     runtimes.push(serverRuntime)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,

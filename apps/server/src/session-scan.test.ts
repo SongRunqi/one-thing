@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  createDevelopmentOnethingServerRuntime,
   createLocalServerSessionStore,
   type OnethingServerRuntime,
 } from './runtime.js'
+import { createTestServerRuntime } from './test-helpers.js'
 
 // P1′ 防回归:server 运行时不允许在创建 / 列表 / 取会话路径上做
 // 全量会话扫描(sessionStore.getSessions),会话列表必须走 index 元数据,
@@ -81,7 +81,7 @@ describe('server session scan regression guards', () => {
     const sessionStore = createLocalServerSessionStore(storePath)
     const fullScanSpy = vi.spyOn(sessionStore, 'getSessions')
 
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ sessionStore })
+    const serverRuntime = await createTestServerRuntime({ sessionStore })
     runtimes.push(serverRuntime)
     const runtime = serverRuntime.runtime
 
@@ -123,7 +123,7 @@ describe('server session scan regression guards', () => {
     expect(secondSpy).not.toHaveBeenCalled()
 
     // 默认上下文的列表只看到无主会话;u1 的会话被元数据过滤掉,且无需加载消息体。
-    const serverRuntime = createDevelopmentOnethingServerRuntime({ sessionStore: secondStore })
+    const serverRuntime = await createTestServerRuntime({ sessionStore: secondStore })
     runtimes.push(serverRuntime)
     const list = await serverRuntime.runtime.sessions.list() as ListResult
     expect(list.success).toBe(true)

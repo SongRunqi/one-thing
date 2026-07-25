@@ -2870,8 +2870,8 @@ function checkCoreOwnsGatewayConversationRuntimeProtocol(): void {
   const runtimeEntrypointFile = path.join(root, 'packages/onething-runtime/src/runtime.ts')
   const gatewayPackageFile = path.join(root, 'packages/gateway/package.json')
   const tsconfigFile = path.join(root, 'tsconfig.json')
-  const viteConfigFile = path.join(root, 'electron.vite.config.ts')
-  const vitestConfigFile = path.join(root, 'vitest.config.ts')
+  const viteConfigFile = path.join(root, 'onething.aliases.ts')
+  const vitestConfigFile = path.join(root, 'onething.aliases.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
@@ -3078,8 +3078,8 @@ function checkGatewayOwnsEnablementConfig(): void {
   const gatewayPackageContent = fs.existsSync(gatewayPackageFile) ? fs.readFileSync(gatewayPackageFile, 'utf-8') : ''
   const electronGatewayContent = fs.existsSync(electronGatewayFile) ? fs.readFileSync(electronGatewayFile, 'utf-8') : ''
   const tsconfigFile = path.join(root, 'tsconfig.json')
-  const viteConfigFile = path.join(root, 'electron.vite.config.ts')
-  const vitestConfigFile = path.join(root, 'vitest.config.ts')
+  const viteConfigFile = path.join(root, 'onething.aliases.ts')
+  const vitestConfigFile = path.join(root, 'onething.aliases.ts')
   const tsconfigContent = fs.existsSync(tsconfigFile) ? fs.readFileSync(tsconfigFile, 'utf-8') : ''
   const viteContent = fs.existsSync(viteConfigFile) ? fs.readFileSync(viteConfigFile, 'utf-8') : ''
   const vitestContent = fs.existsSync(vitestConfigFile) ? fs.readFileSync(vitestConfigFile, 'utf-8') : ''
@@ -3128,8 +3128,8 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
   const mainGatewayIpcFile = path.join(root, 'apps/electron/src/main/ipc/gateway.ts')
   const mainSettingsIpcFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
   const tsconfigNode = path.join(root, 'tsconfig.node.json')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronGatewayControllerContent = fs.existsSync(electronGatewayControllerFile)
     ? fs.readFileSync(electronGatewayControllerFile, 'utf-8')
@@ -3181,8 +3181,8 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
     ...(!viteContent.includes('@onething/electron-host/gateway/lifecycle')
       ? [`${rel(viteConfig)}: missing electron-host package alias`]
       : []),
-    ...(!vitestContent.includes('apps/**/*.test.ts')
-      ? [`${rel(vitestConfig)}: missing apps test include`]
+    ...(!fs.readFileSync(path.join(root, 'vitest.config.ts'), 'utf-8').includes('apps/**/*.test.ts')
+      ? ['vitest.config.ts: missing apps test include']
       : []),
     ...(!vitestContent.includes('@onething/electron-host/gateway/lifecycle')
       ? [`${rel(vitestConfig)}: missing electron-host test alias`]
@@ -3210,8 +3210,8 @@ function checkElectronHostOwnsVoiceRuntimeWindow(): void {
   const electronRuntimeFile = path.join(root, 'apps/electron/src/voice/runtime-window.ts')
   const mainRuntimeFile = path.join(root, 'packages/onething-runtime/src/app/voice/runtime-window.ts')
   const mainVoiceServiceFile = path.join(root, 'packages/onething-runtime/src/app/voice/service.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronRuntimeControllerContent = fs.existsSync(electronRuntimeControllerFile)
     ? fs.readFileSync(electronRuntimeControllerFile, 'utf-8')
@@ -3274,8 +3274,8 @@ function checkElectronHostOwnsVoiceEventBroadcasting(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronEventsFile = path.join(root, 'apps/electron/src/voice/events.ts')
   const mainVoiceServiceFile = path.join(root, 'packages/onething-runtime/src/app/voice/service.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronEventsContent = fs.existsSync(electronEventsFile) ? fs.readFileSync(electronEventsFile, 'utf-8') : ''
   const mainVoiceServiceContent = fs.existsSync(mainVoiceServiceFile) ? fs.readFileSync(mainVoiceServiceFile, 'utf-8') : ''
@@ -3325,8 +3325,8 @@ function checkElectronHostOwnsVoiceTray(): void {
   const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const mainTrayFile = path.join(root, 'packages/onething-runtime/src/app/voice/tray.ts')
   const mainVoiceServiceFile = path.join(root, 'packages/onething-runtime/src/app/voice/service.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTrayControllerContent = fs.existsSync(electronTrayControllerFile)
     ? fs.readFileSync(electronTrayControllerFile, 'utf-8')
@@ -3396,8 +3396,8 @@ function checkElectronHostOwnsVoiceIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronVoiceIpcFile = path.join(root, 'apps/electron/src/voice/ipc.ts')
   const mainVoiceIpcFile = path.join(root, 'apps/electron/src/main/ipc/voice.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronVoiceIpcContent = fs.existsSync(electronVoiceIpcFile)
     ? fs.readFileSync(electronVoiceIpcFile, 'utf-8')
@@ -3459,8 +3459,8 @@ function checkElectronHostOwnsReadyHandler(): void {
   const electronLoginShellEnvTestFile = path.join(root, 'apps/electron/src/app/__tests__/login-shell-env.test.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const legacyLoginShellEnvFile = path.join(root, 'packages/onething-runtime/src/app/utils/login-shell-env.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronReadyContent = fs.existsSync(electronReadyFile) ? fs.readFileSync(electronReadyFile, 'utf-8') : ''
   const electronLoginShellEnvContent = fs.existsSync(electronLoginShellEnvFile) ? fs.readFileSync(electronLoginShellEnvFile, 'utf-8') : ''
@@ -3539,8 +3539,8 @@ function checkElectronHostOwnsActivateHandler(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronActivateFile = path.join(root, 'apps/electron/src/app/activate.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronActivateContent = fs.existsSync(electronActivateFile) ? fs.readFileSync(electronActivateFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -3614,8 +3614,8 @@ function checkElectronHostOwnsApplicationMenu(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMenuFile = path.join(root, 'apps/electron/src/menu/application-menu.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMenuContent = fs.existsSync(electronMenuFile) ? fs.readFileSync(electronMenuFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -3657,8 +3657,8 @@ function checkElectronHostOwnsSessionSecurity(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSessionFile = path.join(root, 'apps/electron/src/window/session-security.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSessionContent = fs.existsSync(electronSessionFile) ? fs.readFileSync(electronSessionFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -3706,8 +3706,8 @@ function checkElectronHostOwnsExternalLinkHandling(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronExternalLinksFile = path.join(root, 'apps/electron/src/window/external-links.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronExternalLinksContent = fs.existsSync(electronExternalLinksFile) ? fs.readFileSync(electronExternalLinksFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -3749,8 +3749,8 @@ function checkElectronHostOwnsMainWindowRecovery(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronRecoveryFile = path.join(root, 'apps/electron/src/window/main-window-recovery.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronRecoveryContent = fs.existsSync(electronRecoveryFile) ? fs.readFileSync(electronRecoveryFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -3796,8 +3796,8 @@ function checkElectronHostOwnsSettingsWindow(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSettingsFile = path.join(root, 'apps/electron/src/window/settings-window.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSettingsContent = fs.existsSync(electronSettingsFile) ? fs.readFileSync(electronSettingsFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -3847,8 +3847,8 @@ function checkElectronHostOwnsImagePreviewWindow(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronImagePreviewFile = path.join(root, 'apps/electron/src/window/image-preview-window.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronImagePreviewContent = fs.existsSync(electronImagePreviewFile) ? fs.readFileSync(electronImagePreviewFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -3898,8 +3898,8 @@ function checkElectronHostOwnsMainWindowCreation(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMainWindowFile = path.join(root, 'apps/electron/src/window/main-window.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMainWindowContent = fs.existsSync(electronMainWindowFile) ? fs.readFileSync(electronMainWindowFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -3950,8 +3950,8 @@ function checkElectronHostOwnsTodoPlanWindowCreation(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronTodoFile = path.join(root, 'apps/electron/src/window/todo-plan-window.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTodoContent = fs.existsSync(electronTodoFile) ? fs.readFileSync(electronTodoFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -4003,8 +4003,8 @@ function checkElectronHostOwnsMacOSPanelBridge(): void {
   const legacyPanelFile = path.join(root, 'packages/onething-runtime/src/app/native/macos-panel.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
   const todoWindowTestFile = path.join(root, 'apps/electron/src/main/__tests__/todo-plan-window.test.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPanelContent = fs.existsSync(electronPanelFile) ? fs.readFileSync(electronPanelFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -4059,8 +4059,8 @@ function checkElectronHostOwnsRendererTargets(): void {
   const electronTargetsFile = path.join(root, 'apps/electron/src/window/renderer-targets.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
   const searchTargetFile = path.join(root, 'packages/onething-runtime/src/app/search/window-target.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTargetsContent = fs.existsSync(electronTargetsFile) ? fs.readFileSync(electronTargetsFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -4112,8 +4112,8 @@ function checkElectronHostOwnsSearchWindowLifecycle(): void {
   const electronSearchWindowControllerFile = path.join(root, 'apps/electron/src/window/search-window.ts')
   const electronSearchWindowFile = path.join(root, 'apps/electron/src/search/window.ts')
   const searchWindowFile = path.join(root, 'packages/onething-runtime/src/app/search/window.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSearchWindowControllerContent = fs.existsSync(electronSearchWindowControllerFile)
     ? fs.readFileSync(electronSearchWindowControllerFile, 'utf-8')
@@ -4178,8 +4178,8 @@ function checkElectronHostOwnsSearchWindowActionDelivery(): void {
   const legacySelectionFile = path.join(root, 'packages/onething-runtime/src/app/search/window-selection.ts')
   const searchControllerFile = path.join(root, 'packages/onething-runtime/src/app/search/window-controller.ts')
   const searchIpcFile = path.join(root, 'packages/onething-runtime/src/app/search/ipc.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSearchActionsContent = fs.existsSync(electronSearchActionsFile)
     ? fs.readFileSync(electronSearchActionsFile, 'utf-8')
@@ -4286,8 +4286,8 @@ function checkElectronHostOwnsSearchWindowLayout(): void {
   const electronSearchWindowFile = path.join(root, 'apps/electron/src/search/window.ts')
   const legacyLayoutFile = path.join(root, 'packages/onething-runtime/src/app/search/window-layout.ts')
   const searchWindowFile = path.join(root, 'packages/onething-runtime/src/app/search/window.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronLayoutContent = fs.existsSync(electronLayoutFile) ? fs.readFileSync(electronLayoutFile, 'utf-8') : ''
   const electronSearchWindowContent = fs.existsSync(electronSearchWindowFile)
@@ -4340,8 +4340,8 @@ function checkElectronHostOwnsWindowStatePersistence(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronWindowStateFile = path.join(root, 'apps/electron/src/window/window-state.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronWindowStateContent = fs.existsSync(electronWindowStateFile) ? fs.readFileSync(electronWindowStateFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -4390,8 +4390,8 @@ function checkElectronHostOwnsMainWindowActivation(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronActivationFile = path.join(root, 'apps/electron/src/window/activation.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronActivationContent = fs.existsSync(electronActivationFile) ? fs.readFileSync(electronActivationFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -4434,8 +4434,8 @@ function checkElectronHostOwnsWindowVisibilitySnapshots(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronVisibilityFile = path.join(root, 'apps/electron/src/window/window-visibility.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronVisibilityContent = fs.existsSync(electronVisibilityFile) ? fs.readFileSync(electronVisibilityFile, 'utf-8') : ''
   const windowContent = fs.existsSync(windowFile) ? fs.readFileSync(windowFile, 'utf-8') : ''
@@ -4482,8 +4482,8 @@ function checkElectronHostOwnsTodoPlanNotifications(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronNotificationsFile = path.join(root, 'apps/electron/src/todo-plan/notifications.ts')
   const storeFile = path.join(root, 'packages/onething-runtime/src/app/todo-plan/store.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronNotificationsContent = fs.existsSync(electronNotificationsFile)
     ? fs.readFileSync(electronNotificationsFile, 'utf-8')
@@ -4541,8 +4541,8 @@ function checkElectronHostOwnsTodoPlanPresentation(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPresentationFile = path.join(root, 'apps/electron/src/window/todo-plan-presentation.ts')
   const windowFile = path.join(root, 'apps/electron/src/window/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPresentationContent = fs.existsSync(electronPresentationFile)
     ? fs.readFileSync(electronPresentationFile, 'utf-8')
@@ -4594,8 +4594,8 @@ function checkElectronHostOwnsWindowFacade(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const windowHostFile = path.join(root, 'apps/electron/src/window/index.ts')
   const windowFacadeFile = path.join(root, 'packages/onething-runtime/src/app/window.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const windowHostContent = fs.existsSync(windowHostFile) ? fs.readFileSync(windowHostFile, 'utf-8') : ''
   const windowFacadeContent = fs.existsSync(windowFacadeFile) ? fs.readFileSync(windowFacadeFile, 'utf-8') : ''
@@ -4636,8 +4636,8 @@ function checkElectronHostOwnsWindowAllClosedHandler(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronWindowFile = path.join(root, 'apps/electron/src/app/window-all-closed.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronWindowContent = fs.existsSync(electronWindowFile) ? fs.readFileSync(electronWindowFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -4679,8 +4679,8 @@ function checkElectronHostOwnsDidBecomeActiveHandler(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronActiveFile = path.join(root, 'apps/electron/src/app/did-become-active.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronActiveContent = fs.existsSync(electronActiveFile) ? fs.readFileSync(electronActiveFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -4722,8 +4722,8 @@ function checkElectronHostOwnsBeforeQuitCleanup(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronBeforeQuitFile = path.join(root, 'apps/electron/src/app/before-quit.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronBeforeQuitContent = fs.existsSync(electronBeforeQuitFile) ? fs.readFileSync(electronBeforeQuitFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -4767,8 +4767,8 @@ function checkElectronHostOwnsMediaProtocol(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMediaFile = path.join(root, 'apps/electron/src/media/protocol.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMediaContent = fs.existsSync(electronMediaFile) ? fs.readFileSync(electronMediaFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -4810,8 +4810,8 @@ function checkElectronHostOwnsLoggingCapture(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronLoggingFile = path.join(root, 'apps/electron/src/logging/console-capture.ts')
   const mainLoggingFile = path.join(root, 'packages/onething-runtime/src/app/logging/index.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronLoggingContent = fs.existsSync(electronLoggingFile) ? fs.readFileSync(electronLoggingFile, 'utf-8') : ''
   const mainLoggingContent = fs.existsSync(mainLoggingFile) ? fs.readFileSync(mainLoggingFile, 'utf-8') : ''
@@ -4871,8 +4871,8 @@ function checkElectronHostOwnsAccessibilityPermissions(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronAccessibilityFile = path.join(root, 'apps/electron/src/accessibility/permissions.ts')
   const mainAccessibilityFile = path.join(root, 'packages/onething-runtime/src/app/utils/accessibility.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAccessibilityContent = fs.existsSync(electronAccessibilityFile) ? fs.readFileSync(electronAccessibilityFile, 'utf-8') : ''
   const mainAccessibilityContent = fs.existsSync(mainAccessibilityFile) ? fs.readFileSync(mainAccessibilityFile, 'utf-8') : ''
@@ -4927,8 +4927,8 @@ function checkElectronHostOwnsShellOperations(): void {
   const electronShellIpcControllerFile = path.join(root, 'apps/electron/src/ipc/shell-controller.ts')
   const electronShellIpcFile = path.join(root, 'apps/electron/src/ipc/shell.ts')
   const mainShellFile = path.join(root, 'apps/electron/src/main/ipc/shell.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronShellContent = fs.existsSync(electronShellFile) ? fs.readFileSync(electronShellFile, 'utf-8') : ''
   const electronShellIpcControllerContent = fs.existsSync(electronShellIpcControllerFile)
@@ -5020,8 +5020,8 @@ function checkElectronHostOwnsOAuthEvents(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronOAuthFile = path.join(root, 'apps/electron/src/oauth/events.ts')
   const mainOAuthFile = path.join(root, 'apps/electron/src/main/ipc/oauth.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronOAuthContent = fs.existsSync(electronOAuthFile) ? fs.readFileSync(electronOAuthFile, 'utf-8') : ''
   const mainOAuthContent = fs.existsSync(mainOAuthFile) ? fs.readFileSync(mainOAuthFile, 'utf-8') : ''
@@ -5069,8 +5069,8 @@ function checkElectronHostOwnsOAuthIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronOAuthIpcFile = path.join(root, 'apps/electron/src/ipc/oauth.ts')
   const mainOAuthFile = path.join(root, 'apps/electron/src/main/ipc/oauth.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronOAuthIpcContent = fs.existsSync(electronOAuthIpcFile)
     ? fs.readFileSync(electronOAuthIpcFile, 'utf-8')
@@ -5131,8 +5131,8 @@ function checkElectronHostOwnsSettingsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSettingsFile = path.join(root, 'apps/electron/src/settings/ipc-host.ts')
   const mainSettingsFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSettingsContent = fs.existsSync(electronSettingsFile) ? fs.readFileSync(electronSettingsFile, 'utf-8') : ''
   const mainSettingsContent = fs.existsSync(mainSettingsFile) ? fs.readFileSync(mainSettingsFile, 'utf-8') : ''
@@ -5205,8 +5205,8 @@ function checkElectronHostOwnsAppStateIpcHost(): void {
   const electronAppStateControllerFile = path.join(root, 'apps/electron/src/ipc/app-state-controller.ts')
   const electronAppStateFile = path.join(root, 'apps/electron/src/ipc/app-state.ts')
   const mainAppStateFile = path.join(root, 'apps/electron/src/main/ipc/app-state.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAppStateControllerContent = fs.existsSync(electronAppStateControllerFile)
     ? fs.readFileSync(electronAppStateControllerFile, 'utf-8')
@@ -5270,8 +5270,8 @@ function checkElectronHostOwnsVariablesIpcHost(): void {
   const electronVariablesControllerFile = path.join(root, 'apps/electron/src/ipc/variables-controller.ts')
   const electronVariablesFile = path.join(root, 'apps/electron/src/ipc/variables.ts')
   const mainVariablesFile = path.join(root, 'apps/electron/src/main/ipc/variables.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronVariablesControllerContent = fs.existsSync(electronVariablesControllerFile)
     ? fs.readFileSync(electronVariablesControllerFile, 'utf-8')
@@ -5338,8 +5338,8 @@ function checkElectronHostOwnsProjectDirsIpcHost(): void {
   const electronProjectDirsControllerFile = path.join(root, 'apps/electron/src/ipc/project-dirs-controller.ts')
   const electronProjectDirsFile = path.join(root, 'apps/electron/src/ipc/project-dirs.ts')
   const mainProjectDirsFile = path.join(root, 'apps/electron/src/main/ipc/project-dirs.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronProjectDirsControllerContent = fs.existsSync(electronProjectDirsControllerFile)
     ? fs.readFileSync(electronProjectDirsControllerFile, 'utf-8')
@@ -5410,8 +5410,8 @@ function checkElectronHostOwnsAgentsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronAgentsFile = path.join(root, 'apps/electron/src/ipc/agents.ts')
   const mainAgentsFile = path.join(root, 'apps/electron/src/main/ipc/agents.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAgentsContent = fs.existsSync(electronAgentsFile) ? fs.readFileSync(electronAgentsFile, 'utf-8') : ''
   const mainAgentsContent = fs.existsSync(mainAgentsFile) ? fs.readFileSync(mainAgentsFile, 'utf-8') : ''
@@ -5465,8 +5465,8 @@ function checkElectronHostOwnsPromptsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPromptsFile = path.join(root, 'apps/electron/src/ipc/prompts.ts')
   const mainPromptsFile = path.join(root, 'apps/electron/src/main/ipc/prompts.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPromptsContent = fs.existsSync(electronPromptsFile) ? fs.readFileSync(electronPromptsFile, 'utf-8') : ''
   const mainPromptsContent = fs.existsSync(mainPromptsFile) ? fs.readFileSync(mainPromptsFile, 'utf-8') : ''
@@ -5523,8 +5523,8 @@ function checkElectronHostOwnsSchedulerIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSchedulerFile = path.join(root, 'apps/electron/src/ipc/scheduler.ts')
   const mainSchedulerFile = path.join(root, 'apps/electron/src/main/ipc/scheduler.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSchedulerContent = fs.existsSync(electronSchedulerFile) ? fs.readFileSync(electronSchedulerFile, 'utf-8') : ''
   const mainSchedulerContent = fs.existsSync(mainSchedulerFile) ? fs.readFileSync(mainSchedulerFile, 'utf-8') : ''
@@ -5593,8 +5593,8 @@ function checkElectronHostOwnsMarkdownIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMarkdownFile = path.join(root, 'apps/electron/src/ipc/markdown.ts')
   const mainMarkdownFile = path.join(root, 'apps/electron/src/main/ipc/markdown.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMarkdownContent = fs.existsSync(electronMarkdownFile) ? fs.readFileSync(electronMarkdownFile, 'utf-8') : ''
   const mainMarkdownContent = fs.existsSync(mainMarkdownFile) ? fs.readFileSync(mainMarkdownFile, 'utf-8') : ''
@@ -5645,8 +5645,8 @@ function checkElectronHostOwnsPermissionIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPermissionFile = path.join(root, 'apps/electron/src/ipc/permission.ts')
   const mainPermissionFile = path.join(root, 'apps/electron/src/main/ipc/permission.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPermissionContent = fs.existsSync(electronPermissionFile) ? fs.readFileSync(electronPermissionFile, 'utf-8') : ''
   const mainPermissionContent = fs.existsSync(mainPermissionFile) ? fs.readFileSync(mainPermissionFile, 'utf-8') : ''
@@ -5706,8 +5706,8 @@ function checkElectronHostOwnsPluginsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPluginsFile = path.join(root, 'apps/electron/src/ipc/plugins.ts')
   const mainPluginsFile = path.join(root, 'apps/electron/src/main/ipc/plugins.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPluginsContent = fs.existsSync(electronPluginsFile) ? fs.readFileSync(electronPluginsFile, 'utf-8') : ''
   const mainPluginsContent = fs.existsSync(mainPluginsFile) ? fs.readFileSync(mainPluginsFile, 'utf-8') : ''
@@ -5764,8 +5764,8 @@ function checkElectronHostOwnsThemesIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronThemesFile = path.join(root, 'apps/electron/src/ipc/themes.ts')
   const mainThemesFile = path.join(root, 'apps/electron/src/main/ipc/themes.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronThemesContent = fs.existsSync(electronThemesFile) ? fs.readFileSync(electronThemesFile, 'utf-8') : ''
   const mainThemesContent = fs.existsSync(mainThemesFile) ? fs.readFileSync(mainThemesFile, 'utf-8') : ''
@@ -5822,8 +5822,8 @@ function checkElectronHostOwnsProvidersIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronProvidersFile = path.join(root, 'apps/electron/src/ipc/providers.ts')
   const mainProvidersFile = path.join(root, 'apps/electron/src/main/ipc/providers.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronProvidersContent = fs.existsSync(electronProvidersFile) ? fs.readFileSync(electronProvidersFile, 'utf-8') : ''
   const mainProvidersContent = fs.existsSync(mainProvidersFile) ? fs.readFileSync(mainProvidersFile, 'utf-8') : ''
@@ -5876,8 +5876,8 @@ function checkElectronHostOwnsModelsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronModelsFile = path.join(root, 'apps/electron/src/ipc/models.ts')
   const mainModelsFile = path.join(root, 'apps/electron/src/main/ipc/models.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronModelsContent = fs.existsSync(electronModelsFile) ? fs.readFileSync(electronModelsFile, 'utf-8') : ''
   const mainModelsContent = fs.existsSync(mainModelsFile) ? fs.readFileSync(mainModelsFile, 'utf-8') : ''
@@ -5935,8 +5935,8 @@ function checkElectronHostOwnsMcpIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMcpFile = path.join(root, 'apps/electron/src/ipc/mcp.ts')
   const mainMcpFile = path.join(root, 'apps/electron/src/main/ipc/mcp.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMcpContent = fs.existsSync(electronMcpFile) ? fs.readFileSync(electronMcpFile, 'utf-8') : ''
   const mainMcpContent = fs.existsSync(mainMcpFile) ? fs.readFileSync(mainMcpFile, 'utf-8') : ''
@@ -6008,8 +6008,8 @@ function checkElectronHostOwnsAcpIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronAcpFile = path.join(root, 'apps/electron/src/ipc/acp.ts')
   const mainAcpFile = path.join(root, 'apps/electron/src/main/ipc/acp.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAcpContent = fs.existsSync(electronAcpFile) ? fs.readFileSync(electronAcpFile, 'utf-8') : ''
   const mainAcpContent = fs.existsSync(mainAcpFile) ? fs.readFileSync(mainAcpFile, 'utf-8') : ''
@@ -6072,8 +6072,8 @@ function checkElectronHostOwnsMediaIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMediaFile = path.join(root, 'apps/electron/src/ipc/media.ts')
   const mainMediaFile = path.join(root, 'apps/electron/src/main/ipc/media.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMediaContent = fs.existsSync(electronMediaFile) ? fs.readFileSync(electronMediaFile, 'utf-8') : ''
   const mainMediaContent = fs.existsSync(mainMediaFile) ? fs.readFileSync(mainMediaFile, 'utf-8') : ''
@@ -6143,8 +6143,8 @@ function checkElectronHostOwnsTodoPlanIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronTodoPlanFile = path.join(root, 'apps/electron/src/ipc/todo-plan.ts')
   const mainTodoPlanFile = path.join(root, 'apps/electron/src/main/ipc/todo-plan.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronTodoPlanContent = fs.existsSync(electronTodoPlanFile) ? fs.readFileSync(electronTodoPlanFile, 'utf-8') : ''
   const mainTodoPlanContent = fs.existsSync(mainTodoPlanFile) ? fs.readFileSync(mainTodoPlanFile, 'utf-8') : ''
@@ -6207,8 +6207,8 @@ function checkElectronHostOwnsToolsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronToolsFile = path.join(root, 'apps/electron/src/ipc/tools.ts')
   const mainToolsFile = path.join(root, 'apps/electron/src/main/ipc/tools.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronToolsContent = fs.existsSync(electronToolsFile) ? fs.readFileSync(electronToolsFile, 'utf-8') : ''
   const mainToolsContent = fs.existsSync(mainToolsFile) ? fs.readFileSync(mainToolsFile, 'utf-8') : ''
@@ -6270,8 +6270,8 @@ function checkElectronHostOwnsSkillsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSkillsFile = path.join(root, 'apps/electron/src/ipc/skills.ts')
   const mainSkillsFile = path.join(root, 'apps/electron/src/main/ipc/skills.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSkillsContent = fs.existsSync(electronSkillsFile) ? fs.readFileSync(electronSkillsFile, 'utf-8') : ''
   const mainSkillsContent = fs.existsSync(mainSkillsFile) ? fs.readFileSync(mainSkillsFile, 'utf-8') : ''
@@ -6337,8 +6337,8 @@ function checkElectronHostOwnsAuthElectronAdapters(): void {
   const electronTokenStoreFile = path.join(root, 'apps/electron/src/auth/token-store.ts')
   const mainAuthFile = path.join(root, 'packages/onething-runtime/src/app/auth/auth-service.ts')
   const mainTokenStoreFile = path.join(root, 'packages/onething-runtime/src/app/auth/token-store.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronAuthFetchContent = fs.existsSync(electronAuthFetchFile)
     ? fs.readFileSync(electronAuthFetchFile, 'utf-8')
@@ -6451,8 +6451,8 @@ function checkElectronHostOwnsSkillsEnvironment(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSkillsFile = path.join(root, 'apps/electron/src/skills/environment.ts')
   const mainSkillsFile = path.join(root, 'packages/onething-runtime/src/app/skills/loader.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSkillsContent = fs.existsSync(electronSkillsFile) ? fs.readFileSync(electronSkillsFile, 'utf-8') : ''
   const mainSkillsContent = fs.existsSync(mainSkillsFile) ? fs.readFileSync(mainSkillsFile, 'utf-8') : ''
@@ -6509,8 +6509,8 @@ function checkElectronHostOwnsNetworkProxy(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronProxyFile = path.join(root, 'apps/electron/src/network/proxy.ts')
   const mainProxyFile = path.join(root, 'apps/electron/src/main/ipc/network-proxy.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronProxyContent = fs.existsSync(electronProxyFile) ? fs.readFileSync(electronProxyFile, 'utf-8') : ''
   const mainProxyContent = fs.existsSync(mainProxyFile) ? fs.readFileSync(mainProxyFile, 'utf-8') : ''
@@ -6560,8 +6560,8 @@ function checkElectronHostOwnsGlobalShortcuts(): void {
   const electronMainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const mainShortcutsFile = path.join(root, 'packages/onething-runtime/src/app/shortcuts/global-shortcuts.ts')
   const mainSettingsIpcFile = path.join(root, 'apps/electron/src/main/ipc/settings.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronShortcutsContent = fs.existsSync(electronShortcutsFile)
     ? fs.readFileSync(electronShortcutsFile, 'utf-8')
@@ -6634,8 +6634,8 @@ function checkElectronHostOwnsPowerResumeHandlers(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronPowerFile = path.join(root, 'apps/electron/src/power/resume.ts')
   const mainFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronPowerContent = fs.existsSync(electronPowerFile) ? fs.readFileSync(electronPowerFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -6679,8 +6679,8 @@ function checkElectronHostOwnsAppBootstrap(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronBootstrapFile = path.join(root, 'apps/electron/src/app/bootstrap.ts')
   const mainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronBootstrapContent = fs.existsSync(electronBootstrapFile)
     ? fs.readFileSync(electronBootstrapFile, 'utf-8')
@@ -6733,16 +6733,16 @@ function checkElectronHostOwnsAppBootstrap(): void {
 }
 
 function checkElectronHostOwnsMainEntry(): void {
-  const electronMainFile = path.join(root, 'apps/electron/apps/electron/src/main.ts')
+  const electronMainFile = path.join(root, 'apps/electron/src/main.ts')
   const electronMainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/index.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const aliasesFile = path.join(root, 'onething.aliases.ts')
   const electronMainContent = fs.existsSync(electronMainFile) ? fs.readFileSync(electronMainFile, 'utf-8') : ''
   const electronMainProcessContent = fs.existsSync(electronMainProcessFile) ? fs.readFileSync(electronMainProcessFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
   const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
-  const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
+  const aliasesContent = fs.existsSync(aliasesFile) ? fs.readFileSync(aliasesFile, 'utf-8') : ''
   const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
   const lines = [
     ...(!electronMainContent.includes('startOnethingElectronMain')
@@ -6760,14 +6760,11 @@ function checkElectronHostOwnsMainEntry(): void {
     ...(mainLines.length > 5
       ? [`${rel(mainFile)}: legacy Electron main facade must stay thin`]
       : []),
-    ...(!viteContent.includes("index: resolve(__dirname, 'apps/electron/apps/electron/src/main.ts')")
-      ? [`${rel(viteConfig)}: Electron main input must point at apps/electron/apps/electron/src/main.ts`]
+    ...(!viteContent.includes("index: resolve(__dirname, 'apps/electron/src/main.ts')")
+      ? [`${rel(viteConfig)}: Electron main input must point at apps/electron/src/main.ts`]
       : []),
-    ...(!viteContent.includes('@onething/electron-host/app/main-process')
-      ? [`${rel(viteConfig)}: missing electron app main-process package alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/electron-host/app/main-process')
-      ? [`${rel(vitestConfig)}: missing electron app main-process test alias`]
+    ...(!aliasesContent.includes('@onething/electron-host/app/main-process')
+      ? [`${rel(aliasesFile)}: missing electron app main-process package alias`]
       : []),
     ...(fs.existsSync(viteConfig)
       ? matchingLines(viteConfig, ELECTRON_MAIN_ENTRY_FORBIDDEN_PATTERNS)
@@ -6825,8 +6822,8 @@ function checkRuntimeSubpathAliasesCoverSourceImports(): void {
     path.join(root, 'apps/electron/src'),
     path.join(root, 'packages/gateway/src'),
   ]
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
   const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
   const specifiers = new Set<string>()
@@ -7173,8 +7170,8 @@ function checkCoreOwnsJsonProtocol(): void {
   const corePackageFile = path.join(root, 'packages/core/package.json')
   const coreTestFile = path.join(root, 'packages/core/__tests__/json.test.ts')
   const sharedFile = path.join(root, 'packages/shared/json.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
@@ -7242,8 +7239,8 @@ function checkCoreOwnsIpcRouterProtocol(): void {
   const sharedFile = path.join(root, 'packages/shared/ipc/router.ts')
   const legacySharedTestFile = path.join(root, 'packages/shared/ipc/__tests__/router.test.ts')
   const preloadCreateApiFile = path.join(root, 'apps/electron/src/preload/create-api.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const coreContent = fs.existsSync(coreFile) ? fs.readFileSync(coreFile, 'utf-8') : ''
   const coreIndexContent = fs.existsSync(coreIndexFile) ? fs.readFileSync(coreIndexFile, 'utf-8') : ''
   const corePackageContent = fs.existsSync(corePackageFile) ? fs.readFileSync(corePackageFile, 'utf-8') : ''
@@ -7316,8 +7313,8 @@ function checkElectronHostOwnsSessionCommandIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSessionCommandFile = path.join(root, 'apps/electron/src/ipc/session-command.ts')
   const mainFile = path.join(root, 'apps/electron/src/main/ipc/handlers.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSessionCommandContent = fs.existsSync(electronSessionCommandFile)
     ? fs.readFileSync(electronSessionCommandFile, 'utf-8')
@@ -7367,8 +7364,8 @@ function checkElectronHostOwnsChatIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronChatFile = path.join(root, 'apps/electron/src/ipc/chat.ts')
   const mainChatFile = path.join(root, 'apps/electron/src/main/ipc/chat.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronChatContent = fs.existsSync(electronChatFile) ? fs.readFileSync(electronChatFile, 'utf-8') : ''
   const mainChatContent = fs.existsSync(mainChatFile) ? fs.readFileSync(mainChatFile, 'utf-8') : ''
@@ -7428,8 +7425,8 @@ function checkElectronHostOwnsFilesIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronFilesFile = path.join(root, 'apps/electron/src/ipc/files.ts')
   const mainFilesFile = path.join(root, 'apps/electron/src/main/ipc/files.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronFilesContent = fs.existsSync(electronFilesFile) ? fs.readFileSync(electronFilesFile, 'utf-8') : ''
   const mainFilesContent = fs.existsSync(mainFilesFile) ? fs.readFileSync(mainFilesFile, 'utf-8') : ''
@@ -7487,8 +7484,8 @@ function checkElectronHostOwnsSessionsIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronSessionsFile = path.join(root, 'apps/electron/src/ipc/sessions.ts')
   const mainSessionsFile = path.join(root, 'apps/electron/src/main/ipc/sessions.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronSessionsContent = fs.existsSync(electronSessionsFile)
     ? fs.readFileSync(electronSessionsFile, 'utf-8')
@@ -7557,8 +7554,8 @@ function checkElectronHostOwnsMemoryIpcHost(): void {
   const electronPackage = path.join(root, 'apps/electron/package.json')
   const electronMemoryFile = path.join(root, 'apps/electron/src/ipc/memory.ts')
   const mainMemoryFile = path.join(root, 'apps/electron/src/main/ipc/memory.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronMemoryContent = fs.existsSync(electronMemoryFile)
     ? fs.readFileSync(electronMemoryFile, 'utf-8')
@@ -9807,8 +9804,8 @@ function checkRuntimeOwnsVoiceProviderRuntime(): void {
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
   const runtimePackage = path.join(root, 'packages/onething-runtime/package.json')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/voice/providers.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const runtimePackageContent = fs.existsSync(runtimePackage) ? fs.readFileSync(runtimePackage, 'utf-8') : ''
@@ -9920,8 +9917,8 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/voice/__tests__/text.test.ts')
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/voice/index.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/voice/service.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const sharedFiles = [
     path.join(root, 'packages/shared/voice/segmenter.ts'),
     path.join(root, 'packages/shared/voice/tts-stream.ts'),
@@ -9996,8 +9993,8 @@ function checkRuntimeOwnsSearchIpcOperations(): void {
   const mainProviderFile = path.join(root, 'packages/onething-runtime/src/app/search/providers.ts')
   const sharedSearchFile = path.join(root, 'packages/shared/ipc/search.ts')
   const sharedSearchTestFile = path.join(root, 'packages/shared/ipc/__tests__/search.test.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const mainProviderContent = fs.existsSync(mainProviderFile) ? fs.readFileSync(mainProviderFile, 'utf-8') : ''
   const mainProviderLines = mainProviderContent.split('\n').filter(line => line.trim().length > 0)
   const sharedSearchContent = fs.existsSync(sharedSearchFile) ? fs.readFileSync(sharedSearchFile, 'utf-8') : ''
@@ -10071,8 +10068,8 @@ function checkRuntimeOwnsSearchIpcOperations(): void {
 function checkRuntimeOwnsHeadlessCliProjections(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/headless/cli-projections.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/headless/backend.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
   const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
@@ -11486,8 +11483,8 @@ function checkRuntimeOwnsRipgrepFileSearchRuntime(): void {
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/files/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/files/__tests__/ripgrep.test.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/utils/ripgrep.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -11541,8 +11538,8 @@ function checkRuntimeOwnsToolSandboxRuntime(): void {
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/sandbox-runtime.test.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/tools/core/sandbox.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
@@ -11595,8 +11592,8 @@ function checkRuntimeOwnsToolEditEngine(): void {
   const runtimeIndexFile = path.join(root, 'packages/onething-runtime/src/tools/index.ts')
   const runtimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/__tests__/edit-engine.test.ts')
   const mainFile = path.join(root, 'packages/onething-runtime/src/app/tools/core/edit-engine.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
@@ -11675,8 +11672,8 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
   const runtimeTimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts')
   const mainBuiltinIndexFile = path.join(root, 'packages/onething-runtime/src/app/tools/builtin/index.ts')
   const mainHeadlessFile = path.join(root, 'packages/onething-runtime/src/app/tools/builtin/headless.ts')
-  const viteConfig = path.join(root, 'electron.vite.config.ts')
-  const vitestConfig = path.join(root, 'vitest.config.ts')
+  const viteConfig = path.join(root, 'onething.aliases.ts')
+  const vitestConfig = path.join(root, 'onething.aliases.ts')
   const runtimeToolsIndexContent = fs.existsSync(runtimeToolsIndexFile) ? fs.readFileSync(runtimeToolsIndexFile, 'utf-8') : ''
   const runtimeTimeContent = fs.existsSync(runtimeTimeFile) ? fs.readFileSync(runtimeTimeFile, 'utf-8') : ''
   const runtimeTimeRuntimeContent = fs.existsSync(runtimeTimeRuntimeFile) ? fs.readFileSync(runtimeTimeRuntimeFile, 'utf-8') : ''
