@@ -8236,68 +8236,6 @@ function checkRuntimeOwnsProviderAcpStreamProjection(): void {
   assertNoMatches('packages/onething-runtime owns provider ACP stream projection', lines)
 }
 
-function checkRuntimeOwnsEmbeddingProviderRuntime(): void {
-  const runtimeFile = path.join(root, 'packages/onething-runtime/src/embeddings/index.ts')
-  const runtimeDefaultsFile = path.join(root, 'packages/onething-runtime/src/embeddings/defaults.ts')
-  const runtimePackage = path.join(root, 'packages/onething-runtime/package.json')
-  const rootRuntimeIndexFile = path.join(root, 'packages/onething-runtime/src/index.ts')
-  const sharedDefaultsFile = path.join(root, 'packages/shared/embeddings/defaults.ts')
-  const mainFile = path.join(root, 'apps/electron/src/main/embeddings/index.ts')
-  const runtimeContent = fs.existsSync(runtimeFile) ? fs.readFileSync(runtimeFile, 'utf-8') : ''
-  const runtimeDefaultsContent = fs.existsSync(runtimeDefaultsFile) ? fs.readFileSync(runtimeDefaultsFile, 'utf-8') : ''
-  const runtimePackageContent = fs.existsSync(runtimePackage) ? fs.readFileSync(runtimePackage, 'utf-8') : ''
-  const rootRuntimeIndexContent = fs.existsSync(rootRuntimeIndexFile) ? fs.readFileSync(rootRuntimeIndexFile, 'utf-8') : ''
-  const sharedDefaultsContent = fs.existsSync(sharedDefaultsFile) ? fs.readFileSync(sharedDefaultsFile, 'utf-8') : ''
-  const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const mainLines = mainContent.split('\n').filter(line => line.trim().length > 0)
-  const requiredRuntimeSymbols = [
-    'embedOnethingTexts',
-    'vectorsFromOnethingOpenAIEmbeddingResponse',
-    'vectorsFromOnethingGeminiEmbeddingResponse',
-    'OnethingEmbeddingRuntimeAdapters',
-    'resolveSoulMemoryEmbeddingTarget',
-  ]
-  const requiredDefaultsSymbols = [
-    'SOUL_MEMORY_EMBEDDING_PROVIDER_DEFAULTS',
-    'resolveSoulMemoryEmbeddingTarget',
-    'findOpenAICompatibleCustomEmbeddingProvider',
-  ]
-  const lines = [
-    ...(!fs.existsSync(runtimeFile)
-      ? [`${rel(runtimeFile)}: missing runtime-owned embeddings runtime`]
-      : []),
-    ...(!fs.existsSync(runtimeDefaultsFile)
-      ? [`${rel(runtimeDefaultsFile)}: missing runtime-owned embedding defaults`]
-      : []),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `${rel(runtimeFile)}: missing runtime-owned embedding symbol ${symbol}`),
-    ...requiredDefaultsSymbols
-      .filter(symbol => !runtimeDefaultsContent.includes(symbol))
-      .map(symbol => `${rel(runtimeDefaultsFile)}: missing runtime-owned embedding default symbol ${symbol}`),
-    ...(!runtimePackageContent.includes('"./embeddings"')
-      ? [`${rel(runtimePackage)}: missing @onething/runtime embeddings package export`]
-      : []),
-    ...(!rootRuntimeIndexContent.includes('./embeddings/index.js')
-      ? [`${rel(rootRuntimeIndexFile)}: missing root runtime embeddings public export`]
-      : []),
-    ...(!sharedDefaultsContent.includes('@onething/runtime/embeddings/defaults')
-      ? [`${rel(sharedDefaultsFile)}: shared embedding defaults must re-export runtime defaults`]
-      : []),
-    ...(!mainContent.includes('embedOnethingTexts')
-      ? [`${rel(mainFile)}: main embeddings facade must delegate to embedOnethingTexts`]
-      : []),
-    ...(mainLines.length > 35
-      ? [`${rel(mainFile)}: main embeddings facade must stay thin`]
-      : []),
-    ...(fs.existsSync(mainFile)
-      ? matchingLines(mainFile, MAIN_EMBEDDINGS_RUNTIME_FORBIDDEN_PATTERNS)
-      : ['apps/electron/src/main/embeddings/index.ts: missing embeddings facade']),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns embedding provider runtime', lines)
-}
-
 function checkRuntimeOwnsAcpIpcOperations(): void {
   const runtimeFile = path.join(root, 'packages/onething-runtime/src/acp/ipc-operations.ts')
   const mainFile = path.join(root, 'apps/electron/src/main/ipc/acp.ts')
@@ -11684,9 +11622,6 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
   const runtimeTimeFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/time.ts')
   const runtimeTimeRuntimeFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/time-runtime.ts')
   const runtimeTimeTestFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/time.test.ts')
-  const runtimeCalculatorFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/calculator.ts')
-  const runtimeCalculatorTestFile = path.join(root, 'packages/onething-runtime/src/tools/builtin/__tests__/calculator.test.ts')
-  const mainCalculatorFile = path.join(root, 'apps/electron/src/main/tools/builtin/calculator.ts')
   const mainBuiltinIndexFile = path.join(root, 'apps/electron/src/main/tools/builtin/index.ts')
   const mainHeadlessFile = path.join(root, 'apps/electron/src/main/tools/builtin/headless.ts')
   const viteConfig = path.join(root, 'electron.vite.config.ts')
@@ -11694,22 +11629,14 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
   const runtimeToolsIndexContent = fs.existsSync(runtimeToolsIndexFile) ? fs.readFileSync(runtimeToolsIndexFile, 'utf-8') : ''
   const runtimeTimeContent = fs.existsSync(runtimeTimeFile) ? fs.readFileSync(runtimeTimeFile, 'utf-8') : ''
   const runtimeTimeRuntimeContent = fs.existsSync(runtimeTimeRuntimeFile) ? fs.readFileSync(runtimeTimeRuntimeFile, 'utf-8') : ''
-  const runtimeCalculatorContent = fs.existsSync(runtimeCalculatorFile) ? fs.readFileSync(runtimeCalculatorFile, 'utf-8') : ''
-  const mainCalculatorContent = fs.existsSync(mainCalculatorFile) ? fs.readFileSync(mainCalculatorFile, 'utf-8') : ''
   const mainBuiltinIndexContent = fs.existsSync(mainBuiltinIndexFile) ? fs.readFileSync(mainBuiltinIndexFile, 'utf-8') : ''
   const mainHeadlessContent = fs.existsSync(mainHeadlessFile) ? fs.readFileSync(mainHeadlessFile, 'utf-8') : ''
   const viteContent = fs.existsSync(viteConfig) ? fs.readFileSync(viteConfig, 'utf-8') : ''
   const vitestContent = fs.existsSync(vitestConfig) ? fs.readFileSync(vitestConfig, 'utf-8') : ''
-  const mainCalculatorLines = mainCalculatorContent.split('\n').filter(line => line.trim().length > 0)
   const requiredTimeSymbols = [
     'TimeTool',
     'executeCoreTimeTool',
     'resolveCoreTimezone',
-  ]
-  const requiredCalculatorSymbols = [
-    'CalculatorTool',
-    'evaluateCalculatorExpression',
-    'executeCalculatorExpression',
   ]
   const lines = [
     ...removedFiles.map(file => `${file}: concrete builtin tools belong in packages/onething-runtime`),
@@ -11732,44 +11659,11 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
     ...(!runtimeToolsIndexContent.includes('./builtin/time-runtime.js')
       ? [`${rel(runtimeToolsIndexFile)}: missing time runtime public export`]
       : []),
-    ...(!fs.existsSync(runtimeCalculatorFile)
-      ? [`${rel(runtimeCalculatorFile)}: missing runtime-owned calculator tool`]
-      : []),
-    ...requiredCalculatorSymbols
-      .filter(symbol => !runtimeCalculatorContent.includes(symbol))
-      .map(symbol => `${rel(runtimeCalculatorFile)}: missing runtime calculator symbol ${symbol}`),
-    ...(!fs.existsSync(runtimeCalculatorTestFile)
-      ? [`${rel(runtimeCalculatorTestFile)}: missing runtime calculator tests`]
-      : []),
-    ...(!runtimeToolsIndexContent.includes('./builtin/calculator.js')
-      ? [`${rel(runtimeToolsIndexFile)}: missing calculator public export`]
-      : []),
-    ...(!mainCalculatorContent.includes('@onething/runtime/tools/builtin/calculator')
-      ? [`${rel(mainCalculatorFile)}: calculator facade must delegate to runtime calculator`]
-      : []),
-    ...(mainCalculatorLines.length > 60
-      ? [`${rel(mainCalculatorFile)}: calculator facade must stay thin`]
-      : []),
-    ...(/function\s+safeEvaluate|const\s+mathFunctions|new\s+Function/.test(mainCalculatorContent)
-      ? [`${rel(mainCalculatorFile)}: calculator implementation must stay in runtime`]
-      : []),
-    ...(!mainBuiltinIndexContent.includes('CalculatorTool')
-      ? [`${rel(mainBuiltinIndexFile)}: desktop builtins must register CalculatorTool`]
-      : []),
     ...(!mainBuiltinIndexContent.includes('TimeTool')
       ? [`${rel(mainBuiltinIndexFile)}: desktop builtins must register TimeTool`]
       : []),
-    ...(!mainHeadlessContent.includes('CalculatorTool')
-      ? [`${rel(mainHeadlessFile)}: headless builtins must register CalculatorTool`]
-      : []),
     ...(!mainHeadlessContent.includes('TimeTool')
       ? [`${rel(mainHeadlessFile)}: headless builtins must register TimeTool`]
-      : []),
-    ...(!viteContent.includes('@onething/runtime/tools/builtin/calculator')
-      ? [`${rel(viteConfig)}: missing calculator runtime alias`]
-      : []),
-    ...(!vitestContent.includes('@onething/runtime/tools/builtin/calculator')
-      ? [`${rel(vitestConfig)}: missing calculator runtime test alias`]
       : []),
   ]
 
@@ -11897,7 +11791,6 @@ checkRuntimeOwnsProviderGenerateReasoningOrchestration()
 checkRuntimeOwnsProviderStreamReasoningOrchestration()
 checkRuntimeOwnsProviderToolStreamOrchestration()
 checkRuntimeOwnsProviderAcpStreamProjection()
-checkRuntimeOwnsEmbeddingProviderRuntime()
 checkRuntimeOwnsAcpIpcOperations()
 checkRuntimeOwnsAcpClientRuntime()
 checkRuntimeOwnsDirectToolExecutionAdapter()

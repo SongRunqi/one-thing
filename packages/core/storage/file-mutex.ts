@@ -68,29 +68,72 @@ function readLockMeta(lockPath: string): LockMeta | null {
   }
 }
 
+/**
+ * 原子创建带完整 meta 的锁文件:先写临时文件,再 link 到锁路径。
+ * link 是原子的 create-or-EEXIST,锁文件一出现就带内容——消除了
+ * 「open('wx') 之后、写 meta 之前」锁文件为空、被并发方误判为损坏锁
+ * 而 unlink 掉活锁的窗口(实测会造成双持锁丢更新)。
+ */
+function tryCreateLockFile(lockPath: string, owner?: string): boolean {
+  const payload = JSON.stringify({
+    pid: process.pid,
+    acquiredAt: Date.now(),
+    owner,
+  } satisfies LockMeta)
+  const tmpPath = `${lockPath}.${process.pid}.tmp`
+  fs.writeFileSync(tmpPath, payload)
+  try {
+    fs.linkSync(tmpPath, lockPath)
+    return true
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code
+    if (code === 'EEXIST') return false
+    // 个别文件系统不支持硬链接:退回旧的 wx 两步创建(保留极窄空窗,
+    // 好过直接失败)。
+    try {
+      const fd = fs.openSync(lockPath, 'wx')
+      try {
+        fs.writeFileSync(fd, payload)
+      } finally {
+        fs.closeSync(fd)
+      }
+      return true
+    } catch (fallbackError) {
+      if ((fallbackError as NodeJS.ErrnoException).code === 'EEXIST') return false
+      throw fallbackError
+    }
+  } finally {
+    try {
+      fs.unlinkSync(tmpPath)
+    } catch {
+      // 尽力清理。
+    }
+  }
+}
+
+function lockFileAgeMs(lockPath: string): number {
+  try {
+    return Date.now() - fs.statSync(lockPath).mtimeMs
+  } catch {
+    return Number.POSITIVE_INFINITY
+  }
+}
+
 /** 尝试拿锁;成功返回 true,超时返回 false(不抛)。 */
 function acquire(lockPath: string, timeoutMs: number, retryMs: number, owner?: string): boolean {
   fs.mkdirSync(path.dirname(lockPath), { recursive: true })
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    try {
-      const fd = fs.openSync(lockPath, 'wx')
-      try {
-        fs.writeFileSync(
-          fd,
-          JSON.stringify({ pid: process.pid, acquiredAt: Date.now(), owner } satisfies LockMeta),
-        )
-      } finally {
-        fs.closeSync(fd)
-      }
-      return true
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-    }
+    if (tryCreateLockFile(lockPath, owner)) return true
 
-    // 已被占用:holder 死了(或锁文件损坏无法读)则偷锁重试。
+    // 已被占用:holder 死了则偷锁重试。meta 读不出时不能立刻断定损坏——
+    // 旧版两步创建的写方可能正处在空窗中,给一个 mtime 宽限期再清理。
     const meta = readLockMeta(lockPath)
-    if (!meta || !isProcessAlive(meta.pid)) {
+    const isDeadHolder = meta ? !isProcessAlive(meta.pid) : lockFileAgeMs(lockPath) > 1000
+    if (isDeadHolder) {
+      // 偷锁前复读:锁若已换手(别人清掉死锁并重建),不能删新持有者的锁。
+      const recheck = readLockMeta(lockPath)
+      if (recheck && meta && recheck.pid !== meta.pid) continue
       try {
         fs.unlinkSync(lockPath)
       } catch {

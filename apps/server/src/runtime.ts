@@ -1322,9 +1322,13 @@ export function createDevelopmentOnethingServerRuntime(
 		if (existing) return existing;
 
 		const root = workspaceSandboxRoot(workspaceRoot, context);
-		void mkdir(root, { recursive: true }).catch((error) => {
+		// Synchronous: callers (file watch, tools) may stat this root right
+		// after session creation, and a fire-and-forget mkdir loses that race.
+		try {
+			mkdirSync(root, { recursive: true });
+		} catch (error) {
 			console.error("[ServerRuntime] Failed to create workspace root:", error);
-		});
+		}
 		const session = sessionStore.createSession(sessionId, "New Chat", context);
 		if (!session.workingDirectory) session.workingDirectory = root;
 		if (!session.workingDirectoryRoots?.length)

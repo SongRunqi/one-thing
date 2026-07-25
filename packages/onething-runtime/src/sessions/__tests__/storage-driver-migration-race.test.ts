@@ -34,6 +34,16 @@ function session(id: string, messageIds: string[]): TestSession {
 
 const tick = () => new Promise(resolve => setTimeout(resolve, 15))
 
+// 满载并行跑套件时 15ms 不够迁移走完 读legacy→写jsonl→删legacy,
+// 固定睡眠会假失败;轮询到条件成立为止(上限 5s)。
+async function waitFor(condition: () => boolean, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!condition()) {
+    if (Date.now() > deadline) return
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+}
+
 describe('legacy→jsonl migration vs in-flight write (1.3)', () => {
   let dir: string
   const legacyPath = (id: string) => path.join(dir, `${id}.json`)
@@ -90,7 +100,7 @@ describe('legacy→jsonl migration vs in-flight write (1.3)', () => {
     // 放行在途写:它把 m1+m2 写入 legacy 文件,随后迁移读到最新内容。
     releaseWrite()
     await inFlight
-    await tick() // 让迁移完成提交
+    await waitFor(() => fs.existsSync(logPath('s1'))) // 让迁移完成提交
 
     expect(fs.existsSync(logPath('s1'))).toBe(true)
     const loaded = driver.load('s1')

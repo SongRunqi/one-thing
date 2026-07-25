@@ -20,7 +20,6 @@ export default defineConfig({
       { find: '@onething/core/engine/streaming-args', replacement: resolve(projectRoot, 'packages/core/engine/streaming-args.ts') },
       { find: '@onething/core', replacement: resolve(projectRoot, 'packages/core/index.ts') },
       { find: '@onething/runtime/providers/model-capability', replacement: resolve(projectRoot, 'packages/onething-runtime/src/providers/model-capability.ts') },
-      { find: '@onething/runtime/embeddings/defaults', replacement: resolve(projectRoot, 'packages/onething-runtime/src/embeddings/defaults.ts') },
       { find: '@onething/runtime/search/protocol', replacement: resolve(projectRoot, 'packages/onething-runtime/src/search/protocol.ts') },
       { find: '@onething/runtime/storage', replacement: resolve(projectRoot, 'packages/onething-runtime/src/storage/index.ts') },
       { find: '@onething/runtime/practice', replacement: resolve(projectRoot, 'packages/onething-runtime/src/practice/index.ts') },
