@@ -65,9 +65,14 @@ import {
 } from "@onething/electron-host/voice/tray";
 import { killTrackedDetachedChildren } from "@main/tools/core/bash-executor.js";
 import {
+	configureAppLoggingHost,
 	initializeAppLogging,
 	shutdownAppLogging,
 } from "@main/logging/index.js";
+import {
+	createElectronRendererConsoleCapture,
+	setElectronAppLogsPath,
+} from "@onething/electron-host/logging/console-capture";
 import { hydrateProcessEnvFromLoginShell } from "@onething/electron-host/app/login-shell-env";
 import {
 	StoreLock,
@@ -311,6 +316,10 @@ export function startOnethingElectronMain(): void {
 		shutdownVoiceService: () => getVoiceServiceSafe()?.shutdown(),
 	});
 
+	configureAppLoggingHost({
+		setAppLogsPath: setElectronAppLogsPath,
+		createRendererConsoleCapture: createElectronRendererConsoleCapture,
+	});
 	initializeAppLogging();
 
 	// Suppress security warnings in development mode. Vite HMR needs unsafe-eval;

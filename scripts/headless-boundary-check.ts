@@ -4797,13 +4797,18 @@ function checkElectronHostOwnsLoggingCapture(): void {
     'NUMERIC_RENDERER_LEVELS',
     'renderer:${webContents.id}',
   ]
+  // main/logging is host-agnostic: it exposes injection ports instead of
+  // importing electron-host. The Electron host wires the real capture in
+  // app/main-process.ts.
   const requiredFacadeSymbols = [
-    '@onething/electron-host/logging/console-capture',
-    'setElectronAppLogsPath',
-    'createElectronRendererConsoleCapture',
+    'configureAppLoggingHost',
+    'createRendererConsoleCapture',
+    'setAppLogsPath',
     'attachLoggingCapture',
     'process.on',
   ]
+  const mainProcessFile = path.join(root, 'apps/electron/src/app/main-process.ts')
+  const mainProcessContent = fs.existsSync(mainProcessFile) ? fs.readFileSync(mainProcessFile, 'utf-8') : ''
   const lines = [
     ...(!packageContent.includes('./logging/console-capture')
       ? [`${rel(electronPackage)}: missing logging console-capture export`]
@@ -4813,7 +4818,13 @@ function checkElectronHostOwnsLoggingCapture(): void {
       .map(symbol => `${rel(electronLoggingFile)}: missing Electron logging capture symbol ${symbol}`),
     ...requiredFacadeSymbols
       .filter(symbol => !mainLoggingContent.includes(symbol))
-      .map(symbol => `${rel(mainLoggingFile)}: missing logging capture facade delegation ${symbol}`),
+      .map(symbol => `${rel(mainLoggingFile)}: missing logging host-port symbol ${symbol}`),
+    ...(!mainProcessContent.includes('configureAppLoggingHost')
+      ? [`${rel(mainProcessFile)}: Electron host must wire configureAppLoggingHost before initializeAppLogging`]
+      : []),
+    ...(mainLoggingContent.includes('@onething/electron-host/')
+      ? [`${rel(mainLoggingFile)}: main/logging must stay host-agnostic (inject via configureAppLoggingHost)`]
+      : []),
     ...(!viteContent.includes('@onething/electron-host/logging/console-capture')
       ? [`${rel(viteConfig)}: missing electron logging capture package alias`]
       : []),

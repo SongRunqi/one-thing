@@ -1,11 +1,24 @@
 import { formatWithOptions } from 'node:util'
-import {
-  createElectronRendererConsoleCapture,
-  setElectronAppLogsPath,
-  type ElectronRendererConsoleCapture,
-} from '@onething/electron-host/logging/console-capture'
 import { ensureDir, getLogDir } from '../stores/paths.js'
-import { RollingFileLogger, type AppLogLevel } from './rolling-file-logger.js'
+import { RollingFileLogger, type AppLogLevel, type AppLogRecord } from './rolling-file-logger.js'
+
+/**
+ * Host injection points. The Electron host mirrors the log dir into its crash
+ * tooling and captures renderer console output; headless hosts leave both
+ * unset and only main-process output is logged.
+ */
+export interface AppLoggingHostPorts {
+  setAppLogsPath?: (logDir: string) => void
+  createRendererConsoleCapture?: (options: {
+    log: (entry: AppLogRecord) => void
+  }) => { attach(): void; detach(): void }
+}
+
+let hostPorts: AppLoggingHostPorts = {}
+
+export function configureAppLoggingHost(ports: AppLoggingHostPorts): void {
+  hostPorts = ports
+}
 
 type ConsoleMethod = 'debug' | 'info' | 'log' | 'warn' | 'error'
 type StreamWrite = typeof process.stdout.write
@@ -28,7 +41,7 @@ const METHOD_LEVEL: Record<ConsoleMethod, AppLogLevel> = {
 
 let consolePatched = false
 let initialized = false
-let rendererConsoleCapture: ElectronRendererConsoleCapture | null = null
+let rendererConsoleCapture: { attach(): void; detach(): void } | null = null
 let warningHandler: ((warning: Error) => void) | null = null
 let uncaughtMonitorHandler: ((error: Error, origin: NodeJS.UncaughtExceptionOrigin) => void) | null = null
 let exitHandler: (() => void) | null = null
@@ -72,7 +85,7 @@ export function initializeAppLogging(): void {
 
   const logDir = getLogDir()
   ensureDir(logDir)
-  setElectronAppLogsPath(logDir)
+  hostPorts.setAppLogsPath?.(logDir)
   appLogger.start()
   patchProcessOutput()
   patchConsole()
@@ -214,10 +227,10 @@ function formatConsoleArgs(args: unknown[]): string {
 }
 
 function attachLoggingCapture(): void {
-  rendererConsoleCapture = createElectronRendererConsoleCapture({
+  rendererConsoleCapture = hostPorts.createRendererConsoleCapture?.({
     log: entry => appLogger.log(entry),
-  })
-  rendererConsoleCapture.attach()
+  }) ?? null
+  rendererConsoleCapture?.attach()
 
   warningHandler = (warning) => {
     appLogger.log({
