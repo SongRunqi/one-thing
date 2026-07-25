@@ -1170,6 +1170,16 @@ async function createRealServerBackend(storePath: string): Promise<OnethingServe
 			/* SSE subscribers observe the bus and stream channel directly. */
 		}
 	}
+	// User decision (2026-07-25): web/server tools ship with desktop parity by
+	// default; ONETHING_SERVER_TOOLS=readonly degrades to zero-side-effect
+	// tools (no bash/write/edit) for exposed deployments.
+	const serverToolRegistry =
+		process.env.ONETHING_SERVER_TOOLS === "readonly" ? "readonly" : "full";
+	if (serverToolRegistry === "readonly") {
+		console.log(
+			"[ServerRuntime] ONETHING_SERVER_TOOLS=readonly — degraded tool set (read/time/web only)",
+		);
+	}
 	const backend = await createOnethingBackend({
 		sandboxHost: {
 			getPath(name) {
@@ -1177,8 +1187,7 @@ async function createRealServerBackend(storePath: string): Promise<OnethingServe
 				return homedir();
 			},
 		},
-		// User decision (2026-07-25): web/server tools ship with desktop parity.
-		toolRegistry: "full",
+		toolRegistry: serverToolRegistry,
 		sessionSkills: true,
 		sender: new ServerNoopSender() as never,
 	});

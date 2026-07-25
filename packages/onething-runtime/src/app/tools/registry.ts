@@ -151,6 +151,13 @@ export async function initializeHeadlessToolRegistry(): Promise<void> {
   }, 'headless tools')
 }
 
+export async function initializeReadonlyToolRegistry(): Promise<void> {
+  await toolRegistry.initializeToolRegistry(async () => {
+    const { registerReadonlyBuiltinTools } = await import('./builtin/readonly.js')
+    registerReadonlyBuiltinTools()
+  }, 'readonly tools')
+}
+
 export function isInitialized(): boolean {
   return toolRegistry.isInitialized()
 }

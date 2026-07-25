@@ -68,6 +68,7 @@ export {
   canAutoExecute,
   getToolExecutionMode,
   initializeHeadlessToolRegistry,
+  initializeReadonlyToolRegistry,
   initializeToolRegistry,
   isInitialized,
   // Async tool support

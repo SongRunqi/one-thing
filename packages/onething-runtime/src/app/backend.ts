@@ -41,6 +41,7 @@ import { bootstrapProjectDirs } from './project-dirs/index.js'
 import {
   initializeToolRegistry,
   initializeHeadlessToolRegistry,
+  initializeReadonlyToolRegistry,
 } from './tools/index.js'
 // Static edges for the builtin tool barrels: the registry loads them via
 // dynamic import (tests re-mock them), but a single-file host bundle needs
@@ -48,6 +49,7 @@ import {
 // dynamic-only edge deadlocks (chunked) or TDZ-crashes (inlined) there.
 import './tools/builtin/index.js'
 import './tools/builtin/headless.js'
+import './tools/builtin/readonly.js'
 import { initializeSessionSkills } from './skills/session-skills.js'
 import { MCPManager, registerMCPTools } from './mcp/index.js'
 import { ACPManager } from './acp/index.js'
@@ -82,8 +84,11 @@ export interface OnethingBackendHooks {
 export interface OnethingBackendOptions {
   /** Tool sandbox path surface (downloads/home). Omit to keep the host's own wiring. */
   sandboxHost?: { getPath?: (name: string) => string }
-  /** 'full' registers every builtin tool (desktop); 'headless' the reduced set. */
-  toolRegistry?: 'full' | 'headless'
+  /**
+   * 'full' registers every builtin tool (desktop); 'headless' the reduced set;
+   * 'readonly' only tools with zero local side effects (server degradation).
+   */
+  toolRegistry?: 'full' | 'headless' | 'readonly'
   /** Initialize promptVersion from the minimal prompt scene (evals stamping). */
   promptVersion?: boolean
   /** Load session skills during assembly (hosts deferring to plugin bootstrap skip this). */
@@ -146,6 +151,8 @@ export async function createOnethingBackend(
 
   if (options.toolRegistry === 'full') {
     await initializeToolRegistry()
+  } else if (options.toolRegistry === 'readonly') {
+    await initializeReadonlyToolRegistry()
   } else {
     await initializeHeadlessToolRegistry()
   }
