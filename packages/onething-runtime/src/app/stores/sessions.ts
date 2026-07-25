@@ -155,6 +155,28 @@ function saveSessionToFile(sessionId: string, session: ChatSession): void {
 }
 
 /**
+ * 整会话保存:宿主 facade(如 server HTTP API)对会话对象做原地修改后调用。
+ * 刷新 LRU 权威副本 + 节流异步落盘,并同步 index 元数据(列表读只走 index、
+ * 不加载消息体,漏盖章会导致列表与会话体不一致)。
+ */
+export function saveSessionSnapshot(
+	session: ChatSession,
+	mutateIndexMeta?: (meta: SessionMeta) => void,
+): void {
+	sessionRepository.saveSessionToFile(session.id, session);
+	sessionRepository.updateSessionsIndexMeta(session.id, (meta) => {
+		meta.name = session.name;
+		meta.updatedAt = session.updatedAt;
+		meta.isPinned = session.isPinned;
+		meta.isArchived = session.isArchived;
+		meta.agentId = session.agentId;
+		meta.messageCount = session.messages.length;
+		mutateIndexMeta?.(meta);
+	});
+	sessionRepository.syncSessionToSqliteIfReady(session);
+}
+
+/**
  * 失效单个 session 缓存
  */
 export function invalidateSessionCache(sessionId: string): void {

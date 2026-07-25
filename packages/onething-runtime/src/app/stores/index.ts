@@ -57,6 +57,7 @@ export {
   initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
+  saveSessionSnapshot,
   invalidateSessionCache,
   getSessionCacheStats,
 } from './sessions.js'

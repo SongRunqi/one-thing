@@ -62,6 +62,7 @@ export {
   initializeSessionRepositoryIndex,
   flushSessionSave,
   flushAllPendingSaves,
+  saveSessionSnapshot,
   invalidateSessionCache,
   getSessionCacheStats,
 

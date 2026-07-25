@@ -49,8 +49,19 @@ import {
 } from "@onething/core";
 import { createOnethingBackend } from "@onething/app/backend.js";
 import {
+	createBranchSession as createAppStoreBranchSession,
 	createSession as createAppStoreSession,
+	deleteSession as deleteAppStoreSession,
+	flushAllPendingSaves as flushAllAppStorePendingSaves,
+	flushSessionSave as flushAppStoreSessionSave,
+	getCurrentSessionId as getAppStoreCurrentSessionId,
 	getSession as getAppStoreSession,
+	getSessionMessagesPage as getAppStoreSessionMessagesPage,
+	getSessionUserMessageMarkers as getAppStoreSessionUserMessageMarkers,
+	getSessions as getAppStoreSessions,
+	getSessionsList as getAppStoreSessionsList,
+	saveSessionSnapshot as saveAppStoreSessionSnapshot,
+	setCurrentSessionId as setAppStoreCurrentSessionId,
 	updateSessionWorkingDirectory as updateAppSessionWorkingDirectory,
 	updateSessionWorkingDirectoryRoots as updateAppSessionWorkingDirectoryRoots,
 } from "@onething/app/store.js";
@@ -1191,8 +1202,14 @@ export async function createDevelopmentOnethingServerRuntime(
 		: await createRealServerBackend(storePath);
 	const eventBus = backend.eventBus;
 	const streamChannel = backend.streamChannel;
+	// Real engine backends persist through the @onething/app repository; a
+	// second local repository over the same files would fork the in-memory
+	// truth and race writes (intermittent 404/empty history, jsonl ENOENT).
 	const sessionStore =
-		options.sessionStore ?? createLocalServerSessionStore(storePath);
+		options.sessionStore ??
+		(backend.persistsMessages
+			? createAppBackedServerSessionStore(storePath)
+			: createLocalServerSessionStore(storePath));
 	// 触碰即驻留的工作集,不再启动全量镜像:同一 sessionId 在本进程内保持
 	// 单一对象身份(事件回放与 API 变更共用),冷会话按需从存储加载。
 	const sessions = new Map<string, ServerChatSession>();
@@ -1343,18 +1360,12 @@ export async function createDevelopmentOnethingServerRuntime(
 	// 是否被其他进程(桌面端共用同一存储)改写,过期才重读单个会话文件。
 	const resolveSession = (sessionId: string): ServerChatSession | undefined => {
 		if (backend.persistsMessages) {
-			// The engine runs in-process and persists through the app store,
-			// whose in-memory session is the freshest truth (async writes may
-			// still be queued). Read through it; fall back to the server store
-			// for sessions the app store has never touched.
-			const appSession = getAppStoreSession(sessionId) as
-				| ServerChatSession
-				| undefined;
-			if (appSession) {
-				normalizeStoredServerSession(appSession);
-				return appSession;
-			}
-			return loadSessionIntoWorkingSet(sessionId);
+			// sessionStore is app-backed: the same repository the in-process
+			// engine writes through, so its in-memory session is the freshest
+			// truth (async writes may still be queued). Never route real-engine
+			// sessions through the `sessions` working set — a stale copy there
+			// would shadow engine state.
+			return sessionStore.getSession(sessionId);
 		}
 		const cached = sessions.get(sessionId);
 		if (cached && activeControllers.has(sessionId)) return cached;
@@ -1384,8 +1395,14 @@ export async function createDevelopmentOnethingServerRuntime(
 	};
 
 	const persistSession = (session: ServerChatSession): void => {
-		normalizeStoredServerSession(session);
-		sessions.set(session.id, session);
+		if (!backend.persistsMessages) {
+			// Echo path only: stamp echo-provider defaults and keep the session
+			// resident in the working set. Real-engine sessions live in the app
+			// repository — stamping 'local-echo' here would persist into the
+			// store shared with the desktop.
+			normalizeStoredServerSession(session);
+			sessions.set(session.id, session);
+		}
 		sessionStore.saveSession(session);
 	};
 
@@ -1428,15 +1445,13 @@ export async function createDevelopmentOnethingServerRuntime(
 		}
 		let session: ServerChatSession;
 		if (backend.persistsMessages) {
-			// Single-writer: the engine reads sessions from the app store's
-			// memory. Creating through the server repository loses the race
-			// between its async flush and an immediately-following
-			// command:send-message (draft-id flows send right after create).
-			createAppStoreSession(sessionId, "New Chat");
+			// Single-writer: the app-backed store creates through the same
+			// repository the engine reads from, so the session is visible to an
+			// immediately-following command:send-message (draft-id flows send
+			// right after create) without waiting for any async flush.
+			session = sessionStore.createSession(sessionId, "New Chat", context);
 			updateAppSessionWorkingDirectory(sessionId, root);
 			updateAppSessionWorkingDirectoryRoots(sessionId, [root]);
-			session = getAppStoreSession(sessionId) as ServerChatSession;
-			normalizeStoredServerSession(session);
 		} else {
 			session = sessionStore.createSession(sessionId, "New Chat", context);
 			if (!session.workingDirectory) session.workingDirectory = root;
@@ -1451,15 +1466,14 @@ export async function createDevelopmentOnethingServerRuntime(
 	};
 
 	eventBus.onAnySessionAny((envelope) => {
-		const session = sessions.get(envelope.sessionId);
-		if (!session) return;
 		const permissionEvent = readPermissionTrackingEvent(envelope.event);
 		if (permissionEvent?.type === "permission:request") {
-			const info = toPendingPermissionInfo(
-				envelope.event,
-				envelope.sessionId,
-				session,
-			);
+			// Resolve through the store (not the echo working set): real-engine
+			// sessions never enter the `sessions` map.
+			const session = resolveSession(envelope.sessionId);
+			const info = session
+				? toPendingPermissionInfo(envelope.event, envelope.sessionId, session)
+				: undefined;
 			if (info)
 				pendingPermissions.set(permissionEvent.requestId, {
 					sessionId: envelope.sessionId,
@@ -1473,16 +1487,13 @@ export async function createDevelopmentOnethingServerRuntime(
 		}
 		if (!backend.persistsMessages) {
 			// Test/echo backends do not persist; project their events into the
-			// server store. The real StreamEngine writes through the app
-			// session store itself — projecting again would double-write.
+			// server store. The real StreamEngine writes through the shared app
+			// repository itself — projecting again would double-write, and
+			// there is no second cache left to invalidate.
+			const session = sessions.get(envelope.sessionId);
+			if (!session) return;
 			applySessionEvent(session, envelope.event);
 			persistSession(session);
-		} else {
-			// The engine persisted through the app repository; our resident
-			// copy and the store's body cache are stale. Drop both — the next
-			// HTTP read reloads from disk (SSE delivery is unaffected).
-			sessions.delete(envelope.sessionId);
-			sessionStore.invalidateSession?.(envelope.sessionId);
 		}
 	}, "ServerRuntimeStore");
 
@@ -6260,6 +6271,115 @@ export function createDefaultContextServerSettingsStore(
 				? defaultStore.save(context, settings)
 				: ownerStore.save(context, settings);
 		},
+	};
+}
+
+/**
+ * ServerSessionStore backed by the @onething/app session repository — the same
+ * repository the in-process StreamEngine reads and writes. Used when the
+ * backend persists messages itself (real engine): a second local repository
+ * over the same files would fork the in-memory truth (stale index/LRU reads
+ * showing up as intermittent 404/empty history) and race its write queue
+ * against the engine's (tmp-rename ENOENT on jsonl suffix writes).
+ *
+ * Requires ONETHING_STORE_PATH to already point at the served store —
+ * createRealServerBackend pins it before booting the backend.
+ */
+export function createAppBackedServerSessionStore(
+	storePath = getOnethingStorePath(),
+): ServerSessionStore {
+	const appStatePath = getOnethingAppStatePath({
+		storePath: resolve(storePath),
+	});
+	// 不复刻 echo 侧的 lastProvider/lastModel 兜底:这里的会话对象就是引擎的
+	// 活对象,凭空盖 'local-echo' 会被持久化进共享存储,污染桌面端数据。
+	const normalizeAppSession = (
+		session: ServerChatSession,
+	): ServerChatSession => {
+		session.messages = Array.isArray(session.messages) ? session.messages : [];
+		if (!session.agentId) session.agentId = DEFAULT_ONETHING_AGENT_ID;
+		session.messageCount = session.messages.length;
+		session.previewText =
+			session.previewText ??
+			session.messages
+				.find((message) => message.role === "user")
+				?.content.slice(0, 160) ??
+			"";
+		return session;
+	};
+	const save = (session: ServerChatSession): void => {
+		const normalized = normalizeAppSession(session);
+		saveAppStoreSessionSnapshot(normalized, (meta) =>
+			Object.assign(meta, toSessionMeta(normalized), {
+				userId: normalized.userId,
+				workspaceId: normalized.workspaceId,
+				ownerVersion: SESSION_INDEX_OWNER_VERSION,
+			}),
+		);
+	};
+	const stampOwner = (
+		session: ServerChatSession,
+		context: RuntimeRequestContext,
+	): ServerChatSession => {
+		if (!isDefaultServerRequestContext(context)) {
+			session.userId = context.userId;
+			session.workspaceId = context.workspaceId;
+			save(session);
+		}
+		return normalizeAppSession(session);
+	};
+	return {
+		getCurrentSessionId: () => getAppStoreCurrentSessionId(),
+		setCurrentSessionId: (sessionId) => {
+			setAppStoreCurrentSessionId(sessionId);
+		},
+		saveUIState(uiState) {
+			return saveOnethingUiStateForServer(appStatePath, uiState);
+		},
+		getSessions: () =>
+			(getAppStoreSessions() as ServerChatSession[]).map(normalizeAppSession),
+		getSessionsList: () => getAppStoreSessionsList(),
+		// invalidateSession intentionally absent: single repository — the
+		// engine's cache IS the fresh copy; dropping it would only cost reloads.
+		getSession: (sessionId) => {
+			const session = getAppStoreSession(sessionId) as
+				| ServerChatSession
+				| undefined;
+			return session ? normalizeAppSession(session) : undefined;
+		},
+		createSession: (sessionId, name, context) =>
+			stampOwner(
+				createAppStoreSession(sessionId, name) as ServerChatSession,
+				context,
+			),
+		createBranchSession: (
+			sessionId,
+			name,
+			parentSessionId,
+			branchFromMessageId,
+			inheritedMessages,
+			context,
+		) =>
+			stampOwner(
+				createAppStoreBranchSession(
+					sessionId,
+					name,
+					parentSessionId,
+					branchFromMessageId,
+					inheritedMessages,
+				) as ServerChatSession,
+				context,
+			),
+		saveSession: save,
+		deleteSession: (sessionId) => deleteAppStoreSession(sessionId),
+		flushSession: (sessionId) => flushAppStoreSessionSave(sessionId),
+		flushAll: () => flushAllAppStorePendingSaves(),
+		getMessagesPage: (request) =>
+			getAppStoreSessionMessagesPage(
+				request,
+			) as GetSessionMessagesPageResponse,
+		getUserMessageMarkers: (sessionId) =>
+			getAppStoreSessionUserMessageMarkers(sessionId),
 	};
 }
 
