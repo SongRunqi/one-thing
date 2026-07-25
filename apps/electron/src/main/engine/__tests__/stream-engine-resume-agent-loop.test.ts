@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { WebContents } from 'electron'
 import type { ChatMessage, ChatSession, ToolDefinition } from '@shared/ipc.js'
 import type { ResumeAfterConfirmCommand } from '@shared/events/session-commands.js'
 import { EventBus } from '../../events/event-bus.js'
 
-type SenderMock = Pick<WebContents, 'isDestroyed' | 'send' | 'on'>
+import type { BindableStreamSender, StreamSender } from '../stream-engine.js'
+
+type SenderMock = Pick<BindableStreamSender, 'isDestroyed' | 'send' | 'on'>
 
 const mocks = vi.hoisted(() => ({
   eventBus: {
@@ -158,8 +159,8 @@ vi.mock('../../prompts/resolver.js', () => ({
 
 const { StreamEngine } = await import('../stream-engine.js')
 
-function sender(): WebContents {
-  return mocks.sender as SenderMock as WebContents
+function sender(): StreamSender {
+  return mocks.sender as SenderMock as unknown as StreamSender
 }
 
 function resumeCommand(messageId = 'm1'): ResumeAfterConfirmCommand {
