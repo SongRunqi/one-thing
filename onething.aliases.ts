@@ -60,7 +60,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/electron-host/auth/auth-fetch', replacement: resolve(projectRoot, 'apps/electron/src/auth/auth-fetch.ts') },
   { find: '@onething/electron-host/auth/electron-auth', replacement: resolve(projectRoot, 'apps/electron/src/auth/electron-auth.ts') },
   { find: '@onething/electron-host/auth/token-store', replacement: resolve(projectRoot, 'apps/electron/src/auth/token-store.ts') },
-  { find: '@onething/electron-host/browser/identity', replacement: resolve(projectRoot, 'apps/electron/src/browser/identity.ts') },
+  { find: '@onething/electron-host/browser/chromium-flags', replacement: resolve(projectRoot, 'apps/electron/src/browser/chromium-flags.ts') },
   { find: '@onething/electron-host/browser/service', replacement: resolve(projectRoot, 'apps/electron/src/browser/service.ts') },
   { find: '@onething/electron-host/browser/session', replacement: resolve(projectRoot, 'apps/electron/src/browser/session.ts') },
   { find: '@onething/electron-host/browser/tab-state', replacement: resolve(projectRoot, 'apps/electron/src/browser/tab-state.ts') },

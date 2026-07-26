@@ -127,7 +127,7 @@
     "@types/uuid": "^11.0.0",
     "@vitejs/plugin-vue": "^6.0.3",
     "@vue/test-utils": "^2.4.10",
-    "electron": "^39.2.7",
+    "electron": "github:castlabs/electron-releases#v41.1.1+wvcus",
     "electron-builder": "^26.0.12",
     "electron-vite": "^5.0.0",
     "eslint": "^9.17.0",
@@ -149,5 +149,8 @@
     "vitest": "^4.0.18",
     "vue": "^3.3.4",
     "vue-tsc": "^3.1.8"
-  }
+  },
+  "trustedDependencies": [
+    "electron"
+  ]
 }

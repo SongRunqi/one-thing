@@ -18,6 +18,7 @@ import type {
 	BrowserViewBounds,
 } from '@shared/ipc.js'
 import { getBrowserPartitionSession } from './session.js'
+import { ensureWidevineReady } from './widevine.js'
 import {
 	createTabStateCoalescer,
 	roundBoundsToDip,
@@ -62,6 +63,10 @@ export class BrowserViewService {
 		this.coalescer = createTabStateCoalescer((event) => {
 			this.getBroadcaster()?.sendTabsChanged(event)
 		})
+		// castlabs Widevine must be readied before the browser loads DRM content;
+		// kick it off the moment the browser subsystem first wakes (memoized;
+		// no-op on non-castlabs Electron). Part of the embedded-Google-login recipe.
+		void ensureWidevineReady()
 	}
 
 	createTab(url?: string, background = false): BrowserTabInfo {

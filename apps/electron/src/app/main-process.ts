@@ -46,6 +46,7 @@ import {
 	configureBrowserWindowProvider,
 	killAllBrowserTabs,
 } from "@onething/electron-host/browser/service";
+import { applyEmbeddedBrowserChromiumFlags } from "@onething/electron-host/browser/chromium-flags";
 import { watchTerminalConsumer } from "@main/ipc/terminal.js";
 import { warmSearchWindow } from "@onething/electron-host/search/window";
 import { applyNetworkProxySettings } from "@main/ipc/network-proxy.js";
@@ -277,6 +278,11 @@ function createElectronMainWindowOptions(): ElectronActivateOptions {
 export function startOnethingElectronMain(): void {
 	if (electronMainStarted) return;
 	electronMainStarted = true;
+
+	// Chromium flags the embedded browser needs (disabling FedCM so Google login
+	// works — replicates Flow Browser). Applied via the host module so this file
+	// stays electron-free (boundary). Must run before the app becomes ready.
+	applyEmbeddedBrowserChromiumFlags();
 
 	// Dev restarts kill the process group with SIGTERM→SIGKILL and before-quit
 	// never fires — reap user terminal shells so they don't orphan. The PTY

@@ -13,26 +13,22 @@ let cachedSession: Session | null = null
 let uaApplied = false
 
 /**
- * A STANDARD, real-Chrome UA for the bundled Chromium major version — the exact
- * string a genuine Chrome would send, with NO Electron/app trace.
+ * The UA the embedded browser presents — the PROVEN recipe for logging into
+ * Google inside an embedded Chromium (replicates Flow Browser, which logs into
+ * Google on castlabs Electron). Verified against the real "browser may not be
+ * secure" block 2026-07-26.
  *
- * Two details that matter (getting them wrong is itself a detection tell):
- *  - Real Chrome FREEZES the version to `<major>.0.0.0` (privacy, since Chrome
- *    100). Sending the full build (e.g. 142.0.7444.235) is non-standard.
- *  - Real Chrome FREEZES macOS to `Mac OS X 10_15_7` in the UA string.
- *
- * Set via session.setUserAgent(). This is the lightweight approach (no CDP, no
- * debugger); it leaves Sec-CH-UA saying "Chromium", which is the honest residual.
+ * The ONE thing that matters: strip ONLY the ` Electron/<ver>` token and keep
+ * EVERYTHING else — the app product token (`onething/x.y.z`) AND the full
+ * Chromium build version (`Chrome/146.0.7680.166`). Counter-intuitively, an
+ * OVER-cleaned UA (version frozen to `<major>.0.0.0`, app token removed) reads
+ * as FAKE to Google's login environment check and triggers "this browser or app
+ * may not be secure". The minimal scrub is exactly what the working Flow build
+ * sends. Sec-CH-UA still says "Chromium" — that is fine; Flow sends the same and
+ * Google does not gate on the "Google Chrome" brand. See docs/design/browser-v2.md.
  */
-export function buildChromeUserAgent(_defaultUserAgent?: string): string {
-	const major = (process.versions.chrome ?? '142').split('.')[0]
-	if (process.platform === 'win32') {
-		return `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`
-	}
-	if (process.platform === 'linux') {
-		return `Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`
-	}
-	return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`
+export function buildChromeUserAgent(defaultUserAgent: string): string {
+	return defaultUserAgent.replace(/\sElectron\/\S+/, '')
 }
 
 /**
