@@ -2694,10 +2694,15 @@ export async function createDevelopmentOnethingServerRuntime(
 		if (!permissionResponse)
 			return { success: false, error: "Invalid permission response" };
 
-		persistPermissionGrantFromDecision(
-			pending.info,
-			permissionResponse.decision,
-		);
+		if (!backend.persistsMessages) {
+			// Echo path only: with the real engine, core Permission.respond()
+			// persists session/workspace grants itself — persisting here too
+			// would double-write the grant store.
+			persistPermissionGrantFromDecision(
+				pending.info,
+				permissionResponse.decision,
+			);
+		}
 		pendingPermissions.delete(requestId);
 		const command: Record<string, unknown> = {
 			type: "command:permission-respond",
@@ -3163,10 +3168,18 @@ export async function createDevelopmentOnethingServerRuntime(
 				}
 				return getOnethingPendingPermissionsForIpc({
 					sessionId,
+					// Real engine: core Permission is the source of truth — same
+					// wiring as the desktop IPC handler, including promptState
+					// (actionable/queued) so a reloading client rebuilds queued
+					// cards. The event-driven mirror only serves echo backends.
 					getPending: (targetSessionId) =>
-						Array.from(pendingPermissions.values())
-							.filter((record) => record.sessionId === targetSessionId)
-							.map((record) => record.info),
+						backend.persistsMessages
+							? (Permission.getPendingPrompts(
+									targetSessionId,
+								) as unknown as PermissionInfo[])
+							: Array.from(pendingPermissions.values())
+									.filter((record) => record.sessionId === targetSessionId)
+									.map((record) => record.info),
 					logger: console,
 				});
 			},
