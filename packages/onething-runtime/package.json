@@ -57,6 +57,8 @@
     "./search/*": "./src/search/*.ts",
     "./sessions": "./src/sessions/index.ts",
     "./sessions/*": "./src/sessions/*.ts",
+    "./app": "./src/app/backend.ts",
+    "./app/*": "./src/app/*.ts",
     "./agents": "./src/agents/index.ts",
     "./agents/*": "./src/agents/*.ts",
     "./scheduler": "./src/scheduler/index.ts",
@@ -80,7 +82,6 @@
   "dependencies": {
     "@onething/core": "file:../core",
     "@zip.js/zip.js": "^2.8.11",
-    "better-sqlite3": "^12.5.0",
     "diff": "^8.0.2",
     "pinyin-pro": "^3.28.1",
     "undici": "^8.1.0",
