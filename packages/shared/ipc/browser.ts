@@ -100,3 +100,51 @@ export interface BrowserTabsChangedEvent {
 	/** Full tab-id order, present only when tabs were added/removed/reordered. */
 	order?: string[]
 }
+
+/**
+ * A web element captured in pick mode — becomes a structured composer attachment
+ * (element screenshot + text excerpt + source URL/title). See docs/design/browser-v2.md §P2.
+ */
+export interface PickedWebElement {
+	/** The picked element's screenshot as a PNG data URL ('' if capture failed). */
+	image: string
+	/** Source page URL. */
+	sourceUrl: string
+	/** Source page title (falls back to hostname). */
+	sourceTitle: string
+	/** Text excerpt of the element (≤2k chars). */
+	excerpt: string
+	/** True when the element was larger than the viewport — screenshot is the visible part. */
+	clipped: boolean
+}
+
+/**
+ * Response of BROWSER_PICK_ELEMENT. `element` is null when the user cancelled
+ * (Escape / re-toggle / navigation) — a normal outcome, not an error.
+ */
+export interface BrowserPickResponse {
+	success: boolean
+	element?: PickedWebElement | null
+	error?: string
+}
+
+/** A browser profile — an isolated persistent partition (Chrome-style login). */
+export interface BrowserProfile {
+	id: string
+	name: string
+}
+
+export interface BrowserProfilesResponse {
+	success: boolean
+	profiles: BrowserProfile[]
+	activeProfileId: string
+	error?: string
+}
+
+export interface BrowserAddProfileRequest {
+	name: string
+}
+
+export interface BrowserProfileIdRequest {
+	profileId: string
+}

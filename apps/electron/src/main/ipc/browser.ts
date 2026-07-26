@@ -38,6 +38,12 @@ export function registerBrowserHandlers(): void {
 			stop: IPC_CHANNELS.BROWSER_STOP,
 			setBounds: IPC_CHANNELS.BROWSER_SET_BOUNDS,
 			setVisible: IPC_CHANNELS.BROWSER_SET_VISIBLE,
+			pickElement: IPC_CHANNELS.BROWSER_PICK_ELEMENT,
+			pickCancel: IPC_CHANNELS.BROWSER_PICK_CANCEL,
+			listProfiles: IPC_CHANNELS.BROWSER_LIST_PROFILES,
+			addProfile: IPC_CHANNELS.BROWSER_ADD_PROFILE,
+			removeProfile: IPC_CHANNELS.BROWSER_REMOVE_PROFILE,
+			switchProfile: IPC_CHANNELS.BROWSER_SWITCH_PROFILE,
 		},
 		hydrate: () => {
 			try {
@@ -89,6 +95,46 @@ export function registerBrowserHandlers(): void {
 		setVisible: (request) => {
 			service().setVisible(request.visible);
 			return ok;
+		},
+		pickElement: async (request) => {
+			try {
+				const element = await service().pickElement(request.tabId);
+				return { success: true, element };
+			} catch (error) {
+				return { success: false, error: errorMessage(error) };
+			}
+		},
+		pickCancel: (request) => {
+			service().cancelPick(request.tabId);
+			return ok;
+		},
+		listProfiles: () => {
+			try {
+				return { success: true, ...service().listProfiles() };
+			} catch (error) {
+				return { success: false, profiles: [], activeProfileId: "default", error: errorMessage(error) };
+			}
+		},
+		addProfile: (request) => {
+			try {
+				return { success: true, ...service().addProfile(request.name) };
+			} catch (error) {
+				return { success: false, profiles: [], activeProfileId: "default", error: errorMessage(error) };
+			}
+		},
+		removeProfile: (request) => {
+			try {
+				return { success: true, ...service().removeProfile(request.profileId) };
+			} catch (error) {
+				return { success: false, profiles: [], activeProfileId: "default", error: errorMessage(error) };
+			}
+		},
+		switchProfile: (request) => {
+			try {
+				return { success: true, ...service().switchProfile(request.profileId) };
+			} catch (error) {
+				return { success: false, profiles: [], activeProfileId: "default", error: errorMessage(error) };
+			}
 		},
 	});
 }

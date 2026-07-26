@@ -29,6 +29,10 @@ export interface CoreMessageAttachment {
 	size?: number;
 	mediaType: string;
 	base64Data?: string;
+	/** Web-element provenance (embedded-browser pick); emitted as an <attachment> text part. */
+	sourceUrl?: string;
+	sourceTitle?: string;
+	excerpt?: string;
 }
 
 export interface CoreMessageContentSource {
@@ -121,6 +125,22 @@ function escapeAttachmentBody(text: string): string {
 	return text.replace(/<\/attachment/gi, "<\\/attachment");
 }
 
+/**
+ * Provenance tag for a web-element pick (embedded browser): the source URL/title
+ * plus the element's text excerpt. Emitted as its own text part so it survives
+ * when the image part is dropped for a non-vision model. Null when the
+ * attachment carries no web provenance (an ordinary file/image upload).
+ */
+function webElementAttachmentTag(attachment: CoreMessageAttachment): string | null {
+	if (!attachment.sourceUrl && !attachment.excerpt) return null;
+	return (
+		`<attachment source_url="${escapeXmlAttribute(attachment.sourceUrl ?? "")}"` +
+		` title="${escapeXmlAttribute(attachment.sourceTitle ?? "")}">\n` +
+		`${escapeAttachmentBody(attachment.excerpt ?? "")}\n` +
+		`</attachment>`
+	);
+}
+
 interface InlineTextAttachment {
 	text: string;
 	consumedChars: number;
@@ -190,7 +210,12 @@ export function buildMessageContent(
 	let inlineBudgetChars = INLINE_TEXT_ATTACHMENT_TOTAL_CHARS;
 
 	for (const attachment of message.attachments) {
-		if (!attachment.base64Data) continue;
+		if (!attachment.base64Data) {
+			// A web-element pick whose screenshot failed still delivers its excerpt.
+			const webTag = webElementAttachmentTag(attachment);
+			if (webTag) contentParts.push({ type: "text", text: webTag });
+			continue;
+		}
 		const mimeType = normalizeMimeType(attachment.mimeType);
 
 		// SVG is classified as an image upstream, but providers reject SVG image
@@ -198,6 +223,11 @@ export function buildMessageContent(
 		// the text-inline path below.
 		if (attachment.mediaType === "image" && mimeType !== "image/svg+xml") {
 			const dataUrl = `data:${attachment.mimeType};base64,${attachment.base64Data}`;
+			// Web-element pick (embedded browser): emit provenance + text excerpt as
+			// its OWN text part, before the image. A non-vision model drops the image
+			// part but keeps this text — so it still gets the source URL + excerpt.
+			const webTag = webElementAttachmentTag(attachment);
+			if (webTag) contentParts.push({ type: "text", text: webTag });
 			options.onImageAttachment?.({
 				mimeType: attachment.mimeType,
 				base64Length: attachment.base64Data.length,

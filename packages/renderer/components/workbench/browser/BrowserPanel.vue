@@ -7,10 +7,11 @@
  * terminal P1 split-tree it must adopt the §14.2 coexistence hooks.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Globe, Lock, Plus, RotateCw, Square, X } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, Crosshair, Globe, Lock, Plus, RotateCw, Square, X } from 'lucide-vue-next'
 import { platformApi } from '@/platform'
 import { useBrowserStore } from '@/stores/browser'
 import { useOverlayPresenceStore } from '@/stores/overlayPresence'
+import type { MessageAttachment, PickedWebElement } from '@/types'
 
 const props = withDefaults(defineProps<{ active: boolean; revealed?: boolean }>(), {
   revealed: true,
@@ -69,6 +70,43 @@ function onOmniboxBlur(): void {
 
 function displayUrl(tab: { url: string; title: string }): string {
   return tab.title || tab.url || '新标签页'
+}
+
+// ── element pick → composer attachment ──
+// The main process runs the overlay + screenshot; the picked element becomes a
+// synthetic image MessageAttachment (screenshot + source URL + text excerpt) and
+// is handed to the visible composer via a window event (BrowserPanel and the
+// composer sit far apart in the tree). See docs/design/browser-v2.md §P2.
+function pickedElementToAttachment(el: PickedWebElement): MessageAttachment {
+  // el.image is a PNG data URL; MessageAttachment.base64Data is bare base64.
+  const base64Data = el.image.includes(',') ? el.image.split(',')[1]! : ''
+  // Only claim "screenshot is the visible part" when there actually is one —
+  // a failed capture (base64Data === '') must not append a note about an image.
+  const excerpt =
+    el.clipped && el.excerpt && base64Data ? `${el.excerpt}\n[截图为可见部分]` : el.excerpt
+  return {
+    id: `web-element-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    fileName: 'web-element.png',
+    mimeType: 'image/png',
+    size: Math.floor(base64Data.length * 0.75),
+    mediaType: 'image',
+    base64Data,
+    sourceUrl: el.sourceUrl,
+    sourceTitle: el.sourceTitle,
+    excerpt,
+  }
+}
+
+async function togglePick(): Promise<void> {
+  if (store.picking) {
+    store.cancelPick()
+    return
+  }
+  const el = await store.pickElement()
+  if (!el) return
+  window.dispatchEvent(
+    new CustomEvent('onething:composer-attach', { detail: pickedElementToAttachment(el) }),
+  )
 }
 
 // ── geometry: track the placeholder rect and push to the WebContentsView ──
@@ -254,6 +292,18 @@ onBeforeUnmount(() => {
           @blur="onOmniboxBlur"
         >
       </form>
+
+      <button
+        class="bp-iconbtn bp-pick"
+        :class="{ active: store.picking }"
+        type="button"
+        :aria-label="store.picking ? '取消拾取' : '拾取元素带入对话'"
+        :title="store.picking ? '取消拾取（Esc）' : '拾取页面元素带入对话'"
+        :disabled="!activeTab"
+        @click="togglePick"
+      >
+        <Crosshair :size="15" :stroke-width="2" aria-hidden="true" />
+      </button>
     </div>
 
     <!-- ③ viewport placeholder (WebContentsView overlays this rect) -->
@@ -375,6 +425,9 @@ onBeforeUnmount(() => {
 .bp-iconbtn:hover:not(:disabled) { color: var(--ui-text-primary-fg); }
 .bp-iconbtn:hover:not(:disabled)::after { border-bottom-color: color-mix(in srgb, var(--ui-text-muted-fg) 75%, transparent); }
 .bp-iconbtn:disabled { color: var(--ui-text-faint-fg); cursor: default; }
+/* Pick mode active: ink-accent, matching the omnibox focus ring language. */
+.bp-iconbtn.active { color: var(--ui-accent-primary-fg); }
+.bp-iconbtn.active::after { border-bottom: 1.5px solid var(--ui-accent-primary-fg); }
 .bp-omnibox {
   flex: 1;
   display: flex;

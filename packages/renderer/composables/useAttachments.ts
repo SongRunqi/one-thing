@@ -334,6 +334,11 @@ export function useAttachments() {
 			width: attachment.width,
 			height: attachment.height,
 			url: attachment.url,
+			// Web-element provenance (embedded-browser pick) — carried through so a
+			// restored draft keeps its source URL + excerpt.
+			...(attachment.sourceUrl ? { sourceUrl: attachment.sourceUrl } : {}),
+			...(attachment.sourceTitle ? { sourceTitle: attachment.sourceTitle } : {}),
+			...(attachment.excerpt ? { excerpt: attachment.excerpt } : {}),
 			// Recomputed rather than stored: the user may have switched models
 			// since the draft was saved, which changes the honest answer.
 			delivery:
@@ -393,6 +398,11 @@ export function useAttachments() {
 			base64Data: f.base64Data,
 			width: f.width,
 			height: f.height,
+			// Web-element provenance rides along to the engine (buildMessageContent
+			// emits the <attachment source_url title>excerpt</attachment> text part).
+			...(f.sourceUrl ? { sourceUrl: f.sourceUrl } : {}),
+			...(f.sourceTitle ? { sourceTitle: f.sourceTitle } : {}),
+			...(f.excerpt ? { excerpt: f.excerpt } : {}),
 		}));
 	}
 
@@ -405,5 +415,7 @@ export function useAttachments() {
 		removeAttachment,
 		clearAttachments,
 		toMessageAttachments,
+		/** Append one attachment from a plain MessageAttachment (no File/drag). */
+		attachmentFromMessageAttachment,
 	};
 }

@@ -195,6 +195,8 @@
               @update:settings="handleSettingsUpdate"
             />
 
+            <BrowserSettingsPanel v-else-if="activeTab === 'browser'" />
+
             <VoiceSettingsTab
               v-else-if="activeTab === 'voice'"
               :settings="localSettings"
@@ -281,6 +283,7 @@ import {
   Code2,
   MessageCircle,
   Globe2,
+  AppWindow,
   Keyboard,
   Mic,
   Music,
@@ -303,6 +306,7 @@ import EditorSettingsTab from './settings/EditorSettingsTab.vue'
 import { AIProviderTab } from './settings/provider'
 import ToolsSettingsTab from './settings/ToolsSettingsTab.vue'
 import NetworkSettingsTab from './settings/NetworkSettingsTab.vue'
+import BrowserSettingsPanel from './settings/BrowserSettingsPanel.vue'
 import VoiceSettingsTab from './settings/VoiceSettingsTab.vue'
 import MusicSettingsTab from './settings/MusicSettingsTab.vue'
 import ChannelsSettingsTab from './settings/ChannelsSettingsTab.vue'
@@ -380,6 +384,14 @@ const navItems = [
     icon: Globe2,
     sections: [],
     keywords: 'network proxy bypass',
+  },
+  {
+    id: 'browser',
+    label: 'Browser',
+    hint: 'Isolated login profiles for the embedded browser',
+    icon: AppWindow,
+    sections: [],
+    keywords: 'browser profile google login session partition cookies 配置',
   },
   {
     id: 'voice',

@@ -454,6 +454,14 @@ export const IPC_CHANNELS = {
 	BROWSER_STOP: "browser:stop",
 	BROWSER_SET_BOUNDS: "browser:set-bounds",
 	BROWSER_SET_VISIBLE: "browser:set-visible",
+	// Element pick mode: invoke resolves with the picked element (or null on cancel)
+	BROWSER_PICK_ELEMENT: "browser:pick-element",
+	BROWSER_PICK_CANCEL: "browser:pick-cancel",
+	// Profiles (Chrome-style isolated logins): list/add/remove/switch
+	BROWSER_LIST_PROFILES: "browser:list-profiles",
+	BROWSER_ADD_PROFILE: "browser:add-profile",
+	BROWSER_REMOVE_PROFILE: "browser:remove-profile",
+	BROWSER_SWITCH_PROFILE: "browser:switch-profile",
 	// Push main→renderer: single coalesced tab-state batch
 	BROWSER_TABS_CHANGED: "browser:tabs-changed",
 } as const;

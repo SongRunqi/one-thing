@@ -3,6 +3,8 @@
 > 状态:设计定稿(经三路对抗评审:仓库事实核查 / Electron 39 平台断言核查 / 产品架构批判)。日期:2026-07-26。
 > 涉及:apps/electron、packages/renderer、packages/shared、packages/onething-runtime(产品层 + app 装配层)、packages/core。
 
+> **实现状态（2026-07-26，`experiment/castlabs-electron` 未提交）**：P0 骨架 + castlabs 换核（内嵌浏览器可登录 Google，见 `castlabs-migration.md`）已落地；**P2 元素拾取**（拾取模式 executeJavaScript 覆盖层 + 主进程 capturePage 截图 + 结构化附件 → composer → 引擎 `<attachment source_url>` 文本部件）已落地；**多 profile**（Chrome 式隔离登录，设置页「Browser」增删切，`persist:browser-<id>` 分区，default→旧分区兼容）已落地——虽在原设计里列为非目标，但换 castlabs 后成本降低、用户明确需要。**未做**：P1a/P1b 浏览器正确性/舒适性、P3 AI 操控 browser 工具、P4/P5 扩展。拾取实现走 `executeJavaScript` 而非独立 preload 构建（更轻、闭环一个 IPC 往返、不碰 CDP，符合"拾取路径不碰 CDP"）。
+
 ## 0. 一句话
 
 把 Workbench 里的 iframe 假浏览器,升级为 **main 进程真源的 WebContentsView 多 tab 浏览器**,在其上生长三个能力:**元素拾取带入会话**(显式拾取模式 + 结构化附件)、**AI 直接操控**(browser 工具 + 进程内 CDP,内建 prompt-injection 防线)、**Chrome 扩展**(官方 loadExtension + MIT 的 web-store 安装链起步,GPL 的 electron-chrome-extensions 作为许可门后的第二层)。

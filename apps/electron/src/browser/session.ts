@@ -9,8 +9,15 @@ import { applyElectronNetworkProxySettings, type ElectronProxyConfig } from '../
 
 export const BROWSER_PARTITION = 'persist:browser'
 
-let cachedSession: Session | null = null
-let uaApplied = false
+/** One session per profile partition (Chrome-style isolated logins). */
+const cachedSessions = new Map<string, Session>()
+
+/**
+ * Last proxy config applied app-wide. A profile partition can be created LONG
+ * after the last applyBrowserProxy (e.g. the user adds a profile mid-session);
+ * without replaying it that partition would browse direct, bypassing the proxy.
+ */
+let currentProxyConfig: ElectronProxyConfig | null = null
 
 /**
  * The UA the embedded browser presents — the PROVEN recipe for logging into
@@ -32,36 +39,54 @@ export function buildChromeUserAgent(defaultUserAgent: string): string {
 }
 
 /**
- * Resolve (and lazily initialize) the browser partition session. UA MUST be set
- * before any WebContentsView is created on this session — setUserAgent does not
- * affect already-created WebContents (d.ts:12894). Callers create views only
- * after this returns.
+ * Resolve (and lazily initialize) a browser partition session. Defaults to the
+ * legacy `persist:browser`; profiles pass their own partition (see profiles.ts).
+ * UA MUST be set before any WebContentsView is created on this session —
+ * setUserAgent does not affect already-created WebContents (d.ts:12894). Callers
+ * create views only after this returns.
  */
-export function getBrowserPartitionSession(): Session {
-	if (cachedSession) return cachedSession
-	const ses = session.fromPartition(BROWSER_PARTITION)
+export function getBrowserPartitionSession(partition: string = BROWSER_PARTITION): Session {
+	const existing = cachedSessions.get(partition)
+	if (existing) return existing
 
-	if (!uaApplied) {
-		ses.setUserAgent(buildChromeUserAgent(ses.getUserAgent()))
-		uaApplied = true
-	}
+	const ses = session.fromPartition(partition)
+	ses.setUserAgent(buildChromeUserAgent(ses.getUserAgent()))
 
 	// Browser pages get a hard-deny permission policy by default; a per-domain
 	// prompt for media/clipboard lands in P1b.
 	ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
 	ses.setPermissionCheckHandler(() => false)
 
-	cachedSession = ses
+	cachedSessions.set(partition, ses)
+	// Inherit the current proxy. Fire-and-forget is safe: a fresh tab opens on
+	// about:blank (no network), so setProxy lands before the user navigates.
+	if (currentProxyConfig) {
+		void applyElectronNetworkProxySettings(currentProxyConfig, { session: ses }).catch(() => undefined)
+	}
 	return ses
 }
 
-/** Mirror the app's proxy settings onto the browser partition (defaultSession-only otherwise). */
+/** Every profile partition session created so far. */
+export function getAllBrowserSessions(): Session[] {
+	return [...cachedSessions.values()]
+}
+
+/** Drop a partition session from the cache (e.g. its profile was removed). */
+export function removeBrowserPartitionSession(partition: string): void {
+	cachedSessions.delete(partition)
+}
+
+/** Mirror the app's proxy settings onto every browser partition (defaultSession-only otherwise). */
 export async function applyBrowserProxy(proxy: ElectronProxyConfig): Promise<void> {
-	await applyElectronNetworkProxySettings(proxy, { session: getBrowserPartitionSession() })
+	currentProxyConfig = proxy
+	const sessions = getAllBrowserSessions()
+	// Ensure at least the default partition carries the proxy even before use.
+	if (sessions.length === 0) sessions.push(getBrowserPartitionSession())
+	await Promise.all(sessions.map((ses) => applyElectronNetworkProxySettings(proxy, { session: ses })))
 }
 
 /** Test seam. */
 export function resetBrowserSessionForTests(): void {
-	cachedSession = null
-	uaApplied = false
+	cachedSessions.clear()
+	currentProxyConfig = null
 }

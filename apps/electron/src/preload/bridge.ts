@@ -178,6 +178,17 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_BOUNDS, { bounds }),
 	setBrowserVisible: (visible: boolean) =>
 		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_VISIBLE, { visible }),
+	pickBrowserElement: (tabId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_PICK_ELEMENT, { tabId }),
+	cancelBrowserPick: (tabId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_PICK_CANCEL, { tabId }),
+	listBrowserProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_LIST_PROFILES),
+	addBrowserProfile: (name: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_ADD_PROFILE, { name }),
+	removeBrowserProfile: (profileId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_REMOVE_PROFILE, { profileId }),
+	switchBrowserProfile: (profileId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SWITCH_PROFILE, { profileId }),
 	onBrowserTabsChanged: (callback: (event: any) => void) => {
 		const listener = (_event: any, data: any) => callback(data);
 		ipcRenderer.on(IPC_CHANNELS.BROWSER_TABS_CHANGED, listener);

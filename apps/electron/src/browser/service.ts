@@ -10,15 +10,27 @@
  * Geometry (bounds/visible/fullscreen) is written against today's single-Tabs
  * workbench; TODO(browser-geometry): revisit after terminal P1 split-tree.
  */
-import { WebContentsView, net, shell, type BrowserWindow } from 'electron'
+import { WebContentsView, net, session, shell, type BrowserWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
 import type {
 	BrowserTabInfo,
 	BrowserTabsChangedEvent,
 	BrowserViewBounds,
+	PickedWebElement,
 } from '@shared/ipc.js'
-import { getBrowserPartitionSession } from './session.js'
+import { getBrowserPartitionSession, removeBrowserPartitionSession } from './session.js'
 import { ensureWidevineReady } from './widevine.js'
+import { PICK_SCRIPT, CANCEL_PICK_SCRIPT, type RawPickedElement } from './pick-script.js'
+import {
+	DEFAULT_PROFILE_ID,
+	getActiveProfileId,
+	partitionForProfile,
+	listProfiles as loadProfileList,
+	addProfile as persistAddProfile,
+	removeProfile as persistRemoveProfile,
+	setActiveProfile as persistSetActiveProfile,
+	type BrowserProfile,
+} from './profiles.js'
 import {
 	createTabStateCoalescer,
 	roundBoundsToDip,
@@ -46,6 +58,8 @@ export class BrowserViewService {
 	private readonly tabs = new Map<string, TabRecord>()
 	private order: string[] = []
 	private activeTabId: string | null = null
+	/** Which browser profile (isolated login partition) new tabs open on. */
+	private activeProfileId: string | null = null
 	private bounds: DipRect = { x: 0, y: 0, width: 0, height: 0 }
 	private visible = true
 	/** HTML5 fullscreen (a page video, etc.) — the active view fills the whole window. */
@@ -72,7 +86,9 @@ export class BrowserViewService {
 	createTab(url?: string, background = false): BrowserTabInfo {
 		const id = randomUUID()
 		const view = new WebContentsView({
-			webPreferences: { session: getBrowserPartitionSession() },
+			webPreferences: {
+				session: getBrowserPartitionSession(partitionForProfile(this.ensureActiveProfile())),
+			},
 		})
 		const info: BrowserTabInfo = {
 			id,
@@ -155,6 +171,56 @@ export class BrowserViewService {
 		this.tabs.get(tabId)?.view.webContents.stop()
 	}
 
+	/**
+	 * Enter element-pick mode on a tab: inject the pick overlay, wait for the
+	 * user to click an element (or cancel), then screenshot the picked rect and
+	 * assemble a structured attachment. Resolves null on cancel (Esc / re-toggle
+	 * / navigation), never throws to the caller. See docs/design/browser-v2.md §P2.
+	 */
+	async pickElement(tabId: string): Promise<PickedWebElement | null> {
+		const record = this.tabs.get(tabId)
+		if (!record || record.view.webContents.isDestroyed()) return null
+		const wc = record.view.webContents
+		let raw: RawPickedElement | null
+		try {
+			raw = (await wc.executeJavaScript(PICK_SCRIPT, true)) as RawPickedElement | null
+		} catch {
+			// Page navigated / context destroyed mid-pick — treat as cancel.
+			return null
+		}
+		if (!raw || wc.isDestroyed()) return null
+
+		// The picked rect is viewport CSS px — the same space capturePage clips in.
+		let image = ''
+		try {
+			const shot = await wc.capturePage({
+				x: raw.rect.x,
+				y: raw.rect.y,
+				width: raw.rect.width,
+				height: raw.rect.height,
+			})
+			image = shot.isEmpty() ? '' : shot.toDataURL()
+		} catch {
+			image = ''
+		}
+
+		return {
+			image,
+			sourceUrl: raw.sourceUrl,
+			sourceTitle: raw.sourceTitle,
+			excerpt: raw.excerpt,
+			clipped: raw.clipped,
+		}
+	}
+
+	/** Cancel an in-flight pick on a tab (host-driven, e.g. re-toggling the button). */
+	cancelPick(tabId: string): void {
+		const wc = this.tabs.get(tabId)?.view.webContents
+		if (wc && !wc.isDestroyed()) {
+			void wc.executeJavaScript(CANCEL_PICK_SCRIPT, true).catch(() => undefined)
+		}
+	}
+
 	setBounds(bounds: BrowserViewBounds): void {
 		this.bounds = roundBoundsToDip(bounds)
 		this.applyActiveBounds()
@@ -182,6 +248,55 @@ export class BrowserViewService {
 		this.tabs.clear()
 		this.order = []
 		this.activeTabId = null
+	}
+
+	// ── profiles (Chrome-style isolated logins) ────────────────
+
+	private ensureActiveProfile(): string {
+		if (this.activeProfileId === null) this.activeProfileId = getActiveProfileId()
+		return this.activeProfileId
+	}
+
+	listProfiles(): { profiles: BrowserProfile[]; activeProfileId: string } {
+		return { profiles: loadProfileList().profiles, activeProfileId: this.ensureActiveProfile() }
+	}
+
+	addProfile(name: string): { profiles: BrowserProfile[]; activeProfileId: string } {
+		persistAddProfile(name)
+		return this.listProfiles()
+	}
+
+	/** Switch the active profile: close the old profile's tabs, open a fresh one. */
+	switchProfile(profileId: string): { profiles: BrowserProfile[]; activeProfileId: string } {
+		if (!persistSetActiveProfile(profileId)) return this.listProfiles()
+		if (this.ensureActiveProfile() !== profileId) {
+			for (const tabId of [...this.order]) this.closeTab(tabId)
+			this.activeProfileId = profileId
+			this.createTab()
+		}
+		return this.listProfiles()
+	}
+
+	/**
+	 * Remove a profile (the default is never removable). If it was active, switch
+	 * back to default first, then wipe the removed profile's partition storage so
+	 * "remove" actually logs the account out.
+	 */
+	removeProfile(profileId: string): { profiles: BrowserProfile[]; activeProfileId: string } {
+		if (profileId === DEFAULT_PROFILE_ID) return this.listProfiles()
+		const wasActive = this.ensureActiveProfile() === profileId
+		const partition = partitionForProfile(profileId)
+		const newActive = persistRemoveProfile(profileId)
+		if (wasActive) this.switchProfile(newActive)
+		try {
+			void session.fromPartition(partition).clearStorageData().catch(() => undefined)
+		} catch {
+			// partition may not exist on disk — nothing to wipe
+		}
+		// Evict the dead partition so it stops riding along in proxy re-application
+		// and the cache doesn't grow without bound on profile churn.
+		removeBrowserPartitionSession(partition)
+		return this.listProfiles()
 	}
 
 	// ── internals ──────────────────────────────────────────────

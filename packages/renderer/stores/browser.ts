@@ -10,7 +10,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { platformApi } from '@/platform'
-import type { BrowserTabInfo, BrowserTabsChangedEvent } from '@/types'
+import type { BrowserTabInfo, BrowserTabsChangedEvent, PickedWebElement } from '@/types'
 
 export const useBrowserStore = defineStore('browser', () => {
   const tabs = ref<BrowserTabInfo[]>([])
@@ -86,7 +86,32 @@ export const useBrowserStore = defineStore('browser', () => {
     if (activeTabId.value) await platformApi.stopBrowser?.(activeTabId.value)
   }
 
+  const picking = ref(false)
+
+  /**
+   * Enter element-pick mode on the active tab. Resolves with the picked element
+   * (screenshot + excerpt + source) or null when the user cancels. The main
+   * process owns the overlay + screenshot; this only brokers the round-trip.
+   */
+  async function pickElement(): Promise<PickedWebElement | null> {
+    if (!activeTabId.value || picking.value) return null
+    picking.value = true
+    try {
+      const res = await platformApi.pickBrowserElement?.(activeTabId.value)
+      return res?.element ?? null
+    } finally {
+      picking.value = false
+    }
+  }
+
+  function cancelPick(): void {
+    if (activeTabId.value) void platformApi.cancelBrowserPick?.(activeTabId.value)
+  }
+
   return {
+    picking,
+    pickElement,
+    cancelPick,
     tabs,
     activeTabId,
     activeTab,

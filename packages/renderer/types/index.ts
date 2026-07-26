@@ -676,6 +676,35 @@ export interface BrowserTabsChangedEvent {
 	order?: string[];
 }
 
+/** A web element captured in pick mode → structured composer attachment. */
+export interface PickedWebElement {
+	image: string;
+	sourceUrl: string;
+	sourceTitle: string;
+	excerpt: string;
+	clipped: boolean;
+}
+
+export interface BrowserPickResponse {
+	success: boolean;
+	/** Null when the user cancelled — a normal outcome, not an error. */
+	element?: PickedWebElement | null;
+	error?: string;
+}
+
+/** A browser profile — an isolated persistent partition (Chrome-style login). */
+export interface BrowserProfile {
+	id: string;
+	name: string;
+}
+
+export interface BrowserProfilesResponse {
+	success: boolean;
+	profiles: BrowserProfile[];
+	activeProfileId: string;
+	error?: string;
+}
+
 export interface ElectronAPI {
 	/**
 	 * Resolve the on-disk path of a dropped/picked File. Returns "" when the
@@ -1735,6 +1764,12 @@ export interface ElectronAPI {
 		height: number;
 	}) => Promise<{ success: boolean; error?: string }>;
 	setBrowserVisible: (visible: boolean) => Promise<{ success: boolean; error?: string }>;
+	pickBrowserElement: (tabId: string) => Promise<BrowserPickResponse>;
+	cancelBrowserPick: (tabId: string) => Promise<{ success: boolean; error?: string }>;
+	listBrowserProfiles: () => Promise<BrowserProfilesResponse>;
+	addBrowserProfile: (name: string) => Promise<BrowserProfilesResponse>;
+	removeBrowserProfile: (profileId: string) => Promise<BrowserProfilesResponse>;
+	switchBrowserProfile: (profileId: string) => Promise<BrowserProfilesResponse>;
 	onBrowserTabsChanged: (callback: (event: BrowserTabsChangedEvent) => void) => () => void;
 
 	// Skill execution

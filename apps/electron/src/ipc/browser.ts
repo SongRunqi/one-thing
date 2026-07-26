@@ -1,9 +1,13 @@
 import { ipcMain } from 'electron'
 import type {
+	BrowserAddProfileRequest,
 	BrowserCreateTabRequest,
 	BrowserCreateTabResponse,
 	BrowserHydrateResponse,
 	BrowserNavigateRequest,
+	BrowserPickResponse,
+	BrowserProfileIdRequest,
+	BrowserProfilesResponse,
 	BrowserSetBoundsRequest,
 	BrowserSetVisibleRequest,
 	BrowserSimpleResponse,
@@ -29,6 +33,12 @@ export interface ElectronBrowserIpcChannels {
 	stop: string
 	setBounds: string
 	setVisible: string
+	pickElement: string
+	pickCancel: string
+	listProfiles: string
+	addProfile: string
+	removeProfile: string
+	switchProfile: string
 }
 
 export interface RegisterElectronBrowserIpcHandlersOptions {
@@ -44,6 +54,12 @@ export interface RegisterElectronBrowserIpcHandlersOptions {
 	stop(request: BrowserTabIdRequest): BrowserSimpleResponse | Promise<BrowserSimpleResponse>
 	setBounds(request: BrowserSetBoundsRequest): BrowserSimpleResponse | Promise<BrowserSimpleResponse>
 	setVisible(request: BrowserSetVisibleRequest): BrowserSimpleResponse | Promise<BrowserSimpleResponse>
+	pickElement(request: BrowserTabIdRequest): BrowserPickResponse | Promise<BrowserPickResponse>
+	pickCancel(request: BrowserTabIdRequest): BrowserSimpleResponse | Promise<BrowserSimpleResponse>
+	listProfiles(): BrowserProfilesResponse | Promise<BrowserProfilesResponse>
+	addProfile(request: BrowserAddProfileRequest): BrowserProfilesResponse | Promise<BrowserProfilesResponse>
+	removeProfile(request: BrowserProfileIdRequest): BrowserProfilesResponse | Promise<BrowserProfilesResponse>
+	switchProfile(request: BrowserProfileIdRequest): BrowserProfilesResponse | Promise<BrowserProfilesResponse>
 	ipcMain?: ElectronBrowserIpcMainLike
 }
 
@@ -75,5 +91,21 @@ export function registerElectronBrowserIpcHandlers(
 	)
 	host.handle(channels.setVisible, (_event, request: BrowserSetVisibleRequest) =>
 		options.setVisible(request),
+	)
+	host.handle(channels.pickElement, (_event, request: BrowserTabIdRequest) =>
+		options.pickElement(request),
+	)
+	host.handle(channels.pickCancel, (_event, request: BrowserTabIdRequest) =>
+		options.pickCancel(request),
+	)
+	host.handle(channels.listProfiles, () => options.listProfiles())
+	host.handle(channels.addProfile, (_event, request: BrowserAddProfileRequest) =>
+		options.addProfile(request),
+	)
+	host.handle(channels.removeProfile, (_event, request: BrowserProfileIdRequest) =>
+		options.removeProfile(request),
+	)
+	host.handle(channels.switchProfile, (_event, request: BrowserProfileIdRequest) =>
+		options.switchProfile(request),
 	)
 }

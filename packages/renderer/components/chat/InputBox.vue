@@ -725,6 +725,7 @@ const {
   clearAttachments,
   restoreAttachments,
   toMessageAttachments,
+  attachmentFromMessageAttachment,
 } = useAttachments()
 
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -1153,11 +1154,13 @@ onMounted(async () => {
   await loadSkills()
   await promptsStore.loadPrompts()
   document.addEventListener('mousedown', handleDocumentMouseDown)
+  window.addEventListener('onething:composer-attach', handleWebElementPicked)
 })
 
 onUnmounted(() => {
   saveComposerDraft()
   document.removeEventListener('mousedown', handleDocumentMouseDown)
+  window.removeEventListener('onething:composer-attach', handleWebElementPicked)
   stopVoiceRecordingTimer()
 })
 
@@ -1253,6 +1256,34 @@ async function handleIncomingFiles(files: File[]) {
     updateComposerHeight()
     editorRef.value?.focus()
   })
+}
+
+/** Append one attachment programmatically (no File/drag) — e.g. a web-element pick. */
+function addAttachment(attachment: MessageAttachment) {
+  attachmentFromMessageAttachment(attachment)
+  nextTick(() => {
+    updateComposerHeight()
+    editorRef.value?.focus()
+  })
+}
+
+/**
+ * A web element picked in the embedded browser arrives as a window CustomEvent
+ * (BrowserPanel and this composer sit far apart in the tree). Only the visible
+ * composer consumes it — a hidden/background InputBox has no offsetParent.
+ */
+function handleWebElementPicked(event: Event) {
+  const detail = (event as CustomEvent<MessageAttachment | undefined>).detail
+  if (!detail) return
+  // Must be visible (not a display:none background-tab composer)...
+  if (!composerWrapperRef.value || composerWrapperRef.value.offsetParent === null) return
+  // ...AND the active pane's composer: a split layout mounts several visible
+  // InputBoxes at once, but the pick belongs only to the active session.
+  // sessionsStore.currentSessionId tracks the active leaf (the workspace store
+  // drives switchSession), so this routes to exactly the focused composer.
+  const active = sessionsStore.currentSessionId
+  if (active && effectiveSessionId.value !== active) return
+  addAttachment(detail)
 }
 
 function openFilePicker() {
@@ -1702,6 +1733,7 @@ defineExpose({
   clearQuotedText,
   setMessageInput,
   insertPromptReference,
+  addAttachment,
   focus: focusEditor,
   // Snapshot API for session switching
   getMessageInput: () => messageInput.value,

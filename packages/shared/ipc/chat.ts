@@ -105,6 +105,12 @@ export interface MessageAttachment {
   width?: number             // Image width (for images)
   height?: number            // Image height (for images)
   mediaAssetId?: string      // Linked Media Library asset, when indexed
+  // Web-element attachments (picked from the embedded browser): the screenshot
+  // rides in base64Data/image; these carry its provenance + text so a non-vision
+  // model still receives the excerpt. See docs/design/browser-v2.md §P2.
+  sourceUrl?: string         // Source page URL the element was picked from
+  sourceTitle?: string       // Source page title
+  excerpt?: string           // Text excerpt of the picked element (≤2k chars)
 }
 
 // Type definitions for IPC messages
