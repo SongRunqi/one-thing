@@ -41,6 +41,8 @@ import { registerGoalHandlers } from "./goal.js";
 import { registerEvalsHandlers } from "./evals.js";
 import { registerUsageHandlers } from "./usage.js";
 import { registerPracticeHandlers } from "./practice.js";
+import { registerTerminalHandlers } from "./terminal.js";
+import { registerBrowserHandlers } from "./browser.js";
 import { getEventBus } from "@onething/app/events/index.js";
 import { sanitizeRendererOrigin } from "@onething/app/channel/index.js";
 
@@ -88,6 +90,8 @@ export function initializeIPC() {
 	registerEvalsHandlers();
 	registerUsageHandlers();
 	registerPracticeHandlers();
+	registerTerminalHandlers();
+	registerBrowserHandlers();
 	registerCommandHandler();
 }
 

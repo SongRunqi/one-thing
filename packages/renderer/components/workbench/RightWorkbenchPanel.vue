@@ -16,7 +16,7 @@
       @mousedown.stop
     >
       <Button
-        v-for="option in tabOptions"
+        v-for="option in availableTabOptions"
         :key="option.type"
         unstyled
         class="picker-option"
@@ -91,7 +91,7 @@
               :stroke-width="2"
               aria-hidden="true"
             />
-            <span>{{ tab.title }}</span>
+            <span>{{ tabDisplayTitle(tab) }}</span>
           </span>
         </template>
 
@@ -111,54 +111,20 @@
           @objective-resolved="(objective) => renameReviewTab(tab.id, objective)"
         />
 
-        <section
-          v-else-if="tab.type === 'terminal'"
+        <TerminalView
+          v-else-if="tab.type === 'terminal' && tab.terminalId"
           class="workbench-terminal"
-        >
-          <div
-            ref="terminalOutputRef"
-            class="terminal-output"
-          >
-            <div
-              v-for="line in terminalLines"
-              :key="line.id"
-              :class="['terminal-line', line.kind]"
-            >
-              <span
-                v-if="line.kind === 'command'"
-                class="terminal-prompt"
-              >$</span>
-              <pre>{{ line.text }}</pre>
-            </div>
-          </div>
-          <form
-            class="terminal-input-row"
-            @submit.prevent="runTerminalCommand"
-          >
-            <span class="terminal-input-prompt">$</span>
-            <input
-              v-model="terminalInput"
-              :disabled="terminalBusy || !sessionId || !canRunShellTools"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="Command"
-            >
-            <Button
-              unstyled
-              class="terminal-run"
-              native-type="submit"
-              :disabled="terminalBusy || !terminalInput.trim() || !sessionId || !canRunShellTools"
-            >
-              <Play
-                :size="13"
-                :stroke-width="2"
-                aria-hidden="true"
-              />
-            </Button>
-          </form>
-        </section>
+          :terminal-id="tab.terminalId"
+          @restarted="(newId) => handleTerminalRestarted(tab.id, newId)"
+        />
 
+        <BrowserPanel
+          v-else-if="tab.type === 'browser' && canUseEmbeddedBrowser"
+          :active="activeTabId === tab.id"
+          :revealed="props.revealed"
+        />
+
+        <!-- iframe fallback: apps/web host has no WebContentsView -->
         <section
           v-else-if="tab.type === 'browser'"
           class="workbench-browser"
@@ -217,7 +183,7 @@
         <span class="workbench-empty-hint">Open a tool alongside the chat.</span>
       </div>
       <Button
-        v-for="option in tabOptions"
+        v-for="option in availableTabOptions"
         :key="option.type"
         unstyled
         class="empty-action"
@@ -238,15 +204,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, type Component } from 'vue'
-import { ArrowRight, FileText, Files, GitCompare, Globe2, Play, Terminal, X } from 'lucide-vue-next'
+import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
+import { ArrowRight, FileText, Files, GitCompare, Globe2, Terminal, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import TabPane from '@/components/common/TabPane.vue'
 import EditorWorkbench from '@/components/editor/EditorWorkbench.vue'
+import TerminalView from '@/components/terminal/TerminalView.vue'
+import BrowserPanel from './browser/BrowserPanel.vue'
 import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
+import { useTerminalsStore } from '@/stores/terminals'
 import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
@@ -263,19 +232,19 @@ interface WorkbenchTab {
   sessionId?: string
   /** review tabs only: bumped to force a refetch on reopen. */
   reviewNonce?: number
+  /** terminal tabs only: the PTY instance rendered by this tab. */
+  terminalId?: string
 }
 
-interface TerminalLine {
-  id: string
-  kind: 'command' | 'output' | 'error'
-  text: string
-}
-
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   sessionId: string
   workspaceRoot?: string
   workspaceRoots?: string[]
-}>()
+  /** Whether the workbench panel is expanded — drives embedded-browser view visibility. */
+  revealed?: boolean
+}>(), {
+  revealed: true,
+})
 
 defineEmits<{
   close: []
@@ -298,14 +267,15 @@ const activeTabId = ref('')
 const filesWorkspaceRoot = ref('')
 const variableWorkspaceRoots = ref<string[]>([])
 const noteWorkspaceRoots = ref<string[]>([])
-const terminalInput = ref('')
-const terminalBusy = ref(false)
-const terminalOutputRef = ref<HTMLElement | null>(null)
-const terminalLines = ref<TerminalLine[]>([])
 const browserInput = ref('localhost:3000')
 const browserUrl = ref('')
-const canRunShellTools = computed(() => platformApi.capabilities.shellTools)
-let terminalLineId = 0
+const terminalsStore = useTerminalsStore()
+// Per-access read so host-stubbing tests keep working.
+const canUseTerminal = computed(() => platformApi.capabilities.terminal)
+const canUseEmbeddedBrowser = computed(() => platformApi.capabilities.embeddedBrowser)
+const availableTabOptions = computed(() =>
+  tabOptions.filter(option => option.type !== 'terminal' || canUseTerminal.value),
+)
 let variableRequestId = 0
 
 const NOTE_ROOT_VARIABLE_NAMES = new Set(['ai_note_dir', 'user_note_dir', 'work_note_dir'])
@@ -322,12 +292,19 @@ function togglePicker() {
   pickerOpen.value = !pickerOpen.value
 }
 
-function addWorkbenchTab(type: WorkbenchTabType): WorkbenchTab {
+function addWorkbenchTab(type: WorkbenchTabType): void {
+  pickerOpen.value = false
+
+  // Terminals are id-per-instance — any number may coexist.
+  if (type === 'terminal') {
+    void addTerminalTab()
+    return
+  }
+
   const existing = openTabs.value.find(tab => tab.type === type)
   if (existing) {
     activeTabId.value = existing.id
-    pickerOpen.value = false
-    return existing
+    return
   }
 
   const option = tabOptions.find(item => item.type === type)
@@ -338,21 +315,84 @@ function addWorkbenchTab(type: WorkbenchTabType): WorkbenchTab {
   }
   openTabs.value = [...openTabs.value, tab]
   activeTabId.value = tab.id
-  pickerOpen.value = false
-  return tab
+}
+
+async function addTerminalTab(): Promise<void> {
+  try {
+    const terminalId = await terminalsStore.createTerminal({
+      cwd: workspaceRoot.value || undefined,
+      sessionId: props.sessionId || undefined,
+    })
+    adoptTerminalTab(terminalId, { activate: true })
+  } catch (error) {
+    console.error('[Workbench] Failed to create terminal:', error)
+  }
+}
+
+function adoptTerminalTab(terminalId: string, options: { activate?: boolean } = {}): void {
+  // The mount-time adoption loop can race a user-created terminal (both see it
+  // in the store) — dedupe on the tab, but never swallow the activation.
+  const existing = openTabs.value.find(tab => tab.terminalId === terminalId)
+  if (existing) {
+    if (options.activate) activeTabId.value = existing.id
+    return
+  }
+  const descriptor = terminalsStore.terminals.find(t => t.id === terminalId)
+  const tab: WorkbenchTab = {
+    id: `terminal-${terminalId}`,
+    type: 'terminal',
+    title: descriptor?.title || 'Terminal',
+    terminalId,
+  }
+  openTabs.value = [...openTabs.value, tab]
+  if (options.activate) activeTabId.value = tab.id
+}
+
+/** An exited terminal was restarted from inside the view: swap the PTY id. */
+function handleTerminalRestarted(tabId: string, newTerminalId: string): void {
+  const tab = openTabs.value.find(item => item.id === tabId)
+  if (!tab) return
+  tab.terminalId = newTerminalId
+}
+
+function tabDisplayTitle(tab: WorkbenchTab): string {
+  if (tab.type === 'terminal' && tab.terminalId) {
+    const descriptor = terminalsStore.terminals.find(t => t.id === tab.terminalId)
+    if (descriptor?.title) return descriptor.title
+  }
+  return tab.title
 }
 
 function closeWorkbenchTab(name: TabPaneName) {
   const index = openTabs.value.findIndex(tab => tab.id === name)
   if (index === -1) return
 
-  const wasActive = openTabs.value[index]?.id === activeTabId.value
+  const closing = openTabs.value[index]
+  if (closing?.type === 'terminal' && closing.terminalId) {
+    void terminalsStore.closeTerminal(closing.terminalId)
+  }
+
+  const wasActive = closing?.id === activeTabId.value
   const nextTabs = openTabs.value.filter(tab => tab.id !== name)
   openTabs.value = nextTabs
 
   if (!wasActive) return
   activeTabId.value = nextTabs[Math.min(index, nextTabs.length - 1)]?.id || ''
 }
+
+// PTYs live in the main process and survive renderer reload; re-adopt any
+// terminal that has no tab yet so scrollback recovery is reachable.
+onMounted(async () => {
+  if (!canUseTerminal.value) return
+  try {
+    await terminalsStore.ensureLoaded()
+  } catch {
+    return
+  }
+  for (const descriptor of terminalsStore.terminals) {
+    adoptTerminalTab(descriptor.id)
+  }
+})
 
 function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'file') return FileText
@@ -533,62 +573,6 @@ watch(() => props.sessionId, () => {
   variableRequestId += 1
   void refreshVariableRoots()
 }, { immediate: true })
-
-function pushTerminalLine(kind: TerminalLine['kind'], text: string) {
-  terminalLineId += 1
-  terminalLines.value.push({
-    id: `terminal-line-${terminalLineId}`,
-    kind,
-    text,
-  })
-  void nextTick(() => {
-    const output = terminalOutputRef.value
-    if (output) output.scrollTop = output.scrollHeight
-  })
-}
-
-function getToolOutput(result: unknown): string {
-  if (typeof result === 'string') return result
-  if (!result || typeof result !== 'object') return ''
-  const record = result as Record<string, unknown>
-  if (typeof record.output === 'string') return record.output
-  const metadata = record.metadata
-  if (metadata && typeof metadata === 'object' && typeof (metadata as Record<string, unknown>).output === 'string') {
-    return (metadata as Record<string, string>).output
-  }
-  return JSON.stringify(result, null, 2)
-}
-
-async function runTerminalCommand() {
-  const command = terminalInput.value.trim()
-  if (!command || terminalBusy.value || !props.sessionId) return
-  if (!canRunShellTools.value) {
-    pushTerminalLine('error', 'Shell tools are not available in this host.')
-    return
-  }
-
-  terminalInput.value = ''
-  terminalBusy.value = true
-  pushTerminalLine('command', command)
-
-  try {
-    const response = await platformApi.executeTool(
-      'bash',
-      { command, timeout: 120000 },
-      `workbench-terminal-${Date.now()}`,
-      props.sessionId,
-    )
-    if (!response.success) {
-      pushTerminalLine('error', response.error || 'Command failed')
-      return
-    }
-    pushTerminalLine('output', getToolOutput(response.result) || '(no output)')
-  } catch (error) {
-    pushTerminalLine('error', error instanceof Error ? error.message : 'Command failed')
-  } finally {
-    terminalBusy.value = false
-  }
-}
 
 function normalizeBrowserUrl(value: string) {
   const trimmed = value.trim()
@@ -979,48 +963,6 @@ defineExpose({
     var(--ui-surface-panel-bg, var(--bg-panel));
 }
 
-.terminal-output {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  padding: 12px;
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.terminal-line {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 8px;
-  margin-bottom: 8px;
-  color: var(--ui-text-primary-fg, var(--text));
-}
-
-.terminal-line.output,
-.terminal-line.error {
-  display: block;
-}
-
-.terminal-line.error {
-  color: var(--ui-status-danger-fg, #b3403a);
-}
-
-.terminal-line pre {
-  min-width: 0;
-  margin: 0;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font: inherit;
-}
-
-.terminal-prompt,
-.terminal-input-prompt {
-  color: var(--workbench-accent);
-}
-
-.terminal-input-row,
 .browser-toolbar {
   flex: 0 0 auto;
   min-width: 0;
@@ -1032,7 +974,6 @@ defineExpose({
   background: var(--ui-surface-panel-bg, var(--bg-panel));
 }
 
-.terminal-input-row input,
 .browser-toolbar input {
   flex: 1 1 auto;
   min-width: 0;
@@ -1045,12 +986,10 @@ defineExpose({
   outline: none;
 }
 
-.terminal-input-row input:focus,
 .browser-toolbar input:focus {
   border-color: var(--workbench-accent);
 }
 
-.terminal-run,
 .browser-go {
   width: 28px;
   height: 28px;
@@ -1061,7 +1000,6 @@ defineExpose({
   color: var(--ui-text-muted-fg, var(--muted));
 }
 
-.terminal-run:hover,
 .browser-go:hover {
   background: var(--ui-state-hover-bg, var(--hover));
   color: var(--ui-text-primary-fg, var(--text));

@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import { initializeIPCHub } from './services/ipc-hub'
+import { installGlobalCrashCapture } from './services/crash-log'
 import { installGlobalFileDropGuard } from './composables/useFileDrop'
 import { buildFontLoadSpecs, DEFAULT_FONT_EN, DEFAULT_FONT_ZH } from '@shared/fonts'
 import './styles/main.css'
@@ -84,6 +85,9 @@ await Promise.race([
 
 const app = createApp(App)
 const pinia = createPinia()
+
+// Crash log first: capture must be live before any store/IPC init can throw.
+installGlobalCrashCapture(app)
 
 app.use(pinia)
 

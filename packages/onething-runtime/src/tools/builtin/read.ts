@@ -21,8 +21,6 @@ import {
 import { Tool } from "../tool.js";
 import { withFileReadAccess } from "../file-mutation-queue.js";
 import { classifySensitiveFile } from "../sensitive-files.js";
-import { hashTextFileSnapshot } from "../file-snapshot.js";
-import type { FileReadTracker } from "../file-read-tracker.js";
 import { formatSize, utf8Bytes } from "../text-truncation.js";
 import {
 	checkCoreFileAccess,
@@ -46,7 +44,6 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
 export interface ReadToolAdapters {
 	getDefaultWorkingDirectory?(): string | undefined;
 	getDefaultReadRoots?(): string[];
-	fileReadTracker?: FileReadTracker;
 }
 
 export interface ReadMetadata {
@@ -339,8 +336,7 @@ export function createReadTool(
 			});
 
 			// Shared lock: wait out any in-flight edit/write on this path so the
-			// read observes post-mutation bytes (and never re-registers a stale
-			// hash with the read-before-edit tracker below).
+			// read observes post-mutation bytes.
 			const stats = await withFileReadAccess(resolvedPath, () =>
 				statPath(resolvedPath),
 			);
@@ -460,13 +456,6 @@ export function createReadTool(
 			}
 
 			const content = buffer.toString("utf-8");
-
-			// Record that this file was explicitly read (for read-before-edit guard)
-			adapters.fileReadTracker?.record(
-				ctx.sessionId,
-				resolvedPath,
-				hashTextFileSnapshot(true, content),
-			);
 
 			const allLines = content.split("\n");
 			const totalLines = allLines.length;

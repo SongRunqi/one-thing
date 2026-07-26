@@ -11,6 +11,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useSessionsStore } from '../stores/sessions'
 import type { KeyboardShortcut, ShortcutSettings } from '@/types'
 import { isEditableTarget } from '@/utils/editable-target'
+import { isEventInsideTerminal } from '@/components/terminal/terminal-dom'
 
 /**
  * Check if a keyboard event matches a shortcut configuration
@@ -90,6 +91,11 @@ export function useShortcuts(handlers: ShortcutHandlers = {}) {
   const sessionsStore = useSessionsStore()
 
   function handleGlobalKeydown(event: KeyboardEvent) {
+    // Inside a terminal EVERY key belongs to the shell (Cmd+K clears, Cmd+1..9
+    // are apps in the user's muscle memory) — skip all DOM-level shortcuts.
+    // P2 will carve out an explicit pass-through whitelist (toggleTerminal…).
+    if (isEventInsideTerminal(event.target)) return
+
     // Skip if we're in an input field (except for specific shortcuts)
     const isInInput = isEditableTarget(event.target)
 

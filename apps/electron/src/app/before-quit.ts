@@ -16,6 +16,8 @@ export interface ElectronBeforeQuitCleanupOptions {
   shutdownMCP: CleanupFn
   shutdownACP: CleanupFn
   killTrackedDetachedChildren: CleanupFn
+  killAllTerminals: CleanupFn
+  killAllBrowserTabs: CleanupFn
   shutdownStreamEngine: CleanupFn
   shutdownPermission: CleanupFn
   shutdownSessionLayer: CleanupFn
@@ -52,6 +54,8 @@ export async function runElectronBeforeQuitCleanup(
   await options.shutdownACP()
 
   options.killTrackedDetachedChildren()
+  options.killAllTerminals()
+  options.killAllBrowserTabs()
 
   await options.shutdownStreamEngine()
   options.shutdownPermission()

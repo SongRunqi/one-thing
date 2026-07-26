@@ -15,7 +15,6 @@ export * from "./text-truncation.js";
 export * from "./file-mutation-queue.js";
 export * from "./file-snapshot.js";
 export * from "./file-mutation-audit.js";
-export * from "./file-read-tracker.js";
 export * from "./sandbox.js";
 export * from "./sandbox-runtime.js";
 export * from "./edit-engine.js";

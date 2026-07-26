@@ -6,6 +6,8 @@ const electronCapabilities: PlatformCapabilities = {
   workspaceFileSystem: true,
   nativeWindowControls: true,
   shellTools: true,
+  terminal: true,
+  embeddedBrowser: true,
   clipboardWrite: true,
   desktopWindows: true,
   globalMenuEvents: true,

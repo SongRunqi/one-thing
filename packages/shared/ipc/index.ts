@@ -761,3 +761,34 @@ export type {
 	PracticeSummaryRequest,
 	PracticeSummaryResult,
 } from "./practice.js";
+
+export type {
+	TerminalAckPayload,
+	TerminalAttachRequest,
+	TerminalAttachResponse,
+	TerminalCreateRequest,
+	TerminalCreateResponse,
+	TerminalDataEvent,
+	TerminalExitEvent,
+	TerminalInfo,
+	TerminalKillRequest,
+	TerminalListResponse,
+	TerminalOutputChunk,
+	TerminalResizeRequest,
+	TerminalSimpleResponse,
+	TerminalWriteRequest,
+} from "./terminal.js";
+
+export type {
+	BrowserCreateTabRequest,
+	BrowserCreateTabResponse,
+	BrowserHydrateResponse,
+	BrowserNavigateRequest,
+	BrowserSetBoundsRequest,
+	BrowserSetVisibleRequest,
+	BrowserSimpleResponse,
+	BrowserTabIdRequest,
+	BrowserTabInfo,
+	BrowserTabsChangedEvent,
+	BrowserViewBounds,
+} from "./browser.js";

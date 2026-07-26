@@ -427,4 +427,33 @@ export const IPC_CHANNELS = {
 	// Token usage / billing
 	GET_USAGE_SUMMARY: "usage:get-summary",
 	GET_SESSION_USAGE: "usage:get-session",
+
+	// Terminal (real PTY, user-driven; distinct from the ACP protocol "terminal")
+	TERMINAL_CREATE: "terminal:create",
+	TERMINAL_LIST: "terminal:list",
+	TERMINAL_WRITE: "terminal:write",
+	TERMINAL_RESIZE: "terminal:resize",
+	TERMINAL_KILL: "terminal:kill",
+	TERMINAL_ATTACH: "terminal:attach",
+	// One-way renderer→main flow-control ack (ipcRenderer.send, not invoke)
+	TERMINAL_ACK: "terminal:ack",
+	// Push main→renderer
+	TERMINAL_DATA: "terminal:data",
+	TERMINAL_EXIT: "terminal:exit",
+
+	// Browser (embedded WebContentsView; distinct from the WorkbenchTab
+	// 'browser' <iframe> which stays only as the apps/web fallback)
+	BROWSER_HYDRATE: "browser:hydrate",
+	BROWSER_CREATE_TAB: "browser:create-tab",
+	BROWSER_CLOSE_TAB: "browser:close-tab",
+	BROWSER_SELECT_TAB: "browser:select-tab",
+	BROWSER_NAVIGATE: "browser:navigate",
+	BROWSER_GO_BACK: "browser:go-back",
+	BROWSER_GO_FORWARD: "browser:go-forward",
+	BROWSER_RELOAD: "browser:reload",
+	BROWSER_STOP: "browser:stop",
+	BROWSER_SET_BOUNDS: "browser:set-bounds",
+	BROWSER_SET_VISIBLE: "browser:set-visible",
+	// Push main→renderer: single coalesced tab-state batch
+	BROWSER_TABS_CHANGED: "browser:tabs-changed",
 } as const;

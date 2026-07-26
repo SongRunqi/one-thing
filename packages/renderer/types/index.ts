@@ -633,6 +633,49 @@ export interface GalleryImage {
 	thumbnail?: string; // Optional thumbnail URL
 }
 
+// Terminal (real PTY) — renderer mirror of packages/shared/ipc/terminal.ts
+export interface TerminalInfo {
+	id: string;
+	title: string;
+	cwd: string;
+	shell: string;
+	cols: number;
+	rows: number;
+	createdAt: number;
+	exited?: { code: number | null };
+}
+
+export interface TerminalAttachResult {
+	success: boolean;
+	info?: TerminalInfo;
+	chunks?: Array<{ seq: number; data: string }>;
+	lastSeq?: number;
+	/** Ring buffer wrapped: write a full reset (\x1bc) before replaying. */
+	truncated?: boolean;
+	/** Flow-control generation; every ack must carry it. */
+	generation?: number;
+	error?: string;
+}
+
+// Browser (embedded WebContentsView) — renderer mirror of packages/shared/ipc/browser.ts
+export interface BrowserTabInfo {
+	id: string;
+	url: string;
+	title: string;
+	favicon?: string;
+	loading: boolean;
+	canGoBack: boolean;
+	canGoForward: boolean;
+	crashed?: boolean;
+}
+
+export interface BrowserTabsChangedEvent {
+	patch: Array<Partial<BrowserTabInfo> & { id: string }>;
+	removed?: string[];
+	activeTabId?: string | null;
+	order?: string[];
+}
+
 export interface ElectronAPI {
 	/**
 	 * Resolve the on-disk path of a dropped/picked File. Returns "" when the
@@ -1631,6 +1674,68 @@ export interface ElectronAPI {
 		sessionId: string,
 		command: any,
 	) => Promise<{ success: boolean; error?: string; result?: any }>;
+
+	// Terminal (real PTY; wire contracts in packages/shared/ipc/terminal.ts)
+	createTerminal: (request: {
+		cwd?: string;
+		shell?: string;
+		cols?: number;
+		rows?: number;
+		sessionId?: string;
+	}) => Promise<{ success: boolean; terminal?: TerminalInfo; error?: string }>;
+	listTerminals: () => Promise<{
+		success: boolean;
+		terminals: TerminalInfo[];
+		error?: string;
+	}>;
+	writeTerminal: (
+		terminalId: string,
+		data: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	resizeTerminal: (
+		terminalId: string,
+		cols: number,
+		rows: number,
+	) => Promise<{ success: boolean; error?: string }>;
+	killTerminal: (
+		terminalId: string,
+	) => Promise<{ success: boolean; error?: string }>;
+	attachTerminal: (terminalId: string) => Promise<TerminalAttachResult>;
+	/** One-way flow-control ack (no response). bytes = JS string length units. */
+	ackTerminal: (terminalId: string, bytes: number, generation: number) => void;
+	onTerminalData: (
+		callback: (data: { terminalId: string; seq: number; data: string }) => void,
+	) => () => void;
+	onTerminalExit: (
+		callback: (data: { terminalId: string; exitCode: number | null }) => void,
+	) => () => void;
+
+	// Browser (embedded WebContentsView; wire contracts in packages/shared/ipc/browser.ts)
+	hydrateBrowser: () => Promise<{
+		success: boolean;
+		tabs: BrowserTabInfo[];
+		activeTabId: string | null;
+		error?: string;
+	}>;
+	createBrowserTab: (request?: {
+		url?: string;
+		background?: boolean;
+	}) => Promise<{ success: boolean; tab?: BrowserTabInfo; error?: string }>;
+	closeBrowserTab: (tabId: string) => Promise<{ success: boolean; error?: string }>;
+	selectBrowserTab: (tabId: string) => Promise<{ success: boolean; error?: string }>;
+	navigateBrowser: (tabId: string, url: string) => Promise<{ success: boolean; error?: string }>;
+	browserGoBack: (tabId: string) => Promise<{ success: boolean; error?: string }>;
+	browserGoForward: (tabId: string) => Promise<{ success: boolean; error?: string }>;
+	reloadBrowser: (tabId: string) => Promise<{ success: boolean; error?: string }>;
+	stopBrowser: (tabId: string) => Promise<{ success: boolean; error?: string }>;
+	setBrowserBounds: (bounds: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	}) => Promise<{ success: boolean; error?: string }>;
+	setBrowserVisible: (visible: boolean) => Promise<{ success: boolean; error?: string }>;
+	onBrowserTabsChanged: (callback: (event: BrowserTabsChangedEvent) => void) => () => void;
 
 	// Skill execution
 	executeSkill: (

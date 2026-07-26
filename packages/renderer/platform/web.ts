@@ -19,6 +19,8 @@ const webCapabilities: PlatformCapabilities = {
 	workspaceFileSystem: false,
 	nativeWindowControls: false,
 	shellTools: false,
+	terminal: false,
+	embeddedBrowser: false,
 	clipboardWrite: browserClipboardWriteCapability(),
 	desktopWindows: false,
 	globalMenuEvents: false,
@@ -129,6 +131,10 @@ function normalizeServerCapabilities(value: unknown): PlatformCapabilities {
 		workspaceFileSystem: booleanProperty(value, "workspaceFileSystem", false),
 		nativeWindowControls: booleanProperty(value, "nativeWindowControls", false),
 		shellTools: booleanProperty(value, "shellTools", false),
+		// P4 (web terminal) is frozen: stays false until the server advertises it.
+		terminal: booleanProperty(value, "terminal", false),
+		// Embedded WebContentsView browser is Electron-only; web falls back to iframe.
+		embeddedBrowser: booleanProperty(value, "embeddedBrowser", false),
 		clipboardWrite: browserClipboardWriteCapability(),
 		desktopWindows: booleanProperty(value, "desktopWindows", false),
 		globalMenuEvents: booleanProperty(value, "globalMenuEvents", false),
@@ -425,6 +431,29 @@ function isSubscriptionMethod(method: string): boolean {
 }
 
 export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
+	// Terminal (P4 web parity is frozen; capability gate hides the UI on web)
+	"createTerminal",
+	"listTerminals",
+	"writeTerminal",
+	"resizeTerminal",
+	"killTerminal",
+	"attachTerminal",
+	"ackTerminal",
+	"onTerminalData",
+	"onTerminalExit",
+	// Browser (embedded WebContentsView is Electron-only; web uses iframe fallback)
+	"hydrateBrowser",
+	"createBrowserTab",
+	"closeBrowserTab",
+	"selectBrowserTab",
+	"navigateBrowser",
+	"browserGoBack",
+	"browserGoForward",
+	"reloadBrowser",
+	"stopBrowser",
+	"setBrowserBounds",
+	"setBrowserVisible",
+	"onBrowserTabsChanged",
 	"setWindowButtonVisibility",
 	"toggleSearchWindow",
 	"closeSearchWindow",

@@ -7,8 +7,7 @@ import * as path from 'path'
  * Readers run concurrently with each other but always wait for every writer
  * already queued at the time they arrive, and any writer arriving later waits
  * for readers already in flight. This keeps a read dispatched after an edit of
- * the same file from observing pre-edit bytes, and keeps the read-before-edit
- * hash guard from being re-registered with stale content.
+ * the same file from observing pre-edit bytes.
  *
  * The done-promises below are always resolved (never rejected) in a finally
  * block, so waiters can await them directly without rejection handling.

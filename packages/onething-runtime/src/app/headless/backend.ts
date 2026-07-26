@@ -48,6 +48,7 @@ import { Permission } from '../permission/index.js'
 import { MCPManager, registerMCPTools } from '../mcp/index.js'
 import { ACPManager } from '../acp/index.js'
 import { killTrackedDetachedChildren } from '../tools/core/bash-executor.js'
+import { killAllTerminals } from '../terminal/service.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 
 type EmitStreamEvent = (event: DaemonStreamEvent) => void
@@ -110,6 +111,7 @@ export class HeadlessBackend {
     await ACPManager.shutdown()
     await MCPManager.shutdown()
     killTrackedDetachedChildren()
+    killAllTerminals() // always a no-op here — the daemon never creates terminals
     shutdownStreamEngine()
     Permission.shutdown()
     shutdownSessionLayer()

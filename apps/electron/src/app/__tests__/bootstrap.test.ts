@@ -107,6 +107,8 @@ describe('electron app bootstrap', () => {
         shutdownMCP: vi.fn(),
         shutdownACP: vi.fn(),
         killTrackedDetachedChildren: vi.fn(),
+        killAllTerminals: vi.fn(),
+        killAllBrowserTabs: vi.fn(),
         shutdownStreamEngine: vi.fn(),
         shutdownPermission: vi.fn(),
         shutdownSessionLayer: vi.fn(),

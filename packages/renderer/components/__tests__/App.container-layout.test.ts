@@ -236,7 +236,12 @@ describe('App container layout', () => {
     expect(workbench).toContain('defineExpose({')
     expect(workbench).toMatch(/defineExpose\(\{[^}]*\bopenFile,/)
     expect(workbench).toMatch(/defineExpose\(\{[^}]*\bopenGoalReview,/)
-    expect(workbench).toContain("platformApi.executeTool(\n      'bash'")
+    // Real PTY terminal: the panel renders TerminalView per terminal instance;
+    // the old one-shot executeTool('bash') fake terminal must stay dead.
+    expect(workbench).toContain("import TerminalView from '@/components/terminal/TerminalView.vue'")
+    expect(workbench).toContain(':terminal-id="tab.terminalId"')
+    expect(workbench).toContain('terminalsStore.createTerminal')
+    expect(workbench).not.toContain("platformApi.executeTool(")
     expect(workbench).toContain('<iframe')
     expect(workbench).not.toContain('Session Lens')
     expect(workbench).not.toContain('lastModel')

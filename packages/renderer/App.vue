@@ -193,6 +193,7 @@
                   :session-id="sessionsStore.currentSessionId"
                   :workspace-root="currentWorkspaceRoot"
                   :workspace-roots="currentWorkspaceRoots"
+                  :revealed="workbenchRevealed"
                   @close="inspectorOpen = false"
                 />
               </div>
@@ -242,6 +243,7 @@ import VoiceOverlay from '@/components/voice/VoiceOverlay.vue'
 import VoiceCallPanel from '@/components/voice/VoiceCallPanel.vue'
 import EvalsWorkbench from '@/components/evals/EvalsWorkbench.vue'
 import { useEvalsWorkbenchStore } from '@/stores/evalsWorkbench'
+import { useOverlayPresenceStore } from '@/stores/overlayPresence'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { platformApi } from '@/platform'
@@ -275,6 +277,10 @@ const voiceStore = useVoiceStore()
 
 const appReady = ref(false)
 const evalsWorkbenchStore = useEvalsWorkbenchStore()
+const overlayPresenceStore = useOverlayPresenceStore()
+// Full-screen modal overlays float above the embedded browser's native view;
+// register them so BrowserPanel hides the view while they're open (§8.2).
+watch(() => evalsWorkbenchStore.open, open => overlayPresenceStore.setOverlay('evals', open))
 const chatContainerRef = ref<InstanceType<typeof ChatContainer> | null>(null)
 const appContentRef = ref<HTMLElement | null>(null)
 const rightWorkbenchRef = ref<InstanceType<typeof RightWorkbenchPanel> | null>(null)

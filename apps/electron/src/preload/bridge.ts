@@ -119,6 +119,71 @@ const electronAPI = {
 		// 给main线程发送消息
 		ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, { sessionId, command }),
 
+	// ── Terminal (real PTY) ──────
+	createTerminal: (request: {
+		cwd?: string;
+		shell?: string;
+		cols?: number;
+		rows?: number;
+		sessionId?: string;
+	}) => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_CREATE, request ?? {}),
+	listTerminals: () => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_LIST),
+	writeTerminal: (terminalId: string, data: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_WRITE, { terminalId, data }),
+	resizeTerminal: (terminalId: string, cols: number, rows: number) =>
+		ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_RESIZE, { terminalId, cols, rows }),
+	killTerminal: (terminalId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_KILL, { terminalId }),
+	attachTerminal: (terminalId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_ATTACH, { terminalId }),
+	// One-way send, not invoke: pure notification at flush cadence — a lost
+	// ack only delays resume, and the attach generation resets the ledger.
+	ackTerminal: (terminalId: string, bytes: number, generation: number) => {
+		ipcRenderer.send(IPC_CHANNELS.TERMINAL_ACK, { terminalId, bytes, generation });
+	},
+	onTerminalData: (
+		callback: (data: { terminalId: string; seq: number; data: string }) => void,
+	) => {
+		const listener = (_event: any, data: any) => callback(data);
+		ipcRenderer.on(IPC_CHANNELS.TERMINAL_DATA, listener);
+		return () => ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_DATA, listener);
+	},
+	onTerminalExit: (
+		callback: (data: { terminalId: string; exitCode: number | null }) => void,
+	) => {
+		const listener = (_event: any, data: any) => callback(data);
+		ipcRenderer.on(IPC_CHANNELS.TERMINAL_EXIT, listener);
+		return () => ipcRenderer.removeListener(IPC_CHANNELS.TERMINAL_EXIT, listener);
+	},
+
+	// ── Browser (embedded WebContentsView) ──────
+	hydrateBrowser: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_HYDRATE),
+	createBrowserTab: (request?: { url?: string; background?: boolean }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_CREATE_TAB, request ?? {}),
+	closeBrowserTab: (tabId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_CLOSE_TAB, { tabId }),
+	selectBrowserTab: (tabId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SELECT_TAB, { tabId }),
+	navigateBrowser: (tabId: string, url: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_NAVIGATE, { tabId, url }),
+	browserGoBack: (tabId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_GO_BACK, { tabId }),
+	browserGoForward: (tabId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_GO_FORWARD, { tabId }),
+	reloadBrowser: (tabId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_RELOAD, { tabId }),
+	stopBrowser: (tabId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_STOP, { tabId }),
+	setBrowserBounds: (bounds: { x: number; y: number; width: number; height: number }) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_BOUNDS, { bounds }),
+	setBrowserVisible: (visible: boolean) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_VISIBLE, { visible }),
+	onBrowserTabsChanged: (callback: (event: any) => void) => {
+		const listener = (_event: any, data: any) => callback(data);
+		ipcRenderer.on(IPC_CHANNELS.BROWSER_TABS_CHANGED, listener);
+		return () => ipcRenderer.removeListener(IPC_CHANNELS.BROWSER_TABS_CHANGED, listener);
+	},
+
 	// Permission grant management
 	listPermissionGrants: (options: {
 		sessionId?: string;

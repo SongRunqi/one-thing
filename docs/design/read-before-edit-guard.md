@@ -1,5 +1,7 @@
 # Read-Before-Edit Guard
 
+> **已废弃（2026-07-26）**：该机制已整体移除——`FileReadTracker` 及 `edit`/`write` 执行前的 read 检查均已删除，`edit`/`write` 不再要求先 `read`。本文仅作历史设计记录保留。
+
 ## Problem
 
 AI 在调用 `edit`/`write` 工具修改文件时，经常不先 `read` 文件，而是依赖对话记忆中的文件内容来构造 `edit` 的 `oldText`。这导致：

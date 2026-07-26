@@ -1,0 +1,293 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { TerminalDataEvent, TerminalExitEvent } from '@shared/ipc.js'
+import type { PtyBackend, PtyExitEvent, PtyHandle, PtySpawnRequest } from '../pty-backend.js'
+import { TerminalService, type TerminalBroadcaster } from '../service.js'
+
+class FakePty implements PtyHandle {
+  pid = 4242
+  written: string[] = []
+  resizes: Array<{ cols: number; rows: number }> = []
+  signals: string[] = []
+  pauseCount = 0
+  resumeCount = 0
+  private dataCallback: ((data: string) => void) | null = null
+  private exitCallback: ((event: PtyExitEvent) => void) | null = null
+
+  write(data: string): void {
+    this.written.push(data)
+  }
+  resize(cols: number, rows: number): void {
+    this.resizes.push({ cols, rows })
+  }
+  pause(): void {
+    this.pauseCount += 1
+  }
+  resume(): void {
+    this.resumeCount += 1
+  }
+  kill(signal: 'SIGHUP' | 'SIGTERM' | 'SIGKILL'): void {
+    this.signals.push(signal)
+  }
+  onData(callback: (data: string) => void): void {
+    this.dataCallback = callback
+  }
+  onExit(callback: (event: PtyExitEvent) => void): void {
+    this.exitCallback = callback
+  }
+
+  emitData(data: string): void {
+    this.dataCallback?.(data)
+  }
+  emitExit(exitCode: number): void {
+    this.exitCallback?.({ exitCode })
+  }
+}
+
+class FakeBackend implements PtyBackend {
+  spawned: Array<{ request: PtySpawnRequest; pty: FakePty }> = []
+  spawn(request: PtySpawnRequest): PtyHandle {
+    const pty = new FakePty()
+    this.spawned.push({ request, pty })
+    return pty
+  }
+}
+
+class RecordingBroadcaster implements TerminalBroadcaster {
+  data: TerminalDataEvent[] = []
+  exits: TerminalExitEvent[] = []
+  sendData(event: TerminalDataEvent): void {
+    this.data.push(event)
+  }
+  sendExit(event: TerminalExitEvent): void {
+    this.exits.push(event)
+  }
+}
+
+const FLUSH = 16
+
+function createHarness(options?: ConstructorParameters<typeof TerminalService>[2]) {
+  const backend = new FakeBackend()
+  const broadcaster = new RecordingBroadcaster()
+  const service = new TerminalService(backend, () => broadcaster, options)
+  return { backend, broadcaster, service }
+}
+
+describe('TerminalService', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('spawns with defaults and lists the terminal', () => {
+    const { backend, service } = createHarness()
+    const info = service.create({})
+    expect(backend.spawned).toHaveLength(1)
+    expect(backend.spawned[0].request.cols).toBe(80)
+    expect(backend.spawned[0].request.rows).toBe(24)
+    expect(backend.spawned[0].request.args).toEqual(['-l'])
+    expect(backend.spawned[0].request.env.TERM).toBe('xterm-256color')
+    expect(service.list().map(t => t.id)).toEqual([info.id])
+  })
+
+  it('coalesces bursts into one seq-stamped chunk per flush tick', () => {
+    const { backend, broadcaster, service } = createHarness()
+    const info = service.create({})
+    service.attach(info.id)
+    const pty = backend.spawned[0].pty
+    pty.emitData('a')
+    pty.emitData('b')
+    pty.emitData('c')
+    expect(broadcaster.data).toHaveLength(0)
+    vi.advanceTimersByTime(FLUSH)
+    expect(broadcaster.data).toEqual([{ terminalId: info.id, seq: 1, data: 'abc' }])
+    pty.emitData('d')
+    vi.advanceTimersByTime(FLUSH)
+    expect(broadcaster.data[1]).toEqual({ terminalId: info.id, seq: 2, data: 'd' })
+  })
+
+  it('does not broadcast while detached; attach replays the ring snapshot', () => {
+    const { backend, broadcaster, service } = createHarness()
+    const info = service.create({})
+    const pty = backend.spawned[0].pty
+    pty.emitData('early output')
+    vi.advanceTimersByTime(FLUSH)
+    expect(broadcaster.data).toHaveLength(0)
+
+    const response = service.attach(info.id)
+    expect(response.success).toBe(true)
+    expect(response.chunks).toEqual([{ seq: 1, data: 'early output' }])
+    expect(response.lastSeq).toBe(1)
+    expect(response.truncated).toBe(false)
+    expect(response.generation).toBe(1)
+    expect(response.info?.cols).toBe(80)
+  })
+
+  it('attach flushes pending output first so the snapshot is complete', () => {
+    const { backend, service } = createHarness()
+    const info = service.create({})
+    const pty = backend.spawned[0].pty
+    pty.emitData('pending')
+    const response = service.attach(info.id)
+    expect(response.chunks).toEqual([{ seq: 1, data: 'pending' }])
+    expect(response.lastSeq).toBe(1)
+  })
+
+  it('evicts old chunks beyond the ring cap and marks truncated', () => {
+    const { backend, service } = createHarness({ ringMaxUnits: 10 })
+    const info = service.create({})
+    const pty = backend.spawned[0].pty
+    pty.emitData('aaaaaa')
+    vi.advanceTimersByTime(FLUSH)
+    pty.emitData('bbbbbb')
+    vi.advanceTimersByTime(FLUSH)
+    const response = service.attach(info.id)
+    expect(response.chunks).toEqual([{ seq: 2, data: 'bbbbbb' }])
+    expect(response.truncated).toBe(true)
+  })
+
+  it('keeps only the tail of a single oversized burst', () => {
+    const { backend, service } = createHarness({ ringMaxUnits: 4 })
+    const info = service.create({})
+    const pty = backend.spawned[0].pty
+    pty.emitData('0123456789')
+    vi.advanceTimersByTime(FLUSH)
+    const response = service.attach(info.id)
+    expect(response.chunks).toEqual([{ seq: 1, data: '6789' }])
+    expect(response.truncated).toBe(true)
+  })
+
+  it('pauses at the high-water mark and resumes when acks drain below low water', () => {
+    const { backend, service } = createHarness({ highWaterUnits: 10, lowWaterUnits: 4 })
+    const info = service.create({})
+    const generation = service.attach(info.id).generation!
+    const pty = backend.spawned[0].pty
+    pty.emitData('0123456789ab')
+    vi.advanceTimersByTime(FLUSH)
+    expect(pty.pauseCount).toBe(1)
+
+    service.ack(info.id, 4, generation)
+    expect(pty.resumeCount).toBe(0)
+    service.ack(info.id, 6, generation)
+    expect(pty.resumeCount).toBe(1)
+  })
+
+  it('drops stale-generation acks', () => {
+    const { backend, service } = createHarness({ highWaterUnits: 10, lowWaterUnits: 9 })
+    const info = service.create({})
+    const first = service.attach(info.id).generation!
+    const pty = backend.spawned[0].pty
+    pty.emitData('0123456789ab')
+    vi.advanceTimersByTime(FLUSH)
+    expect(pty.pauseCount).toBe(1)
+
+    service.attach(info.id) // new generation zeroes the ledger and resumes
+    expect(pty.resumeCount).toBe(1)
+    pty.emitData('0123456789ab')
+    vi.advanceTimersByTime(FLUSH)
+    expect(pty.pauseCount).toBe(2)
+    service.ack(info.id, 100, first) // stale — must be ignored
+    expect(pty.resumeCount).toBe(1)
+  })
+
+  it('never pauses while detached — the ring absorbs output instead', () => {
+    const { backend, service } = createHarness({ highWaterUnits: 4 })
+    service.create({})
+    const pty = backend.spawned[0].pty
+    pty.emitData('a very long burst well past the high-water mark')
+    vi.advanceTimersByTime(FLUSH)
+    expect(pty.pauseCount).toBe(0)
+  })
+
+  it('markAllDetached resumes a paused pty and stops broadcasting', () => {
+    const { backend, broadcaster, service } = createHarness({ highWaterUnits: 4 })
+    const info = service.create({})
+    service.attach(info.id)
+    const pty = backend.spawned[0].pty
+    pty.emitData('123456')
+    vi.advanceTimersByTime(FLUSH)
+    expect(pty.pauseCount).toBe(1)
+
+    service.markAllDetached()
+    expect(pty.resumeCount).toBe(1)
+    const before = broadcaster.data.length
+    pty.emitData('more')
+    vi.advanceTimersByTime(FLUSH)
+    expect(broadcaster.data.length).toBe(before)
+  })
+
+  it('auto-detaches when acks stall past the deadline', () => {
+    const { backend, service } = createHarness({ highWaterUnits: 4, ackStallMs: 5000 })
+    const info = service.create({})
+    service.attach(info.id)
+    const pty = backend.spawned[0].pty
+    pty.emitData('123456')
+    vi.advanceTimersByTime(FLUSH)
+    expect(pty.pauseCount).toBe(1)
+    vi.advanceTimersByTime(5000)
+    expect(pty.resumeCount).toBe(1)
+  })
+
+  it('flushes tail output before broadcasting exit', () => {
+    const { backend, broadcaster, service } = createHarness()
+    const info = service.create({})
+    service.attach(info.id)
+    const pty = backend.spawned[0].pty
+    pty.emitData('final words')
+    pty.emitExit(0)
+    expect(broadcaster.data).toHaveLength(1)
+    expect(broadcaster.data[0].data).toBe('final words')
+    expect(broadcaster.exits).toEqual([{ terminalId: info.id, exitCode: 0 }])
+    expect(service.list()[0].exited).toEqual({ code: 0 })
+  })
+
+  it('kill signals the process group gracefully then forcefully', () => {
+    const { backend, service } = createHarness({ killGraceMs: 1000 })
+    const info = service.create({})
+    const pty = backend.spawned[0].pty
+    service.kill(info.id)
+    expect(pty.signals).toEqual(['SIGHUP'])
+    vi.advanceTimersByTime(1000)
+    expect(pty.signals).toEqual(['SIGHUP', 'SIGKILL'])
+    expect(service.list()).toHaveLength(0)
+  })
+
+  it('killAll disposes every terminal and write/resize become no-ops', () => {
+    const { backend, service } = createHarness()
+    const a = service.create({})
+    service.create({})
+    service.killAll()
+    expect(service.list()).toHaveLength(0)
+    expect(backend.spawned[0].pty.signals).toContain('SIGHUP')
+    expect(backend.spawned[1].pty.signals).toContain('SIGHUP')
+    service.write(a.id, 'x')
+    expect(backend.spawned[0].pty.written).toHaveLength(0)
+  })
+
+  it('write and resize reach the pty and update info', () => {
+    const { backend, service } = createHarness()
+    const info = service.create({})
+    service.write(info.id, 'ls\r')
+    service.resize(info.id, 120, 40)
+    const pty = backend.spawned[0].pty
+    expect(pty.written).toEqual(['ls\r'])
+    expect(pty.resizes).toEqual([{ cols: 120, rows: 40 }])
+    expect(service.list()[0].cols).toBe(120)
+    service.resize(info.id, 0, -3) // rejected
+    expect(pty.resizes).toHaveLength(1)
+  })
+
+  it('CJK accounting stays consistent in UTF-16 code units', () => {
+    const { backend, service } = createHarness({ highWaterUnits: 6, lowWaterUnits: 2 })
+    const info = service.create({})
+    const generation = service.attach(info.id).generation!
+    const pty = backend.spawned[0].pty
+    const cjk = '中文输出测试' // 6 code units
+    pty.emitData(cjk)
+    vi.advanceTimersByTime(FLUSH)
+    expect(pty.pauseCount).toBe(1)
+    service.ack(info.id, cjk.length, generation)
+    expect(pty.resumeCount).toBe(1)
+  })
+})

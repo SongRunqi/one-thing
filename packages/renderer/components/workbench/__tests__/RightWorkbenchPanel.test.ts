@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
+import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RightWorkbenchPanel from '../RightWorkbenchPanel.vue'
 
@@ -11,12 +12,24 @@ const mocks = vi.hoisted(() => ({
   },
   electronAPI: {
     listVariables: vi.fn(),
-    executeTool: vi.fn(),
+    listTerminals: vi.fn(),
+    createTerminal: vi.fn(),
+    killTerminal: vi.fn(),
   },
 }))
 
 vi.mock('@/composables/useEditorWorkspace', () => ({
   useEditorWorkspace: () => mocks.editorWorkspace,
+}))
+
+// The real TerminalView opens an xterm instance — meaningless (and crash-prone)
+// under happy-dom. The panel contract is just "render a view for terminalId".
+vi.mock('@/components/terminal/TerminalView.vue', () => ({
+  default: {
+    name: 'TerminalView',
+    props: ['terminalId'],
+    template: '<div class="mock-terminal-view">{{ terminalId }}</div>',
+  },
 }))
 
 vi.mock('@/components/editor/EditorWorkbench.vue', () => ({
@@ -42,7 +55,22 @@ async function settle() {
 describe('RightWorkbenchPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setActivePinia(createPinia())
     mocks.electronAPI.listVariables.mockResolvedValue({ success: true, variables: [] })
+    mocks.electronAPI.listTerminals.mockResolvedValue({ success: true, terminals: [] })
+    mocks.electronAPI.createTerminal.mockResolvedValue({
+      success: true,
+      terminal: {
+        id: 'pty-1',
+        title: 'zsh',
+        cwd: '/repo',
+        shell: '/bin/zsh',
+        cols: 80,
+        rows: 24,
+        createdAt: 0,
+      },
+    })
+    mocks.electronAPI.killTerminal.mockResolvedValue({ success: true })
     Object.defineProperty(window, 'electronAPI', {
       value: mocks.electronAPI,
       configurable: true,
@@ -151,5 +179,47 @@ describe('RightWorkbenchPanel', () => {
     await settle()
 
     expect(wrapper.find('.workbench-tab-label').attributes('style')).toContain('--workbench-tool-icon-color: var(--ui-category-6-icon);')
+  })
+
+  it('creates a PTY per terminal tab and renders its view', async () => {
+    const wrapper = mount(RightWorkbenchPanel, {
+      props: {
+        sessionId: 'session-1',
+        workspaceRoot: '/repo',
+      },
+    })
+
+    await wrapper.findAll('.empty-action').find(button => button.text() === 'Terminal')!.trigger('click')
+    await settle()
+    await settle()
+
+    expect(mocks.electronAPI.createTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({ cwd: '/repo', sessionId: 'session-1' }),
+    )
+    expect(wrapper.find('.mock-terminal-view').text()).toContain('pty-1')
+  })
+
+  it('re-adopts surviving PTYs as tabs on mount (renderer reload recovery)', async () => {
+    mocks.electronAPI.listTerminals.mockResolvedValue({
+      success: true,
+      terminals: [
+        { id: 'pty-a', title: 'zsh', cwd: '/repo', shell: '/bin/zsh', cols: 80, rows: 24, createdAt: 0 },
+        { id: 'pty-b', title: 'node', cwd: '/repo', shell: '/bin/zsh', cols: 80, rows: 24, createdAt: 0 },
+      ],
+    })
+
+    const wrapper = mount(RightWorkbenchPanel, {
+      props: {
+        sessionId: 'session-1',
+        workspaceRoot: '/repo',
+      },
+    })
+    await settle()
+    await settle()
+
+    const labels = wrapper.findAll('.workbench-tab-label')
+    expect(labels).toHaveLength(2)
+    expect(wrapper.text()).toContain('zsh')
+    expect(wrapper.text()).toContain('node')
   })
 })

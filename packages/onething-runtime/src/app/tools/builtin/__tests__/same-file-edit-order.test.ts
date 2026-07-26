@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import { EditTool } from "../edit";
-import { ReadTool } from "../read";
 import { Permission } from "../../../permission/index.js";
 import { OrderedSideEffectQueue } from "../../../engine/stream/tool-execution-order.js";
 
@@ -47,20 +46,6 @@ describe("same-file edit ordering", () => {
 			metadataByCall.set(callId, []);
 			try {
 				await gate.beforeSideEffect();
-				// Read before edit (required by read-before-edit guard); placed after
-				// the gate so the read sees the file state after the previous edit.
-				await ReadTool.execute(
-					{ path: filePath },
-					{
-						sessionId: "test-session",
-						messageId: "test-message",
-						toolCallId: `read-${callId}`,
-						workingDirectory: process.cwd(),
-						workingDirectoryRoots: [tmpRoot],
-						metadata: vi.fn(),
-						beforeSideEffect: async () => {},
-					},
-				);
 
 				return await EditTool.execute(
 					{

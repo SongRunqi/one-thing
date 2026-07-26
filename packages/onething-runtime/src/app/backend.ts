@@ -54,6 +54,7 @@ import { initializeSessionSkills } from './skills/session-skills.js'
 import { MCPManager, registerMCPTools } from './mcp/index.js'
 import { ACPManager } from './acp/index.js'
 import { killTrackedDetachedChildren } from './tools/core/bash-executor.js'
+import { killAllTerminals } from './terminal/service.js'
 
 /**
  * Wire the runtime-package adapters that used to be import-time side effects.
@@ -184,6 +185,10 @@ export async function createOnethingBackend(
         await MCPManager.shutdown()
       }
       killTrackedDetachedChildren()
+      // No-op unless a host actually created terminals. NOTE: the Electron
+      // host quits through its beforeQuit cleanup table, not this shutdown —
+      // it calls killAllTerminals there itself.
+      killAllTerminals()
       shutdownStreamEngine()
       Permission.shutdown()
       shutdownSessionLayer()

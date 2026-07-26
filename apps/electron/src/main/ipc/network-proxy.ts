@@ -1,7 +1,9 @@
 import type { ProxySettings, TestProxyResponse } from '@shared/ipc.js'
 import {
   applyElectronNetworkProxySettings,
+  type ElectronProxyConfig,
 } from '@onething/electron-host/network/proxy'
+import { applyBrowserProxy } from '@onething/electron-host/browser/session'
 import { clearAppDispatcherCache, createRequiredAppFetch, validateProxyUrl } from '@onething/app/providers/bound-fetch.js'
 import { getSettings } from '@onething/app/stores/settings.js'
 
@@ -19,7 +21,13 @@ export function buildElectronProxyRules(proxy?: ProxySettings): string | undefin
   if (!validated.valid) {
     throw new Error(validated.error)
   }
-  return validated.normalizedUrl
+  // Chromium's proxyRules parser wants `[<scheme>://]<host>:<port>` with NO path.
+  // validateProxyUrl returns `new URL(...).toString()`, which appends a trailing
+  // slash for http(s) (e.g. "http://127.0.0.1:7890/"). That trailing "/" makes
+  // Chromium treat the proxy server as invalid → ERR_NO_SUPPORTED_PROXIES (the
+  // failure the embedded browser and favicons hit). Rebuild scheme://host:port.
+  const parsed = new URL(validated.normalizedUrl!)
+  return `${parsed.protocol}//${parsed.host}`
 }
 
 export async function applyNetworkProxySettings(proxy: ProxySettings = getSettings().network?.proxy ?? {
@@ -28,25 +36,32 @@ export async function applyNetworkProxySettings(proxy: ProxySettings = getSettin
 }): Promise<void> {
   clearAppDispatcherCache()
 
+  let config: ElectronProxyConfig
   if (!proxy.enabled) {
-    await applyElectronNetworkProxySettings({ enabled: false })
-    return
+    config = { enabled: false }
+  } else {
+    try {
+      config = {
+        enabled: true,
+        proxyRules: buildElectronProxyRules(proxy),
+        proxyBypassRules: normalizeBypassRules(proxy.bypassRules),
+      }
+    } catch (error: any) {
+      console.warn('[Network] Invalid proxy settings; Electron proxy was not applied:', error.message)
+      config = { enabled: false }
+    }
   }
 
-  let proxyRules: string | undefined
+  // Apply to BOTH the app's defaultSession AND the embedded browser's
+  // persist:browser partition — the browser tabs otherwise connect directly,
+  // which breaks any site only reachable through the proxy (Google et al. show
+  // TLS resets / "not secure" instead of loading). Keep them in sync on change.
+  await applyElectronNetworkProxySettings(config)
   try {
-    proxyRules = buildElectronProxyRules(proxy)
-  } catch (error: any) {
-    console.warn('[Network] Invalid proxy settings; Electron proxy was not applied:', error.message)
-    await applyElectronNetworkProxySettings({ enabled: false })
-    return
+    await applyBrowserProxy(config)
+  } catch (error) {
+    console.warn('[Network] Failed to apply proxy to embedded browser partition:', error)
   }
-
-  await applyElectronNetworkProxySettings({
-    enabled: true,
-    proxyRules,
-    proxyBypassRules: normalizeBypassRules(proxy.bypassRules),
-  })
 }
 
 export async function testProxy(proxy: ProxySettings): Promise<TestProxyResponse> {

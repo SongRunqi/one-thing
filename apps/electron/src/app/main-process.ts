@@ -41,6 +41,12 @@ import { shutdownSessionLayer } from "@onething/app/session/index.js";
 import { Permission } from "@onething/app/permission/index.js";
 import { disposeMusicService } from "@onething/app/music/service.js";
 import { disposeRadioConductor } from "@onething/app/music/radio.js";
+import { killAllTerminals } from "@onething/app/terminal/service.js";
+import {
+	configureBrowserWindowProvider,
+	killAllBrowserTabs,
+} from "@onething/electron-host/browser/service";
+import { watchTerminalConsumer } from "@main/ipc/terminal.js";
 import { warmSearchWindow } from "@onething/electron-host/search/window";
 import { applyNetworkProxySettings } from "@main/ipc/network-proxy.js";
 import {
@@ -247,7 +253,12 @@ function createElectronMainWindowOptions(): ElectronActivateOptions {
 		createWindow,
 		attachVoiceTrayMainWindow,
 		registerGlobalWindowShortcuts,
-		initializeIPCBridge,
+		initializeIPCBridge: (sender) => {
+			initializeIPCBridge(sender);
+			// Flow-control detach edge: reload/crash/close must drop terminals to
+			// detached or their output freezes at the high-water mark (7.3 rule ⑤).
+			watchTerminalConsumer(sender);
+		},
 		bindStreamEngine: (webContents) => getStreamEngine().bind(webContents),
 		shutdownIPCBridge,
 		abortActiveStreams: () => getStreamEngineSafe()?.abortAll(),
@@ -267,6 +278,18 @@ export function startOnethingElectronMain(): void {
 	if (electronMainStarted) return;
 	electronMainStarted = true;
 
+	// Dev restarts kill the process group with SIGTERM→SIGKILL and before-quit
+	// never fires — reap user terminal shells so they don't orphan. The PTY
+	// master fd closing on exit HUPs foreground jobs; this also collects
+	// SIGHUP-ignoring children via the service's group signal.
+	for (const signal of ["SIGTERM", "SIGINT"] as const) {
+		process.on(signal, () => {
+			killAllTerminals();
+			killAllBrowserTabs();
+			process.exit(signal === "SIGINT" ? 130 : 143);
+		});
+	}
+
 	markStartupProcessStart(process.uptime());
 	markStartup("main-start");
 
@@ -279,6 +302,10 @@ export function startOnethingElectronMain(): void {
 		getVoiceState: () => getSettings().voice,
 		shutdownVoiceService: () => getVoiceServiceSafe()?.shutdown(),
 	});
+
+	// Embedded browser: views attach to the main window's contentView. Provider
+	// is lazy — consulted per createTab, when the window already exists.
+	configureBrowserWindowProvider(() => mainWindow);
 
 	configureAppLoggingHost({
 		setAppLogsPath: setElectronAppLogsPath,
@@ -350,6 +377,8 @@ export function startOnethingElectronMain(): void {
 			shutdownMCP,
 			shutdownACP,
 			killTrackedDetachedChildren,
+			killAllTerminals,
+			killAllBrowserTabs,
 			shutdownStreamEngine,
 			shutdownPermission: () => Permission.shutdown(),
 			shutdownSessionLayer,

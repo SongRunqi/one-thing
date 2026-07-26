@@ -30,12 +30,10 @@ import { prepareExactEditPreview, type ExactEdit } from "../edit-engine.js";
 import { trimDiff, truncateDiffForDisplay } from "../replacers.js";
 import {
 	countLineChanges,
-	hashTextFileSnapshot,
 	readTextFileSnapshot,
 	type TextFileSnapshot,
 } from "../file-snapshot.js";
 import { recordFileMutationAudit } from "../file-mutation-audit.js";
-import type { FileReadTracker } from "../file-read-tracker.js";
 
 const MAX_REVALIDATION_ATTEMPTS = 5;
 const LARGE_DELETION_MIN_LINES = 6;
@@ -44,7 +42,6 @@ const LARGE_DELETION_RATIO = 5;
 export interface EditToolAdapters {
 	getDefaultWorkingDirectory?(): string | undefined;
 	getFileMutationsDir(): string;
-	fileReadTracker?: FileReadTracker;
 }
 
 export interface EditMetadata {
@@ -174,7 +171,7 @@ export function createEditTool(
 	return Tool.define<typeof EditParameters, EditMetadata>("edit", {
 		name: "Edit",
 		description:
-			"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file, unless that edit sets replaceAll: true to replace all of its occurrences. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.\n\nRead the file first with the read tool. The edit will be blocked if the file has not been read in the current session, or if it changed on disk since you last saw it. A file you created or edited earlier in the session counts as seen — no re-read needed.",
+			"Edit a single file using exact text replacement. Every edits[].oldText must match a unique, non-overlapping region of the original file, unless that edit sets replaceAll: true to replace all of its occurrences. If two changes affect the same block or nearby lines, merge them into one edit instead of emitting overlapping edits. Do not include large unchanged regions just to connect distant changes.\n\nReading the file first with the read tool is recommended so each oldText matches the file's current content, but it is not required.",
 		category: "builtin",
 		enabled: true,
 		autoExecute: false,
@@ -321,21 +318,6 @@ export function createEditTool(
 					const snapshot = await readTextFileSnapshot(resolvedPath);
 					throwIfAborted();
 
-					// Read-before-edit guard: the model must have seen this exact
-					// content, either via read() or by having written it itself.
-					// A missing file falls through to buildEditPlan's clearer
-					// "File not found" error.
-					if (snapshot.exists && adapters.fileReadTracker) {
-						const checkResult = adapters.fileReadTracker.check(
-							ctx.sessionId,
-							resolvedPath,
-							snapshot.hash,
-						);
-						if (!checkResult.read) {
-							throw new Error(checkResult.reason);
-						}
-					}
-
 					let approvedPlan = buildEditPlan(resolvedPath, edits, snapshot);
 					throwIfAborted();
 
@@ -359,13 +341,6 @@ export function createEditTool(
 						throwIfAborted();
 						if (latestSnapshot.hash === approvedPlan.originalContentHash) {
 							await writeTextFileAsync(resolvedPath, approvedPlan.contentNew);
-							// The model authored this content, so it has seen it: record
-							// it so a follow-up edit needs no intervening re-read.
-							adapters.fileReadTracker?.record(
-								ctx.sessionId,
-								resolvedPath,
-								hashTextFileSnapshot(true, approvedPlan.contentNew),
-							);
 							throwIfAborted();
 							break;
 						}

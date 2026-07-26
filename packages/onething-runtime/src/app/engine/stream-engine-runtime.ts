@@ -11,7 +11,6 @@ import {
 } from "@onething/runtime/product-stream-runtime";
 import { authService } from "../auth/auth-service.js";
 import { Permission } from "../permission/index.js";
-import { fileReadTracker } from "../tools/builtin/file-read-tracker.js";
 import * as store from "../store.js";
 import { getSkillsForSession } from "../skills/session-skills.js";
 import { mediaLibraryService } from "../media/media-library-service.js";
@@ -81,7 +80,6 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 				store.deleteMessage(sessionId, messageId),
 		},
 		clearPermissionSession: (sessionId) => {
-			fileReadTracker.clearSession(sessionId);
 			Permission.clearSession(sessionId);
 		},
 		getSkillsForSession,

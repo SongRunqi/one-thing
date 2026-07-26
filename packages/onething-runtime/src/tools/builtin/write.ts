@@ -31,20 +31,17 @@ import {
 } from "../sandbox.js";
 import {
 	countLineChanges,
-	hashTextFileSnapshot,
 	readTextFileSnapshot,
 	type TextFileSnapshot,
 } from "../file-snapshot.js";
 import { recordFileMutationAudit } from "../file-mutation-audit.js";
 import { trimDiff, truncateDiffForDisplay } from "../replacers.js";
-import type { FileReadTracker } from "../file-read-tracker.js";
 
 const MAX_REVALIDATION_ATTEMPTS = 5;
 
 export interface WriteToolAdapters {
 	getDefaultWorkingDirectory?(): string | undefined;
 	getFileMutationsDir(): string;
-	fileReadTracker?: FileReadTracker;
 }
 
 export interface WriteResultMetadata {
@@ -300,19 +297,6 @@ export function createWriteTool(
 					);
 					throwIfAborted();
 
-					// Read-before-write guard: an overwrite must be based on content
-					// the model has seen — via read(), or by having written it itself.
-					if (!approvedPlan.created && adapters.fileReadTracker) {
-						const checkResult = adapters.fileReadTracker.check(
-							ctx.sessionId,
-							resolvedPath,
-							approvedPlan.originalContentHash,
-						);
-						if (!checkResult.read) {
-							throw new Error(checkResult.reason);
-						}
-					}
-
 					if (
 						typeof policyOriginalHash === "string" &&
 						approvedPlan.originalContentHash !== policyOriginalHash
@@ -360,14 +344,6 @@ export function createWriteTool(
 					throwIfAborted();
 
 					await writeTextFileAsync(resolvedPath, content);
-					// The model authored this content, so it has seen it: record it so
-					// a follow-up edit/write needs no intervening re-read. This is the
-					// common write-then-refine flow.
-					adapters.fileReadTracker?.record(
-						ctx.sessionId,
-						resolvedPath,
-						hashTextFileSnapshot(true, content),
-					);
 					throwIfAborted();
 
 					const audit = await recordFileMutationAudit({

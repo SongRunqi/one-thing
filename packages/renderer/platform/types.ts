@@ -8,6 +8,10 @@ export interface PlatformCapabilities {
   workspaceFileSystem: boolean
   nativeWindowControls: boolean
   shellTools: boolean
+  /** Real PTY terminal available on this host. */
+  terminal: boolean
+  /** Embedded WebContentsView browser available (Electron only; web falls back to iframe). */
+  embeddedBrowser: boolean
   clipboardWrite: boolean
   desktopWindows: boolean
   globalMenuEvents: boolean

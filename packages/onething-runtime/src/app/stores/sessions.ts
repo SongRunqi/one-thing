@@ -25,7 +25,6 @@ import {
 import { getCurrentSessionId, setCurrentSessionId } from "./app-state.js";
 import { getSettings } from "./settings.js";
 import { expandPath } from "../tools/core/sandbox.js";
-import { fileReadTracker } from "../tools/builtin/file-read-tracker.js";
 import {
 	createHybridSessionStorageDriver,
 	createOnethingSessionMessageRuntime,
@@ -356,7 +355,6 @@ export interface DeleteSessionResult {
 
 // Delete a session and all its child sessions (cascade delete)
 export function deleteSession(sessionId: string): DeleteSessionResult {
-	fileReadTracker.clearSession(sessionId);
 	return sessionRepository.deleteSession(sessionId);
 }
 

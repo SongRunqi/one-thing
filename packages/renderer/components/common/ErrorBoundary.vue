@@ -8,6 +8,7 @@
         variant="block"
         label="应用出错"
         :message="error"
+        :details="errorDetails"
       >
         <template #actions>
           <Button
@@ -24,6 +25,13 @@
           >
             Refresh Page
           </Button>
+          <Button
+            unstyled
+            class="error-btn"
+            @click="handleCopyLog"
+          >
+            {{ copied ? 'Copied' : 'Copy Log' }}
+          </Button>
         </template>
       </ErrorNote>
     </div>
@@ -34,22 +42,60 @@
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
 import ErrorNote from '@/components/common/ErrorNote.vue'
-import { ref, onErrorCaptured } from 'vue'
+import { computed, ref, onErrorCaptured } from 'vue'
+import { recordCrash, componentChainOf, dumpCrashLog } from '@/services/crash-log'
 
 const error = ref<string | null>(null)
+const firstErrorChain = ref<string | null>(null)
+const firstErrorInfo = ref<string | null>(null)
+const laterErrorCount = ref(0)
+const copied = ref(false)
 
-onErrorCaptured((err: any) => {
-  error.value = err.message || 'An unexpected error occurred'
-  console.error('Captured by ErrorBoundary:', err)
+// A crash mid-patch usually cascades: the primary error breaks the tree,
+// then the cleanup unmount throws secondary TypeErrors. Latch the FIRST
+// error for display — it's the root cause; later ones only get counted.
+// Every capture (first or not) goes to the crash log in full.
+onErrorCaptured((err, instance, info) => {
+  recordCrash('error-boundary', err, { instance, info })
+  if (error.value === null) {
+    error.value = (err instanceof Error && err.message) || String(err) || 'An unexpected error occurred'
+    firstErrorChain.value = componentChainOf(instance) ?? null
+    firstErrorInfo.value = info ?? null
+  } else {
+    laterErrorCount.value++
+  }
   return false // Prevent further propagation
+})
+
+const errorDetails = computed(() => {
+  const lines: string[] = []
+  if (firstErrorChain.value) lines.push(`components: ${firstErrorChain.value}`)
+  if (firstErrorInfo.value) lines.push(`info: ${firstErrorInfo.value}`)
+  if (laterErrorCount.value > 0) {
+    lines.push(`+${laterErrorCount.value} follow-up error(s) — Copy Log for the full sequence`)
+  }
+  return lines.length > 0 ? lines.join('\n') : undefined
 })
 
 function handleRetry() {
   error.value = null
+  firstErrorChain.value = null
+  firstErrorInfo.value = null
+  laterErrorCount.value = 0
 }
 
 function handleRefresh() {
   window.location.reload()
+}
+
+async function handleCopyLog() {
+  try {
+    await navigator.clipboard.writeText(dumpCrashLog())
+    copied.value = true
+    setTimeout(() => { copied.value = false }, 2000)
+  } catch {
+    // Clipboard unavailable — the log is still at window.__onethingCrashLog.dump().
+  }
 }
 </script>
 
