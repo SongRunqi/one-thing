@@ -23,9 +23,6 @@ import {
   resolveProviderAuth,
   getProviderApiType,
 } from '@onething/app/engine/stream/provider-helpers.js'
-import {
-  activeStreams,
-} from '@onething/app/engine/stream/stream-processor.js'
 import { getStreamEngine } from '@onething/app/engine/index.js'
 import {
   abortOnethingStreamsForIpc,
@@ -107,14 +104,6 @@ export function registerChatHandlers() {
     abortStream: async ({ sessionId }: ElectronAbortStreamRequest = {}) => {
       return abortOnethingStreamsForIpc({
         sessionId,
-        getLegacyActiveSessionIds: () => activeStreams.keys(),
-        abortLegacyStream: sid => {
-          const controller = activeStreams.get(sid)
-          if (!controller) return false
-          controller.abort()
-          activeStreams.delete(sid)
-          return true
-        },
         abortEngineStream: sid => {
           try {
             return getStreamEngine().abort(sid)
@@ -151,7 +140,6 @@ export function registerChatHandlers() {
     },
     getActiveStreams: async () => {
       return listOnethingActiveStreamsForIpc({
-        getLegacyActiveSessionIds: () => activeStreams.keys(),
         getEngineActiveSessionIds: () => getStreamEngine().getActiveSessionIds(),
       })
     },

@@ -79,8 +79,14 @@ export interface AbortOnethingStreamsForIpcOptions<
   TSession extends OnethingAbortSessionLike<TMessage> = OnethingAbortSessionLike<TMessage>,
 > extends Omit<CancelOnethingStreamingStepsForAbortOptions<TToolCall, TStep, TMessage, TSession>, 'sessionId'> {
   sessionId?: string
-  getLegacyActiveSessionIds(): Iterable<string>
-  abortLegacyStream(sessionId: string): boolean
+  /**
+   * Legacy pre-engine stream ledger hooks. Optional: the ledgers they read
+   * were retired (they had readers but no writers — see
+   * docs/audit/architecture-review-2026-07-26.md A1); the engine hooks are
+   * the real abort path.
+   */
+  getLegacyActiveSessionIds?(): Iterable<string>
+  abortLegacyStream?(sessionId: string): boolean
   abortEngineStream(sessionId: string): boolean
   abortAllEngineStreams(): boolean
   clearPermission(sessionId: string): void
@@ -92,7 +98,7 @@ export interface AbortOnethingStreamsForIpcResult {
 }
 
 export interface ListOnethingActiveStreamsForIpcOptions {
-  getLegacyActiveSessionIds(): Iterable<string>
+  getLegacyActiveSessionIds?(): Iterable<string>
   getEngineActiveSessionIds(): Iterable<string>
 }
 
@@ -172,7 +178,7 @@ export async function abortOnethingStreamsForIpc<
 
   if (sessionId) {
     let aborted = false
-    if (options.abortLegacyStream(sessionId)) {
+    if (options.abortLegacyStream?.(sessionId)) {
       options.logger?.log?.(`[Backend] Aborting stream for session (legacy): ${sessionId}`)
       aborted = true
     }
@@ -195,11 +201,11 @@ export async function abortOnethingStreamsForIpc<
   }
 
   let aborted = false
-  const legacySessionIds = Array.from(options.getLegacyActiveSessionIds())
+  const legacySessionIds = Array.from(options.getLegacyActiveSessionIds?.() ?? [])
   if (legacySessionIds.length > 0) {
     options.logger?.log?.(`[Backend] Aborting all active streams (${legacySessionIds.length})`)
     for (const legacySessionId of legacySessionIds) {
-      options.abortLegacyStream(legacySessionId)
+      options.abortLegacyStream?.(legacySessionId)
       options.clearPermission(legacySessionId)
     }
     aborted = true
@@ -215,7 +221,7 @@ export async function abortOnethingStreamsForIpc<
 export function listOnethingActiveStreamsForIpc(
   options: ListOnethingActiveStreamsForIpcOptions,
 ): ListOnethingActiveStreamsForIpcResult {
-  const legacySessionIds = Array.from(options.getLegacyActiveSessionIds())
+  const legacySessionIds = Array.from(options.getLegacyActiveSessionIds?.() ?? [])
   let engineSessionIds: string[] = []
 
   try {

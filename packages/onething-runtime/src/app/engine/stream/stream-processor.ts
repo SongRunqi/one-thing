@@ -38,19 +38,6 @@ export interface StreamSender {
 // ============================================================
 // Active Streams Registry
 // ============================================================
-
-/** Tracks active streaming sessions for abort support */
-export const activeStreams = new Map<string, AbortController>()
-
-/** Clean up all active streams on shutdown */
-export function cleanupActiveStreams(): void {
-  for (const [, controller] of activeStreams) {
-    controller.abort()
-  }
-  activeStreams.clear()
-}
-
-// ============================================================
 // MCP Tool Identity Resolution
 // ============================================================
 

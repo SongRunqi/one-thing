@@ -17,7 +17,7 @@ import {
   sanitizeSettingsForClient,
   type OnethingServerRuntime,
 } from './runtime.js'
-import { createTestServerRuntime } from './test-helpers.js'
+import { createEchoServerBackend, createTestServerRuntime } from './test-helpers.js'
 
 const servers: Server[] = []
 const runtimes: OnethingServerRuntime[] = []
@@ -101,6 +101,66 @@ describe('createOnethingHttpServer', () => {
       userId: 'alice',
       workspaceId: 'streams-workspace',
     }))
+  })
+
+  it('delegates stream aborts to the backend and derives active streams from engine events', async () => {
+    // Regression (architecture-review-2026-07-26.md A1): /api/streams/abort
+    // used to hit an AbortController map nothing ever populated — the UI
+    // reported "stopped" while the engine kept streaming, and
+    // /api/streams/active always returned an empty list.
+    const abortedSessions: string[] = []
+    let backendBus: { emit(sessionId: string, event: unknown): Promise<unknown> } | undefined
+    const serverRuntime = await createTestServerRuntime({
+      createBackend: async () => {
+        const backend = await createEchoServerBackend()
+        backendBus = backend.eventBus as unknown as typeof backendBus
+        return {
+          ...backend,
+          abortSession(sessionId, reason) {
+            abortedSessions.push(sessionId)
+            backend.abortSession(sessionId, reason)
+          },
+        }
+      },
+    })
+    runtimes.push(serverRuntime)
+    const server = await listen(createOnethingHttpServer({
+      runtime: serverRuntime.runtime,
+    }))
+
+    const created = await fetchJson(`${baseUrl(server)}/api/sessions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'abort target' }),
+    }) as { success?: boolean; session?: { id?: string } }
+    const sessionId = created.session?.id
+    expect(sessionId).toBeTruthy()
+
+    // The engine announces a live stream → the facade ledger must reflect it.
+    await backendBus!.emit(sessionId!, {
+      type: 'stream:start',
+      assistantMessageId: 'assistant-1',
+      userMessageId: 'user-1',
+    })
+    await expect(fetchJson(`${baseUrl(server)}/api/streams/active`)).resolves.toEqual({
+      success: true,
+      streams: [sessionId],
+    })
+
+    // Abort over HTTP must reach the backend (engine.abort on the real factory).
+    await expect(fetchJson(`${baseUrl(server)}/api/streams/abort`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    })).resolves.toEqual({ success: true })
+    expect(abortedSessions).toEqual([sessionId])
+
+    // The terminal stream event settles the ledger.
+    await backendBus!.emit(sessionId!, { type: 'stream:aborted' })
+    await expect(fetchJson(`${baseUrl(server)}/api/streams/active`)).resolves.toEqual({
+      success: true,
+      streams: [],
+    })
   })
 
   it('routes proxy tests through the network runtime facade with owner context', async () => {

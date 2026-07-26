@@ -1235,7 +1235,12 @@ export async function createDevelopmentOnethingServerRuntime(
 	// 触碰即驻留的工作集,不再启动全量镜像:同一 sessionId 在本进程内保持
 	// 单一对象身份(事件回放与 API 变更共用),冷会话按需从存储加载。
 	const sessions = new Map<string, ServerChatSession>();
-	const activeControllers = new Map<string, AbortController>();
+	// Live-stream ledger derived from engine events (stream:start adds, any
+	// terminal stream event removes). Works identically for the real engine
+	// and echo test backends — its predecessor was an AbortController map that
+	// nothing ever populated, so /api/streams/abort no-oped while the engine
+	// kept streaming (architecture-review-2026-07-26.md A1).
+	const activeStreamSessions = new Set<string>();
 	const currentSessionIds = new Map<string, string>();
 	const pendingPermissions = new Map<string, PendingPermissionRecord>();
 	// Rejects core-side pending asks as well as the local mirror. Leaving core
@@ -1422,7 +1427,7 @@ export async function createDevelopmentOnethingServerRuntime(
 			return sessionStore.getSession(sessionId);
 		}
 		const cached = sessions.get(sessionId);
-		if (cached && activeControllers.has(sessionId)) return cached;
+		if (cached && activeStreamSessions.has(sessionId)) return cached;
 		if (cached) {
 			const meta = findSessionIndexMeta(sessionId);
 			if (!meta || meta.updatedAt === cached.updatedAt) return cached;
@@ -1520,6 +1525,16 @@ export async function createDevelopmentOnethingServerRuntime(
 	};
 
 	eventBus.onAnySessionAny((envelope) => {
+		const eventType = (envelope.event as { type?: string }).type;
+		if (eventType === "stream:start") {
+			activeStreamSessions.add(envelope.sessionId);
+		} else if (
+			eventType === "stream:complete" ||
+			eventType === "stream:error" ||
+			eventType === "stream:aborted"
+		) {
+			activeStreamSessions.delete(envelope.sessionId);
+		}
 		const permissionEvent = readPermissionTrackingEvent(envelope.event);
 		if (permissionEvent?.type === "permission:request") {
 			// Resolve through the store (not the echo working set): real-engine
@@ -2073,8 +2088,7 @@ export async function createDevelopmentOnethingServerRuntime(
 				getStreamHost: () => ({
 					hasBoundSender: () => true,
 					abort: (sessionId) => {
-						activeControllers.get(sessionId)?.abort();
-						activeControllers.delete(sessionId);
+						backend.abortSession(sessionId, "scheduler abort");
 					},
 				}),
 				eventBus: {
@@ -2818,6 +2832,12 @@ export async function createDevelopmentOnethingServerRuntime(
 				for (const deletedId of deleteResult.deletedIds.length
 					? deleteResult.deletedIds
 					: [sessionId]) {
+					// Deleting mid-stream: abort first — the terminal stream event
+					// may never arrive once the session's channels are destroyed.
+					if (activeStreamSessions.has(deletedId)) {
+						backend.abortSession(deletedId, "session deleted");
+						activeStreamSessions.delete(deletedId);
+					}
 					sessions.delete(deletedId);
 					clearSessionPermissions(deletedId);
 					eventBus.destroySession(deletedId);
@@ -2913,7 +2933,7 @@ export async function createDevelopmentOnethingServerRuntime(
 				}
 				// Real backends: the app-store session in memory is the truth
 				// (async writes may still be queued) — page from it directly.
-				return backend.persistsMessages || activeControllers.has(request.sessionId)
+				return backend.persistsMessages || activeStreamSessions.has(request.sessionId)
 					? getMessagePage(session.messages, request)
 					: sessionStore.getMessagesPage(request);
 			},
@@ -2924,7 +2944,7 @@ export async function createDevelopmentOnethingServerRuntime(
 				}
 				return {
 					success: true,
-					markers: backend.persistsMessages || activeControllers.has(sessionId)
+					markers: backend.persistsMessages || activeStreamSessions.has(sessionId)
 						? getUserMarkers(session.messages)
 						: (sessionStore.getUserMessageMarkers(sessionId) ??
 							getUserMarkers(session.messages)),
@@ -3133,26 +3153,26 @@ export async function createDevelopmentOnethingServerRuntime(
 				);
 			},
 			async abort(sessionId?: string, context = defaultRequestContext()) {
+				// The backend owns the abort (engine.abort for the real factory,
+				// controller abort for echo); the ledger itself is settled by the
+				// resulting stream:aborted event, not mutated here.
 				if (sessionId) {
 					const session = getSessionForContext(sessionId, context);
 					if (!session) return { success: false, error: "Session not found" };
-					activeControllers.get(sessionId)?.abort();
-					activeControllers.delete(sessionId);
+					backend.abortSession(sessionId, "HTTP abort");
 					clearSessionPermissions(sessionId);
 					return { success: true };
 				}
-				const abortedSessionIds = Array.from(activeControllers.keys());
-				for (const controller of activeControllers.values()) {
-					controller.abort();
-				}
-				activeControllers.clear();
-				for (const abortedSessionId of abortedSessionIds) {
-					clearSessionPermissions(abortedSessionId);
+				// Abort-all stays owner-scoped: only sessions this context can read.
+				for (const activeSessionId of Array.from(activeStreamSessions)) {
+					if (!getSessionForContext(activeSessionId, context)) continue;
+					backend.abortSession(activeSessionId, "HTTP abort");
+					clearSessionPermissions(activeSessionId);
 				}
 				return { success: true };
 			},
 			async active(context = defaultRequestContext()) {
-				return Array.from(activeControllers.keys()).filter((sessionId) => {
+				return Array.from(activeStreamSessions).filter((sessionId) => {
 					return Boolean(getSessionForContext(sessionId, context));
 				});
 			},
