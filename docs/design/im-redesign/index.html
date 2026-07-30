@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sidebar / Agent 对话 / 群聊 —— 四方案总览</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  .cards { max-width: 1180px; margin: 34px auto 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 26px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden;
+    text-decoration: none; color: inherit; display: block; transition: box-shadow .16s, border-color .16s; }
+  .card:hover { border-color: var(--ink-4); box-shadow: 0 10px 28px rgba(20,18,12,.10); }
+  .card .wire { height: 186px; background: var(--surface-2); border-bottom: 1px solid var(--line);
+    display: flex; padding: 14px; gap: 8px; }
+  .card .wire .b { border: 1px solid var(--ink-4); border-radius: 5px; background: var(--surface); }
+  .card .wire .b.ink { background: var(--surface-3); }
+  .card .wire .stackv { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .card .wire .ln { height: 5px; border-radius: 3px; background: var(--ink-4); margin: 6px 8px; }
+  .card .wire .ln.s { width: 40%; } .card .wire .ln.m { width: 66%; } .card .wire .ln.l { width: 88%; }
+  .card .wire .ln.dark { background: var(--ink-3); }
+  .card .wire .dotrow { display: flex; gap: 6px; padding: 8px; }
+  .card .wire .dotrow i { width: 14px; height: 14px; border-radius: 50%; background: var(--ink-4); }
+  .card .wire .bub { height: 16px; border-radius: 8px; background: var(--ink-4); margin: 7px 8px; width: 62%; }
+  .card .wire .bub.r { margin-left: auto; background: var(--ink-3); width: 44%; }
+  .card .meta { padding: 15px 18px 18px; }
+  .card .meta .kk { font-size: 10.5px; letter-spacing: .14em; color: var(--ink-3); }
+  .card .meta h3 { font-size: 16px; font-weight: 600; margin-top: 7px; }
+  .card .meta p { font-size: 12.5px; color: var(--ink-2); line-height: 1.75; margin-top: 8px; }
+  .card .meta .tags { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .card .meta .tags span { font-size: 10.5px; color: var(--ink-2); border: 1px solid var(--line); border-radius: 11px; padding: 2px 9px; }
+
+  table.cmp { max-width: 1180px; margin: 30px auto 0; border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  table.cmp th, table.cmp td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; line-height: 1.65; }
+  table.cmp thead th { font-size: 11px; letter-spacing: .08em; color: var(--ink-3); font-weight: 400; border-bottom-color: var(--ink-4); }
+  table.cmp tbody th { font-weight: 600; color: var(--ink); width: 128px; }
+  table.cmp td { color: var(--ink-2); }
+  table.cmp td b { color: var(--ink); font-weight: 600; }
+  .prose { max-width: 1180px; margin: 42px auto 0; }
+  .prose h2 { font-size: 13px; font-weight: 600; letter-spacing: .04em; padding-bottom: 9px;
+    border-bottom: 1px solid var(--line); margin-top: 40px; }
+  .prose > h2:first-child { margin-top: 0; }
+  .prose p, .prose li { font-size: 13px; color: var(--ink-2); line-height: 1.85; }
+  .prose p { margin-top: 14px; }
+  .prose ul { margin-top: 12px; padding-left: 20px; }
+  .prose li { margin-top: 6px; }
+  .prose b { color: var(--ink); font-weight: 600; }
+  .prose code { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; background: var(--surface-3);
+    border-radius: 3px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <div class="kicker">2026-07-31 · 仅设计</div>
+  <h1>Sidebar / 与 Agent 的对话 / 群聊 —— 四个截然不同的方案</h1>
+  <p class="lead">
+    四套方案不是四种配色,是<b>四种信息架构</b>:导航模型、消息形态、执行透明度三个轴上各走一个极端。
+    共用的只有纸墨底子(既有画线风)与域模型(同事 / 房间 / 私聊 / 活 / 在场)。
+    参考的产品形态分别是 Discord、Telegram、Slack/Linear、以及"无列表的沉浸阅读"。
+    每套都画了<b>群聊</b>与<b>与 Agent 的私聊</b>两个面,侧栏是各自架构的一部分,不单独出方案。
+  </p>
+</div>
+
+<div class="cards">
+
+  <a class="card" href="a-channels.html">
+    <div class="wire">
+      <div class="b" style="width:16px"><div class="ln s" style="margin:8px 4px;height:14px;width:8px"></div><div class="ln s" style="margin:6px 4px;height:8px;width:8px"></div><div class="ln s" style="margin:6px 4px;height:8px;width:8px"></div></div>
+      <div class="b" style="width:52px"><div class="ln m dark"></div><div class="ln l"></div><div class="ln m"></div><div class="ln s"></div><div class="ln l"></div><div class="ln m"></div></div>
+      <div class="b stackv"><div class="ln l dark" style="margin-top:9px"></div><div class="ln l"></div><div class="ln m"></div><div class="ln l dark"></div><div class="ln m"></div><div class="ln s"></div></div>
+      <div class="b" style="width:44px"><div class="dotrow"><i></i></div><div class="dotrow"><i></i></div><div class="dotrow"><i></i></div></div>
+    </div>
+    <div class="meta">
+      <div class="kk">方案 A</div>
+      <h3>频道台 · Rail + Channels</h3>
+      <p>Discord 的产品形态对位:空间 rail → 频道 → 消息流 → 在场成员栏。四栏,组织感最强,成员栏把 agent 的"在忙什么"直接可视化。</p>
+      <div class="tags"><span>四栏</span><span>频道心智</span><span>成员在场栏</span><span>≥1180px</span></div>
+    </div>
+  </a>
+
+  <a class="card" href="b-inbox.html">
+    <div class="wire">
+      <div class="b" style="width:82px"><div class="ln l" style="height:9px;border-radius:5px"></div><div class="ln l"></div><div class="ln m"></div><div class="ln l"></div><div class="ln m"></div><div class="ln l"></div></div>
+      <div class="b stackv">
+        <div class="bub r" style="margin-top:12px"></div><div class="bub"></div><div class="bub" style="width:50%"></div><div class="bub r"></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="kk">方案 B</div>
+      <h3>收件箱 · 合流单列表 + 气泡</h3>
+      <p>取消一切分区:群/同事/私下/直聊按时间混成一条列表,靠搜索与 chip 筛选。消息用左右气泡。最轻、最"聊天软件"、零学习成本。</p>
+      <div class="tags"><span>两栏</span><span>零分区</span><span>气泡</span><span>≥860px</span></div>
+    </div>
+  </a>
+
+  <a class="card" href="c-workbench.html">
+    <div class="wire">
+      <div class="b" style="width:62px"><div class="b ink" style="margin:8px 6px;height:26px"></div><div class="b ink" style="margin:6px 6px;height:26px"></div><div class="ln m"></div><div class="ln l"></div><div class="ln s"></div></div>
+      <div class="b stackv" style="padding-top:0">
+        <div style="border-bottom:1px solid var(--ink-4)"><div class="ln l" style="margin:7px 8px"></div></div>
+        <div style="border-bottom:1px solid var(--ink-4);margin-top:-8px"><div class="ln m" style="margin:7px 8px"></div></div>
+        <div style="border-bottom:1px solid var(--ink-4);margin-top:-8px"><div class="ln l" style="margin:7px 8px"></div></div>
+        <div style="border-bottom:1px solid var(--ink-4);margin-top:-8px"><div class="ln s" style="margin:7px 8px"></div></div>
+      </div>
+      <div class="b" style="width:62px"><div class="ln s dark" style="margin:8px 6px"></div><div class="ln l"></div><div class="ln m"></div><div class="ln l"></div><div class="b ink" style="margin:8px 6px;height:30px"></div></div>
+    </div>
+    <div class="meta">
+      <div class="kk">方案 C</div>
+      <h3>工作台 · 以活为脊 + 线程常驻</h3>
+      <p>左栏第一区是"进行中的活"而不是对话;中栏账页式高密度消息流,执行动作逐行可见;右栏常驻线程/看板/权限审批。</p>
+      <div class="tags"><span>三栏</span><span>密度最高</span><span>透明度最强</span><span>≥1200px</span></div>
+    </div>
+  </a>
+
+  <a class="card" href="d-stage.html">
+    <div class="wire">
+      <div class="b stackv">
+        <div style="border-bottom:1px solid var(--ink-4);padding:10px 8px 12px;display:flex;gap:10px;align-items:center">
+          <div class="ln m dark" style="margin:0;width:38px"></div>
+          <div style="display:flex;gap:8px;margin-left:6px"><i style="width:20px;height:20px;border-radius:50%;background:var(--ink-4);display:block"></i><i style="width:20px;height:20px;border-radius:50%;background:var(--ink-4);display:block"></i><i style="width:20px;height:20px;border-radius:50%;background:var(--ink-4);display:block"></i></div>
+        </div>
+        <div style="padding:0 46px"><div class="ln l" style="margin:10px 0"></div><div class="ln l" style="margin:8px 0"></div><div class="ln m" style="margin:8px 0"></div><div class="ln l" style="margin:16px 0 8px"></div><div class="ln s" style="margin:8px 0"></div></div>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="kk">方案 D</div>
+      <h3>舞台 · 无常驻侧栏 + 在场人物条</h3>
+      <p>侧栏整个拿掉。顶部大头像人物条(谁在、在忙什么、谁在说),中间 690px 阅读列,导航靠 ⌘K 与浮层抽屉。执行细节彻底隐身。</p>
+      <div class="tags"><span>单栏</span><span>阅读优先</span><span>⌘K 导航</span><span>≥900px</span></div>
+    </div>
+  </a>
+
+</div>
+
+<table class="cmp">
+  <thead>
+    <tr><th></th><th>A 频道台</th><th>B 收件箱</th><th>C 工作台</th><th>D 舞台</th></tr>
+  </thead>
+  <tbody>
+    <tr><th>导航模型</th>
+      <td>空间 rail → 频道分区</td>
+      <td>一条时间合流列表 + 筛选 chip</td>
+      <td>活(卡片)为脊,对话为次</td>
+      <td>无列表,⌘K + 浮层抽屉</td></tr>
+    <tr><th>消息形态</th>
+      <td>平铺 + 连续合并署名</td>
+      <td><b>左右气泡</b></td>
+      <td>账页栏(固定署名列 + 细横线)</td>
+      <td>690px 阅读列,15px/1.85</td></tr>
+    <tr><th>执行透明度</th>
+      <td>压成一行活动 pill,可展开</td>
+      <td>气泡下一条细注</td>
+      <td><b>逐行可见</b> + 右栏真 diff</td>
+      <td><b>完全隐身</b>,只留静默注脚</td></tr>
+    <tr><th>在场呈现</th>
+      <td>右栏成员列表(在忙/空闲/墓碑)</td>
+      <td>列表行绿点 + 头像堆</td>
+      <td>卡片负责人 + 状态标</td>
+      <td><b>顶部人物条</b>(呼吸环/说话波纹)</td></tr>
+    <tr><th>一屏消息量</th><td>~10 条</td><td>~7 条</td><td><b>~14 条</b></td><td>~4 条(长)</td></tr>
+    <tr><th>权限审批</th><td>房内卡片</td><td>房内卡片</td><td><b>右栏排队</b>,不打断</td><td>顶部条上的徽标 → 全屏面板</td></tr>
+    <tr><th>直聊(工程驾驶舱)</th>
+      <td>频道栏次级分组</td><td>混在同一条列表里</td><td>左栏最后一区</td><td>只在 ⌘K 里</td></tr>
+    <tr><th>改造量</th>
+      <td>中高(新增空间层 + 成员栏)</td>
+      <td><b>中(列表合流 + 气泡皮)</b></td>
+      <td>高(右栏线程 + 活动线数据面)</td>
+      <td>高(拆侧栏 + ⌘K 升级)</td></tr>
+    <tr><th>最适合</th>
+      <td>房间/项目多、要"进哪个场"的心智</td>
+      <td>只想跟同事说话,不想管分类</td>
+      <td>同时盯 3–4 个 agent 干活</td>
+      <td>一次一件事,读长回答</td></tr>
+    <tr><th>最大风险</th>
+      <td>只有一个工作区时 rail 空转</td>
+      <td>多 agent 并行时看不清全局</td>
+      <td>像工具不像 IM,信息焦虑</td>
+      <td>未读感知弱,重面板无处安放</td></tr>
+  </tbody>
+</table>
+
+<div class="prose">
+  <h2>共同遵守的几条</h2>
+  <ul>
+    <li><b>messenger composer</b>:四套的 dm 房/群房都只有 文本 + @ + 附件 + speak + 发送。模型/think/context 量尺一律不进对话面——它们是 agent 的属性(<code>agent-im-chat-ui.md</code> C2)。</li>
+    <li><b>"说的话"与"干的活"分层</b>:消息体只承载 say 的内容,执行动作一律降级为可展开的旁支。四套的区别只是这条旁支<b>露多少</b>(C 最多 → D 最少)。</li>
+    <li><b>墓碑不消失</b>:retired 同事在任何面里都灰显保留,历史署名与履历可读(<code>agent-domain-model.md</code> M3)。</li>
+    <li><b>身份色来自域模型</b>的 <code>color</code> 字段,只用在署名与头像,消息本体永不带底色——纸墨底子上大面积彩色即失控。</li>
+    <li><b>点头像 = 进 Agent 空间页</b>(资料/会话/文件/搜索),四套只是落位不同:A 右栏、B 抽屉、C 右栏 tab、D 全屏。</li>
+  </ul>
+
+  <h2>落地时的复用面(不在本文实施)</h2>
+  <ul>
+    <li>四套都<b>不新写第二个输入框</b>:沿用 InputBox 的 <code>composerProfile</code> 形态分装(engineering / messenger)。</li>
+    <li>侧栏三段(联系人/群聊/私下)的数据源已在 <code>Sidebar.vue</code> + <code>sessions</code> store 里现成;A/C 是重排,B 是合流成一个 selector,D 是把同一份数据搬进浮层。</li>
+    <li>在场数据 = <code>listAgentPresence</code>(app/agents/presence.ts)已落地,A 的成员栏、C 的卡片状态、D 的人物条吃的是同一份。</li>
+    <li>C 的活动线/线程吃的是 StepsPanel 与 diff-hunks 既有结构;右栏走 RightWorkbenchPanel 多实例基建。</li>
+  </ul>
+</div>
+
+</body>
+</html>

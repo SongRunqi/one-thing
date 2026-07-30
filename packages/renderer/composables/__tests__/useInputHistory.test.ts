@@ -3,8 +3,39 @@ import {
   historyTextFromMessage,
   isSelectionOnFirstLine,
   isSelectionOnLastLine,
+  resolveCursorLineEdges,
 } from '../useInputHistory'
 import { createSkillToken } from '@shared/prompt-references'
+
+describe('上下键翻历史的首/末行判据', () => {
+  // 软换行的输入框里，一段没有 `\n` 的长文本会折成好几个视觉行。按逻辑行判的话
+  // 光标停在折行中段也算「第一行」，按上就用历史记录盖掉了正在写的草稿。
+  const wrapped = 'a very long single paragraph with no newline characters at all'
+
+  it('编辑器能测视觉行时以视觉行为准，不再被软换行骗过去', () => {
+    const middleOfWrappedLine = 30
+
+    expect(isSelectionOnFirstLine(wrapped, middleOfWrappedLine)).toBe(true) // 逻辑行的错判
+    expect(
+      resolveCursorLineEdges(wrapped, middleOfWrappedLine, { atFirstLine: false, atLastLine: false }),
+    ).toEqual({ atFirstLine: false, atLastLine: false })
+  })
+
+  it('视觉行确认在首行时照常放行给历史记录', () => {
+    expect(resolveCursorLineEdges(wrapped, 3, { atFirstLine: true, atLastLine: false })).toEqual({
+      atFirstLine: true,
+      atLastLine: false,
+    })
+  })
+
+  it('编辑器测不出视觉行时退回逻辑行判断', () => {
+    const value = 'one\ntwo\nthree'
+
+    expect(resolveCursorLineEdges(value, 1, undefined)).toEqual({ atFirstLine: true, atLastLine: false })
+    expect(resolveCursorLineEdges(value, 5, undefined)).toEqual({ atFirstLine: false, atLastLine: false })
+    expect(resolveCursorLineEdges(value, value.length, undefined)).toEqual({ atFirstLine: false, atLastLine: true })
+  })
+})
 
 describe('input history cursor helpers', () => {
   it('treats empty input as both first and last line', () => {

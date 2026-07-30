@@ -361,6 +361,7 @@ function matchRoute(method: string, pathname: string): RouteHandler | undefined 
   if (agentMatch) {
     const action = agentMatch[2]
     if (method === 'POST' && action === 'update') return withAgentId(agentMatch[1], handleUpdateAgent)
+    if (method === 'POST' && action === 'restore') return withAgentId(agentMatch[1], handleRestoreAgent)
     if (method === 'DELETE' && !action) return withAgentId(agentMatch[1], handleDeleteAgent)
   }
 
@@ -1525,10 +1526,18 @@ async function handleUpdateAgent(context: RouteContext): Promise<void> {
   }, context.requestContext), context.corsOrigin)
 }
 
+/** 退休或硬删(agent-domain-model.md §3.2);响应带 outcome,web 端照 desktop 分文案。 */
 async function handleDeleteAgent(context: RouteContext): Promise<void> {
   const adapter = context.runtime.agents
   if (!adapter?.delete) return sendNotImplemented(context, 'agents.delete')
   sendJson(context.response, 200, await adapter.delete({ agentId: readAgentId(context) }, context.requestContext), context.corsOrigin)
+}
+
+/** 重新入职(§8)。刻意是独立动作而不是 update 的一个字段:生命周期只经语义变更。 */
+async function handleRestoreAgent(context: RouteContext): Promise<void> {
+  const adapter = context.runtime.agents
+  if (!adapter?.restore) return sendNotImplemented(context, 'agents.restore')
+  sendJson(context.response, 200, await adapter.restore({ agentId: readAgentId(context) }, context.requestContext), context.corsOrigin)
 }
 
 async function handleListProviders(context: RouteContext): Promise<void> {
@@ -1778,7 +1787,14 @@ async function handleListSessions(context: RouteContext): Promise<void> {
 }
 
 async function handleCreateSession(context: RouteContext): Promise<void> {
-  const body = await readJson<{ name?: string; sessionId?: string }>(context.request)
+  const body = await readJson<{ name?: string; sessionId?: string; kind?: string }>(context.request)
+  // Collab session kinds (room/work) need the in-process RoomCoordinator,
+  // which the server does not run — reject instead of silently creating a
+  // plain chat that masquerades as a room (docs/design/multi-agent-collab.md).
+  if (body?.kind !== undefined) {
+    sendJson(context.response, 400, { success: false, error: `Session kind '${body.kind}' is not supported on the server host` }, context.corsOrigin)
+    return
+  }
   sendJson(context.response, 200, await context.runtime.sessions.create(body?.name || 'New Chat', context.requestContext, body?.sessionId), context.corsOrigin)
 }
 
@@ -1853,6 +1869,9 @@ async function handleUpdateSessionModel(context: RouteContext): Promise<void> {
   sendJson(context.response, 200, await updateSession(context, {
     lastProvider: body?.provider || '',
     lastModel: body?.model || '',
+    // This route IS the picker (renderer platformApi.updateSessionModel), so
+    // the choice is the user's — mirrors the desktop repository's pin.
+    modelPinned: true,
   }), context.corsOrigin)
 }
 

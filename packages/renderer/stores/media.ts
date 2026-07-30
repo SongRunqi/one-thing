@@ -9,6 +9,22 @@ function sortNewestFirst(a: MediaAsset, b: MediaAsset) {
   return b.createdAt - a.createdAt
 }
 
+/**
+ * The stored file name behind a media `filePath`. Both host shapes end in it —
+ * an absolute path on desktop, `/api/media/file/<encoded name>` from the server
+ * — so one `basename` + decode covers both, and callers that persist a
+ * reference stay host-agnostic.
+ */
+function mediaFileNameFromPath(filePath?: string): string {
+  const tail = (filePath || '').split(/[\\/]/).pop() || ''
+  if (!tail) return ''
+  try {
+    return decodeURIComponent(tail)
+  } catch {
+    return tail
+  }
+}
+
 export const useMediaStore = defineStore('media', () => {
   const mediaItems = ref<MediaAsset[]>([])
   const isLoading = ref(false)
@@ -93,6 +109,42 @@ export const useMediaStore = defineStore('media', () => {
     }
   }
 
+  /**
+   * Park a picked persona avatar in the media library and hand back the STORED
+   * FILE NAME — the reference form `agent.avatarImage` persists (see
+   * AgentDefinition). Deliberately not `saveImage` above: that one re-reads the
+   * whole library to hand back a `MediaAsset`, and all a caller needs here is
+   * the name, which the save response already carries.
+   *
+   * The `persona-avatar` usage tag is what later tells an avatar apart from
+   * generated artwork — the bytes land in the same image store either way.
+   */
+  async function savePersonaAvatar(data: {
+    base64: string
+    /** Whose avatar this is — only ever read as the asset's prompt/caption. */
+    label?: string
+  }): Promise<string | null> {
+    try {
+      const item = await platformApi.saveImage({
+        base64: data.base64,
+        prompt: data.label ? `Agent avatar · ${data.label}` : 'Agent avatar',
+        model: 'user-upload',
+        sessionId: '',
+        messageId: '',
+        usageTags: ['persona-avatar'],
+      })
+      const fileName = mediaFileNameFromPath(item?.filePath)
+      if (!fileName) return null
+      // The library panel would otherwise keep showing a stale list; a failure
+      // here must not lose the avatar the caller just successfully stored.
+      if (hasLoaded.value) void loadMedia({ force: true })
+      return fileName
+    } catch (e) {
+      console.error('Failed to save persona avatar:', e)
+      return null
+    }
+  }
+
   async function removeMedia(id: string) {
     try {
       await platformApi.hideMediaAsset(id)
@@ -131,6 +183,7 @@ export const useMediaStore = defineStore('media', () => {
     loadMedia,
     rebuildLibraryOnce,
     saveImage,
+    savePersonaAvatar,
     removeMedia,
     clearAll,
     getImageUrl,

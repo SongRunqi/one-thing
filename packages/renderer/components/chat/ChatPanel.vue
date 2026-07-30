@@ -5,13 +5,14 @@
   >
     <MessageList
       ref="messageListRef"
-      :messages="panelMessages"
+      :messages="listMessages"
       :is-loading="isLoading"
       :session-id="effectiveSessionId"
       :layout-transitioning="props.layoutTransitioning"
       :outline-rail-target="props.outlineRailTarget"
       @set-quoted-text="handleSetQuotedText"
       @set-input-text="handleSetInputText"
+      @reply-to="handleReplyTo"
       @regenerate="handleRegenerate"
       @edit-and-resend="handleEditAndResend"
       @split-with-branch="(sessionId) => emit('splitWithBranch', sessionId)"
@@ -26,7 +27,7 @@
       <div
         v-show="props.active"
         ref="composerContainerRef"
-        v-memo="[props.active, isGenerating, effectiveSessionId, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction, goalMusicOffset]"
+        v-memo="[props.active, isGenerating, effectiveSessionId, isAgentExecutionSession, currentPendingPermission?.toolCall.id, queuedBehindPermission.length, showRejectInstruction, goalMusicOffset]"
         class="composer-container"
         :style="{ '--goal-music-offset': goalMusicOffset + 'px' }"
       >
@@ -133,7 +134,32 @@
           </div>
         </div>
 
+        <!-- IM typing line: rides just above the composer in rooms only. It
+             self-guards on an empty roster, so a quiet room costs no row. -->
+        <CollabTypingLine
+          v-if="isCollabRoomActive"
+          :session-id="effectiveSessionId"
+        />
+
+        <!-- Pending quote: sits directly on the composer it will be sent with,
+             and clears the moment that send goes out (§3.5 A). -->
+        <ComposerReplyBar
+          v-if="pendingReplyTo"
+          :reply-to="pendingReplyTo"
+          @cancel="pendingReplyTo = null"
+        />
+
+        <!-- Agent 执行会话(W20):转录只读。一句用户话进这里会被当成"有人直接
+             对 agent 说了句话"混进它的回合历史 —— 输入框整块不挂,取代它的是
+             一行说明,免得输入框凭空消失像是坏了。 -->
+        <div
+          v-if="isAgentExecutionSession"
+          class="composer-agent-note"
+        >
+          执行会话 · 只读转录
+        </div>
         <InputBox
+          v-else
           ref="inputBoxRef"
           :is-loading="isGenerating"
           :session-id="effectiveSessionId"
@@ -155,9 +181,13 @@ import { useMusicStore } from '@/stores/music'
 import { useChatSession } from '@/composables/useChatSession'
 import MessageList from './MessageList.vue'
 import InputBox from './InputBox.vue'
+import CollabTypingLine from './CollabTypingLine.vue'
+import ComposerReplyBar from './ComposerReplyBar.vue'
 import BackgroundJobsStatusBar from './BackgroundJobsStatusBar.vue'
 import GoalStatusBar from './GoalStatusBar.vue'
-import type { MessageAttachment, ToolCall } from '@/types'
+import type { ChatMessage, ChatMessageMention, ChatMessageReplyTo, MessageAttachment, ToolCall } from '@/types'
+import { filterRoomMessages } from './message/room-grouping'
+import { isAgentExecutionSession as isAgentExecutionSessionKind } from '@/utils/agent-sessions'
 import { buildToolActivityTarget, buildToolPermissionTitle } from '@/stores/helpers/tool-display'
 
 const props = withDefaults(defineProps<{
@@ -259,11 +289,63 @@ watch(currentPendingPermission, () => {
   permissionScope.value = 'once'
 })
 
+// Collab 会话(room/work)的授权面收窄为仅 once:workspace 级 grant 只按
+// {type, pattern, workspaceRoot} 匹配、无 agent/任务维度——在多 agent 语境下
+// 批一次 = 该目录所有 agent 的所有未来任务全免检(docs/multi-agent-collab.md
+// D8)。房间/任务维度的 grant 是 P2,做好才放开。
+const isCollabSessionActive = computed(() => {
+  const id = effectiveSessionId.value
+  if (!id) return false
+  const kind = sessionsStore.sessions.find(s => s.id === id)?.kind
+  return kind === 'room' || kind === 'work'
+})
+
+// Agent 执行会话(W18/W20):打开就是原始转录直读 —— 驱动行、思考、工具面板
+// 一个不滤(那正是"看执行过程"),所以下面的房间过滤天然不适用(它只认
+// kind='room')。变的只有 composer:执行会话不收用户输入。
+const isAgentExecutionSession = computed(() =>
+  isAgentExecutionSessionKind(currentSession.value),
+)
+
+// Rooms only: work sessions are a single agent talking to you, so there is no
+// "who else is about to speak" to report.
+const isCollabRoomActive = computed(() => {
+  const id = effectiveSessionId.value
+  if (!id) return false
+  return sessionsStore.sessions.find(s => s.id === id)?.kind === 'room'
+})
+
+// Rooms read as IM: the coordinator's machinery (activation drives, resolved
+// pass turns) is dropped HERE, before the list — a row that renders nothing
+// still owns a list slot and leaves a measurement hole. Grouping and time
+// capsules downstream then see exactly the stream the user sees, so two
+// replies from one agent that had a drive between them merge into one group.
+// Non-room sessions pass through by identity (docs/design/multi-agent-collab-im.md §3).
+const listMessages = computed(() =>
+  isCollabRoomActive.value
+    ? (filterRoomMessages(panelMessages.value) as ChatMessage[])
+    : panelMessages.value,
+)
+
+// The quote waiting to ride out with the next message (§3.5 A). Per panel, and
+// dropped on session switch — a quote belongs to the room it was picked in.
+const pendingReplyTo = ref<ChatMessageReplyTo | null>(null)
+
+function handleReplyTo(replyTo: ChatMessageReplyTo) {
+  pendingReplyTo.value = replyTo
+  focusInput()
+}
+
+watch(effectiveSessionId, () => {
+  pendingReplyTo.value = null
+})
+
 const scopeOptions = computed(() => {
   const options: Array<{ value: PermissionResponse; label: string; hint: string }> = [
     { value: 'once', label: 'once', hint: 'Allow this call only' },
-    { value: 'session', label: 'session', hint: 'Allow for this session' },
   ]
+  if (isCollabSessionActive.value) return options
+  options.push({ value: 'session', label: 'session', hint: 'Allow for this session' })
   const toolCall = currentPendingPermission.value?.toolCall
   if (toolCall && canAllowWorkspace(toolCall)) {
     options.push({ value: 'workdir', label: 'workspace', hint: 'Allow in this workspace' })
@@ -736,6 +818,7 @@ async function handleSendMessage(
   message: string,
   mode: 'send' | 'steer' | 'followup' = 'send',
   attachments?: MessageAttachment[],
+  mentions?: ChatMessageMention[],
 ) {
   const session = currentSession.value
   if (!session) return
@@ -748,6 +831,10 @@ async function handleSendMessage(
   } else if (mode === 'followup') {
     await chatQueueFollowUpMessage(message)
   } else {
+    // The quote rides out with THIS send and is consumed here — taking it
+    // before the awaits keeps a second Enter from re-attaching it.
+    const replyTo = pendingReplyTo.value ?? undefined
+    pendingReplyTo.value = null
     if (sessionsStore.isNewChatDraftId(session.id)) {
       const materialized = await sessionsStore.materializeNewChatDraft(session.id, session.name || 'New Chat')
       if (!materialized) {
@@ -760,10 +847,13 @@ async function handleSendMessage(
         })
         return
       }
-      await chatStore.sendMessage(materialized.id, message, attachments)
+      await chatStore.sendMessage(materialized.id, message, attachments, mentions ? { mentions } : undefined)
       return
     }
-    await chatSendMessage(message, attachments)
+    await chatSendMessage(message, attachments, {
+      ...(replyTo ? { replyTo } : {}),
+      ...(mentions ? { mentions } : {}),
+    })
   }
 }
 
@@ -876,6 +966,35 @@ defineExpose({
   transition: margin-bottom 0.18s ease;
 }
 
+/* Agent 执行会话的只读说明:占输入框的位置,走同一条测量出来的阅读列,
+   一行淡字,零填充零边框(§3.6)。 */
+.composer-agent-note {
+  box-sizing: border-box;
+  width: var(--chat-composer-width);
+  margin: 0 var(--chat-content-column-right, auto) 0 var(--chat-content-column-left, auto);
+  padding: 10px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ui-text-muted-fg, var(--text-muted, var(--muted)));
+  user-select: none;
+}
+
+/* The typing line rides the same measured reading column as the composer it
+   sits on, so the names start on the composer's left edge. */
+.composer-container > :deep(.collab-typing) {
+  box-sizing: border-box;
+  width: var(--chat-composer-width);
+  margin: 0 var(--chat-content-column-right, auto) 4px var(--chat-content-column-left, auto);
+}
+
+/* The pending quote rides the same measured column, right on the composer it
+   will be sent with. */
+.composer-container > :deep(.composer-reply) {
+  box-sizing: border-box;
+  width: var(--chat-composer-width);
+  margin: 0 var(--chat-content-column-right, auto) 4px var(--chat-content-column-left, auto);
+}
+
 /* The docked sidebar snaps discretely (see App.vue), so the composer glides
    to its new column on its own; only while the layout toggle is animating,
    so live splitter drags keep tracking the cursor 1:1. The container transform
@@ -886,6 +1005,8 @@ defineExpose({
 
 .composer-container.is-layout-animating :deep(.composer-wrapper),
 .composer-container.is-layout-animating :deep(.goal-bar),
+.composer-container.is-layout-animating :deep(.collab-typing),
+.composer-container.is-layout-animating :deep(.composer-reply),
 .composer-container.is-layout-animating .session-permission-panel {
   transition:
     width var(--app-sidebar-transition-duration, 0.3s) var(--app-sidebar-transition-ease, cubic-bezier(0.4, 0, 0.2, 1)),

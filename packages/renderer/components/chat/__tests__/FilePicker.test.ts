@@ -116,7 +116,9 @@ describe('composer extension pickers', () => {
     expect(wrapper.find('.composer-extension-row.selected').exists()).toBe(true)
     await wrapper.find('.composer-extension-row').trigger('click')
 
-    expect(wrapper.emitted('select')?.[0]).toEqual(['/repo/src/editor/TextEditor.vue'])
+    // The kind rides along so the composer can route page rows to the page
+    // token path instead of the file token path.
+    expect(wrapper.emitted('select')?.[0]).toEqual(['/repo/src/editor/TextEditor.vue', 'file'])
   })
 
   it('renders path rows as a composer extension and emits selected directories', async () => {

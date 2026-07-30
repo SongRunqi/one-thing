@@ -10,7 +10,10 @@ import type {
 	AgentRole,
 	AgentToolCall,
 } from "./types.js";
-import { agentToolMessageContentFromHistoryResult } from "./tool-results.js";
+import {
+	agentToolMessageContentFromHistoryResult,
+	agentToolResultIsErrorFromHistoryResult,
+} from "./tool-results.js";
 import { agentSupportsInputModality } from "./capabilities.js";
 
 export type AgentHistoryContent =
@@ -265,6 +268,9 @@ export function agentMessagesFromHistory(
 									capabilities,
 								)
 							: stringifyToolResult(item.result),
+						...(agentToolResultIsErrorFromHistoryResult(item.result) && {
+							isError: true,
+						}),
 					});
 				}
 			} else {

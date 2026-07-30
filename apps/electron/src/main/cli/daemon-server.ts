@@ -176,6 +176,32 @@ export class DaemonServer {
         const params = request.params as { sessionId?: string; cwd?: string | null } | undefined
         return { cwd: this.backend.sessionCwd(params?.sessionId, Object.prototype.hasOwnProperty.call(params || {}, 'cwd') ? params?.cwd ?? null : undefined) }
       }
+      case 'collab.roomNew':
+        return this.backend.collabRoomNew(request.params as Parameters<typeof this.backend.collabRoomNew>[0])
+      case 'collab.roomList':
+        return this.backend.collabRoomList()
+      case 'collab.send':
+        return this.backend.collabSend(
+          requiredString(request.params, 'roomSessionId'),
+          requiredString(request.params, 'content'),
+        )
+      case 'collab.board':
+        return this.backend.collabBoard(requiredString(request.params, 'roomSessionId'))
+      case 'collab.setBudgets':
+        return this.backend.collabSetBudgets(
+          requiredString(request.params, 'roomSessionId'),
+          request.params as { dailyCostUSD?: number; maxChain?: number },
+        )
+      case 'collab.roomUpdate':
+        return this.backend.collabRoomUpdate({
+          ...(request.params as Record<string, unknown>),
+          roomSessionId: requiredString(request.params, 'roomSessionId'),
+        } as Parameters<typeof this.backend.collabRoomUpdate>[0])
+      case 'collab.transcript':
+        return this.backend.collabTranscript(
+          requiredString(request.params, 'roomSessionId'),
+          (request.params as { limit?: number } | undefined)?.limit,
+        )
       case 'session.model':
         this.backend.sessionModel(requiredString(request.params, 'sessionId'), requiredString(request.params, 'provider'), requiredString(request.params, 'model'))
         return { ok: true }

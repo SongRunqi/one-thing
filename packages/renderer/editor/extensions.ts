@@ -375,6 +375,15 @@ export function themeExtension(profile: EditorProfile, spellcheck: boolean): Ext
       cursor: 'default',
       lineHeight: '17px',
     },
+    /* Room member mention (W14a): the token paints as the plain `@名字` it
+       will become at send time — same ink as the surrounding sentence, only
+       the weight says it is a real member and not typed-out text. */
+    '.member-ref-widget': {
+      display: 'inline',
+      color: 'var(--ui-accent-primary-fg, var(--accent))',
+      fontWeight: '600',
+      whiteSpace: 'pre',
+    },
     '.prompt-ref-widget-kind': {
       flexShrink: '0',
       paddingRight: '6px',

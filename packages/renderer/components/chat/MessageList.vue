@@ -8,7 +8,7 @@
       :class="[
         'message-list',
         `density-${messageListDensity}`,
-        { 'stream-following': useBottomScrollAnchor },
+        { 'stream-following': useBottomScrollAnchor, 'is-room': isRoomSession },
       ]"
       :style="messageListStyles"
     >
@@ -44,8 +44,17 @@
           v-for="(message, index) in messages"
           :key="message.id || index"
         >
+          <!-- Time break: its own row in the same flow, never a wrapper —
+               one message stays one measurable row. -->
+          <RoomTimeCapsule
+            v-if="isRoomRowVisible(index) && roomCapsuleLabel(index)"
+            :label="roomCapsuleLabel(index)"
+          />
+
           <div
+            v-if="isRoomRowVisible(index)"
             class="message-list-row"
+            :class="roomRowClass(index)"
             :data-index="index"
             :data-message-id="message.id"
           >
@@ -54,7 +63,19 @@
               :branches="getBranchesForMessage(message.id)"
               :can-branch="canCreateBranch"
               :is-highlighted="message.id === highlightedMessageId"
+              :room-mode="isRoomSession"
+              :dm-mode="isUserDmSession"
+              :pair-dm-mode="isPairDmSession"
+              :group-head="isRoomGroupHead(index)"
+              :group-tail="isRoomGroupTail(index)"
+              :group-collapsible="Boolean(roomGroupToggleFor(index))"
+              :group-collapsed="isRoomGroupCollapsed(index)"
+              :group-message-count="roomGroupMessageCount(index)"
+              @toggle-group="toggleRoomGroup(index)"
               @edit="handleEdit"
+              @reply="(replyTo) => emit('replyTo', replyTo)"
+              @react="handleReact"
+              @jump-to-message="handleJumpToMessage"
               @branch="handleBranch"
               @go-to-branch="handleGoToBranch"
               @text-selection="handleTextSelection"
@@ -203,6 +224,16 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Room reaction failures (§3.6: a trace line, never a card). Rare and
+         self-clearing — a chip that refused to toggle otherwise looks like a
+         click the app ignored. -->
+    <div
+      v-if="reactionHint"
+      class="room-action-hint"
+    >
+      {{ reactionHint }}
+    </div>
   </div>
 </template>
 
@@ -210,9 +241,18 @@
 import Button from '@/components/common/Button.vue'
 import Scrollbar from '@/components/common/Scrollbar.vue'
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdated } from 'vue'
-import type { ChatMessage, SessionGoal, ToolCall } from '@/types'
+import type { ChatMessage, ChatMessageReplyTo, SessionGoal, ToolCall } from '@/types'
 import MessageItem from './MessageItem.vue'
 import GoalSummaryCard from './message/GoalSummaryCard.vue'
+import RoomTimeCapsule from './message/RoomTimeCapsule.vue'
+import {
+  EMPTY_ROOM_LAYOUT,
+  buildRoomMessageLayout,
+  isRoomThinkingTrace,
+  roomGroupAt,
+  type RoomMessageGroup,
+  type RoomMessageLike,
+} from './message/room-grouping'
 import SelectionToolbar from './message/SelectionToolbar.vue'
 import EmptyState from './EmptyState.vue'
 import AssistantMessageNavRail from './AssistantMessageNavRail.vue'
@@ -234,6 +274,7 @@ import {
 } from '@/composables/useFollowScroll'
 import { useMessageScrollCoordinator } from '@/composables/useMessageScrollCoordinator'
 import { buildFontFamily, buildFontLoadSpecs } from '@shared/fonts'
+import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
 
 interface BranchInfo {
@@ -276,7 +317,64 @@ const emit = defineEmits<{
   splitWithBranch: [sessionId: string]
   openFile: [filePath: string]
   reviewGoal: [sessionId: string]
+  /** Rooms: a message was picked to quote (§3.5 A). */
+  replyTo: [replyTo: ChatMessageReplyTo]
 }>()
+
+/**
+ * Walk back to a quoted message. The snapshot on the quote block already
+ * carries the words, so a target that is gone (deleted, or not in the loaded
+ * page) simply does not move the list — never an error, never a jump to the
+ * wrong row. Reuses the search-highlight window that already exists here.
+ */
+function handleJumpToMessage(messageId: string) {
+  void scrollToMessage(messageId, { preserveNavigation: true })
+}
+
+/** Failure trace for room actions taken from the list (self-clearing). */
+const reactionHint = ref('')
+let reactionHintTimer: ReturnType<typeof setTimeout> | null = null
+
+function showReactionHint(message: string): void {
+  reactionHint.value = message
+  if (reactionHintTimer) clearTimeout(reactionHintTimer)
+  reactionHintTimer = setTimeout(() => {
+    reactionHint.value = ''
+    reactionHintTimer = null
+  }, 4000)
+}
+
+/**
+ * Toggle an emoji on a room message (§3.5 B). No optimistic write: the app
+ * layer broadcasts `message:updated` and the store merges it, so the chip row
+ * is always showing what was actually persisted.
+ *
+ * Which means a REFUSED write is invisible by construction — the chips simply
+ * stay as they were, exactly as they would after a click that did nothing. The
+ * reply is consumed for that reason (P2-19); the actor is not sent at all any
+ * more, because the main process pins it to the user (P2-20).
+ *
+ * Every argument crossing the bridge is a PRIMITIVE — a reactive proxy cannot
+ * survive structured clone (W7 血教训).
+ */
+async function handleReact(messageId: string, emoji: string) {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId || !messageId || !emoji) return
+  try {
+    const response = await platformApi.reactToCollabMessage(
+      String(sessionId),
+      String(messageId),
+      String(emoji),
+      { type: 'user' },
+    )
+    if (response && response.success === false) {
+      showReactionHint(response.error || '这个表情没有记上')
+    }
+  } catch (error) {
+    console.error('[collab] reaction failed:', error)
+    showReactionHint(error instanceof Error ? error.message : String(error))
+  }
+}
 
 const chatStore = useChatStore()
 const sessionsStore = useSessionsStore()
@@ -305,6 +403,143 @@ const panelSession = computed(() => {
   if (!sid) return null
   return sessionsStore.sessions.find(s => s.id === sid) || null
 })
+
+// ── Room (kind='room') IM presentation ─────────────────────────────────────
+// docs/design/multi-agent-collab-im.md §3. `props.messages` arrives already
+// filtered by ChatPanel (drives / pass turns are gone), so consecutive
+// messages here are what the user actually sees. Everything below reads only
+// role / agentId / timestamp — never `content` — so a streaming reply does not
+// re-run the layout (and re-render the whole list) on every chunk.
+const isRoomSession = computed(() => panelSession.value?.kind === 'room')
+
+/**
+ * 托管私聊房(agent-im-dm.md §4.3):房间的全套排版照旧,只是一对一里没人需要
+ * 署名 —— say 就是 TA 在说话。判定读产品层的纯规则(人数即形态),不在这里
+ * 自己拼 `dm && members.length === 1`。
+ */
+const isUserDmSession = computed(() => isRoomSession.value && isUserDmRoom(panelSession.value?.room))
+
+/**
+ * agent ↔ agent 私聊房(§4.3):排版与签名气泡全部照群聊走(两个人**要**署名),
+ * 唯一的分支是用户消息 —— 用户在这里是旁观者,插一句话与两位成员的对话不是
+ * 同一种发言,气泡上要看得出来。
+ */
+const isPairDmSession = computed(() => isRoomSession.value && isAgentPairDmRoom(panelSession.value?.room))
+
+const roomLayout = computed(() =>
+  isRoomSession.value ? buildRoomMessageLayout(props.messages) : EMPTY_ROOM_LAYOUT,
+)
+
+/** '' when no capsule belongs above this message. */
+function roomCapsuleLabel(index: number): string {
+  return roomLayout.value.capsules.get(index) ?? ''
+}
+
+// Outside a room every message is its own group: the flags are inert but must
+// stay truthful so MessageItem's ordinary layout is bit-for-bit unchanged.
+function isRoomGroupHead(index: number): boolean {
+  return !isRoomSession.value || roomLayout.value.groupHeads.has(index)
+}
+
+function isRoomGroupTail(index: number): boolean {
+  if (!isRoomSession.value) return true
+  if (roomLayout.value.groupTails.has(index)) return true
+  // A folded group shows its head alone, so the head IS the group's last row:
+  // it has to take the turn gap and the hover footer, or the block reads as
+  // "stacked, more coming" with nothing coming.
+  const group = roomGroupAt(roomLayout.value, index)
+  return Boolean(group && group.head === index && isRoomGroupFolded(group))
+}
+
+// ── Room utterance folding (P1-2, todo #6) ────────────────────────────────────
+// One agent's burst folds as a unit. Folded rows leave the DOM (v-if, not
+// v-show): the room's gap table is a chain of `+ *` sibling rules, and a
+// display:none row still matches those — hiding rows without removing them
+// would leave a phantom band above the next visible one. The list is not
+// virtualized (a plain v-for over `props.messages`), so removal costs nothing
+// but the rows themselves, and every index-keyed helper here keeps reading the
+// unfiltered array — folding changes what renders, never what a row IS.
+
+function isRoomGroupFolded(group: RoomMessageGroup | null): boolean {
+  if (!group?.collapsible) return false
+  const sessionId = effectiveSessionId.value
+  return Boolean(sessionId) && chatStore.isRoomGroupCollapsed(sessionId, group.key)
+}
+
+/** Rows removed by a fold: everything in the group except its head. */
+function isRoomRowVisible(index: number): boolean {
+  if (!isRoomSession.value) return true
+  const group = roomGroupAt(roomLayout.value, index)
+  if (!group || group.head === index) return true
+  return !isRoomGroupFolded(group)
+}
+
+/** A head row offers the toggle only when there is something behind it. */
+function roomGroupToggleFor(index: number): RoomMessageGroup | null {
+  if (!isRoomSession.value) return null
+  const group = roomGroupAt(roomLayout.value, index)
+  return group && group.head === index && group.collapsible ? group : null
+}
+
+function isRoomGroupCollapsed(index: number): boolean {
+  return isRoomGroupFolded(roomGroupToggleFor(index))
+}
+
+/**
+ * Live count — a burst that grows while folded stays folded (the user's fold is
+ * not revoked by an arriving message) but its summary keeps telling the truth.
+ */
+function roomGroupMessageCount(index: number): number {
+  return roomGroupToggleFor(index)?.messageCount ?? 0
+}
+
+function toggleRoomGroup(index: number): void {
+  const group = roomGroupToggleFor(index)
+  const sessionId = effectiveSessionId.value
+  if (!group || !sessionId) return
+  chatStore.toggleRoomGroupCollapsed(sessionId, group.key)
+}
+
+// Navigation (quote jump / search hit / nav rail) must never aim at a row that
+// a fold removed: the scroll would silently do nothing. Unfold first, then let
+// the existing scroll path run on the next tick.
+function revealRoomRowForMessage(messageId: string): void {
+  if (!isRoomSession.value) return
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return
+  const index = props.messages.findIndex(message => message.id === messageId)
+  if (index < 0) return
+  const group = roomGroupAt(roomLayout.value, index)
+  if (!group || group.head === index || !isRoomGroupFolded(group)) return
+  chatStore.expandRoomGroup(sessionId, group.key)
+}
+
+/**
+ * Which band of the room gap table this row's TOP gap comes from (W15 §3.6).
+ *
+ * Every vertical gap in a room is owned by the row BELOW it — one margin-top
+ * per row, no component-owned bottoms anywhere in the stream. That is the whole
+ * trick: with a single contributor per gap, two rows of the same pair-type
+ * cannot drift apart, which is what made the stream read as "间隔没有固定".
+ * The band is decided here (from the projection, not from CSS guesswork) and
+ * spent in one place — the `.message-list.is-room` block at the bottom of this
+ * file.
+ *
+ * `undefined` = the default turn band. Outside a room this returns undefined
+ * for every row and the table never engages.
+ */
+function roomRowClass(index: number): string | undefined {
+  if (!isRoomSession.value) return undefined
+  // A system line is a notice, whoever it interrupts.
+  if (props.messages[index]?.role === 'system') return 'room-row--notice'
+  // W14b: a thinking trace OPENS the turn it belongs to, so it takes the turn
+  // band above it and hands the stack band to whatever it says next (the CSS
+  // `+ *` rule below) — one turn reads as one block, not two full gaps.
+  if (isRoomThinkingTrace(props.messages[index] as RoomMessageLike)) return 'room-row--trace'
+  // Not a group head ⇒ the same agent is still speaking ⇒ stack band.
+  if (!roomLayout.value.groupHeads.has(index)) return 'room-row--stacked'
+  return undefined
+}
 
 // Get current message list density setting
 const messageListDensity = computed(() => {
@@ -1271,6 +1506,8 @@ async function scrollToMessage(
   }
   isFollowing.value = false
   searchHighlightedMessageId.value = messageId
+  // A folded room block has no row to scroll to; unfold before measuring.
+  revealRoomRowForMessage(messageId)
 
   await nextTick()
   const row = getMessageRowById(messageId) || getMessageRow(messageIndex)
@@ -2306,6 +2543,19 @@ defineExpose({
   overflow: visible;
 }
 
+/* 失败痕迹:一行墨灰,贴在列表底边,不做卡片不做图标(§3.6)。 */
+.room-action-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  text-align: center;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+  pointer-events: none;
+}
+
 /* Paper-ink, flat: an ink hairline ring on solid paper. Elevation (drop
    shadow + backdrop blur) was the one "floating plastic" element in an
    otherwise line-drawn surface. */
@@ -2410,6 +2660,103 @@ defineExpose({
 .message-list-row {
   width: 100%;
   overflow-anchor: none;
+}
+
+/* ── Room (kind='room') gap table ── docs/design/multi-agent-collab-im.md §3.6
+   (W15, 2026-07-28: "message 之间的间隔没有固定,看起来很混乱")
+
+   FOUR bands, and nothing in a room stream is allowed to be spaced by anything
+   else. Values are the 8px grid the chat already stands on (the comfortable
+   density's 34px turn gap rounds to 32; the stacked 8px stays):
+
+     turn     32px  组间 — 换发言人 / 用户↔agent / 组边界 / 任何新一组
+     stack     8px  组内 — 同一 agent 的连发
+     notice   32px  系统通知痕迹行的上下(W15b 从 24 提档,见下方注释)
+     capsule  40px  时间胶囊的上下(真正的断点,值得更多空气)
+
+   INSIDE a row there is exactly one more number, and it is not a band: the
+   4px rhythm `.message-content-wrapper` stacks a message's own parts on
+   (signature → quote → attachments → frame → reaction chips). W15c: every one
+   of those parts is a FLEX item, so a margin of its own does not collapse
+   into that gap — it ADDS. MessageItem now zeroes all of them, both sides of
+   the room, so a message's height is its content and never a hidden band.
+
+   ONE rule makes them hold: **a gap is owned by the row below it**, as a
+   margin-top, and every component in the stream contributes zero of its own
+   (MessageItem zeroes its turn padding via `.is-room-row`, the capsule and the
+   page-summary pill are zeroed here). Two adjacent margins in a block flow
+   collapse to the larger, and every bottom is 0, so the collapsed value is
+   always exactly the band — no addition, no density drift, no per-component
+   surprise. The two `+` rules give the notice and the capsule their BELOW gap,
+   which is the only case where a row's band has to reach past itself.
+
+   P1-2 (folding): a folded utterance block's rows are REMOVED from the DOM, not
+   hidden. Those two `+` rules — and `> * + *` itself — still match a
+   display:none sibling, so v-show would leave a phantom band above whatever
+   came next; the table only stays honest if the row is actually gone. */
+.message-list.is-room {
+  --room-gap-turn: 32px;
+  --room-gap-stack: 8px;
+  /* 32, not 24: this band hosts the 24px hover action row (真机实锤"距离
+     action bar 太近"), and every band that can host it must leave ≥8px of
+     air — same clearance the 32px turn band gives. */
+  --room-gap-notice: 32px;
+  --room-gap-capsule: 40px;
+}
+
+/* Default band + the blanket ban on component-owned bottoms. */
+.message-list.is-room .message-list-content > * {
+  margin-top: var(--room-gap-turn);
+  margin-bottom: 0;
+}
+
+.message-list.is-room .message-list-content > .room-row--stacked {
+  margin-top: var(--room-gap-stack);
+}
+
+.message-list.is-room .message-list-content > .room-row--notice {
+  margin-top: var(--room-gap-notice);
+}
+
+.message-list.is-room .message-list-content > .room-time-capsule {
+  margin-top: var(--room-gap-capsule);
+}
+
+/* The below side of the two rows whose band is symmetric. A stacked row can
+   never follow either of them (both break the group in room-grouping.ts), so
+   these never fight the stack band. */
+.message-list.is-room .message-list-content > .room-row--notice + * {
+  margin-top: var(--room-gap-notice);
+}
+
+/* W14b thinking trace: it opens a turn, so its own band is the turn band and
+   what follows it — the first thing that agent actually SAID — takes the stack
+   band. Without the second rule one turn would cost two full 32px gaps for what
+   the reader experiences as a single utterance. Declared before the capsule's
+   own-band rule below so a capsule after a trace still wins its 40px. */
+.message-list.is-room .message-list-content > .room-row--trace {
+  margin-top: var(--room-gap-turn);
+}
+
+.message-list.is-room .message-list-content > .room-row--trace + * {
+  margin-top: var(--room-gap-stack);
+}
+
+.message-list.is-room .message-list-content > .room-time-capsule + * {
+  margin-top: var(--room-gap-capsule);
+}
+
+/* …and the capsule's OWN band outranks whatever precedes it: a notice ten
+   minutes before the next message must not shrink the break that follows it.
+   Same specificity as the rules above, declared after them, so it wins. */
+.message-list.is-room .message-list-content > * + .room-time-capsule {
+  margin-top: var(--room-gap-capsule);
+}
+
+/* Neither end of the stream owns a gap: the scroller's reserves do. */
+.message-list.is-room .message-list-content > *:first-child,
+.message-list.is-room .message-list-content > .message-list-bottom-sentinel {
+  margin-top: 0;
 }
 
 .message-list-bottom-sentinel {

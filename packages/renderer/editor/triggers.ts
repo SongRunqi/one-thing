@@ -1,4 +1,4 @@
-export type EditorTriggerType = 'command' | 'path' | 'file' | 'prompt' | 'skill'
+export type EditorTriggerType = 'command' | 'path' | 'file' | 'prompt' | 'skill' | 'page' | 'member'
 
 export interface EditorTrigger {
   type: EditorTriggerType
@@ -8,7 +8,27 @@ export interface EditorTrigger {
   explicit?: boolean
 }
 
-export function parseEditorTrigger(value: string, cursor = value.length): EditorTrigger | null {
+export interface EditorTriggerOptions {
+  /**
+   * '@page' references the embedded browser, a desktop-only surface. Hosts
+   * without it disable the keyword so the text stays an ordinary bare-@ file
+   * query instead of a dead trigger.
+   */
+  pageTrigger?: boolean
+  /**
+   * Collab rooms: bare `@` targets room MEMBERS (the feature's primary
+   * interaction) instead of files — a mention must be spelled exactly for
+   * activation, so it needs the completion popover, while files remain
+   * reachable via the explicit `@files` keyword.
+   */
+  memberTrigger?: boolean
+}
+
+export function parseEditorTrigger(
+  value: string,
+  cursor = value.length,
+  options: EditorTriggerOptions = {},
+): EditorTrigger | null {
   const boundedCursor = Math.max(0, Math.min(cursor, value.length))
   const beforeCursor = value.slice(0, boundedCursor)
   const afterCursor = value.slice(boundedCursor)
@@ -59,6 +79,20 @@ export function parseEditorTrigger(value: string, cursor = value.length): Editor
     }
   }
 
+  if (options.pageTrigger !== false) {
+    const pageMatch = lineBeforeCursor.match(/(^|\s)@pages?(?:\s+([^\n@]*))?$/)
+    if (pageMatch?.index !== undefined) {
+      const leading = pageMatch[1] || ''
+      return {
+        type: 'page',
+        query: (pageMatch[2] || '').trim(),
+        from: lineStart + pageMatch.index + leading.length,
+        to: boundedCursor,
+        explicit: true,
+      }
+    }
+  }
+
   const skillMatch = lineBeforeCursor.match(/(^|\s)@skills?(?:\s+([^\n@]*))?$/)
   if (skillMatch?.index !== undefined) {
     const leading = skillMatch[1] || ''
@@ -74,7 +108,7 @@ export function parseEditorTrigger(value: string, cursor = value.length): Editor
   const fileMatch = lineBeforeCursor.match(/@([^\s@]*)$/)
   if (fileMatch?.index !== undefined) {
     return {
-      type: 'file',
+      type: options.memberTrigger ? 'member' : 'file',
       query: fileMatch[1],
       from: lineStart + fileMatch.index,
       to: boundedCursor,

@@ -7,7 +7,11 @@
 import { z } from "zod";
 import { createTwoFilesPatch } from "diff";
 import type { JsonObjectProperty } from "@onething/core";
-import { coreDiffHunksToJson, type CoreDiffHunk } from "@onething/core/tools";
+import {
+	coreDiffHunksToJson,
+	createToolAbortError,
+	type CoreDiffHunk,
+} from "@onething/core/tools";
 import {
 	basenamePath,
 	dirnamePath,
@@ -26,7 +30,11 @@ import {
 	getCoreSandboxBoundary,
 	resolveCoreToolPath,
 } from "../sandbox.js";
-import { prepareExactEditPreview, type ExactEdit } from "../edit-engine.js";
+import {
+	editFailureError,
+	prepareExactEditPreview,
+	type ExactEdit,
+} from "../edit-engine.js";
 import { trimDiff, truncateDiffForDisplay } from "../replacers.js";
 import {
 	countLineChanges,
@@ -115,16 +123,19 @@ function buildEditPlan(
 	snapshot: TextFileSnapshot,
 ): EditPlan {
 	if (!snapshot.exists) {
-		throw new Error(`File not found: ${resolvedPath}`);
+		throw editFailureError(
+			`Edit failed: file not found: ${basenamePath(resolvedPath)}`,
+			`File not found: ${resolvedPath}`,
+		);
 	}
 
-	let preview;
-	try {
-		preview = prepareExactEditPreview(snapshot.content, edits, resolvedPath);
-	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		throw new Error(`Failed to edit ${resolvedPath}: ${message}`);
-	}
+	// The engine already produces "short reason + detail"; re-wrapping it here
+	// only duplicated the path and buried the actionable line.
+	const preview = prepareExactEditPreview(
+		snapshot.content,
+		edits,
+		resolvedPath,
+	);
 
 	const diff = createTwoFilesPatch(
 		resolvedPath,
@@ -266,7 +277,7 @@ export function createEditTool(
 			await ctx.beforeSideEffect?.();
 
 			const throwIfAborted = () => {
-				if (ctx.abortSignal?.aborted) throw new Error("Operation aborted");
+				if (ctx.abortSignal?.aborted) throw createToolAbortError();
 			};
 			throwIfAborted();
 
@@ -327,8 +338,9 @@ export function createEditTool(
 					) {
 						if (policyDiff && approvedPlan.diff !== policyDiff) {
 							emitPlanMetadata(approvedPlan);
-							throw new Error(
-								`File changed after permission approval and the resulting edit diff changed: ${resolvedPath}. Please retry the edit.`,
+							throw editFailureError(
+								`Edit failed: file changed after approval in ${basenamePath(resolvedPath)}.`,
+								`${resolvedPath} was modified between permission approval and execution. Re-read the file and retry with its current content as oldText.`,
 							);
 						}
 					}
@@ -347,8 +359,9 @@ export function createEditTool(
 
 						revalidationAttempts++;
 						if (revalidationAttempts > MAX_REVALIDATION_ATTEMPTS) {
-							throw new Error(
-								`File changed repeatedly after edit approval: ${resolvedPath}. Please retry the edit.`,
+							throw editFailureError(
+								`Edit failed: file keeps changing in ${basenamePath(resolvedPath)}.`,
+								`${resolvedPath} was modified too many times during the edit. Re-read it to get the latest content, then retry.`,
 							);
 						}
 
@@ -362,14 +375,18 @@ export function createEditTool(
 						} catch (error) {
 							const message =
 								error instanceof Error ? error.message : String(error);
-							throw new Error(
-								`File changed after approval and the edit could not be re-applied to latest content: ${message}. Please retry.`,
+							// One line of approval context, then the engine's own short-reason +
+							// detail text — no third wrapper around it.
+							throw editFailureError(
+								`Edit failed: file changed after approval in ${basenamePath(resolvedPath)}.`,
+								message,
 							);
 						}
 
 						if (revalidatedPlan.diff !== approvedPlan.diff) {
 							emitPlanMetadata(revalidatedPlan);
-							throw new Error(
+							throw editFailureError(
+								`Edit failed: file changed after approval in ${basenamePath(resolvedPath)}, retry needed.`,
 								`File changed after permission approval and the resulting edit diff changed: ${resolvedPath}. Please retry the edit.`,
 							);
 						}

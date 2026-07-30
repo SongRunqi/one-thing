@@ -36,6 +36,7 @@ export {
 	textStreamExecutionResult,
 } from "./stream-executor.js";
 export type {
+	CoreInitialToolChoice,
 	CoreMessageStreamParams,
 	CoreSpecialStreamExecutionInput,
 	CoreStreamControllerLike,

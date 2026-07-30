@@ -18,8 +18,8 @@
     }
   },
   "desktop-full": {
-    "totalChars": 2513,
-    "totalTokens": 718,
+    "totalChars": 2805,
+    "totalTokens": 802,
     "segments": {
       "core": {
         "chars": 492,
@@ -42,16 +42,12 @@
         "estimatedTokens": 62
       },
       "skills": {
-        "chars": 1026,
-        "estimatedTokens": 294
+        "chars": 1429,
+        "estimatedTokens": 409
       },
       "os": {
-        "chars": 185,
-        "estimatedTokens": 53
-      },
-      "context-variables": {
-        "chars": 110,
-        "estimatedTokens": 32
+        "chars": 588,
+        "estimatedTokens": 168
       }
     }
   },

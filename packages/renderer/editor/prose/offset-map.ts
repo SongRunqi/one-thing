@@ -1,140 +1,98 @@
-import type { Node as ProseNode } from 'prosemirror-model'
+import { Fragment, Slice, type Node as ProseNode } from 'prosemirror-model'
+import { Selection } from 'prosemirror-state'
+import { serializeNoteMarkdown } from './markdown-io'
+import { noteSchema } from './schema'
 
-// Bridges the panel's text-offset world (find bar offsets computed on the
-// serialized markdown draft) and ProseMirror positions. The mapping works by
-// occurrence matching: locate the target string's occurrence index in the
-// draft, then find the same occurrence in the document's flat text.
+// 面板用的是「序列化后 markdown 草稿里的字符偏移」，编辑器用的是 ProseMirror 位置，
+// 两边得能互相换算。
+//
+// 以前这里靠「取光标前 12 个渲染字符，去草稿里找同名出现」来对齐。渲染文本里是没有
+// `**`、`` ` `` 这些标记的，所以：
+//   - 光标停在 `**1**` 的 `1` 附近时只能匹配到标记之外，报出来的偏移左移了；
+//   - 光标在块首（前面没有渲染字符）时 context 为空，直接 `return draft.length`——
+//     光标被甩到文末，也就是「光标丢失」。
+//
+// 现在改成插哨兵：把一个私有区字符插到光标处，整篇序列化一次，哨兵在结果里的下标就是
+// 精确的草稿偏移。标记、列表、front matter、块边界一概照顾到，且不依赖任何文本查找。
+// 反向换算利用「偏移随位置单调不减」做二分。
 
-interface FlatSegment {
-  textStart: number
-  pmStart: number
-  length: number
+// Unicode 私有区，笔记正文不会出现，序列化器也不会转义它。
+const SENTINEL = ''
+
+export interface DraftRange {
+  from: number
+  to: number
 }
 
-export interface FlatText {
-  text: string
-  segments: FlatSegment[]
+/** 二分或调用方给的位置可能落在块边界上，插不进文本；贴到最近的可放光标处。 */
+function snapToInlinePos(doc: ProseNode, pos: number): number {
+  const clamped = Math.max(0, Math.min(pos, doc.content.size))
+  const $pos = doc.resolve(clamped)
+  if ($pos.parent.inlineContent) return clamped
+  return Selection.near($pos).from
 }
 
-export function buildFlatText(doc: ProseNode): FlatText {
-  let text = ''
-  const segments: FlatSegment[] = []
-  doc.descendants((node, pos) => {
-    if (node.isText && node.text) {
-      segments.push({ textStart: text.length, pmStart: pos, length: node.text.length })
-      text += node.text
-      return true
-    }
-    if (node.isBlock && text.length && !text.endsWith('\n')) {
-      text += '\n'
-    }
-    if (node.type.name === 'math_inline') {
-      text += `$${node.attrs.tex}$`
-      return false
-    }
-    if (node.type.name === 'obsidian_link') {
-      text += `${node.attrs.embed ? '!' : ''}[[${node.attrs.target}]]`
-      return false
-    }
-    return true
-  })
-  return { text, segments }
-}
-
-export function flatIndexToPmPos(flat: FlatText, index: number): number | null {
-  for (const segment of flat.segments) {
-    if (index >= segment.textStart && index <= segment.textStart + segment.length) {
-      return segment.pmStart + (index - segment.textStart)
-    }
+/**
+ * 把哨兵插到 `pos` 处并整篇序列化，返回哨兵的下标。
+ *
+ * 哨兵带上该位置的 marks：光标在加粗run 内部时哨兵也在 `**` 里面，报出来的偏移就落在
+ * 标记内部而不是标记外面——这正是 `**|1**` 被报成 `|**1**` 的那个偏差。
+ */
+function draftOffsetAt(doc: ProseNode, pos: number): number | null {
+  const inlinePos = snapToInlinePos(doc, pos)
+  const $pos = doc.resolve(inlinePos)
+  let marked: ProseNode
+  try {
+    const sentinel = noteSchema.text(SENTINEL, $pos.marks())
+    marked = doc.replace(inlinePos, inlinePos, new Slice(Fragment.from(sentinel), 0, 0))
+  } catch {
+    return null
   }
-  return null
+  const index = serializeNoteMarkdown(marked).indexOf(SENTINEL)
+  return index < 0 ? null : index
 }
 
-export function pmPosToFlatIndex(flat: FlatText, pos: number): number | null {
-  for (const segment of flat.segments) {
-    if (pos >= segment.pmStart && pos <= segment.pmStart + segment.length) {
-      return segment.textStart + (pos - segment.pmStart)
-    }
+export function pmPosToDraftOffset(doc: ProseNode, draft: string, pos: number): number {
+  const offset = draftOffsetAt(doc, pos)
+  if (offset === null) return Math.min(draft.length, pos)
+  return Math.max(0, Math.min(offset, draft.length))
+}
+
+/**
+ * 反向：草稿偏移 → ProseMirror 位置。偏移随位置单调不减，二分取第一个 >= 目标的位置。
+ */
+export function draftOffsetToPmPos(doc: ProseNode, draft: string, offset: number): number {
+  const target = Math.max(0, Math.min(offset, draft.length))
+  let low = 0
+  let high = doc.content.size
+  while (low < high) {
+    const mid = (low + high) >> 1
+    if (pmPosToDraftOffset(doc, draft, mid) < target) low = mid + 1
+    else high = mid
   }
-  return null
+  return low
 }
 
-function occurrenceIndex(haystack: string, needle: string, beforeOffset: number): number {
-  if (!needle) return 0
-  let count = 0
-  let cursor = haystack.indexOf(needle)
-  while (cursor >= 0 && cursor < beforeOffset) {
-    count += 1
-    cursor = haystack.indexOf(needle, cursor + 1)
-  }
-  return count
-}
-
-function nthOccurrence(haystack: string, needle: string, n: number): number {
-  let cursor = -1
-  for (let i = 0; i <= n; i += 1) {
-    cursor = haystack.indexOf(needle, cursor + 1)
-    if (cursor < 0) return -1
-  }
-  return cursor
-}
-
-// Map a [from, to) range in the serialized draft onto PM positions. Returns
-// null when the target text does not exist in the rendered document (e.g. a
-// match inside syntax markers).
+/** 草稿里的 [from, to) 映射到 PM 位置区间。 */
 export function draftRangeToPmRange(
   doc: ProseNode,
   draft: string,
   from: number,
   to: number,
-): { from: number, to: number } | null {
-  const flat = buildFlatText(doc)
-  if (from >= to) {
-    // Caret only: anchor on the preceding context, else clamp to the end.
-    const context = draft.slice(Math.max(0, from - 12), from)
-    if (!context.trim()) return null
-    const occurrence = occurrenceIndex(draft, context, Math.max(0, from - 12))
-    const flatIndex = nthOccurrence(flat.text, context, occurrence)
-    if (flatIndex < 0) return null
-    const pos = flatIndexToPmPos(flat, flatIndex + context.length)
-    return pos === null ? null : { from: pos, to: pos }
-  }
-  const target = draft.slice(from, to)
-  const occurrence = occurrenceIndex(draft, target, from)
-  const flatIndex = nthOccurrence(flat.text, target, occurrence)
-  if (flatIndex < 0) return null
-  const pmFrom = flatIndexToPmPos(flat, flatIndex)
-  const pmTo = flatIndexToPmPos(flat, flatIndex + target.length)
-  if (pmFrom === null || pmTo === null) return null
-  return { from: pmFrom, to: pmTo }
+): DraftRange | null {
+  const pmFrom = snapToInlinePos(doc, draftOffsetToPmPos(doc, draft, from))
+  const pmTo = from === to ? pmFrom : snapToInlinePos(doc, draftOffsetToPmPos(doc, draft, to))
+  return { from: Math.min(pmFrom, pmTo), to: Math.max(pmFrom, pmTo) }
 }
 
-// Reverse: approximate draft offsets for the current PM selection.
+/** PM 选区映射回草稿偏移。 */
 export function pmRangeToDraftRange(
   doc: ProseNode,
   draft: string,
   from: number,
   to: number,
-): { from: number, to: number } {
-  const flat = buildFlatText(doc)
-  const flatFrom = pmPosToFlatIndex(flat, from)
-  const flatTo = pmPosToFlatIndex(flat, to)
-  if (flatFrom === null || flatTo === null) return { from: draft.length, to: draft.length }
-  const target = flat.text.slice(flatFrom, flatTo)
-  if (target) {
-    const occurrence = occurrenceIndex(flat.text, target, flatFrom)
-    const draftIndex = nthOccurrence(draft, target, occurrence)
-    if (draftIndex >= 0) return { from: draftIndex, to: draftIndex + target.length }
-  } else {
-    const context = flat.text.slice(Math.max(0, flatFrom - 12), flatFrom)
-    if (context.trim()) {
-      const occurrence = occurrenceIndex(flat.text, context, Math.max(0, flatFrom - 12))
-      const draftIndex = nthOccurrence(draft, context, occurrence)
-      if (draftIndex >= 0) {
-        const caret = draftIndex + context.length
-        return { from: caret, to: caret }
-      }
-    }
-  }
-  return { from: draft.length, to: draft.length }
+): DraftRange {
+  const draftFrom = pmPosToDraftOffset(doc, draft, from)
+  const draftTo = from === to ? draftFrom : pmPosToDraftOffset(doc, draft, to)
+  return { from: Math.min(draftFrom, draftTo), to: Math.max(draftFrom, draftTo) }
 }

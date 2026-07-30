@@ -11,11 +11,12 @@ import {
 } from '../index.js'
 
 const agentStoreMock = vi.hoisted(() => ({
-  getAgent: vi.fn(),
+  findAgent: vi.fn(),
 }))
 
 vi.mock('../../../agents/index.js', () => ({
-  getAgent: agentStoreMock.getAgent,
+  findAgent: agentStoreMock.findAgent,
+  defaultAgent: () => agentStoreMock.findAgent(undefined),
   DEFAULT_AGENT_ID: 'default',
 }))
 
@@ -42,7 +43,7 @@ function makeTempProject(): string {
 }
 
 beforeEach(() => {
-  agentStoreMock.getAgent.mockImplementation((agentId?: string) => ({
+  agentStoreMock.findAgent.mockImplementation((agentId?: string) => ({
     id: agentId || 'default',
     name: agentId ? 'Custom Agent' : 'Default Agent',
     systemPrompt: '',
@@ -95,7 +96,7 @@ describe('Pi-style prompt builder', () => {
   })
 
   it('injects custom Agent system prompts as developer context', async () => {
-    agentStoreMock.getAgent.mockReturnValueOnce({
+    agentStoreMock.findAgent.mockReturnValueOnce({
       id: 'agent-research',
       name: 'Research Lead',
       systemPrompt: 'Prioritize crisp, source-backed reasoning.',

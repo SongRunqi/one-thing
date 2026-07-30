@@ -1,5 +1,8 @@
 <template>
-  <div :class="['actions', role === 'user' ? 'user-actions' : '', { visible }]">
+  <div
+    :class="['actions', role === 'user' ? 'user-actions' : '', { visible }]"
+    @mouseleave="disarmRegenerate"
+  >
     <!-- Copy button -->
     <Tooltip :text="copied ? 'Copied!' : 'Copy'">
       <Button
@@ -20,9 +23,65 @@
       </Button>
     </Tooltip>
 
+    <!-- Reply (rooms only): quotes this message into the composer. -->
+    <Tooltip
+      v-if="canReply"
+      text="回复"
+    >
+      <Button
+        unstyled
+        class="action-btn reply-btn"
+        @click.stop="emit('reply')"
+      >
+        <Reply
+          :size="15"
+          :stroke-width="1.5"
+        />
+      </Button>
+    </Tooltip>
+
+    <!-- Reaction (rooms only): the palette opens on click, one tap writes. -->
+    <div
+      v-if="canReact"
+      ref="reactBtnRef"
+      class="react-btn-wrapper"
+    >
+      <Tooltip text="表情回应">
+        <Button
+          unstyled
+          class="action-btn react-btn"
+          @click.stop="toggleReactPicker"
+        >
+          <SmilePlus
+            :size="15"
+            :stroke-width="1.5"
+          />
+        </Button>
+      </Tooltip>
+      <Teleport to="body">
+        <div
+          v-if="showReactPicker"
+          class="react-picker"
+          :style="reactPickerStyle"
+          @click.stop
+        >
+          <button
+            v-for="emoji in REACTION_EMOJIS"
+            :key="emoji"
+            type="button"
+            class="react-picker-item"
+            :title="emoji"
+            @click="pickReaction(emoji)"
+          >
+            {{ emoji }}
+          </button>
+        </div>
+      </Teleport>
+    </div>
+
     <!-- Edit button for user messages -->
     <Tooltip
-      v-if="role === 'user'"
+      v-if="role === 'user' && !mutationsDisabled"
       text="Edit"
     >
       <Button
@@ -39,13 +98,14 @@
 
     <!-- Regenerate button (for assistant messages) -->
     <Tooltip
-      v-if="role === 'assistant'"
-      text="Regenerate"
+      v-if="role === 'assistant' && !mutationsDisabled"
+      :text="regenerateArmed ? 'Click again to regenerate' : 'Regenerate'"
     >
       <Button
         unstyled
         class="action-btn regenerate-btn"
-        @click="emit('regenerate')"
+        :class="{ armed: regenerateArmed }"
+        @click="handleRegenerateClick"
       >
         <RefreshCw
           :size="15"
@@ -135,7 +195,7 @@
 
     <!-- Branch button (for assistant messages) -->
     <Tooltip
-      v-if="role === 'assistant'"
+      v-if="role === 'assistant' && !mutationsDisabled"
       :text="hasBranches ? `${branchCount} branch${branchCount > 1 ? 'es' : ''}` : 'Branch'"
     >
       <div
@@ -197,13 +257,14 @@
 
     <!-- Regenerate button for user messages -->
     <Tooltip
-      v-if="role === 'user'"
-      text="Regenerate response"
+      v-if="role === 'user' && !mutationsDisabled"
+      :text="regenerateArmed ? 'Click again to regenerate' : 'Regenerate response'"
     >
       <Button
         unstyled
         class="action-btn regenerate-btn"
-        @click="emit('regenerate')"
+        :class="{ armed: regenerateArmed }"
+        @click="handleRegenerateClick"
       >
         <RefreshCw
           :size="15"
@@ -301,11 +362,14 @@ import { stripMarkdown } from '@/composables/useMarkdownRenderer'
 import { copyTextToClipboard } from '@/utils/clipboard'
 import { platformApi } from '@/platform'
 import { useEvalsWorkbenchStore } from '@/stores/evalsWorkbench'
+import { COLLAB_REACTION_EMOJIS } from '@onething/runtime/collab'
 import {
   Copy,
   Check,
   Pencil,
   RefreshCw,
+  Reply,
+  SmilePlus,
   Volume2,
   Pause,
   GitBranch,
@@ -338,12 +402,31 @@ interface Props {
   model?: string
   messageId: string
   sessionId?: string
+  /**
+   * Collab rooms: edit/regenerate/branch are meaningless (persona replay is
+   * undefined and the engine refuses them) — hide the mutating actions while
+   * keeping copy/TTS/usage (docs/design/multi-agent-collab.md D2/§8).
+   */
+  mutationsDisabled?: boolean
+  /**
+   * Collab rooms only (W7, §3.5 A): quoting a message into the composer is an
+   * IM affordance, so ordinary sessions never grow the button.
+   */
+  canReply?: boolean
+  /**
+   * Collab rooms only (W8, §3.5 B): same reasoning as canReply — an ordinary
+   * session has nobody to react AT, so it never grows the button either.
+   */
+  canReact?: boolean
 }
 
 const props = defineProps<Props>()
 
 const emit = defineEmits<{
   copy: []
+  reply: []
+  /** Rooms: one palette emoji was picked (§3.5 B). */
+  react: [emoji: string]
   edit: []
   regenerate: []
   branch: []
@@ -472,6 +555,55 @@ async function submitDownvote(skipNote = false) {
   } catch (error) {
     console.error('Downvote recording failed:', error)
   }
+}
+
+// Reaction palette (§3.5 B). Six emoji, one row, one tap — deliberately not a
+// full emoji picker: the room's vocabulary is fixed so the agent half of the
+// feature (judgement react) and the human half can never disagree.
+const REACTION_EMOJIS = COLLAB_REACTION_EMOJIS
+const showReactPicker = ref(false)
+const reactBtnRef = ref<HTMLElement | null>(null)
+const reactPickerPosition = ref({ top: 0, left: 0 })
+
+const reactPickerStyle = computed(() => ({
+  position: 'fixed' as const,
+  top: `${reactPickerPosition.value.top}px`,
+  left: `${reactPickerPosition.value.left}px`,
+  zIndex: 1000,
+}))
+
+function toggleReactPicker() {
+  if (showReactPicker.value) {
+    showReactPicker.value = false
+    emit('menuOpen', false)
+    return
+  }
+
+  if (reactBtnRef.value) {
+    const rect = reactBtnRef.value.getBoundingClientRect()
+    const panelWidth = REACTION_EMOJIS.length * 28 + 8
+    const panelHeight = 32
+    const padding = 6
+    let left = rect.left
+    if (left + panelWidth > window.innerWidth - padding) {
+      left = window.innerWidth - panelWidth - padding
+    }
+    if (left < padding) left = padding
+    // Prefer above the row (the message is below and must stay readable);
+    // flip under only when there is no room up top.
+    let top = rect.top - panelHeight - padding
+    if (top < padding) top = rect.bottom + padding
+    reactPickerPosition.value = { top, left }
+  }
+
+  showReactPicker.value = true
+  emit('menuOpen', true)
+}
+
+function pickReaction(emoji: string) {
+  showReactPicker.value = false
+  emit('menuOpen', false)
+  emit('react', emoji)
 }
 
 // Branch menu
@@ -613,6 +745,14 @@ function handleClickOutside(event: MouseEvent) {
       emit('menuOpen', false)
     }
   }
+  // Teleported palette: the click can land on the panel itself, so both the
+  // trigger wrapper and the panel count as "inside".
+  if (!target.closest('.react-btn-wrapper') && !target.closest('.react-picker')) {
+    if (showReactPicker.value) {
+      showReactPicker.value = false
+      emit('menuOpen', false)
+    }
+  }
   // For more menu, check both the button wrapper and the teleported menu itself
   if (!target.closest('.more-btn-wrapper') && !target.closest('.more-menu')) {
     if (showMoreMenu.value) {
@@ -627,8 +767,34 @@ onMounted(() => {
   document.addEventListener('click', handleClickOutside)
 })
 
+// 重新生成会丢弃已有回复,误触代价不小 —— 第一次点只把按钮"上膛",
+// 第二次点才真的重来。指针移开这一行或几秒不动都会自动撤销。
+const REGENERATE_ARM_TIMEOUT_MS = 4000
+const regenerateArmed = ref(false)
+let regenerateArmTimer: ReturnType<typeof setTimeout> | null = null
+
+function disarmRegenerate() {
+  regenerateArmed.value = false
+  if (regenerateArmTimer) {
+    clearTimeout(regenerateArmTimer)
+    regenerateArmTimer = null
+  }
+}
+
+function handleRegenerateClick() {
+  if (regenerateArmed.value) {
+    disarmRegenerate()
+    emit('regenerate')
+    return
+  }
+  regenerateArmed.value = true
+  if (regenerateArmTimer) clearTimeout(regenerateArmTimer)
+  regenerateArmTimer = setTimeout(disarmRegenerate, REGENERATE_ARM_TIMEOUT_MS)
+}
+
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  disarmRegenerate()
 })
 </script>
 
@@ -700,6 +866,16 @@ onUnmounted(() => {
 
 .regenerate-btn:hover svg {
   transform: rotate(180deg);
+}
+
+/* 上膛态:强调色 + 停在半圈,和普通 hover 明确区分开。 */
+.regenerate-btn.armed svg {
+  color: var(--ui-accent-primary-fg, var(--accent));
+  transform: rotate(180deg);
+}
+
+.regenerate-btn.armed {
+  color: var(--ui-accent-primary-fg, var(--accent));
 }
 
 /* Downvote button */
@@ -891,6 +1067,18 @@ onUnmounted(() => {
   background: color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 10%, transparent);
 }
 
+/* Reaction palette trigger (§3.5 B) */
+.react-btn-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  line-height: 0;
+}
+
 /* More menu */
 .more-btn-wrapper {
   position: relative;
@@ -906,6 +1094,44 @@ onUnmounted(() => {
 
 <!-- Global styles for Teleported menu -->
 <style>
+/* Reaction palette (§3.6): a hairline strip of glyphs. No fill, no shadow
+   stack, no bounce — hover moves the ink behind the emoji, nothing else. */
+.react-picker {
+  display: flex;
+  gap: 2px;
+  padding: 3px 4px;
+  border: 1px solid var(--ui-border-strong-border, var(--border-strong));
+  border-radius: 4px;
+  background: var(--ui-surface-floating-bg, var(--bg-floating));
+  animation: reactPickerIn 0.12s ease-out;
+}
+
+@keyframes reactPickerIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.react-picker-item {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.react-picker-item:hover {
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 8%, transparent);
+}
+
 .more-menu {
   min-width: 180px;
   background: var(--ui-surface-floating-bg, var(--bg-floating));

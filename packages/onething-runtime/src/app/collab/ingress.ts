@@ -1,0 +1,146 @@
+/**
+ * Room ingress gate — docs/design/multi-agent-collab.md D2.
+ *
+ * The engine auto-drives a stream for every command:send-message. In a room
+ * that would reply with the LAST activated persona (wrong speaker, no mention
+ * resolution, no chain gate) and supersede-abort the coordinator's own drives.
+ * So user messages into kind='room' sessions are persisted WITHOUT streaming;
+ * the coordinator observes message:user-created on the bus and decides
+ * activations. Coordinator drives (source 'collab') bypass this gate via the
+ * system-internal branch in StreamEngine.handleSendMessage.
+ */
+import { randomUUID } from 'node:crypto'
+import {
+  isActiveAgent,
+  type ChatMessage,
+  type ChatMessageMention,
+  type ChatMessageReplyTo,
+  type MessageOrigin,
+} from '@shared/ipc.js'
+import * as store from '../store.js'
+import { getEventBus } from '../events/index.js'
+import { findAgent } from '../agents/index.js'
+import {
+  COLLAB_MESSAGE_SOURCE,
+  buildCollabMentions,
+  mergeCollabMentions,
+  normalizeCollabMentions,
+  type CollabAgentLike,
+} from '@onething/runtime/collab'
+import { isTrustedCollabDrive } from './drive-guard.js'
+
+export interface CollabRoomInboundCommand {
+  content: string
+  attachments?: unknown[]
+  voice?: unknown
+  origin?: MessageOrigin
+  source?: string
+  channel?: string
+  /** Proof the coordinator sent this (P2-8); see drive-guard.ts. */
+  collabDriveToken?: string
+  /** IM quote reply — a snapshot the sender built; persisted verbatim. */
+  replyTo?: ChatMessageReplyTo
+  /**
+   * Members the composer's `@` popover picked (W14a). Re-validated here, never
+   * trusted verbatim: unknown ids are dropped and labels are re-stamped from
+   * the roster.
+   */
+  mentions?: ChatMessageMention[]
+}
+
+/** @ 能落在谁身上:退休的成员不算(域模型 §3.2)—— 点不到,也就不会被激活。 */
+function roomMembers(session: { room?: { memberAgentIds?: string[] } }): CollabAgentLike[] {
+  const members: CollabAgentLike[] = []
+  for (const id of session.room?.memberAgentIds ?? []) {
+    const agent = findAgent(id)
+    if (!agent || !isActiveAgent(agent)) continue
+    members.push({
+      id: agent.id,
+      name: agent.name,
+      title: agent.title,
+      avatar: agent.avatar,
+      avatarImage: agent.avatarImage,
+    })
+  }
+  return members
+}
+
+/**
+ * The user half of 身份 id 化 (W14a §4.5): what the picker chose, plus the
+ * bare-typed names it knows nothing about.
+ *
+ * The picker's ids are authoritative for the labels they claim — that is what
+ * makes picking one of two 小李 activate exactly that one. Every OTHER `@名字`
+ * in the text still resolves by name (and, being ambiguous, resolves to
+ * everyone who goes by it): a user who types a mention by hand gets the same
+ * behavior as before, now with ids attached.
+ */
+function resolveInboundMentions(
+  command: CollabRoomInboundCommand,
+  members: readonly CollabAgentLike[],
+): ChatMessageMention[] {
+  const picked = normalizeCollabMentions(command.mentions, { members })
+  const parsed = buildCollabMentions(command.content, members)
+  return mergeCollabMentions(picked, parsed)
+}
+
+export function isCollabRoomSession(sessionId: string): boolean {
+  return store.getSession(sessionId)?.kind === 'room'
+}
+
+/**
+ * The sessions only the coordinator may stream: the room itself (pre-W18 shape,
+ * and still where a legacy drive would land) and an agent's execution session,
+ * which is where every room turn has run since W18. Both are surfaces the
+ * coordinator owns end to end — anyone else driving one produces a turn with
+ * the wrong persona, no mention resolution, and none of the three gates.
+ */
+export function isCollabCoordinatorDrivenSession(sessionId: string): boolean {
+  const kind = store.getSession(sessionId)?.kind
+  return kind === 'room' || kind === 'agent'
+}
+
+/**
+ * Consume a send-message command aimed at a room session. Returns false when
+ * the session is not a room (caller proceeds with the normal engine path).
+ */
+export async function handleCollabRoomSendMessage(
+  sessionId: string,
+  command: CollabRoomInboundCommand,
+): Promise<boolean> {
+  const session = store.getSession(sessionId)
+  if (session?.kind !== 'room') return false
+  // P2-8: a drive skips this gate on PROOF, not on a spelling. Anything that
+  // merely claims source 'collab' is treated as what it is — an ordinary
+  // inbound message, persisted for the coordinator to decide on.
+  if (command.source === COLLAB_MESSAGE_SOURCE && isTrustedCollabDrive(command)) return false
+
+  const mentions = resolveInboundMentions(command, roomMembers(session))
+
+  const message: ChatMessage = {
+    id: randomUUID(),
+    role: 'user',
+    content: command.content,
+    timestamp: Date.now(),
+    attachments: command.attachments as ChatMessage['attachments'],
+    source: command.source || 'text',
+    ...(command.voice !== undefined ? { voice: command.voice as ChatMessage['voice'] } : {}),
+    ...(command.origin !== undefined ? { origin: command.origin } : {}),
+    // Room messages never reach the core engine's own构造 (this gate persists
+    // them itself), so the quote snapshot has to be carried across HERE too —
+    // dropping it here would make 引用回复 work everywhere except the one
+    // session kind that has the entry point.
+    ...(command.replyTo !== undefined ? { replyTo: command.replyTo } : {}),
+    // W14a: the key is written only when something was actually mentioned —
+    // an empty array is a statement ("mentions nobody") that would switch
+    // consumers off the name fallback for no benefit.
+    ...(mentions.length > 0 ? { mentions } : {}),
+  }
+
+  store.addMessage(sessionId, message)
+  await getEventBus().emit(sessionId, {
+    type: 'message:user-created',
+    message,
+  } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+  return true
+}

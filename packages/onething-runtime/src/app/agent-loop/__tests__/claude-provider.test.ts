@@ -160,6 +160,38 @@ describe('Claude agent provider', () => {
     expect(request.tool_choice).toBeUndefined()
   })
 
+  it('marks failed tool results with is_error', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
+      'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n\n',
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}\n\n',
+    ]))
+    const provider = createClaudeAgentProvider({
+      apiKey: 'anthropic-key',
+      baseUrl: 'https://anthropic.test/v1',
+      fetchImpl,
+    })
+
+    await provider.runTurn!({
+      model: 'claude-test',
+      messages: [
+        {
+          role: 'tool',
+          toolCallId: 'toolu_fail',
+          content: '{"error":"Edit failed: target text not found in app.ts.","status":"failed"}',
+          isError: true,
+        },
+        { role: 'tool', toolCallId: 'toolu_ok', content: 'done' },
+      ],
+      turn: 1,
+    })
+
+    const request = JSON.parse(fetchImpl.mock.calls[0][1].body)
+    // Without is_error a failure reads to the model as a successful result
+    // whose text happens to describe a problem.
+    expect(request.messages[0].content[0].is_error).toBe(true)
+    expect(request.messages[1].content[0].is_error).toBeUndefined()
+  })
+
   it('uses content blocks for media tool results', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(streamResponse([
       'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ok"}}\n\n',

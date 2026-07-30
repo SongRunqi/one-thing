@@ -1,12 +1,12 @@
 <template>
   <ComposerExtensionPanel
     :visible="visible"
-    title="Files"
+    :title="title"
     :count="items.length"
     :loading="loading"
     :error="error"
-    :empty-text="emptyText"
-    :empty-hint="emptyHint"
+    :empty-text="resolvedEmptyText"
+    :empty-hint="resolvedEmptyHint"
     loading-text="Searching files..."
   >
     <div
@@ -22,8 +22,13 @@
         @mouseenter="highlightItem(index)"
       >
         <div class="composer-extension-row-icon">
+          <Globe
+            v-if="item.kind === 'browser-page'"
+            :size="15"
+            :stroke-width="2"
+          />
           <Folder
-            v-if="item.kind === 'directory'"
+            v-else-if="item.kind === 'directory'"
             :size="15"
             :stroke-width="2"
           />
@@ -51,9 +56,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { FileText, Folder } from 'lucide-vue-next'
+import { FileText, Folder, Globe } from 'lucide-vue-next'
 import ComposerExtensionPanel from './ComposerExtensionPanel.vue'
-import type { ComposerExtensionItem } from '@/composables/usePickerOrchestration'
+import type { ComposerExtensionItem, ComposerExtensionItemKind } from '@/composables/usePickerOrchestration'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -62,26 +67,34 @@ const props = withDefaults(defineProps<{
   query?: string
   loading?: boolean
   error?: string | null
+  title?: string
+  emptyText?: string
+  emptyHint?: string
 }>(), {
   query: '',
   loading: false,
   error: null,
+  title: 'Files',
+  emptyText: undefined,
+  emptyHint: undefined,
 })
 
 const emit = defineEmits<{
-  select: [filePath: string]
+  select: [value: string, kind?: ComposerExtensionItemKind]
   highlight: [index: number]
   close: []
 }>()
 
 const listRef = ref<HTMLElement | null>(null)
 
-const emptyText = computed(() => {
+const resolvedEmptyText = computed(() => {
+  if (props.emptyText) return props.emptyText
   const query = props.query.trim()
   return query ? `No files found for "${query}"` : 'No files found'
 })
 
-const emptyHint = computed(() => {
+const resolvedEmptyHint = computed(() => {
+  if (props.emptyHint) return props.emptyHint
   return props.query.trim()
     ? 'Try another name or path'
     : 'Type after @ to search files'
@@ -89,7 +102,7 @@ const emptyHint = computed(() => {
 
 function selectFile(item: ComposerExtensionItem) {
   if (item.value) {
-    emit('select', item.value)
+    emit('select', item.value, item.kind)
   }
 }
 

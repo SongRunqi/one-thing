@@ -180,6 +180,8 @@ const CODEX_AGENT_CAPABILITIES: AgentModelCapabilities = {
 	supportsStructuredToolResults: true,
 	supportsReasoning: true,
 	supportsStreaming: true,
+	// Responses API tool_choice: "required"
+	supportsForcedToolUse: true,
 };
 
 function resolveCodexToken(
@@ -562,6 +564,23 @@ function normalizeCodexReasoningEffort(
 	return "medium";
 }
 
+/**
+ * Responses API dialect for `tool_choice` (W22).
+ *
+ * The string forms ("auto" / "none" / "required") are shared with Chat
+ * Completions, but a NAMED tool is spelled flat here — `{type:'function',
+ * name}` — where Chat Completions nests it under a `function` object. Passing
+ * the nested shape through unchanged is a 400, so the one shape that differs is
+ * translated and everything else rides on as before.
+ */
+export function toCodexToolChoice(
+	choice: AgentTurnRequest["toolChoice"],
+): AgentJsonValue {
+	if (!choice) return "auto";
+	if (typeof choice === "string") return choice;
+	return { type: "function", name: choice.function.name };
+}
+
 function buildCodexRequestBody(request: AgentTurnRequest): CodexRequestBody {
 	const { input, instructions } = buildCodexPrompt(request.messages);
 	const reasoning =
@@ -581,7 +600,7 @@ function buildCodexRequestBody(request: AgentTurnRequest): CodexRequestBody {
 			request.tools,
 			Boolean(request.requestedOutputModalities?.includes("image")),
 		),
-		tool_choice: request.toolChoice ?? "auto",
+		tool_choice: toCodexToolChoice(request.toolChoice),
 		parallel_tool_calls: false,
 		store: false,
 		stream: true,

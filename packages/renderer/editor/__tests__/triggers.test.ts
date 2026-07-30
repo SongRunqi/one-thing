@@ -94,6 +94,49 @@ describe('editor trigger parsing', () => {
     })
   })
 
+  it('parses explicit @page triggers in the middle of a line', () => {
+    const value = 'summarize @page docs before sending'
+    const cursor = 'summarize @page docs'.length
+
+    expect(parseEditorTrigger(value, cursor)).toEqual({
+      type: 'page',
+      query: 'docs',
+      from: 10,
+      to: cursor,
+      explicit: true,
+    })
+  })
+
+  it('parses a bare @page keyword without a query', () => {
+    expect(parseEditorTrigger('look at @page')).toEqual({
+      type: 'page',
+      query: '',
+      from: 8,
+      to: 13,
+      explicit: true,
+    })
+  })
+
+  it('degrades @page to a bare file query when the page trigger is disabled', () => {
+    expect(parseEditorTrigger('look at @page', undefined, { pageTrigger: false })).toEqual({
+      type: 'file',
+      query: 'page',
+      from: 8,
+      to: 13,
+      explicit: false,
+    })
+  })
+
+  it('keeps @pag (incomplete keyword) as a file search query', () => {
+    expect(parseEditorTrigger('look at @pag')).toEqual({
+      type: 'file',
+      query: 'pag',
+      from: 8,
+      to: 12,
+      explicit: false,
+    })
+  })
+
   it('parses @downloads as a regular file search query', () => {
     expect(parseEditorTrigger('attach @downloads')).toEqual({
       type: 'file',
@@ -156,5 +199,26 @@ describe('editor trigger parsing', () => {
     const trigger = parseEditorTrigger(value)
     expect(trigger).not.toBeNull()
     expect(applyTriggerReplacement(value, trigger!, '{{prompt:p1}} ')).toBe('use {{prompt:p1}} ')
+  })
+
+  it('routes bare @ to room members when memberTrigger is on, keeping @files explicit', () => {
+    expect(parseEditorTrigger('问一下 @小', undefined, { memberTrigger: true })).toEqual({
+      type: 'member',
+      query: '小',
+      from: 4,
+      to: 6,
+      explicit: false,
+    })
+    // Ordinary sessions keep the bare-@ file query.
+    expect(parseEditorTrigger('问一下 @小')?.type).toBe('file')
+    // Files stay reachable in rooms via the explicit keyword.
+    expect(parseEditorTrigger('open @files src', undefined, { memberTrigger: true })?.type).toBe('file')
+  })
+
+  it('replaces a member trigger with the exact mention text', () => {
+    const value = '问一下 @小'
+    const trigger = parseEditorTrigger(value, undefined, { memberTrigger: true })
+    expect(trigger).not.toBeNull()
+    expect(applyTriggerReplacement(value, trigger!, '@小李 ')).toBe('问一下 @小李 ')
   })
 })

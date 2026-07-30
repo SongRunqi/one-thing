@@ -10,6 +10,7 @@
 
 import { z } from "zod";
 import { toJsonObject } from "@onething/core";
+import { createToolAbortError } from "@onething/core/tools";
 import {
 	basenamePath,
 	dirnamePath,
@@ -298,7 +299,7 @@ export function createReadTool(
 			const { offset = 1, limit } = args;
 
 			const throwIfAborted = () => {
-				if (ctx.abortSignal?.aborted) throw new Error("Operation aborted");
+				if (ctx.abortSignal?.aborted) throw createToolAbortError();
 			};
 			throwIfAborted();
 

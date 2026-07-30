@@ -1,6 +1,10 @@
 <template>
   <div class="sidebar-header">
     <div class="traffic-lights-space" />
+    <!-- 侧栏展开时,三颗操作按钮住在这里。它们必须是这条 drag 行的真实子孙:
+         Chromium 只让 drag 元素的子孙用 no-drag 挖洞,跨分支的 fixed 浮层挖不动
+         —— 那正是以前要在顶栏手工预留一块 [84,160] 的原因。 -->
+    <slot />
   </div>
 </template>
 

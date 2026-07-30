@@ -25,7 +25,7 @@ import {
   themeExtension,
   wrappingExtension,
 } from './extensions'
-import { promptCardExtension } from './prompt-cards'
+import { promptCardExtension, type MemberRefData } from './prompt-cards'
 import type {
   MarkdownLivePreviewFeatures,
   MarkdownLivePreviewOptions,
@@ -39,6 +39,7 @@ import type {
   EditorSettings,
   EditorTransaction,
   EditorSetValueOptions,
+  EditorVisualLineEdges,
 } from './types'
 import type { SkillDefinition, UserPrompt } from '@shared/ipc'
 import type { CommandDefinition } from '@/types/commands'
@@ -66,6 +67,8 @@ interface Props {
   promptRefs?: UserPrompt[]
   skillRefs?: SkillDefinition[]
   commandRefs?: CommandDefinition[]
+  /** Collab room roster, so `{{member:<agentId>}}` tokens paint as @名字 (W14a). */
+  memberRefs?: MemberRefData[]
   markdownAssetContext?: MarkdownAssetContext
 }
 
@@ -86,6 +89,7 @@ const props = withDefaults(defineProps<Props>(), {
   promptRefs: () => [],
   skillRefs: () => [],
   commandRefs: () => [],
+  memberRefs: () => [],
   markdownAssetContext: undefined,
 })
 
@@ -163,6 +167,7 @@ function createExtensions() {
       prompts: props.promptRefs,
       skills: props.skillRefs,
       commands: props.commandRefs,
+      members: props.memberRefs,
     }),
     settings: effectiveSettings.value,
     compartments,
@@ -248,6 +253,7 @@ function reconfigureView() {
           prompts: props.promptRefs,
           skills: props.skillRefs,
           commands: props.commandRefs,
+          members: props.memberRefs,
         })),
       ],
     })
@@ -411,6 +417,35 @@ function getCursorLineInfo(): EditorCursorLineInfo {
   }
 }
 
+/**
+ * 首/末视觉行判定：拿光标与文档首尾的屏幕坐标比行高。软换行时一条逻辑行会占
+ * 多个视觉行，只数 `\n` 会把折行中段误判成第一行（历史记录因此会吃掉草稿）。
+ * jsdom / 未挂载 / 隐藏时拿不到坐标，退回逻辑行判断。
+ */
+function getVisualLineEdges(): EditorVisualLineEdges {
+  if (!view) return { atFirstLine: true, atLastLine: true }
+
+  const doc = view.state.doc
+  const head = view.state.selection.main.head
+  const cursor = view.coordsAtPos(head)
+  const docStart = view.coordsAtPos(0)
+  const docEnd = view.coordsAtPos(doc.length)
+
+  if (!cursor || !docStart || !docEnd) {
+    const value = doc.toString()
+    const before = value.slice(0, head)
+    const after = value.slice(head)
+    return { atFirstLine: !before.includes('\n'), atLastLine: !after.includes('\n') }
+  }
+
+  // 半行的容差：坐标是浮点，且行内可能混着不同字号的装饰。
+  const tolerance = Math.max(1, (cursor.bottom - cursor.top) / 2)
+  return {
+    atFirstLine: cursor.top <= docStart.top + tolerance,
+    atLastLine: cursor.bottom >= docEnd.bottom - tolerance,
+  }
+}
+
 function selectionFromState(state: EditorState): EditorSelection {
   const selection = state.selection.main
   return { from: selection.from, to: selection.to }
@@ -475,6 +510,7 @@ watch(
     props.promptRefs,
     props.skillRefs,
     props.commandRefs,
+    props.memberRefs,
     props.markdownAssetContext?.documentPath,
     props.markdownAssetContext?.workspaceRoot,
     effectiveSettings.value.tabSize,
@@ -499,6 +535,7 @@ defineExpose<EditorHandle>({
   getScrollTop,
   setScrollTop,
   getCursorLineInfo,
+  getVisualLineEdges,
 })
 </script>
 

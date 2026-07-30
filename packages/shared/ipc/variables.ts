@@ -14,7 +14,7 @@
  * initial fetch.
  */
 
-import type { ContextVariable } from './chat.js'
+import type { ContextVariable, VariableScope, VariableType } from './chat.js'
 
 export interface VariablesListRequest {
   sessionId: string
@@ -32,8 +32,10 @@ export interface VariablesSetRequest {
   sessionId: string
   name: string
   value: string
-  scope?: 'global' | 'session'
+  scope?: VariableScope
+  type?: VariableType
   description?: string
+  volatility?: 'static' | 'turn' | 'on-demand'
 }
 
 export interface VariablesSetResponse {
@@ -46,7 +48,7 @@ export interface VariablesSetResponse {
 export interface VariablesDeleteRequest {
   sessionId: string
   name: string
-  scope?: 'global' | 'session'
+  scope?: VariableScope
 }
 
 export interface VariablesDeleteResponse {

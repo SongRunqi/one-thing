@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createToolAbortError } from '@onething/core/tools'
 import { executeOnethingDirectTool } from '../direct-tool-execution.js'
 
 describe('onething direct tool execution', () => {
@@ -118,5 +119,64 @@ describe('onething direct tool execution', () => {
         toolName: 'mcp__server__tool',
       },
     }])
+  })
+
+  describe('cancellation classification', () => {
+    function runFailing(
+      failure: unknown,
+      context: { abortSignal?: { aborted?: boolean } } = {},
+    ) {
+      return executeOnethingDirectTool({
+        toolName: 'edit',
+        args: { path: 'a.ts' },
+        context: {
+          sessionId: 'session-1',
+          messageId: 'message-1',
+          ...context,
+        },
+        isMCPTool: () => false,
+        executeMCPTool: vi.fn(),
+        // edit reports "text not found" from analyze(), which is the throw
+        // this classifier actually sees in production.
+        analyzeTool: async () => {
+          throw failure
+        },
+        executeTool: vi.fn(),
+        enforcePermission: async () => undefined,
+        formatFailure: item => item.error ?? 'failed',
+      })
+    }
+
+    // An edit that fails to match embeds a snippet of the target file in its
+    // error. When that file happens to mention abortSignal/cancelled — common
+    // in this repo — a substring probe used to relabel the failure as a user
+    // cancellation, which also hid the reason from the UI.
+    it('does not read cancellation out of failure text', async () => {
+      const result = await runFailing(new Error([
+        'Edit failed: target text not found in direct-tool-execution.ts.',
+        'Closest match in the current file (lines 220-240):',
+        "227→      aborted: Boolean(context.abortSignal?.aborted || caught.message.includes('cancelled')),",
+      ].join('\n')))
+
+      expect(result.success).toBe(false)
+      expect(result.aborted).toBeFalsy()
+      expect(result.error).toContain('target text not found')
+    })
+
+    it('trusts the structured abort marker', async () => {
+      const result = await runFailing(createToolAbortError())
+
+      expect(result.success).toBe(false)
+      expect(result.aborted).toBe(true)
+    })
+
+    it('reports cancellation when the signal is already aborted', async () => {
+      const result = await runFailing(new Error('never reached'), {
+        abortSignal: { aborted: true },
+      })
+
+      expect(result.success).toBe(false)
+      expect(result.aborted).toBe(true)
+    })
   })
 })

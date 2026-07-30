@@ -9,7 +9,7 @@
       class="attachment-tray"
       @wheel="handleWheel"
     >
-      <!-- `@` picks: path-only references, no bytes read into the draft. -->
+      <!-- `@` picks: path/page references, no bytes read into the draft. -->
       <FileChip
         v-for="reference in references"
         :key="reference.id"
@@ -17,6 +17,7 @@
         class="reference-chip"
         :file-name="reference.label"
         :tooltip-text="reference.path"
+        :badge="reference.badge"
         removable
         @remove="emit('removeReference', reference.id)"
       />

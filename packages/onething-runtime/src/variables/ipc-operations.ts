@@ -2,6 +2,7 @@ import {
   VariableError,
   type ContextVariable,
   type SetInput,
+  type VariableScope,
 } from './types.js'
 
 export interface VariablesListRequest {
@@ -15,7 +16,7 @@ export interface VariablesSetRequest extends SetInput {
 export interface VariablesDeleteRequest {
   sessionId: string
   name: string
-  scope?: 'global' | 'session'
+  scope?: VariableScope
 }
 
 export interface OnethingVariableIpcError {
@@ -58,7 +59,9 @@ export async function setOnethingVariableForIpc<TVariable = ContextVariable>(
         name: options.request.name,
         value: options.request.value,
         scope: options.request.scope,
+        type: options.request.type,
         description: options.request.description,
+        volatility: options.request.volatility,
       },
     )
     return { success: true, variable }
@@ -73,7 +76,7 @@ export async function deleteOnethingVariableForIpc(
     deleteVariable(
       context: { sessionId: string },
       name: string,
-      scope?: 'global' | 'session',
+      scope?: VariableScope,
     ): Promise<void> | void
   },
 ): Promise<OnethingVariableIpcResult> {

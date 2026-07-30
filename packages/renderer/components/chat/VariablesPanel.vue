@@ -63,6 +63,7 @@
               </p>
               <div class="variables-detail-meta">
                 <span>{{ group.label.toLowerCase() }}</span>
+                <span v-if="variable.type && variable.type !== 'string'">{{ variable.type }}</span>
                 <span v-if="variable.volatility && variable.volatility !== 'static'">{{ variable.volatility }}</span>
                 <span v-if="variable.readonly">readonly</span>
                 <span v-if="variable.updatedAt">{{ formatAge(variable.updatedAt) }}</span>
@@ -99,11 +100,13 @@ const variables = computed<ContextVariable[]>(() => {
 })
 
 const variableGroups = computed(() => {
-  const sessionItems = variables.value.filter(variable => resolveScope(variable) === 'session')
-  const globalItems = variables.value.filter(variable => resolveScope(variable) === 'global')
+  const byScope = (scope: VariableScopeGroup) =>
+    variables.value.filter(variable => resolveScope(variable) === scope)
   return [
-    { scope: 'session', label: 'Session', items: sessionItems },
-    { scope: 'global', label: 'Global', items: globalItems },
+    { scope: 'session', label: 'Session', items: byScope('session') },
+    { scope: 'agent', label: 'Agent', items: byScope('agent') },
+    { scope: 'project', label: 'Project', items: byScope('project') },
+    { scope: 'global', label: 'Global', items: byScope('global') },
   ].filter(group => group.items.length > 0)
 })
 
@@ -116,8 +119,11 @@ const summary = computed(() => {
   return latest ? `${count} · ${latest.name}` : `${count}`
 })
 
-function resolveScope(variable: ContextVariable): 'global' | 'session' {
-  if (variable.scope === 'global' || variable.scope === 'session') return variable.scope
+type VariableScopeGroup = 'global' | 'session' | 'agent' | 'project'
+
+function resolveScope(variable: ContextVariable): VariableScopeGroup {
+  if (variable.scope === 'global' || variable.scope === 'session'
+    || variable.scope === 'agent' || variable.scope === 'project') return variable.scope
   return ['ai_note_dir', 'user_note_dir', 'work_note_dir'].includes(variable.name) ? 'global' : 'session'
 }
 

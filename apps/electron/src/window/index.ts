@@ -21,6 +21,7 @@ import {
   showNonActivatingPanel,
 } from '@onething/electron-host/window/macos-panel'
 import { setupElectronApplicationMenu } from '@onething/electron-host/menu/application-menu'
+import { peekBrowserViewService } from '@onething/electron-host/browser/service'
 import {
   WEB_PREVIEW_URL,
   isWebPreviewAvailable,
@@ -489,6 +490,16 @@ export function createWindow() {
     setupElectronApplicationMenu({
       mainWindow,
       openSettingsWindow,
+      // ⌘T/⌘W routing, consulted at click time. peek, not get: a keypress must
+      // not be what *creates* the browser subsystem (its constructor wakes
+      // Widevine). No instance → no browser → the key isn't the browser's.
+      browser: {
+        hasFocus: () => peekBrowserViewService()?.hasFocus() ?? false,
+        createTab: () => {
+          peekBrowserViewService()?.createTab()
+        },
+        closeActiveTab: () => peekBrowserViewService()?.closeActiveTab(),
+      },
       webPreview: {
         available: isWebPreviewAvailable(),
         url: WEB_PREVIEW_URL,

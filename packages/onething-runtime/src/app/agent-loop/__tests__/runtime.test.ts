@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { agentEventToChunk, runAgentLoop } from '@onething/core/agent-loop'
+import {
+  agentEventToChunk,
+  buildAgentLoopRuntime as buildCoreAgentLoopRuntime,
+  runAgentLoop,
+} from '@onething/core/agent-loop'
 import { buildAgentLoopRuntime } from '../runtime.js'
 import type { AgentMessage, AgentMessageContent, AgentProvider, AgentToolChoice } from '@onething/core/agent-loop'
 
@@ -186,5 +190,48 @@ describe('agent event chunk adapter', () => {
         encryptedContent: 'encrypted-payload',
       },
     })
+  })
+})
+
+describe('agent loop runtime builder — forced opening call (W18b)', () => {
+  it('carries initialToolChoice through the core builder the stream runtime uses', async () => {
+    // Last link of the 透传链: the stream runtime reads the field off the
+    // stream context and hands it to THIS builder; the core runner then
+    // applies it to iteration 1 only.
+    const runtime = await buildCoreAgentLoopRuntime({
+      provider: { id: 'p' } as AgentProvider,
+      model: 'm',
+      messages: [],
+      sessionId: 's1',
+      messageId: 'm1',
+      initialToolChoice: 'required',
+    })
+
+    expect(runtime.initialToolChoice).toBe('required')
+  })
+
+  it('carries initialToolChoice through the app wrapper too', async () => {
+    const runtime = await buildAgentLoopRuntime({
+      provider: { id: 'p' } as AgentProvider,
+      model: 'm',
+      messages: [],
+      sessionId: 's1',
+      messageId: 'm1',
+      initialToolChoice: 'required',
+    })
+
+    expect(runtime.initialToolChoice).toBe('required')
+  })
+
+  it('leaves it undefined when nobody asked', async () => {
+    const runtime = await buildAgentLoopRuntime({
+      provider: { id: 'p' } as AgentProvider,
+      model: 'm',
+      messages: [],
+      sessionId: 's1',
+      messageId: 'm1',
+    })
+
+    expect(runtime.initialToolChoice).toBeUndefined()
   })
 })

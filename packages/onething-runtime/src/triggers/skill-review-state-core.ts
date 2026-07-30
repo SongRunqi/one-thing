@@ -15,7 +15,12 @@ export interface CoreSkillReviewCounterInput {
   sessionId: string
   settings?: CoreSkillReviewSettings
   toolIterations: number
-  skillManageAvailable: boolean
+  /**
+   * 这个会话里技能能不能被写出来。skill_manage 工具已移除，技能改由 write/edit
+   * 直接落文件，所以判据从「有没有那个工具」换成「有没有写文件的工具」——
+   * 只读档(server readonly)因此仍然不会被提示去创建技能。
+   */
+  skillAuthoringAvailable: boolean
   skillManageCalled: boolean
 }
 
@@ -66,7 +71,7 @@ export function recordSkillReviewCounter(input: CoreSkillReviewCounterInput): bo
     return false
   }
 
-  if (interval <= 0 || !input.skillManageAvailable || input.toolIterations <= 0) {
+  if (interval <= 0 || !input.skillAuthoringAvailable || input.toolIterations <= 0) {
     return false
   }
 

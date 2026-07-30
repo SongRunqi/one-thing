@@ -80,7 +80,7 @@ vi.mock('../dj-voice.js', () => ({ speakDjPatter: vi.fn().mockResolvedValue(unde
 vi.mock('../../agents/store.js', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
-  getAgent: () => ({ systemPrompt: '' }),
+  findAgent: () => ({ systemPrompt: '' }),
   updateAgent: vi.fn(),
 }))
 vi.mock('../../stores/sessions.js', () => ({

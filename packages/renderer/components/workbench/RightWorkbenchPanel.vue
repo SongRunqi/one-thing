@@ -124,6 +124,8 @@
           :revealed="props.revealed"
         />
 
+        <CollabBoardPanel v-else-if="tab.type === 'board'" />
+
         <!-- iframe fallback: apps/web host has no WebContentsView -->
         <section
           v-else-if="tab.type === 'browser'"
@@ -205,7 +207,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
-import { ArrowRight, FileText, Files, GitCompare, Globe2, Terminal, X } from 'lucide-vue-next'
+import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, Terminal, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import Tabs from '@/components/common/Tabs.vue'
@@ -213,6 +215,7 @@ import TabPane from '@/components/common/TabPane.vue'
 import EditorWorkbench from '@/components/editor/EditorWorkbench.vue'
 import TerminalView from '@/components/terminal/TerminalView.vue'
 import BrowserPanel from './browser/BrowserPanel.vue'
+import CollabBoardPanel from './CollabBoardPanel.vue'
 import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import { useTerminalsStore } from '@/stores/terminals'
@@ -220,7 +223,7 @@ import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review'
+type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board'
 
 interface WorkbenchTab {
   id: string
@@ -259,6 +262,7 @@ const tabOptions: Array<{
   { type: 'files', title: 'Files', icon: Files, categorySlot: 5 },
   { type: 'terminal', title: 'Terminal', icon: Terminal, categorySlot: 6 },
   { type: 'browser', title: 'Browser', icon: Globe2, categorySlot: 7 },
+  { type: 'board', title: 'Board', icon: ClipboardList, categorySlot: 8 },
 ]
 
 const pickerOpen = ref(false)
@@ -273,8 +277,11 @@ const terminalsStore = useTerminalsStore()
 // Per-access read so host-stubbing tests keep working.
 const canUseTerminal = computed(() => platformApi.capabilities.terminal)
 const canUseEmbeddedBrowser = computed(() => platformApi.capabilities.embeddedBrowser)
+const canUseCollabRooms = computed(() => platformApi.capabilities.collabRooms)
 const availableTabOptions = computed(() =>
-  tabOptions.filter(option => option.type !== 'terminal' || canUseTerminal.value),
+  tabOptions.filter(option =>
+    (option.type !== 'terminal' || canUseTerminal.value) &&
+    (option.type !== 'board' || canUseCollabRooms.value)),
 )
 let variableRequestId = 0
 
@@ -399,12 +406,14 @@ function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'terminal') return Terminal
   if (type === 'browser') return Globe2
   if (type === 'review') return GitCompare
+  if (type === 'board') return ClipboardList
   return Files
 }
 
 function tabCategorySlot(type: WorkbenchTabType): number {
   if (type === 'terminal') return 6
   if (type === 'browser') return 7
+  if (type === 'board') return 8
   if (type === 'review') return 4
   return 5
 }
@@ -585,14 +594,35 @@ function navigateBrowser() {
   browserUrl.value = normalizeBrowserUrl(browserInput.value)
 }
 
+/** 群聊头部「看板」直达入口 — 打开(或聚焦)board 页签。 */
+function openBoard(): void {
+  addWorkbenchTab('board')
+}
+
+/**
+ * 群 folder 的文件树入口(collab-team-v2 §7)。
+ *
+ * 走的是既有的 files 页签,只是把根换成这个群的 folder —— 群里放的文档因此
+ * 和项目文件用同一套浏览/打开链路,不需要第二种文件浏览器。
+ */
+async function openFolder(root: string): Promise<void> {
+  if (!root) return
+  addWorkbenchTab('files')
+  filesWorkspaceRoot.value = root
+  await nextTick()
+  await editorWorkspace.setWorkspaceRoot(root).catch(() => {})
+}
+
 defineExpose({
   openFile,
   openGoalReview,
+  openBoard,
+  openFolder,
 })
 </script>
 
 <style scoped>
-/* 台面(Bench):直角实线,框不闭合只留角标,左缘一把刻度尺。
+/* 台面(Bench):直角实线,框不闭合只留角标。
    活性一律制图黛蓝(theme info 色)。 */
 .right-workbench {
   position: relative;
@@ -635,30 +665,6 @@ defineExpose({
 :deep(.right-workbench-main) {
   min-width: 0;
   min-height: 0;
-}
-
-/* 签名:左缘刻度尺。8px 细刻、40px 长刻,面板即量具。 */
-.right-workbench::before {
-  content: "";
-  position: absolute;
-  z-index: 6;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 8px;
-  background:
-    repeating-linear-gradient(
-      to bottom,
-      var(--workbench-line) 0 1px,
-      transparent 1px 8px
-    ) left / 4px 100% no-repeat,
-    repeating-linear-gradient(
-      to bottom,
-      var(--workbench-line) 0 1px,
-      transparent 1px 40px
-    ) left / 8px 100% no-repeat;
-  opacity: 0.5;
-  pointer-events: none;
 }
 
 .workbench-close {

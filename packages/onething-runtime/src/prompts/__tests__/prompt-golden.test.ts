@@ -63,7 +63,7 @@ function segmentPrompt(prompt: string): Partial<Record<SegmentId, string>> {
 		},
 		{
 			id: "context-variables",
-			pattern: /# Context Variables[\s\S]*?(?=\n# |$)/,
+			pattern: /<context-variables>[\s\S]*?(?:<\/context-variables>|$)/,
 		},
 		{ id: "plugins", pattern: /# Plugins[\s\S]*$/ },
 	];

@@ -75,7 +75,7 @@ export interface SkillSettings {
   enableSkills: boolean
   /**
    * Hermes-compatible skill review cadence. Counts completed agent turns while
-   * skill_manage is available. Set to 0 or a negative value
+   * skill authoring tools are available. Set to 0 or a negative value
    * to disable automatic background skill review.
    */
   creationNudgeInterval?: number

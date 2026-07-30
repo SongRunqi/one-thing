@@ -409,8 +409,11 @@
               class="field"
               aria-label="Task agent"
             >
+              <!-- 定时任务的执行者是一个激活目标(agent-domain-model.md §3.2):
+                   已退休的 agent 不能被选中,否则到点了那条任务只会空转。
+                   kind 不在这里筛 —— service agent 有自己的后台日程。 -->
               <option
-                v-for="agent in agentsStore.agents"
+                v-for="agent in agentsStore.activeAgents"
                 :key="agent.id"
                 :value="agent.id"
               >
@@ -920,8 +923,10 @@ function taskStatusClass(task: SchedulerTaskSnapshotDTO): string {
 
 function taskOwnerLabel(task: SchedulerTaskSnapshotDTO): string {
   if (task.kind === 'plugin') return task.pluginId || 'Plugin'
-  const agent = agentsStore.agents.find(item => item.id === task.agentId)
-  return agent?.name || task.agentId || 'Agent'
+  // 域模型 M4:署名走 displayAgent —— 一条老任务指着已退休/已删的 agent 时显示
+  // 墓碑「已注销」,而不是把一串 id 印在账页上。
+  if (!task.agentId) return 'Agent'
+  return agentsStore.displayAgent(task.agentId).name
 }
 
 watch(editing, async (isEditing) => {

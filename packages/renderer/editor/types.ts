@@ -35,6 +35,15 @@ export interface EditorCursorLineInfo {
   text: string
 }
 
+/**
+ * 光标是否落在整段文本的首/末「视觉行」——软换行后一条逻辑行会占好几行，
+ * 用 `\n` 数出来的逻辑行判不出用户眼里的第一行/最后一行。
+ */
+export interface EditorVisualLineEdges {
+  atFirstLine: boolean
+  atLastLine: boolean
+}
+
 export interface EditorSetValueOptions {
   preserveSelection?: boolean
 }
@@ -59,6 +68,8 @@ export interface EditorHandle {
   getScrollTop: () => number
   setScrollTop: (scrollTop: number) => void
   getCursorLineInfo: () => EditorCursorLineInfo
+  /** 只有能测量布局的编辑器实现（CodeMirror）提供；拿不到时调用方退回逻辑行判断。 */
+  getVisualLineEdges?: () => EditorVisualLineEdges
 }
 
 export type EditorSettings = SharedEditorSettings

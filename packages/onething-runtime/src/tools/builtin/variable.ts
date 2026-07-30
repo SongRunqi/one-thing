@@ -1,17 +1,21 @@
 import { z } from "zod";
 import type { JsonObject, JsonObjectProperty } from "@onething/core";
-import type { VariableVolatility } from "../../variables/types.js";
+import type {
+	VariableScope,
+	VariableType,
+	VariableVolatility,
+} from "../../variables/types.js";
 import { isCapabilityVariable } from "../../variables/types.js";
 import { Tool } from "../tool.js";
 
 export type VariableAction = "list" | "set" | "append" | "remove" | "delete";
-export type VariableScope = "global" | "session";
-export type { VariableVolatility };
+export type { VariableScope, VariableType, VariableVolatility };
 
 export interface RuntimeContextVariable {
 	name: string;
 	value?: string;
 	values?: string[];
+	type?: VariableType;
 	scope?: VariableScope;
 	readonly?: boolean;
 	volatility?: VariableVolatility;
@@ -29,6 +33,7 @@ export interface RuntimeVariableSetInput {
 	name: string;
 	value: string;
 	scope?: VariableScope;
+	type?: VariableType;
 	description?: string;
 	volatility?: VariableVolatility;
 }
@@ -65,6 +70,7 @@ interface VariableMetadataVariable extends JsonObject {
 	name: string;
 	value?: string;
 	values?: string[];
+	type?: VariableType;
 	scope?: VariableScope;
 	readonly?: boolean;
 	volatility?: VariableVolatility;
@@ -82,7 +88,9 @@ interface VariableMetadata extends JsonObject {
 export const VariableParameters = z.object({
 	action: z
 		.enum(["list", "set", "append", "remove", "delete"])
-		.describe("Operation to perform on context variables."),
+		.describe(
+			"list: show all variables. set: create or replace a value. append/remove: add or drop an element of a collection variable (or a workdir sandbox root). delete: drop the whole variable.",
+		),
 	name: z
 		.string()
 		.optional()
@@ -91,25 +99,31 @@ export const VariableParameters = z.object({
 		.string()
 		.optional()
 		.describe(
-			"Variable value (required for set/append/remove; for the work directory and note directories, must be an existing directory).",
+			"Variable value (required for set/append/remove). Collections take compact JSON on set; append/remove take a single element (JSON, or plain text for a string element) - map append merges a JSON object, map remove takes the key. Directory variables (workdir, note dirs) take an existing directory path.",
 		),
-	scope: z
-		.enum(["session", "global"])
+	type: z
+		.enum(["string", "number", "bool", "list", "map", "set"])
 		.optional()
 		.describe(
-			"Scope for custom variables. Defaults to session. Built-in note directories are global; the work directory variable is session-scoped.",
+			'Value type. Defaults to the existing type, else "string". number accepts decimals; list/map hold JSON; set is a list with unique elements. append on a missing variable creates it (default list).',
+		),
+	scope: z
+		.enum(["session", "global", "agent", "project"])
+		.optional()
+		.describe(
+			"Where the variable lives: session (default), agent (every session of the current agent), project (the active workdir's project; requires a workdir), global (all sessions). A name lives in one scope; a write without scope follows the variable to its current scope.",
 		),
 	description: z
 		.string()
 		.optional()
 		.describe(
-			"Short description, surfaced in the prompt and the Context inspector.",
+			'Short description shown next to the value in the prompt and the Context inspector. Sticky: omitted on later writes it is kept; "" clears it.',
 		),
 	volatility: z
 		.enum(["static", "turn"])
 		.optional()
 		.describe(
-			'How often the value changes. "static" (default): stable values, rendered in the system prompt. "turn": fast-changing status you expect to update repeatedly - delivered in per-turn <context-update> blocks instead, so updates never rewrite the system prompt. Use "turn" for in-flight operation status.',
+			'"static" (default): rendered in the system prompt. "turn": delivered in per-turn <context-update> blocks, for values that change often. Sticky across writes.',
 		),
 });
 
@@ -120,6 +134,7 @@ function summarizeForMetadata(
 		name: v.name,
 		value: v.value,
 		values: v.values,
+		type: v.type,
 		scope: v.scope,
 		readonly: v.readonly,
 		volatility: v.volatility,
@@ -148,7 +163,7 @@ function renderForOutput(
 			// up. Tool output is never part of the cached prompt prefix, so a
 			// live relative time is safe here (unlike in the prompt sections).
 			const age = v.updatedAt ? ` [updated ${formatAge(v.updatedAt, now)}]` : "";
-			const flags = `${v.scope ? ` [${v.scope}]` : ""}${v.readonly ? " [readonly]" : ""}${v.volatility && v.volatility !== "static" ? ` [${v.volatility}]` : ""}${age}`;
+			const flags = `${v.type && v.type !== "string" ? ` [${v.type}]` : ""}${v.scope ? ` [${v.scope}]` : ""}${v.readonly ? " [readonly]" : ""}${v.volatility && v.volatility !== "static" ? ` [${v.volatility}]` : ""}${age}`;
 			const desc = v.description ? ` - ${v.description}` : "";
 			if (v.values && v.values.length > 0) {
 				return `${v.name} = ${v.value || "(empty)"}\nvalues:\n${v.values.map((value, index) => `  [${index}] ${value}${index === 0 && v.value ? " (current)" : ""}`).join("\n")}${flags}${desc}`;
@@ -178,20 +193,12 @@ export function createVariableTool(
 ): Tool.Info<typeof VariableParameters, VariableMetadata> {
 	return Tool.define<typeof VariableParameters, VariableMetadata>("variable", {
 		name: "Variable",
-		description: `Manage context variables - the session's live state board.
+		description: `Manage context variables - named state visible to you in every turn.
 
-Variables are small structured facts about the CURRENT state of the session and system: what is running, what is being worked on, which directories are active. They are visible to you in every turn, so state recorded here never needs re-discovery. Each variable documents itself via its description in list output - system variables (workdir, note dirs, background_jobs, ...) explain their own semantics there.
+Use this freely and proactively: anything you record is in front of you every turn afterwards, with no re-discovery. Whenever you learn or decide something later turns will need - what you're working on, a target, a status, a list you're accumulating - set it the moment you have it, and keep it current as things change.
 
-Use this tool to:
-- adjust the active context for future tool calls (e.g. set the workdir when switching projects)
-- track a long-running or multi-turn operation you start: record its target and status, update on change, delete when done (set volatility="turn" for status you will update repeatedly)
-- record task-critical state later turns must see (current deploy target, in-progress migration step)
-
-This is NOT memory. Durable knowledge about the user (preferences, identity, reply language) belongs to the memory system; one-off details belong in conversation. State that will be stale by tomorrow and matters every turn until then - that is what belongs here.
-
-Custom variables use any non-reserved snake_case name matching /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/. scope="session" (default) for state of this session; scope="global" only for state genuinely shared across sessions. Read-only variables are maintained by the system and cannot be written.
-
-Known Projects are listed in the system prompt. Setting workdir auto-registers the directory there; pass description alongside set to name or rename the project entry.`,
+A variable has a typed value (string, number, bool, list, map, set), an optional description, and lives in one of four scopes: session (this session), agent (every session of this agent), project (the active workdir's project), global (all sessions). Collections support element-wise append/remove. Custom names are non-reserved snake_case matching /^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/; system variables (workdir, note dirs, background_jobs, ...) explain their own semantics via their description in list output.
+`,
 		category: "builtin",
 		enabled: true,
 		autoExecute: true,
@@ -247,6 +254,7 @@ Known Projects are listed in the system prompt. Setting workdir auto-registers t
 						name: args.name,
 						value: args.value,
 						scope: args.scope,
+						type: args.type,
 						description: args.description,
 						volatility: args.volatility,
 					};

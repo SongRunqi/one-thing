@@ -35,10 +35,13 @@ import {
   saveSettings,
   setCurrentSessionId,
   updateSessionArchived,
+  updateSessionCollab,
   updateSessionModel,
+  updateSessionPermissionMode,
   updateSessionPin,
   updateSessionWorkingDirectory,
 } from '../store.js'
+import { agentExists } from '../agents/index.js'
 import { getSettings } from '../stores/settings.js'
 import { getAllToolsAsync } from '../tools/index.js'
 import { shutdownEventSystem, getEventBus, getStreamChannel } from '../events/index.js'
@@ -91,6 +94,9 @@ export class HeadlessBackend {
       toolRegistry: 'headless',
       sessionSkills: true,
       mcpAcp: true,
+      // Multi-agent rooms work headless too: the sender below is bound, so
+      // the coordinator's hasCommandTarget gate passes and drives flow.
+      collab: true,
       sender: this.sender,
     })
     this.started = true
@@ -360,6 +366,112 @@ export class HeadlessBackend {
 
   deleteSession(sessionId: string): void {
     deleteSession(sessionId)
+  }
+
+  // ── Collab (multi-agent rooms) — docs/design/multi-agent-collab.md ──
+
+  collabRoomNew(input: {
+    name: string
+    memberAgentIds: string[]
+    pmAgentId?: string
+    workingDirectory?: string
+    permissionMode?: PermissionMode
+    dailyCostUSD?: number
+  }): ChatSession {
+    const members = (input.memberAgentIds ?? []).filter(Boolean)
+    if (members.length === 0) throw new Error('Room needs at least one member agent id')
+    for (const agentId of members) {
+      if (!agentExists(agentId)) throw new Error(`Unknown agent: ${agentId}`)
+    }
+    if (input.pmAgentId && !members.includes(input.pmAgentId)) {
+      throw new Error('PM must be a room member')
+    }
+    const previous = getCurrentSessionId()
+    const session = createSession(randomUUID(), input.name || 'Room')
+    if (previous) setCurrentSessionId(previous)
+    updateSessionCollab(session.id, {
+      kind: 'room',
+      room: {
+        memberAgentIds: members,
+        ...(input.pmAgentId ? { pmAgentId: input.pmAgentId } : {}),
+        ...(typeof input.dailyCostUSD === 'number' && input.dailyCostUSD >= 0
+          ? { budgets: { dailyCostUSD: input.dailyCostUSD } }
+          : {}),
+      },
+    })
+    if (input.workingDirectory) updateSessionWorkingDirectory(session.id, input.workingDirectory)
+    if (input.permissionMode) updateSessionPermissionMode(session.id, input.permissionMode)
+    return getSession(session.id) ?? session
+  }
+
+  collabRoomList(): Array<{ id: string; name: string; memberAgentIds: string[]; pmAgentId?: string; frozen?: boolean }> {
+    return (getSessionsList() as Array<ChatSession & { kind?: string }>)
+      .filter(meta => meta.kind === 'room')
+      .map(meta => ({
+        id: meta.id,
+        name: meta.name,
+        memberAgentIds: meta.room?.memberAgentIds ?? [],
+        pmAgentId: meta.room?.pmAgentId,
+        frozen: meta.room?.frozen,
+      }))
+  }
+
+  async collabSend(roomSessionId: string, content: string): Promise<{ ok: true }> {
+    const session = getSession(roomSessionId)
+    if (session?.kind !== 'room') throw new Error(`Not a room session: ${roomSessionId}`)
+    await getEventBus().emit(roomSessionId, {
+      type: 'command:send-message',
+      content,
+      source: 'text',
+    } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+    return { ok: true }
+  }
+
+  async collabBoard(roomSessionId: string): Promise<unknown> {
+    const { loadCollabBoard } = await import('../collab/board-store.js')
+    return loadCollabBoard(roomSessionId)
+  }
+
+  async collabSetBudgets(roomSessionId: string, budgets: {
+    dailyCostUSD?: number
+    maxChain?: number
+    maxTurnToolCalls?: number
+    maxTurnSayCalls?: number
+  }): Promise<{ ok: boolean }> {
+    const { setCollabRoomBudgets } = await import('../collab/index.js')
+    return { ok: setCollabRoomBudgets(roomSessionId, budgets) }
+  }
+
+  /** Team settings over the daemon (W6): same app-layer path as the IPC. */
+  async collabRoomUpdate(input: {
+    roomSessionId: string
+    name?: string
+    memberAgentIds?: string[]
+    pmAgentId?: string | null
+    permissionMode?: PermissionMode
+  }): Promise<{ ok: boolean; error?: string }> {
+    const { setCollabRoomConfig } = await import('../collab/index.js')
+    const result = setCollabRoomConfig(input.roomSessionId, {
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.memberAgentIds !== undefined ? { memberAgentIds: input.memberAgentIds } : {}),
+      ...(input.pmAgentId !== undefined ? { pmAgentId: input.pmAgentId } : {}),
+      ...(input.permissionMode !== undefined ? { permissionMode: input.permissionMode } : {}),
+    })
+    if (!result.success) throw new Error(result.error || 'Failed to update room')
+    return { ok: true }
+  }
+
+  collabTranscript(roomSessionId: string, limit = 30): Array<{ role: string; agentId?: string; content: string }> {
+    const session = getSession(roomSessionId)
+    if (session?.kind !== 'room') throw new Error(`Not a room session: ${roomSessionId}`)
+    return session.messages
+      .filter(message => message.role === 'user' || message.role === 'assistant' || message.role === 'system')
+      .slice(-limit)
+      .map(message => ({
+        role: message.role,
+        ...(message.agentId ? { agentId: message.agentId } : {}),
+        content: message.content,
+      }))
   }
 
   sessionCwd(sessionId: string | undefined, cwd?: string | null): string | undefined {

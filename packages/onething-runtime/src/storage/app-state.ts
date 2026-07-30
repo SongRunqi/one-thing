@@ -40,6 +40,22 @@ export interface OnethingPersistedWorkspace {
   root: OnethingPersistedWorkspaceNode
 }
 
+/**
+ * 每会话已读水位(docs/design/agent-im-dm.md P4)。是**阅读状态**,不是会话内容:
+ * 放这儿(UI 状态)而不是 session meta.json —— 扫一眼就写一次会话文件等于让阅读
+ * 行为去抖动会话索引,而"我读到哪儿"对引擎和 agent 都没有意义。
+ * 形状与 renderer 的 `PersistedSessionReadMarks` 一一对应;这一层只透传不解释。
+ */
+export interface OnethingPersistedSessionReadMark {
+  readAt: number
+  inboundAt: number
+}
+
+export interface OnethingPersistedSessionReadMarks {
+  version: 1
+  marks: Record<string, OnethingPersistedSessionReadMark>
+}
+
 export interface OnethingAppState {
   currentSessionId: string
   currentWorkspaceId: string | null
@@ -48,6 +64,7 @@ export interface OnethingAppState {
   activeTabIndex?: number
   workspace?: OnethingPersistedWorkspace
   sidebarCollapsed?: boolean
+  sessionReadMarks?: OnethingPersistedSessionReadMarks
 }
 
 export interface OnethingUiStatePatch {
@@ -55,6 +72,7 @@ export interface OnethingUiStatePatch {
   activeTabIndex?: number
   workspace?: OnethingPersistedWorkspace
   sidebarCollapsed?: boolean
+  sessionReadMarks?: OnethingPersistedSessionReadMarks
 }
 
 export const DEFAULT_ONETHING_APP_STATE: OnethingAppState = {
@@ -108,6 +126,7 @@ export function mergeOnethingUiState(
     ...(uiState.activeTabIndex !== undefined ? { activeTabIndex: uiState.activeTabIndex } : {}),
     ...(uiState.workspace !== undefined ? { workspace: uiState.workspace } : {}),
     ...(uiState.sidebarCollapsed !== undefined ? { sidebarCollapsed: uiState.sidebarCollapsed } : {}),
+    ...(uiState.sessionReadMarks !== undefined ? { sessionReadMarks: uiState.sessionReadMarks } : {}),
   }
 }
 

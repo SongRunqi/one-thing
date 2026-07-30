@@ -1,5 +1,12 @@
 appId: com.onething.app
 productName: onething
+# castlabs electron 的版本号 41.1.1+wvcus 让 node-abi 解析失败;native 模块
+# (better-sqlite3/node-pty/sherpa) 已按该 electron 的 ABI 编好(dev 实机在跑),
+# 打包直接带现有 .node,跳过 rebuild。
+npmRebuild: false
+nodeGypRebuild: false
+# castlabs electron(41.1.1+wvcus)不在官方下载源;直接用本地安装的 dist。
+electronDist: node_modules/electron/dist
 directories:
   buildResources: build
   output: release

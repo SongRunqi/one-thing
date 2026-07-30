@@ -178,14 +178,17 @@ export function initializeIPCHub() {
       // Message lifecycle events (event-driven message creation)
       case 'message:user-created':
         refreshSessionListIfUnknown(sessionId)
+        noteReadWatermark(sessionId, (event as any).message)
         store.handleMessageCreated({ sessionId, message: (event as any).message })
         break
 
       case 'message:created':
+        noteReadWatermark(sessionId, (event as any).message)
         store.handleMessageCreated({ sessionId, message: (event as any).message })
         break
 
       case 'message:assistant-created':
+        noteReadWatermark(sessionId, (event as any).message)
         store.handleAssistantCreated({ sessionId, message: (event as any).message })
         break
 
@@ -297,6 +300,33 @@ export function initializeIPCHub() {
   })
 
   console.log('[IPC Hub] Unified listeners registered (session:event + session:stream)')
+}
+
+/**
+ * 已读水位的唯一喂料口(docs/design/agent-im-dm.md P4)。
+ *
+ * 判定按**消息的 role**,不按事件名 —— 房间里 agent 的 say 走的正是
+ * `message:user-created` 这条通道(`app/collab/say-tool.ts` 头注释),事件名在这里
+ * 什么也证明不了。
+ * - `user`      自己说的话(含网关那头的自己):推进水位,不是未读源;
+ * - `assistant` 对方说话:未读源;
+ * - `system`    预算/断路器/冻结这类机械台账(`postSystemLine`):既不是人说话,
+ *               也不该让联系人行冒红点,一律不计。
+ *
+ * 只吃 message:* 落库事件,不碰流式 chunk —— 徽标因此不会在生成过程中闪。
+ */
+function noteReadWatermark(sessionId: string, message: unknown): void {
+  const role = (message as { role?: string } | undefined)?.role
+  if (role !== 'user' && role !== 'assistant') return
+  const raw = (message as { timestamp?: number } | undefined)?.timestamp
+  const at = typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : Date.now()
+  import('@/stores/sessions').then(({ useSessionsStore }) => {
+    const sessionsStore = useSessionsStore()
+    if (role === 'user') sessionsStore.markSessionRead(sessionId, at)
+    else sessionsStore.noteInboundActivity(sessionId, at)
+  }).catch(error => {
+    console.error('[IPC Hub] Failed to update read watermark:', error)
+  })
 }
 
 /**

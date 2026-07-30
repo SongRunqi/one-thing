@@ -11,6 +11,7 @@
  */
 import { initializeStores, flushAllPendingSaves } from './store.js'
 import { getSettings, initializeSettings } from './stores/settings.js'
+import { initializeAgents } from './agents/index.js'
 import { configureSandboxHost, configureAppToolSandbox } from './tools/core/sandbox.js'
 import { configureAppBackgroundJobs } from './tools/core/background-jobs.js'
 import { configureAppProviderRegistry } from './providers/index.js'
@@ -34,6 +35,7 @@ import {
 } from './engine/index.js'
 import type { BindableStreamSender } from './engine/stream-engine.js'
 import { registerBuiltinTriggers } from './engine/triggers/index.js'
+import { initializeCollabCoordinator, shutdownCollabCoordinator } from './collab/index.js'
 import { Permission } from './permission/index.js'
 import { bootstrapVariableSystem } from './variables/index.js'
 import { bootstrapGoalStreamBreakers } from './goals/runtime-hooks.js'
@@ -94,6 +96,12 @@ export interface OnethingBackendOptions {
   promptVersion?: boolean
   /** Load session skills during assembly (hosts deferring to plugin bootstrap skip this). */
   sessionSkills?: boolean
+  /**
+   * Multi-agent collab rooms (docs/design/multi-agent-collab.md): coordinator +
+   * roster prompt provider. Desktop opts in; headless hosts without room UI
+   * leave it off — the room ingress gate still refuses uncoordinated streams.
+   */
+  collab?: boolean
   /** Initialize MCP + ACP inline during assembly (hosts may instead do it post-window). */
   mcpAcp?: boolean
   /** Engine sender to bind; hosts that observe the EventBus directly can omit it. */
@@ -116,6 +124,9 @@ export async function createOnethingBackend(
 
   initializeStores()
   await initializeSettings()
+  // Agents are read on every turn (and once per room member); warm the cache
+  // here so nothing downstream pays a synchronous read + normalize.
+  await initializeAgents()
   await options.hooks?.afterSettings?.()
 
   initializeEventSystem()
@@ -163,6 +174,16 @@ export async function createOnethingBackend(
     await initializeSessionSkills()
   }
 
+  if (options.collab) {
+    // Room prompts are assembled as persona-only system prompts inside the
+    // prompt build path (engine/prompt/system-prompt.ts collabRoomOverrides)
+    // — no plugin prompt provider involved. Static import (top of file): a
+    // dynamic import here left the collab modules bundled INSIDE the desktop
+    // entry chunk (the ingress gate references them statically), and the CLI
+    // daemon's dynamic load then pulled the whole electron entry into Node.
+    initializeCollabCoordinator()
+  }
+
   if (options.mcpAcp) {
     const settings = getSettings()
     await MCPManager.initialize(settings.mcp || { enabled: true, servers: [] })
@@ -179,6 +200,13 @@ export async function createOnethingBackend(
     eventBus: getEventBus(),
     streamChannel: getStreamChannel(),
     async shutdown() {
+      if (options.collab) {
+        try {
+          shutdownCollabCoordinator()
+        } catch (error) {
+          console.error('[Backend] collab shutdown error:', error)
+        }
+      }
       getStreamEngine().abortAll()
       if (options.mcpAcp) {
         await ACPManager.shutdown()

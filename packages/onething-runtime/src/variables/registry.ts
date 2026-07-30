@@ -5,10 +5,37 @@ import {
   type SetInput,
   type VariableContext,
   type VariableProvider,
+  type VariableScope,
 } from './types.js'
 import { assertNotReserved, assertValidName, assertValidValue, findDuplicateNames } from './validation.js'
 
 type ChangeListener = (ctx: VariableContext, snapshot: ContextVariable[]) => void
+
+/**
+ * The custom-variable store provider per scope. Non-store providers (core,
+ * notes, goal, …) own reserved names and are reached through claims() when
+ * no explicit store scope routes elsewhere.
+ */
+const STORE_IDS_BY_SCOPE: Record<VariableScope, string> = {
+  global: 'global-store',
+  session: 'session-store',
+  agent: 'agent-store',
+  project: 'project-store',
+}
+
+const STORE_IDS = new Set(Object.values(STORE_IDS_BY_SCOPE))
+
+/** Store ids other than session-store — excluded from default routing. */
+const NON_DEFAULT_STORE_IDS = new Set(
+  Object.entries(STORE_IDS_BY_SCOPE)
+    .filter(([scope]) => scope !== 'session')
+    .map(([, id]) => id),
+)
+
+function scopeOfStoreId(id: string): VariableScope | undefined {
+  return (Object.keys(STORE_IDS_BY_SCOPE) as VariableScope[])
+    .find(scope => STORE_IDS_BY_SCOPE[scope] === id)
+}
 
 export class VariableRegistry {
   private providers: VariableProvider[] = []
@@ -86,13 +113,14 @@ export class VariableRegistry {
     assertValidValue(input.value)
 
     return this.serialize(ctx.sessionId, async () => {
-      const provider = this.findClaimant(input.name, input.scope)
+      let provider = this.findClaimant(input.name, input.scope)
       if (!provider) {
         throw new VariableError(
           'NO_PROVIDER',
-          `No provider accepts variable "${input.name}"`,
+          `No provider accepts variable "${input.name}"${input.scope ? ` in ${input.scope} scope` : ''}`,
         )
       }
+      provider = await this.resolveStoreClaimant(ctx, provider, input.name, input.scope)
       if (!provider.set) {
         throw new VariableError(
           'READONLY',
@@ -100,7 +128,7 @@ export class VariableRegistry {
         )
       }
       const result = await provider.set(ctx, input)
-      await this.emitForWrite(ctx, input.scope)
+      await this.emitForWrite(ctx, scopeOfStoreId(provider.id) ?? input.scope)
       return result
     })
   }
@@ -110,13 +138,14 @@ export class VariableRegistry {
     assertValidValue(input.value)
 
     return this.serialize(ctx.sessionId, async () => {
-      const provider = this.findClaimant(input.name, input.scope)
+      let provider = this.findClaimant(input.name, input.scope)
       if (!provider) {
         throw new VariableError(
           'NO_PROVIDER',
-          `No provider accepts variable "${input.name}"`,
+          `No provider accepts variable "${input.name}"${input.scope ? ` in ${input.scope} scope` : ''}`,
         )
       }
+      provider = await this.resolveStoreClaimant(ctx, provider, input.name, input.scope)
       if (!provider.append) {
         throw new VariableError(
           'READONLY',
@@ -124,7 +153,7 @@ export class VariableRegistry {
         )
       }
       const result = await provider.append(ctx, input)
-      await this.emitForWrite(ctx, input.scope)
+      await this.emitForWrite(ctx, scopeOfStoreId(provider.id) ?? input.scope)
       return result
     })
   }
@@ -134,13 +163,14 @@ export class VariableRegistry {
     assertValidValue(input.value)
 
     return this.serialize(ctx.sessionId, async () => {
-      const provider = this.findClaimant(input.name, input.scope)
+      let provider = this.findClaimant(input.name, input.scope)
       if (!provider) {
         throw new VariableError(
           'NO_PROVIDER',
-          `No provider accepts variable "${input.name}"`,
+          `No provider accepts variable "${input.name}"${input.scope ? ` in ${input.scope} scope` : ''}`,
         )
       }
+      provider = await this.resolveStoreClaimant(ctx, provider, input.name, input.scope)
       if (!provider.remove) {
         throw new VariableError(
           'READONLY',
@@ -148,17 +178,22 @@ export class VariableRegistry {
         )
       }
       const result = await provider.remove(ctx, input)
-      await this.emitForWrite(ctx, input.scope)
+      await this.emitForWrite(ctx, scopeOfStoreId(provider.id) ?? input.scope)
       return result
     })
   }
 
-  async delete(ctx: VariableContext, name: string, scope?: 'global' | 'session'): Promise<void> {
+  async delete(ctx: VariableContext, name: string, scope?: VariableScope): Promise<void> {
     assertValidName(name)
     return this.serialize(ctx.sessionId, async () => {
-      const provider = this.findClaimant(name, scope)
+      let provider = this.findClaimant(name, scope)
       if (!provider) {
         throw new VariableError('NOT_FOUND', `No variable named "${name}"`)
+      }
+      // Unscoped deletes follow the variable to its owning store; an explicit
+      // scope targets that store directly (a miss is that store's NOT_FOUND).
+      if (scope === undefined) {
+        provider = await this.resolveStoreClaimant(ctx, provider, name, undefined)
       }
       if (!provider.delete) {
         throw new VariableError(
@@ -167,7 +202,7 @@ export class VariableRegistry {
         )
       }
       await provider.delete(ctx, name)
-      await this.emitForWrite(ctx, scope)
+      await this.emitForWrite(ctx, scopeOfStoreId(provider.id) ?? scope)
     })
   }
 
@@ -184,21 +219,70 @@ export class VariableRegistry {
     assertNotReserved(name)
   }
 
-  private findClaimant(name: string, scope?: 'global' | 'session'): VariableProvider | undefined {
+  private findClaimant(name: string, scope?: VariableScope): VariableProvider | undefined {
     if (scope === 'global') {
       return this.providers.find(provider => provider.id === 'global-store' && provider.claims(name))
-        ?? this.providers.find(provider => provider.id !== 'session-store' && provider.claims(name))
+        // Reserved names with global effect (note dirs) live in their own
+        // providers; scope=global still reaches them.
+        ?? this.providers.find(provider => !STORE_IDS.has(provider.id) && provider.claims(name))
     }
-    if (scope === 'session') {
-      return this.providers.find(provider => provider.id !== 'global-store' && provider.claims(name))
+    if (scope === 'agent' || scope === 'project') {
+      const storeId = STORE_IDS_BY_SCOPE[scope]
+      return this.providers.find(provider => provider.id === storeId && provider.claims(name))
     }
-    return this.providers.find(provider => provider.id !== 'global-store' && provider.claims(name))
+    // scope === 'session' and the unscoped default: reserved names route to
+    // their owning provider, everything else falls through to session-store.
+    return this.providers.find(
+      provider => !NON_DEFAULT_STORE_IDS.has(provider.id) && provider.claims(name),
+    )
   }
 
-  private async emitForWrite(ctx: VariableContext, scope?: 'global' | 'session'): Promise<void> {
+  /**
+   * The store provider that currently holds `name` for this session, if any.
+   * Store providers all claim every non-reserved name, so claims() cannot
+   * distinguish "would accept" from "already has" — this can.
+   */
+  private async findOwnerStore(
+    ctx: VariableContext,
+    name: string,
+  ): Promise<VariableProvider | undefined> {
+    for (const provider of this.providers) {
+      if (!STORE_IDS.has(provider.id)) continue
+      const chunk = await Promise.resolve(provider.list(ctx))
+      if (chunk.some(variable => variable.name === name)) return provider
+    }
+    return undefined
+  }
+
+  /**
+   * Keep one name in one store: a second store accepting the same name would
+   * make the next list() throw PROVIDER_CONFLICT and take the whole variable
+   * system (including prompt assembly) down with it. Unscoped writes follow
+   * the variable to wherever it already lives; explicitly-scoped writes into
+   * a different store are rejected up front.
+   */
+  private async resolveStoreClaimant(
+    ctx: VariableContext,
+    claimant: VariableProvider,
+    name: string,
+    scope: VariableScope | undefined,
+  ): Promise<VariableProvider> {
+    if (!STORE_IDS.has(claimant.id)) return claimant
+    const owner = await this.findOwnerStore(ctx, name)
+    if (!owner || owner === claimant) return claimant
+    if (scope === undefined) return owner
+    const ownerScope = scopeOfStoreId(owner.id) ?? 'another'
+    throw new VariableError(
+      'PROVIDER_CONFLICT',
+      `Variable "${name}" already exists in ${ownerScope} scope. Delete it there first, or omit scope to update it in place.`,
+    )
+  }
+
+  private async emitForWrite(ctx: VariableContext, scope?: VariableScope): Promise<void> {
     const snapshot = await this.list(ctx)
     this.emit(ctx, snapshot)
-    if (scope === 'global') this.broadcast()
+    // Shared-scope writes are visible beyond the writing session.
+    if (scope === 'global' || scope === 'agent' || scope === 'project') this.broadcast()
   }
 
   private serialize<T>(sessionId: string, task: () => Promise<T>): Promise<T> {

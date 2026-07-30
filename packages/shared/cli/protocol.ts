@@ -67,6 +67,13 @@ export type DaemonMethod =
   | 'tools.list'
   | 'tools.set'
   | 'permission.mode.set'
+  | 'collab.roomNew'
+  | 'collab.roomList'
+  | 'collab.send'
+  | 'collab.board'
+  | 'collab.setBudgets'
+  | 'collab.roomUpdate'
+  | 'collab.transcript'
 
 export interface AskRequest {
   prompt: string

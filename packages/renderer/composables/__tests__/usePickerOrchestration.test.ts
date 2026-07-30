@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { effectScope, nextTick, ref, type Ref } from 'vue'
 import { usePickerOrchestration } from '../usePickerOrchestration'
-import { createFileToken, expandFileTokens } from '@shared/prompt-references'
+import { createFileToken, createPageToken, expandFileTokens } from '@shared/prompt-references'
 import type { EditorCursorLineInfo, EditorHandle, EditorSelection } from '@/editor'
 import type { PaletteItem } from '@/types/palette'
 import { createPromptToken, createSkillToken } from '@shared/prompt-references'
@@ -464,6 +464,108 @@ describe('usePickerOrchestration', () => {
     expect(harness.api.fileQuery.value).toBe('')
     expect(harness.api.activeExtension.value.type).toBe('none')
     expect(harness.checkHistoryEdit).toHaveBeenCalledWith('plain text')
+    harness.scope.stop()
+  })
+
+  function stubBrowserTabs() {
+    // The picker harness hydrates the browser mirror at setup (per-access
+    // platform proxy), so extending the stub before createHarness is enough.
+    Object.assign(window.electronAPI, {
+      hydrateBrowser: vi.fn().mockResolvedValue({
+        success: true,
+        tabs: [
+          { id: 'tab-1', url: 'https://github.com/pull/7', title: 'Example PR', loading: false, canGoBack: false, canGoForward: false },
+          { id: 'tab-2', url: 'https://vuejs.org/guide/', title: 'Vue Guide', loading: false, canGoBack: false, canGoForward: false },
+        ],
+        activeTabId: 'tab-1',
+      }),
+      onBrowserTabsChanged: vi.fn().mockReturnValue(() => {}),
+    })
+  }
+
+  it('lists open tabs under @page with the current page first and inserts a page token', async () => {
+    stubBrowserTabs()
+    const harness = createHarness('use @page')
+    await settleWatchers()
+
+    expect(harness.api.activeExtension.value.type).toBe('pages')
+    expect(harness.api.activeExtension.value.items).toEqual([
+      expect.objectContaining({ kind: 'browser-page', value: 'tab-1', meta: 'Current page', title: 'Example PR' }),
+      expect.objectContaining({ kind: 'browser-page', value: 'tab-2', meta: 'Tab', title: 'Vue Guide' }),
+    ])
+
+    await harness.api.confirmActiveExtension()
+
+    expect(harness.input.value).toBe(`use ${createPageToken('tab-1')} `)
+    harness.scope.stop()
+  })
+
+  it('pins the current page row at the top of the bare @ picker', async () => {
+    vi.useFakeTimers()
+    stubBrowserTabs()
+    const harness = createHarness('attach @')
+
+    try {
+      await vi.advanceTimersByTimeAsync(200)
+      await settleWatchers()
+
+      expect(harness.api.activeExtension.value.type).toBe('files')
+      expect(harness.api.activeExtension.value.items[0]).toMatchObject({
+        kind: 'browser-page',
+        value: 'tab-1',
+        meta: 'Current page',
+      })
+
+      await harness.api.confirmActiveExtension()
+
+      expect(harness.input.value).toBe(`attach ${createPageToken('tab-1')} `)
+    } finally {
+      harness.scope.stop()
+      vi.useRealTimers()
+    }
+  })
+
+  it('projects page chips from tokens and resolves them at send time', async () => {
+    stubBrowserTabs()
+    const harness = createHarness(`see ${createPageToken('tab-1')} now`)
+    await settleWatchers()
+
+    expect(harness.api.pageReferences.value).toEqual([
+      expect.objectContaining({ tabId: 'tab-1', url: 'https://github.com/pull/7', label: 'Example PR' }),
+    ])
+
+    const { text, attachments } = harness.api.materializePageReferences(harness.input.value)
+    // The URL never enters the message text — the attachment is the carrier.
+    expect(text).toBe('see now')
+    expect(attachments).toEqual([
+      expect.objectContaining({
+        mediaType: 'file',
+        size: 0,
+        sourceUrl: 'https://github.com/pull/7',
+        sourceTitle: 'Example PR',
+      }),
+    ])
+    expect(attachments[0].base64Data).toBeUndefined()
+    harness.scope.stop()
+  })
+
+  it('labels dead page tokens and strips them at send time', async () => {
+    stubBrowserTabs()
+    const harness = createHarness(`see ${createPageToken('tab-9')} now`)
+    await settleWatchers()
+
+    expect(harness.api.pageReferences.value[0]).toMatchObject({
+      tabId: 'tab-9',
+      label: 'Closed page',
+    })
+
+    const { text, attachments } = harness.api.materializePageReferences(harness.input.value)
+    expect(text).toBe('see now')
+    expect(attachments).toEqual([])
+
+    harness.api.removePageReference(harness.api.pageReferences.value[0].id)
+    await settleWatchers()
+    expect(harness.input.value).toBe('see  now')
     harness.scope.stop()
   })
 

@@ -1458,12 +1458,15 @@ function objectData(value: unknown): Record<string, unknown> {
 		: {};
 }
 
+/**
+ * 技能复盘计数器的「刚写过技能就重置」信号。skill_manage 工具已移除,技能改由
+ * write/edit 直接落文件,这里没有可识别的专用调用了 —— 保留这个 hook 是为了让
+ * 计数契约保持单一入口,想恢复重置语义时改这一处即可。
+ */
 export function isSkillManageToolCall(
-	toolCall: Pick<CoreAgentLoopToolCallForSettlement, "toolId" | "toolName">,
+	_toolCall: Pick<CoreAgentLoopToolCallForSettlement, "toolId" | "toolName">,
 ): boolean {
-	return (
-		toolCall.toolId === "skill_manage" || toolCall.toolName === "skill_manage"
-	);
+	return false;
 }
 
 export function settleAgentLoopToolCallResult<

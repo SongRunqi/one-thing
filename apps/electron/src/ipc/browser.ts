@@ -8,7 +8,9 @@ import type {
 	BrowserPickResponse,
 	BrowserProfileIdRequest,
 	BrowserProfilesResponse,
+	BrowserSearchEngineResponse,
 	BrowserSetBoundsRequest,
+	BrowserSetSearchEngineRequest,
 	BrowserSetVisibleRequest,
 	BrowserSimpleResponse,
 	BrowserTabIdRequest,
@@ -35,6 +37,8 @@ export interface ElectronBrowserIpcChannels {
 	setVisible: string
 	pickElement: string
 	pickCancel: string
+	getSearchEngine: string
+	setSearchEngine: string
 	listProfiles: string
 	addProfile: string
 	removeProfile: string
@@ -56,6 +60,8 @@ export interface RegisterElectronBrowserIpcHandlersOptions {
 	setVisible(request: BrowserSetVisibleRequest): BrowserSimpleResponse | Promise<BrowserSimpleResponse>
 	pickElement(request: BrowserTabIdRequest): BrowserPickResponse | Promise<BrowserPickResponse>
 	pickCancel(request: BrowserTabIdRequest): BrowserSimpleResponse | Promise<BrowserSimpleResponse>
+	getSearchEngine(): BrowserSearchEngineResponse | Promise<BrowserSearchEngineResponse>
+	setSearchEngine(request: BrowserSetSearchEngineRequest): BrowserSearchEngineResponse | Promise<BrowserSearchEngineResponse>
 	listProfiles(): BrowserProfilesResponse | Promise<BrowserProfilesResponse>
 	addProfile(request: BrowserAddProfileRequest): BrowserProfilesResponse | Promise<BrowserProfilesResponse>
 	removeProfile(request: BrowserProfileIdRequest): BrowserProfilesResponse | Promise<BrowserProfilesResponse>
@@ -97,6 +103,10 @@ export function registerElectronBrowserIpcHandlers(
 	)
 	host.handle(channels.pickCancel, (_event, request: BrowserTabIdRequest) =>
 		options.pickCancel(request),
+	)
+	host.handle(channels.getSearchEngine, () => options.getSearchEngine())
+	host.handle(channels.setSearchEngine, (_event, request: BrowserSetSearchEngineRequest) =>
+		options.setSearchEngine(request),
 	)
 	host.handle(channels.listProfiles, () => options.listProfiles())
 	host.handle(channels.addProfile, (_event, request: BrowserAddProfileRequest) =>

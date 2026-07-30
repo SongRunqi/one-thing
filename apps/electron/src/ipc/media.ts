@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import type { MediaUsageTag } from '@shared/ipc.js'
 
 export interface ElectronIpcMainLike {
   handle<TArgs extends unknown[]>(
@@ -35,6 +36,8 @@ export interface ElectronMediaSaveImageRequest {
   model: string
   sessionId: string
   messageId: string
+  /** What the image is for, e.g. 'persona-avatar'. */
+  usageTags?: MediaUsageTag[]
 }
 
 export interface ElectronImagePreviewRequest {

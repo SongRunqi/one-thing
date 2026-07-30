@@ -49,7 +49,7 @@ export function registerElectronContentSecurityPolicy(
         ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
         : "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data: https: file: media:",
+      "img-src 'self' blob: data: https: file: media:",
       "font-src 'self' data:",
       "connect-src 'self' https://api.openai.com https://api.anthropic.com https://api.deepseek.com https://api.moonshot.cn https://open.bigmodel.cn https://*.zhipuai.cn ws://127.0.0.1:* http://127.0.0.1:*",
       "media-src 'self' blob: data: file:",

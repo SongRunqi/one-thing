@@ -12,6 +12,8 @@ import { ref, shallowRef, computed, triggerRef } from "vue";
 import { perfMark, perfMeasure } from "@/utils/perf";
 import type {
 	ChatMessage,
+	ChatMessageMention,
+	ChatMessageReplyTo,
 	GetSessionMessagesPageResponse,
 	GetSessionUserMarkersResponse,
 	MessageAttachment,
@@ -66,6 +68,26 @@ async function draftAwareSettingsStore() {
 }
 
 /**
+ * The session agent's model binding, or null. Loaded on demand (the list is
+ * cached after the first call): the picker and the engine both rank this
+ * binding above an unpinned session model, so the display and the request
+ * must read the same agent — a divergence here IS the "picked deepseek,
+ * billed on codex" failure shape.
+ */
+async function resolveSessionAgentModel(agentId?: string | null) {
+	try {
+		const { useAgentsStore } = await import("./agents");
+		const agentsStore = useAgentsStore();
+		await agentsStore.loadAgents();
+		// 功能兜底,不是署名(域模型 M4):引擎侧同一条 `findAgent ?? defaultAgent`
+		// 规则决定这一发请求用谁的绑定,显示必须跟着同一条规则走。
+		return agentsStore.getAgent(agentId)?.model ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * What you see is what you send: resolve the provider/model exactly as the
  * model picker displays it right now, so the send-triggering command can
  * carry it explicitly instead of the engine re-deriving it later from
@@ -80,9 +102,11 @@ async function resolveSendProviderOverride(sessionId: string) {
 	const { resolveProviderModelSelection } = await import(
 		"./helpers/provider-model"
 	);
+	const session = sessionsStore.getSessionItem(sessionId);
 	const { providerId, model } = resolveProviderModelSelection({
 		settings: settingsStore.settings,
-		session: sessionsStore.getSessionItem(sessionId),
+		session,
+		agentModel: await resolveSessionAgentModel(session?.agentId),
 	});
 	return providerId ? { providerId, model } : {};
 }
@@ -738,6 +762,12 @@ export const useChatStore = defineStore("chat", () => {
 	// Expanded tool calls per session
 	const sessionExpandedToolCalls = ref<Map<string, Set<string>>>(new Map());
 
+	// Folded room utterance blocks per session (P1-2). Stores what the user
+	// COLLAPSED, never what is open: a room is open by default, and an absent
+	// entry has to mean "expanded" so a burst that grows while folded (or a group
+	// that appears after the fact) needs no bookkeeping to render correctly.
+	const sessionCollapsedRoomGroups = ref<Map<string, Set<string>>>(new Map());
+
 	// ============ Getters ============
 
 	/**
@@ -810,6 +840,42 @@ export const useChatStore = defineStore("chat", () => {
 			set.delete(id);
 		}
 		sessionExpandedToolCalls.value = new Map(sessionExpandedToolCalls.value);
+	}
+
+	/**
+	 * Is this room utterance block folded? Default false — see the ref's note.
+	 */
+	function isRoomGroupCollapsed(sessionId: string, groupKey: string): boolean {
+		return (
+			sessionCollapsedRoomGroups.value.get(sessionId)?.has(groupKey) ?? false
+		);
+	}
+
+	/** Fold / unfold one room utterance block. */
+	function toggleRoomGroupCollapsed(sessionId: string, groupKey: string): void {
+		let set = sessionCollapsedRoomGroups.value.get(sessionId);
+		if (!set) {
+			set = new Set();
+			sessionCollapsedRoomGroups.value.set(sessionId, set);
+		}
+		if (set.has(groupKey)) {
+			set.delete(groupKey);
+		} else {
+			set.add(groupKey);
+		}
+		// Trigger reactivity (the inner Set is not itself reactive).
+		sessionCollapsedRoomGroups.value = new Map(
+			sessionCollapsedRoomGroups.value,
+		);
+	}
+
+	/** Unfold one block explicitly — used when the list has to reveal a row. */
+	function expandRoomGroup(sessionId: string, groupKey: string): void {
+		const set = sessionCollapsedRoomGroups.value.get(sessionId);
+		if (!set?.delete(groupKey)) return;
+		sessionCollapsedRoomGroups.value = new Map(
+			sessionCollapsedRoomGroups.value,
+		);
 	}
 
 	// ============ Helper Functions ============
@@ -2090,7 +2156,11 @@ export const useChatStore = defineStore("chat", () => {
 		sessionId: string,
 		content: string,
 		attachments?: MessageAttachment[],
-		options?: { source?: string },
+		options?: {
+			source?: string;
+			replyTo?: ChatMessageReplyTo;
+			mentions?: ChatMessageMention[];
+		},
 	) {
 		// What the model picker shows right now, resolved before the draft
 		// materializes so it reflects what the user actually saw when they
@@ -2132,6 +2202,31 @@ export const useChatStore = defineStore("chat", () => {
 			attachments,
 			...providerOverride,
 			...(options?.source ? { source: options.source } : {}),
+			// IM quote reply (§3.5 A): a snapshot the composer built; the engine
+			// persists it onto the user message it creates. Re-built as a plain
+			// literal: the snapshot arrives through a ref and a reactive Proxy
+			// cannot cross the IPC structured-clone boundary (真机: InputBox 整树
+			// 被 "An object could not be cloned" 打崩).
+			...(options?.replyTo
+				? {
+					replyTo: {
+						messageId: String(options.replyTo.messageId),
+						authorLabel: String(options.replyTo.authorLabel),
+						excerpt: String(options.replyTo.excerpt),
+					},
+				}
+				: {}),
+			// Picked @mentions (W14a). Rebuilt from primitives for the same
+			// reason the quote above is: these come out of composer state and a
+			// reactive Proxy cannot cross the IPC structured-clone boundary.
+			...(options?.mentions?.length
+				? {
+					mentions: options.mentions.map((mention) => ({
+						agentId: String(mention.agentId),
+						label: String(mention.label),
+					})),
+				}
+				: {}),
 		});
 		return true;
 	}
@@ -2618,6 +2713,10 @@ export const useChatStore = defineStore("chat", () => {
 		isToolCallExpanded,
 		toggleToolCall,
 		collapseAllToolCalls,
+		sessionCollapsedRoomGroups,
+		isRoomGroupCollapsed,
+		toggleRoomGroupCollapsed,
+		expandRoomGroup,
 
 		// Scroll trigger per session (incremented every handleStreamChunk for O(1) auto-scroll watcher)
 		getScrollVersion,

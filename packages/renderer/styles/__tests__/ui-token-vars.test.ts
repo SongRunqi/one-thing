@@ -464,6 +464,11 @@ describe('renderer UI semantic variables', () => {
     expect(sessionItem).toContain('var(--ui-state-selected-bg')
     expect(sessionContextMenu).toContain('var(--ui-surface-menu-bg')
     expect(sessionContextMenu).toContain('var(--ui-surface-menu-hover-bg')
+    // Menu row hover must resolve to the dedicated menu-item-hover color, not
+    // to the same elevated fill the menu surface itself uses — with
+    // --color-neutral-dark-fill first, hover was literally invisible
+    // (regression guard).
+    expect(variablesCss).toContain('--ui-surface-menu-hover-bg: var(--bg-menu-item-hover')
     expect(sessionContextMenu).toContain('var(--ui-surface-tooltip-shadow')
     expect(sessionContextMenu).toContain('var(--ui-status-danger-fg')
     expect(todoPlanWindow).toContain('var(--ui-surface-elevated-bg')

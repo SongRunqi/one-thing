@@ -3,15 +3,6 @@ import type { MemoryWorkspace } from "./types.js";
 import type { MemoryDiagnosticsLogInput } from "./diagnostics-logger.js";
 import { replaceFileAtomic, sha } from "./workspace.js";
 import {
-	addHermesMemoryEntry,
-	readHermesMemoryFile,
-	removeHermesMemoryText,
-	replaceHermesMemoryText,
-	splitHermesMemoryEntries,
-} from "./hermes-file-memory.js";
-import {
-	CORE_HERMES_LONG_TERM_MEMORY_FILENAME,
-	CORE_HERMES_USER_MEMORY_FILENAME,
 	applyMemoryReviewCandidate as coreApplyMemoryReviewCandidate,
 	buildSoulMemoryReviewInputWithAdapters as coreBuildSoulMemoryReviewInputWithAdapters,
 	countMemoryReviewUserTurns,
@@ -21,7 +12,6 @@ import {
 	parseMemoryReviewModelResult as parseCoreMemoryReviewModelResult,
 	resolveSoulMemoryPlainReviewFilePath as coreResolveSoulMemoryPlainReviewFilePath,
 	runSoulMemoryReview as coreRunSoulMemoryReview,
-	type CoreHermesMemoryTarget,
 	type CoreMemoryReviewAction,
 	type CoreMemoryReviewApplyResult,
 	type CoreMemoryReviewCandidate,
@@ -43,9 +33,8 @@ export interface MemoryReviewMessageLike {
 }
 
 export type MemoryReviewAction = CoreMemoryReviewAction;
-export type MemoryReviewTarget =
-	| CoreHermesMemoryTarget
-	| Extract<CoreMemoryReviewTarget, "soul" | "dreams">;
+// Hermes 文件记忆已整体移除,复盘只写 SOUL.md / DREAMS.md。
+export type MemoryReviewTarget = CoreMemoryReviewTarget;
 export type MemoryReviewCandidate = CoreMemoryReviewCandidate & {
 	target: MemoryReviewTarget;
 };
@@ -53,12 +42,6 @@ export type MemoryReviewModelResult = CoreMemoryReviewModelResult & {
 	candidates: MemoryReviewCandidate[];
 };
 export type MemoryReviewProgress = CoreMemoryReviewProgress;
-
-export const MEMORY_REVIEW_USER_TARGET: CoreHermesMemoryTarget = "user";
-export const MEMORY_REVIEW_LONG_TERM_TARGET: CoreHermesMemoryTarget = "memory";
-export const MEMORY_REVIEW_USER_FILENAME = CORE_HERMES_USER_MEMORY_FILENAME;
-export const MEMORY_REVIEW_LONG_TERM_FILENAME =
-	CORE_HERMES_LONG_TERM_MEMORY_FILENAME;
 
 function asCoreMessages(
 	messages: MemoryReviewMessageLike[],
@@ -131,7 +114,6 @@ export async function buildMemoryReviewInput(options: {
 		messages: asCoreMessages(options.messages),
 		maxChars: options.maxChars,
 		readPlain: (target) => readPlainReviewFile(options.workspace, target),
-		readHermes: (target) => readHermesMemoryFile(options.workspace, target),
 	});
 }
 
@@ -151,44 +133,6 @@ export async function applyMemoryReviewCandidate(options: {
 			const file = getPlainReviewFile(options.workspace, target);
 			await replaceFileAtomic(file.absolutePath, content);
 			await markChanged(file.relativePath);
-		},
-		readHermes: async (target) => {
-			const existing = await readHermesMemoryFile(options.workspace, target);
-			return {
-				content: existing.content,
-				entries: splitHermesMemoryEntries(existing.content),
-				relativePath: existing.file.relativePath,
-			};
-		},
-		addHermes: async (target, content) => {
-			const result = await addHermesMemoryEntry({
-				workspace: options.workspace,
-				target,
-				content,
-			});
-			await markChanged(result.relativePath);
-			return { relativePath: result.relativePath };
-		},
-		replaceHermes: async (target, oldText, newText) => {
-			const result = await replaceHermesMemoryText({
-				workspace: options.workspace,
-				target,
-				oldText,
-				newText,
-				replaceAll: false,
-			});
-			if (result.changed) await markChanged(result.relativePath);
-			return result;
-		},
-		removeHermes: async (target, text) => {
-			const result = await removeHermesMemoryText({
-				workspace: options.workspace,
-				target,
-				text,
-				removeAll: false,
-			});
-			if (result.changed) await markChanged(result.relativePath);
-			return result;
 		},
 	});
 }
@@ -234,14 +178,6 @@ export async function runMemoryReview<TProvider>(options: {
 		lastReviewedTurn: options.lastReviewedTurn,
 		hash: sha,
 		readPlain: (target) => readPlainReviewFile(options.workspace, target),
-		readHermes: async (target) => {
-			const existing = await readHermesMemoryFile(options.workspace, target);
-			return {
-				content: existing.content,
-				entries: splitHermesMemoryEntries(existing.content),
-				relativePath: existing.file.relativePath,
-			};
-		},
 		resolveProvider: options.resolveProvider,
 		generateReview: options.generateReview,
 		applyCandidate: (candidate, minConfidence) => {

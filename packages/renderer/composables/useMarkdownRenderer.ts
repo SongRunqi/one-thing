@@ -1,5 +1,6 @@
 import { copyTextToClipboard } from '@/utils/clipboard'
 import { perfMark, perfMeasure } from '@/utils/perf'
+import { collabInlineTagPlugin, ensureCollabTagHandler } from '@/composables/collabInlineTags'
 import { normalizeStatusEmoji, replaceEmojiShortcodes } from '@/editor/markdown-emoji'
 import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
 import type { MarkdownRenderOptions } from '@/editor/markdown-document'
@@ -28,6 +29,11 @@ function createMarkdownRenderer(config: MarkdownRendererConfig) {
     // Supports $...$ for inline math and $$...$$ for block math.
     instance.use(mathjax3)
   }
+
+  // 群聊行内标签(collab-team-v2 §6.1)。规则常开而非按面区分:它渲染出来的
+  // 是一枚中性 span,验真在挂载期做、永不进 HTML 缓存,所以非群聊消息里误写
+  // 一个 <card id="…"/> 顶多显示成一段点不动的短 id。
+  instance.use(collabInlineTagPlugin)
 
   instance.renderer.rules.text = (tokens, idx) => {
     return instance.utils.escapeHtml(normalizeStatusEmoji(replaceEmojiShortcodes(tokens[idx].content)))
@@ -236,6 +242,7 @@ export function renderMarkdown(
   }
   perfMark('md-render-start')
   ensureCodeCopyHandler()
+  ensureCollabTagHandler()
   const streaming = options.streaming || options.surface === 'streaming'
   const html = getMarkdownRenderer({
     enableMath: options.math ?? !streaming,

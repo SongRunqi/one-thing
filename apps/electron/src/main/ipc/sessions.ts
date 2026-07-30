@@ -142,7 +142,12 @@ export function registerSessionHandlers() {
       {
         channel: IPC_CHANNELS.CREATE_SESSION,
         handle: async (request) => {
-          const { name, sessionId } = request as { name?: string; sessionId?: string }
+          const { name, sessionId, kind, room } = request as {
+            name?: string
+            sessionId?: string
+            kind?: string
+            room?: { memberAgentIds?: unknown; pmAgentId?: unknown; dm?: unknown }
+          }
           // Client-supplied ids keep session identity stable from the renderer's
           // draft phase onwards (the draft id *is* the future session id). The
           // id becomes a storage path segment, so accept only the exact UUID
@@ -155,12 +160,65 @@ export function registerSessionHandlers() {
               return { success: false, error: 'Session id already exists' }
             }
           }
-          return createOnethingSessionForIpc({
+          // Multi-agent rooms (docs/design/multi-agent-collab.md): 'work'
+          // sessions are coordinator-internal and never created over IPC.
+          let roomConfig: {
+            memberAgentIds: string[]
+            pmAgentId?: string
+            budgets?: { dailyCostUSD?: number; maxChain?: number }
+            /** 私聊标记(agent-im-dm.md D1/D3)。人数即形态,这里只透传标记。 */
+            dm?: true
+          } | undefined
+          if (kind !== undefined && kind !== 'room') {
+            return { success: false, error: 'Invalid session kind' }
+          }
+          if (kind === 'room') {
+            const memberAgentIds = Array.isArray(room?.memberAgentIds)
+              ? room.memberAgentIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+              : []
+            if (memberAgentIds.length === 0) {
+              return { success: false, error: 'Room needs at least one member agent' }
+            }
+            for (const agentId of memberAgentIds) {
+              if (!agentExists(agentId)) {
+                return { success: false, error: `Unknown agent: ${agentId}` }
+              }
+            }
+            const pmAgentId = typeof room?.pmAgentId === 'string' && room.pmAgentId ? room.pmAgentId : undefined
+            if (pmAgentId && !memberAgentIds.includes(pmAgentId)) {
+              return { success: false, error: 'PM must be a room member' }
+            }
+            const budgetsRaw = (room as { budgets?: { dailyCostUSD?: unknown; maxChain?: unknown } })?.budgets
+            const budgets: { dailyCostUSD?: number; maxChain?: number } = {}
+            if (typeof budgetsRaw?.dailyCostUSD === 'number' && budgetsRaw.dailyCostUSD >= 0) {
+              budgets.dailyCostUSD = budgetsRaw.dailyCostUSD
+            }
+            if (typeof budgetsRaw?.maxChain === 'number' && budgetsRaw.maxChain >= 0) {
+              budgets.maxChain = Math.floor(budgetsRaw.maxChain)
+            }
+            roomConfig = {
+              memberAgentIds,
+              ...(pmAgentId ? { pmAgentId } : {}),
+              ...(Object.keys(budgets).length > 0 ? { budgets } : {}),
+              // 只认字面 true(白名单式透传:这个字段会改变房间的激活语义,
+              // 「随便什么真值都算」不是这里该有的宽容)。用户 ↔ agent 的托管
+              // 私聊走 COLLAB_DM_ROOM_ENSURE(id 是派生的、不是 UUID),这条路径
+              // 留给 UUID id 的 dm 房(D3 的 agent 互聊房与手工建房)。
+              ...(room?.dm === true ? { dm: true as const } : {}),
+            }
+          }
+          const result = await createOnethingSessionForIpc({
             sessionId: sessionId ?? uuidv4(),
             name,
             createSession: (id, nextName) => store.createSession(id, nextName),
             logger: console,
           })
+          if (result.success && roomConfig && result.session) {
+            store.updateSessionCollab(result.session.id, { kind: 'room', room: roomConfig })
+            const updated = store.getSession(result.session.id)
+            if (updated) result.session = updated
+          }
+          return result
         },
       },
       {
@@ -288,6 +346,7 @@ export function registerSessionHandlers() {
             agentId,
             defaultAgentId: DEFAULT_AGENT_ID,
             agentExists,
+            getSessionKind: (id) => store.getSession(id)?.kind,
             updateSessionAgent: (id, nextAgentId) =>
               store.updateSessionAgent(id, nextAgentId),
           })

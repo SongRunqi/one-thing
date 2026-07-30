@@ -1,7 +1,6 @@
 export * from './append.js'
 export * from './capture-actions.js'
 export * from './diagnostics-logger.js'
-export * from './hermes-file-memory.js'
 export * from './ipc.js'
 export * from './managed-files.js'
 export * from './prompt-context.js'

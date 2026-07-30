@@ -7,6 +7,7 @@ import {
   streamExecutionErrorResult,
   textStreamExecutionResult,
 } from '@onething/core/engine'
+import type { CoreInitialToolChoice } from '@onething/core/engine'
 
 describe('core stream executor helpers', () => {
   it('routes special-stream-capable models to the special path', () => {
@@ -108,6 +109,83 @@ describe('core stream executor helpers', () => {
       shouldRemoveController: true,
     })
     expect(calls).toEqual(['register:s1', 'remove:s1'])
+  })
+
+  it('carries initialToolChoice from the command onto the text stream context (W18b/W22)', async () => {
+    // The middle link of the 透传链: the room drive sets the field on the
+    // send-message command, and the agent loop reads it off the stream context.
+    // A destructure that forgets it here breaks the chain silently — nothing
+    // throws, the drive simply stops being forced.
+    // W22 carries a NAMED choice rather than the bare 'required', so the object
+    // form is the one that has to survive the passthrough.
+    const registry = {
+      registerController: vi.fn(),
+      removeController: vi.fn(),
+      getSteeringQueue: vi.fn(),
+      getFollowUpQueue: vi.fn(),
+    }
+    let seenContext: { initialToolChoice?: CoreInitialToolChoice } | undefined
+
+    await executeCoreMessageStream({
+      params: {
+        sender: {},
+        sessionId: 's1',
+        assistantMessageId: 'a1',
+        messageContent: 'drive',
+        historyMessages: [],
+        configWithApiKey: { apiKey: 'key', model: 'text-model' },
+        providerId: 'test',
+        settings: {},
+        initialToolChoice: { type: 'function', function: { name: 'say' } },
+      },
+      createController: () => ({ signal: { aborted: false } }),
+      registry,
+      supportsSpecialStream: vi.fn(async () => false),
+      processSpecialStream: vi.fn(async () => false),
+      executeTextStream: vi.fn(async (ctx: { initialToolChoice?: CoreInitialToolChoice }) => {
+        seenContext = ctx
+        return {}
+      }),
+      logger: { log: vi.fn(), error: vi.fn() },
+    })
+
+    expect(seenContext).toMatchObject({
+      initialToolChoice: { type: 'function', function: { name: 'say' } },
+    })
+  })
+
+  it('leaves initialToolChoice unset for ordinary turns', async () => {
+    const registry = {
+      registerController: vi.fn(),
+      removeController: vi.fn(),
+      getSteeringQueue: vi.fn(),
+      getFollowUpQueue: vi.fn(),
+    }
+    let seenContext: { initialToolChoice?: CoreInitialToolChoice } | undefined
+
+    await executeCoreMessageStream({
+      params: {
+        sender: {},
+        sessionId: 's1',
+        assistantMessageId: 'a1',
+        messageContent: 'hello',
+        historyMessages: [],
+        configWithApiKey: { apiKey: 'key', model: 'text-model' },
+        providerId: 'test',
+        settings: {},
+      },
+      createController: () => ({ signal: { aborted: false } }),
+      registry,
+      supportsSpecialStream: vi.fn(async () => false),
+      processSpecialStream: vi.fn(async () => false),
+      executeTextStream: vi.fn(async (ctx: { initialToolChoice?: CoreInitialToolChoice }) => {
+        seenContext = ctx
+        return {}
+      }),
+      logger: { log: vi.fn(), error: vi.fn() },
+    })
+
+    expect(seenContext?.initialToolChoice).toBeUndefined()
   })
 
   it('keeps text stream controllers when paused for confirmation', async () => {

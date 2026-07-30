@@ -11,7 +11,7 @@ import * as store from '../../store.js'
 import {
   createAgentProviderFromRuntime,
 } from '../../providers/agent-runtime.js'
-import { getAgent } from '../../agents/index.js'
+import { defaultAgent, findAgent } from '../../agents/index.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
 import { getMCPRouterToolDefinition } from '../../mcp/index.js'
 import { buildProjectDirsPromptVars } from '../../project-dirs/index.js'
@@ -137,7 +137,8 @@ export async function buildSystemPromptSnapshot(sessionId: string): Promise<Syst
     resolveModelSupportsTools: resolveModelSupportsToolsForSnapshot,
     getNativeProviderTools: getCodexNativeToolsForConfig,
     buildProjectDirsPromptVars,
-    getAgent,
+    // persona 功能兜底(域模型 §3.3),与 system-prompt.ts 的 host 同一条规则。
+    getAgent: (agentId?: string) => findAgent(agentId) ?? defaultAgent(),
     buildContextVariablesPromptText,
     buildPrompt,
   })

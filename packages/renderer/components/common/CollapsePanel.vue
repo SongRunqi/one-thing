@@ -830,8 +830,11 @@ function clearCollapseTransitionHeight(element: Element) {
   min-height: 0;
   box-sizing: border-box;
   padding: 10px;
+  /* overscroll-behavior 不能和 overflow: hidden 同时出现：Chrome 会把这个自己
+     滚不动的盒子也当成 scroll container，滚轮既滚不动它、也不再往外层链——
+     面板里的 think 正文、markdown 表格、工具结果区就全成了滚轮死区。
+     （实测：hidden+contain 外层滚动量 0，hidden+auto 恢复正常。） */
   overflow: hidden;
-  overscroll-behavior: contain;
   border-top: 1px solid var(--collapse-panel-border-soft);
 }
 
@@ -939,10 +942,10 @@ function clearCollapseTransitionHeight(element: Element) {
   will-change: max-height, opacity;
 }
 
+/* 同上：展开/收起动画期间也不能加 overscroll-behavior，否则这 180ms 里滚轮同样被吞。 */
 .collapse-panel-body-enter-active > .collapse-panel-content,
 .collapse-panel-body-leave-active > .collapse-panel-content {
   overflow: hidden;
-  overscroll-behavior: none;
   pointer-events: none;
 }
 

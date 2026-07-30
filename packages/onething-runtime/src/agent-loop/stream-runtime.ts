@@ -15,6 +15,7 @@ import {
 	type AgentProviderStreamChunk,
 	type AgentSkillContext,
 	type AgentSourceToolDefinition,
+	type AgentToolChoice,
 } from "@onething/core/agent-loop";
 import {
 	agentLoopInitSkills,
@@ -61,6 +62,10 @@ import {
 	type CreateAgentProviderFromRuntimeOptions,
 } from "./providers/index.js";
 import { createTurnTraceRecorder } from "../evals/trace-store.js";
+import {
+	DEFAULT_AGENT_MAX_TURNS,
+	type EffectiveAgentProfile,
+} from "../agents/profile.js";
 
 export interface OnethingAgentLoopChatSettings {
 	maxTokens?: number;
@@ -76,8 +81,8 @@ export interface OnethingAgentLoopChatSettings {
 	contextCompactKeepRecentTurns?: number;
 }
 
-/** Applied when settings.chat.maxTurns is unset. */
-export const DEFAULT_CHAT_MAX_TURNS = 100;
+/** Applied when neither the agent profile nor settings.chat.maxTurns says. */
+export const DEFAULT_CHAT_MAX_TURNS = DEFAULT_AGENT_MAX_TURNS;
 
 export interface OnethingAgentLoopRuntimeSettings<
 	TToolSettings extends CoreAgentLoopRuntimeToolSettingsLike | undefined =
@@ -115,6 +120,19 @@ export interface OnethingAgentLoopRuntimeContext<
 	followUpQueue?: OnethingAgentLoopPendingMessageQueue;
 	voiceConversation?: boolean;
 	speakMode?: boolean;
+	/**
+	 * Forced tool choice for this run's FIRST model call only (W18b). Rides in
+	 * from the send-message command; the core runner applies it to iteration 1
+	 * and drops it when the model does not advertise forced tool use.
+	 */
+	initialToolChoice?: AgentToolChoice;
+	/**
+	 * The turn's capability profile, resolved ONCE by the assembly layer before
+	 * the run starts (product code cannot read the agent store — that would
+	 * point the dependency backwards). Absent means "host without agents": the
+	 * adapter/settings fallbacks below still apply.
+	 */
+	agentProfile?: EffectiveAgentProfile;
 }
 
 export interface OnethingAgentLoopPendingMessageQueue {
@@ -196,10 +214,13 @@ export interface OnethingAgentLoopRuntimeAdapters<
 	getMCPRouterToolDefinition?(): TTool | null;
 	/**
 	 * Per-agent tool allowlist (tool ids). Return null/undefined for no
-	 * restriction. Hosts without agent-scoped tools can omit this.
+	 * restriction. Hosts without agent-scoped tools can omit this. The session
+	 * is passed so hosts can narrow further by session kind (e.g. collab room
+	 * turns, docs/design/multi-agent-collab.md D5); return [] to disable tools.
 	 */
 	getAgentToolAllowlist?(
 		agentId: string | undefined,
+		session?: unknown,
 	): Promise<string[] | null | undefined> | string[] | null | undefined;
 	buildContextVariablesPromptText(
 		sessionId: string,
@@ -310,10 +331,13 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 	getMCPRouterToolDefinition?(): TTool | null;
 	/**
 	 * Per-agent tool allowlist (tool ids). Return null/undefined for no
-	 * restriction. Hosts without agent-scoped tools can omit this.
+	 * restriction. Hosts without agent-scoped tools can omit this. The session
+	 * is passed so hosts can narrow further by session kind (e.g. collab room
+	 * turns, docs/design/multi-agent-collab.md D5); return [] to disable tools.
 	 */
 	getAgentToolAllowlist?(
 		agentId: string | undefined,
+		session?: unknown,
 	): Promise<string[] | null | undefined> | string[] | null | undefined;
 	buildContextVariablesPromptText(
 		sessionId: string,
@@ -672,9 +696,14 @@ export async function buildOnethingAgentLoopStreamRuntime<
 	const mcpRouterTool = toolLoadingEnabled
 		? (adapters.getMCPRouterToolDefinition?.() ?? null)
 		: null;
-	const agentToolAllowlist = toolLoadingEnabled
-		? await adapters.getAgentToolAllowlist?.(preparation.agentId)
-		: null;
+	// The profile snapshot is authoritative when the host resolved one: it was
+	// computed from the same agent the prompt was built from, so a mid-turn
+	// agent edit cannot hand this run a new prompt with an old allowlist.
+	const agentToolAllowlist = !toolLoadingEnabled
+		? null
+		: ctx.agentProfile
+			? ctx.agentProfile.tools
+			: await adapters.getAgentToolAllowlist?.(preparation.agentId, session);
 	const toolPlan = planAgentLoopTools({
 		toolLoadingEnabled,
 		allEnabledTools,
@@ -834,10 +863,17 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		messageId: ctx.assistantMessageId,
 		workingDirectory: sessionWorkingDir,
 		abortSignal: ctx.abortSignal,
-		maxTurns: ctx.settings.chat?.maxTurns ?? DEFAULT_CHAT_MAX_TURNS,
+		maxTurns:
+			ctx.agentProfile?.maxTurns ??
+			ctx.settings.chat?.maxTurns ??
+			DEFAULT_CHAT_MAX_TURNS,
 		maxTokens: budget.reservedOutputTokens,
 		thinking: thinkingOptions.thinking,
 		reasoningEffort: thinkingOptions.reasoningEffort,
+		// First model call only — see AgentLoopOptions.initialToolChoice. A
+		// standing 'required' would make every round owe another tool call and
+		// the run could never end on its own.
+		initialToolChoice: ctx.initialToolChoice,
 		tools: {
 			tools: buildAgentLoopDirectToolsWithAdapters({
 				definitions: toolPlan.modelToolDefinitions,

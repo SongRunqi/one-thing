@@ -15,7 +15,6 @@ import {
 	buildSoulMemoryCaptureInputWithAdapters,
 	buildSoulMemoryCaptureCommandStatusInput,
 	buildSoulMemoryExistingMemorySummary,
-	buildHermesMemoryPromptFragment,
 	buildSoulMemoryManagedFileCandidates,
 	buildSoulMemoryOverview,
 	buildSoulMemoryPendingCaptureMigrationCandidates,
@@ -27,7 +26,6 @@ import {
 	buildSoulMemoryReviewCommandRunContext,
 	cleanReviewDocumentText,
 	compactSoulMemoryCaptureInput,
-	CORE_HERMES_MEMORY_DELIMITER,
 	CORE_SOUL_MEMORY_CAPTURE_HOOK_ID,
 	CORE_SOUL_MEMORY_CAPTURE_COMMAND_USAGE,
 	CORE_SOUL_MEMORY_CAPTURE_MODE_USAGE,
@@ -55,13 +53,11 @@ import {
 	describeSoulMemoryManagedFileWithAdapters,
 	filterSoulMemoryPendingCapturesForAgent,
 	extractLegacyMemoryCandidates,
-	formatHermesMemoryEntries,
 	formatSoulMemoryDateString,
 	formatSoulMemoryDateStringDaysAgo,
 	formatSoulMemoryCaptureCommandStatus,
 	formatSoulMemoryCommandFileExcerpt,
 	formatSoulMemoryCommandStatus,
-	formatSoulMemoryRememberCommandResult,
 	formatSoulMemoryReviewIntervalNotification,
 	formatSoulMemoryReviewStatus,
 	formatSoulMemoryReviewToggleNotification,
@@ -75,7 +71,6 @@ import {
 	handleSoulMemoryCommandGet,
 	handleSoulMemoryGetTool,
 	handleSoulMemoryMemoryCommand,
-	handleSoulMemoryMemoryTool,
 	handleSoulMemoryReviewCommand,
 	handleSoulMemorySoulCommand,
 	handleSoulMemorySoulGetTool,
@@ -88,11 +83,9 @@ import {
 	normalizeSoulMemoryRelativePath,
 	parseSoulMemoryCaptureCommand,
 	parseSoulMemoryRootCommand,
-	planHermesMemoryEntryAdd,
-	planHermesMemoryTextRemove,
-	planHermesMemoryTextReplace,
 	parseDailyNoteBullets,
 	parseDailyNoteCaptureResult,
+	normalizeMemoryReviewTarget,
 	parseMemoryReviewModelResult,
 	patchSoulMemorySettingsSection,
 	patchSoulMemorySettingsSectionWithAdapters,
@@ -110,7 +103,6 @@ import {
 	readSoulMemoryManagedFileWithAdapters,
 	runSoulMemoryCapture,
 	runSoulMemoryReview,
-	sanitizeHermesMemoryEntry,
 	getSoulMemoryPendingCaptures,
 	getSoulMemoryPublicPendingCaptures,
 	saveSoulMemoryPendingCaptureWithAdapters,
@@ -141,7 +133,6 @@ import {
 	soulMemoryAsBullet,
 	previewSoulMemoryLine,
 	truncateSoulMemoryText,
-	splitHermesMemoryEntries,
 } from "@onething/runtime/plugins";
 
 describe("onething runtime soul-memory helpers", () => {
@@ -160,7 +151,7 @@ describe("onething runtime soul-memory helpers", () => {
 			name: "soul-memory",
 			version: "1.0.0",
 			description:
-				"SOUL.md prompt context, Hermes file memory (USER.md/MEMORY.md), daily-note capture, and periodic review",
+				"SOUL.md prompt context, daily-note capture, and periodic review",
 			author: "onething",
 		});
 	});
@@ -173,7 +164,6 @@ describe("onething runtime soul-memory helpers", () => {
 		expect(CORE_SOUL_MEMORY_TOOL_SPECS.map((spec) => spec.name)).toEqual([
 			"soul_get",
 			"soul_update",
-			"memory",
 			"memory_get",
 		]);
 		expect(getCoreSoulMemoryToolSpec("soul_update")).toMatchObject({
@@ -402,10 +392,6 @@ describe("onething runtime soul-memory helpers", () => {
 					calls.push(`get:${path}`);
 					return `get result for ${path}`;
 				},
-				remember: async (input) => {
-					calls.push(`${input.action}:${input.content}`);
-					return `remembered ${input.content}`;
-				},
 				status: async () => {
 					calls.push("status");
 					return "memory status";
@@ -419,19 +405,18 @@ describe("onething runtime soul-memory helpers", () => {
 		await run("append another fact");
 		await run("unknown");
 
+		// remember / append 不再有适配器:Hermes 文件记忆移除后这两个子命令只回一句下线提示。
 		expect(calls).toEqual([
 			"review:status",
 			"capture:status",
 			"get:entity:abc",
-			"remember:durable fact",
-			"append:another fact",
 			"status",
 		]);
 		expect(notifications.map((item) => item.message)).toContain(
 			"get result for entity:abc",
 		);
 		expect(notifications.map((item) => item.message)).toContain(
-			"remembered durable fact",
+			"/memory remember 已下线:长期记忆文件写入(Hermes file memory)已移除。",
 		);
 		expect(notifications.at(-1)?.message).toBe("memory status");
 	});
@@ -451,7 +436,6 @@ describe("onething runtime soul-memory helpers", () => {
 				handleReview: async () => {},
 				handleCapture: async () => {},
 				get: async () => "get",
-				remember: async () => "remember",
 				status: async () => "status",
 			});
 
@@ -460,11 +444,15 @@ describe("onething runtime soul-memory helpers", () => {
 
 		expect(notifications).toEqual([
 			{ message: CORE_SOUL_MEMORY_GET_COMMAND_USAGE, level: "warn" },
-			{ message: "Usage: /memory remember <text>", level: "warn" },
+			{
+				message:
+					"/memory remember 已下线:长期记忆文件写入(Hermes file memory)已移除。",
+				level: "warn",
+			},
 		]);
 	});
 
-	it("formats memory get and remember command adapter results in core", async () => {
+	it("formats memory get command adapter results in core", async () => {
 		const excerpt = {
 			relativePath: "MEMORY.md",
 			text: "line 4",
@@ -479,12 +467,6 @@ describe("onething runtime soul-memory helpers", () => {
 				"\n\n",
 			),
 		);
-		expect(
-			formatSoulMemoryRememberCommandResult({
-				relativePath: "memory/2026-06-25.md",
-			}),
-		).toBe("Remembered in memory/2026-06-25.md");
-
 		await expect(
 			handleSoulMemoryCommandGet({
 				path: "MEMORY.md",
@@ -668,209 +650,6 @@ describe("onething runtime soul-memory helpers", () => {
 			message: CORE_SOUL_MEMORY_REVIEW_COMMAND_USAGE,
 			level: "warn",
 		});
-	});
-
-	it("plans Hermes file memory text mutations in core", () => {
-		expect(
-			splitHermesMemoryEntries(`One${CORE_HERMES_MEMORY_DELIMITER}Two\n`),
-		).toEqual(["One", "Two"]);
-		expect(sanitizeHermesMemoryEntry(`A${CORE_HERMES_MEMORY_DELIMITER}B`)).toBe(
-			"A\nB",
-		);
-		expect(
-			formatHermesMemoryEntries([
-				" A ",
-				"",
-				`B${CORE_HERMES_MEMORY_DELIMITER}C`,
-			]),
-		).toBe(`A${CORE_HERMES_MEMORY_DELIMITER}B\nC\n`);
-
-		const added = planHermesMemoryEntryAdd("", "First memory");
-		expect(added).toMatchObject({ changed: true, matches: 1, beforeChars: 0 });
-		expect(added.next).toBe("First memory\n");
-
-		const replaced = planHermesMemoryTextReplace({
-			existing: `Old${CORE_HERMES_MEMORY_DELIMITER}Keep\n`,
-			oldText: "Old",
-			newText: "New",
-		});
-		expect(replaced).toMatchObject({ changed: true, matches: 1 });
-		expect(replaced.next).toBe(`New${CORE_HERMES_MEMORY_DELIMITER}Keep\n`);
-
-		const missing = planHermesMemoryTextReplace({
-			existing: "Keep\n",
-			oldText: "Missing",
-			newText: "New",
-		});
-		expect(missing).toMatchObject({
-			changed: false,
-			matches: 0,
-			next: "Keep\n",
-		});
-
-		const removed = planHermesMemoryTextRemove({
-			existing: `A${CORE_HERMES_MEMORY_DELIMITER}B\n`,
-			text: "A",
-		});
-		expect(removed).toMatchObject({ changed: true, matches: 1 });
-		expect(removed.next).toBe("B\n");
-	});
-
-	it("builds Hermes file memory prompt fragments in core", () => {
-		const fragment = buildHermesMemoryPromptFragment({
-			user: {
-				file: { absolutePath: "/tmp/USER.md", relativePath: "USER.md" },
-				content: "User memory.",
-			},
-			memory: {
-				file: { absolutePath: "/tmp/MEMORY.md", relativePath: "MEMORY.md" },
-				content: "Long memory.",
-			},
-			maxChars: 2000,
-		});
-
-		expect(fragment).toContain("# Hermes File Memory");
-		expect(fragment).toContain("<hermes_user_memory>");
-		expect(fragment).toContain("<hermes_long_term_memory>");
-
-		expect(
-			buildHermesMemoryPromptFragment({
-				user: {
-					file: { absolutePath: "/tmp/USER.md", relativePath: "USER.md" },
-					content: "",
-				},
-				memory: {
-					file: { absolutePath: "/tmp/MEMORY.md", relativePath: "MEMORY.md" },
-					content: "",
-				},
-				maxChars: 2000,
-			}),
-		).toBeNull();
-	});
-
-	it("handles Hermes memory tool actions in core through file adapters", async () => {
-		const changed: Array<{ relativePath: string; reason: string }> = [];
-		const baseOptions = {
-			enabled: true,
-			getStatus: () => ({ files: 2 }),
-			read: (target: "user" | "memory") => ({
-				file: {
-					absolutePath: `/root/${target.toUpperCase()}.md`,
-					relativePath: `${target.toUpperCase()}.md`,
-				},
-				content: target === "user" ? "User profile" : "",
-				entries: target === "user" ? ["User profile"] : [],
-			}),
-			add: (target: "user" | "memory", content: string) => ({
-				relativePath: `${target.toUpperCase()}.md`,
-				content,
-			}),
-			replace: (
-				target: "user" | "memory",
-				oldText: string,
-				newText: string,
-				replaceAll?: boolean,
-			) => ({
-				relativePath: `${target.toUpperCase()}.md`,
-				changed: oldText === "old",
-				matches: oldText === "old" ? 1 : 0,
-				newText,
-				replaceAll,
-			}),
-			remove: (
-				target: "user" | "memory",
-				text: string,
-				removeAll?: boolean,
-			) => ({
-				relativePath: `${target.toUpperCase()}.md`,
-				changed: text === "remove me",
-				matches: text === "remove me" ? 2 : 0,
-				removeAll,
-			}),
-			markChanged: (relativePath: string, reason: string) => {
-				changed.push({ relativePath, reason });
-			},
-		};
-		const run = (
-			args: Parameters<typeof handleSoulMemoryMemoryTool>[0]["args"],
-		) => handleSoulMemoryMemoryTool({ ...baseOptions, args });
-
-		await expect(
-			handleSoulMemoryMemoryTool({
-				...baseOptions,
-				enabled: false,
-				args: { action: "status" },
-			}),
-		).resolves.toEqual({
-			title: "Memory disabled",
-			output: "Soul-memory is disabled in settings.",
-			metadata: { disabled: true },
-		});
-
-		await expect(run({ action: "status" })).resolves.toMatchObject({
-			title: "Hermes file memory status",
-			output: JSON.stringify({ files: 2 }, null, 2),
-			metadata: { files: 2 },
-		});
-
-		await expect(
-			run({ action: "read", target: "user" }),
-		).resolves.toMatchObject({
-			title: "Hermes memory: USER.md",
-			output: "User profile",
-			metadata: {
-				target: "user",
-				path: "/root/USER.md",
-				relativePath: "USER.md",
-				chars: "User profile".length,
-				entries: 1,
-			},
-		});
-		await expect(run({ action: "read" })).resolves.toMatchObject({
-			title: "Hermes memory: MEMORY.md",
-			output: "MEMORY.md is empty.",
-		});
-
-		await expect(
-			run({ action: "add", content: "new memory" }),
-		).resolves.toMatchObject({
-			title: "Hermes memory added: MEMORY.md",
-			output: "Added memory to MEMORY.md.",
-		});
-		await expect(
-			run({ action: "replace", oldText: "old", newText: "new" }),
-		).resolves.toMatchObject({
-			title: "Hermes memory replaced: MEMORY.md",
-			output: "Replaced 1 matching memory entry in MEMORY.md.",
-		});
-		await expect(
-			run({ action: "remove", text: "remove me", all: true }),
-		).resolves.toMatchObject({
-			title: "Hermes memory removed: MEMORY.md",
-			output: "Removed 2 matching memory entries from MEMORY.md.",
-		});
-
-		expect(changed).toEqual([
-			{ relativePath: "MEMORY.md", reason: "hermes-memory-add" },
-			{ relativePath: "MEMORY.md", reason: "hermes-memory-replace" },
-			{ relativePath: "MEMORY.md", reason: "hermes-memory-remove" },
-		]);
-
-		await expect(
-			run({ action: "replace", oldText: "missing", newText: "new" }),
-		).resolves.toMatchObject({
-			title: "Hermes memory unchanged",
-			output: "No exact match found in MEMORY.md.",
-		});
-		await expect(run({ action: "add" })).rejects.toThrow(
-			'content is required for memory action "add"',
-		);
-		await expect(run({ action: "replace", oldText: "old" })).rejects.toThrow(
-			'newText is required for memory action "replace"',
-		);
-		await expect(run({ action: "remove" })).rejects.toThrow(
-			'text, oldText, or content is required for memory action "remove"',
-		);
 	});
 
 	it("handles soul get and update tools in core through file adapters", async () => {
@@ -1142,8 +921,6 @@ describe("onething runtime soul-memory helpers", () => {
 				],
 				soulContent: "Soul fact.",
 				dreamsContent: "",
-				userContent: "User fact.",
-				memoryContent: "Long-term fact.",
 				maxChars: 2000,
 			}),
 		).toContain("# Conversation snapshot");
@@ -1164,26 +941,14 @@ describe("onething runtime soul-memory helpers", () => {
 					content: `${target} content`,
 				};
 			},
-			async readHermes(target) {
-				calls.push(`hermes:${target}`);
-				return {
-					relativePath: `${target.toUpperCase()}.md`,
-					content: `${target} content`,
-					entries: [`${target} content`],
-				};
-			},
 		});
 
-		expect(calls.sort()).toEqual([
-			"hermes:memory",
-			"hermes:user",
-			"plain:dreams",
-			"plain:soul",
-		]);
+		expect(calls.sort()).toEqual(["plain:dreams", "plain:soul"]);
 		expect(input).toContain("# Existing SOUL.md");
 		expect(input).toContain("soul content");
-		expect(input).toContain("# Existing USER.md");
-		expect(input).toContain("memory content");
+		// Hermes 文件记忆已移除,复盘输入不再带 USER.md / MEMORY.md。
+		expect(input).not.toContain("# Existing USER.md");
+		expect(input).not.toContain("# Existing MEMORY.md");
 		expect(input).toContain("# Conversation snapshot");
 	});
 
@@ -1192,7 +957,6 @@ describe("onething runtime soul-memory helpers", () => {
 			rulesPrompt: "Rules",
 			soulPath: "/memory/SOUL.md",
 			soulContent: "Soul content",
-			hermesFileMemory: "Hermes memory",
 		});
 
 		expect(
@@ -1200,7 +964,6 @@ describe("onething runtime soul-memory helpers", () => {
 		).toEqual([
 			"developer:memory/soul-memory-rules",
 			"developer:plugins/soul-memory/SOUL.md",
-			"user:plugins/soul-memory/hermes-file-memory",
 		]);
 		expect(fragments[1].content).toContain("Path: /memory/SOUL.md");
 
@@ -1208,7 +971,6 @@ describe("onething runtime soul-memory helpers", () => {
 			rulesPrompt: "Rules",
 			soulPath: "/memory/SOUL.md",
 			soulContent: "# SOUL.md\n\n",
-			hermesFileMemory: null,
 		});
 		expect(emptyFragments[1].content).toContain("(empty — SOUL.md has no persona content yet");
 	});
@@ -2835,7 +2597,7 @@ describe("onething runtime soul-memory helpers", () => {
 					memories: [
 						{
 							action: "add",
-							target: "memory",
+							target: "soul",
 							confidence: 0.92,
 							content: "User prefers Bun scripts for this repo.",
 						},
@@ -2856,7 +2618,7 @@ describe("onething runtime soul-memory helpers", () => {
 							changed: true,
 							skipped: false,
 							relativePath:
-								record.target === "memory" ? "MEMORY.md" : "DREAMS.md",
+								record.target === "soul" ? "SOUL.md" : "DREAMS.md",
 						}
 					: { changed: false, skipped: true, relativePath: "DREAMS.md" };
 			},
@@ -2875,7 +2637,7 @@ describe("onething runtime soul-memory helpers", () => {
 			userTurns: 2,
 			applied: 1,
 			skipped: 1,
-			paths: ["MEMORY.md"],
+			paths: ["SOUL.md"],
 			lastStatus: "applied:1 skipped:1 turn:2",
 		});
 		expect(generatedPrompt).toContain("# Existing SOUL.md");
@@ -2896,7 +2658,7 @@ describe("onething runtime soul-memory helpers", () => {
 			],
 		});
 		expect(notifications).toEqual([
-			{ message: "Memory Review saved 1 update to MEMORY.md", level: "info" },
+			{ message: "Memory Review saved 1 update to SOUL.md", level: "info" },
 		]);
 		expect(diagnostics).toEqual(
 			expect.arrayContaining([
@@ -3079,35 +2841,10 @@ describe("onething runtime soul-memory helpers", () => {
 
 	it("applies review candidates through injected host adapters", async () => {
 		let soulContent = "Keep replies formal.\n";
-		const hermesActions: string[] = [];
 		const adapters = {
 			readPlain: () => ({ content: soulContent, relativePath: "SOUL.md" }),
 			writePlain: (_target: "soul" | "dreams", content: string) => {
 				soulContent = content;
-			},
-			readHermes: () => ({
-				content: "- Existing durable memory.",
-				entries: ["Existing durable memory."],
-				relativePath: "MEMORY.md",
-			}),
-			addHermes: (target: "user" | "memory", content: string) => {
-				hermesActions.push(`add:${target}:${content}`);
-				return { relativePath: target === "memory" ? "MEMORY.md" : "USER.md" };
-			},
-			replaceHermes: (
-				target: "user" | "memory",
-				oldText: string,
-				newText: string,
-			) => {
-				hermesActions.push(`replace:${target}:${oldText}->${newText}`);
-				return {
-					changed: oldText === "Old durable memory.",
-					relativePath: "MEMORY.md",
-				};
-			},
-			removeHermes: (target: "user" | "memory", text: string) => {
-				hermesActions.push(`remove:${target}:${text}`);
-				return { changed: false, relativePath: "MEMORY.md" };
 			},
 		};
 
@@ -3129,45 +2866,12 @@ describe("onething runtime soul-memory helpers", () => {
 		});
 		expect(soulContent).toContain("Prefer precise status updates.");
 
-		await expect(
-			applyMemoryReviewCandidate({
-				...adapters,
-				minConfidence: 0.8,
-				candidate: {
-					action: "add",
-					target: "memory",
-					confidence: 0.9,
-					content: "Existing durable memory.",
-				},
-			}),
-		).resolves.toEqual({
-			changed: false,
-			skipped: true,
-			relativePath: "MEMORY.md",
-			reason: "duplicate",
-		});
-
-		await expect(
-			applyMemoryReviewCandidate({
-				...adapters,
-				minConfidence: 0.8,
-				candidate: {
-					action: "replace",
-					target: "memory",
-					confidence: 0.9,
-					oldText: "Old durable memory.",
-					newText: "Updated durable memory.",
-				},
-			}),
-		).resolves.toEqual({
-			changed: true,
-			skipped: false,
-			relativePath: "MEMORY.md",
-			reason: undefined,
-		});
-		expect(hermesActions).toEqual([
-			"replace:memory:Old durable memory.->Updated durable memory.",
-		]);
+		// Hermes 文件记忆移除后,USER.md / MEMORY.md 不再是复盘目标,
+		// 模型即便返回这类候选也应被 normalizeMemoryReviewTarget 挡掉。
+		expect(normalizeMemoryReviewTarget("memory")).toBeNull();
+		expect(normalizeMemoryReviewTarget("user")).toBeNull();
+		expect(normalizeMemoryReviewTarget("soul")).toBe("soul");
+		expect(normalizeMemoryReviewTarget("dreams")).toBe("dreams");
 	});
 
 	it("sorts managed memory files by core display order", () => {

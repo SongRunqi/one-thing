@@ -1,4 +1,5 @@
 import type { JsonObject } from '../json.js'
+import { isToolAbortError } from '../tools/abort.js'
 import {
   buildMCPPartialResultUpdate,
   buildMCPPermissionPlan,
@@ -224,7 +225,12 @@ export async function executeCoreDirectTool<
     return {
       success: false,
       error: caught.message || 'Unknown error during tool execution',
-      aborted: Boolean(context.abortSignal?.aborted || caught.message.includes('cancelled') || caught.message.includes('aborted')),
+      // Cancellation is read from the signal and from the structured abort
+      // marker only. Message-substring probes used to mislabel genuine
+      // failures as cancellations whenever the error text quoted file content
+      // that happened to contain "aborted"/"cancelled" — e.g. an edit whose
+      // "closest match" snippet came from a file mentioning abortSignal.
+      aborted: Boolean(context.abortSignal?.aborted) || isToolAbortError(caught),
     } as TResult
   }
 }

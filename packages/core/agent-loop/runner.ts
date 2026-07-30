@@ -28,9 +28,13 @@ import {
 } from './stream.js'
 import { applyPromptInjectors, createSkillPromptInjector } from './prompts.js'
 import { AgentLoopPauseForConfirmationError, isAgentLoopPauseForConfirmationError } from './errors.js'
-import { agentToolResultToMessageContentForCapabilities } from './tool-results.js'
+import {
+  agentToolResultIsError,
+  agentToolResultToMessageContentForCapabilities,
+} from './tool-results.js'
 import {
   assertAgentProviderCanRunTurn,
+  agentSupportsForcedToolUse,
   agentSupportsTools,
   assertAgentOutputModalitiesSupportedByCapabilities,
   assertAgentMessagesSupportedByCapabilities,
@@ -201,12 +205,96 @@ function resolveToolChoice(
 ): AgentLoopOptions['toolChoice'] {
   if (tools.length === 0) return 'none'
   if (!requested) return 'auto'
-  if (requested === 'auto' || requested === 'none') return requested
+  if (requested === 'auto' || requested === 'none' || requested === 'required') return requested
 
   const requestedName = requested.function.name
   return tools.some(tool => tool.name === requestedName)
     ? requested
     : 'none'
+}
+
+/**
+ * The tool choice this ROUND sends.
+ *
+ * `initialToolChoice` applies to turn 1 and nothing else — see the field's own
+ * note in types.ts: a standing "required" would oblige every round to end in a
+ * tool call, so the loop could never reach the tool-less round that ends a run
+ * and would just burn turns until maxTurns. Forcing only the opening call gets
+ * the caller what it actually wants (the first move must go through the tool
+ * interface) and leaves the run free to finish.
+ */
+function resolveTurnToolChoice(input: {
+  tools: AgentTool[]
+  turn: number
+  toolChoice: AgentLoopOptions['toolChoice']
+  initialToolChoice: AgentLoopOptions['initialToolChoice']
+}): AgentLoopOptions['toolChoice'] {
+  if (input.turn === 1 && input.initialToolChoice) {
+    return resolveToolChoice(input.tools, input.initialToolChoice)
+  }
+  return resolveToolChoice(input.tools, input.toolChoice)
+}
+
+/**
+ * Is this choice a FORCED one — "you must call a tool", rather than "decide for
+ * yourself" (`auto`) or "do not" (`none`)?
+ */
+function isForcedToolChoice(choice: AgentLoopOptions['toolChoice']): boolean {
+  if (!choice) return false
+  return choice !== 'auto' && choice !== 'none'
+}
+
+/**
+ * Does this RUN force a tool call anywhere in it? If so, reasoning is off for
+ * the WHOLE run — every iteration, not just the forced one.
+ *
+ * Two separate facts stack up here, and the scope comes from the second.
+ *
+ * **Forced tool choice and reasoning are mutually exclusive** — a UNIVERSAL API
+ * constraint, not one provider's quirk:
+ *
+ *  - DeepSeek answers a forced choice under thinking with a hard 400
+ *    (`Thinking mode does not support this tool_choice`, 真机 2026-07-28);
+ *  - Anthropic documents the same incompatibility for extended thinking with
+ *    `tool_choice` any/tool;
+ *  - the OpenAI reasoning families treat a forced call as a plain completion.
+ *
+ * **Thinking mode cannot FLIP inside one run.** The obvious fix — disable
+ * reasoning only on the forced round and restore it afterwards — buys a second,
+ * later 400 (真机 2026-07-28, 第二迭代):
+ *
+ *   `The reasoning_content in the thinking mode must be passed back to the API.`
+ *
+ * A thinking-mode request must replay `reasoning_content` for the assistant
+ * messages already in its history. The forced opening round produced its
+ * tool-call message with reasoning OFF, so that field does not exist — and
+ * round 2 asking for thinking mode is asking the loop to hand back something
+ * that was never generated. The two rounds share one history; the mode is a
+ * property of that history, not of a single request.
+ *
+ * So the scope is the RUN. `reasoningEffort` is dropped with it, because some
+ * wire formats (`reasoningStyle: 'thinking-type'`) emit `reasoning_effort`
+ * independently of the thinking flag and would re-introduce the first 400.
+ *
+ * The cost is acceptable exactly where this is used, and only there: an IM room
+ * reply is a short spoken line, so a reflexive run start-to-finish is the right
+ * shape anyway — the same reasoning W1 applied to willingness judgement
+ * (判定是反射不是深思). Nothing else in the product sets a forced choice.
+ *
+ * Caveat worth knowing: models whose reasoning cannot be switched off at all
+ * (Anthropic's always-thinking families) cannot honour this pairing — they are
+ * excluded at the capability gate instead, in the provider that knows them.
+ */
+function runForcesToolChoice(input: {
+  tools: AgentTool[]
+  toolChoice: AgentLoopOptions['toolChoice']
+  initialToolChoice: AgentLoopOptions['initialToolChoice']
+}): boolean {
+  if (input.initialToolChoice
+    && isForcedToolChoice(resolveToolChoice(input.tools, input.initialToolChoice))) {
+    return true
+  }
+  return isForcedToolChoice(resolveToolChoice(input.tools, input.toolChoice))
 }
 
 async function executeAgentToolCall(input: {
@@ -374,6 +462,22 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
   const tools = agentSupportsTools(capabilities)
     ? selectedTools(options.tools, options.selectedToolNames, options.toolPolicy)
     : []
+  // Capability gate for the forced opening call: a model that has not declared
+  // supportsForcedToolUse simply keeps today's behavior (no parameter sent, no
+  // 400 from an endpoint that never learned about it).
+  const initialToolChoice = options.initialToolChoice && agentSupportsForcedToolUse(capabilities)
+    ? options.initialToolChoice
+    : undefined
+  // Run-level, not round-level: thinking mode is a property of the shared tool
+  // -loop history, and flipping it mid-run demands a reasoning_content that the
+  // un-thinking round never produced. See runForcesToolChoice.
+  const reasoningSuppressed = runForcesToolChoice({
+    tools,
+    toolChoice: options.toolChoice,
+    initialToolChoice,
+  })
+  const runThinking = reasoningSuppressed ? 'disabled' : options.thinking
+  const runReasoningEffort = reasoningSuppressed ? undefined : options.reasoningEffort
   const baseMessages: AgentMessage[] = options.messages.map(message => ({ ...message }))
   const skills = options.skills ?? []
   const injectSkillPrompts = options.injectSkillPrompts ?? true
@@ -446,6 +550,20 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
 
     options.onEvent?.({ type: 'turn-start', turn })
 
+    // The tool choice is per-ROUND (only the opening call is forced); the
+    // reasoning decision above is per-RUN. Computed once here so the wire
+    // request and the turn trace can never disagree about what was sent.
+    const turnRequestShape = {
+      toolChoice: resolveTurnToolChoice({
+        tools,
+        turn,
+        toolChoice: options.toolChoice,
+        initialToolChoice,
+      }),
+      thinking: runThinking,
+      reasoningEffort: runReasoningEffort,
+    }
+
     const resultsByToolCallId = new Map<string, AgentToolResult>()
     const runProviderTurn = () => runWithAgentAbort(options.abortSignal, () =>
       executeProviderTurn({
@@ -453,12 +571,12 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           model: options.model,
           messages,
           tools,
-          toolChoice: resolveToolChoice(tools, options.toolChoice),
+          toolChoice: turnRequestShape.toolChoice,
           requestedOutputModalities: options.requestedOutputModalities,
           temperature: options.temperature,
           maxTokens: options.maxTokens,
-          thinking: options.thinking,
-          reasoningEffort: options.reasoningEffort,
+          thinking: turnRequestShape.thinking,
+          reasoningEffort: turnRequestShape.reasoningEffort,
           abortSignal: options.abortSignal,
           onEvent: options.onEvent,
           turn,
@@ -547,6 +665,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         role: 'tool',
         toolCallId: toolCall.id,
         content: agentToolResultToMessageContentForCapabilities(result, capabilities),
+        ...(agentToolResultIsError(result) && { isError: true }),
       })
     }
 
@@ -563,11 +682,11 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
             model: options.model,
             messages,
             tools,
-            toolChoice: resolveToolChoice(tools, options.toolChoice),
+            toolChoice: turnRequestShape.toolChoice,
             temperature: options.temperature,
             maxTokens: options.maxTokens,
-            thinking: options.thinking,
-            reasoningEffort: options.reasoningEffort,
+            thinking: turnRequestShape.thinking,
+            reasoningEffort: turnRequestShape.reasoningEffort,
           },
           response: agentTurn,
           toolResultMessages: pendingToolMessages,

@@ -9,6 +9,7 @@ import type {
   AgentReasoningEffort,
   AgentSkillContext,
   AgentTool,
+  AgentToolChoice,
   AgentToolPolicy,
 } from './types.js'
 import { createSystemPromptInjector } from './prompts.js'
@@ -41,6 +42,8 @@ export interface BuildAgentLoopRuntimeOptions {
   maxTokens?: number
   thinking?: 'enabled' | 'disabled'
   reasoningEffort?: AgentReasoningEffort
+  /** Forced tool choice for the run's FIRST model call only (see AgentLoopOptions). */
+  initialToolChoice?: AgentToolChoice
   maxTurns?: number
   beforeTurn?: AgentBeforeTurnHook
   afterTurn?: AgentAfterTurnHook
@@ -76,6 +79,7 @@ export async function buildAgentLoopRuntime(
     maxTokens: options.maxTokens,
     thinking: options.thinking,
     reasoningEffort: options.reasoningEffort,
+    initialToolChoice: options.initialToolChoice,
     maxTurns: options.maxTurns,
     beforeTurn: options.beforeTurn,
     afterTurn: options.afterTurn,

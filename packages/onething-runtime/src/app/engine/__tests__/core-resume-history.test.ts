@@ -72,7 +72,9 @@ describe('core resume history', () => {
             type: 'tool-result',
             toolCallId: 'call_2',
             toolName: 'write',
-            result: { error: 'Denied' },
+            // status marks the tool_result as an error for providers that
+            // carry an explicit failure flag (Anthropic is_error).
+            result: { error: 'Denied', status: 'failed' },
           },
         ],
       },

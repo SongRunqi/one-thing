@@ -1,0 +1,174 @@
+// @vitest-environment happy-dom
+import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import RoomMemberStrip from '../RoomMemberStrip.vue'
+import { useAgentsStore } from '@/stores/agents'
+import { useSessionsStore } from '@/stores/sessions'
+
+const api = vi.hoisted(() => ({
+  updateCollabRoom: vi.fn(async () => ({ success: true }) as { success: boolean; error?: string }),
+  listAgents: vi.fn(async () => ({ success: true, agents: [] })),
+  getSessions: vi.fn(async () => ({ success: true, sessions: [] })),
+}))
+
+vi.mock('@/platform', () => ({ platformApi: api }))
+
+const AGENTS = [
+  { id: 'pm', name: '阿明', title: '产品经理', avatar: '📋', systemPrompt: '', createdAt: 0, updatedAt: 0 },
+  { id: 'fe', name: '小李', title: '前端', avatar: '🔧', systemPrompt: '', createdAt: 0, updatedAt: 0 },
+  { id: 'research', name: '小研', title: '研究员', avatar: '🔎', systemPrompt: '', createdAt: 0, updatedAt: 0 },
+]
+
+function seed(memberAgentIds: string[] = ['pm', 'fe'], pmAgentId = 'pm', dm = false): void {
+  const agentsStore = useAgentsStore()
+  agentsStore.agents = AGENTS as never
+  agentsStore.hasLoaded = true
+  const sessionsStore = useSessionsStore()
+  sessionsStore.sessions = [{
+    id: 'room-1',
+    name: '官网改版组',
+    kind: 'room',
+    createdAt: 0,
+    updatedAt: 0,
+    room: { memberAgentIds, pmAgentId, ...(dm ? { dm: true } : {}) },
+  }] as never
+}
+
+async function open(memberAgentIds?: string[], pmAgentId?: string, dm = false) {
+  seed(memberAgentIds, pmAgentId, dm)
+  const wrapper = mount(RoomMemberStrip, {
+    props: { sessionId: 'room-1' },
+    global: { stubs: { teleport: true } },
+  })
+  await nextTick()
+  return wrapper
+}
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  document.body.innerHTML = ''
+  api.updateCollabRoom.mockClear()
+  api.updateCollabRoom.mockResolvedValue({ success: true })
+})
+
+describe('RoomMemberStrip', () => {
+  it('stamps one chip per member plus the ＋, and marks the lead', async () => {
+    const wrapper = await open()
+    const chips = wrapper.findAll('.member-chip:not(.member-add)')
+    expect(chips.map(chip => chip.text())).toEqual(['📋', '🔧'])
+    expect(chips[0].classes()).toContain('is-pm')
+    expect(chips[1].classes()).not.toContain('is-pm')
+    expect(chips[0].attributes('title')).toBe('阿明 · 产品经理 · 负责人')
+    expect(wrapper.find('.member-add').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('hides the ＋ when there is nobody left to pull in', async () => {
+    const wrapper = await open(['pm', 'fe', 'research'])
+    expect(wrapper.find('.member-add').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('pulls somebody in through the one room-update channel', async () => {
+    const wrapper = await open()
+    await wrapper.find('.member-add').trigger('click')
+    const items = wrapper.findAll('.app-context-item')
+    expect(items).toHaveLength(1)
+    expect(items[0].text()).toContain('小研')
+
+    await items[0].trigger('click')
+    await nextTick()
+    expect(api.updateCollabRoom.mock.calls[0]).toEqual([
+      'room-1',
+      { memberAgentIds: ['pm', 'fe', 'research'] },
+    ])
+    wrapper.unmount()
+  })
+
+  it('pushes somebody out, vacating the lead seat when the lead leaves', async () => {
+    const wrapper = await open()
+    await wrapper.findAll('.member-chip:not(.member-add)')[0].trigger('contextmenu')
+    const items = wrapper.findAll('.app-context-item')
+    // The lead gets no 设为负责人 row — it already is one.
+    expect(items.map(item => item.text())).toEqual(['移出群聊'])
+
+    await items[0].trigger('click')
+    await nextTick()
+    expect(api.updateCollabRoom.mock.calls[0]).toEqual([
+      'room-1',
+      { memberAgentIds: ['fe'], pmAgentId: null },
+    ])
+    wrapper.unmount()
+  })
+
+  it('hands the lead over from the chip menu', async () => {
+    const wrapper = await open()
+    await wrapper.findAll('.member-chip:not(.member-add)')[1].trigger('contextmenu')
+    const items = wrapper.findAll('.app-context-item')
+    expect(items.map(item => item.text())).toEqual(['设为负责人', '移出群聊'])
+
+    await items[0].trigger('click')
+    await nextTick()
+    expect(api.updateCollabRoom.mock.calls[0]).toEqual(['room-1', { pmAgentId: 'fe' }])
+    wrapper.unmount()
+  })
+
+  it('says why the last member cannot be removed instead of failing silently', async () => {
+    const wrapper = await open(['fe'], '')
+    await wrapper.findAll('.member-chip:not(.member-add)')[0].trigger('contextmenu')
+    await wrapper.findAll('.app-context-item').at(-1)!.trigger('click')
+    await nextTick()
+    expect(api.updateCollabRoom).not.toHaveBeenCalled()
+    expect(wrapper.find('.member-error').text()).toBe('房间至少需要一名成员')
+    wrapper.unmount()
+  })
+
+  /**
+   * 双成员 dm 房(agent-im-dm.md §4.3 + P1b 遗留发现 4):同一条成员条的紧凑
+   * 形态,而且名册**只读** —— 形态即身份,加个人就把私聊变成了群。
+   */
+  describe('双成员 dm 房', () => {
+    it('两枚头像紧凑排列,没有 ＋', async () => {
+      const wrapper = await open(['pm', 'fe'], '', true)
+      expect(wrapper.find('.room-members').classes()).toContain('is-pair-dm')
+      expect(wrapper.findAll('.member-chip:not(.member-add)')).toHaveLength(2)
+      expect(wrapper.find('.member-add').exists()).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('点头像不开菜单:移出/设为负责人在私聊里都不成立', async () => {
+      const wrapper = await open(['pm', 'fe'], '', true)
+      await wrapper.findAll('.member-chip')[0].trigger('click')
+      await nextTick()
+      expect(wrapper.findAll('.app-context-item')).toHaveLength(0)
+      await wrapper.findAll('.member-chip')[0].trigger('contextmenu')
+      await nextTick()
+      expect(wrapper.findAll('.app-context-item')).toHaveLength(0)
+      expect(api.updateCollabRoom).not.toHaveBeenCalled()
+      wrapper.unmount()
+    })
+
+    it('群房零变化(正控):＋ 与成员菜单照旧', async () => {
+      const wrapper = await open(['pm', 'fe'])
+      expect(wrapper.find('.room-members').classes()).not.toContain('is-pair-dm')
+      expect(wrapper.find('.member-add').exists()).toBe(true)
+      await wrapper.findAll('.member-chip:not(.member-add)')[1].trigger('click')
+      await nextTick()
+      expect(wrapper.findAll('.app-context-item').length).toBeGreaterThan(0)
+      wrapper.unmount()
+    })
+  })
+
+  it('surfaces a refusal that only the app layer can make', async () => {
+    api.updateCollabRoom.mockResolvedValue({ success: false, error: '负责人必须是房间成员' })
+    const wrapper = await open()
+    await wrapper.find('.member-add').trigger('click')
+    await wrapper.findAll('.app-context-item')[0].trigger('click')
+    await nextTick()
+    await nextTick()
+    expect(wrapper.find('.member-error').text()).toBe('负责人必须是房间成员')
+    wrapper.unmount()
+  })
+})

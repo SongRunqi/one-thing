@@ -172,6 +172,8 @@ const CLAUDE_CAPABILITIES: AgentModelCapabilities = {
   supportsStructuredToolResults: true,
   supportsReasoning: true,
   supportsStreaming: true,
+  // tool_choice: { type: 'any' }
+  supportsForcedToolUse: true,
 }
 
 function textFromContent(content: AgentMessageContent): string {
@@ -339,6 +341,9 @@ function buildClaudeMessages(
           type: 'tool_result',
           tool_use_id: message.toolCallId ?? '',
           content: toolResultContentBlocks(message.content),
+          // Without is_error a failed tool reads to the model as a successful
+          // result whose text merely describes a problem.
+          ...(message.isError === true && { is_error: true }),
         }],
       })
       continue
@@ -391,11 +396,14 @@ function toClaudeTools(tools: AgentTool[] | undefined): ClaudeTool[] | undefined
 
 type ClaudeToolChoice =
   | { type: 'auto' }
+  | { type: 'any' }
   | { type: 'tool'; name: string }
 
 function toClaudeToolChoice(choice: AgentToolChoice | undefined): ClaudeToolChoice | undefined {
   if (!choice || choice === 'auto') return { type: 'auto' }
   if (choice === 'none') return undefined
+  // Anthropic spells "must use a tool, any tool" as `any`.
+  if (choice === 'required') return { type: 'any' }
   return { type: 'tool', name: choice.function.name }
 }
 
@@ -778,10 +786,22 @@ export function createClaudeAgentProvider(options: ClaudeAgentProviderOptions): 
     yield* streamClaudeResponse(response, request.turn)
   }
 
+  /**
+   * Forced tool choice is incompatible with extended thinking, and the loop
+   * honours that by pairing a forced round with thinking off. Fable/Mythos
+   * cannot take that half of the bargain — they always reason, and the API
+   * rejects an explicit `disabled` — so for them the honest answer is that
+   * they cannot be forced at all, and the loop falls back to `auto`.
+   */
+  const modelCapabilities = (model: string): AgentModelCapabilities =>
+    onethingClaudeModelFamily(model).alwaysThinking
+      ? { ...capabilities, supportsForcedToolUse: false }
+      : capabilities
+
   return {
     id: options.providerId ?? 'claude',
     capabilities,
-    getModelCapabilities: () => capabilities,
+    getModelCapabilities: modelCapabilities,
     streamTurn,
     async runTurn(request: AgentTurnRequest): Promise<AgentTurn> {
       return collectAgentTurnFromStream(streamTurn(request), request.onEvent)

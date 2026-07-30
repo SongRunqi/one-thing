@@ -162,8 +162,10 @@ describe('runtime memory review helpers', () => {
 
     expect(input).toContain('# Existing SOUL.md')
     expect(input).toContain('Keep replies warm.')
-    expect(input).toContain('# Existing USER.md')
-    expect(input).toContain('用户喜欢中文回答。')
+    // Hermes 文件记忆已移除:复盘输入只剩 SOUL.md / DREAMS.md。
+    expect(input).not.toContain('# Existing USER.md')
+    expect(input).not.toContain('# Existing MEMORY.md')
+    expect(input).not.toContain('用户喜欢中文回答。')
     expect(input).toContain('# Conversation snapshot')
   })
 
@@ -179,7 +181,7 @@ describe('runtime memory review helpers', () => {
 
     const candidate: MemoryReviewCandidate = {
       action: 'add',
-      target: 'memory',
+      target: 'soul',
       confidence: 0.9,
       content: '用户正在把 onething 拆成 headless runtime。',
       text: '用户正在把 onething 拆成 headless runtime。',
@@ -224,9 +226,9 @@ describe('runtime memory review helpers', () => {
       status: 'applied',
       applied: 1,
       skipped: 0,
-      paths: ['MEMORY.md'],
+      paths: ['SOUL.md'],
     })
-    expect(fs.readFileSync(workspace.memoryPath, 'utf-8')).toContain('用户正在把 onething 拆成 headless runtime。')
+    expect(fs.readFileSync(workspace.soulPath, 'utf-8')).toContain('用户正在把 onething 拆成 headless runtime。')
     expect(statusMutations.length).toBeGreaterThan(0)
     expect(notifications[0]).toContain('Memory Review saved 1 update')
     expect(diagnostics).toContainEqual({

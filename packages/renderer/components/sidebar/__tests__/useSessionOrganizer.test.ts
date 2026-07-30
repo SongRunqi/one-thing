@@ -19,14 +19,14 @@ describe('useSessionOrganizer', () => {
 
     const groups = organizer.getGroupedSessions([
       {
-        kind: 'new-chat-draft',
+        draftKind: 'new-chat-draft',
         id: 'draft:old',
         name: 'New Chat',
         createdAt: now - 10,
         updatedAt: now - 10,
       },
       {
-        kind: 'new-chat-draft',
+        draftKind: 'new-chat-draft',
         id: 'draft:new',
         name: 'New Chat',
         createdAt: now,

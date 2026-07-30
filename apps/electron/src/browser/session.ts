@@ -12,6 +12,9 @@ export const BROWSER_PARTITION = 'persist:browser'
 /** One session per profile partition (Chrome-style isolated logins). */
 const cachedSessions = new Map<string, Session>()
 
+/** Per-partition readiness: resolves once the creation-time proxy replay landed. */
+const partitionReady = new Map<string, Promise<void>>()
+
 /**
  * Last proxy config applied app-wide. A profile partition can be created LONG
  * after the last applyBrowserProxy (e.g. the user adds a profile mid-session);
@@ -58,12 +61,20 @@ export function getBrowserPartitionSession(partition: string = BROWSER_PARTITION
 	ses.setPermissionCheckHandler(() => false)
 
 	cachedSessions.set(partition, ses)
-	// Inherit the current proxy. Fire-and-forget is safe: a fresh tab opens on
-	// about:blank (no network), so setProxy lands before the user navigates.
-	if (currentProxyConfig) {
-		void applyElectronNetworkProxySettings(currentProxyConfig, { session: ses }).catch(() => undefined)
-	}
+	// Inherit the current proxy. The replay is async, and a fresh tab now loads
+	// the search-engine homepage immediately — callers issuing that first load
+	// MUST gate it on whenBrowserPartitionReady(), or the request races setProxy
+	// and goes out DIRECT (fails/leaks the direct IP on proxy-dependent networks).
+	const replay = currentProxyConfig
+		? applyElectronNetworkProxySettings(currentProxyConfig, { session: ses }).catch(() => undefined)
+		: Promise.resolve()
+	partitionReady.set(partition, replay.then(() => undefined))
 	return ses
+}
+
+/** Resolves when a partition's creation-time proxy replay has landed (or immediately). */
+export function whenBrowserPartitionReady(partition: string = BROWSER_PARTITION): Promise<void> {
+	return partitionReady.get(partition) ?? Promise.resolve()
 }
 
 /** Every profile partition session created so far. */
@@ -74,6 +85,7 @@ export function getAllBrowserSessions(): Session[] {
 /** Drop a partition session from the cache (e.g. its profile was removed). */
 export function removeBrowserPartitionSession(partition: string): void {
 	cachedSessions.delete(partition)
+	partitionReady.delete(partition)
 }
 
 /** Mirror the app's proxy settings onto every browser partition (defaultSession-only otherwise). */
@@ -88,5 +100,6 @@ export async function applyBrowserProxy(proxy: ElectronProxyConfig): Promise<voi
 /** Test seam. */
 export function resetBrowserSessionForTests(): void {
 	cachedSessions.clear()
+	partitionReady.clear()
 	currentProxyConfig = null
 }

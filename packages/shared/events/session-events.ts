@@ -9,6 +9,7 @@
  */
 
 import type { Step, ToolCall, ToolPartialResult, ToolResult, ContentPart, ChatMessage, ContextVariable, SessionGoal, ThinkingEffort } from '../ipc.js'
+import type { CollabBoard } from '../ipc/collab.js'
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
 
@@ -376,6 +377,39 @@ export interface MessagesReplacedEvent {
   messages: ChatMessage[]
 }
 
+// ── Collab (multi-agent room) ───────────────────
+
+/** The room's board changed; carries the full (small) snapshot. */
+export interface CollabBoardChangedEvent {
+  type: 'collab:board-changed'
+  board: CollabBoard
+}
+
+/** A member is about to speak (queued/driving) or has stopped (settled).
+ *  IM semantics: true may end with no message at all — "typed and deleted". */
+export interface CollabTypingEvent {
+  type: 'collab:typing'
+  agentId: string
+  typing: boolean
+}
+
+/**
+ * A room turn window opened or closed (collab-team-v2 §5.1 入口①).
+ *
+ * The room session never emits `stream:start` — since W18 the turn runs in the
+ * member's execution session — so the renderer had no way to know a room was
+ * busy and the stop button was never drawn. This is that signal, and its window
+ * is exactly `runtime.activeTurn`: the same window `abortRoomTurn` shoots into,
+ * so a visible stop button always has a live target.
+ *
+ * `agentId` names who holds the floor, for the button's tooltip.
+ */
+export interface CollabTurnActiveEvent {
+  type: 'collab:turn-active'
+  agentId: string
+  active: boolean
+}
+
 // ── Union ───────────────────────────────────────
 
 export type SessionEvent =
@@ -417,4 +451,7 @@ export type SessionEvent =
   | MessageUpdatedEvent
   | MessageDeletedEvent
   | MessagesReplacedEvent
+  | CollabBoardChangedEvent
+  | CollabTypingEvent
+  | CollabTurnActiveEvent
   | SessionCommand

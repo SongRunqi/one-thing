@@ -3503,6 +3503,9 @@ describe('createOnethingHttpServer', () => {
       permissionMode: 'auto-accept-edits',
       lastProvider: 'codex',
       lastModel: 'gpt-5.5',
+      // The picker route pins: without it an agent's model binding would keep
+      // outranking a model the user just chose (agent-capability-profile A1.4).
+      modelPinned: true,
     }))
     expect(aliceSession.session).not.toHaveProperty('userId')
     expect(aliceSession.session).not.toHaveProperty('workspaceId')

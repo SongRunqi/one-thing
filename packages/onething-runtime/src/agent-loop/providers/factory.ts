@@ -305,6 +305,9 @@ function withPerModelCapabilities(
 				supportsStructuredToolResults: tools
 					? base.supportsStructuredToolResults !== false
 					: false,
+				supportsForcedToolUse: tools
+					? base.supportsForcedToolUse === true
+					: false,
 				supportsReasoning: reasoning,
 				maxInputTokens: positiveInteger(limits?.contextLength) ?? base.maxInputTokens,
 				maxOutputTokens: positiveInteger(limits?.maxOutputTokens) ?? base.maxOutputTokens,
@@ -361,6 +364,10 @@ function capabilitiesFromFlags(flags: {
 		supportsStructuredToolResults: flags.tools,
 		supportsReasoning: flags.reasoning,
 		supportsStreaming: true,
+		// Every wire format behind this factory (OpenAI chat-completions,
+		// Responses, Anthropic, Gemini) has a "must call a tool" mode, so a
+		// model that has tools at all can be forced into one.
+		supportsForcedToolUse: flags.tools,
 	};
 }
 

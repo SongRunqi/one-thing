@@ -1,38 +1,90 @@
 import {
   DEFAULT_ONETHING_AGENT_ID,
   createOnethingAgentStore,
+  type CreateOnethingAgentInput,
+  type UpdateOnethingAgentInput,
 } from '@onething/runtime/agents'
-import type { AgentDefinition } from '@shared/ipc.js'
+import type { AgentDefinition, AgentIdentity } from '@shared/ipc.js'
 import { getAgentsPath } from '../stores/paths.js'
 
-function getStore() {
-  return createOnethingAgentStore({
-    agentsPath: getAgentsPath(),
-  })
+/**
+ * One store for the whole process. It used to be one instance PER CALL, each
+ * doing a synchronous read + parse + normalize of agents.json — and `getAgent`
+ * is called once per room member (roster, say-tool, willingness), so an N-member
+ * room paid N full reads on the main thread per turn. The path is passed as a
+ * function because the store root is only known after boot.
+ */
+const store = createOnethingAgentStore({
+  agentsPath: () => getAgentsPath(),
+})
+
+/** Load agents.json into memory once (and persist the normalized shape). */
+export async function initializeAgents(): Promise<void> {
+  await store.initialize()
+}
+
+/** Escape hatch after an external edit of agents.json. */
+export function invalidateAgentsCache(): void {
+  store.invalidate()
 }
 
 export function listAgents(): AgentDefinition[] {
-  return getStore().listAgents() as AgentDefinition[]
+  return store.listAgents() as AgentDefinition[]
 }
 
+/** 严格查找(M4):查无此人(含空 id)返回 null,绝不冒充 default。 */
+export function findAgent(agentId: string | undefined | null): AgentDefinition | null {
+  return store.findAgent(agentId) as AgentDefinition | null
+}
+
+/** 执行链用(M4):查无此人即 throw(错误信息带 agentId)。 */
+export function requireAgent(agentId: string | undefined | null): AgentDefinition {
+  return store.requireAgent(agentId) as AgentDefinition
+}
+
+/** 渲染用(M4):身份投影;未知 id 返回「已注销」墓碑占位,永不炸。 */
+export function displayAgent(agentId: string | undefined | null): AgentIdentity {
+  return store.displayAgent(agentId) as AgentIdentity
+}
+
+/** 功能兜底显式化(M4):default agent 本人(无 agentId 会话的 persona)。 */
+export function defaultAgent(): AgentDefinition {
+  return store.defaultAgent() as AgentDefinition
+}
+
+/**
+ * @deprecated 过渡期兼容(M4):= `findAgent(id) ?? defaultAgent()`,fallback
+ * 命中时打 warn。新代码按语义归位到上面四个 API 之一。
+ */
 export function getAgent(agentId: string | undefined | null): AgentDefinition {
-  return getStore().getAgent(agentId) as AgentDefinition
+  return store.getAgent(agentId) as AgentDefinition
 }
 
 export function agentExists(agentId: string | undefined | null): boolean {
-  return getStore().agentExists(agentId)
+  return store.agentExists(agentId)
 }
 
-export function createAgent(input: { id: string; name: string; systemPrompt?: string; tools?: string[] }): AgentDefinition {
-  return getStore().createAgent(input) as AgentDefinition
+export function createAgent(input: CreateOnethingAgentInput): AgentDefinition {
+  return store.createAgent(input) as AgentDefinition
 }
 
-export function updateAgent(input: { agentId: string; name?: string; systemPrompt?: string; tools?: string[] | null }): AgentDefinition {
-  return getStore().updateAgent(input) as AgentDefinition
+export function updateAgent(input: UpdateOnethingAgentInput): AgentDefinition {
+  return store.updateAgent(input) as AgentDefinition
 }
 
+/** 退休(M3,§3.2):status → retired,身份面全保留(墓碑)。default 硬拒。 */
+export function retireAgent(agentId: string): AgentDefinition {
+  return store.retireAgent(agentId) as AgentDefinition
+}
+
+/** 恢复(§8):status → active。入口只在 Agents 管理页,不进任何社交面。 */
+export function restoreAgent(agentId: string): AgentDefinition {
+  return store.restoreAgent(agentId) as AgentDefinition
+}
+
+/** 真硬删。先用 `hasAnyReference` 确认从未被引用过 —— 被引用过只能退休。 */
 export function deleteAgent(agentId: string): void {
-  getStore().deleteAgent(agentId)
+  store.deleteAgent(agentId)
 }
 
 export const DEFAULT_AGENT_ID = DEFAULT_ONETHING_AGENT_ID

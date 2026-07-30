@@ -4,6 +4,7 @@ import { DateTimeProvider } from './providers/datetime.js'
 import { GitBranchProvider } from './providers/git-branch.js'
 import { GlobalStoreProvider, type GlobalStoreGateway } from './providers/global-store.js'
 import { GoalProvider, type GoalVariableGateway } from './providers/goal.js'
+import { KeyedStoreProvider, type KeyedStoreGateway } from './providers/keyed-store.js'
 import { MusicRadioProvider, type MusicRadioGateway } from './providers/music-radio.js'
 import { NotesProvider, type NotesGateway } from './providers/notes.js'
 import { SessionStoreProvider, type SessionStoreGateway } from './providers/session-store.js'
@@ -22,6 +23,10 @@ export interface StandardVariableProviderGateways {
   goal?: GoalVariableGateway
   /** Music/radio status reader; hosts without a music subsystem simply omit it. */
   musicRadio?: MusicRadioGateway
+  /** Agent-scoped custom variables (keyed by the session's agent id). */
+  agentStore?: KeyedStoreGateway
+  /** Project-scoped custom variables (keyed by the active workdir's project id). */
+  projectStore?: KeyedStoreGateway
 }
 
 /**
@@ -46,5 +51,21 @@ export function registerStandardVariableProviders(
   }
   registry.register(new NotesProvider(gateways.notes))
   registry.register(new GlobalStoreProvider(gateways.globalStore))
+  if (gateways.agentStore) {
+    registry.register(new KeyedStoreProvider(gateways.agentStore, {
+      id: 'agent-store',
+      scope: 'agent',
+      priority: 920,
+      unresolvedHint: 'This session is not bound to an agent, so agent-scoped variables are unavailable.',
+    }))
+  }
+  if (gateways.projectStore) {
+    registry.register(new KeyedStoreProvider(gateways.projectStore, {
+      id: 'project-store',
+      scope: 'project',
+      priority: 940,
+      unresolvedHint: 'No active workdir. Set the workdir variable first, then project-scoped variables attach to that project.',
+    }))
+  }
   registry.register(new SessionStoreProvider(gateways.sessionStore))
 }

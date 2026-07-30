@@ -17,6 +17,13 @@ vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => mocks.sessionsStore,
 }))
 
+// The picker ranks an agent's model binding above an unpinned session model;
+// these cases have no agent, so the composable is stubbed out rather than
+// dragging a Pinia instance in for a constant null.
+vi.mock('@/composables/useSessionAgentModel', () => ({
+  useSessionAgentModel: () => ({ value: null }),
+}))
+
 vi.mock('../../common/Tooltip.vue', () => ({
   default: {
     name: 'Tooltip',
@@ -234,7 +241,7 @@ describe('ThinkToggle', () => {
     mocks.sessionsStore.currentSessionId = 'draft:one'
     mocks.sessionsStore.sessions = [{
       id: 'draft:one',
-      kind: 'new-chat-draft',
+      draftKind: 'new-chat-draft',
       lastProvider: 'deepseek',
       lastModel: 'deepseek-chat',
     }]

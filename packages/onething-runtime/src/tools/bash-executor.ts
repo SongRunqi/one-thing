@@ -1,6 +1,7 @@
 import { constants, createWriteStream, existsSync } from 'node:fs'
 import { access as fsAccess, writeFile as fsWriteFile } from 'node:fs/promises'
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { createToolAbortError } from '@onething/core/tools'
 import {
   cleanupBackgroundJobLogs,
   createBackgroundLogPath,
@@ -262,7 +263,7 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
       } catch {
         throw new Error(`Work directory does not exist: ${cwd}\nCannot execute bash commands.`)
       }
-      if (signal?.aborted) throw new Error('aborted')
+      if (signal?.aborted) throw createToolAbortError('aborted')
 
       const { shell, args } = getShellConfig(options.shellPath)
       const spawnContext = resolveSpawnContext(command, cwd, options.spawnHook)
@@ -302,7 +303,7 @@ export function createLocalBashOperations(options: { shellPath?: string; spawnHo
         }
 
         const exitCode = await waitForChildProcess(child)
-        if (signal?.aborted) throw new Error('aborted')
+        if (signal?.aborted) throw createToolAbortError('aborted')
         if (timedOut) throw new Error(`timeout:${timeout}`)
         const backgroundPids = child.pid && process.platform !== 'win32'
           ? getProcessGroupPids(child.pid).filter(pid => pid !== child.pid)

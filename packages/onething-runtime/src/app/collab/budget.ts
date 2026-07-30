@@ -1,0 +1,151 @@
+/**
+ * 房间费用闸 (§6.2 第三道闸) — R2 split out of the coordinator.
+ *
+ * A room's daily spend, summed from the usage ledger over a SESSION SET (the
+ * room, every work session its board ever spawned, and — since W18 — every
+ * member's execution session). Deliberately not the W13.3 usageSource labels:
+ * the set already covers turns that predate the labels and turns nobody
+ * labelled (retries, compaction, titles).
+ */
+import { collabAgentSessionIdsForScan } from '@onething/runtime/collab'
+import * as store from '../store.js'
+import { getUsageLedger } from '../usage/index.js'
+import { loadCollabBoard } from './board-store.js'
+import { postSystemLine, roomRuntime } from './room-runtime.js'
+
+/** 费用闸(§6.2 第三道闸): 房间日预算,按会话集合(房间+其 work 会话)从
+ *  usage 账本累计 costUSD。60s 缓存,超限时激活与新 worker 都被拒。 */
+export const COLLAB_DEFAULT_DAILY_COST_USD = 5
+const BUDGET_CACHE_MS = 60_000
+
+/**
+ * Which day the budget is counting, in the USER's timezone (R7 / P3).
+ *
+ * It used to be UTC, so 「今天这个房间已花费…」 and 「明天自动恢复」 meant a day
+ * that starts at 08:00 for a user in UTC+8: an evening's spend counted against
+ * the next calendar day, and the reset landed mid-morning. A cost brake the
+ * user reads in words has to use the day the user is living in.
+ */
+export function budgetDayKey(now: Date = new Date()): string {
+  const year = now.getFullYear()
+  const month = `${now.getMonth() + 1}`.padStart(2, '0')
+  const day = `${now.getDate()}`.padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** Local midnight that opened the current budget day. */
+function budgetDayStart(now: number): number {
+  const date = new Date(now)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+/**
+ * How long until the budget day rolls over (P2-4). The over-budget notice
+ * promises 「明天自动恢复」 and nothing used to make that true — the parked
+ * activations sat until the next human message. One kick per room, armed when
+ * the gate closes, turns the sentence into a fact.
+ *
+ * Derived from the same local midnight the spend query uses: a kick that fired
+ * against a different day boundary than the one being counted would wake the
+ * queue into the same closed gate.
+ */
+export function msUntilNextBudgetDay(now: number = Date.now()): number {
+  const next = new Date(budgetDayStart(now))
+  // setDate handles month/year ends and — unlike +86400000 — DST transitions.
+  next.setDate(next.getDate() + 1)
+  return Math.max(0, next.getTime() - now)
+}
+
+/**
+ * Today's ledger cost for a room: the room session plus every work session its
+ * board ever spawned. Session-set attribution, deliberately NOT the W13.3
+ * usageSource labels — the set already covers turns that predate the labels and
+ * turns nobody labelled (retries, compaction, titles).
+ *
+ * Uncached on purpose: the gate below wraps it in its own 60s cache, and the
+ * settings panel wants a fresh number the moment it opens.
+ */
+export async function readCollabRoomSpentTodayUSD(roomSessionId: string): Promise<number> {
+  const records = await getUsageLedger().readRecordsInRange(
+    budgetDayStart(Date.now()),
+    Date.now() + 60_000,
+  )
+  const ids = new Set<string>([roomSessionId])
+  for (const task of loadCollabBoard(roomSessionId).tasks) {
+    for (const workId of task.workSessionIds) ids.add(workId)
+  }
+  // W18: room turns bill to the speaking agent's EXECUTION session, not to the
+  // room — so the set has to follow them there, or the gate would stop seeing
+  // the room's main expense.
+  //
+  // collab-team-v2 §1.3 顺手修好了这里的口径:执行会话按群隔离之后,一条执行
+  // 会话只属于一个房间,此前"一个 agent 在两个群里共用一条会话、于是它的花销
+  // 被两个房间各记一遍"的重复计消失了。旧注释把这笔账开脱为"只会让闸更早关",
+  // 现在不需要开脱——它就是准的。旧的全局会话也算进来,因为迁移前的花销确实
+  // 发生过,只是不再增长。
+  for (const agentId of store.getSession(roomSessionId)?.room?.memberAgentIds ?? []) {
+    for (const agentSessionId of collabAgentSessionIdsForScan(agentId, roomSessionId)) {
+      ids.add(agentSessionId)
+    }
+  }
+  let spent = 0
+  for (const record of records) {
+    if (record.sessionId && ids.has(record.sessionId) && record.costUSD != null) {
+      spent += record.costUSD
+    }
+  }
+  return spent
+}
+
+/**
+ * Read-only spend view for the room settings panel (W13.5). The limit rides
+ * along so the caller never has to re-derive the default.
+ */
+export async function getCollabRoomSpend(roomSessionId: string): Promise<{
+  success: boolean
+  error?: string
+  spentTodayUSD?: number
+  dailyCostUSD?: number
+}> {
+  const session = store.getSession(roomSessionId)
+  if (session?.kind !== 'room') return { success: false, error: 'Not a room session' }
+  try {
+    return {
+      success: true,
+      spentTodayUSD: await readCollabRoomSpentTodayUSD(roomSessionId),
+      dailyCostUSD: session.room?.budgets?.dailyCostUSD ?? COLLAB_DEFAULT_DAILY_COST_USD,
+    }
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+/** Exported for the say executor (W14b): the 预算闸 is now enforced at the
+ *  moment an agent actually tries to speak, so the refusal reaches the agent
+ *  instead of silently eating an activation. Same 60s cache, same notice line. */
+export async function isRoomOverBudget(roomSessionId: string): Promise<boolean> {
+  const session = store.getSession(roomSessionId)
+  if (session?.kind !== 'room') return false
+  const limit = session.room?.budgets?.dailyCostUSD ?? COLLAB_DEFAULT_DAILY_COST_USD
+  if (limit <= 0) return false
+  const runtime = roomRuntime(roomSessionId)
+  if (Date.now() - runtime.budgetCheckedAt > BUDGET_CACHE_MS) {
+    runtime.budgetCheckedAt = Date.now()
+    try {
+      runtime.budgetSpentUSD = await readCollabRoomSpentTodayUSD(roomSessionId)
+    } catch (error) {
+      console.error('[collab] budget read failed:', error)
+      return false // 账本读不了不误杀
+    }
+  }
+  const over = runtime.budgetSpentUSD >= limit
+  if (over && runtime.budgetNoticeDay !== budgetDayKey()) {
+    runtime.budgetNoticeDay = budgetDayKey()
+    postSystemLine(
+      roomSessionId,
+      `今天这个房间已花费 $${runtime.budgetSpentUSD.toFixed(2)},达到日预算 $${limit}——明天自动恢复,或调整房间预算`,
+    )
+  }
+  return over
+}

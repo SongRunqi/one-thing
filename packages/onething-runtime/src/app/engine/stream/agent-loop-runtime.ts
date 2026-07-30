@@ -17,9 +17,10 @@ import {
   getAgentLoopContextBlockReason,
   getAgentLoopTransientTail,
 } from '@onething/core/engine'
+import { resolveAgentProfile } from '@onething/runtime/agents'
 import * as store from '../../store.js'
 import { goalRuntimeHooks } from '../../goals/runtime-hooks.js'
-import { getAgent } from '../../agents/index.js'
+import { defaultAgent, findAgent } from '../../agents/index.js'
 import { getSkillsForSession } from '../../skills/session-skills.js'
 import { getMCPRouterToolDefinition } from '../../mcp/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
@@ -151,8 +152,17 @@ function createAgentLoopRuntimeAdapters(
     resolveModelMaxOutputTokens: modelRegistry.getModelMaxOutputTokens,
     getEnabledTools: getEnabledToolsAsync,
     getMCPRouterToolDefinition,
-    getAgentToolAllowlist: (agentId: string | undefined) =>
-      agentId ? getAgent(agentId)?.tools ?? null : null,
+    getAgentToolAllowlist: (agentId: string | undefined, session?: unknown) => {
+      // Fallback only: a run with a resolved profile reads the snapshot
+      // instead (see stream-runtime.ts). Same pure rule either way — the
+      // collab room/work special-casing that used to live here is now a
+      // capability grant inside resolveAgentProfile.
+      return resolveAgentProfile({
+        // persona/能力功能兜底(域模型 §3.3),与 profile.ts 同一条规则。
+        agent: findAgent(agentId) ?? defaultAgent(),
+        session: { kind: (session as { kind?: string } | undefined)?.kind },
+      }).tools
+    },
     buildContextVariablesPromptText,
     buildProjectPromptVars: buildProjectDirsPromptVars,
     buildPrompt: (promptOptions: Parameters<typeof buildPrompt>[0]) => buildPrompt({

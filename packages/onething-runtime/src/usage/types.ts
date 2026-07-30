@@ -39,6 +39,8 @@ export const ONETHING_USAGE_SOURCES = {
   toc: 'toc',
   /** Evals workbench / replay / judge. */
   evals: 'evals',
+  /** Collab room response-willingness judgement (one small call per member). */
+  collabWillingness: 'collab-willingness',
 } as const
 
 export type OnethingUsageSource =

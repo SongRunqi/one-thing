@@ -1,5 +1,20 @@
-import { createDefaultVariablesFile, type VariablesFile } from './schema.js'
+import {
+  createDefaultVariablesFile,
+  type VariablesFile,
+  type VariablesFileGlobalVariable,
+} from './schema.js'
 import type { ContextVariable } from './types.js'
+
+function toStoredVariable(v: ContextVariable): VariablesFileGlobalVariable {
+  return {
+    name: v.name,
+    value: v.value,
+    type: v.type,
+    description: v.description,
+    volatility: v.volatility,
+    updatedAt: v.updatedAt,
+  }
+}
 
 export interface VariablesStorePersistence {
   loadFromDisk(): VariablesFile
@@ -60,13 +75,26 @@ export class VariablesStore {
   setGlobalVariables(variables: ContextVariable[]): void {
     this.state = {
       ...this.state,
-      global_variables: variables.map(v => ({
-        name: v.name,
-        value: v.value,
-        description: v.description,
-        updatedAt: v.updatedAt,
-      })),
+      global_variables: variables.map(toStoredVariable),
     }
+    this.persistAndNotify()
+  }
+
+  getScopedVariables(kind: 'agent' | 'project', key: string): ContextVariable[] {
+    this.initialize()
+    const record = kind === 'agent' ? this.state.agent_variables : this.state.project_variables
+    return (record[key] ?? []).map(v => ({ ...v, scope: kind }))
+  }
+
+  setScopedVariables(kind: 'agent' | 'project', key: string, variables: ContextVariable[]): void {
+    const field = kind === 'agent' ? 'agent_variables' : 'project_variables'
+    const record = { ...this.state[field] }
+    if (variables.length === 0) {
+      delete record[key]
+    } else {
+      record[key] = variables.map(toStoredVariable)
+    }
+    this.state = { ...this.state, [field]: record }
     this.persistAndNotify()
   }
 

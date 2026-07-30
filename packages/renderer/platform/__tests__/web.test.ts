@@ -23,6 +23,7 @@ describe('createWebPlatformApi', () => {
       shellTools: false,
       terminal: false,
       embeddedBrowser: false,
+      collabRooms: false,
       clipboardWrite: false,
       desktopWindows: false,
       globalMenuEvents: false,
@@ -59,6 +60,7 @@ describe('createWebPlatformApi', () => {
       shellTools: false,
       terminal: false,
       embeddedBrowser: false,
+      collabRooms: false,
       clipboardWrite: true,
       desktopWindows: false,
       globalMenuEvents: false,
@@ -1732,6 +1734,11 @@ describe('createWebPlatformApi', () => {
     await expect(api.deleteAgent('agent-1')).resolves.toEqual({
       success: true,
       url: '/api/agents/agent-1',
+    })
+    // 恢复(域模型 §8)是自己的一条动作,不是 update 的一个字段。
+    await expect(api.restoreAgent('agent-1')).resolves.toEqual({
+      success: true,
+      url: '/api/agents/agent-1/restore',
     })
     await expect(api.getProviders()).resolves.toEqual({
       success: true,

@@ -734,3 +734,270 @@ describe('runAgentLoop steering interrupt (response boundary)', () => {
     expect(boundaryEvents).toEqual([])
   })
 })
+
+/**
+ * W18b 结构性强制:第一次模型调用可以被要求必须以工具调用收尾。
+ *
+ * 变异锁的重点是「只作用于第一迭代」。把它挂在每一次调用上,循环就永远拿不到
+ * 一个无工具调用的回合来正常收尾——只能被 maxTurns 砍断。所以下面每个用例都
+ * 断言第二次请求已经回到 auto。
+ */
+describe('runAgentLoop initialToolChoice (forced opening call)', () => {
+  interface Recorded {
+    turn: number
+    toolChoice: unknown
+    thinking: unknown
+    reasoningEffort: unknown
+  }
+
+  function recordingProvider(
+    recorded: Recorded[],
+    capabilities?: AgentProvider['capabilities'],
+  ): AgentProvider {
+    const provider = baseProvider(async function* (request) {
+      recorded.push({
+        turn: request.turn,
+        toolChoice: request.toolChoice,
+        thinking: request.thinking,
+        reasoningEffort: request.reasoningEffort,
+      })
+      if (request.turn === 1) {
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'call_1', name: 'read', arguments: '{}' } }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'text-delta', turn: request.turn, delta: 'done' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    return capabilities ? { ...provider, capabilities } : provider
+  }
+
+  const forcedCapableProvider = (recorded: Recorded[]): AgentProvider =>
+    recordingProvider(recorded, {
+      capabilities: ['text-input', 'text-output', 'streaming', 'tool-calls'],
+      inputModalities: ['text'],
+      outputModalities: ['text'],
+      supportsTools: true,
+      supportsForcedToolUse: true,
+    })
+
+  const readTool: AgentTool = {
+    name: 'read',
+    parameters: { type: 'object' },
+    async execute() {
+      return { content: 'ok' }
+    },
+  }
+
+  function options(provider: AgentProvider, extra: Partial<AgentLoopOptions> = {}): AgentLoopOptions {
+    return {
+      provider,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [readTool],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      maxTurns: 3,
+      ...extra,
+    }
+  }
+
+  it('forces the first call and only the first call', async () => {
+    const recorded: Recorded[] = []
+    await runAgentLoop(options(forcedCapableProvider(recorded), { initialToolChoice: 'required' }))
+
+    expect(recorded.map(entry => ({ turn: entry.turn, toolChoice: entry.toolChoice }))).toEqual([
+      { turn: 1, toolChoice: 'required' },
+      { turn: 2, toolChoice: 'auto' },
+    ])
+  })
+
+  it('falls back to the ordinary choice on turn 2, not to the forced one', async () => {
+    // Mutation lock: an implementation that applied initialToolChoice whenever
+    // it is set (rather than on turn 1) would leave turn 2 forced too.
+    const recorded: Recorded[] = []
+    await runAgentLoop(options(forcedCapableProvider(recorded), {
+      initialToolChoice: 'required',
+      toolChoice: 'none',
+    }))
+
+    expect(recorded.map(entry => entry.toolChoice)).toEqual(['required', 'none'])
+  })
+
+  it('silently ignores the forced choice when the model does not advertise it', async () => {
+    // baseProvider declares tools but NOT supportsForcedToolUse — an endpoint
+    // that never learned the parameter must keep behaving exactly as before
+    // instead of collecting a 400.
+    const recorded: Recorded[] = []
+    await runAgentLoop(options(recordingProvider(recorded), { initialToolChoice: 'required' }))
+
+    expect(recorded.map(entry => entry.toolChoice)).toEqual(['auto', 'auto'])
+  })
+
+  it('never sends a forced choice when the run has no tools at all', async () => {
+    const recorded: Recorded[] = []
+    await runAgentLoop(options(forcedCapableProvider(recorded), {
+      initialToolChoice: 'required',
+      tools: [],
+    }))
+
+    expect(recorded[0]?.toolChoice).toBe('none')
+  })
+
+  it('reports the same choice to the turn trace as it sent on the wire', async () => {
+    const recorded: Recorded[] = []
+    const traced: unknown[] = []
+    await runAgentLoop(options(forcedCapableProvider(recorded), {
+      initialToolChoice: 'required',
+      onTurnTrace(event) {
+        traced.push(event.request.toolChoice)
+      },
+    }))
+
+    expect(traced).toEqual(['required', 'auto'])
+  })
+})
+
+/**
+ * 强制工具调用 ⇄ 思考 的配对规则 (W18b 真机 400 续修).
+ *
+ * DeepSeek: `Thinking mode does not support this tool_choice` — a hard 400, not
+ * a degradation. Anthropic says the same about extended thinking with a forced
+ * choice. So the loop never sends the two together: the forced round runs with
+ * thinking off (it is a reflex — 说 / 不说), and the rounds that actually
+ * compose an answer get the turn's own thinking back, because only iteration 1
+ * is ever forced.
+ */
+describe('runAgentLoop forced tool choice ⇄ thinking pairing', () => {
+  interface Sent {
+    turn: number
+    toolChoice: unknown
+    thinking: unknown
+    reasoningEffort: unknown
+  }
+
+  function sendingProvider(sent: Sent[], forcedCapable = true): AgentProvider {
+    const provider = baseProvider(async function* (request) {
+      sent.push({
+        turn: request.turn,
+        toolChoice: request.toolChoice,
+        thinking: request.thinking,
+        reasoningEffort: request.reasoningEffort,
+      })
+      if (request.turn === 1) {
+        yield { type: 'tool-call-done', turn: request.turn, toolCall: { id: 'c1', name: 'read', arguments: '{}' } }
+        yield { type: 'finish', turn: request.turn, finishReason: 'tool_calls' }
+        return
+      }
+      yield { type: 'text-delta', turn: request.turn, delta: 'done' }
+      yield { type: 'finish', turn: request.turn, finishReason: 'stop' }
+    })
+    return {
+      ...provider,
+      capabilities: {
+        capabilities: ['text-input', 'text-output', 'streaming', 'tool-calls', 'reasoning'],
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+        supportsTools: true,
+        supportsReasoning: true,
+        ...(forcedCapable ? { supportsForcedToolUse: true } : {}),
+      },
+    }
+  }
+
+  const readTool: AgentTool = {
+    name: 'read',
+    parameters: { type: 'object' },
+    async execute() {
+      return { content: 'ok' }
+    },
+  }
+
+  function thinkingRun(provider: AgentProvider, extra: Partial<AgentLoopOptions> = {}) {
+    return runAgentLoop({
+      provider,
+      model: 'test-model',
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [readTool],
+      sessionId: 'session-1',
+      messageId: 'message-1',
+      maxTurns: 3,
+      thinking: 'enabled',
+      reasoningEffort: 'high',
+      ...extra,
+    })
+  }
+
+  it('keeps thinking off for the WHOLE run once any round is forced', async () => {
+    const sent: Sent[] = []
+    await thinkingRun(sendingProvider(sent), { initialToolChoice: 'required' })
+
+    expect(sent).toEqual([
+      // The reflex round: forced, and therefore un-thinking. reasoningEffort
+      // goes with it — `reasoningStyle: 'thinking-type'` emits reasoning_effort
+      // regardless of the thinking flag, which would walk into the first 400.
+      { turn: 1, toolChoice: 'required', thinking: 'disabled', reasoningEffort: undefined },
+      // …and round 2 stays un-thinking even though it is no longer forced.
+      // MUTATION LOCK on the SCOPE: restoring thinking here is the natural
+      // (and wrong) implementation — it earns a second, later 400,
+      // `The reasoning_content in the thinking mode must be passed back to the
+      // API.` Round 1 produced its tool-call message with reasoning off, so
+      // there is no reasoning_content to replay; the mode belongs to the shared
+      // history, not to one request.
+      { turn: 2, toolChoice: 'auto', thinking: 'disabled', reasoningEffort: undefined },
+    ])
+  })
+
+  it('leaves thinking alone when nothing is forced', async () => {
+    const sent: Sent[] = []
+    await thinkingRun(sendingProvider(sent))
+
+    expect(sent.map(entry => entry.thinking)).toEqual(['enabled', 'enabled'])
+    expect(sent.map(entry => entry.reasoningEffort)).toEqual(['high', 'high'])
+  })
+
+  it('keeps thinking when the forced choice was dropped by the capability gate', async () => {
+    // Mutation lock on the ORDER of the two rules: suppressing reasoning off
+    // the caller's *request* rather than off the *resolved* choice would strip
+    // it from a run that is never actually forced.
+    const sent: Sent[] = []
+    await thinkingRun(sendingProvider(sent, false), { initialToolChoice: 'required' })
+
+    expect(sent).toEqual([
+      { turn: 1, toolChoice: 'auto', thinking: 'enabled', reasoningEffort: 'high' },
+      { turn: 2, toolChoice: 'auto', thinking: 'enabled', reasoningEffort: 'high' },
+    ])
+  })
+
+  it('pairs the rule to FORCED-ness, not to initialToolChoice (universal constraint)', async () => {
+    // A standing specific-tool choice is forced too, and Anthropic/DeepSeek
+    // reject it under thinking for the same reason. The rule reads the choice,
+    // not the field it came from.
+    const sent: Sent[] = []
+    await thinkingRun(sendingProvider(sent), {
+      toolChoice: { type: 'function', function: { name: 'read' } },
+    })
+
+    expect(sent.map(entry => entry.thinking)).toEqual(['disabled', 'disabled'])
+    // …and 'none' is NOT forced: nothing is being demanded of the model.
+    const noneSent: Sent[] = []
+    await thinkingRun(sendingProvider(noneSent), { toolChoice: 'none' })
+    expect(noneSent.map(entry => entry.thinking)).toEqual(['enabled', 'enabled'])
+  })
+
+  it('reports the paired shape to the turn trace as well', async () => {
+    const sent: Sent[] = []
+    const traced: Array<{ toolChoice: unknown; thinking: unknown }> = []
+    await thinkingRun(sendingProvider(sent), {
+      initialToolChoice: 'required',
+      onTurnTrace(event) {
+        traced.push({ toolChoice: event.request.toolChoice, thinking: event.request.thinking })
+      },
+    })
+
+    expect(traced).toEqual([
+      { toolChoice: 'required', thinking: 'disabled' },
+      { toolChoice: 'auto', thinking: 'disabled' },
+    ])
+  })
+})

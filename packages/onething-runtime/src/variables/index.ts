@@ -1,5 +1,6 @@
 export * from './bootstrap.js'
 export * from './format.js'
+export * from './typed-values.js'
 export * from './ipc-operations.js'
 export * from './registry.js'
 export * from './schema.js'

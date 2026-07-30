@@ -3,6 +3,7 @@ import {
   type CoreEventBusLike,
 } from './headless-stream-engine.js'
 import type { PendingMessage } from './message-queue.js'
+import type { CoreInitialToolChoice } from './stream-executor.js'
 import { isCoreExternalAgentProvider } from './external-agent-providers.js'
 import { expandFileMentions, isFileMentionTrustedChannel } from './file-mentions.js'
 import type {
@@ -187,6 +188,37 @@ interface SendMessageCommandLike {
   source?: string
   voice?: unknown
   origin?: unknown
+  /**
+   * IM quote-reply snapshot ({messageId, authorLabel, excerpt}). Persisted
+   * verbatim onto the user message — the engine never reads inside it. This is
+   * a NAMED passthrough, not a generic one: nothing else on the command may
+   * ride into storage without its own line here.
+   */
+  replyTo?: unknown
+  /**
+   * The room message a collab coordinator drive answers. Another NAMED
+   * passthrough persisted verbatim onto the user message — the engine never
+   * reads it. It exists so the durable transcript itself records which room
+   * message was already consumed, which is what makes a restart idempotent
+   * without consulting the coordinator's own state file (W23).
+   */
+  collabSourceMessageId?: string
+  /**
+   * Billing attribution label for this turn's usage records ('chat' when
+   * absent). A plain passthrough: the engine never reads it, it only rides
+   * down to whoever writes the usage ledger, so a collab room turn shows up
+   * as room spend instead of anonymous chat spend.
+   */
+  usageSource?: string
+  /**
+   * Force the FIRST model call of this turn into a tool call. Another named
+   * passthrough — the engine never reads it, it only rides down to the agent
+   * loop, which applies it to iteration 1 and nothing else.
+   *
+   * Set by system-internal drives whose entire output space is the tool surface
+   * (the collab room drive forces `say` by name). Ordinary chat never sets it.
+   */
+  initialToolChoice?: CoreInitialToolChoice
   providerId?: string
   model?: string
   /**
@@ -516,6 +548,10 @@ export class CoreStreamEngine<
         source: cmd.source || (cmd.channel === 'voice' ? 'voice' : 'text'),
         voice: cmd.voice,
         ...(cmd.origin !== undefined ? { origin: cmd.origin } : {}),
+        ...(cmd.replyTo !== undefined ? { replyTo: cmd.replyTo } : {}),
+        ...(cmd.collabSourceMessageId !== undefined
+          ? { collabSourceMessageId: cmd.collabSourceMessageId }
+          : {}),
         ...(contextUpdate !== undefined ? { contextUpdate } : {}),
       } as unknown as TMessage
       this.runtime.media.ingestMessageAttachments(
@@ -588,6 +624,8 @@ export class CoreStreamEngine<
         toolSettings: settings.tools, sessionName,
         voiceConversation: userMessage.source === 'voice',
         speakMode: userMessage.source === 'voice',
+        ...(cmd.usageSource ? { usageSource: cmd.usageSource } : {}),
+        ...(cmd.initialToolChoice ? { initialToolChoice: cmd.initialToolChoice } : {}),
       })
     } catch (error) {
       const streamError = this.normalizeStreamError(error)

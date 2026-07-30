@@ -93,20 +93,6 @@
           ref="appContentRef"
           class="app-content"
         >
-          <div
-            class="app-sidebar-actions"
-            :class="{ transitioning: sidebarActionAnimating }"
-            :style="{ left: sidebarActionLeft + 'px' }"
-          >
-            <SidebarActionGroup
-              :sidebar-visible="!sidebarCollapsed || sidebarFloating"
-              variant="docked"
-              @toggle-sidebar="handleSidebarToggle"
-              @open-search="openSearch"
-              @create-new-chat="createNewChat"
-            />
-          </div>
-
           <Splitter
             ref="contentSplitterRef"
             class="app-content-splitter"
@@ -165,6 +151,9 @@
                     :active-tab="activeWorkspacePanel"
                     :reserve-sidebar-actions="reserveSidebarActions"
                     @close="closeWorkspacePanel"
+                    @toggle-sidebar="handleSidebarToggle"
+                    @open-search="openSearch"
+                    @create-new-chat="createNewChat"
                   />
                 </div>
               </Container>
@@ -226,7 +215,6 @@ import { useThemeStore } from '@/stores/themes'
 import { useVoiceStore } from '@/stores/voice'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { Sidebar } from '@/components/sidebar'
-import SidebarActionGroup from '@/components/sidebar/SidebarActionGroup.vue'
 import ChatContainer from '@/components/ChatContainer.vue'
 import Container from '@/components/common/Container.vue'
 import Splitter from '@/components/common/Splitter.vue'
@@ -244,9 +232,18 @@ import VoiceCallPanel from '@/components/voice/VoiceCallPanel.vue'
 import EvalsWorkbench from '@/components/evals/EvalsWorkbench.vue'
 import { useEvalsWorkbenchStore } from '@/stores/evalsWorkbench'
 import { useOverlayPresenceStore } from '@/stores/overlayPresence'
+import { useBrowserStore } from '@/stores/browser'
 import { useDoubleShift } from '@/composables/useDoubleShift'
 import { ensureCacheReady as ensureMarkdownCacheReady } from '@/components/chat/message/markdownRenderCache'
 import { platformApi } from '@/platform'
+import { useCollabBoardStore } from '@/stores/collabBoard'
+import { AGENT_OPEN_WORKSPACE_EVENT } from '@/stores/agents'
+import {
+  COLLAB_TAG_OPEN_CARD_EVENT,
+  COLLAB_TAG_OPEN_FILE_EVENT,
+  registerCollabTagVerifier,
+} from '@/composables/collabInlineTags'
+import { resolveDeliverablePath } from '@/components/workbench/collab-board-card'
 
 // Detect auxiliary windows from the hash. Keep it reactive because dev HMR
 // and BrowserWindow reuse can change the hash after App has already mounted.
@@ -270,6 +267,7 @@ function syncCurrentHash() {
 
 const sessionsStore = useSessionsStore()
 const workspaceStore = useWorkspaceStore()
+const collabBoardStore = useCollabBoardStore()
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const themeStore = useThemeStore()
@@ -278,6 +276,8 @@ const voiceStore = useVoiceStore()
 const appReady = ref(false)
 const evalsWorkbenchStore = useEvalsWorkbenchStore()
 const overlayPresenceStore = useOverlayPresenceStore()
+// ⌘T/⌘W 路由要问它：面板自己的 DOM 是不是当前操作的那块（见 stores/browser.ts）。
+const browserStore = useBrowserStore()
 // Full-screen modal overlays float above the embedded browser's native view;
 // register them so BrowserPanel hides the view while they're open (§8.2).
 watch(() => evalsWorkbenchStore.open, open => overlayPresenceStore.setOverlay('evals', open))
@@ -332,6 +332,15 @@ function closeWorkspacePanel() {
 function handlePracticeOpenWorkspace() {
   if (isAuxiliaryWindow.value) return
   openWorkspacePanel('practice')
+}
+
+/* Agent 空间页(agent-im-chat-ui.md C3):群聊气泡、dm 房头深在组件树里,够不到
+   openWorkspacePanel 的 emit 链,所以走与 practice 同款的 window 事件。要看的
+   agent 与 tab 意图已经由 store 的 `openAgentSpace` 寄存好,这里只管展开面板。 */
+
+function handleAgentOpenWorkspace() {
+  if (isAuxiliaryWindow.value) return
+  openWorkspacePanel('agents')
 }
 
 function handleTodoPlanWebWindowAction(event: Event) {
@@ -425,13 +434,6 @@ const floatingShowTimer = ref<ReturnType<typeof setTimeout> | null>(null) // Del
 let sidebarToggleTimer: ReturnType<typeof setTimeout> | null = null
 let floatingCloseTimer: ReturnType<typeof setTimeout> | null = null
 let floatingCooldownTimer: ReturnType<typeof setTimeout> | null = null
-const SIDEBAR_ACTION_GROUP_WIDTH = 80
-const SIDEBAR_ACTION_COLLAPSED_LEFT = 84
-const sidebarActionLeft = computed(() => {
-  if (sidebarCollapsed.value) return SIDEBAR_ACTION_COLLAPSED_LEFT
-  return Math.max(SIDEBAR_ACTION_COLLAPSED_LEFT, sidebarWidth.value - SIDEBAR_ACTION_GROUP_WIDTH)
-})
-
 function handleSidebarResizeStart() {
   sidebarResizing.value = true
 }
@@ -563,6 +565,78 @@ async function openGoalReviewInRightWorkbench(sessionId: string) {
   await nextTick()
   rightWorkbenchRef.value?.openGoalReview(sessionId)
 }
+
+// 群聊房间头部的看板直达入口(window 事件解耦:TabBar 深处 → 这里)
+async function openBoardInRightWorkbench() {
+  inspectorOpen.value = true
+  await nextTick()
+  rightWorkbenchRef.value?.openBoard()
+}
+
+/**
+ * 行内 `<card>` / `<file>` 标签的验真与点击(collab-team-v2 §6.1)。
+ *
+ * 验真器在这里注册,是因为只有 App 层同时够得着看板镜像、会话表和 platformApi;
+ * 渲染那一侧(composables/collabInlineTags)对这三样一无所知,没人注册时所有
+ * 标签停在纯文本态 —— 验真链路挂掉的后果是"点不动",不是"点了跳错地方"。
+ */
+function roomWorkingDirectoryForTags(): string | undefined {
+  const active = sessionsStore.sessions.find(session => session.id === workspaceStore.activeSessionId)
+  if (!active) return undefined
+  const roomId = active.kind === 'room' ? active.id : active.collab?.roomSessionId
+  if (!roomId) return active.workingDirectory
+  return sessionsStore.sessions.find(session => session.id === roomId)?.workingDirectory
+}
+
+function registerCollabTags() {
+  registerCollabTagVerifier({
+    verifyCard(id) {
+      const found = collabBoardStore.findTask(id)
+      return found ? { id: found.task.id, title: found.task.title } : null
+    },
+    async verifyFile(path) {
+      const absolute = resolveDeliverablePath(path, roomWorkingDirectoryForTags())
+      if (!absolute) return null
+      try {
+        const stat = await platformApi.statPath(absolute)
+        return stat?.success && stat.type === 'file' ? { absolutePath: absolute } : null
+      } catch {
+        return null
+      }
+    },
+  })
+}
+
+/** 群 folder 的文件树入口(collab-team-v2 §7):走既有 files 页签,换个根。 */
+async function openFolderInRightWorkbench(root: string) {
+  inspectorOpen.value = true
+  await nextTick()
+  await rightWorkbenchRef.value?.openFolder(root)
+}
+
+async function focusCardInRightWorkbench(taskId: string) {
+  if (!collabBoardStore.focusTask(taskId)) return
+  inspectorOpen.value = true
+  await nextTick()
+  rightWorkbenchRef.value?.openBoard()
+}
+
+onMounted(() => {
+  window.addEventListener('onething:collab-open-board', () => { void openBoardInRightWorkbench() })
+  window.addEventListener('onething:collab-open-folder', event => {
+    const root = (event as CustomEvent<{ root?: string }>).detail?.root
+    if (root) void openFolderInRightWorkbench(root)
+  })
+  window.addEventListener(COLLAB_TAG_OPEN_CARD_EVENT, event => {
+    const taskId = (event as CustomEvent<{ taskId?: string }>).detail?.taskId
+    if (taskId) void focusCardInRightWorkbench(taskId)
+  })
+  window.addEventListener(COLLAB_TAG_OPEN_FILE_EVENT, event => {
+    const filePath = (event as CustomEvent<{ filePath?: string }>).detail?.filePath
+    if (filePath) void openFileInRightWorkbench(filePath)
+  })
+  registerCollabTags()
+})
 
 // Close floating sidebar with animation
 function closeFloatingSidebar() {
@@ -732,16 +806,36 @@ async function createNewChat() {
   chatContainerRef.value?.focusInput?.()
 }
 
+// 已读水位的"人在不在场"信号(agent-im-dm.md P4)。在场 = 屏幕上的会话算读过;
+// 离场时来的消息照常攒成未读,回来那一刻一次性清掉。判定本身在 sessions store,
+// 这里只负责把宿主的前后台事实喂进去。
+function handleWindowFocused() {
+  sessionsStore.setWindowFocused(true)
+}
+
+function handleWindowBlurred() {
+  sessionsStore.setWindowFocused(false)
+}
+
+function handleVisibilityChange() {
+  sessionsStore.setWindowFocused(document.visibilityState === 'visible')
+}
+
 let unsubscribeSettingsChanged: (() => void) | null = null
 let unsubscribeMenuNewChat: (() => void) | null = null
 let unsubscribeMenuCloseChat: (() => void) | null = null
+let unsubscribeMenuNewBrowserTab: (() => void) | null = null
 let unsubscribeSearchAction: (() => void) | null = null
 
 onMounted(async () => {
   console.info(`[Perf][Startup] renderer-mounted +${Math.round(performance.now())}ms since page load`)
   window.addEventListener('hashchange', syncCurrentHash)
+  window.addEventListener('focus', handleWindowFocused)
+  window.addEventListener('blur', handleWindowBlurred)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
   window.addEventListener(TODO_PLAN_WEB_WINDOW_EVENT, handleTodoPlanWebWindowAction)
   window.addEventListener(PRACTICE_OPEN_WORKSPACE_EVENT, handlePracticeOpenWorkspace)
+  window.addEventListener(AGENT_OPEN_WORKSPACE_EVENT, handleAgentOpenWorkspace)
 
   const markdownCacheReady = ensureMarkdownCacheReady().catch((e) => {
     console.warn('[App] markdown cache init failed', e)
@@ -777,6 +871,17 @@ onMounted(async () => {
   if (appState?.sidebarCollapsed !== undefined) {
     sidebarCollapsed.value = appState.sidebarCollapsed
     reserveSidebarActions.value = appState.sidebarCollapsed
+  }
+
+  // 已读水位(docs/design/agent-im-dm.md P4)。必须排在工作区恢复之后:剪枝要对着
+  // 会话列表,而"屏幕上是哪几个会话"要等分栏树立起来才有答案 —— 恢复出来的那个
+  // 页签用户正看着,不该带着上次的红点回来。
+  //
+  // 只有主窗口灌水位,因此也只有主窗口落盘(未灌 = 不写)。设置/搜索这些副窗口
+  // 同样收得到全量 session 事件,却一个会话都"看不见" —— 让它们跟着写,就是拿一份
+  // 只涨不消的 inbound 去盖掉主窗口刚推进的 readAt,红点会诈尸。
+  if (!isAuxiliaryWindow.value) {
+    sessionsStore.hydrateReadMarks(appState?.sessionReadMarks)
   }
 
   appReady.value = true
@@ -821,10 +926,23 @@ onMounted(async () => {
   })
 
   // Cmd+W closes the focused tab; the panel asks the host to close the window
-  // only once nothing is left to fall back to.
+  // only once nothing is left to fall back to. The browser panel gets first
+  // refusal when it is the focused surface — the main process already handled
+  // the case where the embedded PAGE has focus, so reaching here means focus is
+  // in our own DOM (omnibox / start page / tab drawer).
   unsubscribeMenuCloseChat = platformApi.onMenuCloseChat(() => {
+    if (browserStore.panelFocused) {
+      void browserStore.closeActiveTab()
+      return
+    }
     chatContainerRef.value?.closeFocusedPanelActiveTab?.()
   })
+
+  // Cmd+T is the browser's alone: outside the browser panel it does nothing
+  // rather than quietly duplicating New Chat (⌘N).
+  unsubscribeMenuNewBrowserTab = platformApi.onMenuNewBrowserTab?.(() => {
+    if (browserStore.panelFocused) void browserStore.newTab()
+  }) ?? null
 
   // Listen for search action execution from Search Everywhere window
   unsubscribeSearchAction = platformApi.onSearchAction(async (actionId: string) => {
@@ -886,8 +1004,12 @@ onMounted(async () => {
 
 onUnmounted(() => {
   window.removeEventListener('hashchange', syncCurrentHash)
+  window.removeEventListener('focus', handleWindowFocused)
+  window.removeEventListener('blur', handleWindowBlurred)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener(TODO_PLAN_WEB_WINDOW_EVENT, handleTodoPlanWebWindowAction)
   window.removeEventListener(PRACTICE_OPEN_WORKSPACE_EVENT, handlePracticeOpenWorkspace)
+  window.removeEventListener(AGENT_OPEN_WORKSPACE_EVENT, handleAgentOpenWorkspace)
 
   if (unsubscribeSettingsChanged) {
     unsubscribeSettingsChanged()
@@ -897,6 +1019,9 @@ onUnmounted(() => {
   }
   if (unsubscribeMenuCloseChat) {
     unsubscribeMenuCloseChat()
+  }
+  if (unsubscribeMenuNewBrowserTab) {
+    unsubscribeMenuNewBrowserTab()
   }
   if (unsubscribeSearchAction) {
     unsubscribeSearchAction()
@@ -1050,42 +1175,6 @@ onUnmounted(() => {
   width: 100%;
   min-width: 0;
   min-height: 0;
-}
-
-/* top 对齐 tab 行的中线:PanelTree 根的 1px 上边框 + 40px 高的 .tab-bar
-   → 中心 21px;按钮自身 24px 高,故 21 - 12 = 9。TabBar 右侧那组 28px 的
-   .header-btn 也落在 21px 上,三者共线。 */
-.app-sidebar-actions {
-  position: fixed;
-  top: 9px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  z-index: 700;
-  pointer-events: auto;
-  -webkit-app-region: no-drag;
-}
-
-/* 顶栏左半段的拖拽带。侧栏收起时 SidebarHeader 整个不存在,交通灯到 tab
-   之间没有任何 drag 区,窗口在这一栏拖不动;这里补一条铺到窗口左缘的带子。
-   两个坑:
-   1. Chromium 只把元素的 content box 计进 draggable region,padding 不算
-      ——所以必须是独立的盒子,不能给本体加 padding 撑出来。
-   2. no-drag 只有作为 drag 元素的子孙才盖得住,跨分支的 fixed 兄弟无效,
-      所以这条带子右缘停在按钮左侧,不去盖 tab 栏。 */
-.app-sidebar-actions::before {
-  content: '';
-  position: absolute;
-  top: -12px;
-  right: 100%;
-  width: 100vw;
-  height: 40px;
-  pointer-events: none;
-  -webkit-app-region: drag;
-}
-
-.app-sidebar-actions.transitioning {
-  transition: none;
 }
 
 /* Floating sidebar backdrop */

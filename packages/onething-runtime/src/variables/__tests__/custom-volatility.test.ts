@@ -25,8 +25,8 @@ describe('custom variable volatility', () => {
     expect(listed.find(v => v.name === 'deploy_target')?.volatility).toBeUndefined()
 
     const { systemText, turnText } = splitVariablesForPrompt(listed)
-    expect(turnText).toBe('- migration_state: phase 2/3')
-    expect(systemText).toBe('- deploy_target: staging')
+    expect(turnText).toBe('<var name="migration_state">phase 2/3</var>')
+    expect(systemText).toBe('<var name="deploy_target">staging</var>')
   })
 
   it('updating a turn variable keeps the static channel byte-identical', async () => {

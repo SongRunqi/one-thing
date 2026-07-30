@@ -28,6 +28,19 @@ export interface ElectronApplicationMenuWindowsLike {
   getFocusedWindow(): BrowserWindow | null
 }
 
+/**
+ * The embedded browser, for ⌘T / ⌘W routing. An accelerator is the ONLY way to
+ * catch those keys while a page has focus — a WebContentsView swallows keydown
+ * long before the app renderer sees it — so the menu, not the renderer, is
+ * where "which tab strip does this key mean" has to be decided.
+ */
+export interface ElectronApplicationMenuBrowserLike {
+  /** True when the embedded page itself owns keyboard focus. */
+  hasFocus(): boolean
+  createTab(): void
+  closeActiveTab(): void
+}
+
 export interface ElectronApplicationMenuOptions {
   mainWindow: BrowserWindow
   openSettingsWindow(parentWindow: BrowserWindow): void
@@ -36,6 +49,7 @@ export interface ElectronApplicationMenuOptions {
   windows?: ElectronApplicationMenuWindowsLike
   platform?: NodeJS.Platform
   webPreview?: ElectronApplicationMenuWebPreview
+  browser?: ElectronApplicationMenuBrowserLike
 }
 
 export function setupElectronApplicationMenu(options: ElectronApplicationMenuOptions): void {
@@ -48,6 +62,11 @@ export function setupElectronApplicationMenu(options: ElectronApplicationMenuOpt
   // once its last tab is gone, which the renderer decides (it owns the tab
   // tree) and requests back over IPC. Auxiliary windows (settings, search,
   // image preview) have no tabs, so they keep the plain close behavior.
+  //
+  // Three claimants, in order: an auxiliary window > the embedded browser page
+  // (it has focus, so the key was aimed at it) > the renderer's tab tree. The
+  // renderer arbitrates the last step further — its own browser panel may hold
+  // focus (omnibox / start page) without the page itself being focused.
   const closeTabItem: MenuItemConstructorOptions = {
     label: 'Close Tab',
     accelerator: 'CmdOrCtrl+W',
@@ -57,7 +76,30 @@ export function setupElectronApplicationMenu(options: ElectronApplicationMenuOpt
         focused.close()
         return
       }
+      if (options.browser?.hasFocus()) {
+        options.browser.closeActiveTab()
+        return
+      }
       options.mainWindow.webContents.send('menu:close-chat')
+    },
+  }
+
+  // ⌘T is unclaimed elsewhere in the app (⌘N is New Chat, ⌘⇧T is the todo
+  // window), so it goes to the only surface with a tab strip of its own: the
+  // embedded browser. Outside it the renderer no-ops rather than inventing a
+  // second "new chat" — a menu key that does something different depending on
+  // where you are is worse than one that politely does nothing.
+  const newBrowserTabItem: MenuItemConstructorOptions = {
+    label: 'New Browser Tab',
+    accelerator: 'CmdOrCtrl+T',
+    click: () => {
+      const focused = electronWindows.getFocusedWindow()
+      if (focused && focused !== options.mainWindow) return
+      if (options.browser?.hasFocus()) {
+        options.browser.createTab()
+        return
+      }
+      options.mainWindow.webContents.send('menu:new-browser-tab')
     },
   }
 
@@ -93,6 +135,7 @@ export function setupElectronApplicationMenu(options: ElectronApplicationMenuOpt
             options.mainWindow.webContents.send('menu:new-chat')
           },
         },
+        newBrowserTabItem,
         { type: 'separator' },
         isMac ? closeTabItem : { role: 'quit' as const },
       ],

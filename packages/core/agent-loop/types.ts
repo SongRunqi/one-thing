@@ -38,6 +38,13 @@ export interface AgentModelCapabilities {
   supportsStructuredToolResults?: boolean
   supportsReasoning?: boolean
   supportsStreaming?: boolean
+  /**
+   * Can this model be FORCED to call a tool (`toolChoice: 'required'`, or its
+   * per-provider equivalent)? Opt-in: a provider that has not said yes is
+   * treated as "no", and the loop silently falls back to the ordinary choice
+   * instead of sending a parameter the endpoint may reject with a 400.
+   */
+  supportsForcedToolUse?: boolean
   maxInputTokens?: number
   maxOutputTokens?: number
 }
@@ -107,6 +114,12 @@ export interface AgentMessage {
   providerData?: AgentProviderData[]
   toolCalls?: AgentToolCall[]
   toolCallId?: string
+  /**
+   * Tool messages only: this result is a failure. Providers with an explicit
+   * error flag on their tool-result block (Anthropic `is_error`) set it from
+   * here instead of guessing from the result text.
+   */
+  isError?: boolean
 }
 
 export interface AgentToolResult {
@@ -261,6 +274,8 @@ export interface AgentTurnTraceEvent {
 export type AgentToolChoice =
   | 'auto'
   | 'none'
+  /** The model must call one of the offered tools — it may not answer in prose. */
+  | 'required'
   | {
       type: 'function'
       function: { name: string }
@@ -381,6 +396,22 @@ export interface AgentLoopOptions {
   beforeTurn?: AgentBeforeTurnHook
   afterTurn?: AgentAfterTurnHook
   toolChoice?: AgentToolChoice
+  /**
+   * Tool choice for the FIRST model call of this run only; every later
+   * iteration falls back to `toolChoice`.
+   *
+   * Why first-only, and not just `toolChoice: 'required'`: the loop sends a
+   * fresh request each iteration, and a standing "required" means every one of
+   * them must end in another tool call — the run can never reach a tool-less
+   * round, so it only stops when maxTurns cuts it off. Forcing the opening
+   * call makes the FIRST move a tool call (the caller's actual need: a choice
+   * that must be expressed through the tool interface) and then lets the run
+   * end naturally.
+   *
+   * Ignored when the model does not advertise `supportsForcedToolUse`, or when
+   * the run has no tools at all.
+   */
+  initialToolChoice?: AgentToolChoice
   maxTurns?: number
   /**
    * Cap on tool executions running at the same time within this loop

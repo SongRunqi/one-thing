@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案三 取材台 Harvest — 浏览器 UI</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+/* ================= 案三：取材台 Harvest =================
+   前提：这个浏览器不是用来"上网"的，是给对话取材的。
+   于是导航退到最薄（26px 顶线），而"带入对话"升为一条常驻底栏 + 素材篮。 */
+.hv-top{
+  display:flex; align-items:center; gap:7px; height:26px; padding:0 6px 0 5px; flex:none;
+  border-bottom: var(--hairline); position:relative;
+}
+.hv-btn{ width:20px; height:20px; display:grid; place-items:center; border:none; background:transparent; color:var(--ui-text-muted-fg); cursor:pointer; flex:none; }
+.hv-btn:hover{ color:var(--ui-text-primary-fg); }
+.hv-btn[disabled]{ color:var(--ui-text-faint-fg); cursor:default; }
+
+/* 标签 = 点阵。窄面板里 8 个标签也只占 60px */
+.hv-dots{ display:flex; align-items:center; gap:4px; flex:none; padding:0 2px; }
+.hv-dot{ width:7px; height:7px; border-radius:2px; background:var(--ui-text-faint-fg); opacity:.55; cursor:pointer; border:none; padding:0; }
+.hv-dot:hover{ opacity:.9; }
+.hv-dot.cur{ opacity:1; width:9px; height:9px; border-radius:2px; box-shadow:0 0 0 1.5px color-mix(in srgb, var(--ui-accent-primary-fg) 55%, transparent); }
+.hv-dot.busy{ animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse{ 50%{ opacity:.3; } }
+
+.hv-host{
+  min-width:0; flex:1; display:flex; align-items:baseline; gap:6px; cursor:text;
+  font-size:11.5px; color:var(--ui-text-primary-fg); font-weight:600;
+  white-space:nowrap; overflow:hidden;
+}
+.hv-host .path{ font-family:var(--font-mono); font-size:10.5px; font-weight:400; color:var(--ui-text-faint-fg); min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.hv-host.editing{
+  font-family:var(--font-mono); font-size:11px; font-weight:400;
+  padding:0 6px; height:19px; align-items:center;
+  background:var(--ui-surface-input-bg); border:1px solid var(--ui-accent-primary-fg); border-radius:2px;
+}
+.caret{ display:inline-block; width:1px; height:11px; background:var(--ui-text-primary-fg); animation:blink 1.1s steps(1) infinite; }
+@keyframes blink{ 50%{ opacity:0; } }
+.hv-prog{ position:absolute; left:0; bottom:-1px; height:1.5px; background:var(--ui-accent-primary-fg); }
+
+/* 底栏：取材台。四个动作 + 篮子 */
+.hv-bar{
+  display:flex; align-items:center; gap:2px; height:34px; padding:0 5px; flex:none;
+  border-top: 1px solid color-mix(in srgb, var(--ui-border-strong-border) 40%, transparent);
+  background: var(--ui-surface-panel-bg);
+}
+.hv-act{
+  display:flex; align-items:center; gap:5px; height:24px; padding:0 8px;
+  border:none; background:transparent; border-radius:2px; cursor:pointer;
+  font-size:11.5px; color:var(--ui-text-muted-fg);
+}
+.hv-act:hover{ color:var(--ui-text-primary-fg); background: color-mix(in srgb, var(--ui-text-muted-fg) 9%, transparent); }
+.hv-act.on{ color:#FFFCF0; background: var(--ui-accent-primary-fg); }
+.hv-act.on .ic{ color:#FFFCF0; }
+.hv-basket{
+  margin-left:auto; display:flex; align-items:center; gap:7px; height:24px; padding:0 8px;
+  border:1px solid color-mix(in srgb, var(--ui-status-info-fg) 45%, transparent); border-radius:2px;
+  background: color-mix(in srgb, var(--ui-status-info-fg) 8%, transparent);
+  color: var(--ui-status-info-fg); font-size:11.5px; cursor:pointer;
+}
+.hv-basket:hover{ background: color-mix(in srgb, var(--ui-status-info-fg) 14%, transparent); }
+.hv-basket .n{ font-family:var(--font-mono); font-weight:600; }
+.hv-basket.empty{ border-style:dashed; border-color: color-mix(in srgb, var(--ui-border-default-border) 60%, transparent); background:transparent; color:var(--ui-text-faint-fg); cursor:default; }
+
+/* 素材篮展开：横向 chips（在底栏之上，向上推挤视口） */
+.hv-tray{
+  flex:none; border-top: var(--hairline); background: var(--ui-surface-elevated-bg);
+  padding:7px 8px 8px;
+}
+.hv-tray-head{ display:flex; align-items:center; gap:8px; margin-bottom:7px; }
+.hv-tray-head .send{
+  margin-left:auto; display:flex; align-items:center; gap:6px; height:21px; padding:0 9px;
+  border:1px solid var(--ui-accent-primary-fg); border-radius:2px; background:transparent;
+  color:var(--ui-accent-primary-fg); font-size:11px; font-weight:600; cursor:pointer;
+}
+.hv-tray-head .send:hover{ background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent); }
+.hv-chips{ display:flex; gap:7px; overflow-x:auto; padding-bottom:2px; scrollbar-width:none; }
+.hv-chips::-webkit-scrollbar{ display:none; }
+.chip{
+  position:relative; flex:none; width:106px;
+  border:1px solid color-mix(in srgb, var(--ui-border-default-border) 55%, transparent);
+  border-radius:2px; background:var(--ui-surface-panel-bg); overflow:hidden;
+}
+.chip .thumb{ height:42px; background:var(--page-line); }
+.chip .meta{ padding:4px 6px 5px; }
+.chip .kind{ font-family:var(--font-mono); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ui-status-info-fg); }
+.chip .txt{ font-size:10.5px; color:var(--ui-text-secondary-fg); line-height:1.35; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.chip .rm{
+  position:absolute; right:3px; top:3px; width:15px; height:15px; display:grid; place-items:center;
+  background: color-mix(in srgb, var(--ui-surface-panel-bg) 82%, transparent);
+  border:none; color:var(--ui-text-muted-fg); cursor:pointer; border-radius:2px;
+}
+.chip .rm:hover{ color:var(--ui-accent-primary-fg); }
+
+/* 收起态：顶栏塌成一条提手 */
+.hv-handle{
+  height:7px; flex:none; cursor:pointer;
+  border-bottom: var(--hairline);
+  background: repeating-linear-gradient(90deg,
+    color-mix(in srgb, var(--ui-border-default-border) 70%, transparent) 0 1px,
+    transparent 1px 5px) center / 34px 1px no-repeat;
+}
+.hv-handle:hover{ background-color: color-mix(in srgb, var(--ui-text-muted-fg) 8%, transparent); }
+
+.hint{ margin-top:8px; font-size:11.5px; color:var(--ui-text-muted-fg); }
+</style>
+</head>
+<body>
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-pick" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M22 12h-3M5 12H2M12 5V2M12 22v-3"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24"><path d="M14.5 5h-5L7 8H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><path d="M8 12h8"/></symbol>
+  <symbol id="i-basket" viewBox="0 0 24 24"><path d="M3 9h18l-2 11H5z"/><path d="m8 9 4-6 4 6"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M4 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+</svg>
+
+<div class="wrap">
+  <div class="page-head">
+    <div>
+      <div class="page-title"><span class="no">案三</span>取材台 Harvest</div>
+      <div class="page-sub">导航退到 26px 顶线，"带入对话"升为常驻底栏 + 素材篮。</div>
+    </div>
+    <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme==='dark'?'light':'dark'">切换明暗</button>
+  </div>
+
+  <p class="lede">
+    前两案都在问「怎么把 Chrome 塞进窄面板」。本案换一个前提：<b>这里不是 Chrome，是取材台</b>。
+    用户开这个面板，十有八九是为了把页面上的某个东西喂给旁边的对话——那"拾取"就不该是最右角一枚 15px 的十字图标。
+    于是导航压到一条 26px 的顶线（标签变成 favicon 点阵，前进/刷新收进 ⋯），
+    腾出来的注意力全给底部一条 <b>34px 取材栏</b>：拾元素 / 截当前屏 / 取正文 / 取链接，右侧是<b>素材篮</b>。
+    取到的东西先落篮，可增删、可一次性带入对话，而不是每拾一次就往输入框里塞一张图。
+    <b>取向：把浏览器当作对话的输入设备，而不是第二个浏览器。</b>
+  </p>
+
+  <div class="grid">
+
+    <!-- ① 常态 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">①</span><span class="t">常态 — 顶 26px / 底 34px，篮子空</span></div>
+      <div class="panel">
+        <div class="hv-top">
+          <button class="hv-btn"><svg class="ic sm"><use href="#i-back"/></svg></button>
+          <div class="hv-dots">
+            <button class="hv-dot cur" style="background:#205EA6"></button>
+            <button class="hv-dot" style="background:#66800B"></button>
+            <button class="hv-dot" style="background:#AD8301"></button>
+            <button class="hv-dot" style="background:#A02F6F"></button>
+          </div>
+          <div class="hv-host">vuejs.org<span class="path">/guide/reactivity-fundamentals</span></div>
+          <button class="hv-btn"><svg class="ic sm"><use href="#i-more"/></svg></button>
+        </div>
+        <div class="stage">
+          <div class="fauxpage">
+            <div class="h1"></div><div class="ln s"></div><div class="ln m"></div>
+            <div class="img"></div><div class="ln s"></div><div class="ln x"></div><div class="ln m"></div>
+          </div>
+        </div>
+        <div class="hv-bar">
+          <button class="hv-act"><svg class="ic sm"><use href="#i-pick"/></svg>拾元素</button>
+          <button class="hv-act"><svg class="ic sm"><use href="#i-cam"/></svg>截屏</button>
+          <button class="hv-act"><svg class="ic sm"><use href="#i-text"/></svg>取正文</button>
+          <button class="hv-act"><svg class="ic sm"><use href="#i-link"/></svg>链接</button>
+          <span class="hv-basket empty"><svg class="ic sm"><use href="#i-basket"/></svg>篮子空</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ② 拾取中 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">②</span><span class="t">拾取中 — 底栏是状态条本身</span><span class="h">Esc 取消</span></div>
+      <div class="panel">
+        <div class="hv-top">
+          <button class="hv-btn"><svg class="ic sm"><use href="#i-back"/></svg></button>
+          <div class="hv-dots">
+            <button class="hv-dot cur" style="background:#205EA6"></button>
+            <button class="hv-dot" style="background:#66800B"></button>
+            <button class="hv-dot" style="background:#AD8301"></button>
+            <button class="hv-dot" style="background:#A02F6F"></button>
+          </div>
+          <div class="hv-host">vuejs.org<span class="path">/guide/reactivity-fundamentals</span></div>
+          <button class="hv-btn"><svg class="ic sm"><use href="#i-more"/></svg></button>
+        </div>
+        <div class="stage">
+          <div class="fauxpage" style="opacity:.45"><div class="h1"></div><div class="ln s"></div><div class="img"></div><div class="ln m"></div><div class="ln x"></div></div>
+          <div style="position:absolute;left:20px;top:44px;right:52px;height:70px;border:1.5px solid var(--ui-accent-primary-fg);background:color-mix(in srgb,var(--ui-accent-primary-fg) 10%,transparent)"></div>
+          <div style="position:absolute;left:20px;top:118px;font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--ui-accent-primary-fg)">PRE.LANGUAGE-JS · 480×112</div>
+        </div>
+        <div class="hv-bar">
+          <button class="hv-act on"><svg class="ic sm"><use href="#i-pick"/></svg>点击页面中的元素…</button>
+          <span style="font-size:11px;color:var(--ui-text-faint-fg);margin-left:6px">↑↓ 扩大/缩小选区</span>
+          <span class="hv-basket"><svg class="ic sm"><use href="#i-basket"/></svg><span class="n">2</span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ③ 素材篮展开 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">③</span><span class="t">素材篮展开 — 攒够了再一次带入</span><span class="h">⏎ 全部带入</span></div>
+      <div class="panel">
+        <div class="hv-top">
+          <button class="hv-btn"><svg class="ic sm"><use href="#i-back"/></svg></button>
+          <div class="hv-dots">
+            <button class="hv-dot cur" style="background:#205EA6"></button>
+            <button class="hv-dot busy" style="background:#66800B"></button>
+            <button class="hv-dot" style="background:#AD8301"></button>
+          </div>
+          <div class="hv-host">vuejs.org<span class="path">/guide/reactivity</span></div>
+          <button class="hv-btn"><svg class="ic sm"><use href="#i-more"/></svg></button>
+          <div class="hv-prog" style="width:38%"></div>
+        </div>
+        <div class="stage">
+          <div class="fauxpage"><div class="h1"></div><div class="ln s"></div><div class="img"></div></div>
+        </div>
+        <div class="hv-tray">
+          <div class="hv-tray-head">
+            <span class="ledger-label">素材篮 · 3 项 · 约 1.2k tokens</span>
+            <button class="send"><svg class="ic sm"><use href="#i-send"/></svg>带入对话</button>
+          </div>
+          <div class="hv-chips">
+            <div class="chip">
+              <div class="thumb"></div>
+              <div class="meta"><div class="kind">元素</div><div class="txt">ref() 返回一个响应式代理对象…</div></div>
+              <button class="rm"><svg class="ic sm"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="chip">
+              <div class="thumb" style="background:linear-gradient(135deg,var(--page-line),color-mix(in srgb,var(--ui-status-info-fg) 25%,var(--page-line)))"></div>
+              <div class="meta"><div class="kind">截屏</div><div class="txt">可见区域 · 812×596</div></div>
+              <button class="rm"><svg class="ic sm"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="chip">
+              <div class="thumb" style="height:22px;background:transparent;border-bottom:1px dotted color-mix(in srgb,var(--ui-border-default-border) 60%,transparent)"></div>
+              <div class="meta"><div class="kind">链接</div><div class="txt">vuejs.org/guide/reactivity-fundamentals</div></div>
+              <button class="rm"><svg class="ic sm"><use href="#i-x"/></svg></button>
+            </div>
+          </div>
+        </div>
+        <div class="hv-bar">
+          <button class="hv-act"><svg class="ic sm"><use href="#i-pick"/></svg>拾元素</button>
+          <button class="hv-act"><svg class="ic sm"><use href="#i-cam"/></svg>截屏</button>
+          <button class="hv-act"><svg class="ic sm"><use href="#i-text"/></svg>取正文</button>
+          <span class="hv-basket"><svg class="ic sm"><use href="#i-basket"/></svg><span class="n">3</span></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ④ 收起态 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">④</span><span class="t">收起态 — 顶线塌成提手，只留取材栏</span><span class="h">⌘⇧H</span></div>
+      <div class="panel">
+        <div class="hv-handle"></div>
+        <div class="stage">
+          <div class="fauxpage">
+            <div class="h1"></div><div class="ln s"></div><div class="ln m"></div><div class="img"></div>
+            <div class="ln s"></div><div class="ln x"></div><div class="ln m"></div><div class="ln s"></div>
+          </div>
+        </div>
+        <div class="hv-bar">
+          <button class="hv-act"><svg class="ic sm"><use href="#i-pick"/></svg>拾元素</button>
+          <button class="hv-act"><svg class="ic sm"><use href="#i-cam"/></svg>截屏</button>
+          <button class="hv-act"><svg class="ic sm"><use href="#i-text"/></svg>取正文</button>
+          <button class="hv-act"><svg class="ic sm"><use href="#i-link"/></svg>链接</button>
+          <span class="hv-basket"><svg class="ic sm"><use href="#i-basket"/></svg><span class="n">1</span></span>
+        </div>
+      </div>
+      <div class="hint">读长文时用：chrome 只剩 7px 提手 + 底部取材栏，点提手或 ⌘⇧H 恢复。</div>
+    </section>
+
+  </div>
+
+  <div class="notes">
+    <div>
+      <h3>为什么这样</h3>
+      <ul>
+        <li>控件的大小该按使用频率排：在这个产品里"带入对话"比"前进按钮"重要一个量级，现在两者都是 15px 图标。</li>
+        <li>素材篮把"拾取 → 立刻塞进输入框"的单次动作改成可累积、可后悔的批处理，符合真实取材节奏（翻三段、截两图，再一起问）。</li>
+        <li>底栏在拾取时直接变成状态条，不需要另造提示浮层——而浮层本来也会被原生视图盖掉。</li>
+      </ul>
+    </div>
+    <div>
+      <h3>落地要点</h3>
+      <ul>
+        <li>「取正文」= 主进程 <code>executeJavaScript</code> 跑一次可读性抽取（现有拾取管线已能注入脚本），产出纯文本 + 来源 URL。</li>
+        <li>素材篮是 renderer 侧的临时数组，"带入对话"时一次性 dispatch 多个 <code>onething:composer-attach</code>；token 估算按 base64 长度 + 文本长度粗算即可。</li>
+        <li class="warn">收起态的"靠近上边缘自动恢复"做不了——鼠标在原生视图上，DOM 收不到 <code>mousemove</code>。只能点提手或用快捷键，别在设计里承诺 hover 恢复。</li>
+        <li>标签点阵超过 8 个要降级：显示前 7 个 + 「+N」，点开走案一那样的下推列表。</li>
+      </ul>
+    </div>
+    <div>
+      <h3>代价</h3>
+      <ul>
+        <li>纯浏览体验最差：切标签靠点小方块（7px 命中区偏小，需 hover tooltip 补），刷新/前进埋进 ⋯。</li>
+        <li>底栏常驻吃 34px，总 chrome（60px）比案一还高——省的是注意力，不是像素。</li>
+        <li>四个动作会不会真被用起来，取决于"取正文/截屏"的质量；做不好就是三枚永远不点的按钮。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

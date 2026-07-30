@@ -25,14 +25,14 @@ describe('skill review counter', () => {
     clearSkillReviewState()
   })
 
-  it('fires after the configured number of tool iterations when skill_manage is available', () => {
+  it('fires after the configured number of tool iterations when skill authoring tools are available', () => {
     const appSettings = settings(3)
 
     expect(recordSkillReviewCounter({
       sessionId: 's1',
       settings: appSettings,
       toolIterations: 2,
-      skillManageAvailable: true,
+      skillAuthoringAvailable: true,
       skillManageCalled: false,
     })).toBe(false)
     expect(getSkillReviewCounter('s1')).toBe(2)
@@ -41,18 +41,18 @@ describe('skill review counter', () => {
       sessionId: 's1',
       settings: appSettings,
       toolIterations: 1,
-      skillManageAvailable: true,
+      skillAuthoringAvailable: true,
       skillManageCalled: false,
     })).toBe(true)
     expect(getSkillReviewCounter('s1')).toBe(0)
   })
 
-  it('does not count when skill_manage is unavailable or cadence is disabled', () => {
+  it('does not count when skill authoring is unavailable or cadence is disabled', () => {
     expect(recordSkillReviewCounter({
       sessionId: 's1',
       settings: settings(3),
       toolIterations: 10,
-      skillManageAvailable: false,
+      skillAuthoringAvailable: false,
       skillManageCalled: false,
     })).toBe(false)
     expect(getSkillReviewCounter('s1')).toBe(0)
@@ -61,18 +61,18 @@ describe('skill review counter', () => {
       sessionId: 's1',
       settings: settings(0),
       toolIterations: 10,
-      skillManageAvailable: true,
+      skillAuthoringAvailable: true,
       skillManageCalled: false,
     })).toBe(false)
     expect(getSkillReviewCounter('s1')).toBe(0)
   })
 
-  it('resets the counter when skill_manage is called', () => {
+  it('resets the counter when skill authoring is signalled', () => {
     expect(recordSkillReviewCounter({
       sessionId: 's1',
       settings: settings(10),
       toolIterations: 4,
-      skillManageAvailable: true,
+      skillAuthoringAvailable: true,
       skillManageCalled: false,
     })).toBe(false)
     expect(getSkillReviewCounter('s1')).toBe(4)
@@ -81,7 +81,7 @@ describe('skill review counter', () => {
       sessionId: 's1',
       settings: settings(10),
       toolIterations: 5,
-      skillManageAvailable: true,
+      skillAuthoringAvailable: true,
       skillManageCalled: true,
     })).toBe(false)
     expect(getSkillReviewCounter('s1')).toBe(0)

@@ -13,6 +13,13 @@ export interface UpdateOnethingSessionAgentOptions {
   defaultAgentId: string
   agentExists(agentId: string): boolean
   updateSessionAgent(sessionId: string, agentId: string): MaybePromise<boolean>
+  /**
+   * Session kind lookup. On kind='room' sessions the per-session agent binding
+   * is owned by the RoomCoordinator (flipped per activation) — user-facing
+   * updates are refused so the UI cannot desync the coordinator's speaker
+   * assumption (docs/design/multi-agent-collab.md D7).
+   */
+  getSessionKind?(sessionId: string): string | undefined
 }
 
 export interface UpdateOnethingSessionPermissionModeOptions<TPermissionMode extends string = string> {
@@ -37,6 +44,9 @@ export async function updateOnethingSessionModel(
 export async function updateOnethingSessionAgent(
   options: UpdateOnethingSessionAgentOptions,
 ): Promise<UpdateOnethingSessionResult> {
+  if (options.getSessionKind?.(options.sessionId) === 'room') {
+    return { success: false, error: 'Room sessions bind agents per activation; the agent cannot be set directly' }
+  }
   const nextAgentId = options.agentId || options.defaultAgentId
   if (!options.agentExists(nextAgentId)) {
     return { success: false, error: 'Agent not found' }

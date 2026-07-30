@@ -142,7 +142,7 @@ describe('onething runtime skill-review helpers', () => {
     })
 
     expect(messages[0].content).toContain('Use the read, write, and edit tools')
-    expect(messages[0].content).toContain('Do not use skill_manage for updates.')
+    expect(messages[0].content).toContain('Use the read, write, and edit tools to create, update, or rewrite skill files directly.')
     expect(messages[0].content).toContain('Do not create background-review-update.md')
     expect(messages[1].content).toContain('Working directory: [none]')
     expect(messages[1].content).toContain('- /tmp/skills')
@@ -795,7 +795,7 @@ describe('onething runtime skill-review helpers', () => {
       sessionId: 's1',
       settings: { skills: { creationNudgeInterval: 3 } },
       toolIterations: 2,
-      skillManageAvailable: true,
+      skillAuthoringAvailable: true,
       skillManageCalled: false,
     })).toBe(false)
     expect(getSkillReviewCounter('s1')).toBe(2)
@@ -804,7 +804,7 @@ describe('onething runtime skill-review helpers', () => {
       sessionId: 's1',
       settings: { skills: { creationNudgeInterval: 3 } },
       toolIterations: 1,
-      skillManageAvailable: true,
+      skillAuthoringAvailable: true,
       skillManageCalled: false,
     })).toBe(true)
     expect(getSkillReviewCounter('s1')).toBe(0)

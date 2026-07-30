@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案二 左轨 Rail — 浏览器 UI</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+/* ================= 案二：左轨 Rail =================
+   标签竖排在 38px 左轨上，顶部只留一条 30px 的地址线。
+   轨底是 profile（多身份隔离登录）切换器——这是本产品独有的东西，值得一个常驻位置。 */
+.rl{ display:flex; height:100%; min-height:0; }
+
+.rail{
+  width:38px; flex:none; display:flex; flex-direction:column; align-items:center;
+  padding:5px 0 4px; gap:3px;
+  background: var(--ui-tab-bar-surface-bg);
+  border-right: var(--hairline);
+  transition: width .16s ease;
+}
+.rail.wide{ width:164px; align-items:stretch; padding:5px 4px 4px; }
+
+.rl-new{
+  width:26px; height:22px; display:grid; place-items:center; flex:none;
+  border:1px dashed color-mix(in srgb, var(--ui-border-default-border) 70%, transparent);
+  border-radius:2px; background:transparent; color:var(--ui-text-muted-fg); cursor:pointer;
+}
+.rail.wide .rl-new{ width:auto; justify-content:flex-start; gap:7px; padding:0 7px; font-size:11.5px; }
+.rl-new:hover{ color:var(--ui-accent-primary-fg); border-color:var(--ui-accent-primary-fg); border-style:solid; }
+
+.rl-sep{ width:16px; height:1px; background: color-mix(in srgb, var(--ui-border-default-border) 60%, transparent); margin:4px 0; flex:none; }
+.rail.wide .rl-sep{ width:auto; }
+
+.rl-tab{
+  position:relative; width:26px; height:26px; flex:none;
+  display:flex; align-items:center; justify-content:center; gap:7px;
+  border:none; background:transparent; border-radius:2px; cursor:pointer; padding:0;
+}
+.rail.wide .rl-tab{ width:auto; justify-content:flex-start; padding:0 7px; height:25px; }
+.rl-tab .favi{ width:14px; height:14px; border-radius:3px; flex:none; }
+.rl-tab .nm{
+  display:none; font-size:11.5px; color:var(--ui-text-muted-fg);
+  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.rail.wide .rl-tab .nm{ display:block; }
+.rl-tab:hover{ background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent); }
+/* 活动标签：轨与内容之间"咬合"——左缘朱砂竖线 + 纸面色抹平右边界 */
+.rl-tab.cur{ background: var(--ui-surface-panel-bg); box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg); }
+.rail:not(.wide) .rl-tab.cur::after{
+  content:""; position:absolute; right:-5px; top:0; bottom:0; width:5px; background:var(--ui-surface-panel-bg);
+}
+.rl-tab.cur .nm{ color:var(--ui-text-primary-fg); font-weight:550; }
+.rl-tab .cls{ margin-left:auto; color:var(--ui-text-faint-fg); opacity:0; display:none; }
+.rail.wide .rl-tab .cls{ display:block; }
+.rl-tab:hover .cls{ opacity:1; }
+
+/* 标签状态语汇：加载 = 描边环；后台完成 = 右上角小点 */
+.favi.loading{ position:relative; }
+.favi.loading::after{
+  content:""; position:absolute; inset:-3px; border-radius:50%;
+  border:1.5px solid color-mix(in srgb, var(--ui-accent-primary-fg) 30%, transparent);
+  border-top-color: var(--ui-accent-primary-fg);
+  animation: spin .9s linear infinite;
+}
+@keyframes spin{ to{ transform: rotate(360deg); } }
+.rl-tab .flag{
+  position:absolute; right:2px; top:2px; width:5px; height:5px; border-radius:50%;
+  background: var(--ui-status-info-fg);
+}
+.rail.wide .rl-tab .flag{ position:static; margin-left:auto; }
+
+.rl-spacer{ flex:1; min-height:0; }
+
+/* 轨底：profile（多身份） */
+.rl-prof{
+  display:flex; align-items:center; gap:7px; flex:none;
+  width:26px; height:26px; justify-content:center; border:none; background:transparent; cursor:pointer; padding:0;
+}
+.rail.wide .rl-prof{ width:auto; justify-content:flex-start; padding:0 7px; height:26px; }
+.rl-prof .av{
+  width:18px; height:18px; border-radius:50%; flex:none; display:grid; place-items:center;
+  font-family:var(--font-mono); font-size:9px; font-weight:600; color:#FFFCF0;
+}
+.rl-prof .pnm{ display:none; font-size:11px; color:var(--ui-text-muted-fg); }
+.rail.wide .rl-prof .pnm{ display:block; }
+.rl-prof:hover .pnm{ color:var(--ui-text-primary-fg); }
+.prof-list{ display:flex; flex-direction:column; gap:1px; margin-top:2px; }
+.prof-list .rl-prof.cur{ box-shadow: inset 2px 0 0 var(--ui-status-info-fg); background: color-mix(in srgb, var(--ui-status-info-fg) 8%, transparent); }
+
+/* 右侧：地址线 + 视口 */
+.rl-main{ flex:1; min-width:0; display:flex; flex-direction:column; }
+.rl-top{
+  display:flex; align-items:center; gap:3px; height:30px; padding:0 4px; flex:none;
+  border-bottom: var(--hairline); position:relative;
+}
+.rl-btn{ width:24px; height:24px; display:grid; place-items:center; border:none; background:transparent; color:var(--ui-text-muted-fg); cursor:pointer; flex:none; }
+.rl-btn:hover{ color:var(--ui-text-primary-fg); }
+.rl-btn[disabled]{ color:var(--ui-text-faint-fg); cursor:default; }
+.rl-btn.on{ color:var(--ui-accent-primary-fg); background: color-mix(in srgb, var(--ui-accent-primary-fg) 10%, transparent); }
+.rl-url{
+  flex:1; min-width:0; display:flex; align-items:center; gap:6px; height:22px; padding:0 8px;
+  border-bottom:1px solid color-mix(in srgb, var(--ui-border-default-border) 55%, transparent);
+  font-family:var(--font-mono); font-size:11.5px; color:var(--ui-text-secondary-fg);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:text;
+}
+.rl-url:focus-within, .rl-url.editing{ border-bottom-color: var(--ui-accent-primary-fg); border-bottom-width:1.5px; color:var(--ui-text-primary-fg); }
+.rl-url .lock{ color:var(--ui-status-success-fg); flex:none; }
+.rl-url .lock.insecure{ color:var(--ui-text-faint-fg); }
+.rl-url .dim{ color:var(--ui-text-faint-fg); }
+.rl-prog{ position:absolute; left:0; bottom:-1px; height:1.5px; background:var(--ui-accent-primary-fg); }
+.caret{ display:inline-block; width:1px; height:12px; background:var(--ui-text-primary-fg); animation:blink 1.1s steps(1) infinite; }
+@keyframes blink{ 50%{ opacity:0; } }
+</style>
+</head>
+<body>
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-reload" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/></symbol>
+  <symbol id="i-pick" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M22 12h-3M5 12H2M12 5V2M12 22v-3"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></symbol>
+</svg>
+
+<div class="wrap">
+  <div class="page-head">
+    <div>
+      <div class="page-title"><span class="no">案二</span>左轨 Rail</div>
+      <div class="page-sub">标签竖排成轨，顶部只剩一条地址线；轨底常驻 profile 切换。</div>
+    </div>
+    <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme==='dark'?'light':'dark'">切换明暗</button>
+  </div>
+
+  <p class="lede">
+    横向标签条在窄面板里是最差的形状：每个标签只剩 60px，标题全被截成「cast…」。
+    本案把标签<b>转 90°</b>——38px 竖轨，只放 favicon，纵向可堆十几个而不挤；需要看标题时把轨拉宽到 164px（推挤视口，不浮层）。
+    顶部只留一条 30px 的地址线：无框，一条下划线，聚焦时线变朱砂。
+    轨底常驻 <b>profile 头像</b>——多身份隔离登录是这个浏览器区别于系统浏览器的核心能力，不该埋进设置里。
+    <b>取向：同时开着多个标签、多个登录身份的人。</b>
+  </p>
+
+  <div class="grid">
+
+    <!-- ① 窄轨常态 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">①</span><span class="t">窄轨常态 — 6 个标签不打架</span><span class="h">chrome 仅 30px 高</span></div>
+      <div class="panel">
+        <div class="rl">
+          <div class="rail">
+            <button class="rl-new"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+            <div class="rl-sep"></div>
+            <button class="rl-tab cur"><span class="favi" style="background:#205EA6"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#66800B"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#AD8301"></span><span class="flag"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#A02F6F"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#5E409D"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#24837B"></span></button>
+            <div class="rl-spacer"></div>
+            <div class="rl-sep"></div>
+            <button class="rl-prof"><span class="av" style="background:#205EA6">工</span></button>
+          </div>
+          <div class="rl-main">
+            <div class="rl-top">
+              <button class="rl-btn"><svg class="ic"><use href="#i-back"/></svg></button>
+              <button class="rl-btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+              <div class="rl-url"><svg class="ic sm lock"><use href="#i-lock"/></svg>github.com<span class="dim">/castlabs/electron-releases</span></div>
+              <button class="rl-btn"><svg class="ic"><use href="#i-reload"/></svg></button>
+              <button class="rl-btn"><svg class="ic"><use href="#i-pick"/></svg></button>
+            </div>
+            <div class="stage">
+              <div class="fauxpage">
+                <div class="h1"></div><div class="ln s"></div><div class="ln m"></div>
+                <div class="img"></div><div class="ln s"></div><div class="ln x"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ② 宽轨 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">②</span><span class="t">展开轨 — 标题 + 身份分组</span><span class="h">⌘\ 固定 / 悬停临时</span></div>
+      <div class="panel">
+        <div class="rl">
+          <div class="rail wide">
+            <button class="rl-new"><svg class="ic sm"><use href="#i-plus"/></svg>新建标签</button>
+            <div class="rl-sep"></div>
+            <button class="rl-tab cur"><span class="favi" style="background:#205EA6"></span><span class="nm">electron-releases</span><svg class="ic sm cls"><use href="#i-x"/></svg></button>
+            <button class="rl-tab"><span class="favi" style="background:#66800B"></span><span class="nm">Google 账号</span><svg class="ic sm cls"><use href="#i-x"/></svg></button>
+            <button class="rl-tab"><span class="favi" style="background:#AD8301"></span><span class="nm">Vue 3 响应式</span><span class="flag"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#A02F6F"></span><span class="nm">Figma — 画线风</span></button>
+            <button class="rl-tab"><span class="favi" style="background:#5E409D"></span><span class="nm">MDN CSS anchor</span></button>
+            <div class="rl-spacer"></div>
+            <div class="rl-sep"></div>
+            <div class="ledger-label" style="padding:2px 7px 3px">身份</div>
+            <div class="prof-list">
+              <button class="rl-prof cur"><span class="av" style="background:#205EA6">工</span><span class="pnm">工作</span></button>
+              <button class="rl-prof"><span class="av" style="background:#66800B">私</span><span class="pnm">个人</span></button>
+              <button class="rl-prof"><span class="av" style="background:#6F6E69">临</span><span class="pnm">临时无痕</span></button>
+            </div>
+          </div>
+          <div class="rl-main">
+            <div class="rl-top">
+              <button class="rl-btn"><svg class="ic"><use href="#i-back"/></svg></button>
+              <button class="rl-btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+              <div class="rl-url"><svg class="ic sm lock"><use href="#i-lock"/></svg>github.com<span class="dim">/castlabs</span></div>
+              <button class="rl-btn"><svg class="ic"><use href="#i-pick"/></svg></button>
+            </div>
+            <div class="stage">
+              <div class="fauxpage"><div class="h1"></div><div class="ln m"></div><div class="img"></div><div class="ln x"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ③ 状态语汇 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">③</span><span class="t">状态语汇 — 加载环 / 后台完成点 / 地址编辑</span></div>
+      <div class="panel">
+        <div class="rl">
+          <div class="rail">
+            <button class="rl-new"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+            <div class="rl-sep"></div>
+            <button class="rl-tab cur"><span class="favi loading" style="background:#205EA6"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#66800B"></span><span class="flag"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#AD8301"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#A02F6F;opacity:.45"></span></button>
+            <div class="rl-spacer"></div>
+            <div class="rl-sep"></div>
+            <button class="rl-prof"><span class="av" style="background:#66800B">私</span></button>
+          </div>
+          <div class="rl-main">
+            <div class="rl-top">
+              <button class="rl-btn"><svg class="ic"><use href="#i-back"/></svg></button>
+              <button class="rl-btn"><svg class="ic"><use href="#i-fwd"/></svg></button>
+              <div class="rl-url editing"><svg class="ic sm lock insecure"><use href="#i-globe"/></svg>vuejs.org/guide/reactivity<span class="caret"></span></div>
+              <button class="rl-btn"><svg class="ic"><use href="#i-pick"/></svg></button>
+              <div class="rl-prog" style="width:44%"></div>
+            </div>
+            <div class="stage">
+              <div class="fauxpage" style="opacity:.6"><div class="ln s"></div><div class="ln m"></div><div class="img"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:11.5px;color:var(--ui-text-muted-fg)">
+        描边环＝正在加载 · 蓝点＝后台标签有新内容 · 淡色 favicon＝已休眠（内存回收）
+      </div>
+    </section>
+
+    <!-- ④ 拾取 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">④</span><span class="t">拾取激活 — 轨与地址线同时染色</span><span class="h">Esc 取消</span></div>
+      <div class="panel">
+        <div class="rl">
+          <div class="rail" style="box-shadow: inset -1px 0 0 color-mix(in srgb, var(--ui-accent-primary-fg) 45%, transparent)">
+            <button class="rl-new"><svg class="ic sm"><use href="#i-plus"/></svg></button>
+            <div class="rl-sep"></div>
+            <button class="rl-tab cur"><span class="favi" style="background:#AD8301"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#205EA6"></span></button>
+            <button class="rl-tab"><span class="favi" style="background:#66800B"></span></button>
+            <div class="rl-spacer"></div>
+            <div class="rl-sep"></div>
+            <button class="rl-prof"><span class="av" style="background:#205EA6">工</span></button>
+          </div>
+          <div class="rl-main">
+            <div class="rl-top">
+              <button class="rl-btn"><svg class="ic"><use href="#i-back"/></svg></button>
+              <button class="rl-btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+              <div class="rl-url"><svg class="ic sm lock"><use href="#i-lock"/></svg>vuejs.org<span class="dim">/guide</span></div>
+              <button class="rl-btn on"><svg class="ic"><use href="#i-pick"/></svg></button>
+            </div>
+            <div class="stage">
+              <div class="fauxpage" style="opacity:.45"><div class="h1"></div><div class="ln s"></div><div class="img"></div><div class="ln m"></div></div>
+              <div style="position:absolute;left:18px;top:46px;right:60px;height:66px;border:1.5px solid var(--ui-accent-primary-fg);background:color-mix(in srgb,var(--ui-accent-primary-fg) 10%,transparent)"></div>
+              <div style="position:absolute;left:18px;top:116px;font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--ui-accent-primary-fg)">SECTION.GUIDE-BODY · 812×340</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="notes">
+    <div>
+      <h3>为什么这样</h3>
+      <ul>
+        <li>竖轨的容量随面板高度增长，而面板天生高窄——形状和内容对上了。10 个标签在横条里必崩，在竖轨里刚好。</li>
+        <li>chrome 只剩 30px 一行，且轨与视口并排，垂直方向的损失比案一还小。</li>
+        <li>profile 从设置页浮到常驻位：切身份 = 换轨底头像，配合 <code>persist:browser-&lt;id&gt;</code> 的 session 隔离，语义直白。</li>
+      </ul>
+    </div>
+    <div>
+      <h3>落地要点</h3>
+      <ul>
+        <li class="warn">轨宽变化（38↔164）要同步 <code>setBrowserBounds</code>；悬停展开建议给 120ms 延迟，否则鼠标扫过就抖一下视口。</li>
+        <li>休眠态需要真的做标签冻结（<code>WebContentsView</code> 的 destroy + 保留 url/title 以便复活），否则淡色 favicon 是假信号。</li>
+        <li>"后台有新内容"点：监听非活动标签的 <code>page-title-updated</code> / <code>did-finish-load</code>。</li>
+      </ul>
+    </div>
+    <div>
+      <h3>代价</h3>
+      <ul>
+        <li>横向再吃 38px。面板本来就窄，页面排版可能从两栏掉到单栏。</li>
+        <li>只有 favicon 时同站多标签（三个 github 页）无法区分，必须靠展开轨或 tooltip。</li>
+        <li>与右侧工作台自己的 tab 头并置，会出现"两套标签"的视觉，需要在层级上明确区分（轨是纸面色、工作台 tab 是 tab-bar 色）。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

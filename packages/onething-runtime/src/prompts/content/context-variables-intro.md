@@ -1,0 +1,1 @@
+Live state board, read and written only through the `variable` tool: entries change via its set/append/remove/delete actions, and its list action shows untruncated values. Attributes carry each variable's type, scope and description.

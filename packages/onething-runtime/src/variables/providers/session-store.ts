@@ -1,4 +1,9 @@
 import {
+  typedValueForAppend,
+  typedValueForRemove,
+  typedValueForSet,
+} from '../typed-values.js'
+import {
   VARIABLE_LIMITS,
   VariableError,
   type ContextVariable,
@@ -38,6 +43,7 @@ export class SessionStoreProvider implements VariableProvider {
       .map(variable => ({
         name: variable.name,
         value: variable.value,
+        type: variable.type,
         scope: 'session',
         description: variable.description,
         volatility: variable.volatility,
@@ -53,22 +59,71 @@ export class SessionStoreProvider implements VariableProvider {
     assertNotReserved(input.name)
 
     const current = this.list(ctx)
+    const existing = current.find(variable => variable.name === input.name)
     const without = current.filter(variable => variable.name !== input.name)
-    const isUpdate = current.length !== without.length
 
-    if (!isUpdate && without.length >= this.maxPerSession) {
+    if (!existing && without.length >= this.maxPerSession) {
       throw new VariableError(
         'LIMIT_EXCEEDED',
         `Session already has ${without.length} custom variables (max ${this.maxPerSession})`,
       )
     }
 
+    const typed = typedValueForSet(input, existing)
+    // description/volatility are sticky like type: a value update without
+    // them keeps what the variable already had; an explicit "" clears.
     const next: ContextVariable = {
       name: input.name,
-      value: input.value,
+      value: typed.value,
+      type: typed.type,
       scope: 'session',
-      description: input.description,
-      volatility: input.volatility,
+      description: (input.description ?? existing?.description) || undefined,
+      volatility: input.volatility ?? existing?.volatility,
+      updatedAt: Date.now(),
+    }
+    await this.gateway.write(ctx.sessionId, [...without, next])
+    return next
+  }
+
+  async append(ctx: VariableContext, input: SetInput): Promise<ContextVariable> {
+    assertNotReserved(input.name)
+
+    const current = this.list(ctx)
+    const existing = current.find(variable => variable.name === input.name)
+    const without = current.filter(variable => variable.name !== input.name)
+
+    if (!existing && without.length >= this.maxPerSession) {
+      throw new VariableError(
+        'LIMIT_EXCEEDED',
+        `Session already has ${without.length} custom variables (max ${this.maxPerSession})`,
+      )
+    }
+
+    const typed = typedValueForAppend(existing, input)
+    const next: ContextVariable = {
+      name: input.name,
+      value: typed.value,
+      type: typed.type,
+      scope: 'session',
+      description: (input.description ?? existing?.description) || undefined,
+      volatility: input.volatility ?? existing?.volatility,
+      updatedAt: Date.now(),
+    }
+    await this.gateway.write(ctx.sessionId, [...without, next])
+    return next
+  }
+
+  async remove(ctx: VariableContext, input: SetInput): Promise<ContextVariable> {
+    assertNotReserved(input.name)
+
+    const current = this.list(ctx)
+    const existing = current.find(variable => variable.name === input.name)
+    const without = current.filter(variable => variable.name !== input.name)
+
+    const typed = typedValueForRemove(existing, input.name, input)
+    const next: ContextVariable = {
+      ...existing!,
+      value: typed.value,
       updatedAt: Date.now(),
     }
     await this.gateway.write(ctx.sessionId, [...without, next])

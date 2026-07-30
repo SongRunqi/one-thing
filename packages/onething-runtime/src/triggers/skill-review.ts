@@ -473,6 +473,9 @@ export async function runOnethingSkillReview<TContext extends OnethingSkillRevie
   await runAgentSkillReview(adapters, ctx, agentProvider, target)
 }
 
+// 技能文件由这两个工具直接写(skill_manage 已移除)。
+const SKILL_AUTHORING_TOOLS = ['write', 'edit']
+
 export function createOnethingSkillReviewTrigger<TContext extends OnethingSkillReviewContext>(
   adapters: OnethingSkillReviewAdapters<TContext>,
 ): CoreTrigger<TContext> {
@@ -489,7 +492,7 @@ export function createOnethingSkillReviewTrigger<TContext extends OnethingSkillR
         sessionId: ctx.sessionId,
         settings: ctx.settings,
         toolIterations: ctx.toolIterations ?? 0,
-        skillManageAvailable: ctx.enabledToolNames?.includes('skill_manage') ?? false,
+        skillAuthoringAvailable: SKILL_AUTHORING_TOOLS.some(tool => ctx.enabledToolNames?.includes(tool) ?? false),
         skillManageCalled: ctx.skillManageCalled ?? false,
       })
     },

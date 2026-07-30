@@ -10,6 +10,8 @@
     @keydown.enter.prevent="$emit('select')"
     @keydown.space.prevent="$emit('select')"
     @mousedown.middle.prevent="$emit('close')"
+    @dblclick.prevent.stop="openMenu"
+    @contextmenu.prevent.stop="openMenu"
     @dragstart="onDragStart"
     @dragend="onDragEnd"
     @dragover.prevent="onDragOver"
@@ -17,8 +19,19 @@
     @drop.prevent="onDrop"
   >
     <div class="tab-surface">
+      <!-- Agent 执行会话的页签戴 agent 的头像章而不是通用会话图标(W20):
+           几张执行会话签并排时,身份才是区分它们的东西。 -->
+      <AgentAvatar
+        v-if="avatar || avatarImage"
+        class="tab-avatar"
+        aria-hidden="true"
+        :avatar="avatar"
+        :avatar-image="avatarImage"
+        :size="15"
+      />
       <component
         :is="icon"
+        v-else
         :size="15"
         :stroke-width="2"
         class="tab-icon"
@@ -32,14 +45,16 @@
         :style="{ width: renameWidth }"
         @click.stop
         @dblclick.stop
+        @contextmenu.stop
         @mousedown.stop
         @keydown.stop="handleRenameKeydown"
+        @compositionstart="composing = true"
+        @compositionend="onCompositionEnd"
         @blur="commitRename"
       >
       <span
         v-else
         class="tab-title"
-        @dblclick.stop="startRename"
       >
         <span
           v-if="tab.type !== 'chat' && tab.dirty"
@@ -65,8 +80,9 @@
 </template>
 
 <script setup lang="ts">
+import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import Button from '@/components/common/Button.vue'
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { MessageSquare, FolderCode, X } from 'lucide-vue-next'
 import type { Tab } from '@/types/tabs'
 
@@ -76,15 +92,23 @@ const props = defineProps<{
   closable: boolean
   hideTrailingDivider?: boolean
   sessionName?: string
+  /** Emoji stamp shown in place of the tab icon (agent execution sessions). */
+  avatar?: string
+  /** Picture avatar (media file name); wins over `avatar` when present. */
+  avatarImage?: string
   cached?: boolean
   isFirst?: boolean
   panelId?: string
+  /** Parent-driven: the tab bar decides who is being renamed (menu action). */
+  renaming?: boolean
 }>()
 
 const emit = defineEmits<{
   select: []
   close: []
   rename: [name: string]
+  renameEnd: []
+  contextMenu: [payload: { tabId: string; x: number; y: number }]
   dragStart: [tabId: string]
   dropOn: [tabId: string]
 }>()
@@ -113,41 +137,94 @@ const tooltip = computed(() => {
   return props.sessionName || ''
 })
 
-// —— 页签内联重命名（仅 chat 页签，双击标题触发）——
+// —— 页签内联重命名（仅 chat 页签，由页签菜单的 Rename 触发）——
 const isRenaming = ref(false)
 const renameDraft = ref('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
 
-// 输入框替换掉标题后，页签会塌回 min-width；按草稿长度撑开，编辑时宽度跟着字数走。
-const renameWidth = computed(() => `${Math.min(40, Math.max(8, renameDraft.value.length + 2))}ch`)
+// 输入框替换掉标题后，页签会塌回 min-width；按草稿宽度撑开，编辑时跟着字数走。
+// ch 是 "0" 的宽度，CJK/全角字符约占两个，按码点分别计量才不会越打越挤。
+const renameWidth = computed(() => {
+  let cells = 0
+  for (const ch of renameDraft.value) cells += isWideChar(ch) ? 2 : 1
+  return `${Math.min(40, Math.max(8, cells + 2))}ch`
+})
+
+function isWideChar(ch: string): boolean {
+  const code = ch.codePointAt(0) ?? 0
+  return (
+    (code >= 0x1100 && code <= 0x115f) // Hangul Jamo
+    || (code >= 0x2e80 && code <= 0xa4cf) // CJK radicals … Yi
+    || (code >= 0xac00 && code <= 0xd7a3) // Hangul syllables
+    || (code >= 0xf900 && code <= 0xfaff) // CJK compatibility ideographs
+    || (code >= 0xfe30 && code <= 0xfe4f) // CJK compatibility forms
+    || (code >= 0xff00 && code <= 0xff60) // Fullwidth forms
+    || (code >= 0xffe0 && code <= 0xffe6)
+    || (code >= 0x20000 && code <= 0x3fffd) // CJK extensions B+
+  )
+}
+
+// 输入法组字期间不能把 Enter / Escape 当成确认或取消。isComposing 是主路，
+// 但部分输入法(搜狗/微软拼音在 Windows、部分 WebKit)会在 compositionend 之后
+// 立刻补一个不带 isComposing 的 Enter —— 那一下是「上屏」而不是「确认改名」，
+// 所以额外用组字结束时间戳兜一小段窗口。
+const composing = ref(false)
+const COMPOSITION_TAIL_MS = 40
+let compositionEndedAt = 0
+
+function onCompositionEnd() {
+  composing.value = false
+  compositionEndedAt = Date.now()
+}
 
 function startRename() {
   if (props.tab.type !== 'chat') return
   renameDraft.value = props.sessionName || ''
   isRenaming.value = true
+  composing.value = false
+  compositionEndedAt = 0
   nextTick(() => {
     renameInputRef.value?.focus()
     renameInputRef.value?.select()
   })
 }
 
+function endRename() {
+  isRenaming.value = false
+  composing.value = false
+  emit('renameEnd')
+}
+
 function commitRename() {
   if (!isRenaming.value) return
-  isRenaming.value = false
+  // 组字中失焦(点到别处)时输入框里已是上屏文本，照常提交即可。
   const next = renameDraft.value.trim()
+  endRename()
   if (next && next !== (props.sessionName || '')) emit('rename', next)
 }
 
 function handleRenameKeydown(event: KeyboardEvent) {
-  // 中文输入法用 Enter 选词时 isComposing 为 true，不能当成「确认重命名」
-  if (event.isComposing) return
+  // keyCode 229 是「按键交给输入法处理」的通用信号（老版 WebKit 不给 isComposing）
+  if (event.isComposing || composing.value || event.keyCode === 229) return
   if (event.key === 'Enter') {
     event.preventDefault()
+    if (Date.now() - compositionEndedAt < COMPOSITION_TAIL_MS) return
     commitRename()
   } else if (event.key === 'Escape') {
     event.preventDefault()
-    isRenaming.value = false
+    endRename()
   }
+}
+
+watch(() => props.renaming, (want) => {
+  if (want && !isRenaming.value) startRename()
+  else if (!want && isRenaming.value) isRenaming.value = false
+})
+
+// 双击 / 右键都弹页签菜单（重命名走菜单，编辑态里不再弹）
+function openMenu(event: MouseEvent) {
+  if (isRenaming.value) return
+  emit('contextMenu', { tabId: props.tab.id, x: event.clientX, y: event.clientY })
 }
 
 function onDragStart(e: DragEvent) {
@@ -271,6 +348,21 @@ function onDrop(e: DragEvent) {
   flex: 0 0 15px;
   color: currentColor;
   opacity: 0.72;
+}
+
+/* 头像章占图标同一格:一圈发丝线,emoji 即身份(与侧栏 Agent 行、房间成员章
+   同一句法),不改页签的排版占位。 */
+.tab-avatar {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
+  border-radius: 50%;
+  font-size: 9px;
+  line-height: 1;
 }
 
 .tab-item.active .tab-icon {

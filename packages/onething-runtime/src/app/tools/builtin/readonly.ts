@@ -1,6 +1,5 @@
 import { registerTool } from '../registry.js'
 import { ReadTool } from './read.js'
-import { SkillViewTool } from './skill.js'
 import { WebSearchTool } from './web-search/index.js'
 import { WebOpenTool } from './web-search/open.js'
 import { TimeTool } from '@onething/runtime/tools'
@@ -14,18 +13,10 @@ const readonlyBuiltinTools = [
   WebOpenTool,
 ]
 
-const readonlyAsyncBuiltinTools = [
-  SkillViewTool,
-]
-
 export function registerReadonlyBuiltinTools(): void {
   for (const tool of readonlyBuiltinTools) {
     registerTool(tool)
   }
 
-  for (const tool of readonlyAsyncBuiltinTools) {
-    registerTool(tool)
-  }
-
-  console.log(`[BuiltinTools] Registered ${readonlyBuiltinTools.length + readonlyAsyncBuiltinTools.length} readonly built-in tools (${readonlyAsyncBuiltinTools.length} async)`)
+  console.log(`[BuiltinTools] Registered ${readonlyBuiltinTools.length} readonly built-in tools`)
 }

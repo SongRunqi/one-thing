@@ -31,6 +31,7 @@ import {
 	createOnethingSessionRepository,
 	type OnethingSessionMessageRuntime,
 } from "@onething/runtime/sessions";
+import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/runtime/collab";
 import {
 	CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID,
 	deriveRetainedContextSize,
@@ -330,6 +331,21 @@ export function createSession(sessionId: string, name: string): ChatSession {
 	return sessionRepository.createSession(sessionId, name);
 }
 
+/**
+ * Collab (multi-agent room) session fields — docs/design/multi-agent-collab.md.
+ * `undefined` leaves a field untouched, `null` deletes it.
+ */
+export function updateSessionCollab(
+	sessionId: string,
+	fields: {
+		kind?: ChatSession["kind"] | null;
+		room?: ChatSession["room"] | null;
+		collab?: ChatSession["collab"] | null;
+	},
+): boolean {
+	return sessionRepository.updateSessionCollab(sessionId, fields);
+}
+
 // Create a branch session
 export function createBranchSession(
 	sessionId: string,
@@ -353,9 +369,37 @@ export interface DeleteSessionResult {
 	parentSessionId?: string;
 }
 
+/**
+ * Subsystems that own per-session state OUTSIDE the session file, notified
+ * after a delete lands (P2-10).
+ *
+ * An observer seam rather than a direct call, because the dependency may only
+ * point one way: this module is a store, and a store that imported the room
+ * coordinator to clean up after it would invert the layering. Subsystems
+ * register themselves at startup and are handed the ids that went away.
+ */
+type SessionsDeletedListener = (deletedSessionIds: readonly string[]) => void
+
+const sessionsDeletedListeners = new Set<SessionsDeletedListener>()
+
+export function onSessionsDeleted(listener: SessionsDeletedListener): () => void {
+	sessionsDeletedListeners.add(listener);
+	return () => {
+		sessionsDeletedListeners.delete(listener);
+	};
+}
+
 // Delete a session and all its child sessions (cascade delete)
 export function deleteSession(sessionId: string): DeleteSessionResult {
-	return sessionRepository.deleteSession(sessionId);
+	const result = sessionRepository.deleteSession(sessionId);
+	for (const listener of sessionsDeletedListeners) {
+		try {
+			listener(result.deletedIds);
+		} catch (error) {
+			console.error("[Sessions] delete listener failed:", error);
+		}
+	}
+	return result;
 }
 
 // Rename a session (does not update updatedAt to avoid reordering)
@@ -501,8 +545,72 @@ export function getSessionTokenUsage(sessionId: string): {
 	return sessionMessageRuntime!.getSessionTokenUsage(sessionId);
 }
 
+/**
+ * Collab persona attribution (docs/design/multi-agent-collab.md D3): assistant
+ * messages in room/work sessions get the speaking agent stamped at this single
+ * choke point — every engine creation site (send / edit / retry / mid-turn
+ * follow-up writer) persists through here, so no core change is needed.
+ */
+function stampCollabAgentId(sessionId: string, message: ChatMessage): void {
+	if (message.role !== "assistant" || message.agentId) return;
+	const session = sessionRepository.getSession(sessionId);
+	if (
+		!session ||
+		(session.kind !== "room" &&
+			session.kind !== "work" &&
+			session.kind !== "agent")
+	)
+		return;
+	if (session.agentId) message.agentId = session.agentId;
+
+	/**
+	 * W14b 思考与发言分离: in a ROOM the turn's own assistant message is the
+	 * agent's THINKING record, never its speech — speech is a `say` call, which
+	 * writes its own message with an agentId already on it and therefore never
+	 * reaches this branch.
+	 *
+	 * Stamped at CREATION rather than at the coordinator's turn finale (which is
+	 * where the工单 put it) for two reasons the finale cannot give:
+	 *   1. no flash — the marker exists before the message can ever render, so
+	 *      the room never paints a full bubble that collapses to a hairline a
+	 *      tick later;
+	 *   2. crash-safe — a process that dies mid-turn leaves a record that still
+	 *      reads as thinking instead of impersonating an utterance nobody made.
+	 * Everything downstream keys off the marker (projection / chain / render),
+	 * so the epoch judgement is identical either way.
+	 *
+	 * The marker rides the message's own `source`, not `origin.source`: an
+	 * assistant message has no MessageOrigin to speak of (that type is the
+	 * inbound-channel envelope, transport + receivedAt required) and the sibling
+	 * markers on this exact axis — COLLAB_HARVEST_SOURCE, COLLAB_SAY_SOURCE —
+	 * already live there. Every predicate reads both fields, so a message
+	 * stamped either way judges the same.
+	 *
+	 * The origin guard tolerates COLLAB_MESSAGE_SOURCE ('collab'): the engine
+	 * copies the DRIVE's channel envelope onto the reply it creates, so every
+	 * production room turn arrives as origin.source='collab' — that is inbound
+	 * routing, not an utterance epoch, and treating it as one left the whole
+	 * turn rendering as legacy speech (真机实锤 2026-07-28: src=None 满屏).
+	 * Only real epoch markers (say/harvest) block the stamp.
+	 *
+	 * W18 moved the turn into the agent's own execution session, and the marker
+	 * moved with it: the whole session is an execution record, and the harvest
+	 * reads this marker to tell a thinking record from legacy speech. Rooms
+	 * keep the branch for pre-W18 transcripts (and for any path that still
+	 * creates an assistant message there).
+	 */
+	if (
+		(session.kind === "room" || session.kind === "agent") &&
+		!message.source &&
+		(!message.origin?.source || message.origin.source === COLLAB_MESSAGE_SOURCE)
+	) {
+		message.source = COLLAB_TURN_SOURCE;
+	}
+}
+
 // Add a message to a session
 export function addMessage(sessionId: string, message: ChatMessage): void {
+	stampCollabAgentId(sessionId, message);
 	sessionMessageRuntime!.addMessage(sessionId, message);
 }
 
@@ -683,6 +791,47 @@ export function updateMessageError(
 	);
 }
 
+// Update IM emoji reactions (W8, rooms only; does not affect sort order)
+export function updateMessageReactions(
+	sessionId: string,
+	messageId: string,
+	reactions: NonNullable<ChatMessage["reactions"]>,
+): boolean {
+	return sessionMessageRuntime!.updateMessageReactions(
+		sessionId,
+		messageId,
+		reactions,
+	);
+}
+
+// Attach an IM quote-reply snapshot after the fact (W13.2, rooms only; does
+// not affect sort order)
+export function updateMessageReplyTo(
+	sessionId: string,
+	messageId: string,
+	replyTo: NonNullable<ChatMessage["replyTo"]>,
+): boolean {
+	return sessionMessageRuntime!.updateMessageReplyTo(
+		sessionId,
+		messageId,
+		replyTo,
+	);
+}
+
+// Stamp identity-resolved @mentions after the fact (W14a, rooms only; does
+// not affect sort order)
+export function updateMessageMentions(
+	sessionId: string,
+	messageId: string,
+	mentions: NonNullable<ChatMessage["mentions"]>,
+): boolean {
+	return sessionMessageRuntime!.updateMessageMentions(
+		sessionId,
+		messageId,
+		mentions,
+	);
+}
+
 // Add a step to a message (does not affect sort order)
 export function addMessageStep(
 	sessionId: string,
@@ -755,8 +904,9 @@ export function updateSessionModel(
 	sessionId: string,
 	provider: string,
 	model: string,
+	options: { pinned?: boolean } = {},
 ): boolean {
-	return sessionRepository.updateSessionModel(sessionId, provider, model);
+	return sessionRepository.updateSessionModel(sessionId, provider, model, options);
 }
 
 export function updateSessionAgent(

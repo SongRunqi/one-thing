@@ -102,7 +102,9 @@ describe("file tool policy revalidation", () => {
 				},
 				{ ...ctx, approvedAnalysis: analysis },
 			),
-		).rejects.toThrow("Failed to edit");
+		// First line names the failure and the file; the engine detail (full
+		// path, retry guidance, closest-match snippet) follows below it.
+		).rejects.toThrow("Edit failed: target text not found in target.md.");
 
 		await expect(fs.readFile(filePath, "utf-8")).resolves.toBe(
 			"A: gone\nB: external\n",

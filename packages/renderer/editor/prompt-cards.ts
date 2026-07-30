@@ -8,7 +8,13 @@ import {
   WidgetType,
 } from '@codemirror/view'
 import type { SkillDefinition, UserPrompt } from '@shared/ipc'
-import { FILE_REF_PATTERN, PROMPT_REF_PATTERN, SKILL_REF_PATTERN } from '@shared/prompt-references'
+import {
+  FILE_REF_PATTERN,
+  MEMBER_REF_PATTERN,
+  PAGE_REF_PATTERN,
+  PROMPT_REF_PATTERN,
+  SKILL_REF_PATTERN,
+} from '@shared/prompt-references'
 import { createDomButton, unmountDomButtons } from '@/components/common/dom-button'
 import type { CommandDefinition } from '@/types/commands'
 
@@ -19,7 +25,7 @@ export interface PromptCardData {
   description?: string
 }
 
-type ReferenceCardKind = 'prompt' | 'skill' | 'command' | 'file'
+type ReferenceCardKind = 'prompt' | 'skill' | 'command' | 'file' | 'page'
 
 interface ReferenceCardData {
   kind: ReferenceCardKind
@@ -33,7 +39,9 @@ interface ReferenceCardData {
 interface ReferenceRange {
   from: number
   to: number
-  card: ReferenceCardData
+  card?: ReferenceCardData
+  /** A ready-made widget, for tokens that are not reference cards (member). */
+  widget?: WidgetType
   /**
    * Hidden ranges are removed from the editor's visual flow entirely (no
    * widget). The leading slash command uses this: the token stays in the doc
@@ -43,14 +51,55 @@ interface ReferenceRange {
   hidden?: boolean
 }
 
+/** A collab room member, as the `{{member:<agentId>}}` token needs it (W14a). */
+export interface MemberRefData {
+  id: string
+  name: string
+}
+
 export interface PromptCardExtensionOptions {
   prompts?: UserPrompt[]
   skills?: SkillDefinition[]
   commands?: CommandDefinition[]
+  /** Room roster for member tokens; empty outside collab rooms. */
+  members?: MemberRefData[]
 }
 
 const LEGACY_SKILL_REF_PATTERN = /(^|\s)\/skill:([^\n]+?)(?=\s{2,}|$)/g
 const LEADING_SLASH_REF_PATTERN = /^\/([a-zA-Z0-9_-]+)(?=\s|$)/
+
+/**
+ * A picked room member (W14a). The doc holds `{{member:<agentId>}}` — identity,
+ * not a name — and this paints it as the plain `@名字` a mention IS. No card,
+ * no chip, no close button: a mention is a word in a sentence, and the whole
+ * point of the token is that the sentence keeps reading like one while the id
+ * rides underneath. Deleting it removes the token atomically (atomicRanges),
+ * so a half-eaten `{{member:` can never reach the room.
+ *
+ * The name is resolved from the CURRENT roster on every rebuild, so renaming a
+ * member repaints drafts that already mention it.
+ */
+class MemberRefWidget extends WidgetType {
+  constructor(private readonly label: string) {
+    super()
+  }
+
+  eq(other: MemberRefWidget): boolean {
+    return this.label === other.label
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement('span')
+    span.className = 'member-ref-widget'
+    span.contentEditable = 'false'
+    span.textContent = `@${this.label}`
+    return span
+  }
+
+  ignoreEvent(): boolean {
+    return false
+  }
+}
 
 class PromptRefWidget extends WidgetType {
   private popover: HTMLElement | null = null
@@ -285,6 +334,16 @@ function fileToCard(filePath: string): ReferenceCardData {
   }
 }
 
+function pageToCard(tabId: string): ReferenceCardData {
+  return {
+    kind: 'page',
+    id: tabId,
+    title: tabId,
+    body: tabId,
+    kindLabel: 'page',
+  }
+}
+
 function collectKnownSkillRanges(
   doc: string,
   skillsByName: Map<string, SkillDefinition>,
@@ -338,13 +397,19 @@ function collectSkillTokenRanges(
   return ranges
 }
 
+interface ReferenceLookups {
+  prompts: Map<string, PromptCardData>
+  skillsById: Map<string, SkillDefinition>
+  skillsByName: Map<string, SkillDefinition>
+  commandsById: Map<string, CommandDefinition>
+  membersById: Map<string, MemberRefData>
+}
+
 function collectReferenceRanges(
   view: EditorView,
-  prompts: Map<string, PromptCardData>,
-  skillsById: Map<string, SkillDefinition>,
-  skillsByName: Map<string, SkillDefinition>,
-  commandsById: Map<string, CommandDefinition>,
+  lookups: ReferenceLookups,
 ): ReferenceRange[] {
+  const { prompts, skillsById, skillsByName, commandsById, membersById } = lookups
   const ranges: ReferenceRange[] = []
   const doc = view.state.doc.toString()
 
@@ -362,6 +427,28 @@ function collectReferenceRanges(
   for (const match of doc.matchAll(FILE_REF_PATTERN)) {
     const from = match.index ?? 0
     ranges.push({ from, to: from + match[0].length, card: fileToCard(match[1]), hidden: true })
+  }
+
+  // Page tokens hide like file tokens: the docked chip is the visual.
+  PAGE_REF_PATTERN.lastIndex = 0
+  for (const match of doc.matchAll(PAGE_REF_PATTERN)) {
+    const from = match.index ?? 0
+    ranges.push({ from, to: from + match[0].length, card: pageToCard(match[1]), hidden: true })
+  }
+
+  // Member tokens paint as plain `@名字` (W14a): a mention has to look like
+  // one while it is being typed, so it gets neither a card nor a chip. A token
+  // whose member is gone from the roster falls back to its bare id rather than
+  // vanishing — a silently empty spot in the sentence is worse than an ugly one.
+  MEMBER_REF_PATTERN.lastIndex = 0
+  for (const match of doc.matchAll(MEMBER_REF_PATTERN)) {
+    const from = match.index ?? 0
+    const agentId = match[1]
+    ranges.push({
+      from,
+      to: from + match[0].length,
+      widget: new MemberRefWidget(membersById.get(agentId)?.name || agentId),
+    })
   }
 
   ranges.push(...collectSkillTokenRanges(doc, skillsById))
@@ -404,23 +491,24 @@ function collectReferenceRanges(
   return ranges.sort((a, b) => a.from - b.from || b.to - a.to)
 }
 
-function buildDecorations(
-  view: EditorView,
-  prompts: Map<string, PromptCardData>,
-  skillsById: Map<string, SkillDefinition>,
-  skillsByName: Map<string, SkillDefinition>,
-  commandsById: Map<string, CommandDefinition>,
-): DecorationSet {
+function decorationFor(range: ReferenceRange): Decoration {
+  if (range.hidden) return Decoration.replace({ inclusive: false })
+  if (range.widget) return Decoration.replace({ widget: range.widget, inclusive: false })
+  if (range.card) {
+    return Decoration.replace({
+      widget: new PromptRefWidget(range.card, range.from, range.to),
+      inclusive: false,
+    })
+  }
+  return Decoration.replace({ inclusive: false })
+}
+
+function buildDecorations(view: EditorView, lookups: ReferenceLookups): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
   let lastTo = 0
-  for (const range of collectReferenceRanges(view, prompts, skillsById, skillsByName, commandsById)) {
+  for (const range of collectReferenceRanges(view, lookups)) {
     if (range.from < lastTo) continue
-    builder.add(range.from, range.to, Decoration.replace(range.hidden
-      ? { inclusive: false }
-      : {
-          widget: new PromptRefWidget(range.card, range.from, range.to),
-          inclusive: false,
-        }))
+    builder.add(range.from, range.to, decorationFor(range))
     lastTo = range.to
   }
 
@@ -431,6 +519,7 @@ export function promptCardExtension(options: UserPrompt[] | PromptCardExtensionO
   const promptsInput = Array.isArray(options) ? options : options.prompts || []
   const skillsInput = Array.isArray(options) ? [] : options.skills || []
   const commandsInput = Array.isArray(options) ? [] : options.commands || []
+  const membersInput = Array.isArray(options) ? [] : options.members || []
 
   const prompts = new Map<string, PromptCardData>(
     promptsInput.map(prompt => [prompt.id, {
@@ -449,17 +538,21 @@ export function promptCardExtension(options: UserPrompt[] | PromptCardExtensionO
   const commandsById = new Map<string, CommandDefinition>(
     commandsInput.map(command => [command.id.toLowerCase(), command]),
   )
+  const membersById = new Map<string, MemberRefData>(
+    membersInput.map(member => [member.id, member]),
+  )
+  const lookups: ReferenceLookups = { prompts, skillsById, skillsByName, commandsById, membersById }
 
   const plugin = ViewPlugin.fromClass(class {
     decorations: DecorationSet
 
     constructor(view: EditorView) {
-      this.decorations = buildDecorations(view, prompts, skillsById, skillsByName, commandsById)
+      this.decorations = buildDecorations(view, lookups)
     }
 
     update(update: ViewUpdate) {
       if (update.docChanged || update.viewportChanged) {
-        this.decorations = buildDecorations(update.view, prompts, skillsById, skillsByName, commandsById)
+        this.decorations = buildDecorations(update.view, lookups)
       }
     }
   }, {

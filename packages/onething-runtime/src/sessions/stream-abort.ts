@@ -90,6 +90,22 @@ export interface AbortOnethingStreamsForIpcOptions<
   abortEngineStream(sessionId: string): boolean
   abortAllEngineStreams(): boolean
   clearPermission(sessionId: string): void
+  /**
+   * Stop a collab ROOM's turn (collab-team-v2 §5.1 入口①). Injected by the
+   * assembly layer; absent everywhere collab is not assembled.
+   *
+   * A room session has hosted no stream since W18 — the turn runs in the
+   * member's execution session — so `abortEngineStream` on a room id has always
+   * been a no-op and the stop button pressed nothing. The callback is asked
+   * FIRST and answers a narrow question: "is this id a room whose turn I just
+   * stopped?" Returning false (not a room, or nothing running) leaves the
+   * ordinary engine path to handle it, so a work session or private chat is
+   * unaffected.
+   *
+   * Deliberately a callback rather than a `kind` check here: this module is
+   * product-layer and must not learn what a room is, nor reach for the store.
+   */
+  abortCollabRoomTurn?(sessionId: string): boolean
   logger?: AbortOnethingStreamsForIpcLogger
 }
 
@@ -178,6 +194,10 @@ export async function abortOnethingStreamsForIpc<
 
   if (sessionId) {
     let aborted = false
+    if (options.abortCollabRoomTurn?.(sessionId)) {
+      options.logger?.log?.(`[Backend] Aborting collab room turn: ${sessionId}`)
+      aborted = true
+    }
     if (options.abortLegacyStream?.(sessionId)) {
       options.logger?.log?.(`[Backend] Aborting stream for session (legacy): ${sessionId}`)
       aborted = true

@@ -24,6 +24,7 @@ import {
   getProviderApiType,
 } from '@onething/app/engine/stream/provider-helpers.js'
 import { getStreamEngine } from '@onething/app/engine/index.js'
+import { abortCollabRoomTurnForStop } from '@onething/app/collab/index.js'
 import {
   abortOnethingStreamsForIpc,
   getOnethingChatHistoryForIpc,
@@ -104,6 +105,15 @@ export function registerChatHandlers() {
     abortStream: async ({ sessionId }: ElectronAbortStreamRequest = {}) => {
       return abortOnethingStreamsForIpc({
         sessionId,
+        // 群聊房间的停止按钮(collab-team-v2 §5.1 入口①):房间会话上没有流,
+        // 真正要停的是本轮发言人的执行会话。装配层在这里注入,产品层不 import app。
+        abortCollabRoomTurn: sid => {
+          try {
+            return abortCollabRoomTurnForStop(sid)
+          } catch {
+            return false
+          }
+        },
         abortEngineStream: sid => {
           try {
             return getStreamEngine().abort(sid)

@@ -15,9 +15,11 @@ import { EditTool } from './edit.js'
 import { ReadTool } from './read.js'
 import { WriteTool } from './write.js'
 import { FindTool } from './find.js'
-import { SkillManageTool, SkillViewTool } from './skill.js'
 import { VariableTool } from './variable.js'
 import { GoalTool } from './goal.js'
+import { BoardTool } from '../../collab/board-tool.js'
+import { SayTool } from '../../collab/say-tool.js'
+import { DmTool } from '../../collab/dm-tool.js'
 import { RadioTool } from './radio.js'
 import { PracticeTool } from './practice.js'
 import { BashOutputTool, FartTool, KillBashTool, TimeTool } from '@onething/runtime/tools'
@@ -38,6 +40,9 @@ const builtinTools = [
   FindTool,
   VariableTool,
   GoalTool,
+  BoardTool,
+  SayTool,
+  DmTool,
   RadioTool,
   PracticeTool,
   TimeTool,
@@ -47,25 +52,13 @@ const builtinTools = [
   WebOpenTool,
 ]
 
-// Async tools that need initialization with context
-export const asyncBuiltinTools = [
-  SkillViewTool,
-  SkillManageTool,
-]
-
 /**
  * Register all built-in tools with the registry
  */
 export function registerBuiltinTools(): void {
-  // Register static tools
   for (const tool of builtinTools) {
     registerTool(tool)
   }
 
-  // Register async tools
-  for (const tool of asyncBuiltinTools) {
-    registerTool(tool)
-  }
-
-  console.log(`[BuiltinTools] Registered ${builtinTools.length + asyncBuiltinTools.length} built-in tools (${asyncBuiltinTools.length} async)`)
+  console.log(`[BuiltinTools] Registered ${builtinTools.length} built-in tools`)
 }

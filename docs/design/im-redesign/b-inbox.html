@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>方案 B · 收件箱(合流单列表 + 气泡)</title>
+<link rel="stylesheet" href="_base.css">
+<style>
+  /* ══ 方案 B:两栏。左=一条按时间排序的合流列表,右=气泡对话面 ══ */
+  .b .list { width: 312px; background: var(--surface-2); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; }
+  .b .lhead { padding: 14px 14px 10px; border-bottom: 1px solid var(--line); }
+  .b .lhead .row1 { display: flex; align-items: center; gap: 10px; }
+  .b .search { flex: 1; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px;
+    border: 1px solid var(--line); border-radius: 15px; background: var(--surface); color: var(--ink-3); font-size: 12px; }
+  .b .lhead .new { width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: var(--surface);
+    display: grid; place-items: center; cursor: pointer; }
+  .b .chips { display: flex; gap: 6px; margin-top: 11px; }
+  .b .chip { font-size: 11px; padding: 3px 10px; border-radius: 12px; color: var(--ink-2);
+    border: 1px solid var(--line); cursor: pointer; white-space: nowrap; }
+  .b .chip:hover { border-color: var(--ink-3); }
+  .b .chip.on { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+  .b .chip .n { opacity: .55; margin-left: 4px; font-variant-numeric: tabular-nums; }
+
+  .b .scroll { flex: 1; overflow: hidden; padding: 6px 0; }
+  .b .pin { font-size: 10px; letter-spacing: .12em; color: var(--ink-3); padding: 8px 16px 4px; }
+  .b .conv { display: flex; gap: 11px; padding: 10px 14px; cursor: pointer; position: relative; }
+  .b .conv:hover { background: var(--surface-3); }
+  .b .conv.on { background: var(--surface-3); }
+  .b .conv.on::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2.5px; background: var(--ink); }
+  .b .conv .av { width: 36px; height: 36px; font-size: 13px; }
+  .b .conv .wrap { position: relative; flex-shrink: 0; }
+  .b .conv .st { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid var(--surface-2); background: var(--a-green); }
+  .b .conv:hover .st, .b .conv.on .st { border-color: var(--surface-3); }
+  .b .conv .txt { flex: 1; min-width: 0; }
+  .b .conv .l1 { display: flex; align-items: baseline; gap: 8px; }
+  .b .conv .l1 b { font-size: 13px; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .b .conv .l1 time { margin-left: auto; font-size: 10.5px; color: var(--ink-3); flex-shrink: 0; }
+  .b .conv .l2 { display: flex; align-items: center; gap: 8px; margin-top: 3px; }
+  .b .conv .l2 p { font-size: 11.5px; color: var(--ink-3); line-height: 1.5; flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .b .conv .l2 p em { font-style: normal; color: var(--ink-2); }
+  .b .conv.unread .l1 b { font-weight: 650; }
+  .b .conv.unread .l2 p { color: var(--ink-2); }
+  .b .conv .badge { font-size: 10px; background: var(--ink); color: var(--surface); border-radius: 9px;
+    min-width: 17px; text-align: center; padding: 1px 5px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .b .conv .live { font-size: 10.5px; color: var(--a-green); flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+  .b .conv .live i { width: 5px; height: 5px; border-radius: 50%; background: var(--a-green); animation: pulse 1.5s infinite; }
+  /* 群 = 方章头像;人 = 圆头像。列表里一眼分得出房与人,不靠分区 */
+  .b .conv .stack { display: flex; }
+  .b .conv .stack .av { width: 36px; height: 36px; }
+
+  .b .foot { border-top: 1px solid var(--line); padding: 9px 14px; display: flex; align-items: center; gap: 9px; }
+  .b .foot .txt b { font-size: 12px; display: block; }
+  .b .foot .txt i { font-style: normal; font-size: 10.5px; color: var(--ink-3); }
+  .b .foot .ic { margin-left: auto; color: var(--ink-3); cursor: pointer; }
+
+  /* ── 对话面 ── */
+  .b .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--surface); }
+  .b .top { height: 52px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 11px; padding: 0 18px; }
+  .b .top .txt { line-height: 1.3; }
+  .b .top .txt b { font-size: 14px; display: block; }
+  .b .top .txt i { font-style: normal; font-size: 11px; color: var(--ink-3); }
+  .b .top .right { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--ink-3); }
+  .b .top .faces { display: flex; }
+  .b .top .faces .av { width: 24px; height: 24px; font-size: 10px; border: 2px solid var(--surface); margin-left: -7px; }
+  .b .top .faces .av:first-child { margin-left: 0; }
+
+  .b .flow { flex: 1; overflow: hidden; padding: 18px 24px 4px; display: flex; flex-direction: column;
+    gap: 3px; justify-content: flex-end; }
+  .b .day { text-align: center; font-size: 10.5px; color: var(--ink-3); padding: 6px 0 14px; }
+  .b .line { display: flex; gap: 10px; align-items: flex-end; max-width: 76%; }
+  .b .line.mine { margin-left: auto; flex-direction: row-reverse; }
+  .b .line .av { width: 30px; height: 30px; visibility: hidden; }
+  .b .line.first .av { visibility: visible; }
+  .b .who { font-size: 11px; margin: 10px 0 3px 40px; font-weight: 600; }
+  .b .bub { border-radius: 14px; padding: 9px 13px; font-size: 13px; line-height: 1.72; color: #2c2a25;
+    background: var(--surface-2); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+  .b .line.mine .bub { background: var(--ink); color: #f5f3ee; border-color: var(--ink);
+    border-bottom-left-radius: 14px; border-bottom-right-radius: 5px; }
+  .b .line.mine .bub strong { color: #fff; }
+  .b .bub strong { font-weight: 600; color: var(--ink); }
+  .b .line time { font-size: 10px; color: var(--ink-3); flex-shrink: 0; padding-bottom: 2px; }
+  .b .bub .mention { color: var(--a-blue); font-weight: 550; }
+  .b .line.mine .bub .mention { color: #9dc4f0; }
+
+  /* 执行动作 = 气泡下挂的一条细注,不进气泡内部(气泡是"说的话") */
+  .b .act { margin: 4px 0 2px 40px; display: inline-flex; align-items: center; gap: 7px;
+    font-size: 11px; color: var(--ink-3); cursor: pointer; }
+  .b .act:hover { color: var(--ink-2); }
+  .b .act .ic { width: 12px; height: 12px; }
+  .b .act u { text-decoration: none; border-bottom: 1px dotted var(--ink-4); }
+
+  .b .fileb { display: flex; align-items: center; gap: 10px; }
+  .b .fileb .sq { width: 34px; height: 34px; border-radius: 8px; background: var(--surface-3);
+    display: grid; place-items: center; color: var(--ink-2); }
+  .b .fileb b { font-size: 12.5px; font-weight: 550; display: block; }
+  .b .fileb i { font-style: normal; font-size: 10.5px; color: var(--ink-3); }
+
+  .b .typing { margin: 8px 0 0 40px; display: flex; align-items: center; gap: 7px; color: var(--ink-3); font-size: 11.5px; }
+  .b .typing i { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-3); animation: pulse 1.2s infinite; }
+  .b .typing i:nth-child(2) { animation-delay: .2s } .b .typing i:nth-child(3) { animation-delay: .4s }
+
+  .b .comp { margin: 10px 24px 20px; display: flex; align-items: flex-end; gap: 10px; }
+  .b .comp .box { flex: 1; border: 1px solid var(--line); border-radius: 20px; background: var(--surface-2);
+    padding: 10px 16px; display: flex; align-items: center; gap: 12px; }
+  .b .comp .box .ph { flex: 1; color: var(--ink-3); font-size: 13px; }
+  .b .comp .box .ic { color: var(--ink-3); cursor: pointer; }
+  .b .comp .box .ic:hover { color: var(--ink); }
+  .b .comp .send { width: 38px; height: 38px; border-radius: 50%; background: var(--ink); color: var(--surface);
+    display: grid; place-items: center; flex-shrink: 0; }
+
+  /* 右栏是滑出的,不常驻 —— 用一层半透明纸压在对话上 */
+  .b .drawer { position: absolute; right: 0; top: 0; bottom: 0; width: 268px; background: var(--surface-2);
+    border-left: 1px solid var(--line); box-shadow: -14px 0 26px rgba(20,18,12,.06); padding: 16px 0; }
+  .b .drawer .h { font-size: 10.5px; letter-spacing: .12em; color: var(--ink-3); padding: 12px 16px 6px; }
+  .b .drawer .hero { text-align: center; padding: 6px 16px 16px; border-bottom: 1px solid var(--line); }
+  .b .drawer .hero .av { width: 54px; height: 54px; font-size: 18px; margin: 0 auto 9px; }
+  .b .drawer .hero b { font-size: 14px; display: block; }
+  .b .drawer .hero i { font-style: normal; font-size: 11px; color: var(--ink-3); }
+  .b .drawer .mem { display: flex; align-items: center; gap: 9px; padding: 7px 16px; }
+  .b .drawer .mem .txt b { font-size: 12px; font-weight: 550; display: block; line-height: 1.3; }
+  .b .drawer .mem .txt i { font-style: normal; font-size: 10.5px; color: var(--ink-3); }
+  .b .drawer .mem .av { width: 26px; height: 26px; font-size: 10px; }
+  .b .drawer .close { position: absolute; right: 12px; top: 14px; color: var(--ink-3); cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div class="page-head">
+  <a class="back" href="index.html">← 四方案总览</a>
+  <div class="kicker">方案 B</div>
+  <h1>收件箱 · 合流单列表 + 气泡</h1>
+  <p class="lead">
+    与 A 完全相反的赌注:<b>取消一切分区</b>。没有 rail、没有"联系人/群聊/私下/会话"四段,
+    左边只有<b>一条按最后消息时间排的合流列表</b>——群、同事、私下、直聊混在一起,
+    谁刚说过话谁在最上面。找人靠<b>搜索与筛选 chip</b>,不靠记住 TA 被归在哪一段。
+    消息面用<b>左右气泡</b>(我在右、同事在左),群聊里靠署名色区分说话人。
+    这是 Telegram / iMessage 的产品形态:轻、宽松、零学习成本,一屏只讲一件事——<b>你在跟谁说话</b>。
+  </p>
+</div>
+
+<div class="section">
+  <h2>一 · 群聊<em>合流列表里的一间房 —— 群用方章头像,人用圆头像</em></h2>
+  <div class="stage">
+    <div class="win b">
+
+      <div class="list">
+        <div class="lhead">
+          <div class="row1">
+            <div class="search">
+              <svg class="ic" width="13" height="13" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              搜索对话、同事、消息
+            </div>
+            <div class="new"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>
+          </div>
+          <div class="chips">
+            <span class="chip on">全部</span>
+            <span class="chip">未读<span class="n">4</span></span>
+            <span class="chip">群<span class="n">3</span></span>
+            <span class="chip">同事<span class="n">6</span></span>
+            <span class="chip">在忙<span class="n">2</span></span>
+          </div>
+        </div>
+
+        <div class="scroll">
+          <div class="pin">置顶</div>
+          <div class="conv on unread">
+            <div class="wrap"><div class="av sq" style="background:var(--a-orange)">浏</div></div>
+            <div class="txt">
+              <div class="l1"><b>浏览器重构</b><time>09:21</time></div>
+              <div class="l2"><p><em>砚:</em> 我把三家浏览器的 profile 隔离方案整理成一页…</p><span class="live"><i></i>2</span></div>
+            </div>
+          </div>
+          <div class="conv unread">
+            <div class="wrap"><div class="av" style="background:var(--a-cyan)">澈</div><i class="st"></i></div>
+            <div class="txt">
+              <div class="l1"><b>阿澈</b><time>09:18</time></div>
+              <div class="l2"><p>测试跑完了,3 条红的都在 diff 那块…</p><span class="badge">1</span></div>
+            </div>
+          </div>
+
+          <div class="pin">较早</div>
+          <div class="conv">
+            <div class="wrap"><div class="av" style="background:var(--a-magenta)">林</div><i class="st"></i></div>
+            <div class="txt">
+              <div class="l1"><b>小林</b><time>09:06</time></div>
+              <div class="l2"><p>跑完了:通过。指纹那批假设有三条被证伪…</p></div>
+            </div>
+          </div>
+          <div class="conv">
+            <div class="wrap"><div class="av sq" style="background:var(--a-purple)">评</div></div>
+            <div class="txt">
+              <div class="l1"><b>设计评审</b><time>昨天</time></div>
+              <div class="l2"><p><em>你:</em> 这版侧栏先按方案二走,下周真机再对比</p></div>
+            </div>
+          </div>
+          <div class="conv">
+            <div class="wrap"><div class="av" style="background:var(--ink)">助</div></div>
+            <div class="txt">
+              <div class="l1"><b>主助理</b><time>昨天</time></div>
+              <div class="l2"><p>今天的日记我写好了,放在 07-30.md</p></div>
+            </div>
+          </div>
+          <div class="conv">
+            <div class="wrap"><div class="av sq" style="background:var(--ink-3)">私</div></div>
+            <div class="txt">
+              <div class="l1"><b>小林 ↔ 阿澈</b><time>昨天</time></div>
+              <div class="l2"><p><em>私下 ·</em> 那个 barrier 你改完没,我这边等着接</p></div>
+            </div>
+          </div>
+          <div class="conv">
+            <div class="wrap"><div class="av" style="background:var(--ink-4);color:var(--ink-2)">›</div></div>
+            <div class="txt">
+              <div class="l1"><b>JSONL 存储改造</b><time>周二</time></div>
+              <div class="l2"><p><em>直聊 ·</em> 混合驱动那版已经跑通了惰性迁移</p></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="foot">
+          <div class="av" style="background:var(--ink);width:26px;height:26px;font-size:10px">我</div>
+          <div class="txt"><b>宋一天</b><i>3 位同事在忙</i></div>
+          <svg class="ic" width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg>
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="top">
+          <div class="av sq" style="background:var(--a-orange);width:32px;height:32px">浏</div>
+          <div class="txt"><b>浏览器重构</b><i>4 位成员 · 2 位在忙</i></div>
+          <div class="right">
+            <div class="faces">
+              <div class="av" style="background:var(--a-magenta)">林</div>
+              <div class="av" style="background:var(--a-cyan)">澈</div>
+              <div class="av" style="background:var(--a-purple)">砚</div>
+            </div>
+            <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+          </div>
+        </div>
+
+        <div class="flow">
+          <div class="day">今天</div>
+
+          <div class="line mine first">
+            <div class="av" style="background:var(--ink)">我</div>
+            <div class="bub"><span class="mention">@小林</span> castlabs 换核那条线昨天验证过了吗?先说结论。</div>
+            <time>09:12</time>
+          </div>
+
+          <div class="who" style="color:var(--a-magenta)">小林 · 架构</div>
+          <div class="line first">
+            <div class="av" style="background:var(--a-magenta)">林</div>
+            <div class="bub">验证过了,Google 登录真机通过。配方是 castlabs + FedCM off + Widevine + UA 只删 Electron token。<br><strong>"Electron 做不到成熟登录"这个结论可以推翻了。</strong></div>
+            <time>09:14</time>
+          </div>
+          <div class="act">
+            <svg class="ic" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg>
+            <u>读 4 个文件 · 编辑 2 处 · 1m18s</u>
+          </div>
+          <div class="line">
+            <div class="av"></div>
+            <div class="bub">剩下的坑在多 profile:新建 profile 不继承代理,已经修了。</div>
+            <time>09:15</time>
+          </div>
+
+          <div class="who" style="color:var(--a-purple)">砚 · 资料</div>
+          <div class="line first">
+            <div class="av" style="background:var(--a-purple)">砚</div>
+            <div class="bub fileb">
+              <div class="sq"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg></div>
+              <div><b>profile-隔离对照.md</b><i>4.2 KB · 房间文件</i></div>
+            </div>
+            <time>09:21</time>
+          </div>
+
+          <div class="typing"><i></i><i></i><i></i> 阿澈 正在输入</div>
+        </div>
+
+        <div class="comp">
+          <div class="box">
+            <svg class="ic" width="17" height="17" viewBox="0 0 24 24"><path d="M21.4 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.49-8.48"/></svg>
+            <div class="ph">发消息 —— 输入 @ 点名同事</div>
+            <svg class="ic" width="17" height="17" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
+          </div>
+          <div class="send"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" style="stroke-width:2"><path d="M5 12h13M12 5l7 7-7 7"/></svg></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <ul class="notes">
+    <li><b>一条列表,零分区</b>:群/同事/私下/直聊按时间混排。代价是"分类心智"消失,收益是永远不用问"它在哪一段"。</li>
+    <li><b>形状即类型</b>:群=方章、人=圆章、私下=灰方章、直聊=尖角符号。不靠分组标题也认得出。</li>
+    <li><b>预览行带发言人前缀</b>(<em>砚:</em> …),群聊不点开也知道是谁在说;在忙的房显示绿点+在忙人数。</li>
+    <li><b>气泡</b>:我在右(实墨)、同事在左(纸底描边)。这是四套里唯一用气泡的——最"聊天软件",最不像工具。</li>
+    <li><b>执行动作出气泡</b>,挂在气泡下方当一条细注:气泡里只放"TA 说的话",这条纪律和 messenger 形态一致。</li>
+    <li><b>代价</b>:信息密度最低(一屏约 7 行对话),多 agent 并行时看不清全局;右栏不常驻,看板要另开。</li>
+  </ul>
+</div>
+
+<div class="section">
+  <h2>二 · 与 Agent 的私聊<em>同一面,右栏可滑出空间页</em></h2>
+  <div class="stage">
+    <div class="win b">
+
+      <div class="list">
+        <div class="lhead">
+          <div class="row1">
+            <div class="search">
+              <svg class="ic" width="13" height="13" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+              搜索对话、同事、消息
+            </div>
+            <div class="new"><svg class="ic" width="15" height="15" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></div>
+          </div>
+          <div class="chips">
+            <span class="chip">全部</span>
+            <span class="chip">未读<span class="n">3</span></span>
+            <span class="chip">群<span class="n">3</span></span>
+            <span class="chip on">同事<span class="n">6</span></span>
+            <span class="chip">在忙<span class="n">2</span></span>
+          </div>
+        </div>
+        <div class="scroll">
+          <div class="conv on">
+            <div class="wrap"><div class="av" style="background:var(--a-magenta)">林</div><i class="st"></i></div>
+            <div class="txt">
+              <div class="l1"><b>小林</b><time>09:06</time></div>
+              <div class="l2"><p>跑完了:通过。指纹那批假设有三条被证伪…</p><span class="live"><i></i></span></div>
+            </div>
+          </div>
+          <div class="conv unread">
+            <div class="wrap"><div class="av" style="background:var(--a-cyan)">澈</div><i class="st"></i></div>
+            <div class="txt">
+              <div class="l1"><b>阿澈</b><time>09:18</time></div>
+              <div class="l2"><p>测试跑完了,3 条红的都在 diff 那块…</p><span class="badge">1</span></div>
+            </div>
+          </div>
+          <div class="conv">
+            <div class="wrap"><div class="av" style="background:var(--a-purple)">砚</div></div>
+            <div class="txt">
+              <div class="l1"><b>砚</b><time>昨天</time></div>
+              <div class="l2"><p>资料整理好了,要不要我顺手做个对照表</p></div>
+            </div>
+          </div>
+          <div class="conv">
+            <div class="wrap"><div class="av" style="background:var(--ink)">助</div></div>
+            <div class="txt">
+              <div class="l1"><b>主助理</b><time>昨天</time></div>
+              <div class="l2"><p>今天的日记我写好了,放在 07-30.md</p></div>
+            </div>
+          </div>
+          <div class="conv">
+            <div class="wrap"><div class="av" style="background:var(--ink-3)">石</div></div>
+            <div class="txt" style="opacity:.55">
+              <div class="l1"><b>老石</b><time>07-12</time></div>
+              <div class="l2"><p>已注销 · 历史只读</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="foot">
+          <div class="av" style="background:var(--ink);width:26px;height:26px;font-size:10px">我</div>
+          <div class="txt"><b>宋一天</b><i>3 位同事在忙</i></div>
+          <svg class="ic" width="15" height="15" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V15z"/></svg>
+        </div>
+      </div>
+
+      <div class="main" style="position:relative">
+        <div class="top">
+          <div class="av" style="background:var(--a-magenta);width:32px;height:32px">林</div>
+          <div class="txt"><b>小林</b><i style="color:var(--a-green)">在忙 · 正在编辑 session.ts</i></div>
+          <div class="right">
+            <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <svg class="ic" width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
+          </div>
+        </div>
+
+        <div class="flow" style="padding-right:290px">
+          <div class="day">昨天</div>
+          <div class="line mine first">
+            <div class="av" style="background:var(--ink)">我</div>
+            <div class="bub">明天早上先把换核验证跑完,结论直接发我,别贴过程。</div>
+            <time>21:40</time>
+          </div>
+          <div class="line first">
+            <div class="av" style="background:var(--a-magenta)">林</div>
+            <div class="bub">好。跑完发结论。</div>
+            <time>21:40</time>
+          </div>
+          <div class="day">今天</div>
+          <div class="line first">
+            <div class="av" style="background:var(--a-magenta)">林</div>
+            <div class="bub">跑完了:<strong>通过</strong>。指纹那批假设有三条被证伪,细节写进房间文件了,要看再叫我。</div>
+            <time>09:06</time>
+          </div>
+          <div class="act"><svg class="ic" viewBox="0 0 24 24"><path d="M4 17l6-6-6-6M12 19h8"/></svg><u>执行会话 · 37 步 · 12m06s</u></div>
+        </div>
+
+        <div class="comp" style="margin-right:290px">
+          <div class="box">
+            <svg class="ic" width="17" height="17" viewBox="0 0 24 24"><path d="M21.4 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.49-8.48"/></svg>
+            <div class="ph">给小林发消息</div>
+            <svg class="ic" width="17" height="17" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg>
+          </div>
+          <div class="send"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" style="stroke-width:2"><path d="M5 12h13M12 5l7 7-7 7"/></svg></div>
+        </div>
+
+        <!-- 滑出的空间页 -->
+        <div class="drawer">
+          <div class="close"><svg class="ic" width="14" height="14" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></div>
+          <div class="hero">
+            <div class="av" style="background:var(--a-magenta)">林</div>
+            <b>小林</b><i>架构 · 同事</i>
+          </div>
+          <div class="h">在场</div>
+          <div class="mem"><div class="av" style="background:var(--a-orange)">浏</div><div class="txt"><b>浏览器重构</b><i>群聊 · 今天说过话</i></div></div>
+          <div class="mem"><div class="av" style="background:var(--a-purple)">评</div><div class="txt"><b>设计评审</b><i>群聊</i></div></div>
+          <div class="h">最近的活</div>
+          <div class="mem"><div class="av sq" style="background:var(--surface-3);color:var(--ink-2)">◇</div><div class="txt"><b>castlabs 换核验证</b><i>已完成 · 12m06s</i></div></div>
+          <div class="mem"><div class="av sq" style="background:var(--surface-3);color:var(--ink-2)">◇</div><div class="txt"><b>多 profile 隔离</b><i>进行中</i></div></div>
+          <div class="h">文件</div>
+          <div class="mem"><div class="av sq" style="background:var(--surface-3);color:var(--ink-2)">md</div><div class="txt"><b>profile-隔离对照.md</b><i>4.2 KB</i></div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <ul class="notes">
+    <li><b>私聊面与群聊面几乎同形</b>:去掉群头像堆与署名色,其余一模一样。IM 的"和谁说话"不该有两套排版。</li>
+    <li><b>空间页是抽屉不是常驻栏</b>:压在对话上滑出,关掉后对话立刻满宽。窄窗友好,最低 860px 可用。</li>
+    <li><b>已注销同事灰显留在列表里</b>(墓碑),点开只读——不做"消失",历史永远有据可查。</li>
+    <li><b>代价</b>:气泡+宽松排版让长回答很占纵向;agent 常写长文,可能要给长消息一个"折叠到 6 行"的规则。</li>
+  </ul>
+</div>
+
+</body>
+</html>

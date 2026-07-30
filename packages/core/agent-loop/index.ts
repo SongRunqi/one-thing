@@ -24,6 +24,8 @@ export {
   agentToolMessageContentToStructuredPayload,
   agentToolMessageContentForCapabilities,
   agentToolMessageContentFromHistoryResult,
+  agentToolResultIsError,
+  agentToolResultIsErrorFromHistoryResult,
   agentToolResultToMessageContent,
   agentToolResultToMessageContentForCapabilities,
 } from './tool-results.js'
@@ -45,6 +47,7 @@ export {
   agentSupportsInputModality,
   agentSupportsOutputModality,
   agentSupportsCapability,
+  agentSupportsForcedToolUse,
   agentSupportsStructuredToolResults,
   agentSupportsToolResultModality,
   agentSupportsTools,

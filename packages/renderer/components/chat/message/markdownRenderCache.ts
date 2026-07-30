@@ -20,7 +20,8 @@ import type { MarkdownSegment } from '@/composables/parseStreamingMarkdown'
 // v2: status emoji (✅❌⚠️) now normalize to ink glyphs in the text rule.
 // v3: numeric table cells get the md-cell-numeric class (no-wrap).
 // v4: tables render inside a .md-table-scroll wrapper.
-const CACHE_DB_VERSION = 4
+// v5: collab <card>/<file> inline tags render as .collab-tag spans.
+const CACHE_DB_VERSION = 5
 const DB_NAME = 'onething-markdown-cache'
 const STORE_NAME = 'md'
 

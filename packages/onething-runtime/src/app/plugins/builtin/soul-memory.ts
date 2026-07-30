@@ -54,13 +54,11 @@ import {
 	handleSoulMemoryCaptureCommand as coreHandleSoulMemoryCaptureCommand,
 	handleSoulMemoryCommandGet as coreHandleSoulMemoryCommandGet,
 	handleSoulMemoryMemoryCommand as coreHandleSoulMemoryMemoryCommand,
-	handleSoulMemoryMemoryTool as coreHandleSoulMemoryMemoryTool,
 	handleSoulMemoryReviewCommand as coreHandleSoulMemoryReviewCommand,
 	handleSoulMemorySoulCommand as coreHandleSoulMemorySoulCommand,
 	handleSoulMemorySoulGetTool as coreHandleSoulMemorySoulGetTool,
 	handleSoulMemorySoulUpdateTool as coreHandleSoulMemorySoulUpdateTool,
 	hasExplicitMemoryIntent as coreHasExplicitMemoryIntent,
-	formatSoulMemoryRememberCommandResult as coreFormatSoulMemoryRememberCommandResult,
 	isLikelyRawRequestEcho as coreIsLikelyRawRequestEcho,
 	isLowValueDailyNoteLine as coreIsLowValueDailyNoteLine,
 	optionalCaptureText as coreOptionalCaptureText,
@@ -116,13 +114,6 @@ import {
 	relativePath,
 	statPath,
 } from "@onething/core/storage";
-import {
-	addHermesMemoryEntry,
-	getHermesMemoryStatus,
-	readHermesMemoryFile,
-	removeHermesMemoryText,
-	replaceHermesMemoryText,
-} from "@onething/runtime/memory/hermes-file-memory";
 import {
 	listManagedMemoryFiles as runtimeListManagedMemoryFiles,
 	readManagedMemoryFile,
@@ -1049,7 +1040,6 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
 
 	const soulGetTool = getCoreSoulMemoryToolSpec("soul_get");
 	const soulUpdateTool = getCoreSoulMemoryToolSpec("soul_update");
-	const memoryTool = getCoreSoulMemoryToolSpec("memory");
 	const memoryGetTool = getCoreSoulMemoryToolSpec("memory_get");
 	const memoryCommand = getCoreSoulMemoryCommandSpec("/memory");
 	const soulCommand = getCoreSoulMemoryCommandSpec("/soul");
@@ -1201,54 +1191,6 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
 	});
 
 	api.registerTool({
-		...memoryTool,
-		parameters: z.object({
-			action: z.enum(["status", "read", "add", "replace", "remove"]),
-			target: z.enum(["user", "memory"]).optional(),
-			content: z.string().optional(),
-			oldText: z.string().optional(),
-			newText: z.string().optional(),
-			text: z.string().optional(),
-			all: z.boolean().optional(),
-		}),
-		async execute(args, ctx) {
-			const { workspace } = await resolveSessionToolWorkspace(ctx.sessionId);
-			return coreHandleSoulMemoryMemoryTool({
-				args,
-				enabled: workspace.settings.enabled,
-				getStatus: () => getHermesMemoryStatus(workspace),
-				read: (target) => readHermesMemoryFile(workspace, target),
-				add: (target, content) =>
-					addHermesMemoryEntry({ workspace, target, content }),
-				replace: (target, oldText, newText, replaceAll) =>
-					replaceHermesMemoryText({
-						workspace,
-						target,
-						oldText,
-						newText,
-						replaceAll,
-					}),
-				remove: (target, text, removeAll) =>
-					removeHermesMemoryText({
-						workspace,
-						target,
-						text,
-						removeAll,
-					}),
-				markChanged: (relativePath, reason) => {
-					logMemoryDiagnostic({
-						subsystem: "daily",
-						operation: "hermes-file-write",
-						stage: "apply",
-						status: "ok",
-						metadata: { relativePath, reason },
-					});
-				},
-			});
-		},
-	});
-
-	api.registerTool({
 		...memoryGetTool,
 		parameters: z.object({
 			path: z.string().min(1),
@@ -1310,18 +1252,6 @@ export default function soulMemoryPlugin(api: PluginAPI): void {
 						readFileExcerpt: (path) =>
 							readMemoryFileExcerpt({ workspace, inputPath: path }),
 					});
-				},
-				remember: async ({ content }) => {
-					const cmdWorkspace = await ensureWorkspace(
-						getSettings(),
-						resolveSessionAgentId(ctx.sessionId),
-					);
-					const result = await addHermesMemoryEntry({
-						workspace: cmdWorkspace,
-						target: "memory",
-						content,
-					});
-					return coreFormatSoulMemoryRememberCommandResult(result);
 				},
 				status: async () => {
 					const agentId = resolveSessionAgentId(ctx.sessionId);

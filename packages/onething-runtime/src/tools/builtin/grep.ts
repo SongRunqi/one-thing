@@ -6,6 +6,7 @@
 
 import { z } from 'zod'
 import { toJsonObject } from '@onething/core'
+import { createToolAbortError } from '@onething/core/tools'
 import {
   basenamePath,
   joinPaths,
@@ -164,7 +165,7 @@ export function createGrepTool(adapters: GrepToolAdapters): Tool.Info<typeof Gre
 
     async execute(args, ctx) {
       const throwIfAborted = () => {
-        if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
+        if (ctx.abortSignal?.aborted) throw createToolAbortError()
       }
       throwIfAborted()
 
@@ -224,7 +225,7 @@ export function createGrepTool(adapters: GrepToolAdapters): Tool.Info<typeof Gre
           literal: args.literal,
         })
       } catch (error) {
-        if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
+        if (ctx.abortSignal?.aborted) throw createToolAbortError()
         const message = error instanceof Error ? error.message : 'unknown error'
         throw new Error(`Grep search failed: ${message}`)
       }

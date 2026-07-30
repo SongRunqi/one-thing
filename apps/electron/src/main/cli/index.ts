@@ -57,9 +57,84 @@ async function main(): Promise<void> {
     case 'permission':
       await permissionCommand(command, rest, parsed)
       break
+    case 'collab':
+      await collabCommand(command, rest, parsed)
+      break
     default:
       throw new Error(`Unknown command: ${scope}`)
   }
+}
+
+/**
+ * Multi-agent rooms over the daemon:
+ *   onething collab new <名字> --members a,b --pm a [--cwd DIR] [--mode dangerously-allow-all]
+ *   onething collab list
+ *   onething collab update <roomId> [--name N] [--members a,b] [--pm a|''] [--mode MODE]
+ *   onething collab send <roomId> <消息…>
+ *   onething collab board <roomId>
+ *   onething collab log <roomId> [--limit N]
+ */
+async function collabCommand(command = 'list', rest: string[], parsed: ParsedArgs): Promise<void> {
+  const client = await ensureDaemon({ storePath: parsed.storePath })
+  switch (command) {
+    case 'new': {
+      const members = (stringFlag(parsed, 'members') || '').split(',').map(item => item.trim()).filter(Boolean)
+      const budgetFlag = stringFlag(parsed, 'budget')
+      console.log(formatJson(await client.request('collab.roomNew', {
+        name: required(rest.join(' '), 'name'),
+        memberAgentIds: members,
+        pmAgentId: stringFlag(parsed, 'pm') || undefined,
+        workingDirectory: stringFlag(parsed, 'cwd') || undefined,
+        permissionMode: stringFlag(parsed, 'mode') || undefined,
+        dailyCostUSD: budgetFlag !== undefined ? Number(budgetFlag) : undefined,
+      })))
+      break
+    }
+    case 'budget':
+      console.log(formatJson(await client.request('collab.setBudgets', {
+        roomSessionId: required(rest[0], 'roomSessionId'),
+        dailyCostUSD: Number(required(rest[1], 'dailyCostUSD')),
+      })))
+      break
+    case 'update': {
+      // Team settings (W6): only the flags you pass change. --pm '' clears it.
+      const membersFlag = stringFlag(parsed, 'members')
+      const pmFlag = stringFlag(parsed, 'pm')
+      console.log(formatJson(await client.request('collab.roomUpdate', {
+        roomSessionId: required(rest[0], 'roomSessionId'),
+        ...(stringFlag(parsed, 'name') !== undefined ? { name: stringFlag(parsed, 'name') } : {}),
+        ...(membersFlag !== undefined
+          ? { memberAgentIds: membersFlag.split(',').map(item => item.trim()).filter(Boolean) }
+          : {}),
+        ...(pmFlag !== undefined ? { pmAgentId: pmFlag || null } : {}),
+        ...(stringFlag(parsed, 'mode') !== undefined ? { permissionMode: stringFlag(parsed, 'mode') } : {}),
+      })))
+      break
+    }
+    case 'list':
+      printRows(await client.request<any[]>('collab.roomList'), ['id', 'name', 'pmAgentId', 'frozen'])
+      break
+    case 'send':
+      console.log(formatJson(await client.request('collab.send', {
+        roomSessionId: required(rest[0], 'roomSessionId'),
+        content: required(rest.slice(1).join(' '), 'content'),
+      })))
+      break
+    case 'board':
+      console.log(formatJson(await client.request('collab.board', {
+        roomSessionId: required(rest[0], 'roomSessionId'),
+      })))
+      break
+    case 'log':
+      console.log(formatJson(await client.request('collab.transcript', {
+        roomSessionId: required(rest[0], 'roomSessionId'),
+        limit: Number(stringFlag(parsed, 'limit') || 30),
+      })))
+      break
+    default:
+      throw new Error(`Unknown collab command: ${command}`)
+  }
+  client.close()
 }
 
 async function daemonCommand(command = 'status', rest: string[], parsed: ParsedArgs): Promise<void> {

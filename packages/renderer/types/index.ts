@@ -1,12 +1,18 @@
 import type {
 	ChatMessage,
+	ChatMessageMention,
+	ChatMessageReaction,
+	ChatMessageReactionActor,
+	ChatMessageReplyTo,
 	ChatSession,
 	ContextVariable,
 	AgentDefinition,
 	AgentsListResponse,
 	AgentCreateResponse,
+	AgentUpdateRequest,
 	AgentUpdateResponse,
 	AgentDeleteResponse,
+	AgentRestoreResponse,
 	UserPrompt,
 	PromptReferenceSnapshot,
 	PromptListResponse,
@@ -139,6 +145,7 @@ import type {
 	MediaAssetLink,
 	MediaAssetMetadata,
 	MediaQuery,
+	MediaUsageTag,
 	MediaGalleryResponse,
 	MediaRebuildResponse,
 	MarkdownResolveAssetRequest,
@@ -357,6 +364,10 @@ import type {
 
 export type {
 	ChatMessage,
+	ChatMessageMention,
+	ChatMessageReaction,
+	ChatMessageReactionActor,
+	ChatMessageReplyTo,
 	ChatSession,
 	ContextVariable,
 	SessionGoal,
@@ -396,8 +407,10 @@ export type {
 	AgentDefinition,
 	AgentsListResponse,
 	AgentCreateResponse,
+	AgentUpdateRequest,
 	AgentUpdateResponse,
 	AgentDeleteResponse,
+	AgentRestoreResponse,
 	UserPrompt,
 	PromptReferenceSnapshot,
 	PromptListResponse,
@@ -512,6 +525,7 @@ export type {
 	MediaAssetLink,
 	MediaAssetMetadata,
 	MediaQuery,
+	MediaUsageTag,
 	MediaGalleryResponse,
 	MediaRebuildResponse,
 	MarkdownResolveAssetRequest,
@@ -705,6 +719,13 @@ export interface BrowserProfilesResponse {
 	error?: string;
 }
 
+/** Persisted omnibox search-engine selection (table lives in @shared/ipc browser.ts). */
+export interface BrowserSearchEngineResponse {
+	success: boolean;
+	engineId: string;
+	error?: string;
+}
+
 export interface ElectronAPI {
 	/**
 	 * Resolve the on-disk path of a dropped/picked File. Returns "" when the
@@ -754,8 +775,75 @@ export interface ElectronAPI {
 	getSessions: () => Promise<GetSessionsResponse>;
 	createSession: (
 		name: string,
-		options?: { sessionId?: string },
+		options?: {
+			sessionId?: string;
+			kind?: "room";
+			room?: {
+				memberAgentIds: string[];
+				pmAgentId?: string;
+				budgets?: { dailyCostUSD?: number; maxChain?: number };
+				/** 私聊标记(agent-im-dm.md D1/D3);人数即形态。 */
+				dm?: true;
+			};
+		},
 	) => Promise<CreateSessionResponse>;
+	getCollabBoard: (
+		roomSessionId: string,
+	) => Promise<import("@shared/ipc.js").CollabBoardGetResponse>;
+	/** User board mutation (W16): the action rides to the reducer untouched. */
+	actCollabBoard: (
+		roomSessionId: string,
+		action: import("@shared/ipc.js").CollabBoardAction,
+	) => Promise<import("@shared/ipc.js").CollabBoardActResponse>;
+	/** 停止一张卡正在跑的执行(collab-team-v2 §5.1 入口②)。 */
+	stopCollabTask: (
+		roomSessionId: string,
+		taskId: string,
+	) => Promise<import("@shared/ipc.js").CollabTaskStopResponse>;
+	setCollabRoomFrozen: (
+		roomSessionId: string,
+		frozen: boolean,
+	) => Promise<import("@shared/ipc.js").CollabRoomFrozenResponse>;
+	setCollabRoomBudgets: (
+		roomSessionId: string,
+		budgets: import("@shared/ipc.js").CollabRoomBudgetsPatch,
+	) => Promise<import("@shared/ipc.js").CollabRoomBudgetsResponse>;
+	/** Room spend today (W13.5): read-only, one shot when the panel opens. */
+	getCollabRoomSpend: (
+		roomSessionId: string,
+	) => Promise<import("@shared/ipc.js").CollabRoomSpendResponse>;
+	/** Team settings (W6): only provided fields change; pmAgentId null clears. */
+	updateCollabRoom: (
+		roomSessionId: string,
+		update: {
+			name?: string;
+			memberAgentIds?: string[];
+			pmAgentId?: string | null;
+			permissionMode?: import("@shared/ipc.js").PermissionMode;
+		},
+	) => Promise<import("@shared/ipc.js").CollabRoomUpdateResponse>;
+	/**
+	 * 群 folder 的只读列目录(agent-im-chat-ui.md §3.2「文件」块)。folder 的位置
+	 * 只有主进程算得出,所以按房间 id 问。desktop-only。
+	 */
+	listCollabRoomFolder: (
+		roomSessionId: string,
+	) => Promise<import("@shared/ipc.js").CollabRoomFolderListResponse>;
+	/**
+	 * 托管私聊房的 get-or-create(agent-im-dm.md D1)。幂等——同一个 agent 永远同一
+	 * 间房,所以"打开"与"创建"是同一个调用。失败 = 这个 agent 不该有私聊
+	 * (退休 / service / 查无此人)。desktop-only。
+	 */
+	ensureCollabDmRoom: (
+		agentId: string,
+	) => Promise<import("@shared/ipc.js").CollabDmRoomEnsureResponse>;
+	/** IM emoji reaction (W8): toggle semantics, palette-validated in the app layer. */
+	reactToCollabMessage: (
+		roomSessionId: string,
+		messageId: string,
+		emoji: string,
+		actor: import("@shared/ipc.js").ChatMessageReactionActor,
+	) => Promise<import("@shared/ipc.js").CollabMessageReactResponse>;
 	switchSession: (sessionId: string) => Promise<SwitchSessionResponse>;
 	getSession: (sessionId: string) => Promise<SwitchSessionResponse>;
 	deleteSession: (sessionId: string) => Promise<DeleteSessionResponse>;
@@ -1014,7 +1102,7 @@ export interface ElectronAPI {
 		name: string,
 		value: string,
 		description?: string,
-		scope?: "global" | "session",
+		scope?: "global" | "session" | "agent" | "project",
 	) => Promise<VariablesSetResponse>;
 	deleteVariable: (
 		sessionId: string,
@@ -1242,9 +1330,12 @@ export interface ElectronAPI {
 	) => Promise<AgentCreateResponse>;
 	updateAgent: (
 		agentId: string,
-		updates: { name?: string; systemPrompt?: string },
+		updates: Omit<AgentUpdateRequest, "agentId">,
 	) => Promise<AgentUpdateResponse>;
+	/** 「删除」= 退休或硬删(域模型 §3.2);看响应的 outcome 分文案。 */
 	deleteAgent: (agentId: string) => Promise<AgentDeleteResponse>;
+	/** 重新入职(域模型 §8):只有 Agents 管理页调它。 */
+	restoreAgent: (agentId: string) => Promise<AgentRestoreResponse>;
 	// User prompt methods
 	listPrompts: () => Promise<PromptListResponse>;
 	getPrompt: (request: { id: string }) => Promise<PromptGetResponse>;
@@ -1448,6 +1539,8 @@ export interface ElectronAPI {
 		model: string;
 		sessionId: string;
 		messageId: string;
+		/** What the image is for, e.g. 'persona-avatar'. */
+		usageTags?: MediaUsageTag[];
 	}) => Promise<{
 		id: string;
 		type: "image";
@@ -1573,6 +1666,7 @@ export interface ElectronAPI {
 	// Menu event listeners
 	onMenuNewChat: (callback: () => void) => () => void;
 	onMenuCloseChat: (callback: () => void) => () => void;
+	onMenuNewBrowserTab: (callback: () => void) => () => void;
 
 	// Files methods (for @ file search)
 	listFiles: (options: {
@@ -1766,6 +1860,8 @@ export interface ElectronAPI {
 	setBrowserVisible: (visible: boolean) => Promise<{ success: boolean; error?: string }>;
 	pickBrowserElement: (tabId: string) => Promise<BrowserPickResponse>;
 	cancelBrowserPick: (tabId: string) => Promise<{ success: boolean; error?: string }>;
+	getBrowserSearchEngine: () => Promise<BrowserSearchEngineResponse>;
+	setBrowserSearchEngine: (engineId: string) => Promise<BrowserSearchEngineResponse>;
 	listBrowserProfiles: () => Promise<BrowserProfilesResponse>;
 	addBrowserProfile: (name: string) => Promise<BrowserProfilesResponse>;
 	removeBrowserProfile: (profileId: string) => Promise<BrowserProfilesResponse>;
@@ -1878,10 +1974,12 @@ export interface ElectronAPI {
 		activeTabIndex?: number;
 		workspace?: import("@/stores/workspace-persistence").PersistedWorkspace;
 		sidebarCollapsed?: boolean;
+		sessionReadMarks?: import("@/stores/session-read-marks").PersistedSessionReadMarks;
 	}>;
 	saveUIState: (uiState: {
 		workspace?: import("@/stores/workspace-persistence").PersistedWorkspace;
 		sidebarCollapsed?: boolean;
+		sessionReadMarks?: import("@/stores/session-read-marks").PersistedSessionReadMarks;
 	}) => Promise<{ success: boolean }>;
 
 	// Search Everywhere

@@ -14,8 +14,16 @@
       :class="{ 'content-hidden': collapsed && !floating }"
       :aria-hidden="collapsed && !floating"
     >
-      <!-- Sidebar Header: traffic lights space -->
-      <SidebarHeader />
+      <!-- Sidebar Header: traffic lights space + 操作按钮(展开态的宿主) -->
+      <SidebarHeader>
+        <SidebarActionGroup
+          :sidebar-visible="!collapsed || floating"
+          variant="sidebar"
+          @toggle-sidebar="$emit('toggleCollapse')"
+          @open-search="$emit('open-search')"
+          @create-new-chat="$emit('create-new-chat')"
+        />
+      </SidebarHeader>
 
       <!-- 方案六 · 顶部「＋ 新会话」：固定在滚动区之外的文本入口 -->
       <button
@@ -25,6 +33,152 @@
       >
         ＋ 新会话
       </button>
+
+      <!-- 联系人(通讯录)分区 — docs/design/agent-im-dm.md §4.1 D1。
+           一个 agent 一行,点开就是和 TA 的托管式私聊(单成员 dm 房,惰性建房)。
+           数据源是名册而不是会话列表:没聊过的同事也该在通讯录里站着,否则
+           「第一次找小李」这件事就没有入口。desktop-only —— 私聊是房,rooms
+           在 web 端没有协调器(§7 开放问题),所以与群聊同一道能力门。
+           行样式沿用群聊/Agent 组那一族,不另起一套画线风。 -->
+      <div
+        v-if="roomsEnabled && contacts.length > 0"
+        class="sidebar-rooms sidebar-contacts"
+      >
+        <div class="sidebar-rooms-header">
+          <span class="sidebar-rooms-label">联系人</span>
+        </div>
+        <button
+          v-for="contact in contacts"
+          :key="contact.id"
+          type="button"
+          class="sidebar-room-item sidebar-agent-item sidebar-contact-item"
+          :class="{ 'is-active': isContactActive(contact), 'has-unread': isContactUnread(contact) }"
+          :title="contactTitle(contact)"
+          @click="openContact(contact)"
+          @contextmenu.prevent="openContactMenu($event, contact)"
+        >
+          <AgentAvatar
+            class="sidebar-agent-avatar"
+            aria-hidden="true"
+            :avatar="contact.avatar"
+            :avatar-image="contact.avatarImage"
+            :size="18"
+          />
+          <span class="sidebar-room-name">{{ contact.name }}</span>
+          <span
+            v-if="contact.title"
+            class="sidebar-contact-title"
+          >{{ contact.title }}</span>
+          <!-- 未读墨点(agent-im-dm.md P4)。一枚点,不摆数字:系统只知道"有没有
+               新话",不知道"几条" —— 编一个计数出来比不显示更糟。 -->
+          <span
+            v-if="isContactUnread(contact)"
+            class="sidebar-unread-dot"
+            aria-label="有新消息"
+          />
+        </button>
+        <!-- 失败一行墨(RoomMemberStrip 同款):建房被拒(退休/service/查无此人)
+             或 web 端不支持,都必须看得见,绝不静默无反应。 -->
+        <span
+          v-if="contactError"
+          class="sidebar-contacts-error"
+          :title="contactError"
+        >{{ contactError }}</span>
+      </div>
+
+      <!-- 群聊(多 Agent 房间)分区 — docs/design/multi-agent-collab.md。
+           吃的是 groupRoomSessions:私聊房不在这里出现,联系人行是它唯一的
+           侧栏入口(agent-im-dm.md §4.1),否则一间房会在侧栏出现两次。 -->
+      <div
+        v-if="roomSessions.length > 0 || roomsEnabled"
+        class="sidebar-rooms"
+      >
+        <div class="sidebar-rooms-header">
+          <span class="sidebar-rooms-label">群聊</span>
+          <button
+            v-if="roomsEnabled"
+            type="button"
+            class="sidebar-rooms-add"
+            title="新建群聊"
+            aria-label="新建群聊"
+            @click="showRoomDialog = true"
+          >
+            ＋
+          </button>
+        </div>
+        <button
+          v-for="room in roomSessions"
+          :key="room.id"
+          type="button"
+          class="sidebar-room-item"
+          :class="{
+            'is-active': sessionsStore.currentSessionId === room.id,
+            'has-unread': sessionsStore.isUnreadSession(room.id),
+          }"
+          @click="openRoom(room.id)"
+          @contextmenu.prevent="openRoomContextMenu($event, room)"
+        >
+          <span class="sidebar-room-name">{{ room.name }}</span>
+          <span
+            v-if="sessionsStore.isUnreadSession(room.id)"
+            class="sidebar-unread-dot"
+            aria-label="有新消息"
+          />
+        </button>
+
+        <!-- 「私下」= 双成员 dm 房(agent 互聊,agent-im-dm.md §4.1/D4)。
+             群聊区**里**的折叠子分组,不是与它并列的第四段:agent 之间的私聊是
+             群聊的旁支,而透明制要求它在侧栏看得见 —— 看得见,但默认收起,不占
+             视线。房名「A ⇄ B」由引擎现算,这里只显示。 -->
+        <template v-if="pairDmRooms.length > 0">
+          <button
+            type="button"
+            class="sidebar-subgroup"
+            :aria-expanded="pairDmOpen"
+            @click="pairDmOpen = !pairDmOpen"
+          >
+            <span
+              class="sidebar-subgroup-caret"
+              :class="{ open: pairDmOpen }"
+              aria-hidden="true"
+            >›</span>
+            <span class="sidebar-subgroup-label">私下</span>
+            <span class="sidebar-subgroup-count">{{ pairDmRooms.length }}</span>
+            <!-- 收起时组头替组内那些看不见的行说话;展开了就各说各的,组头闭嘴。 -->
+            <span
+              v-if="!pairDmOpen && pairDmUnread"
+              class="sidebar-unread-dot"
+              aria-label="有新消息"
+            />
+          </button>
+          <template v-if="pairDmOpen">
+            <button
+              v-for="room in pairDmRooms"
+              :key="room.id"
+              type="button"
+              class="sidebar-room-item sidebar-subgroup-item"
+              :class="{
+                'is-active': sessionsStore.currentSessionId === room.id,
+                'has-unread': sessionsStore.isUnreadSession(room.id),
+              }"
+              @click="openRoom(room.id)"
+              @contextmenu.prevent="openRoomContextMenu($event, room)"
+            >
+              <span class="sidebar-room-name">{{ room.name }}</span>
+              <span
+                v-if="sessionsStore.isUnreadSession(room.id)"
+                class="sidebar-unread-dot"
+                aria-label="有新消息"
+              />
+            </button>
+          </template>
+        </template>
+      </div>
+
+      <!-- 「Agent 组」已退役(agent-im-dm.md §4.1)。它唯一的能力 —— 各群执行
+           会话的只读转录入口 —— 迁进了 Agents 面板的履历页「群聊」栏:基础设施
+           转录放在通讯录层级是错位的,而履历页本来就是"这个人干过什么"的家。
+           侧栏这一层从此只剩 联系人 / 群聊 / 会话 三段 IM 结构。 -->
 
       <!-- Session List: workspace actions live inside the same scroll panel -->
       <SessionList
@@ -82,6 +236,11 @@
         </div>
       </div>
 
+      <RoomCreateDialog
+        :visible="showRoomDialog"
+        @close="showRoomDialog = false"
+      />
+
       <!-- Context Menu -->
       <SessionContextMenu
         :show="contextMenu.show"
@@ -93,19 +252,38 @@
         @pin="handleContextPin"
         @delete="handleContextDelete"
       />
+
+      <!-- 联系人右键:「打开空间」(= 点头像同一处)与「配置 Agent」。两条都走
+           `openAgentSpace`,差别只是停在哪一面。 -->
+      <ContextMenu
+        :show="contactMenu !== null"
+        :x="contactMenu?.x ?? 0"
+        :y="contactMenu?.y ?? 0"
+        :items="CONTACT_MENU_ITEMS"
+        @select="onContactMenuSelect"
+        @close="contactMenu = null"
+      />
     </Space>
   </aside>
 </template>
 
 <script setup lang="ts">
 import Space from '@/components/common/Space.vue'
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
+import AgentAvatar from '@/components/common/AgentAvatar.vue'
+import ContextMenu from '@/components/common/ContextMenu.vue'
+import type { ContextMenuItem } from '@/components/common/context-menu'
+import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
 import { Bot, Brain, CalendarClock, Images, Radio, Settings } from 'lucide-vue-next'
 import SidebarHeader from './SidebarHeader.vue'
+import SidebarActionGroup from './SidebarActionGroup.vue'
 import SessionList from './SessionList.vue'
 import SessionContextMenu from './SessionContextMenu.vue'
+import RoomCreateDialog from './RoomCreateDialog.vue'
+import { platformApi } from '@/platform'
+import { useWorkspaceStore } from '@/stores/workspace'
 import { useSessionOrganizer, type SessionWithBranches } from './useSessionOrganizer'
 
 interface Props {
@@ -144,6 +322,149 @@ const emit = defineEmits<{
 // Stores
 const sessionsStore = useSessionsStore()
 const chatStore = useChatStore()
+const workspaceStore = useWorkspaceStore()
+
+// 群聊(多 Agent 房间) — desktop only in P0: the web host has no
+// RoomCoordinator and its server silently ignores kind='room' creates.
+const showRoomDialog = ref(false)
+const roomsEnabled = computed(() => platformApi.capabilities.collabRooms)
+// 群聊区 = 普通群。私聊房(单成员 dm)由 store 的 selector 摘走 —— 这里不写
+// 第二份过滤,判定只有 sessions store 那一处(agent-im-dm.md §4.1)。
+const roomSessions = computed(() => sessionsStore.groupRoomSessions)
+// 「私下」子分组(§4.1):双成员 dm 房。同样只读 store 的 selector,不在这里
+// 写第二份形态判定。默认收起 —— 它是旁支,不是主线。
+const pairDmRooms = computed(() => sessionsStore.agentPairDmRoomSessions)
+const pairDmOpen = ref(false)
+// 收起的「私下」组头替组内的行说话。判定仍然是 store 那一个 `isUnreadSession`,
+// 这里只做"有没有任意一间"的聚合(agent-im-dm.md P4)。
+const pairDmUnread = computed(() =>
+  pairDmRooms.value.some(room => sessionsStore.isUnreadSession(room.id)),
+)
+
+function openRoom(sessionId: string): void {
+  workspaceStore.openSession(sessionId)
+}
+
+/** 群聊行右键 = 复用会话上下文菜单(改名/删除;删除会级联清掉工作会话)。 */
+function openRoomContextMenu(event: MouseEvent, room: { id: string }): void {
+  openContextMenu(event, room as unknown as SessionWithBranches)
+}
+
+const agentsStore = useAgentsStore()
+
+// ── 联系人区(agent-im-dm.md §4.1)────────────────────────────────────────
+// 通讯录取社交面名册(域模型 M2 的 `colleagues`:colleague && active),不是
+// 会话列表 —— 没聊过的同事也得在这儿站着,不然"第一次找小李"没有入口。
+// 名册得先加载:群聊区靠执行会话触发那条 watch,通讯录一间房都还没有的时候
+// 也要有人,所以这里自己拉一次(store 自带去重,全 app 仍是一次拉取)。
+watch(roomsEnabled, (enabled) => {
+  if (enabled && !agentsStore.hasLoaded) void agentsStore.loadAgents().catch(() => {})
+}, { immediate: true })
+
+interface SidebarContact {
+  id: string
+  name: string
+  title?: string
+  avatar?: string
+  avatarImage?: string
+}
+
+/** 主助理置顶(D1/M5:default 是第一位联系人),其余保持名册顺序。 */
+const contacts = computed<SidebarContact[]>(() => {
+  const roster = agentsStore.colleagues
+  const head = roster.filter(agent => agent.id === DEFAULT_AGENT_ID)
+  const rest = roster.filter(agent => agent.id !== DEFAULT_AGENT_ID)
+  return [...head, ...rest].map(agent => ({
+    id: agent.id,
+    name: agent.name,
+    title: agent.title,
+    avatar: agent.avatar,
+    avatarImage: agent.avatarImage,
+  }))
+})
+
+const CONTACT_MENU_SPACE = 'agent-space'
+const CONTACT_MENU_CONFIGURE = 'configure-agent'
+const CONTACT_MENU_ITEMS: ContextMenuItem[] = [
+  { id: CONTACT_MENU_SPACE, label: '打开空间' },
+  { id: CONTACT_MENU_CONFIGURE, label: '配置 Agent' },
+]
+const CONTACT_ERROR_LINGER_MS = 4000
+
+const contactMenu = ref<{ x: number; y: number; agentId: string } | null>(null)
+const contactError = ref('')
+const openingContactId = ref('')
+let contactErrorTimer: ReturnType<typeof setTimeout> | null = null
+
+function showContactError(message: string): void {
+  contactError.value = message
+  if (contactErrorTimer) clearTimeout(contactErrorTimer)
+  contactErrorTimer = null
+  if (!message) return
+  contactErrorTimer = setTimeout(() => { contactError.value = '' }, CONTACT_ERROR_LINGER_MS)
+}
+
+/** 已经聊过就点亮 —— 房是惰性建的,没建过的联系人当然不该有高亮。 */
+function isContactActive(contact: SidebarContact): boolean {
+  const room = sessionsStore.findUserDmRoom(contact.id)
+  return !!room && sessionsStore.currentSessionId === room.id
+}
+
+/**
+ * 联系人行的未读 = TA 的私聊房未读。没建过房的联系人当然不会有未读 ——
+ * 判定本身只有 store 那一处,这里只是把 agent 翻译成 房。
+ */
+function isContactUnread(contact: SidebarContact): boolean {
+  const room = sessionsStore.findUserDmRoom(contact.id)
+  return !!room && sessionsStore.isUnreadSession(room.id)
+}
+
+function contactTitle(contact: SidebarContact): string {
+  return contact.title ? `${contact.name} · ${contact.title}` : contact.name
+}
+
+/**
+ * 点联系人 = 打开和 TA 的私聊。建房幂等(同一个 agent 永远同一间房),所以
+ * "打开"和"创建"是同一个调用;新建的房要先进列表 openSession 才认得,这跟
+ * RoomCreateDialog 同一条动线。
+ */
+async function openContact(contact: SidebarContact): Promise<void> {
+  if (openingContactId.value) return
+  openingContactId.value = contact.id
+  showContactError('')
+  try {
+    const response = await platformApi.ensureCollabDmRoom(contact.id)
+    if (!response?.success || !response.roomSessionId) {
+      showContactError(response?.error || '打不开私聊')
+      return
+    }
+    await sessionsStore.loadSessions()
+    workspaceStore.openSession(response.roomSessionId)
+  } catch (cause) {
+    showContactError(cause instanceof Error ? cause.message : String(cause))
+  } finally {
+    openingContactId.value = ''
+  }
+}
+
+function openContactMenu(event: MouseEvent, contact: SidebarContact): void {
+  showContactError('')
+  contactMenu.value = { x: event.clientX, y: event.clientY, agentId: contact.id }
+}
+
+function onContactMenuSelect(id: string): void {
+  const agentId = contactMenu.value?.agentId
+  contactMenu.value = null
+  if (!agentId) return
+  if (id !== CONTACT_MENU_CONFIGURE && id !== CONTACT_MENU_SPACE) return
+  // 三处入口同归一个 `openAgentSpace`(agent-im-chat-ui.md C3):寄存要看的
+  // agent + 停在哪一面,再请 App 开面板 —— 面板懒挂载,直接派事件会打空。
+  agentsStore.openAgentSpace(agentId, id === CONTACT_MENU_SPACE ? 'sessions' : 'config')
+}
+
+onUnmounted(() => {
+  if (contactErrorTimer) clearTimeout(contactErrorTimer)
+})
 
 const workspaceActions = [
   { id: 'memory' as const, label: 'Memory', icon: Brain },
@@ -507,6 +828,200 @@ onUnmounted(() => {
 .sidebar-newchat:hover,
 .sidebar-newchat:focus-visible {
   color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+}
+
+/* 联系人 / 群聊两组——同一套画线风,共用一条规则而不是各画一份,免得两组
+   日后长歪成两种样子。 */
+.sidebar-contacts,
+.sidebar-rooms {
+  flex-shrink: 0;
+  padding: 2px 12px 6px 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-rooms-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 4px 2px 0;
+}
+
+.sidebar-rooms-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  user-select: none;
+}
+
+.sidebar-rooms-add {
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 6px;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  cursor: pointer;
+}
+
+.sidebar-rooms-add:hover {
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+}
+
+.sidebar-room-item {
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 4px 8px 4px 0;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-room-item:hover,
+.sidebar-room-item.is-active {
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+}
+
+/* 未读:一枚墨点靠右,行文顺手提到满墨(IM 的老规矩——未读那行更"实")。
+   群聊/私下行原本不是 flex(省一层盒子,省略号画在按钮本体上),只有带点的那行
+   才切成 flex 并把省略号交给名字 span —— 不改无点行的既有排版。 */
+.sidebar-room-item.has-unread {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+}
+
+.sidebar-room-item.has-unread .sidebar-room-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 5px 一点墨,不描边不发光;靠 margin-left:auto 贴住行尾,名字永远先保住。 */
+.sidebar-unread-dot {
+  flex: 0 0 5px;
+  width: 5px;
+  height: 5px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+  opacity: 0.6;
+}
+
+/* 「私下」折叠头:比群聊行更轻一档(11px、字距同分区标签),它是分区里的分区。
+   一枚发丝 caret + 计数,没有填充也没有边框 —— 画线风里"可折叠"由 caret 说。 */
+.sidebar-subgroup {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.08em;
+  padding: 4px 8px 2px 0;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  cursor: pointer;
+}
+
+.sidebar-subgroup:hover {
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+}
+
+.sidebar-subgroup-caret {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 1;
+  transition: transform 0.12s ease;
+}
+
+.sidebar-subgroup-caret.open {
+  transform: rotate(90deg);
+}
+
+.sidebar-subgroup-count {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* 子项缩进对齐折叠头的文字,而不是 caret —— 缩进是从属关系的唯一标记。 */
+.sidebar-subgroup-item {
+  padding-left: 17px;
+}
+
+/* 联系人行 = 群聊行 + 一枚头像章。行本身沿用 .sidebar-room-item,这里只把
+   文字挪开给章让位。(类名保留 agent- 前缀:章 + 名字这套排版本来就是身份行的
+   通用形,「Agent 组」退役并不改变它属于谁。) */
+.sidebar-agent-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-agent-item .sidebar-room-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+
+/* 联系人行是竖列里的一行:`.sidebar-agent-item` 的 flex:1 是为行内布局写的,
+   在这里会让行去抢竖直方向的空间。 */
+.sidebar-contact-item {
+  flex: 0 0 auto;
+}
+
+/* 联系人行 = Agent 行的排版(头像章 + 名字)再挂一枚职位。职位是补语不是
+   标签:淡一档、可被压缩,名字永远先保住。 */
+.sidebar-contact-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  opacity: 0.75;
+}
+
+/* 建房被拒的一行墨(RoomMemberStrip 的 .member-error 同款语气)。 */
+.sidebar-contacts-error {
+  padding: 2px 8px 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--ui-text-muted-fg, var(--text-muted));
+}
+
+/* 画线圆章:一圈发丝线,emoji 即身份 —— 与房间成员章同一句法,尺寸按侧栏
+   行高收到 18px。无填充、无阴影。 */
+.sidebar-agent-avatar {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 30%, transparent);
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
 }
 
 .sidebar.collapsed {

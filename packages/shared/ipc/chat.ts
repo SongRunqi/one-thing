@@ -24,11 +24,17 @@ import type { SessionGoal } from './goal.js'
  */
 export type VariableLevel = 'system' | 'session'
 
+export type VariableScope = 'global' | 'session' | 'agent' | 'project'
+
+/** Value type of a custom variable; `value` holds the canonical string form. */
+export type VariableType = 'string' | 'number' | 'bool' | 'list' | 'map' | 'set'
+
 export interface ContextVariable {
   name: string
   value: string
   values?: string[]
-  scope?: 'global' | 'session'
+  type?: VariableType
+  scope?: VariableScope
   description?: string
   readonly?: boolean
   // 'static' (default): rendered in the system prompt; 'turn': delivered in
@@ -113,6 +119,114 @@ export interface MessageAttachment {
   excerpt?: string           // Text excerpt of the picked element (≤2k chars)
 }
 
+// ============================================================================
+// Collab (multi-agent room) Types — docs/design/multi-agent-collab.md
+// ============================================================================
+
+/**
+ * Session kind. Absent = 'chat' (ordinary session, zero-regression path).
+ * 'room' = multi-agent group chat (streams only started by the RoomCoordinator);
+ * 'work' = an agent's task-execution session, child of a room.
+ */
+/**
+ * 'agent' = an agent's own execution session (W18, multi-agent-collab-im §4.6):
+ * one durable hidden session per agent where its room turns run — drives,
+ * thinking and tool calls live there, and only `say` reaches a room.
+ */
+export type SessionKind = 'chat' | 'room' | 'work' | 'agent'
+
+/** Room configuration, present only on kind='room' sessions. */
+export interface RoomConfig {
+  memberAgentIds: string[]
+  /** 负责人: review/disposition activation target, and a "你是本群的负责人"
+   *  fact in the willingness judgement. Optional — NOT a default responder
+   *  (that mechanism was removed in the IM rework, W1). */
+  pmAgentId?: string
+  budgets?: {
+    maxChain?: number
+    maxConcurrentWork?: number
+    dailyCostUSD?: number
+    /** 回合断路器上限 (W22); 0 = 关闭该闸。 */
+    maxTurnToolCalls?: number
+    maxTurnSayCalls?: number
+  }
+  /** Room-wide pause switch: freezes all activations. */
+  frozen?: boolean
+  /**
+   * 私聊标记(docs/design/agent-im-dm.md D1/D3)。人数即形态,标记只说"这间房是
+   * 私聊而不是群":
+   *  - **单成员** = 用户 ↔ agent 的托管式私聊(id 约定 `userDmRoomId(agentId)`)。
+   *    用户说话免意愿判定直接激活唯一那位成员(D6),常驻会话工具面走 union(D7)。
+   *  - **双成员** = agent ↔ agent 私聊(D3,IM P3 才实现;本期只落单成员语义)。
+   *
+   * 可选且只写 `true`:旧房没有这个字段,读作"普通群聊",零迁移。
+   */
+  dm?: true
+}
+
+/**
+ * Link from a collab session back to the room it serves.
+ *
+ * kind='work': room + the task being executed (both always present).
+ * kind='agent' (W18): only the room, and it is the room whose drive the
+ * execution session is currently answering — a `say` with no explicit `room`
+ * lands there. `taskId` is therefore optional: an execution session serves the
+ * room's chat, not one card.
+ */
+export interface CollabWorkRef {
+  roomSessionId: string
+  taskId?: string
+}
+
+/**
+ * Quote-reply snapshot (docs/design/multi-agent-collab-im.md §3.5 A).
+ *
+ * Deliberately a SNAPSHOT, not a pointer: `authorLabel` is the signature at
+ * quote time and `excerpt` is the quoted text at quote time, so the block stays
+ * whole after the original is edited or dropped from a paged window.
+ * `messageId` is only ever used to scroll back — if it is gone, nothing jumps.
+ */
+export interface ChatMessageReplyTo {
+  messageId: string
+  authorLabel: string
+  /** ≤120 chars, whitespace collapsed to one line. */
+  excerpt: string
+}
+
+/**
+ * One resolved @mention (docs/design/multi-agent-collab-im.md §4.5 身份 id 化).
+ *
+ * `agentId` is the identity — generated when the agent is created and stable
+ * across renames, so activation is exact even when two members share a name.
+ * `label` is the display name AT MENTION TIME: a snapshot kept only so the
+ * words still read sensibly after the agent is deleted; while the agent lives,
+ * every surface repaints `@label` from the current roster.
+ */
+export interface ChatMessageMention {
+  agentId: string
+  label: string
+}
+
+/**
+ * Who put an emoji on a message (docs/design/multi-agent-collab-im.md §3.5 B).
+ * The human is a single identity (`{type:'user'}`); an agent is identified by
+ * its roster id, so the display name can be re-read after a rename.
+ */
+export interface ChatMessageReactionActor {
+  type: 'user' | 'agent'
+  agentId?: string
+}
+
+/**
+ * One emoji and everyone who put it there — reactions are stored aggregated,
+ * so the projection's `(👍×2)` and the chip's count read the same array.
+ * Metadata only: a reaction never triggers a willingness round.
+ */
+export interface ChatMessageReaction {
+  emoji: string
+  by: ChatMessageReactionActor[]
+}
+
 // Type definitions for IPC messages
 export interface ChatMessage {
   id: string
@@ -135,8 +249,33 @@ export interface ChatMessage {
   steps?: Step[]  // Steps showing AI reasoning process
   attachments?: MessageAttachment[]  // File/image attachments
   source?: 'text' | 'voice' | 'api' | string
+  /**
+   * Assistant persona attribution in collab (room/work) sessions: the agent that
+   * spoke this message. Stamped at the app-layer store choke point from the
+   * session's agentId at creation time; absent on ordinary chat sessions.
+   */
+  agentId?: string
   /** True for steering messages injected mid-stream (persisted marker for UI) */
   steered?: boolean
+  /** IM quote reply: what this message is answering (snapshot, see the type). */
+  replyTo?: ChatMessageReplyTo
+  /**
+   * Identity-resolved @mentions (W14a, rooms only). Absent on every message
+   * written before W14a — consumers fall back to name-text parsing, which is
+   * exactly what makes old transcripts keep working.
+   */
+  mentions?: ChatMessageMention[]
+  /**
+   * W23 restart idempotence: on a coordinator DRIVE (source 'collab'), the room
+   * message that caused the activation. The execution-session transcript is
+   * durable and uncapped, so a persisted drive IS the idempotence ledger — boot
+   * reconciliation can tell "already consumed" from "never driven" without the
+   * state file. Absent on every pre-W23 drive (those replay once and self-heal)
+   * and on every non-drive message; the renderer never reads it.
+   */
+  collabSourceMessageId?: string
+  /** IM emoji reactions on this message (rooms only, see the type). */
+  reactions?: ChatMessageReaction[]
   voice?: VoiceTranscriptMetadata
   origin?: MessageOrigin
   // Turn-volatile context variables captured at send time (user messages only).
@@ -168,10 +307,20 @@ export interface SessionMeta {
   createdAt: number
   updatedAt: number
   agentId?: string
+  kind?: SessionKind
+  room?: RoomConfig
+  collab?: CollabWorkRef
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
   lastProvider?: string
+  /**
+   * The user picked lastProvider/lastModel by hand. Without this flag those two
+   * are indistinguishable from the auto-stamp every assistant message performs,
+   * so an agent's model binding could not tell "the user chose otherwise" from
+   * "the last turn happened to run on that model".
+   */
+  modelPinned?: boolean
   permissionMode?: PermissionMode
   isPinned?: boolean
   isArchived?: boolean
@@ -225,10 +374,20 @@ export interface ChatSession {
   createdAt: number
   updatedAt: number
   agentId?: string
+  kind?: SessionKind
+  room?: RoomConfig
+  collab?: CollabWorkRef
   parentSessionId?: string
   branchFromMessageId?: string
   lastModel?: string
   lastProvider?: string
+  /**
+   * The user picked lastProvider/lastModel by hand. Without this flag those two
+   * are indistinguishable from the auto-stamp every assistant message performs,
+   * so an agent's model binding could not tell "the user chose otherwise" from
+   * "the last turn happened to run on that model".
+   */
+  modelPinned?: boolean
   permissionMode?: PermissionMode
   isPinned?: boolean
   isArchived?: boolean  // Archived (soft-deleted) session
@@ -357,6 +516,10 @@ export interface GetSessionsResponse {
 
 export interface CreateSessionRequest {
   name: string
+  /** Session kind; absent = ordinary chat. 'room' requires `room` config. */
+  kind?: SessionKind
+  /** Room configuration when kind='room'. */
+  room?: RoomConfig
 }
 
 export interface CreateSessionResponse {

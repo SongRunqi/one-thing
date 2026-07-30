@@ -1,2 +1,6 @@
 export * from './store.js'
+export * from './model.js'
+export * from './identity.js'
+export * from './presence.js'
+export * from './profile.js'
 export * from './ipc-operations.js'

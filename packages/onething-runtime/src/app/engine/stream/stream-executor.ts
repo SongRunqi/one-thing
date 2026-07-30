@@ -25,6 +25,7 @@ import type { AgentOutputModality } from '@onething/core/agent-loop'
 import {
   executeCoreMessageStream,
 } from '@onething/core/engine'
+import type { CoreInitialToolChoice } from '@onething/core/engine'
 
 // Re-export for convenience
 export type { HistoryMessage }
@@ -55,6 +56,14 @@ export interface StreamExecutionParams {
   sessionName?: string
   voiceConversation?: boolean
   speakMode?: boolean
+  /** Billing attribution label for this turn's usage records (default 'chat'). */
+  usageSource?: string
+  /**
+   * Force the run's FIRST model call into a (named) tool call — W18b, narrowed
+   * to `say` by name in W22. Set only by the collab room drive, whose entire
+   * output space is the tool surface.
+   */
+  initialToolChoice?: CoreInitialToolChoice
 }
 
 /**

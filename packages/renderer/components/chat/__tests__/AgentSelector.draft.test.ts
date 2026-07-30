@@ -31,7 +31,7 @@ describe('AgentSelector draft chats', () => {
   beforeEach(() => {
     const draft = reactive({
       id: 'draft:one',
-      kind: 'new-chat-draft',
+      draftKind: 'new-chat-draft',
       agentId: 'default',
     })
 
@@ -53,6 +53,14 @@ describe('AgentSelector draft chats', () => {
           updatedAt: 2,
         },
       ],
+      // Mirrors the real store's social-surface roster (A0): active
+      // colleagues only. The fixture agents carry no kind/status, so all of
+      // them qualify by the colleague/active defaults.
+      get colleagues() {
+        return mocks.agentsStore.agents.filter((agent: any) =>
+          (agent.kind ?? 'colleague') === 'colleague' &&
+          (agent.status ?? 'active') === 'active')
+      },
       getAgent: vi.fn((agentId: string) =>
         mocks.agentsStore.agents.find((agent: any) => agent.id === agentId) ||
         mocks.agentsStore.agents[0],
@@ -95,6 +103,33 @@ describe('AgentSelector draft chats', () => {
 
     expect(mocks.sessionsStore.updateSessionAgent).toHaveBeenCalledWith('draft:one', 'agent-research')
     expect(wrapper.find('.agent-chip').text()).toContain('Research')
+  })
+
+  // A0 (agent-domain-model.md M2): the selector is a social surface — a
+  // service agent (radio-dj) never offers itself as a switch target, while
+  // colleagues (including the default agent) stay listed.
+  it('does not list service agents', async () => {
+    mocks.agentsStore.agents.push({
+      id: 'radio-dj',
+      name: 'DJ',
+      systemPrompt: '',
+      kind: 'service',
+      createdAt: 3,
+      updatedAt: 3,
+    })
+
+    const wrapper = mount(AgentSelector, {
+      attachTo: document.body,
+      props: { sessionId: 'draft:one' },
+    })
+    await wrapper.find('.agent-chip').trigger('click')
+    await nextTick()
+
+    const rowNames = Array.from(document.body.querySelectorAll('.agent-row'))
+      .map(row => row.textContent || '')
+    expect(rowNames.some(text => text.includes('DJ'))).toBe(false)
+    expect(rowNames.some(text => text.includes('Default Agent'))).toBe(true)
+    expect(rowNames.some(text => text.includes('Research'))).toBe(true)
   })
 
   it('keeps chat selection free of agent management actions', async () => {

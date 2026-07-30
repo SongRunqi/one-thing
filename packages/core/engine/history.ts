@@ -289,7 +289,7 @@ export function sanitizeCompactedToolResultForAI(
 }
 
 function defaultFailureResultForAI(toolCall: CoreHistoryToolCall): JsonValue {
-	return { error: toolCall.error ?? null };
+	return { error: toolCall.error ?? null, status: "failed" };
 }
 
 export function compactedFailureToolResultForAI(
@@ -845,7 +845,12 @@ export function buildResumeHistoryAfterToolConfirmation(
 		{
 			role: "tool",
 			content: buildHistoryToolResultContent(toolCalls, {
-				failureResultForAI: (toolCall) => ({ error: toolCall.error ?? null }),
+				// Mirror defaultFailureResultForAI: the status field is what
+				// downstream providers read to mark the tool_result as an error.
+				failureResultForAI: (toolCall) => ({
+					error: toolCall.error ?? null,
+					status: "failed",
+				}),
 			}),
 		},
 	];

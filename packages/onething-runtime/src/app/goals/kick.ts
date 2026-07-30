@@ -37,10 +37,21 @@ function goalRunChannel(sessionId: string): string | undefined {
 	return store.getSession(sessionId)?.lastConnector || live;
 }
 
+/** Collab sessions are coordinator-owned: a goal drive would bypass the room
+ *  coordinator (activation reasons, chain gate) or re-drive a harvested work
+ *  session — docs/design/multi-agent-collab.md P0 门控. */
+function isCollabSession(sessionId: string): boolean {
+	const kind = store.getSession(sessionId)?.kind;
+	// 'agent' (W18): an agent's execution session is driven by the coordinator
+	// too — a goal drive there would speak into a room behind its back.
+	return kind === "room" || kind === "work" || kind === "agent";
+}
+
 export async function emitGoalDrive(
 	sessionId: string,
 	goal: SessionGoal,
 ): Promise<void> {
+	if (isCollabSession(sessionId)) return;
 	try {
 		await getEventBus().emit(sessionId, {
 			type: "command:send-message",
@@ -55,6 +66,7 @@ export async function emitGoalDrive(
 }
 
 export function kickGoalRunIfIdle(sessionId: string, goal?: SessionGoal): void {
+	if (isCollabSession(sessionId)) return;
 	const target = goal ?? getGoal(sessionId);
 	if (!target || target.status !== "active") return;
 	if (getStreamEngineSafe()?.getController(sessionId)) return;

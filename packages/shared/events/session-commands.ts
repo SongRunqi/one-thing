@@ -9,9 +9,21 @@
  * Phase 3b+: IPC handlers will emit commands, StreamEngine will subscribe.
  */
 
+import type { ChatMessageMention, ChatMessageReplyTo } from '../ipc/chat.js'
 import type { VoiceTranscriptMetadata } from '../ipc/voice.js'
 import type { MessageOrigin } from '../ipc/channel-identity.js'
 import type { JsonObject } from '../json.js'
+
+/**
+ * The forced opening tool choice a drive may carry. Structurally the subset of
+ * the agent loop's `AgentToolChoice` that a COMMAND is allowed to express —
+ * 'auto'/'none' are the loop's own defaults and have no business travelling on
+ * a send-message command. Declared here rather than imported so the shared
+ * contract keeps depending on nothing.
+ */
+export type SessionInitialToolChoice =
+  | 'required'
+  | { type: 'function'; function: { name: string } }
 
 export interface SendMessageCommand {
   type: 'command:send-message'
@@ -22,6 +34,49 @@ export interface SendMessageCommand {
   source?: 'text' | 'voice' | 'api' | string
   voice?: VoiceTranscriptMetadata
   origin?: MessageOrigin
+  /**
+   * IM quote reply (docs/design/multi-agent-collab-im.md §3.5 A). A snapshot
+   * built by the sender at quote time; the engine only persists it onto the
+   * user message it creates.
+   */
+  replyTo?: ChatMessageReplyTo
+  /**
+   * Identity-resolved @mentions the composer materialized from its member
+   * tokens (W14a). The room ingress gate re-validates them against the roster
+   * and unions the name-text fallback — the sender's ids are a hint about WHO
+   * was picked, never authority over labels or membership.
+   */
+  mentions?: ChatMessageMention[]
+  /**
+   * W23: the room message this coordinator drive answers. A named passthrough
+   * persisted verbatim onto the drive's user message, where it becomes a free
+   * idempotence ledger — see ChatMessage.collabSourceMessageId. Only the collab
+   * coordinator sets it; ordinary chat leaves it absent.
+   */
+  collabSourceMessageId?: string
+  /**
+   * Billing attribution for this turn's usage records (default 'chat').
+   * Set by internal drives that spend on the user's behalf outside a plain
+   * chat turn — the collab coordinator's room drives ('collab-room') and the
+   * worker's task sessions ('collab-work'). Attribution ONLY: the room budget
+   * gate still sums by sessionId, unchanged.
+   */
+  usageSource?: string
+  /**
+   * Force the FIRST model call of this turn into a tool call — either "some
+   * tool" or a NAMED one (W18b).
+   *
+   * NOBODY sets it today. The collab room drive was its only producer (W22
+   * pinned the opening call to `say`) and 2026-07-30 removed that: an agent with
+   * nothing to add had no way to stay quiet and answered with 「不说了」 instead
+   * (see app/collab/turn.ts). The field stays in the contract because forcing
+   * the opening call is a legitimate mechanism a future caller may want — the
+   * transport, the engine and the agent loop all still honour it.
+   *
+   * Paths that leave it unset behave exactly as before. Dropped by the agent
+   * loop when the model does not advertise forced tool use.
+   */
+  initialToolChoice?: SessionInitialToolChoice
   /**
    * Provider/model the caller resolved and displayed at the moment of
    * sending (e.g. the renderer's model picker). When set, the engine uses

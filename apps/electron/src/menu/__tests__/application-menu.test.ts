@@ -122,6 +122,121 @@ describe('electron application menu', () => {
     expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('menu:close-chat')
   })
 
+  // ⌘T/⌘W routing — three claimants: auxiliary window > embedded page (has
+  // focus) > the renderer's tab tree.
+  function fileMenuOf(menu: any) {
+    const template = (menu.buildFromTemplate as any).mock.calls[0][0] as any[]
+    return template.find(item => item.label === 'File')
+  }
+
+  function createBrowser(hasFocus: boolean) {
+    return { hasFocus: () => hasFocus, createTab: vi.fn(), closeActiveTab: vi.fn() }
+  }
+
+  it('gives Cmd+W to the embedded browser while the page has focus', async () => {
+    const { setupElectronApplicationMenu } = await import('../application-menu.js')
+    const mainWindow = createWindow()
+    const { menu } = createMenu()
+    const browser = createBrowser(true)
+
+    setupElectronApplicationMenu({
+      mainWindow,
+      openSettingsWindow: vi.fn(),
+      menu,
+      windows: { getFocusedWindow: () => mainWindow },
+      platform: 'darwin',
+      browser,
+    })
+
+    fileMenuOf(menu).submenu.find((item: any) => item.label === 'Close Tab').click()
+
+    expect(browser.closeActiveTab).toHaveBeenCalledOnce()
+    expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('menu:close-chat')
+  })
+
+  it('falls back to the renderer tab tree on Cmd+W when the page has no focus', async () => {
+    const { setupElectronApplicationMenu } = await import('../application-menu.js')
+    const mainWindow = createWindow()
+    const { menu } = createMenu()
+    const browser = createBrowser(false)
+
+    setupElectronApplicationMenu({
+      mainWindow,
+      openSettingsWindow: vi.fn(),
+      menu,
+      windows: { getFocusedWindow: () => mainWindow },
+      platform: 'darwin',
+      browser,
+    })
+
+    fileMenuOf(menu).submenu.find((item: any) => item.label === 'Close Tab').click()
+
+    expect(browser.closeActiveTab).not.toHaveBeenCalled()
+    expect(mainWindow.webContents.send).toHaveBeenCalledWith('menu:close-chat')
+  })
+
+  it('Cmd+T opens a browser tab directly when the page has focus, else asks the renderer', async () => {
+    const { setupElectronApplicationMenu } = await import('../application-menu.js')
+
+    const focusedWindow = createWindow()
+    const { menu: focusedMenu } = createMenu()
+    const focusedBrowser = createBrowser(true)
+    setupElectronApplicationMenu({
+      mainWindow: focusedWindow,
+      openSettingsWindow: vi.fn(),
+      menu: focusedMenu,
+      windows: { getFocusedWindow: () => focusedWindow },
+      platform: 'darwin',
+      browser: focusedBrowser,
+    })
+    const newTabItem = fileMenuOf(focusedMenu).submenu.find(
+      (item: any) => item.label === 'New Browser Tab',
+    )
+    expect(newTabItem.accelerator).toBe('CmdOrCtrl+T')
+    newTabItem.click()
+    expect(focusedBrowser.createTab).toHaveBeenCalledOnce()
+    expect(focusedWindow.webContents.send).not.toHaveBeenCalledWith('menu:new-browser-tab')
+
+    const blurredWindow = createWindow()
+    const { menu: blurredMenu } = createMenu()
+    const blurredBrowser = createBrowser(false)
+    setupElectronApplicationMenu({
+      mainWindow: blurredWindow,
+      openSettingsWindow: vi.fn(),
+      menu: blurredMenu,
+      windows: { getFocusedWindow: () => blurredWindow },
+      platform: 'darwin',
+      browser: blurredBrowser,
+    })
+    fileMenuOf(blurredMenu)
+      .submenu.find((item: any) => item.label === 'New Browser Tab')
+      .click()
+    expect(blurredBrowser.createTab).not.toHaveBeenCalled()
+    expect(blurredWindow.webContents.send).toHaveBeenCalledWith('menu:new-browser-tab')
+  })
+
+  it('leaves Cmd+T alone while an auxiliary window is focused', async () => {
+    const { setupElectronApplicationMenu } = await import('../application-menu.js')
+    const mainWindow = createWindow()
+    const settingsWindow = { ...createWindow(), close: vi.fn() }
+    const { menu } = createMenu()
+    const browser = createBrowser(true)
+
+    setupElectronApplicationMenu({
+      mainWindow,
+      openSettingsWindow: vi.fn(),
+      menu,
+      windows: { getFocusedWindow: () => settingsWindow as any },
+      platform: 'darwin',
+      browser,
+    })
+
+    fileMenuOf(menu).submenu.find((item: any) => item.label === 'New Browser Tab').click()
+
+    expect(browser.createTab).not.toHaveBeenCalled()
+    expect(mainWindow.webContents.send).not.toHaveBeenCalledWith('menu:new-browser-tab')
+  })
+
   it('omits the Develop menu when web preview is unavailable', async () => {
     const { setupElectronApplicationMenu } = await import('../application-menu.js')
     const { menu } = createMenu()

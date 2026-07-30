@@ -419,10 +419,21 @@ export class OnethingSessionRepository<
     })
   }
 
-  updateSessionModel(sessionId: string, provider: string, model: string): boolean {
+  /**
+   * `pinned` defaults to true: this method exists for the model picker, i.e.
+   * a user decision. Machine-driven stamps (the collab worker applying an
+   * agent's own binding) pass false so the pin keeps meaning "the user chose".
+   */
+  updateSessionModel(
+    sessionId: string,
+    provider: string,
+    model: string,
+    options: { pinned?: boolean } = {},
+  ): boolean {
+    const pinned = options.pinned ?? true
     return this.applyMetadataMutation(sessionId, {
-      mutateSession: session => applySessionModel(session, provider, model),
-      mutateMeta: meta => applySessionModel(meta, provider, model),
+      mutateSession: session => applySessionModel(session, provider, model, { pinned }),
+      mutateMeta: meta => applySessionModel(meta, provider, model, { pinned }),
     })
   }
 
@@ -430,6 +441,35 @@ export class OnethingSessionRepository<
     return this.applyMetadataMutation(sessionId, {
       mutateSession: session => applySessionAgent(session, agentId, this.options.defaultAgentId),
       mutateMeta: meta => applySessionAgent(meta, agentId, this.options.defaultAgentId),
+    })
+  }
+
+  /**
+   * Collab (multi-agent room) fields — docs/design/multi-agent-collab.md.
+   * kind/room/collab are opaque to the repository; the collab module owns their
+   * shapes. `undefined` leaves a field untouched, `null` deletes it.
+   */
+  updateSessionCollab(
+    sessionId: string,
+    fields: { kind?: string | null; room?: unknown | null; collab?: unknown | null },
+  ): boolean {
+    const mutate = (target: { kind?: string; room?: unknown; collab?: unknown }) => {
+      if (fields.kind !== undefined) {
+        if (fields.kind === null) delete target.kind
+        else target.kind = fields.kind
+      }
+      if (fields.room !== undefined) {
+        if (fields.room === null) delete target.room
+        else target.room = fields.room
+      }
+      if (fields.collab !== undefined) {
+        if (fields.collab === null) delete target.collab
+        else target.collab = fields.collab
+      }
+    }
+    return this.applyMetadataMutation(sessionId, {
+      mutateSession: session => mutate(session as TSession & { kind?: string; room?: unknown; collab?: unknown }),
+      mutateMeta: meta => mutate(meta as TMeta & { kind?: string; room?: unknown; collab?: unknown }),
     })
   }
 

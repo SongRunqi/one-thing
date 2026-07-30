@@ -64,6 +64,7 @@ import type { AIProvider, OpenRouterModel, ThinkingEffort } from '@shared/ipc'
 import type { SelectModelValue, SelectOptionLike } from '@/components/common/select'
 import Tooltip from '../common/Tooltip.vue'
 import { resolveProviderModelSelection } from '@/stores/helpers/provider-model'
+import { useSessionAgentModel } from '@/composables/useSessionAgentModel'
 import { resolveOnethingModelCapabilities } from '@onething/runtime/providers/model-capability'
 
 interface Props {
@@ -163,9 +164,12 @@ const currentSession = computed(() => {
   return sessionsStore.getSessionItem(sid) || null
 })
 
+const sessionAgentModel = useSessionAgentModel(currentSession)
+
 const currentSelection = computed(() => resolveProviderModelSelection({
   settings: settingsStore.settings,
   session: currentSession.value,
+  agentModel: sessionAgentModel.value,
 }))
 
 const currentProvider = computed(() => currentSelection.value.providerId)

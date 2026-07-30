@@ -1,12 +1,16 @@
 import { clipboard, contextBridge, ipcRenderer, webUtils } from "electron";
 import { IPC_CHANNELS } from "@shared/ipc.js";
 import type {
+	AgentUpdateRequest,
+	CollabBoardAction,
+	CollabRoomBudgetsPatch,
 	GetSessionMessagesPageRequest,
 	GetSessionUsageRequest,
 	GetSessionUsageResponse,
 	GetUsageSummaryRequest,
 	GetUsageSummaryResponse,
 	MediaQuery,
+	MediaUsageTag,
 	MarkdownResolveAssetRequest,
 	MarkdownSaveAttachmentsRequest,
 	PromptCreateRequest,
@@ -38,7 +42,28 @@ import type {
 	PracticeStopRequest,
 	PracticeSummaryRequest,
 	PracticeSummaryResult,
+	PermissionMode,
 } from "@shared/ipc.js";
+
+/**
+ * Second line of defense for W14a mentions (W7 血教训: a Vue reactive proxy
+ * cannot survive structured clone and takes the whole component tree down with
+ * it). The renderer already rebuilds them as literals when it constructs the
+ * command; this rebuilds them again AT the boundary, because a caller has no
+ * reliable way to know it is holding a proxy. Only the mentions array is
+ * touched — everything else on the command travels exactly as before.
+ */
+function withPlainCommandMentions(command: any): any {
+	const mentions = command?.mentions;
+	if (!Array.isArray(mentions)) return command;
+	return {
+		...command,
+		mentions: mentions.map((mention: any) => ({
+			agentId: String(mention?.agentId ?? ""),
+			label: String(mention?.label ?? ""),
+		})),
+	};
+}
 
 const electronAPI = {
 	onSkillActivated: (
@@ -117,7 +142,10 @@ const electronAPI = {
 
 	emitCommand: (sessionId: string, command: any) =>
 		// 给main线程发送消息
-		ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, { sessionId, command }),
+		ipcRenderer.invoke(IPC_CHANNELS.SESSION_COMMAND, {
+			sessionId,
+			command: withPlainCommandMentions(command),
+		}),
 
 	// ── Terminal (real PTY) ──────
 	createTerminal: (request: {
@@ -182,6 +210,62 @@ const electronAPI = {
 		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_PICK_ELEMENT, { tabId }),
 	cancelBrowserPick: (tabId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_PICK_CANCEL, { tabId }),
+	getBrowserSearchEngine: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_GET_SEARCH_ENGINE),
+
+	// Collab (multi-agent rooms)
+	getCollabBoard: (roomSessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_BOARD_GET, { roomSessionId }),
+	actCollabBoard: (roomSessionId: string, action: CollabBoardAction) =>
+		// Snapshotted at the boundary rather than forwarded as-is: a Vue reactive
+		// proxy cannot survive structured clone and takes the whole component tree
+		// down with it (W7 血教训, same reason the reaction actor below is rebuilt).
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_BOARD_ACT, {
+			roomSessionId,
+			action: JSON.parse(JSON.stringify(action)) as CollabBoardAction,
+		}),
+	stopCollabTask: (roomSessionId: string, taskId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_TASK_STOP, { roomSessionId, taskId }),
+	setCollabRoomFrozen: (roomSessionId: string, frozen: boolean) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SET_FROZEN, { roomSessionId, frozen }),
+	setCollabRoomBudgets: (roomSessionId: string, budgets: CollabRoomBudgetsPatch) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SET_BUDGETS, { roomSessionId, ...budgets }),
+	getCollabRoomSpend: (roomSessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_SPEND_GET, { roomSessionId }),
+	updateCollabRoom: (
+		roomSessionId: string,
+		update: {
+			name?: string;
+			memberAgentIds?: string[];
+			pmAgentId?: string | null;
+			permissionMode?: PermissionMode;
+		},
+	) => ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_UPDATE, { roomSessionId, ...update }),
+	// 群 folder 的只读列目录(agent-im-chat-ui.md §3.2「文件」块)。
+	listCollabRoomFolder: (roomSessionId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_ROOM_FOLDER_LIST, { roomSessionId }),
+	// 托管私聊房(agent-im-dm.md D1):幂等 get-or-create,联系人点开即调。
+	ensureCollabDmRoom: (agentId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_DM_ROOM_ENSURE, { agentId: String(agentId) }),
+	reactToCollabMessage: (
+		roomSessionId: string,
+		messageId: string,
+		emoji: string,
+		actor: { type: "user" | "agent"; agentId?: string },
+	) =>
+		ipcRenderer.invoke(IPC_CHANNELS.COLLAB_MESSAGE_REACT, {
+			roomSessionId,
+			messageId,
+			emoji,
+			// Rebuilt from primitives AT the boundary: a Vue reactive proxy cannot
+			// survive structured clone and takes the component tree down with it,
+			// and a caller has no reliable way to know it is holding one (W7 血教训).
+			actor: {
+				type: String(actor?.type) as "user" | "agent",
+				...(actor?.agentId ? { agentId: String(actor.agentId) } : {}),
+			},
+		}),
+	setBrowserSearchEngine: (engineId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_SEARCH_ENGINE, { engineId }),
 	listBrowserProfiles: () => ipcRenderer.invoke(IPC_CHANNELS.BROWSER_LIST_PROFILES),
 	addBrowserProfile: (name: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.BROWSER_ADD_PROFILE, { name }),
@@ -237,10 +321,19 @@ const electronAPI = {
 	// Session methods
 	getSessions: () => ipcRenderer.invoke(IPC_CHANNELS.GET_SESSIONS),
 
-	createSession: (name: string, options?: { sessionId?: string }) =>
+	createSession: (
+		name: string,
+		options?: {
+			sessionId?: string
+			kind?: 'room'
+			room?: { memberAgentIds: string[]; pmAgentId?: string; budgets?: { dailyCostUSD?: number; maxChain?: number } }
+		},
+	) =>
 		ipcRenderer.invoke(IPC_CHANNELS.CREATE_SESSION, {
 			name,
 			sessionId: options?.sessionId,
+			kind: options?.kind,
+			room: options?.room,
 		}),
 
 	switchSession: (sessionId: string) =>
@@ -317,7 +410,7 @@ const electronAPI = {
 		name: string,
 		value: string,
 		description?: string,
-		scope?: "global" | "session",
+		scope?: "global" | "session" | "agent" | "project",
 	) =>
 		ipcRenderer.invoke(IPC_CHANNELS.VARIABLES_SET, {
 			sessionId,
@@ -726,11 +819,15 @@ const electronAPI = {
 
 	updateAgent: (
 		agentId: string,
-		updates: { name?: string; systemPrompt?: string },
+		updates: Omit<AgentUpdateRequest, "agentId">,
 	) => ipcRenderer.invoke(IPC_CHANNELS.AGENTS_UPDATE, { agentId, ...updates }),
 
+	// 「删除」= 退休或硬删(域模型 §3.2);响应的 outcome 告诉 UI 是哪一种。
 	deleteAgent: (agentId: string) =>
 		ipcRenderer.invoke(IPC_CHANNELS.AGENTS_DELETE, { agentId }),
+
+	restoreAgent: (agentId: string) =>
+		ipcRenderer.invoke(IPC_CHANNELS.AGENTS_RESTORE, { agentId }),
 
 	// Theme methods
 	getThemes: () => ipcRenderer.invoke(IPC_CHANNELS.THEME_GET_ALL),
@@ -1020,6 +1117,7 @@ const electronAPI = {
 		model: string;
 		sessionId: string;
 		messageId: string;
+		usageTags?: MediaUsageTag[];
 	}) => ipcRenderer.invoke("media:save-image", data),
 
 	loadAllMedia: () => ipcRenderer.invoke("media:load-all"),
@@ -1141,6 +1239,14 @@ const electronAPI = {
 		const listener = () => callback();
 		ipcRenderer.on("menu:close-chat", listener);
 		return () => ipcRenderer.removeListener("menu:close-chat", listener);
+	},
+
+	// ⌘T — only sent when the embedded PAGE does not have focus; the renderer
+	// still has to check whether its own browser panel is the focused surface.
+	onMenuNewBrowserTab: (callback: () => void) => {
+		const listener = () => callback();
+		ipcRenderer.on("menu:new-browser-tab", listener);
+		return () => ipcRenderer.removeListener("menu:new-browser-tab", listener);
 	},
 
 	// Files methods (for @ file search)

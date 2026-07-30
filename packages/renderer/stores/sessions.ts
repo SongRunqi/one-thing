@@ -7,19 +7,39 @@ import type {
 	SessionGoal,
 } from "@/types";
 import { platformApi } from "@/platform";
-import { DEFAULT_AGENT_ID } from "@shared/ipc";
+import { DEFAULT_AGENT_ID, isColleague } from "@shared/ipc";
+import { isAgentPairDmRoom, isUserDmRoom } from "@onething/runtime/collab";
+// 叶子入口,不是 `@onething/runtime/agents` barrel:那颗 barrel 拖着吃 node:fs
+// 的 store.ts,走它会把文件系统拽进浏览器包(alias 漏登记只在 build/run 期炸)。
+import {
+	computeAgentPresence,
+	type AgentPresence,
+} from "@onething/runtime/agents/presence";
+import { useAgentsStore } from "./agents";
 import { useChatStore } from "./chat";
 import { useWorkspaceStore } from "./workspace";
+import {
+	createReadMark,
+	isMarkUnread,
+	parsePersistedReadMarks,
+	serializeReadMarks,
+	type PersistedSessionReadMarks,
+	type SessionReadMark,
+} from "./session-read-marks";
 
 // Base session type for list display - can be metadata-only initially, then
 // hydrated with full activation details such as token/context fields.
 // This allows mixed loading: metadata on startup, full session after switching
 type SessionListItem = SessionDetails;
-type NewChatDraft = SessionDetails & { readonly kind: "new-chat-draft" };
+// draftKind (not `kind`): SessionDetails.kind is the durable collab session
+// kind ('chat'|'room'|'work'); the draft discriminant is renderer-local.
+type NewChatDraft = SessionDetails & { readonly draftKind: "new-chat-draft" };
 type VisibleSessionListItem = SessionListItem | NewChatDraft;
 
 const SWITCH_INITIAL_MESSAGE_LIMIT = 6;
 const SWITCH_TARGET_MESSAGE_LIMIT = 16;
+// 水位落盘节流。窗口是 UI 状态(app-state.json)那一层的写,与工作区分栏树同款。
+const READ_MARKS_PERSIST_DEBOUNCE_MS = 400;
 
 let switchGeneration = 0;
 const sessionNameAnimationTimers = new Map<
@@ -78,12 +98,40 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 	const sessionCount = computed(() => sessions.value.length);
 
-	// Filter sessions (excluding archived and the radio's working sessions —
-	// those live in the Music workspace panel, not the public list), sorted by
-	// pinned first
+	/**
+	 * A service agent's sessions (agent-domain-model.md M2) belong to their host
+	 * feature surface — radio-dj's live in the Music panel — never the public
+	 * session list. Judged by `kind`, with the historical id hardcode kept as a
+	 * fallback: agents.json written before A0 has no `kind` field, and this
+	 * filter can run before the agents store has loaded at all — in both
+	 * windows the kind lookup misses, and without the id floor radio-dj
+	 * sessions would flash into (or silently join) the sidebar.
+	 */
+	const agentsStore = useAgentsStore();
+	function isServiceAgentSession(agentId: string | undefined | null): boolean {
+		if (!agentId) return false;
+		if (agentId === "radio-dj") return true;
+		// Deliberately NOT agentsStore.getAgent: that falls back to the default
+		// agent for unknown ids, which would misclassify by the default's kind.
+		const agent = agentsStore.agents.find((a) => a.id === agentId);
+		return !!agent && !isColleague(agent);
+	}
+
+	// Filter sessions (excluding archived and service agents' working sessions —
+	// those live in their feature panel (Music for radio-dj), not the public
+	// list), sorted by pinned first
 	const filteredSessions = computed((): SessionListItem[] => {
 		const filtered = sessions.value.filter(
-			(s) => !s.isArchived && s.agentId !== "radio-dj",
+			(s) =>
+				!s.isArchived &&
+				!isServiceAgentSession(s.agentId) &&
+				// Collab sessions live outside the main list: rooms in the 群聊
+				// section, work sessions only via their task cards (P1), and an
+				// agent's execution session (W18) not at all — it is the agent's
+				// own workspace, surfaced later by an agent page.
+				s.kind !== "room" &&
+				s.kind !== "work" &&
+				s.kind !== "agent",
 		);
 
 		// Only group by pinned, keep array order (new sessions are unshifted to top)
@@ -92,10 +140,113 @@ export const useSessionsStore = defineStore("sessions", () => {
 		return [...pinned, ...unpinned];
 	});
 
+	// Multi-agent group-chat rooms (docs/design/multi-agent-collab.md).
+	// EVERY live room, private chats included — this is the "which rooms exist"
+	// list (board picker, room lookups), not the 群聊 section.
+	const roomSessions = computed(() =>
+		sessions.value.filter((s) => s.kind === "room" && !s.isArchived),
+	);
+
+	/**
+	 * 托管私聊房(agent-im-dm.md D1)= 带 dm 标记的单成员房。
+	 *
+	 * 它是一个**正常会话** —— 能打开、能搜索、能进页签,只是侧栏入口在「联系人」
+	 * 区而不是群聊区。所以这里拆的是"哪一份列表",不是"这间房算不算数"。
+	 *
+	 * 判定单一收口:形态由 `isUserDmRoom`(产品层纯规则,人数即形态)回答,消费方
+	 * 一律读下面两个 selector,谁都别自己写 `room.dm && members.length === 1` ——
+	 * 下一次形态变化(双成员 dm、三人 dm)就会漏改一处。
+	 */
+	const userDmRoomSessions = computed(() =>
+		roomSessions.value.filter((s) => isUserDmRoom(s.room)),
+	);
+
+	/**
+	 * agent ↔ agent 私聊房(agent-im-dm.md D3)= 带 dm 标记的双成员房。
+	 *
+	 * 侧栏「群聊」区里的折叠子分组「私下」吃这一路(§4.1)。与上面那条同源同纪律:
+	 * 形态由产品层的 `isAgentPairDmRoom` 回答,消费方一律读 selector。
+	 */
+	const agentPairDmRoomSessions = computed(() =>
+		roomSessions.value.filter((s) => isAgentPairDmRoom(s.room)),
+	);
+
+	/**
+	 * 侧栏「群聊」区吃的那一路:普通群。
+	 *
+	 * 两种 dm 房都摘出去 —— 单成员房的入口是联系人行,双成员房的入口是「私下」
+	 * 分组。一间房只能有一个侧栏入口,否则它会在同一列里出现两次。
+	 */
+	const groupRoomSessions = computed(() =>
+		roomSessions.value.filter(
+			(s) => !isUserDmRoom(s.room) && !isAgentPairDmRoom(s.room),
+		),
+	);
+
+	function isUserDmRoomSession(sessionId?: string | null): boolean {
+		if (!sessionId) return false;
+		return isUserDmRoom(
+			sessions.value.find((s) => s.id === sessionId)?.room,
+		);
+	}
+
+	/** 这个 agent 的私聊房(还没聊过就没有)—— 联系人行拿它点亮 active 态。 */
+	function findUserDmRoom(
+		agentId?: string | null,
+	): SessionListItem | undefined {
+		if (!agentId) return undefined;
+		return userDmRoomSessions.value.find(
+			(s) => s.room?.memberAgentIds?.[0] === agentId,
+		);
+	}
+
+	// Agent execution sessions (W18). 侧栏「Agent 组」已退役(agent-im-dm.md
+	// §4.1),它们唯一的入口现在是履历页「群聊」栏(经 `agentPresence`)。这条
+	// selector 留着回答"哪些是执行会话"本身:`filteredSessions` 与
+	// `archivedSessions` 都在把它们丢掉,所以它们永不落进 今天/昨天 时间组或
+	// 归档区 —— 这两句互为反面,谁改了都得对着另一句改。
+	const agentSessions = computed(() =>
+		sessions.value.filter((s) => s.kind === "agent"),
+	);
+
+	/**
+	 * 履历页(agent-im-dm.md §4.2 / D8)的归类口径 —— **单点**。
+	 *
+	 * 在场三路(dm 房 / 房间 / 执行会话 / 工作台)一律由产品层纯函数
+	 * `computeAgentPresence` 回答(agent-domain-model.md §5):同一份实现 app 层的
+	 * `listAgentPresence` 也在吃,两处口径靠"共用这一份"收敛,而不是各写一遍。
+	 * 组件里禁止再写第二份 `kind==='agent' && agentId===…` 之类的过滤。
+	 *
+	 * 吃的是**全量** `sessions`(不是 filteredSessions):履历要看得见 archived
+	 * 的执行会话 —— 执行会话本来就骑着 archived 标志躲开所有列表,再滤一次
+	 * 就等于把 agent 的工作史整段抹掉。
+	 */
+	function agentPresence(agentId?: string | null): AgentPresence {
+		return computeAgentPresence(agentId, sessions.value);
+	}
+
+	/**
+	 * 直聊会话(`kind='chat'` 且 persona 绑到该 agent)—— 履历第一栏的另一半。
+	 *
+	 * presence 按定义不认它(它不是在场面的四路之一,注释见 presence.ts 的
+	 * `isEmptyAgentPresence`),所以这一路在这里补齐,同样只此一处。
+	 * 缺 `kind` 的老会话就是普通 chat,一并收下。
+	 */
+	function agentDirectChatSessions(agentId?: string | null): SessionListItem[] {
+		if (!agentId) return [];
+		return sessions.value
+			.filter((s) => s.agentId === agentId && (!s.kind || s.kind === "chat"))
+			.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+	}
+
 	// The radio DJ's curation sessions, newest first — the Music panel's list.
+	// Same service-kind judgment (plus the radio-dj id floor) as the sidebar
+	// exclusion above: what one filter hides, this one shows — the two must
+	// never disagree on membership. Today radio-dj is the only service agent,
+	// so "service sessions" and "radio sessions" coincide.
 	const radioSessions = computed(() => {
 		return sessions.value
-			.filter((s) => s.agentId === "radio-dj")
+			.filter((s) => isServiceAgentSession(s.agentId))
 			.sort((a, b) => b.updatedAt - a.updatedAt);
 	});
 
@@ -106,7 +257,10 @@ export const useSessionsStore = defineStore("sessions", () => {
 	// Get all archived sessions
 	const archivedSessions = computed(() => {
 		return sessions.value
-			.filter((s) => s.isArchived)
+			// Agent execution sessions ride the archived flag to stay out of every
+			// list (scheduler precedent) — the archive is not where they belong
+			// either: nobody archived them, and nobody restores them.
+			.filter((s) => s.isArchived && s.kind !== "agent")
 			.sort(
 				(a, b) => (b.archivedAt || b.updatedAt) - (a.archivedAt || a.updatedAt),
 			);
@@ -124,6 +278,136 @@ export const useSessionsStore = defineStore("sessions", () => {
 	function getSessionItem(sessionId?: string | null): VisibleSessionListItem | undefined {
 		return sessionId ? findSessionItem(sessionId) : undefined;
 	}
+
+	// ── 已读水位与未读判定(agent-im-dm.md P4 / D9)────────────────────────
+	//
+	// 全系统**唯一**一处未读判定。侧栏联系人行、群聊行、「私下」行与折叠组头一律
+	// 读 `isUnreadSession`,谁都别自己拿时间戳去比 —— 下一次口径变化(比如把系统
+	// 行也算进来)就会漏改一处,而未读徽标误报一次就再没人信它。
+	//
+	// 三条不误报的纪律,全部落在这一段里:
+	// 1. 没有水位条目 = 已读。存量会话首次启用时一条都没有,所以不会全量爆红点,
+	//    水位从此刻起算。
+	// 2. 自己说话推进水位(`markSessionRead`)—— 刚说完的会话不该被自己标未读。
+	// 3. 只认落库消息(message:* 事件),不追流式 chunk,所以生成过程中不闪烁。
+
+	const readMarks = ref<Map<string, SessionReadMark>>(new Map());
+	/**
+	 * 窗口是否在前台。默认 true(测试与非 Electron 宿主里没人喂这个信号时,行为
+	 * 退化成"看得见就算读过",而不是把所有可见会话都标成未读)。
+	 */
+	const windowFocused = ref(true);
+	let readMarksHydrated = false;
+	let readMarksPersistTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function isKnownSessionId(sessionId: string): boolean {
+		return sessions.value.some((s) => s.id === sessionId);
+	}
+
+	function persistReadMarks(): void {
+		// 水位在 hydrate 之前是空的;这时候写回去等于把上次的阅读状态抹平。
+		if (!readMarksHydrated || !platformApi?.saveUIState) return;
+		if (readMarksPersistTimer) clearTimeout(readMarksPersistTimer);
+		readMarksPersistTimer = setTimeout(() => {
+			readMarksPersistTimer = null;
+			platformApi
+				.saveUIState({
+					sessionReadMarks: serializeReadMarks(
+						readMarks.value,
+						isKnownSessionId,
+					),
+				})
+				.catch(() => {});
+		}, READ_MARKS_PERSIST_DEBOUNCE_MS);
+	}
+
+	function readMarkOf(sessionId: string): SessionReadMark {
+		let mark = readMarks.value.get(sessionId);
+		if (!mark) {
+			mark = createReadMark();
+			readMarks.value.set(sessionId, mark);
+		}
+		return mark;
+	}
+
+	/** 会话此刻正被人看着:分栏的当前页签 + 窗口在前台。 */
+	function isSessionOnScreen(sessionId: string): boolean {
+		if (!windowFocused.value) return false;
+		return useWorkspaceStore().visibleSessionIds.has(sessionId);
+	}
+
+	/**
+	 * 启动时从 app-state 恢复水位。恢复完顺手把当前可见的会话标成已读 —— 恢复的
+	 * 那个页签用户正看着,它不该带着上次的红点回来。
+	 */
+	function hydrateReadMarks(
+		persisted: PersistedSessionReadMarks | null | undefined,
+	): void {
+		if (readMarksHydrated) return;
+		readMarks.value = parsePersistedReadMarks(persisted, isKnownSessionId);
+		readMarksHydrated = true;
+		triggerRef(readMarks);
+		markVisibleSessionsRead();
+	}
+
+	/**
+	 * 有人跟你说话了(对方消息落库)。唯一的 inbound 写入口。
+	 *
+	 * 时间只进不退:重放、乱序、同一条消息被两条事件带过来,都不该把水位往回拖。
+	 */
+	function noteInboundActivity(sessionId: string, at: number): void {
+		if (!sessionId || !Number.isFinite(at) || at <= 0) return;
+		const mark = readMarkOf(sessionId);
+		if (at <= mark.inboundAt) return;
+		mark.inboundAt = at;
+		// 正看着的会话:消息一到就算读过,用户切走之后也不会再冒出来。
+		if (isSessionOnScreen(sessionId) && at > mark.readAt) mark.readAt = at;
+		triggerRef(readMarks);
+		persistReadMarks();
+	}
+
+	/** 看见了:打开/切到该页签/窗口回到前台/自己刚说完话。 */
+	function markSessionRead(sessionId: string, at = Date.now()): void {
+		if (!sessionId || !Number.isFinite(at) || at <= 0) return;
+		const existing = readMarks.value.get(sessionId);
+		// 从没有过任何动静的会话不必开条目 —— 没条目本来就等于已读。
+		if (!existing && !isKnownSessionId(sessionId)) return;
+		const mark = readMarkOf(sessionId);
+		if (at <= mark.readAt) return;
+		mark.readAt = at;
+		triggerRef(readMarks);
+		persistReadMarks();
+	}
+
+	/** 屏幕上的都算读到了。切页签、窗口回前台、启动恢复共用这一条。 */
+	function markVisibleSessionsRead(at = Date.now()): void {
+		if (!windowFocused.value) return;
+		for (const sessionId of useWorkspaceStore().visibleSessionIds) {
+			markSessionRead(sessionId, at);
+		}
+	}
+
+	/** 窗口前后台切换。回到前台 = 又看见了屏幕上那些会话。 */
+	function setWindowFocused(focused: boolean): void {
+		if (windowFocused.value === focused) return;
+		windowFocused.value = focused;
+		if (focused) markVisibleSessionsRead();
+	}
+
+	/** 未读判定的唯一出口。 */
+	function isUnreadSession(sessionId?: string | null): boolean {
+		if (!sessionId) return false;
+		return isMarkUnread(readMarks.value.get(sessionId));
+	}
+
+	/** 未读会话 id 集合 —— 需要"这一组里有没有未读"的聚合位点读它。 */
+	const unreadSessionIds = computed(() => {
+		const ids = new Set<string>();
+		for (const [sessionId, mark] of readMarks.value) {
+			if (isMarkUnread(mark)) ids.add(sessionId);
+		}
+		return ids;
+	});
 
 	function nextSessionNameAnimationToken(sessionId: string): number {
 		const token = (sessionNameAnimationTokens.get(sessionId) ?? 0) + 1;
@@ -271,7 +555,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 
 		const now = Date.now();
 		const draft: NewChatDraft = {
-			kind: "new-chat-draft",
+			draftKind: "new-chat-draft",
 			id: createNewChatDraftId(),
 			name: name || "New Chat",
 			createdAt: now,
@@ -395,6 +679,9 @@ export const useSessionsStore = defineStore("sessions", () => {
 		// isn't clobbered by an early switch.
 		const workspace = useWorkspaceStore();
 		if (workspace.hydrated) workspace.openSession(sessionId);
+		// 打开就是看见(P4 水位):此刻分栏树已经指向新会话,所以"屏幕上有哪些"
+		// 这一问已经是新答案。
+		markVisibleSessionsRead();
 		if (isNewChatDraftId(sessionId)) {
 			currentSessionId.value = sessionId;
 			isActive.value = true;
@@ -896,6 +1183,9 @@ export const useSessionsStore = defineStore("sessions", () => {
 		if (draft) {
 			draft.lastProvider = provider;
 			draft.lastModel = model;
+			// This function IS the picker: mirror the pin the main process sets,
+			// so the agent binding stops winning the moment the user chooses.
+			draft.modelPinned = true;
 			draft.updatedAt = Date.now();
 			newChatDrafts.value = [...newChatDrafts.value];
 			return { success: true };
@@ -912,6 +1202,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 				if (session) {
 					session.lastProvider = provider;
 					session.lastModel = model;
+					session.modelPinned = true;
 					sessions.value = [...sessions.value];
 				}
 			}
@@ -1052,7 +1343,7 @@ export const useSessionsStore = defineStore("sessions", () => {
 		name: string,
 		value: string,
 		description?: string,
-		scope?: "global" | "session",
+		scope?: "global" | "session" | "agent" | "project",
 	): Promise<{ success: boolean; error?: string; code?: string }> {
 		const response = await platformApi.setVariable(
 			sessionId,
@@ -1092,6 +1383,24 @@ export const useSessionsStore = defineStore("sessions", () => {
 		currentSession,
 		sessionCount,
 		filteredSessions,
+		roomSessions,
+		groupRoomSessions,
+		userDmRoomSessions,
+		agentPairDmRoomSessions,
+		isUserDmRoomSession,
+		findUserDmRoom,
+		readMarks,
+		windowFocused,
+		unreadSessionIds,
+		isUnreadSession,
+		hydrateReadMarks,
+		noteInboundActivity,
+		markSessionRead,
+		markVisibleSessionsRead,
+		setWindowFocused,
+		agentSessions,
+		agentPresence,
+		agentDirectChatSessions,
 		sidebarSessions,
 		radioSessions,
 		getSessionItem,

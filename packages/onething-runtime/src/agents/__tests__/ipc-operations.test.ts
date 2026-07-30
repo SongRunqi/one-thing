@@ -6,6 +6,8 @@ import {
   deleteOnethingAgentFromRequestForIpc,
   listOnethingAgents,
   listOnethingAgentsForIpc,
+  restoreOnethingAgentFromRequest,
+  restoreOnethingAgentFromRequestForIpc,
   updateOnethingAgentFromRequest,
   updateOnethingAgentFromRequestForIpc,
 } from '../ipc-operations.js'
@@ -78,27 +80,101 @@ describe('agent IPC operations', () => {
     })
   })
 
-  it('keeps protected and referenced delete rules in runtime', async () => {
+  /**
+   * A2 的核心分支(agent-domain-model.md §3.2):被引用过只能退休,从未被引用过
+   * 才硬删,default 两条都不给。
+   */
+  it('retires a referenced agent and hard-deletes an unreferenced one', async () => {
     const deleteAgent = vi.fn()
+    const retireAgent = vi.fn((agentId: string) => ({
+      ...defaultAgent,
+      id: agentId,
+      name: 'Retired One',
+      isDefault: undefined,
+      status: 'retired' as const,
+    }))
 
     await expect(deleteOnethingAgentFromRequest({
       agentId: 'default',
       sessions: [],
+      retireAgent,
       deleteAgent,
-    })).rejects.toThrow('Default Agent cannot be deleted')
+    })).rejects.toThrow('Default Agent cannot be retired or deleted')
 
+    // 直聊会话的 persona 绑定就是一处引用 —— 那批消息的署名指着这个 id。
     await expect(deleteOnethingAgentFromRequest({
       agentId: 'agent-used',
-      sessions: [{ agentId: 'agent-used' }],
+      sessions: [{ id: 's1', kind: 'chat', agentId: 'agent-used' }],
+      retireAgent,
       deleteAgent,
-    })).rejects.toThrow('Agent is used by one or more sessions')
+    })).resolves.toEqual({
+      success: true,
+      outcome: 'retired',
+      agent: expect.objectContaining({ id: 'agent-used', status: 'retired' }),
+    })
+    expect(deleteAgent).not.toHaveBeenCalled()
+
+    // 房间成员也是引用,哪怕没有一条会话把它当 agentId。
+    await expect(deleteOnethingAgentFromRequest({
+      agentId: 'agent-in-room',
+      sessions: [{ id: 'room-1', kind: 'room', room: { memberAgentIds: ['agent-in-room', 'other'] } }],
+      retireAgent,
+      deleteAgent,
+    })).resolves.toMatchObject({ outcome: 'retired' })
+    expect(deleteAgent).not.toHaveBeenCalled()
 
     await expect(deleteOnethingAgentFromRequest({
       agentId: 'agent-unused',
-      sessions: [{ agentId: 'default' }, {}],
+      sessions: [{ id: 's2', kind: 'chat', agentId: 'default' }, { id: 's3' }],
+      retireAgent,
       deleteAgent,
-    })).resolves.toEqual({ success: true })
+    })).resolves.toEqual({ success: true, outcome: 'deleted' })
     expect(deleteAgent).toHaveBeenCalledWith('agent-unused')
+  })
+
+  it('restores a retired agent through its own operation', async () => {
+    const restoreAgent = vi.fn((agentId: string) => ({
+      ...defaultAgent,
+      id: agentId,
+      isDefault: undefined,
+      status: 'active' as const,
+    }))
+
+    await expect(restoreOnethingAgentFromRequest({
+      agentId: '',
+      restoreAgent,
+    })).rejects.toThrow('Agent id is required')
+
+    await expect(restoreOnethingAgentFromRequest({
+      agentId: 'agent-retired',
+      restoreAgent,
+    })).resolves.toEqual({
+      success: true,
+      agent: expect.objectContaining({ id: 'agent-retired', status: 'active' }),
+    })
+  })
+
+  /**
+   * 生命周期只经退休/恢复变更(§3.2):普通编辑面即便被塞了 status 也写不进去,
+   * 白名单就是 update 操作里那份显式字段列表。
+   */
+  it('never forwards status through the ordinary update surface', async () => {
+    const updateAgent = vi.fn((input: { agentId: string }) => ({ ...defaultAgent, ...input }))
+
+    await updateOnethingAgentFromRequest({
+      agentId: 'agent-1',
+      name: 'Renamed',
+      status: 'retired',
+      kind: 'service',
+      executor: { type: 'external', connectorId: 'claude-code-agent' },
+      updateAgent,
+    })
+
+    const forwarded = updateAgent.mock.calls[0][0] as Record<string, unknown>
+    expect(forwarded.name).toBe('Renamed')
+    expect('status' in forwarded).toBe(false)
+    expect('kind' in forwarded).toBe(false)
+    expect('executor' in forwarded).toBe(false)
   })
 
   it('normalizes agent adapter failures for IPC callers', async () => {
@@ -130,29 +206,43 @@ describe('agent IPC operations', () => {
     await expect(deleteOnethingAgentFromRequestForIpc({
       agentId: 'agent-1',
       listSessions: () => [],
+      retireAgent: () => defaultAgent,
       deleteAgent: () => {
         throw new Error('delete failed')
       },
       logger,
     })).resolves.toEqual({ success: false, error: 'delete failed' })
 
-    expect(logger.error).toHaveBeenCalledTimes(4)
+    await expect(restoreOnethingAgentFromRequestForIpc({
+      agentId: 'agent-1',
+      restoreAgent: () => {
+        throw new Error('restore failed')
+      },
+      logger,
+    })).resolves.toEqual({ success: false, error: 'restore failed' })
+
+    expect(logger.error).toHaveBeenCalledTimes(5)
   })
 
   it('loads sessions inside the delete IPC operation before applying delete rules', async () => {
-    const listSessions = vi.fn(() => [{ agentId: 'agent-used' }])
+    const listSessions = vi.fn(() => [{ id: 's1', kind: 'chat', agentId: 'agent-used' }])
     const deleteAgent = vi.fn()
+    const retireAgent = vi.fn((agentId: string) => ({
+      ...defaultAgent,
+      id: agentId,
+      isDefault: undefined,
+      status: 'retired' as const,
+    }))
 
     await expect(deleteOnethingAgentFromRequestForIpc({
       agentId: 'agent-used',
       listSessions,
+      retireAgent,
       deleteAgent,
-    })).resolves.toEqual({
-      success: false,
-      error: 'Agent is used by one or more sessions',
-    })
+    })).resolves.toMatchObject({ success: true, outcome: 'retired' })
 
     expect(listSessions).toHaveBeenCalled()
+    expect(retireAgent).toHaveBeenCalledWith('agent-used')
     expect(deleteAgent).not.toHaveBeenCalled()
   })
 })

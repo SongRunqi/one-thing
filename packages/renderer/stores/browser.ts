@@ -9,6 +9,7 @@
  */
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
+import { resolveBrowserOmniboxInput, resolveBrowserSearchEngine } from '@shared/ipc'
 import { platformApi } from '@/platform'
 import type { BrowserTabInfo, BrowserTabsChangedEvent, PickedWebElement } from '@/types'
 
@@ -73,6 +74,29 @@ export const useBrowserStore = defineStore('browser', () => {
     if (activeTabId.value) await platformApi.navigateBrowser?.(activeTabId.value, url)
     else await openTab(url)
   }
+
+  /**
+   * Omnibox submit: URL-ish input navigates directly, anything else searches
+   * with the selected engine. The selection is fetched from the main process
+   * per submit (a user-action-rate IPC) so a change made in the settings
+   * window applies immediately — no cross-window mirror to go stale.
+   *
+   * `engineOverride` is the start page's one-shot pick (Tab-cycled ring): it
+   * applies to THIS search only and is never persisted, so the next new tab is
+   * back on the default. Passing it also skips the IPC hop.
+   */
+  async function openFromInput(raw: string, engineOverride?: string): Promise<void> {
+    const trimmed = raw.trim()
+    if (!trimmed) return
+    let engineId: string | undefined = engineOverride
+    if (!engineId) {
+      const res = await platformApi.getBrowserSearchEngine?.()
+      engineId = res?.success ? res.engineId : undefined
+    }
+    const engine = resolveBrowserSearchEngine(engineId)
+    const url = resolveBrowserOmniboxInput(trimmed, engine)
+    if (url) await navigate(url)
+  }
   async function goBack(): Promise<void> {
     if (activeTabId.value) await platformApi.browserGoBack?.(activeTabId.value)
   }
@@ -84,6 +108,28 @@ export const useBrowserStore = defineStore('browser', () => {
   }
   async function stop(): Promise<void> {
     if (activeTabId.value) await platformApi.stopBrowser?.(activeTabId.value)
+  }
+
+  /**
+   * True while the browser panel's own DOM (omnibox / start page / tab list) is
+   * the focused surface. ⌘T/⌘W arrive as menu events, and the menu can only see
+   * whether the *page* has focus — this covers the other half, where the user is
+   * typing in our chrome and the native view holds no focus at all. Written by
+   * BrowserPanel, read by App.vue's menu handlers.
+   */
+  const panelFocused = ref(false)
+  function setPanelFocused(next: boolean): void {
+    panelFocused.value = next
+  }
+
+  /** ⌘T / 面板内新建：一张起始页。 */
+  async function newTab(): Promise<void> {
+    await openTab()
+  }
+
+  /** ⌘W / chrome 上的 ✕：关掉当前标签（主进程会补一张起始页兜底）。 */
+  async function closeActiveTab(): Promise<void> {
+    if (activeTabId.value) await closeTab(activeTabId.value)
   }
 
   const picking = ref(false)
@@ -112,6 +158,10 @@ export const useBrowserStore = defineStore('browser', () => {
     picking,
     pickElement,
     cancelPick,
+    panelFocused,
+    setPanelFocused,
+    newTab,
+    closeActiveTab,
     tabs,
     activeTabId,
     activeTab,
@@ -120,6 +170,7 @@ export const useBrowserStore = defineStore('browser', () => {
     closeTab,
     selectTab,
     navigate,
+    openFromInput,
     goBack,
     goForward,
     reload,

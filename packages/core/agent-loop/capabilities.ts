@@ -81,6 +81,18 @@ export function agentSupportsTools(capabilities: AgentModelCapabilities): boolea
   return capabilities.supportsTools === true || agentSupportsCapability(capabilities, 'tool-calls')
 }
 
+/**
+ * May the loop force a tool call on this model (`toolChoice: 'required'`)?
+ *
+ * Strict opt-in, unlike the other capability probes: an unknown endpoint that
+ * does not understand the parameter answers with a 400, which would break a
+ * turn that works fine today. Silence therefore means "no", and the caller's
+ * forced choice is dropped rather than attempted.
+ */
+export function agentSupportsForcedToolUse(capabilities: AgentModelCapabilities): boolean {
+  return capabilities.supportsForcedToolUse === true
+}
+
 export function agentSupportsStructuredToolResults(capabilities: AgentModelCapabilities): boolean {
   return capabilities.supportsStructuredToolResults === true ||
     agentSupportsCapability(capabilities, 'structured-tool-results')

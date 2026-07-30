@@ -16,6 +16,8 @@ import type { AgentRuntimeProviderConfig } from '../../providers/agent-runtime.j
 import {
   resolveToolIdentity as resolveCoreToolIdentity,
 } from '@onething/core/engine'
+import type { CoreInitialToolChoice } from '@onething/core/engine'
+import type { EffectiveAgentProfile } from '@onething/runtime/agents'
 import {
   createOnethingStreamProcessor,
 } from '@onething/runtime/stream-processor'
@@ -99,6 +101,25 @@ export interface StreamContext {
   voiceConversation?: boolean
   /** The current assistant text should be treated as TTS-ready visible text. */
   speakMode?: boolean
+  /**
+   * Billing attribution for this turn's usage records (W13.3). Absent = 'chat'.
+   * Only the collab drives set it ('collab-room' / 'collab-work') so the usage
+   * panel can tell room spend from ordinary chat spend.
+   */
+  usageSource?: string
+  /**
+   * Force this run's FIRST model call into a (named) tool call — W18b, narrowed
+   * to `say` by name in W22. Only the collab room drive sets it; the agent loop
+   * applies it to iteration 1 alone.
+   */
+  initialToolChoice?: CoreInitialToolChoice
+  /**
+   * This turn's agent capability profile (tool surface, turn budget, model
+   * binding), resolved once when the run starts —
+   * docs/design/agent-capability-profile.md. The permission mode deliberately
+   * does NOT ride this snapshot: it is read live on every ask.
+   */
+  agentProfile?: EffectiveAgentProfile
 }
 
 /**

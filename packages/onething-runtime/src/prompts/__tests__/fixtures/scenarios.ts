@@ -93,7 +93,7 @@ export function scenarios(): ScenarioDef[] {
 					],
 				},
 				contextVariables:
-					"- migration_state: phase 2/3, converting sessions (started 09:10)\n- deploy_target: staging",
+					'<var name="migration_state">phase 2/3, converting sessions (started 09:10)</var>\n<var name="deploy_target">staging</var>',
 			},
 		},
 		{

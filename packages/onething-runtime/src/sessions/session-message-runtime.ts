@@ -26,6 +26,34 @@ import {
 } from '@onething/core/session'
 import type { SessionWritePlan } from './storage-driver.js'
 
+/**
+ * IM emoji reactions as the persistence layer needs to see them (W8): one
+ * entry per emoji carrying its actors. Structural on purpose — the wire-level
+ * twin lives in the shared IPC contracts, and this layer stays contract-free.
+ */
+export type CoreSessionMessageReactions = Array<{
+  emoji: string
+  by: Array<{ type: 'user' | 'agent'; agentId?: string }>
+}>
+
+/**
+ * IM quote-reply snapshot as the persistence layer needs to see it (W7 shape,
+ * written after the fact by the coordinator since W13.2). Structural on
+ * purpose — the wire-level twin lives in the shared IPC contracts.
+ */
+export interface CoreSessionMessageReplyTo {
+  messageId: string
+  authorLabel: string
+  excerpt: string
+}
+
+/**
+ * Identity-resolved @mentions as the persistence layer needs to see them
+ * (W14a). Structural on purpose — the wire-level twin (ChatMessageMention)
+ * lives in the shared IPC contracts.
+ */
+export type CoreSessionMessageMentions = Array<{ agentId: string; label: string }>
+
 export interface OnethingSessionMessageRuntimeLogger {
   log?(...args: unknown[]): void
   error?(...args: unknown[]): void
@@ -92,6 +120,9 @@ export class OnethingSessionMessageRuntime<
       thinkingTime?: number
       skillUsed?: string
       errorDetails?: string
+      reactions?: CoreSessionMessageReactions
+      replyTo?: CoreSessionMessageReplyTo
+      mentions?: CoreSessionMessageMentions
     },
   TMeta extends CoreSessionMeta,
   TStep extends CoreSessionStepWithId = CoreSessionStepWithId,
@@ -274,6 +305,38 @@ export class OnethingSessionMessageRuntime<
 
   updateMessageError(sessionId: string, messageId: string, errorDetails: string): boolean {
     return this.patchMessage(sessionId, messageId, { errorDetails } as Partial<TMessage>)
+  }
+
+  // IM reactions (W8): metadata on an already-written message, so it rides the
+  // ordinary patch path — no truncation, no sort-order effect, no usage math.
+  updateMessageReactions(
+    sessionId: string,
+    messageId: string,
+    reactions: CoreSessionMessageReactions,
+  ): boolean {
+    return this.patchMessage(sessionId, messageId, { reactions } as Partial<TMessage>)
+  }
+
+  // IM quote reply (W13.2): the coordinator hangs a snapshot on an agent reply
+  // AFTER the stream settled. Metadata on an already-written message, so it
+  // rides the same ordinary patch path reactions do.
+  updateMessageReplyTo(
+    sessionId: string,
+    messageId: string,
+    replyTo: CoreSessionMessageReplyTo,
+  ): boolean {
+    return this.patchMessage(sessionId, messageId, { replyTo } as Partial<TMessage>)
+  }
+
+  // Identity-resolved @mentions (W14a): the coordinator stamps ids onto an
+  // agent reply once the stream settled — metadata on an already-written
+  // message, same ordinary patch path reactions and quotes ride.
+  updateMessageMentions(
+    sessionId: string,
+    messageId: string,
+    mentions: CoreSessionMessageMentions,
+  ): boolean {
+    return this.patchMessage(sessionId, messageId, { mentions } as Partial<TMessage>)
   }
 
   addMessageStep(sessionId: string, messageId: string, step: TStep): boolean {
@@ -459,6 +522,9 @@ export function createOnethingSessionMessageRuntime<
       thinkingTime?: number
       skillUsed?: string
       errorDetails?: string
+      reactions?: CoreSessionMessageReactions
+      replyTo?: CoreSessionMessageReplyTo
+      mentions?: CoreSessionMessageMentions
     },
   TMeta extends CoreSessionMeta,
   TStep extends CoreSessionStepWithId = CoreSessionStepWithId,

@@ -13,7 +13,7 @@ import { useSessionsStore } from '@/stores/sessions'
 type SessionBase = SessionMeta & {
   workingDirectory?: string
   summary?: string
-  kind?: 'new-chat-draft'
+  draftKind?: 'new-chat-draft'
 }
 
 // Extended session interface with branch information
@@ -79,7 +79,7 @@ function temporalKey(ts: number): 'today' | 'yesterday' | 'week' | 'older' {
 }
 
 function isNewChatDraft(session: SessionBase): boolean {
-  return session.kind === 'new-chat-draft'
+  return session.draftKind === 'new-chat-draft'
 }
 
 export function useSessionOrganizer() {

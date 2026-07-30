@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>案一 单线 Monoline — 浏览器 UI</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+/* ================= 案一：单线 Monoline =================
+   一切 chrome 压进一行 32px。标签不占行，收进地址栏左侧的计数芯片；
+   展开时"下推"视口而不是浮层（原生视图盖不住 DOM，所以不做浮层）。 */
+.ml-bar{
+  position:relative; display:flex; align-items:center; gap:2px;
+  height:32px; padding:0 4px 0 2px; flex:none;
+  border-bottom: var(--hairline);
+}
+.ml-bar.picking{ box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg); }
+
+.ml-btn{
+  width:26px; height:26px; display:grid; place-items:center; flex:none;
+  border:none; background:transparent; color:var(--ui-text-muted-fg); cursor:pointer; border-radius:0;
+}
+.ml-btn:hover{ color:var(--ui-text-primary-fg); }
+.ml-btn[disabled]{ color:var(--ui-text-faint-fg); cursor:default; }
+.ml-btn.on{ color:var(--ui-accent-primary-fg); }
+
+/* 标签计数芯片：整条 chrome 的唯一"多标签"入口 */
+.ml-tabs{
+  display:flex; align-items:center; gap:3px; flex:none;
+  height:20px; padding:0 5px 0 6px; margin-right:4px;
+  border:1px solid color-mix(in srgb, var(--ui-border-strong-border) 40%, transparent);
+  border-radius:2px; background:transparent;
+  font-family:var(--font-mono); font-size:10.5px; color:var(--ui-text-muted-fg); cursor:pointer;
+}
+.ml-tabs:hover{ color:var(--ui-text-primary-fg); border-color:var(--ui-border-strong-border); }
+.ml-tabs.open{ color:var(--ui-text-primary-fg); border-color:var(--ui-accent-primary-fg); }
+.ml-tabs .ic{ width:10px; height:10px; }
+
+/* 地址：常态是"域名 · 标题"的可读一行，聚焦才露出裸 URL */
+.ml-addr{
+  flex:1; min-width:0; display:flex; align-items:center; gap:6px;
+  height:24px; padding:0 8px; border-radius:2px;
+  border:1px solid transparent; background:transparent; cursor:text;
+}
+.ml-addr:hover{ background: color-mix(in srgb, var(--ui-text-muted-fg) 7%, transparent); }
+.ml-addr .lock{ color:var(--ui-status-success-fg); }
+.ml-addr .lock.insecure{ color:var(--ui-text-faint-fg); }
+.ml-host{ font-size:12px; font-weight:600; color:var(--ui-text-primary-fg); flex:none; }
+.ml-title{
+  font-size:12px; color:var(--ui-text-muted-fg); min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ml-title::before{ content:"·"; margin:0 6px; color:var(--ui-text-faint-fg); }
+
+.ml-addr.editing{
+  background: var(--ui-surface-input-bg);
+  border-color: var(--ui-accent-primary-fg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg) 26%, transparent);
+}
+.ml-url{
+  flex:1; min-width:0; font-family:var(--font-mono); font-size:11.5px;
+  color:var(--ui-text-primary-fg); white-space:nowrap; overflow:hidden;
+}
+.ml-url .sel{ background: color-mix(in srgb, var(--ui-accent-primary-fg) 20%, transparent); }
+.caret{ display:inline-block; width:1px; height:13px; background:var(--ui-text-primary-fg); vertical-align:-2px; animation:blink 1.1s steps(1) infinite; }
+@keyframes blink{ 50%{ opacity:0; } }
+
+/* 加载：底边 1px 走线，不用转圈 */
+.ml-progress{ position:absolute; left:0; bottom:-1px; height:1.5px; background:var(--ui-accent-primary-fg); }
+
+/* 下推层：标签列表 / 地址建议。占据视口顶部，原生视图 bounds 同步下移 */
+.pushdown{ flex:none; border-bottom: var(--hairline); background:var(--ui-surface-panel-bg); }
+.pd-row{
+  display:flex; align-items:center; gap:8px; height:28px; padding:0 10px 0 8px;
+  font-size:12px; color:var(--ui-text-secondary-fg); cursor:pointer;
+}
+.pd-row:hover{ background: color-mix(in srgb, var(--ui-text-muted-fg) 8%, transparent); }
+.pd-row.cur{ color:var(--ui-text-primary-fg); box-shadow: inset 2px 0 0 var(--ui-accent-primary-fg); }
+.pd-row .num{ font-family:var(--font-mono); font-size:10px; color:var(--ui-text-faint-fg); width:12px; flex:none; }
+.pd-row .favi{ width:12px; height:12px; border-radius:2px; flex:none; }
+.pd-row .nm{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pd-row .host{ margin-left:auto; font-family:var(--font-mono); font-size:10px; color:var(--ui-text-faint-fg); flex:none; }
+.pd-row .cls{ color:var(--ui-text-faint-fg); opacity:0; }
+.pd-row:hover .cls{ opacity:1; }
+.pd-foot{
+  display:flex; align-items:center; gap:6px; height:26px; padding:0 8px;
+  border-top: 1px dotted color-mix(in srgb, var(--ui-border-default-border) 60%, transparent);
+  font-size:11.5px; color:var(--ui-text-muted-fg); cursor:pointer;
+}
+.pd-foot:hover{ color:var(--ui-accent-primary-fg); }
+.pd-hint{
+  padding:4px 10px 6px; font-family:var(--font-mono); font-size:9.5px;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--ui-text-faint-fg);
+}
+.kbd{
+  font-family:var(--font-mono); font-size:9.5px; padding:1px 4px; margin-left:auto;
+  border:1px solid color-mix(in srgb, var(--ui-border-default-border) 60%, transparent);
+  border-radius:2px; color:var(--ui-text-faint-fg);
+}
+.dot{ width:5px; height:5px; border-radius:50%; background:var(--ui-status-info-fg); flex:none; }
+</style>
+</head>
+<body>
+<svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-reload" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-pick" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M22 12h-3M5 12H2M12 5V2M12 22v-3"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4-4"/></symbol>
+</svg>
+
+<div class="wrap">
+  <div class="page-head">
+    <div>
+      <div class="page-title"><span class="no">案一</span>单线 Monoline</div>
+      <div class="page-sub">整条 chrome 32px。标签退居计数芯片，展开靠下推而非浮层。</div>
+    </div>
+    <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme==='dark'?'light':'dark'">切换明暗</button>
+  </div>
+
+  <p class="lede">
+    右侧工作台本来就窄（500px 上下），现在 chrome 吃掉 74px（标签条 34 + 导航条 40）。
+    本案把两条压成 <b>一条 32px</b>：地址栏常态显示「域名 · 标题」而不是刺眼的裸 URL，聚焦才展开成可编辑的完整地址；
+    多标签收进地址左侧的计数芯片 <b>⌄3</b>，点开后<b>下推</b>视口列出标签——因为原生 WebContentsView 永远压在 DOM 之上，
+    任何"浮在页面上"的下拉都会被它盖掉，只能推、不能浮。加载状态是 chrome 底边一条走线。
+    <b>取向：单标签为主、把面积让给页面的人。</b>
+  </p>
+
+  <div class="grid">
+
+    <!-- ① 常态 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">①</span><span class="t">常态 — 全部 chrome 只有 32px</span><span class="h">viewport +42px</span></div>
+      <div class="panel">
+        <div class="ml-bar">
+          <button class="ml-btn"><svg class="ic"><use href="#i-back"/></svg></button>
+          <button class="ml-btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+          <button class="ml-tabs"><svg class="ic"><use href="#i-chev"/></svg>3</button>
+          <div class="ml-addr">
+            <svg class="ic sm lock"><use href="#i-lock"/></svg>
+            <span class="ml-host">github.com</span>
+            <span class="ml-title">castlabs/electron-releases · Releases</span>
+          </div>
+          <button class="ml-btn"><svg class="ic"><use href="#i-reload"/></svg></button>
+          <button class="ml-btn"><svg class="ic"><use href="#i-pick"/></svg></button>
+        </div>
+        <div class="stage">
+          <div class="fauxpage">
+            <div class="h1"></div><div class="ln s"></div><div class="ln m"></div>
+            <div class="img"></div><div class="ln s"></div><div class="ln x"></div><div class="ln m"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ② 地址编辑 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">②</span><span class="t">聚焦地址 — 裸 URL + 下推建议</span><span class="h">⌘L</span></div>
+      <div class="panel">
+        <div class="ml-bar">
+          <button class="ml-btn"><svg class="ic"><use href="#i-back"/></svg></button>
+          <button class="ml-btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+          <button class="ml-tabs"><svg class="ic"><use href="#i-chev"/></svg>3</button>
+          <div class="ml-addr editing">
+            <svg class="ic sm lock"><use href="#i-lock"/></svg>
+            <span class="ml-url"><span class="sel">https://github.com/castlabs/electron-releases</span><span class="caret"></span></span>
+          </div>
+          <button class="ml-btn"><svg class="ic"><use href="#i-pick"/></svg></button>
+        </div>
+        <div class="pushdown">
+          <div class="pd-row cur"><svg class="ic sm" style="color:var(--ui-text-faint-fg)"><use href="#i-search"/></svg><span class="nm">castlabs electron widevine</span><span class="kbd">Enter 搜索</span></div>
+          <div class="pd-row"><svg class="ic sm" style="color:var(--ui-text-faint-fg)"><use href="#i-globe"/></svg><span class="nm">castlabs/electron-releases — Releases</span><span class="host">github.com</span></div>
+          <div class="pd-row"><svg class="ic sm" style="color:var(--ui-text-faint-fg)"><use href="#i-globe"/></svg><span class="nm">Widevine CDM 支持说明</span><span class="host">castlabs.com</span></div>
+        </div>
+        <div class="stage">
+          <div class="fauxpage"><div class="ln s"></div><div class="img"></div><div class="ln m"></div><div class="ln x"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ③ 标签下推 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">③</span><span class="t">标签抽屉 — 下推，不浮层</span><span class="h">⌘⇧A</span></div>
+      <div class="panel">
+        <div class="ml-bar">
+          <button class="ml-btn"><svg class="ic"><use href="#i-back"/></svg></button>
+          <button class="ml-btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+          <button class="ml-tabs open"><svg class="ic" style="transform:rotate(180deg)"><use href="#i-chev"/></svg>3</button>
+          <div class="ml-addr">
+            <svg class="ic sm lock"><use href="#i-lock"/></svg>
+            <span class="ml-host">github.com</span>
+            <span class="ml-title">castlabs/electron-releases</span>
+          </div>
+          <button class="ml-btn"><svg class="ic"><use href="#i-pick"/></svg></button>
+        </div>
+        <div class="pushdown">
+          <div class="pd-hint">打开的标签 · 3</div>
+          <div class="pd-row cur"><span class="num">1</span><span class="favi" style="background:#205EA6"></span><span class="nm">castlabs/electron-releases</span><span class="host">github.com</span></div>
+          <div class="pd-row"><span class="num">2</span><span class="favi" style="background:#66800B"></span><span class="nm">Google 账号 — 安全设置</span><span class="host">google.com</span><svg class="ic sm cls" style="margin-left:8px"><use href="#i-x"/></svg></div>
+          <div class="pd-row"><span class="num">3</span><span class="favi" style="background:#AD8301"></span><span class="nm">Vue 3 响应式原理</span><span class="host">vuejs.org</span></div>
+          <div class="pd-foot"><svg class="ic sm"><use href="#i-plus"/></svg>新建标签<span class="kbd">⌘T</span></div>
+        </div>
+        <div class="stage">
+          <div class="fauxpage"><div class="ln s"></div><div class="ln m"></div><div class="img"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ④ 加载 + 拾取 -->
+    <section class="specimen">
+      <div class="cap"><span class="n">④</span><span class="t">加载中（底边走线）+ 拾取激活</span><span class="h">Esc 取消</span></div>
+      <div class="panel">
+        <div class="ml-bar picking">
+          <button class="ml-btn"><svg class="ic"><use href="#i-back"/></svg></button>
+          <button class="ml-btn"><svg class="ic"><use href="#i-fwd"/></svg></button>
+          <button class="ml-tabs"><svg class="ic"><use href="#i-chev"/></svg>3</button>
+          <div class="ml-addr">
+            <svg class="ic sm lock insecure"><use href="#i-globe"/></svg>
+            <span class="ml-host">vuejs.org</span>
+            <span class="ml-title">正在载入…</span>
+          </div>
+          <button class="ml-btn"><svg class="ic"><use href="#i-stop"/></svg></button>
+          <button class="ml-btn on"><svg class="ic"><use href="#i-pick"/></svg></button>
+          <div class="ml-progress" style="width:62%"></div>
+        </div>
+        <div class="stage">
+          <div class="fauxpage" style="opacity:.5"><div class="h1"></div><div class="ln s"></div><div class="img"></div></div>
+          <div style="position:absolute;left:20px;top:52px;right:120px;height:74px;border:1.5px solid var(--ui-accent-primary-fg);background:color-mix(in srgb,var(--ui-accent-primary-fg) 10%,transparent)"></div>
+          <div style="position:absolute;left:20px;top:130px;font-family:var(--font-mono);font-size:9.5px;letter-spacing:.08em;color:var(--ui-accent-primary-fg)">DIV.HERO · 点击带入对话</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="notes">
+    <div>
+      <h3>为什么这样</h3>
+      <ul>
+        <li>窄面板里每一行都贵：74px → 32px，视口多出 42px（约多两段正文）。</li>
+        <li>常态不显示裸 URL——右侧面板的阅读密度已经很高，一长串 query string 是噪声。真要看，⌘L 一秒展开。</li>
+        <li>标签少于 2 个时计数芯片自动隐藏，chrome 只剩「← → 地址 ⟳ ⊕」。</li>
+      </ul>
+    </div>
+    <div>
+      <h3>落地要点</h3>
+      <ul>
+        <li class="warn">下推层高度变化必须同步 <code>setBrowserBounds</code>，否则原生视图会盖住抽屉。BrowserPanel 的 rAF 对账天然支持，改动只是布局。</li>
+        <li>域名/标题拆分：<code>new URL(tab.url).host</code> + <code>tab.title</code>，两者都缺时退回全 URL。</li>
+        <li>进度线用 <code>did-start-loading</code> → 伪进度（0→70% 缓动，加载完冲 100% 淡出），Electron 没有真实进度事件。</li>
+      </ul>
+    </div>
+    <div>
+      <h3>代价</h3>
+      <ul>
+        <li>多标签是二等公民：切标签要两次点击（开抽屉→选），重度多标签用户会烦。</li>
+        <li>标签没有常驻可见性，页面标题变化/加载完成不易被察觉——靠抽屉里的状态点补。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

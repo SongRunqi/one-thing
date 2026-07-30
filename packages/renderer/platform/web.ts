@@ -1,4 +1,5 @@
 import type {
+	AgentUpdateRequest,
 	AppSettings,
 	GetSessionUsageRequest,
 	GetUsageSummaryRequest,
@@ -21,6 +22,7 @@ const webCapabilities: PlatformCapabilities = {
 	shellTools: false,
 	terminal: false,
 	embeddedBrowser: false,
+	collabRooms: false,
 	clipboardWrite: browserClipboardWriteCapability(),
 	desktopWindows: false,
 	globalMenuEvents: false,
@@ -135,6 +137,9 @@ function normalizeServerCapabilities(value: unknown): PlatformCapabilities {
 		terminal: booleanProperty(value, "terminal", false),
 		// Embedded WebContentsView browser is Electron-only; web falls back to iframe.
 		embeddedBrowser: booleanProperty(value, "embeddedBrowser", false),
+		// Rooms need the in-process RoomCoordinator; the server neither runs one
+		// nor accepts kind='room' creates (P0 desktop-only).
+		collabRooms: booleanProperty(value, "collabRooms", false),
 		clipboardWrite: browserClipboardWriteCapability(),
 		desktopWindows: booleanProperty(value, "desktopWindows", false),
 		globalMenuEvents: booleanProperty(value, "globalMenuEvents", false),
@@ -431,6 +436,19 @@ function isSubscriptionMethod(method: string): boolean {
 }
 
 export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
+	// Collab rooms (P0-P2 desktop-only; collabRooms capability gates the UI)
+	"getCollabBoard",
+	"actCollabBoard",
+	"stopCollabTask",
+	"setCollabRoomFrozen",
+	"setCollabRoomBudgets",
+	"getCollabRoomSpend",
+	"updateCollabRoom",
+	"reactToCollabMessage",
+	// 托管私聊房也是 room(agent-im-dm.md §7 开放问题:rooms 上服务器是独立议题)
+	"ensureCollabDmRoom",
+	// 群 folder 列目录同理:folder 是主进程 store 里的路径
+	"listCollabRoomFolder",
 	// Terminal (P4 web parity is frozen; capability gate hides the UI on web)
 	"createTerminal",
 	"listTerminals",
@@ -455,6 +473,8 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	"setBrowserVisible",
 	"pickBrowserElement",
 	"cancelBrowserPick",
+	"getBrowserSearchEngine",
+	"setBrowserSearchEngine",
 	"listBrowserProfiles",
 	"addBrowserProfile",
 	"removeBrowserProfile",
@@ -469,6 +489,7 @@ export const WEB_DESKTOP_ONLY_PLATFORM_METHODS = [
 	"closeWindow",
 	"onMenuNewChat",
 	"onMenuCloseChat",
+	"onMenuNewBrowserTab",
 	"onSearchWindowShown",
 	"onSearchWindowGuides",
 ] as const;
@@ -755,12 +776,15 @@ const webApi = {
 		postJson("/api/agents", { name, systemPrompt }),
 	updateAgent: (
 		agentId: string,
-		updates: { name?: string; systemPrompt?: string },
+		updates: Omit<AgentUpdateRequest, "agentId">,
 	) => postJson(`/api/agents/${encodeURIComponent(agentId)}/update`, updates),
+	// 「删除」= 退休或硬删(域模型 §3.2);服务端回同一个 outcome 字段。
 	deleteAgent: (agentId: string) =>
 		requestJson(`/api/agents/${encodeURIComponent(agentId)}`, {
 			method: "DELETE",
 		}),
+	restoreAgent: (agentId: string) =>
+		postJson(`/api/agents/${encodeURIComponent(agentId)}/restore`, {}),
 
 	getProviders: () => requestJson("/api/providers"),
 	getProviderUsage: (providerId: string) =>
@@ -1004,7 +1028,7 @@ const webApi = {
 		name: string,
 		value: string,
 		description?: string,
-		scope?: "global" | "session",
+		scope?: "global" | "session" | "agent" | "project",
 	) =>
 		postJson("/api/variables/set", {
 			sessionId,
@@ -1146,8 +1170,22 @@ const webApi = {
 	// 会话列表一律元数据(与 Electron IPC GET_SESSIONS 行为一致);消息经
 	// activate/分页接口按会话加载,不存在全量含消息的列表请求。
 	getSessions: () => requestJson("/api/sessions"),
-	createSession: (name: string, options?: { sessionId?: string }) =>
-		postJson("/api/sessions", { name, sessionId: options?.sessionId }),
+	createSession: (
+		name: string,
+		options?: {
+			sessionId?: string;
+			kind?: "room";
+			room?: { memberAgentIds: string[]; pmAgentId?: string; budgets?: { dailyCostUSD?: number; maxChain?: number } };
+		},
+	) =>
+		// kind/room are desktop-only in P0 (rooms need the collab coordinator);
+		// the server rejects unknown kinds if ever passed.
+		postJson("/api/sessions", {
+			name,
+			sessionId: options?.sessionId,
+			kind: options?.kind,
+			room: options?.room,
+		}),
 	activateSession: (sessionId: string) =>
 		postJson(`/api/sessions/${encodeURIComponent(sessionId)}/activate`),
 	getSession: (sessionId: string) =>
@@ -1355,6 +1393,7 @@ const webApi = {
 
 	onMenuNewChat: () => () => {},
 	onMenuCloseChat: () => () => {},
+	onMenuNewBrowserTab: () => () => {},
 	onSearchAction: subscribeSearchAction,
 };
 

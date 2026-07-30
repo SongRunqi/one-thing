@@ -12,13 +12,19 @@
  */
 import { WebContentsView, net, session, shell, type BrowserWindow } from 'electron'
 import { randomUUID } from 'node:crypto'
-import type {
-	BrowserTabInfo,
-	BrowserTabsChangedEvent,
-	BrowserViewBounds,
-	PickedWebElement,
+import {
+	type BrowserSearchEngineId,
+	type BrowserTabInfo,
+	type BrowserTabsChangedEvent,
+	type BrowserViewBounds,
+	type PickedWebElement,
 } from '@shared/ipc.js'
-import { getBrowserPartitionSession, removeBrowserPartitionSession } from './session.js'
+import {
+	getBrowserPartitionSession,
+	removeBrowserPartitionSession,
+	whenBrowserPartitionReady,
+} from './session.js'
+import { getSearchEngineId, setSearchEngineId } from './search-engine.js'
 import { ensureWidevineReady } from './widevine.js'
 import { PICK_SCRIPT, CANCEL_PICK_SCRIPT, type RawPickedElement } from './pick-script.js'
 import {
@@ -38,7 +44,6 @@ import {
 	type TabStateCoalescer,
 } from './tab-state.js'
 
-const NEW_TAB_URL = 'about:blank'
 const COALESCE_MS = 30
 
 export interface BrowserBroadcaster {
@@ -52,6 +57,8 @@ interface TabRecord {
 	id: string
 	view: WebContentsView
 	info: BrowserTabInfo
+	/** The profile partition this tab was born on — its loads wait on THAT proxy replay. */
+	partition: string
 }
 
 export class BrowserViewService {
@@ -85,20 +92,26 @@ export class BrowserViewService {
 
 	createTab(url?: string, background = false): BrowserTabInfo {
 		const id = randomUUID()
+		// No explicit URL → an EMPTY tab: url '' means "start page", the renderer's
+		// own DOM (docs/design/browser-ui/newtab-4up.html 案一). Nothing is loaded
+		// and the WebContentsView stays hidden (see applyActiveVisibility) until the
+		// user actually navigates — no engine homepage, no network on tab open.
+		const initialUrl = url ?? ''
+		const partition = partitionForProfile(this.ensureActiveProfile())
 		const view = new WebContentsView({
 			webPreferences: {
-				session: getBrowserPartitionSession(partitionForProfile(this.ensureActiveProfile())),
+				session: getBrowserPartitionSession(partition),
 			},
 		})
 		const info: BrowserTabInfo = {
 			id,
-			url: url ?? '',
+			url: initialUrl,
 			title: '',
 			loading: false,
 			canGoBack: false,
 			canGoForward: false,
 		}
-		const record: TabRecord = { id, view, info }
+		const record: TabRecord = { id, view, info, partition }
 		this.tabs.set(id, record)
 		this.order.push(id)
 		this.wireWebContents(record)
@@ -119,13 +132,40 @@ export class BrowserViewService {
 		// flags debugger/automation). Cleanest embedded state = clean Chrome UA
 		// string (session.setUserAgent) + proxy, NO CDP attached. Testing whether
 		// a naked embedded browser passes Google where the "clever" one failed.
-		if (url) void record.view.webContents.loadURL(url).catch(() => undefined)
+		if (initialUrl) this.loadWhenPartitionReady(record, initialUrl)
 		return info
 	}
 
-	closeTab(tabId: string): void {
+	/**
+	 * Every load goes through here: a freshly created profile partition applies
+	 * setProxy async, and the first request must not race it out DIRECT. Settled
+	 * partitions resolve in a microtask. The tab waits on ITS OWN partition —
+	 * the active profile may have moved on since the tab was born.
+	 */
+	private loadWhenPartitionReady(record: TabRecord, url: string): void {
+		void whenBrowserPartitionReady(record.partition)
+			.then(() => {
+				if (!record.view.webContents.isDestroyed()) {
+					return record.view.webContents.loadURL(url)
+				}
+			})
+			.catch(() => undefined)
+	}
+
+	/**
+	 * Closing the LAST tab leaves a fresh start page behind rather than an empty
+	 * panel: the panel has no "no tab" state to fall back to (its viewport is a
+	 * placeholder rect), and a start page now costs nothing — no view, no request.
+	 * `respawn: false` is for callers that are about to open their own tab (profile
+	 * switch), where a respawn would land on the OLD profile.
+	 */
+	closeTab(tabId: string, respawn = true): void {
 		const record = this.tabs.get(tabId)
 		if (!record) return
+		// Destroying the focused view leaves the window with nothing focused —
+		// hand focus back to the app renderer so the start page's line is live
+		// immediately (⌘W then typing, with no click in between).
+		const hadFocus = this.isRecordFocused(record)
 		this.detachAndDestroy(record)
 		this.tabs.delete(tabId)
 		this.order = this.order.filter((id) => id !== tabId)
@@ -138,7 +178,30 @@ export class BrowserViewService {
 		}
 		this.coalescer.remove(tabId)
 		this.coalescer.setOrder(this.order)
+		if (respawn && this.order.length === 0) this.createTab()
+		if (hadFocus) this.windowProvider()?.webContents.focus()
 		this.scheduleFlush()
+	}
+
+	/** Close whatever tab is active — the ⌘W path when the page owns focus. */
+	closeActiveTab(): void {
+		if (this.activeTabId) this.closeTab(this.activeTabId)
+	}
+
+	/**
+	 * True when the embedded page itself owns keyboard focus. The menu is the only
+	 * place ⌘T/⌘W can be caught while a WebContentsView has focus (DOM keydown
+	 * never reaches the app renderer then), so the menu asks this to decide
+	 * whether those keys belong to the browser or to the chat tab tree.
+	 */
+	hasFocus(): boolean {
+		const record = this.activeTabId ? this.tabs.get(this.activeTabId) : undefined
+		return !!record && this.isRecordFocused(record)
+	}
+
+	private isRecordFocused(record: TabRecord): boolean {
+		const wc = record.view.webContents
+		return !wc.isDestroyed() && wc.isFocused()
 	}
 
 	selectTab(tabId: string): void {
@@ -150,7 +213,7 @@ export class BrowserViewService {
 	navigate(tabId: string, url: string): void {
 		const record = this.tabs.get(tabId)
 		if (!record) return
-		void record.view.webContents.loadURL(url).catch(() => undefined)
+		this.loadWhenPartitionReady(record, url)
 	}
 
 	goBack(tabId: string): void {
@@ -250,6 +313,18 @@ export class BrowserViewService {
 		this.activeTabId = null
 	}
 
+	// ── search engine (omnibox queries + the start page's default) ─
+
+	getSearchEngine(): { engineId: BrowserSearchEngineId } {
+		return { engineId: getSearchEngineId() }
+	}
+
+	/** Persist the selection; unknown ids keep the current one. Existing tabs stay put. */
+	setSearchEngine(engineId: string): { engineId: BrowserSearchEngineId } {
+		setSearchEngineId(engineId)
+		return this.getSearchEngine()
+	}
+
 	// ── profiles (Chrome-style isolated logins) ────────────────
 
 	private ensureActiveProfile(): string {
@@ -270,7 +345,7 @@ export class BrowserViewService {
 	switchProfile(profileId: string): { profiles: BrowserProfile[]; activeProfileId: string } {
 		if (!persistSetActiveProfile(profileId)) return this.listProfiles()
 		if (this.ensureActiveProfile() !== profileId) {
-			for (const tabId of [...this.order]) this.closeTab(tabId)
+			for (const tabId of [...this.order]) this.closeTab(tabId, false)
 			this.activeProfileId = profileId
 			this.createTab()
 		}
@@ -335,9 +410,15 @@ export class BrowserViewService {
 		this.applyActiveBounds()
 	}
 
+	/**
+	 * A tab with no URL is on the start page — the renderer draws that in DOM, so
+	 * this tab's (blank white) native view must stay hidden or it would cover it.
+	 * Gating here rather than in the renderer keeps one owner of view visibility;
+	 * the gate lifts by itself when the first navigation commits a URL.
+	 */
 	private applyActiveVisibility(): void {
 		for (const [id, record] of this.tabs) {
-			record.view.setVisible(this.visible && id === this.activeTabId)
+			record.view.setVisible(this.visible && id === this.activeTabId && !!record.info.url)
 		}
 	}
 
@@ -373,8 +454,11 @@ export class BrowserViewService {
 		})
 
 		const refresh = (patch: Partial<BrowserTabInfo>) => {
+			const wasBlank = !record.info.url
 			Object.assign(record.info, patch)
 			this.syncNavFlags(record)
+			// Leaving the start page (first committed URL) un-gates this tab's view.
+			if (wasBlank && record.info.url) this.applyActiveVisibility()
 			this.coalescer.mark(record.id, { ...record.info })
 			this.scheduleFlush()
 		}
@@ -397,8 +481,28 @@ export class BrowserViewService {
 				if (this.tabs.has(record.id)) refresh({ favicon: dataUrl })
 			})
 		})
-		wc.on('did-start-loading', () => refresh({ loading: true, crashed: false }))
+		// Loading state drives the omnibox progress bar, so it must mean "the main
+		// document is being replaced" — NOT Electron's did-start-loading, which
+		// mirrors the WebContents' AGGREGATE loading flag. Measured on Electron 41:
+		// a late iframe (ad/embed/lazy widget) and same-document navigations
+		// (pushState/replaceState — every SPA link click, and infinite-scroll pages
+		// rewrite the URL while you scroll) all flip did-start-loading on and back
+		// off within milliseconds. Chrome's own tab spinner filters those out via
+		// ShouldShowLoadingUI(), which Electron doesn't expose, so we reconstruct it:
+		// main-frame cross-document navigation only. (fetch/XHR and lazy <img> were
+		// measured NOT to trigger it — those were never the problem.)
+		wc.on('did-start-navigation', (details) => {
+			if (!details.isMainFrame || details.isSameDocument) return
+			refresh({ loading: true, crashed: false })
+		})
+		// Aggregate stop is the accurate "everything settled" signal, but a page
+		// with a long-polling iframe may never reach it — the main frame finishing
+		// or failing clears the bar first, whichever lands earlier.
 		wc.on('did-stop-loading', () => refresh({ loading: false }))
+		wc.on('did-finish-load', () => refresh({ loading: false }))
+		wc.on('did-fail-load', (_e, _code, _desc, _url, isMainFrame) => {
+			if (isMainFrame) refresh({ loading: false })
+		})
 		wc.on('did-navigate', (_e, url) => refresh({ url }))
 		wc.on('did-navigate-in-page', (_e, url, isMainFrame) => {
 			if (isMainFrame) refresh({ url })
@@ -416,7 +520,11 @@ export class BrowserViewService {
 		const history = record.view.webContents.navigationHistory
 		record.info.canGoBack = history.canGoBack()
 		record.info.canGoForward = history.canGoForward()
-		if (!record.info.url) record.info.url = record.view.webContents.getURL()
+		// `url` is written ONLY by createTab and the did-navigate events on purpose:
+		// '' now means "on the start page", and getURL() can already report a
+		// *pending* URL at did-start-navigation time — filling it in from there
+		// would blank the start page (and reveal the white native view) before the
+		// new page has committed a single pixel.
 	}
 
 	private scheduleFlush(): void {
@@ -489,6 +597,15 @@ export function configureBrowserWindowProvider(next: BrowserWindowProvider): voi
 	windowProvider = next
 }
 
+/**
+ * The service only if it already exists. For callers that must not *wake* the
+ * browser subsystem just to ask a question — the menu consults this on every
+ * ⌘T/⌘W, and getBrowserViewService() would spin up Widevine on first press.
+ */
+export function peekBrowserViewService(): BrowserViewService | null {
+	return serviceInstance
+}
+
 export function getBrowserViewService(): BrowserViewService {
 	serviceInstance ??= new BrowserViewService(
 		() => windowProvider(),
@@ -505,5 +622,3 @@ export function getBrowserViewService(): BrowserViewService {
 export function killAllBrowserTabs(): void {
 	serviceInstance?.killAll()
 }
-
-export { NEW_TAB_URL }

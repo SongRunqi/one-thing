@@ -81,6 +81,10 @@ export const SYSTEM_INTERNAL_MESSAGE_SOURCES: ReadonlySet<string> = new Set([
   // The radio conductor's DJ wake: a curation turn driven into the dedicated
   // radio session when the programme runs low.
   'radio',
+  // Room-coordinator activation drives (multi-agent collab). These carry no
+  // human counterpart; routing them would remap the room session and corrupt
+  // memory attribution (docs/design/multi-agent-collab.md D8).
+  'collab',
 ])
 
 export function isSystemInternalSource(source: string | undefined): boolean {

@@ -128,6 +128,115 @@ export interface BrowserPickResponse {
 	error?: string
 }
 
+// ── search engines ───────────────────────────────────────────
+
+export type BrowserSearchEngineId = 'google' | 'bing' | 'baidu' | 'duckduckgo'
+
+/** A selectable omnibox search engine. `searchUrl` carries a single `%s` query slot. */
+export interface BrowserSearchEngine {
+	id: BrowserSearchEngineId
+	name: string
+	/** Two-to-three char label for the start page's engine ring (谷歌/必应/百度/DDG). */
+	shortName: string
+	/** Single glyph for the start page's inline engine token (G/B/百/D). */
+	token: string
+	/** The engine's own homepage — reachable from the start page, never auto-opened. */
+	homeUrl: string
+	/** Query URL template; `%s` is replaced with the URI-encoded query. */
+	searchUrl: string
+}
+
+export const DEFAULT_BROWSER_SEARCH_ENGINE_ID: BrowserSearchEngineId = 'google'
+
+/**
+ * The selectable engines — single source of truth for the renderer omnibox
+ * (query URL), the start page's engine ring and the settings picker. The
+ * selection itself is persisted by the main process (browser/search-engine.json).
+ */
+export const BROWSER_SEARCH_ENGINES: readonly BrowserSearchEngine[] = [
+	{
+		id: 'google',
+		name: '谷歌 Google',
+		shortName: '谷歌',
+		token: 'G',
+		homeUrl: 'https://www.google.com/',
+		searchUrl: 'https://www.google.com/search?q=%s',
+	},
+	{
+		id: 'bing',
+		name: '必应 Bing',
+		shortName: '必应',
+		token: 'B',
+		homeUrl: 'https://www.bing.com/',
+		searchUrl: 'https://www.bing.com/search?q=%s',
+	},
+	{
+		id: 'baidu',
+		name: '百度',
+		shortName: '百度',
+		token: '百',
+		homeUrl: 'https://www.baidu.com/',
+		searchUrl: 'https://www.baidu.com/s?wd=%s',
+	},
+	{
+		id: 'duckduckgo',
+		name: 'DuckDuckGo',
+		shortName: 'DDG',
+		token: 'D',
+		homeUrl: 'https://duckduckgo.com/',
+		searchUrl: 'https://duckduckgo.com/?q=%s',
+	},
+]
+
+/** Engine for an id, falling back to the default on unknown/absent ids. */
+export function resolveBrowserSearchEngine(id: string | null | undefined): BrowserSearchEngine {
+	return (
+		BROWSER_SEARCH_ENGINES.find((engine) => engine.id === id) ??
+		BROWSER_SEARCH_ENGINES.find((engine) => engine.id === DEFAULT_BROWSER_SEARCH_ENGINE_ID)!
+	)
+}
+
+/**
+ * True when omnibox input will be searched rather than navigated to. Exported so
+ * the omnibox can *show* which of the two Enter does — the "no dot → search"
+ * rule is invisible otherwise, and duplicating it in the UI would let the two
+ * drift apart.
+ */
+export function isBrowserSearchInput(raw: string): boolean {
+	const trimmed = raw.trim()
+	if (!trimmed) return false
+	if (/^[a-z]+:\/\//i.test(trimmed)) return false
+	return /\s/.test(trimmed) || !/\./.test(trimmed)
+}
+
+/**
+ * Omnibox input → URL: explicit scheme passes through, bare host/path gets
+ * https://, anything with a space or without a dot becomes an engine search.
+ * Returns '' for empty input (caller skips navigation).
+ */
+export function resolveBrowserOmniboxInput(raw: string, engine: BrowserSearchEngine): string {
+	const trimmed = raw.trim()
+	if (!trimmed) return ''
+	if (isBrowserSearchInput(trimmed)) {
+		// encodeURIComponent escapes '$', so the replacement can't trip String.replace's
+		// special `$` patterns.
+		return engine.searchUrl.replace('%s', encodeURIComponent(trimmed))
+	}
+	if (/^[a-z]+:\/\//i.test(trimmed)) return trimmed
+	return `https://${trimmed}`
+}
+
+/** Response of BROWSER_GET/SET_SEARCH_ENGINE — the persisted selection. */
+export interface BrowserSearchEngineResponse {
+	success: boolean
+	engineId: BrowserSearchEngineId
+	error?: string
+}
+
+export interface BrowserSetSearchEngineRequest {
+	engineId: string
+}
+
 /** A browser profile — an isolated persistent partition (Chrome-style login). */
 export interface BrowserProfile {
 	id: string

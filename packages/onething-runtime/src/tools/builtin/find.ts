@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { toJsonObject } from '@onething/core'
+import { createToolAbortError } from '@onething/core/tools'
 import {
   isAbsolutePath,
   joinPaths,
@@ -127,7 +128,7 @@ export function createFindTool(adapters: FindToolAdapters): Tool.Info<typeof Fin
 
     async execute(args, ctx) {
       const throwIfAborted = () => {
-        if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
+        if (ctx.abortSignal?.aborted) throw createToolAbortError()
       }
       throwIfAborted()
 
@@ -172,7 +173,7 @@ export function createFindTool(adapters: FindToolAdapters): Tool.Info<typeof Fin
           }
         }
       } catch (error) {
-        if (ctx.abortSignal?.aborted) throw new Error('Operation aborted')
+        if (ctx.abortSignal?.aborted) throw createToolAbortError()
         const message = error instanceof Error ? error.message : 'unknown error'
         throw new Error(`Find failed: ${message}`)
       }

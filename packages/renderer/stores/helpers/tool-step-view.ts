@@ -409,7 +409,11 @@ export function buildToolStepView(step: Step, options: BuildToolStepViewOptions 
 }
 
 function shouldDefaultExpand(toolName: string, status: ToolRenderStatus): boolean {
-  if (status === 'failed' || status === 'rejected') return false
+  // A failed edit is the one failure whose detail is always worth reading
+  // immediately: the engine reply carries the current file text around the
+  // spot that did not match. A rejection has no such detail — stay folded.
+  if (status === 'failed') return getFileToolCategory(toolName) === 'edit'
+  if (status === 'rejected') return false
   // Live bash output is the one result the row title can't summarize —
   // show it while the command runs.
   if (status === 'executing' && toolName === 'bash') return true

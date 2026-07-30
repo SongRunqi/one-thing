@@ -8,6 +8,7 @@ import { registerChatHandlers } from "./chat.js";
 import { registerSessionHandlers } from "./sessions.js";
 import { registerSettingsHandlers } from "./settings.js";
 import { registerAgentHandlers } from "./agents.js";
+import { registerCollabHandlers } from "./collab.js";
 import { registerModelsHandlers } from "./models.js";
 import { registerProvidersHandlers } from "./providers.js";
 import { registerToolHandlers } from "./tools.js";
@@ -51,6 +52,7 @@ export function initializeIPC() {
 	registerSessionHandlers();
 	registerSettingsHandlers();
 	registerAgentHandlers();
+	registerCollabHandlers();
 	registerModelsHandlers();
 	registerProvidersHandlers();
 	registerToolHandlers();

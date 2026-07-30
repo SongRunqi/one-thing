@@ -10354,41 +10354,6 @@ function checkRuntimeOwnsMemoryReviewHelpers(): void {
   assertNoMatches('packages/onething-runtime owns memory review helpers', lines)
 }
 
-function checkRuntimeOwnsHermesFileMemory(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/memory/hermes-file-memory.ts'),
-    path.join(root, 'packages/onething-runtime/src/memory/index.ts'),
-  ]
-  const mainFile = path.join(root, 'packages/onething-runtime/src/app/memory/hermes-file-memory.ts')
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'HermesMemoryWorkspaceLike',
-    'getHermesMemoryFile',
-    'splitHermesMemoryEntries',
-    'readHermesMemoryFile',
-    'addHermesMemoryEntry',
-    'replaceHermesMemoryText',
-    'removeHermesMemoryText',
-    'getHermesMemoryStatus',
-    'buildHermesMemoryPromptFragment',
-  ]
-  const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned Hermes file memory module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/memory: missing runtime-owned ${symbol}`),
-    ...(fs.existsSync(mainFile)
-      ? [`${rel(mainFile)}: Hermes file memory facade should be removed; import @onething/runtime/memory/hermes-file-memory directly`]
-      : []),
-  ]
-
-  assertNoMatches('packages/onething-runtime owns Hermes file memory operations', lines)
-}
-
 function checkRuntimeOwnsMemoryDiagnosticsLogger(): void {
   const runtimeFiles = [
     path.join(root, 'packages/onething-runtime/src/memory/diagnostics-logger.ts'),
@@ -11906,7 +11871,6 @@ checkRuntimeOwnsSystemPromptSnapshot()
 checkRuntimeOwnsProjectDirsStore()
 checkRuntimeOwnsVariablesStoreAndHelpers()
 checkRuntimeOwnsMemoryReviewHelpers()
-checkRuntimeOwnsHermesFileMemory()
 checkRuntimeOwnsMemoryDiagnosticsLogger()
 checkRuntimeOwnsMemoryTypes()
 checkRuntimeOwnsMemoryDatabaseCanonicalGraph()

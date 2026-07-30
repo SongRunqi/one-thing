@@ -22,6 +22,10 @@
             class="variable-tag accent"
           >current</span>
           <span
+            v-if="variable.type && variable.type !== 'string'"
+            class="variable-tag"
+          >{{ variable.type }}</span>
+          <span
             v-if="variable.scope"
             class="variable-tag"
           >{{ variable.scope }}</span>
@@ -112,7 +116,8 @@ interface VariableDetail {
   name?: string
   value?: string
   values?: string[]
-  scope?: 'global' | 'session'
+  type?: 'string' | 'number' | 'bool' | 'list' | 'map' | 'set'
+  scope?: 'global' | 'session' | 'agent' | 'project'
   readonly?: boolean
   description?: string
 }
@@ -166,6 +171,7 @@ const variableRows = computed(() => {
     .map(variable => ({
       name: variable.name || '',
       value: variable.value || variable.values?.[0] || '',
+      type: variable.type,
       scope: variable.scope,
       description: variable.description,
       isCurrent: variable.name === 'workdir' && !!(variable.value || variable.values?.[0]),

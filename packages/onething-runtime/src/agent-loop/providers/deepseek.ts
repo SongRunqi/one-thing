@@ -437,6 +437,8 @@ export function createDeepSeekAgentProvider(
 			supportsTools: true,
 			supportsReasoning: true,
 			supportsStreaming: true,
+			// OpenAI-compatible tool_choice: "required"
+			supportsForcedToolUse: true,
 		},
 		streamTurn,
 

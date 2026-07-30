@@ -145,7 +145,14 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/gateway', replacement: resolve(projectRoot, 'packages/onething-runtime/src/gateway-runtime.ts') },
   { find: '@onething/runtime/acp', replacement: resolve(projectRoot, 'packages/onething-runtime/src/acp/index.ts') },
   { find: '@onething/runtime/external-agents', replacement: resolve(projectRoot, 'packages/onething-runtime/src/external-agents/index.ts') },
+  // Agent 身份/在场的**叶子**入口:renderer 要现算履历(agent-im-dm.md D8)就得
+  // 吃 identity/presence 这两支纯函数,而 `agents` 那颗 barrel 拖着吃 node:fs 的
+  // store.ts —— 走 barrel 会把文件系统拽进浏览器包。长前缀必须站在短前缀之上
+  // (find 是前缀匹配,先命中者赢)。
+  { find: '@onething/runtime/agents/identity', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/identity.ts') },
+  { find: '@onething/runtime/agents/presence', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/presence.ts') },
   { find: '@onething/runtime/agents', replacement: resolve(projectRoot, 'packages/onething-runtime/src/agents/index.ts') },
+  { find: '@onething/runtime/collab', replacement: resolve(projectRoot, 'packages/onething-runtime/src/collab/index.ts') },
   { find: '@onething/runtime/files/ripgrep', replacement: resolve(projectRoot, 'packages/onething-runtime/src/files/ripgrep.ts') },
   { find: '@onething/runtime/files', replacement: resolve(projectRoot, 'packages/onething-runtime/src/files/index.ts') },
   { find: '@onething/runtime/mcp', replacement: resolve(projectRoot, 'packages/onething-runtime/src/mcp/index.ts') },
@@ -210,6 +217,7 @@ export function onethingPackageAliases(projectRoot: string): OnethingAliasEntry[
   { find: '@onething/runtime/variables/providers/datetime', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/datetime.ts') },
   { find: '@onething/runtime/variables/providers/git-branch', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/git-branch.ts') },
   { find: '@onething/runtime/variables/providers/global-store', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/global-store.ts') },
+  { find: '@onething/runtime/variables/providers/keyed-store', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/keyed-store.ts') },
   { find: '@onething/runtime/variables/providers/goal', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/goal.ts') },
   { find: '@onething/runtime/variables/providers/notes', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/notes.ts') },
   { find: '@onething/runtime/variables/providers/session-store', replacement: resolve(projectRoot, 'packages/onething-runtime/src/variables/providers/session-store.ts') },

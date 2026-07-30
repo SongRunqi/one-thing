@@ -146,7 +146,10 @@ export const IPC_CHANNELS = {
 	AGENTS_LIST: "agents:list",
 	AGENTS_CREATE: "agents:create",
 	AGENTS_UPDATE: "agents:update",
+	/** UI 的「删除」= 退休或硬删(域模型 §3.2);响应里的 outcome 说明是哪种。 */
 	AGENTS_DELETE: "agents:delete",
+	/** 重新入职(域模型 §8):退休翻回 active。入口只在 Agents 管理页。 */
+	AGENTS_RESTORE: "agents:restore",
 
 	// User prompt snippets
 	PROMPTS_LIST: "prompts:list",
@@ -457,6 +460,9 @@ export const IPC_CHANNELS = {
 	// Element pick mode: invoke resolves with the picked element (or null on cancel)
 	BROWSER_PICK_ELEMENT: "browser:pick-element",
 	BROWSER_PICK_CANCEL: "browser:pick-cancel",
+	// Search engine (omnibox queries + default new-tab page): get/set the selection
+	BROWSER_GET_SEARCH_ENGINE: "browser:get-search-engine",
+	BROWSER_SET_SEARCH_ENGINE: "browser:set-search-engine",
 	// Profiles (Chrome-style isolated logins): list/add/remove/switch
 	BROWSER_LIST_PROFILES: "browser:list-profiles",
 	BROWSER_ADD_PROFILE: "browser:add-profile",
@@ -464,4 +470,25 @@ export const IPC_CHANNELS = {
 	BROWSER_SWITCH_PROFILE: "browser:switch-profile",
 	// Push main→renderer: single coalesced tab-state batch
 	BROWSER_TABS_CHANGED: "browser:tabs-changed",
+
+	// Collab (multi-agent rooms) — board snapshot + room pause switch;
+	// board mutations flow through the board tool / coordinator, updates
+	// arrive as 'collab:board-changed' session events on the room session.
+	COLLAB_BOARD_GET: "collab:board-get",
+	// W16: the USER's door into the same reducer the board tool uses — the
+	// panel was read-only, so a card could not be moved by hand at all.
+	COLLAB_BOARD_ACT: "collab:board-act",
+	COLLAB_TASK_STOP: "collab:task-stop",
+	COLLAB_ROOM_SET_FROZEN: "collab:room-set-frozen",
+	COLLAB_ROOM_SET_BUDGETS: "collab:room-set-budgets",
+	COLLAB_ROOM_UPDATE: "collab:room-update",
+	COLLAB_ROOM_SPEND_GET: "collab:room-spend-get",
+	COLLAB_MESSAGE_REACT: "collab:message-react",
+	// 用户 ↔ agent 托管私聊房的 get-or-create(docs/design/agent-im-dm.md D1)。
+	// 幂等:id 从 agentId 派生,同一个 agent 永远同一间房。
+	COLLAB_DM_ROOM_ENSURE: "collab:dm-room-ensure",
+	// 群 folder 的只读列目录(agent-im-chat-ui.md §3.2「文件」块)。folder 的
+	// 位置只有主进程算得出(workingDirectory ?? <store>/rooms/<id>),所以不能
+	// 让渲染进程拿 file:list-directory 去猜路径。
+	COLLAB_ROOM_FOLDER_LIST: "collab:room-folder-list",
 } as const;

@@ -9,7 +9,41 @@
 // IPC Channel Constants
 export { IPC_CHANNELS } from "./channels.js";
 
-export { DEFAULT_AGENT_ID } from "./agents.js";
+export {
+	DEFAULT_AGENT_ID,
+	agentIdentity,
+	isColleague,
+	isActiveAgent,
+} from "./agents.js";
+export type {
+	CollabBoard,
+	CollabBoardAction,
+	CollabBoardActRequest,
+	CollabBoardActResponse,
+	CollabBoardGetRequest,
+	CollabBoardGetResponse,
+	CollabDmRoomEnsureRequest,
+	CollabDmRoomEnsureResponse,
+	CollabMessageReactRequest,
+	CollabMessageReactResponse,
+	CollabRoomBudgetsPatch,
+	CollabRoomBudgetsRequest,
+	CollabRoomBudgetsResponse,
+	CollabRoomFolderEntry,
+	CollabRoomFolderListRequest,
+	CollabRoomFolderListResponse,
+	CollabRoomFrozenRequest,
+	CollabRoomFrozenResponse,
+	CollabRoomSpendRequest,
+	CollabRoomSpendResponse,
+	CollabRoomUpdateRequest,
+	CollabRoomUpdateResponse,
+	CollabTask,
+	CollabTaskEvidence,
+	CollabTaskStatus,
+	CollabTaskStopRequest,
+	CollabTaskStopResponse,
+} from "./collab.js";
 export type {
 	OriginTransport,
 	ConversationType,
@@ -41,6 +75,11 @@ export type {
 } from "./channel-identity.js";
 export type {
 	AgentDefinition,
+	AgentIdentity,
+	AgentKind,
+	AgentStatus,
+	AgentExecutor,
+	AgentModelBinding,
 	AgentsListResponse,
 	AgentCreateRequest,
 	AgentCreateResponse,
@@ -48,6 +87,9 @@ export type {
 	AgentUpdateResponse,
 	AgentDeleteRequest,
 	AgentDeleteResponse,
+	AgentRemovalOutcome,
+	AgentRestoreRequest,
+	AgentRestoreResponse,
 } from "./agents.js";
 
 // IPC Router infrastructure
@@ -166,6 +208,10 @@ export type {
 	AttachmentMediaType,
 	MessageAttachment,
 	ChatMessage,
+	ChatMessageMention,
+	ChatMessageReaction,
+	ChatMessageReactionActor,
+	ChatMessageReplyTo,
 	PromptContextRole,
 	BaseInstructions,
 	PromptContextMarker,
@@ -792,9 +838,21 @@ export type {
 	BrowserProfile,
 	BrowserProfileIdRequest,
 	BrowserProfilesResponse,
+	BrowserSearchEngine,
+	BrowserSearchEngineId,
+	BrowserSearchEngineResponse,
+	BrowserSetSearchEngineRequest,
 	BrowserTabIdRequest,
 	BrowserTabInfo,
 	BrowserTabsChangedEvent,
 	BrowserViewBounds,
 	PickedWebElement,
+} from "./browser.js";
+
+export {
+	BROWSER_SEARCH_ENGINES,
+	DEFAULT_BROWSER_SEARCH_ENGINE_ID,
+	isBrowserSearchInput,
+	resolveBrowserOmniboxInput,
+	resolveBrowserSearchEngine,
 } from "./browser.js";

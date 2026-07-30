@@ -39,7 +39,7 @@ import type { MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
 import { createElectronMusicProcessRunner } from './process-runner.js'
 import { addGrant } from '@onething/core'
 import { writeJsonFile } from '@onething/core/storage'
-import { agentExists, createAgent, getAgent, updateAgent } from '../agents/store.js'
+import { agentExists, createAgent, findAgent, updateAgent } from '../agents/store.js'
 import { markSessionUnattended } from '../permission/unattended.js'
 import { getStorePath } from '../stores/paths.js'
 import { getSettings } from '../stores/settings.js'
@@ -102,6 +102,9 @@ function ensureRadioSession(store: OnethingRadioStore): string {
       name: RADIO_DJ_AGENT_NAME,
       systemPrompt: factoryPrompt,
       tools: RADIO_DJ_TOOL_ALLOWLIST,
+      // 后台设施角色(agent-domain-model.md M2):有身份面,无社交面 —
+      // 联系人/roster/AgentSelector 全部按 kind 过滤,不再撒 id 硬编码。
+      kind: 'service',
     })
     console.warn('[radio] radio-dj agent was missing; recreated from the factory persona')
   } else {
@@ -112,7 +115,7 @@ function ensureRadioSession(store: OnethingRadioStore): string {
     // prompt is the opt-out: users who delete it own their persona; a prompt
     // without a fingerprint is a pre-fingerprint factory install and gets a
     // one-time migration.
-    const installedAgent = getAgent(RADIO_DJ_AGENT_ID)
+    const installedAgent = findAgent(RADIO_DJ_AGENT_ID)
     const installed = installedAgent?.systemPrompt ?? ''
     const installedVersion = radioDjFactoryPromptVersion(installed)
     if ((installedVersion ?? 0) < RADIO_DJ_FACTORY_VERSION && installed !== factoryPrompt) {
@@ -126,6 +129,13 @@ function ensureRadioSession(store: OnethingRadioStore): string {
     if (installedAgent && installedAgent.tools === undefined) {
       updateAgent({ agentId: RADIO_DJ_AGENT_ID, tools: RADIO_DJ_TOOL_ALLOWLIST })
       console.warn('[radio] radio-dj tool allowlist backfilled (bash only)')
+    }
+    // One-time backfill: pre-classification installs are plain colleague rows,
+    // which would keep the DJ inside every social surface (AgentSelector,
+    // room member pickers). The DJ is infrastructure — stamp it service.
+    if (installedAgent && installedAgent.kind !== 'service') {
+      updateAgent({ agentId: RADIO_DJ_AGENT_ID, kind: 'service' })
+      console.warn('[radio] radio-dj classified as a service agent (agent-domain-model M2)')
     }
   }
 

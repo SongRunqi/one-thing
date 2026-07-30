@@ -250,6 +250,28 @@ export function agentToolResultToMessageContent(result: AgentToolResult): AgentM
   return hasStructuredMedia ? parts : result.content
 }
 
+/**
+ * Whether a tool message carries a failure. Providers that have an explicit
+ * error flag on their tool-result block (Anthropic's `is_error`) need this;
+ * without it a failure reads to the model as a successful result whose text
+ * happens to describe a problem.
+ */
+export function agentToolResultIsError(result: AgentToolResult): boolean {
+  return Boolean(result.error) || result.rejected === true
+}
+
+/**
+ * Same question for a rebuilt-history tool result, where the failure survives
+ * as the persisted `{ error, status }` shape rather than an AgentToolResult.
+ */
+export function agentToolResultIsErrorFromHistoryResult(result: AgentJsonValue | undefined): boolean {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return false
+  const record = result as Record<string, AgentJsonValue | undefined>
+  if (record.status === 'failed' || record.status === 'rejected') return true
+  if (record.rejected === true) return true
+  return typeof record.error === 'string' && record.error.trim().length > 0
+}
+
 export function agentToolResultToMessageContentForCapabilities(
   result: AgentToolResult,
   capabilities: AgentModelCapabilities,

@@ -3,27 +3,26 @@ import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SchedulerPanelContent from '../SchedulerPanelContent.vue'
 
-const agentsStore = vi.hoisted(() => ({
-  agents: [
-    {
-      id: 'default',
-      name: 'Default Agent',
-      systemPrompt: '',
-      isDefault: true,
-      createdAt: 1,
-      updatedAt: 1,
-    },
-  ],
-  defaultAgent: {
+const agentsStore = vi.hoisted(() => {
+  const agent = {
     id: 'default',
     name: 'Default Agent',
     systemPrompt: '',
     isDefault: true,
     createdAt: 1,
     updatedAt: 1,
-  },
-  loadAgents: vi.fn(),
-}))
+  }
+  return {
+    agents: [agent],
+    // 执行者选择面只列在职的(agent-domain-model.md §3.2),署名走 displayAgent。
+    activeAgents: [agent],
+    retiredAgents: [] as Array<typeof agent>,
+    defaultAgent: agent,
+    displayAgent: (agentId?: string | null) =>
+      agentId === agent.id ? agent : { id: agentId ?? '', name: '已注销', status: 'retired' },
+    loadAgents: vi.fn(),
+  }
+})
 
 vi.mock('@/stores/agents', () => ({
   useAgentsStore: () => agentsStore,

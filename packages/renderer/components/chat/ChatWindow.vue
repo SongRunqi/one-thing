@@ -39,6 +39,7 @@
           :panel-focused="panelFocused"
           @select-tab="activateTab"
           @close-tab="handleCloseTab"
+          @close-tabs="handleCloseTabs"
           @rename-session="(sid, name) => sessionsStore.renameSession(sid, name)"
           @move-tab="(fromId, toId) => workspaceStore.moveTab(leafId, fromId, toId)"
           @toggle-sidebar="emit('toggleSidebar')"
@@ -243,18 +244,13 @@ function closeActiveTab() {
   if (id) void handleCloseTab(id)
 }
 
-async function handleCloseTab(id: string) {
+/** Closes one tab through the store; false means the store refused (nothing left to keep on screen). */
+async function closeOneTab(id: string): Promise<boolean> {
   // The store owns the close semantics: closing a leaf's last tab closes the
   // leaf itself (mirrors VS Code editor groups), refused only for the sole
   // remaining leaf. `released` means no other leaf still shows the session.
-  const lastRemaining = workspaceStore.isLastRemainingTab(leafId.value, id)
   const result = workspaceStore.closeTab(leafId.value, id)
-  if (!result) {
-    // The workspace must keep something on screen, so the last tab has nowhere
-    // to go — closing it means closing the window (macOS Cmd+W convention).
-    if (lastRemaining) await platformApi.closeWindow().catch(() => {})
-    return
-  }
+  if (!result) return false
 
   if (result.released) {
     if (sessionsStore.isNewChatDraftId(result.closedSessionId)) {
@@ -263,7 +259,46 @@ async function handleCloseTab(id: string) {
       await platformApi.evictSessionCache(result.closedSessionId).catch(() => {})
     }
   }
+  return true
+}
+
+async function handleCloseTab(id: string) {
+  const lastRemaining = workspaceStore.isLastRemainingTab(leafId.value, id)
+  const closed = await closeOneTab(id)
+  if (!closed) {
+    // The workspace must keep something on screen, so the last tab has nowhere
+    // to go — closing it means closing the window (macOS Cmd+W convention).
+    if (lastRemaining) await platformApi.closeWindow().catch(() => {})
+    return
+  }
   await refreshCacheStats()
+}
+
+/**
+ * Batch close from the tab menu (close others / left / right / all). Unlike
+ * Cmd+W this never closes the window: when the batch would empty the last
+ * remaining leaf, a blank New Chat takes the seat so the workspace still has
+ * something on screen and "Close All" really does close everything opened.
+ */
+async function handleCloseTabs(ids: string[]) {
+  let refreshNeeded = false
+  for (const id of ids) {
+    if (await closeOneTab(id)) {
+      refreshNeeded = true
+      continue
+    }
+    // Refused: this is the only tab of the only leaf. Seat a fresh draft next
+    // to it, then retry — unless the draft simply reused this very tab (an
+    // empty draft is already the desired end state).
+    if (!workspaceStore.isLastRemainingTab(leafId.value, id)) break
+    workspaceStore.activateTab(leafId.value, id)
+    sessionsStore.openNewChatDraft()
+    await nextTick()
+    if (workspaceStore.tabsOf(leafId.value).length <= 1) break
+    if (!(await closeOneTab(id))) break
+    refreshNeeded = true
+  }
+  if (refreshNeeded) await refreshCacheStats()
 }
 
 const SPLIT_DROP_MIME = 'application/x-onething-split-tab'

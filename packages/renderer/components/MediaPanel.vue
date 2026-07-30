@@ -51,10 +51,23 @@
         v-if="mode === 'main'"
         class="main-panel-header"
       >
-        <div
-          :class="['main-panel-sidebar-actions-slot', { reserved: reserveSidebarActions }]"
-          aria-hidden="true"
-        />
+        <!-- 侧栏收起时按钮住在这里 —— .main-panel-header 是 drag,按钮是它的
+             真实子孙,自身 no-drag 才挖得动洞。整槽不再是一整块 no-drag 死带。 -->
+        <div class="main-panel-sidebar-actions-slot">
+          <div
+            class="main-panel-traffic-lights-space"
+            :class="{ reserved: reserveSidebarActions }"
+            aria-hidden="true"
+          />
+          <SidebarActionGroup
+            v-if="reserveSidebarActions"
+            :sidebar-visible="false"
+            variant="topbar"
+            @toggle-sidebar="$emit('toggle-sidebar')"
+            @open-search="$emit('open-search')"
+            @create-new-chat="$emit('create-new-chat')"
+          />
+        </div>
         <div
           class="main-panel-header-spacer"
           aria-hidden="true"
@@ -403,7 +416,8 @@
           class="workspace-panel-view workspace-panel-content-view"
           data-workspace-panel-view="agents"
         >
-          <AgentsPanelContent />
+          <!-- 「私聊」/「TA 的群聊」开出去的会话在聊天区,这块面板正盖在上面 —— 让它自己合上。 -->
+          <AgentsPanelContent @close="$emit('close')" />
         </section>
 
         <section
@@ -448,6 +462,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import SidebarActionGroup from '@/components/sidebar/SidebarActionGroup.vue'
 import { ref, computed, onMounted, onUnmounted, watch, type Component } from 'vue'
 import AgentsPanelContent from './AgentsPanelContent.vue'
 import MusicPanelContent from './MusicPanelContent.vue'
@@ -490,6 +505,9 @@ const props = withDefaults(defineProps<{
 
 defineEmits<{
   close: []
+  'toggle-sidebar': []
+  'open-search': []
+  'create-new-chat': []
 }>()
 
 type SourceFilter = 'all' | 'user-upload' | 'ai-generated'
@@ -955,15 +973,22 @@ onUnmounted(() => {
   -webkit-app-region: drag;
 }
 
+/* 不带 app-region:让位区和按钮之间的缝隙都回退到 .main-panel-header 的 drag。 */
 .main-panel-sidebar-actions-slot {
-  width: 16px;
   flex: 0 0 auto;
-  overflow: hidden;
-  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
 }
 
-.main-panel-sidebar-actions-slot.reserved {
-  width: 176px;
+.main-panel-traffic-lights-space {
+  width: 16px;
+  flex: 0 0 auto;
+  align-self: stretch;
+}
+
+.main-panel-traffic-lights-space.reserved {
+  width: 84px;
 }
 
 .main-panel-header-spacer {

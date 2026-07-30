@@ -20,6 +20,7 @@ import {
 	buildAgentLoopRuntimeFromStreamContext,
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
+import { resolveAgentProfileForSession } from "../../agents/profile.js";
 import { saveMediaImage } from "../../media/save-image.js";
 import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop/providers";
 import { updateSessionUsage } from "../../session/usage.js";
@@ -54,6 +55,14 @@ function safeClone<T>(value: T): T {
 	} catch {
 		return value;
 	}
+}
+
+/** Collab (room/work/agent) sessions skip builtin post-response lanes — see
+ *  call site. 'agent' is where a room turn runs since W18: same turn, same
+ *  exemption (a group-chat reply must not trigger memory/TOC side lanes). */
+function isCollabSession(sessionId: string): boolean {
+	const kind = store.getSession(sessionId)?.kind;
+	return kind === "room" || kind === "work" || kind === "agent";
 }
 
 export { shouldUseAgentLoopStream } from "./agent-loop-selection.js";
@@ -282,12 +291,23 @@ export function runAgentLoopPostResponseHooks(options: {
 		prepared: options.prepared,
 		promptCapture,
 		getSession: (sessionId) => store.getSession(sessionId),
-		runTriggerContext: (context) =>
-			triggerManager.runPostResponse(
+		// Collab sessions (room/work) skip the builtin post-response lanes
+		// (docs/design/multi-agent-collab.md P0 门控三件套): goal-continuation
+		// would re-drive the room outside the coordinator, and soul-memory's
+		// after-response capture resolves session.agentId at hook time — the
+		// coordinator flips it per activation, so X's turn could be written
+		// into Y's private memory workspace. The coordinator owns collab
+		// post-turn behavior by observing stream:complete on the bus.
+		runTriggerContext: (context) => {
+			if (isCollabSession(options.state.ctx.sessionId)) return Promise.resolve();
+			return triggerManager.runPostResponse(
 				context as Parameters<typeof triggerManager.runPostResponse>[0],
-			),
-		runAfterAssistantResponse: (context) =>
-			runAfterAssistantResponseHooks(context),
+			);
+		},
+		runAfterAssistantResponse: (context) => {
+			if (isCollabSession(options.state.ctx.sessionId)) return Promise.resolve();
+			return runAfterAssistantResponseHooks(context);
+		},
 		onError(source, error) {
 			if (source === "trigger") {
 				console.error("[AgentLoopExecutor] Trigger execution failed:", error);
@@ -402,7 +422,9 @@ export async function applyAgentLoopStreamChunk(
 					assistantMessageId: state.ctx.assistantMessageId,
 					providerId: state.ctx.providerId,
 					modelId: state.ctx.providerConfig.model,
-					source: "chat",
+					// W13.3: the drive that started this stream may have labelled
+					// itself ('collab-room' / 'collab-work'); everything else is chat.
+					source: state.ctx.usageSource || "chat",
 					usage,
 				});
 			} catch (error) {
@@ -427,6 +449,11 @@ export async function executeAgentLoopStreamGeneration(
 	sessionName?: string,
 	options: ExecuteAgentLoopStreamGenerationOptions = {},
 ): Promise<AgentLoopStreamGenerationResult> {
+	// One resolution per turn, at the only door every run comes through (the
+	// ordinary send path AND the resume-after-confirmation path). Everything
+	// downstream reads this snapshot instead of re-deriving its own answer, so
+	// an agent edited mid-turn cannot produce a half-new combination.
+	ctx.agentProfile = resolveAgentProfileForSession(ctx.sessionId);
 	const processor = createStreamProcessor(ctx, options.initialContent);
 	const emitter = createEventOnlyEmitter(ctx);
 	const state: AgentLoopExecutorState = {

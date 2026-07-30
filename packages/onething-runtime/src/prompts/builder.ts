@@ -23,11 +23,13 @@ import osDarwinRaw from "./content/os-darwin.md?raw";
 import osWin32Raw from "./content/os-win32.md?raw";
 import osLinuxRaw from "./content/os-linux.md?raw";
 import contextUpdateConventionRaw from "./content/context-update-convention.md?raw";
+import contextVariablesIntroRaw from "./content/context-variables-intro.md?raw";
 import todoRulesRaw from "./content/todo-rules.md?raw";
 
 const normalizeContent = (s: string) => s.replace(/\n+$/, "");
 
 const CONTEXT_UPDATE_CONVENTION = normalizeContent(contextUpdateConventionRaw);
+const CONTEXT_VARIABLES_INTRO = normalizeContent(contextVariablesIntroRaw);
 const TODO_RULES = normalizeContent(todoRulesRaw);
 
 const AGENTS_MAX_BYTES = 32 * 1024;
@@ -138,7 +140,7 @@ async function buildRuntimeSystemPrompt(
 		[
 			"context-variables",
 			ctx.contextVariables?.trim() &&
-				`# Context Variables\n${ctx.contextVariables.trim()}`,
+				`<context-variables desc="${CONTEXT_VARIABLES_INTRO}">\n${ctx.contextVariables.trim()}\n</context-variables>`,
 		],
 	];
 	for (const plugin of plugins) sections.push(["plugins", plugin]);

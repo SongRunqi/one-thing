@@ -12,6 +12,8 @@ export interface PlatformCapabilities {
   terminal: boolean
   /** Embedded WebContentsView browser available (Electron only; web falls back to iframe). */
   embeddedBrowser: boolean
+  /** Multi-agent collab rooms (需要主进程 RoomCoordinator;desktop only in P0). */
+  collabRooms: boolean
   clipboardWrite: boolean
   desktopWindows: boolean
   globalMenuEvents: boolean

@@ -10,6 +10,7 @@
 
 import { z } from 'zod'
 import { toJsonObject } from '@onething/core'
+import { createToolAbortError } from '@onething/core/tools'
 import {
   isAbsolutePath,
   joinPaths,
@@ -268,7 +269,7 @@ To change the work directory for bash and file tools, use variable { action: "se
       }
 
       if (ctx.abortSignal?.aborted) {
-        throw new Error('Command execution aborted')
+        throw createToolAbortError('Command execution aborted')
       }
 
       await ctx.beforeSideEffect?.()
@@ -416,7 +417,7 @@ To change the work directory for bash and file tools, use variable { action: "se
       }
 
       if (aborted) {
-        throw new Error(`${finalOutput}\n\nCommand execution was cancelled by user`)
+        throw createToolAbortError(`${finalOutput}\n\nCommand execution was cancelled by user`)
       }
 
       if (result.exitCode !== null && result.exitCode !== 0) {

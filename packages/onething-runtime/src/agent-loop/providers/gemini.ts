@@ -191,6 +191,8 @@ const GEMINI_CAPABILITIES: AgentModelCapabilities = {
   supportsTools: true,
   supportsReasoning: true,
   supportsStreaming: true,
+  // functionCallingConfig.mode = 'ANY'
+  supportsForcedToolUse: true,
 }
 
 function textFromContent(content: AgentMessageContent): string {
@@ -346,6 +348,9 @@ function toGeminiToolConfig(choice: AgentToolChoice | undefined): GeminiToolConf
     return { functionCallingConfig: { mode: 'AUTO' } }
   }
   if (choice === 'none') return undefined
+  // Gemini's ANY mode means "must call a function"; narrowing to one name is
+  // what turns it into a specific-tool choice.
+  if (choice === 'required') return { functionCallingConfig: { mode: 'ANY' } }
   return {
     functionCallingConfig: {
       mode: 'ANY',

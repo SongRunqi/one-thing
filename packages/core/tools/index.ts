@@ -1,6 +1,12 @@
 export { ToolExecutor } from './executor.js'
 export type { ToolExecutorOptions } from './executor.js'
 export {
+  TOOL_ABORT_ERROR_NAME,
+  createToolAbortError,
+  isToolAbortError,
+} from './abort.js'
+export type { ToolAbortError } from './abort.js'
+export {
   coreDiffHunksFromJson,
   coreDiffHunksToJson,
 } from './diff-hunks.js'

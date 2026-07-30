@@ -6,9 +6,15 @@ import { DEFAULT_AGENT_ID } from '@shared/ipc.js'
 import {
   agentExists,
   createAgent,
+  defaultAgent,
   deleteAgent,
+  displayAgent,
+  findAgent,
   getAgent,
+  initializeAgents,
+  invalidateAgentsCache,
   listAgents,
+  requireAgent,
   updateAgent,
 } from '../store.js'
 import { getAgentsPath } from '../../stores/paths.js'
@@ -26,6 +32,9 @@ beforeEach(() => {
   previousHome = process.env.HOME
   tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-agents-test-'))
   process.env.HOME = tempHome
+  // The module is a process-wide singleton with a memory cache; each test
+  // moves the store root, so the cache from the previous one must go.
+  invalidateAgentsCache()
 })
 
 afterEach(() => {
@@ -34,7 +43,9 @@ afterEach(() => {
 })
 
 describe('agent store', () => {
-  it('initializes with a protected Default Agent', () => {
+  it('initializes with a protected Default Agent', async () => {
+    // Reads no longer write; the boot-time initialize is what lands the file.
+    await initializeAgents()
     const agents = listAgents()
 
     expect(agents).toHaveLength(1)
@@ -48,7 +59,7 @@ describe('agent store', () => {
       id: DEFAULT_AGENT_ID,
       isDefault: true,
     })
-    expect(getAgent('missing').id).toBe(DEFAULT_AGENT_ID)
+    expect(findAgent('missing')).toBeNull()
     expect(agentExists(DEFAULT_AGENT_ID)).toBe(true)
     expect(() => deleteAgent(DEFAULT_AGENT_ID)).toThrow('Default Agent cannot be deleted')
   })
@@ -84,5 +95,41 @@ describe('agent store', () => {
 
     expect(agentExists(created.id)).toBe(false)
     expect(listAgents().map(agent => agent.id)).toEqual([DEFAULT_AGENT_ID])
+  })
+})
+
+/**
+ * A1(M4):装配层的四个包装是每个 host 真正 import 的那一面 —— 这里只盯
+ * 「转发对了、类型转换没把哪一态弄丢」,规则本身在产品层 store 的测试里。
+ */
+describe('agent store: 解析纪律三态 API', () => {
+  it('findAgent / requireAgent:命中返回本人,查无此人 null 或 throw', () => {
+    createAgent({ id: 'agent-a', name: 'A' })
+
+    expect(findAgent('agent-a')?.name).toBe('A')
+    expect(requireAgent('agent-a').name).toBe('A')
+    expect(findAgent('ghost')).toBeNull()
+    expect(findAgent(undefined)).toBeNull()
+    expect(() => requireAgent('ghost')).toThrow(/ghost/)
+  })
+
+  it('displayAgent:未知 id 拿墓碑而不是 default 的名字', () => {
+    expect(displayAgent('ghost')).toEqual({
+      id: 'ghost',
+      name: '已注销',
+      kind: 'colleague',
+      status: 'retired',
+    })
+    expect(displayAgent(DEFAULT_AGENT_ID).name).toBe('Default Agent')
+  })
+
+  it('defaultAgent:功能兜底显式化;deprecated getAgent 仍是 find ?? default', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    expect(defaultAgent().id).toBe(DEFAULT_AGENT_ID)
+    expect(getAgent('ghost').id).toBe(DEFAULT_AGENT_ID)
+    expect(warn).toHaveBeenCalled()
+
+    warn.mockRestore()
   })
 })

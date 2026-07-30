@@ -29,7 +29,7 @@ import { enforcePermissionPolicy } from "../tools/core/permission-policy.js";
 import { getVariableRegistry } from "@onething/runtime/variables/registry";
 import { registerStandardVariableProviders } from "@onething/runtime/variables/bootstrap";
 import { getVariablesStore } from "./store/index.js";
-import type { VariableProvider } from "@onething/runtime/variables";
+import type { SetInput, VariableProvider } from "@onething/runtime/variables";
 import { createChannelSessionGuard } from "./channel-guard.js";
 import {
 	notesGateway,
@@ -38,6 +38,8 @@ import {
 	workdirGateway,
 	goalVariableGateway,
 	musicRadioGateway,
+	agentStoreGateway,
+	projectStoreGateway,
 } from "./gateways.js";
 import {
 	splitVariablesForPrompt,
@@ -63,6 +65,8 @@ export function bootstrapVariableSystem(): void {
 		sessionStore: sessionStoreGateway,
 		goal: goalVariableGateway,
 		musicRadio: musicRadioGateway,
+		agentStore: agentStoreGateway,
+		projectStore: projectStoreGateway,
 		core: {
 			enforcePermission: enforcePermissionPolicy,
 			// Registered project directories are user-blessed: switching the
@@ -96,29 +100,71 @@ export function bootstrapVariableSystem(): void {
 	// Bridge registry change events to the EventBus so the renderer
 	// refreshes via the existing session:variables-updated channel.
 	unsubscribeBridge = registry.subscribe((ctx, snapshot) => {
-		// Broadcasts (e.g. notes from a global state change) come with an
-		// empty sessionId; we have no target to emit to in that case.
-		if (!ctx.sessionId) return;
-		const workdirVariable = snapshot.find((v) => v.name === "workdir");
-		const workdir = workdirVariable?.value || undefined;
-		const workdirRoots = workdirVariable?.values?.slice(workdir ? 1 : 0);
-		try {
-			getEventBus()
-				.emit(ctx.sessionId, {
-					type: "session:variables-updated",
-					workingDirectory: workdir,
-					workingDirectoryRoots: workdirRoots,
-					variables: snapshot,
-				})
-				.catch((err) =>
-					console.error("[variables] EventBus emit failed:", err),
-				);
-		} catch {
-			// EventBus not initialized (test or pre-bootstrap path) — ignore.
+		if (ctx.sessionId) {
+			emitVariablesSnapshot(ctx.sessionId, snapshot);
+			return;
 		}
+		// Broadcast (empty sessionId): a shared-scope write (global/agent/
+		// project) or an external variables.json change. The affected variables
+		// are visible from other sessions whose panels would otherwise go
+		// stale, so re-snapshot every recently-active (LRU-cached) session.
+		// Coalesced per tick — a write emits its own session snapshot AND a
+		// broadcast back-to-back.
+		scheduleBroadcastRefresh(registry);
 	});
 
-	console.log("[variables] subsystem bootstrapped (4 providers)");
+	console.log("[variables] subsystem bootstrapped");
+}
+
+function emitVariablesSnapshot(
+	sessionId: string,
+	snapshot: ContextVariable[],
+): void {
+	const workdirVariable = snapshot.find((v) => v.name === "workdir");
+	const workdir = workdirVariable?.value || undefined;
+	const workdirRoots = workdirVariable?.values?.slice(workdir ? 1 : 0);
+	try {
+		getEventBus()
+			.emit(sessionId, {
+				type: "session:variables-updated",
+				workingDirectory: workdir,
+				workingDirectoryRoots: workdirRoots,
+				variables: snapshot,
+			})
+			.catch((err) => console.error("[variables] EventBus emit failed:", err));
+	} catch {
+		// EventBus not initialized (test or pre-bootstrap path) — ignore.
+	}
+}
+
+let broadcastRefreshScheduled = false;
+
+function scheduleBroadcastRefresh(
+	registry: ReturnType<typeof getVariableRegistry>,
+): void {
+	if (broadcastRefreshScheduled) return;
+	broadcastRefreshScheduled = true;
+	queueMicrotask(() => {
+		broadcastRefreshScheduled = false;
+		let sessionIds: string[];
+		try {
+			sessionIds = appStore.getSessionCacheStats().cachedSessionIds;
+		} catch {
+			return;
+		}
+		for (const sessionId of sessionIds) {
+			registry
+				.list({ sessionId })
+				.then((snapshot) => emitVariablesSnapshot(sessionId, snapshot))
+				.catch((err) =>
+					console.error(
+						"[variables] broadcast refresh failed for session",
+						sessionId,
+						err,
+					),
+				);
+		}
+	});
 }
 
 /**
@@ -225,6 +271,14 @@ export function getGuardedVariableRegistryForTools(): Pick<
 	"list" | "set" | "append" | "remove" | "delete"
 > {
 	const registry = getVariableRegistry();
+	// Unscoped writes follow the variable to the store that already holds it
+	// (see VariableRegistry.resolveStoreClaimant). For an external session
+	// that redirect could land on a shared scope the guard just blocked, so
+	// external unscoped writes are pinned to session scope.
+	const pinScope = (sessionId: string, input: SetInput): SetInput =>
+		!input.scope && channelGuard.isExternalIdentitySession(sessionId)
+			? { ...input, scope: "session" }
+			: input;
 	return {
 		list: async (ctx) =>
 			channelGuard.filterVariablesForSession(
@@ -237,7 +291,7 @@ export function getGuardedVariableRegistryForTools(): Pick<
 				input.name,
 				input.scope,
 			);
-			return registry.set(ctx, input);
+			return registry.set(ctx, pinScope(ctx.sessionId, input));
 		},
 		append: (ctx, input) => {
 			channelGuard.assertExternalWriteAllowed(
@@ -245,7 +299,7 @@ export function getGuardedVariableRegistryForTools(): Pick<
 				input.name,
 				input.scope,
 			);
-			return registry.append(ctx, input);
+			return registry.append(ctx, pinScope(ctx.sessionId, input));
 		},
 		remove: (ctx, input) => {
 			channelGuard.assertExternalWriteAllowed(
@@ -253,11 +307,17 @@ export function getGuardedVariableRegistryForTools(): Pick<
 				input.name,
 				input.scope,
 			);
-			return registry.remove(ctx, input);
+			return registry.remove(ctx, pinScope(ctx.sessionId, input));
 		},
 		delete: (ctx, name, scope) => {
 			channelGuard.assertExternalWriteAllowed(ctx.sessionId, name, scope);
-			return registry.delete(ctx, name, scope);
+			return registry.delete(
+				ctx,
+				name,
+				!scope && channelGuard.isExternalIdentitySession(ctx.sessionId)
+					? "session"
+					: scope,
+			);
 		},
 	};
 }
@@ -300,7 +360,7 @@ function trackStaticSectionChange(sessionId: string, systemText: string): void {
 
 /**
  * Static channel only — the string injected as the system prompt's
- * "# Context Variables" section.
+ * <context-variables> block.
  */
 export async function buildContextVariablesPromptText(
 	sessionId: string,

@@ -12,11 +12,20 @@ export function isProviderConfigEnabled(config?: { enabled?: boolean } | null): 
 export interface SessionModelLike {
   lastProvider?: string
   lastModel?: string
+  /** The user picked lastProvider/lastModel by hand (not the per-turn stamp). */
+  modelPinned?: boolean
+}
+
+export interface AgentModelBindingLike {
+  providerId?: string
+  modelId?: string
 }
 
 interface ResolveProviderModelOptions {
   settings?: AppSettings | null
   session?: SessionModelLike | null
+  /** The session agent's model binding, when it has one. */
+  agentModel?: AgentModelBindingLike | null
 }
 
 interface ResolvedProviderModel {
@@ -33,24 +42,46 @@ interface ResolvedProviderModel {
  * while the request goes to another (which is exactly how a "selected
  * deepseek, billed on codex" incident happens).
  *
- * The rule: session.lastProvider (when its config exists) wins, lastModel
- * falls back to that provider's configured default; everything else is the
- * global selection. No inference, no repair of mismatched pairs.
+ * The rule: a model the user PINNED on this session wins; then the session
+ * agent's model binding; then session.lastProvider (which is also stamped
+ * automatically by every assistant message, hence ranked below the binding);
+ * then the global selection. lastModel falls back to the provider's configured
+ * default. No inference, no repair of mismatched pairs.
  */
 export function resolveProviderModelSelection({
   settings,
   session,
+  agentModel,
 }: ResolveProviderModelOptions): ResolvedProviderModel {
   const sessionProviderId = session?.lastProvider || ''
-  if (sessionProviderId) {
+  const sessionSelection = (): ResolvedProviderModel | null => {
+    if (!sessionProviderId) return null
     const providerConfig = settings?.ai?.providers?.[sessionProviderId]
+    if (!providerConfig) return null
+    return {
+      providerId: sessionProviderId,
+      model: session?.lastModel || providerConfig.model || '',
+    }
+  }
+
+  if (session?.modelPinned) {
+    const pinned = sessionSelection()
+    if (pinned) return pinned
+  }
+
+  const agentProviderId = agentModel?.providerId || ''
+  if (agentProviderId) {
+    const providerConfig = settings?.ai?.providers?.[agentProviderId]
     if (providerConfig) {
       return {
-        providerId: sessionProviderId,
-        model: session?.lastModel || providerConfig.model || '',
+        providerId: agentProviderId,
+        model: agentModel?.modelId || providerConfig.model || '',
       }
     }
   }
+
+  const fromSession = sessionSelection()
+  if (fromSession) return fromSession
 
   const globalProviderId = settings?.ai?.provider || ''
   const globalModel = globalProviderId

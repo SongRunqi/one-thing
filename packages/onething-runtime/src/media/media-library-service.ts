@@ -121,6 +121,12 @@ export interface OnethingMediaIngestGeneratedImageInput {
   model: string
   sessionId: string
   messageId: string
+  /**
+   * What the image is FOR (e.g. 'persona-avatar'). Recorded on the asset so a
+   * picked agent avatar can be told apart from generated artwork later; it does
+   * not change where the bytes land.
+   */
+  usageTags?: OnethingMediaUsageTag[]
 }
 
 interface IngestMediaAssetResult {
@@ -187,6 +193,20 @@ function mergeLink(asset: OnethingMediaAsset, link: OnethingMediaAssetLink): boo
   asset.links.push(link)
   asset.updatedAt = Date.now()
   return true
+}
+
+/**
+ * Union of what the asset already claims and what this ingest declares. A
+ * content-hash hit means the SAME bytes are now serving a second purpose (the
+ * user picked a generated image as an avatar) — dropping either tag would lose
+ * a true statement about the asset.
+ */
+function mergeUsageTags(
+  existing: OnethingMediaUsageTag[] | undefined,
+  incoming: OnethingMediaUsageTag[] | undefined,
+): OnethingMediaUsageTag[] | undefined {
+  const merged = [...new Set([...(existing ?? []), ...(incoming ?? [])])]
+  return merged.length > 0 ? merged : undefined
 }
 
 function isLegacyIndex(value: unknown): value is { items: OnethingLegacyMediaItem[] } {
@@ -347,6 +367,7 @@ export class OnethingMediaLibraryService {
           revisedPrompt: asset.metadata?.revisedPrompt || input.revisedPrompt,
           model: asset.metadata?.model || input.model,
           originalUrl: asset.metadata?.originalUrl || input.url,
+          usageTags: mergeUsageTags(asset.metadata?.usageTags, input.usageTags),
         }
         this.saveIndex(index)
         return asset
@@ -366,6 +387,7 @@ export class OnethingMediaLibraryService {
         revisedPrompt: input.revisedPrompt,
         model: input.model,
         originalUrl: input.url,
+        usageTags: input.usageTags?.length ? [...input.usageTags] : undefined,
       },
     })
   }

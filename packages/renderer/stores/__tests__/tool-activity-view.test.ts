@@ -267,8 +267,37 @@ describe('tool activity view', () => {
     }))
 
     expect(failedEdit.target).toBe('app.ts')
+    // Legacy transcripts stored the "Failed to edit <path>: " wrapper; it is
+    // still stripped so old sessions read the same as new ones.
     expect(failedEdit.errorSummary).toBe('oldString not found in content')
     expect(failedEdit.errorSummary).not.toContain('/Users/me/project/src/app.ts')
+  })
+
+  it('keeps the whole first line of a structured edit failure and opens the row', () => {
+    const firstLine = 'Edit failed: edits[1] matches 3 places in tool-activity-view.ts.'
+    const failedEdit = buildToolActivityView(step({
+      status: 'failed',
+      error: [
+        firstLine,
+        'Found 3 occurrences of edits[1] in /repo/packages/renderer/stores/helpers/tool-activity-view.ts. Each oldText must be unique. Provide more context to make it unique, or set replaceAll: true on this edit to replace every occurrence.',
+      ].join('\n'),
+      toolCall: tc({
+        toolId: 'edit',
+        toolName: 'edit',
+        status: 'failed',
+        arguments: {
+          path: '/repo/packages/renderer/stores/helpers/tool-activity-view.ts',
+          edits: [{ oldText: 'old', newText: 'new' }],
+        },
+      }),
+    }))
+
+    // The whole first line survives — no 180-char cut, no prefix strip that
+    // would leave a generic half-sentence behind.
+    expect(failedEdit.errorSummary).toBe(firstLine)
+    // A failed edit's detail carries the current file text around the spot
+    // that did not match, so the row opens itself.
+    expect(failedEdit.defaultExpanded).toBe(true)
   })
 
   it('labels permission rejection distinctly from execution failure', () => {
@@ -286,7 +315,8 @@ describe('tool activity view', () => {
 
     expect(rejected.status).toBe('rejected')
     expect(rejected.toolLabel).toBe('Bash')
-    expect(rejected.errorSummary).toBe('')
+    // A rejection used to render an empty row; the stored reason is shown now.
+    expect(rejected.errorSummary).toBe('The user rejected permission for this tool.')
     expect(rejected.defaultExpanded).toBe(false)
   })
 

@@ -162,6 +162,7 @@ async function initializeElectronReadyServices(): Promise<void> {
 	await createOnethingBackend({
 		toolRegistry: "full",
 		promptVersion: true,
+		collab: true,
 		hooks: {
 			afterSettings: async () => {
 				markStartup("settings-ready");

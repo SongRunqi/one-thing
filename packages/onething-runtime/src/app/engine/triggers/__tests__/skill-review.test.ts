@@ -131,7 +131,7 @@ function triggerContext(): TriggerContext {
     settings,
     toolIterations: 10,
     skillManageCalled: false,
-    enabledToolNames: ['skill_manage'],
+    enabledToolNames: ['write', 'edit'],
   }
 }
 

@@ -1,3 +1,14 @@
+/**
+ * Forced opening tool choice, as it travels through the engine (W18b, narrowed
+ * to a NAMED tool by W22). Structurally a subset of the agent loop's
+ * `AgentToolChoice`: 'auto'/'none' are the loop's own defaults and never ride
+ * down a drive. Nothing on this path READS it — it is a passthrough from the
+ * send-message command to `runAgentLoop`.
+ */
+export type CoreInitialToolChoice =
+  | 'required'
+  | { type: 'function'; function: { name: string } }
+
 export interface CoreStreamExecutionRoute {
   kind: 'special' | 'text'
 }
@@ -50,6 +61,10 @@ export interface CoreMessageStreamParams<
   sessionName?: string
   voiceConversation?: boolean
   speakMode?: boolean
+  /** Billing attribution label for this turn ('chat' when absent). */
+  usageSource?: string
+  /** Force the run's first model call into a (named) tool call — drives only. */
+  initialToolChoice?: CoreInitialToolChoice
 }
 
 export type CoreTextStreamContext<
@@ -74,6 +89,10 @@ export type CoreTextStreamContext<
   followUpQueue?: TQueue
   voiceConversation?: boolean
   speakMode?: boolean
+  /** Billing attribution label for this turn ('chat' when absent). */
+  usageSource?: string
+  /** Force the run's first model call into a (named) tool call — drives only. */
+  initialToolChoice?: CoreInitialToolChoice
 }
 
 export interface CoreSpecialStreamExecutionInput<
@@ -211,6 +230,8 @@ export async function executeCoreMessageStream<
     sessionName,
     voiceConversation,
     speakMode,
+    usageSource,
+    initialToolChoice,
   } = options.params
   const logger = options.logger ?? console
   const controller = options.controller ?? options.createController()
@@ -251,6 +272,8 @@ export async function executeCoreMessageStream<
         providerId,
         requestedOutputModalities,
         toolSettings,
+        usageSource,
+        initialToolChoice,
       },
       steeringQueue: options.registry.getSteeringQueue(sessionId),
       followUpQueue: options.registry.getFollowUpQueue(sessionId),

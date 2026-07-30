@@ -54,7 +54,7 @@ describe('sessions draft New Chat', () => {
 
     const draft = store.openNewChatDraft('New Chat')
 
-    expect(draft.kind).toBe('new-chat-draft')
+    expect(draft.draftKind).toBe('new-chat-draft')
     // The draft id is the future session id: a plain v4 UUID (the exact
     // format the main process accepts for client-supplied ids).
     expect(draft.id).toMatch(

@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>新标签起始页 四方案 — 浏览器 UI</title>
+<link rel="stylesheet" href="_tokens.css">
+<style>
+/* ================= 起始页四方案 =================
+   前提：新标签不再打开谷歌首页。tab.url 为空时主进程不挂 WebContentsView，
+   起始页是 renderer 的 DOM（所以浮层、hover、token 全部可用；一旦导航，
+   原生视图接管，起始页整块卸载）。
+
+   四案的真正分歧不是好不好看，是「引擎在哪、选择存多久」：
+   案一 页内一条线，Tab 临时换（默认在设置里）
+   案二 页内四格，每次显式点，根本没有默认
+   案三 页内芯片，选中即改默认，页面另有常去/最近
+   案四 输入前缀临时覆盖，无前缀走默认
+*/
+
+.scheme{ margin-bottom:40px; }
+.scheme-head{ display:flex; align-items:baseline; gap:12px; margin-bottom:4px; }
+.scheme-head .n{ font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--ui-accent-primary-fg); }
+.scheme-head .t{ font-size:14px; font-weight:650; }
+.scheme-head .en{ font-family:var(--font-mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ui-text-faint-fg); }
+.scheme-head .axis{ margin-left:auto; font-size:11.5px; color:var(--ui-text-muted-fg); }
+.scheme-head .axis b{ color:var(--ui-accent-primary-fg); font-weight:600; }
+.scheme-lede{ font-size:12.5px; color:var(--ui-text-secondary-fg); max-width:82ch; margin:0 0 14px; }
+.pair{ display:grid; grid-template-columns: repeat(auto-fit, minmax(400px,1fr)); gap:22px; align-items:start; }
+.pane-cap{ display:flex; align-items:baseline; gap:8px; margin-bottom:8px; font-size:11.5px; color:var(--ui-text-muted-fg); }
+.pane-cap .k{ font-family:var(--font-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ui-text-faint-fg); }
+
+/* ---- 共用：32px 单线 chrome（案一~三沿用已落地的 Monoline） ---- */
+.bar{
+  position:relative; display:flex; align-items:center; gap:2px;
+  height:32px; padding:0 4px 0 2px; flex:none; border-bottom: var(--hairline);
+}
+.bar .btn{ width:26px; height:26px; display:grid; place-items:center; flex:none; border:none; background:transparent; color:var(--ui-text-muted-fg); cursor:pointer; }
+.bar .btn[disabled]{ color:var(--ui-text-faint-fg); }
+.bar .tabs{
+  display:flex; align-items:center; gap:3px; flex:none; height:20px; padding:0 5px 0 6px; margin-right:4px;
+  border:1px solid color-mix(in srgb, var(--ui-border-strong-border) 40%, transparent); border-radius:2px;
+  font-family:var(--font-mono); font-size:10.5px; color:var(--ui-text-muted-fg);
+}
+.bar .tabs .ic{ width:10px; height:10px; }
+.bar .addr{ flex:1; min-width:0; display:flex; align-items:center; gap:6px; height:24px; padding:0 8px; border-radius:2px; }
+.bar .addr .ph{ font-size:12px; color:var(--ui-text-placeholder-fg); }
+.bar .addr.editing{
+  background:var(--ui-surface-input-bg); border:1px solid var(--ui-accent-primary-fg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-accent-primary-fg) 26%, transparent);
+}
+.bar .addr .typed{ font-family:var(--font-mono); font-size:11.5px; color:var(--ui-text-primary-fg); }
+.caret{ display:inline-block; width:1px; height:13px; background:var(--ui-text-primary-fg); vertical-align:-2px; animation:blink 1.1s steps(1) infinite; }
+@keyframes blink{ 50%{ opacity:0; } }
+
+/* 起始页画布：不是 WebContentsView，是 DOM */
+.start{
+  position:relative; flex:1; min-height:0; overflow:hidden;
+  background: var(--ui-surface-panel-bg);
+  display:flex; flex-direction:column;
+}
+.start::after{
+  content:"renderer DOM · 无 WebContentsView"; position:absolute; right:6px; bottom:5px;
+  font-family:var(--font-mono); font-size:8.5px; letter-spacing:.08em; color:var(--ui-text-faint-fg); opacity:.6;
+}
+
+/* ============ 案一 空线 Blank Line ============ */
+.nt1{ align-items:center; justify-content:center; gap:0; }
+.nt1 .mark{
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--ui-text-faint-fg); margin-bottom:26px;
+}
+.nt1 .line{
+  width:76%; display:flex; align-items:center; gap:10px;
+  padding:0 0 7px; border-bottom:1.5px solid var(--ui-border-strong-border);
+}
+.nt1 .tok{
+  font-family:var(--font-mono); font-size:10px; font-weight:600; letter-spacing:.06em;
+  color:var(--ui-text-muted-fg); padding:1px 5px; border:1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent);
+  border-radius:2px; flex:none;
+}
+.nt1 .tok.hot{ color:var(--ui-accent-primary-fg); border-color:var(--ui-accent-primary-fg); }
+.nt1 .ph{ font-size:13px; color:var(--ui-text-placeholder-fg); }
+.nt1 .q{ font-size:13px; color:var(--ui-text-primary-fg); }
+.nt1 .hint{
+  width:76%; display:flex; justify-content:space-between; margin-top:9px;
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ui-text-faint-fg);
+}
+.nt1 .ring{ width:76%; display:flex; gap:6px; margin-top:16px; }
+.nt1 .ring button{
+  flex:1; padding:5px 0; text-align:center; cursor:pointer;
+  border:1px solid color-mix(in srgb, var(--ui-border-default-border) 55%, transparent);
+  background:transparent; border-radius:2px;
+  font-size:11.5px; color:var(--ui-text-muted-fg);
+}
+.nt1 .ring button .kk{ font-family:var(--font-mono); font-size:9px; color:var(--ui-text-faint-fg); display:block; margin-top:2px; letter-spacing:.08em; }
+.nt1 .ring button.on{ border-color:var(--ui-accent-primary-fg); color:var(--ui-accent-primary-fg); background: color-mix(in srgb, var(--ui-accent-primary-fg) 7%, transparent); }
+.nt1 .ring button.on .kk{ color:var(--ui-accent-primary-fg); }
+
+/* ============ 案二 四格 Quadrant ============ */
+.nt2{ padding:22px 20px; gap:16px; }
+.nt2 .field{
+  display:flex; align-items:center; gap:8px; height:30px; padding:0 10px;
+  border:1px solid var(--ui-border-strong-border); border-radius:var(--radius-xs);
+  background:var(--ui-surface-input-bg);
+}
+.nt2 .field .ph{ font-size:12.5px; color:var(--ui-text-placeholder-fg); }
+.nt2 .field .q{ font-size:12.5px; color:var(--ui-text-primary-fg); }
+.nt2 .quad{ display:grid; grid-template-columns:1fr 1fr; gap:10px; flex:1; min-height:0; }
+.nt2 .card{
+  position:relative; display:flex; flex-direction:column; justify-content:space-between;
+  padding:11px 12px; cursor:pointer; text-align:left;
+  border:var(--hairline); border-radius:var(--radius-xs); background:transparent;
+}
+.nt2 .card:hover{ border-color:var(--ui-border-strong-border); background:var(--ui-surface-elevated-bg); }
+.nt2 .card .ini{ font-family:var(--font-mono); font-size:19px; font-weight:600; color:var(--ui-text-secondary-fg); line-height:1; }
+.nt2 .card .nm{ font-size:12px; color:var(--ui-text-primary-fg); margin-top:auto; }
+.nt2 .card .hs{ font-family:var(--font-mono); font-size:9.5px; color:var(--ui-text-faint-fg); letter-spacing:.04em; }
+.nt2 .card .last{
+  position:absolute; right:8px; top:8px; font-family:var(--font-mono); font-size:8.5px;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--ui-text-faint-fg);
+}
+.nt2 .card.armed{ border-color:var(--ui-accent-primary-fg); background: color-mix(in srgb, var(--ui-accent-primary-fg) 6%, transparent); }
+.nt2 .card.armed .ini, .nt2 .card.armed .nm{ color:var(--ui-accent-primary-fg); }
+.nt2 .card .go{
+  position:absolute; right:9px; bottom:9px; display:flex; align-items:center; gap:4px;
+  font-family:var(--font-mono); font-size:9px; letter-spacing:.08em; color:var(--ui-accent-primary-fg); opacity:0;
+}
+.nt2 .card.armed .go{ opacity:1; }
+.nt2 .foot{ display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ui-text-faint-fg); }
+
+/* ============ 案三 账页 Ledger ============ */
+.nt3{ padding:0; }
+.nt3 .row-search{
+  display:flex; align-items:center; gap:8px; height:34px; padding:0 12px; flex:none;
+  border-bottom: var(--divider);
+}
+.nt3 .chip{
+  display:flex; align-items:center; gap:4px; flex:none; height:20px; padding:0 6px;
+  border:1px solid color-mix(in srgb, var(--ui-border-strong-border) 45%, transparent); border-radius:2px;
+  font-size:11px; color:var(--ui-text-secondary-fg); cursor:pointer; background:transparent;
+}
+.nt3 .chip .ic{ width:10px; height:10px; }
+.nt3 .chip.open{ border-color:var(--ui-accent-primary-fg); color:var(--ui-accent-primary-fg); }
+.nt3 .row-search .ph{ font-size:12.5px; color:var(--ui-text-placeholder-fg); }
+.nt3 .sec{ padding:12px 12px 4px; }
+.nt3 .sec-h{ display:flex; align-items:baseline; gap:8px; margin-bottom:5px; }
+.nt3 .sec-h .lb{ font-family:var(--font-mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ui-text-muted-fg); }
+.nt3 .sec-h .rule{ flex:1; height:0; border-top: 1px dotted color-mix(in srgb, var(--ui-border-default-border) 65%, transparent); }
+.nt3 .sec-h .mo{ font-family:var(--font-mono); font-size:9.5px; color:var(--ui-text-faint-fg); }
+.nt3 .item{
+  display:flex; align-items:center; gap:8px; height:25px; padding:0 4px; cursor:pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--ui-border-default-border) 22%, transparent);
+}
+.nt3 .item:hover{ background: color-mix(in srgb, var(--ui-text-muted-fg) 8%, transparent); }
+.nt3 .item .no{ font-family:var(--font-mono); font-size:9.5px; color:var(--ui-text-faint-fg); width:14px; flex:none; }
+.nt3 .item .favi{ width:11px; height:11px; border-radius:2px; background:var(--page-line); flex:none; }
+.nt3 .item .nm{ font-size:12px; color:var(--ui-text-primary-fg); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nt3 .item .hs{ margin-left:auto; font-family:var(--font-mono); font-size:9.5px; color:var(--ui-text-faint-fg); flex:none; }
+.nt3 .item .tm{ font-family:var(--font-mono); font-size:9.5px; color:var(--ui-text-faint-fg); flex:none; width:34px; text-align:right; }
+.nt3 .menu{
+  position:absolute; left:12px; top:34px; z-index:5; min-width:168px;
+  background:var(--ui-surface-elevated-bg); border:var(--frame); border-radius:var(--radius-xs);
+  box-shadow: var(--shadow-paper); padding:3px;
+}
+.nt3 .menu .mi{ display:flex; align-items:center; gap:7px; height:26px; padding:0 8px; font-size:12px; color:var(--ui-text-secondary-fg); cursor:pointer; }
+.nt3 .menu .mi:hover{ background: color-mix(in srgb, var(--ui-text-muted-fg) 10%, transparent); }
+.nt3 .menu .mi.cur{ color:var(--ui-accent-primary-fg); }
+.nt3 .menu .mi .hs{ margin-left:auto; font-family:var(--font-mono); font-size:9.5px; color:var(--ui-text-faint-fg); }
+.nt3 .menu .mf{ border-top: var(--divider); margin-top:3px; padding:6px 8px 3px; font-family:var(--font-mono); font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--ui-text-faint-fg); }
+
+/* ============ 案四 提示符 Console ============ */
+.nt4{ padding:0; background:var(--ui-surface-app-bg); }
+.nt4 .prompt{
+  display:flex; align-items:center; gap:8px; height:38px; padding:0 14px; flex:none;
+  border-bottom: var(--divider); background:var(--ui-surface-panel-bg);
+}
+.nt4 .prompt .sig{ font-family:var(--font-mono); font-size:14px; color:var(--ui-accent-primary-fg); flex:none; }
+.nt4 .prompt .in{ font-family:var(--font-mono); font-size:13px; color:var(--ui-text-primary-fg); }
+.nt4 .prompt .in .pre{ color:var(--ui-accent-primary-fg); font-weight:600; }
+.nt4 .prompt .ph{ font-family:var(--font-mono); font-size:12.5px; color:var(--ui-text-placeholder-fg); }
+.nt4 .parse{
+  display:flex; align-items:center; gap:8px; min-height:26px; padding:5px 14px; flex:none;
+  font-family:var(--font-mono); font-size:10.5px; color:var(--ui-text-muted-fg);
+  border-bottom: 1px dotted color-mix(in srgb, var(--ui-border-default-border) 55%, transparent);
+}
+.nt4 .parse .arrow{ color:var(--ui-accent-primary-fg); }
+.nt4 .parse .url{ color:var(--ui-text-secondary-fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nt4 .parse.idle{ color:var(--ui-text-faint-fg); }
+.nt4 .tbl{ padding:12px 14px; display:flex; flex-direction:column; gap:0; }
+.nt4 .tbl .th{ font-family:var(--font-mono); font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ui-text-faint-fg); margin-bottom:6px; }
+.nt4 .tbl .tr{ display:flex; align-items:center; gap:10px; height:22px; font-family:var(--font-mono); font-size:11px; color:var(--ui-text-secondary-fg); }
+.nt4 .tbl .tr .k{ width:34px; flex:none; color:var(--ui-text-primary-fg); font-weight:600; }
+.nt4 .tbl .tr .d{ color:var(--ui-text-muted-fg); }
+.nt4 .tbl .tr .df{ margin-left:auto; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--ui-accent-primary-fg); }
+.nt4 .tbl .tr.hit{ color:var(--ui-accent-primary-fg); }
+.nt4 .tbl .tr.hit .k{ color:var(--ui-accent-primary-fg); }
+.nt4 .tail{ margin-top:auto; padding:8px 14px 10px; font-family:var(--font-mono); font-size:9.5px; letter-spacing:.08em; color:var(--ui-text-faint-fg); border-top: 1px dotted color-mix(in srgb, var(--ui-border-default-border) 45%, transparent); }
+
+/* 对照表 */
+.matrix{ width:100%; border-collapse:collapse; font-size:12px; margin-top:10px; }
+.matrix th, .matrix td{ text-align:left; padding:7px 10px; border-bottom: var(--hairline); vertical-align:top; }
+.matrix th{ font-family:var(--font-mono); font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ui-text-muted-fg); font-weight:600; }
+.matrix td.k{ font-weight:600; white-space:nowrap; }
+.matrix .yes{ color:var(--ui-status-success-fg); }
+.matrix .no{ color:var(--ui-text-faint-fg); }
+.matrix .warn{ color:var(--ui-status-warning-fg); }
+</style>
+</head>
+<body>
+<svg style="display:none">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+  <symbol id="i-ret" viewBox="0 0 24 24"><path d="M9 10l-4 4 4 4"/><path d="M5 14h9a5 5 0 0 0 5-5V5"/></symbol>
+  <symbol id="i-pick" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+</svg>
+
+<div class="wrap">
+  <div class="page-head">
+    <div class="page-title"><span class="no">起始页</span>新标签打开什么 — 四方案</div>
+    <button class="theme-toggle" onclick="document.documentElement.dataset.theme = document.documentElement.dataset.theme === 'dark' ? '' : 'dark'">切换明暗</button>
+  </div>
+  <p class="lede">
+    现状：新标签直接打开<b>所选引擎的首页</b>（<code>service.ts:96</code> 的 <code>homeUrl</code>）——于是每开一个标签就是一次谷歌加载，还得等网络。
+    改成：<b>tab.url 为空时不挂 WebContentsView</b>，起始页是 renderer 的 DOM（本地、零延迟、吃我们的 token、明暗自动跟随）。
+    四案的分歧不在皮肤，在于<b>引擎选择摆在哪、这次选择活多久</b>——先挑这条轴，样式再谈。
+  </p>
+
+  <!-- ══════════════ 案一 ══════════════ -->
+  <section class="scheme">
+    <div class="scheme-head">
+      <span class="n">案一</span><span class="t">空线</span><span class="en">Blank Line</span>
+      <span class="axis">引擎在<b>页内一枚字母芯片</b> · Tab 换，<b>只管这一次</b></span>
+    </div>
+    <p class="scheme-lede">
+      一张空纸，正中一条墨线。除了线和一枚引擎缩写，页面什么都没有——没有磁贴、没有历史、没有天气。
+      光标默认就在这条线上，开标签即打字。按 <code>Tab</code>（或点芯片）四枚引擎横向展开，选完线上的芯片变色，<b>这次搜索</b>用它；下一个新标签回到设置里的默认。
+    </p>
+    <div class="pair">
+      <div>
+        <div class="pane-cap"><span class="k">idle</span><span>刚开标签：光标已在线上，一枚 <code>G</code> 说明这条线归谁</span></div>
+        <div class="panel">
+          <div class="bar">
+            <button class="btn" disabled><svg class="ic"><use href="#i-back"/></svg></button>
+            <button class="btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+            <button class="tabs"><svg class="ic"><use href="#i-chev"/></svg>2</button>
+            <div class="addr"><span class="ph">搜索或输入网址</span></div>
+            <button class="btn"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+          <div class="start nt1">
+            <div class="mark">新 标 签</div>
+            <div class="line">
+              <span class="tok">G</span>
+              <span class="ph">搜索或输入网址<span class="caret"></span></span>
+            </div>
+            <div class="hint"><span>Tab 换引擎</span><span>⏎ 谷歌搜索</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pane-cap"><span class="k">tab</span><span>按下 Tab：四枚就地展开，键盘继续按 Tab 轮转</span></div>
+        <div class="panel">
+          <div class="bar">
+            <button class="btn" disabled><svg class="ic"><use href="#i-back"/></svg></button>
+            <button class="btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+            <button class="tabs"><svg class="ic"><use href="#i-chev"/></svg>2</button>
+            <div class="addr"><span class="ph">搜索或输入网址</span></div>
+            <button class="btn"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+          <div class="start nt1">
+            <div class="mark">新 标 签</div>
+            <div class="line">
+              <span class="tok hot">百</span>
+              <span class="q">上海 明天 天气<span class="caret"></span></span>
+            </div>
+            <div class="hint"><span>Tab 换引擎</span><span style="color:var(--ui-accent-primary-fg)">⏎ 百度搜索</span></div>
+            <div class="ring">
+              <button><span>谷歌</span><span class="kk">G</span></button>
+              <button><span>必应</span><span class="kk">B</span></button>
+              <button class="on"><span>百度</span><span class="kk">百</span></button>
+              <button><span>DDG</span><span class="kk">D</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 案二 ══════════════ -->
+  <section class="scheme">
+    <div class="scheme-head">
+      <span class="n">案二</span><span class="t">四格</span><span class="en">Quadrant</span>
+      <span class="axis">引擎是<b>页面主体</b> · <b>根本没有默认</b>，每次自己点</span>
+    </div>
+    <p class="scheme-lede">
+      对「不要每次都打开谷歌」最字面的回答：起始页就是四个引擎，占满整页。上面一条输入，下面 2×2 四格。
+      先打字再点格 = 用那家搜；直接点格 = 打开那家首页。<code>⏎</code> 用<b>上次点过的那格</b>（右上角标 <code>上次</code>），所以键盘流也不吃亏，但页面从不替你决定。
+    </p>
+    <div class="pair">
+      <div>
+        <div class="pane-cap"><span class="k">idle</span><span>四格待命，「上次」是唯一的记忆</span></div>
+        <div class="panel">
+          <div class="bar">
+            <button class="btn" disabled><svg class="ic"><use href="#i-back"/></svg></button>
+            <button class="btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+            <button class="tabs"><svg class="ic"><use href="#i-chev"/></svg>2</button>
+            <div class="addr"><span class="ph">搜索或输入网址</span></div>
+            <button class="btn"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+          <div class="start nt2">
+            <div class="field"><svg class="ic sm" style="color:var(--ui-text-faint-fg)"><use href="#i-search"/></svg><span class="ph">输入后选一家，或直接点开首页</span><span class="caret"></span></div>
+            <div class="quad">
+              <button class="card"><span class="ini">G</span><span class="nm">谷歌</span><span class="hs">google.com</span></button>
+              <button class="card"><span class="ini">B</span><span class="nm">必应</span><span class="hs">bing.com</span></button>
+              <button class="card"><span class="last">上次</span><span class="ini">百</span><span class="nm">百度</span><span class="hs">baidu.com</span></button>
+              <button class="card"><span class="ini">D</span><span class="nm">DuckDuckGo</span><span class="hs">duckduckgo.com</span></button>
+            </div>
+            <div class="foot"><span>点格 = 用它搜</span><span>⏎ = 上次那家</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pane-cap"><span class="k">typing</span><span>输入后四格同时「上膛」，点哪家算哪家</span></div>
+        <div class="panel">
+          <div class="bar">
+            <button class="btn" disabled><svg class="ic"><use href="#i-back"/></svg></button>
+            <button class="btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+            <button class="tabs"><svg class="ic"><use href="#i-chev"/></svg>2</button>
+            <div class="addr"><span class="ph">搜索或输入网址</span></div>
+            <button class="btn"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+          <div class="start nt2">
+            <div class="field"><svg class="ic sm" style="color:var(--ui-accent-primary-fg)"><use href="#i-search"/></svg><span class="q">vue 3 defineModel</span><span class="caret"></span></div>
+            <div class="quad">
+              <button class="card armed"><span class="ini">G</span><span class="nm">谷歌</span><span class="hs">google.com</span><span class="go"><svg class="ic sm"><use href="#i-ret"/></svg></span></button>
+              <button class="card armed"><span class="ini">B</span><span class="nm">必应</span><span class="hs">bing.com</span><span class="go"><svg class="ic sm"><use href="#i-ret"/></svg></span></button>
+              <button class="card armed"><span class="last">上次 ⏎</span><span class="ini">百</span><span class="nm">百度</span><span class="hs">baidu.com</span><span class="go"><svg class="ic sm"><use href="#i-ret"/></svg></span></button>
+              <button class="card armed"><span class="ini">D</span><span class="nm">DuckDuckGo</span><span class="hs">duckduckgo.com</span><span class="go"><svg class="ic sm"><use href="#i-ret"/></svg></span></button>
+            </div>
+            <div class="foot"><span style="color:var(--ui-accent-primary-fg)">⌘1..4 = 第 N 格</span><span>Esc 清空</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 案三 ══════════════ -->
+  <section class="scheme">
+    <div class="scheme-head">
+      <span class="n">案三</span><span class="t">账页起始</span><span class="en">Ledger Start</span>
+      <span class="axis">引擎是<b>顶栏芯片</b> · 选中<b>即改默认</b>（持久） · 页面另有常去/最近</span>
+    </div>
+    <p class="scheme-lede">
+      唯一一个「页面上有内容」的方案，沿用侧栏/命令面板那套账页画线：一行搜索 + 引擎芯片，下面两栏账目——<b>常去</b>（手动固定）与<b>最近</b>（本 profile 的历史，带时间栏）。
+      芯片里选引擎等于改默认，和设置页那份选择是<b>同一份持久化</b>（<code>browser/search-engine.json</code>），改完立刻对所有窗口生效。
+    </p>
+    <div class="pair">
+      <div>
+        <div class="pane-cap"><span class="k">idle</span><span>搜索行 + 两栏账目，密度最高的一案</span></div>
+        <div class="panel">
+          <div class="bar">
+            <button class="btn" disabled><svg class="ic"><use href="#i-back"/></svg></button>
+            <button class="btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+            <button class="tabs"><svg class="ic"><use href="#i-chev"/></svg>2</button>
+            <div class="addr"><span class="ph">搜索或输入网址</span></div>
+            <button class="btn"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+          <div class="start nt3">
+            <div class="row-search">
+              <button class="chip">百度<svg class="ic"><use href="#i-chev"/></svg></button>
+              <span class="ph">搜索或输入网址<span class="caret"></span></span>
+            </div>
+            <div class="sec">
+              <div class="sec-h"><span class="lb">常去</span><span class="rule"></span><span class="mo">6</span></div>
+              <div class="item"><span class="no">01</span><span class="favi"></span><span class="nm">Vue 3 文档</span><span class="hs">vuejs.org</span></div>
+              <div class="item"><span class="no">02</span><span class="favi"></span><span class="nm">Electron API</span><span class="hs">electronjs.org</span></div>
+              <div class="item"><span class="no">03</span><span class="favi"></span><span class="nm">GitHub · start-electron</span><span class="hs">github.com</span></div>
+            </div>
+            <div class="sec">
+              <div class="sec-h"><span class="lb">最近</span><span class="rule"></span><span class="mo">今天</span></div>
+              <div class="item"><span class="no">—</span><span class="favi"></span><span class="nm">WebContentsView 尺寸同步</span><span class="tm">14:02</span></div>
+              <div class="item"><span class="no">—</span><span class="favi"></span><span class="nm">castlabs electron releases</span><span class="tm">11:37</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pane-cap"><span class="k">picking</span><span>芯片展开：选中即写默认，和设置页同一份</span></div>
+        <div class="panel">
+          <div class="bar">
+            <button class="btn" disabled><svg class="ic"><use href="#i-back"/></svg></button>
+            <button class="btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+            <button class="tabs"><svg class="ic"><use href="#i-chev"/></svg>2</button>
+            <div class="addr"><span class="ph">搜索或输入网址</span></div>
+            <button class="btn"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+          <div class="start nt3">
+            <div class="row-search">
+              <button class="chip open">百度<svg class="ic"><use href="#i-chev"/></svg></button>
+              <span class="ph">搜索或输入网址</span>
+            </div>
+            <div class="menu">
+              <div class="mi">谷歌<span class="hs">google.com</span></div>
+              <div class="mi">必应<span class="hs">bing.com</span></div>
+              <div class="mi cur">百度<span class="hs">baidu.com</span></div>
+              <div class="mi">DuckDuckGo<span class="hs">duckduckgo.com</span></div>
+              <div class="mf">选中即设为默认</div>
+            </div>
+            <div class="sec" style="opacity:.45">
+              <div class="sec-h"><span class="lb">常去</span><span class="rule"></span><span class="mo">6</span></div>
+              <div class="item"><span class="no">01</span><span class="favi"></span><span class="nm">Vue 3 文档</span><span class="hs">vuejs.org</span></div>
+              <div class="item"><span class="no">02</span><span class="favi"></span><span class="nm">Electron API</span><span class="hs">electronjs.org</span></div>
+              <div class="item"><span class="no">03</span><span class="favi"></span><span class="nm">GitHub · start-electron</span><span class="hs">github.com</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 案四 ══════════════ -->
+  <section class="scheme">
+    <div class="scheme-head">
+      <span class="n">案四</span><span class="t">提示符</span><span class="en">Console</span>
+      <span class="axis">引擎是<b>输入前缀</b> · 有前缀这次覆盖，无前缀走默认</span>
+    </div>
+    <p class="scheme-lede">
+      把起始页当成一行命令。<code>&gt;</code> 后面直接打字：<code>g …</code> 走谷歌、<code>b …</code> 必应、<code>bd …</code> 百度、<code>d …</code> DDG，不带前缀就是默认引擎，像 URL 就直接前往。
+      输入下方是<b>实时解析行</b>——把最终 URL 明明白白摊出来（顺带把 <code>isBrowserSearchInput</code> 那条「没点就搜」的隐规则显性化）。零鼠标目标，纯键盘。
+    </p>
+    <div class="pair">
+      <div>
+        <div class="pane-cap"><span class="k">idle</span><span>提示符 + 前缀表，一眼学会</span></div>
+        <div class="panel">
+          <div class="bar">
+            <button class="btn" disabled><svg class="ic"><use href="#i-back"/></svg></button>
+            <button class="btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+            <button class="tabs"><svg class="ic"><use href="#i-chev"/></svg>2</button>
+            <div class="addr"><span class="ph">搜索或输入网址</span></div>
+            <button class="btn"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+          <div class="start nt4">
+            <div class="prompt"><span class="sig">&gt;</span><span class="ph">关键词、网址，或 g/b/bd/d 前缀<span class="caret"></span></span></div>
+            <div class="parse idle">等待输入…</div>
+            <div class="tbl">
+              <div class="th">前缀</div>
+              <div class="tr"><span class="k">g</span><span class="d">谷歌 google.com</span></div>
+              <div class="tr"><span class="k">b</span><span class="d">必应 bing.com</span></div>
+              <div class="tr"><span class="k">bd</span><span class="d">百度 baidu.com</span><span class="df">默认</span></div>
+              <div class="tr"><span class="k">d</span><span class="d">DuckDuckGo</span></div>
+            </div>
+            <div class="tail">⌥⏎ 后台新标签打开 · ⌘, 改默认引擎</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="pane-cap"><span class="k">typing</span><span>解析行摊开最终 URL，前缀行同步高亮</span></div>
+        <div class="panel">
+          <div class="bar">
+            <button class="btn" disabled><svg class="ic"><use href="#i-back"/></svg></button>
+            <button class="btn" disabled><svg class="ic"><use href="#i-fwd"/></svg></button>
+            <button class="tabs"><svg class="ic"><use href="#i-chev"/></svg>2</button>
+            <div class="addr"><span class="ph">搜索或输入网址</span></div>
+            <button class="btn"><svg class="ic"><use href="#i-plus"/></svg></button>
+          </div>
+          <div class="start nt4">
+            <div class="prompt"><span class="sig">&gt;</span><span class="in"><span class="pre">g</span> vue 3 defineModel<span class="caret"></span></span></div>
+            <div class="parse"><span class="arrow">搜索 · 谷歌 →</span><span class="url">google.com/search?q=vue%203%20defineModel</span></div>
+            <div class="tbl">
+              <div class="th">前缀</div>
+              <div class="tr hit"><span class="k">g</span><span class="d">谷歌 google.com</span></div>
+              <div class="tr"><span class="k">b</span><span class="d">必应 bing.com</span></div>
+              <div class="tr"><span class="k">bd</span><span class="d">百度 baidu.com</span><span class="df">默认</span></div>
+              <div class="tr"><span class="k">d</span><span class="d">DuckDuckGo</span></div>
+            </div>
+            <div class="tail">⏎ 前往 · Esc 清空</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 对照 ══════════════ -->
+  <div class="notes" style="grid-template-columns:1fr">
+    <div>
+      <h3>四案对照</h3>
+      <table class="matrix">
+        <tr>
+          <th>案</th><th>引擎在哪</th><th>选择活多久</th><th>页面有内容吗</th><th>鼠标 / 键盘</th><th>新增存储</th>
+        </tr>
+        <tr>
+          <td class="k">一 空线</td><td>页内字母芯片</td><td class="warn">仅本次</td><td class="no">无</td><td>键盘为主</td><td class="yes">无</td>
+        </tr>
+        <tr>
+          <td class="k">二 四格</td><td>页面主体四格</td><td class="warn">不存默认，只记「上次」</td><td class="no">只有引擎</td><td>鼠标为主</td><td>lastUsedEngine 一个字段</td>
+        </tr>
+        <tr>
+          <td class="k">三 账页</td><td>顶栏芯片</td><td class="yes">持久（=设置页同一份）</td><td class="warn">常去 + 最近</td><td>都行</td><td class="warn">固定站点 + 历史（按 profile 隔离）</td>
+        </tr>
+        <tr>
+          <td class="k">四 提示符</td><td>输入前缀</td><td>本次覆盖 / 否则默认</td><td class="no">只有前缀表</td><td>纯键盘</td><td class="yes">无</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div>
+      <h3>四案共同的落地改动</h3>
+      <ul>
+        <li><code>service.ts:96</code> 现在是 <code>url ?? engine.homeUrl</code>——改成 <code>url ?? ''</code>：空 URL 的标签<b>不创建 WebContentsView</b>，起始页纯 DOM。</li>
+        <li><code>BrowserPanel.vue</code> 的 <code>shouldShow</code> 再加一条：<code>activeTab.url === ''</code> 时藏起原生视图（和标签列表铺开走同一条路，已有现成机制）。</li>
+        <li>起始页提交仍走 <code>store.openFromInput</code>——URL/搜索归一那条规则只有一份，别在起始页里复制。</li>
+        <li>引擎表已是单一真源（<code>@shared/ipc</code> 的 <code>BROWSER_SEARCH_ENGINES</code>），四案都只是它的不同<b>呈现</b>，没有第二份表。</li>
+      </ul>
+    </div>
+    <div>
+      <h3>各案的代价</h3>
+      <ul>
+        <li><b>一</b>：空得彻底，但「上次看的那几个站」永远要重打——重度浏览会嫌。</li>
+        <li><b>二</b>：每次都要做一次选择，高频搜同一家的人会觉得多一步（⏎ 走「上次」是给这个的补偿）。</li>
+        <li class="warn"><b>三</b>：要引入<b>历史记录</b>——按 profile 隔离、要能清空，否则多 profile 隔离登录那套白做了。工作量最大的一案。</li>
+        <li><b>四</b>：前缀要背；不带前缀时不知道默认是谁——靠前缀表上那枚「默认」角标兜。</li>
+      </ul>
+    </div>
+    <div>
+      <h3>建议</h3>
+      <ul>
+        <li>先定<b>选择活多久</b>：想要「大部分时候一家、偶尔换一家」→ 案一或案四；想要「每次都清醒地选」→ 案二；想让起始页顺带当入口 → 案三。</li>
+        <li>一/四 可叠加：空线加上前缀解析并不冲突（芯片跟着前缀走）。二/三 互斥于版面。</li>
+        <li>三的「常去/最近」也可以晚一步再加——先落一/二/四任一，起始页的壳是同一个组件。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>

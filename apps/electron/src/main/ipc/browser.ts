@@ -40,6 +40,8 @@ export function registerBrowserHandlers(): void {
 			setVisible: IPC_CHANNELS.BROWSER_SET_VISIBLE,
 			pickElement: IPC_CHANNELS.BROWSER_PICK_ELEMENT,
 			pickCancel: IPC_CHANNELS.BROWSER_PICK_CANCEL,
+			getSearchEngine: IPC_CHANNELS.BROWSER_GET_SEARCH_ENGINE,
+			setSearchEngine: IPC_CHANNELS.BROWSER_SET_SEARCH_ENGINE,
 			listProfiles: IPC_CHANNELS.BROWSER_LIST_PROFILES,
 			addProfile: IPC_CHANNELS.BROWSER_ADD_PROFILE,
 			removeProfile: IPC_CHANNELS.BROWSER_REMOVE_PROFILE,
@@ -107,6 +109,20 @@ export function registerBrowserHandlers(): void {
 		pickCancel: (request) => {
 			service().cancelPick(request.tabId);
 			return ok;
+		},
+		getSearchEngine: () => {
+			try {
+				return { success: true, ...service().getSearchEngine() };
+			} catch (error) {
+				return { success: false, engineId: "google" as const, error: errorMessage(error) };
+			}
+		},
+		setSearchEngine: (request) => {
+			try {
+				return { success: true, ...service().setSearchEngine(request.engineId) };
+			} catch (error) {
+				return { success: false, engineId: "google" as const, error: errorMessage(error) };
+			}
 		},
 		listProfiles: () => {
 			try {

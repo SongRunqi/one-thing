@@ -328,4 +328,17 @@ describe('workspace store: panels', () => {
     const result = store.closeLeaf(leafId)
     expect(result?.releasedSessionIds).toEqual([])
   })
+
+  // 已读水位吃的是"看得见"而不是"开着"(agent-im-dm.md P4):后台页签没人在看,
+  // 水位不该替用户往前推。
+  it('visibleSessionIds = 每个分栏的当前页签,后台页签不算', () => {
+    const store = useWorkspaceStore()
+    store.openSession('session-1')
+    store.openSession('session-2')
+    expect([...store.openSessionIds]).toEqual(['session-1', 'session-2'])
+    expect([...store.visibleSessionIds]).toEqual(['session-2'])
+
+    store.splitLeaf('main', 'session-3', 'right')
+    expect([...store.visibleSessionIds].sort()).toEqual(['session-2', 'session-3'])
+  })
 })

@@ -86,6 +86,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     return ids
   })
+  /**
+   * 屏幕上真的看得见的那些会话 = 每个分栏的当前页签。与 `openSessionIds` 的差别
+   * 是后台页签:开着但被盖住的会话没人在看,已读水位不该替用户往前推
+   * (docs/design/agent-im-dm.md P4)。
+   */
+  const visibleSessionIds = computed(() => {
+    const ids = new Set<string>()
+    for (const leaf of leaves.value) {
+      const sessionId = activeSessionOf(leaf)
+      if (sessionId) ids.add(sessionId)
+    }
+    return ids
+  })
 
   function leafById(leafId: string | undefined): WorkspaceLeaf | undefined {
     return leafId ? findLeaf(root.value, leafId) : undefined
@@ -336,6 +349,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     activeSessionId,
     hasAnyChatTab,
     openSessionIds,
+    visibleSessionIds,
     leafById,
     tabsOf,
     activeTabIdOf,

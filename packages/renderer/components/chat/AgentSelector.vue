@@ -35,7 +35,7 @@
         :visible="open"
         :placement="placement"
         title="Agent"
-        :count="agentsStore.agents.length"
+        :count="selectableAgents.length"
         empty-text="No agents"
         empty-hint="Create one in Agents"
         :hints="HINTS"
@@ -50,7 +50,7 @@
           :aria-activedescendant="activeOptionId"
         >
           <div
-            v-for="(agent, index) in agentsStore.agents"
+            v-for="(agent, index) in selectableAgents"
             :id="getOptionId(index)"
             :key="agent.id"
             :class="['composer-extension-row', 'agent-row', { selected: index === highlightedIndex }]"
@@ -143,11 +143,18 @@ const session = computed(() =>
   sessionsStore.getSessionItem(props.sessionId) || null
 )
 const currentAgentId = computed(() => session.value?.agentId || DEFAULT_AGENT_ID)
+// 功能兜底,不是署名(域模型 M4):chip 显示的是「这条会话现在跑谁的人格」,
+// 无 agentId / 查无此人时跑的确实是 default。署名/头像类走 displayAgent。
 const currentAgent = computed(() => agentsStore.getAgent(currentAgentId.value))
 const isDisabled = computed(() => !!props.sessionId && chatStore.isSessionGenerating(props.sessionId))
 
+// Social surface (agent-domain-model.md M2): only active colleagues are
+// switch targets — service agents (radio-dj) and retired ones never list here.
+// The management panel (AgentsPanelContent) keeps showing everything.
+const selectableAgents = computed(() => agentsStore.colleagues)
+
 const activeOptionId = computed(() =>
-  agentsStore.agents[highlightedIndex.value] ? getOptionId(highlightedIndex.value) : undefined
+  selectableAgents.value[highlightedIndex.value] ? getOptionId(highlightedIndex.value) : undefined
 )
 
 function getOptionId(index: number) {
@@ -207,7 +214,7 @@ function handleDocumentClick(event: MouseEvent) {
 }
 
 function moveHighlight(delta: number) {
-  const total = agentsStore.agents.length
+  const total = selectableAgents.value.length
   if (!total) return
   highlightedIndex.value = (highlightedIndex.value + delta + total) % total
   void nextTick(scrollHighlightIntoView)
@@ -237,7 +244,7 @@ function handleKeydown(event: KeyboardEvent) {
     return
   }
   if (event.key === 'Enter') {
-    const agent = agentsStore.agents[highlightedIndex.value]
+    const agent = selectableAgents.value[highlightedIndex.value]
     if (!agent) return
     event.preventDefault()
     void selectAgent(agent.id)
@@ -247,7 +254,7 @@ function handleKeydown(event: KeyboardEvent) {
 async function openMenu() {
   open.value = true
   selectionError.value = ''
-  const current = agentsStore.agents.findIndex(agent => agent.id === currentAgentId.value)
+  const current = selectableAgents.value.findIndex(agent => agent.id === currentAgentId.value)
   highlightedIndex.value = current >= 0 ? current : 0
   await nextTick()
   updateMenuPosition()

@@ -16,8 +16,11 @@ import * as store from '../store.js'
 import { getProjectsStore } from '../project-dirs/index.js'
 import { expandPath } from '../tools/core/sandbox.js'
 import { getVariablesStore } from './store/index.js'
+import { DEFAULT_ONETHING_AGENT_ID } from '@onething/runtime/agents'
+import { projectIdFromPath } from '@onething/runtime/project-dirs'
 import type { GlobalStoreGateway } from '@onething/runtime/variables/providers/global-store'
 import type { GoalVariableGateway } from '@onething/runtime/variables/providers/goal'
+import type { KeyedStoreGateway } from '@onething/runtime/variables/providers/keyed-store'
 import type { MusicRadioGateway } from '@onething/runtime/variables/providers/music-radio'
 import type { SessionStoreGateway } from '@onething/runtime/variables/providers/session-store'
 import type { WorkdirGateway } from '@onething/runtime/variables/providers/core'
@@ -106,6 +109,45 @@ export const globalStoreGateway: GlobalStoreGateway = {
   },
   write(variables) {
     getVariablesStore().setGlobalVariables(variables)
+  },
+  onChange(callback) {
+    return getVariablesStore().subscribe(callback)
+  },
+}
+
+// ── Agent / project scoped variables ─────────────────
+// Both persist in variables.json via the VariablesStore; only the key
+// derivation differs. Sessions without an explicit agent belong to the
+// default agent, so agent scope is always writable; project scope requires
+// an active workdir.
+
+export const agentStoreGateway: KeyedStoreGateway = {
+  resolveKey(sessionId) {
+    const session = store.getSession(sessionId)
+    if (!session) return null
+    return session.agentId || DEFAULT_ONETHING_AGENT_ID
+  },
+  read(key) {
+    return getVariablesStore().getScopedVariables('agent', key)
+  },
+  write(key, variables) {
+    getVariablesStore().setScopedVariables('agent', key, variables)
+  },
+  onChange(callback) {
+    return getVariablesStore().subscribe(callback)
+  },
+}
+
+export const projectStoreGateway: KeyedStoreGateway = {
+  resolveKey(sessionId) {
+    const workdir = store.getSession(sessionId)?.workingDirectory
+    return workdir ? projectIdFromPath(workdir) : null
+  },
+  read(key) {
+    return getVariablesStore().getScopedVariables('project', key)
+  },
+  write(key, variables) {
+    getVariablesStore().setScopedVariables('project', key, variables)
   },
   onChange(callback) {
     return getVariablesStore().subscribe(callback)

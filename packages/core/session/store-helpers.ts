@@ -49,6 +49,8 @@ export interface CoreSessionMeta {
   branchFromMessageId?: string
   lastModel?: string
   lastProvider?: string
+  /** The user picked lastProvider/lastModel by hand (not the auto-stamp). */
+  modelPinned?: boolean
   permissionMode?: string
   isPinned?: boolean
   isArchived?: boolean
@@ -835,13 +837,22 @@ export function applySessionSummary<
   return session
 }
 
-export function applySessionModel<TSession extends { lastProvider?: string; lastModel?: string }>(
+/**
+ * An explicit model choice — the picker, not the per-message auto-stamp. The
+ * pin is what lets an agent's model binding know whether there is a user
+ * decision to defer to (docs/design/agent-capability-profile.md A1.4).
+ */
+export function applySessionModel<
+  TSession extends { lastProvider?: string; lastModel?: string; modelPinned?: boolean },
+>(
   session: TSession,
   provider: string,
   model: string,
+  options: { pinned?: boolean } = {},
 ): TSession {
   session.lastProvider = provider
   session.lastModel = model
+  if (options.pinned !== undefined) session.modelPinned = options.pinned || undefined
   return session
 }
 
@@ -950,6 +961,7 @@ export function extractSessionMeta<TMessage extends CoreSessionMessage>(
     lastSentAt: session.lastSentAt,
     lastModel: session.lastModel,
     lastProvider: session.lastProvider,
+    modelPinned: session.modelPinned,
     permissionMode: session.permissionMode,
     isPinned: session.isPinned,
     isArchived: session.isArchived,

@@ -40,7 +40,11 @@ describe('App container layout', () => {
     expect(app).toContain('--app-sidebar-transition-duration: 0.3s')
     expect(app).toContain('--app-sidebar-transition-ease: cubic-bezier(0.4, 0, 0.2, 1)')
     expect(app).toContain('animating it relayouts the full message list every frame')
-    expect(app).toContain('.app-sidebar-actions.transitioning {\n  transition: none;')
+    // 侧栏操作按钮不再是跨分支的 fixed 浮层:Chromium 只让 drag 元素的子孙用
+    // no-drag 挖洞,浮层挖不动,才逼出了顶栏那块按坐标预留的死区。按钮现在住在
+    // 各自的 drag 宿主里(展开→SidebarHeader,收起→TabBar / MediaPanel 头)。
+    expect(app).not.toContain('app-sidebar-actions')
+    expect(app).not.toContain('SIDEBAR_ACTION_COLLAPSED_LEFT')
     expect(app).not.toContain('transition: inline-size var(--app-sidebar-transition-duration) var(--app-sidebar-transition-ease)')
     expect(app).not.toContain('transition: left var(--app-sidebar-transition-duration) var(--app-sidebar-transition-ease)')
     expect(app).not.toContain('flex-basis 0.3s')

@@ -368,7 +368,10 @@
 	--ui-surface-floating-bg: var(--color-neutral-darker-fill, var(--bg-floating));
 	--ui-surface-overlay-bg: var(--color-neutral-overlay-background, var(--bg-modal-overlay));
 	--ui-surface-menu-bg: var(--color-neutral-darker-fill, var(--bg-menu));
-	--ui-surface-menu-hover-bg: var(--color-neutral-dark-fill, var(--bg-menu-item-hover));
+	/* 菜单行悬停必须与菜单底色不同。--color-neutral-dark-fill 解到 --bg-elevated,
+	   而菜单底色本身就是同族的 elevated/floating —— 放在前面等于「悬停 = 不悬停」。
+	   主题里 bg.menuItemHover 是一等 token(css-mapper),优先用它。 */
+	--ui-surface-menu-hover-bg: var(--bg-menu-item-hover, var(--color-neutral-dark-fill));
 	--ui-surface-input-bg: var(--color-neutral-lighter-fill, var(--bg-input));
 	--ui-surface-input-border: var(--color-neutral-base-border, var(--border-input));
 	--ui-surface-input-focus-bg: var(--color-neutral-dark-fill, var(--bg-input-focus, var(--bg-input)));

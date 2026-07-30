@@ -94,10 +94,62 @@ const timeoutAskBridge = {
   },
 }
 
+/**
+ * Collab (multi-agent room/work) turns are system-driven — the coordinator's
+ * drive stamps a system-internal origin — but a human IS watching: the room
+ * UI shows worker permission cards. Routing them through timeoutAskBridge
+ * would auto-reject every worker ask after 120s (docs/multi-agent-collab.md
+ * D8 blocker), so they wait interactively — with a 30-minute soft reminder
+ * posted into the ROOM so a parked ask is discoverable (D8 软提醒).
+ */
+function isCollabTurn(sessionId: string): boolean {
+  const kind = (store.getSession(sessionId) as { kind?: string } | undefined)?.kind
+  // 'agent' (W18) is where a room response turn now runs — same system-driven
+  // turn, same watching human, so it must not fall into the 120s auto-deny.
+  return kind === 'room' || kind === 'work' || kind === 'agent'
+}
+
+const COLLAB_ASK_REMINDER_MS = 30 * 60_000
+
+const collabReminderBridge = {
+  getMode: (sessionId: string) => Permission.getMode(sessionId),
+  ask: async (request: Parameters<typeof Permission.ask>[0]): Promise<void> => {
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const session = store.getSession(request.sessionId) as
+            | { id: string; kind?: string; collab?: { roomSessionId?: string } }
+            | undefined
+          const roomSessionId = session?.kind === 'room' ? session.id : session?.collab?.roomSessionId
+          if (!roomSessionId) return
+          // Dynamic import: tools/core must not statically depend on the
+          // coordinator (which depends on the engine).
+          const { postCollabSystemLine } = await import('../../collab/coordinator.js')
+          postCollabSystemLine(
+            roomSessionId,
+            `有一个权限请求已等待 30 分钟未处理:${request.title}(从看板任务卡打开工作会话审批)`,
+          )
+        } catch (error) {
+          console.error('[collab] permission reminder failed:', error)
+        }
+      })()
+    }, COLLAB_ASK_REMINDER_MS)
+    try {
+      await Permission.ask(request)
+    } finally {
+      clearTimeout(timer)
+    }
+  },
+}
+
 export async function enforcePermissionPolicy(input: EnforcePermissionPolicyInput): Promise<void> {
   const enriched = enrichPermissionInput(input)
   if (isUnattendedTurn(input.sessionId)) {
     await permissionRuntime.enforce({ ...enriched, permissionBridge: unattendedBridge })
+    return
+  }
+  if (isCollabTurn(input.sessionId)) {
+    await permissionRuntime.enforce({ ...enriched, permissionBridge: collabReminderBridge })
     return
   }
   if (isSystemDrivenTurn(input.sessionId)) {

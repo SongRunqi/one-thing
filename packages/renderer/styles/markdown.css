@@ -67,6 +67,30 @@
 	text-decoration: underline;
 }
 
+/* 群聊行内标签(collab-team-v2 §6.1)。
+   默认态就是"纯文本" —— 没有验真通过的标签必须看起来点不动,这是防线二在
+   视觉上的兑现,不是装饰取舍。验真通过后才拿到 .is-live 的下划线与手型。 */
+.collab-tag {
+	color: inherit;
+	white-space: nowrap;
+}
+
+.collab-tag.is-live {
+	color: var(--accent);
+	cursor: pointer;
+	border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.collab-tag.is-live:hover {
+	border-bottom-color: var(--accent);
+}
+
+.collab-tag.is-live:focus-visible {
+	outline: 1px solid var(--accent);
+	outline-offset: 2px;
+	border-radius: 2px;
+}
+
 /* Horizontal rule */
 .md-body hr {
 	border: none;

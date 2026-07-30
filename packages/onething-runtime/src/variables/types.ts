@@ -2,7 +2,7 @@
  * How often a variable's value is expected to change, which decides where it
  * is rendered:
  * - 'static' (default): stable across turns → the system-prompt
- *   "# Context Variables" section. A change busts the prompt-cache prefix,
+ *   <context-variables> block. A change busts the prompt-cache prefix,
  *   so only low-churn values belong here.
  * - 'turn': may change every turn (datetime, git branch) → injected after the
  *   latest user message as a <context-update> block, never into the prefix.
@@ -11,11 +11,30 @@
  */
 export type VariableVolatility = 'static' | 'turn' | 'on-demand'
 
+/**
+ * Where a variable lives and who sees it:
+ * - 'session' (default): this session only.
+ * - 'agent': shared by every session bound to the same agent.
+ * - 'project': attached to the active workdir's project — visible in any
+ *   session whose workdir points at that directory.
+ * - 'global': shared across all sessions.
+ */
+export type VariableScope = 'global' | 'session' | 'agent' | 'project'
+
+/**
+ * Value type of a custom variable. `value` always holds the canonical string
+ * serialization — scalars as plain text, collections as compact JSON — and
+ * writes are validated/normalized against the declared type
+ * (see typed-values.ts). 'set' is a list with unique elements.
+ */
+export type VariableType = 'string' | 'number' | 'bool' | 'list' | 'map' | 'set'
+
 export interface ContextVariable {
   name: string
   value: string
   values?: string[]
-  scope?: 'global' | 'session'
+  type?: VariableType
+  scope?: VariableScope
   description?: string
   readonly?: boolean
   volatility?: VariableVolatility
@@ -31,7 +50,12 @@ export interface VariableContext {
 export interface SetInput {
   name: string
   value: string
-  scope?: 'global' | 'session'
+  scope?: VariableScope
+  /**
+   * Value type. On set: defaults to the variable's existing type, else
+   * 'string'. On append to a missing variable: defaults to 'list'.
+   */
+  type?: VariableType
   description?: string
   /**
    * Custom variables may opt into 'turn' so frequent updates ride the

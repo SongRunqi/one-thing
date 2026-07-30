@@ -51,6 +51,7 @@ import { createOnethingBackend } from "@onething/app/backend.js";
 import { buildSystemPromptSnapshot as buildAppSystemPromptSnapshot } from "@onething/app/engine/prompt/system-prompt-snapshot.js";
 import { buildOnethingSystemPromptSnapshotForIpc } from "@onething/runtime/prompts";
 import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/app/stores/settings.js";
+import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/app/agents/index.js";
 import {
 	getAllSkillsForDisplay as getAppSkillsForDisplay,
 	invalidateSessionSkillsCache as invalidateAppSessionSkillsCache,
@@ -190,6 +191,7 @@ import {
 	createOnethingAgentStore,
 	deleteOnethingAgentFromRequestForIpc,
 	listOnethingAgentsForIpc,
+	restoreOnethingAgentFromRequestForIpc,
 	updateOnethingAgentFromRequestForIpc,
 	DEFAULT_ONETHING_AGENT_ID,
 	type OnethingAgentDefinition,
@@ -1707,9 +1709,45 @@ export async function createDevelopmentOnethingServerRuntime(
 		const key = ownerKey(context);
 		let store = agentStoresByOwner.get(key);
 		if (!store) {
-			store = createOnethingAgentStore({
+			const created = createOnethingAgentStore({
 				agentsPath: agentStorePathForContext(context),
 			});
+			// The default context writes the same agents.json the in-process
+			// engine reads through the app store's memory cache. Drop that cache
+			// after every write, or an agent edited over HTTP would keep running
+			// with its old prompt/tools until the server restarts (same shape as
+			// the settings-store wrapper above).
+			store = isDefaultContext(context)
+				? {
+						...created,
+						createAgent(input) {
+							const agent = created.createAgent(input);
+							invalidateAppAgentsCache();
+							return agent;
+						},
+						updateAgent(input) {
+							const agent = created.updateAgent(input);
+							invalidateAppAgentsCache();
+							return agent;
+						},
+						// 退休/恢复也是写 —— 少一次 invalidate,退休了的 agent 在
+						// 引擎眼里还是 active,照样被激活开口。
+						retireAgent(agentId) {
+							const agent = created.retireAgent(agentId);
+							invalidateAppAgentsCache();
+							return agent;
+						},
+						restoreAgent(agentId) {
+							const agent = created.restoreAgent(agentId);
+							invalidateAppAgentsCache();
+							return agent;
+						},
+						deleteAgent(agentId) {
+							created.deleteAgent(agentId);
+							invalidateAppAgentsCache();
+						},
+					}
+				: created;
 			agentStoresByOwner.set(key, store);
 		}
 		return store;
@@ -2289,14 +2327,65 @@ export async function createDevelopmentOnethingServerRuntime(
 					persistSession(session);
 				},
 			},
+			agentStore: {
+				resolveKey: (sessionId) => {
+					const session = getSessionForContext(sessionId, context);
+					if (!session) return null;
+					return session.agentId || DEFAULT_ONETHING_AGENT_ID;
+				},
+				read: (key) => store.getScopedVariables("agent", key),
+				write: (key, variables) =>
+					store.setScopedVariables("agent", key, variables),
+				onChange: (callback) => store.subscribe(callback),
+			},
+			projectStore: {
+				resolveKey: (sessionId) => {
+					const workdir = getSessionForContext(
+						sessionId,
+						context,
+					)?.workingDirectory;
+					return workdir ? projectIdFromPath(workdir) : null;
+				},
+				read: (key) => store.getScopedVariables("project", key),
+				write: (key, variables) =>
+					store.setScopedVariables("project", key, variables),
+				onChange: (callback) => store.subscribe(callback),
+			},
 		});
 
-		const unsubscribe = registry.subscribe((variableContext, snapshot) => {
-			if (!variableContext.sessionId) return;
-			const session = getSessionForContext(variableContext.sessionId, context);
-			if (!session) return;
-			applyVariablesSnapshotToSession(session, snapshot);
-			persistSession(session);
+		// Broadcasts (empty sessionId) come from shared-scope writes
+		// (global/agent/project) or external store changes; other sessions'
+		// variable panels would go stale without a fresh snapshot. Emit-only:
+		// re-persisting every session on a broadcast would be write
+		// amplification for a UI refresh. Coalesced per tick.
+		let broadcastRefreshScheduled = false;
+		const refreshAllSessions = () => {
+			if (broadcastRefreshScheduled) return;
+			broadcastRefreshScheduled = true;
+			queueMicrotask(() => {
+				broadcastRefreshScheduled = false;
+				for (const meta of listSessionsForContext(context)) {
+					registry
+						.list({ sessionId: meta.id })
+						.then((snapshot) => {
+							const session = getSessionForContext(meta.id, context);
+							if (!session) return;
+							emitSessionSnapshot(session, snapshot);
+						})
+						.catch((error) => {
+							console.error(
+								"[server:variables] broadcast refresh failed:",
+								meta.id,
+								error,
+							);
+						});
+				}
+			});
+		};
+		const emitSessionSnapshot = (
+			session: ServerChatSession,
+			snapshot: Awaited<ReturnType<typeof registry.list>>,
+		) => {
 			eventBus
 				.emit(session.id, {
 					type: "session:variables-updated",
@@ -2307,6 +2396,17 @@ export async function createDevelopmentOnethingServerRuntime(
 				.catch((error) => {
 					console.error("[server:variables] EventBus emit failed:", error);
 				});
+		};
+		const unsubscribe = registry.subscribe((variableContext, snapshot) => {
+			if (!variableContext.sessionId) {
+				refreshAllSessions();
+				return;
+			}
+			const session = getSessionForContext(variableContext.sessionId, context);
+			if (!session) return;
+			applyVariablesSnapshotToSession(session, snapshot);
+			persistSession(session);
+			emitSessionSnapshot(session, snapshot);
 		});
 
 		variableRuntime = { registry, store, unsubscribe };
@@ -4386,13 +4486,36 @@ export async function createDevelopmentOnethingServerRuntime(
 				});
 			},
 			create(
-				request: { name?: string; systemPrompt?: string } = {},
+				request: {
+					name?: string;
+					systemPrompt?: string;
+					tools?: string[];
+					title?: string;
+					avatar?: string;
+					avatarImage?: string;
+					color?: string;
+					description?: string;
+					model?: { providerId?: string; modelId?: string; thinking?: string };
+					toolGrants?: string[];
+					permissionMode?: string;
+					maxTurns?: number;
+				} = {},
 				context = defaultRequestContext(),
 			) {
 				const store = getAgentStoreForContext(context);
 				return createOnethingAgentFromRequestForIpc({
 					name: request.name ?? "",
 					systemPrompt: request.systemPrompt ?? "",
+					tools: request.tools,
+					title: request.title,
+					avatar: request.avatar,
+					avatarImage: request.avatarImage,
+					color: request.color,
+					description: request.description,
+					model: request.model,
+					toolGrants: request.toolGrants,
+					permissionMode: request.permissionMode,
+					maxTurns: request.maxTurns,
 					createId: randomUUID,
 					createAgent: (input) =>
 						store.createAgent(input) as OnethingAgentDefinition,
@@ -4404,6 +4527,16 @@ export async function createDevelopmentOnethingServerRuntime(
 					agentId?: string;
 					name?: string;
 					systemPrompt?: string;
+					tools?: string[] | null;
+					title?: string | null;
+					avatar?: string | null;
+					avatarImage?: string | null;
+					color?: string | null;
+					description?: string | null;
+					model?: { providerId?: string; modelId?: string; thinking?: string } | null;
+					toolGrants?: string[] | null;
+					permissionMode?: string | null;
+					maxTurns?: number | null;
 				} = {},
 				context = defaultRequestContext(),
 			) {
@@ -4412,11 +4545,27 @@ export async function createDevelopmentOnethingServerRuntime(
 					agentId: request.agentId ?? "",
 					name: request.name,
 					systemPrompt: request.systemPrompt,
+					tools: request.tools,
+					title: request.title,
+					avatar: request.avatar,
+					avatarImage: request.avatarImage,
+					color: request.color,
+					description: request.description,
+					model: request.model,
+					toolGrants: request.toolGrants,
+					permissionMode: request.permissionMode,
+					maxTurns: request.maxTurns,
 					updateAgent: (input) =>
 						store.updateAgent(input) as OnethingAgentDefinition,
 					logger: console,
 				});
 			},
+			/**
+			 * 「删除」的两条路(agent-domain-model.md §3.2):被任何会话引用过 →
+			 * 退休(墓碑,身份面全留);从未被引用过 → 真硬删。引用检查要的四个
+			 * 字段(agentId/kind/room/collab)都从会话索引里递过去 —— 少递一个就
+			 * 会把「房间成员」这类引用看漏,把墓碑删成孤儿。
+			 */
 			delete(
 				request: { agentId?: string } = {},
 				context = defaultRequestContext(),
@@ -4427,9 +4576,27 @@ export async function createDevelopmentOnethingServerRuntime(
 					defaultAgentId: DEFAULT_ONETHING_AGENT_ID,
 					listSessions: () =>
 						listSessionsForContext(context).map((session) => ({
+							id: session.id,
+							kind: session.kind,
 							agentId: session.agentId,
+							collab: session.collab,
+							room: session.room,
 						})),
+					retireAgent: (agentId) =>
+						store.retireAgent(agentId) as OnethingAgentDefinition,
 					deleteAgent: (agentId) => store.deleteAgent(agentId),
+					logger: console,
+				});
+			},
+			restore(
+				request: { agentId?: string } = {},
+				context = defaultRequestContext(),
+			) {
+				const store = getAgentStoreForContext(context);
+				return restoreOnethingAgentFromRequestForIpc({
+					agentId: request.agentId,
+					restoreAgent: (agentId) =>
+						store.restoreAgent(agentId) as OnethingAgentDefinition,
 					logger: console,
 				});
 			},
@@ -5867,6 +6034,14 @@ function applySessionPatch(
 
 	if (typeof patch.lastModel === "string" && patch.lastModel.length > 0) {
 		session.lastModel = patch.lastModel;
+	}
+
+	// The pin says "a human chose this pair", which is what stops an agent's
+	// model binding from outranking it. It is set by the model-picker route,
+	// never by the per-turn provider/model stamp.
+	if ("modelPinned" in patch) {
+		if (patch.modelPinned === true) session.modelPinned = true;
+		else delete session.modelPinned;
 	}
 
 	if ("maxTokens" in patch) {

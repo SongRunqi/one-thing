@@ -40,6 +40,23 @@ vi.mock("@/stores/music", () => ({
 	useMusicStore: () => mocks.musicStore,
 }));
 
+vi.mock("@/stores/collabBoard", () => ({
+	useCollabBoardStore: () => ({
+		// collab-team-v2 §5.1 入口①:群聊房间的"在跑"由 collab:turn-active 说了算,
+		// 普通聊天里恒为 false。
+		isRoomTurnActive: () => false,
+	}),
+}));
+
+vi.mock("@/stores/browser", () => ({
+	useBrowserStore: () => ({
+		tabs: [],
+		activeTabId: null,
+		activeTab: null,
+		ensureLoaded: vi.fn().mockResolvedValue(undefined),
+	}),
+}));
+
 vi.mock("@/services/commands", () => ({
 	findCommand: vi.fn(() => null),
 	getCommands: vi.fn(() => [

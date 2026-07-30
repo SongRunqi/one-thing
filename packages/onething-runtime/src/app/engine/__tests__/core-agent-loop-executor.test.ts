@@ -761,7 +761,8 @@ describe('core agent-loop executor helpers', () => {
       data: { commandType: 'dangerous' },
     }, 3456)).toMatchObject({
       awaitingConfirmation: true,
-      skillManageCalled: true,
+      // skill_manage 工具已移除,没有可识别的专用调用了。
+      skillManageCalled: false,
     })
     expect(pending).toMatchObject({
       status: 'pending',

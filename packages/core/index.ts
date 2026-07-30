@@ -25,6 +25,7 @@ export {
   agentModelToolsFromDefinitions,
   agentProviderCanRunTurn,
   agentSupportsCapability,
+  agentSupportsForcedToolUse,
   agentSupportsInputModality,
   agentSupportsOutputModality,
   agentSupportsStructuredToolResults,

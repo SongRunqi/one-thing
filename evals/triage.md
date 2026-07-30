@@ -2,7 +2,7 @@
 
 Weekly diagnosis artifact. Updated by script or manually from `records.jsonl` low-score aggregation.
 
-## Current Week: 2026-07-10
+## Current Week: 2026-07-29
 
 | 失败类别 | 本周 | 累计 | 归因段落 | 状态 |
 |---|---|---|---|---|
@@ -113,3 +113,16 @@ Turns with negative signals: 22
 | 类别 | 数量 | 诊断结论 | 事故 |
 |---|---|---|---|
 | (未分析) | 7 | — | `2026-07-10-01cefc75` `2026-07-10-2a754de0` `2026-07-10-bb9ac073` … |
+
+
+## 2026-07-29 (auto-generated draft)
+
+Total turns this period: 241
+Turns with negative signals: 24
+
+| 失败类别 | 本周 | 归因段落 | 段版本分布 | 状态 |
+|---|---|---|---|---|
+| general-poor-response | 23 | system | ca9f110b ×9, a7180188 ×4, f89eef1f ×3, f29ca7cf ×2, b03e20a4 ×2, f2719148 ×2, a11b8097 ×1 | 待修 |
+| not-prompt-fault | 1 | N/A | — | 待修 |
+
+<!-- Auto-generated. Review and correct before committing. -->

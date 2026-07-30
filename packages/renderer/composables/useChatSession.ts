@@ -12,7 +12,7 @@
  */
 
 import { computed, toValue, type MaybeRef } from 'vue'
-import type { ChatMessage, MessageAttachment } from '@/types'
+import type { ChatMessage, ChatMessageMention, ChatMessageReplyTo, MessageAttachment } from '@/types'
 import { useChatStore } from '@/stores/chat'
 
 export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
@@ -43,10 +43,14 @@ export function useChatSession(sessionIdRef: MaybeRef<string | undefined>) {
   /**
    * Send a message and start streaming response
    */
-  async function sendMessage(content: string, attachments?: MessageAttachment[]) {
+  async function sendMessage(
+    content: string,
+    attachments?: MessageAttachment[],
+    options?: { source?: string; replyTo?: ChatMessageReplyTo; mentions?: ChatMessageMention[] },
+  ) {
     const sid = sessionId.value
     if (!sid) return false
-    return chatStore.sendMessage(sid, content, attachments)
+    return chatStore.sendMessage(sid, content, attachments, options)
   }
 
   async function steerMessage(content: string) {

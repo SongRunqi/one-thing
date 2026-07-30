@@ -7,15 +7,45 @@
  */
 import { onMounted, ref } from 'vue'
 import { Check } from 'lucide-vue-next'
+import { BROWSER_SEARCH_ENGINES, DEFAULT_BROWSER_SEARCH_ENGINE_ID } from '@shared/ipc'
+import { platformApi } from '@/platform'
 import { useBrowserProfilesStore } from '@/stores/browserProfiles'
 
 const store = useBrowserProfilesStore()
 const newName = ref('')
 const confirmingRemoveId = ref<string | null>(null)
 
+// The embedded browser (and thus these settings) is Electron-only; on the web
+// host every browser platform method is a {success:false} stub — rendering the
+// ledgers there would be dead-interactive UI asserting state no backend holds.
+const supported = platformApi.capabilities.embeddedBrowser
+
+// Search-engine selection — source of truth is the main process
+// (browser/search-engine.json); this is a fetch-on-mount local mirror.
+const searchEngines = BROWSER_SEARCH_ENGINES
+const searchEngineId = ref<string>(DEFAULT_BROWSER_SEARCH_ENGINE_ID)
+
 onMounted(() => {
+  if (!supported) return
   void store.load()
+  void platformApi.getBrowserSearchEngine?.().then((res) => {
+    if (res?.success) searchEngineId.value = res.engineId
+  })
 })
+
+async function selectEngine(id: string): Promise<void> {
+  if (id === searchEngineId.value) return
+  const res = await platformApi.setBrowserSearchEngine?.(id)
+  if (res?.success) searchEngineId.value = res.engineId
+}
+
+function engineHost(homeUrl: string): string {
+  try {
+    return new URL(homeUrl).hostname
+  } catch {
+    return homeUrl
+  }
+}
 
 async function addProfile(): Promise<void> {
   const name = newName.value.trim()
@@ -35,9 +65,67 @@ function onRemoveClick(id: string): void {
 </script>
 
 <template>
-  <div class="browser-settings">
+  <div
+    v-if="!supported"
+    class="browser-settings"
+  >
     <header class="bs-header">
-      <h2 class="bs-title">浏览器配置</h2>
+      <h2 class="bs-title">
+        浏览器
+      </h2>
+      <p class="bs-sub">
+        内嵌浏览器仅在桌面端可用，请在桌面应用中调整这些设置。
+      </p>
+    </header>
+  </div>
+  <div
+    v-else
+    class="browser-settings"
+  >
+    <header class="bs-header">
+      <h2 class="bs-title">
+        搜索引擎
+      </h2>
+      <p class="bs-sub">
+        地址栏与起始页默认使用的引擎。新标签页只打开本地起始页，不加载任何引擎首页；
+        在起始页按 Tab 可临时换一家搜，不影响这里的默认。
+      </p>
+    </header>
+
+    <div class="bs-ledger">
+      <button
+        v-for="engine in searchEngines"
+        :key="engine.id"
+        class="bs-row"
+        :class="{ active: engine.id === searchEngineId }"
+        type="button"
+        @click="selectEngine(engine.id)"
+      >
+        <span
+          class="bs-dot"
+          :class="{ on: engine.id === searchEngineId }"
+        >
+          <Check
+            v-if="engine.id === searchEngineId"
+            :size="11"
+            :stroke-width="3"
+            aria-hidden="true"
+          />
+        </span>
+        <span class="bs-name">{{ engine.name }}</span>
+        <span
+          v-if="engine.id === searchEngineId"
+          class="bs-tag"
+        >当前</span>
+        <span class="bs-spacer" />
+        <span class="bs-host">{{ engineHost(engine.homeUrl) }}</span>
+      </button>
+    </div>
+
+    <header class="bs-header">
+      <h2 class="bs-title">
+        浏览器配置
+      </h2>
       <p class="bs-sub">
         每个配置是一套独立的登录环境（cookie / 本地存储互不干扰），可分别登录不同的谷歌账号。
         切换配置会在浏览器面板重开一个干净的标签页；删除配置会清除该环境的登录数据。
@@ -53,11 +141,22 @@ function onRemoveClick(id: string): void {
         type="button"
         @click="store.switchTo(p.id)"
       >
-        <span class="bs-dot" :class="{ on: p.id === store.activeProfileId }">
-          <Check v-if="p.id === store.activeProfileId" :size="11" :stroke-width="3" aria-hidden="true" />
+        <span
+          class="bs-dot"
+          :class="{ on: p.id === store.activeProfileId }"
+        >
+          <Check
+            v-if="p.id === store.activeProfileId"
+            :size="11"
+            :stroke-width="3"
+            aria-hidden="true"
+          />
         </span>
         <span class="bs-name">{{ p.name }}</span>
-        <span v-if="p.id === store.activeProfileId" class="bs-tag">当前</span>
+        <span
+          v-if="p.id === store.activeProfileId"
+          class="bs-tag"
+        >当前</span>
         <span class="bs-spacer" />
         <span
           v-if="p.id !== 'default'"
@@ -77,7 +176,12 @@ function onRemoveClick(id: string): void {
           placeholder="新配置名称（如：工作、个人）"
           @keydown.enter="addProfile"
         >
-        <button class="bs-add-btn" type="button" :disabled="!newName.trim()" @click="addProfile">
+        <button
+          class="bs-add-btn"
+          type="button"
+          :disabled="!newName.trim()"
+          @click="addProfile"
+        >
           + 添加配置
         </button>
       </div>
@@ -150,6 +254,11 @@ function onRemoveClick(id: string): void {
   color: var(--ui-accent-primary-fg, var(--accent));
 }
 .bs-spacer { flex: 1; }
+.bs-host {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--ui-text-faint-fg, var(--text-tertiary));
+}
 .bs-remove {
   font-family: var(--font-mono, monospace);
   font-size: 11px;

@@ -407,6 +407,8 @@ function getStatusBadgeText(activity: ToolActivityView): string {
   if (activity.status === 'awaiting-confirmation') return 'Needs approval'
   if (activity.status === 'cancelled') return 'Cancelled'
   if (activity.status === 'rejected') return 'Rejected'
+  // A failed row used to differ from a successful one by text colour alone.
+  if (activity.status === 'failed') return '失败'
   return ''
 }
 

@@ -119,7 +119,7 @@ export function buildToolActivityView(step: Step, nowMs = Date.now()): ToolActiv
     stats: stats.text,
     duration: buildDuration(toolCall, nowMs),
     statusLabel: getStatusLabel(view.status),
-    errorSummary: buildErrorSummary(step, toolCall, toolName, filePath, view.status),
+    errorSummary: buildErrorSummary(step, toolCall, view.status),
     isAwaitingConfirmation: view.isAwaitingConfirmation,
     hasDetails: view.hasDetails,
     defaultExpanded: view.defaultExpanded,
@@ -229,21 +229,15 @@ function buildDuration(toolCall: ToolCall, nowMs = Date.now()): string {
 export function buildErrorSummary(
   step: Step,
   toolCall: ToolCall,
-  toolName: string,
-  filePath: string,
   status: ToolRenderStatus,
 ): string {
   if (status !== 'failed' && status !== 'rejected') return ''
-  if (status === 'rejected') return ''
 
-  const rawError = getRawToolError(step, toolCall)
-  const reason = compactFailureReason(rawError)
-
-  const fileCategory = getFileToolCategory(toolName)
-  if (fileCategory === 'edit' || fileCategory === 'write') {
-    return reason || 'Tool failed.'
-  }
-
+  const reason = compactFailureReason(getRawToolError(step, toolCall))
+  // A rejection used to render as an empty row — the collapsed line said
+  // nothing about why the tool never ran. The stored error already carries
+  // the rejection reason, so show it.
+  if (status === 'rejected') return reason || 'Permission was rejected.'
   return reason || 'Tool failed.'
 }
 
@@ -264,6 +258,13 @@ function getRawToolError(step: Step, toolCall: ToolCall): string {
   return ''
 }
 
+/**
+ * The collapsed row shows the failure's first line verbatim. Tool errors are
+ * written "short reason first, detail below" (see edit-engine's
+ * editFailureError), so the first line is already the actionable sentence —
+ * truncating it or stripping its prefix used to leave a generic half-sentence
+ * with the real cause thrown away.
+ */
 function compactFailureReason(value: string): string {
   const firstLine = value
     .replace(/\r\n/g, '\n')
@@ -271,18 +272,10 @@ function compactFailureReason(value: string): string {
     .map(line => line.trim())
     .find(Boolean) || ''
 
-  let reason = firstLine
+  // Legacy transcripts stored "Failed to edit <path>: <engine message>". The
+  // wrapper is gone from production, but old sessions still render.
+  return firstLine
     .replace(/^error:\s*/i, '')
     .replace(/^failed:\s*/i, '')
-    .replace(/^the user rejected permission for this tool\.?$/i, 'Permission was rejected.')
-
-  for (let index = 0; index < 3; index++) {
-    const stripped = reason
-      .replace(/^failed to\s+\w+\s+[^:]+:\s*/i, '')
-      .replace(/^\w+\s+failed:\s*[^:]+:\s*/i, '')
-    if (stripped === reason) break
-    reason = stripped
-  }
-
-  return reason.slice(0, 180)
+    .replace(/^failed to\s+\w+\s+[^:]+:\s*/i, '')
 }

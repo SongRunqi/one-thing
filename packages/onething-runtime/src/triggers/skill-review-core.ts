@@ -519,7 +519,7 @@ export function buildAgentSkillReviewMessages(
     'The user-facing assistant response has already been delivered; do not answer the user.',
     'Decide whether the recent conversation revealed a durable, reusable procedure that should become a Hermes skill.',
     'Be conservative. Do not create a skill for one-off facts, transient debugging details, secrets, credentials, or project-specific trivia.',
-    'Use the read, write, and edit tools to create, update, or rewrite skill files directly. Do not use skill_manage for updates.',
+    'Use the read, write, and edit tools to create, update, or rewrite skill files directly.',
     'Before updating or rewriting an existing skill, read its current SKILL.md and any relevant supporting files, then edit the source files into the current best version.',
     'Do not create background-review-update.md or numbered background review update files. If a new support file is truly needed, choose a semantic filename that describes its durable content.',
     'A complete skill is a directory with SKILL.md plus at least one supporting file under references/, templates/, scripts/, or assets/.',

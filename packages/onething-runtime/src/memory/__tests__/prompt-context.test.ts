@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { addHermesMemoryEntry } from '../hermes-file-memory.js'
 import { buildSoulMemoryPromptContext } from '../prompt-context.js'
 import type { MemoryWorkspace, ResolvedSoulMemorySettings } from '../types.js'
 import { dateStringDaysAgo } from '../workspace.js'
@@ -70,19 +69,12 @@ afterEach(() => {
 })
 
 describe('runtime soul-memory prompt context', () => {
-  it('assembles rules, SOUL, and Hermes file-memory fragments', async () => {
+  it('assembles rules and SOUL fragments, and no longer injects Hermes file memory', async () => {
     const workspace = makeWorkspace()
     fs.writeFileSync(workspace.soulPath, '# SOUL.md\n\n用户喜欢直接看实现结论。\n')
-    await addHermesMemoryEntry({
-      workspace,
-      target: 'user',
-      content: '用户喜欢具体实现细节。',
-    })
-    await addHermesMemoryEntry({
-      workspace,
-      target: 'memory',
-      content: 'Gateway conversation uses the onething runtime.',
-    })
+    // USER.md / MEMORY.md 仍在盘上,但不再进提示词。
+    fs.writeFileSync(workspace.userPath, '用户喜欢具体实现细节。\n')
+    fs.writeFileSync(workspace.memoryPath, 'Gateway conversation uses the onething runtime.\n')
 
     const fragments = await buildSoulMemoryPromptContext({
       workspace,
@@ -95,11 +87,11 @@ describe('runtime soul-memory prompt context', () => {
 
     expect(sources).toContain('memory/soul-memory-rules')
     expect(sources).toContain('plugins/soul-memory/SOUL.md')
-    expect(sources).toContain('plugins/soul-memory/hermes-file-memory')
+    expect(sources).not.toContain('plugins/soul-memory/hermes-file-memory')
     expect(content).toContain('# Soul Memory Rules')
     expect(content).toContain('用户喜欢直接看实现结论')
-    expect(content).toContain('用户喜欢具体实现细节')
-    expect(content).toContain('Gateway conversation uses the onething runtime')
+    expect(content).not.toContain('用户喜欢具体实现细节')
+    expect(content).not.toContain('Gateway conversation uses the onething runtime')
   })
 
   it('does not resolve prompt fragments when soul-memory is disabled', async () => {

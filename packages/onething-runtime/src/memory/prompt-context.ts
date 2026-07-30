@@ -6,7 +6,6 @@ import {
   buildSoulMemoryPromptFragments as coreBuildSoulMemoryPromptFragments,
 } from '../plugins/index.js'
 import type { MemoryWorkspace } from './types.js'
-import { buildHermesMemoryPromptFragment } from './hermes-file-memory.js'
 import {
   readLimited,
   SOUL_MEMORY_RULES_PROMPT,
@@ -25,7 +24,6 @@ export async function buildSoulMemoryPromptContext(
   if (!workspace.settings.enabled) return []
 
   const maxChars = workspace.settings.bootstrapMaxChars
-  const hermesFileMemory = await buildHermesMemoryPromptFragment(workspace, maxChars)
 
   // Daily notes are written by capture but not injected; tell the model where
   // today's note lives so it can fetch it on demand with memory_get.
@@ -40,6 +38,5 @@ export async function buildSoulMemoryPromptContext(
     rulesPrompt: `${SOUL_MEMORY_RULES_PROMPT}${memoryFilesNote}`,
     soulPath: workspace.soulPath,
     soulContent: readLimited(workspace.soulPath, maxChars),
-    hermesFileMemory,
   })
 }

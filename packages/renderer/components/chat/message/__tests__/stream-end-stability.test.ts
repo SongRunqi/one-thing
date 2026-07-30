@@ -457,7 +457,7 @@ describe('stream end visual stability', () => {
     expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
   })
 
-  it('shows failed tool summaries in groups without auto-expanding details', async () => {
+  it('shows failed tool summaries in groups and opens the failed edit detail', async () => {
     const wrapper = mount(StepsPanel, {
       props: {
         steps: [
@@ -504,7 +504,9 @@ describe('stream end visual stability', () => {
     expect(wrapper.findAll('.operation-failure')).toHaveLength(0)
     expect(wrapper.findAll('.node-error-summary')).toHaveLength(2)
     expect(wrapper.find('.node-error-summary').text()).toContain('No matching text found')
-    expect(wrapper.findAll('.activity-inline-details')).toHaveLength(0)
+    // A failed edit opens itself: the engine reply carries the current file
+    // text around the spot that did not match.
+    expect(wrapper.findAll('.activity-inline-details')).toHaveLength(2)
   })
 
   it('keeps expanded tool calls when reopening a group', async () => {
@@ -625,7 +627,7 @@ describe('stream end visual stability', () => {
     expect(wrapper.find('.operation-failure').exists()).toBe(false)
     expect(wrapper.find('.node-error-summary').text()).toContain('No matching text found')
     expect(wrapper.find('.group-final-result').exists()).toBe(false)
-    expect(wrapper.find('.activity-inline-details').exists()).toBe(false)
+    expect(wrapper.find('.activity-inline-details').exists()).toBe(true)
   })
 
   it('renders attachment-only user messages without a bubble shell', async () => {

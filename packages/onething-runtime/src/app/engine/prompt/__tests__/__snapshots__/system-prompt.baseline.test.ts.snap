@@ -231,8 +231,9 @@ You are running on macOS.
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
 Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md
 
-# Context Variables
-foo=bar",
+<context-variables desc="Live state board, read and written only through the \`variable\` tool: entries change via its set/append/remove/delete actions, and its list action shows untruncated values. Attributes carry each variable's type, scope and description.">
+foo=bar
+</context-variables>",
     "role": "system",
   },
   {
@@ -305,8 +306,9 @@ You are running on macOS.
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
 Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md
 
-# Context Variables
-foo=bar"
+<context-variables desc="Live state board, read and written only through the \`variable\` tool: entries change via its set/append/remove/delete actions, and its list action shows untruncated values. Attributes carry each variable's type, scope and description.">
+foo=bar
+</context-variables>"
 `;
 
 exports[`system prompt baseline > voice speak mode > voice-systemPrompt 1`] = `

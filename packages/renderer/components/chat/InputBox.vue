@@ -27,7 +27,7 @@
         class="composer-dock"
       >
         <QueuePanel
-          v-if="queuedMessages.length > 0"
+          v-if="queuedDockVisible"
           key="queue"
           :items="queuedMessages"
           :file-changes="queuedFileChanges"
@@ -41,13 +41,13 @@
           @clear="clearQuotedText"
         />
         <AttachmentRow
-          v-if="attachedFiles.length > 0 || fileReferences.length > 0 || isProcessingAttachments"
+          v-if="attachedFiles.length > 0 || composerReferences.length > 0 || isProcessingAttachments"
           key="attachments"
           :files="attachedFiles"
-          :references="fileReferences"
+          :references="composerReferences"
           :processing="isProcessingAttachments"
           @remove="removeAttachment"
-          @remove-reference="removeFileReference"
+          @remove-reference="handleRemoveReference"
         />
       </TransitionGroup>
       <!-- Anchor keeps flyouts glued to the composer's top edge, floating
@@ -143,7 +143,37 @@
           :query="activeExtension.query"
           :loading="activeExtension.loading"
           :error="activeExtension.error"
-          @select="handleFilePickerSelect"
+          @select="handleFilePickerRowSelect"
+          @highlight="highlightActiveSelection"
+          @close="handleFilePickerClose"
+        />
+
+        <FilePicker
+          :visible="activeExtension.type === 'pages'"
+          title="Pages"
+          empty-text="No open pages"
+          empty-hint="Open a page in the browser panel first"
+          :items="activeExtension.items"
+          :selected-index="activeExtension.selectedIndex"
+          :query="activeExtension.query"
+          :loading="activeExtension.loading"
+          :error="activeExtension.error"
+          @select="handlePagePicked"
+          @highlight="highlightActiveSelection"
+          @close="handleFilePickerClose"
+        />
+
+        <FilePicker
+          :visible="activeExtension.type === 'members'"
+          title="成员"
+          empty-text="没有匹配的成员"
+          empty-hint="房间成员在建房时选定"
+          :items="activeExtension.items"
+          :selected-index="activeExtension.selectedIndex"
+          :query="activeExtension.query"
+          :loading="activeExtension.loading"
+          :error="activeExtension.error"
+          @select="handleMemberPicked"
           @highlight="highlightActiveSelection"
           @close="handleFilePickerClose"
         />
@@ -183,6 +213,7 @@
               :prompt-refs="promptsStore.prompts"
               :skill-refs="enabledSkills"
               :command-refs="commandRefs"
+              :member-refs="memberRefs"
               :min-height="42"
               :max-height="composerMaxHeight"
               @keydown="handleKeyDown"
@@ -198,54 +229,62 @@
           </div>
 
           <!-- Bottom toolbar -->
-          <div class="composer-toolbar">
+          <div
+            class="composer-toolbar"
+            :data-profile="composerProfile"
+          >
+            <!-- 工程驾驶舱:模型/上下文/think/权限档位。messenger 形态整条不
+                 渲染 —— 这些控制归属主(agent-im-chat-ui.md §1 C2),空的
+                 toolbar-left 留着当 flex 撑杆,右边按钮带才不会被甩到左边。 -->
             <div class="toolbar-left">
-              <ModelSelector :session-id="props.sessionId" />
-              <Tooltip
-                :text="contextTooltipText"
-                position="top"
-                :delay="120"
-              >
-                <button
-                  type="button"
-                  class="context-meter"
-                  :class="contextMeterTone"
-                  :style="contextMeterStyle"
-                  :title="contextTooltipText"
-                  :aria-label="contextAriaLabel"
-                  @mousedown.prevent
-                  @click.stop
-                  @mouseenter="loadSessionUsageOnHover"
+              <template v-if="isEngineeringComposer">
+                <ModelSelector :session-id="props.sessionId" />
+                <Tooltip
+                  :text="contextTooltipText"
+                  position="top"
+                  :delay="120"
                 >
-                  <span class="context-meter-prefix">ctx</span>
-                  <span
-                    v-if="contextPercent !== null"
-                    class="context-meter-cells"
-                    aria-hidden="true"
-                  ><i>{{ contextMeterFilledCells }}</i><em>{{ contextMeterRestCells }}</em></span>
-                  <span class="context-meter-label">{{ contextMeterLabel }}</span>
-                </button>
-              </Tooltip>
-              <ThinkToggle :session-id="props.sessionId" />
-              <Select
-                size="small"
-                class="permission-mode-select"
-                :class="`mode-${permissionMode}`"
-                teleported
-                placement="top"
-                popper-class="inputbox-select-dropdown permission-mode-dropdown"
-                :model-value="permissionMode"
-                :options="PERMISSION_MODE_OPTIONS"
-                :popper-style="permissionDropdownStyle"
-                aria-label="Permission mode"
-                :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
-                @click.stop
-                @change="handlePermissionModeChange"
-              >
-                <template #label>
-                  <span class="guard-label">guard:{{ guardShort }}</span>
-                </template>
-              </Select>
+                  <button
+                    type="button"
+                    class="context-meter"
+                    :class="contextMeterTone"
+                    :style="contextMeterStyle"
+                    :title="contextTooltipText"
+                    :aria-label="contextAriaLabel"
+                    @mousedown.prevent
+                    @click.stop
+                    @mouseenter="loadSessionUsageOnHover"
+                  >
+                    <span class="context-meter-prefix">ctx</span>
+                    <span
+                      v-if="contextPercent !== null"
+                      class="context-meter-cells"
+                      aria-hidden="true"
+                    ><i>{{ contextMeterFilledCells }}</i><em>{{ contextMeterRestCells }}</em></span>
+                    <span class="context-meter-label">{{ contextMeterLabel }}</span>
+                  </button>
+                </Tooltip>
+                <ThinkToggle :session-id="props.sessionId" />
+                <Select
+                  size="small"
+                  class="permission-mode-select"
+                  :class="`mode-${permissionMode}`"
+                  teleported
+                  placement="top"
+                  popper-class="inputbox-select-dropdown permission-mode-dropdown"
+                  :model-value="permissionMode"
+                  :options="PERMISSION_MODE_OPTIONS"
+                  :popper-style="permissionDropdownStyle"
+                  aria-label="Permission mode"
+                  :title="`Permission mode: ${permissionModeLabel}. Press Shift+Tab to switch.`"
+                  @click.stop
+                  @change="handlePermissionModeChange"
+                >
+                  <template #label>
+                    <span class="guard-label">guard:{{ guardShort }}</span>
+                  </template>
+                </Select>
+              </template>
             </div>
 
             <div
@@ -268,7 +307,10 @@
                   />
                 </template>
               </Button>
+              <!-- 语音的"被动播报/通话"是直聊能力(§2.2):dm 房与群房不挂,
+                   房里的语音消息另立设计。 -->
               <Button
+                v-if="isEngineeringComposer"
                 size="small"
                 class="voice-aux-btn tts-toggle-btn"
                 :class="{ 'tts-off': !replySpeechEnabled }"
@@ -291,6 +333,7 @@
                 </template>
               </Button>
               <Button
+                v-if="isEngineeringComposer"
                 size="small"
                 class="voice-aux-btn call-btn"
                 :class="{ 'call-active': voiceStore.callActive }"
@@ -388,6 +431,7 @@ import Tooltip from '@/components/common/Tooltip.vue'
 import { ref, computed, nextTick, onMounted, onUnmounted, onBeforeUnmount, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useSessionsStore } from '@/stores/sessions'
+import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useChatStore } from '@/stores/chat'
 import { useVoiceStore } from '@/stores/voice'
 import { useMusicStore } from '@/stores/music'
@@ -416,7 +460,7 @@ import { X, Square, Check, Loader2, Mic, Paperclip, Phone, PhoneOff, Volume2, Vo
 import { executeCommand, findCommand, getCommands, refreshPluginCommands } from '@/services/commands'
 import TextEditor from '@/editor/TextEditor.vue'
 import type { EditorHandle } from '@/editor'
-import type { GetSessionUsageResponse, MessageAttachment, PermissionMode } from '@/types'
+import type { ChatMessageMention, GetSessionUsageResponse, MessageAttachment, PermissionMode } from '@/types'
 import type { SelectModelValue } from '@/components/common/select'
 import { DEFAULT_VOICE_SETTINGS } from '@shared/defaults/settings'
 import { getDiffFromStep } from '@/stores/helpers/tool-step-view'
@@ -437,7 +481,14 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'sendMessage', message: string, mode?: 'send' | 'steer' | 'followup', attachments?: MessageAttachment[]): void
+  (
+    e: 'sendMessage',
+    message: string,
+    mode?: 'send' | 'steer' | 'followup',
+    attachments?: MessageAttachment[],
+    /** Identity-resolved @mentions materialized from member tokens (W14a). */
+    mentions?: ChatMessageMention[],
+  ): void
   (e: 'stopGeneration'): void
   (e: 'switchSession', sessionId: string): void
 }
@@ -451,6 +502,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 const settingsStore = useSettingsStore()
 const sessionsStore = useSessionsStore()
+const collabBoardStore = useCollabBoardStore()
 const chatStore = useChatStore()
 const voiceStore = useVoiceStore()
 const musicStore = useMusicStore()
@@ -467,6 +519,43 @@ const PERMISSION_MODE_OPTIONS = [
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
 
 const currentSession = computed(() => sessionsStore.getSessionItem(effectiveSessionId.value) || null)
+
+// Collab room: user sends are persist-only (never start a stream), so the
+// mid-generation local queue must not apply.
+const isRoomSessionActive = computed(() => {
+  const sessionId = effectiveSessionId.value
+  if (!sessionId) return false
+  return sessionsStore.sessions.find(s => s.id === sessionId)?.kind === 'room'
+})
+
+/**
+ * Composer 形态(docs/design/agent-im-chat-ui.md §2 C1)。房会话就是 IM 场
+ * ——群房、单成员 dm 房、双成员 dm 房全都是 `kind === 'room'`,所以一条判定
+ * 收口三种形态;其余(含绑了 agent 的直聊)保留工程驾驶舱。
+ *
+ * 不新建第二个输入框组件:两个形态共用 IME/草稿/发送/录音这套底盘,分叉的只
+ * 是周边按钮带,全部走 `v-if`。
+ */
+const composerProfile = computed<'engineering' | 'messenger'>(() =>
+  isRoomSessionActive.value ? 'messenger' : 'engineering',
+)
+const isEngineeringComposer = computed(() => composerProfile.value === 'engineering')
+
+/**
+ * 单成员 dm 房(我和 TA 两个人)里 @ 没有意义 —— 房里没有第三个人可点名。
+ * 判定读 store selector(产品层 `isUserDmRoom` 的唯一出口),不自写第二份过滤;
+ * selector 缺席(组件单测的假 store)时退回"照常显示",宁可多一个补全也不要
+ * 在测试里炸掉整个 composer。
+ */
+const isSingleMemberDmRoom = computed(() => {
+  if (typeof sessionsStore.isUserDmRoomSession !== 'function') return false
+  return sessionsStore.isUserDmRoomSession(effectiveSessionId.value)
+})
+
+/** messenger 形态砍掉 `/` 命令面(工程命令不属于对话面,要用去直聊)。 */
+const slashCommandsEnabled = isEngineeringComposer
+/** 单成员 dm 房关掉 bare-`@`;群房与 pair 房照旧。 */
+const atMentionsEnabled = computed(() => !isSingleMemberDmRoom.value)
 
 const permissionMode = computed<PermissionMode>(() => {
   return currentSession.value?.permissionMode || settingsStore.settings?.tools?.permissionMode || 'normal'
@@ -699,6 +788,13 @@ const {
   handleFilePickerClose,
   fileReferences,
   removeFileReference,
+  handlePagePickerSelect,
+  handleMemberPickerSelect,
+  pageReferences,
+  removePageReference,
+  materializePageReferences,
+  materializeMemberReferences,
+  activeRoomMembers,
   handlePathPickerSelect,
   handlePathPickerClose,
   anyPickerVisible,
@@ -713,7 +809,47 @@ const {
   updateComposerHeight,
   checkHistoryEdit,
   effectiveSessionId,
+  // 形态注入(agent-im-chat-ui.md §2.2):messenger 不弹命令面,单成员 dm 房
+  // 不弹 @ 补全 —— 触发路径在源头关掉,不是把弹层画出来再藏起来。
+  { slashCommands: slashCommandsEnabled, atMentions: atMentionsEnabled },
 )
+
+/** Routes a files-picker row: the pinned page row inserts a page token instead. */
+function handleFilePickerRowSelect(value: string, kind?: string) {
+  if (kind === 'browser-page') {
+    void handlePagePickerSelect(value, 'file')
+    return
+  }
+  void handleFilePickerSelect(value)
+}
+
+function handlePagePicked(value: string) {
+  void handlePagePickerSelect(value, 'page')
+}
+
+/** Room member mention completion: inserts the exact `@名字 ` text. */
+function handleMemberPicked(value: string) {
+  void handleMemberPickerSelect(value)
+}
+
+/** File and page chips share the dock row; a page chip tooltips its URL. */
+const composerReferences = computed(() => [
+  ...fileReferences.value,
+  ...pageReferences.value.map(reference => ({
+    id: reference.id,
+    path: reference.url || reference.label,
+    label: reference.label,
+    from: reference.from,
+    to: reference.to,
+    badge: 'WEB',
+  })),
+])
+
+function handleRemoveReference(id: string) {
+  // Each remover no-ops when the id belongs to the other kind.
+  removeFileReference(id)
+  removePageReference(id)
+}
 
 const { commandFeedback, showCommandFeedback } = useCommandFeedback()
 const {
@@ -765,9 +901,19 @@ async function restoreComposerDraft(sessionId: string) {
 const hasMessageContent = computed(() => messageInput.value.trim().length > 0)
 const hasAttachments = computed(() => attachedFiles.value.length > 0)
 const commandRefs = ref(getCommands())
+// Roster the editor needs to paint `{{member:<id>}}` tokens as @名字 (W14a).
+// Plain literals: this crosses into a CodeMirror extension that keeps the map
+// for the lifetime of a reconfigure, so it must not hold a reactive proxy.
+const memberRefs = computed(() =>
+  activeRoomMembers.value.map(agent => ({ id: String(agent.id), name: String(agent.name) })))
 const hasActiveGeneration = computed(() => {
   const sessionId = effectiveSessionId.value
-  return !!props.isLoading || (sessionId ? chatStore.isSessionGenerating(sessionId) : false)
+  if (props.isLoading) return true
+  if (!sessionId) return false
+  // 群聊房间会话上从来没有流(W18 之后回合跑在成员的执行会话里),所以
+  // isSessionGenerating 对房间永远是 false,停止按钮从未被画出来过。房间的
+  // "在跑"由 collab:turn-active 说了算(collab-team-v2 §5.1 入口①)。
+  return chatStore.isSessionGenerating(sessionId) || collabBoardStore.isRoomTurnActive(sessionId)
 })
 
 const canSend = computed(() => {
@@ -784,6 +930,8 @@ const shouldShowStopAction = computed(() => {
  * This lifts it into a chip docked above the composer, like an attachment.
  */
 const activeCommandMatch = computed(() => {
+  // messenger 形态没有命令面:`/` 开头的一行就是一行话,不抽成 chip、不换 RUN。
+  if (!isEngineeringComposer.value) return null
   const match = messageInput.value.match(/^\/([a-zA-Z0-9_-]+)(?=\s|$)/)
   if (!match) return null
   const command = commandRefs.value.find(entry => entry.id.toLowerCase() === match[1].toLowerCase())
@@ -833,12 +981,20 @@ function clearActiveCommand() {
   })
 }
 
+/**
+ * 排队 dock 是工程 dock:messenger 形态不渲染。房会话本来也排不出队(用户发言
+ * 是 persist-only,`sendMessage` 走的是即时分支),这里是把渲染面也钉死。
+ */
+const queuedDockVisible = computed(
+  () => isEngineeringComposer.value && queuedMessages.value.length > 0,
+)
+
 const dockVisible = computed(() => {
   return (
-    queuedMessages.value.length > 0 ||
+    queuedDockVisible.value ||
     !!quotedText.value ||
     attachedFiles.value.length > 0 ||
-    fileReferences.value.length > 0 ||
+    composerReferences.value.length > 0 ||
     isProcessingAttachments.value
   )
 })
@@ -1333,7 +1489,9 @@ function isPermissionMode(value: string): value is PermissionMode {
 function handleKeyDown(e: KeyboardEvent) {
   if (isComposing.value || e.isComposing) return
 
-  if (e.key === 'Tab' && e.shiftKey && !anyPickerVisible.value) {
+  // 权限档位在 messenger 形态没有控件(房间的 permissionMode 归房设置管),
+  // 快捷键跟着控件一起消失,免得留一个看不见的开关。
+  if (e.key === 'Tab' && e.shiftKey && !anyPickerVisible.value && isEngineeringComposer.value) {
     e.preventDefault()
     void cyclePermissionMode()
     return
@@ -1465,8 +1623,9 @@ function handleKeyDown(e: KeyboardEvent) {
 async function sendMessage() {
   if (!canSend.value) return
 
-  // Check if this is a command
-  const commandMatch = !hasAttachments.value
+  // Check if this is a command. messenger 形态一律不认:`/foo` 原样当文本发出
+  // 去,一个字都不吞(agent-im-chat-ui.md §2.2 Q3)。
+  const commandMatch = isEngineeringComposer.value && !hasAttachments.value
     ? messageInput.value.match(/^\/([a-zA-Z0-9_-]+)(?:\s+(.*))?$/)
     : null
   if (commandMatch) {
@@ -1525,24 +1684,47 @@ async function sendMessage() {
 
   // Regular message sending. Docked file chips expand back to `@<path>` at the
   // exact spot the user picked them — the chip is presentation, not placement.
-  const draftText = expandFileTokens(messageInput.value)
+  // Page chips resolve against the browser mirror NOW and leave the text
+  // entirely: the reference rides as a zero-byte provenance attachment, so
+  // the bubble never shows a raw URL and page-controlled URL text never
+  // enters the draft (where the file-token expander could rescan it).
+  const fileExpandedText = expandFileTokens(messageInput.value)
+  const { text: pageExpandedText, attachments: pageAttachments } = materializePageReferences(fileExpandedText)
+  // Member tokens LAST and back INTO the text (W14a): a mention is words the
+  // room reads, so `{{member:<id>}}` becomes plain `@名字` in place while the
+  // id leaves separately in mentions[]. Running after the page pass keeps the
+  // page expander from ever rescanning a name we just wrote.
+  const { text: draftText, mentions } = materializeMemberReferences(pageExpandedText)
   let fullMessage = draftText
-  const attachments = toMessageAttachments()
+  const combinedAttachments = [...(toMessageAttachments() ?? []), ...pageAttachments]
+  const attachments = combinedAttachments.length > 0 ? combinedAttachments : undefined
 
   if (quotedText.value) {
     const quotedLines = quotedText.value.split('\n').map(line => `> ${line}`).join('\n')
     fullMessage = `${quotedLines}\n\n${draftText}`
   }
 
-  if (hasActiveGeneration.value) {
+  // A draft that was ONLY dead page tokens (tabs closed since picking)
+  // materializes to nothing — keep it instead of sending an empty message.
+  if (!fullMessage.trim() && !attachments) {
+    showCommandFeedback('error', 'Page reference is gone — its tab was closed')
+    return
+  }
+
+  // Collab rooms never stream user sends (the ingress gate persists them
+  // without driving), so sending mid-turn is always safe — bypass the local
+  // queue so the user can interject at any time and the coordinator's chain
+  // reset fires immediately (docs/design/multi-agent-collab.md D2/§5).
+  if (hasActiveGeneration.value && !isRoomSessionActive.value) {
+    // Mentions never reach this branch: they exist only in rooms, and rooms
+    // take the immediate path above (the queue is for streaming sessions).
     queuedMessages.value.push({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       content: fullMessage,
       attachments,
     })
   } else {
-    console.log("fullMessage", fullMessage)
-    emit('sendMessage', fullMessage, 'send', attachments)
+    emit('sendMessage', fullMessage, 'send', attachments, mentions.length > 0 ? mentions : undefined)
   }
 
   messageInput.value = ''
@@ -2154,6 +2336,12 @@ defineExpose({
   display: flex;
   align-items: center;
   border-left: 1px solid var(--composer-cell-divider);
+}
+
+/* messenger 形态左边一格工程控件都没有,首格的竖线就成了一道悬空分隔 ——
+   去掉它,按钮带自己的左边缘由第一颗按钮画。 */
+.composer-toolbar[data-profile='messenger'] .toolbar-right > *:first-child {
+  border-left: 0;
 }
 
 /* Cell-fill: each cell holds exactly one control; stretch it (through any

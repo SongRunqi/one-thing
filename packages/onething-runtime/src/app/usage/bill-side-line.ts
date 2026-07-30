@@ -53,6 +53,21 @@ export function billTocUsage(
 	return bill("session toc", ONETHING_USAGE_SOURCES.toc, providerId, modelId, sessionId);
 }
 
+/** Room response-willingness judgement — one small call per member, per message. */
+export function billCollabWillingnessUsage(
+	providerId: string,
+	modelId: string,
+	sessionId?: string,
+): (usage: SideLineUsage) => void {
+	return bill(
+		"collab willingness",
+		ONETHING_USAGE_SOURCES.collabWillingness,
+		providerId,
+		modelId,
+		sessionId,
+	);
+}
+
 /** The skill-review trigger's agent loop. */
 export function billSkillUsage(
 	providerId: string,

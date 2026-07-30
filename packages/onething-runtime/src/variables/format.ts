@@ -20,7 +20,7 @@ const DEFAULT_OPTIONS: Omit<Required<FormatOptions>, 'now'> = {
  * prompt-cache miss), instead of every day.
  */
 const STALE_AFTER_MS = 14 * 24 * 60 * 60 * 1000
-const STALE_MARKER = ' [stale: unchanged for 14+ days — update or delete if no longer true]'
+const STALE_MARKER = 'unchanged for 14+ days — update or delete if no longer true'
 
 function collapse(value: string, home: string): string {
   if (!home || !value.startsWith(home)) return value
@@ -32,6 +32,26 @@ function truncate(value: string, max: number): string {
   return value.slice(0, max) + '…'
 }
 
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/"/g, '&quot;')
+}
+
+function escapeText(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+}
+
+/**
+ * One XML element per variable:
+ *   <var name="deploy" type="number" scope="agent" desc="…">1.5</var>
+ * Attributes are structured metadata for the model — type/scope/desc omitted
+ * when they carry no information (string type, session scope, no
+ * description), so simple variables stay one short line. The stale attribute
+ * is a constant string: crossing the threshold changes the bytes exactly
+ * once per variable (one prompt-cache miss), never per day.
+ */
 function renderLines(
   variables: ContextVariable[],
   opts: Omit<Required<FormatOptions>, 'now'> & { now: number },
@@ -55,13 +75,17 @@ function renderLines(
 
     const collapsed = home ? collapse(displayValue, home) : displayValue
     const trimmed = truncate(collapsed, opts.maxValueLength)
-    const note = v.description ? ` (${v.description})` : ''
+
+    const attrs = [`name="${escapeAttr(v.name)}"`]
+    if (v.type && v.type !== 'string') attrs.push(`type="${v.type}"`)
+    if (v.scope && v.scope !== 'session') attrs.push(`scope="${v.scope}"`)
+    if (v.description) attrs.push(`desc="${escapeAttr(v.description)}"`)
     const stale = markStale
       && v.updatedAt !== undefined
       && opts.now - v.updatedAt > STALE_AFTER_MS
-      ? STALE_MARKER
-      : ''
-    lines.push(`- ${v.name}: ${trimmed}${note}${stale}`)
+    if (stale) attrs.push(`stale="${STALE_MARKER}"`)
+
+    lines.push(`<var ${attrs.join(' ')}>${escapeText(trimmed)}</var>`)
   }
 
   return lines.join('\n')
@@ -69,7 +93,7 @@ function renderLines(
 
 /**
  * Prompt text for the static channel only (the system-prompt
- * "# Context Variables" section). Variables without an explicit volatility
+ * <context-variables> block). Variables without an explicit volatility
  * default to 'static'.
  */
 export function formatVariablesForPrompt(

@@ -479,6 +479,9 @@ function buildCapabilities(
 		supportsTools: options.supportsTools !== false,
 		supportsReasoning: Boolean(options.supportsReasoning),
 		supportsStreaming: true,
+		// tool_choice: "required" is part of the OpenAI chat-completions
+		// contract every endpoint on this adapter claims to speak.
+		supportsForcedToolUse: options.supportsTools !== false,
 	};
 }
 

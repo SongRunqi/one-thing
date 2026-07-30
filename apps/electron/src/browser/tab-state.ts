@@ -48,7 +48,7 @@ export function computeTabPatch(
 	]
 	for (const key of keys) {
 		if (prev[key] !== next[key]) {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			 
 			;(patch as any)[key] = next[key]
 		}
 	}

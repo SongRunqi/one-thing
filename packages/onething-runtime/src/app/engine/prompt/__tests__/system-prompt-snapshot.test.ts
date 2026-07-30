@@ -52,7 +52,7 @@ const mocks = vi.hoisted(() => ({
     skills: { enableSkills: false },
     tools: { enableToolCalls: false, tools: {} },
   })),
-  getAgent: vi.fn(() => ({ id: 'agent-1', name: 'Agent One' })),
+  findAgent: vi.fn(() => ({ id: 'agent-1', name: 'Agent One' })),
   getEffectiveProviderConfig: vi.fn(() => ({
     providerId: 'deepseek',
     model: 'deepseek-v4-flash',
@@ -87,8 +87,11 @@ vi.mock('../../../store.js', () => ({
   getSettings: mocks.getSettings,
 }))
 
+// 解析纪律(M4):快照 host 走 `findAgent(id) ?? defaultAgent()`;夹具对任何
+// id 都返回同一个 agent,两条腿的结果一致。
 vi.mock('../../../agents/index.js', () => ({
-  getAgent: mocks.getAgent,
+  findAgent: mocks.findAgent,
+  defaultAgent: () => mocks.findAgent(),
 }))
 
 vi.mock('../../stream/provider-helpers.js', () => ({

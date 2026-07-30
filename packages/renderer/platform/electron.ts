@@ -8,6 +8,7 @@ const electronCapabilities: PlatformCapabilities = {
   shellTools: true,
   terminal: true,
   embeddedBrowser: true,
+  collabRooms: true,
   clipboardWrite: true,
   desktopWindows: true,
   globalMenuEvents: true,

@@ -6,9 +6,13 @@ import { buildPrompt } from '../index.js'
 // of scenarios so the single-file refactor can be proven byte-identical.
 // Date is frozen so the "Current date" line stays stable across runs.
 
-const agentStoreMock = vi.hoisted(() => ({ getAgent: vi.fn() }))
+// 解析纪律(M4):生产代码走 `findAgent(id) ?? defaultAgent()`。夹具用同一个
+// 实现顶两个口 —— 它对任何 id 都造得出一个 agent,`?? defaultAgent()` 这条腿
+// 因此不会被走到,基线文本与旧 getAgent 夹具逐字相同。
+const agentStoreMock = vi.hoisted(() => ({ findAgent: vi.fn() }))
 vi.mock('../../../agents/index.js', () => ({
-  getAgent: agentStoreMock.getAgent,
+  findAgent: agentStoreMock.findAgent,
+  defaultAgent: () => agentStoreMock.findAgent(undefined),
   DEFAULT_AGENT_ID: 'default',
 }))
 
@@ -33,7 +37,7 @@ afterAll(() => {
 })
 
 beforeEach(() => {
-  agentStoreMock.getAgent.mockImplementation((agentId?: string) => ({
+  agentStoreMock.findAgent.mockImplementation((agentId?: string) => ({
     id: agentId || 'default',
     name: agentId ? 'Custom Agent' : 'Default Agent',
     systemPrompt: agentId === 'agent-x' ? 'Be precise and cite sources.' : '',

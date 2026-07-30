@@ -292,11 +292,15 @@ export interface RuntimeAgentsAdapter<
   TCreateRequest = unknown,
   TUpdateRequest = unknown,
   TDeleteRequest = unknown,
+  TRestoreRequest = unknown,
 > {
   list(context?: RuntimeRequestContext): Promise<unknown>
   create?(request: TCreateRequest, context?: RuntimeRequestContext): Promise<unknown>
   update?(request: TUpdateRequest, context?: RuntimeRequestContext): Promise<unknown>
+  /** Retire-or-delete: the outcome field in the result says which happened. */
   delete?(request: TDeleteRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
+  /** Un-retire a retired agent (status back to active). */
+  restore?(request: TRestoreRequest, context?: RuntimeRequestContext): Promise<RuntimeMutationResult | unknown>
 }
 
 export interface RuntimeSkillsAdapter {

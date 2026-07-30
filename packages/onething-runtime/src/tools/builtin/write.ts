@@ -9,7 +9,11 @@
 import { z } from "zod";
 import { createTwoFilesPatch } from "diff";
 import type { JsonObjectProperty } from "@onething/core";
-import { coreDiffHunksToJson, type CoreDiffHunk } from "@onething/core/tools";
+import {
+	coreDiffHunksToJson,
+	createToolAbortError,
+	type CoreDiffHunk,
+} from "@onething/core/tools";
 import {
 	basenamePath,
 	dirnamePath,
@@ -236,7 +240,7 @@ export function createWriteTool(
 			await ctx.beforeSideEffect?.();
 
 			const throwIfAborted = () => {
-				if (ctx.abortSignal?.aborted) throw new Error("Operation aborted");
+				if (ctx.abortSignal?.aborted) throw createToolAbortError();
 			};
 			throwIfAborted();
 

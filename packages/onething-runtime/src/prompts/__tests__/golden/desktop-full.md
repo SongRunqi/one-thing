@@ -63,6 +63,7 @@ You are running on macOS.
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use `osascript`.
 Detailed examples and syntax: resources/docs/macos-automation.md
 
-# Context Variables
-- migration_state: phase 2/3, converting sessions (started 09:10)
-- deploy_target: staging
+<context-variables desc="Live state board, read and written only through the `variable` tool: entries change via its set/append/remove/delete actions, and its list action shows untruncated values. Attributes carry each variable's type, scope and description.">
+<var name="migration_state">phase 2/3, converting sessions (started 09:10)</var>
+<var name="deploy_target">staging</var>
+</context-variables>

@@ -54,6 +54,8 @@ export interface BuildAgentLoopRuntimeOptions {
   maxTokens?: number
   thinking?: 'enabled' | 'disabled'
   reasoningEffort?: AgentReasoningEffort
+  /** Forced tool choice for the run's FIRST model call only (see AgentLoopOptions). */
+  initialToolChoice?: AgentLoopOptions['initialToolChoice']
   maxTurns?: number
   beforeTurn?: AgentBeforeTurnHook
   afterTurn?: AgentAfterTurnHook
@@ -95,6 +97,7 @@ export async function buildAgentLoopRuntime(
     maxTokens: options.maxTokens,
     thinking: options.thinking,
     reasoningEffort: options.reasoningEffort,
+    initialToolChoice: options.initialToolChoice,
     maxTurns: options.maxTurns,
     beforeTurn: options.beforeTurn,
     afterTurn: options.afterTurn,
