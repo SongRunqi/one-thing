@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import RoomMemberStrip from '../RoomMemberStrip.vue'
 import { useAgentsStore } from '@/stores/agents'
 import { useSessionsStore } from '@/stores/sessions'
+import { OPEN_MEMBERS_EVENT } from '@/components/workbench/room-members'
 
 const api = vi.hoisted(() => ({
   updateCollabRoom: vi.fn(async () => ({ success: true }) as { success: boolean; error?: string }),
@@ -156,6 +157,55 @@ describe('RoomMemberStrip', () => {
       expect(wrapper.find('.member-add').exists()).toBe(true)
       await wrapper.findAll('.member-chip:not(.member-add)')[1].trigger('click')
       await nextTick()
+      expect(wrapper.findAll('.app-context-item').length).toBeGreaterThan(0)
+      wrapper.unmount()
+    })
+  })
+
+  describe('R2:新房面的左键 = 下钻空间页', () => {
+    async function openSpaceStrip() {
+      seed(['pm', 'fe'], 'pm')
+      const wrapper = mount(RoomMemberStrip, {
+        props: { sessionId: 'room-1', openSpaceOnClick: true },
+        global: { stubs: { teleport: true } },
+      })
+      await nextTick()
+      return wrapper
+    }
+
+    it('左键派 open-members(带 agentId = 直接落在空间页),不再开名册菜单', async () => {
+      const wrapper = await openSpaceStrip()
+      const seen: unknown[] = []
+      const listener = (event: Event) => seen.push((event as CustomEvent).detail)
+      window.addEventListener(OPEN_MEMBERS_EVENT, listener)
+      await wrapper.findAll('.member-chip:not(.member-add)')[1].trigger('click')
+      await nextTick()
+      window.removeEventListener(OPEN_MEMBERS_EVENT, listener)
+
+      expect(seen).toEqual([{ sessionId: 'room-1', agentId: 'fe' }])
+      expect(wrapper.findAll('.app-context-item')).toHaveLength(0)
+      wrapper.unmount()
+    })
+
+    it('名册管理退到右键,一颗都没丢', async () => {
+      const wrapper = await openSpaceStrip()
+      await wrapper.findAll('.member-chip:not(.member-add)')[1].trigger('contextmenu')
+      await nextTick()
+      expect(wrapper.findAll('.app-context-item').map(item => item.text()))
+        .toEqual(['设为负责人', '移出群聊'])
+      wrapper.unmount()
+    })
+
+    it('旧壳(默认档)左键仍是名册菜单 —— classic 一个字节不变', async () => {
+      const wrapper = await open(['pm', 'fe'])
+      const seen: unknown[] = []
+      const listener = (event: Event) => seen.push(event)
+      window.addEventListener(OPEN_MEMBERS_EVENT, listener)
+      await wrapper.findAll('.member-chip:not(.member-add)')[1].trigger('click')
+      await nextTick()
+      window.removeEventListener(OPEN_MEMBERS_EVENT, listener)
+
+      expect(seen).toHaveLength(0)
       expect(wrapper.findAll('.app-context-item').length).toBeGreaterThan(0)
       wrapper.unmount()
     })

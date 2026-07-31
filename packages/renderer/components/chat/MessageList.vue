@@ -40,80 +40,64 @@
           <span>{{ pageHistorySummary }}</span>
         </Button>
 
-        <!-- 聊天面(say-only,C2′):群聊 / 私聊 / agent 互聊房走**另一棵组件树**。
-             它只画 say —— 署名、正文 markdown、附件、引用、一个「展开执行 →」;
-             工具卡 / StepsPanel / diff 全部留在右栏线程(W3/W4)。
-             这一层仍然是列表**外壳**:滚动跟随、锚点、分页、权限审批、导航轨
-             都还在下面这个组件里,新树不复制一份(见 SayChatFlow 文件头)。
-             classic 与直聊一个字节都碰不到这个分支。 -->
-        <SayChatFlow
-          v-if="saySurfaceActive"
-          :messages="messages"
-          :session-id="effectiveSessionId"
-          :dm-mode="isUserDmSession"
-          :pair-dm-mode="isPairDmSession"
-          :highlighted-message-id="highlightedMessageId"
-          @reply-to="(replyTo) => emit('replyTo', replyTo)"
-          @react="handleReact"
-          @jump-to-message="handleJumpToMessage"
-        />
+        <!-- say 聊天面(群聊 / 私聊 / agent 互聊)**不在这里**:去复用重构 R1
+             起,那三种房在 workbench 下整条走 `chat/room/RoomSurface.vue`,连
+             ChatWindow 都不会挂到本组件。这一层因此只剩既有 MessageItem 树 ——
+             它同时服务直聊 / 工作会话,以及 classic 下的房(逐像素回滚闸)。 -->
+        <template
+          v-for="(message, index) in messages"
+          :key="message.id || index"
+        >
+          <!-- Time break: its own row in the same flow, never a wrapper —
+               one message stays one measurable row. -->
+          <RoomTimeCapsule
+            v-if="isRoomRowVisible(index) && roomCapsuleLabel(index)"
+            :label="roomCapsuleLabel(index)"
+          />
 
-        <template v-if="!saySurfaceActive">
-          <template
-            v-for="(message, index) in messages"
-            :key="message.id || index"
+          <div
+            v-if="isRoomRowVisible(index)"
+            class="message-list-row"
+            :class="roomRowClass(index)"
+            :data-index="index"
+            :data-message-id="message.id"
           >
-            <!-- Time break: its own row in the same flow, never a wrapper —
-                 one message stays one measurable row. -->
-            <RoomTimeCapsule
-              v-if="isRoomRowVisible(index) && roomCapsuleLabel(index)"
-              :label="roomCapsuleLabel(index)"
+            <MessageItem
+              :message="message"
+              :branches="getBranchesForMessage(message.id)"
+              :can-branch="canCreateBranch"
+              :is-highlighted="message.id === highlightedMessageId"
+              :room-mode="isRoomSession"
+              :dm-mode="isUserDmSession"
+              :pair-dm-mode="isPairDmSession"
+              :group-head="isRoomGroupHead(index)"
+              :group-tail="isRoomGroupTail(index)"
+              :group-collapsible="Boolean(roomGroupToggleFor(index))"
+              :group-collapsed="isRoomGroupCollapsed(index)"
+              :group-message-count="roomGroupMessageCount(index)"
+              @toggle-group="toggleRoomGroup(index)"
+              @edit="handleEdit"
+              @reply="(replyTo) => emit('replyTo', replyTo)"
+              @react="handleReact"
+              @jump-to-message="handleJumpToMessage"
+              @branch="handleBranch"
+              @go-to-branch="handleGoToBranch"
+              @text-selection="handleTextSelection"
+              @regenerate="handleRegenerate"
+              @execute-tool="handleExecuteTool"
+              @open-file="(filePath) => emit('openFile', filePath)"
+              @update-thinking-time="handleUpdateThinkingTime"
             />
+          </div>
 
-            <div
-              v-if="isRoomRowVisible(index)"
-              class="message-list-row"
-              :class="roomRowClass(index)"
-              :data-index="index"
-              :data-message-id="message.id"
-            >
-              <MessageItem
-                :message="message"
-                :branches="getBranchesForMessage(message.id)"
-                :can-branch="canCreateBranch"
-                :is-highlighted="message.id === highlightedMessageId"
-                :room-mode="isRoomSession"
-                :dm-mode="isUserDmSession"
-                :pair-dm-mode="isPairDmSession"
-                :group-head="isRoomGroupHead(index)"
-                :group-tail="isRoomGroupTail(index)"
-                :group-collapsible="Boolean(roomGroupToggleFor(index))"
-                :group-collapsed="isRoomGroupCollapsed(index)"
-                :group-message-count="roomGroupMessageCount(index)"
-                @toggle-group="toggleRoomGroup(index)"
-                @edit="handleEdit"
-                @reply="(replyTo) => emit('replyTo', replyTo)"
-                @react="handleReact"
-                @jump-to-message="handleJumpToMessage"
-                @branch="handleBranch"
-                @go-to-branch="handleGoToBranch"
-                @text-selection="handleTextSelection"
-                @regenerate="handleRegenerate"
-                @execute-tool="handleExecuteTool"
-                @open-file="(filePath) => emit('openFile', filePath)"
-                @update-thinking-time="handleUpdateThinkingTime"
-              />
-            </div>
-
-            <!-- Goal outcome: belongs to the run, so it sits after the reply
-                 that ended it rather than on the declaration that opened it. -->
-            <GoalSummaryCard
-              v-for="settledGoal in goalSummariesByIndex.get(index)"
-              :key="settledGoal.id"
-              :goal="settledGoal"
-              @review="emit('reviewGoal', props.sessionId || '')"
-            />
-          </template>
+          <!-- Goal outcome: belongs to the run, so it sits after the reply
+               that ended it rather than on the declaration that opened it. -->
+          <GoalSummaryCard
+            v-for="settledGoal in goalSummariesByIndex.get(index)"
+            :key="settledGoal.id"
+            :goal="settledGoal"
+            @review="emit('reviewGoal', props.sessionId || '')"
+          />
         </template>
 
         <div
@@ -216,9 +200,7 @@ import {
   type RoomMessageGroup,
   type RoomMessageLike,
 } from './message/room-grouping'
-import SayChatFlow from './say/SayChatFlow.vue'
 import RejectReasonDialog from './permission/RejectReasonDialog.vue'
-import { SAY_METRICS, shouldUseSayTypography } from './say/say-typography'
 import SelectionToolbar from './message/SelectionToolbar.vue'
 import EmptyState from './EmptyState.vue'
 import AssistantMessageNavRail from './AssistantMessageNavRail.vue'
@@ -233,7 +215,6 @@ import { ArrowDown } from 'lucide-vue-next'
 import { useChatStore } from '@/stores/chat'
 import { useSessionsStore } from '@/stores/sessions'
 import { useSettingsStore } from '@/stores/settings'
-import { resolveShellMode } from '@/composables/useShellMode'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 import { useCollabReactions } from '@/composables/useCollabReactions'
 import { usePermissionResponder } from '@/composables/usePermissionResponder'
@@ -356,19 +337,15 @@ const isUserDmSession = computed(() => isRoomSession.value && isUserDmRoom(panel
  */
 const isPairDmSession = computed(() => isRoomSession.value && isAgentPairDmRoom(panelSession.value?.room))
 
-// ── 聊天面(say-only)分流门 ── docs/design/im-workbench-layout.md §3 W2 / W-Q4
+// ── say 分流门已拆(R3,docs/design/im-workbench-layout.md §8.4)──
 //
-// **判据只有两条,没有第三条**:
-//  1. `kind === 'room'` —— 群聊房、单成员 dm 房、agent 互聊 pair 房三者都是
-//     room,这正是 W-Q4 划的覆盖范围。直聊(kind='chat')与**执行会话**
-//     (kind='work')都不是 room:直聊本身就是工程驾驶舱,执行会话打开就是要看
-//     那一整套工具卡/StepsPanel —— 它们继续走既有 MessageItem 组件树。
-//  2. workbench 外壳 —— classic 是逐像素回滚闸,新树在那儿一行都不许挂。
+// C2′ 曾在这里挂第二棵组件树(`saySurfaceActive = isRoom && workbench`)。R1 把
+// 房/私聊整条移到 `ChatWindow` 的 `roomSurfaceActive` 分支后,workbench 下的房
+// 根本到不了本组件(ChatPanel 是 MessageList 的唯一挂载者,ChatWindow 是
+// ChatPanel 的唯一挂载者,两者的房判据同一条),那道门恒为 false —— 死代码。
 //
-// 门是 DOM 级的:两棵树从不同时挂载,所以"两套署名同时渲染"在结构上不可能。
-const shellMode = computed(() => resolveShellMode(settingsStore.settings))
-const saySurfaceActive = computed(() => isRoomSession.value && shellMode.value === 'workbench')
-
+// 留下的房分支(`isRoomSession` 的分组 / 折叠 / 时间胶囊 / gap table)**不是**
+// 死代码:classic 下房会话仍然走这条旧壳,那是逐像素回滚闸的落点。
 const roomLayout = computed(() =>
   isRoomSession.value ? buildRoomMessageLayout(props.messages) : EMPTY_ROOM_LAYOUT,
 )
@@ -484,15 +461,6 @@ function roomRowClass(index: number): string | undefined {
   return undefined
 }
 
-/** 聊天面排版档是否接管(用户有过显式排版选择就整档退让)。 */
-const sayTypographyActive = computed(() => shouldUseSayTypography({
-  shellMode: shellMode.value,
-  isSaySurface: saySurfaceActive.value,
-  messageListDensity: settingsStore.settings.general?.messageListDensity,
-  messageLineHeight: settingsStore.settings.general?.messageLineHeight,
-  chatFontSize: settingsStore.settings.chat?.chatFontSize,
-}))
-
 // Get current message list density setting
 const messageListDensity = computed(() => {
   return settingsStore.settings.general?.messageListDensity || 'comfortable'
@@ -545,26 +513,17 @@ const messageListStyles = computed(() => {
   const styles: Record<string, string> = {}
   const density = messageListDensity.value
   const densityTypography = getDensityTypography(density)
-  // 聊天面档(C2′):say-only 的房/私聊面按方案 A 排版(13 / 1.72)。
-  // 它与用户的排版选择是**整档二选一**,不做逐项混合 —— 判据与那条「出厂默认
-  // 值不算用户选过」的退让闸都在 say/say-typography.ts 里。
-  const say = sayTypographyActive.value
-  const fontSize = say ? SAY_METRICS.fontSize : (Number(chatFontSize.value) || densityTypography.fontSize)
-  const lineHeight = say ? SAY_METRICS.lineHeight : (Number(customLineHeight.value) || densityTypography.lineHeight)
-  const contentSpacing = say ? SAY_METRICS.contentSpacing : densityTypography.contentSpacing
+  // 聊天面(say-only)的 13 / 1.72 档不在这里:那一面走 `RoomSurface`,排版由
+  // 它自己的 `flowStyles` 从 `SAY_METRICS` 写出来(R3 拆门时一并移走)。
+  const fontSize = Number(chatFontSize.value) || densityTypography.fontSize
+  const lineHeight = Number(customLineHeight.value) || densityTypography.lineHeight
+  const contentSpacing = densityTypography.contentSpacing
 
   if (customLineHeight.value) {
     styles['--message-line-height'] = String(customLineHeight.value)
   }
   if (chatFontSize.value) {
     styles['--message-font-size'] = `${chatFontSize.value}px`
-  }
-  // 字号/行高/回合间距一起改,派生量在下面按同一对数算 —— 三者绝不允许来自
-  // 不同的档(那正是"字号变了行高没变"的排版错位)。
-  if (say) {
-    styles['--message-font-size'] = `${SAY_METRICS.fontSize}px`
-    styles['--message-line-height'] = String(SAY_METRICS.lineHeight)
-    styles['--chat-turn-gap'] = `${SAY_METRICS.turnGapPx}px`
   }
   if (chatFontEn.value || chatFontZh.value) {
     styles['--font-body'] = buildFontFamily(chatFontEn.value, chatFontZh.value)
@@ -749,9 +708,9 @@ watch([effectiveScrollVersion, () => props.messages.length], () => {
 
 // Force-follow when a new user message lands. The user explicitly sent it,
 // so they want the new bubble + the response to be visible regardless of
-// whether they were detached. With estimateSize=150 the first scrollHeight
-// can still be wrong before the browser lays out the new row, so schedule
-// one post-paint nudge after the real heights settle.
+// whether they were detached. The list is a plain `v-for` (never virtualized),
+// so the first scrollHeight can still be wrong before the browser lays out the
+// new row — schedule one post-paint nudge after the real heights settle.
 const lastUserMessageId = computed(() => {
   for (let i = props.messages.length - 1; i >= 0; i--) {
     if (props.messages[i].role === 'user') return props.messages[i].id

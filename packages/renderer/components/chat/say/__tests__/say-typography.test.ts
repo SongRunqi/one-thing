@@ -98,12 +98,22 @@ describe('聊天面排版档:数值单一真源', () => {
     expect(source).toContain('var(--say-gutter-gap, 11px)')
   })
 
-  it('MessageList 的排版档接的是 SAY_METRICS,而不是自己的一份常量', () => {
-    const source = readChatFile('MessageList.vue')
-    expect(source).toContain("import { SAY_METRICS, shouldUseSayTypography } from './say/say-typography'")
+  it('RoomSurface 的排版档接的是 SAY_METRICS,而不是自己的一份常量', () => {
+    const source = readChatFile('room/RoomSurface.vue')
+    // 只钉「数值来自 SAY_METRICS 这一张表」,不钉 import 的具名清单 ——
+    // R3 收口时 RoomSurface 还要引 shouldUseSayTypography(退让闸),
+    // 逐字比对整行会把这类正当增补误判成回归。
+    expect(source).toMatch(/import \{[^}]*\bSAY_METRICS\b[^}]*\} from '\.\.\/say\/say-typography'/)
     expect(source).toContain('SAY_METRICS.fontSize')
     expect(source).toContain('SAY_METRICS.lineHeight')
     expect(source).toContain('SAY_METRICS.turnGapPx')
+  })
+
+  it('MessageList 上再无聊天面排版档(R3 拆门时一并搬走)', () => {
+    const source = readChatFile('MessageList.vue')
+    expect(source).not.toContain("from './say/say-typography'")
+    expect(source).not.toContain('SAY_METRICS.')
+    expect(source).not.toContain('shouldUseSayTypography')
     // 账页流那套 92px 署名列已随 C2 整体撤回,不许再有残留。
     // (只禁**排版**那套账页,不禁 `permission-ledger` —— 权限账页栏位是另一件
     //  东西,R1 起由 MessageList 与房面共用同一个组件。)

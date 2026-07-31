@@ -478,6 +478,17 @@ interface Props {
   isLoading?: boolean
   maxChars?: number
   sessionId?: string
+  /**
+   * 静默态占位符的**只读覆盖**(去复用重构 R3):房面要说「发送到 #浏览器重构」/
+   * 「给小林发消息」(样板 `docs/design/im-redesign/final.html`),而占位符是本
+   * 组件 computed 出来的,CSS 够不着 —— 所以开这一个入口,而不是改 InputBox 的
+   * 任何既有行为(§8 铁律 5「composer 不重写」)。
+   *
+   * **不传 = 与从前逐字节相同**;传了也只顶掉那句静态兜底 'Ask anything...',
+   * 录音 / 转写 / 歌词那三种**活状态**照旧优先(房里也会录音,把实时反馈顶掉
+   * 才是回归)。
+   */
+  placeholder?: string
 }
 
 interface Emits {
@@ -497,6 +508,7 @@ const props = withDefaults(defineProps<Props>(), {
   isLoading: false,
   maxChars: 4000,
   sessionId: undefined,
+  placeholder: undefined,
 })
 
 const emit = defineEmits<Emits>()
@@ -1157,7 +1169,9 @@ const composerPlaceholder = computed(() => {
   // long line and just truncates it.
   const lyricLine = musicStore.currentLyricLine
   if (lyricLine) return `♪ ${lyricLine}`
-  return 'Ask anything...'
+  // 宿主给的静默态占位(房面:「发送到 #房名」/「给小林发消息」)。不传就是
+  // 从前那句 —— 直聊逐字节不变。
+  return props.placeholder || 'Ask anything...'
 })
 
 /**

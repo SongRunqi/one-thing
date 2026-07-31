@@ -12,7 +12,7 @@
       :class="{ 'is-pm': entry.isPm, 'is-retired': entry.isRetired }"
       :title="tooltip(entry)"
       :aria-label="tooltip(entry)"
-      @click.stop="openMemberMenu(entry, $event)"
+      @click.stop="handleChipClick(entry, $event)"
       @contextmenu.prevent.stop="openMemberMenu(entry, $event)"
     >
       <!-- The chip button IS the hairline ring, so the mark sits inside it at
@@ -87,8 +87,19 @@ import {
   planRoomMemberRemoval,
   type RoomMemberEntry,
 } from './room-member-strip'
+import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 
-const props = defineProps<{ sessionId: string }>()
+const props = defineProps<{
+  sessionId: string
+  /**
+   * 新房面(R2)的成员堆:左键 = 在右栏打开这个人的**空间页**(样板「点成员
+   * 下钻」),名册管理(移出 / 设为负责人)退到右键。
+   *
+   * 默认 false —— 旧壳的 `TabBar` 用的是同一个组件,classic 逐像素回滚要求它
+   * 的左键行为一个字节都不变(仍然是名册菜单)。
+   */
+  openSpaceOnClick?: boolean
+}>()
 
 const agentsStore = useAgentsStore()
 const sessionsStore = useSessionsStore()
@@ -151,6 +162,23 @@ function showError(message: string): void {
 function anchorFor(event: MouseEvent): { x: number; y: number } {
   const rect = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect()
   return rect ? { x: rect.left, y: rect.bottom + 4 } : { x: event.clientX, y: event.clientY }
+}
+
+/**
+ * 左键:新房面下钻空间页,旧壳照旧开名册菜单。
+ *
+ * 下钻不新开 tab —— 右栏那个「成员」页签自己有两层,派事件时带上 agentId 就是
+ * 直接落在下钻层(契约见 `workbench/room-members.ts`)。
+ */
+function handleChipClick(entry: RoomMemberEntry, event: MouseEvent): void {
+  if (!props.openSpaceOnClick) {
+    openMemberMenu(entry, event)
+    return
+  }
+  showError('')
+  window.dispatchEvent(new CustomEvent<OpenMembersDetail>(OPEN_MEMBERS_EVENT, {
+    detail: { sessionId: props.sessionId, agentId: entry.id },
+  }))
 }
 
 function openMemberMenu(entry: RoomMemberEntry, event: MouseEvent): void {

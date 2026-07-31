@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDmPresence, buildRoomHead, buildRoomTopic } from '../room/room-head'
+import { buildComposerPlaceholder, buildDmPresence, buildRoomHead, buildRoomTopic } from '../room/room-head'
 import type { CollabBoard } from '@shared/ipc'
 
 /**
@@ -81,5 +81,17 @@ describe('buildRoomHead', () => {
 
   it('房名为空退到占位,不显示空标题', () => {
     expect(buildRoomHead({ sessionName: '  ', dmAgent: null, board: null }).name).toBe('未命名房间')
+  })
+})
+
+describe('buildComposerPlaceholder', () => {
+  it('样板那两句原文:群「发送到 #房名」/ 私聊「给某人发消息」', () => {
+    expect(buildComposerPlaceholder({ mode: 'group', name: '浏览器重构' })).toBe('发送到 #浏览器重构')
+    expect(buildComposerPlaceholder({ mode: 'dm', name: '小林' })).toBe('给小林发消息')
+  })
+
+  it('名字为空不画半截 —— 退回不带名字的通用话', () => {
+    expect(buildComposerPlaceholder({ mode: 'group', name: '  ' })).toBe('发送到这间房')
+    expect(buildComposerPlaceholder({ mode: 'dm', name: '' })).toBe('发消息')
   })
 })

@@ -243,6 +243,7 @@ import { isActiveAgent } from '@shared/ipc'
 import { renderCollabMentionText } from '@onething/runtime/collab'
 import { platformApi } from '@/platform'
 import { useAgentsStore } from '@/stores/agents'
+import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 import type { ChatMessageReplyTo } from '@/types'
 
 const AVATAR_SIZE = SAY_METRICS.avatarSizePx
@@ -260,6 +261,8 @@ const props = defineProps<{
   pairDmMode?: boolean
   /** 「展开执行 →」的落点;null 就不画(拿不到 workSessionId 不派空事件)。 */
   threadEntry?: { workSessionId: string; title: string; taskId?: string } | null
+  /** 这条消息所在的房 —— 署名头像下钻右栏空间页时的靶子(R2)。 */
+  roomSessionId?: string
 }>()
 
 const emit = defineEmits<{
@@ -302,9 +305,22 @@ const senderColorStyle = computed(() =>
 const canOpenAgentSpace = computed(() =>
   Boolean(sender.value) && !props.dmMode && Boolean(props.message.agentId))
 
+/**
+ * R2:署名头像/名字 → **右栏空间页**(样板「中栏署名头像点击也到这里」)。
+ * 下钻不新开 tab —— 事件带 agentId 就是直接落在成员 tab 的下钻层。
+ *
+ * 拿不到房 id 时退回既有的全屏空间页:宁可换个地方打开,也不吞掉这次点击。
+ */
 function openAgentSpace(): void {
   if (!canOpenAgentSpace.value) return
-  agentsStore.openAgentSpace(props.message.agentId || '')
+  const agentId = props.message.agentId || ''
+  if (props.roomSessionId) {
+    window.dispatchEvent(new CustomEvent<OpenMembersDetail>(OPEN_MEMBERS_EVENT, {
+      detail: { sessionId: props.roomSessionId, agentId },
+    }))
+    return
+  }
+  agentsStore.openAgentSpace(agentId)
 }
 
 const clock = computed(() => {

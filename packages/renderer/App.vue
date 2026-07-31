@@ -245,6 +245,7 @@ import {
   registerCollabTagVerifier,
 } from '@/composables/collabInlineTags'
 import { resolveDeliverablePath } from '@/components/workbench/collab-board-card'
+import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 
 // Detect auxiliary windows from the hash. Keep it reactive because dev HMR
 // and BrowserWindow reuse can change the hash after App has already mounted.
@@ -647,6 +648,17 @@ async function openThreadInRightWorkbench(workSessionId: string, title?: string)
   rightWorkbenchRef.value?.openThread(workSessionId, title)
 }
 
+/**
+ * 右栏「成员」/ 空间页入口(R2)。三处派发共用这一条:房头成员堆、say 署名
+ * 头像、私聊房面的默认落座。`agentId` 非空就直接停在空间页(下钻层,不占 tab 位)。
+ */
+async function openMembersInRightWorkbench(detail: OpenMembersDetail) {
+  if (!detail.sessionId) return
+  inspectorOpen.value = true
+  await nextTick()
+  rightWorkbenchRef.value?.openMembers(detail.sessionId, detail.agentId, detail.title)
+}
+
 // 群聊房间头部的看板直达入口(window 事件解耦:TabBar 深处 → 这里)
 async function openBoardInRightWorkbench() {
   inspectorOpen.value = true
@@ -713,6 +725,10 @@ onMounted(() => {
   window.addEventListener('onething:open-thread', event => {
     const detail = (event as CustomEvent<{ workSessionId?: string; title?: string }>).detail
     if (detail?.workSessionId) void openThreadInRightWorkbench(detail.workSessionId, detail.title)
+  })
+  window.addEventListener(OPEN_MEMBERS_EVENT, event => {
+    const detail = (event as CustomEvent<OpenMembersDetail>).detail
+    if (detail?.sessionId) void openMembersInRightWorkbench(detail)
   })
   window.addEventListener(COLLAB_TAG_OPEN_CARD_EVENT, event => {
     const taskId = (event as CustomEvent<{ taskId?: string }>).detail?.taskId

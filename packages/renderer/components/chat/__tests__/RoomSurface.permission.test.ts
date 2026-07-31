@@ -26,6 +26,15 @@ vi.mock('@/platform', () => ({
   },
 }))
 
+// 房面只在 workbench 下挂载;这里给排版退让闸(shouldUseSayTypography)喂一份
+// 出厂默认的设置——用户没有显式排版选择,聊天面档因此生效。真 store 在模块
+// 作用域读 localStorage,测试里不能直接引。
+vi.mock('@/stores/settings', () => ({
+  useSettingsStore: () => ({
+    settings: { ui: { shellMode: 'workbench' }, general: {}, chat: {} },
+  }),
+}))
+
 vi.mock('@/stores/sessions', () => ({
   useSessionsStore: () => ({
     currentSessionId: 'room-1',
@@ -47,6 +56,13 @@ vi.mock('@/stores/chat', () => ({
 
 vi.mock('@/stores/collabBoard', () => ({
   useCollabBoardStore: () => ({ ensureSubscribed: vi.fn(), boardFor: () => undefined }),
+}))
+
+vi.mock('@/stores/agents', () => ({
+  useAgentsStore: () => ({
+    displayAgent: (agentId?: string | null) => ({ id: agentId || '', name: '小林' }),
+    openAgentSpace: vi.fn(),
+  }),
 }))
 
 vi.mock('@/composables/useChatSession', () => ({

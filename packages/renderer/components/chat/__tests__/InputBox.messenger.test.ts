@@ -86,7 +86,7 @@ vi.mock("@/services/commands", () => ({
 vi.mock("@/editor/TextEditor.vue", () => ({
 	default: {
 		name: "TextEditor",
-		props: ["modelValue"],
+		props: ["modelValue", "placeholder"],
 		emits: [
 			"update:modelValue",
 			"paste",
@@ -100,7 +100,7 @@ vi.mock("@/editor/TextEditor.vue", () => ({
 			"compositionend",
 		],
 		template:
-			'<textarea class="composer-input" :value="modelValue" @input="onInput" @keydown="$emit(\'keydown\', $event)" />',
+			'<textarea class="composer-input" :value="modelValue" :data-placeholder="placeholder" @input="onInput" @keydown="$emit(\'keydown\', $event)" />',
 		methods: {
 			onInput(this: any, event: Event) {
 				this.$emit(
@@ -146,10 +146,10 @@ function dispatchKeydown(element: Element, key: string) {
 	return event;
 }
 
-function mountInputBox(sessionId: string) {
+function mountInputBox(sessionId: string, extraProps: Record<string, unknown> = {}) {
 	return mount(InputBox, {
 		attachTo: document.body,
-		props: { sessionId },
+		props: { sessionId, ...extraProps },
 		global: {
 			stubs: {
 				QuotedContext: { template: "<div />" },
@@ -323,6 +323,46 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
 	document.body.textContent = "";
+});
+
+/**
+ * R3 给 `InputBox` 开的**唯一**新入口:一个可选只读 prop `placeholder`。
+ * 样板要房面说「发送到 #浏览器重构」/「给小林发消息」,而占位符是本组件
+ * computed 出来的,CSS 够不着 —— 于是开入口,不改任何既有行为。
+ */
+describe("InputBox placeholder 覆盖入口(R3)", () => {
+	it("不传 = 从前那句,直聊逐字节不变", () => {
+		expect(
+			mountInputBox("chat-1").find(".composer-input").attributes("data-placeholder"),
+		).toBe("Ask anything...");
+	});
+
+	it("不传 = 从前那句,房面也一样(覆盖是宿主给的,不是形态推的)", () => {
+		expect(
+			mountInputBox("room-group").find(".composer-input").attributes("data-placeholder"),
+		).toBe("Ask anything...");
+	});
+
+	it("传了就用宿主那句(群 / 私聊两态)", () => {
+		expect(
+			mountInputBox("room-group", { placeholder: "发送到 #浏览器重构" })
+				.find(".composer-input")
+				.attributes("data-placeholder"),
+		).toBe("发送到 #浏览器重构");
+		expect(
+			mountInputBox("room-user-dm", { placeholder: "给小林发消息" })
+				.find(".composer-input")
+				.attributes("data-placeholder"),
+		).toBe("给小林发消息");
+	});
+
+	it("空串不算覆盖:退回从前那句,不画一个空占位", () => {
+		expect(
+			mountInputBox("room-group", { placeholder: "" })
+				.find(".composer-input")
+				.attributes("data-placeholder"),
+		).toBe("Ask anything...");
+	});
 });
 
 describe("InputBox composer profile", () => {

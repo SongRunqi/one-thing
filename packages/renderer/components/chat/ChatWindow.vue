@@ -236,8 +236,8 @@ const isBranchSession = computed(() => !!currentSession.value?.parentSessionId)
  *  2. workbench 外壳 —— classic 是逐像素回滚闸,新面在那儿一行都不许挂。
  *
  * 门是 DOM 级的(`v-if` / `v-else`),两套聊天面在结构上不可能同时挂载。
- * 判定与 `MessageList.saySurfaceActive` 同口径(那道门在房会话上从此空转,
- * R3 才拆 —— 中间态不许两处同时改)。
+ * **全库唯一一处 say 树分流**:R3 已拆掉 `MessageList` 里那道同口径的旧门
+ * (workbench 下房会话根本到不了 `ChatPanel` → `MessageList`)。
  */
 const settingsStore = useSettingsStore()
 const shellMode = computed(() => resolveShellMode(settingsStore.settings))

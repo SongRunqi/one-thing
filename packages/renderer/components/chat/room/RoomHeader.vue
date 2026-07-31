@@ -68,10 +68,12 @@
     </template>
 
     <div class="room-head-right">
-      <!-- 成员头像堆:复用房间既有的成员条(身份是同一份数据,不另画一套)。 -->
+      <!-- 成员头像堆:复用房间既有的成员条(身份是同一份数据,不另画一套)。
+           R2:左键下钻右栏空间页,名册管理退到右键(旧壳 TabBar 不受影响)。 -->
       <RoomMemberStrip
         v-if="head.mode === 'group' && sessionId"
         :session-id="sessionId"
+        open-space-on-click
       />
 
       <button
@@ -148,7 +150,7 @@
  * 留下的三颗动作是换房之外真正还需要的:搜索、线程栏开合、⋯(看板 / 房间设置)。
  */
 import { computed, ref } from 'vue'
-import { ClipboardList, MoreVertical, PanelLeft, PanelRight, Search, Settings } from 'lucide-vue-next'
+import { ClipboardList, MoreVertical, PanelLeft, PanelRight, Search, Settings, Users } from 'lucide-vue-next'
 import AgentAvatar from '@/components/common/AgentAvatar.vue'
 import ContextMenu from '@/components/common/ContextMenu.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
@@ -159,6 +161,7 @@ import { useAgentsStore } from '@/stores/agents'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
 import { buildRoomHead, type RoomHeadAgent } from './room-head'
+import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 
 const props = defineProps<{
   sessionId?: string
@@ -205,9 +208,37 @@ const head = computed(() => buildRoomHead({
   board: props.sessionId ? collabBoardStore.boardFor(props.sessionId) : null,
 }))
 
+/**
+ * 私聊房头的头像/名字 → **右栏空间页下钻**(R3 口径归一)。
+ *
+ * 归一的理由:中栏 say 署名头像点一下是下钻(`SayMessageRow.openAgentSpace`),
+ * 房头头像点一下却开全屏 —— 同一个动作两种结果。右栏关着也不构成保留全屏的
+ * 理由:`App.vue` 的 `openMembersInRightWorkbench` 自己会把 `inspectorOpen`
+ * 置真(与自动落座那条"不许顶开"的纪律不冲突,那条只管**没人点**的默认行为)。
+ *
+ * 降级规则与 say 行逐字一致:**拿不到房 id 时退回全屏空间页** —— 宁可换个地方
+ * 打开,也不吞掉这次点击。(在这条壳上它其实够不着:私聊态由 `session` 推出,
+ * 而 `session` 又要 `props.sessionId`。留着是因为 say 行那边够得着,两处口径
+ * 必须一致。)
+ */
 function openAgentSpace(): void {
   const agentId = head.value.agent?.id
-  if (agentId) agentsStore.openAgentSpace(agentId)
+  if (!agentId) return
+  if (props.sessionId) {
+    window.dispatchEvent(new CustomEvent<OpenMembersDetail>(OPEN_MEMBERS_EVENT, {
+      detail: { sessionId: props.sessionId, agentId },
+    }))
+    return
+  }
+  agentsStore.openAgentSpace(agentId)
+}
+
+/** ⋯ 菜单的「成员」:开(或聚焦)右栏成员 tab,停在列表层。 */
+function openMembersPanel(): void {
+  if (!props.sessionId) return
+  window.dispatchEvent(new CustomEvent<OpenMembersDetail>(OPEN_MEMBERS_EVENT, {
+    detail: { sessionId: props.sessionId },
+  }))
 }
 
 /**
@@ -232,6 +263,10 @@ const showBoardEntry = computed(() => !isAgentPairDmRoom(session.value?.room))
 
 const moreMenuItems = computed<ContextMenuItem[]>(() => {
   const items: ContextMenuItem[] = []
+  // 成员表是群的东西:私聊房里"成员"只有一个人,那一面直接就是空间页。
+  if (head.value.mode === 'group') {
+    items.push({ id: 'members', label: '成员', icon: Users })
+  }
   if (showBoardEntry.value) {
     items.push({ id: 'board', label: '看板', icon: ClipboardList })
   }
@@ -247,6 +282,10 @@ function openMoreMenu(): void {
 
 function handleMoreSelect(id: string): void {
   moreMenuOpen.value = false
+  if (id === 'members') {
+    openMembersPanel()
+    return
+  }
   if (id === 'board') {
     window.dispatchEvent(new CustomEvent('onething:collab-open-board'))
     return

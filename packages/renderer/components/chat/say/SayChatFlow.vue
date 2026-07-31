@@ -51,6 +51,7 @@
         :dm-mode="dmMode"
         :pair-dm-mode="pairDmMode"
         :thread-entry="threadEntryFor(row)"
+        :room-session-id="sessionId"
         @reply="replyTo => emit('replyTo', replyTo)"
         @react="(messageId, emoji) => emit('react', messageId, emoji)"
         @jump-to-message="messageId => emit('jumpToMessage', messageId)"
@@ -66,11 +67,14 @@
  *
  * 覆盖范围:**群聊房 + 私聊房(单成员 dm)+ agent 互聊 pair 房**。
  * 直聊 / 普通会话 / 工作会话继续走既有 `MessageItem` 组件树 —— 那是工程驾驶舱,
- * 它需要工具卡、StepsPanel、diff。分流门在 `MessageList.vue` 的 `saySurfaceActive`。
+ * 它需要工具卡、StepsPanel、diff。
  *
- * **这一层只管画**:滚动跟随/锚定、分页、权限审批、导航轨都仍然是
- * `MessageList.vue` 那一层的事(它是列表外壳,不是聊天呈现),所以这里既不装
- * scroller 也不碰 `useFollowScroll` —— 复用的方式是**不再要一份**。
+ * **唯一挂载点是 `room/RoomSurface.vue`**(分流门在 `ChatWindow` 的
+ * `roomSurfaceActive`)。C2′ 时期那道挂在 `MessageList` 内部的旧门已随 R3 拆除:
+ * workbench 下房会话根本到不了 `ChatPanel` → `MessageList`。
+ *
+ * **这一层只管画**:滚动跟随/锚定、分页、权限审批都是外壳(`RoomSurface`)的事,
+ * 所以这里既不装 scroller 也不碰 `useFollowScroll` —— 复用的方式是**不再要一份**。
  * 行上的 `data-index` / `data-message-id` 与旧树逐字段一致,锚点与跳转照旧命中。
  */
 import { computed } from 'vue'

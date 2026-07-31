@@ -92,6 +92,7 @@
         ref="inputBoxRef"
         :is-loading="isGenerating"
         :session-id="effectiveSessionId"
+        :placeholder="composerPlaceholder"
         @send-message="handleSendMessage"
         @stop-generation="handleStopGeneration"
         @switch-session="(sessionId) => emit('switchSession', sessionId)"
@@ -137,7 +138,7 @@ import { ArrowDown } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Scrollbar from '@/components/common/Scrollbar.vue'
 import SayChatFlow from '../say/SayChatFlow.vue'
-import { SAY_METRICS } from '../say/say-typography'
+import { SAY_METRICS, shouldUseSayTypography } from '../say/say-typography'
 import InputBox from '../InputBox.vue'
 import CollabTypingLine from '../CollabTypingLine.vue'
 import ComposerReplyBar from '../ComposerReplyBar.vue'
@@ -152,6 +153,9 @@ import {
 import { filterRoomMessages } from '../message/room-grouping'
 import type { ChatMessage, ChatMessageMention, ChatMessageReplyTo, MessageAttachment, ToolCall } from '@/types'
 import { useSessionsStore } from '@/stores/sessions'
+import { useAgentsStore } from '@/stores/agents'
+import { useSettingsStore } from '@/stores/settings'
+import { resolveShellMode } from '@/composables/useShellMode'
 import { useChatStore } from '@/stores/chat'
 import { useChatSession } from '@/composables/useChatSession'
 import { useFollowScroll, shouldShowScrollToBottomButton } from '@/composables/useFollowScroll'
@@ -161,7 +165,8 @@ import { usePermissionResponder } from '@/composables/usePermissionResponder'
 import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 import { useCollabReactions } from '@/composables/useCollabReactions'
 import { useCollabBoardStore } from '@/stores/collabBoard'
-import { findRoomDefaultThread } from './room-head'
+import { buildComposerPlaceholder, findRoomDefaultThread } from './room-head'
+import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
 
 const props = defineProps<{
@@ -173,6 +178,8 @@ const emit = defineEmits<{
 }>()
 
 const sessionsStore = useSessionsStore()
+const agentsStore = useAgentsStore()
+const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 
 const effectiveSessionId = computed(() => props.sessionId || sessionsStore.currentSessionId)
@@ -199,14 +206,50 @@ const listMessages = computed(() => filterRoomMessages(messages.value) as ChatMe
 const isUserDmSession = computed(() => isUserDmRoom(panelSession.value?.room))
 const isPairDmSession = computed(() => isAgentPairDmRoom(panelSession.value?.room))
 
-/** 排版档的唯一真源仍是 SAY_METRICS(与 C2′ 同一张表)。 */
-const flowStyles = computed<Record<string, string>>(() => ({
-  '--message-font-size': `${SAY_METRICS.fontSize}px`,
-  '--message-line-height': String(SAY_METRICS.lineHeight),
-  '--message-line-height-px': `${Math.round(SAY_METRICS.fontSize * SAY_METRICS.lineHeight)}px`,
-  '--content-spacing-px': `${Math.round(SAY_METRICS.fontSize * SAY_METRICS.contentSpacing)}px`,
-  '--chat-turn-gap': `${SAY_METRICS.turnGapPx}px`,
-}))
+/**
+ * composer 占位符(样板 `final.html`:群「发送到 #浏览器重构」/ 私聊
+ * 「给小林发消息」)。形态判据与房头同一条 —— **只有单成员 dm 房是私聊态**,
+ * agent 互聊 pair 房照群聊走(那间房里"给谁发"没有唯一答案)。
+ * 名字也走同一份身份解析(`displayAgent`),不反解 id。
+ */
+const composerPlaceholder = computed(() => {
+  if (isUserDmSession.value) {
+    const agentId = panelSession.value?.room?.memberAgentIds?.[0] || ''
+    return buildComposerPlaceholder({
+      mode: 'dm',
+      name: agentId ? agentsStore.displayAgent(agentId).name : '',
+    })
+  }
+  return buildComposerPlaceholder({ mode: 'group', name: panelSession.value?.name || '' })
+})
+
+/**
+ * 排版档的唯一真源仍是 SAY_METRICS(与 C2′ 同一张表),但**要过退让闸**:
+ * 用户显式调过字号/行高/密度时整档退让,让他的设置照旧生效。
+ *
+ * 这道闸原本长在 `MessageList` 上,房面脱离旧壳(R1)后一度失联——`flowStyles`
+ * 变成无条件写档,手动把字号调大过的人进房会被按回 13px。R3 拆死门时暴露出来,
+ * 在此接回。判据不是"有值"而是"与出厂默认值不同"(见 say-typography.ts 的注释:
+ * density/fontSize 在 defaults 里本来就有值,"有值即退让"会让这档永不生效)。
+ */
+const flowStyles = computed((): Record<string, string> => {
+  const settings = settingsStore.settings
+  const active = shouldUseSayTypography({
+    shellMode: resolveShellMode(settings),
+    isSaySurface: true,
+    messageListDensity: settings?.general?.messageListDensity,
+    messageLineHeight: settings?.general?.messageLineHeight,
+    chatFontSize: settings?.chat?.chatFontSize,
+  })
+  if (!active) return {}
+  return {
+    '--message-font-size': `${SAY_METRICS.fontSize}px`,
+    '--message-line-height': String(SAY_METRICS.lineHeight),
+    '--message-line-height-px': `${Math.round(SAY_METRICS.fontSize * SAY_METRICS.lineHeight)}px`,
+    '--content-spacing-px': `${Math.round(SAY_METRICS.fontSize * SAY_METRICS.contentSpacing)}px`,
+    '--chat-turn-gap': `${SAY_METRICS.turnGapPx}px`,
+  }
+})
 
 // ── 滚动:跟随 / 锚定 / 分页,三件都复用既有 composable ──────────────────
 const scrollbarRef = ref<InstanceType<typeof Scrollbar> | null>(null)
@@ -405,6 +448,20 @@ function seatDefaultThread() {
   const sessionId = effectiveSessionId.value
   if (!sessionId) return
   if (!chatStore.inspectorOpen) return
+
+  // 私聊(样板 三 · 私聊):右栏默认落在**空间页**,不是线程 —— 一对一的房里
+  // 「这条线程」远不如「TA 是谁」重要,而且私聊根本没有"成员"这回事,所以
+  // 页签直接叫「空间」。同 tab 的下钻层,不多开一个页签。
+  const dmAgentId = isUserDmSession.value
+    ? (panelSession.value?.room?.memberAgentIds?.[0] || '')
+    : ''
+  if (dmAgentId) {
+    window.dispatchEvent(new CustomEvent<OpenMembersDetail>(OPEN_MEMBERS_EVENT, {
+      detail: { sessionId, agentId: dmAgentId, title: '空间' },
+    }))
+    return
+  }
+
   const thread = findRoomDefaultThread(collabBoardStore.boardFor(sessionId))
   if (!thread) return
   window.dispatchEvent(new CustomEvent('onething:open-thread', { detail: thread }))
@@ -703,6 +760,112 @@ defineExpose({
   box-sizing: border-box;
   width: 100%;
   margin: 0 0 4px;
+}
+
+/* ── composer 皮相(R2,样板两张整窗图的输入框)────────────────────────────
+ *
+ * 样板要的是**圆角 12px + 浅底 + 一行图标 + 右侧深色圆形发送**,而 `InputBox`
+ * 自己是"蓝图框"(方角、发丝描边、顶边浮标签、mono 的 SEND)。
+ *
+ * 皮相整段写在**这里**而不是 `InputBox` 里,理由是结构性的:这是父级 scoped
+ * CSS,编译出来带着 `.room-composer[data-v-…]` 前缀,**直聊那棵树上根本不存在
+ * 这个祖先** —— 直聊逐像素不变不靠"我记得没改到",靠选择器够不着。
+ * `InputBox` 本体(行为与自己的样式)一个字节都没动(§8 铁律 5)。
+ *
+ * 与样板的一处取舍:样板画的是「附件 / ＋ / 麦克风」三颗,这里只有附件与麦克风
+ * ——「＋」在 messenger 形态下没有对应动作,凭空加一颗按钮就不是皮相而是行为。 */
+.room-surface .room-composer :deep(.composer) {
+  border-radius: 12px;
+  border-color: var(--ui-border-subtle-border, var(--border-subtle, var(--border)));
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+}
+
+.room-surface .room-composer :deep(.composer.focused) {
+  background: var(--ui-surface-panel-bg, var(--bg-panel));
+}
+
+.room-surface .room-composer :deep(.input-area) {
+  padding: 5px 6px 0 14px;
+}
+
+/* 顶边浮标签是蓝图框的构件,聊天面不要 —— 但录音计时 / 命令态 / 正在放的歌
+   是**活状态**,那几档照旧留着,不能连状态一起抹掉。 */
+.room-surface .room-composer :deep(.composer-frame-label:not(.listening):not(.transcribing):not(.command):not(.music)) {
+  display: none;
+}
+
+/* 工具条:去掉分格线与顶边,收成样板那一行图标。 */
+.room-surface .room-composer :deep(.composer-toolbar) {
+  min-height: 38px;
+  margin: 0;
+  padding: 0 10px 4px 12px;
+  border-top: 0;
+}
+
+/* messenger 形态下 toolbar-left 本来就是空的(工程控件整条不渲染),
+   让 toolbar-right 吃满整行,图标因此贴左、发送键靠 margin 甩到右边 —— 与样板
+   的「一行图标 + 右侧圆钮」同一个排布,不动一行 DOM。 */
+.room-surface .room-composer :deep(.toolbar-left) {
+  display: none;
+}
+
+.room-surface .room-composer :deep(.toolbar-right) {
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+}
+
+.room-surface .room-composer :deep(.toolbar-right > *) {
+  border-left: 0;
+}
+
+.room-surface .room-composer :deep(.toolbar-right > .voice-btn),
+.room-surface .room-composer :deep(.toolbar-right > .voice-aux-btn) {
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+}
+
+/* 深色圆钮:34px、纸底墨面,箭头顶掉 mono 的 `SEND ⏎`。 */
+.room-surface .room-composer :deep(.toolbar-right > .send-btn) {
+  --app-button-hover-fill: var(--ui-text-primary-fg, var(--text));
+  --app-button-hover-fg: var(--ui-surface-app-bg, var(--bg));
+
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ui-text-primary-fg, var(--text));
+  color: var(--ui-surface-app-bg, var(--bg));
+}
+
+.room-surface .room-composer :deep(.toolbar-right > .send-btn:hover:not(:disabled)),
+.room-surface .room-composer :deep(.toolbar-right > .send-btn:active:not(:disabled)) {
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 82%, transparent);
+  color: var(--ui-surface-app-bg, var(--bg));
+}
+
+.room-surface .room-composer :deep(.toolbar-right > .send-btn:disabled) {
+  background: color-mix(in srgb, var(--ui-text-primary-fg, var(--text)) 26%, transparent);
+  color: var(--ui-surface-app-bg, var(--bg));
+}
+
+.room-surface .room-composer :deep(.send-label) {
+  font-size: 0;
+  letter-spacing: 0;
+}
+
+.room-surface .room-composer :deep(.send-label)::after {
+  content: "→";
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
 }
 
 /* 浮在 composer 上沿右角:它是"你不在底部"这件事的唯一提示,不能被 composer

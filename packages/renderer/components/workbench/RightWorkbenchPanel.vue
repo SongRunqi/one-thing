@@ -133,6 +133,13 @@
           @title-resolved="(title) => renameThreadTab(tab.id, title)"
         />
 
+        <MembersWorkbench
+          v-else-if="tab.type === 'members'"
+          :session-id="tab.sessionId || ''"
+          :focus-agent-id="tab.memberAgentId || ''"
+          @focus="(agentId) => setMembersFocus(tab.id, agentId)"
+        />
+
         <!-- iframe fallback: apps/web host has no WebContentsView -->
         <section
           v-else-if="tab.type === 'browser'"
@@ -214,7 +221,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue'
-import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Terminal, X } from 'lucide-vue-next'
+import { ArrowRight, ClipboardList, FileText, Files, GitCompare, Globe2, ListTree, Terminal, Users, X } from 'lucide-vue-next'
 import Button from '@/components/common/Button.vue'
 import Container from '@/components/common/Container.vue'
 import Tabs from '@/components/common/Tabs.vue'
@@ -224,6 +231,7 @@ import TerminalView from '@/components/terminal/TerminalView.vue'
 import BrowserPanel from './browser/BrowserPanel.vue'
 import CollabBoardPanel from './CollabBoardPanel.vue'
 import GoalReviewWorkbench from './GoalReviewWorkbench.vue'
+import MembersWorkbench from './MembersWorkbench.vue'
 import ThreadWorkbench from './ThreadWorkbench.vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
 import { useTerminalsStore } from '@/stores/terminals'
@@ -231,7 +239,7 @@ import type { TabPaneName } from '@/components/common/tabs'
 import type { ContextVariable } from '@/types'
 import { platformApi } from '@/platform'
 
-type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread'
+type WorkbenchTabType = 'files' | 'file' | 'terminal' | 'browser' | 'review' | 'board' | 'thread' | 'members'
 
 interface WorkbenchTab {
   id: string
@@ -239,8 +247,10 @@ interface WorkbenchTab {
   title: string
   filePath?: string
   workspaceRoot?: string
-  /** review / thread tabs only: the session this tab is bound to. */
+  /** review / thread / members tabs only: the session this tab is bound to. */
   sessionId?: string
+  /** members tabs only: the member whose space page is drilled into ('' = 列表)。 */
+  memberAgentId?: string
   /** review tabs only: bumped to force a refetch on reopen. */
   reviewNonce?: number
   /** terminal tabs only: the PTY instance rendered by this tab. */
@@ -416,6 +426,7 @@ function tabIcon(type: WorkbenchTabType): Component {
   if (type === 'review') return GitCompare
   if (type === 'board') return ClipboardList
   if (type === 'thread') return ListTree
+  if (type === 'members') return Users
   return Files
 }
 
@@ -425,6 +436,7 @@ function tabCategorySlot(type: WorkbenchTabType): number {
   if (type === 'board') return 8
   if (type === 'review') return 4
   if (type === 'thread') return 3
+  if (type === 'members') return 2
   return 5
 }
 
@@ -574,6 +586,50 @@ function openThread(threadSessionId: string, title?: string): void {
   activeTabId.value = tab.id
 }
 
+/**
+ * 右栏「成员」tab(去复用重构 R2,样板二 · 右栏三态)。
+ *
+ * **全局只有一个 members tab**,换房是换它的 `sessionId` 而不是再开一个 ——
+ * 同一 tab 类型不开出第二个(照 `addWorkbenchTab` 的去重先例);按房去重会在
+ * 逛过三间房之后攒出三条一模一样的「成员」页签。
+ *
+ * `agentId` 非空 = 直接落在那个人的**空间页**(下钻层)。空间页不占 tab 位
+ * (样板注明),它是 `MembersWorkbench` 内部的一层视图,所以这里只是把落点
+ * 记在 tab 上,而不是开第二个页签。私聊房没有"成员"这回事,调用方给
+ * `title: '空间'` 即可 —— 判形态是房面的事,不是右栏的事。
+ *
+ * 不进 `tabOptions`:成员必须绑一间房,picker 里点一下开不出有意义的空成员表
+ * —— 与 `thread` / `review` 同一档,只能从外部入口带着靶子进来。
+ */
+function openMembers(roomSessionId: string, agentId?: string, title?: string): void {
+  if (!roomSessionId) return
+  const existing = openTabs.value.find(tab => tab.type === 'members')
+  if (existing) {
+    existing.sessionId = roomSessionId
+    existing.memberAgentId = agentId || ''
+    if (title) existing.title = title
+    activeTabId.value = existing.id
+    return
+  }
+
+  const tab: WorkbenchTab = {
+    id: 'members',
+    type: 'members',
+    title: title || '成员',
+    sessionId: roomSessionId,
+    memberAgentId: agentId || '',
+  }
+  openTabs.value = [...openTabs.value, tab]
+  activeTabId.value = tab.id
+}
+
+/** 面板里下钻/返回之后把落点写回 tab —— 关掉再开回来时停在同一层。 */
+function setMembersFocus(tabId: string, agentId: string): void {
+  const tab = openTabs.value.find(item => item.id === tabId)
+  if (!tab) return
+  tab.memberAgentId = agentId || ''
+}
+
 function threadTabTitle(title?: string): string {
   const trimmed = (title || '').trim().split('\n')[0] || ''
   if (!trimmed) return ''
@@ -674,6 +730,7 @@ defineExpose({
   openBoard,
   openFolder,
   openThread,
+  openMembers,
 })
 </script>
 

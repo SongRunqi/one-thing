@@ -61,6 +61,23 @@ export function buildDmPresence(task: AgentDoingTask | null): string {
 }
 
 /**
+ * composer 的占位符 —— 样板 `final.html`:群聊「发送到 #浏览器重构」、
+ * 私聊「给小林发消息」(样板行 387 / 584)。
+ *
+ * 为什么是纯函数而不是 CSS:占位符是 `InputBox` 内部 `composerPlaceholder`
+ * computed 的产物,CSS 够不着。R3 因此给 `InputBox` 开了一个**只读 prop**
+ * (`placeholder`),房面把这句话算好递进去;直聊不传,`InputBox` 的行为一个
+ * 字节不变(§8 铁律 5「composer 不重写」)。
+ *
+ * 空名字不编:退回一句不带名字的通用话,而不是画出「发送到 #」这种半截。
+ */
+export function buildComposerPlaceholder(head: Pick<RoomHeadModel, 'mode' | 'name'>): string {
+  const name = (head.name || '').trim()
+  if (head.mode === 'dm') return name ? `给${name}发消息` : '发消息'
+  return name ? `发送到 #${name}` : '发送到这间房'
+}
+
+/**
  * 右栏「线程」tab 的默认落点:这间房里**最近在跑且真开过工作台**的那次执行。
  *
  * 右栏本身仍然是 App 级的那一个(`RightWorkbenchPanel`,C3-B 已带 `thread` tab

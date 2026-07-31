@@ -382,4 +382,4 @@ dist/
 | Storage | File-based (JSON + per-session JSONL) |
 | Build | electron-vite (Vite renderer + Vite main + esbuild preload); vite SSR for apps/server |
 | Test | Vitest |
-| Virtual Scroll | @tanstack/vue-virtual |
+| Virtual Scroll | Hand-rolled, tables only (`packages/renderer/components/common/virtual-table/useVirtualAxis.ts`). The message list is NOT virtualized — it is a plain `v-for` inside `Scrollbar`. |
