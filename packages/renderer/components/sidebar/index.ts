@@ -28,6 +28,19 @@ export {
 export { useActiveWork } from './useActiveWork'
 
 export {
+  SIDEBAR_ROOM_FACE_LIMIT,
+  SIDEBAR_SECTION_IDS,
+  SIDEBAR_SECTIONS_STORAGE_KEY,
+  parseCollapsedSections,
+  serializeCollapsedSections,
+  shouldShowActiveWorkSection,
+  takeRoomFaces,
+  toggleCollapsedSection,
+  type SidebarRoomFaces,
+  type SidebarSectionId,
+} from './sidebar-sections'
+
+export {
   useSessionOrganizer,
   type SessionWithBranches,
   type SessionOrganizerReturn,

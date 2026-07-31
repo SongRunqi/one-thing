@@ -489,6 +489,24 @@ interface Props {
    * 才是回归)。
    */
   placeholder?: string
+  /**
+   * 主按钮是否允许进入**停止态**的只读开关(房/私聊新面走查修复)。
+   *
+   * 直聊里"生成中"就是这个会话自己的流,停止按钮按下去真的能把它掐掉。房里不是:
+   * W18 之后回合跑在各成员的**执行会话**里,房会话本身从来没有流(见
+   * `hasActiveGeneration` 的注释),`command:abort` 打到房 id 上停不掉任何东西 ——
+   * 于是那颗深色圆钮变成一个"按了没反应"的死控件。
+   *
+   * 所以房面传 `false`:发完消息回到发送态(草稿为空时按既有规则 disabled),
+   * 不画一个骗人的停止钮。
+   *
+   * **能停**是引擎侧的事(collab turn 的中断 / 各执行会话的 abort,
+   * `docs/design/collab-team-v2.md` §5 的停止语义)。等那条链路真的接通了,把这个
+   * 开关翻回 `true`(或改成"停这一轮")即可,UI 侧不需要再动结构。
+   *
+   * **缺省 `true` = 与从前逐字节相同**,直聊 / 旧壳一个字节不变。
+   */
+  allowStopAction?: boolean
 }
 
 interface Emits {
@@ -509,6 +527,7 @@ const props = withDefaults(defineProps<Props>(), {
   maxChars: 4000,
   sessionId: undefined,
   placeholder: undefined,
+  allowStopAction: true,
 })
 
 const emit = defineEmits<Emits>()
@@ -933,6 +952,9 @@ const canSend = computed(() => {
 })
 
 const shouldShowStopAction = computed(() => {
+  // 宿主可以整档关掉停止态(房面就关着:那里的"生成中"跑在别的会话上,
+  // 停不掉 —— 见 props.allowStopAction 的注释)。缺省开着 = 直聊零变化。
+  if (!props.allowStopAction) return false
   return hasActiveGeneration.value && !hasMessageContent.value && !hasAttachments.value
 })
 

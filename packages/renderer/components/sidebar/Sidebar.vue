@@ -34,184 +34,294 @@
         ＋ 新会话
       </button>
 
-      <!-- 「进行中」活卡片区 — docs/design/im-workbench-layout.md §3 W1(C1)。
-           左栏的第一区是**活**不是对话:名字 + 负责人 + 状态标 + 进度。
-           两道门:
-            - `isWorkbenchShell` —— classic 是逐像素回滚闸,这一区连挂都不挂
-              (顺序重排走文件末尾的 `data-shell-mode` CSS 门,同样不碰 classic);
-            - `roomsEnabled` —— 看板是房的附属,web 端没有 rooms 协调器,
-              否则那儿会常驻一行永远为空的「没有在跑的活」。 -->
-      <ActiveWorkSection
-        v-if="isWorkbenchShell && roomsEnabled"
-        @open="openActiveWorkCard"
-      />
+      <!-- 统一滚动容器(R4,用户真机走查要求 2)。
+           从前只有会话列表自带滚动,其余三区平铺撑在它上面 —— 房一多,左栏上半
+           截被顶死、下半截各滚各的。这里把四区收进**一个**滚动体。
 
-      <!-- 联系人(通讯录)分区 — docs/design/agent-im-dm.md §4.1 D1。
-           一个 agent 一行,点开就是和 TA 的托管式私聊(单成员 dm 房,惰性建房)。
-           数据源是名册而不是会话列表:没聊过的同事也该在通讯录里站着,否则
-           「第一次找小李」这件事就没有入口。desktop-only —— 私聊是房,rooms
-           在 web 端没有协调器(§7 开放问题),所以与群聊同一道能力门。
-           行样式沿用群聊/Agent 组那一族,不另起一套画线风。 -->
-      <div
-        v-if="roomsEnabled && contacts.length > 0"
-        class="sidebar-rooms sidebar-contacts"
-      >
-        <div class="sidebar-rooms-header">
-          <span class="sidebar-rooms-label">联系人</span>
-        </div>
-        <button
-          v-for="contact in contacts"
-          :key="contact.id"
-          type="button"
-          class="sidebar-room-item sidebar-agent-item sidebar-contact-item"
-          :class="{ 'is-active': isContactActive(contact), 'has-unread': isContactUnread(contact) }"
-          :title="contactTitle(contact)"
-          @click="openContact(contact)"
-          @contextmenu.prevent="openContactMenu($event, contact)"
+           classic 下这一层是 `display: contents`:不生成盒子,四区仍然是
+           `.sidebar-content` 的直接布局子,排版与从前逐像素一致(纪律 1)。
+           workbench 下它才成为唯一的滚动容器(样式见文件末尾的形态门)。 -->
+      <div class="sidebar-sections">
+        <!-- 「进行中」活卡片区 — docs/design/im-workbench-layout.md §3 W1(C1)。
+             左栏的第一区是**活**不是对话:名字 + 负责人 + 状态标 + 进度。
+             两道门:
+              - `isWorkbenchShell` —— classic 是逐像素回滚闸,这一区连挂都不挂
+                (顺序重排走文件末尾的 `data-shell-mode` CSS 门,同样不碰 classic);
+              - `roomsEnabled` —— 看板是房的附属,web 端没有 rooms 协调器。
+             「没有在跑的活时整区不显示」那一层在组件自己身上(挂载带着一次看板
+             取数,得先挂上才知道有没有活)。 -->
+        <ActiveWorkSection
+          v-if="isWorkbenchShell && roomsEnabled"
+          :collapsed="isSectionCollapsed('active-work')"
+          @toggle="toggleSection('active-work')"
+          @open="openActiveWorkCard"
+        />
+
+        <!-- 联系人(通讯录)分区 — docs/design/agent-im-dm.md §4.1 D1。
+             一个 agent 一行,点开就是和 TA 的托管式私聊(单成员 dm 房,惰性建房)。
+             数据源是名册而不是会话列表:没聊过的同事也该在通讯录里站着,否则
+             「第一次找小李」这件事就没有入口。desktop-only —— 私聊是房,rooms
+             在 web 端没有协调器(§7 开放问题),所以与群聊同一道能力门。
+             行样式沿用群聊/Agent 组那一族,不另起一套画线风。 -->
+        <div
+          v-if="roomsEnabled && contacts.length > 0"
+          class="sidebar-rooms sidebar-contacts"
         >
-          <AgentAvatar
-            class="sidebar-agent-avatar"
-            aria-hidden="true"
-            :avatar="contact.avatar"
-            :avatar-image="contact.avatarImage"
-            :size="18"
-          />
-          <span class="sidebar-room-name">{{ contact.name }}</span>
-          <span
-            v-if="contact.title"
-            class="sidebar-contact-title"
-          >{{ contact.title }}</span>
-          <!-- 未读墨点(agent-im-dm.md P4)。一枚点,不摆数字:系统只知道"有没有
-               新话",不知道"几条" —— 编一个计数出来比不显示更糟。 -->
-          <span
-            v-if="isContactUnread(contact)"
-            class="sidebar-unread-dot"
-            aria-label="有新消息"
-          />
-        </button>
-        <!-- 失败一行墨(RoomMemberStrip 同款):建房被拒(退休/service/查无此人)
-             或 web 端不支持,都必须看得见,绝不静默无反应。 -->
-        <span
-          v-if="contactError"
-          class="sidebar-contacts-error"
-          :title="contactError"
-        >{{ contactError }}</span>
-      </div>
-
-      <!-- 群聊(多 Agent 房间)分区 — docs/design/multi-agent-collab.md。
-           吃的是 groupRoomSessions:私聊房不在这里出现,联系人行是它唯一的
-           侧栏入口(agent-im-dm.md §4.1),否则一间房会在侧栏出现两次。 -->
-      <div
-        v-if="roomSessions.length > 0 || roomsEnabled"
-        class="sidebar-rooms"
-      >
-        <div class="sidebar-rooms-header">
-          <span class="sidebar-rooms-label">群聊</span>
-          <button
-            v-if="roomsEnabled"
-            type="button"
-            class="sidebar-rooms-add"
-            title="新建群聊"
-            aria-label="新建群聊"
-            @click="showRoomDialog = true"
-          >
-            ＋
-          </button>
-        </div>
-        <button
-          v-for="room in roomSessions"
-          :key="room.id"
-          type="button"
-          class="sidebar-room-item"
-          :class="{
-            'is-active': sessionsStore.currentSessionId === room.id,
-            'has-unread': sessionsStore.isUnreadSession(room.id),
-          }"
-          @click="openRoom(room.id)"
-          @contextmenu.prevent="openRoomContextMenu($event, room)"
-        >
-          <span class="sidebar-room-name">{{ room.name }}</span>
-          <span
-            v-if="sessionsStore.isUnreadSession(room.id)"
-            class="sidebar-unread-dot"
-            aria-label="有新消息"
-          />
-        </button>
-
-        <!-- 「私下」= 双成员 dm 房(agent 互聊,agent-im-dm.md §4.1/D4)。
-             群聊区**里**的折叠子分组,不是与它并列的第四段:agent 之间的私聊是
-             群聊的旁支,而透明制要求它在侧栏看得见 —— 看得见,但默认收起,不占
-             视线。房名「A ⇄ B」由引擎现算,这里只显示。 -->
-        <template v-if="pairDmRooms.length > 0">
-          <button
-            type="button"
-            class="sidebar-subgroup"
-            :aria-expanded="pairDmOpen"
-            @click="pairDmOpen = !pairDmOpen"
-          >
-            <span
-              class="sidebar-subgroup-caret"
-              :class="{ open: pairDmOpen }"
-              aria-hidden="true"
-            >›</span>
-            <span class="sidebar-subgroup-label">私下</span>
-            <span class="sidebar-subgroup-count">{{ pairDmRooms.length }}</span>
-            <!-- 收起时组头替组内那些看不见的行说话;展开了就各说各的,组头闭嘴。 -->
-            <span
-              v-if="!pairDmOpen && pairDmUnread"
-              class="sidebar-unread-dot"
-              aria-label="有新消息"
-            />
-          </button>
-          <template v-if="pairDmOpen">
+          <div class="sidebar-rooms-header">
+            <!-- workbench 下分区头即折叠钮;classic 仍是一枚不可点的标签
+                 (纪律 1:形态差异关在门里,classic 一个像素不变)。 -->
             <button
-              v-for="room in pairDmRooms"
+              v-if="isWorkbenchShell"
+              type="button"
+              class="sidebar-section-toggle"
+              :aria-expanded="!isSectionCollapsed('contacts')"
+              @click="toggleSection('contacts')"
+            >
+              <span
+                class="sidebar-section-caret"
+                :class="{ open: !isSectionCollapsed('contacts') }"
+                aria-hidden="true"
+              >›</span>
+              <span class="sidebar-rooms-label">同事</span>
+              <span class="sidebar-section-count">{{ contacts.length }}</span>
+            </button>
+            <span
+              v-else
+              class="sidebar-rooms-label"
+            >联系人</span>
+          </div>
+          <template v-if="!isSectionCollapsed('contacts')">
+            <button
+              v-for="contact in contacts"
+              :key="contact.id"
+              type="button"
+              class="sidebar-room-item sidebar-agent-item sidebar-contact-item"
+              :class="{ 'is-active': isContactActive(contact), 'has-unread': isContactUnread(contact) }"
+              :title="contactTitle(contact)"
+              @click="openContact(contact)"
+              @contextmenu.prevent="openContactMenu($event, contact)"
+            >
+              <AgentAvatar
+                class="sidebar-agent-avatar"
+                aria-hidden="true"
+                :avatar="contact.avatar"
+                :avatar-image="contact.avatarImage"
+                :size="18"
+              />
+              <span class="sidebar-room-name">{{ contact.name }}</span>
+              <span
+                v-if="contact.title"
+                class="sidebar-contact-title"
+              >{{ contact.title }}</span>
+              <!-- 未读墨点(agent-im-dm.md P4)。一枚点,不摆数字:系统只知道"有没有
+                   新话",不知道"几条" —— 编一个计数出来比不显示更糟。 -->
+              <span
+                v-if="isContactUnread(contact)"
+                class="sidebar-unread-dot"
+                aria-label="有新消息"
+              />
+            </button>
+          </template>
+          <!-- 失败一行墨(RoomMemberStrip 同款):建房被拒(退休/service/查无此人)
+               或 web 端不支持,都必须看得见,绝不静默无反应。收起也照旧显示 ——
+               一条报错藏进折叠里就等于没有报错。 -->
+          <span
+            v-if="contactError"
+            class="sidebar-contacts-error"
+            :title="contactError"
+          >{{ contactError }}</span>
+        </div>
+
+        <!-- 群聊(多 Agent 房间)分区 — docs/design/multi-agent-collab.md。
+             吃的是 groupRoomSessions:私聊房不在这里出现,联系人行是它唯一的
+             侧栏入口(agent-im-dm.md §4.1),否则一间房会在侧栏出现两次。 -->
+        <div
+          v-if="roomSessions.length > 0 || roomsEnabled"
+          class="sidebar-rooms"
+        >
+          <div class="sidebar-rooms-header">
+            <button
+              v-if="isWorkbenchShell"
+              type="button"
+              class="sidebar-section-toggle"
+              :aria-expanded="!isSectionCollapsed('rooms')"
+              @click="toggleSection('rooms')"
+            >
+              <span
+                class="sidebar-section-caret"
+                :class="{ open: !isSectionCollapsed('rooms') }"
+                aria-hidden="true"
+              >›</span>
+              <span class="sidebar-rooms-label">群聊</span>
+              <span class="sidebar-section-count">{{ roomSessions.length }}</span>
+            </button>
+            <span
+              v-else
+              class="sidebar-rooms-label"
+            >群聊</span>
+            <button
+              v-if="roomsEnabled"
+              type="button"
+              class="sidebar-rooms-add"
+              title="新建群聊"
+              aria-label="新建群聊"
+              @click="showRoomDialog = true"
+            >
+              ＋
+            </button>
+          </div>
+          <template v-if="!isSectionCollapsed('rooms')">
+            <button
+              v-for="room in roomSessions"
               :key="room.id"
               type="button"
-              class="sidebar-room-item sidebar-subgroup-item"
+              class="sidebar-room-item"
               :class="{
                 'is-active': sessionsStore.currentSessionId === room.id,
                 'has-unread': sessionsStore.isUnreadSession(room.id),
+                'has-faces': roomFaces(room.id).faces.length > 0,
               }"
               @click="openRoom(room.id)"
               @contextmenu.prevent="openRoomContextMenu($event, room)"
             >
               <span class="sidebar-room-name">{{ room.name }}</span>
+              <!-- 成员头像堆(样板左栏 `.faces`):群聊行上"这是谁的群"一眼可见,
+                   这是样板真正比现状强的地方。名册→成员的翻译复用房头成员条那
+                   一处 `buildRoomMemberEntries`(退休/查无此人的墓碑口径一并
+                   继承),这里只截前三枚。workbench-only —— classic 下
+                   `roomFacesById` 直接返回空表,一枚都不画。 -->
+              <span
+                v-if="roomFaces(room.id).faces.length > 0"
+                class="sidebar-room-faces"
+                aria-hidden="true"
+              >
+                <AgentAvatar
+                  v-for="face in roomFaces(room.id).faces"
+                  :key="face.id"
+                  class="sidebar-room-face"
+                  :class="{ 'is-retired': face.isRetired }"
+                  :avatar="face.avatar"
+                  :avatar-image="face.avatarImage"
+                  :size="16"
+                />
+                <span
+                  v-if="roomFaces(room.id).overflow > 0"
+                  class="sidebar-room-face-more"
+                >+{{ roomFaces(room.id).overflow }}</span>
+              </span>
               <span
                 v-if="sessionsStore.isUnreadSession(room.id)"
                 class="sidebar-unread-dot"
                 aria-label="有新消息"
               />
             </button>
+
+            <!-- 「私下」= 双成员 dm 房(agent 互聊,agent-im-dm.md §4.1/D4)。
+                 群聊区**里**的折叠子分组,不是与它并列的第四段:agent 之间的私聊是
+                 群聊的旁支,而透明制要求它在侧栏看得见 —— 看得见,但默认收起,不占
+                 视线。房名「A ⇄ B」由引擎现算,这里只显示。 -->
+            <template v-if="pairDmRooms.length > 0">
+              <button
+                type="button"
+                class="sidebar-subgroup"
+                :aria-expanded="pairDmOpen"
+                @click="pairDmOpen = !pairDmOpen"
+              >
+                <span
+                  class="sidebar-subgroup-caret"
+                  :class="{ open: pairDmOpen }"
+                  aria-hidden="true"
+                >›</span>
+                <span class="sidebar-subgroup-label">私下</span>
+                <span class="sidebar-subgroup-count">{{ pairDmRooms.length }}</span>
+                <!-- 收起时组头替组内那些看不见的行说话;展开了就各说各的,组头闭嘴。 -->
+                <span
+                  v-if="!pairDmOpen && pairDmUnread"
+                  class="sidebar-unread-dot"
+                  aria-label="有新消息"
+                />
+              </button>
+              <template v-if="pairDmOpen">
+                <button
+                  v-for="room in pairDmRooms"
+                  :key="room.id"
+                  type="button"
+                  class="sidebar-room-item sidebar-subgroup-item"
+                  :class="{
+                    'is-active': sessionsStore.currentSessionId === room.id,
+                    'has-unread': sessionsStore.isUnreadSession(room.id),
+                  }"
+                  @click="openRoom(room.id)"
+                  @contextmenu.prevent="openRoomContextMenu($event, room)"
+                >
+                  <span class="sidebar-room-name">{{ room.name }}</span>
+                  <span
+                    v-if="sessionsStore.isUnreadSession(room.id)"
+                    class="sidebar-unread-dot"
+                    aria-label="有新消息"
+                  />
+                </button>
+              </template>
+            </template>
           </template>
-        </template>
+        </div>
+
+        <!-- 「Agent 组」已退役(agent-im-dm.md §4.1)。它唯一的能力 —— 各群执行
+             会话的只读转录入口 —— 迁进了 Agents 面板的履历页「群聊」栏:基础设施
+             转录放在通讯录层级是错位的,而履历页本来就是"这个人干过什么"的家。
+             侧栏这一层从此只剩 联系人 / 群聊 / 会话 三段 IM 结构。 -->
+
+        <!-- 「直聊」分区头(样板左栏第四段)。会话列表本身没有头,workbench 下
+             给它补一个,好让第四区与前三区一样能收起来。classic 不挂 —— 那边
+             会话列表照旧直接接在群聊区下面。 -->
+        <div
+          v-if="isWorkbenchShell"
+          class="sidebar-rooms sidebar-direct-header"
+        >
+          <div class="sidebar-rooms-header">
+            <button
+              type="button"
+              class="sidebar-section-toggle"
+              :aria-expanded="!isSectionCollapsed('sessions')"
+              @click="toggleSection('sessions')"
+            >
+              <span
+                class="sidebar-section-caret"
+                :class="{ open: !isSectionCollapsed('sessions') }"
+                aria-hidden="true"
+              >›</span>
+              <span class="sidebar-rooms-label">直聊</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Session List: workspace actions live inside the same scroll panel -->
+        <SessionList
+          v-if="!isSectionCollapsed('sessions')"
+          :groups="groupedSessions"
+          :active-index="activeSidebarIndex"
+          :current-session-id="sessionsStore.currentSessionId"
+          :is-session-generating="chatStore.isSessionGenerating"
+          :editing-session-id="editingSessionId"
+          :editing-name="editingName"
+          @menu-select="handleSidebarMenuSelect"
+          @context-menu="openContextMenu"
+          @toggle-collapse="sessionOrganizer.toggleCollapse"
+          @start-rename="startInlineRename"
+          @confirm-rename="confirmInlineRename"
+          @cancel-rename="cancelInlineRename"
+          @overflow-change="handleOverflowChange"
+        />
       </div>
 
-      <!-- 「Agent 组」已退役(agent-im-dm.md §4.1)。它唯一的能力 —— 各群执行
-           会话的只读转录入口 —— 迁进了 Agents 面板的履历页「群聊」栏:基础设施
-           转录放在通讯录层级是错位的,而履历页本来就是"这个人干过什么"的家。
-           侧栏这一层从此只剩 联系人 / 群聊 / 会话 三段 IM 结构。 -->
-
-      <!-- Session List: workspace actions live inside the same scroll panel -->
-      <SessionList
-        :groups="groupedSessions"
-        :active-index="activeSidebarIndex"
-        :current-session-id="sessionsStore.currentSessionId"
-        :is-session-generating="chatStore.isSessionGenerating"
-        :editing-session-id="editingSessionId"
-        :editing-name="editingName"
-        @menu-select="handleSidebarMenuSelect"
-        @context-menu="openContextMenu"
-        @toggle-collapse="sessionOrganizer.toggleCollapse"
-        @start-rename="startInlineRename"
-        @confirm-rename="confirmInlineRename"
-        @cancel-rename="cancelInlineRename"
-        @overflow-change="handleOverflowChange"
-      />
-
       <!-- Bottom dock (方案二/v7 原样): 裸 16px 线性图标浮在白胶囊里，
-           单色墨系（rest 灰 → hover/active 墨），设置在分隔线右侧。 -->
-      <div class="sidebar-dock">
+           单色墨系（rest 灰 → hover/active 墨），设置在分隔线右侧。
+           **classic 专属** —— workbench 下这排平铺图标撤掉(用户真机要求 4),
+           五个工作区面板收进下面那条脚栏的「⋯」菜单,一个入口都不丢。 -->
+      <div
+        v-if="!isWorkbenchShell"
+        class="sidebar-dock"
+      >
         <div class="sidebar-dock-pill">
           <button
             v-for="action in workspaceActions"
@@ -247,6 +357,61 @@
           </button>
         </div>
       </div>
+
+      <!-- 工作台脚栏(样板左栏 `.foot`):一条发丝线上的两枚裸图标。
+           「⋯」是五个工作区面板(Memory/Media/Agents/Tasks/Music)的新家 ——
+           平铺那一排撤了,入口一个不少;设置照旧单列一枚,它是最常按的那个。
+           样板画的「我 · 宋一天」身份条这里没有:渲染层没有用户档案这份数据,
+           编一个名字出来比不画更糟(见报告第 6 条)。 -->
+      <div
+        v-else
+        class="sidebar-foot"
+      >
+        <button
+          type="button"
+          class="sidebar-foot-icon"
+          :class="{ 'is-active': activeWorkspacePanel !== null }"
+          title="工作区面板"
+          aria-label="工作区面板"
+          :aria-expanded="workspaceMenu !== null"
+          @click="openWorkspaceMenu"
+        >
+          <MoreHorizontal
+            :size="16"
+            :stroke-width="1.7"
+          />
+        </button>
+        <span
+          class="sidebar-foot-spacer"
+          aria-hidden="true"
+        />
+        <button
+          type="button"
+          class="sidebar-foot-icon"
+          title="Settings"
+          aria-label="Settings"
+          @click="$emit('open-settings')"
+        >
+          <Settings
+            :size="16"
+            :stroke-width="1.7"
+          />
+        </button>
+      </div>
+
+      <!-- 「⋯」= 工作区面板菜单。复用既有 ContextMenu(Teleport 到 body,不会被
+           左栏的 overflow 裁掉),锚点取按钮的 rect 而不是鼠标位置 —— 它是个
+           下拉,不是右键菜单。 -->
+      <ContextMenu
+        v-if="isWorkbenchShell"
+        class="sidebar-workspace-menu"
+        :show="workspaceMenu !== null"
+        :x="workspaceMenu?.x ?? 0"
+        :y="workspaceMenu?.y ?? 0"
+        :items="workspaceMenuItems"
+        @select="onWorkspaceMenuSelect"
+        @close="workspaceMenu = null"
+      />
 
       <RoomCreateDialog
         :visible="showRoomDialog"
@@ -288,7 +453,8 @@ import ContextMenu from '@/components/common/ContextMenu.vue'
 import type { ContextMenuItem } from '@/components/common/context-menu'
 import { DEFAULT_AGENT_ID, useAgentsStore } from '@/stores/agents'
 import { useChatStore } from '@/stores/chat'
-import { Bot, Brain, CalendarClock, Images, Radio, Settings } from 'lucide-vue-next'
+import { Bot, Brain, CalendarClock, Images, MoreHorizontal, Radio, Settings } from 'lucide-vue-next'
+import { buildRoomMemberEntries, type RoomMemberEntry } from '@/components/chat/room-member-strip'
 import SidebarHeader from './SidebarHeader.vue'
 import SidebarActionGroup from './SidebarActionGroup.vue'
 import SessionList from './SessionList.vue'
@@ -296,6 +462,14 @@ import SessionContextMenu from './SessionContextMenu.vue'
 import RoomCreateDialog from './RoomCreateDialog.vue'
 import ActiveWorkSection from './ActiveWorkSection.vue'
 import type { ActiveWorkCardModel } from './active-work'
+import {
+  SIDEBAR_SECTIONS_STORAGE_KEY,
+  parseCollapsedSections,
+  serializeCollapsedSections,
+  takeRoomFaces,
+  toggleCollapsedSection,
+  type SidebarSectionId,
+} from './sidebar-sections'
 import { platformApi } from '@/platform'
 import { useWorkspaceStore } from '@/stores/workspace'
 import { useSettingsStore } from '@/stores/settings'
@@ -375,6 +549,68 @@ try {
 const isWorkbenchShell = computed(
   () => !!settingsStore && resolveShellMode(settingsStore.settings) === 'workbench',
 )
+
+// ── 分区折叠(R4,用户真机走查要求 1)──────────────────────────────────────
+// 判定与存档格式全在 `sidebar-sections.ts`(纯函数),这里只负责读一次、写一次。
+// localStorage 而不是 settings:「这一区我收起来了」是本机视图偏好,不跨端同步。
+const collapsedSections = ref<Set<SidebarSectionId>>(
+  parseCollapsedSections(readCollapsedSections()),
+)
+
+function readCollapsedSections(): string | null {
+  try {
+    return localStorage.getItem(SIDEBAR_SECTIONS_STORAGE_KEY)
+  } catch {
+    // 隐私模式/沙箱里 localStorage 会抛 —— 读不到就是"什么都没收起来"。
+    return null
+  }
+}
+
+/**
+ * classic 永远当作"全部展开":折叠是 workbench 的形态,逐像素回滚闸下连这个
+ * 状态都不该被读出来(否则在 workbench 收过的区,切回 classic 会凭空消失)。
+ */
+function isSectionCollapsed(id: SidebarSectionId): boolean {
+  return isWorkbenchShell.value && collapsedSections.value.has(id)
+}
+
+function toggleSection(id: SidebarSectionId): void {
+  collapsedSections.value = toggleCollapsedSection(collapsedSections.value, id)
+  try {
+    localStorage.setItem(
+      SIDEBAR_SECTIONS_STORAGE_KEY,
+      serializeCollapsedSections(collapsedSections.value),
+    )
+  } catch {
+    // 存不下就只在本次会话里生效,不该因此把折叠这个动作也废掉。
+  }
+}
+
+/**
+ * 群聊行的成员头像堆(样板左栏 `.faces`)。
+ *
+ * 名册 → 成员条目的翻译**只有一处**:`chat/room-member-strip.ts` 的
+ * `buildRoomMemberEntries`,与房头成员条同一个 selector —— 退休/查无此人的墓碑
+ * 口径、负责人标记全部继承,这里不写第二份。截断交给 `takeRoomFaces`。
+ */
+const roomFacesById = computed(() => {
+  const byRoom: Record<string, ReturnType<typeof takeRoomFaces<RoomMemberEntry>>> = {}
+  // classic 一枚头像都不画,连算都不算(逐像素回滚闸)。
+  if (!isWorkbenchShell.value) return byRoom
+  const agents = agentsStore.agents ?? []
+  for (const room of roomSessions.value) {
+    byRoom[room.id] = takeRoomFaces(buildRoomMemberEntries({
+      memberAgentIds: room.room?.memberAgentIds ?? [],
+      agents,
+      pmAgentId: room.room?.pmAgentId,
+    }))
+  }
+  return byRoom
+})
+
+function roomFaces(roomSessionId: string) {
+  return roomFacesById.value[roomSessionId] ?? { faces: [], overflow: 0 }
+}
 
 /**
  * 点一张活卡片 = 打开这张卡所在的房(与群聊行同一条 `openSession` 链路)
@@ -523,6 +759,35 @@ const workspaceActions = [
   { id: 'tasks' as const, label: 'Tasks', icon: CalendarClock },
   { id: 'music' as const, label: 'Music', icon: Radio },
 ]
+
+// ── 「⋯」工作区面板菜单(R4,用户真机走查要求 4)──────────────────────────
+// 平铺的一排 dock 图标在 workbench 下撤掉了,但那是这五个面板**唯一**的入口 ——
+// 删掉就等于把功能弄没。清单直接吃 `workspaceActions`(不抄第二份:少一个就是
+// 少一个进不去的面板),菜单项 = 面板,一一对应。
+const workspaceMenu = ref<{ x: number; y: number } | null>(null)
+
+const workspaceMenuItems = computed<ContextMenuItem[]>(() =>
+  workspaceActions.map(action => ({
+    id: action.id,
+    label: action.label,
+    icon: action.icon,
+  })),
+)
+
+/** 锚点取按钮的 rect:它是个下拉,不是右键菜单,不该跟着鼠标落点跑。 */
+function openWorkspaceMenu(event: MouseEvent): void {
+  const rect = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect()
+  workspaceMenu.value = rect
+    ? { x: Math.round(rect.left), y: Math.round(rect.top) }
+    : { x: event.clientX, y: event.clientY }
+}
+
+function onWorkspaceMenuSelect(id: string): void {
+  workspaceMenu.value = null
+  const action = workspaceActions.find(candidate => candidate.id === id)
+  if (!action) return
+  emit('open-workspace-panel', action.id)
+}
 
 // Composable
 const sessionOrganizer = useSessionOrganizer()
@@ -880,6 +1145,60 @@ onUnmounted(() => {
   color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
 }
 
+/* 统一滚动容器。classic 下 `display: contents` —— 不生成盒子,四区仍然是
+   `.sidebar-content` 的直接布局子,排版与从前逐像素一致。真正成为滚动体的规则
+   写在文件末尾的 `data-shell-mode='workbench'` 门里。 */
+.sidebar-sections {
+  display: contents;
+}
+
+/* 分区头即折叠钮(workbench)。一枚发丝 caret + 标签 + 计数,没有填充也没有
+   边框 —— 与「私下」子分组同一句法。classic 下这个元素根本不渲染。 */
+.sidebar-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sidebar-section-caret {
+  display: inline-block;
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  transition: transform 0.12s ease;
+}
+
+.sidebar-section-caret.open {
+  transform: rotate(90deg);
+}
+
+.sidebar-section-count {
+  font-size: 10px;
+  opacity: 0.7;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+  user-select: none;
+}
+
+.sidebar-section-toggle:hover .sidebar-rooms-label,
+.sidebar-section-toggle:hover .sidebar-section-caret {
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+}
+
+/* 「直聊」头是一段只有头没有行的分区 —— 底部内边距归零,免得它和下面的会话
+   列表之间多出一条空档。 */
+.sidebar-direct-header {
+  padding-bottom: 0;
+}
+
 /* 联系人 / 群聊两组——同一套画线风,共用一条规则而不是各画一份,免得两组
    日后长歪成两种样子。 */
 .sidebar-contacts,
@@ -955,6 +1274,68 @@ onUnmounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 成员头像堆(样板 `.faces`):向左叠压 5px,首枚不压。行本身与未读那条同理 ——
+   只有带堆的行才切成 flex,不带的一个字节不动。 */
+.sidebar-room-item.has-faces {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-room-item.has-faces .sidebar-room-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-room-faces {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* 画线圆章,与联系人行那枚同一句法,尺寸再收一档(16px)。叠压处描一圈底色,
+   让相邻两枚之间留出一条呼吸缝 —— 样板用的是 1.5px 的 surface 描边。 */
+.sidebar-room-face {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -5px;
+  border: 1px solid color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 26%, transparent);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--sidebar-bg);
+  background: var(--sidebar-bg);
+  font-size: 9px;
+  line-height: 1;
+}
+
+.sidebar-room-face:first-child {
+  margin-left: 0;
+}
+
+/* 已注销的成员照旧出现在堆里(墓碑口径与房头成员条一致),只是灰一档。 */
+.sidebar-room-face.is-retired {
+  opacity: 0.45;
+}
+
+.sidebar-room-face-more {
+  margin-left: 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--text-muted)));
+}
+
+/* 未读点在堆之后,靠 margin 归零(堆已经吃掉了 auto)。 */
+.sidebar-room-item.has-faces .sidebar-unread-dot {
+  margin-left: 0;
 }
 
 /* 5px 一点墨,不描边不发光;靠 margin-left:auto 贴住行尾,名字永远先保住。 */
@@ -1110,8 +1491,13 @@ onUnmounted(() => {
 }
 
 /* 暗色（html[data-theme='dark']）：flexoki 色阶翻转后 fx-base-50 变最深，
-   胶囊改用主题的浮起面（比 sidebar 底亮一档，与弹层一致） */
-:global(html[data-theme='dark']) .sidebar-dock-pill {
+   胶囊改用主题的浮起面（比 sidebar 底亮一档，与弹层一致）
+
+   ⚠️ 不写 `:global(...)` —— 见文件末尾那段说明:`:global(X) .y` 会被
+   `@vue/compiler-sfc` 截断成 `X`,这条从前一直是把整页背景改掉,而不是改胶囊。
+   祖先是 `html` 本来就不需要 `:global`:scoped 只给**最后一个**复合选择器
+   补 `[data-v-xxx]`,祖先部分照原样输出。 */
+html[data-theme='dark'] .sidebar-dock-pill {
   background: var(--ui-surface-floating-bg, var(--bg-floating, var(--fx-base-300)));
 }
 
@@ -1150,6 +1536,52 @@ onUnmounted(() => {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
 }
 
+/* ── 工作台脚栏(样板左栏 `.foot`)────────────────────────────────────────
+   一条发丝线,两枚裸图标,没有胶囊也没有阴影 —— 胶囊 dock 那套浮起感属于
+   classic;工作台这一面把最后一条横线留给身份/入口。workbench-only。 */
+.sidebar-foot {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 10px;
+  padding: 9px 14px 11px;
+  border-top: 1px solid color-mix(
+    in srgb,
+    var(--ui-sidebar-border-border, var(--ui-border-subtle-border, var(--border-subtle, var(--border)))) 72%,
+    transparent
+  );
+}
+
+.sidebar-foot-spacer {
+  flex: 1 1 auto;
+}
+
+.sidebar-foot-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 4px;
+  margin: -4px;
+  border: none;
+  background: transparent;
+  color: color-mix(in srgb, var(--sidebar-row-ink, var(--text)) 56%, transparent);
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.sidebar-foot-icon:hover,
+.sidebar-foot-icon:focus-visible,
+.sidebar-foot-icon.is-active {
+  color: var(--sidebar-row-ink, var(--ui-text-primary-fg, var(--text)));
+}
+
+.sidebar-foot-icon:focus-visible {
+  outline: none;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-primary-fg, var(--accent)) 36%, transparent);
+}
+
 /* ── 工作台外壳:左栏四区重排(im-workbench-layout.md §3 W1)──────────────
    顺序即优先级:进行中 → 群聊 → 同事 → 直聊。
 
@@ -1158,25 +1590,68 @@ onUnmounted(() => {
    声明一条都不生效,DOM 顺序与从前逐像素一致(C0 纪律 3)。
    注:`.sidebar-contacts` 同时带着 `.sidebar-rooms`,所以群聊那条必须排除它,
    否则同事区会被判成群聊区。 */
-:global(html[data-shell-mode='workbench']) .sidebar-content > .sidebar-active-work {
+/* ⚠️⚠️ 本仓库最容易再踩的 CSS 坑:**`:global(X) .y` 会被静默截断成 `X`。**
+ *
+ * `@vue/compiler-sfc`(3.5.26)的 scoped 插件遇到 `:global()` 时,会把该复合
+ * 选择器**之后的所有部分丢掉**。实测:
+ *
+ *   `:global(html[x]) .a > .b`  →  `html[x]`              ← 后代整段消失
+ *   `html[x] .a > .b`           →  `html[x] .a > .b[data-v-xxx]`   ← 正确
+ *   `:global(html[x] .a > .b)`  →  `html[x] .a > .b`      ← 正确但完全不作用域
+ *
+ * 后果不只是"规则失效",而是**声明被扣到 `<html>` 头上**。C1 落地的那五条
+ * `:global(html[data-shell-mode='workbench']) .sidebar-content > .xxx { order: N }`
+ * 编译出来是 `html[data-shell-mode='workbench'] { order: N }` —— 这才是「order
+ * 一直是死规则、真机上联系人仍在群聊之上」的真因(不是"父级不是 flex":
+ * `.sidebar-content` 是 `Space` 的根,`.app-space` 本来就 `display:flex` +
+ * `.app-space--vertical` 的 column;`Space` 也只在 `spacer`/`fill` 时才包
+ * `.app-space__item`,侧栏两者都没有,四区一直是直接子)。
+ *
+ * 正确写法:祖先是 `html` 时**根本不需要 `:global`** —— scoped 只给最后一个
+ * 复合选择器补 `[data-v-xxx]`,祖先部分照原样输出,作用域还在。 */
+
+/* 统一滚动容器(用户真机走查要求 2)。从前只有会话列表自带滚动、其余三区平铺
+   撑在它上面;这里把四区一起交给一个滚动体,脚栏留在外面钉住底边。
+   `.sidebar-content`(= Space 根)本来就是 flex 列,这里不用再声明一次。
+   classic 下这一层仍是 `display: contents`(见上),四区照旧是 `.sidebar-content`
+   的直接布局子 —— 那边一个像素不变。 */
+html[data-shell-mode='workbench'] .sidebar-sections {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 会话列表原本自己带着 10/12 的横向内边距;各区在这里各带各的,容器只管滚。 */
+  overscroll-behavior: contain;
+}
+
+/* 四区重排:顺序即优先级。`order` 的作用域跟着盒子走 —— 四区现在是
+   `.sidebar-sections` 的子,选择器必须一并搬过来,否则又是一组死规则。 */
+html[data-shell-mode='workbench'] .sidebar-sections > .sidebar-active-work {
   order: 1;
 }
 
-:global(html[data-shell-mode='workbench']) .sidebar-content > .sidebar-rooms:not(.sidebar-contacts) {
+html[data-shell-mode='workbench'] .sidebar-sections > .sidebar-rooms:not(.sidebar-contacts):not(.sidebar-direct-header) {
   order: 2;
 }
 
-:global(html[data-shell-mode='workbench']) .sidebar-content > .sidebar-contacts {
+html[data-shell-mode='workbench'] .sidebar-sections > .sidebar-contacts {
   order: 3;
 }
 
-:global(html[data-shell-mode='workbench']) .sidebar-content > .session-list-wrapper {
+html[data-shell-mode='workbench'] .sidebar-sections > .sidebar-direct-header {
   order: 4;
 }
 
-:global(html[data-shell-mode='workbench']) .sidebar-content > .sidebar-dock {
+html[data-shell-mode='workbench'] .sidebar-sections > .session-list-wrapper {
   order: 5;
 }
+
+/* 会话列表交出它的内部滚动:统一容器里再来一层 `overflow: auto` 就是双滚动条。
+   `.session-list-wrapper` 的 `flex: 1` 也得让位 —— 在滚动容器里它该按内容
+   撑开,而不是抢走整条竖轴。规则写在 `SessionList.vue` 自己身上(scoped CSS
+   够不到子组件内部,而 `.sessions-list` 的 `contain: strict` 必须同时解开)。 */
 
 @media (max-width: 768px) {
   .sidebar {

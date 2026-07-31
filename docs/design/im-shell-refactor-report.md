@@ -143,7 +143,31 @@ R3-4 的连带修正两条(都是我做的):
 
 ## 5. 遗留与仓库债
 
-**本次发现、有意未修的:**
+### ⚠️ 本仓库最容易再踩的 CSS 坑:`:global(X) .y` 会被静默截断成 `X`
+
+真机走查追查「左栏四区没重排」时挖出来的,**整条线最有价值的一条**。
+
+`@vue/compiler-sfc` 的 scoped 转换里,`:global()` **后面跟后代选择器时,后代整段被丢弃**,声明直接落到 `:global()` 里那个元素上。实测(3.5.26):
+
+```
+:global(html[x]) .a > .b { … }   →   html[x] { … }              ← 后代整段消失
+html[x] .a > .b { … }            →   html[x] .a > .b[data-v-X]  ← 正确,且仍带作用域
+:global(html[x] .a > .b) { … }   →   html[x] .a > .b            ← 正确,但整条不带作用域
+```
+
+**门在祖先上时根本不需要 `:global()`** —— Vue 只给**最后一个**复合选择器追加 `[data-v-x]`,祖先原样输出,作用域自动保住。
+
+这一坑造成的实际后果:
+
+- C1 的五条四区重排 `order` 编译成 `html[data-shell-mode='workbench'] { order: N }` —— **给 `<html>` 排序**,所以真机上四区一直按 DOM 序排(联系人在群聊之上)。规则语法正确、"规则存在且关在门里"的扫描测试也全绿,**只有真机看得出来**。
+- 排查途中我自己加的"修复"更糟:`:global(html[…]) .sidebar-content { display:flex }` → `html { display:flex; flex-direction:column }`,把页面根元素变成了 flex 列。
+- 同文件一条**既有**的:`:global(html[data-theme='dark']) .sidebar-dock-pill` → `html[data-theme='dark'] { background: … }`,一直在给**整个页面背景**上色。
+
+**全库扫描结果**:11 条中招,10 条在左栏(已全部改成 `html[…] .xxx`),剩 **`packages/renderer/components/common/SplitterPanel.vue:145`** 未修(拖拽时 `transition:none` 落在 splitter 容器而非面板上)——不在本次泳道,单独记账。其余 41 处 `:global()` 是"整条包起来"的写法,没问题。
+
+**方法论也值得留下**:用 `@vue/compiler-sfc` 的 `compileStyle` 直接编译 SFC 的 style 块、读输出选择器 —— 这与 `@vitejs/plugin-vue` 的转换完全一致,于是"这条选择器还在不在、匹不匹配得上"从猜测变成**可判定**。happy-dom 不做布局也不套用 SFC 样式,单测在这一层是盲的;编译级探针补上了这个盲区。
+
+### 本次发现、有意未修的:
 
 1. **`mergeWithDefaults` 白名单漏键**(`packages/shared/defaults/settings.ts`):`merged` 是逐键重建 + `return merged as AppSettings`,那个 `as` 掩盖了漏键。`storage` / `evals` 从来没被列进去 → **CLAUDE.md 写的 `settings.storage.sessionFormat='legacy-json'` 回滚开关是死的**;`evals.*` 同理。已加漏键审计测试(断言被丢弃的键恰好是这两个),第三个漏项一出现就红。**修它要单独排期**:修完那一刻,写过 legacy-json 的用户会真的回退存储格式。
 2. **`CLAUDE.md` 技术栈表过期**:写着 `Virtual Scroll | @tanstack/vue-virtual`,但该依赖已不在 `package.json`,`VirtualTable` 是手搓的且只用于表格;`MessageList.vue` 里 `estimateSize=150` 的注释是同时代残留。**消息列表从来不是虚拟滚动**(`Scrollbar` 里的朴素 `v-for`)。

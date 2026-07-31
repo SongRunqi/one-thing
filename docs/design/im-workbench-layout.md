@@ -66,6 +66,8 @@
 - 卡片点击 = 打开该卡对应的房 + 右栏切到该卡的线程。
 - **状态标只有三种呈现**:执行中(绿)/ 待审批(橙)/ 已交付(墨)。`blocked` 归入待审批档并带 `blockReason` 的 title。
 - 未读与"在忙"计数复用 `useStageScenes`(取件自 D 分支),**不新起口径**。
+- **四区在同一个滚动容器里**(R4,真机走查后的要求):不是"只有会话列表能滚、其余平铺撑着",而是四区一起滚,脚栏钉在滚动区之外。会话列表因此交出它的内部滚动。
+- **四区都可折叠**(含「进行中」),折叠态持久化在 localStorage 一个键里;「进行中」没有在跑的活时**整区不显示**(见 §7)。
 
 ### W2 中栏:聊天面 = 只展示 say 的新组件树
 
@@ -169,7 +171,8 @@ C 没有人物条,在场分三处落地,**同一份数据三种粒度**:
 
 ## 7. 开放问题
 
-- **左栏"进行中"为空时**(没有任何活在跑)第一区是留空还是塌陷?倾向塌陷成一行"没有在跑的活",否则常态是一块空白。C1 真机后定。
+- ~~**左栏"进行中"为空时**(没有任何活在跑)第一区是留空还是塌陷?倾向塌陷成一行"没有在跑的活",否则常态是一块空白。C1 真机后定。~~
+  **已定(2026-07-31,真机走查后用户拍板):没有在跑的活时「进行中」整区不显示。** 旧的"塌陷成一行"倾向被推翻 —— 一行永远在那儿的说明文字既不提供信息,又占着左栏最贵的那段视线;活来了这一区自然长出来,活没了它就该消失。判定落在 `packages/renderer/components/sidebar/sidebar-sections.ts` 的 `shouldShowActiveWorkSection`(挂载与否仍是 `Sidebar.vue` 的 `isWorkbenchShell && roomsEnabled` 两道门 —— 那一层带着一次看板取数,CSS 与内层 `v-if` 关不住一次 IPC)。
 - **活动线与工具卡的关系**:现有消息里的工具卡(StepsPanel/ToolStepDetails)与新的活动线是两种呈现同一批数据,C3 要决定是替换还是共存(倾向:活动线替换掉行内工具卡,细节全部去右栏)。
 - **多房并行时左栏卡片的排序**:按 `updatedAt` 还是按房分组?倾向前者(活是主体,房是属性)。
 
@@ -208,3 +211,4 @@ TabBar header · ChatSidePanel · 行内工具卡/StepsPanel/diff/图片生成�
 | **R1 新面骨架** ✅ | `ChatWindow` 分流 + 房头(群/私聊两态)+ say 流从 `MessageList` 提出 + composer + **权限账页栏位**(铁律 1)+ 滚动跟随/锚定/历史分页;右栏容器先只做「线程」tab(挂既有 `ThreadWorkbench`) | **已落地**:分流 = `ChatWindow.vue` 的 `roomSurfaceActive`(`kind==='room' && shellMode==='workbench'`,`v-if`/`v-else` 级);新面 = `chat/room/{RoomHeader,RoomSurface}.vue` + 纯投影 `room-head.ts`;审批栏位抬成 `chat/permission/PermissionLedger.vue`(旧壳与新面**共用同一个组件**,零字段差异不靠比对)+ `RejectReasonDialog.vue` + `usePermissionResponder`;分页抬成 `useHistoryPagination`(阈值与锚点还原逐字不变),跟随/锚定直接复用 `useFollowScroll` / `useMessageScrollCoordinator`;composer 沿用 `InputBox`(未改本体,它自己在 room 会话切 messenger 形态);右栏**不另起一根** —— App 级 `RightWorkbenchPanel` 已有 `thread` tab 与 ≥1400 默认展开,房面只在右栏已开时落座默认线程。**遗留**:composer 外框仍是蓝图框(样板是圆角 12px + 深色圆形发送),要动就得改 `InputBox` 自己的样式(hook 现成:`.composer-toolbar[data-profile='messenger']`),留给视觉一轮 |
 | **R2 右栏补全** | 「成员」tab(样板图2:在忙/空闲/已注销)+ 点成员**下钻**空间页(样板图4,带返回)+ 「看板」tab(复用 `CollabBoardPanel`);私聊态 tab 集合为 线程/空间/看板 | 三 tab 与下钻可用;成员数据与左栏活卡片同口径(`findAgentDoingTask` + roster) |
 | **R3 清理** ✅ | 撤掉 `MessageList` 的 `saySurfaceActive` 分流门与 C2′ 的挂载残留;房/私聊路径上的旧壳死代码;文档与样板对齐 | **已落地**:①`MessageList` 的 `saySurfaceActive` + `SayChatFlow` 挂载 + 聊天面排版档(`shouldUseSayTypography` / `SAY_METRICS`)整段拆除,DOM 断言搬到 `RoomSurface.say.test.ts`;②样板占位符落地 —— `InputBox` 新增可选只读 prop `placeholder`(不传即从前那句,直聊零变化并有测试钉住),房面按 `buildComposerPlaceholder` 给「发送到 #房名」/「给小林发消息」;③私聊房头头像口径归一为**下钻右栏空间页**(与中栏 say 署名头像同一条),降级规则同 say 行;④`CLAUDE.md` 虚拟滚动条目与 `MessageList` 的 `estimateSize` 注释按事实改写。**注意:`MessageList` / `ChatPanel` / `TabBar` 里所有 room 分支都是活代码** —— classic 下房会话仍走旧壳,那是逐像素回滚闸,一条都不许清 |
+| **R4 左栏按样板重构** ✅ | 统一滚动容器 + 各区可折叠(含「进行中」)+ 「进行中」空态整区隐藏 + 撤掉平铺 dock(功能收进脚栏「⋯」)+ 群聊行成员头像堆 | **已落地**:①四区收进 `.sidebar-sections` —— classic 下它是 `display: contents`(不生成盒子,排版逐像素不变),workbench 下才成为**唯一**的滚动体;`SessionList` 同期交出内部滚动(`overflow: visible` + 解开 `contain: strict`,否则那一段会塌成 0 高),不出双滚动条;②四区(进行中/群聊/同事/直聊)分区头即折叠钮,折叠态一个 localStorage 键(`onething:sidebar-sections-collapsed`),纯逻辑在 `sidebar-sections.ts`;classic 不读折叠态;③「进行中」无活整区隐藏(见 §7);④平铺 dock 只留在 classic,workbench 换成样板的脚栏 —— 五个工作区面板收进「⋯」菜单(复用 `ContextMenu`,清单直接吃 `workspaceActions`,少一项就是少一个进不去的面板),设置照旧单列一枚;⑤群聊行成员头像堆复用房头成员条那一处 `buildRoomMemberEntries`(墓碑口径一并继承),截前三枚 + `+N`;⑥**顺带挖出 C1「order 一直是死规则」的真因** —— `@vue/compiler-sfc`(3.5.26)会把 `:global(X) .y` **静默截断成 `X`**:那五条 `:global(html[data-shell-mode='workbench']) .sidebar-content > .xxx { order: N }` 编译出来是 `html[data-shell-mode='workbench'] { order: N }`,声明扣在 `<html>` 头上,四区一条都没碰到。**不是**「父级不是 flex」(`.sidebar-content` 是 `Space` 的根,`.app-space--vertical` 本来就是 flex 列;`Space` 也只在传了 `spacer`/`fill` 时才包 `.app-space__item`,侧栏两者都没传,四区一直是直接子)。形态门一律改写成 `html[...] .xxx`(祖先是 `html` 时不需要 `:global`,scoped 只给最后一个复合选择器补 `[data-v-xxx]`,作用域仍在),并加了两条围栏测试(禁 `:global(X) 后代`、order 选择器必须指向 `.sidebar-sections >`)。同一写法在 `packages/renderer/components/common/SplitterPanel.vue:145` 还有一处,不在本路改动面内 |

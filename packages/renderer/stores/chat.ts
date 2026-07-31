@@ -2708,6 +2708,10 @@ export const useChatStore = defineStore("chat", () => {
 		getSessionState,
 		isSessionGenerating,
 		getSessionPageState,
+		// 纯追加的出口:向上补页会把"向下那一边"的分页账写坏(存储层对更旧那一页
+		// 一律答 hasMoreAfter:true),房面补完页要把那两栏原样还回去。store 内部
+		// 逻辑一个字没改,旧壳也没有第二个调用方 —— classic 行为不变。
+		updateSessionPageState,
 
 		// UI State (per-session)
 		isToolCallExpanded,

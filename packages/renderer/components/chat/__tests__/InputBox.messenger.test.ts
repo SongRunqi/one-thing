@@ -23,6 +23,8 @@ const mocks = vi.hoisted(() => ({
 	promptsStore: null as any,
 	musicStore: null as any,
 	agentsStore: null as any,
+	/** 房里的"在跑"只由 collab:turn-active 说了算(W18 之后房会话本身没有流)。 */
+	roomTurnActive: false,
 }));
 
 vi.mock("@/stores/settings", () => ({
@@ -55,7 +57,7 @@ vi.mock("@/stores/agents", () => ({
 
 vi.mock("@/stores/collabBoard", () => ({
 	useCollabBoardStore: () => ({
-		isRoomTurnActive: () => false,
+		isRoomTurnActive: () => mocks.roomTurnActive,
 	}),
 }));
 
@@ -196,6 +198,7 @@ const ALWAYS_PRESENT_SELECTORS = [
 ];
 
 beforeEach(() => {
+	mocks.roomTurnActive = false;
 	vi.mocked(findCommand).mockReturnValue(undefined as never);
 	const baseSettings = createDefaultSettings();
 	baseSettings.ai.provider = "openai";
@@ -362,6 +365,73 @@ describe("InputBox placeholder 覆盖入口(R3)", () => {
 				.find(".composer-input")
 				.attributes("data-placeholder"),
 		).toBe("Ask anything...");
+	});
+});
+
+/**
+ * 停止态开关(房/私聊新面走查修复)。
+ *
+ * 直聊的停止钮真的能掐掉这个会话自己的流;房里不能 —— 回合跑在各成员的执行会话
+ * 里,房会话本身没有流,按下去没有效果。于是给 `InputBox` 开**第二个**可选只读
+ * prop:`allowStopAction`,缺省 `true`(直聊逐字节不变),房面传 `false`。
+ *
+ * 这一组同时钉两件事:①房面那颗死控件不再出现;②直聊 / 不传的一侧一个字节没变。
+ */
+describe("InputBox 停止态开关(allowStopAction)", () => {
+	it("直聊零变化:生成中且草稿为空 → 照旧是停止态(实心方块 + 可点)", () => {
+		const wrapper = mountInputBox("chat-1", { isLoading: true });
+		const send = wrapper.find(".send-btn");
+
+		expect(send.classes()).toContain("stop-btn");
+		expect(send.attributes("title")).toBe("Stop generation");
+		expect(send.attributes("disabled")).toBeUndefined();
+		expect(wrapper.find(".send-label").exists()).toBe(false);
+	});
+
+	it("直聊零变化:点下去照旧发 stopGeneration", async () => {
+		const wrapper = mountInputBox("chat-1", { isLoading: true });
+		await wrapper.find(".send-btn").trigger("click");
+
+		expect(wrapper.emitted("stopGeneration")).toHaveLength(1);
+	});
+
+	it("不传 = 从前:房面不传时停止态照旧出现(开关是宿主给的,不是形态推的)", () => {
+		mocks.roomTurnActive = true;
+		expect(
+			mountInputBox("room-group").find(".send-btn").classes(),
+		).toContain("stop-btn");
+	});
+
+	it("房面传 false:回合在跑也不出现停止态,画的是发送态", () => {
+		mocks.roomTurnActive = true;
+		const wrapper = mountInputBox("room-group", { allowStopAction: false });
+		const send = wrapper.find(".send-btn");
+
+		expect(send.classes()).not.toContain("stop-btn");
+		expect(wrapper.find(".send-label").exists()).toBe(true);
+		// 草稿为空 → 按**既有**规则 disabled(canSend),不是新加的门。
+		expect(send.attributes("disabled")).toBeDefined();
+	});
+
+	it("房面传 false:isLoading 也罩不住 —— 且点下去永远发不出 stopGeneration", async () => {
+		const wrapper = mountInputBox("room-group", {
+			isLoading: true,
+			allowStopAction: false,
+		});
+		expect(wrapper.find(".send-btn").classes()).not.toContain("stop-btn");
+
+		await wrapper.find(".send-btn").trigger("click");
+		expect(wrapper.emitted("stopGeneration")).toBeUndefined();
+	});
+
+	it("房面传 false:有草稿时照旧能发出去(关的只有停止态)", async () => {
+		mocks.roomTurnActive = true;
+		const wrapper = mountInputBox("room-group", { allowStopAction: false });
+		await setComposerValue(wrapper, "先发这条");
+		await wrapper.find(".send-btn").trigger("click");
+
+		expect(wrapper.emitted("sendMessage")?.[0]?.[0]).toBe("先发这条");
+		expect(wrapper.emitted("stopGeneration")).toBeUndefined();
 	});
 });
 

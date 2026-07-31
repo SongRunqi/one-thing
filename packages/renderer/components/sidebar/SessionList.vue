@@ -643,4 +643,34 @@ onUnmounted(() => {
   color: var(--ui-sidebar-item-muted-fg, var(--ui-text-muted-fg, var(--muted)));
   font-size: 13px;
 }
+
+/* ── 工作台外壳:交出内部滚动(R4,im-workbench-layout.md §3 W1)────────────
+   workbench 下左栏只有**一个**滚动体(`Sidebar.vue` 的 `.sidebar-sections`),
+   四区一起滚。这里再留一层 `overflow-y: auto` 就是双滚动条,所以整条让出去:
+
+    - `.session-list-wrapper` 不再 `flex: 1` —— 在滚动容器里它该按内容撑开,
+      而不是抢走整条竖轴(抢走了,上面三区就又被顶死);
+    - `.sessions-list` 的 `overflow-y: auto` 改 `visible`;
+    - **`contain: strict` 必须一并解开** —— strict 含 size containment,内容
+      不再撑高盒子,让出滚动后这一段会直接塌成 0 高。`content-visibility: auto`
+      同理(它隐含 size containment),一起退成 `visible`。
+
+   classic 一条都不生效:那边会话列表照旧是左栏里唯一会滚的东西。
+
+   ⚠️ 门写成 `html[...] .xxx` 而**不是** `:global(html[...]) .xxx` ——
+   `@vue/compiler-sfc` 会把 `:global(X) .y` 静默截断成 `X`,声明全扣到 `<html>`
+   头上(详见 `Sidebar.vue` 末尾那段说明,那正是 order 规则失效的真因)。
+   祖先是 `html` 本来就不需要 `:global`:scoped 只给最后一个复合选择器补
+   `[data-v-xxx]`,祖先照原样输出。 */
+html[data-shell-mode='workbench'] .session-list-wrapper {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+html[data-shell-mode='workbench'] .sessions-list {
+  flex: 0 0 auto;
+  overflow: visible;
+  contain: none;
+  content-visibility: visible;
+}
 </style>

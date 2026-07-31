@@ -16,7 +16,7 @@
           class="room-history-summary"
           native-type="button"
           :disabled="pageState?.isLoadingOlder"
-          @click="loadOlderHistoryIfNeeded(true)"
+          @click="loadOlderHistory(true)"
         >
           <span>{{ pageHistorySummary }}</span>
         </Button>
@@ -88,11 +88,17 @@
         @cancel="pendingReplyTo = null"
       />
 
+      <!-- `allow-stop-action="false"`:房面不出现停止态。房里的"在跑"指的是各
+           成员的**执行会话**,房会话自己从来没有流 —— 那颗停止钮按下去停不掉
+           任何东西(真机走查)。发完就回到发送态,草稿为空时按既有规则 disabled。
+           真正"能停"是引擎侧的事(collab turn 中断 / 执行会话 abort),接通后把
+           这个开关翻回来即可。 -->
       <InputBox
         ref="inputBoxRef"
         :is-loading="isGenerating"
         :session-id="effectiveSessionId"
         :placeholder="composerPlaceholder"
+        :allow-stop-action="false"
         @send-message="handleSendMessage"
         @stop-generation="handleStopGeneration"
         @switch-session="(sessionId) => emit('switchSession', sessionId)"
@@ -158,7 +164,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { resolveShellMode } from '@/composables/useShellMode'
 import { useChatStore } from '@/stores/chat'
 import { useChatSession } from '@/composables/useChatSession'
-import { useFollowScroll, shouldShowScrollToBottomButton } from '@/composables/useFollowScroll'
+import { useFollowScroll } from '@/composables/useFollowScroll'
 import { useMessageScrollCoordinator } from '@/composables/useMessageScrollCoordinator'
 import { useHistoryPagination } from '@/composables/useHistoryPagination'
 import { usePermissionResponder } from '@/composables/usePermissionResponder'
@@ -166,6 +172,7 @@ import { usePermissionShortcuts } from '@/composables/usePermissionShortcuts'
 import { useCollabReactions } from '@/composables/useCollabReactions'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { buildComposerPlaceholder, findRoomDefaultThread } from './room-head'
+import { repairTailLedgerAfterPrepend, shouldShowRoomScrollToBottom } from './room-scroll'
 import { OPEN_MEMBERS_EVENT, type OpenMembersDetail } from '@/components/workbench/room-members'
 import { isAgentPairDmRoom, isUserDmRoom } from '@onething/runtime/collab'
 
@@ -295,9 +302,12 @@ function updateScrollToBottomButton() {
     showScrollToBottomButton.value = false
     return
   }
-  // 视野底部不等于对话末尾:hasMoreAfter 时强制亮着,否则用户没有回到真尾的入口。
-  const hasMoreAfter = pageState.value?.hasMoreAfter ?? false
-  showScrollToBottomButton.value = hasMoreAfter || shouldShowScrollToBottomButton(el, isFollowing.value)
+  // 规则(含"到底即灭")在 room-scroll.ts,那里是纯函数、单独钉着。
+  showScrollToBottomButton.value = shouldShowRoomScrollToBottom(
+    el,
+    isFollowing.value,
+    pageState.value?.hasMoreAfter ?? false,
+  )
 }
 
 const scrollCoordinator = useMessageScrollCoordinator({
@@ -321,6 +331,34 @@ const historyPagination = useHistoryPagination({
 })
 const { loadOlderHistoryIfNeeded, loadNewerHistoryIfNeeded } = historyPagination
 
+/**
+ * 「读更早」补页 —— 房面在共用件外面套的一层账目修补。
+ *
+ * 根因见 `room-scroll.ts` 的 `repairTailLedgerAfterPrepend`:`loadOlderMessages`
+ * 会用"更旧那一页"的响应整份覆盖分页台账,而存储层对更旧那一页一律答
+ * `hasMoreAfter: true` —— 于是向上补过一次页,"回到底部"就永久亮着,滚到真底也
+ * 不灭(真机走查的那个现象)。
+ *
+ * 修在这里而不是 `chatStore.loadOlderMessages` / `useHistoryPagination`:那两个
+ * 都是旧壳共用件,动它们就动了 classic(§8 铁律 3)。向上补页物理上改不了"更新
+ * 那一边"的事实,所以补页前抄下那两栏、补完原样还回去,是最小的一刀。
+ */
+async function loadOlderHistory(force = false) {
+  const sessionId = effectiveSessionId.value
+  const before = sessionId ? chatStore.getSessionPageState(sessionId) : null
+  const tailLedger = before
+    ? { hasMoreAfter: before.hasMoreAfter, backwardsCursor: before.backwardsCursor }
+    : null
+
+  await loadOlderHistoryIfNeeded(force)
+
+  if (!sessionId) return
+  const patch = repairTailLedgerAfterPrepend(tailLedger, chatStore.getSessionPageState(sessionId))
+  if (!patch) return
+  chatStore.updateSessionPageState(sessionId, patch)
+  updateScrollToBottomButton()
+}
+
 function handleScroll() {
   follow.checkReattach()
   const el = scrollerRef.value
@@ -335,7 +373,7 @@ function handleScroll() {
     }
   }
   updateScrollToBottomButton()
-  void loadOlderHistoryIfNeeded()
+  void loadOlderHistory()
   void loadNewerHistoryIfNeeded()
 }
 
@@ -559,6 +597,11 @@ async function handleSendMessage(
   })
 }
 
+/**
+ * 目前**打不到**:`InputBox` 在房面收着停止态(`allow-stop-action="false"`),
+ * 这个 emit 不会发出来。接线留着不拆 —— 等引擎侧的 collab turn 中断真的接通,
+ * 入口翻回来就直接可用,不必再补一遍 DOM。
+ */
 async function handleStopGeneration() {
   await chatStopGeneration()
 }
@@ -696,6 +739,21 @@ defineExpose({
 
 /* 阅读列不收窄:房是高密度的场,吃满面板(W2)。 */
 .room-flow {
+  /* 尾部呼吸(真机走查:最后一条几乎贴着输入框)。样板是张不滚动的静态图,
+     `.flow` 只留 4px 就够看;真面在滚,末条贴边读起来是压迫的 —— 这里按**旧壳
+     同一条量尺**给足:`MessageList` 的 `--chat-scroll-tail-reserve`,逐字同式,
+     所以它随字号/行高设置一起缩放,不是拍脑袋的常数。
+
+     这段留白是 `.room-flow-content` 的 padding-bottom,**在哨兵之下**,对
+     "跟随到底"是中性的:①`useFollowScroll` 判到底用的是
+     `scrollHeight - clientHeight - scrollTop`,padding 让被减数与 scrollTop 上限
+     同量增长,真尾仍然是距离 0;②scroll anchoring 锚的是那枚 1px 哨兵,增长发生
+     在它**下方**且是常量,不会触发锚点补偿。 */
+  --room-flow-tail-reserve: var(
+    --chat-composer-safe-gap,
+    max(calc(var(--content-spacing-px, 8px) * 3), calc(var(--message-line-height-px, 20px) * 1.25))
+  );
+
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -704,7 +762,7 @@ defineExpose({
 .room-flow-content {
   display: flex;
   flex-direction: column;
-  padding: 16px 0 4px;
+  padding: 16px 0 var(--room-flow-tail-reserve, 24px);
 }
 
 .room-flow-sentinel {
@@ -866,6 +924,83 @@ defineExpose({
   font-weight: 500;
   letter-spacing: 0;
   line-height: 1;
+}
+
+/* ── 打字行皮相(样板 `final.html` 的 `.typing`)─────────────────────────────
+ *
+ * 样板要的是**三根小竖条波纹在最左 + 灰字「阿澈 正在输入…」**,整行很轻、贴着
+ * 输入框上沿。`CollabTypingLine` 自己画的是「头像 + 名字 + 正在输入 + 三颗 2px
+ * 圆点」——那是 C1/C2 的旧形态,而**旧壳(ChatPanel)还在用同一个组件**。
+ *
+ * 所以皮相写在**这里**,与 composer 皮相同一手法:父级 scoped CSS 编译出来带着
+ * `.room-composer[data-v-…]` 前缀,直聊那棵树上根本不存在这个祖先 —— 直聊逐像素
+ * 不变不靠"我记得没改到",靠选择器够不着。组件本体一个字节没动。
+ *
+ * 与样板的一处取舍:样板画的是纯文字署名,这里把头像收起来(`display: none`)
+ * 而不是从 DOM 拆掉 —— 拆 DOM 就动到旧壳了。 */
+.room-surface .room-composer :deep(.collab-typing) {
+  gap: 5px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+}
+
+/* 样板里波纹在最左,不是行尾。 */
+.room-surface .room-composer :deep(.collab-typing .typing-dots) {
+  order: -1;
+  align-items: flex-end;
+  height: 9px;
+  margin-right: 4px;
+  gap: 2px;
+}
+
+/* 圆点 → 竖条:2px 宽、9px 高、1px 圆角,只在 Y 轴上呼吸(transform,不动布局,
+   行高恒定)。 */
+.room-surface .room-composer :deep(.collab-typing .typing-dot) {
+  width: 2px;
+  height: 9px;
+  border-radius: 1px;
+  transform-origin: bottom;
+  opacity: 1;
+  animation: room-typing-wave 1s ease-in-out infinite;
+}
+
+.room-surface .room-composer :deep(.collab-typing .typing-dot:nth-child(2)) {
+  animation-delay: 0.15s;
+}
+
+.room-surface .room-composer :deep(.collab-typing .typing-dot:nth-child(3)) {
+  animation-delay: 0.3s;
+}
+
+/* 样板是「正在输入…」;组件的三颗点被改造成左侧波纹了,省略号补在动词后。 */
+.room-surface .room-composer :deep(.collab-typing .typing-verb)::after {
+  content: "…";
+}
+
+.room-surface .room-composer :deep(.collab-typing .typing-avatar) {
+  display: none;
+}
+
+@keyframes room-typing-wave {
+  0%,
+  100% {
+    transform: scaleY(0.4);
+    opacity: 0.55;
+  }
+
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* 组件自己的 reduced-motion 档被这里的高特异性规则盖住了,得原样补一份回来。 */
+@media (prefers-reduced-motion: reduce) {
+  .room-surface .room-composer :deep(.collab-typing .typing-dot) {
+    transform: scaleY(0.75);
+    opacity: 0.55;
+    animation: none;
+  }
 }
 
 /* 浮在 composer 上沿右角:它是"你不在底部"这件事的唯一提示,不能被 composer
